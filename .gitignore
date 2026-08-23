@@ -28,8 +28,10 @@ xcuserdata/
 .swiftpm/
 *.xcuserstate
 
+# Local reference installation; never publish proprietary game files
+/Warhammer 40,000 DARKTIDE/
+
 # OS noise
 .DS_Store
 Thumbs.db
 desktop.ini
-
