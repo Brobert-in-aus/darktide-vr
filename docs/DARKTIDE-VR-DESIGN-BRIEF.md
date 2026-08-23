@@ -7,7 +7,7 @@
 - **Target:** Windows PCVR, Steam build first
 - **Primary runtime:** OpenXR 1.1
 - **Baseline game artifact inspected:** Darktide `1.12.0-b773907`, executable file version `1.3.770.210`
-- **Confidence:** Architecture recommendation - medium; camera seam - medium/high; stereo mode feasibility - unproven; anti-cheat compatibility - unresolved release blocker
+- **Confidence:** Architecture recommendation - medium; camera seam - medium/high; stereo mode feasibility - unproven; anti-cheat compatibility - unproven
 
 ---
 
@@ -45,10 +45,6 @@ Use a capability-driven ladder rather than betting the product on one render met
 5. **Optical-flow frame generation** - late optimization, never a prerequisite for the first playable release.
 
 Plain cross-tick AER is a diagnostic mode, not an acceptable default. Its stale-eye disparity, temporal rivalry, TAA interaction, and per-eye update rate are especially hazardous in Darktide's fast lateral movement and dense melee combat. UEVR similarly describes synchronized sequential rendering as fully synchronized while warning that unsynchronized AFR can cause eye desynchronization and nausea ([UEVR rendering modes](https://github.com/praydog/UEVR/blob/master/README.md)).
-
-### Release gate
-
-Do not publicly distribute or test native injection in protected matchmaking until Fatshark has explicitly confirmed that this type of local rendering/input modification is acceptable. Fatshark allows mods only within stated boundaries and reserves warnings or bans for mods that affect unmodded players, service stability, progression/value, or toxic behavior; mods are unsupported and used at the player's own risk ([Darktide Modding Policy](https://forums.fatsharkgames.com/t/darktide-modding-policy/75407/1)). Darktide's Lua source also contains an Epic Online Services Easy Anti-Cheat client session path. DMF's existence is not evidence that arbitrary native graphics injection is sanctioned.
 
 ---
 
@@ -114,7 +110,7 @@ The recommendations combine four evidence classes. They should not be treated as
 | --- | --- | --- |
 | Inspected local Darktide installation | D3D12-era renderer assets and DLLs, Stingray renderer naming, settings layout, executable/build identifiers, ray tracing/upscaler components | High for the inspected build |
 | Public Darktide Lua source mirror | Camera tree, camera manager post-update path, first-person/ADS/sprint/cinematic modes, EAC client state, viewport and ScriptCamera calls | Medium/high; source mirror may lag or differ from a specific binary |
-| DMF/DML repositories and Fatshark policy | Existing Lua hook/options/events ecosystem, bundle patching, update behavior, policy boundary | High for documented behavior |
+| DMF/DML repositories | Existing Lua hook/options/events ecosystem, bundle patching, and update behavior | High for documented behavior |
 | Local AER/6DOF PDFs and public VR frameworks | Established injector patterns, stereo taxonomy, timing hazards, validation methods, comparable implementation choices | High as design guidance; Darktide applicability remains to be proven |
 
 ### Observed locally
@@ -157,17 +153,17 @@ The design must assume:
 
 ### 5.2 Live service and anti-cheat
 
-Darktide authenticates and plays through dedicated services. The public Lua mirror includes an EOS EAC client that authenticates, begins a client-server session, sets the server channel, and reports errors when EAC is absent. Treat native process injection as a policy and compatibility risk even if a local-only prototype appears to work.
+Darktide authenticates and plays through dedicated services. The public Lua mirror includes an EOS EAC client that authenticates, begins a client-server session, sets the server channel, and reports errors when EAC is absent. Treat native process injection as a compatibility risk that must be measured independently from rendering success.
 
 Required controls:
 
 - no anti-cheat disable, concealment, spoofing, or bypass logic;
-- no protected matchmaking test until the policy gate is cleared;
+- validate loader, injection, session health, and clean shutdown in staged tests before ordinary matchmaking use;
 - a prominent build banner stating experimental/unsupported status;
 - log the loader route and EAC/session state without collecting credentials or tokens;
 - a one-click clean-disable path that restores the original game files/configuration;
 - never modify or ship Fatshark binaries, bundles, shader caches, assets, signing material, or authentication data; and
-- keep the native renderer and DMF companion source available for review if a public release is pursued.
+- keep the native renderer and DMF companion diagnosable so compatibility failures can be reproduced without concealment.
 
 ### 5.3 Update cadence
 
@@ -194,8 +190,8 @@ Unknown builds start in **safe mono viewer mode with no memory edits**. Users ma
 | ABI + Godot standalone port | Clean OpenXR, testable boundary, ideal UX control | Requires game source/simulation extraction; cannot preserve live service; asset/legal burden | Reject for Darktide |
 | External viewer + DMF/6DOF camera | Fastest camera/comfort prototype; renderer isolation; no second engine view needed | Screen/depth stereo quality; extra capture latency; UI and temporal artifacts; still may require graphics hooks | Keep as research track |
 | Native D3D12/OpenXR injector only | Lowest-latency render access; depth/motion-vector access; direct composition | Weak game-state semantics; difficult UI/cutscene policy; highest reverse-engineering and anti-cheat risk | Core renderer, but not alone |
-| Native renderer + optional DMF companion | Strong render access plus semantic camera/UI states; clear modules and fallback | Two version surfaces; IPC seam must be proven; policy risk remains | Recommended |
-| Official engine integration | Best correctness/performance and policy posture | Requires Fatshark cooperation/source access | Strategic ideal; not currently available |
+| Native renderer + optional DMF companion | Strong render access plus semantic camera/UI states; clear modules and fallback | Two version surfaces; IPC seam and anti-cheat compatibility must be proven | Recommended |
+| Official engine integration | Best correctness and performance posture | Requires Fatshark cooperation/source access | Strategic ideal; not currently available |
 
 ---
 
@@ -486,7 +482,7 @@ For MVP, the reticle represents game aim, not head gaze. If head-look and weapon
 
 - Gestures may trigger existing button actions only.
 - No physical melee damage, variable swing strength, extended reach, automatic parry, or repeated attacks beyond the game's normal cadence.
-- Default off until policy and balance review.
+- Default off until input-parity and balance testing is complete.
 
 ### 11.2 Input path rules
 
@@ -712,17 +708,16 @@ Use short, blinded A/B sessions with a structured symptom scale. Include sensiti
 
 ## 17. Milestones and exit criteria
 
-### Phase 0 - policy and feasibility (1-2 weeks)
+### Phase 0 - technical feasibility (1-2 weeks)
 
 Deliver:
 
-- Fatshark/DMF outreach package describing local-only renderer/input behavior;
 - build fingerprint tool;
 - D3D12/OpenXR synthetic harness;
 - desktop camera-source map and pass census; and
-- go/no-go memo for protected-process work.
+- go/no-go memo for renderer hooks and anti-cheat compatibility.
 
-Exit when: legal/policy route is explicit, or the project is formally restricted to private research; camera and final Present can be observed without instability.
+Exit when: camera and final Present can be observed without instability.
 
 ### Phase 1 - mono VR vertical slice (2-4 weeks)
 
@@ -770,7 +765,7 @@ Deliver:
 - conventional aim mapping and two-hand stabilization;
 - UI pointer mode;
 - haptics; and
-- balance/policy review.
+- input-parity and balance review.
 
 Exit when: no duplicated inputs, no rate/reach advantage, full remapping/left-handed coverage, and parity with normal game input semantics.
 
@@ -795,7 +790,7 @@ Deliver:
 - per-build adapters and automated signature validation; and
 - two-hour soak and release checklist.
 
-Exit when: no unresolved P0/P1 defects, no mode oscillation, fallback is deterministic, and policy gate permits the intended distribution.
+Exit when: no unresolved P0/P1 defects, no mode oscillation, fallback is deterministic, and the supported loader/session matrix passes compatibility tests.
 
 ---
 
@@ -803,7 +798,7 @@ Exit when: no unresolved P0/P1 defects, no mode oscillation, fallback is determi
 
 | Risk | Likelihood | Impact | Mitigation / decision trigger |
 | --- | --- | --- | --- |
-| EAC or policy rejects native injection | High | Critical | Seek explicit confirmation; no bypass; private research or stop native path |
+| EAC rejects native injection | High | Critical | Test staged loader routes; use a lower-intrusion external-viewer path or stop the incompatible native path; no bypass |
 | Game update breaks signatures/passes | High | High | Build fingerprints, wildcard AOBs, pass census, safe mono unknown-build mode |
 | CPU-bound hordes make stereo unaffordable | High | High | Measure early; AER + AFW; resolution/VR preset; avoid duplicated view-independent work |
 | No safe same-tick second view | High | Medium | Time-box spike; ship AER + AFW baseline |
@@ -814,7 +809,7 @@ Exit when: no unresolved P0/P1 defects, no mode oscillation, fallback is determi
 | Motion smoothing halves engine or starves eye | Medium | High | Dedicated XR wait thread; no game-thread block; run-free capture and pose counters |
 | Tick lock stalls network/audio/jobs | High | Critical | Never global-freeze; require render-scoped snapshot proof; reject M1 if not safe |
 | Roomscale lean reveals through walls | Medium | High | Clamp, depth/collision fade, visual-only lean, conservative bounds |
-| Controller mapping becomes aim advantage | Medium | High | Ordinary aim intent only; no auto-targeting/recoil/cadence changes; policy review |
+| Controller mapping becomes aim advantage | Medium | High | Ordinary aim intent only; no auto-targeting/recoil/cadence changes; input-parity review |
 | GPU resource-state bug causes TDR/device loss | Medium | Critical | Explicit state tracking, fence ownership, resize/device-loss teardown, D3D validation in lab |
 | Comfort defect harms testers/users | Medium | Critical | Conservative defaults, fast fallback, stop rules, sensitive testing, no plain-AER default |
 
@@ -927,7 +922,7 @@ Build-specific addresses, shader hashes, and pass overrides belong in separate s
 - Keep app-level frame generation off by default.
 - Build the timing thread/ring-buffer architecture before stereo.
 - Unknown game builds fail closed.
-- No anti-cheat bypass or public protected-session testing without policy clearance.
+- No anti-cheat bypass; loader and EAC/session health are measured compatibility gates.
 
 ### Questions to answer during Phase 0-2
 
@@ -940,8 +935,8 @@ Build-specific addresses, shader hashes, and pass overrides belong in separate s
 7. Is there a render-only replay/re-entry point or immutable render snapshot that can support synchronized sequential stereo?
 8. Which view-independent passes can be shared between eye renders without altering the frame graph?
 9. Can DMF export low-rate semantic state without adding a native loader or blocking the Lua/game thread?
-10. What exact loader/injection route, if any, will Fatshark accept under EAC?
-11. Can camera-only 6DOF plus external SBS/depth stereo provide a useful interim release if native injection is not approved?
+10. Which loader/injection route, if any, remains EAC-compatible in staged testing?
+11. Can camera-only 6DOF plus external SBS/depth stereo provide a useful fallback if native injection is incompatible?
 12. What minimum PC/GPU and graphics preset sustain acceptable p99 timing in worst-case hordes?
 
 ---
@@ -959,7 +954,6 @@ Build-specific addresses, shader hashes, and pass overrides belong in separate s
 
 ### External sources
 
-- [Fatshark Darktide Modding Policy](https://forums.fatsharkgames.com/t/darktide-modding-policy/75407/1)
 - [Darktide Mod Framework](https://github.com/Darktide-Mod-Framework/Darktide-Mod-Framework)
 - [Darktide Mod Loader](https://github.com/Darktide-Mod-Framework/Darktide-Mod-Loader)
 - [Public Darktide source mirror - camera settings](https://github.com/Aussiemon/Darktide-Source-Code/blob/master/scripts/settings/camera/camera_settings.lua)
@@ -977,7 +971,7 @@ Build-specific addresses, shader hashes, and pass overrides belong in separate s
 
 ### Source caveats
 
-The AER PDFs are technical project references rather than standards. Validate their recommendations against the OpenXR specification, D3D12 documentation, runtime behavior, and Darktide measurements. The public Darktide source mirror is invaluable for naming and control flow but is not an official SDK and may not match a particular shipping build. Community mod behavior is precedent, not permission.
+The AER PDFs are technical project references rather than standards. Validate their recommendations against the OpenXR specification, D3D12 documentation, runtime behavior, and Darktide measurements. The public Darktide source mirror is invaluable for naming and control flow but is not an official SDK and may not match a particular shipping build. Community mod behavior is precedent, not proof of anti-cheat compatibility.
 
 ---
 
