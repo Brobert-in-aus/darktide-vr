@@ -523,6 +523,8 @@ struct GpuProfileSample {
   int eye{-1};
   UINT slot{};
   std::uint64_t fence_value{};
+  bool internal_target_seen{};
+  bool stage_boundary_recorded{};
   ComPtr<ID3D12CommandAllocator> start_allocator;
   ComPtr<ID3D12GraphicsCommandList> start_commands;
   ComPtr<ID3D12CommandAllocator> end_allocator;
@@ -543,11 +545,18 @@ std::deque<GpuProfileSample> gpu_profile_pending;
 std::array<std::atomic<std::uint64_t>, 2> gpu_profile_sample_counts{};
 std::array<std::atomic<std::uint64_t>, 2> gpu_profile_total_ticks{};
 std::array<std::atomic<std::uint64_t>, 2> gpu_profile_max_ticks{};
+std::array<std::atomic<std::uint64_t>, 2> gpu_profile_stage_sample_counts{};
+std::array<std::atomic<std::uint64_t>, 2> gpu_profile_world_total_ticks{};
+std::array<std::atomic<std::uint64_t>, 2> gpu_profile_world_max_ticks{};
+std::array<std::atomic<std::uint64_t>, 2> gpu_profile_output_total_ticks{};
+std::array<std::atomic<std::uint64_t>, 2> gpu_profile_output_max_ticks{};
 std::atomic<bool> gpu_profile_enabled{};
 // Per-draw/root/PSO/descriptor hooks are useful for bounded renderer
 // investigations but impose thousands of detours per stereo pair. Production
-// capture needs only resource-boundary, queue, swapchain and reset hooks.
-constexpr bool kInstallDiagnosticRenderHooks = false;
+// capture needs only resource-boundary, queue, swapchain and reset hooks. The
+// mode must be selected before dtvr_install() because MinHook cannot safely add
+// this interdependent hook set after renderer threads are live.
+std::atomic<bool> kInstallDiagnosticRenderHooks{};
 
 int capture_present_halves(IDXGISwapChain3* swapchain,
                            ID3D12CommandQueue* queue);
@@ -582,7 +591,7 @@ bool ensure_gpu_profiler(ID3D12CommandQueue* queue) {
   D3D12_QUERY_HEAP_DESC query_description{};
   query_description.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
   query_description.Count =
-      static_cast<UINT>(kGpuProfileSlotCount * 2U);
+      static_cast<UINT>(kGpuProfileSlotCount * 3U);
   if (FAILED(device->CreateQueryHeap(&query_description,
                                      IID_PPV_ARGS(&gpu_profile_query_heap)))) {
     return false;
@@ -594,7 +603,7 @@ bool ensure_gpu_profiler(ID3D12CommandQueue* queue) {
   D3D12_RESOURCE_DESC resource_description{};
   resource_description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
   resource_description.Width =
-      kGpuProfileSlotCount * 2U * sizeof(std::uint64_t);
+      kGpuProfileSlotCount * 3U * sizeof(std::uint64_t);
   resource_description.Height = 1;
   resource_description.DepthOrArraySize = 1;
   resource_description.MipLevels = 1;
@@ -626,8 +635,10 @@ void harvest_gpu_profile_samples() {
   while (!gpu_profile_pending.empty() &&
          gpu_profile_pending.front().fence_value <= completed) {
     const auto& sample = gpu_profile_pending.front();
-    const auto start = gpu_profile_ticks[sample.slot * 2U];
-    const auto end = gpu_profile_ticks[sample.slot * 2U + 1U];
+    const auto query_start = sample.slot * 3U;
+    const auto start = gpu_profile_ticks[query_start];
+    const auto boundary = gpu_profile_ticks[query_start + 1U];
+    const auto end = gpu_profile_ticks[query_start + 2U];
     if (sample.eye >= 0 && sample.eye <= 1 && end >= start) {
       const auto duration = end - start;
       const auto index = static_cast<std::size_t>(sample.eye);
@@ -636,6 +647,19 @@ void harvest_gpu_profile_samples() {
       gpu_profile_total_ticks[index].fetch_add(duration,
                                                 std::memory_order_relaxed);
       update_atomic_max(gpu_profile_max_ticks[index], duration);
+      if (sample.stage_boundary_recorded && boundary >= start &&
+          end >= boundary) {
+        const auto world_duration = boundary - start;
+        const auto output_duration = end - boundary;
+        gpu_profile_stage_sample_counts[index].fetch_add(
+            1, std::memory_order_relaxed);
+        gpu_profile_world_total_ticks[index].fetch_add(
+            world_duration, std::memory_order_relaxed);
+        gpu_profile_output_total_ticks[index].fetch_add(
+            output_duration, std::memory_order_relaxed);
+        update_atomic_max(gpu_profile_world_max_ticks[index], world_duration);
+        update_atomic_max(gpu_profile_output_max_ticks[index], output_duration);
+      }
     }
     gpu_profile_pending.pop_front();
   }
@@ -676,7 +700,7 @@ void begin_gpu_eye_profile(int eye) {
     return;
   }
   sample.start_commands->EndQuery(gpu_profile_query_heap.Get(),
-                                  D3D12_QUERY_TYPE_TIMESTAMP, slot * 2U);
+                                  D3D12_QUERY_TYPE_TIMESTAMP, slot * 3U);
   if (FAILED(sample.start_commands->Close())) {
     return;
   }
@@ -710,13 +734,13 @@ void end_gpu_eye_profile(int eye, ID3D12CommandQueue* queue) {
           nullptr, IID_PPV_ARGS(&sample.end_commands)))) {
     return;
   }
-  const auto query_start = sample.slot * 2U;
+  const auto query_start = sample.slot * 3U;
   sample.end_commands->EndQuery(gpu_profile_query_heap.Get(),
                                 D3D12_QUERY_TYPE_TIMESTAMP,
-                                query_start + 1U);
+                                query_start + 2U);
   sample.end_commands->ResolveQueryData(
       gpu_profile_query_heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query_start,
-      2, gpu_profile_readback.Get(),
+      3, gpu_profile_readback.Get(),
       static_cast<UINT64>(query_start) * sizeof(std::uint64_t));
   if (FAILED(sample.end_commands->Close())) {
     return;
@@ -2699,6 +2723,42 @@ DescriptorInfo descriptor_snapshot(std::uint64_t handle) {
   return found == descriptor_metadata.end() ? DescriptorInfo{} : found->second;
 }
 
+void record_gpu_stage_boundary(ID3D12GraphicsCommandList* commands,
+                               const DescriptorInfo& target) {
+  if (!gpu_profile_enabled.load(std::memory_order_relaxed) || !commands ||
+      !gpu_profile_query_heap || target.width == 0 || target.height == 0) {
+    return;
+  }
+  const auto output_width =
+      swapchain_render_width.load(std::memory_order_relaxed);
+  const auto output_height =
+      swapchain_render_height.load(std::memory_order_relaxed);
+  if (output_width == 0 || output_height == 0) {
+    return;
+  }
+
+  std::scoped_lock lock(gpu_profile_mutex);
+  for (auto& active : gpu_profile_active) {
+    if (!active || active->stage_boundary_recorded) {
+      continue;
+    }
+    if (target.width < output_width && target.height < output_height) {
+      active->internal_target_seen = true;
+      continue;
+    }
+    // This is a structural resolution transition, not a semantic pass marker.
+    // Stingray interleaves internal- and output-sized resources, so consumers
+    // must not label the two intervals as "world" and "post processing".
+    if (active->internal_target_seen && target.width == output_width &&
+        target.height == output_height) {
+      commands->EndQuery(gpu_profile_query_heap.Get(),
+                         D3D12_QUERY_TYPE_TIMESTAMP,
+                         active->slot * 3U + 1U);
+      active->stage_boundary_recorded = true;
+    }
+  }
+}
+
 void log_output_descriptor(const char* event, UINT slot,
                            std::uint64_t handle) {
   const auto info = descriptor_snapshot(handle);
@@ -2719,6 +2779,7 @@ void STDMETHODCALLTYPE om_set_render_targets_hook(
     const D3D12_CPU_DESCRIPTOR_HANDLE* depth) {
   if (count > 0 && targets) {
     const auto target = descriptor_snapshot(targets[0].ptr);
+    record_gpu_stage_boundary(commands, target);
     auto* resource = reinterpret_cast<ID3D12Resource*>(target.resource);
     if (resource) {
       std::scoped_lock lock(boundary_capture_mutex);
@@ -2845,13 +2906,18 @@ void STDMETHODCALLTYPE resource_barrier_hook(
           boundary_transition_count.fetch_add(1, std::memory_order_relaxed);
         }
         if (!census_enabled && !enhanced_log_enabled &&
-            !is_output_reuse_begin && !is_output_completion) {
+            !is_output_reuse_begin && !is_output_completion &&
+            !gpu_profile_enabled.load(std::memory_order_relaxed)) {
           continue;
         }
         const auto transition_ordinal = collect_candidates
                                             ? ++command_transition_ordinals[commands]
                                             : 0;
         const auto description = barrier.Transition.pResource->GetDesc();
+        DescriptorInfo stage_target{};
+        stage_target.width = description.Width;
+        stage_target.height = description.Height;
+        record_gpu_stage_boundary(commands, stage_target);
         if (census_enabled &&
             description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
             description.Width == camera_output_width &&
@@ -3477,7 +3543,7 @@ void nudge_swapchain_client_extent(HWND window, bool requested) {
 
 HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                                         UINT interval, UINT flags) {
-  if (kInstallDiagnosticRenderHooks) {
+  if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {
     std::scoped_lock lock(trace_mutex);
     frame_eye0_table4_draws.clear();
     candidate_frame_eye0_table4 = {};
@@ -4472,6 +4538,15 @@ int capture_present_halves(IDXGISwapChain3* swapchain,
 }  // namespace
 
 extern "C" __declspec(dllexport) int dtvr_install() { return install_hooks(); }
+extern "C" __declspec(dllexport) int
+dtvr_set_diagnostic_render_hooks(int enabled) {
+  if (hooks_installed.load(std::memory_order_acquire)) {
+    return 1;
+  }
+  kInstallDiagnosticRenderHooks.store(enabled != 0,
+                                      std::memory_order_release);
+  return 0;
+}
 extern "C" __declspec(dllexport) unsigned long long dtvr_qpc_ticks() {
   LARGE_INTEGER value{};
   return QueryPerformanceCounter(&value)
@@ -4499,6 +4574,27 @@ extern "C" __declspec(dllexport) int dtvr_take_gpu_eye_profile(
   values[2] = gpu_profile_max_ticks[index].exchange(
       0, std::memory_order_relaxed);
   values[3] = gpu_profile_frequency;
+  return gpu_profile_frequency != 0 ? 0 : 2;
+}
+extern "C" __declspec(dllexport) int dtvr_take_gpu_stage_profile(
+    int eye, unsigned long long* values) {
+  if (eye < 0 || eye > 1 || !values) {
+    return 1;
+  }
+  std::scoped_lock lock(gpu_profile_mutex);
+  harvest_gpu_profile_samples();
+  const auto index = static_cast<std::size_t>(eye);
+  values[0] = gpu_profile_stage_sample_counts[index].exchange(
+      0, std::memory_order_relaxed);
+  values[1] = gpu_profile_world_total_ticks[index].exchange(
+      0, std::memory_order_relaxed);
+  values[2] = gpu_profile_world_max_ticks[index].exchange(
+      0, std::memory_order_relaxed);
+  values[3] = gpu_profile_output_total_ticks[index].exchange(
+      0, std::memory_order_relaxed);
+  values[4] = gpu_profile_output_max_ticks[index].exchange(
+      0, std::memory_order_relaxed);
+  values[5] = gpu_profile_frequency;
   return gpu_profile_frequency != 0 ? 0 : 2;
 }
 extern "C" __declspec(dllexport) int dtvr_set_gpu_eye_profile(int enabled) {

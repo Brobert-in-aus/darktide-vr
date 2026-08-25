@@ -61,6 +61,7 @@ local ui_eye_target_height = 2304
 local ui_native_capture_requested = true -- copy each completed full-origin eye
 local ui_camera_output_candidate_probe_index = -1
 local ui_native_observer_requested = false
+local diagnostic_render_hooks_requested = false
 local ui_table4_alias_probe_requested = false -- unsafe without exact draw identity
 local ui_present_capture_requested = false
 local ui_alternating_full_requested = false
@@ -106,6 +107,7 @@ local render_timing_left_max_ticks = 0
 local render_timing_right_max_ticks = 0
 local render_timing_pair_max_ticks = 0
 local gpu_profile_values = nil
+local gpu_stage_profile_values = nil
 local performance_profile_requested = false -- opt-in diagnostic; allocates GPU timestamp work
 -- Reuse the shading/LOD preparation performed by the primary eye. The second
 -- eye still receives a complete native Application.render_world submission.
@@ -237,10 +239,12 @@ local function ensure_ui_native_hooks()
         int dtvr_set_focused_trace_phase(int phase);
         unsigned long long dtvr_focused_trace_count(void);
         int dtvr_enable_marker_log(void);
+        int dtvr_set_diagnostic_render_hooks(int enabled);
         int dtvr_read_head_pose(float *values, unsigned long long *sequence);
         unsigned long long dtvr_qpc_ticks(void);
         unsigned long long dtvr_qpc_frequency(void);
         int dtvr_take_gpu_eye_profile(int eye, unsigned long long *values);
+        int dtvr_take_gpu_stage_profile(int eye, unsigned long long *values);
         int dtvr_set_gpu_eye_profile(int enabled);
     ]])
 
@@ -251,6 +255,16 @@ local function ensure_ui_native_hooks()
 
     if not ok then
         mod:error("DARKTIDEVR_STEREO native_capture load_failed error=%s", tostring(library))
+        return false
+    end
+
+    local diagnostic_result = library.dtvr_set_diagnostic_render_hooks(
+        (diagnostic_render_hooks_requested or ui_native_observer_requested or
+            performance_profile_requested) and
+            1 or 0)
+    if diagnostic_result ~= 0 then
+        mod:error("DARKTIDEVR_STEREO diagnostic_hook_select_failed code=%d",
+            diagnostic_result)
         return false
     end
 
@@ -265,6 +279,7 @@ local function ensure_ui_native_hooks()
     head_pose_values = ffi.new("float[17]")
     head_pose_sequence = ffi.new("unsigned long long[1]")
     gpu_profile_values = ffi.new("unsigned long long[4]")
+    gpu_stage_profile_values = ffi.new("unsigned long long[6]")
     ui_native_capture.dtvr_set_gpu_eye_profile(
         performance_profile_requested and 1 or 0)
     mod:info("DARKTIDEVR_STEREO native_hooks installed")
@@ -568,6 +583,32 @@ local function take_gpu_eye_profile(eye)
     }
 end
 
+local function take_gpu_stage_profile(eye)
+    if not ui_native_capture or not gpu_stage_profile_values then
+        return nil
+    end
+    if ui_native_capture.dtvr_take_gpu_stage_profile(
+            eye, gpu_stage_profile_values) ~= 0 then
+        return nil
+    end
+    local count = tonumber(gpu_stage_profile_values[0])
+    local world_total = tonumber(gpu_stage_profile_values[1])
+    local world_maximum = tonumber(gpu_stage_profile_values[2])
+    local output_total = tonumber(gpu_stage_profile_values[3])
+    local output_maximum = tonumber(gpu_stage_profile_values[4])
+    local frequency = tonumber(gpu_stage_profile_values[5])
+    if not count or count == 0 or not frequency or frequency <= 0 then
+        return nil
+    end
+    return {
+        count = count,
+        pre_full_average_ms = world_total / count * 1000 / frequency,
+        pre_full_maximum_ms = world_maximum * 1000 / frequency,
+        post_full_average_ms = output_total / count * 1000 / frequency,
+        post_full_maximum_ms = output_maximum * 1000 / frequency
+    }
+end
+
 local function record_render_timings(label, left_ticks, right_ticks, pair_ticks)
     if not left_ticks or not right_ticks or not pair_ticks then
         return
@@ -615,6 +656,24 @@ local function record_render_timings(label, left_ticks, right_ticks, pair_ticks)
                 left_gpu.average_ms + right_gpu.average_ms,
                 left_gpu.maximum_ms,
                 right_gpu.maximum_ms
+            )
+        end
+        local left_stage = take_gpu_stage_profile(0)
+        local right_stage = take_gpu_stage_profile(1)
+        if left_stage and right_stage then
+            mod:info(
+                "DARKTIDEVR_GPU_STAGE target=%s left_samples=%d right_samples=%d left_pre_full_avg_ms=%.3f left_post_full_avg_ms=%.3f right_pre_full_avg_ms=%.3f right_post_full_avg_ms=%.3f left_pre_full_max_ms=%.3f left_post_full_max_ms=%.3f right_pre_full_max_ms=%.3f right_post_full_max_ms=%.3f",
+                label,
+                left_stage.count,
+                right_stage.count,
+                left_stage.pre_full_average_ms,
+                left_stage.post_full_average_ms,
+                right_stage.pre_full_average_ms,
+                right_stage.post_full_average_ms,
+                left_stage.pre_full_maximum_ms,
+                left_stage.post_full_maximum_ms,
+                right_stage.pre_full_maximum_ms,
+                right_stage.post_full_maximum_ms
             )
         end
         reset_render_timings(label)
@@ -1183,7 +1242,7 @@ end
 local function update_ui_focused_ab_trace()
     if not ui_focused_ab_trace_requested or ui_focused_ab_trace_complete or
             not ui_native_capture or not ui_stereo_spawner or
-            not ui_stereo_right_viewport then
+            not ui_stereo_right_viewport or head_pose_last_sequence == 0 then
         return
     end
 

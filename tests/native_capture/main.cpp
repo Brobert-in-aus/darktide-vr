@@ -14,6 +14,11 @@ int wmain(int argc, wchar_t** argv) {
     }
     const auto install = reinterpret_cast<int (*)()>(
         GetProcAddress(module, "dtvr_install"));
+    const auto set_diagnostic_hooks = reinterpret_cast<int (*)(int)>(
+        GetProcAddress(module, "dtvr_set_diagnostic_render_hooks"));
+    const auto take_gpu_stage_profile = reinterpret_cast<int (*)(
+        int, unsigned long long*)>(
+        GetProcAddress(module, "dtvr_take_gpu_stage_profile"));
     const auto capture = reinterpret_cast<int (*)(int)>(
         GetProcAddress(module, "dtvr_capture_eye"));
     const auto arm_pose = reinterpret_cast<int (*)(int, unsigned long long)>(
@@ -52,7 +57,9 @@ int wmain(int argc, wchar_t** argv) {
     const auto read_head_pose = reinterpret_cast<int (*)(
         float*, unsigned long long*)>(
         GetProcAddress(module, "dtvr_read_head_pose"));
-    if (!install || !capture || !arm_pose || !set_render_extent ||
+    if (!install || !set_diagnostic_hooks || !take_gpu_stage_profile ||
+        !capture || !arm_pose ||
+        !set_render_extent ||
         !lock_client_extent || !set_render_projection ||
         !tag_queue_depth || !reset_tags || !wait_eye_capture ||
         !tag_reset_count || !ready || !execute_count || !present_count ||
@@ -91,8 +98,17 @@ int wmain(int argc, wchar_t** argv) {
         tag_queue_depth() != 0) {
       throw std::runtime_error("Synchronized eye wait/reset contract failed");
     }
-    if (install() != 0 || install() != 0) {
+    if (set_diagnostic_hooks(0) != 0 || install() != 0 || install() != 0) {
       throw std::runtime_error("Hook installation must succeed and be idempotent");
+    }
+    if (set_diagnostic_hooks(1) != 1) {
+      throw std::runtime_error(
+          "Diagnostic hook selection must be immutable after installation");
+    }
+    unsigned long long stage_values[6]{};
+    if (take_gpu_stage_profile(-1, stage_values) != 1 ||
+        take_gpu_stage_profile(0, nullptr) != 1) {
+      throw std::runtime_error("GPU stage profile argument validation failed");
     }
     if (enable_marker_log() != 0 || enable_marker_log() != 0) {
       throw std::runtime_error("Marker logging must enable idempotently");

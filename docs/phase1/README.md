@@ -537,6 +537,58 @@ separate per-eye targets; it does not support replaying one completed image or
 blindly aliasing the per-eye descriptor state. Queue parallelism is deferred
 until that shared geometry boundary is implemented or ruled out.
 
+### Fixed-pose performance baseline
+
+A clean process launch supplied repeatable initial camera positions. Quest
+proximity automation was disabled, the headset was left untouched, and no
+pointer input was sent after scene initialization. Character select produced
+17,220 fresh pairs in 180.009 seconds: 95.65 pairs/s, or 10.45 ms per pair on
+average. The only fallback frames and pose mismatches were the two expected at
+startup; there were no reused frames or pair-driven timeouts.
+
+After the first soak, a keyboard-only Enter input loaded the lobby without
+moving the camera. The untouched spawn view produced 16,966 fresh pairs in
+180.015 seconds: 94.25 pairs/s, or 10.61 ms per pair on average. Again there
+were zero reused frames and zero pair-driven timeouts, with only two startup
+fallback/mismatch frames. One-second intervals were usually in the low-to-high
+90s but occasionally fell to approximately 84--89 pairs/s. The fixed lobby
+view therefore costs only about 0.16 ms per pair relative to character select;
+tail variance, rather than average throughput, is the immediate 90 Hz risk.
+
+These runs replace the earlier moving-camera observations as the controlled
+post-optimization baseline. They do not establish headroom for 120 Hz, and
+they do not justify risky queue parallelism by themselves.
+
+### Focused XR resource census
+
+Diagnostic command-list hooks are now opt-in and must be selected before
+`dtvr_install()`. Production leaves them disabled, avoiding thousands of
+per-draw detours per stereo pair. A bounded XR-only census at the Virtual
+Desktop Medium eye extent (2112x2304) with DLSS Ultra Performance found the
+following repeatable resource structure in both sampled phases:
+
+- the main color, G-buffer and depth attachments are 704x768, exactly one
+  third of the output width and height;
+- smaller 352x384 and 512x512 attachments also occur;
+- full-size 2112x2304 format-26 and format-28 resources are also bound;
+- every observed attachment has a single array slice.
+
+The engine emitted no usable D3D12 semantic `BEGIN` or `MARK` events, so pass
+names cannot currently be recovered from PIX-style markers. GPU timestamps
+then tested whether resolution alone supplied a pass boundary. In the final
+30-second XR run, the first full-size transition after internal-size work
+occurred after 1.92 ms in the left eye and 1.81 ms in the right; 2.45 ms and
+2.74 ms respectively remained. Whole-eye averages were 4.28 ms and 4.53 ms,
+and the structural transition was found for 97.5% and 99.7% of samples.
+
+This is not a world/post split. Barrier traces show internal- and full-size
+resources interleaving, and an earlier output-merger-only detector found a
+different later transition. Resolution is therefore useful for resource
+classification but unsafe as a semantic optimization boundary. View
+instancing still requires array-aware internal, history and output resources,
+while the next pass must classify work by command-list/PSO dependencies rather
+than treating the first size change as the end of scene rendering.
+
 Validation commands for this pass:
 
 ```powershell
@@ -545,13 +597,12 @@ Validation commands for this pass:
   darktidevr_native_capture darktidevr-xr-harness `
   darktidevr-core-math-tests darktidevr-shared-head-pose-tests
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' `
-  --test-dir build/windows-vs2022 -C Release --output-on-failure `
-  -R 'presentation_policy|window_capture_recovery|shared_head_pose|native_capture_hooks|shared_eye_surfaces|core_math|xr_harness_help'
-.\tools\stereo\run-darktide-shared-eyes.ps1 -DurationSeconds 300
+  --test-dir build/windows-vs2022 -C Release --output-on-failure
+.\tools\stereo\run-darktide-shared-eyes.ps1 -DurationSeconds 30
 ```
 
-All seven focused tests passed. The deployed/source DLL SHA-256 is
-`A179595AF6D96A1296EB663B53FCA881DBF0F606C67E4B27D8A8FE30F154F256`;
+All 21 non-interactive tests passed. The deployed/source DLL SHA-256 is
+`37726227B61483F2A0F66E493347CFFDDD264F3BEA36EF498D1B9E935A3BA095`;
 the deployed/source Lua SHA-256 is
-`F452503CA7D8BCBDE620A2358AD72AD0F5794D4B981044D51F0DC28F4AE4F69E`.
+`333EBAED070BE67696744A20803791F61770E51D3FE0FEC79EE9BEF5D6C28CC1`.
 No Mac-only validation applies to these Windows/D3D12/OpenXR changes.

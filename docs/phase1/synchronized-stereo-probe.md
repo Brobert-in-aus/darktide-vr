@@ -1292,3 +1292,52 @@ existing 98% exact input/geometry overlap and completely distinct per-eye
 binding signatures. Independent full-render queue submission is not yet safe:
 the two views retain shared scene, history, streaming and lighting resources
 whose hazards have not been mapped.
+
+## Fixed-pose post-optimization baseline
+
+A clean launch and stationary headset removed the prior camera-direction and
+pose-motion variables. Character select delivered 17,220 fresh stereo pairs
+in 180.009 seconds (95.65 pairs/s, 10.45 ms/pair). A keyboard-only transition
+then loaded the lobby without pointer motion; its untouched spawn camera
+delivered 16,966 fresh pairs in 180.015 seconds (94.25 pairs/s, 10.61 ms/pair).
+Both runs had zero reuse and zero pair-driven timeouts. Each retained only the
+two known startup fallback/mismatch frames.
+
+Lobby one-second intervals were normally above 90 pairs/s but included
+occasional approximately 84--89 pairs/s dips. The controlled result therefore
+places average delivery above the 90 Hz budget while showing inadequate slow-
+tail margin. Subsequent optimization claims should compare against this exact
+clean-launch, stationary-headset, untouched-camera procedure.
+
+## XR-only resource boundary census
+
+The native diagnostic render hooks are selectable before hook installation and
+remain disabled in production. This makes focused renderer investigations
+available without permanently paying their per-command-list overhead.
+
+A bounded trace started only after the first valid XR pose at Virtual Desktop
+Medium (2112x2304 per eye) with DLSS Ultra Performance. In each sampled phase,
+the principal color/G-buffer/depth attachments were 704x768. Additional
+352x384 and 512x512 attachments appeared alongside 2112x2304 format-26 and
+format-28 resources. The same distinct resource counts
+and dimensions appeared in both phases, and all observed attachments used
+`array=1`.
+
+No D3D12 semantic `BEGIN` or `MARK` records were emitted, so the trace cannot
+assign engine pass names. A follow-up GPU profiler timestamped the first
+full-size resource transition observed after internal-size work. During the
+final stationary 30-second XR run, that transition appeared in 2,232/2,290
+left-eye samples and 2,692/2,701 right-eye samples. Weighted averages were
+1.92 ms before and 2.45 ms after it for the left eye, and 1.81 ms before and
+2.74 ms after it for the right eye. Whole-eye averages were 4.28 ms and
+4.53 ms respectively.
+
+The experiment rejects a simple semantic resolution boundary. Resource
+barriers show full-size resources transitioning while internal-size work is
+still in flight, and output-merger-only detection identifies a different,
+later point. The profiler therefore labels these intervals only as pre-full
+and post-full; neither is equated with world rendering or post-processing.
+Resolution remains valuable resource evidence, but the next optimization pass
+must classify command-list/PSO dependencies before sharing or parallelizing
+work. A final-target-only substitution still cannot merge the duplicated
+internal geometry work.
