@@ -145,6 +145,10 @@ using CreateCommittedResourceFn = HRESULT(STDMETHODCALLTYPE*)(
 using CreatePlacedResourceFn = HRESULT(STDMETHODCALLTYPE*)(
     ID3D12Device*, ID3D12Heap*, UINT64, const D3D12_RESOURCE_DESC*,
     D3D12_RESOURCE_STATES, const D3D12_CLEAR_VALUE*, REFIID, void**);
+using ResourceMapFn = HRESULT(STDMETHODCALLTYPE*)(
+    ID3D12Resource*, UINT, const D3D12_RANGE*, void**);
+using ResourceUnmapFn = void(STDMETHODCALLTYPE*)(
+    ID3D12Resource*, UINT, const D3D12_RANGE*);
 using CopyDescriptorsSimpleFn = void(STDMETHODCALLTYPE*)(
     ID3D12Device*, UINT, D3D12_CPU_DESCRIPTOR_HANDLE,
     D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_DESCRIPTOR_HEAP_TYPE);
@@ -222,6 +226,8 @@ CreateRenderTargetViewFn original_create_render_target_view{};
 CreateDepthStencilViewFn original_create_depth_stencil_view{};
 CreateCommittedResourceFn original_create_committed_resource{};
 CreatePlacedResourceFn original_create_placed_resource{};
+ResourceMapFn original_resource_map{};
+ResourceUnmapFn original_resource_unmap{};
 CopyDescriptorsSimpleFn original_copy_descriptors_simple{};
 CopyDescriptorsFn original_copy_descriptors{};
 CreateRootSignatureFn original_create_root_signature{};
@@ -353,6 +359,9 @@ struct BufferResourceInfo {
   std::uint64_t gpu_start{};
   std::uint64_t size{};
   D3D12_HEAP_TYPE heap_type{D3D12_HEAP_TYPE_CUSTOM};
+  std::byte* mapped_base{};
+  UINT mapped_subresource{};
+  bool mapped{};
 };
 
 struct TableProvenance {
@@ -638,6 +647,12 @@ std::unordered_map<std::uint64_t, std::vector<std::uint8_t>>
     billboard_shader_replacements;
 std::array<std::atomic<float>, 6> billboard_view_basis{};
 std::atomic<bool> billboard_horizon_lock_enabled{};
+// The shadow-heap/descriptor-table rewrite was useful to prove the reflected
+// c_billboard binding, but mutating a draw's live descriptor topology is not a
+// production-safe write path. Keep its bounded observation counters available
+// while making the write mode impossible to arm. The replacement producer hook
+// will use a separate, fingerprinted API once its CPU writer is identified.
+constexpr bool kAllowRetiredBillboardDescriptorWrites = false;
 std::atomic<bool> billboard_basis_write_enabled{};
 std::atomic<std::uint64_t> billboard_exact_shader_draw_count{};
 std::atomic<std::uint64_t> billboard_exact_pso_draw_count{};
@@ -658,6 +673,12 @@ std::atomic<std::uint64_t> billboard_exact_buffer_resource_count{};
 std::array<std::atomic<std::uint64_t>, 5> billboard_exact_heap_type_counts{};
 std::atomic<std::uint64_t> billboard_exact_map_success_count{};
 std::atomic<std::uint64_t> billboard_exact_map_failure_count{};
+std::atomic<std::uint64_t> billboard_resource_map_count{};
+std::atomic<std::uint64_t> billboard_resource_map_match_count{};
+std::atomic<std::uint64_t> billboard_resource_unmap_count{};
+std::atomic<std::uintptr_t> billboard_selected_cpu_address{};
+std::atomic<std::uint64_t> billboard_selected_gpu_address{};
+std::atomic<std::uint64_t> billboard_selected_size{};
 
 constexpr UINT kBillboardShadowConstantCapacity = 131072;
 constexpr UINT kBillboardShadowDescriptorCapacity = 524288;
@@ -2689,6 +2710,53 @@ HRESULT STDMETHODCALLTYPE create_placed_resource_hook(
   return result;
 }
 
+HRESULT STDMETHODCALLTYPE resource_map_hook(ID3D12Resource* resource,
+                                             UINT subresource,
+                                             const D3D12_RANGE* read_range,
+                                             void** data) {
+  const auto result =
+      original_resource_map(resource, subresource, read_range, data);
+  if (FAILED(result) || !data || !*data) {
+    return result;
+  }
+
+  billboard_resource_map_count.fetch_add(1, std::memory_order_relaxed);
+  std::scoped_lock lock(buffer_resource_mutex);
+  for (auto it = buffer_resources.rbegin(); it != buffer_resources.rend(); ++it) {
+    if (it->resource != resource) {
+      continue;
+    }
+    it->mapped_base = static_cast<std::byte*>(*data);
+    it->mapped_subresource = subresource;
+    it->mapped = true;
+    billboard_resource_map_match_count.fetch_add(1,
+                                                  std::memory_order_relaxed);
+    break;
+  }
+  return result;
+}
+
+void STDMETHODCALLTYPE resource_unmap_hook(ID3D12Resource* resource,
+                                           UINT subresource,
+                                           const D3D12_RANGE* written_range) {
+  {
+    std::scoped_lock lock(buffer_resource_mutex);
+    for (auto it = buffer_resources.rbegin(); it != buffer_resources.rend();
+         ++it) {
+      if (it->resource != resource || !it->mapped ||
+          it->mapped_subresource != subresource) {
+        continue;
+      }
+      it->mapped_base = nullptr;
+      it->mapped = false;
+      billboard_resource_unmap_count.fetch_add(1,
+                                                std::memory_order_relaxed);
+      break;
+    }
+  }
+  original_resource_unmap(resource, subresource, written_range);
+}
+
 void STDMETHODCALLTYPE copy_descriptors_simple_hook(
     ID3D12Device* device, UINT descriptor_count,
     D3D12_CPU_DESCRIPTOR_HANDLE destination,
@@ -3166,7 +3234,11 @@ void observe_billboard_cbv(const DescriptorInfo& descriptor) {
   if (!first_observation) {
     return;
   }
-  void* mapped{};
+  void* mapped = resource->mapped && resource->mapped_subresource == 0
+                     ? resource->mapped_base
+                     : nullptr;
+  const bool used_tracked_mapping = mapped != nullptr;
+  bool mapped_for_observation{};
   const auto resource_offset = descriptor.gpu_address - resource->gpu_start;
   const auto readable_size = (std::min<std::uint64_t>)(
       descriptor.width == 0 ? 132 : descriptor.width,
@@ -3174,9 +3246,20 @@ void observe_billboard_cbv(const DescriptorInfo& descriptor) {
   const D3D12_RANGE cpu_read_range{
       static_cast<SIZE_T>(resource_offset),
       static_cast<SIZE_T>(resource_offset + readable_size)};
-  if (SUCCEEDED(resource->resource->Map(0, &cpu_read_range, &mapped)) && mapped) {
+  if (used_tracked_mapping ||
+      (SUCCEEDED(resource->resource->Map(0, &cpu_read_range, &mapped)) &&
+       mapped && (mapped_for_observation = true))) {
     billboard_exact_map_success_count.fetch_add(1,
                                                  std::memory_order_relaxed);
+    billboard_selected_gpu_address.store(descriptor.gpu_address,
+                                          std::memory_order_relaxed);
+    billboard_selected_size.store(readable_size, std::memory_order_relaxed);
+    billboard_selected_cpu_address.store(
+        used_tracked_mapping
+            ? reinterpret_cast<std::uintptr_t>(
+                  static_cast<std::byte*>(mapped) + resource_offset)
+            : 0,
+        std::memory_order_release);
     const auto sample_index =
         billboard_cbv_log_count.fetch_add(1, std::memory_order_relaxed);
     if (sample_index < 32 && readable_size >= sizeof(float)) {
@@ -3195,13 +3278,19 @@ void observe_billboard_cbv(const DescriptorInfo& descriptor) {
           std::array<char, 4096> line{};
           int length = std::snprintf(
               line.data(), line.size(),
-              "%llu\tgpu=%llu\tbase=%llu\toffset=%llu\tcbv_size=%llu\theap=%u",
+              "%llu\tgpu=%llu\tbase=%llu\toffset=%llu\tcbv_size=%llu\theap=%u"
+              "\ttracked=%u\tcpu=%p",
               static_cast<unsigned long long>(sample_index),
               static_cast<unsigned long long>(descriptor.gpu_address),
               static_cast<unsigned long long>(resource->gpu_start),
               static_cast<unsigned long long>(resource_offset),
               static_cast<unsigned long long>(descriptor.width),
-              static_cast<unsigned>(resource->heap_type));
+              static_cast<unsigned>(resource->heap_type),
+              used_tracked_mapping ? 1U : 0U,
+              used_tracked_mapping
+                  ? static_cast<void*>(static_cast<std::byte*>(mapped) +
+                                       resource_offset)
+                  : nullptr);
           const auto float_count = (std::min<std::size_t>)(
               readable_size / sizeof(float), 33);
           const auto* values = reinterpret_cast<const float*>(
@@ -3223,8 +3312,10 @@ void observe_billboard_cbv(const DescriptorInfo& descriptor) {
         }
       }
     }
-    const D3D12_RANGE no_cpu_writes{0, 0};
-    resource->resource->Unmap(0, &no_cpu_writes);
+    if (mapped_for_observation) {
+      const D3D12_RANGE no_cpu_writes{0, 0};
+      resource->resource->Unmap(0, &no_cpu_writes);
+    }
   } else {
     billboard_exact_map_failure_count.fetch_add(1,
                                                  std::memory_order_relaxed);
@@ -5321,6 +5412,23 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
                                        IID_PPV_ARGS(&dummy_commands)))) {
     return 15;
   }
+  D3D12_HEAP_PROPERTIES dummy_upload_properties{};
+  dummy_upload_properties.Type = D3D12_HEAP_TYPE_UPLOAD;
+  D3D12_RESOURCE_DESC dummy_buffer_description{};
+  dummy_buffer_description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+  dummy_buffer_description.Width = 256;
+  dummy_buffer_description.Height = 1;
+  dummy_buffer_description.DepthOrArraySize = 1;
+  dummy_buffer_description.MipLevels = 1;
+  dummy_buffer_description.SampleDesc.Count = 1;
+  dummy_buffer_description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+  ComPtr<ID3D12Resource> dummy_upload_resource;
+  if (FAILED(device->CreateCommittedResource(
+          &dummy_upload_properties, D3D12_HEAP_FLAG_NONE,
+          &dummy_buffer_description, D3D12_RESOURCE_STATE_GENERIC_READ,
+          nullptr, IID_PPV_ARGS(&dummy_upload_resource)))) {
+    return 20;
+  }
 
   const wchar_t class_name[] = L"DarktideVRNativeCaptureDummy";
   WNDCLASSW window_class{};
@@ -5388,6 +5496,8 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
       *reinterpret_cast<void***>(dummy_swapchain3.Get());
   auto** command_list_vtable =
       *reinterpret_cast<void***>(dummy_commands.Get());
+  auto** resource_vtable =
+      *reinterpret_cast<void***>(dummy_upload_resource.Get());
   const auto get_client_rect_target = reinterpret_cast<void*>(
       GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetClientRect"));
   const auto dispatch_message_w_target = reinterpret_cast<void*>(
@@ -5464,6 +5574,14 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
        MH_CreateHook(device_vtable[29], &create_placed_resource_hook,
                     reinterpret_cast<void**>(
                         &original_create_placed_resource)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(resource_vtable[8], &resource_map_hook,
+                     reinterpret_cast<void**>(&original_resource_map)) !=
+           MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(resource_vtable[9], &resource_unmap_hook,
+                     reinterpret_cast<void**>(&original_resource_unmap)) !=
+           MH_OK) ||
       (install_pso_substitution_hooks &&
        MH_CreateHook(device2_vtable[47], &create_pipeline_state_stream_hook,
                     reinterpret_cast<void**>(
@@ -6259,6 +6377,14 @@ extern "C" __declspec(dllexport) int dtvr_set_vertex_shader_dump(int enabled) {
 extern "C" __declspec(dllexport) int dtvr_set_billboard_view_basis(
     float right_x, float right_y, float right_z, float up_x,
     float up_y, float up_z, int enabled) {
+  if (enabled < 0 || enabled > 2) {
+    return 1;
+  }
+  if (enabled == 1 && !kAllowRetiredBillboardDescriptorWrites) {
+    billboard_basis_write_enabled.store(false, std::memory_order_release);
+    billboard_horizon_lock_enabled.store(false, std::memory_order_release);
+    return 2;
+  }
   const std::array<float, 6> values{right_x, right_y, right_z,
                                      up_x, up_y, up_z};
   for (std::size_t i = 0; i < values.size(); ++i) {
@@ -6293,6 +6419,12 @@ extern "C" __declspec(dllexport) int dtvr_set_billboard_view_basis(
     }
     billboard_exact_map_success_count.store(0, std::memory_order_relaxed);
     billboard_exact_map_failure_count.store(0, std::memory_order_relaxed);
+    billboard_resource_map_count.store(0, std::memory_order_relaxed);
+    billboard_resource_map_match_count.store(0, std::memory_order_relaxed);
+    billboard_resource_unmap_count.store(0, std::memory_order_relaxed);
+    billboard_selected_cpu_address.store(0, std::memory_order_relaxed);
+    billboard_selected_gpu_address.store(0, std::memory_order_relaxed);
+    billboard_selected_size.store(0, std::memory_order_relaxed);
     billboard_cbv_log_count.store(0, std::memory_order_relaxed);
     for (auto& count : billboard_shadow_stage_counts) {
       count.store(0, std::memory_order_relaxed);
@@ -6320,9 +6452,10 @@ extern "C" __declspec(dllexport) int dtvr_set_billboard_view_basis(
     billboard_b2_bound_count.store(0, std::memory_order_relaxed);
     billboard_basis_patch_count.store(0, std::memory_order_relaxed);
   }
-  billboard_basis_write_enabled.store(enabled == 1,
+  billboard_basis_write_enabled.store(
+      enabled == 1 && kAllowRetiredBillboardDescriptorWrites,
                                       std::memory_order_release);
-  billboard_horizon_lock_enabled.store(enabled != 0,
+  billboard_horizon_lock_enabled.store(enabled == 2,
                                        std::memory_order_release);
   return 0;
 }
@@ -6398,6 +6531,31 @@ dtvr_billboard_exact_map_success_count() {
 extern "C" __declspec(dllexport) unsigned long long
 dtvr_billboard_exact_map_failure_count() {
   return billboard_exact_map_failure_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_resource_map_count() {
+  return billboard_resource_map_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_resource_map_match_count() {
+  return billboard_resource_map_match_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_resource_unmap_count() {
+  return billboard_resource_unmap_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_selected_cpu_address() {
+  return static_cast<unsigned long long>(
+      billboard_selected_cpu_address.load(std::memory_order_acquire));
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_selected_gpu_address() {
+  return billboard_selected_gpu_address.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_selected_size() {
+  return billboard_selected_size.load(std::memory_order_relaxed);
 }
 extern "C" __declspec(dllexport) unsigned long long
 dtvr_billboard_shadow_stage_count(unsigned int stage) {

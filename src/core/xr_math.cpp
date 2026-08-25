@@ -243,4 +243,34 @@ RecenteredProjection recentered_symmetric_projection(
           {-horizontal_half, horizontal_half, vertical_half, -vertical_half}};
 }
 
+BillboardBasis z_up_billboard_basis(Vec3 camera_forward,
+                                    Vec3 fallback_right) {
+  constexpr float kMinimumHorizontalLengthSquared = 1.0e-8F;
+  const auto finite = [](Vec3 value) {
+    return std::isfinite(value.x) && std::isfinite(value.y) &&
+           std::isfinite(value.z);
+  };
+  const auto normalize_horizontal = [&](Vec3 value) {
+    const auto squared = value.x * value.x + value.y * value.y;
+    if (!finite(value) || !(squared > kMinimumHorizontalLengthSquared)) {
+      return Vec3{};
+    }
+    const auto inverse = 1.0F / std::sqrt(squared);
+    return Vec3{value.x * inverse, value.y * inverse, 0.0F};
+  };
+
+  const auto horizontal_forward = normalize_horizontal(camera_forward);
+  if (horizontal_forward.x != 0.0F || horizontal_forward.y != 0.0F) {
+    // cross(horizontal_forward, world_up)
+    return {{horizontal_forward.y, -horizontal_forward.x, 0.0F},
+            {0.0F, 0.0F, 1.0F}, false};
+  }
+
+  auto right = normalize_horizontal(fallback_right);
+  if (right.x == 0.0F && right.y == 0.0F) {
+    right = {1.0F, 0.0F, 0.0F};
+  }
+  return {right, {0.0F, 0.0F, 1.0F}, true};
+}
+
 }  // namespace darktidevr::math

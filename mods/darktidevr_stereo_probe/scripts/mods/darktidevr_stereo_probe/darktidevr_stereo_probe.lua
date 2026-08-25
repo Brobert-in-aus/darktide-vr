@@ -297,6 +297,12 @@ local function ensure_ui_native_hooks()
             unsigned int heap_type);
         unsigned long long dtvr_billboard_exact_map_success_count(void);
         unsigned long long dtvr_billboard_exact_map_failure_count(void);
+        unsigned long long dtvr_billboard_resource_map_count(void);
+        unsigned long long dtvr_billboard_resource_map_match_count(void);
+        unsigned long long dtvr_billboard_resource_unmap_count(void);
+        unsigned long long dtvr_billboard_selected_cpu_address(void);
+        unsigned long long dtvr_billboard_selected_gpu_address(void);
+        unsigned long long dtvr_billboard_selected_size(void);
         unsigned long long dtvr_billboard_shadow_stage_count(
             unsigned int stage);
         unsigned long long dtvr_billboard_exact_command_list_type_count(
@@ -743,7 +749,7 @@ local function report_native_observer()
                 return table.concat(values, ",")
             end
             mod:info(
-                "DARKTIDEVR_STEREO billboard state=%d hook_draws=%d observed=%d slot0=%s slot1=%s particle_layout=%d exact_pso=%d cl_types=%s registers=%s cbv_slots=%s table_slots=%s selected_tables=%s descriptor_offsets=%s table_spans=%s cbv_desc=%d buffers=%d heaps=%s map=%d/%d shadow_stages=%s root_meta=%d direct_cbv=%d table_cbv=%d table_cbv_bound=%d patches=%d",
+                "DARKTIDEVR_STEREO billboard state=%d hook_draws=%d observed=%d slot0=%s slot1=%s particle_layout=%d exact_pso=%d cl_types=%s registers=%s cbv_slots=%s table_slots=%s selected_tables=%s descriptor_offsets=%s table_spans=%s cbv_desc=%d buffers=%d heaps=%s map=%d/%d tracked_maps=%d/%d/%d selected=%d/%d shadow_stages=%s root_meta=%d direct_cbv=%d table_cbv=%d table_cbv_bound=%d patches=%d",
                 ui_native_capture.dtvr_billboard_probe_state(),
                 tonumber(ui_native_capture.dtvr_billboard_direct_draw_hook_count()),
                 tonumber(ui_native_capture.dtvr_billboard_observed_draw_count()),
@@ -772,6 +778,11 @@ local function report_native_observer()
                     ui_native_capture.dtvr_billboard_exact_heap_type_count, 4),
                 tonumber(ui_native_capture.dtvr_billboard_exact_map_success_count()),
                 tonumber(ui_native_capture.dtvr_billboard_exact_map_failure_count()),
+                tonumber(ui_native_capture.dtvr_billboard_resource_map_count()),
+                tonumber(ui_native_capture.dtvr_billboard_resource_map_match_count()),
+                tonumber(ui_native_capture.dtvr_billboard_resource_unmap_count()),
+                ui_native_capture.dtvr_billboard_selected_cpu_address() ~= 0 and 1 or 0,
+                tonumber(ui_native_capture.dtvr_billboard_selected_size()),
                 top_billboard_root_slots(
                     ui_native_capture.dtvr_billboard_shadow_stage_count, 15),
                 tonumber(ui_native_capture.dtvr_billboard_root_metadata_draw_count()),

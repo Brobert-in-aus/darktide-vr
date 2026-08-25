@@ -1,7 +1,11 @@
 #include <Windows.h>
+#include <d3d12.h>
+#include <wrl/client.h>
 
 #include <iostream>
 #include <stdexcept>
+
+using Microsoft::WRL::ComPtr;
 
 int wmain(int argc, wchar_t** argv) {
   try {
@@ -57,6 +61,18 @@ int wmain(int argc, wchar_t** argv) {
     const auto read_head_pose = reinterpret_cast<int (*)(
         float*, unsigned long long*)>(
         GetProcAddress(module, "dtvr_read_head_pose"));
+    const auto set_billboard_view_basis = reinterpret_cast<int (*)(
+        float, float, float, float, float, float, int)>(
+        GetProcAddress(module, "dtvr_set_billboard_view_basis"));
+    const auto billboard_resource_map_count =
+        reinterpret_cast<unsigned long long (*)()>(GetProcAddress(
+            module, "dtvr_billboard_resource_map_count"));
+    const auto billboard_resource_map_match_count =
+        reinterpret_cast<unsigned long long (*)()>(GetProcAddress(
+            module, "dtvr_billboard_resource_map_match_count"));
+    const auto billboard_resource_unmap_count =
+        reinterpret_cast<unsigned long long (*)()>(GetProcAddress(
+            module, "dtvr_billboard_resource_unmap_count"));
     if (!install || !set_diagnostic_hooks || !take_gpu_stage_profile ||
         !capture || !arm_pose ||
         !set_render_extent ||
@@ -64,8 +80,18 @@ int wmain(int argc, wchar_t** argv) {
         !tag_queue_depth || !reset_tags || !wait_eye_capture ||
         !tag_reset_count || !ready || !execute_count || !present_count ||
         !capture_stage || !enable_present_capture || !disable_present_capture ||
-        !enable_marker_log || !read_head_pose) {
+        !enable_marker_log || !read_head_pose || !set_billboard_view_basis ||
+        !billboard_resource_map_count ||
+        !billboard_resource_map_match_count ||
+        !billboard_resource_unmap_count) {
       throw std::runtime_error("Native capture export contract is incomplete");
+    }
+    if (set_billboard_view_basis(1.0F, 0.0F, 0.0F, 0.0F, 0.0F,
+                                 1.0F, -1) != 1 ||
+        set_billboard_view_basis(1.0F, 0.0F, 0.0F, 0.0F, 0.0F,
+                                 1.0F, 1) != 2) {
+      throw std::runtime_error(
+          "Retired billboard descriptor writes must remain fail-closed");
     }
     if (read_head_pose(nullptr, nullptr) != 1) {
       throw std::runtime_error("Head-pose export must reject null output");
@@ -98,12 +124,49 @@ int wmain(int argc, wchar_t** argv) {
         tag_queue_depth() != 0) {
       throw std::runtime_error("Synchronized eye wait/reset contract failed");
     }
-    if (set_diagnostic_hooks(0) != 0 || install() != 0 || install() != 0) {
+    if (set_diagnostic_hooks(1) != 0 || install() != 0 || install() != 0) {
       throw std::runtime_error("Hook installation must succeed and be idempotent");
     }
-    if (set_diagnostic_hooks(1) != 1) {
+    if (set_diagnostic_hooks(0) != 1) {
       throw std::runtime_error(
           "Diagnostic hook selection must be immutable after installation");
+    }
+    ComPtr<ID3D12Device> device;
+    if (FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_0,
+                                 IID_PPV_ARGS(&device)))) {
+      throw std::runtime_error("Failed to create the map-tracking test device");
+    }
+    D3D12_HEAP_PROPERTIES upload_properties{};
+    upload_properties.Type = D3D12_HEAP_TYPE_UPLOAD;
+    D3D12_RESOURCE_DESC buffer_description{};
+    buffer_description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    buffer_description.Width = 256;
+    buffer_description.Height = 1;
+    buffer_description.DepthOrArraySize = 1;
+    buffer_description.MipLevels = 1;
+    buffer_description.SampleDesc.Count = 1;
+    buffer_description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    ComPtr<ID3D12Resource> upload_buffer;
+    if (FAILED(device->CreateCommittedResource(
+            &upload_properties, D3D12_HEAP_FLAG_NONE, &buffer_description,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            IID_PPV_ARGS(&upload_buffer)))) {
+      throw std::runtime_error("Failed to create the map-tracking test buffer");
+    }
+    const auto maps_before = billboard_resource_map_count();
+    const auto matches_before = billboard_resource_map_match_count();
+    const auto unmaps_before = billboard_resource_unmap_count();
+    void* mapped{};
+    const D3D12_RANGE no_cpu_reads{0, 0};
+    if (FAILED(upload_buffer->Map(0, &no_cpu_reads, &mapped)) || !mapped) {
+      throw std::runtime_error("Failed to map the map-tracking test buffer");
+    }
+    const D3D12_RANGE no_cpu_writes{0, 0};
+    upload_buffer->Unmap(0, &no_cpu_writes);
+    if (billboard_resource_map_count() != maps_before + 1 ||
+        billboard_resource_map_match_count() != matches_before + 1 ||
+        billboard_resource_unmap_count() != unmaps_before + 1) {
+      throw std::runtime_error("Mapped upload tracking did not observe Map/Unmap");
     }
     unsigned long long stage_values[6]{};
     if (take_gpu_stage_profile(-1, stage_values) != 1 ||

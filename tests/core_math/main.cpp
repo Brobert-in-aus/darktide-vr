@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -104,6 +105,36 @@ int main() {
                 "engine units to metres");
     expect_near(eye_offset_engine_units(0.064F, 100.0F), 3.2F, 0.0001F,
                 "per-eye IPD offset");
+
+    const auto billboard_north =
+        z_up_billboard_basis({0.0F, 1.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
+    expect_vec(billboard_north.right, {1.0F, 0.0F, 0.0F},
+               "north billboard right");
+    expect_vec(billboard_north.up, {0.0F, 0.0F, 1.0F},
+               "north billboard up");
+    const auto billboard_east =
+        z_up_billboard_basis({1.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F});
+    expect_vec(billboard_east.right, {0.0F, -1.0F, 0.0F},
+               "east billboard right");
+    const auto billboard_pitched =
+        z_up_billboard_basis({0.0F, 0.001F, 10.0F}, {-1.0F, 0.0F, 0.0F});
+    expect_vec(billboard_pitched.right, {1.0F, 0.0F, 0.0F},
+               "pitched billboard removes camera pitch");
+    if (billboard_pitched.used_fallback) {
+      throw std::runtime_error("Finite horizontal billboard direction fell back");
+    }
+    const auto billboard_vertical =
+        z_up_billboard_basis({0.0F, 0.0F, 1.0F}, {0.0F, -2.0F, 8.0F});
+    expect_vec(billboard_vertical.right, {0.0F, -1.0F, 0.0F},
+               "vertical billboard fallback");
+    if (!billboard_vertical.used_fallback) {
+      throw std::runtime_error("Vertical billboard direction did not fall back");
+    }
+    const auto nan = std::numeric_limits<float>::quiet_NaN();
+    const auto billboard_invalid =
+        z_up_billboard_basis({nan, nan, nan}, {nan, nan, nan});
+    expect_vec(billboard_invalid.right, {1.0F, 0.0F, 0.0F},
+               "invalid billboard deterministic fallback");
 
     const Pose recenter{{}, {10.0F, 2.0F, -4.0F}};
     const Pose current{yaw_90, {10.3F, 2.5F, -4.4F}};

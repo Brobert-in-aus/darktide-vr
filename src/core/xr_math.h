@@ -34,6 +34,12 @@ struct RecenteredProjection {
   Fov symmetric_fov{};
 };
 
+struct BillboardBasis {
+  Vec3 right{};
+  Vec3 up{};
+  bool used_fallback{};
+};
+
 // Column-major, column-vector convention. OpenXR space is +X right, +Y up,
 // -Z forward. D3D clip depth is [0, 1].
 struct Matrix4 {
@@ -69,5 +75,11 @@ float eye_offset_engine_units(float ipd_metres, float engine_units_per_metre);
 // exactly the same projection.
 RecenteredProjection recentered_symmetric_projection(
     Fov runtime_fov, float render_aspect);
+
+// Builds a cylindrical billboard basis for Darktide's Z-up world. Camera
+// pitch/roll are deliberately removed. Near a vertical look direction, the
+// previous horizontal right vector prevents an undefined yaw and visible flip.
+BillboardBasis z_up_billboard_basis(Vec3 camera_forward,
+                                    Vec3 fallback_right);
 
 }  // namespace darktidevr::math
