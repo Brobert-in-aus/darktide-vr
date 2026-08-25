@@ -18,6 +18,11 @@ local active = false
 local failed = false
 local active_manager = nil
 local active_world = nil
+local active_base_rotation = nil
+-- `fixed` gives physical head tracking exclusive orientation ownership.
+-- Future snap/smooth thumbstick turning can select `yaw_only`; that path
+-- deliberately accepts only game yaw and continues rejecting pitch and roll.
+local game_rotation_mode = "fixed"
 local observed_ui_viewports = {}
 local ui_stereo_spawner = nil
 local ui_stereo_world = nil
@@ -52,12 +57,14 @@ local ui_compositor_left_output_probe_requested = false
 local ui_compositor_package_id = nil
 local ui_compositor_package_loaded = false
 local ui_compositor_package_failed = false
--- Render exactly the per-eye extent recommended by VirtualDesktopXR Medium.
+-- Safe pre-XR fallback. The live OpenXR runtime recommendation replaces this
+-- through the shared XR-state packet before eye resources are created.
 -- The physical mirror is decoupled by swapchain-window WM_SIZE virtualization;
 -- the remaining projection work must use an asymmetric per-eye frustum rather
 -- than increasing this render extent for a symmetric overscan workaround.
 local ui_eye_target_width = 2112
 local ui_eye_target_height = 2304
+local ui_runtime_extent_logged = false
 local ui_native_capture_requested = true -- copy each completed full-origin eye
 local ui_camera_output_candidate_probe_index = -1
 local ui_native_observer_requested = false
@@ -187,6 +194,7 @@ local function ensure_ui_native_hooks()
 
     pcall(ffi.cdef, [[
         int dtvr_install(void);
+        int dtvr_set_projection_active(int enabled);
         int dtvr_capture_eye(int eye);
         int dtvr_capture_armed_swapchain_eye(int eye);
         int dtvr_set_camera_output_candidate_index(int index);
@@ -276,7 +284,8 @@ local function ensure_ui_native_hooks()
     end
 
     ui_native_capture = library
-    head_pose_values = ffi.new("float[17]")
+    ui_native_capture.dtvr_set_projection_active(0)
+    head_pose_values = ffi.new("float[19]")
     head_pose_sequence = ffi.new("unsigned long long[1]")
     gpu_profile_values = ffi.new("unsigned long long[4]")
     gpu_stage_profile_values = ffi.new("unsigned long long[6]")
@@ -284,6 +293,40 @@ local function ensure_ui_native_hooks()
         performance_profile_requested and 1 or 0)
     mod:info("DARKTIDEVR_STEREO native_hooks installed")
 
+    return true
+end
+
+local function refresh_xr_render_extent()
+    if not ui_native_capture or not head_pose_values or not head_pose_sequence then
+        return false
+    end
+
+    if ui_native_capture.dtvr_read_head_pose(
+            head_pose_values, head_pose_sequence) ~= 0 then
+        return false
+    end
+
+    local width = math.floor(tonumber(head_pose_values[17]) + 0.5)
+    local height = math.floor(tonumber(head_pose_values[18]) + 0.5)
+    if width < 640 or width > 7680 or height < 640 or height > 7680 then
+        return false
+    end
+
+    if width ~= ui_eye_target_width or height ~= ui_eye_target_height then
+        mod:info(
+            "DARKTIDEVR_STEREO runtime_extent %dx%d fallback=%dx%d",
+            width, height, ui_eye_target_width, ui_eye_target_height
+        )
+        ui_eye_target_width = width
+        ui_eye_target_height = height
+    end
+    if not ui_runtime_extent_logged then
+        mod:info(
+            "DARKTIDEVR_STEREO render_extent source=openxr size=%dx%d",
+            width, height
+        )
+        ui_runtime_extent_logged = true
+    end
     return true
 end
 
@@ -379,6 +422,7 @@ local function enable_ui_native_capture()
     ui_native_capture_last_result = nil
     ui_native_sync_initialized = false
     ui_native_sync_last_result = nil
+    refresh_xr_render_extent()
 
     if ui_boundary_census_requested then
         local census_result = ui_native_capture.dtvr_enable_boundary_census()
@@ -735,6 +779,9 @@ local function wait_for_eye_capture(eye, target)
 end
 
 local function teardown()
+    if ui_native_capture then
+        ui_native_capture.dtvr_set_projection_active(0)
+    end
     if active_world then
         local primary = ScriptWorld.has_viewport(active_world, primary_viewport_name) and
             ScriptWorld.viewport(active_world, primary_viewport_name)
@@ -751,6 +798,7 @@ local function teardown()
     active = false
     active_manager = nil
     active_world = nil
+    active_base_rotation = nil
 end
 
 local function setup(manager)
@@ -765,6 +813,7 @@ local function setup(manager)
     end
 
     local primary = ScriptWorld.viewport(world, primary_viewport_name)
+    local primary_camera = ScriptViewport.camera(primary)
     local shading_environment_name =
         Viewport.get_data(primary, "default_shading_environment_name")
 
@@ -804,6 +853,21 @@ local function setup(manager)
     active = true
     active_manager = manager
     active_world = world
+    -- Preserve only the scene's initial heading. Darktide's lobby camera
+    -- starts with a downward presentation pitch; VR must initialize level and
+    -- let the headset provide every subsequent pitch/roll component.
+    active_base_rotation = QuaternionBox(
+        Quaternion.axis_angle(
+            Vector3.up(),
+            Quaternion.yaw(ScriptCamera.local_rotation(primary_camera))
+        )
+    )
+    -- CameraManager is also present on the title screen. Only gameplay owns
+    -- this generic stereo path; character select is signalled separately by
+    -- setup_ui_stereo, and title/loading remain on the spatial flat panel.
+    if Managers and Managers.state and Managers.state.game_mode then
+        ui_native_capture.dtvr_set_projection_active(1)
+    end
     mod:info(
         "DARKTIDEVR_STEREO active mode=synchronized_sequential half_ipd=%.3f",
         half_ipd
@@ -1287,6 +1351,9 @@ end
 
 local function teardown_ui_stereo()
     if ui_native_capture then
+        ui_native_capture.dtvr_set_projection_active(0)
+    end
+    if ui_native_capture then
         ui_native_capture.dtvr_disable_rich_center_sbs_remap()
         ui_native_capture.dtvr_disable_alternating_full_capture()
         ui_native_capture.dtvr_disable_top_bottom_capture()
@@ -1523,6 +1590,7 @@ local function setup_ui_stereo(spawner)
         ui_offscreen_trace_complete = false
     end
     apply_ui_eye_offsets(spawner)
+    ui_native_capture.dtvr_set_projection_active(1)
     mod:info(
         "DARKTIDEVR_STEREO active target=ui_main_menu_world mode=%s half_ipd=%.3f layer=%s/2 primary_half=%s",
         ui_top_bottom_requested and "top_bottom_same_horizontal_center" or
@@ -1555,7 +1623,20 @@ local function update_stereo(manager)
     local primary_camera = ScriptViewport.camera(primary_viewport)
     local right_camera = ScriptViewport.camera(right_viewport)
     local clean_position = ScriptCamera.local_position(primary_camera)
-    local clean_rotation = ScriptCamera.local_rotation(primary_camera)
+    -- The game remains authoritative for camera translation, but VR owns the
+    -- complete orientation. Reusing the live game rotation allowed orbital
+    -- camera pitch/roll (and occasionally the prior tracked result) to feed
+    -- back into the next headset pose when the player moved vertically.
+    local clean_rotation = active_base_rotation:unbox()
+    if game_rotation_mode == "yaw_only" then
+        local live_rotation = ScriptCamera.local_rotation(primary_camera)
+        local yaw_delta = Quaternion.yaw(live_rotation) -
+            Quaternion.yaw(clean_rotation)
+        clean_rotation = Quaternion.multiply(
+            Quaternion.axis_angle(Vector3.up(), yaw_delta),
+            clean_rotation
+        )
+    end
     clean_position, clean_rotation = apply_head_tracking(
         clean_position,
         clean_rotation
@@ -1649,6 +1730,9 @@ mod:hook(
             viewport_name == "ui_main_menu_world_viewport"
 
         if target_main_menu then
+            if ensure_ui_native_hooks() then
+                refresh_xr_render_extent()
+            end
             destroy_ui_offscreen_resources()
             ui_left_output_target = create_eye_render_target(
                 "darktidevr_left_eye_output",

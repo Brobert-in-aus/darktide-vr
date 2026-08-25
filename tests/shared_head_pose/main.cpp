@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
     darktidevr::core::SharedHeadPoseSample sample{
         7, {{0.0F, 0.38268343F, 0.0F, 0.92387953F},
             {0.1F, -0.2F, 0.3F}},
-        1.7F, 0.8888889F,
+        1.7F, 0.8888889F, 2112, 2304,
         {{-0.94F, 0.70F, -0.96F, 0.77F},
          {-0.70F, 0.94F, -0.96F, 0.77F}}};
     expect(writer->publish(sample), "Valid shared pose was rejected");
@@ -57,6 +57,8 @@ int main(int argc, char** argv) {
                std::abs(received.pose.orientation.w - 0.92387953F) < 0.0001F &&
                std::abs(received.render_vertical_fov_radians - 1.7F) < 0.0001F &&
                std::abs(received.render_aspect_ratio - 0.8888889F) < 0.0001F &&
+               received.render_width == 2112 &&
+               received.render_height == 2304 &&
                std::abs(received.render_frusta[0].left + 0.94F) < 0.0001F &&
                std::abs(received.render_frusta[1].right - 0.94F) < 0.0001F,
            "Shared pose changed in transit");

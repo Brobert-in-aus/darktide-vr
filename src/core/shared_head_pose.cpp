@@ -22,6 +22,8 @@ struct SharedLayout {
   float orientation_w{1.0F};
   float render_vertical_fov{};
   float render_aspect_ratio{};
+  volatile LONG render_width{};
+  volatile LONG render_height{};
   float eye0_left{};
   float eye0_right{};
   float eye0_down{};
@@ -67,6 +69,8 @@ bool valid(const SharedHeadPoseSample& sample) {
          sample.render_vertical_fov_radians < 3.14159265F &&
          std::isfinite(sample.render_aspect_ratio) &&
          sample.render_aspect_ratio > 0.0F &&
+         sample.render_width >= 640 && sample.render_width <= 7680 &&
+         sample.render_height >= 640 && sample.render_height <= 7680 &&
          valid_frustum(sample.render_frusta[0]) &&
          valid_frustum(sample.render_frusta[1]);
 }
@@ -126,6 +130,8 @@ SharedHeadPoseWriter::SharedHeadPoseWriter() {
   InterlockedExchange64(&data.published_tick_ms, 0);
   data.render_vertical_fov = 0.0F;
   data.render_aspect_ratio = 0.0F;
+  data.render_width = 0;
+  data.render_height = 0;
   data.eye0_left = 0.0F;
   data.eye0_right = 0.0F;
   data.eye0_down = 0.0F;
@@ -167,6 +173,8 @@ bool SharedHeadPoseWriter::publish(const SharedHeadPoseSample& sample) {
   data.orientation_w = sample.pose.orientation.w;
   data.render_vertical_fov = sample.render_vertical_fov_radians;
   data.render_aspect_ratio = sample.render_aspect_ratio;
+  data.render_width = static_cast<LONG>(sample.render_width);
+  data.render_height = static_cast<LONG>(sample.render_height);
   data.eye0_left = sample.render_frusta[0].left;
   data.eye0_right = sample.render_frusta[0].right;
   data.eye0_down = sample.render_frusta[0].down;
@@ -252,6 +260,8 @@ bool SharedHeadPoseReader::read(SharedHeadPoseSample& sample) {
                                   data.orientation_z, data.orientation_w};
     candidate.render_vertical_fov_radians = data.render_vertical_fov;
     candidate.render_aspect_ratio = data.render_aspect_ratio;
+    candidate.render_width = static_cast<std::uint32_t>(data.render_width);
+    candidate.render_height = static_cast<std::uint32_t>(data.render_height);
     candidate.render_frusta[0] =
         {data.eye0_left, data.eye0_right, data.eye0_down, data.eye0_up};
     candidate.render_frusta[1] =

@@ -7,7 +7,7 @@
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedHeadPoseName[] =
-    L"Local\\DarktideVR-head-pose-v4";
+    L"Local\\DarktideVR-head-pose-v5";
 
 struct EyeFrustumHalfAngles {
   float left{};
@@ -21,6 +21,8 @@ struct SharedHeadPoseSample {
   math::Pose pose{};
   float render_vertical_fov_radians{};
   float render_aspect_ratio{};
+  std::uint32_t render_width{};
+  std::uint32_t render_height{};
   EyeFrustumHalfAngles render_frusta[2]{};
 };
 

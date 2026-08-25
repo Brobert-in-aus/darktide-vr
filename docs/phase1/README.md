@@ -622,3 +622,54 @@ All 21 non-interactive tests passed. The deployed/source DLL SHA-256 is
 the deployed/source Lua SHA-256 is
 `333EBAED070BE67696744A20803791F61770E51D3FE0FEC79EE9BEF5D6C28CC1`.
 No Mac-only validation applies to these Windows/D3D12/OpenXR changes.
+
+## Runtime-directed extent, startup presentation, and camera ownership
+
+The shared head-pose contract is now version 5 and carries the OpenXR runtime's
+recommended per-eye width and height. The harness publishes those dimensions
+before the game creates its eye resources, and the Lua producer consumes them
+before both gameplay and character-select viewport creation. The prior
+2112x2304 Virtual Desktop Medium extent remains a bounded fallback only. The
+harness also retries shared-eye attachment instead of requiring the game
+producer to exist when the OpenXR session starts.
+
+A separate named projection-active event distinguishes completed stereo scenes
+from startup and loading intervals. Until the producer marks projection active,
+the harness presents the live desktop capture on the fixed 2x2 m spatial panel
+and acknowledges stale eye pairs without blocking the producer. A direct
+startup run remained on the panel through splash/title, attached the shared eye
+resources after they appeared, and transitioned to stereo before character
+select. The user accepted that transition timing.
+
+Gameplay camera translation remains game-authoritative, but the game no longer
+contributes pitch or roll to VR orientation. The default `fixed` rotation mode
+stores only the scene's initial yaw, then composes the complete current OpenXR
+headset rotation onto that heading. This removes the lobby camera's scripted
+vertical-movement orbit and its downward initial presentation pitch while
+preserving the physical headset's pitch, yaw offset, and roll from the first
+frame. A dormant `yaw_only` route preserves a future thumbstick-turning seam;
+it admits game yaw changes while continuing to reject game pitch and roll.
+Headset validation accepted the initial physical-angle match and confirmed that
+vertical movement no longer tilts the view.
+
+## Frame-generation sample and spatial-HUD finding
+
+With DLSS Quality, one generated frame, standard Reflex, and a 120 fps cap, a
+30.005-second character-select sample delivered 2,843 fresh real stereo pairs
+(94.75 pairs/s, 10.55 ms/pair). The keyboard-only lobby sample delivered 1,783
+pairs in 30.012 seconds (59.41 pairs/s, approximately 16.83 ms/pair). Both had
+zero reuse and zero pair-driven timeouts. The bridge observes real completed
+eye pairs, not Darktide's generated display frames, so the lobby result is
+consistent with a roughly 60 real / 120 displayed configuration rather than a
+regression to 59 displayed fps.
+
+Lobby world markers expose a separate UI limitation. Darktide's
+`HudElementWorldMarkers` stores one `_player_camera`, projects every marker with
+`Camera.world_to_screen`, and submits one world-global screen-GUI draw list.
+That list is consumed by both sequential eye renders. The left marker therefore
+matches the left eye, while the right eye receives the same eye-relative pixel
+coordinate rather than a projection through the right camera. A constant pixel
+shift is not a valid correction because stereo disparity depends on each
+marker's world depth. The required fix is a per-eye transparent spatial-HUD
+layer using the original marker world positions and the corresponding eye
+camera; full menus remain candidates for the fixed spatial panel instead.

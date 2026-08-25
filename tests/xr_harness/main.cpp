@@ -610,37 +610,17 @@ class OpenXrProbe {
 
     std::optional<darktidevr::bridge::OpenedEyeSurfaces> opened_eyes;
     std::unique_ptr<darktidevr::core::SharedHeadPoseWriter> head_pose_writer;
+    const darktidevr::bridge::SharedEyeSurfaceNames shared_eye_names{
+        {L"Local\\DarktideVR-eye-left", L"Local\\DarktideVR-eye-right"},
+        L"Local\\DarktideVR-eye-ready",
+        L"Local\\DarktideVR-eye-consumed"};
     UINT64 shared_last_ready_value{};
     auto shared_last_advance = std::chrono::steady_clock::now();
+    auto next_shared_open_attempt = std::chrono::steady_clock::now();
+    HANDLE projection_active_event{};
     if (shared_eyes) {
-      const darktidevr::bridge::SharedEyeSurfaceNames names{
-          {L"Local\\DarktideVR-eye-left", L"Local\\DarktideVR-eye-right"},
-          L"Local\\DarktideVR-eye-ready",
-          L"Local\\DarktideVR-eye-consumed"};
-      opened_eyes = darktidevr::bridge::open_shared_eye_surfaces(
-          device, names,
-          {{shared_eye_width, shared_eye_height},
-           DXGI_FORMAT_R8G8B8A8_UNORM});
-      const auto deadline = std::chrono::steady_clock::now() +
-                            std::chrono::seconds(5);
-      while (opened_eyes->ready_fence->GetCompletedValue() == 0 &&
-             std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      }
-      if (opened_eyes->ready_fence->GetCompletedValue() == 0) {
-        throw std::runtime_error("Shared eye producer did not publish a pair");
-      }
-      shared_last_ready_value =
-          opened_eyes->ready_fence->GetCompletedValue();
-      shared_last_advance = std::chrono::steady_clock::now();
       head_pose_writer =
           std::make_unique<darktidevr::core::SharedHeadPoseWriter>();
-      // The pair that predates the pose channel has no render-pose tag. It is
-      // intentionally not submitted; acknowledge it so the producer can
-      // publish the first pose-associated pair instead of deadlocking on the
-      // single shared slot.
-      check(opened_eyes->consumed_fence->Signal(shared_last_ready_value),
-            "ID3D12Fence::Signal(initial untagged pair consumed)");
     }
 
     ComPtr<ID3D12CommandAllocator> allocator;
@@ -734,7 +714,43 @@ class OpenXrProbe {
       if (duration && std::chrono::steady_clock::now() - start >= *duration) {
         break;
       }
-      if (pair_driven_shared && opened_eyes &&
+      const auto frame_start = std::chrono::steady_clock::now();
+      if (shared_eyes && !projection_active_event) {
+        projection_active_event = OpenEventW(
+            SYNCHRONIZE, FALSE,
+            L"Local\\DarktideVR-projection-active-v1");
+      }
+      const bool projection_active =
+          !shared_eyes ||
+          (projection_active_event &&
+           WaitForSingleObject(projection_active_event, 0) == WAIT_OBJECT_0);
+      if (shared_eyes && !opened_eyes &&
+          frame_start >= next_shared_open_attempt) {
+        next_shared_open_attempt = frame_start + std::chrono::milliseconds(250);
+        try {
+          opened_eyes = darktidevr::bridge::open_shared_eye_surfaces(
+              device, shared_eye_names,
+              {{shared_eye_width, shared_eye_height},
+               DXGI_FORMAT_R8G8B8A8_UNORM});
+          shared_last_ready_value =
+              opened_eyes->ready_fence->GetCompletedValue();
+          shared_last_advance = frame_start;
+          if (shared_last_ready_value != 0) {
+            // A pair published before attachment has no bridge-side pose
+            // history. Acknowledge it so the producer can publish a pair
+            // associated with the live XR pose stream.
+            check(opened_eyes->consumed_fence->Signal(
+                      shared_last_ready_value),
+                  "ID3D12Fence::Signal(initial untagged pair consumed)");
+          }
+          std::cout << "openxr.shared_eyes=attached\n";
+        } catch (const std::exception&) {
+          // The title and loading screens legitimately precede the game's
+          // producer-owned eye surfaces. Keep publishing XR state and retry
+          // while the spatial flat fallback remains visible.
+        }
+      }
+      if (pair_driven_shared && projection_active && opened_eyes &&
           last_pair_pose_checked_ready_value != 0) {
         ++pair_driven_waits;
         const auto now = std::chrono::steady_clock::now();
@@ -823,6 +839,10 @@ class OpenXrProbe {
               rendered_symmetric_fov.angleUp -
               rendered_symmetric_fov.angleDown;
           pose_sample.render_aspect_ratio = render_aspect_ratio;
+          pose_sample.render_width =
+              views_.front().recommendedImageRectWidth;
+          pose_sample.render_height =
+              views_.front().recommendedImageRectHeight;
           for (std::size_t eye = 0; eye < located_views.size(); ++eye) {
             pose_sample.render_frusta[eye] = {
                 located_views[eye].fov.angleLeft,
@@ -887,7 +907,8 @@ class OpenXrProbe {
         check(command_list->Reset(allocator.Get(), nullptr),
               "ID3D12GraphicsCommandList::Reset(theatre)");
         UINT64 shared_ready_for_frame{};
-        bool discard_shared_pair_this_frame{};
+        bool discard_shared_pair_this_frame =
+            opened_eyes && !projection_active;
         if (opened_eyes) {
           shared_ready_for_frame =
               opened_eyes->ready_fence->GetCompletedValue();
@@ -969,13 +990,13 @@ class OpenXrProbe {
         const bool shared_pair_pose_synced =
             rendered_pair_pose_ready_value == shared_ready_for_frame;
         const bool use_shared_pair =
-            opened_eyes &&
+            projection_active && opened_eyes &&
             (!window_capture ||
              (shared_pair_fresh && shared_pair_pose_synced));
         submitted_shared_pair_this_frame = use_shared_pair;
         const bool use_flat_capture = window_capture && !use_shared_pair;
         submitted_flat_fallback_this_frame = use_flat_capture;
-        if (opened_eyes && window_capture) {
+        if (window_capture) {
           if (use_flat_capture != flat_fallback_active) {
             flat_fallback_active = use_flat_capture;
             ++flat_fallback_transitions;

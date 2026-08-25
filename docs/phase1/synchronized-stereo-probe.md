@@ -1365,3 +1365,45 @@ Resolution remains valuable resource evidence, but the next optimization pass
 must classify command-list/PSO dependencies before sharing or parallelizing
 work. A final-target-only substitution still cannot merge the duplicated
 internal geometry work.
+
+## Runtime extent and scene-availability handoff
+
+The OpenXR harness now publishes each runtime view's recommended image extent
+through shared head-pose contract v5. Lua reads it before creating the first eye
+targets; 2112x2304 is retained only as a validated fallback. Shared-eye handles
+are attached lazily and retried every 250 ms, allowing the OpenXR session and
+spatial splash panel to start before Darktide creates its producer resources.
+
+Producer and harness also share a manual-reset projection-active event. Title
+and loading states leave it clear, so the harness presents window capture on
+the fixed 2x2 m panel and does not wait for eye pairs. Character select or an
+entered gameplay world sets it, enabling projection submission. Live direct-
+startup validation showed the splash/title interval on the panel followed by a
+clean stereo transition before character select.
+
+## Gameplay rotation isolation
+
+Darktide's lobby camera can add pitch when the player moves vertically. Feeding
+that live orientation into the next VR pose caused an orbit that is unsuitable
+for headset use. Gameplay now takes live game translation but initializes its
+orientation basis from scene yaw only. The complete current OpenXR headset
+quaternion is composed onto that basis, so physical pitch, roll and relative
+yaw are preserved from the first frame without inheriting the lobby's initial
+downward pitch. The default mode holds scene yaw fixed. A separate inactive
+`yaw_only` mode accepts only later game yaw deltas, retaining a future route for
+snap or smooth thumbstick turning without reopening game pitch/roll.
+
+Headset validation accepted both the physical-angle startup match and the
+absence of vertical-movement orbit.
+
+## World-marker projection limitation
+
+NPC markers and player names are correct in the left eye but displaced in the
+right. Source inspection identifies a single-camera path rather than an eye-
+resource defect: `HudElementWorldMarkers` caches `_player_camera`, calculates
+each widget with `Camera.world_to_screen`, then `UIHud` queues one screen GUI in
+`level_world`. Both sequential viewport submissions therefore consume the same
+left-eye-relative widget coordinates. Correcting this requires two transparent
+marker layers projected from the original world positions through their
+respective eye cameras. A fixed IPD-sized screen shift would be wrong because
+the required disparity varies with marker depth.

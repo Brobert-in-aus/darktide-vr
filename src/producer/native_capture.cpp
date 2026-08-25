@@ -4538,6 +4538,14 @@ int capture_present_halves(IDXGISwapChain3* swapchain,
 }  // namespace
 
 extern "C" __declspec(dllexport) int dtvr_install() { return install_hooks(); }
+extern "C" __declspec(dllexport) int dtvr_set_projection_active(int enabled) {
+  static const HANDLE event = CreateEventW(
+      nullptr, TRUE, FALSE, L"Local\\DarktideVR-projection-active-v1");
+  if (!event) {
+    return 1;
+  }
+  return (enabled ? SetEvent(event) : ResetEvent(event)) ? 0 : 2;
+}
 extern "C" __declspec(dllexport) int
 dtvr_set_diagnostic_render_hooks(int enabled) {
   if (hooks_installed.load(std::memory_order_acquire)) {
@@ -5047,6 +5055,8 @@ extern "C" __declspec(dllexport) int dtvr_read_head_pose(
   values[14] = sample.render_frusta[1].right;
   values[15] = sample.render_frusta[1].down;
   values[16] = sample.render_frusta[1].up;
+  values[17] = static_cast<float>(sample.render_width);
+  values[18] = static_cast<float>(sample.render_height);
   *sequence = sample.sequence;
   return 0;
 }
