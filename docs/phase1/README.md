@@ -559,6 +559,22 @@ These runs replace the earlier moving-camera observations as the controlled
 post-optimization baseline. They do not establish headroom for 120 Hz, and
 they do not justify risky queue parallelism by themselves.
 
+### Reflex and Reflex Boost samples
+
+Reflex was originally disabled. A short standard-Reflex character-select run
+produced 2,628 fresh pairs in 30.005 seconds (87.59 pairs/s), but one short run
+below the fixed-pose baseline is not sufficient to assign causality. With
+Reflex Boost enabled and the game restarted, character select produced 3,076
+fresh pairs in 30.010 seconds (102.50 pairs/s, 9.76 ms/pair). A subsequent
+keyboard-only lobby transition produced 2,922 fresh pairs in 30.005 seconds
+(97.38 pairs/s, 10.27 ms/pair). Both Boost samples had zero reuse and zero
+pair-driven timeouts.
+
+The Boost lobby sample is 3.3% faster than the 94.25-pairs/s controlled
+no-Reflex lobby baseline, equivalent to about 0.34 ms/pair. This remains an
+exploratory 30-second versus 180-second comparison; reverse A/B and longer
+repeats are required before treating the difference as a Reflex gain.
+
 ### Focused XR resource census
 
 Diagnostic command-list hooks are now opt-in and must be selected before

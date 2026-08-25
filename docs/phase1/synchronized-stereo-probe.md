@@ -1309,6 +1309,30 @@ places average delivery above the 90 Hz budget while showing inadequate slow-
 tail margin. Subsequent optimization claims should compare against this exact
 clean-launch, stationary-headset, untouched-camera procedure.
 
+## NVIDIA Reflex exploratory measurements
+
+The renderer settings initially had Reflex disabled. Standard Reflex was
+enabled through both the master option (`nv_reflex_low_latency=1`) and native
+render setting (`nv_low_latency_mode=true`, boost false). One 30-second
+character-select sample delivered 2,628 fresh pairs in 30.005 seconds, or
+87.59 pairs/s. Because this was a single short run and substantially below the
+long fixed-pose baseline, it is retained as exploratory rather than treated as
+evidence that standard Reflex reduces throughput.
+
+Reflex Boost was then selected (`nv_reflex_low_latency=2`,
+`nv_low_latency_mode=true`, `nv_low_latency_boost=true`) and Darktide was
+restarted. A repeated character-select sample delivered 3,076 fresh pairs in
+30.010 seconds (102.50 pairs/s, 9.76 ms/pair), with zero reuse and zero
+pair-driven timeouts. After a keyboard-only transition to the lobby, a
+30.005-second sample delivered 2,922 fresh pairs (97.38 pairs/s,
+10.27 ms/pair), again with zero reuse and zero timeouts.
+
+The Boost lobby result is 3.3% above the controlled no-Reflex lobby baseline
+of 94.25 pairs/s (10.61 ms/pair), a reduction of approximately 0.34 ms per
+pair. The comparison is encouraging but not conclusive: the Boost sample is
+30 seconds while the baseline is 180 seconds, so a reverse A/B and longer
+repeat remain necessary before attributing the difference to Reflex.
+
 ## XR-only resource boundary census
 
 The native diagnostic render hooks are selectable before hook installation and
