@@ -1415,6 +1415,29 @@ left widget state. This avoids rerunning marker lifetime, raycast, animation,
 and template-update side effects. Headset testing confirmed correct NPC markers
 and player names in both eyes without the earlier duplicate projection.
 
+An off-screen marker revealed that the projection delta is valid only before
+screen clamping. Darktide's primary-eye update can first clamp a persistent
+cue to the left or right screen edge. Treating that clamped widget offset as a
+world projection caused a left-edge cue to disappear from the right eye and a
+right-edge cue to slide progressively left in the right eye. The replay also
+cannot reuse the same pixel coordinate in both eyes: a headset check showed
+that doing so places the cue at each eye's independent outer edge because the
+runtime frusta are asymmetric. The revised path intersects the two runtime
+angular frusta, selects one direction at the binocular-overlap boundary, and
+projects that direction separately into both eye images. Markers whose anchors
+remain in the frustum continue to receive exact per-eye depth projection. The
+first headset test showed the correct inset applied to the opposite physical
+eye. The frusta are now associated with the already-accepted native
+capture/submission eye identity instead of the logical Darktide camera names;
+that narrow correction awaits headset validation.
+
+The concurrent billboard constant-buffer prototype caused a confirmed D3D12
+GPU hang after issuing roughly 154,000 broad stride-selected buffer patches in
+5.6 seconds. It is disabled. The counters prove the hook executed and falsify
+the earlier theory that unchanged smoke meant a missed draw hook; they also
+show that vertex strides and persistent b1/b2 bindings are not a safe semantic
+particle selector.
+
 The `[F] Inspect Operative` prompt belongs to `HudElementInteraction`, which
 copies the active marker offset into an independent scenegraph pivot. Its update
 can run before the source marker's current projection, so the first version was
@@ -1426,3 +1449,137 @@ This does not solve engine particle billboards. Binary inspection confirms
 separate native `billboard`, `billboard_cross`, and `billboard_random` render
 paths. Smoke still follows full camera pitch and roll; the desired behavior is
 cylindrical billboarding that faces the viewer in yaw while retaining world up.
+
+## Particle-billboard intervention boundary
+
+The first semantic D3D12 probe identified five live vertex-shader permutations
+whose reflection includes `c_billboard`. Their 128-byte billboard constant
+contains `view` followed by `view_proj`; the vertex programs consume the view
+matrix's right and up columns to orient particle quads. Darktide is Z-up, so a
+cylindrical billboard needs a yaw-only right vector and world-relative up—not
+the headset's pitched and rolled view basis.
+
+A private descriptor-heap experiment copied Stingray's active resource and
+sampler tables, substituted an isolated billboard CBV, issued the draw, and
+restored the original state. All 168 observed draws reached the intended final
+stage, but a later scene transition faulted inside NVIDIA's D3D12 driver. That
+route is therefore rejected for production. A heap-preserving descriptor
+rewrite prototype exists but remains disabled and unvalidated while a safer
+intervention boundary is investigated.
+
+Asset inspection extracted 1,664 compiled `particles` resources (11.9 MB) and
+44 `shader_library_group` resources (18.0 MB). The particle resources are
+anonymous compiled binary records with no recoverable billboard/orientation
+labels. The shader groups contain 3,740 packed DXBC markers, but they are not
+ordinary standalone DXBC containers and none of the five live shader blobs
+appears byte-for-byte in them. The game also converts an 8.6 MB portable HANS
+cache into a 33.4 MB device-local HANS cache; neither exposes the live shader
+containers as plain data. Existing public Darktide tooling extracts these
+resources but does not provide a general compiled-asset repacker.
+
+This evidence rejects both bulk particle-file editing and per-draw descriptor
+mutation as the immediate production route. Stingray's own particle
+documentation places billboard construction in the particle material shader
+graph, which agrees with the shared `c_billboard` vertex programs observed at
+runtime. The next bounded route is therefore one-time vertex-shader
+substitution when the five known billboard PSOs are created. It keeps the
+original particle systems and material parameters, avoids per-frame descriptor
+or heap mutation, and limits the compatibility surface to a small set of
+versioned shader hashes. Editing the portable shader library remains a future
+packaging option if its serialization and cache rebuild path can be decoded.
+
+## Fail-closed billboard PSO substitution checkpoint
+
+The native capture DLL now implements that PSO-time route for these five known
+`c_billboard` vertex-shader hashes:
+
+- `6e5fa4d1f1e2cd16`
+- `25920ba45ba58e76`
+- `af848a96a230342a`
+- `903cb53d8ac05f28`
+- `13e04962148fc216`
+
+Replacement blobs are loaded from the module-adjacent `billboard_shaders`
+directory. Before use, both original and replacement shaders are reflected and
+their complete executable interfaces are compared: shader stage, input and
+output signatures, resource register/space/type/count/shape, and constant-
+buffer structure and size. Reflection-only names and `uFlags` are deliberately
+excluded. Any mismatch or PSO-creation failure falls back to the untouched
+shader and increments a reject counter. Generated and captured shader blobs are
+test inputs and are not committed to the repository.
+
+Substitution covers ordinary `CreateGraphicsPipelineState`, pipeline-state
+streams through `ID3D12Device2::CreatePipelineState`, and named graphics/stream
+loads from `ID3D12PipelineLibrary` and `ID3D12PipelineLibrary1`. Modified named
+loads bypass the cached name and create an uncached PSO on the owning device;
+changed descriptions also discard incompatible cached-PSO blobs. The original
+vertex-shader hash remains attached to PSO metadata so later draw
+classification still identifies the engine shader rather than the replacement.
+Only these construction hooks are required in the production configuration;
+the high-cost per-draw renderer diagnostics remain separately disabled.
+
+A captured live shader completed a DXIL to SPIR-V to HLSL to DXIL round trip.
+After restoring the original D3D semantic names and output packing/order, the
+recompiled shader exactly matched the original signature tables and resource
+bindings (`b0`-`b3`, `s0`-`s1`, and `t0`-`t1`). This establishes a usable
+translation/editing toolchain rather than proving a particular orientation
+edit.
+
+The unchanged-payload runtime control reached character select with seven
+substitutions applied, zero rejected, and zero failures across 3,839 Darktide
+PSO-cache operations. A modified `6e5fa4d1f1e2cd16` replacement produced the
+same clean counts and remained stable, but the user's observed smoke did not
+change; that permutation is not responsible for those smoke sources. Horizon
+variants were then prepared for the four camera-axis permutations. The fifth,
+`25920ba45ba58e76`, is materially different: it consumes the per-particle
+`TANGENT` and forms an axis using a camera-direction cross product, so forcing
+its tangent to world up could damage beams or ribbons.
+
+The four-variant blanket run reached character select and again recorded zero
+failures across 3,839 PSO-cache operations, but only three substitutions were
+applied and four were rejected. Rejected PSOs correctly used their original
+shaders. This makes the run a validation of fail-closed behavior, not a valid
+visual test of blanket horizon locking. Per-hash attempt/applied/validation-
+reject/creation-reject counters have been added so the next run can identify
+each failure directly rather than infer it from aggregate totals.
+
+### Next intervention boundary
+
+Further permutation-by-permutation visual edits would again become empirical
+shader roulette. The common semantic dependency is the CPU-produced
+`c_billboard` data: spherical permutations read the same camera right/up basis
+and view-projection data. The preferred next investigation is therefore to
+locate the producer that writes this constant once and preserve the projection
+while replacing only its orientation basis with a yaw-projected right vector
+and Darktide's world-Z up vector.
+
+The bounded reverse-engineering sequence is:
+
+1. identify the exact billboard CBV used by a known draw;
+2. map its GPU virtual address to the persistently mapped upload resource and
+   CPU address;
+3. watch the small set of basis floats and capture the writer's call stack;
+4. hook that higher-level producer and update the shared data before binding;
+5. retire the diagnostic per-draw hooks from the production path.
+
+This differs from the rejected descriptor experiment: it targets the original
+CPU-side data producer before command recording instead of mutating bound
+descriptors or GPU-visible resources after the draw state has been assembled.
+
+### Checkpoint validation (2026-08-25)
+
+Validated on the Windows/D3D12/OpenXR development PC with:
+
+```powershell
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build --preset windows-vs2022-release --target darktidevr_native_capture darktidevr_winmm_bootstrap darktidevr_d3d12_bootstrap
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build\windows-vs2022 -C Release --output-on-failure -R '^(native_capture_hooks|shared_eye_surfaces)$'
+git diff --check
+```
+
+All three DLL targets compiled with `/W4 /WX`; both focused regression tests
+passed. A concurrent full-suite run passed 20 of 21 tests; `shared_head_pose`
+failed because the intentionally still-running XR harness was publishing to the
+same process-global shared-memory object during its stale-pose assertion. No
+Mac-only validation applies to this Windows/D3D12 interception checkpoint. The
+new per-hash diagnostics compile but have not yet been deployed for a fresh live
+runtime capture.

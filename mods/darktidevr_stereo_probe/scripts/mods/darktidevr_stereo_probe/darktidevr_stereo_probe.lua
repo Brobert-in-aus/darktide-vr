@@ -80,6 +80,12 @@ local ui_native_capture_requested = true -- copy each completed full-origin eye
 local ui_camera_output_candidate_probe_index = -1
 local ui_native_observer_requested = false
 local diagnostic_render_hooks_requested = false
+local vertex_shader_dump_requested = false
+-- PSO-time, whitelist-only substitution. Replacement shaders are validated
+-- against the live shader interface before D3D12 ever sees them.
+local billboard_shader_substitution_requested = true
+local billboard_horizon_lock_requested = false -- disabled while the asset-level billboard path is investigated
+local billboard_selector_probe_requested = false
 local ui_table4_alias_probe_requested = false -- unsafe without exact draw identity
 local ui_present_capture_requested = false
 local ui_alternating_full_requested = false
@@ -259,6 +265,64 @@ local function ensure_ui_native_hooks()
         unsigned long long dtvr_focused_trace_count(void);
         int dtvr_enable_marker_log(void);
         int dtvr_set_diagnostic_render_hooks(int enabled);
+        int dtvr_set_billboard_shader_substitution(int enabled);
+        unsigned long long dtvr_billboard_shader_substitution_count(void);
+        unsigned long long dtvr_billboard_shader_substitution_reject_count(void);
+        unsigned long long dtvr_billboard_shader_substitution_result_count(
+            unsigned int rank, unsigned int kind);
+        int dtvr_set_vertex_shader_dump(int enabled);
+        int dtvr_set_billboard_view_basis(float right_x, float right_y,
+            float right_z, float up_x, float up_y,
+            float up_z, int enabled);
+        unsigned long long dtvr_billboard_stride_candidate_count(void);
+        unsigned long long dtvr_billboard_b1_bound_count(void);
+        unsigned long long dtvr_billboard_b2_bound_count(void);
+        unsigned long long dtvr_billboard_exact_shader_draw_count(void);
+        unsigned long long dtvr_billboard_exact_pso_draw_count(void);
+        unsigned long long dtvr_billboard_exact_pso_cbv_slot_count(
+            unsigned int slot);
+        unsigned long long dtvr_billboard_exact_pso_table_slot_count(
+            unsigned int slot);
+        unsigned long long dtvr_billboard_exact_register_count(
+            unsigned int shader_register);
+        unsigned long long dtvr_billboard_exact_vertex_table_slot_count(
+            unsigned int slot);
+        unsigned long long dtvr_billboard_exact_descriptor_offset_count(
+            unsigned int offset);
+        unsigned long long dtvr_billboard_exact_table_span_count(
+            unsigned int span);
+        unsigned long long dtvr_billboard_exact_cbv_descriptor_count(void);
+        unsigned long long dtvr_billboard_exact_buffer_resource_count(void);
+        unsigned long long dtvr_billboard_exact_heap_type_count(
+            unsigned int heap_type);
+        unsigned long long dtvr_billboard_exact_map_success_count(void);
+        unsigned long long dtvr_billboard_exact_map_failure_count(void);
+        unsigned long long dtvr_billboard_shadow_stage_count(
+            unsigned int stage);
+        unsigned long long dtvr_billboard_exact_command_list_type_count(
+            unsigned int type);
+        unsigned long long dtvr_billboard_exact_root_mapping_count(void);
+        unsigned long long dtvr_billboard_root_metadata_draw_count(void);
+        unsigned long long dtvr_diagnostic_root_signature_create_count(void);
+        unsigned long long dtvr_diagnostic_graphics_pso_create_count(void);
+        unsigned long long dtvr_diagnostic_compute_pso_create_count(void);
+        unsigned long long dtvr_diagnostic_stream_pso_create_count(void);
+        unsigned long long dtvr_diagnostic_graphics_pipeline_load_count(void);
+        unsigned long long dtvr_diagnostic_compute_pipeline_load_count(void);
+        unsigned long long dtvr_diagnostic_stream_pipeline_load_count(void);
+        unsigned long long dtvr_billboard_root_b2_candidate_draw_count(void);
+        unsigned long long dtvr_billboard_candidate_shader_hash(unsigned int rank);
+        unsigned long long dtvr_billboard_candidate_shader_count(unsigned int rank);
+        unsigned int dtvr_billboard_candidate_shader_hash_low(unsigned int rank);
+        unsigned int dtvr_billboard_candidate_shader_hash_high(unsigned int rank);
+        unsigned long long dtvr_billboard_table_b2_draw_count(void);
+        unsigned long long dtvr_billboard_bound_table_b2_draw_count(void);
+        unsigned long long dtvr_billboard_observed_draw_count(void);
+        unsigned long long dtvr_billboard_direct_draw_hook_count(void);
+        int dtvr_billboard_probe_state(void);
+        unsigned long long dtvr_billboard_observed_stride_count(
+            unsigned int slot, unsigned int stride);
+        unsigned long long dtvr_billboard_basis_patch_count(void);
         int dtvr_read_head_pose(float *values, unsigned long long *sequence);
         unsigned long long dtvr_qpc_ticks(void);
         unsigned long long dtvr_qpc_frequency(void);
@@ -278,7 +342,10 @@ local function ensure_ui_native_hooks()
     end
 
     local diagnostic_result = library.dtvr_set_diagnostic_render_hooks(
-        (diagnostic_render_hooks_requested or ui_native_observer_requested or
+        (diagnostic_render_hooks_requested or vertex_shader_dump_requested or
+            billboard_horizon_lock_requested or
+            billboard_selector_probe_requested or
+            ui_native_observer_requested or
             performance_profile_requested) and
             1 or 0)
     if diagnostic_result ~= 0 then
@@ -287,11 +354,53 @@ local function ensure_ui_native_hooks()
         return false
     end
 
+    local substitution_result = library.dtvr_set_billboard_shader_substitution(
+        billboard_shader_substitution_requested and 1 or 0)
+    if substitution_result ~= 0 then
+        mod:error("DARKTIDEVR_STEREO billboard_shader_substitution_select_failed code=%d",
+            substitution_result)
+        return false
+    end
+
+    local shader_dump_result = library.dtvr_set_vertex_shader_dump(
+        vertex_shader_dump_requested and 1 or 0)
+    if shader_dump_result ~= 0 then
+        mod:error("DARKTIDEVR_STEREO shader_dump_select_failed code=%d",
+            shader_dump_result)
+        return false
+    end
+
     local install_result = library.dtvr_install()
 
     if install_result ~= 0 then
         mod:error("DARKTIDEVR_STEREO native_capture install_failed code=%d", install_result)
         return false
+    end
+
+    -- Selector-only diagnostics must be active before any particular camera
+    -- path exists. Character select uses UIWorldSpawner rather than the
+    -- gameplay CameraManager, so enabling this only from update_stereo left
+    -- the native draw hooks active while the dry selector itself stayed off.
+    -- Mode 2 records state and categorizes draws but is hard-disabled from
+    -- issuing any GPU writes.
+    if billboard_horizon_lock_requested then
+        -- Darktide is Z-up. c_billboard.view columns 0 and 2 are the sprite's
+        -- screen-facing right and up axes, not right and camera-forward.
+        library.dtvr_set_billboard_view_basis(
+            1, 0, 0,
+            0, 0, 1,
+            1
+        )
+    elseif billboard_selector_probe_requested then
+        library.dtvr_set_billboard_view_basis(
+            1, 0, 0,
+            0, 1, 0,
+            2
+        )
+    end
+
+    if vertex_shader_dump_requested then
+        library.dtvr_enable_marker_log()
     end
 
     ui_native_capture = library
@@ -303,6 +412,28 @@ local function ensure_ui_native_hooks()
     ui_native_capture.dtvr_set_gpu_eye_profile(
         performance_profile_requested and 1 or 0)
     mod:info("DARKTIDEVR_STEREO native_hooks installed")
+    if billboard_shader_substitution_requested then
+        mod:info(
+            "DARKTIDEVR_STEREO billboard_shader_substitution applied=%d rejected=%d",
+            tonumber(library.dtvr_billboard_shader_substitution_count()),
+            tonumber(library.dtvr_billboard_shader_substitution_reject_count())
+        )
+        local shader_labels = {
+            "6e5fa4d1f1e2cd16", "25920ba45ba58e76",
+            "af848a96a230342a", "903cb53d8ac05f28",
+            "13e04962148fc216"
+        }
+        for rank = 0, #shader_labels - 1 do
+            mod:info(
+                "DARKTIDEVR_STEREO billboard_shader_result hash=%s attempts=%d applied=%d validation_rejects=%d creation_rejects=%d",
+                shader_labels[rank + 1],
+                tonumber(library.dtvr_billboard_shader_substitution_result_count(rank, 0)),
+                tonumber(library.dtvr_billboard_shader_substitution_result_count(rank, 1)),
+                tonumber(library.dtvr_billboard_shader_substitution_result_count(rank, 2)),
+                tonumber(library.dtvr_billboard_shader_substitution_result_count(rank, 3))
+            )
+        end
+    end
 
     return true
 end
@@ -420,7 +551,13 @@ local function apply_head_tracking(clean_position, clean_rotation)
     return tracked_position, tracked_rotation
 end
 
-if ui_native_observer_requested then
+-- Renderer diagnostics must install while the title state is still active so
+-- subsequent main-menu and gameplay package loads pass their real PSO and
+-- root-signature creation descriptors through our hooks. Delaying this until
+-- UIWorldSpawner.create_viewport is too late for shader/root localization.
+if ui_native_observer_requested or diagnostic_render_hooks_requested or
+        vertex_shader_dump_requested or billboard_horizon_lock_requested or
+        billboard_selector_probe_requested or performance_profile_requested then
     ensure_ui_native_hooks()
 end
 
@@ -563,6 +700,113 @@ local function report_native_observer()
                 tonumber(ui_native_capture.dtvr_candidate_table4_alias_count()),
                 tonumber(ui_native_capture.dtvr_candidate_table4_ambiguous_count()),
                 tonumber(ui_native_capture.dtvr_candidate_instance_clamp_count())
+            )
+        end
+        if billboard_horizon_lock_requested or
+                billboard_selector_probe_requested then
+            local function top_billboard_strides(slot)
+                local ranked = {}
+                for stride = 0, 256 do
+                    local count = tonumber(
+                        ui_native_capture.dtvr_billboard_observed_stride_count(
+                            slot, stride))
+                    if count > 0 then
+                        ranked[#ranked + 1] = { stride = stride, count = count }
+                    end
+                end
+                table.sort(ranked, function(a, b)
+                    return a.count > b.count
+                end)
+                local values = {}
+                for index = 1, math.min(5, #ranked) do
+                    values[#values + 1] = string.format(
+                        "%d:%d", ranked[index].stride, ranked[index].count)
+                end
+                return table.concat(values, ",")
+            end
+            local function top_billboard_root_slots(counter, maximum)
+                local ranked = {}
+                for slot = 0, maximum or 31 do
+                    local count = tonumber(counter(slot))
+                    if count > 0 then
+                        ranked[#ranked + 1] = { slot = slot, count = count }
+                    end
+                end
+                table.sort(ranked, function(a, b)
+                    return a.count > b.count
+                end)
+                local values = {}
+                for index = 1, math.min(8, #ranked) do
+                    values[#values + 1] = string.format(
+                        "%d:%d", ranked[index].slot, ranked[index].count)
+                end
+                return table.concat(values, ",")
+            end
+            mod:info(
+                "DARKTIDEVR_STEREO billboard state=%d hook_draws=%d observed=%d slot0=%s slot1=%s particle_layout=%d exact_pso=%d cl_types=%s registers=%s cbv_slots=%s table_slots=%s selected_tables=%s descriptor_offsets=%s table_spans=%s cbv_desc=%d buffers=%d heaps=%s map=%d/%d shadow_stages=%s root_meta=%d direct_cbv=%d table_cbv=%d table_cbv_bound=%d patches=%d",
+                ui_native_capture.dtvr_billboard_probe_state(),
+                tonumber(ui_native_capture.dtvr_billboard_direct_draw_hook_count()),
+                tonumber(ui_native_capture.dtvr_billboard_observed_draw_count()),
+                top_billboard_strides(0), top_billboard_strides(1),
+                tonumber(ui_native_capture.dtvr_billboard_exact_shader_draw_count()),
+                tonumber(ui_native_capture.dtvr_billboard_exact_pso_draw_count()),
+                top_billboard_root_slots(
+                    ui_native_capture.dtvr_billboard_exact_command_list_type_count,
+                    7),
+                top_billboard_root_slots(
+                    ui_native_capture.dtvr_billboard_exact_register_count, 63),
+                top_billboard_root_slots(
+                    ui_native_capture.dtvr_billboard_exact_pso_cbv_slot_count),
+                top_billboard_root_slots(
+                    ui_native_capture.dtvr_billboard_exact_pso_table_slot_count),
+                top_billboard_root_slots(
+                    ui_native_capture.dtvr_billboard_exact_vertex_table_slot_count),
+                top_billboard_root_slots(
+                    ui_native_capture.dtvr_billboard_exact_descriptor_offset_count,
+                    63),
+                top_billboard_root_slots(
+                    ui_native_capture.dtvr_billboard_exact_table_span_count, 63),
+                tonumber(ui_native_capture.dtvr_billboard_exact_cbv_descriptor_count()),
+                tonumber(ui_native_capture.dtvr_billboard_exact_buffer_resource_count()),
+                top_billboard_root_slots(
+                    ui_native_capture.dtvr_billboard_exact_heap_type_count, 4),
+                tonumber(ui_native_capture.dtvr_billboard_exact_map_success_count()),
+                tonumber(ui_native_capture.dtvr_billboard_exact_map_failure_count()),
+                top_billboard_root_slots(
+                    ui_native_capture.dtvr_billboard_shadow_stage_count, 15),
+                tonumber(ui_native_capture.dtvr_billboard_root_metadata_draw_count()),
+                tonumber(ui_native_capture.dtvr_billboard_exact_root_mapping_count()),
+                tonumber(ui_native_capture.dtvr_billboard_table_b2_draw_count()),
+                tonumber(ui_native_capture.dtvr_billboard_bound_table_b2_draw_count()),
+                tonumber(ui_native_capture.dtvr_billboard_basis_patch_count())
+            )
+            mod:info(
+                "DARKTIDEVR_STEREO creation_hooks roots=%d pso=%d/%d/%d loads=%d/%d/%d",
+                tonumber(ui_native_capture.dtvr_diagnostic_root_signature_create_count()),
+                tonumber(ui_native_capture.dtvr_diagnostic_graphics_pso_create_count()),
+                tonumber(ui_native_capture.dtvr_diagnostic_compute_pso_create_count()),
+                tonumber(ui_native_capture.dtvr_diagnostic_stream_pso_create_count()),
+                tonumber(ui_native_capture.dtvr_diagnostic_graphics_pipeline_load_count()),
+                tonumber(ui_native_capture.dtvr_diagnostic_compute_pipeline_load_count()),
+                tonumber(ui_native_capture.dtvr_diagnostic_stream_pipeline_load_count())
+            )
+            local candidate_shaders = {}
+            for rank = 0, 7 do
+                local hash_low = tonumber(
+                    ui_native_capture.dtvr_billboard_candidate_shader_hash_low(rank))
+                local hash_high = tonumber(
+                    ui_native_capture.dtvr_billboard_candidate_shader_hash_high(rank))
+                local count = tonumber(
+                    ui_native_capture.dtvr_billboard_candidate_shader_count(rank))
+                if count > 0 then
+                    candidate_shaders[#candidate_shaders + 1] = string.format(
+                        "%08x%08x:%d", hash_high, hash_low, count)
+                end
+            end
+            mod:info(
+                "DARKTIDEVR_STEREO billboard_b2 candidates=%d shaders=%s",
+                tonumber(ui_native_capture.dtvr_billboard_root_b2_candidate_draw_count()),
+                table.concat(candidate_shaders, ",")
             )
         end
         ui_native_observer_last_present = presents
@@ -1661,6 +1905,18 @@ local function update_stereo(manager)
         clean_position,
         clean_rotation
     )
+    if ui_native_capture and (billboard_horizon_lock_requested or
+            billboard_selector_probe_requested) then
+        local horizon_rotation = Quaternion.axis_angle(
+            Vector3.up(), Quaternion.yaw(clean_rotation))
+        local billboard_right = Quaternion.right(horizon_rotation)
+        local billboard_up = Quaternion.up(horizon_rotation)
+        ui_native_capture.dtvr_set_billboard_view_basis(
+            billboard_right.x, billboard_right.y, billboard_right.z,
+            billboard_up.x, billboard_up.y, billboard_up.z,
+            billboard_horizon_lock_requested and 1 or 2
+        )
+    end
     local eye_axis = Quaternion.right(clean_rotation)
 
     local runtime_projection_matches_target = head_render_vertical_fov and
@@ -1891,13 +2147,106 @@ mod:hook(UIRenderer, "draw_triangle", function(func, self, position, size,
     return func(self, position, size, style, retained_id)
 end)
 
+local function tangent_projection(value, lower, upper)
+    return (value - lower) / (upper - lower)
+end
+
+local function prepare_binocular_clamped_offsets(instance, inverse_scale)
+    local offsets = {}
+    if not head_render_frusta or not inverse_scale or inverse_scale == 0 then
+        return offsets
+    end
+
+    -- Native capture's accepted logical-eye mapping submits the primary
+    -- Darktide camera to OpenXR view 1 and the replay camera to view 0. Keep
+    -- that resource identity here: assigning the runtime frusta by camera
+    -- names reverses which physical eye must be inset at an overlap edge.
+    local primary_frustum = head_render_frusta[2]
+    local replay_frustum = head_render_frusta[1]
+    local left_min = math.tan(primary_frustum.left)
+    local left_max = math.tan(primary_frustum.right)
+    local right_min = math.tan(replay_frustum.left)
+    local right_max = math.tan(replay_frustum.right)
+    local overlap_min = math.max(left_min, right_min)
+    local overlap_max = math.min(left_max, right_max)
+    if overlap_min >= overlap_max then
+        return offsets
+    end
+
+    local root_size = UIScenegraph.size_scaled(
+        instance._ui_scenegraph,
+        "screen"
+    )
+    local root_width = root_size[1] * RESOLUTION_LOOKUP.scale
+    if root_width <= 0 then
+        return offsets
+    end
+
+    for _, markers in pairs(instance._markers_by_type) do
+        for i = 1, #markers do
+            local marker = markers[i]
+            local angle = marker.angle
+            if marker.draw and marker.is_clamped and angle and
+                    (math.abs(angle) < 0.001 or
+                        math.abs(math.abs(angle) - math.pi) < 0.001) then
+                local offset = marker.widget.offset
+                local original_x = offset[1]
+                local original_y = offset[2]
+                local pixel_x = original_x / inverse_scale
+                local clamped_left = pixel_x < root_width * 0.5
+                local margin_fraction = clamped_left and
+                    pixel_x / root_width or
+                    (root_width - pixel_x) / root_width
+                margin_fraction = math.max(
+                    0,
+                    math.min(margin_fraction, 0.25)
+                )
+                local overlap_width = overlap_max - overlap_min
+                local shared_tangent = clamped_left and
+                    overlap_min + overlap_width * margin_fraction or
+                    overlap_max - overlap_width * margin_fraction
+                local left_x = tangent_projection(
+                    shared_tangent,
+                    left_min,
+                    left_max
+                ) * root_width * inverse_scale
+                local right_x = tangent_projection(
+                    shared_tangent,
+                    right_min,
+                    right_max
+                ) * root_width * inverse_scale
+                offsets[marker] = {
+                    original_x = original_x,
+                    original_y = original_y,
+                    left_x = left_x,
+                    right_x = right_x,
+                    y = original_y
+                }
+                -- The first draw must also use the shared angular clamp. A
+                -- numerically identical texture coordinate in both eyes is
+                -- not binocular because the runtime eye frusta are
+                -- asymmetric.
+                offset[1] = left_x
+            end
+        end
+    end
+    return offsets
+end
+
 mod:hook(
     "HudElementWorldMarkers",
     "_draw_markers",
     function(func, self, dt, t, input_service, ui_renderer, render_settings)
         local capture = active and stereo_world_markers_requested and
             not world_marker_reprojecting
+        local inverse_scale = ui_renderer.inverse_scale or
+            render_settings.inverse_scale or 1
+        local binocular_offsets = nil
         if capture then
+            binocular_offsets = prepare_binocular_clamped_offsets(
+                self,
+                inverse_scale
+            )
             world_marker_command_capture = true
         end
 
@@ -1921,8 +2270,8 @@ mod:hook(
                 render_settings = render_settings,
                 -- UIRenderer.end_pass clears this transient field before the
                 -- level-world submission hook runs, so retain the scalar now.
-                inverse_scale = ui_renderer.inverse_scale or
-                    render_settings.inverse_scale or 1
+                inverse_scale = inverse_scale,
+                binocular_offsets = binocular_offsets
             }
         end
 
@@ -2023,24 +2372,32 @@ local function enqueue_world_markers_for_camera(camera)
             local marker = markers[i]
             if marker.draw and marker.position then
                 local world_position = Vector3Box.unbox(marker.position)
-                local left_screen = Camera.world_to_screen(
-                    original_camera,
-                    world_position
-                )
-                local right_screen = Camera.world_to_screen(
-                    camera,
-                    world_position
-                )
                 local offset = marker.widget.offset
+                local binocular = context.binocular_offsets and
+                    context.binocular_offsets[marker]
                 adjusted_offsets[#adjusted_offsets + 1] = {
                     offset = offset,
-                    x = offset[1],
-                    y = offset[2]
+                    x = binocular and binocular.original_x or offset[1],
+                    y = binocular and binocular.original_y or offset[2]
                 }
-                offset[1] = offset[1] +
-                    (right_screen.x - left_screen.x) * inverse_scale
-                offset[2] = offset[2] +
-                    (right_screen.y - left_screen.y) * inverse_scale
+
+                if binocular then
+                    offset[1] = binocular.right_x
+                    offset[2] = binocular.y
+                else
+                    local left_screen = Camera.world_to_screen(
+                        original_camera,
+                        world_position
+                    )
+                    local right_screen = Camera.world_to_screen(
+                        camera,
+                        world_position
+                    )
+                    offset[1] = offset[1] +
+                        (right_screen.x - left_screen.x) * inverse_scale
+                    offset[2] = offset[2] +
+                        (right_screen.y - left_screen.y) * inverse_scale
+                end
             end
         end
     end

@@ -677,6 +677,23 @@ replays the marker draw for the right camera. Headset validation confirmed NPC
 markers and player names at the correct position in both eyes with no duplicate
 left projection.
 
+Markers configured to remain on-screen after their world anchor leaves the
+frustum exposed a second ordering boundary. Darktide clamps the primary-eye
+widget to an edge before the stereo replay. Applying the ordinary world-space
+right-minus-left projection delta to that already-clamped coordinate could
+push a left-edge cue completely out of the right eye, or make a right-edge cue
+travel across the right eye while remaining fixed in the left. Clamped markers
+cannot simply reuse one pixel coordinate: headset testing showed that this
+clamps independently to each physical eye edge because the runtime frusta are
+asymmetric. The revised branch intersects the two runtime angular frusta,
+chooses one shared clamped direction inside that binocular overlap, then maps
+that direction separately into each eye image. In-frustum markers retain their
+depth-correct per-eye projection. The first angular test correctly found the
+overlap but assigned its inset to the opposite physical eye; the runtime frusta
+are now associated with the accepted capture/submission eye mapping rather
+than the Darktide camera names. Headset validation of that identity correction
+remains pending.
+
 `HudElementInteraction` is a second screen-GUI layer which copies the active
 marker widget into its own scenegraph pivot. Its normal update could precede
 the marker projection in the same frame, producing a stable right replay but a
@@ -685,3 +702,25 @@ pivot at the draw boundary fixed that ordering fault; lobby validation accepted
 the prompt as stable in both eyes. Full menus remain candidates for the fixed
 spatial panel. Particle smoke is a separate native billboard path and still
 needs cylindrical, world-up alignment; it is not part of marker reprojection.
+
+## Billboard shader checkpoint and next target
+
+The native DLL now supports fail-closed, whitelist-only billboard vertex-shader
+substitution at PSO construction time across ordinary, stream, and pipeline-
+library creation paths. It validates the complete reflected shader interface,
+clears incompatible cached blobs, falls back to the original PSO on any failure,
+and reports aggregate plus per-hash results. An unchanged-payload control applied
+all seven observed substitutions with no rejects and no failures across 3,839
+PSO-cache operations. A modified single-permutation run was equally stable but
+did not affect the observed smoke, ruling that permutation out for those
+sources.
+
+The four-permutation horizon test was not a valid visual result: only three
+substitutions applied and four were rejected, with safe fallback to originals.
+The remaining fifth permutation is axial/tangent-driven and cannot safely use
+the same edit. The next investigation will therefore trace the CPU writer of
+the shared `c_billboard` camera basis and patch that producer before command
+recording. This is a more fundamental blanket boundary than editing every
+particle asset or guessing at individual shader permutations. Captured and
+generated game shader binaries remain external test artifacts and are not
+committed.

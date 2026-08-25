@@ -1,5 +1,7 @@
 #include <Windows.h>
 #include <d3d12.h>
+#include <d3d12shader.h>
+#include <dxcapi.h>
 #include <dxgi1_6.h>
 #include <wrl/client.h>
 #include <intrin.h>
@@ -11,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <cstdarg>
 #include <cstring>
@@ -26,6 +29,37 @@
 using Microsoft::WRL::ComPtr;
 
 namespace {
+
+HMODULE native_capture_module{};
+INIT_ONCE dxc_reflection_once = INIT_ONCE_STATIC_INIT;
+HMODULE dxcompiler_module{};
+DxcCreateInstanceProc dxc_create_instance{};
+
+BOOL CALLBACK initialize_dxc_reflection(PINIT_ONCE, PVOID, PVOID*) {
+  std::array<wchar_t, 32768> module_path{};
+  const auto length = GetModuleFileNameW(
+      native_capture_module, module_path.data(),
+      static_cast<DWORD>(module_path.size()));
+  if (length == 0 || length >= module_path.size()) {
+    return FALSE;
+  }
+  std::wstring path(module_path.data(), length);
+  const auto separator = path.find_last_of(L"\\/");
+  if (separator == std::wstring::npos) {
+    return FALSE;
+  }
+  path.resize(separator + 1);
+  path += L"dxcompiler.dll";
+  dxcompiler_module = LoadLibraryExW(
+      path.c_str(), nullptr,
+      LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
+  if (!dxcompiler_module) {
+    return FALSE;
+  }
+  dxc_create_instance = reinterpret_cast<DxcCreateInstanceProc>(
+      GetProcAddress(dxcompiler_module, "DxcCreateInstance"));
+  return dxc_create_instance ? TRUE : FALSE;
+}
 
 using ExecuteCommandListsFn = void(STDMETHODCALLTYPE*)(
     ID3D12CommandQueue*, UINT, ID3D12CommandList* const*);
@@ -314,6 +348,13 @@ struct DescriptorHeapInfo {
   std::uint64_t gpu_start{};
 };
 
+struct BufferResourceInfo {
+  ID3D12Resource* resource{};
+  std::uint64_t gpu_start{};
+  std::uint64_t size{};
+  D3D12_HEAP_TYPE heap_type{D3D12_HEAP_TYPE_CUSTOM};
+};
+
 struct TableProvenance {
   std::array<DescriptorInfo, 2> descriptors{};
   UINT descriptor_count{};
@@ -364,6 +405,8 @@ struct CommandTrace {
   std::array<std::uint64_t, kRootSlotCount> graphics_cbvs{};
   std::array<std::uint64_t, kRootSlotCount> graphics_srvs{};
   std::array<std::uint64_t, kRootSlotCount> graphics_uavs{};
+  ID3D12DescriptorHeap* graphics_resource_heap{};
+  ID3D12DescriptorHeap* graphics_sampler_heap{};
   std::uintptr_t compute_root_signature{};
   std::array<std::uint64_t, kRootSlotCount> compute_tables{};
   std::array<std::uint64_t, kRootSlotCount> compute_constants{};
@@ -397,10 +440,20 @@ UINT candidate_frame_eye0_instance_count{};
 struct RootParameterMetadata {
   UINT type{UINT_MAX};
   UINT visibility{};
+  UINT shader_register{UINT_MAX};
+  UINT register_space{UINT_MAX};
   std::uint64_t cbv_count{};
+  std::uint64_t cbv_register_mask{};
+  std::array<UINT, 64> cbv_descriptor_offsets = [] {
+    std::array<UINT, 64> offsets{};
+    offsets.fill(UINT_MAX);
+    return offsets;
+  }();
+  UINT descriptor_table_span{};
   std::uint64_t srv_count{};
   std::uint64_t uav_count{};
   std::uint64_t sampler_count{};
+  bool contains_cbv_b2{};
   std::uint64_t layout_hash{1469598103934665603ULL};
 };
 
@@ -418,6 +471,12 @@ std::unordered_set<std::uintptr_t> logged_root_signatures;
 std::mutex descriptor_mutex;
 std::unordered_map<std::uintptr_t, DescriptorHeapInfo> descriptor_heaps;
 std::unordered_map<std::uint64_t, DescriptorInfo> descriptor_metadata;
+std::mutex buffer_resource_mutex;
+std::vector<BufferResourceInfo> buffer_resources;
+std::unordered_set<std::uint64_t> billboard_tested_cbvs;
+std::mutex billboard_cbv_log_mutex;
+bool billboard_cbv_log_initialized{};
+std::atomic<std::uint64_t> billboard_cbv_log_count{};
 
 struct PsoMetadata {
   char kind{'U'};
@@ -425,6 +484,8 @@ struct PsoMetadata {
   std::uint64_t pixel_shader{};
   std::uint64_t compute_shader{};
   std::uint64_t cached_blob{};
+  bool billboard_shader{};
+  UINT billboard_register{UINT_MAX};
   UINT render_target_count{};
   DXGI_FORMAT render_target_format{DXGI_FORMAT_UNKNOWN};
   DXGI_FORMAT depth_format{DXGI_FORMAT_UNKNOWN};
@@ -557,6 +618,91 @@ std::atomic<bool> gpu_profile_enabled{};
 // mode must be selected before dtvr_install() because MinHook cannot safely add
 // this interdependent hook set after renderer threads are live.
 std::atomic<bool> kInstallDiagnosticRenderHooks{};
+std::atomic<bool> vertex_shader_dump_requested{};
+// Unlike the retired per-draw constant-buffer experiments, shader replacement
+// only needs the three PSO construction hooks. Keep it independently
+// selectable so production XR does not pay for the diagnostic draw hooks.
+std::atomic<bool> billboard_shader_substitution_requested{};
+std::atomic<std::uint64_t> billboard_shader_substitution_count{};
+std::atomic<std::uint64_t> billboard_shader_substitution_reject_count{};
+std::array<std::atomic<std::uint64_t>, 5>
+    billboard_shader_substitution_attempt_counts{};
+std::array<std::atomic<std::uint64_t>, 5>
+    billboard_shader_substitution_applied_counts{};
+std::array<std::atomic<std::uint64_t>, 5>
+    billboard_shader_substitution_validation_reject_counts{};
+std::array<std::atomic<std::uint64_t>, 5>
+    billboard_shader_substitution_creation_reject_counts{};
+std::mutex billboard_shader_replacement_mutex;
+std::unordered_map<std::uint64_t, std::vector<std::uint8_t>>
+    billboard_shader_replacements;
+std::array<std::atomic<float>, 6> billboard_view_basis{};
+std::atomic<bool> billboard_horizon_lock_enabled{};
+std::atomic<bool> billboard_basis_write_enabled{};
+std::atomic<std::uint64_t> billboard_exact_shader_draw_count{};
+std::atomic<std::uint64_t> billboard_exact_pso_draw_count{};
+std::array<std::atomic<std::uint64_t>, kRootSlotCount>
+    billboard_exact_pso_cbv_slot_counts{};
+std::array<std::atomic<std::uint64_t>, kRootSlotCount>
+    billboard_exact_pso_table_slot_counts{};
+std::array<std::atomic<std::uint64_t>, 64>
+    billboard_exact_register_counts{};
+std::array<std::atomic<std::uint64_t>, kRootSlotCount>
+    billboard_exact_vertex_table_slot_counts{};
+std::array<std::atomic<std::uint64_t>, 64>
+    billboard_exact_descriptor_offset_counts{};
+std::array<std::atomic<std::uint64_t>, 64>
+    billboard_exact_table_span_counts{};
+std::atomic<std::uint64_t> billboard_exact_cbv_descriptor_count{};
+std::atomic<std::uint64_t> billboard_exact_buffer_resource_count{};
+std::array<std::atomic<std::uint64_t>, 5> billboard_exact_heap_type_counts{};
+std::atomic<std::uint64_t> billboard_exact_map_success_count{};
+std::atomic<std::uint64_t> billboard_exact_map_failure_count{};
+
+constexpr UINT kBillboardShadowConstantCapacity = 131072;
+constexpr UINT kBillboardShadowDescriptorCapacity = 524288;
+std::mutex billboard_shadow_mutex;
+ComPtr<ID3D12Device> billboard_shadow_device;
+ComPtr<ID3D12DescriptorHeap> billboard_shadow_heap;
+ComPtr<ID3D12Resource> billboard_shadow_constants;
+std::byte* billboard_shadow_mapped{};
+UINT billboard_shadow_descriptor_increment{};
+std::atomic<UINT> billboard_shadow_constant_cursor{};
+std::atomic<UINT> billboard_shadow_descriptor_cursor{};
+std::array<std::atomic<std::uint64_t>, 16>
+    billboard_shadow_stage_counts{};
+std::array<std::atomic<std::uint64_t>, 8>
+    billboard_exact_command_list_type_counts{};
+std::atomic<std::uint64_t> billboard_exact_root_mapping_count{};
+std::atomic<std::uint64_t> billboard_root_metadata_draw_count{};
+std::atomic<std::uint64_t> billboard_table_b2_draw_count{};
+std::atomic<std::uint64_t> billboard_bound_table_b2_draw_count{};
+std::atomic<std::uint64_t> billboard_observed_draw_count{};
+std::atomic<std::uint64_t> billboard_direct_draw_hook_count{};
+std::atomic<std::uint64_t> diagnostic_root_signature_create_count{};
+std::atomic<std::uint64_t> diagnostic_graphics_pso_create_count{};
+std::atomic<std::uint64_t> diagnostic_compute_pso_create_count{};
+std::atomic<std::uint64_t> diagnostic_stream_pso_create_count{};
+std::atomic<std::uint64_t> diagnostic_graphics_pipeline_load_count{};
+std::atomic<std::uint64_t> diagnostic_compute_pipeline_load_count{};
+std::atomic<std::uint64_t> diagnostic_stream_pipeline_load_count{};
+std::atomic<std::uint64_t> billboard_root_b2_candidate_draw_count{};
+std::mutex billboard_candidate_shader_mutex;
+std::unordered_map<std::uint64_t, std::uint64_t>
+    billboard_candidate_shader_counts;
+constexpr std::size_t kBillboardObservedStrideCount = 257;
+std::array<std::array<std::atomic<std::uint64_t>,
+                      kBillboardObservedStrideCount>,
+           2>
+    billboard_observed_stride_counts{};
+std::atomic<std::uint64_t> billboard_stride_candidate_count{};
+std::atomic<std::uint64_t> billboard_b1_bound_count{};
+std::atomic<std::uint64_t> billboard_b2_bound_count{};
+std::atomic<std::uint64_t> billboard_basis_patch_count{};
+std::mutex vertex_shader_dump_mutex;
+std::unordered_set<std::uint64_t> dumped_vertex_shaders;
+std::unordered_set<std::uint64_t> dumped_pipeline_blobs;
+std::unordered_set<std::uint64_t> dumped_pso_shader_mappings;
 
 int capture_present_halves(IDXGISwapChain3* swapchain,
                            ID3D12CommandQueue* queue);
@@ -938,6 +1084,189 @@ std::uint64_t hash_bytes(const void* data, std::size_t size) {
   return hash;
 }
 
+bool is_billboard_vertex_shader(std::uint64_t hash) {
+  constexpr std::array<std::uint64_t, 5> known{
+      0x6e5fa4d1f1e2cd16ULL, 0x25920ba45ba58e76ULL,
+      0xaf848a96a230342aULL, 0x903cb53d8ac05f28ULL,
+      0x13e04962148fc216ULL};
+  return std::find(known.begin(), known.end(), hash) != known.end();
+}
+
+std::optional<std::size_t> billboard_vertex_shader_index(
+    std::uint64_t hash) {
+  constexpr std::array<std::uint64_t, 5> known{
+      0x6e5fa4d1f1e2cd16ULL, 0x25920ba45ba58e76ULL,
+      0xaf848a96a230342aULL, 0x903cb53d8ac05f28ULL,
+      0x13e04962148fc216ULL};
+  const auto found = std::find(known.begin(), known.end(), hash);
+  return found == known.end()
+             ? std::nullopt
+             : std::optional<std::size_t>(found - known.begin());
+}
+
+bool compatible_shader_interfaces(const D3D12_SHADER_BYTECODE& original,
+                                  const D3D12_SHADER_BYTECODE& replacement);
+
+std::wstring native_capture_directory() {
+  std::array<wchar_t, 32768> module_path{};
+  const auto length = GetModuleFileNameW(
+      native_capture_module, module_path.data(),
+      static_cast<DWORD>(module_path.size()));
+  if (length == 0 || length >= module_path.size()) {
+    return {};
+  }
+  std::wstring result(module_path.data(), length);
+  const auto separator = result.find_last_of(L"\\/");
+  if (separator == std::wstring::npos) {
+    return {};
+  }
+  result.resize(separator + 1);
+  return result;
+}
+
+std::vector<std::uint8_t> read_binary_file(const std::wstring& path) {
+  const auto file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                                nullptr, OPEN_EXISTING,
+                                FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (file == INVALID_HANDLE_VALUE) {
+    return {};
+  }
+  LARGE_INTEGER length{};
+  std::vector<std::uint8_t> result;
+  if (GetFileSizeEx(file, &length) && length.QuadPart > 0 &&
+      length.QuadPart <= static_cast<LONGLONG>(64 * 1024 * 1024)) {
+    result.resize(static_cast<std::size_t>(length.QuadPart));
+    DWORD read{};
+    if (!ReadFile(file, result.data(), static_cast<DWORD>(result.size()),
+                  &read, nullptr) || read != result.size()) {
+      result.clear();
+    }
+  }
+  CloseHandle(file);
+  return result;
+}
+
+void load_billboard_shader_replacements() {
+  constexpr std::array<std::uint64_t, 5> known{
+      0x6e5fa4d1f1e2cd16ULL, 0x25920ba45ba58e76ULL,
+      0xaf848a96a230342aULL, 0x903cb53d8ac05f28ULL,
+      0x13e04962148fc216ULL};
+  const auto directory = native_capture_directory();
+  std::scoped_lock lock(billboard_shader_replacement_mutex);
+  billboard_shader_replacements.clear();
+  for (const auto hash : known) {
+    wchar_t name[96]{};
+    swprintf_s(name, L"billboard_shaders\\vs-%016llx.dxil",
+               static_cast<unsigned long long>(hash));
+    auto bytes = read_binary_file(directory + name);
+    if (!bytes.empty()) {
+      billboard_shader_replacements.emplace(hash, std::move(bytes));
+    }
+  }
+}
+
+bool select_billboard_shader_replacement(
+    const D3D12_SHADER_BYTECODE& original,
+    D3D12_SHADER_BYTECODE& replacement) {
+  replacement = original;
+  if (!billboard_shader_substitution_requested.load(
+          std::memory_order_relaxed) ||
+      !original.pShaderBytecode || original.BytecodeLength == 0) {
+    return false;
+  }
+  const auto original_hash = hash_bytes(original.pShaderBytecode,
+                                        original.BytecodeLength);
+  const auto shader_index = billboard_vertex_shader_index(original_hash);
+  if (!shader_index) {
+    return false;
+  }
+  billboard_shader_substitution_attempt_counts[*shader_index].fetch_add(
+      1, std::memory_order_relaxed);
+  std::scoped_lock lock(billboard_shader_replacement_mutex);
+  const auto found = billboard_shader_replacements.find(original_hash);
+  if (found == billboard_shader_replacements.end() || found->second.empty()) {
+    billboard_shader_substitution_reject_count.fetch_add(
+        1, std::memory_order_relaxed);
+    billboard_shader_substitution_validation_reject_counts[*shader_index]
+        .fetch_add(1, std::memory_order_relaxed);
+    return false;
+  }
+  D3D12_SHADER_BYTECODE candidate{found->second.data(), found->second.size()};
+  if (!compatible_shader_interfaces(original, candidate)) {
+    billboard_shader_substitution_reject_count.fetch_add(
+        1, std::memory_order_relaxed);
+    billboard_shader_substitution_validation_reject_counts[*shader_index]
+        .fetch_add(1, std::memory_order_relaxed);
+    return false;
+  }
+  replacement = candidate;
+  return true;
+}
+
+void record_billboard_shader_creation_result(std::uint64_t original_hash,
+                                             bool applied) {
+  const auto shader_index = billboard_vertex_shader_index(original_hash);
+  if (!shader_index) {
+    return;
+  }
+  if (applied) {
+    billboard_shader_substitution_count.fetch_add(1,
+                                                  std::memory_order_relaxed);
+    billboard_shader_substitution_applied_counts[*shader_index].fetch_add(
+        1, std::memory_order_relaxed);
+  } else {
+    billboard_shader_substitution_reject_count.fetch_add(
+        1, std::memory_order_relaxed);
+    billboard_shader_substitution_creation_reject_counts[*shader_index]
+        .fetch_add(1, std::memory_order_relaxed);
+  }
+}
+
+bool cached_blob_contains_billboard_shader(const void* data,
+                                           std::size_t size) {
+  const auto* bytes = static_cast<const std::uint8_t*>(data);
+  if (!bytes || size < 32) {
+    return false;
+  }
+  constexpr std::array<std::uint8_t, 4> magic{'D', 'X', 'B', 'C'};
+  auto read_u32 = [](const std::uint8_t* source) {
+    std::uint32_t value{};
+    std::memcpy(&value, source, sizeof(value));
+    return value;
+  };
+  const auto* cursor = bytes;
+  const auto* end = bytes + size;
+  while (cursor + 32 <= end) {
+    cursor = std::search(cursor, end, magic.begin(), magic.end());
+    if (cursor + 32 > end) {
+      break;
+    }
+    const auto total_size = read_u32(cursor + 24);
+    const auto chunk_count = read_u32(cursor + 28);
+    const auto remaining = static_cast<std::size_t>(end - cursor);
+    bool valid = chunk_count <= 128 &&
+                 total_size >= 32ULL + static_cast<std::uint64_t>(chunk_count) * 4 &&
+                 total_size <= remaining;
+    for (std::uint32_t index = 0; valid && index < chunk_count; ++index) {
+      const auto chunk_offset = read_u32(cursor + 32 + index * 4);
+      if (chunk_offset > total_size || total_size - chunk_offset < 8) {
+        valid = false;
+        break;
+      }
+      const auto chunk_size = read_u32(cursor + chunk_offset + 4);
+      if (chunk_size > total_size - chunk_offset - 8) {
+        valid = false;
+      }
+    }
+    if (valid &&
+        is_billboard_vertex_shader(hash_bytes(cursor, total_size))) {
+      return true;
+    }
+    cursor += 4;
+  }
+  return false;
+}
+
 std::uint64_t mix_u64(std::uint64_t hash, std::uint64_t value) {
   constexpr std::uint64_t prime = 1099511628211ULL;
   for (unsigned shift = 0; shift < 64; shift += 8) {
@@ -950,10 +1279,30 @@ std::uint64_t mix_u64(std::uint64_t hash, std::uint64_t value) {
 void add_descriptor_range(RootParameterMetadata& parameter,
                           D3D12_DESCRIPTOR_RANGE_TYPE type,
                           UINT descriptor_count, UINT shader_register,
-                          UINT register_space, UINT offset, UINT flags) {
+                          UINT register_space, UINT offset, UINT flags,
+                          UINT& append_offset) {
+  const auto resolved_offset =
+      offset == D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND ? append_offset : offset;
+  append_offset = resolved_offset + descriptor_count;
+  parameter.descriptor_table_span =
+      (std::max)(parameter.descriptor_table_span, append_offset);
   switch (type) {
     case D3D12_DESCRIPTOR_RANGE_TYPE_CBV:
       parameter.cbv_count += descriptor_count;
+      if (register_space == 0 && shader_register < 64) {
+        const auto bounded_count =
+            std::min<UINT>(descriptor_count, 64U - shader_register);
+        for (UINT index = 0; index < bounded_count; ++index) {
+          parameter.cbv_register_mask |=
+              1ULL << static_cast<unsigned>(shader_register + index);
+          parameter.cbv_descriptor_offsets[shader_register + index] =
+              resolved_offset + index;
+        }
+      }
+      if (register_space == 0 && shader_register <= 2 &&
+          descriptor_count > 2 - shader_register) {
+        parameter.contains_cbv_b2 = true;
+      }
       break;
     case D3D12_DESCRIPTOR_RANGE_TYPE_SRV:
       parameter.srv_count += descriptor_count;
@@ -1002,6 +1351,7 @@ RootSignatureMetadata inspect_root_signature(const void* data,
       target.layout_hash = mix_u64(target.layout_hash, source.ParameterType);
       target.layout_hash = mix_u64(target.layout_hash, source.ShaderVisibility);
       if (source.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE) {
+        UINT append_offset{};
         for (UINT range = 0; range < source.DescriptorTable.NumDescriptorRanges;
              ++range) {
           const auto& descriptor =
@@ -1010,10 +1360,13 @@ RootSignatureMetadata inspect_root_signature(const void* data,
                                descriptor.NumDescriptors,
                                descriptor.BaseShaderRegister,
                                descriptor.RegisterSpace,
-                               descriptor.OffsetInDescriptorsFromTableStart, 0);
+                               descriptor.OffsetInDescriptorsFromTableStart, 0,
+                               append_offset);
         }
       } else if (source.ParameterType ==
                  D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS) {
+        target.shader_register = source.Constants.ShaderRegister;
+        target.register_space = source.Constants.RegisterSpace;
         target.layout_hash = mix_u64(target.layout_hash,
                                      source.Constants.Num32BitValues);
         target.layout_hash = mix_u64(target.layout_hash,
@@ -1021,6 +1374,8 @@ RootSignatureMetadata inspect_root_signature(const void* data,
         target.layout_hash = mix_u64(target.layout_hash,
                                      source.Constants.RegisterSpace);
       } else {
+        target.shader_register = source.Descriptor.ShaderRegister;
+        target.register_space = source.Descriptor.RegisterSpace;
         target.layout_hash = mix_u64(target.layout_hash,
                                      source.Descriptor.ShaderRegister);
         target.layout_hash = mix_u64(target.layout_hash,
@@ -1040,6 +1395,7 @@ RootSignatureMetadata inspect_root_signature(const void* data,
       target.layout_hash = mix_u64(target.layout_hash, source.ParameterType);
       target.layout_hash = mix_u64(target.layout_hash, source.ShaderVisibility);
       if (source.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE) {
+        UINT append_offset{};
         for (UINT range = 0; range < source.DescriptorTable.NumDescriptorRanges;
              ++range) {
           const auto& descriptor =
@@ -1047,10 +1403,13 @@ RootSignatureMetadata inspect_root_signature(const void* data,
           add_descriptor_range(
               target, descriptor.RangeType, descriptor.NumDescriptors,
               descriptor.BaseShaderRegister, descriptor.RegisterSpace,
-              descriptor.OffsetInDescriptorsFromTableStart, descriptor.Flags);
+              descriptor.OffsetInDescriptorsFromTableStart, descriptor.Flags,
+              append_offset);
         }
       } else if (source.ParameterType ==
                  D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS) {
+        target.shader_register = source.Constants.ShaderRegister;
+        target.register_space = source.Constants.RegisterSpace;
         target.layout_hash = mix_u64(target.layout_hash,
                                      source.Constants.Num32BitValues);
         target.layout_hash = mix_u64(target.layout_hash,
@@ -1058,6 +1417,8 @@ RootSignatureMetadata inspect_root_signature(const void* data,
         target.layout_hash = mix_u64(target.layout_hash,
                                      source.Constants.RegisterSpace);
       } else {
+        target.shader_register = source.Descriptor.ShaderRegister;
+        target.register_space = source.Descriptor.RegisterSpace;
         target.layout_hash = mix_u64(target.layout_hash,
                                      source.Descriptor.ShaderRegister);
         target.layout_hash = mix_u64(target.layout_hash,
@@ -1417,14 +1778,373 @@ std::uint64_t hash_bytecode(const D3D12_SHADER_BYTECODE& bytecode) {
   return hash_bytes(bytecode.pShaderBytecode, bytecode.BytecodeLength);
 }
 
+ComPtr<ID3D12ShaderReflection> reflect_shader(
+    const D3D12_SHADER_BYTECODE& bytecode) {
+  ComPtr<ID3D12ShaderReflection> reflection;
+  if (!bytecode.pShaderBytecode || bytecode.BytecodeLength == 0 ||
+      !InitOnceExecuteOnce(&dxc_reflection_once, initialize_dxc_reflection,
+                           nullptr, nullptr)) {
+    return reflection;
+  }
+  ComPtr<IDxcLibrary> library;
+  ComPtr<IDxcContainerReflection> container;
+  ComPtr<IDxcBlobEncoding> blob;
+  UINT32 part_index{};
+  if (FAILED(dxc_create_instance(CLSID_DxcLibrary,
+                                 IID_PPV_ARGS(&library))) ||
+      FAILED(dxc_create_instance(CLSID_DxcContainerReflection,
+                                 IID_PPV_ARGS(&container))) ||
+      FAILED(library->CreateBlobWithEncodingFromPinned(
+          const_cast<void*>(bytecode.pShaderBytecode),
+          static_cast<UINT32>(bytecode.BytecodeLength), CP_ACP, &blob)) ||
+      FAILED(container->Load(blob.Get())) ||
+      FAILED(container->FindFirstPartKind(DXC_PART_DXIL, &part_index)) ||
+      FAILED(container->GetPartReflection(part_index,
+                                          IID_PPV_ARGS(&reflection)))) {
+    reflection.Reset();
+  }
+  return reflection;
+}
+
+bool compatible_signature_parameter(
+    const D3D12_SIGNATURE_PARAMETER_DESC& left,
+    const D3D12_SIGNATURE_PARAMETER_DESC& right) {
+  return left.SemanticName && right.SemanticName &&
+         _stricmp(left.SemanticName, right.SemanticName) == 0 &&
+         left.SemanticIndex == right.SemanticIndex &&
+         left.Register == right.Register &&
+         left.SystemValueType == right.SystemValueType &&
+         left.ComponentType == right.ComponentType && left.Mask == right.Mask &&
+         left.ReadWriteMask == right.ReadWriteMask &&
+         left.Stream == right.Stream &&
+         left.MinPrecision == right.MinPrecision;
+}
+
+bool compatible_resource_binding(const D3D12_SHADER_INPUT_BIND_DESC& left,
+                                 const D3D12_SHADER_INPUT_BIND_DESC& right) {
+  // Resource names are reflection/debug labels. Root-signature compatibility
+  // is determined by the type, register range, space and resource shape.
+  return left.Type == right.Type && left.BindPoint == right.BindPoint &&
+         left.BindCount == right.BindCount &&
+         left.ReturnType == right.ReturnType &&
+         left.Dimension == right.Dimension &&
+         left.NumSamples == right.NumSamples && left.Space == right.Space;
+}
+
+bool compatible_shader_interfaces(const D3D12_SHADER_BYTECODE& original,
+                                  const D3D12_SHADER_BYTECODE& replacement) {
+  const auto left = reflect_shader(original);
+  const auto right = reflect_shader(replacement);
+  if (!left || !right) {
+    return false;
+  }
+  D3D12_SHADER_DESC left_desc{};
+  D3D12_SHADER_DESC right_desc{};
+  if (FAILED(left->GetDesc(&left_desc)) || FAILED(right->GetDesc(&right_desc)) ||
+      D3D12_SHVER_GET_TYPE(left_desc.Version) !=
+          D3D12_SHVER_GET_TYPE(right_desc.Version) ||
+      left_desc.InputParameters != right_desc.InputParameters ||
+      left_desc.OutputParameters != right_desc.OutputParameters ||
+      left_desc.PatchConstantParameters != right_desc.PatchConstantParameters ||
+      left_desc.BoundResources != right_desc.BoundResources ||
+      left_desc.ConstantBuffers != right_desc.ConstantBuffers) {
+    return false;
+  }
+  for (UINT index = 0; index < left_desc.InputParameters; ++index) {
+    D3D12_SIGNATURE_PARAMETER_DESC a{};
+    D3D12_SIGNATURE_PARAMETER_DESC b{};
+    if (FAILED(left->GetInputParameterDesc(index, &a)) ||
+        FAILED(right->GetInputParameterDesc(index, &b)) ||
+        !compatible_signature_parameter(a, b)) {
+      return false;
+    }
+  }
+  for (UINT index = 0; index < left_desc.OutputParameters; ++index) {
+    D3D12_SIGNATURE_PARAMETER_DESC a{};
+    D3D12_SIGNATURE_PARAMETER_DESC b{};
+    if (FAILED(left->GetOutputParameterDesc(index, &a)) ||
+        FAILED(right->GetOutputParameterDesc(index, &b)) ||
+        !compatible_signature_parameter(a, b)) {
+      return false;
+    }
+  }
+  for (UINT index = 0; index < left_desc.BoundResources; ++index) {
+    D3D12_SHADER_INPUT_BIND_DESC a{};
+    if (FAILED(left->GetResourceBindingDesc(index, &a))) {
+      return false;
+    }
+    bool matched{};
+    for (UINT candidate = 0; candidate < right_desc.BoundResources;
+         ++candidate) {
+      D3D12_SHADER_INPUT_BIND_DESC b{};
+      if (SUCCEEDED(right->GetResourceBindingDesc(candidate, &b)) &&
+          compatible_resource_binding(a, b)) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      return false;
+    }
+  }
+  for (UINT index = 0; index < left_desc.ConstantBuffers; ++index) {
+    auto* left_buffer = left->GetConstantBufferByIndex(index);
+    D3D12_SHADER_BUFFER_DESC left_buffer_desc{};
+    if (!left_buffer || FAILED(left_buffer->GetDesc(&left_buffer_desc))) {
+      return false;
+    }
+    bool matched{};
+    for (UINT candidate = 0; candidate < right_desc.ConstantBuffers;
+         ++candidate) {
+      auto* right_buffer = right->GetConstantBufferByIndex(candidate);
+      D3D12_SHADER_BUFFER_DESC right_buffer_desc{};
+      if (right_buffer && SUCCEEDED(right_buffer->GetDesc(&right_buffer_desc)) &&
+          left_buffer_desc.Size == right_buffer_desc.Size &&
+          left_buffer_desc.Type == right_buffer_desc.Type) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::optional<UINT> reflect_billboard_register(
+    const D3D12_SHADER_BYTECODE& bytecode) {
+  if (!bytecode.pShaderBytecode || bytecode.BytecodeLength == 0) {
+    return std::nullopt;
+  }
+  static std::mutex reflection_cache_mutex;
+  static std::unordered_map<std::uint64_t, UINT> reflection_cache;
+  const auto shader_hash = hash_bytecode(bytecode);
+  std::scoped_lock cache_lock(reflection_cache_mutex);
+  const auto cached = reflection_cache.find(shader_hash);
+  if (cached != reflection_cache.end()) {
+    return cached->second == UINT_MAX
+               ? std::nullopt
+               : std::optional<UINT>(cached->second);
+  }
+  if (!InitOnceExecuteOnce(&dxc_reflection_once, initialize_dxc_reflection,
+                           nullptr, nullptr)) {
+    reflection_cache.emplace(shader_hash, UINT_MAX);
+    return std::nullopt;
+  }
+  ComPtr<IDxcLibrary> library;
+  ComPtr<IDxcContainerReflection> container;
+  if (FAILED(dxc_create_instance(CLSID_DxcLibrary,
+                                 IID_PPV_ARGS(&library))) ||
+      FAILED(dxc_create_instance(CLSID_DxcContainerReflection,
+                                 IID_PPV_ARGS(&container)))) {
+    reflection_cache.emplace(shader_hash, UINT_MAX);
+    return std::nullopt;
+  }
+  ComPtr<IDxcBlobEncoding> blob;
+  if (FAILED(library->CreateBlobWithEncodingFromPinned(
+          const_cast<void*>(bytecode.pShaderBytecode),
+          static_cast<UINT32>(bytecode.BytecodeLength), CP_ACP, &blob)) ||
+      FAILED(container->Load(blob.Get()))) {
+    reflection_cache.emplace(shader_hash, UINT_MAX);
+    return std::nullopt;
+  }
+  UINT32 part_index{};
+  ComPtr<ID3D12ShaderReflection> reflection;
+  if (FAILED(container->FindFirstPartKind(DXC_PART_DXIL, &part_index)) ||
+      FAILED(container->GetPartReflection(part_index,
+                                          IID_PPV_ARGS(&reflection)))) {
+    reflection_cache.emplace(shader_hash, UINT_MAX);
+    return std::nullopt;
+  }
+  D3D12_SHADER_INPUT_BIND_DESC binding{};
+  if (FAILED(
+          reflection->GetResourceBindingDescByName("c_billboard", &binding)) ||
+      binding.Type != D3D_SIT_CBUFFER) {
+    reflection_cache.emplace(shader_hash, UINT_MAX);
+    return std::nullopt;
+  }
+  reflection_cache.emplace(shader_hash, binding.BindPoint);
+  return binding.BindPoint;
+}
+
+void dump_vertex_shader_if_requested(
+    const D3D12_SHADER_BYTECODE& bytecode,
+    const D3D12_INPUT_LAYOUT_DESC* input_layout = nullptr) {
+  if (!bytecode.pShaderBytecode || bytecode.BytecodeLength == 0) {
+    return;
+  }
+  wchar_t enabled[2]{};
+  const auto environment_enabled =
+      GetEnvironmentVariableW(L"DARKTIDEVR_DUMP_VERTEX_SHADERS", enabled,
+                              static_cast<DWORD>(std::size(enabled))) == 1 &&
+      enabled[0] == L'1';
+  if (!vertex_shader_dump_requested.load(std::memory_order_relaxed) &&
+      !environment_enabled) {
+    return;
+  }
+
+  const auto hash = hash_bytecode(bytecode);
+  std::scoped_lock lock(vertex_shader_dump_mutex);
+  if (!dumped_vertex_shaders.insert(hash).second) {
+    return;
+  }
+
+  wchar_t temporary_path[MAX_PATH]{};
+  if (GetTempPathW(MAX_PATH, temporary_path) == 0) {
+    return;
+  }
+  const std::wstring directory =
+      std::wstring(temporary_path) + L"darktidevr-vertex-shaders";
+  CreateDirectoryW(directory.c_str(), nullptr);
+
+  wchar_t file_name[96]{};
+  swprintf_s(file_name, L"\\vs-%016llx.bin",
+             static_cast<unsigned long long>(hash));
+  const auto shader_path = directory + file_name;
+  const auto shader_file =
+      CreateFileW(shader_path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (shader_file != INVALID_HANDLE_VALUE) {
+    DWORD written{};
+    WriteFile(shader_file, bytecode.pShaderBytecode,
+              static_cast<DWORD>(bytecode.BytecodeLength), &written, nullptr);
+    CloseHandle(shader_file);
+  }
+
+  std::string semantics;
+  if (input_layout && input_layout->pInputElementDescs) {
+    for (UINT i = 0; i < input_layout->NumElements; ++i) {
+      const auto& element = input_layout->pInputElementDescs[i];
+      if (!semantics.empty()) {
+        semantics += ',';
+      }
+      semantics += element.SemanticName ? element.SemanticName : "?";
+      semantics += std::to_string(element.SemanticIndex);
+      semantics += ':';
+      semantics += std::to_string(static_cast<unsigned>(element.Format));
+      semantics += '@';
+      semantics += std::to_string(element.InputSlot);
+    }
+  }
+  const auto manifest_path = directory + L"\\manifest.tsv";
+  const auto manifest =
+      CreateFileW(manifest_path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
+                  nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (manifest != INVALID_HANDLE_VALUE) {
+    char line[4096]{};
+    const auto length = snprintf(
+        line, sizeof(line), "%016llx\t%llu\t%s\r\n",
+        static_cast<unsigned long long>(hash),
+        static_cast<unsigned long long>(bytecode.BytecodeLength),
+        semantics.c_str());
+    if (length > 0) {
+      DWORD written{};
+      WriteFile(manifest, line,
+                static_cast<DWORD>((std::min)(length,
+                                              static_cast<int>(sizeof(line)))),
+                &written, nullptr);
+    }
+    CloseHandle(manifest);
+  }
+}
+
+void dump_pipeline_blob_if_requested(ID3D12PipelineState* state) {
+  wchar_t enabled[2]{};
+  const auto requested =
+      GetEnvironmentVariableW(L"DARKTIDEVR_DUMP_PSO_BLOBS", enabled,
+                              static_cast<DWORD>(std::size(enabled))) == 1 &&
+      enabled[0] == L'1';
+  if (!state || !requested) {
+    return;
+  }
+  ComPtr<ID3DBlob> blob;
+  if (FAILED(state->GetCachedBlob(&blob)) || !blob ||
+      blob->GetBufferSize() == 0) {
+    return;
+  }
+  const auto hash = hash_bytes(blob->GetBufferPointer(), blob->GetBufferSize());
+  std::scoped_lock lock(vertex_shader_dump_mutex);
+  if (!dumped_pipeline_blobs.insert(hash).second) {
+    return;
+  }
+  wchar_t temporary_path[MAX_PATH]{};
+  if (GetTempPathW(MAX_PATH, temporary_path) == 0) {
+    return;
+  }
+  const std::wstring directory =
+      std::wstring(temporary_path) + L"darktidevr-vertex-shaders";
+  CreateDirectoryW(directory.c_str(), nullptr);
+  wchar_t file_name[96]{};
+  swprintf_s(file_name, L"\\pso-%016llx.bin",
+             static_cast<unsigned long long>(hash));
+  const auto path = directory + file_name;
+  const auto file =
+      CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (file != INVALID_HANDLE_VALUE) {
+    DWORD written{};
+    WriteFile(file, blob->GetBufferPointer(),
+              static_cast<DWORD>(blob->GetBufferSize()), &written, nullptr);
+    CloseHandle(file);
+  }
+}
+
+void record_pso_shader_mapping_if_requested(ID3D12PipelineState* state,
+                                            PsoMetadata& metadata) {
+  if (!state || metadata.vertex_shader == 0 ||
+      !vertex_shader_dump_requested.load(std::memory_order_relaxed)) {
+    return;
+  }
+  ComPtr<ID3DBlob> blob;
+  if (FAILED(state->GetCachedBlob(&blob)) || !blob ||
+      blob->GetBufferSize() == 0) {
+    return;
+  }
+  metadata.cached_blob =
+      hash_bytes(blob->GetBufferPointer(), blob->GetBufferSize());
+  const auto pair_hash = mix_u64(metadata.vertex_shader, metadata.cached_blob);
+  std::scoped_lock lock(vertex_shader_dump_mutex);
+  if (!dumped_pso_shader_mappings.insert(pair_hash).second) {
+    return;
+  }
+  wchar_t temporary_path[MAX_PATH]{};
+  if (GetTempPathW(MAX_PATH, temporary_path) == 0) {
+    return;
+  }
+  const std::wstring directory =
+      std::wstring(temporary_path) + L"darktidevr-vertex-shaders";
+  CreateDirectoryW(directory.c_str(), nullptr);
+  const auto path = directory + L"\\pso-shader-map.tsv";
+  const auto file =
+      CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, nullptr,
+                  OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (file != INVALID_HANDLE_VALUE) {
+    char line[160]{};
+    const auto length = snprintf(
+        line, sizeof(line), "%016llx\t%016llx\r\n",
+        static_cast<unsigned long long>(metadata.vertex_shader),
+        static_cast<unsigned long long>(metadata.cached_blob));
+    if (length > 0) {
+      DWORD written{};
+      WriteFile(file, line, static_cast<DWORD>(length), &written, nullptr);
+    }
+    CloseHandle(file);
+  }
+}
+
 template <typename T>
 bool read_stream_subobject(const std::uint8_t* stream, std::size_t size,
-                           std::size_t& offset, T& value) {
+                           std::size_t& offset, T& value,
+                           std::size_t* value_offset = nullptr) {
   const auto data_offset =
       (offset + sizeof(D3D12_PIPELINE_STATE_SUBOBJECT_TYPE) + alignof(T) - 1) &
       ~(alignof(T) - 1);
   if (data_offset + sizeof(T) > size) {
     return false;
+  }
+  if (value_offset) {
+    *value_offset = data_offset;
   }
   std::memcpy(&value, stream + data_offset, sizeof(T));
   offset = (data_offset + sizeof(T) + alignof(void*) - 1) &
@@ -1433,7 +2153,9 @@ bool read_stream_subobject(const std::uint8_t* stream, std::size_t size,
 }
 
 PsoMetadata inspect_pipeline_stream(
-    const D3D12_PIPELINE_STATE_STREAM_DESC& description) {
+    const D3D12_PIPELINE_STATE_STREAM_DESC& description,
+    std::vector<std::uint8_t>* replacement_stream = nullptr,
+    bool* substituted = nullptr) {
   PsoMetadata metadata{};
   const auto* stream = static_cast<const std::uint8_t*>(
       description.pPipelineStateSubobjectStream);
@@ -1446,9 +2168,30 @@ PsoMetadata inspect_pipeline_stream(
     switch (type) {
       case D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_VS: {
         D3D12_SHADER_BYTECODE value{};
+        std::size_t value_offset{};
         read = read_stream_subobject(stream, description.SizeInBytes, offset,
-                                     value);
+                                     value, &value_offset);
         metadata.vertex_shader = read ? hash_bytecode(value) : 0;
+        if (read && replacement_stream &&
+            replacement_stream->size() == description.SizeInBytes) {
+          D3D12_SHADER_BYTECODE replacement{};
+          if (select_billboard_shader_replacement(value, replacement)) {
+            std::memcpy(replacement_stream->data() + value_offset,
+                        &replacement, sizeof(replacement));
+            if (substituted) {
+              *substituted = true;
+            }
+          }
+        }
+        if (read) {
+          const auto billboard_register = reflect_billboard_register(value);
+          metadata.billboard_shader = billboard_register.has_value();
+          metadata.billboard_register =
+              billboard_register.value_or(UINT_MAX);
+        }
+        if (read) {
+          dump_vertex_shader_if_requested(value);
+        }
         break;
       }
       case D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS: {
@@ -1564,8 +2307,15 @@ PsoMetadata inspect_pipeline_stream(
       }
       case D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_CACHED_PSO: {
         D3D12_CACHED_PIPELINE_STATE value{};
+        std::size_t value_offset{};
         read = read_stream_subobject(stream, description.SizeInBytes, offset,
-                                     value);
+                                     value, &value_offset);
+        if (read && replacement_stream &&
+            replacement_stream->size() == description.SizeInBytes) {
+          const D3D12_CACHED_PIPELINE_STATE empty{};
+          std::memcpy(replacement_stream->data() + value_offset, &empty,
+                      sizeof(empty));
+        }
         break;
       }
       case D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_FLAGS: {
@@ -1591,10 +2341,43 @@ PsoMetadata inspect_pipeline_stream(
 HRESULT STDMETHODCALLTYPE create_pipeline_state_stream_hook(
     ID3D12Device2* device, const D3D12_PIPELINE_STATE_STREAM_DESC* description,
     REFIID iid, void** output) {
-  const auto result =
-      original_create_pipeline_state_stream(device, description, iid, output);
+  diagnostic_stream_pso_create_count.fetch_add(1, std::memory_order_relaxed);
+  std::vector<std::uint8_t> replacement_stream;
+  D3D12_PIPELINE_STATE_STREAM_DESC replacement_description{};
+  bool substituted{};
+  std::uint64_t original_vertex_shader{};
+  const auto* effective_description = description;
+  if (description && description->pPipelineStateSubobjectStream &&
+      description->SizeInBytes > 0) {
+    const auto* bytes = static_cast<const std::uint8_t*>(
+        description->pPipelineStateSubobjectStream);
+    replacement_stream.assign(bytes, bytes + description->SizeInBytes);
+    original_vertex_shader =
+        inspect_pipeline_stream(*description, &replacement_stream,
+                                &substituted)
+            .vertex_shader;
+    if (substituted) {
+      replacement_description = *description;
+      replacement_description.pPipelineStateSubobjectStream =
+          replacement_stream.data();
+      effective_description = &replacement_description;
+    }
+  }
+  auto result = original_create_pipeline_state_stream(
+      device, effective_description, iid, output);
+  if (FAILED(result) && substituted) {
+    record_billboard_shader_creation_result(original_vertex_shader, false);
+    result = original_create_pipeline_state_stream(device, description, iid,
+                                                   output);
+    substituted = false;
+  }
+  if (SUCCEEDED(result) && substituted) {
+    record_billboard_shader_creation_result(original_vertex_shader, true);
+  }
   if (SUCCEEDED(result) && description && output && *output) {
-    const auto metadata = inspect_pipeline_stream(*description);
+    auto metadata = inspect_pipeline_stream(*description);
+    record_pso_shader_mapping_if_requested(
+        reinterpret_cast<ID3D12PipelineState*>(*output), metadata);
     std::scoped_lock lock(pso_mutex);
     pso_metadata[reinterpret_cast<std::uintptr_t>(*output)] = metadata;
   }
@@ -1604,6 +2387,8 @@ HRESULT STDMETHODCALLTYPE create_pipeline_state_stream_hook(
 HRESULT STDMETHODCALLTYPE create_root_signature_hook(
     ID3D12Device* device, UINT node_mask, const void* data, SIZE_T size,
     REFIID iid, void** output) {
+  diagnostic_root_signature_create_count.fetch_add(1,
+                                                   std::memory_order_relaxed);
   const auto result =
       original_create_root_signature(device, node_mask, data, size, iid, output);
   if (SUCCEEDED(result) && output && *output) {
@@ -1860,6 +2645,17 @@ HRESULT STDMETHODCALLTYPE create_committed_resource_hook(
       description, initial_state,
       properties ? properties->Type : D3D12_HEAP_TYPE_CUSTOM, heap_flags,
       nullptr, 0, result);
+  if (SUCCEEDED(result) && output && *output && description &&
+      description->Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) {
+    auto* resource = reinterpret_cast<ID3D12Resource*>(*output);
+    const auto gpu_start = resource->GetGPUVirtualAddress();
+    if (gpu_start != 0) {
+      std::scoped_lock lock(buffer_resource_mutex);
+      buffer_resources.push_back(BufferResourceInfo{
+          resource, gpu_start, description->Width,
+          properties ? properties->Type : D3D12_HEAP_TYPE_CUSTOM});
+    }
+  }
   return result;
 }
 
@@ -1879,6 +2675,17 @@ HRESULT STDMETHODCALLTYPE create_placed_resource_hook(
       "PLACED", SUCCEEDED(result) && output ? *output : nullptr, description,
       initial_state, heap_description.Properties.Type, heap_description.Flags,
       heap, heap_offset, result);
+  if (SUCCEEDED(result) && output && *output && description &&
+      description->Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) {
+    auto* resource = reinterpret_cast<ID3D12Resource*>(*output);
+    const auto gpu_start = resource->GetGPUVirtualAddress();
+    if (gpu_start != 0) {
+      std::scoped_lock lock(buffer_resource_mutex);
+      buffer_resources.push_back(BufferResourceInfo{
+          resource, gpu_start, description->Width,
+          heap_description.Properties.Type});
+    }
+  }
   return result;
 }
 
@@ -1963,12 +2770,46 @@ void STDMETHODCALLTYPE copy_descriptors_hook(
 HRESULT STDMETHODCALLTYPE create_graphics_pipeline_state_hook(
     ID3D12Device* device, const D3D12_GRAPHICS_PIPELINE_STATE_DESC* description,
     REFIID iid, void** output) {
-  const auto result = original_create_graphics_pipeline_state(
-      device, description, iid, output);
+  diagnostic_graphics_pso_create_count.fetch_add(1,
+                                                 std::memory_order_relaxed);
+  if (description) {
+    dump_vertex_shader_if_requested(description->VS,
+                                    &description->InputLayout);
+  }
+  D3D12_GRAPHICS_PIPELINE_STATE_DESC replacement_description{};
+  D3D12_SHADER_BYTECODE replacement_shader{};
+  bool substituted{};
+  const auto* effective_description = description;
+  if (description && select_billboard_shader_replacement(
+                         description->VS, replacement_shader)) {
+    replacement_description = *description;
+    replacement_description.VS = replacement_shader;
+    // Cached PSO data describes the original shader and must not be offered to
+    // D3D12 after changing the VS.
+    replacement_description.CachedPSO = {};
+    effective_description = &replacement_description;
+    substituted = true;
+  }
+  auto result = original_create_graphics_pipeline_state(
+      device, effective_description, iid, output);
+  if (FAILED(result) && substituted) {
+    record_billboard_shader_creation_result(hash_bytecode(description->VS),
+                                            false);
+    result = original_create_graphics_pipeline_state(device, description, iid,
+                                                     output);
+    substituted = false;
+  }
+  if (SUCCEEDED(result) && substituted) {
+    record_billboard_shader_creation_result(hash_bytecode(description->VS),
+                                            true);
+  }
   if (SUCCEEDED(result) && description && output && *output) {
     PsoMetadata metadata{};
     metadata.kind = 'G';
     metadata.vertex_shader = hash_bytecode(description->VS);
+    const auto billboard_register = reflect_billboard_register(description->VS);
+    metadata.billboard_shader = billboard_register.has_value();
+    metadata.billboard_register = billboard_register.value_or(UINT_MAX);
     metadata.pixel_shader = hash_bytecode(description->PS);
     metadata.render_target_count = description->NumRenderTargets;
     metadata.render_target_format = description->NumRenderTargets > 0
@@ -1978,6 +2819,8 @@ HRESULT STDMETHODCALLTYPE create_graphics_pipeline_state_hook(
     metadata.blend_enabled = description->NumRenderTargets > 0 &&
                              description->BlendState.RenderTarget[0].BlendEnable;
     metadata.depth_enabled = description->DepthStencilState.DepthEnable;
+    record_pso_shader_mapping_if_requested(
+        reinterpret_cast<ID3D12PipelineState*>(*output), metadata);
     std::scoped_lock lock(pso_mutex);
     pso_metadata[reinterpret_cast<std::uintptr_t>(*output)] = metadata;
   }
@@ -1987,6 +2830,8 @@ HRESULT STDMETHODCALLTYPE create_graphics_pipeline_state_hook(
 HRESULT STDMETHODCALLTYPE create_compute_pipeline_state_hook(
     ID3D12Device* device, const D3D12_COMPUTE_PIPELINE_STATE_DESC* description,
     REFIID iid, void** output) {
+  diagnostic_compute_pso_create_count.fetch_add(1,
+                                                std::memory_order_relaxed);
   const auto result = original_create_compute_pipeline_state(
       device, description, iid, output);
   if (SUCCEEDED(result) && description && output && *output) {
@@ -2003,13 +2848,53 @@ HRESULT STDMETHODCALLTYPE load_graphics_pipeline_hook(
     ID3D12PipelineLibrary* library, LPCWSTR name,
     const D3D12_GRAPHICS_PIPELINE_STATE_DESC* description, REFIID iid,
     void** output) {
-  const auto result = original_load_graphics_pipeline(library, name,
-                                                       description, iid,
-                                                       output);
+  diagnostic_graphics_pipeline_load_count.fetch_add(
+      1, std::memory_order_relaxed);
+  if (description) {
+    dump_vertex_shader_if_requested(description->VS,
+                                    &description->InputLayout);
+  }
+  D3D12_GRAPHICS_PIPELINE_STATE_DESC replacement_description{};
+  D3D12_SHADER_BYTECODE replacement_shader{};
+  bool substituted{};
+  const auto* effective_description = description;
+  if (description && select_billboard_shader_replacement(
+                         description->VS, replacement_shader)) {
+    replacement_description = *description;
+    replacement_description.VS = replacement_shader;
+    replacement_description.CachedPSO = {};
+    effective_description = &replacement_description;
+    substituted = true;
+  }
+  HRESULT result{};
+  if (substituted) {
+    ComPtr<ID3D12Device> device;
+    result = FAILED(library->GetDevice(IID_PPV_ARGS(&device)))
+                 ? E_NOINTERFACE
+                 : original_create_graphics_pipeline_state(
+                       device.Get(), effective_description, iid, output);
+  } else {
+    result = original_load_graphics_pipeline(
+        library, name, effective_description, iid, output);
+  }
+  if (FAILED(result) && substituted) {
+    record_billboard_shader_creation_result(hash_bytecode(description->VS),
+                                            false);
+    result = original_load_graphics_pipeline(library, name, description, iid,
+                                             output);
+    substituted = false;
+  }
+  if (SUCCEEDED(result) && substituted) {
+    record_billboard_shader_creation_result(hash_bytecode(description->VS),
+                                            true);
+  }
   if (SUCCEEDED(result) && description && output && *output) {
     PsoMetadata metadata{};
     metadata.kind = 'G';
     metadata.vertex_shader = hash_bytecode(description->VS);
+    const auto billboard_register = reflect_billboard_register(description->VS);
+    metadata.billboard_shader = billboard_register.has_value();
+    metadata.billboard_register = billboard_register.value_or(UINT_MAX);
     metadata.pixel_shader = hash_bytecode(description->PS);
     metadata.render_target_count = description->NumRenderTargets;
     metadata.render_target_format = description->NumRenderTargets > 0
@@ -2019,6 +2904,8 @@ HRESULT STDMETHODCALLTYPE load_graphics_pipeline_hook(
     metadata.blend_enabled = description->NumRenderTargets > 0 &&
                              description->BlendState.RenderTarget[0].BlendEnable;
     metadata.depth_enabled = description->DepthStencilState.DepthEnable;
+    record_pso_shader_mapping_if_requested(
+        reinterpret_cast<ID3D12PipelineState*>(*output), metadata);
     std::scoped_lock lock(pso_mutex);
     pso_metadata[reinterpret_cast<std::uintptr_t>(*output)] = metadata;
   }
@@ -2029,6 +2916,8 @@ HRESULT STDMETHODCALLTYPE load_compute_pipeline_hook(
     ID3D12PipelineLibrary* library, LPCWSTR name,
     const D3D12_COMPUTE_PIPELINE_STATE_DESC* description, REFIID iid,
     void** output) {
+  diagnostic_compute_pipeline_load_count.fetch_add(1,
+                                                   std::memory_order_relaxed);
   const auto result = original_load_compute_pipeline(library, name,
                                                       description, iid,
                                                       output);
@@ -2046,10 +2935,52 @@ HRESULT STDMETHODCALLTYPE load_pipeline_hook(
     ID3D12PipelineLibrary1* library, LPCWSTR name,
     const D3D12_PIPELINE_STATE_STREAM_DESC* description, REFIID iid,
     void** output) {
-  const auto result =
-      original_load_pipeline(library, name, description, iid, output);
+  diagnostic_stream_pipeline_load_count.fetch_add(1,
+                                                  std::memory_order_relaxed);
+  std::vector<std::uint8_t> replacement_stream;
+  D3D12_PIPELINE_STATE_STREAM_DESC replacement_description{};
+  bool substituted{};
+  std::uint64_t original_vertex_shader{};
+  const auto* effective_description = description;
+  if (description && description->pPipelineStateSubobjectStream &&
+      description->SizeInBytes > 0) {
+    const auto* bytes = static_cast<const std::uint8_t*>(
+        description->pPipelineStateSubobjectStream);
+    replacement_stream.assign(bytes, bytes + description->SizeInBytes);
+    original_vertex_shader =
+        inspect_pipeline_stream(*description, &replacement_stream,
+                                &substituted)
+            .vertex_shader;
+    if (substituted) {
+      replacement_description = *description;
+      replacement_description.pPipelineStateSubobjectStream =
+          replacement_stream.data();
+      effective_description = &replacement_description;
+    }
+  }
+  HRESULT result{};
+  if (substituted) {
+    ComPtr<ID3D12Device2> device;
+    result = FAILED(library->GetDevice(IID_PPV_ARGS(&device)))
+                 ? E_NOINTERFACE
+                 : original_create_pipeline_state_stream(
+                       device.Get(), effective_description, iid, output);
+  } else {
+    result = original_load_pipeline(library, name, effective_description, iid,
+                                    output);
+  }
+  if (FAILED(result) && substituted) {
+    record_billboard_shader_creation_result(original_vertex_shader, false);
+    result = original_load_pipeline(library, name, description, iid, output);
+    substituted = false;
+  }
+  if (SUCCEEDED(result) && substituted) {
+    record_billboard_shader_creation_result(original_vertex_shader, true);
+  }
   if (SUCCEEDED(result) && description && output && *output) {
-    const auto metadata = inspect_pipeline_stream(*description);
+    auto metadata = inspect_pipeline_stream(*description);
+    record_pso_shader_mapping_if_requested(
+        reinterpret_cast<ID3D12PipelineState*>(*output), metadata);
     std::scoped_lock lock(pso_mutex);
     pso_metadata[reinterpret_cast<std::uintptr_t>(*output)] = metadata;
   }
@@ -2167,7 +3098,8 @@ HRESULT STDMETHODCALLTYPE close_hook(ID3D12GraphicsCommandList* commands) {
 HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
                                      ID3D12CommandAllocator* allocator,
                                      ID3D12PipelineState* initial_state) {
-  if (marker_log != INVALID_HANDLE_VALUE) {
+  if (marker_log != INVALID_HANDLE_VALUE ||
+      billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
     trace = {};
@@ -2195,11 +3127,654 @@ HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
 
 DescriptorInfo descriptor_snapshot(std::uint64_t handle);
 
+std::optional<BufferResourceInfo> resolve_buffer_resource(
+    std::uint64_t gpu_address) {
+  std::scoped_lock lock(buffer_resource_mutex);
+  for (auto it = buffer_resources.rbegin(); it != buffer_resources.rend(); ++it) {
+    if (gpu_address >= it->gpu_start &&
+        gpu_address - it->gpu_start < it->size) {
+      return *it;
+    }
+  }
+  return std::nullopt;
+}
+
+void observe_billboard_cbv(const DescriptorInfo& descriptor) {
+  if (descriptor.kind != 'C' || descriptor.gpu_address == 0) {
+    return;
+  }
+  billboard_exact_cbv_descriptor_count.fetch_add(1,
+                                                   std::memory_order_relaxed);
+  const auto resource = resolve_buffer_resource(descriptor.gpu_address);
+  if (!resource || !resource->resource) {
+    return;
+  }
+  billboard_exact_buffer_resource_count.fetch_add(1,
+                                                   std::memory_order_relaxed);
+  const auto heap_index = static_cast<std::size_t>(resource->heap_type);
+  if (heap_index < billboard_exact_heap_type_counts.size()) {
+    billboard_exact_heap_type_counts[heap_index].fetch_add(
+        1, std::memory_order_relaxed);
+  }
+
+  bool first_observation{};
+  {
+    std::scoped_lock lock(buffer_resource_mutex);
+    first_observation = billboard_tested_cbvs.insert(
+        descriptor.gpu_address).second;
+  }
+  if (!first_observation) {
+    return;
+  }
+  void* mapped{};
+  const auto resource_offset = descriptor.gpu_address - resource->gpu_start;
+  const auto readable_size = (std::min<std::uint64_t>)(
+      descriptor.width == 0 ? 132 : descriptor.width,
+      resource->size - resource_offset);
+  const D3D12_RANGE cpu_read_range{
+      static_cast<SIZE_T>(resource_offset),
+      static_cast<SIZE_T>(resource_offset + readable_size)};
+  if (SUCCEEDED(resource->resource->Map(0, &cpu_read_range, &mapped)) && mapped) {
+    billboard_exact_map_success_count.fetch_add(1,
+                                                 std::memory_order_relaxed);
+    const auto sample_index =
+        billboard_cbv_log_count.fetch_add(1, std::memory_order_relaxed);
+    if (sample_index < 32 && readable_size >= sizeof(float)) {
+      std::scoped_lock log_lock(billboard_cbv_log_mutex);
+      std::array<wchar_t, MAX_PATH> temp{};
+      if (GetTempPathW(static_cast<DWORD>(temp.size()), temp.data()) != 0) {
+        std::wstring path(temp.data());
+        path += L"darktidevr-billboard-cbv.tsv";
+        const DWORD disposition =
+            billboard_cbv_log_initialized ? OPEN_ALWAYS : CREATE_ALWAYS;
+        HANDLE log = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
+                                 nullptr, disposition, FILE_ATTRIBUTE_NORMAL,
+                                 nullptr);
+        if (log != INVALID_HANDLE_VALUE) {
+          billboard_cbv_log_initialized = true;
+          std::array<char, 4096> line{};
+          int length = std::snprintf(
+              line.data(), line.size(),
+              "%llu\tgpu=%llu\tbase=%llu\toffset=%llu\tcbv_size=%llu\theap=%u",
+              static_cast<unsigned long long>(sample_index),
+              static_cast<unsigned long long>(descriptor.gpu_address),
+              static_cast<unsigned long long>(resource->gpu_start),
+              static_cast<unsigned long long>(resource_offset),
+              static_cast<unsigned long long>(descriptor.width),
+              static_cast<unsigned>(resource->heap_type));
+          const auto float_count = (std::min<std::size_t>)(
+              readable_size / sizeof(float), 33);
+          const auto* values = reinterpret_cast<const float*>(
+              static_cast<const std::byte*>(mapped) + resource_offset);
+          for (std::size_t i = 0; i < float_count && length > 0 &&
+                                  static_cast<std::size_t>(length) < line.size();
+               ++i) {
+            length += std::snprintf(line.data() + length, line.size() - length,
+                                    "\tf%zu=%.9g", i, values[i]);
+          }
+          if (length > 0 && static_cast<std::size_t>(length + 2) < line.size()) {
+            line[length++] = '\r';
+            line[length++] = '\n';
+            DWORD written{};
+            WriteFile(log, line.data(), static_cast<DWORD>(length), &written,
+                      nullptr);
+          }
+          CloseHandle(log);
+        }
+      }
+    }
+    const D3D12_RANGE no_cpu_writes{0, 0};
+    resource->resource->Unmap(0, &no_cpu_writes);
+  } else {
+    billboard_exact_map_failure_count.fetch_add(1,
+                                                 std::memory_order_relaxed);
+  }
+}
+
+std::optional<D3D12_CPU_DESCRIPTOR_HANDLE> descriptor_cpu_handle(
+    ID3D12DescriptorHeap* heap, std::uint64_t gpu_handle) {
+  if (!heap || gpu_handle == 0) {
+    return std::nullopt;
+  }
+  std::scoped_lock lock(descriptor_mutex);
+  const auto found =
+      descriptor_heaps.find(reinterpret_cast<std::uintptr_t>(heap));
+  if (found == descriptor_heaps.end() || found->second.gpu_start == 0 ||
+      found->second.increment == 0 || gpu_handle < found->second.gpu_start) {
+    return std::nullopt;
+  }
+  const auto byte_offset = gpu_handle - found->second.gpu_start;
+  if (byte_offset % found->second.increment != 0 ||
+      byte_offset >= static_cast<std::uint64_t>(found->second.descriptor_count) *
+                         found->second.increment) {
+    return std::nullopt;
+  }
+  return D3D12_CPU_DESCRIPTOR_HANDLE{found->second.cpu_start + byte_offset};
+}
+
+bool ensure_billboard_shadow_resources(ID3D12Device* device) {
+  std::scoped_lock lock(billboard_shadow_mutex);
+  if (billboard_shadow_device) {
+    return billboard_shadow_device.Get() == device && billboard_shadow_heap &&
+           billboard_shadow_constants && billboard_shadow_mapped;
+  }
+  if (!device) {
+    return false;
+  }
+
+  D3D12_DESCRIPTOR_HEAP_DESC heap_description{};
+  heap_description.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+  heap_description.NumDescriptors = kBillboardShadowDescriptorCapacity;
+  heap_description.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+  ComPtr<ID3D12DescriptorHeap> heap;
+  if (FAILED(device->CreateDescriptorHeap(&heap_description,
+                                           IID_PPV_ARGS(&heap)))) {
+    return false;
+  }
+
+  D3D12_HEAP_PROPERTIES properties{};
+  properties.Type = D3D12_HEAP_TYPE_UPLOAD;
+  D3D12_RESOURCE_DESC resource_description{};
+  resource_description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+  resource_description.Width =
+      static_cast<UINT64>(kBillboardShadowConstantCapacity) * 256;
+  resource_description.Height = 1;
+  resource_description.DepthOrArraySize = 1;
+  resource_description.MipLevels = 1;
+  resource_description.SampleDesc.Count = 1;
+  resource_description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+  ComPtr<ID3D12Resource> constants;
+  if (FAILED(device->CreateCommittedResource(
+          &properties, D3D12_HEAP_FLAG_NONE, &resource_description,
+          D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+          IID_PPV_ARGS(&constants)))) {
+    return false;
+  }
+  void* mapped{};
+  const D3D12_RANGE no_cpu_reads{0, 0};
+  if (FAILED(constants->Map(0, &no_cpu_reads, &mapped)) || !mapped) {
+    return false;
+  }
+
+  billboard_shadow_device = device;
+  billboard_shadow_heap = std::move(heap);
+  billboard_shadow_constants = std::move(constants);
+  billboard_shadow_mapped = static_cast<std::byte*>(mapped);
+  billboard_shadow_descriptor_increment = device->GetDescriptorHandleIncrementSize(
+      D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+  return billboard_shadow_descriptor_increment != 0;
+}
+
+struct BillboardBindingOverride {
+  bool active{};
+  ID3D12DescriptorHeap* original_resource_heap{};
+  ID3D12DescriptorHeap* original_sampler_heap{};
+  struct Table {
+    UINT root_index{};
+    D3D12_GPU_DESCRIPTOR_HANDLE original{};
+    D3D12_GPU_DESCRIPTOR_HANDLE replacement{};
+  };
+  std::array<Table, kRootSlotCount> tables{};
+  UINT table_count{};
+};
+
+BillboardBindingOverride begin_billboard_binding_override(
+    ID3D12GraphicsCommandList* commands, std::uintptr_t root_signature,
+    UINT billboard_table_index, UINT billboard_table_offset,
+    const DescriptorInfo& source_descriptor,
+    const std::array<std::uint64_t, kRootSlotCount>& graphics_tables,
+    ID3D12DescriptorHeap* original_resource_heap,
+    ID3D12DescriptorHeap* original_sampler_heap) {
+  BillboardBindingOverride result{};
+  billboard_shadow_stage_counts[0].fetch_add(1, std::memory_order_relaxed);
+  const auto fail = [&](std::size_t stage) {
+    billboard_shadow_stage_counts[stage].fetch_add(1,
+                                                   std::memory_order_relaxed);
+    return result;
+  };
+  if (!commands || !original_resource_heap || source_descriptor.kind != 'C' ||
+      source_descriptor.gpu_address == 0) {
+    return fail(1);
+  }
+
+  RootSignatureMetadata metadata{};
+  {
+    std::scoped_lock lock(root_signature_mutex);
+    const auto found = root_signature_metadata.find(root_signature);
+    if (found == root_signature_metadata.end()) {
+      return fail(2);
+    }
+    metadata = found->second;
+  }
+
+  UINT descriptor_count{};
+  for (UINT i = 0; i < metadata.parameter_count; ++i) {
+    const auto& parameter = metadata.parameters[i];
+    if (parameter.type != D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE ||
+        graphics_tables[i] == 0) {
+      continue;
+    }
+    if (parameter.sampler_count != 0) {
+      // A descriptor table cannot mix sampler and resource ranges. Preserve it
+      // on the original sampler heap while replacing only the resource heap.
+      if (parameter.cbv_count != 0 || parameter.srv_count != 0 ||
+          parameter.uav_count != 0 || !original_sampler_heap) {
+        return fail(3);
+      }
+      continue;
+    }
+    if (parameter.descriptor_table_span == 0) {
+      return fail(3);
+    }
+    descriptor_count += parameter.descriptor_table_span;
+  }
+  if (descriptor_count == 0) {
+    return fail(4);
+  }
+
+  ComPtr<ID3D12Device> device;
+  if (FAILED(commands->GetDevice(IID_PPV_ARGS(&device))) ||
+      !ensure_billboard_shadow_resources(device.Get())) {
+    return fail(5);
+  }
+  const UINT constant_index =
+      billboard_shadow_constant_cursor.fetch_add(1, std::memory_order_relaxed);
+  const UINT descriptor_start = billboard_shadow_descriptor_cursor.fetch_add(
+      descriptor_count, std::memory_order_relaxed);
+  if (constant_index >= kBillboardShadowConstantCapacity ||
+      descriptor_start > kBillboardShadowDescriptorCapacity - descriptor_count) {
+    return fail(6);
+  }
+
+  const auto source_resource =
+      resolve_buffer_resource(source_descriptor.gpu_address);
+  if (!source_resource || !source_resource->resource) {
+    return fail(7);
+  }
+  const auto source_offset =
+      source_descriptor.gpu_address - source_resource->gpu_start;
+  if (source_offset > source_resource->size ||
+      source_resource->size - source_offset < 132) {
+    return fail(8);
+  }
+  void* source_mapped{};
+  const D3D12_RANGE source_read{
+      static_cast<SIZE_T>(source_offset),
+      static_cast<SIZE_T>(source_offset +
+                          (std::min<std::uint64_t>)(256,
+                              source_resource->size - source_offset))};
+  if (FAILED(source_resource->resource->Map(0, &source_read, &source_mapped)) ||
+      !source_mapped) {
+    return fail(9);
+  }
+  auto* shadow = billboard_shadow_mapped +
+                 static_cast<std::size_t>(constant_index) * 256;
+  const auto copy_size = (std::min<std::uint64_t>)(
+      256, source_resource->size - source_offset);
+  std::memset(shadow, 0, 256);
+  std::memcpy(shadow, static_cast<const std::byte*>(source_mapped) + source_offset,
+              static_cast<std::size_t>(copy_size));
+  const D3D12_RANGE no_cpu_writes{0, 0};
+  source_resource->resource->Unmap(0, &no_cpu_writes);
+
+  constexpr std::array<std::size_t, 6> float_indices{0, 1, 2, 8, 9, 10};
+  auto* shadow_floats = reinterpret_cast<float*>(shadow);
+  for (std::size_t i = 0; i < float_indices.size(); ++i) {
+    shadow_floats[float_indices[i]] =
+        billboard_view_basis[i].load(std::memory_order_relaxed);
+  }
+
+  const auto private_cpu_start =
+      billboard_shadow_heap->GetCPUDescriptorHandleForHeapStart();
+  const auto private_gpu_start =
+      billboard_shadow_heap->GetGPUDescriptorHandleForHeapStart();
+  UINT destination_offset = descriptor_start;
+  D3D12_CPU_DESCRIPTOR_HANDLE billboard_cpu{};
+  for (UINT i = 0; i < metadata.parameter_count; ++i) {
+    const auto& parameter = metadata.parameters[i];
+    if (parameter.type != D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE ||
+        graphics_tables[i] == 0) {
+      continue;
+    }
+    if (parameter.sampler_count != 0) {
+      const D3D12_GPU_DESCRIPTOR_HANDLE original{graphics_tables[i]};
+      result.tables[result.table_count++] = BillboardBindingOverride::Table{
+          i, original, original};
+      continue;
+    }
+    const auto source_cpu = descriptor_cpu_handle(
+        original_resource_heap, graphics_tables[i]);
+    if (!source_cpu) {
+      return fail(10);
+    }
+    D3D12_CPU_DESCRIPTOR_HANDLE destination_cpu{
+        private_cpu_start.ptr + static_cast<std::uint64_t>(destination_offset) *
+                                    billboard_shadow_descriptor_increment};
+    device->CopyDescriptorsSimple(
+        parameter.descriptor_table_span, destination_cpu, *source_cpu,
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    if (i == billboard_table_index) {
+      billboard_cpu.ptr =
+          destination_cpu.ptr +
+          static_cast<std::uint64_t>(billboard_table_offset) *
+              billboard_shadow_descriptor_increment;
+    }
+    const D3D12_GPU_DESCRIPTOR_HANDLE original{graphics_tables[i]};
+    const D3D12_GPU_DESCRIPTOR_HANDLE replacement{
+        private_gpu_start.ptr +
+        static_cast<std::uint64_t>(destination_offset) *
+            billboard_shadow_descriptor_increment};
+    result.tables[result.table_count++] = BillboardBindingOverride::Table{
+        i, original, replacement};
+    destination_offset += parameter.descriptor_table_span;
+  }
+  if (billboard_cpu.ptr == 0) {
+    return fail(11);
+  }
+  D3D12_CONSTANT_BUFFER_VIEW_DESC shadow_cbv{};
+  shadow_cbv.BufferLocation = billboard_shadow_constants->GetGPUVirtualAddress() +
+                              static_cast<UINT64>(constant_index) * 256;
+  shadow_cbv.SizeInBytes = 256;
+  device->CreateConstantBufferView(&shadow_cbv, billboard_cpu);
+
+  std::array<ID3D12DescriptorHeap*, 2> replacement_heaps{
+      billboard_shadow_heap.Get(), original_sampler_heap};
+  original_set_descriptor_heaps(commands, original_sampler_heap ? 2U : 1U,
+                                replacement_heaps.data());
+  for (UINT i = 0; i < result.table_count; ++i) {
+    original_set_graphics_root_descriptor_table(
+        commands, result.tables[i].root_index, result.tables[i].replacement);
+  }
+  result.active = true;
+  result.original_resource_heap = original_resource_heap;
+  result.original_sampler_heap = original_sampler_heap;
+  billboard_basis_patch_count.fetch_add(1, std::memory_order_relaxed);
+  billboard_shadow_stage_counts[12].fetch_add(1, std::memory_order_relaxed);
+  return result;
+}
+
+void end_billboard_binding_override(ID3D12GraphicsCommandList* commands,
+                                    const BillboardBindingOverride& state) {
+  if (!state.active) {
+    return;
+  }
+  std::array<ID3D12DescriptorHeap*, 2> original_heaps{
+      state.original_resource_heap, state.original_sampler_heap};
+  original_set_descriptor_heaps(commands,
+                                state.original_sampler_heap ? 2U : 1U,
+                                original_heaps.data());
+  for (UINT i = 0; i < state.table_count; ++i) {
+    original_set_graphics_root_descriptor_table(
+        commands, state.tables[i].root_index, state.tables[i].original);
+  }
+}
+
+bool apply_billboard_in_place_descriptor_override(
+    ID3D12GraphicsCommandList* commands, UINT billboard_table_offset,
+    const DescriptorInfo& source_descriptor, std::uint64_t table_gpu_handle,
+    ID3D12DescriptorHeap* original_resource_heap) {
+  billboard_shadow_stage_counts[0].fetch_add(1, std::memory_order_relaxed);
+  const auto fail = [](std::size_t stage) {
+    billboard_shadow_stage_counts[stage].fetch_add(1,
+                                                   std::memory_order_relaxed);
+    return false;
+  };
+  if (!commands || !original_resource_heap || table_gpu_handle == 0 ||
+      source_descriptor.kind != 'C' || source_descriptor.gpu_address == 0) {
+    return fail(1);
+  }
+  ComPtr<ID3D12Device> device;
+  if (FAILED(commands->GetDevice(IID_PPV_ARGS(&device))) ||
+      !ensure_billboard_shadow_resources(device.Get())) {
+    return fail(5);
+  }
+  const UINT constant_index =
+      billboard_shadow_constant_cursor.fetch_add(1, std::memory_order_relaxed);
+  if (constant_index >= kBillboardShadowConstantCapacity) {
+    return fail(6);
+  }
+  const auto source_resource =
+      resolve_buffer_resource(source_descriptor.gpu_address);
+  if (!source_resource || !source_resource->resource) {
+    return fail(7);
+  }
+  const auto source_offset =
+      source_descriptor.gpu_address - source_resource->gpu_start;
+  if (source_offset > source_resource->size ||
+      source_resource->size - source_offset < 132) {
+    return fail(8);
+  }
+  void* source_mapped{};
+  const D3D12_RANGE source_read{
+      static_cast<SIZE_T>(source_offset),
+      static_cast<SIZE_T>(source_offset +
+                          (std::min<std::uint64_t>)(256,
+                              source_resource->size - source_offset))};
+  if (FAILED(source_resource->resource->Map(0, &source_read, &source_mapped)) ||
+      !source_mapped) {
+    return fail(9);
+  }
+  auto* shadow = billboard_shadow_mapped +
+                 static_cast<std::size_t>(constant_index) * 256;
+  const auto copy_size = (std::min<std::uint64_t>)(
+      256, source_resource->size - source_offset);
+  std::memset(shadow, 0, 256);
+  std::memcpy(shadow, static_cast<const std::byte*>(source_mapped) + source_offset,
+              static_cast<std::size_t>(copy_size));
+  const D3D12_RANGE no_cpu_writes{0, 0};
+  source_resource->resource->Unmap(0, &no_cpu_writes);
+
+  constexpr std::array<std::size_t, 6> float_indices{0, 1, 2, 8, 9, 10};
+  auto* shadow_floats = reinterpret_cast<float*>(shadow);
+  for (std::size_t i = 0; i < float_indices.size(); ++i) {
+    shadow_floats[float_indices[i]] =
+        billboard_view_basis[i].load(std::memory_order_relaxed);
+  }
+
+  auto destination_cpu =
+      descriptor_cpu_handle(original_resource_heap, table_gpu_handle);
+  if (!destination_cpu) {
+    return fail(10);
+  }
+  const UINT increment = device->GetDescriptorHandleIncrementSize(
+      D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+  destination_cpu->ptr +=
+      static_cast<std::uint64_t>(billboard_table_offset) * increment;
+  D3D12_CONSTANT_BUFFER_VIEW_DESC shadow_cbv{};
+  shadow_cbv.BufferLocation = billboard_shadow_constants->GetGPUVirtualAddress() +
+                              static_cast<UINT64>(constant_index) * 256;
+  shadow_cbv.SizeInBytes = 256;
+  device->CreateConstantBufferView(&shadow_cbv, *destination_cpu);
+  billboard_basis_patch_count.fetch_add(1, std::memory_order_relaxed);
+  billboard_shadow_stage_counts[13].fetch_add(1, std::memory_order_relaxed);
+  return true;
+}
+
+BillboardBindingOverride apply_billboard_view_basis(
+    ID3D12GraphicsCommandList* commands) {
+  BillboardBindingOverride override_state{};
+  if (!billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) {
+    return override_state;
+  }
+  constexpr std::array<std::uint64_t, 5> kBillboardVertexShaders{
+      0x6e5fa4d1f1e2cd16ULL, 0x25920ba45ba58e76ULL,
+      0xaf848a96a230342aULL, 0x903cb53d8ac05f28ULL,
+      0x13e04962148fc216ULL};
+  std::uintptr_t pipeline{};
+  std::uintptr_t root_signature{};
+  std::array<std::uint64_t, kRootSlotCount> graphics_tables{};
+  std::array<std::uint64_t, kRootSlotCount> graphics_cbvs{};
+  std::array<D3D12_VERTEX_BUFFER_VIEW, 8> vertex_buffers{};
+  ID3D12DescriptorHeap* graphics_resource_heap{};
+  ID3D12DescriptorHeap* graphics_sampler_heap{};
+  {
+    std::scoped_lock lock(trace_mutex);
+    const auto found = command_traces.find(commands);
+    if (found == command_traces.end()) {
+      return override_state;
+    }
+    pipeline = found->second.pso;
+    root_signature = found->second.root_signature;
+    graphics_tables = found->second.graphics_tables;
+    graphics_cbvs = found->second.graphics_cbvs;
+    vertex_buffers = found->second.vertex_buffers;
+    graphics_resource_heap = found->second.graphics_resource_heap;
+    graphics_sampler_heap = found->second.graphics_sampler_heap;
+  }
+  billboard_observed_draw_count.fetch_add(1, std::memory_order_relaxed);
+  for (std::size_t slot = 0; slot < billboard_observed_stride_counts.size();
+       ++slot) {
+    const auto stride = vertex_buffers[slot].StrideInBytes;
+    if (stride < kBillboardObservedStrideCount) {
+      billboard_observed_stride_counts[slot][stride].fetch_add(
+          1, std::memory_order_relaxed);
+    }
+  }
+  // The old particle-layout selector is retained only as a census. Shader
+  // reflection proved that billboard permutations use several input layouts,
+  // so layout must not gate the exact c_billboard PSO classifier.
+  if (vertex_buffers[0].StrideInBytes == 8 &&
+      (vertex_buffers[1].StrideInBytes == 4 ||
+       vertex_buffers[1].StrideInBytes == 8)) {
+    billboard_exact_shader_draw_count.fetch_add(1, std::memory_order_relaxed);
+  }
+  (void)kBillboardVertexShaders;
+
+  bool billboard_pso{};
+  UINT billboard_register = UINT_MAX;
+  {
+    std::scoped_lock lock(pso_mutex);
+    const auto found = pso_metadata.find(pipeline);
+    if (found != pso_metadata.end()) {
+      billboard_pso = found->second.billboard_shader ||
+                      is_billboard_vertex_shader(found->second.vertex_shader);
+      billboard_register = found->second.billboard_register;
+      if (billboard_register == UINT_MAX &&
+          is_billboard_vertex_shader(found->second.vertex_shader)) {
+        billboard_register = 2;
+      }
+    }
+  }
+  if (!billboard_pso || billboard_register == UINT_MAX) {
+    return override_state;
+  }
+  billboard_exact_pso_draw_count.fetch_add(1, std::memory_order_relaxed);
+  const auto command_list_type = static_cast<std::size_t>(commands->GetType());
+  if (command_list_type < billboard_exact_command_list_type_counts.size()) {
+    billboard_exact_command_list_type_counts[command_list_type].fetch_add(
+        1, std::memory_order_relaxed);
+  }
+  if (billboard_register < billboard_exact_register_counts.size()) {
+    billboard_exact_register_counts[billboard_register].fetch_add(
+        1, std::memory_order_relaxed);
+  }
+  for (std::size_t slot = 0; slot < kRootSlotCount; ++slot) {
+    if (graphics_cbvs[slot] != 0) {
+      billboard_exact_pso_cbv_slot_counts[slot].fetch_add(
+          1, std::memory_order_relaxed);
+    }
+    if (graphics_tables[slot] != 0) {
+      billboard_exact_pso_table_slot_counts[slot].fetch_add(
+          1, std::memory_order_relaxed);
+    }
+  }
+
+  UINT billboard_root_index = UINT_MAX;
+  UINT billboard_table_index = UINT_MAX;
+  UINT billboard_table_offset = UINT_MAX;
+  UINT billboard_table_span = UINT_MAX;
+  UINT billboard_table_visibility_score{};
+  {
+    std::scoped_lock lock(root_signature_mutex);
+    const auto found = root_signature_metadata.find(root_signature);
+    if (found == root_signature_metadata.end()) {
+      return override_state;
+    }
+    billboard_root_metadata_draw_count.fetch_add(1,
+                                                  std::memory_order_relaxed);
+    const auto& metadata = found->second;
+    for (UINT i = 0; i < metadata.parameter_count; ++i) {
+      const auto& parameter = metadata.parameters[i];
+      if (parameter.type == D3D12_ROOT_PARAMETER_TYPE_CBV &&
+          parameter.shader_register == billboard_register &&
+          parameter.register_space == 0) {
+        billboard_root_index = i;
+        break;
+      }
+      if (parameter.type == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE &&
+          billboard_register < 64 &&
+          (parameter.cbv_register_mask &
+            (1ULL << static_cast<unsigned>(billboard_register))) != 0) {
+        // c_billboard is reflected from the vertex shader. Registers are
+        // stage-local, so a pixel-visible table containing the same b-register
+        // is not the same binding. Prefer vertex-only visibility, then ALL.
+        const UINT visibility_score =
+            parameter.visibility == D3D12_SHADER_VISIBILITY_VERTEX
+                ? 2U
+                : (parameter.visibility == D3D12_SHADER_VISIBILITY_ALL ? 1U
+                                                                       : 0U);
+        if (visibility_score > billboard_table_visibility_score) {
+          billboard_table_visibility_score = visibility_score;
+          billboard_table_index = i;
+          billboard_table_offset =
+              parameter.cbv_descriptor_offsets[billboard_register];
+          billboard_table_span = parameter.descriptor_table_span;
+        }
+      }
+    }
+  }
+  DescriptorInfo billboard_descriptor{};
+  if (billboard_table_index != UINT_MAX) {
+    billboard_table_b2_draw_count.fetch_add(1, std::memory_order_relaxed);
+    billboard_exact_vertex_table_slot_counts[billboard_table_index].fetch_add(
+        1, std::memory_order_relaxed);
+    if (billboard_table_offset <
+        billboard_exact_descriptor_offset_counts.size()) {
+      billboard_exact_descriptor_offset_counts[billboard_table_offset].fetch_add(
+          1, std::memory_order_relaxed);
+    }
+    if (billboard_table_span < billboard_exact_table_span_counts.size()) {
+      billboard_exact_table_span_counts[billboard_table_span].fetch_add(
+          1, std::memory_order_relaxed);
+    }
+    if (graphics_tables[billboard_table_index] != 0) {
+      billboard_bound_table_b2_draw_count.fetch_add(
+          1, std::memory_order_relaxed);
+      const auto provenance = resolve_table_provenance(
+          root_signature, billboard_table_index,
+          graphics_tables[billboard_table_index]);
+      if (billboard_table_offset < provenance.descriptors.size()) {
+        billboard_descriptor = provenance.descriptors[billboard_table_offset];
+        observe_billboard_cbv(billboard_descriptor);
+      }
+    }
+  }
+  if (!billboard_basis_write_enabled.load(std::memory_order_relaxed)) {
+    return override_state;
+  }
+  if (billboard_table_index != UINT_MAX && billboard_descriptor.kind == 'C') {
+    apply_billboard_in_place_descriptor_override(
+        commands, billboard_table_offset, billboard_descriptor,
+        graphics_tables[billboard_table_index], graphics_resource_heap);
+    return override_state;
+  }
+  if (billboard_root_index != UINT_MAX &&
+      graphics_cbvs[billboard_root_index] != 0) {
+    // A direct-root CBV can use the same shadow allocation with a temporary
+    // SetGraphicsRootConstantBufferView override. No live c_billboard draw uses
+    // this path yet, so keep it fail-closed until observed and tested.
+    billboard_exact_root_mapping_count.fetch_add(1,
+                                                   std::memory_order_relaxed);
+  }
+  return override_state;
+}
+
 void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
                                            UINT vertex_count,
                                            UINT instance_count,
                                            UINT start_vertex,
                                            UINT start_instance) {
+  billboard_direct_draw_hook_count.fetch_add(1, std::memory_order_relaxed);
   if (marker_log != INVALID_HANDLE_VALUE) {
     std::scoped_lock lock(trace_mutex);
     observe_table4_draw(commands, 0, vertex_count, instance_count,
@@ -2251,13 +3826,16 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
       }
     }
   }
+  const auto billboard_override = apply_billboard_view_basis(commands);
   original_draw_instanced(commands, vertex_count, instance_count, start_vertex,
                           start_instance);
+  end_billboard_binding_override(commands, billboard_override);
 }
 
 void STDMETHODCALLTYPE draw_indexed_instanced_hook(
     ID3D12GraphicsCommandList* commands, UINT index_count, UINT instance_count,
     UINT start_index, INT base_vertex, UINT start_instance) {
+  billboard_direct_draw_hook_count.fetch_add(1, std::memory_order_relaxed);
   auto submitted_instance_count = instance_count;
   if (marker_log != INVALID_HANDLE_VALUE) {
     std::scoped_lock lock(trace_mutex);
@@ -2275,9 +3853,11 @@ void STDMETHODCALLTYPE draw_indexed_instanced_hook(
         commands, index_count, instance_count, start_index, base_vertex,
         start_instance);
   }
+  const auto billboard_override = apply_billboard_view_basis(commands);
   original_draw_indexed_instanced(commands, index_count,
                                   submitted_instance_count, start_index,
                                   base_vertex, start_instance);
+  end_billboard_binding_override(commands, billboard_override);
 }
 
 void STDMETHODCALLTYPE dispatch_hook(ID3D12GraphicsCommandList* commands,
@@ -2452,7 +4032,9 @@ void STDMETHODCALLTYPE ia_set_index_buffer_hook(
 void STDMETHODCALLTYPE ia_set_vertex_buffers_hook(
     ID3D12GraphicsCommandList* commands, UINT start_slot, UINT count,
     const D3D12_VERTEX_BUFFER_VIEW* views) {
-  if (marker_log != INVALID_HANDLE_VALUE && start_slot < 8) {
+  if ((marker_log != INVALID_HANDLE_VALUE ||
+       billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) &&
+      start_slot < 8) {
     std::scoped_lock lock(trace_mutex);
     auto& buffers = command_traces[commands].vertex_buffers;
     const auto end_slot = (std::min)(start_slot + count, 8U);
@@ -2466,7 +4048,9 @@ void STDMETHODCALLTYPE ia_set_vertex_buffers_hook(
 
 void STDMETHODCALLTYPE set_pipeline_state_hook(
     ID3D12GraphicsCommandList* commands, ID3D12PipelineState* state) {
-  if (marker_log != INVALID_HANDLE_VALUE) {
+  dump_pipeline_blob_if_requested(state);
+  if (marker_log != INVALID_HANDLE_VALUE ||
+      billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) {
     bool metadata_missing{};
     {
       std::scoped_lock lock(pso_mutex);
@@ -2480,6 +4064,8 @@ void STDMETHODCALLTYPE set_pipeline_state_hook(
       if (SUCCEEDED(state->GetCachedBlob(&blob)) && blob) {
         metadata.cached_blob =
             hash_bytes(blob->GetBufferPointer(), blob->GetBufferSize());
+        metadata.billboard_shader = cached_blob_contains_billboard_shader(
+            blob->GetBufferPointer(), blob->GetBufferSize());
       }
       std::scoped_lock lock(pso_mutex);
       pso_metadata.emplace(reinterpret_cast<std::uintptr_t>(state), metadata);
@@ -2499,6 +4085,24 @@ void STDMETHODCALLTYPE set_pipeline_state_hook(
 void STDMETHODCALLTYPE set_descriptor_heaps_hook(
     ID3D12GraphicsCommandList* commands, UINT heap_count,
     ID3D12DescriptorHeap* const* heaps) {
+  // This hook exists only in the diagnostic renderer set. Stingray can bind a
+  // long-lived heap before Lua enables a particular probe, so provenance must
+  // be retained from the first intercepted SetDescriptorHeaps call.
+  {
+    std::scoped_lock lock(trace_mutex);
+    auto& trace = command_traces[commands];
+    for (UINT i = 0; heaps && i < heap_count; ++i) {
+      if (!heaps[i]) {
+        continue;
+      }
+      const auto description = heaps[i]->GetDesc();
+      if (description.Type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) {
+        trace.graphics_resource_heap = heaps[i];
+      } else if (description.Type == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) {
+        trace.graphics_sampler_heap = heaps[i];
+      }
+    }
+  }
   for (UINT i = 0; heaps && i < heap_count; ++i) {
     ComPtr<ID3D12Device> device;
     if (heaps[i] &&
@@ -2512,7 +4116,8 @@ void STDMETHODCALLTYPE set_descriptor_heaps_hook(
 void STDMETHODCALLTYPE set_graphics_root_signature_hook(
     ID3D12GraphicsCommandList* commands, ID3D12RootSignature* signature) {
   const auto signature_address = reinterpret_cast<std::uintptr_t>(signature);
-  if (marker_log != INVALID_HANDLE_VALUE) {
+  if (marker_log != INVALID_HANDLE_VALUE ||
+      billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) {
     {
       std::scoped_lock lock(trace_mutex);
       auto& trace = command_traces[commands];
@@ -2533,7 +4138,7 @@ void STDMETHODCALLTYPE set_graphics_root_signature_hook(
       }
       should_log = logged_root_signatures.insert(signature_address).second;
     }
-    if (should_log) {
+    if (should_log && marker_log != INVALID_HANDLE_VALUE) {
       write_marker_log("%llu\t%lu\tROOTSIG\tsig=%p\tparams=%u\tflags=%u\r\n",
                        marker_sequence.fetch_add(1, std::memory_order_relaxed),
                        GetCurrentThreadId(), signature,
@@ -2571,7 +4176,9 @@ void STDMETHODCALLTYPE set_compute_root_signature_hook(
 void STDMETHODCALLTYPE set_graphics_root_descriptor_table_hook(
     ID3D12GraphicsCommandList* commands, UINT root_index,
     D3D12_GPU_DESCRIPTOR_HANDLE table) {
-  if (marker_log != INVALID_HANDLE_VALUE && root_index < kRootSlotCount) {
+  if ((marker_log != INVALID_HANDLE_VALUE ||
+       billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) &&
+      root_index < kRootSlotCount) {
     std::scoped_lock lock(trace_mutex);
     command_traces[commands].graphics_tables[root_index] = table.ptr;
   }
@@ -2650,7 +4257,9 @@ void set_graphics_root_gpu_address(
     ID3D12GraphicsCommandList* commands, UINT root_index,
     D3D12_GPU_VIRTUAL_ADDRESS address,
     std::array<std::uint64_t, kRootSlotCount> CommandTrace::*member) {
-  if (marker_log != INVALID_HANDLE_VALUE && root_index < kRootSlotCount) {
+  if ((marker_log != INVALID_HANDLE_VALUE ||
+       billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) &&
+      root_index < kRootSlotCount) {
     std::scoped_lock lock(trace_mutex);
     (command_traces[commands].*member)[root_index] = address;
   }
@@ -3681,15 +5290,20 @@ LRESULT CALLBACK dummy_window_proc(HWND window, UINT message, WPARAM wparam,
   return DefWindowProcW(window, message, wparam, lparam);
 }
 
-int install_hooks() {
+int install_hooks(ID3D12Device* supplied_device = nullptr) {
   if (hooks_installed.load(std::memory_order_acquire)) {
     return 0;
   }
 
   ComPtr<ID3D12Device> device;
-  if (FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_0,
-                               IID_PPV_ARGS(&device)))) {
-    return 10;
+  if (supplied_device) {
+    supplied_device->AddRef();
+    device.Attach(supplied_device);
+  } else {
+    if (FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_0,
+                                 IID_PPV_ARGS(&device)))) {
+      return 10;
+    }
   }
   D3D12_COMMAND_QUEUE_DESC queue_description{};
   queue_description.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -3788,6 +5402,9 @@ int install_hooks() {
                                     ? *reinterpret_cast<void***>(
                                           dummy_commands7.Get())
                                     : nullptr;
+  const auto install_pso_substitution_hooks =
+      kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
+      billboard_shader_substitution_requested.load(std::memory_order_relaxed);
   if (MH_Initialize() != MH_OK ||
       MH_CreateHook(get_client_rect_target, &get_client_rect_hook,
                     reinterpret_cast<void**>(&original_get_client_rect)) !=
@@ -3795,7 +5412,7 @@ int install_hooks() {
       MH_CreateHook(dispatch_message_w_target, &dispatch_message_w_hook,
                     reinterpret_cast<void**>(&original_dispatch_message_w)) !=
           MH_OK ||
-      (kInstallDiagnosticRenderHooks &&
+      (install_pso_substitution_hooks &&
        MH_CreateHook(device_vtable[10], &create_graphics_pipeline_state_hook,
                     reinterpret_cast<void**>(
                         &original_create_graphics_pipeline_state)) != MH_OK) ||
@@ -3847,11 +5464,11 @@ int install_hooks() {
        MH_CreateHook(device_vtable[29], &create_placed_resource_hook,
                     reinterpret_cast<void**>(
                         &original_create_placed_resource)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      (install_pso_substitution_hooks &&
        MH_CreateHook(device2_vtable[47], &create_pipeline_state_stream_hook,
                     reinterpret_cast<void**>(
                         &original_create_pipeline_state_stream)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      (install_pso_substitution_hooks &&
        MH_CreateHook(pipeline_library_vtable[9], &load_graphics_pipeline_hook,
                     reinterpret_cast<void**>(
                         &original_load_graphics_pipeline)) != MH_OK) ||
@@ -3859,7 +5476,7 @@ int install_hooks() {
        MH_CreateHook(pipeline_library_vtable[10], &load_compute_pipeline_hook,
                     reinterpret_cast<void**>(
                         &original_load_compute_pipeline)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      (install_pso_substitution_hooks &&
        MH_CreateHook(pipeline_library1_vtable[13], &load_pipeline_hook,
                     reinterpret_cast<void**>(&original_load_pipeline)) !=
           MH_OK) ||
@@ -4538,6 +6155,10 @@ int capture_present_halves(IDXGISwapChain3* swapchain,
 }  // namespace
 
 extern "C" __declspec(dllexport) int dtvr_install() { return install_hooks(); }
+extern "C" __declspec(dllexport) int
+dtvr_install_for_device(ID3D12Device* device) {
+  return device ? install_hooks(device) : 20;
+}
 extern "C" __declspec(dllexport) int dtvr_set_projection_active(int enabled) {
   static const HANDLE event = CreateEventW(
       nullptr, TRUE, FALSE, L"Local\\DarktideVR-projection-active-v1");
@@ -4549,11 +6170,374 @@ extern "C" __declspec(dllexport) int dtvr_set_projection_active(int enabled) {
 extern "C" __declspec(dllexport) int
 dtvr_set_diagnostic_render_hooks(int enabled) {
   if (hooks_installed.load(std::memory_order_acquire)) {
-    return 1;
+    return kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ==
+                   (enabled != 0)
+               ? 0
+               : 1;
   }
   kInstallDiagnosticRenderHooks.store(enabled != 0,
                                       std::memory_order_release);
   return 0;
+}
+extern "C" __declspec(dllexport) int
+dtvr_set_billboard_shader_substitution(int enabled) {
+  if (hooks_installed.load(std::memory_order_acquire)) {
+    return billboard_shader_substitution_requested.load(
+               std::memory_order_relaxed) == (enabled != 0)
+               ? 0
+               : 1;
+  }
+  billboard_shader_substitution_requested.store(enabled != 0,
+                                                std::memory_order_release);
+  billboard_shader_substitution_count.store(0, std::memory_order_relaxed);
+  billboard_shader_substitution_reject_count.store(0,
+                                                   std::memory_order_relaxed);
+  for (auto& count : billboard_shader_substitution_attempt_counts) {
+    count.store(0, std::memory_order_relaxed);
+  }
+  for (auto& count : billboard_shader_substitution_applied_counts) {
+    count.store(0, std::memory_order_relaxed);
+  }
+  for (auto& count :
+       billboard_shader_substitution_validation_reject_counts) {
+    count.store(0, std::memory_order_relaxed);
+  }
+  for (auto& count : billboard_shader_substitution_creation_reject_counts) {
+    count.store(0, std::memory_order_relaxed);
+  }
+  if (enabled != 0) {
+    load_billboard_shader_replacements();
+  } else {
+    std::scoped_lock lock(billboard_shader_replacement_mutex);
+    billboard_shader_replacements.clear();
+  }
+  return 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_shader_substitution_count() {
+  return billboard_shader_substitution_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_shader_substitution_reject_count() {
+  return billboard_shader_substitution_reject_count.load(
+      std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_shader_substitution_result_count(unsigned int rank,
+                                               unsigned int kind) {
+  if (rank >= billboard_shader_substitution_attempt_counts.size()) {
+    return 0;
+  }
+  switch (kind) {
+    case 0:
+      return billboard_shader_substitution_attempt_counts[rank].load(
+          std::memory_order_relaxed);
+    case 1:
+      return billboard_shader_substitution_applied_counts[rank].load(
+          std::memory_order_relaxed);
+    case 2:
+      return billboard_shader_substitution_validation_reject_counts[rank]
+          .load(std::memory_order_relaxed);
+    case 3:
+      return billboard_shader_substitution_creation_reject_counts[rank].load(
+          std::memory_order_relaxed);
+    default:
+      return 0;
+  }
+}
+extern "C" __declspec(dllexport) int dtvr_set_vertex_shader_dump(int enabled) {
+  if (hooks_installed.load(std::memory_order_acquire)) {
+    return vertex_shader_dump_requested.load(std::memory_order_relaxed) ==
+                   (enabled != 0)
+               ? 0
+               : 1;
+  }
+  vertex_shader_dump_requested.store(enabled != 0,
+                                     std::memory_order_release);
+  return 0;
+}
+extern "C" __declspec(dllexport) int dtvr_set_billboard_view_basis(
+    float right_x, float right_y, float right_z, float up_x,
+    float up_y, float up_z, int enabled) {
+  const std::array<float, 6> values{right_x, right_y, right_z,
+                                     up_x, up_y, up_z};
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    billboard_view_basis[i].store(values[i], std::memory_order_relaxed);
+  }
+  if (enabled != 0 &&
+      !billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) {
+    billboard_exact_shader_draw_count.store(0, std::memory_order_relaxed);
+    billboard_exact_pso_draw_count.store(0, std::memory_order_relaxed);
+    for (auto& count : billboard_exact_pso_cbv_slot_counts) {
+      count.store(0, std::memory_order_relaxed);
+    }
+    for (auto& count : billboard_exact_pso_table_slot_counts) {
+      count.store(0, std::memory_order_relaxed);
+    }
+    for (auto& count : billboard_exact_register_counts) {
+      count.store(0, std::memory_order_relaxed);
+    }
+    for (auto& count : billboard_exact_vertex_table_slot_counts) {
+      count.store(0, std::memory_order_relaxed);
+    }
+    for (auto& count : billboard_exact_descriptor_offset_counts) {
+      count.store(0, std::memory_order_relaxed);
+    }
+    for (auto& count : billboard_exact_table_span_counts) {
+      count.store(0, std::memory_order_relaxed);
+    }
+    billboard_exact_cbv_descriptor_count.store(0, std::memory_order_relaxed);
+    billboard_exact_buffer_resource_count.store(0, std::memory_order_relaxed);
+    for (auto& count : billboard_exact_heap_type_counts) {
+      count.store(0, std::memory_order_relaxed);
+    }
+    billboard_exact_map_success_count.store(0, std::memory_order_relaxed);
+    billboard_exact_map_failure_count.store(0, std::memory_order_relaxed);
+    billboard_cbv_log_count.store(0, std::memory_order_relaxed);
+    for (auto& count : billboard_shadow_stage_counts) {
+      count.store(0, std::memory_order_relaxed);
+    }
+    for (auto& count : billboard_exact_command_list_type_counts) {
+      count.store(0, std::memory_order_relaxed);
+    }
+    {
+      std::scoped_lock lock(buffer_resource_mutex);
+      billboard_tested_cbvs.clear();
+    }
+    billboard_exact_root_mapping_count.store(0, std::memory_order_relaxed);
+    billboard_root_metadata_draw_count.store(0, std::memory_order_relaxed);
+    billboard_table_b2_draw_count.store(0, std::memory_order_relaxed);
+    billboard_bound_table_b2_draw_count.store(0, std::memory_order_relaxed);
+    billboard_observed_draw_count.store(0, std::memory_order_relaxed);
+    billboard_direct_draw_hook_count.store(0, std::memory_order_relaxed);
+    for (auto& slot_counts : billboard_observed_stride_counts) {
+      for (auto& count : slot_counts) {
+        count.store(0, std::memory_order_relaxed);
+      }
+    }
+    billboard_stride_candidate_count.store(0, std::memory_order_relaxed);
+    billboard_b1_bound_count.store(0, std::memory_order_relaxed);
+    billboard_b2_bound_count.store(0, std::memory_order_relaxed);
+    billboard_basis_patch_count.store(0, std::memory_order_relaxed);
+  }
+  billboard_basis_write_enabled.store(enabled == 1,
+                                      std::memory_order_release);
+  billboard_horizon_lock_enabled.store(enabled != 0,
+                                       std::memory_order_release);
+  return 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_shader_draw_count() {
+  return billboard_exact_shader_draw_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_pso_draw_count() {
+  return billboard_exact_pso_draw_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_pso_cbv_slot_count(unsigned int slot) {
+  return slot < billboard_exact_pso_cbv_slot_counts.size()
+             ? billboard_exact_pso_cbv_slot_counts[slot].load(
+                   std::memory_order_relaxed)
+             : 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_pso_table_slot_count(unsigned int slot) {
+  return slot < billboard_exact_pso_table_slot_counts.size()
+             ? billboard_exact_pso_table_slot_counts[slot].load(
+                   std::memory_order_relaxed)
+             : 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_register_count(unsigned int shader_register) {
+  return shader_register < billboard_exact_register_counts.size()
+             ? billboard_exact_register_counts[shader_register].load(
+                   std::memory_order_relaxed)
+             : 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_vertex_table_slot_count(unsigned int slot) {
+  return slot < billboard_exact_vertex_table_slot_counts.size()
+             ? billboard_exact_vertex_table_slot_counts[slot].load(
+                   std::memory_order_relaxed)
+             : 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_descriptor_offset_count(unsigned int offset) {
+  return offset < billboard_exact_descriptor_offset_counts.size()
+             ? billboard_exact_descriptor_offset_counts[offset].load(
+                   std::memory_order_relaxed)
+             : 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_table_span_count(unsigned int span) {
+  return span < billboard_exact_table_span_counts.size()
+             ? billboard_exact_table_span_counts[span].load(
+                   std::memory_order_relaxed)
+             : 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_cbv_descriptor_count() {
+  return billboard_exact_cbv_descriptor_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_buffer_resource_count() {
+  return billboard_exact_buffer_resource_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_heap_type_count(unsigned int heap_type) {
+  return heap_type < billboard_exact_heap_type_counts.size()
+             ? billboard_exact_heap_type_counts[heap_type].load(
+                   std::memory_order_relaxed)
+             : 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_map_success_count() {
+  return billboard_exact_map_success_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_map_failure_count() {
+  return billboard_exact_map_failure_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_shadow_stage_count(unsigned int stage) {
+  return stage < billboard_shadow_stage_counts.size()
+             ? billboard_shadow_stage_counts[stage].load(
+                   std::memory_order_relaxed)
+             : 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_command_list_type_count(unsigned int type) {
+  return type < billboard_exact_command_list_type_counts.size()
+             ? billboard_exact_command_list_type_counts[type].load(
+                   std::memory_order_relaxed)
+             : 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_exact_root_mapping_count() {
+  return billboard_exact_root_mapping_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_root_metadata_draw_count() {
+  return billboard_root_metadata_draw_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_table_b2_draw_count() {
+  return billboard_table_b2_draw_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_bound_table_b2_draw_count() {
+  return billboard_bound_table_b2_draw_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_observed_draw_count() {
+  return billboard_observed_draw_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_direct_draw_hook_count() {
+  return billboard_direct_draw_hook_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_diagnostic_root_signature_create_count() {
+  return diagnostic_root_signature_create_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_diagnostic_graphics_pso_create_count() {
+  return diagnostic_graphics_pso_create_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_diagnostic_compute_pso_create_count() {
+  return diagnostic_compute_pso_create_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_diagnostic_stream_pso_create_count() {
+  return diagnostic_stream_pso_create_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_diagnostic_graphics_pipeline_load_count() {
+  return diagnostic_graphics_pipeline_load_count.load(
+      std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_diagnostic_compute_pipeline_load_count() {
+  return diagnostic_compute_pipeline_load_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_diagnostic_stream_pipeline_load_count() {
+  return diagnostic_stream_pipeline_load_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_root_b2_candidate_draw_count() {
+  return billboard_root_b2_candidate_draw_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_candidate_shader_hash(unsigned int rank) {
+  std::vector<std::pair<std::uint64_t, std::uint64_t>> ranked;
+  {
+    std::scoped_lock lock(billboard_candidate_shader_mutex);
+    ranked.assign(billboard_candidate_shader_counts.begin(),
+                  billboard_candidate_shader_counts.end());
+  }
+  std::sort(ranked.begin(), ranked.end(), [](const auto& left,
+                                             const auto& right) {
+    return left.second != right.second ? left.second > right.second
+                                       : left.first < right.first;
+  });
+  return rank < ranked.size() ? ranked[rank].first : 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_candidate_shader_count(unsigned int rank) {
+  std::vector<std::pair<std::uint64_t, std::uint64_t>> ranked;
+  {
+    std::scoped_lock lock(billboard_candidate_shader_mutex);
+    ranked.assign(billboard_candidate_shader_counts.begin(),
+                  billboard_candidate_shader_counts.end());
+  }
+  std::sort(ranked.begin(), ranked.end(), [](const auto& left,
+                                             const auto& right) {
+    return left.second != right.second ? left.second > right.second
+                                       : left.first < right.first;
+  });
+  return rank < ranked.size() ? ranked[rank].second : 0;
+}
+extern "C" __declspec(dllexport) unsigned int
+dtvr_billboard_candidate_shader_hash_low(unsigned int rank) {
+  return static_cast<unsigned int>(dtvr_billboard_candidate_shader_hash(rank));
+}
+extern "C" __declspec(dllexport) unsigned int
+dtvr_billboard_candidate_shader_hash_high(unsigned int rank) {
+  return static_cast<unsigned int>(
+      dtvr_billboard_candidate_shader_hash(rank) >> 32U);
+}
+extern "C" __declspec(dllexport) int dtvr_billboard_probe_state() {
+  return (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ? 1 : 0) |
+         (billboard_horizon_lock_enabled.load(std::memory_order_relaxed) ? 2 : 0) |
+         (billboard_basis_write_enabled.load(std::memory_order_relaxed) ? 4 : 0);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_observed_stride_count(unsigned int slot, unsigned int stride) {
+  if (slot >= billboard_observed_stride_counts.size() ||
+      stride >= kBillboardObservedStrideCount) {
+    return 0;
+  }
+  return billboard_observed_stride_counts[slot][stride].load(
+      std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_stride_candidate_count() {
+  return billboard_stride_candidate_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_b1_bound_count() {
+  return billboard_b1_bound_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_b2_bound_count() {
+  return billboard_b2_bound_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_basis_patch_count() {
+  return billboard_basis_patch_count.load(std::memory_order_relaxed);
 }
 extern "C" __declspec(dllexport) unsigned long long dtvr_qpc_ticks() {
   LARGE_INTEGER value{};
@@ -5087,8 +7071,11 @@ extern "C" __declspec(dllexport) int dtvr_enable_marker_log() {
   return marker_log == INVALID_HANDLE_VALUE ? 41 : 0;
 }
 
-BOOL APIENTRY DllMain(HMODULE, DWORD reason, LPVOID) {
-  if (reason == DLL_PROCESS_DETACH) {
+BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
+  if (reason == DLL_PROCESS_ATTACH) {
+    native_capture_module = module;
+    DisableThreadLibraryCalls(module);
+  } else if (reason == DLL_PROCESS_DETACH) {
     if (marker_log != INVALID_HANDLE_VALUE) {
       CloseHandle(marker_log);
       marker_log = INVALID_HANDLE_VALUE;

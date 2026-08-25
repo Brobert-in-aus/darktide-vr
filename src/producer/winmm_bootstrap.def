@@ -1,0 +1,24 @@
+LIBRARY winmm
+
+EXPORTS
+  timeBeginPeriod @137
+  timeEndPeriod @138
+  timeGetDevCaps @139
+  timeGetTime @141
+  waveInAddBuffer @144
+  waveInClose @145
+  waveInGetDevCapsA @146
+  waveInGetNumDevs @151
+  waveInMessage @153
+  waveInOpen @154
+  waveInPrepareHeader @155
+  waveInReset @156
+  waveInStart @157
+  waveOutClose @161
+  waveOutGetDevCapsA @162
+  waveOutGetNumDevs @167
+  waveOutMessage @172
+  waveOutOpen @173
+  waveOutPrepareHeader @175
+  waveOutReset @176
+  waveOutWrite @182
