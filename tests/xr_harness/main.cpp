@@ -1302,7 +1302,10 @@ class OpenXrProbe {
            flat_fallback_pose.orientation.z, flat_fallback_pose.orientation.w},
           {flat_fallback_pose.position.x, flat_fallback_pose.position.y,
            flat_fallback_pose.position.z}};
-      if (synthetic_controller_path && submitted_flat_fallback_this_frame) {
+      // The deterministic controller provider models controller tracking, not
+      // menu visibility. Keep publishing it in immersive stereo so gameplay
+      // consumers can be exercised while the physical controllers are idle.
+      if (synthetic_controller_path) {
         const auto timestamp_ns = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now().time_since_epoch())

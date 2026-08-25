@@ -168,6 +168,12 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   after the initial HMD recenter is known, and the native Lua export exposes
   that fail-closed body-local form. The transport round-trip and complete
   Release suite pass.
+- A clean launcher-path deployment validated v2 against VDXR at character
+  select. The synthetic provider was corrected to publish on every immersive
+  XR frame rather than only while a flat menu panel was visible. A 12-second
+  run published 865/865 controller samples, covered all six motion/invalidity
+  phases (`180,180,145,120,120,120`), dispatched no menu input, and Lua logged
+  the first tracked v2 sample with both aim flag sets equal to 15.
 - Added a guarded one-shot `dtvr_enter_psykhanium` workflow derived from the
   game's own training-view and Testify path. It consumes a local flag, waits for
   hub game mode plus backend authentication, opens the training view, selects
@@ -214,10 +220,9 @@ Steam close grace between normal runs.
 
 ## Next action
 
-Deploy controller-state v2 on the next clean game cycle and validate that a
-synthetic tracked sample reaches Lua in body-local coordinates while the menu
-adapter continues to use absolute poses. Then feed the dominant-hand body-local
-orientation into the single upstream gameplay-aim seam without coupling it to
-the HMD render basis. Retain the horizon-lock billboard build for automated
+Feed the dominant-hand body-local orientation into the single upstream
+gameplay-aim seam without coupling it to the HMD render basis. Preserve the raw
+LOCAL pose for spatial-menu tests and add an observation-only aim mode before
+authoring gameplay state. Retain the horizon-lock billboard build for automated
 soaks, but defer the final smoke, fog and particle-orientation judgement until
 the user can wear the headset.

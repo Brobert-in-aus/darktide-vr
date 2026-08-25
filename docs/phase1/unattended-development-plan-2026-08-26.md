@@ -431,6 +431,11 @@ export exposes only the recentered Darktide-basis poses intended for gameplay.
 Body-local tracking flags remain zero until the immutable HMD recenter anchor
 exists, so startup cannot fabricate a usable weapon pose.
 
+The synthetic provider publishes independently of menu-panel visibility so it
+can exercise immersive gameplay consumers. Pointer raycasting and injection
+remain separately gated on an actually submitted flat panel and the explicit
+menu-input flag.
+
 The safest initial aim seam is Darktide's `DefaultPlayerOrientation`. Convert
 the dominant-hand OpenXR aim rotation into the game's Z-up world basis and feed
 that as ordinary yaw/pitch aim. Existing weapon actions already consume
