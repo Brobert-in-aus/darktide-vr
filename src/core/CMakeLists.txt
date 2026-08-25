@@ -1,9 +1,12 @@
 add_library(darktidevr_core STATIC
   fingerprint.cpp
   head_tracking.cpp
+  menu_pointer_input.cpp
   output_layout.cpp
+  panel_pointer.cpp
   pose_snapshot.cpp
   presentation_policy.cpp
+  shared_controller_state.cpp
   shared_head_pose.cpp
   shared_presentation_state.cpp
   xr_math.cpp

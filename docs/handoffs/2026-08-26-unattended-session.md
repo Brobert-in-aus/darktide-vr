@@ -102,6 +102,40 @@ Two early live attempts exceeded Lua 5.1's 200-local chunk limit. Presentation
 state was collapsed into one table, startup then remained clean, and the final
 chunk has 196 top-level locals. This was recovered before the accepted run.
 
+### Controller, pointer and Psykhanium foundation
+
+- Added `Local\DarktideVR-controller-state-v1`, a versioned seqlock transport
+  for both hands' aim/grip poses, tracking flags, trigger/squeeze/thumbsticks,
+  buttons and sample timing. Readers reject malformed and stale snapshots.
+- The OpenXR harness now creates Touch-controller and Khronos-simple actions,
+  publishes controller samples, and maps the tracked right-hand aim ray to the
+  spatial flat panel. This stage is observation-only and cannot inject input.
+- Added deterministic panel intersection/crop-to-source-pixel math plus a menu
+  input edge state machine. Entering a menu cannot synthesize a click, leaving
+  releases any held button, and move/down/up/scroll/back events are explicit.
+- A 300-frame VDXR theatre smoke published all 300 controller samples. The
+  controllers were asleep, so zero frames were marked tracked; the untracked
+  fail-closed path was therefore exercised without user interaction.
+- Added a guarded one-shot `dtvr_enter_psykhanium` workflow derived from the
+  game's own training-view and Testify path. It consumes a local flag, waits for
+  hub game mode plus backend authentication, opens the training view, selects
+  `option_button_3`, confirms `play_button`, and accepts either Psykhanium game
+  mode (`training_grounds` or `shooting_range`).
+- Live evidence proved automatic character-select -> hub -> training-menu ->
+  private Psykhanium entry and `GameplayStateRun`, with
+  `DARKTIDEVR_PSYKHANIUM result=pass game_mode=training_grounds`.
+- That transition exposed a stereo teardown ordering bug: by the time a new
+  `CameraManager` is observed, Stingray may already have destroyed the old
+  world's `viewports` table. Teardown now clears mod references and leaves the
+  old right-eye viewport to normal world destruction; it no longer queries the
+  stale `ScriptWorld`.
+- The corrected private-Psykhanium run remained clean for a 30-second game
+  soak, then a 30-second VDXR projection run submitted 1,794/1,794 frames with
+  1,793 fresh stereo pairs, zero reused frames or pair timeouts, one pose-pair
+  mismatch, and 0.041 degrees maximum measured angular lag. Controller state
+  was published on all 1,794 frames and remained safely untracked while the
+  controllers slept.
+
 ## Validation commands
 
 ```powershell
@@ -112,11 +146,13 @@ $cmake = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Co
 & .\tools\unattended\invoke-unattended-preflight.ps1 -RunXrSmoke -XrFrames 600
 ```
 
-Results: all 22 CTest tests passed. The native-capture test now installs the
+Results: all 24 Release CTest tests passed. The native-capture test now installs the
 diagnostic hook set, creates/maps/unmaps an upload buffer and verifies exactly
 one matched Map and Unmap. Core math covers cardinal headings, pitched and
 vertical views, and non-finite billboard inputs. Presentation tests cover the
-shared transport, horizon-locked panel pose and aspect-preserving extent.
+shared transport, horizon-locked panel pose and aspect-preserving extent. New
+controller and pointer tests cover snapshot freshness/validity, finite panel
+intersection, crop mapping and menu input transitions.
 
 The Release validation after producer localization also built
 `darktidevr_watch_write` and passed all 21 tests. Live validation used the
@@ -125,6 +161,8 @@ Steam close grace between normal runs.
 
 ## Next action
 
-Begin the shared OpenXR controller transport and spatial pointer. Retain the
-horizon-lock billboard build for automated soaks, but defer the final smoke,
-fog and particle-orientation judgement until the user can wear the headset.
+Finish live validation of the stale-world teardown fix, then add the explicit
+Windows/Lua input-injection adapter behind the tested pointer state machine.
+Retain the horizon-lock billboard build for automated soaks, but defer the final
+smoke, fog and particle-orientation judgement until the user can wear the
+headset.

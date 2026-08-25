@@ -12,7 +12,9 @@
 #include "window_capture.h"
 #include "bridge/shared_eye_surfaces.h"
 #include "core/head_tracking.h"
+#include "core/panel_pointer.h"
 #include "core/presentation_policy.h"
+#include "core/shared_controller_state.h"
 #include "core/shared_head_pose.h"
 #include "core/shared_presentation_state.h"
 
@@ -194,6 +196,10 @@ class OpenXrProbe {
     } catch (...) {
       force_destroy_session();
     }
+    if (controller_action_set_ != XR_NULL_HANDLE) {
+      xrDestroyActionSet(controller_action_set_);
+      controller_action_set_ = XR_NULL_HANDLE;
+    }
     if (instance_ != XR_NULL_HANDLE) {
       xrDestroyInstance(instance_);
     }
@@ -235,6 +241,7 @@ class OpenXrProbe {
     space_info.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
     check_xr(xrCreateReferenceSpace(session_, &space_info, &view_space_),
              "xrCreateReferenceSpace(VIEW)");
+    create_controller_actions();
 
     std::uint32_t format_count{};
     check_xr(xrEnumerateSwapchainFormats(session_, 0, &format_count, nullptr),
@@ -794,6 +801,7 @@ class OpenXrProbe {
                "xrWaitFrame(theatre)");
       XrFrameBeginInfo frame_begin{XR_TYPE_FRAME_BEGIN_INFO};
       check_xr(xrBeginFrame(session_, &frame_begin), "xrBeginFrame(theatre)");
+      sync_controller_actions(frame_state.predictedDisplayTime);
 
       bool submit_layer = frame_state.shouldRender == XR_TRUE;
       darktidevr::math::Pose current_head{};
@@ -1255,6 +1263,39 @@ class OpenXrProbe {
           panel_max_height);
       flat_fallback_quad.size = {panel_extent.width_metres,
                                  panel_extent.height_metres};
+      if (submitted_flat_fallback_this_frame && latest_controller_sample_) {
+        const auto& right = latest_controller_sample_->hands[1];
+        const auto required =
+            darktidevr::core::controller_orientation_valid |
+            darktidevr::core::controller_position_valid;
+        if ((right.aim_tracking_flags & required) == required) {
+          const darktidevr::math::Pose panel_pose{
+              {flat_fallback_pose.orientation.x,
+               flat_fallback_pose.orientation.y,
+               flat_fallback_pose.orientation.z,
+               flat_fallback_pose.orientation.w},
+              {flat_fallback_pose.position.x, flat_fallback_pose.position.y,
+               flat_fallback_pose.position.z}};
+          const auto direction = darktidevr::math::rotate(
+              right.aim_pose.orientation, {0.0F, 0.0F, -1.0F});
+          ++controller_pointer_rays_;
+          const auto pointer = darktidevr::core::map_pointer_to_panel(
+              {right.aim_pose.position, direction}, panel_pose,
+              panel_extent.width_metres, panel_extent.height_metres,
+              presentation_sequence != 0 ? presentation_state.source_width
+                                         : width,
+              presentation_sequence != 0 ? presentation_state.source_height
+                                         : flat_capture_height,
+              presentation_sequence != 0 ? presentation_state.crop_x : 0,
+              presentation_sequence != 0 ? presentation_state.crop_y : 0,
+              panel_source_width, panel_source_height);
+          if (pointer) {
+            ++controller_pointer_hits_;
+            controller_pointer_x_ = pointer->source_x;
+            controller_pointer_y_ = pointer->source_y;
+          }
+        }
+      }
       XrCompositionLayerProjection projection{
           XR_TYPE_COMPOSITION_LAYER_PROJECTION};
       if (stereo) {
@@ -1438,7 +1479,18 @@ class OpenXrProbe {
                             pair_pose_sequence_lag_samples)
               << '\n'
               << "openxr.pair_pose_angle_lag_degrees_max="
-              << pair_pose_angle_lag_degrees_max << '\n';
+              << pair_pose_angle_lag_degrees_max << '\n'
+              << "openxr.controller_samples=" << controller_samples_ << '\n'
+              << "openxr.controller_left_aim_tracked_frames="
+              << controller_aim_tracked_frames_[0] << '\n'
+              << "openxr.controller_right_aim_tracked_frames="
+              << controller_aim_tracked_frames_[1] << '\n'
+              << "openxr.controller_pointer_rays=" << controller_pointer_rays_
+              << '\n'
+              << "openxr.controller_pointer_hits=" << controller_pointer_hits_
+              << '\n'
+              << "openxr.controller_pointer_last_source="
+              << controller_pointer_x_ << ',' << controller_pointer_y_ << '\n';
     if (upload) {
       upload->Unmap(0, nullptr);
       upload_pixels = nullptr;
@@ -1465,6 +1517,7 @@ class OpenXrProbe {
       }
       swapchains_.clear();
       swapchain_images_.clear();
+      destroy_controller_spaces();
       if (local_space_ != XR_NULL_HANDLE) {
         xrDestroySpace(local_space_);
         local_space_ = XR_NULL_HANDLE;
@@ -1482,6 +1535,272 @@ class OpenXrProbe {
   bool session_created() const { return session_ != XR_NULL_HANDLE; }
 
  private:
+  XrPath path(const char* value) const {
+    XrPath result{XR_NULL_PATH};
+    check_xr(xrStringToPath(instance_, value, &result), "xrStringToPath");
+    return result;
+  }
+
+  void create_controller_actions() {
+    if (controller_action_set_ == XR_NULL_HANDLE) {
+      XrActionSetCreateInfo set_info{XR_TYPE_ACTION_SET_CREATE_INFO};
+      strcpy_s(set_info.actionSetName, "gameplay");
+      strcpy_s(set_info.localizedActionSetName, "Darktide VR gameplay");
+      check_xr(xrCreateActionSet(instance_, &set_info, &controller_action_set_),
+               "xrCreateActionSet(gameplay)");
+
+      hand_paths_[0] = path("/user/hand/left");
+      hand_paths_[1] = path("/user/hand/right");
+      const auto create_action = [&](XrActionType type, const char* name,
+                                     const char* localized,
+                                     XrAction& action) {
+        XrActionCreateInfo info{XR_TYPE_ACTION_CREATE_INFO};
+        info.actionType = type;
+        strcpy_s(info.actionName, name);
+        strcpy_s(info.localizedActionName, localized);
+        info.countSubactionPaths =
+            static_cast<std::uint32_t>(hand_paths_.size());
+        info.subactionPaths = hand_paths_.data();
+        check_xr(xrCreateAction(controller_action_set_, &info, &action),
+                 "xrCreateAction");
+      };
+      create_action(XR_ACTION_TYPE_POSE_INPUT, "aim_pose", "Aim pose",
+                    aim_action_);
+      create_action(XR_ACTION_TYPE_POSE_INPUT, "grip_pose", "Grip pose",
+                    grip_action_);
+      create_action(XR_ACTION_TYPE_FLOAT_INPUT, "trigger", "Trigger",
+                    trigger_action_);
+      create_action(XR_ACTION_TYPE_FLOAT_INPUT, "squeeze", "Squeeze",
+                    squeeze_action_);
+      create_action(XR_ACTION_TYPE_VECTOR2F_INPUT, "thumbstick", "Thumbstick",
+                    thumbstick_action_);
+      create_action(XR_ACTION_TYPE_BOOLEAN_INPUT, "primary", "Primary",
+                    primary_action_);
+      create_action(XR_ACTION_TYPE_BOOLEAN_INPUT, "secondary", "Secondary",
+                    secondary_action_);
+      create_action(XR_ACTION_TYPE_BOOLEAN_INPUT, "stick_click", "Stick click",
+                    stick_click_action_);
+      create_action(XR_ACTION_TYPE_BOOLEAN_INPUT, "menu", "Menu",
+                    menu_action_);
+      create_action(XR_ACTION_TYPE_VIBRATION_OUTPUT, "haptic", "Haptic",
+                    haptic_action_);
+
+      const std::array<XrActionSuggestedBinding, 18> touch_bindings{{
+          {aim_action_, path("/user/hand/left/input/aim/pose")},
+          {aim_action_, path("/user/hand/right/input/aim/pose")},
+          {grip_action_, path("/user/hand/left/input/grip/pose")},
+          {grip_action_, path("/user/hand/right/input/grip/pose")},
+          {trigger_action_, path("/user/hand/left/input/trigger/value")},
+          {trigger_action_, path("/user/hand/right/input/trigger/value")},
+          {squeeze_action_, path("/user/hand/left/input/squeeze/value")},
+          {squeeze_action_, path("/user/hand/right/input/squeeze/value")},
+          {thumbstick_action_, path("/user/hand/left/input/thumbstick")},
+          {thumbstick_action_, path("/user/hand/right/input/thumbstick")},
+          {primary_action_, path("/user/hand/left/input/x/click")},
+          {primary_action_, path("/user/hand/right/input/a/click")},
+          {secondary_action_, path("/user/hand/left/input/y/click")},
+          {secondary_action_, path("/user/hand/right/input/b/click")},
+          {stick_click_action_,
+           path("/user/hand/left/input/thumbstick/click")},
+          {stick_click_action_,
+           path("/user/hand/right/input/thumbstick/click")},
+          {menu_action_, path("/user/hand/left/input/menu/click")},
+          {haptic_action_, path("/user/hand/right/output/haptic")},
+      }};
+      XrInteractionProfileSuggestedBinding touch{
+          XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+      touch.interactionProfile =
+          path("/interaction_profiles/oculus/touch_controller");
+      touch.suggestedBindings = touch_bindings.data();
+      touch.countSuggestedBindings =
+          static_cast<std::uint32_t>(touch_bindings.size());
+      check_xr(xrSuggestInteractionProfileBindings(instance_, &touch),
+               "xrSuggestInteractionProfileBindings(Touch)");
+
+      const std::array<XrActionSuggestedBinding, 6> simple_bindings{{
+          {grip_action_, path("/user/hand/left/input/grip/pose")},
+          {grip_action_, path("/user/hand/right/input/grip/pose")},
+          {primary_action_, path("/user/hand/left/input/select/click")},
+          {primary_action_, path("/user/hand/right/input/select/click")},
+          {menu_action_, path("/user/hand/left/input/menu/click")},
+          {haptic_action_, path("/user/hand/right/output/haptic")},
+      }};
+      XrInteractionProfileSuggestedBinding simple{
+          XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+      simple.interactionProfile =
+          path("/interaction_profiles/khr/simple_controller");
+      simple.suggestedBindings = simple_bindings.data();
+      simple.countSuggestedBindings =
+          static_cast<std::uint32_t>(simple_bindings.size());
+      check_xr(xrSuggestInteractionProfileBindings(instance_, &simple),
+               "xrSuggestInteractionProfileBindings(simple)");
+      controller_writer_ =
+          std::make_unique<darktidevr::core::SharedControllerStateWriter>();
+      std::cout << "openxr.controller_actions=created\n";
+    }
+
+    XrSessionActionSetsAttachInfo attach{
+        XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
+    attach.countActionSets = 1;
+    attach.actionSets = &controller_action_set_;
+    check_xr(xrAttachSessionActionSets(session_, &attach),
+             "xrAttachSessionActionSets");
+    for (std::size_t hand = 0; hand < hand_paths_.size(); ++hand) {
+      XrActionSpaceCreateInfo info{XR_TYPE_ACTION_SPACE_CREATE_INFO};
+      info.poseInActionSpace.orientation.w = 1.0F;
+      info.subactionPath = hand_paths_[hand];
+      info.action = aim_action_;
+      check_xr(xrCreateActionSpace(session_, &info, &aim_spaces_[hand]),
+               "xrCreateActionSpace(aim)");
+      info.action = grip_action_;
+      check_xr(xrCreateActionSpace(session_, &info, &grip_spaces_[hand]),
+               "xrCreateActionSpace(grip)");
+    }
+  }
+
+  void destroy_controller_spaces() noexcept {
+    for (auto& space : aim_spaces_) {
+      if (space != XR_NULL_HANDLE) {
+        xrDestroySpace(space);
+        space = XR_NULL_HANDLE;
+      }
+    }
+    for (auto& space : grip_spaces_) {
+      if (space != XR_NULL_HANDLE) {
+        xrDestroySpace(space);
+        space = XR_NULL_HANDLE;
+      }
+    }
+  }
+
+  void sync_controller_actions(XrTime display_time) {
+    if (!controller_writer_) {
+      return;
+    }
+    XrActiveActionSet active_set{controller_action_set_, XR_NULL_PATH};
+    XrActionsSyncInfo sync_info{XR_TYPE_ACTIONS_SYNC_INFO};
+    sync_info.countActiveActionSets = 1;
+    sync_info.activeActionSets = &active_set;
+    const auto sync_result = xrSyncActions(session_, &sync_info);
+
+    darktidevr::core::SharedControllerState sample{};
+    sample.sequence = ++controller_sequence_;
+    sample.timestamp_ns = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count());
+    for (auto& hand : sample.hands) {
+      hand.aim_pose.orientation.w = 1.0F;
+      hand.grip_pose.orientation.w = 1.0F;
+    }
+    if (sync_result == XR_SESSION_NOT_FOCUSED) {
+      controller_writer_->publish(sample);
+      latest_controller_sample_ = sample;
+      ++controller_samples_;
+      return;
+    }
+    check_xr(sync_result, "xrSyncActions");
+
+    const auto get_info = [&](XrAction action, std::size_t hand) {
+      XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};
+      info.action = action;
+      info.subactionPath = hand_paths_[hand];
+      return info;
+    };
+    const auto read_float = [&](XrAction action, std::size_t hand) {
+      auto info = get_info(action, hand);
+      XrActionStateFloat state{XR_TYPE_ACTION_STATE_FLOAT};
+      check_xr(xrGetActionStateFloat(session_, &info, &state),
+               "xrGetActionStateFloat");
+      return state.isActive ? std::clamp(state.currentState, 0.0F, 1.0F) : 0.0F;
+    };
+    const auto read_bool = [&](XrAction action, std::size_t hand) {
+      auto info = get_info(action, hand);
+      XrActionStateBoolean state{XR_TYPE_ACTION_STATE_BOOLEAN};
+      check_xr(xrGetActionStateBoolean(session_, &info, &state),
+               "xrGetActionStateBoolean");
+      return state.isActive && state.currentState == XR_TRUE;
+    };
+    const auto locate_pose = [&](XrAction action, XrSpace space,
+                                 darktidevr::math::Pose& pose,
+                                 std::uint32_t& flags, std::size_t hand) {
+      auto info = get_info(action, hand);
+      XrActionStatePose state{XR_TYPE_ACTION_STATE_POSE};
+      check_xr(xrGetActionStatePose(session_, &info, &state),
+               "xrGetActionStatePose");
+      if (!state.isActive) {
+        return;
+      }
+      XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
+      check_xr(xrLocateSpace(space, local_space_, display_time, &location),
+               "xrLocateSpace(controller)");
+      pose.orientation = {location.pose.orientation.x,
+                          location.pose.orientation.y,
+                          location.pose.orientation.z,
+                          location.pose.orientation.w};
+      pose.position = {location.pose.position.x, location.pose.position.y,
+                       location.pose.position.z};
+      if ((location.locationFlags &
+           XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) != 0) {
+        flags |= darktidevr::core::controller_orientation_valid;
+      }
+      if ((location.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) != 0) {
+        flags |= darktidevr::core::controller_position_valid;
+      }
+      if ((location.locationFlags &
+           XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT) != 0) {
+        flags |= darktidevr::core::controller_orientation_tracked;
+      }
+      if ((location.locationFlags &
+           XR_SPACE_LOCATION_POSITION_TRACKED_BIT) != 0) {
+        flags |= darktidevr::core::controller_position_tracked;
+      }
+    };
+
+    for (std::size_t hand = 0; hand < hand_paths_.size(); ++hand) {
+      auto& destination = sample.hands[hand];
+      locate_pose(aim_action_, aim_spaces_[hand], destination.aim_pose,
+                  destination.aim_tracking_flags, hand);
+      locate_pose(grip_action_, grip_spaces_[hand], destination.grip_pose,
+                  destination.grip_tracking_flags, hand);
+      destination.trigger = read_float(trigger_action_, hand);
+      destination.squeeze = read_float(squeeze_action_, hand);
+      auto stick_info = get_info(thumbstick_action_, hand);
+      XrActionStateVector2f stick{XR_TYPE_ACTION_STATE_VECTOR2F};
+      check_xr(xrGetActionStateVector2f(session_, &stick_info, &stick),
+               "xrGetActionStateVector2f");
+      if (stick.isActive) {
+        destination.thumbstick_x =
+            std::clamp(stick.currentState.x, -1.0F, 1.0F);
+        destination.thumbstick_y =
+            std::clamp(stick.currentState.y, -1.0F, 1.0F);
+      }
+      destination.buttons =
+          (read_bool(primary_action_, hand)
+               ? darktidevr::core::controller_primary
+               : 0U) |
+          (read_bool(secondary_action_, hand)
+               ? darktidevr::core::controller_secondary
+               : 0U) |
+          (read_bool(stick_click_action_, hand)
+               ? darktidevr::core::controller_stick_click
+               : 0U) |
+          (read_bool(menu_action_, hand) ? darktidevr::core::controller_menu
+                                         : 0U);
+    }
+    if (!controller_writer_->publish(sample)) {
+      throw std::runtime_error("Shared controller state rejected live sample");
+    }
+    latest_controller_sample_ = sample;
+    ++controller_samples_;
+    for (std::size_t hand = 0; hand < hand_paths_.size(); ++hand) {
+      if ((sample.hands[hand].aim_tracking_flags &
+           darktidevr::core::controller_orientation_tracked) != 0) {
+        ++controller_aim_tracked_frames_[hand];
+      }
+    }
+  }
+
   void force_destroy_session() noexcept {
     for (const auto swapchain : swapchains_) {
       if (swapchain != XR_NULL_HANDLE) {
@@ -1490,6 +1809,7 @@ class OpenXrProbe {
     }
     swapchains_.clear();
     swapchain_images_.clear();
+    destroy_controller_spaces();
     if (local_space_ != XR_NULL_HANDLE) {
       xrDestroySpace(local_space_);
       local_space_ = XR_NULL_HANDLE;
@@ -1646,6 +1966,31 @@ class OpenXrProbe {
   XrSession session_{XR_NULL_HANDLE};
   XrSpace local_space_{XR_NULL_HANDLE};
   XrSpace view_space_{XR_NULL_HANDLE};
+  XrActionSet controller_action_set_{XR_NULL_HANDLE};
+  std::array<XrPath, 2> hand_paths_{XR_NULL_PATH, XR_NULL_PATH};
+  XrAction aim_action_{XR_NULL_HANDLE};
+  XrAction grip_action_{XR_NULL_HANDLE};
+  XrAction trigger_action_{XR_NULL_HANDLE};
+  XrAction squeeze_action_{XR_NULL_HANDLE};
+  XrAction thumbstick_action_{XR_NULL_HANDLE};
+  XrAction primary_action_{XR_NULL_HANDLE};
+  XrAction secondary_action_{XR_NULL_HANDLE};
+  XrAction stick_click_action_{XR_NULL_HANDLE};
+  XrAction menu_action_{XR_NULL_HANDLE};
+  XrAction haptic_action_{XR_NULL_HANDLE};
+  std::array<XrSpace, 2> aim_spaces_{XR_NULL_HANDLE, XR_NULL_HANDLE};
+  std::array<XrSpace, 2> grip_spaces_{XR_NULL_HANDLE, XR_NULL_HANDLE};
+  std::unique_ptr<darktidevr::core::SharedControllerStateWriter>
+      controller_writer_;
+  std::uint64_t controller_sequence_{};
+  std::optional<darktidevr::core::SharedControllerState>
+      latest_controller_sample_;
+  std::uint64_t controller_samples_{};
+  std::array<std::uint64_t, 2> controller_aim_tracked_frames_{};
+  std::uint64_t controller_pointer_rays_{};
+  std::uint64_t controller_pointer_hits_{};
+  std::uint32_t controller_pointer_x_{};
+  std::uint32_t controller_pointer_y_{};
   bool d3d12_extension_{};
   std::optional<XrGraphicsRequirementsD3D12KHR> requirements_;
   std::vector<XrViewConfigurationView> views_;

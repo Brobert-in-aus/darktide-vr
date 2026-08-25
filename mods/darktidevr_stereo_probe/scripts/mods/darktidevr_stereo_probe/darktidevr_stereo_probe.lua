@@ -193,6 +193,11 @@ local presentation = {
     fullscreen_empty_updates = 0,
     fullscreen_restore_delay_updates = 12,
     logged_view_classification = {},
+    psykhanium = {
+        stage = "idle",
+        deadline = 0,
+        last_error = nil,
+    },
     explicit_flat_menu_views = {
         system_view = true,
         options_view = true,
@@ -629,6 +634,162 @@ function presentation.on_view_close(manager, view_name)
         tostring(view_name)
     )
     presentation.reconcile_fullscreen_views(manager)
+end
+
+function presentation.trigger_widget(manager, view_name, widget_name)
+    local view = manager:view_instance(view_name)
+    if not view or type(view.widgets_by_name) ~= "function" or
+            type(view.widget_hotspot_content) ~= "function" then
+        return false, "view_instance_not_ready"
+    end
+    local widgets = view:widgets_by_name()
+    local widget = widgets and widgets[widget_name]
+    local hotspot = widget and view:widget_hotspot_content(widget_name)
+    if not widget or not hotspot then
+        return false, "widget_not_ready"
+    end
+    if hotspot.disabled then
+        return false, "widget_disabled"
+    end
+    if type(hotspot.pressed_callback) ~= "function" then
+        return false, "pressed_callback_missing"
+    end
+    local ok, error_message = pcall(hotspot.pressed_callback)
+    if not ok then
+        return false, tostring(error_message)
+    end
+    return true, nil
+end
+
+function presentation.update_psykhanium(manager, t)
+    local state = presentation.psykhanium
+    if state.stage == "idle" and Mods and Mods.lua and Mods.lua.io then
+        local flag_path =
+            "./../mods/darktidevr_stereo_probe/darktidevr_enter_psykhanium.flag"
+        local flag = Mods.lua.io.open(flag_path, "r")
+        if flag then
+            local request = flag:read("*all")
+            flag:close()
+            if string.find(request or "", "enter", 1, true) then
+                local consumed = Mods.lua.io.open(flag_path, "w")
+                if consumed then
+                    consumed:write("consumed\n")
+                    consumed:close()
+                end
+                state.stage = "wait_for_hub"
+                state.deadline = t + 300
+                state.last_error = nil
+                mod:info("DARKTIDEVR_PSYKHANIUM armed source=one_shot_flag")
+            end
+        end
+    end
+    if state.stage == "idle" or state.stage == "complete" or
+            state.stage == "blocked" then
+        return
+    end
+    if t > state.deadline then
+        state.stage = "blocked"
+        state.last_error = "timeout"
+        mod:error("DARKTIDEVR_PSYKHANIUM blocked reason=timeout")
+        return
+    end
+
+    if state.stage == "wait_for_hub" then
+        if not Managers.state or not Managers.state.game_mode or
+                not Managers.backend then
+            return
+        end
+        local mode_ok, game_mode = pcall(
+            Managers.state.game_mode.game_mode_name,
+            Managers.state.game_mode)
+        local auth_ok, authenticated = pcall(
+            Managers.backend.authenticated,
+            Managers.backend)
+        if not mode_ok or game_mode ~= "hub" or
+                not auth_ok or not authenticated then
+            return
+        end
+        state.stage = "open_training_view"
+        state.deadline = t + 20
+        mod:info("DARKTIDEVR_PSYKHANIUM stage=open_training_view")
+    end
+
+    if state.stage == "open_training_view" then
+        if manager:view_active("training_grounds_view") then
+            state.stage = "select_shooting_range"
+            state.deadline = t + 20
+            mod:info("DARKTIDEVR_PSYKHANIUM stage=select_shooting_range")
+            return
+        end
+        local ok, result = pcall(
+            manager.open_view, manager, "training_grounds_view")
+        if not ok then
+            state.stage = "blocked"
+            state.last_error = tostring(result)
+            mod:error(
+                "DARKTIDEVR_PSYKHANIUM blocked stage=open_training_view error=%s",
+                state.last_error)
+        else
+            state.stage = "wait_training_view"
+            state.deadline = t + 20
+            mod:info("DARKTIDEVR_PSYKHANIUM stage=wait_training_view")
+        end
+        return
+    end
+
+    if state.stage == "wait_training_view" and
+            manager:view_active("training_grounds_view") then
+        state.stage = "select_shooting_range"
+    end
+    if state.stage == "select_shooting_range" then
+        local ok, reason = presentation.trigger_widget(
+            manager, "training_grounds_view", "option_button_3")
+        if ok then
+            state.stage = "wait_options_view"
+            state.deadline = t + 20
+            mod:info("DARKTIDEVR_PSYKHANIUM stage=wait_options_view")
+        elseif reason == "widget_disabled" then
+            state.stage = "blocked"
+            state.last_error = reason
+            mod:error(
+                "DARKTIDEVR_PSYKHANIUM blocked stage=select_shooting_range reason=%s",
+                reason)
+        end
+        return
+    end
+
+    if state.stage == "wait_options_view" and
+            manager:view_active("training_grounds_options_view") then
+        local ok, reason = presentation.trigger_widget(
+            manager, "training_grounds_options_view", "play_button")
+        if ok then
+            state.stage = "wait_shooting_range"
+            state.deadline = t + 90
+            mod:info("DARKTIDEVR_PSYKHANIUM stage=wait_shooting_range")
+        elseif reason == "widget_disabled" then
+            state.stage = "blocked"
+            state.last_error = reason
+            mod:error(
+                "DARKTIDEVR_PSYKHANIUM blocked stage=play reason=%s", reason)
+        end
+        return
+    end
+
+    if state.stage == "wait_shooting_range" and Managers.state and
+            Managers.state.game_mode and
+            type(Managers.state.game_mode.game_mode_name) == "function" then
+        local ok, game_mode = pcall(
+            Managers.state.game_mode.game_mode_name,
+            Managers.state.game_mode)
+        if ok and (game_mode == "shooting_range" or
+                game_mode == "training_grounds") then
+            state.stage = "complete"
+            state.last_error = nil
+            mod:info(
+                "DARKTIDEVR_PSYKHANIUM result=pass game_mode=%s",
+                tostring(game_mode))
+        end
+    end
 end
 
 local function refresh_xr_render_extent()
@@ -1238,18 +1399,11 @@ local function teardown()
     if ui_native_capture then
         ui_native_capture.dtvr_set_projection_active(0)
     end
-    if active_world then
-        local primary = ScriptWorld.has_viewport(active_world, primary_viewport_name) and
-            ScriptWorld.viewport(active_world, primary_viewport_name)
-
-        if primary then
-            Viewport.set_rect(primary, 0, 0, 1, 1)
-        end
-
-        if ScriptWorld.has_viewport(active_world, right_viewport_name) then
-            ScriptWorld.destroy_viewport(active_world, right_viewport_name)
-        end
-    end
+    -- This function is reached when CameraManager has already transitioned to
+    -- a different world. Stingray owns the old world's viewports and destroys
+    -- them with that world; even querying ScriptWorld here reports a fatal
+    -- script error once its `viewports` data is gone. Clear only our references
+    -- and let world destruction reclaim the old right-eye viewport.
 
     active = false
     active_manager = nil
@@ -2169,8 +2323,9 @@ end
 mod:hook_safe(
     require("scripts/managers/ui/ui_manager"),
     "update",
-    function(self)
+    function(self, _, t)
     presentation.reconcile_fullscreen_views(self)
+    presentation.update_psykhanium(self, t or 0)
 end)
 
 mod:hook_safe(
@@ -3426,6 +3581,29 @@ mod:command("dtvr_stereo_off", "Disable the stereo probe and restore mono", func
 
     mod:echo("DarktideVR stereo probe disabled")
 end)
+
+mod:command(
+    "dtvr_enter_psykhanium",
+    "Enter the single-player Psykhanium through the normal training-ground UI",
+    function()
+        presentation.psykhanium.stage = "open_training_view"
+        presentation.psykhanium.deadline = math.huge
+        presentation.psykhanium.last_error = nil
+        mod:echo("DARKTIDEVR_PSYKHANIUM armed")
+    end
+)
+
+mod:command(
+    "dtvr_psykhanium_status",
+    "Report the guarded Psykhanium-entry state machine",
+    function()
+        mod:echo(
+            "DARKTIDEVR_PSYKHANIUM stage=%s error=%s",
+            tostring(presentation.psykhanium.stage),
+            tostring(presentation.psykhanium.last_error)
+        )
+    end
+)
 
 mod.on_disabled = function()
     requested = false
