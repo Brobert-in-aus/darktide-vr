@@ -1,0 +1,23 @@
+add_library(darktidevr_core STATIC
+  fingerprint.cpp
+  head_tracking.cpp
+  output_layout.cpp
+  pose_snapshot.cpp
+  presentation_policy.cpp
+  shared_head_pose.cpp
+  xr_math.cpp
+)
+
+target_include_directories(darktidevr_core PUBLIC
+  "${PROJECT_SOURCE_DIR}/src"
+)
+
+target_compile_definitions(darktidevr_core PRIVATE
+  NOMINMAX
+  WIN32_LEAN_AND_MEAN
+  UNICODE
+  _UNICODE
+)
+
+target_compile_options(darktidevr_core PRIVATE /W4 /WX /permissive-)
+target_link_libraries(darktidevr_core PRIVATE bcrypt version)

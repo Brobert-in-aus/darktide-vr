@@ -1,0 +1,4 @@
+Application,ProcessID,SwapChainAddress,PresentRuntime,PresentMode,MsBetweenPresents
+Darktide.exe,42,0x1234,DXGI,Hardware Composed: Independent Flip,10.0
+Darktide.exe,42,0x1234,DXGI,Hardware Composed: Independent Flip,20.0
+Darktide.exe,42,0x1234,DXGI,Composed: Flip,30.0

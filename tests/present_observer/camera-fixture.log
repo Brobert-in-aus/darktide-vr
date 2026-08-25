@@ -1,0 +1,2 @@
+00:00:00 [INFO] DARKTIDEVR_CAMERA schema=1 viewport=player1 position=1.0,2.0,3.0 rotation=0.0,0.0,0.0,1.0 vfov_rad=1.0
+00:00:01 [INFO] DARKTIDEVR_CAMERA schema=1 viewport=player1 position=2.0,2.0,3.0 rotation=0.0,0.0,0.70710678,0.70710678 vfov_rad=1.1

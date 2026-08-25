@@ -2,12 +2,20 @@
 
 ## Comprehensive design brief
 
-- **Status:** Research and pre-production brief
+- **Status:** Original research brief; implementation status is maintained in
+  [`phase1/README.md`](phase1/README.md)
 - **Date:** 23 August 2026
 - **Target:** Windows PCVR, Steam build first
 - **Primary runtime:** OpenXR 1.1
 - **Baseline game artifact inspected:** Darktide `1.12.0-b773907`, executable file version `1.3.770.210`
-- **Confidence:** Architecture recommendation - medium; camera seam - medium/high; stereo mode feasibility - unproven; anti-cheat compatibility - unproven
+- **Confidence at publication:** Architecture recommendation - medium; camera
+  seam - medium/high; stereo mode feasibility - unproven; anti-cheat
+  compatibility - unproven
+
+> This document preserves the pre-implementation rationale as of 23 August.
+> It is not the current runbook. True same-frame stereo, loading fallback, and
+> private-lobby entry were subsequently validated; current limitations and
+> commands live in the Phase 1 status and synchronized-stereo probe.
 
 ---
 
@@ -1002,4 +1010,4 @@ rg -n 'Camera|camera|vertical_fov|first_person' `
   '.\tmp\research\Darktide-Source-Code\scripts'
 ```
 
-The four local PDFs were text-extracted and representative architecture/bring-up pages were rendered to PNG and visually inspected. No Darktide executable was launched, injected into, modified, or tested under EAC. No GPU, headset, D3D12 validation-layer, OpenXR runtime, performance, or comfort validation has yet been performed; those are Phase 0-2 gates on the PC. No Mac-only validation applies to this Windows PCVR design.
+The four local PDFs were text-extracted and representative architecture/bring-up pages were rendered to PNG and visually inspected. At the time this brief was written, no Darktide executable had been launched, injected into, modified, or tested under EAC, and no GPU/headset validation had occurred. Those historical constraints describe this research pass only; see the current Phase 1 documentation for subsequent Windows/OpenXR validation. No Mac-only validation applies to this Windows PCVR design.

@@ -19,10 +19,13 @@ secrets.*
 artifacts/
 _downloads/
 build/
+/--help/
 dist/
 bin/
 obj/
 node_modules/
+__pycache__/
+*.py[cod]
 DerivedData/
 xcuserdata/
 .swiftpm/
