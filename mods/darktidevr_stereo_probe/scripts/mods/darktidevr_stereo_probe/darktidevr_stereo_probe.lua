@@ -91,11 +91,22 @@ local ui_virtual_size_message_requested = true
 local head_pose_values = nil
 local head_pose_sequence = nil
 local head_tracking_requested = true
-local head_translation_requested = false -- enable after the 3DoF gate
+local head_translation_requested = true -- additive camera-only room-scale lean
 local head_pose_last_sequence = 0
 local head_render_vertical_fov = nil
 local head_render_aspect_ratio = nil
 local head_render_frusta = nil
+local render_timing_label = nil
+local render_timing_frequency = nil
+local render_timing_samples = 0
+local render_timing_left_ticks = 0
+local render_timing_right_ticks = 0
+local render_timing_pair_ticks = 0
+local render_timing_left_max_ticks = 0
+local render_timing_right_max_ticks = 0
+local render_timing_pair_max_ticks = 0
+local gpu_profile_values = nil
+local performance_profile_requested = false -- opt-in diagnostic; allocates GPU timestamp work
 local ui_native_observer_last_present = 0
 local main_menu_ui_hidden = true
 local ui_swap_viewport_halves_requested = false -- bounded identity probe; normal mapping restored
@@ -223,6 +234,10 @@ local function ensure_ui_native_hooks()
         unsigned long long dtvr_focused_trace_count(void);
         int dtvr_enable_marker_log(void);
         int dtvr_read_head_pose(float *values, unsigned long long *sequence);
+        unsigned long long dtvr_qpc_ticks(void);
+        unsigned long long dtvr_qpc_frequency(void);
+        int dtvr_take_gpu_eye_profile(int eye, unsigned long long *values);
+        int dtvr_set_gpu_eye_profile(int enabled);
     ]])
 
     local ok, library = pcall(
@@ -245,6 +260,9 @@ local function ensure_ui_native_hooks()
     ui_native_capture = library
     head_pose_values = ffi.new("float[17]")
     head_pose_sequence = ffi.new("unsigned long long[1]")
+    gpu_profile_values = ffi.new("unsigned long long[4]")
+    ui_native_capture.dtvr_set_gpu_eye_profile(
+        performance_profile_requested and 1 or 0)
     mod:info("DARKTIDEVR_STEREO native_hooks installed")
 
     return true
@@ -497,6 +515,105 @@ local function report_native_capture_result(result)
         end
 
         ui_native_capture_last_result = result
+    end
+end
+
+local function performance_tick()
+    if not performance_profile_requested or not ui_native_capture then
+        return nil
+    end
+    local value = tonumber(ui_native_capture.dtvr_qpc_ticks())
+    if not value or value == 0 then
+        return nil
+    end
+    return value
+end
+
+local function reset_render_timings(label)
+    render_timing_label = label
+    render_timing_frequency = ui_native_capture and
+        tonumber(ui_native_capture.dtvr_qpc_frequency()) or nil
+    render_timing_samples = 0
+    render_timing_left_ticks = 0
+    render_timing_right_ticks = 0
+    render_timing_pair_ticks = 0
+    render_timing_left_max_ticks = 0
+    render_timing_right_max_ticks = 0
+    render_timing_pair_max_ticks = 0
+end
+
+local function take_gpu_eye_profile(eye)
+    if not ui_native_capture or not gpu_profile_values then
+        return nil
+    end
+    if ui_native_capture.dtvr_take_gpu_eye_profile(
+            eye, gpu_profile_values) ~= 0 then
+        return nil
+    end
+    local count = tonumber(gpu_profile_values[0])
+    local total = tonumber(gpu_profile_values[1])
+    local maximum = tonumber(gpu_profile_values[2])
+    local frequency = tonumber(gpu_profile_values[3])
+    if not count or count == 0 or not frequency or frequency <= 0 then
+        return nil
+    end
+    return {
+        count = count,
+        average_ms = total / count * 1000 / frequency,
+        maximum_ms = maximum * 1000 / frequency
+    }
+end
+
+local function record_render_timings(label, left_ticks, right_ticks, pair_ticks)
+    if not left_ticks or not right_ticks or not pair_ticks then
+        return
+    end
+    if render_timing_label ~= label or not render_timing_frequency or
+            render_timing_frequency <= 0 then
+        reset_render_timings(label)
+    end
+    if not render_timing_frequency or render_timing_frequency <= 0 then
+        return
+    end
+    render_timing_samples = render_timing_samples + 1
+    render_timing_left_ticks = render_timing_left_ticks + left_ticks
+    render_timing_right_ticks = render_timing_right_ticks + right_ticks
+    render_timing_pair_ticks = render_timing_pair_ticks + pair_ticks
+    render_timing_left_max_ticks = math.max(
+        render_timing_left_max_ticks, left_ticks)
+    render_timing_right_max_ticks = math.max(
+        render_timing_right_max_ticks, right_ticks)
+    render_timing_pair_max_ticks = math.max(
+        render_timing_pair_max_ticks, pair_ticks)
+    if render_timing_samples >= 240 then
+        local to_ms = 1000 / render_timing_frequency
+        mod:info(
+            "DARKTIDEVR_PERF target=%s samples=%d left_avg_ms=%.3f right_avg_ms=%.3f pair_avg_ms=%.3f left_max_ms=%.3f right_max_ms=%.3f pair_max_ms=%.3f",
+            label,
+            render_timing_samples,
+            render_timing_left_ticks / render_timing_samples * to_ms,
+            render_timing_right_ticks / render_timing_samples * to_ms,
+            render_timing_pair_ticks / render_timing_samples * to_ms,
+            render_timing_left_max_ticks * to_ms,
+            render_timing_right_max_ticks * to_ms,
+            render_timing_pair_max_ticks * to_ms
+        )
+        local left_gpu = take_gpu_eye_profile(0)
+        local right_gpu = take_gpu_eye_profile(1)
+        if left_gpu and right_gpu then
+            mod:info(
+                "DARKTIDEVR_GPU_PERF target=%s left_samples=%d right_samples=%d left_avg_ms=%.3f right_avg_ms=%.3f interval_sum_avg_ms=%.3f left_max_ms=%.3f right_max_ms=%.3f",
+                label,
+                left_gpu.count,
+                right_gpu.count,
+                left_gpu.average_ms,
+                right_gpu.average_ms,
+                left_gpu.average_ms + right_gpu.average_ms,
+                left_gpu.maximum_ms,
+                right_gpu.maximum_ms
+            )
+        end
+        reset_render_timings(label)
     end
 end
 
@@ -1354,10 +1471,14 @@ local function update_stereo(manager)
         head_render_aspect_ratio and
         math.abs(head_render_aspect_ratio -
             (ui_eye_target_width / ui_eye_target_height)) < 0.001
+    local left_optical_rotation = nil
+    local right_optical_rotation = nil
     if runtime_projection_matches_target then
         Camera.set_near_range(right_camera, Camera.near_range(primary_camera))
         Camera.set_far_range(right_camera, Camera.far_range(primary_camera))
-        if not apply_runtime_frusta(primary_camera, right_camera) then
+        left_optical_rotation, right_optical_rotation =
+            apply_runtime_recentered_projection(primary_camera, right_camera)
+        if not left_optical_rotation or not right_optical_rotation then
             Camera.set_vertical_fov(primary_camera, head_render_vertical_fov)
             Camera.set_vertical_fov(right_camera, head_render_vertical_fov)
         end
@@ -1367,12 +1488,22 @@ local function update_stereo(manager)
         primary_camera,
         clean_position - eye_axis * half_ipd
     )
-    ScriptCamera.set_local_rotation(primary_camera, clean_rotation)
+    ScriptCamera.set_local_rotation(
+        primary_camera,
+        left_optical_rotation and
+            Quaternion.multiply(clean_rotation, left_optical_rotation) or
+            clean_rotation
+    )
     ScriptCamera.set_local_position(
         right_camera,
         clean_position + eye_axis * half_ipd
     )
-    ScriptCamera.set_local_rotation(right_camera, clean_rotation)
+    ScriptCamera.set_local_rotation(
+        right_camera,
+        right_optical_rotation and
+            Quaternion.multiply(clean_rotation, right_optical_rotation) or
+            clean_rotation
+    )
     if not runtime_projection_matches_target then
         copy_projection(primary_camera, right_camera)
     end
@@ -1599,7 +1730,10 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
             ui_native_capture.dtvr_boundary_eye_capture_count(0)
         ) + 1
         report_native_capture_result(arm_eye_capture(0))
+        local pair_start = performance_tick()
+        local left_start = pair_start
         local result = func(world, ...)
+        local left_end = performance_tick()
         if ui_direct_swapchain_capture_requested then
             report_native_capture_result(
                 ui_native_capture.dtvr_capture_armed_swapchain_eye(0)
@@ -1617,7 +1751,9 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
             ui_native_capture.dtvr_boundary_eye_capture_count(1)
         ) + 1
         report_native_capture_result(arm_eye_capture(1))
+        local right_start = performance_tick()
         func(world, ...)
+        local right_end = performance_tick()
         if ui_direct_swapchain_capture_requested then
             report_native_capture_result(
                 ui_native_capture.dtvr_capture_armed_swapchain_eye(1)
@@ -1628,6 +1764,12 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
 
         -- Restore the normal active set for update code outside this hook.
         ScriptWorld.activate_viewport(world, primary)
+        record_render_timings(
+            "gameplay",
+            left_start and left_end and left_end - left_start or nil,
+            right_start and right_end and right_end - right_start or nil,
+            pair_start and right_end and right_end - pair_start or nil
+        )
         report_native_observer()
         return result
     end
@@ -1651,7 +1793,10 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
             ui_native_capture.dtvr_boundary_eye_capture_count(0)
         ) + 1
         report_native_capture_result(arm_eye_capture(0))
+        local pair_start = performance_tick()
+        local left_start = pair_start
         local result = func(world, ...)
+        local left_end = performance_tick()
         if ui_direct_swapchain_capture_requested then
             report_native_capture_result(
                 ui_native_capture.dtvr_capture_armed_swapchain_eye(0)
@@ -1669,7 +1814,9 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
             ui_native_capture.dtvr_boundary_eye_capture_count(1)
         ) + 1
         report_native_capture_result(arm_eye_capture(1))
+        local right_start = performance_tick()
         func(world, ...)
+        local right_end = performance_tick()
         if ui_direct_swapchain_capture_requested then
             report_native_capture_result(
                 ui_native_capture.dtvr_capture_armed_swapchain_eye(1)
@@ -1678,6 +1825,13 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
             wait_for_eye_capture(1, right_target)
         end
         ScriptWorld.activate_viewport(world, primary)
+
+        record_render_timings(
+            "character_select",
+            left_start and left_end and left_end - left_start or nil,
+            right_start and right_end and right_end - right_start or nil,
+            pair_start and right_end and right_end - pair_start or nil
+        )
 
         report_native_observer()
         return result

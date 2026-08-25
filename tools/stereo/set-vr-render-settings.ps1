@@ -14,8 +14,9 @@ $resolvedSettingsPath = [System.IO.Path]::GetFullPath($SettingsPath)
 $resolvedBackupPath = [System.IO.Path]::GetFullPath($BackupPath)
 
 $vrSettings = [ordered]@{
-    ambient_occlusion_quality           = '"low"'
-    gi_quality                          = '"low"'
+    # "low" still expands to enabled AO/GTAO and baked DDGI at startup.
+    ambient_occlusion_quality           = '"off"'
+    gi_quality                          = '"off"'
     light_quality                       = '"low"'
     ssr_quality                         = '"off"'
     texture_quality                     = '"low"'
@@ -61,7 +62,9 @@ $vrSettings = [ordered]@{
     terrain_displacement_min_distance   = '0'
     terrain_tesselation_max_distance    = '0'
     terrain_tesselation_min_distance    = '0'
-    upscaling_quality                   = '"performance"'
+    # Preserve the lowest-cost DLSS mode for the initial dual-render profile.
+    # Its temporal shimmer is tracked separately from the performance gate.
+    upscaling_quality                   = '"ultra_performance"'
     volumetric_extrapolation_high_quality = 'false'
     volumetric_lighting_local_lights    = 'false'
     volumetric_volumes_enabled          = 'false'

@@ -464,6 +464,10 @@ class OpenXrProbe {
                                      : (separate_shared_eye_swapchains
                                             ? shared_eye_height
                                             : (stereo ? 2160U : 1080U));
+    const std::uint32_t flat_capture_height =
+        shared_eyes
+            ? (separate_shared_eye_swapchains ? height : height / 2)
+            : height;
     XrSwapchainCreateInfo swapchain_info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     swapchain_info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT |
                                 XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
@@ -531,12 +535,8 @@ class OpenXrProbe {
     std::shared_ptr<const CapturePixels> consumed_capture;
     std::jthread capture_thread;
     if (capture_title) {
-      const auto capture_height =
-          shared_eyes
-              ? (separate_shared_eye_swapchains ? height : height / 2)
-              : height;
       window_capture = std::make_unique<darktidevr::harness::WindowCapture>(
-          *capture_title, width, capture_height);
+          *capture_title, width, flat_capture_height);
       const auto texture_description =
           theatre_images.front().front().texture->GetDesc();
       UINT64 upload_bytes{};
@@ -564,11 +564,12 @@ class OpenXrProbe {
                         reinterpret_cast<void**>(&upload_pixels)),
             "ID3D12Resource::Map(theatre upload)");
 
-      const auto capture_rgba = [&window_capture, width, capture_height] {
+      const auto capture_rgba =
+          [&window_capture, width, flat_capture_height] {
         const auto captured = window_capture->capture();
         auto converted =
             std::make_shared<CapturePixels>(static_cast<std::size_t>(width) *
-                                            capture_height * 4);
+                                            flat_capture_height * 4);
         for (std::uint32_t y = 0; y < captured.height; ++y) {
           const auto* source = captured.bgra_pixels +
                                static_cast<std::size_t>(y) *
@@ -681,6 +682,9 @@ class OpenXrProbe {
     std::uint32_t flat_fallback_frames{};
     std::uint32_t flat_fallback_transitions{};
     bool flat_fallback_active{};
+    XrPosef flat_fallback_pose{{0.0F, 0.0F, 0.0F, 1.0F},
+                               {0.0F, 0.0F, -2.0F}};
+    bool flat_fallback_pose_valid{};
     std::vector<XrView> located_views(views_.size(), {XR_TYPE_VIEW});
     std::vector<XrCompositionLayerProjectionView> projection_views(
         views_.size(), {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW});
@@ -706,6 +710,10 @@ class OpenXrProbe {
     std::uint64_t pair_driven_waits{};
     std::uint64_t pair_driven_timeouts{};
     const auto start = std::chrono::steady_clock::now();
+    auto last_live_report = start;
+    std::uint32_t last_live_submitted_frames{};
+    std::uint64_t last_live_fresh_shared_pairs{};
+    std::uint32_t last_live_fallback_frames{};
     std::uint32_t processed_frames{};
     constexpr auto shared_stale_after = std::chrono::milliseconds(500);
     const float render_aspect_ratio =
@@ -753,6 +761,8 @@ class OpenXrProbe {
       check_xr(xrBeginFrame(session_, &frame_begin), "xrBeginFrame(theatre)");
 
       bool submit_layer = frame_state.shouldRender == XR_TRUE;
+      darktidevr::math::Pose current_head{};
+      bool current_head_valid{};
       if (stereo && submit_layer) {
         XrViewState view_state{XR_TYPE_VIEW_STATE};
         XrViewLocateInfo locate_info{XR_TYPE_VIEW_LOCATE_INFO};
@@ -779,9 +789,6 @@ class OpenXrProbe {
           rendered_symmetric_fov =
               {0.0F, 0.0F, average_vertical_span * 0.5F,
                average_vertical_span * -0.5F};
-        }
-        if (submit_layer && head_pose_writer) {
-          darktidevr::math::Pose current_head{};
           current_head.position = {
               (located_views[0].pose.position.x +
                located_views[1].pose.position.x) *
@@ -797,6 +804,9 @@ class OpenXrProbe {
               located_views[0].pose.orientation.y,
               located_views[0].pose.orientation.z,
               located_views[0].pose.orientation.w};
+          current_head_valid = true;
+        }
+        if (submit_layer && head_pose_writer) {
           if (!head_recenter_pose) {
             head_recenter_pose = current_head;
           }
@@ -819,8 +829,6 @@ class OpenXrProbe {
           if (!head_pose_writer->publish(pose_sample)) {
             throw std::runtime_error("Shared head-pose publication failed");
           }
-          const darktidevr::math::Pose orientation_only_delta{
-              delta.orientation, {0.0F, 0.0F, 0.0F}};
           for (std::size_t eye = 0; eye < located_views.size(); ++eye) {
             const darktidevr::math::Pose current_eye{
                 {located_views[eye].pose.orientation.x,
@@ -830,18 +838,14 @@ class OpenXrProbe {
                 {located_views[eye].pose.position.x,
                  located_views[eye].pose.position.y,
                  located_views[eye].pose.position.z}};
-            const auto eye_from_head = darktidevr::math::compose(
-                darktidevr::math::inverse(current_head), current_eye);
-            const auto recentered_eye = darktidevr::math::compose(
-                orientation_only_delta, eye_from_head);
             // Projection layers are submitted in absolute LOCAL space. The
             // game camera consumes a delta from the first tracked head pose,
-            // so anchor that same delta back onto the exact pose which
-            // established the baseline. Submitting the delta as if it were an
-            // absolute LOCAL pose makes the image plane start at an arbitrary
-            // angle whenever the headset moves during XR initialization.
-            const auto anchored_eye = darktidevr::math::compose(
-                *head_recenter_pose, recentered_eye);
+            // so anchor that same full 6DoF delta back onto the exact pose
+            // which established the baseline. The helper also preserves the
+            // runtime eye-from-head transform (including physical IPD).
+            const auto anchored_eye =
+                darktidevr::core::anchored_recentered_eye_pose(
+                    *head_recenter_pose, delta, current_head, current_eye);
             recentered_view_poses[eye].orientation = {
                 anchored_eye.orientation.x, anchored_eye.orientation.y,
                 anchored_eye.orientation.z, anchored_eye.orientation.w};
@@ -858,6 +862,7 @@ class OpenXrProbe {
         }
       }
       bool submitted_shared_pair_this_frame{};
+      bool submitted_flat_fallback_this_frame{};
       if (submit_layer) {
         XrSwapchainImageAcquireInfo acquire_info{
             XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
@@ -967,10 +972,25 @@ class OpenXrProbe {
              (shared_pair_fresh && shared_pair_pose_synced));
         submitted_shared_pair_this_frame = use_shared_pair;
         const bool use_flat_capture = window_capture && !use_shared_pair;
+        submitted_flat_fallback_this_frame = use_flat_capture;
         if (opened_eyes && window_capture) {
           if (use_flat_capture != flat_fallback_active) {
             flat_fallback_active = use_flat_capture;
             ++flat_fallback_transitions;
+            if (flat_fallback_active && current_head_valid) {
+              const auto anchored = darktidevr::math::compose(
+                  current_head,
+                  darktidevr::math::Pose{{}, {0.0F, 0.0F, -2.0F}});
+              flat_fallback_pose.orientation = {
+                  anchored.orientation.x, anchored.orientation.y,
+                  anchored.orientation.z, anchored.orientation.w};
+              flat_fallback_pose.position = {
+                  anchored.position.x, anchored.position.y,
+                  anchored.position.z};
+              flat_fallback_pose_valid = true;
+            } else if (!flat_fallback_active) {
+              flat_fallback_pose_valid = false;
+            }
           }
           if (use_flat_capture) {
             ++flat_fallback_frames;
@@ -996,10 +1016,10 @@ class OpenXrProbe {
         if (use_flat_capture) {
           const auto newest = latest_capture.load(std::memory_order_acquire);
           if (newest && newest != consumed_capture) {
-            const auto capture_height = shared_eyes ? height / 2 : height;
             for (std::uint32_t y = 0; y < height; ++y) {
               const auto* source = newest->data() +
-                                   static_cast<std::size_t>(y % capture_height) *
+                                   static_cast<std::size_t>(
+                                       y % flat_capture_height) *
                                        width * 4;
               auto* destination = upload_pixels + upload_footprint.Offset +
                                   static_cast<std::size_t>(y) *
@@ -1164,6 +1184,18 @@ class OpenXrProbe {
                        static_cast<std::int32_t>(width / 2),
                        static_cast<std::int32_t>(width / 2));
       }
+      XrCompositionLayerQuad flat_fallback_quad{
+          XR_TYPE_COMPOSITION_LAYER_QUAD};
+      flat_fallback_quad.space =
+          flat_fallback_pose_valid ? local_space_ : view_space_;
+      flat_fallback_quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+      flat_fallback_quad.subImage.swapchain = theatre_swapchains.front();
+      flat_fallback_quad.subImage.imageRect.offset = {0, 0};
+      flat_fallback_quad.subImage.imageRect.extent = {
+          static_cast<std::int32_t>(width),
+          static_cast<std::int32_t>(flat_capture_height)};
+      flat_fallback_quad.pose = flat_fallback_pose;
+      flat_fallback_quad.size = {2.0F, 2.0F};
       XrCompositionLayerProjection projection{
           XR_TYPE_COMPOSITION_LAYER_PROJECTION};
       if (stereo) {
@@ -1243,7 +1275,10 @@ class OpenXrProbe {
             static_cast<std::uint32_t>(projection_views.size());
         projection.views = projection_views.data();
       }
-      const auto* layer = stereo
+      const auto* layer = submitted_flat_fallback_this_frame
+                              ? reinterpret_cast<const XrCompositionLayerBaseHeader*>(
+                                    &flat_fallback_quad)
+                          : stereo
                               ? reinterpret_cast<const XrCompositionLayerBaseHeader*>(
                                     &projection)
                               : reinterpret_cast<const XrCompositionLayerBaseHeader*>(
@@ -1257,14 +1292,33 @@ class OpenXrProbe {
       ++processed_frames;
       poll_session_events();
       if ((frame + 1) % 120 == 0) {
-        const auto live_seconds = std::chrono::duration<double>(
-            std::chrono::steady_clock::now() - start).count();
+        const auto report_time = std::chrono::steady_clock::now();
+        const auto live_seconds =
+            std::chrono::duration<double>(report_time - start).count();
+        const auto interval_seconds = std::chrono::duration<double>(
+            report_time - last_live_report).count();
+        const auto interval_submissions =
+            submitted_frames - last_live_submitted_frames;
+        const auto interval_fresh_pairs =
+            fresh_shared_pairs - last_live_fresh_shared_pairs;
+        const auto interval_fallback_frames =
+            flat_fallback_frames - last_live_fallback_frames;
         std::cout << "openxr.live.submission_fps="
                   << submitted_frames / live_seconds
                   << " fresh_pair_fps=" << fresh_shared_pairs / live_seconds
+                  << " interval_submission_fps="
+                  << interval_submissions / interval_seconds
+                  << " interval_fresh_pair_fps="
+                  << interval_fresh_pairs / interval_seconds
+                  << " interval_fallback_fps="
+                  << interval_fallback_frames / interval_seconds
                   << " reused_frames=" << reused_shared_frames
                   << " pair_pose_mismatches=" << pair_pose_mismatches
                   << std::endl;
+        last_live_report = report_time;
+        last_live_submitted_frames = submitted_frames;
+        last_live_fresh_shared_pairs = fresh_shared_pairs;
+        last_live_fallback_frames = flat_fallback_frames;
       }
     }
 

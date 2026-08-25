@@ -406,3 +406,92 @@ pairs/s with no reused frames; the pose-mismatch counter remained at its two
 startup samples. This is now the preferred exact-resolution baseline, preserved
 under
 `artifacts/phase1/known-good-medium-recentered-symmetric-20260825`.
+
+## Camera-only 6DoF gate (2026-08-25)
+
+Headset translation is now composed additively onto Darktide's completed base
+camera pose. It moves the two eye cameras together but does not modify the
+player unit, controller, locomotion input, aim state, or collision transform.
+The initial safety envelope clamps recenter-local translation to a 0.25 m
+horizontal radius and +/-0.18 m vertically.
+
+The OpenXR layer now reconstructs its absolute eye poses from that same full
+recentered head delta. Previously it intentionally retained orientation only;
+enabling translation on the game cameras without removing that restriction
+would have caused the rendered viewpoint and compositor image plane to diverge.
+A shared core helper and focused math test now require translated eye-pair
+midpoint reconstruction while preserving the runtime 64 mm IPD.
+
+Character-select headset validation covered left/right, forward/back and
+up/down physical leaning. The user reported flawless 6DoF with no distortion.
+The five-minute run submitted 20,406 frames, including 19,994 fresh stereo
+pairs, with zero reused or stale frames and only the two known startup pose-tag
+mismatches. The subsequent lobby test also passed: the player could move and
+look around without tracking, distortion, IPD, locomotion, or recentering
+problems. This closes the initial camera-only 6DoF gate.
+
+The same lobby run exposed four separate follow-ups:
+
+- the loading interval was incorrectly presented as full-FOV stereo rather
+  than a comfortable flat panel;
+- world-space UI differed or disappeared between eyes, and the menu was visible
+  only in the desktop mirror and could not be interacted with in VR;
+- minor inter-eye differences and shimmer remain, plausibly involving the
+  temporal upscaler but not yet causally isolated;
+- heavy lobby areas had poor frame rate despite the strong GPU.
+
+The loading fault was concrete: the fallback capture was submitted through the
+stereo projection layer and, on the separate-eye path, its height was also
+incorrectly halved and repeated. Fallback frames now use the complete flat
+capture on a mono quad two metres square and two metres forward. Its first live
+test at the original one-metre, aspect-preserving size confirmed the panel
+image was correct but rejected VIEW-space head locking. The revised quad
+is anchored in LOCAL space from the headset pose when each fallback transition
+begins, so it remains fixed in the room until stereo resumes. Gameplay frames
+retain the stereo projection layer. The LOCAL-space revision and enlarged
+square geometry were exercised during the performance-profile loading
+transition; explicit comfort acceptance of the new size remains pending.
+
+The active render configuration audit found AO, GTAO and baked DDGI enabled
+despite the low/custom menu profile. `ambient_occlusion_quality = "low"` was
+confirmed to regenerate AO/GTAO as enabled, so the profile now sets it to
+`"off"`; both active flags remain false after relaunch. Darktide still forces
+`baked_ddgi = true` even with `gi_quality = "off"`, indicating an engine-required
+baked-lighting baseline rather than a working user quality toggle. Ray tracing,
+shadows, volumetrics, decals, SSR, motion blur and lens effects were already
+off; DLSS remains at Ultra Performance for the lowest-cost initial dual-render
+test. The latter is a quality/performance tradeoff and remains a candidate for
+the shimmer A/B rather than an assumed cause.
+
+## Single-render 4K performance control (2026-08-25)
+
+Both DarktideVR mods were removed from the effective DMF load order and the
+game was launched normally at exclusive 3840x2160 with the same minimum profile
+and DLSS Ultra Performance. Process-module inspection confirmed that
+`darktidevr_native_capture.dll` was not loaded, and the fresh console log had no
+camera/stereo-probe initialization. The user observed approximately 150 fps on
+average with a lowest observed value of 120 fps.
+
+3840x2160 is 8.29 million output pixels per frame; two 2112x2304 eyes are 9.73
+million, only about 17% more. The prior lobby XR run produced roughly 50 fresh
+pairs/s. The resulting approximately threefold frame-time increase is too large
+to attribute to output-pixel count alone. It includes the expected cost of two
+complete Stingray world submissions plus additional render/capture/scheduling
+overhead. The VR configuration was restored from the exact pre-control backup.
+
+The profiling build records high-resolution wall time separately around
+the left world submission, right world submission, and complete pair, reporting
+240-pair averages and maxima. The XR harness now reports interval submission,
+fresh-pair, and fallback rates in addition to lifetime averages. This is CPU
+submission/pacing evidence. D3D12 timestamp queries then bracketed each eye's
+queued camera work while excluding the shared-surface copy. At character select
+the stable intervals were approximately 3.5--4.3 ms per eye and fresh-pair rate
+was 108--117/s. In the lobby the left interval was approximately 24--27 ms and
+the right interval 11--13 ms while fresh pairs generally ranged from the
+mid-30s to upper-40s during the instrumented soak. The intervals overlap: the
+left marker spans most of the complete queued pair and the right marker is
+nested inside it, so their sum is not a pair duration. The result localizes the
+loss downstream of Lua and confirms a material roughly 11--13 ms second-view
+GPU interval, but does not yet assign cost to individual renderer passes.
+Timestamp profiling is opt-in after this run so its command-list allocation
+overhead is absent from normal testing.

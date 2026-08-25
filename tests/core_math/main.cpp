@@ -146,6 +146,40 @@ int main() {
                rotate(rolled_current.orientation, {0.0F, 1.0F, 0.0F}),
                "absolute projection roll anchor");
 
+    // Both the game cameras and submitted OpenXR image planes must consume
+    // the same full head delta. Verify that anchoring a translated delta
+    // moves the eye-pair midpoint while preserving the runtime IPD.
+    const Pose sixdof_anchor{yaw_90, {1.0F, 2.0F, 3.0F}};
+    const Pose sixdof_local_delta{
+        roll_30, {0.12F, -0.08F, -0.16F}};
+    const auto sixdof_current = compose(sixdof_anchor, sixdof_local_delta);
+    const auto sixdof_delta = darktidevr::core::recentered_head_delta(
+        sixdof_anchor, sixdof_current, {0.25F, 0.18F});
+    const Pose left_eye = compose(
+        sixdof_current, Pose{{}, {-0.032F, 0.0F, 0.0F}});
+    const Pose right_eye = compose(
+        sixdof_current, Pose{{}, {0.032F, 0.0F, 0.0F}});
+    const auto anchored_left =
+        darktidevr::core::anchored_recentered_eye_pose(
+            sixdof_anchor, sixdof_delta, sixdof_current, left_eye);
+    const auto anchored_right =
+        darktidevr::core::anchored_recentered_eye_pose(
+            sixdof_anchor, sixdof_delta, sixdof_current, right_eye);
+    const Vec3 submitted_midpoint{
+        (anchored_left.position.x + anchored_right.position.x) * 0.5F,
+        (anchored_left.position.y + anchored_right.position.y) * 0.5F,
+        (anchored_left.position.z + anchored_right.position.z) * 0.5F};
+    expect_vec(submitted_midpoint, sixdof_current.position,
+               "6dof submitted eye midpoint");
+    const Vec3 submitted_ipd{
+        anchored_right.position.x - anchored_left.position.x,
+        anchored_right.position.y - anchored_left.position.y,
+        anchored_right.position.z - anchored_left.position.z};
+    expect_near(std::sqrt(submitted_ipd.x * submitted_ipd.x +
+                          submitted_ipd.y * submitted_ipd.y +
+                          submitted_ipd.z * submitted_ipd.z),
+                0.064F, 0.0001F, "6dof submitted IPD");
+
     std::cout << "core_math.result=pass\n";
     return 0;
   } catch (const std::exception& error) {

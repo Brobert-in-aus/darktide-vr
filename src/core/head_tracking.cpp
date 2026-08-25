@@ -31,4 +31,14 @@ math::Pose recentered_head_delta(math::Pose recenter_pose,
   return delta;
 }
 
+math::Pose anchored_recentered_eye_pose(math::Pose recenter_pose,
+                                        math::Pose head_delta,
+                                        math::Pose current_head_pose,
+                                        math::Pose current_eye_pose) {
+  const auto eye_from_head = math::compose(
+      math::inverse(current_head_pose), current_eye_pose);
+  return math::compose(
+      recenter_pose, math::compose(head_delta, eye_from_head));
+}
+
 }  // namespace darktidevr::core

@@ -1133,3 +1133,136 @@ fresh pairs/s, zero reuse and two unchanged startup pose mismatches. Focused
 `core_math`, `native_capture_hooks`, `shared_eye_surfaces` and
 `shared_head_pose` tests all passed. The source and binaries are preserved in
 `artifacts/phase1/known-good-medium-recentered-symmetric-20260825`.
+
+## Additive room-scale camera translation
+
+The first 6DoF implementation deliberately stops at the camera boundary. The
+XR harness publishes a recenter-local head pose clamped to a 0.25 m horizontal
+radius and +/-0.18 m vertical travel. Lua maps that translation into Stingray's
+axes and adds it in the untracked game-camera basis before applying symmetric
+IPD offsets. No character or controller transform is written.
+
+The compositor pose must move with the rendered cameras. The former
+`orientation_only_delta` submission was therefore replaced by
+`anchored_recentered_eye_pose`: it retains the runtime eye-from-head transform,
+composes the full clamped delta onto the XR recenter anchor, then applies the
+already accepted per-eye optical-center rotation at submission. This makes the
+game-camera and projection-layer translations two consumers of one pose sample
+instead of independently timed estimates.
+
+The gameplay camera hook was also brought onto the accepted recentered
+symmetric projection path. It had retained a stale call to the removed direct-
+frustum experiment; the corrected path now applies per-eye optical rotations
+without reintroducing the lighting failure.
+
+Validation commands:
+
+```powershell
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' `
+  --build --preset windows-vs2022-release --target `
+  darktidevr_native_capture darktidevr-xr-harness `
+  darktidevr-shared-head-pose-tests darktidevr-core-math-tests
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' `
+  --test-dir build/windows-vs2022 -C Release --output-on-failure `
+  -R 'shared_head_pose|native_capture_hooks|shared_eye_surfaces|core_math'
+.\tools\stereo\run-darktide-shared-eyes.ps1 -DurationSeconds 300
+```
+
+All four focused tests passed. The deployed DLL and Lua matched their sources
+at SHA-256
+`8FDDEE7153ACE7B915D6D19B0805C25DEAFDE8680DE8B35943022EE53E0504B0` and
+`C65E5B2060A513513832FDFD8EE51CB28F093E785160638398ABC22C0BB936B3`.
+The live run completed 20,406/20,406 submissions, 19,994 fresh shared pairs,
+zero reused/stale frames, two startup pose mismatches and a passing result.
+Physical leaning in all six directions at character select was reported
+flawless with no distortion. The follow-up lobby test also allowed normal
+locomotion and looking around without tracking or movement problems, closing
+the initial camera/controller-independence gate.
+
+The lobby transition itself exposed a broken loading presentation. The stale-
+pair path copied the desktop capture but still selected the stereo projection
+layer because layer selection depended only on the global stereo mode. On the
+accepted separate-eye-swapchain path, the copy loop additionally used
+`height / 2` even though the window capture and each eye texture were full
+height, repeating only half the image.
+
+The corrected path records fallback selection per frame, copies the full
+captured height, and submits a dedicated `XrCompositionLayerQuad` only for that
+frame. It is visible to both eyes and positioned two metres forward. The first
+live transition used a one-metre-wide, aspect-preserving image and accepted its
+image and size but found VIEW-space parenting uncomfortable. The follow-up snapshots the
+head pose on fallback entry, composes the two-metre forward offset once, and
+submits the quad in LOCAL space until stereo resumes. The next requested size
+revision makes the panel 2 m by 2 m while retaining that room anchor and
+distance. Fresh tagged pairs
+immediately return to the recentered stereo projection. Seven focused tests passed:
+`core_math`, `native_capture_hooks`, `shared_eye_surfaces`, `shared_head_pose`,
+`presentation_policy`, `window_capture_recovery`, and `xr_harness_help`. Live
+loading-transition validation is still required.
+
+The active user settings were also compared field-by-field with the reversible
+VR profile after the lobby run. Three expensive-looking flags had drifted on:
+`ao_enabled`, `gtao_enabled`, and `baked_ddgi`. A launch-order check established
+that menu-level `ambient_occlusion_quality = "low"` regenerates both AO flags;
+setting it to `"off"` keeps them false after relaunch. Darktide still regenerates
+`baked_ddgi = true` with `gi_quality = "off"`, so this is recorded as an
+apparently required baked-lighting baseline rather than repeatedly overriding
+an unsupported derived flag. The profile also preserves
+`upscaling_quality = "ultra_performance"` rather than raising it to Performance
+during reapplication. This does not solve the dual-render architecture cost,
+and DLSS Ultra Performance may contribute to the reported shimmer; those are
+separate performance and temporal-quality investigations.
+
+The latest Quest recording was pulled without modifying the device copy to
+`artifacts/phase1/quest-recording-20260825-125708/VirtualDesktop.Android-20260825-125028-0.mp4`.
+It is a 44.025-second, 1920x1080 HEVC capture with SHA-256
+`DE1A961975884137F58D1E32108A552D3835C32FA7A255F4249916277C446256`.
+Its average recorded cadence is approximately 30 fps despite a nominal 120 Hz
+stream rate, so it is suitable for visual inspection but not direct runtime
+performance measurement.
+
+## 4K single-render performance baseline and timing instrumentation
+
+For a bounded control, both project mods were commented out of DMF's load order
+and Darktide was launched normally in exclusive 3840x2160. The same minimum
+quality selectors and DLSS Ultra Performance were retained. Runtime inspection
+confirmed a 3840x2160 active resolution, no loaded native-capture DLL, and no
+stereo/camera-probe initialization in the new log. The observed frame rate was
+about 150 fps average and 120 fps minimum.
+
+The control renders 8.29 million output pixels per frame versus 9.73 million
+for the two 2112x2304 runtime eyes. That 17% output-pixel difference cannot by
+itself explain the lobby's approximately 50 fresh stereo pairs/s. A purely
+serial double render would already consume much of the difference, but the
+observed threefold frame-time increase also leaves measurable overhead to
+localize. The prior VR settings and mod order were restored byte-for-byte after
+the control.
+
+The profiling build exports QueryPerformanceCounter timestamps through the
+already loaded native module. Lua measures each left and right `ScriptWorld`
+submission and the containing pair, then reports 240-sample average and maximum
+wall times under `DARKTIDEVR_PERF`. The XR harness now reports instantaneous
+interval rates for submissions, fresh pairs, and fallback alongside cumulative
+rates. These measurements distinguish engine submission/capture time from
+bridge pacing at negligible sampling cost, but do not claim to be GPU-pass
+timestamps.
+
+The follow-up native profiler placed D3D12 timestamp queries before each armed
+eye and after the corresponding completed camera-output command list, before
+the shared-resource copy. A single-active-sample implementation was rejected
+because it collected roughly 190 left samples but only 2--9 right samples per
+window: Darktide can arm the right eye before the left end marker is observed.
+Independent per-eye in-flight slots corrected that sampling bias.
+
+At character select, stable windows reported about 3.5--4.3 ms for each eye and
+108--117 fresh pairs/s. In the lobby, repeated 240-pair windows reported a
+24--27 ms left interval and an 11--13 ms right interval; instrumented fresh-pair
+rate generally ranged from the mid-30s to upper-40s. These intervals overlap in
+queue time, so adding them is invalid: the left interval covers most of the
+complete pair while the right interval is nested within it. The defensible
+conclusions are that Lua submission is negligible, the loss is downstream on
+the render queue, and the second view contributes a material roughly 11--13 ms
+GPU interval. The profiler is opt-in after measurement to remove its allocator
+and command-list overhead from normal VR runs. The next classification step is
+timestamping the existing marker/pass groups, not suppressing draws based only
+on their similar signatures.

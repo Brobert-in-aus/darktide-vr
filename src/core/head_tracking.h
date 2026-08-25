@@ -16,4 +16,13 @@ math::Pose recentered_head_delta(math::Pose recenter_pose,
                                  math::Pose current_pose,
                                  HeadTranslationLimits limits);
 
+// Reconstructs an absolute OpenXR eye pose from the same recentered head
+// delta consumed by the game camera. Keeping translation in this composition
+// is essential for 6DoF: stripping it would make the compositor's virtual
+// image plane remain stationary while the rendered cameras lean with the HMD.
+math::Pose anchored_recentered_eye_pose(math::Pose recenter_pose,
+                                        math::Pose head_delta,
+                                        math::Pose current_head_pose,
+                                        math::Pose current_eye_pose);
+
 }  // namespace darktidevr::core
