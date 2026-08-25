@@ -52,6 +52,8 @@ SyntheticControllerPathSample synthetic_controller_path_sample(
     auto& destination = sample.state.hands[hand];
     destination.aim_pose.orientation = panel_pose.orientation;
     destination.grip_pose.orientation = panel_pose.orientation;
+    destination.body_aim_pose.orientation.w = 1.0F;
+    destination.body_grip_pose.orientation.w = 1.0F;
     destination.aim_pose.position =
         math::transform_point(panel_pose, local_positions[hand]);
     destination.grip_pose.position = destination.aim_pose.position;

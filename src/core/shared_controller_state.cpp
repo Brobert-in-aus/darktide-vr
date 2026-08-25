@@ -63,8 +63,12 @@ bool valid_controller_state(const SharedControllerState& state) {
   }
   for (const auto& hand : state.hands) {
     if (!finite_pose(hand.aim_pose) || !finite_pose(hand.grip_pose) ||
+        !finite_pose(hand.body_aim_pose) ||
+        !finite_pose(hand.body_grip_pose) ||
         (hand.aim_tracking_flags & ~kAllTrackingFlags) != 0 ||
         (hand.grip_tracking_flags & ~kAllTrackingFlags) != 0 ||
+        (hand.body_aim_tracking_flags & ~kAllTrackingFlags) != 0 ||
+        (hand.body_grip_tracking_flags & ~kAllTrackingFlags) != 0 ||
         !finite_unit(hand.trigger) || !finite_unit(hand.squeeze) ||
         !finite_axis(hand.thumbstick_x) || !finite_axis(hand.thumbstick_y) ||
         (hand.buttons & ~kAllButtons) != 0) {
@@ -99,8 +103,12 @@ SharedControllerStateWriter::SharedControllerStateWriter() {
   std::memset(&data.state, 0, sizeof(data.state));
   data.state.hands[0].aim_pose.orientation.w = 1.0F;
   data.state.hands[0].grip_pose.orientation.w = 1.0F;
+  data.state.hands[0].body_aim_pose.orientation.w = 1.0F;
+  data.state.hands[0].body_grip_pose.orientation.w = 1.0F;
   data.state.hands[1].aim_pose.orientation.w = 1.0F;
   data.state.hands[1].grip_pose.orientation.w = 1.0F;
+  data.state.hands[1].body_aim_pose.orientation.w = 1.0F;
+  data.state.hands[1].body_grip_pose.orientation.w = 1.0F;
   MemoryBarrier();
   InterlockedExchange64(&data.epoch, 2);
 }

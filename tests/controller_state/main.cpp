@@ -21,10 +21,17 @@ int main() {
     sample.timestamp_ns = 1'000'000;
     sample.hands[0].aim_pose.orientation.w = 1.0F;
     sample.hands[0].grip_pose.orientation.w = 1.0F;
+    sample.hands[0].body_aim_pose.orientation.w = 1.0F;
+    sample.hands[0].body_grip_pose.orientation.w = 1.0F;
     sample.hands[1].aim_pose.orientation.w = 1.0F;
     sample.hands[1].grip_pose.orientation.w = 1.0F;
+    sample.hands[1].body_aim_pose.orientation.w = 1.0F;
+    sample.hands[1].body_grip_pose.orientation.w = 1.0F;
     sample.hands[1].aim_pose.position = {0.25F, 1.2F, -0.5F};
     sample.hands[1].aim_tracking_flags =
+        controller_orientation_valid | controller_position_valid;
+    sample.hands[1].body_aim_pose.position = {0.25F, 0.5F, 1.2F};
+    sample.hands[1].body_aim_tracking_flags =
         controller_orientation_valid | controller_position_valid;
     sample.hands[1].trigger = 0.75F;
     sample.hands[1].squeeze = 0.5F;
@@ -43,7 +50,10 @@ int main() {
     SharedControllerState read{};
     expect(reader.read(read), "Controller read failed");
     expect(read.sequence == 7 && read.hands[1].trigger == 0.75F &&
-               read.hands[1].buttons == sample.hands[1].buttons,
+               read.hands[1].buttons == sample.hands[1].buttons &&
+               read.hands[1].body_aim_pose.position.y == 0.5F &&
+               read.hands[1].body_aim_tracking_flags ==
+                   sample.hands[1].body_aim_tracking_flags,
            "Controller transport changed the sample");
 
     sample.hands[0].trigger = 2.0F;

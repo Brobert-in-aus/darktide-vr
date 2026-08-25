@@ -7,7 +7,7 @@
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedControllerStateName[] =
-    L"Local\\DarktideVR-controller-state-v1";
+    L"Local\\DarktideVR-controller-state-v2";
 
 enum ControllerTrackingFlags : std::uint32_t {
   controller_orientation_valid = 1U << 0U,
@@ -24,10 +24,17 @@ enum ControllerButtons : std::uint32_t {
 };
 
 struct ControllerHandState {
+  // Absolute OpenXR LOCAL-space poses used by spatial compositor panels.
   math::Pose aim_pose{};
   math::Pose grip_pose{};
   std::uint32_t aim_tracking_flags{};
   std::uint32_t grip_tracking_flags{};
+  // Recenter-relative poses converted to Darktide's Z-up body-local basis.
+  // Flags remain zero until the immutable HMD recenter anchor is available.
+  math::Pose body_aim_pose{};
+  math::Pose body_grip_pose{};
+  std::uint32_t body_aim_tracking_flags{};
+  std::uint32_t body_grip_tracking_flags{};
   float trigger{};
   float squeeze{};
   float thumbstick_x{};

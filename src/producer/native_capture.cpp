@@ -7490,29 +7490,31 @@ extern "C" __declspec(dllexport) int dtvr_read_controller_state(
   if (!shared_controller_state_reader().read(sample)) {
     return 2;
   }
+  // Gameplay consumes recenter-relative Darktide-basis poses. The absolute
+  // OpenXR LOCAL poses remain in the shared mapping for the XR menu adapter.
   for (std::size_t hand = 0; hand < 2; ++hand) {
     const auto& source = sample.hands[hand];
     const auto offset = hand * 18;
-    values[offset + 0] = source.aim_pose.position.x;
-    values[offset + 1] = source.aim_pose.position.y;
-    values[offset + 2] = source.aim_pose.position.z;
-    values[offset + 3] = source.aim_pose.orientation.x;
-    values[offset + 4] = source.aim_pose.orientation.y;
-    values[offset + 5] = source.aim_pose.orientation.z;
-    values[offset + 6] = source.aim_pose.orientation.w;
-    values[offset + 7] = source.grip_pose.position.x;
-    values[offset + 8] = source.grip_pose.position.y;
-    values[offset + 9] = source.grip_pose.position.z;
-    values[offset + 10] = source.grip_pose.orientation.x;
-    values[offset + 11] = source.grip_pose.orientation.y;
-    values[offset + 12] = source.grip_pose.orientation.z;
-    values[offset + 13] = source.grip_pose.orientation.w;
+    values[offset + 0] = source.body_aim_pose.position.x;
+    values[offset + 1] = source.body_aim_pose.position.y;
+    values[offset + 2] = source.body_aim_pose.position.z;
+    values[offset + 3] = source.body_aim_pose.orientation.x;
+    values[offset + 4] = source.body_aim_pose.orientation.y;
+    values[offset + 5] = source.body_aim_pose.orientation.z;
+    values[offset + 6] = source.body_aim_pose.orientation.w;
+    values[offset + 7] = source.body_grip_pose.position.x;
+    values[offset + 8] = source.body_grip_pose.position.y;
+    values[offset + 9] = source.body_grip_pose.position.z;
+    values[offset + 10] = source.body_grip_pose.orientation.x;
+    values[offset + 11] = source.body_grip_pose.orientation.y;
+    values[offset + 12] = source.body_grip_pose.orientation.z;
+    values[offset + 13] = source.body_grip_pose.orientation.w;
     values[offset + 14] = source.trigger;
     values[offset + 15] = source.squeeze;
     values[offset + 16] = source.thumbstick_x;
     values[offset + 17] = source.thumbstick_y;
-    tracking_flags[hand * 2] = source.aim_tracking_flags;
-    tracking_flags[hand * 2 + 1] = source.grip_tracking_flags;
+    tracking_flags[hand * 2] = source.body_aim_tracking_flags;
+    tracking_flags[hand * 2 + 1] = source.body_grip_tracking_flags;
     buttons[hand] = source.buttons;
   }
   *sequence = sample.sequence;

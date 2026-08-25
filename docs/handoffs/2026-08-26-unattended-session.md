@@ -161,9 +161,13 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
 - Core math now provides an exact OpenXR-to-Darktide vector/quaternion/pose
   basis conversion and a recentered controller-pose primitive. Tests cover
   forward/up axes, quaternion/vector equivalence, translated controller poses,
-  and a non-identity HMD recenter. This identified a required controller-state
-  v2 contract: retain absolute LOCAL poses for menus and also carry body-local
-  poses (or the immutable HMD recenter) for gameplay aim.
+  and a non-identity HMD recenter.
+- Implemented controller-state transport v2. Each hand carries both absolute
+  OpenXR LOCAL aim/grip poses for spatial menus and recentered, Z-up
+  Darktide-basis poses for gameplay. The latter copy tracking validity only
+  after the initial HMD recenter is known, and the native Lua export exposes
+  that fail-closed body-local form. The transport round-trip and complete
+  Release suite pass.
 - Added a guarded one-shot `dtvr_enter_psykhanium` workflow derived from the
   game's own training-view and Testify path. It consumes a local flag, waits for
   hub game mode plus backend authentication, opens the training view, selects
@@ -203,15 +207,17 @@ controller and pointer tests cover snapshot freshness/validity, finite panel
 intersection, crop mapping, menu input transitions, runtime-IPD transport, and
 the complete synthetic offscreen/over-reach/tracking-loss cycle.
 
-The Release validation after producer localization also built
-`darktidevr_watch_write` and passed all 21 tests. Live validation used the
+The Release validation after controller-state v2 built every target and passed
+all 26 tests. Live validation used the
 EAC-stopped character-select boundary and preserved the required ten-second
 Steam close grace between normal runs.
 
 ## Next action
 
-Finish live validation of the stale-world teardown fix, then add the explicit
-Windows/Lua input-injection adapter behind the tested pointer state machine.
-Retain the horizon-lock billboard build for automated soaks, but defer the final
-smoke, fog and particle-orientation judgement until the user can wear the
-headset.
+Deploy controller-state v2 on the next clean game cycle and validate that a
+synthetic tracked sample reaches Lua in body-local coordinates while the menu
+adapter continues to use absolute poses. Then feed the dominant-hand body-local
+orientation into the single upstream gameplay-aim seam without coupling it to
+the HMD render basis. Retain the horizon-lock billboard build for automated
+soaks, but defer the final smoke, fog and particle-orientation judgement until
+the user can wear the headset.

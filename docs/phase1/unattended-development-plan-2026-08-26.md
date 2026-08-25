@@ -425,9 +425,11 @@ that absolute form, while gameplay aim needs a second body-local form:
 `inverse(initial_hmd_recenter) * controller_pose`, followed by the exact basis
 change from OpenXR (+X right, +Y up, -Z forward) to Darktide (+X right, +Y
 forward, +Z up). The core conversion and recentered-controller primitive are
-unit tested. The next controller-transport revision must carry both forms (or
-the immutable recenter anchor) rather than assuming the runtime's LOCAL origin
-matches the character's initial forward direction.
+unit tested. Controller-state transport v2 now carries both forms. Absolute
+poses remain available to the XR-side spatial-menu adapter; the native Lua
+export exposes only the recentered Darktide-basis poses intended for gameplay.
+Body-local tracking flags remain zero until the immutable HMD recenter anchor
+exists, so startup cannot fabricate a usable weapon pose.
 
 The safest initial aim seam is Darktide's `DefaultPlayerOrientation`. Convert
 the dominant-hand OpenXR aim rotation into the game's Z-up world basis and feed

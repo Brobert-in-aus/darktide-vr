@@ -702,6 +702,7 @@ class OpenXrProbe {
         views_.size(), {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW});
     bool stereo_fov_logged{};
     std::optional<darktidevr::math::Pose> head_recenter_pose;
+    controller_recenter_pose_.reset();
     std::uint64_t head_pose_sequence{};
     std::array<XrPosef, 2> recentered_view_poses{};
     bool recentered_view_poses_valid{};
@@ -873,6 +874,7 @@ class OpenXrProbe {
         if (submit_layer && head_pose_writer) {
           if (!head_recenter_pose) {
             head_recenter_pose = current_head;
+            controller_recenter_pose_ = current_head;
           }
           const auto delta = darktidevr::core::recentered_head_delta(
               *head_recenter_pose, current_head, {0.25F, 0.18F});
@@ -1305,11 +1307,12 @@ class OpenXrProbe {
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now().time_since_epoch())
                 .count());
-        const auto synthetic =
+        auto synthetic =
             darktidevr::harness::synthetic_controller_path_sample(
                 synthetic_controller_frames_++, ++controller_sequence_,
                 timestamp_ns, panel_pose, panel_extent.width_metres,
                 panel_extent.height_metres);
+        populate_body_local_controller_poses(synthetic.state);
         if (!controller_writer_->publish(synthetic.state)) {
           throw std::runtime_error(
               "Shared controller state rejected synthetic sample");
@@ -1812,6 +1815,8 @@ class OpenXrProbe {
     for (auto& hand : sample.hands) {
       hand.aim_pose.orientation.w = 1.0F;
       hand.grip_pose.orientation.w = 1.0F;
+      hand.body_aim_pose.orientation.w = 1.0F;
+      hand.body_grip_pose.orientation.w = 1.0F;
     }
     if (sync_result == XR_SESSION_NOT_FOCUSED) {
       controller_writer_->publish(sample);
@@ -1908,6 +1913,7 @@ class OpenXrProbe {
           (read_bool(menu_action_, hand) ? darktidevr::core::controller_menu
                                          : 0U);
     }
+    populate_body_local_controller_poses(sample);
     if (!controller_writer_->publish(sample)) {
       throw std::runtime_error("Shared controller state rejected live sample");
     }
@@ -1918,6 +1924,21 @@ class OpenXrProbe {
            darktidevr::core::controller_orientation_tracked) != 0) {
         ++controller_aim_tracked_frames_[hand];
       }
+    }
+  }
+
+  void populate_body_local_controller_poses(
+      darktidevr::core::SharedControllerState& sample) const {
+    if (!controller_recenter_pose_) {
+      return;
+    }
+    for (auto& hand : sample.hands) {
+      hand.body_aim_pose = darktidevr::core::recentered_controller_pose(
+          *controller_recenter_pose_, hand.aim_pose);
+      hand.body_grip_pose = darktidevr::core::recentered_controller_pose(
+          *controller_recenter_pose_, hand.grip_pose);
+      hand.body_aim_tracking_flags = hand.aim_tracking_flags;
+      hand.body_grip_tracking_flags = hand.grip_tracking_flags;
     }
   }
 
@@ -2105,6 +2126,7 @@ class OpenXrProbe {
   std::uint64_t controller_sequence_{};
   std::optional<darktidevr::core::SharedControllerState>
       latest_controller_sample_;
+  std::optional<darktidevr::math::Pose> controller_recenter_pose_;
   std::uint64_t controller_samples_{};
   float runtime_ipd_metres_{};
   std::array<std::uint64_t, 2> controller_aim_tracked_frames_{};
