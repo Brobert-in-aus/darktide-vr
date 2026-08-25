@@ -139,7 +139,12 @@ local controller_observation = {
     sequence = nil,
     timestamp_ns = nil,
     last_sequence = 0,
-    first_tracked_logged = false
+    first_tracked_logged = false,
+    right_aim_yaw = nil,
+    right_aim_pitch = nil,
+    right_aim_roll = nil,
+    first_person_seam_last_sequence = 0,
+    first_person_seam_last_log_t = -math.huge
 }
 local performance_profile_requested = false -- opt-in diagnostic; allocates GPU timestamp work
 -- Reuse the shading/LOD preparation performed by the primary eye. The second
@@ -906,6 +911,18 @@ local function apply_head_tracking(clean_position, clean_rotation)
         controller_observation.last_sequence = controller_sequence
         local left_aim_flags = tonumber(controller_observation.tracking_flags[0])
         local right_aim_flags = tonumber(controller_observation.tracking_flags[2])
+        if bit.band(right_aim_flags, 5) == 5 then
+            local right_aim_rotation = Quaternion.from_elements(
+                controller_observation.values[21],
+                controller_observation.values[22],
+                controller_observation.values[23],
+                controller_observation.values[24]
+            )
+            controller_observation.right_aim_yaw,
+                controller_observation.right_aim_pitch,
+                controller_observation.right_aim_roll =
+                    Quaternion.to_yaw_pitch_roll(right_aim_rotation)
+        end
         if not controller_observation.first_tracked_logged and
                 (bit.band(left_aim_flags, 4) ~= 0 or
                  bit.band(right_aim_flags, 4) ~= 0) then
@@ -2383,6 +2400,48 @@ mod:hook_safe(
     function(self, _, t)
     presentation.reconcile_fullscreen_views(self)
     presentation.update_psykhanium(self, t or 0)
+end)
+
+-- Observation-only gate for conventional tracked-controller aim. This proves
+-- the single upstream orientation seam and coordinate convention before any
+-- gameplay state is authored. The stereo camera remains HMD-owned throughout.
+function presentation.observe_controller_aim(self, main_t, orientation_class)
+    if not controller_observation.right_aim_yaw or
+            controller_observation.last_sequence ==
+                controller_observation.first_person_seam_last_sequence then
+        return
+    end
+    controller_observation.first_person_seam_last_sequence =
+        controller_observation.last_sequence
+    if main_t < controller_observation.first_person_seam_last_log_t + 2 then
+        return
+    end
+    controller_observation.first_person_seam_last_log_t = main_t
+    mod:info(
+        "DARKTIDEVR_AIM observation class=%s sequence=%d controller_ypr=%.4f,%.4f,%.4f game_ypr=%.4f,%.4f,%.4f write=disabled",
+        orientation_class,
+        controller_observation.last_sequence,
+        controller_observation.right_aim_yaw,
+        controller_observation.right_aim_pitch,
+        controller_observation.right_aim_roll,
+        self._orientation.yaw,
+        self._orientation.pitch,
+        self._orientation.roll
+    )
+end
+
+mod:hook_safe(
+    require("scripts/extension_systems/first_person/character_state_orientation/default_player_orientation"),
+    "pre_update",
+    function(self, main_t)
+    presentation.observe_controller_aim(self, main_t, "default")
+end)
+
+mod:hook_safe(
+    require("scripts/extension_systems/first_person/character_state_orientation/hub_player_orientation"),
+    "pre_update",
+    function(self, main_t)
+    presentation.observe_controller_aim(self, main_t, "hub")
 end)
 
 mod:hook_safe(

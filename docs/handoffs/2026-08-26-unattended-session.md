@@ -174,6 +174,14 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   run published 865/865 controller samples, covered all six motion/invalidity
   phases (`180,180,145,120,120,120`), dispatched no menu input, and Lua logged
   the first tracked v2 sample with both aim flag sets equal to 15.
+- Added a strictly observation-only controller-aim adapter at both production
+  orientation classes: `DefaultPlayerOrientation` for combat and
+  `HubPlayerOrientation` for the social hub. It converts the exported
+  Darktide-basis quaternion through the engine's own
+  `Quaternion.to_yaw_pitch_roll` and records controller and game orientation
+  without authoring either. A clean hub run published 827 controller samples
+  and logged multiple advancing observations (`class=hub`, sequences 1
+  through 713, `write=disabled`) with no script error or gameplay write.
 - Added a guarded one-shot `dtvr_enter_psykhanium` workflow derived from the
   game's own training-view and Testify path. It consumes a local flag, waits for
   hub game mode plus backend authentication, opens the training view, selects
@@ -220,9 +228,10 @@ Steam close grace between normal runs.
 
 ## Next action
 
-Feed the dominant-hand body-local orientation into the single upstream
-gameplay-aim seam without coupling it to the HMD render basis. Preserve the raw
-LOCAL pose for spatial-menu tests and add an observation-only aim mode before
-authoring gameplay state. Retain the horizon-lock billboard build for automated
-soaks, but defer the final smoke, fog and particle-orientation judgement until
-the user can wear the headset.
+Compose the observed body-local dominant-hand rotation with the character/body
+yaw captured at XR recenter, then expose an explicit test-only flag that authors
+the resulting yaw/pitch at the same upstream seam. Do not feed controller roll
+to the gameplay aim or the HMD render basis. Preserve the raw LOCAL pose for
+spatial-menu tests. Retain the horizon-lock billboard build for automated soaks,
+but defer the final smoke, fog and particle-orientation judgement until the user
+can wear the headset.

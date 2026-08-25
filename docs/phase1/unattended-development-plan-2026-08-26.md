@@ -446,6 +446,15 @@ view. Initially, locomotion remains game-relative to this aim direction; a
 separate head/body-relative movement transform follows once the core action path
 is proven.
 
+The observation-only implementation hooks both `DefaultPlayerOrientation` and
+the hub-specific `HubPlayerOrientation`, uses the engine's own quaternion-to-
+yaw/pitch conversion, and rate-limits telemetry to two seconds. It does not
+write orientation. Live synthetic hub validation proved advancing controller
+sequences reach this seam. The next authoring gate must compose body-local aim
+with the character/body yaw captured at XR recenter; directly treating local
+yaw as world yaw would be wrong (the validated hub began near pi radians while
+the synthetic controller local yaw was near zero).
+
 This first gate deliberately keeps game-authoritative firing origins and reach.
 It must not permit shooting around walls, longer melee reach, altered cadence,
 or stronger aim assistance.
