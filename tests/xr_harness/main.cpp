@@ -1316,6 +1316,12 @@ class OpenXrProbe {
         }
         latest_controller_sample_ = synthetic.state;
         ++controller_samples_;
+        for (std::size_t hand = 0; hand < 2; ++hand) {
+          if ((synthetic.state.hands[hand].aim_tracking_flags &
+               darktidevr::core::controller_orientation_tracked) != 0) {
+            ++controller_aim_tracked_frames_[hand];
+          }
+        }
         ++synthetic_controller_phase_frames_[
             static_cast<std::size_t>(synthetic.phase)];
       }

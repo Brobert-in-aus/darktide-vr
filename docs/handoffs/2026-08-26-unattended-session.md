@@ -136,6 +136,10 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   every phase (240/240/240/220/180/180 frames). It evaluated 480 in-reach
   right-hand rays with 400 panel hits. Menu injection remained disabled, so it
   dispatched exactly zero OS input events.
+- An explicit follow-up with the Windows menu adapter enabled dispatched all
+  260 valid synthetic pointer moves into the foreground Darktide client. The
+  off-panel, over-reach and invalid-tracking phases dispatched nothing, and the
+  button-free path did not select or close any menu item.
 - Head-pose transport v6 now carries runtime IPD measured from the two OpenXR
   view poses. The game uses that calibrated separation rather than a hardcoded
   population average. Ogryn scale IPD and physical head translation by
