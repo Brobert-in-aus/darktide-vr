@@ -7,7 +7,7 @@
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedHeadPoseName[] =
-    L"Local\\DarktideVR-head-pose-v5";
+    L"Local\\DarktideVR-head-pose-v6";
 
 struct EyeFrustumHalfAngles {
   float left{};
@@ -24,6 +24,9 @@ struct SharedHeadPoseSample {
   std::uint32_t render_width{};
   std::uint32_t render_height{};
   EyeFrustumHalfAngles render_frusta[2]{};
+  // Runtime-provided separation between the two located XrView positions.
+  // This is the user's calibrated headset IPD, not a population-average guess.
+  float ipd_metres{0.064F};
 };
 
 struct SharedRenderedEyePairPose {

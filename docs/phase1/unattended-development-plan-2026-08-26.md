@@ -263,6 +263,26 @@ edge generation and stale-state rejection. A synthetic provider, compiled only
 for development, supplies deterministic controller rays while the physical
 controllers are asleep or stationary.
 
+The unattended synthetic loop exercises both hands independently and together:
+left sweep, right sweep, crossed sweep, departure through opposite viewport
+edges, a geometrically valid panel ray whose origin exceeds the 1.5 m reach
+envelope, tracking loss, and reacquisition. It publishes no trigger or button
+presses. The path requires the explicit `--synthetic-controller-path` harness
+flag and cannot silently replace inactive production controllers.
+
+### Runtime IPD and character scale
+
+Base stereo separation is not a fixed headset-model or population-average IPD.
+Each frame uses the distance between the two view poses returned by OpenXR
+`xrLocateViews`. A 64 mm value exists only as a safe pre-XR initialization
+fallback and is replaced as soon as a valid runtime sample arrives.
+
+Ogryn scale both the runtime separation and physical head translation by
+`1.61 / 1.21` (~1.3306), matching Darktide's reviewed Ogryn and baseline-human
+player-height data. The game-native clean camera still supplies the taller
+character viewpoint. This produces the smaller perceived world scale expected
+for a larger body without discarding the user's calibrated IPD.
+
 ### Controller capacity and Darktide action mapping
 
 Darktide's default gamepad layout consumes two analog sticks and 16 distinct
@@ -549,15 +569,16 @@ The unattended queue is:
 2. billboard CBV-to-CPU mapping and writer trace;
 3. flat-menu presentation without pointer;
 4. OpenXR controller transport, binding profiles and synthetic provider;
-5. spatial pointer and menu end-to-end callbacks;
-6. automated Psykhanium entry/exit;
-7. conventional controller aim and buttons;
-8. tracked weapon orientation;
-9. vendor/NPC-anchored shop presentation with generic-board fallback;
-10. live skeleton/constraint inventory and articulated upper-body IK;
-11. local full-body visibility, inferred pelvis/lower-body integration and
+5. synthetic off-viewport, over-reach, loss/reacquisition pointer loop;
+6. spatial pointer and menu end-to-end callbacks;
+7. automated Psykhanium entry/exit;
+8. conventional controller aim and buttons;
+9. tracked weapon orientation;
+10. vendor/NPC-anchored shop presentation with generic-board fallback;
+11. live skeleton/constraint inventory and articulated upper-body IK;
+12. local full-body visibility, inferred pelvis/lower-body integration and
     optional runtime body-tracking provider; and
-12. independent backlog items when a gate is blocked.
+13. independent backlog items when a gate is blocked.
 
 Checkpoint after every accepted gate with source, validation commands, hashes,
 runtime counters and captured evidence. Do not combine an unvalidated renderer

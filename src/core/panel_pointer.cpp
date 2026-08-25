@@ -61,4 +61,18 @@ std::optional<PanelPointerMapping> map_pointer_to_panel(
   return PanelPointerMapping{clamped_u, clamped_v, distance, pixel_x, pixel_y};
 }
 
+bool pointer_origin_within_reach(math::Vec3 pointer_origin,
+                                 math::Vec3 head_position,
+                                 float maximum_reach_metres) {
+  if (!finite(pointer_origin) || !finite(head_position) ||
+      !std::isfinite(maximum_reach_metres) || maximum_reach_metres <= 0.0F) {
+    throw std::invalid_argument("Invalid spatial pointer reach inputs");
+  }
+  const auto dx = pointer_origin.x - head_position.x;
+  const auto dy = pointer_origin.y - head_position.y;
+  const auto dz = pointer_origin.z - head_position.z;
+  return dx * dx + dy * dy + dz * dz <=
+         maximum_reach_metres * maximum_reach_metres;
+}
+
 }  // namespace darktidevr::core

@@ -116,6 +116,34 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
 - A 300-frame VDXR theatre smoke published all 300 controller samples. The
   controllers were asleep, so zero frames were marked tracked; the untracked
   fail-closed path was therefore exercised without user interaction.
+- Added an explicitly gated `--enable-menu-input` Windows adapter. It converts
+  captured source pixels through the current DPI-aware Darktide client rectangle
+  into absolute virtual-desktop coordinates, requires exactly one matching
+  foreground window, maps trigger/scroll/Back through `SendInput`, and always
+  releases a synthetic left button if focus or menu ownership is lost. The
+  ordinary stereo launcher keeps it disabled unless `-EnableMenuInput` is
+  supplied.
+- The adapter's first 10-second VDXR safety smoke generated 1,079 controller
+  samples with sleeping controllers and exactly zero pointer events or injected
+  inputs. Unit coverage includes a negative-origin multi-monitor desktop and
+  rejects off-source/off-desktop coordinates.
+- Added a test-only synthetic two-controller path for unattended runs. Its
+  six-phase cycle sweeps each hand across the panel, crosses both, exits through
+  both viewport edges, exceeds the 1.5 m reach envelope, invalidates tracking,
+  and reacquires. It emits no buttons or triggers and requires the explicit
+  `--synthetic-controller-path` flag.
+- A 12-second live VDXR system-menu run completed 1,300 synthetic frames and
+  every phase (240/240/240/220/180/180 frames). It evaluated 480 in-reach
+  right-hand rays with 400 panel hits. Menu injection remained disabled, so it
+  dispatched exactly zero OS input events.
+- Head-pose transport v6 now carries runtime IPD measured from the two OpenXR
+  view poses. The game uses that calibrated separation rather than a hardcoded
+  population average. Ogryn scale IPD and physical head translation by
+  `1.61 / 1.21` while retaining the game-native elevated clean camera; 64 mm is
+  only the pre-XR initialization fallback.
+- The same live runtime reported 62.81 mm calibrated eye separation. Startup,
+  character-select, hub entry and the system-menu fallback remained clean with
+  the matched v6 Lua/native deployment.
 - Added a guarded one-shot `dtvr_enter_psykhanium` workflow derived from the
   game's own training-view and Testify path. It consumes a local flag, waits for
   hub game mode plus backend authentication, opens the training view, selects
@@ -146,13 +174,14 @@ $cmake = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Co
 & .\tools\unattended\invoke-unattended-preflight.ps1 -RunXrSmoke -XrFrames 600
 ```
 
-Results: all 24 Release CTest tests passed. The native-capture test now installs the
+Results: all 26 Release CTest tests passed. The native-capture test now installs the
 diagnostic hook set, creates/maps/unmaps an upload buffer and verifies exactly
 one matched Map and Unmap. Core math covers cardinal headings, pitched and
 vertical views, and non-finite billboard inputs. Presentation tests cover the
 shared transport, horizon-locked panel pose and aspect-preserving extent. New
 controller and pointer tests cover snapshot freshness/validity, finite panel
-intersection, crop mapping and menu input transitions.
+intersection, crop mapping, menu input transitions, runtime-IPD transport, and
+the complete synthetic offscreen/over-reach/tracking-loss cycle.
 
 The Release validation after producer localization also built
 `darktidevr_watch_write` and passed all 21 tests. Live validation used the

@@ -7471,6 +7471,7 @@ extern "C" __declspec(dllexport) int dtvr_read_head_pose(
   values[16] = sample.render_frusta[1].up;
   values[17] = static_cast<float>(sample.render_width);
   values[18] = static_cast<float>(sample.render_height);
+  values[19] = sample.ipd_metres;
   *sequence = sample.sequence;
   return 0;
 }

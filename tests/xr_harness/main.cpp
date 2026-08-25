@@ -9,9 +9,12 @@
 #include <openxr/openxr_platform.h>
 
 #include "synthetic_scene.h"
+#include "menu_input_injector.h"
+#include "synthetic_controller_path.h"
 #include "window_capture.h"
 #include "bridge/shared_eye_surfaces.h"
 #include "core/head_tracking.h"
+#include "core/menu_pointer_input.h"
 #include "core/panel_pointer.h"
 #include "core/presentation_policy.h"
 #include "core/shared_controller_state.h"
@@ -441,7 +444,10 @@ class OpenXrProbe {
                                bool shared_eyes,
                                std::int64_t shared_pose_sequence_offset,
                                bool pair_driven_shared,
-                               bool separate_shared_eye_swapchains) {
+                               bool separate_shared_eye_swapchains,
+                               bool enable_menu_input,
+                               const std::wstring& menu_input_title,
+                               bool synthetic_controller_path) {
     if (session_ == XR_NULL_HANDLE || view_space_ == XR_NULL_HANDLE) {
       throw std::runtime_error("OpenXR theatre loop requires a session and VIEW space");
     }
@@ -630,6 +636,19 @@ class OpenXrProbe {
     darktidevr::core::SharedPresentationStateReader presentation_state_reader;
     darktidevr::core::SharedPresentationState presentation_state{};
     std::uint64_t presentation_sequence{};
+    darktidevr::core::MenuPointerInputState menu_pointer_state;
+    std::unique_ptr<darktidevr::harness::MenuInputInjector>
+        menu_input_injector;
+    std::uint64_t menu_input_events{};
+    std::uint64_t menu_input_dispatched{};
+    if (enable_menu_input) {
+      menu_input_injector =
+          std::make_unique<darktidevr::harness::MenuInputInjector>(
+              menu_input_title);
+      std::cout << "openxr.menu_input=enabled\n";
+    } else {
+      std::cout << "openxr.menu_input=disabled\n";
+    }
     if (shared_eyes) {
       head_pose_writer =
           std::make_unique<darktidevr::core::SharedHeadPoseWriter>();
@@ -801,7 +820,9 @@ class OpenXrProbe {
                "xrWaitFrame(theatre)");
       XrFrameBeginInfo frame_begin{XR_TYPE_FRAME_BEGIN_INFO};
       check_xr(xrBeginFrame(session_, &frame_begin), "xrBeginFrame(theatre)");
-      sync_controller_actions(frame_state.predictedDisplayTime);
+      if (!synthetic_controller_path) {
+        sync_controller_actions(frame_state.predictedDisplayTime);
+      }
 
       bool submit_layer = frame_state.shouldRender == XR_TRUE;
       darktidevr::math::Pose current_head{};
@@ -866,6 +887,15 @@ class OpenXrProbe {
               views_.front().recommendedImageRectWidth;
           pose_sample.render_height =
               views_.front().recommendedImageRectHeight;
+          const auto eye_dx = located_views[1].pose.position.x -
+                              located_views[0].pose.position.x;
+          const auto eye_dy = located_views[1].pose.position.y -
+                              located_views[0].pose.position.y;
+          const auto eye_dz = located_views[1].pose.position.z -
+                              located_views[0].pose.position.z;
+          pose_sample.ipd_metres =
+              std::sqrt(eye_dx * eye_dx + eye_dy * eye_dy + eye_dz * eye_dz);
+          runtime_ipd_metres_ = pose_sample.ipd_metres;
           for (std::size_t eye = 0; eye < located_views.size(); ++eye) {
             pose_sample.render_frusta[eye] = {
                 located_views[eye].fov.angleLeft,
@@ -1261,21 +1291,43 @@ class OpenXrProbe {
       const auto panel_extent = darktidevr::core::fit_panel_extent(
           panel_source_width, panel_source_height, panel_max_width,
           panel_max_height);
+      std::optional<std::pair<std::uint32_t, std::uint32_t>>
+          menu_pointer_position;
       flat_fallback_quad.size = {panel_extent.width_metres,
                                  panel_extent.height_metres};
+      const darktidevr::math::Pose panel_pose{
+          {flat_fallback_pose.orientation.x, flat_fallback_pose.orientation.y,
+           flat_fallback_pose.orientation.z, flat_fallback_pose.orientation.w},
+          {flat_fallback_pose.position.x, flat_fallback_pose.position.y,
+           flat_fallback_pose.position.z}};
+      if (synthetic_controller_path && submitted_flat_fallback_this_frame) {
+        const auto timestamp_ns = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                .count());
+        const auto synthetic =
+            darktidevr::harness::synthetic_controller_path_sample(
+                synthetic_controller_frames_++, ++controller_sequence_,
+                timestamp_ns, panel_pose, panel_extent.width_metres,
+                panel_extent.height_metres);
+        if (!controller_writer_->publish(synthetic.state)) {
+          throw std::runtime_error(
+              "Shared controller state rejected synthetic sample");
+        }
+        latest_controller_sample_ = synthetic.state;
+        ++controller_samples_;
+        ++synthetic_controller_phase_frames_[
+            static_cast<std::size_t>(synthetic.phase)];
+      }
       if (submitted_flat_fallback_this_frame && latest_controller_sample_) {
         const auto& right = latest_controller_sample_->hands[1];
         const auto required =
             darktidevr::core::controller_orientation_valid |
             darktidevr::core::controller_position_valid;
-        if ((right.aim_tracking_flags & required) == required) {
-          const darktidevr::math::Pose panel_pose{
-              {flat_fallback_pose.orientation.x,
-               flat_fallback_pose.orientation.y,
-               flat_fallback_pose.orientation.z,
-               flat_fallback_pose.orientation.w},
-              {flat_fallback_pose.position.x, flat_fallback_pose.position.y,
-               flat_fallback_pose.position.z}};
+        if ((right.aim_tracking_flags & required) == required &&
+            current_head_valid &&
+            darktidevr::core::pointer_origin_within_reach(
+                right.aim_pose.position, current_head.position, 1.5F)) {
           const auto direction = darktidevr::math::rotate(
               right.aim_pose.orientation, {0.0F, 0.0F, -1.0F});
           ++controller_pointer_rays_;
@@ -1293,6 +1345,41 @@ class OpenXrProbe {
             ++controller_pointer_hits_;
             controller_pointer_x_ = pointer->source_x;
             controller_pointer_y_ = pointer->source_y;
+            menu_pointer_position =
+                std::pair{pointer->source_x, pointer->source_y};
+          }
+        }
+      }
+      if (menu_input_injector) {
+        const auto menu_mode =
+            presentation_sequence != 0 &&
+            (presentation_state.mode == darktidevr::core::
+                                            SharedPresentationMode::flat_menu ||
+             presentation_state.mode ==
+                 darktidevr::core::SharedPresentationMode::world_anchored_menu);
+        darktidevr::core::MenuPointerInput input{};
+        input.active = menu_mode && submitted_flat_fallback_this_frame;
+        input.source_position = menu_pointer_position;
+        if (latest_controller_sample_) {
+          const auto& left = latest_controller_sample_->hands[0];
+          const auto& right = latest_controller_sample_->hands[1];
+          input.trigger = right.trigger;
+          input.thumbstick_y = right.thumbstick_y;
+          input.back =
+              (right.buttons & darktidevr::core::controller_secondary) != 0 ||
+              (left.buttons & darktidevr::core::controller_menu) != 0;
+        }
+        for (const auto& event : menu_pointer_state.update(input)) {
+          ++menu_input_events;
+          if (menu_input_injector->dispatch(
+                  event,
+                  presentation_sequence != 0
+                      ? presentation_state.source_width
+                      : width,
+                  presentation_sequence != 0
+                      ? presentation_state.source_height
+                      : flat_capture_height)) {
+            ++menu_input_dispatched;
           }
         }
       }
@@ -1428,6 +1515,20 @@ class OpenXrProbe {
       capture_thread.request_stop();
       capture_thread.join();
     }
+    if (menu_input_injector) {
+      for (const auto& event : menu_pointer_state.update({})) {
+        ++menu_input_events;
+        if (menu_input_injector->dispatch(
+                event,
+                presentation_sequence != 0 ? presentation_state.source_width
+                                           : width,
+                presentation_sequence != 0 ? presentation_state.source_height
+                                           : flat_capture_height)) {
+          ++menu_input_dispatched;
+        }
+      }
+      menu_input_injector->release();
+    }
     std::cout << "openxr.frames=" << processed_frames << '\n'
               << "openxr.submitted_frames=" << submitted_frames << '\n'
               << "openxr.not_rendered_frames=" << not_rendered_frames << '\n'
@@ -1481,6 +1582,7 @@ class OpenXrProbe {
               << "openxr.pair_pose_angle_lag_degrees_max="
               << pair_pose_angle_lag_degrees_max << '\n'
               << "openxr.controller_samples=" << controller_samples_ << '\n'
+              << "openxr.runtime_ipd_metres=" << runtime_ipd_metres_ << '\n'
               << "openxr.controller_left_aim_tracked_frames="
               << controller_aim_tracked_frames_[0] << '\n'
               << "openxr.controller_right_aim_tracked_frames="
@@ -1490,7 +1592,19 @@ class OpenXrProbe {
               << "openxr.controller_pointer_hits=" << controller_pointer_hits_
               << '\n'
               << "openxr.controller_pointer_last_source="
-              << controller_pointer_x_ << ',' << controller_pointer_y_ << '\n';
+              << controller_pointer_x_ << ',' << controller_pointer_y_ << '\n'
+              << "openxr.menu_input_events=" << menu_input_events << '\n'
+              << "openxr.menu_input_dispatched=" << menu_input_dispatched
+              << '\n'
+              << "openxr.synthetic_controller_frames="
+              << synthetic_controller_frames_ << '\n'
+              << "openxr.synthetic_controller_phase_frames=";
+    for (std::size_t index = 0;
+         index < synthetic_controller_phase_frames_.size(); ++index) {
+      std::cout << (index == 0 ? "" : ",")
+                << synthetic_controller_phase_frames_[index];
+    }
+    std::cout << '\n';
     if (upload) {
       upload->Unmap(0, nullptr);
       upload_pixels = nullptr;
@@ -1986,11 +2100,14 @@ class OpenXrProbe {
   std::optional<darktidevr::core::SharedControllerState>
       latest_controller_sample_;
   std::uint64_t controller_samples_{};
+  float runtime_ipd_metres_{};
   std::array<std::uint64_t, 2> controller_aim_tracked_frames_{};
   std::uint64_t controller_pointer_rays_{};
   std::uint64_t controller_pointer_hits_{};
   std::uint32_t controller_pointer_x_{};
   std::uint32_t controller_pointer_y_{};
+  std::uint64_t synthetic_controller_frames_{};
+  std::array<std::uint64_t, 6> synthetic_controller_phase_frames_{};
   bool d3d12_extension_{};
   std::optional<XrGraphicsRequirementsD3D12KHR> requirements_;
   std::vector<XrViewConfigurationView> views_;
@@ -2335,8 +2452,10 @@ void usage() {
                "[--debug-layer] [--require-openxr] [--require-rendering] "
                "[--xr-frames N | --xr-seconds N] [--theatre] "
                "[--stereo-sbs] [--stereo-tb] "
-               "[--capture-window-title TEXT] [--shared-eyes] "
-               "[--shared-pose-sequence-offset N] "
+                "[--capture-window-title TEXT] [--shared-eyes] "
+                "[--enable-menu-input [--menu-input-window-title TEXT]] "
+                "[--synthetic-controller-path] "
+                "[--shared-pose-sequence-offset N] "
                "[--pair-driven-shared | --continuous-shared] "
                "[--resize-at N]\n\n"
             << "Creates an independent D3D12 swapchain and reports OpenXR "
@@ -2362,6 +2481,9 @@ int wmain(int argc, wchar_t** argv) {
     // runtime sees the real application cadence. Continuous compositor-rate
     // submission remains available only as an explicit diagnostic control.
     bool pair_driven_shared = true;
+    bool enable_menu_input = false;
+    bool synthetic_controller_path = false;
+    std::wstring menu_input_title = L"Warhammer 40,000: Darktide";
     std::optional<std::wstring> capture_window_title;
     std::uint32_t xr_frames{};
     std::optional<std::chrono::seconds> xr_duration;
@@ -2400,6 +2522,13 @@ int wmain(int argc, wchar_t** argv) {
         require_openxr = true;
         theatre = true;
         capture_window_title = argv[++index];
+      } else if (argument == L"--enable-menu-input") {
+        enable_menu_input = true;
+      } else if (argument == L"--synthetic-controller-path") {
+        synthetic_controller_path = true;
+      } else if (argument == L"--menu-input-window-title" &&
+                 index + 1 < argc) {
+        menu_input_title = argv[++index];
       } else if (argument == L"--shared-pose-sequence-offset" &&
                  index + 1 < argc) {
         shared_pose_sequence_offset = std::stoll(argv[++index]);
@@ -2429,6 +2558,14 @@ int wmain(int argc, wchar_t** argv) {
     if (xr_duration && !theatre) {
       throw std::invalid_argument("--xr-seconds requires a theatre mode");
     }
+    if (enable_menu_input && !shared_eyes) {
+      throw std::invalid_argument(
+          "--enable-menu-input requires --shared-eyes");
+    }
+    if (synthetic_controller_path && !shared_eyes) {
+      throw std::invalid_argument(
+          "--synthetic-controller-path requires --shared-eyes");
+    }
     if (xr_duration && xr_duration->count() == 0) {
       throw std::invalid_argument("--xr-seconds must be greater than zero");
     }
@@ -2454,7 +2591,9 @@ int wmain(int argc, wchar_t** argv) {
                                      stereo_top_bottom, shared_eyes,
                                      shared_pose_sequence_offset,
                                      pair_driven_shared,
-                                     true);
+                                     true, enable_menu_input,
+                                     menu_input_title,
+                                     synthetic_controller_path);
       } else {
         openxr.run_frame_lifecycle(xr_frames, harness.device(), harness.queue(),
                                    require_rendering);

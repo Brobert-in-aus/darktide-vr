@@ -53,6 +53,12 @@ int main() {
         2.0F, 2.0F, 1920, 1080, 0, 0, 1920, 1080);
     expect(!hit, "A ray pointing away from the panel must miss");
 
+    expect(darktidevr::core::pointer_origin_within_reach(
+               {0.5F, 0.0F, 0.0F}, {}, 1.5F) &&
+               !darktidevr::core::pointer_origin_within_reach(
+                   {2.0F, 0.0F, 0.0F}, {}, 1.5F),
+           "Controller reach envelope mismatch");
+
     const Pose rotated{
         darktidevr::math::from_axis_angle({0.0F, 1.0F, 0.0F},
                                           -1.57079632679F),

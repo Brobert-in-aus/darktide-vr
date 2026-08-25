@@ -32,6 +32,7 @@ struct SharedLayout {
   float eye1_right{};
   float eye1_down{};
   float eye1_up{};
+  float ipd_metres{0.064F};
   volatile LONG64 pair_epoch{};
   volatile LONG64 pair_ready_value{};
   volatile LONG64 pair_eye0_pose_sequence{};
@@ -71,6 +72,8 @@ bool valid(const SharedHeadPoseSample& sample) {
          sample.render_aspect_ratio > 0.0F &&
          sample.render_width >= 640 && sample.render_width <= 7680 &&
          sample.render_height >= 640 && sample.render_height <= 7680 &&
+         std::isfinite(sample.ipd_metres) && sample.ipd_metres >= 0.03F &&
+         sample.ipd_metres <= 0.10F &&
          valid_frustum(sample.render_frusta[0]) &&
          valid_frustum(sample.render_frusta[1]);
 }
@@ -140,6 +143,7 @@ SharedHeadPoseWriter::SharedHeadPoseWriter() {
   data.eye1_right = 0.0F;
   data.eye1_down = 0.0F;
   data.eye1_up = 0.0F;
+  data.ipd_metres = 0.0F;
   MemoryBarrier();
   InterlockedExchange64(&data.epoch, 2);
   InterlockedExchange64(&data.pair_epoch, 1);
@@ -183,6 +187,7 @@ bool SharedHeadPoseWriter::publish(const SharedHeadPoseSample& sample) {
   data.eye1_right = sample.render_frusta[1].right;
   data.eye1_down = sample.render_frusta[1].down;
   data.eye1_up = sample.render_frusta[1].up;
+  data.ipd_metres = sample.ipd_metres;
   InterlockedExchange64(&data.sequence,
                         static_cast<LONG64>(sample.sequence));
   InterlockedExchange64(&data.published_tick_ms,
@@ -266,6 +271,7 @@ bool SharedHeadPoseReader::read(SharedHeadPoseSample& sample) {
         {data.eye0_left, data.eye0_right, data.eye0_down, data.eye0_up};
     candidate.render_frusta[1] =
         {data.eye1_left, data.eye1_right, data.eye1_down, data.eye1_up};
+    candidate.ipd_metres = data.ipd_metres;
     MemoryBarrier();
     const auto after = data.epoch;
     const auto now_ms = GetTickCount64();

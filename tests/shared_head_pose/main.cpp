@@ -59,6 +59,7 @@ int main(int argc, char** argv) {
                std::abs(received.render_aspect_ratio - 0.8888889F) < 0.0001F &&
                received.render_width == 2112 &&
                received.render_height == 2304 &&
+               std::abs(received.ipd_metres - 0.064F) < 0.0001F &&
                std::abs(received.render_frusta[0].left + 0.94F) < 0.0001F &&
                std::abs(received.render_frusta[1].right - 0.94F) < 0.0001F,
            "Shared pose changed in transit");
@@ -96,6 +97,10 @@ int main(int argc, char** argv) {
     sample.pose.position.x = std::numeric_limits<float>::infinity();
     expect(!writer->publish(sample), "Non-finite shared pose was accepted");
     sample.pose.position.x = 0.0F;
+    sample.sequence = 8;
+    sample.ipd_metres = 0.0F;
+    expect(!writer->publish(sample), "Invalid runtime IPD was accepted");
+    sample.ipd_metres = 0.064F;
     sample.sequence = std::numeric_limits<std::uint64_t>::max();
     expect(!writer->publish(sample),
            "An unrepresentable shared-pose counter was accepted");

@@ -458,7 +458,7 @@ local function ensure_ui_native_hooks()
 
     ui_native_capture = library
     ui_native_capture.dtvr_set_projection_active(0)
-    head_pose_values = ffi.new("float[19]")
+    head_pose_values = ffi.new("float[20]")
     head_pose_sequence = ffi.new("unsigned long long[1]")
     gpu_profile_values = ffi.new("unsigned long long[4]")
     gpu_stage_profile_values = ffi.new("unsigned long long[6]")
@@ -876,6 +876,23 @@ local function apply_head_tracking(clean_position, clean_rotation)
     if valid_frustum(left_frustum) and valid_frustum(right_frustum) then
         head_render_frusta = { left_frustum, right_frustum }
     end
+    local runtime_ipd = tonumber(head_pose_values[19])
+    local character_scale = 1
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    local profile = local_player and local_player:profile()
+    if profile and profile.archetype and
+            profile.archetype.name == "ogryn" then
+        -- Darktide's reviewed breed data uses 1.61 m for the Ogryn player
+        -- height and 1.21 m for the baseline human. Scale physical head
+        -- translation and the runtime eye separation together so the larger
+        -- character sees a consistently smaller world.
+        character_scale = 1.61 / 1.21
+    end
+    if runtime_ipd >= 0.03 and runtime_ipd <= 0.10 then
+        half_ipd = runtime_ipd * character_scale * 0.5
+        ui_eye_separation = half_ipd * 2
+    end
     local head_rotation = Quaternion.from_elements(
         head_pose_values[3],
         -head_pose_values[5],
@@ -886,9 +903,9 @@ local function apply_head_tracking(clean_position, clean_rotation)
     local tracked_position = clean_position
 
     if head_translation_requested then
-        local local_x = head_pose_values[0]
-        local local_y = -head_pose_values[2]
-        local local_z = head_pose_values[1]
+        local local_x = head_pose_values[0] * character_scale
+        local local_y = -head_pose_values[2] * character_scale
+        local local_z = head_pose_values[1] * character_scale
         tracked_position = clean_position +
             Quaternion.right(clean_rotation) * local_x +
             Quaternion.forward(clean_rotation) * local_y +
@@ -896,9 +913,11 @@ local function apply_head_tracking(clean_position, clean_rotation)
     end
 
     if head_pose_last_sequence == 0 then
-        mod:info("DARKTIDEVR_STEREO head_tracking active mode=%s sequence=%d",
+        mod:info("DARKTIDEVR_STEREO head_tracking active mode=%s sequence=%d runtime_ipd=%.4f character_scale=%.3f",
             head_translation_requested and "6dof" or "3dof",
-            sequence)
+            sequence,
+            runtime_ipd,
+            character_scale)
     end
     head_pose_last_sequence = sequence
 

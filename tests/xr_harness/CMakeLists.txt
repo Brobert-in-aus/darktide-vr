@@ -7,6 +7,22 @@ target_compile_definitions(darktidevr-window-capture PRIVATE
   NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 target_link_libraries(darktidevr-window-capture PRIVATE gdi32 user32)
 
+add_library(darktidevr-menu-input STATIC menu_input_injector.cpp)
+target_include_directories(darktidevr-menu-input PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(darktidevr-menu-input PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-menu-input PRIVATE
+  NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+target_link_libraries(darktidevr-menu-input PUBLIC darktidevr_core user32)
+
+add_library(darktidevr-synthetic-controller STATIC
+  synthetic_controller_path.cpp)
+target_include_directories(darktidevr-synthetic-controller PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(darktidevr-synthetic-controller PRIVATE
+  /W4 /WX /permissive-)
+target_link_libraries(darktidevr-synthetic-controller PUBLIC darktidevr_core)
+
 add_executable(darktidevr-eye-capture eye_capture.cpp)
 target_compile_options(darktidevr-eye-capture PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-eye-capture PRIVATE
@@ -20,6 +36,7 @@ target_compile_definitions(darktidevr-xr-harness PRIVATE
   NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 target_link_libraries(darktidevr-xr-harness PRIVATE
   OpenXR::openxr_loader darktidevr_core darktidevr_bridge darktidevr-window-capture
+  darktidevr-menu-input darktidevr-synthetic-controller
   d3d12 d3dcompiler dxgi dxguid)
 
 add_custom_command(TARGET darktidevr-xr-harness POST_BUILD
@@ -33,6 +50,28 @@ add_custom_command(TARGET darktidevr-xr-harness POST_BUILD
 )
 
 if(BUILD_TESTING)
+  add_executable(darktidevr-synthetic-controller-tests
+    synthetic_controller_path_tests.cpp)
+  target_compile_options(darktidevr-synthetic-controller-tests PRIVATE
+    /W4 /WX /permissive-)
+  target_link_libraries(darktidevr-synthetic-controller-tests PRIVATE
+    darktidevr-synthetic-controller)
+  add_test(NAME synthetic_controller_path
+    COMMAND darktidevr-synthetic-controller-tests)
+  set_tests_properties(synthetic_controller_path PROPERTIES
+    LABELS "phase1;input;pointer")
+
+  add_executable(darktidevr-menu-input-tests menu_input_injector_tests.cpp)
+  target_compile_options(darktidevr-menu-input-tests PRIVATE
+    /W4 /WX /permissive-)
+  target_compile_definitions(darktidevr-menu-input-tests PRIVATE
+    NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+  target_link_libraries(darktidevr-menu-input-tests PRIVATE
+    darktidevr-menu-input)
+  add_test(NAME menu_input_injector COMMAND darktidevr-menu-input-tests)
+  set_tests_properties(menu_input_injector PROPERTIES
+    LABELS "phase1;input;pointer")
+
   add_executable(darktidevr-window-capture-tests window_capture_tests.cpp)
   target_compile_options(darktidevr-window-capture-tests PRIVATE
     /W4 /WX /permissive-)

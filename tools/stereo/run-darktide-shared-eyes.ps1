@@ -7,7 +7,11 @@ param(
         'D:\SteamLibrary\steamapps\common\Warhammer 40,000 DARKTIDE\binaries\Darktide.exe',
 
     [string] $Harness =
-        'build\windows-vs2022\tests\xr_harness\Release\darktidevr-xr-harness.exe'
+        'build\windows-vs2022\tests\xr_harness\Release\darktidevr-xr-harness.exe',
+
+    [switch] $EnableMenuInput,
+
+    [switch] $SyntheticControllerPath
 )
 
 Set-StrictMode -Version Latest
@@ -44,13 +48,22 @@ if (-not (Test-Path -LiteralPath $harnessPath -PathType Leaf)) {
     throw "Release XR harness not found: $harnessPath"
 }
 
-& $harnessPath `
-    --frames 30 `
-    --debug-layer `
-    --require-rendering `
-    --xr-seconds $DurationSeconds `
-    --shared-eyes `
-    --capture-window-title 'Warhammer 40,000: Darktide'
+$arguments = @(
+    '--frames', '30',
+    '--debug-layer',
+    '--require-rendering',
+    '--xr-seconds', $DurationSeconds,
+    '--shared-eyes',
+    '--capture-window-title', 'Warhammer 40,000: Darktide'
+)
+if ($EnableMenuInput) {
+    $arguments += '--enable-menu-input'
+}
+if ($SyntheticControllerPath) {
+    $arguments += '--synthetic-controller-path'
+}
+
+& $harnessPath @arguments
 if ($LASTEXITCODE -ne 0) {
     throw "Darktide stereo harness failed with exit code $LASTEXITCODE"
 }
