@@ -31,9 +31,21 @@ struct PresentationDecision {
   PresentationReason reason{PresentationReason::xr_not_renderable};
 };
 
+struct PanelExtent {
+  float width_metres{};
+  float height_metres{};
+};
+
 PresentationDecision choose_presentation_mode(bool emergency_disabled,
                                               bool xr_renderable,
                                               GamePresentationState game_state,
                                               PoseReadState camera_state);
+
+math::Pose horizon_locked_panel_pose(math::Pose head_pose,
+                                     float distance_metres);
+PanelExtent fit_panel_extent(std::uint32_t source_width,
+                             std::uint32_t source_height,
+                             float maximum_width_metres,
+                             float maximum_height_metres);
 
 }  // namespace darktidevr::core

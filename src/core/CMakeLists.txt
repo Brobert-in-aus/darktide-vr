@@ -5,6 +5,7 @@ add_library(darktidevr_core STATIC
   pose_snapshot.cpp
   presentation_policy.cpp
   shared_head_pose.cpp
+  shared_presentation_state.cpp
   xr_math.cpp
 )
 

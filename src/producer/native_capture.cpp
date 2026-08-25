@@ -9,6 +9,7 @@
 #include <MinHook.h>
 
 #include "core/shared_head_pose.h"
+#include "core/shared_presentation_state.h"
 
 #include <algorithm>
 #include <array>
@@ -6451,6 +6452,20 @@ int capture_present_halves(IDXGISwapChain3* swapchain,
   return 0;
 }
 
+bool publish_presentation_state(
+    const darktidevr::core::SharedPresentationState& state) {
+  try {
+    static darktidevr::core::SharedPresentationStateWriter writer;
+    static std::atomic<std::uint64_t> transport_sequence{0};
+    auto published = state;
+    published.sequence =
+        transport_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
+    return writer.publish(published);
+  } catch (...) {
+    return false;
+  }
+}
+
 }  // namespace
 
 extern "C" __declspec(dllexport) int dtvr_install() { return install_hooks(); }
@@ -6464,7 +6479,49 @@ extern "C" __declspec(dllexport) int dtvr_set_projection_active(int enabled) {
   if (!event) {
     return 1;
   }
-  return (enabled ? SetEvent(event) : ResetEvent(event)) ? 0 : 2;
+  const auto event_result = enabled ? SetEvent(event) : ResetEvent(event);
+  const darktidevr::core::SharedPresentationState state{
+      1,
+      enabled
+          ? darktidevr::core::SharedPresentationMode::stereo_world
+          : darktidevr::core::SharedPresentationMode::flat_loading_or_cinematic,
+      1, 1, 0, 0, 1, 1, 2.0F, 2.0F};
+  if (!publish_presentation_state(state)) {
+    return 3;
+  }
+  return event_result ? 0 : 2;
+}
+extern "C" __declspec(dllexport) int dtvr_set_presentation_state(
+    unsigned int mode, unsigned long long sequence, unsigned int source_width,
+    unsigned int source_height, unsigned int crop_x, unsigned int crop_y,
+    unsigned int crop_width, unsigned int crop_height,
+    float maximum_panel_width_metres, float maximum_panel_height_metres) {
+  const darktidevr::core::SharedPresentationState state{
+      sequence,
+      static_cast<darktidevr::core::SharedPresentationMode>(mode),
+      source_width,
+      source_height,
+      crop_x,
+      crop_y,
+      crop_width,
+      crop_height,
+      maximum_panel_width_metres,
+      maximum_panel_height_metres};
+  if (!darktidevr::core::valid_presentation_state(state)) {
+    return 1;
+  }
+  if (!publish_presentation_state(state)) {
+    return 2;
+  }
+
+  static const HANDLE event = CreateEventW(
+      nullptr, TRUE, FALSE, L"Local\\DarktideVR-projection-active-v1");
+  if (!event) {
+    return 3;
+  }
+  const auto stereo = state.mode ==
+                      darktidevr::core::SharedPresentationMode::stereo_world;
+  return (stereo ? SetEvent(event) : ResetEvent(event)) ? 0 : 4;
 }
 extern "C" __declspec(dllexport) int
 dtvr_set_diagnostic_render_hooks(int enabled) {

@@ -186,6 +186,36 @@ local ui_focused_ab_sample_frames = 3
 -- Armed only for the current assertion-bypass feasibility run. Revert to false
 -- immediately after the bounded test.
 local ui_stereo_requested = true -- zero-IPD stereo cached-pipeline census
+local presentation = {
+    sequence = 0,
+    mode = nil,
+    fullscreen_view_signature = "",
+    fullscreen_empty_updates = 0,
+    fullscreen_restore_delay_updates = 12,
+    logged_view_classification = {},
+    explicit_flat_menu_views = {
+        system_view = true,
+        options_view = true,
+        player_character_options_view = true,
+        custom_settings_view = true,
+        social_menu_roster_view = true,
+        mission_voting_view = true,
+    },
+    flat_loading_views = {
+        loading_view = true,
+        mission_intro_view = true,
+        video_view = true,
+        splash_video_view = true,
+        cutscene_view = true,
+    },
+    non_gameplay_views = {
+        splash_view = true,
+        title_view = true,
+        class_selection_view = true,
+        main_menu_view = true,
+        main_menu_background_view = true,
+    },
+}
 
 -- Stingray 1.6 exposed a native SteamVR namespace when its VR subsystem was
 -- compiled in. Record presence only; do not call or mutate an undocumented
@@ -212,6 +242,12 @@ local function ensure_ui_native_hooks()
     pcall(ffi.cdef, [[
         int dtvr_install(void);
         int dtvr_set_projection_active(int enabled);
+        int dtvr_set_presentation_state(unsigned int mode, unsigned long long sequence,
+            unsigned int source_width, unsigned int source_height,
+            unsigned int crop_x, unsigned int crop_y,
+            unsigned int crop_width, unsigned int crop_height,
+            float maximum_panel_width_metres,
+            float maximum_panel_height_metres);
         int dtvr_capture_eye(int eye);
         int dtvr_capture_armed_swapchain_eye(int eye);
         int dtvr_set_camera_output_candidate_index(int index);
@@ -448,6 +484,151 @@ local function ensure_ui_native_hooks()
     end
 
     return true
+end
+
+function presentation.publish_mode(mode, reason)
+    if not ui_native_capture or presentation.mode == mode then
+        return
+    end
+    presentation.sequence = presentation.sequence + 1
+    local result = tonumber(ui_native_capture.dtvr_set_presentation_state(
+        mode,
+        presentation.sequence,
+        ui_eye_target_width,
+        ui_eye_target_height,
+        0,
+        0,
+        ui_eye_target_width,
+        ui_eye_target_height,
+        2,
+        2
+    ))
+    if result ~= 0 then
+        mod:error(
+            "DARKTIDEVR_PRESENTATION publish_failed mode=%d sequence=%d code=%d",
+            mode,
+            presentation.sequence,
+            result
+        )
+        return
+    end
+    presentation.mode = mode
+    mod:info(
+        "DARKTIDEVR_PRESENTATION mode=%d sequence=%d reason=%s source=%dx%d",
+        mode,
+        presentation.sequence,
+        tostring(reason),
+        ui_eye_target_width,
+        ui_eye_target_height
+    )
+end
+
+function presentation.classify_active_view(manager, view_name)
+    if presentation.non_gameplay_views[view_name] then
+        return nil, "non_gameplay"
+    end
+    if presentation.flat_loading_views[view_name] then
+        return 2, "loading_or_cinematic"
+    end
+
+    local settings = nil
+    local handler = manager and manager._view_handler
+    if handler and handler.settings_by_view_name then
+        local ok, value = pcall(handler.settings_by_view_name, handler, view_name)
+        if ok then
+            settings = value
+        end
+    end
+    local disables_world = settings and settings.disable_game_world == true
+    local explicit = presentation.explicit_flat_menu_views[view_name] == true
+    -- View identity and settings are authoritative. The shared `active` flag
+    -- tracks whichever stereo world was most recently constructed and can be
+    -- cleared by destruction of the old character-select world after the hub
+    -- camera is already live.
+    local classification = (disables_world or explicit) and 4 or nil
+    if not presentation.logged_view_classification[view_name] then
+        presentation.logged_view_classification[view_name] = true
+        mod:info(
+            "DARKTIDEVR_PRESENTATION classify view=%s class=%s disable_game_world=%s allow_hud=%s",
+            tostring(view_name),
+            classification == 4 and "flat_menu" or "ignored",
+            tostring(settings and settings.disable_game_world),
+            tostring(settings and settings.allow_hud)
+        )
+    end
+    return classification, disables_world and "disable_game_world" or
+        (explicit and "explicit" or "spatial_or_hud")
+end
+
+function presentation.reconcile_fullscreen_views(manager)
+    if not ui_native_capture or not manager or not manager.active_views then
+        return
+    end
+    local ok, views = pcall(manager.active_views, manager)
+    if not ok or type(views) ~= "table" then
+        return
+    end
+
+    local classified = {}
+    local desired_mode = nil
+    for i = 1, #views do
+        local view_name = views[i]
+        local mode, reason = presentation.classify_active_view(manager, view_name)
+        if mode then
+            classified[#classified + 1] = tostring(view_name) .. ":" .. reason
+            if mode == 2 or not desired_mode then
+                desired_mode = mode
+            end
+        end
+    end
+    local signature = table.concat(classified, ",")
+    if signature ~= presentation.fullscreen_view_signature then
+        presentation.fullscreen_view_signature = signature
+        mod:info(
+            "DARKTIDEVR_PRESENTATION fullscreen_stack count=%d views=%s",
+            #classified,
+            signature ~= "" and signature or "none"
+        )
+    end
+
+    if desired_mode then
+        presentation.fullscreen_empty_updates = 0
+        presentation.publish_mode(desired_mode, signature)
+    elseif presentation.mode == 4 then
+        presentation.fullscreen_empty_updates =
+            presentation.fullscreen_empty_updates + 1
+        if presentation.fullscreen_empty_updates >=
+                presentation.fullscreen_restore_delay_updates then
+            presentation.fullscreen_empty_updates = 0
+            presentation.publish_mode(1, "fullscreen_stack_empty")
+        end
+    elseif presentation.mode ~= 1 then
+        presentation.publish_mode(1, "stereo_world")
+    end
+end
+
+function presentation.on_view_open(manager, view_name)
+    local active_ok, is_active = pcall(manager.view_active, manager, view_name)
+    mod:info(
+        "DARKTIDEVR_PRESENTATION open view=%s active=%s",
+        tostring(view_name),
+        tostring(active_ok and is_active)
+    )
+    if active_ok and is_active then
+        local mode, reason = presentation.classify_active_view(manager, view_name)
+        if mode then
+            presentation.fullscreen_empty_updates = 0
+            presentation.publish_mode(mode, tostring(view_name) .. ":" .. reason)
+        end
+    end
+end
+
+function presentation.on_view_close(manager, view_name)
+    mod:info(
+        "DARKTIDEVR_PRESENTATION close view=%s",
+        tostring(view_name)
+    )
+    presentation.reconcile_fullscreen_views(manager)
 end
 
 local function refresh_xr_render_extent()
@@ -1984,6 +2165,41 @@ local function update_stereo(manager)
     ScriptCamera.force_update(world, primary_camera)
     ScriptCamera.force_update(world, right_camera)
 end
+
+mod:hook_safe(
+    require("scripts/managers/ui/ui_manager"),
+    "update",
+    function(self)
+    presentation.reconcile_fullscreen_views(self)
+end)
+
+mod:hook_safe(
+    require("scripts/managers/ui/ui_manager"),
+    "open_view",
+    function(self, view_name)
+    presentation.on_view_open(self, view_name)
+end)
+
+mod:hook_safe(
+    require("scripts/managers/ui/ui_manager"),
+    "close_view",
+    function(self, view_name)
+    presentation.on_view_close(self, view_name)
+end)
+
+-- The current hub build opens its system menu through the preloaded
+-- SystemView instance without traversing the UIManager methods or active-view
+-- list used by loading/vendor views. Observe the lifecycle at the view class
+-- as an explicit compatibility seam.
+mod:hook_safe("SystemView", "on_enter", function()
+    presentation.fullscreen_empty_updates = 0
+    presentation.publish_mode(4, "SystemView.on_enter")
+end)
+
+mod:hook_safe("SystemView", "on_exit", function()
+    presentation.mode = 4
+    presentation.fullscreen_empty_updates = 0
+end)
 
 mod:hook_safe("CameraManager", "_update_camera", function(self, _, _, viewport_name)
     if viewport_name ~= primary_viewport_name then

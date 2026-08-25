@@ -71,6 +71,37 @@ writer evidence, but Darktide exited after debugger detachment and opened Crash
 Reporter. Do not repeat that attachment in ordinary validation; no crash report
 was submitted.
 
+### Fullscreen menu presentation without pointer
+
+- Added a versioned, single-writer shared presentation-state transport named
+  `Local\DarktideVR-presentation-state-v1`. Its seqlock snapshot carries mode,
+  transition sequence, source extent/crop and maximum panel dimensions.
+- The native API publishes `stereo_world`, `flat_loading_or_cinematic`,
+  `world_anchored_menu`, `flat_menu` and `disabled/error`. The legacy binary
+  event remains as a compatibility fallback, but all new transitions use one
+  monotonic transport-level sequence.
+- The Lua UI-manager hook maintains the fullscreen-view stack, records view
+  flags, recognizes loading/cinematic and explicit menu views, and waits twelve
+  updates after the stack empties before restoring stereo. This avoids an old
+  UI-world teardown incorrectly overriding the live lobby state.
+- Flat modes now fit the captured aspect ratio within a 2 m by 2 m maximum,
+  anchor approximately 2 m from the transition-time head pose, discard head
+  pitch/roll, and remain fixed in LOCAL space.
+- Live logs proved the exact sequence `loading` (2), `stereo_world` (3),
+  `flat_menu` for `system_view` (4), then `stereo_world` (5) after close.
+- A five-minute XR run recorded 5,564 flat-fallback submissions followed by
+  14,744 fresh shared-eye pairs, zero reused frames and zero pair-driven
+  timeouts. Only two pose-sequence mismatches occurred; maximum measured angular
+  lag was 0.049 degrees.
+- Quest evidence is archived at
+  `artifacts/unattended/menu-xr/darktidevr-menu-panel.png` and
+  `artifacts/unattended/menu-xr/darktidevr-menu-closed.png`: the first shows the
+  system menu once on the spatial panel, and the second shows restored stereo.
+
+Two early live attempts exceeded Lua 5.1's 200-local chunk limit. Presentation
+state was collapsed into one table, startup then remained clean, and the final
+chunk has 196 top-level locals. This was recovered before the accepted run.
+
 ## Validation commands
 
 ```powershell
@@ -81,10 +112,11 @@ $cmake = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Co
 & .\tools\unattended\invoke-unattended-preflight.ps1 -RunXrSmoke -XrFrames 600
 ```
 
-Results: all 21 CTest tests passed. The native-capture test now installs the
+Results: all 22 CTest tests passed. The native-capture test now installs the
 diagnostic hook set, creates/maps/unmaps an upload buffer and verifies exactly
 one matched Map and Unmap. Core math covers cardinal headings, pitched and
-vertical views, and non-finite billboard inputs.
+vertical views, and non-finite billboard inputs. Presentation tests cover the
+shared transport, horizon-locked panel pose and aspect-preserving extent.
 
 The Release validation after producer localization also built
 `darktidevr_watch_write` and passed all 21 tests. Live validation used the
@@ -93,6 +125,6 @@ Steam close grace between normal runs.
 
 ## Next action
 
-Begin fullscreen-menu view classification and presentation-state transport.
-Retain the horizon-lock build for automated soaks, but defer the final smoke,
+Begin the shared OpenXR controller transport and spatial pointer. Retain the
+horizon-lock billboard build for automated soaks, but defer the final smoke,
 fog and particle-orientation judgement until the user can wear the headset.

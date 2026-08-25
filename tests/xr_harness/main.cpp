@@ -12,7 +12,9 @@
 #include "window_capture.h"
 #include "bridge/shared_eye_surfaces.h"
 #include "core/head_tracking.h"
+#include "core/presentation_policy.h"
 #include "core/shared_head_pose.h"
+#include "core/shared_presentation_state.h"
 
 #include <algorithm>
 #include <atomic>
@@ -618,6 +620,9 @@ class OpenXrProbe {
     auto shared_last_advance = std::chrono::steady_clock::now();
     auto next_shared_open_attempt = std::chrono::steady_clock::now();
     HANDLE projection_active_event{};
+    darktidevr::core::SharedPresentationStateReader presentation_state_reader;
+    darktidevr::core::SharedPresentationState presentation_state{};
+    std::uint64_t presentation_sequence{};
     if (shared_eyes) {
       head_pose_writer =
           std::make_unique<darktidevr::core::SharedHeadPoseWriter>();
@@ -662,6 +667,7 @@ class OpenXrProbe {
     std::uint32_t flat_fallback_frames{};
     std::uint32_t flat_fallback_transitions{};
     bool flat_fallback_active{};
+    std::uint64_t flat_fallback_anchored_sequence{};
     XrPosef flat_fallback_pose{{0.0F, 0.0F, 0.0F, 1.0F},
                                {0.0F, 0.0F, -2.0F}};
     bool flat_fallback_pose_valid{};
@@ -721,9 +727,18 @@ class OpenXrProbe {
             L"Local\\DarktideVR-projection-active-v1");
       }
       const bool projection_active =
-          !shared_eyes ||
-          (projection_active_event &&
-           WaitForSingleObject(projection_active_event, 0) == WAIT_OBJECT_0);
+          !shared_eyes || [&] {
+            darktidevr::core::SharedPresentationState newest{};
+            if (presentation_state_reader.read(newest)) {
+              presentation_state = newest;
+              presentation_sequence = newest.sequence;
+              return newest.mode == darktidevr::core::
+                                        SharedPresentationMode::stereo_world;
+            }
+            return projection_active_event &&
+                   WaitForSingleObject(projection_active_event, 0) ==
+                       WAIT_OBJECT_0;
+          }();
       if (shared_eyes && !opened_eyes &&
           frame_start >= next_shared_open_attempt) {
         next_shared_open_attempt = frame_start + std::chrono::milliseconds(250);
@@ -997,13 +1012,17 @@ class OpenXrProbe {
         const bool use_flat_capture = window_capture && !use_shared_pair;
         submitted_flat_fallback_this_frame = use_flat_capture;
         if (window_capture) {
-          if (use_flat_capture != flat_fallback_active) {
+          const auto flat_presentation_changed =
+              use_flat_capture && presentation_sequence != 0 &&
+              presentation_sequence != flat_fallback_anchored_sequence;
+          if (use_flat_capture != flat_fallback_active ||
+              flat_presentation_changed) {
             flat_fallback_active = use_flat_capture;
             ++flat_fallback_transitions;
             if (flat_fallback_active && current_head_valid) {
-              const auto anchored = darktidevr::math::compose(
-                  current_head,
-                  darktidevr::math::Pose{{}, {0.0F, 0.0F, -2.0F}});
+              const auto anchored =
+                  darktidevr::core::horizon_locked_panel_pose(current_head,
+                                                              2.0F);
               flat_fallback_pose.orientation = {
                   anchored.orientation.x, anchored.orientation.y,
                   anchored.orientation.z, anchored.orientation.w};
@@ -1011,8 +1030,10 @@ class OpenXrProbe {
                   anchored.position.x, anchored.position.y,
                   anchored.position.z};
               flat_fallback_pose_valid = true;
+              flat_fallback_anchored_sequence = presentation_sequence;
             } else if (!flat_fallback_active) {
               flat_fallback_pose_valid = false;
+              flat_fallback_anchored_sequence = 0;
             }
           }
           if (use_flat_capture) {
@@ -1216,7 +1237,24 @@ class OpenXrProbe {
           static_cast<std::int32_t>(width),
           static_cast<std::int32_t>(flat_capture_height)};
       flat_fallback_quad.pose = flat_fallback_pose;
-      flat_fallback_quad.size = {2.0F, 2.0F};
+      const auto panel_source_width =
+          presentation_sequence != 0 ? presentation_state.crop_width : width;
+      const auto panel_source_height = presentation_sequence != 0
+                                           ? presentation_state.crop_height
+                                           : flat_capture_height;
+      const auto panel_max_width = presentation_sequence != 0
+                                       ? presentation_state
+                                             .maximum_panel_width_metres
+                                       : 2.0F;
+      const auto panel_max_height = presentation_sequence != 0
+                                        ? presentation_state
+                                              .maximum_panel_height_metres
+                                        : 2.0F;
+      const auto panel_extent = darktidevr::core::fit_panel_extent(
+          panel_source_width, panel_source_height, panel_max_width,
+          panel_max_height);
+      flat_fallback_quad.size = {panel_extent.width_metres,
+                                 panel_extent.height_metres};
       XrCompositionLayerProjection projection{
           XR_TYPE_COMPOSITION_LAYER_PROJECTION};
       if (stereo) {

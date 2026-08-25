@@ -178,7 +178,17 @@ fullscreen stack is genuinely empty.
 - Rotate the synthetic head pose after panel creation and assert that the panel
   remains fixed in LOCAL space.
 - Exercise character select, hub system menu, training-ground menu, options and
-confirmation popup without requiring pointer input first.
+  confirmation popup without requiring pointer input first.
+
+### Progress — 2026-08-26
+
+The versioned presentation transport, loading/system-menu classification,
+horizon-locked LOCAL-space panel and automatic stereo restoration are complete.
+Unit tests cover transport consistency, panel horizon lock and aspect fitting.
+A live system-menu open/close run proved flat fallback and restoration to fresh
+stereo pairs without reused frames or pair-driven timeouts. Pointer interaction,
+nested/unknown menu coverage, vendor anchoring and final worn-headset panel
+ergonomics remain outstanding.
 
 ### Hub vendor and NPC-anchored shop mode
 

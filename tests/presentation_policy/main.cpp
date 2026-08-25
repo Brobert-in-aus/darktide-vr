@@ -1,6 +1,7 @@
 #include "core/presentation_policy.h"
 
 #include <iostream>
+#include <cmath>
 #include <stdexcept>
 
 namespace {
@@ -46,6 +47,31 @@ int main() {
     expect(decision.mode == PresentationMode::disabled &&
                decision.reason == PresentationReason::xr_not_renderable,
            "Non-renderable XR session must disable submission");
+
+    const auto pitched_head = darktidevr::math::Pose{
+        darktidevr::math::multiply(
+            darktidevr::math::from_axis_angle({0.0F, 1.0F, 0.0F}, 0.6F),
+            darktidevr::math::from_axis_angle(
+                {1.0F, 0.0F, 0.0F}, -0.7F)),
+        {1.0F, 1.7F, -3.0F}};
+    const auto panel = horizon_locked_panel_pose(pitched_head, 2.0F);
+    const auto panel_up =
+        darktidevr::math::rotate(panel.orientation, {0.0F, 1.0F, 0.0F});
+    expect(std::abs(panel_up.x) < 1.0e-5F &&
+               std::abs(panel_up.y - 1.0F) < 1.0e-5F &&
+               std::abs(panel_up.z) < 1.0e-5F,
+           "Flat panels must discard head pitch and roll");
+    expect(std::abs(panel.position.y - pitched_head.position.y) < 1.0e-5F,
+           "Flat panels must remain level with the opening head pose");
+
+    const auto wide = fit_panel_extent(1920, 1080, 2.0F, 2.0F);
+    expect(std::abs(wide.width_metres - 2.0F) < 1.0e-5F &&
+               std::abs(wide.height_metres - 1.125F) < 1.0e-5F,
+           "Wide captures must fit inside the panel without stretching");
+    const auto tall = fit_panel_extent(1080, 1920, 2.0F, 2.0F);
+    expect(std::abs(tall.width_metres - 1.125F) < 1.0e-5F &&
+               std::abs(tall.height_metres - 2.0F) < 1.0e-5F,
+           "Tall captures must fit inside the panel without stretching");
 
     std::cout << "presentation_policy.result=pass\n";
     return 0;
