@@ -124,6 +124,16 @@ Acceptance requires stable geometry, no new eye difference, no device loss,
 and the same world-up result across every exercised spherical permutation. The
 user still performs the final worn-headset smoke/particle judgement.
 
+### Progress — 2026-08-26
+
+Steps 1–5 are complete for executable revision 135417. The exact upload path,
+persistent staging address and SIMD writer are evidence-backed and
+fingerprinted. A separate staging API now performs the six-float basis patch;
+the retired descriptor writer remains impossible to arm. The first 35-second
+character-select soak passed with a one-to-one match between exact billboard
+CBVs and patches. Scripted pitch/roll captures, broader material coverage and
+the final worn-headset judgement remain outstanding.
+
 ## Workstream B — fullscreen menu presentation
 
 ### Presentation model

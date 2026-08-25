@@ -41,6 +41,36 @@ Virtual Desktop restart was justified.
 - Added a production-independent Z-up cylindrical basis calculation with
   deterministic vertical/invalid-input fallback.
 
+### Billboard producer localized and first safe patch
+
+- The D3D12 bootstrap now reads an explicit diagnostic sidecar before native
+  hook installation. This fixes the startup-order conflict where Lua requested
+  diagnostics after the proxy had already installed the non-diagnostic hook
+  set. Missing diagnostics now fail the Lua stereo setup closed rather than
+  dereferencing a nil native interface.
+- Exact billboard resources are normally mapped, copied and unmapped before
+  their draw. Their Map stacks consistently resolve through
+  `Darktide.exe+0x7d589d` to the Stingray upload flush beginning at
+  `Darktide.exe+0x7d5840`.
+- The upload flush is enabled only when the current executable matches a
+  reviewed 12-byte signature. It exposes the persistent CPU staging allocation
+  corresponding to each D3D12 upload resource without changing the upload.
+- A bounded write watcher hit the selected staging address 32/32 times at the
+  instruction ending at `Darktide.exe+0x670395`. Disassembly identifies the
+  writer as the SIMD per-instance matrix composer beginning at
+  `Darktide.exe+0x66fa70`; the write itself is the 16-byte store at `+0x670390`.
+- The first horizon-lock path now writes only six approved basis floats in the
+  persistent staging CBV after exact reflected billboard identity is proven.
+  It does not alter descriptor heaps, root tables or GPU-visible allocations.
+- A 35-second clean character-select soak recorded 11,404 exact billboard CBVs
+  and exactly 11,404 staging patches, with the fingerprinted upload hook active
+  and no Lua, engine, D3D12 device-removal or device-hung error.
+
+The standalone debugger watcher is diagnostic-only. It produced the needed
+writer evidence, but Darktide exited after debugger detachment and opened Crash
+Reporter. Do not repeat that attachment in ordinary validation; no crash report
+was submitted.
+
 ## Validation commands
 
 ```powershell
@@ -56,11 +86,13 @@ diagnostic hook set, creates/maps/unmaps an upload buffer and verifies exactly
 one matched Map and Unmap. Core math covers cardinal headings, pitched and
 vertical views, and non-finite billboard inputs.
 
+The Release validation after producer localization also built
+`darktidevr_watch_write` and passed all 21 tests. Live validation used the
+EAC-stopped character-select boundary and preserved the required ten-second
+Steam close grace between normal runs.
+
 ## Next action
 
-Build and deploy the diagnostic-only Release native DLL/mod, run a clean
-character-select capture, and inspect `tracked_maps`, the selected persistent
-address flag and the bounded `c_billboard` samples. If a persistent address is
-found, attach a scripted data breakpoint to identify its CPU writer. If not,
-move to fullscreen-menu presentation while retaining this instrumentation for
-the next billboard pass.
+Begin fullscreen-menu view classification and presentation-state transport.
+Retain the horizon-lock build for automated soaks, but defer the final smoke,
+fog and particle-orientation judgement until the user can wear the headset.

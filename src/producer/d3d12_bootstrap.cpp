@@ -84,8 +84,16 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
     return FALSE;
   }
   path.resize(separator + 1);
-  path += L"..\\mods\\darktidevr_stereo_probe\\bin\\"
-          L"darktidevr_native_capture.dll";
+  const auto mod_bin_path =
+      path + L"..\\mods\\darktidevr_stereo_probe\\bin\\";
+  const auto diagnostic_flag_path =
+      mod_bin_path + L"darktidevr_diagnostic_render_hooks.flag";
+  const auto diagnostic_flag_attributes =
+      GetFileAttributesW(diagnostic_flag_path.c_str());
+  const auto diagnostic_hooks_requested =
+      diagnostic_flag_attributes != INVALID_FILE_ATTRIBUTES &&
+      (diagnostic_flag_attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+  path = mod_bin_path + L"darktidevr_native_capture.dll";
   const auto native = LoadLibraryW(path.c_str());
   if (!native) {
     char message[96]{};
@@ -104,7 +112,10 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
       GetProcAddress(native, "dtvr_set_vertex_shader_dump"));
   const auto install = reinterpret_cast<InstallForDeviceFn>(
       GetProcAddress(native, "dtvr_install_for_device"));
-  const auto diagnostics_result = select_diagnostics ? select_diagnostics(0) : -1;
+  const auto diagnostics_result =
+      select_diagnostics
+          ? select_diagnostics(diagnostic_hooks_requested ? 1 : 0)
+          : -1;
   const auto substitution_result = set_billboard_shader_substitution
                                        ? set_billboard_shader_substitution(1)
                                        : -1;
@@ -115,12 +126,13 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
           ? set_billboard_basis(1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0)
           : -1;
   const auto install_result = install ? install(first_device) : -1;
-  char message[192]{};
+  char message[224]{};
   wsprintfA(message,
-            "native_results diagnostics=%d substitution=%d shader_dump=%d "
-            "basis=%d install=%d",
-            diagnostics_result, substitution_result, shader_dump_result,
-            basis_result, install_result);
+            "native_results diagnostic_requested=%d diagnostics=%d "
+            "substitution=%d shader_dump=%d basis=%d install=%d",
+            diagnostic_hooks_requested ? 1 : 0, diagnostics_result,
+            substitution_result, shader_dump_result, basis_result,
+            install_result);
   write_bootstrap_log(message);
   return diagnostics_result == 0 && substitution_result == 0 &&
                  shader_dump_result == 0 && basis_result == 0 &&

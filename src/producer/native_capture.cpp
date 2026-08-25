@@ -30,6 +30,8 @@ using Microsoft::WRL::ComPtr;
 
 namespace {
 
+using StingrayUploadFlushFn = void (*)(void* allocator);
+
 HMODULE native_capture_module{};
 INIT_ONCE dxc_reflection_once = INIT_ONCE_STATIC_INIT;
 HMODULE dxcompiler_module{};
@@ -228,6 +230,7 @@ CreateCommittedResourceFn original_create_committed_resource{};
 CreatePlacedResourceFn original_create_placed_resource{};
 ResourceMapFn original_resource_map{};
 ResourceUnmapFn original_resource_unmap{};
+StingrayUploadFlushFn original_stingray_upload_flush{};
 CopyDescriptorsSimpleFn original_copy_descriptors_simple{};
 CopyDescriptorsFn original_copy_descriptors{};
 CreateRootSignatureFn original_create_root_signature{};
@@ -362,6 +365,10 @@ struct BufferResourceInfo {
   std::byte* mapped_base{};
   UINT mapped_subresource{};
   bool mapped{};
+  std::array<void*, 16> last_map_stack{};
+  USHORT last_map_stack_count{};
+  std::byte* staging_base{};
+  std::uint64_t staging_size{};
 };
 
 struct TableProvenance {
@@ -483,9 +490,12 @@ std::unordered_map<std::uint64_t, DescriptorInfo> descriptor_metadata;
 std::mutex buffer_resource_mutex;
 std::vector<BufferResourceInfo> buffer_resources;
 std::unordered_set<std::uint64_t> billboard_tested_cbvs;
+std::unordered_set<std::uint64_t> billboard_staging_tested_cbvs;
 std::mutex billboard_cbv_log_mutex;
 bool billboard_cbv_log_initialized{};
+bool billboard_staging_log_initialized{};
 std::atomic<std::uint64_t> billboard_cbv_log_count{};
+std::atomic<std::uint64_t> billboard_staging_log_count{};
 
 struct PsoMetadata {
   char kind{'U'};
@@ -647,11 +657,13 @@ std::unordered_map<std::uint64_t, std::vector<std::uint8_t>>
     billboard_shader_replacements;
 std::array<std::atomic<float>, 6> billboard_view_basis{};
 std::atomic<bool> billboard_horizon_lock_enabled{};
+std::atomic<bool> billboard_staging_write_enabled{};
 // The shadow-heap/descriptor-table rewrite was useful to prove the reflected
 // c_billboard binding, but mutating a draw's live descriptor topology is not a
 // production-safe write path. Keep its bounded observation counters available
-// while making the write mode impossible to arm. The replacement producer hook
-// will use a separate, fingerprinted API once its CPU writer is identified.
+// while making the write mode impossible to arm. The replacement path writes
+// only the proven persistent Stingray CPU staging allocation, behind a separate
+// fingerprinted API and exact reflected billboard draw identity.
 constexpr bool kAllowRetiredBillboardDescriptorWrites = false;
 std::atomic<bool> billboard_basis_write_enabled{};
 std::atomic<std::uint64_t> billboard_exact_shader_draw_count{};
@@ -676,6 +688,9 @@ std::atomic<std::uint64_t> billboard_exact_map_failure_count{};
 std::atomic<std::uint64_t> billboard_resource_map_count{};
 std::atomic<std::uint64_t> billboard_resource_map_match_count{};
 std::atomic<std::uint64_t> billboard_resource_unmap_count{};
+std::atomic<std::uint64_t> billboard_selected_map_stack_count{};
+std::atomic<std::uint64_t> billboard_upload_flush_count{};
+std::atomic<int> billboard_upload_flush_hook_state{};
 std::atomic<std::uintptr_t> billboard_selected_cpu_address{};
 std::atomic<std::uint64_t> billboard_selected_gpu_address{};
 std::atomic<std::uint64_t> billboard_selected_size{};
@@ -2721,6 +2736,9 @@ HRESULT STDMETHODCALLTYPE resource_map_hook(ID3D12Resource* resource,
   }
 
   billboard_resource_map_count.fetch_add(1, std::memory_order_relaxed);
+  std::array<void*, 16> map_stack{};
+  const auto map_stack_count = CaptureStackBackTrace(
+      1, static_cast<DWORD>(map_stack.size()), map_stack.data(), nullptr);
   std::scoped_lock lock(buffer_resource_mutex);
   for (auto it = buffer_resources.rbegin(); it != buffer_resources.rend(); ++it) {
     if (it->resource != resource) {
@@ -2729,6 +2747,8 @@ HRESULT STDMETHODCALLTYPE resource_map_hook(ID3D12Resource* resource,
     it->mapped_base = static_cast<std::byte*>(*data);
     it->mapped_subresource = subresource;
     it->mapped = true;
+    it->last_map_stack = map_stack;
+    it->last_map_stack_count = map_stack_count;
     billboard_resource_map_match_count.fetch_add(1,
                                                   std::memory_order_relaxed);
     break;
@@ -2755,6 +2775,61 @@ void STDMETHODCALLTYPE resource_unmap_hook(ID3D12Resource* resource,
     }
   }
   original_resource_unmap(resource, subresource, written_range);
+}
+
+struct StingrayUploadSnapshot {
+  ID3D12Resource* resource{};
+  std::byte* staging_base{};
+  std::uint64_t staging_size{};
+};
+
+bool take_stingray_upload_snapshot(void* allocator,
+                                   StingrayUploadSnapshot* snapshot) {
+  __try {
+    const auto* bytes = static_cast<const std::byte*>(allocator);
+    const auto ring_index = *reinterpret_cast<const UINT*>(bytes + 0xa8);
+    const auto ring_entries =
+        *reinterpret_cast<std::byte* const*>(bytes + 0xc0);
+    if (ring_index >= 64 || !ring_entries) {
+      return false;
+    }
+    const auto* entry =
+        ring_entries + static_cast<std::size_t>(ring_index) * 40;
+    const auto end_offset =
+        *reinterpret_cast<const std::uint64_t*>(entry);
+    const auto begin_offset =
+        *reinterpret_cast<const std::uint64_t*>(entry + 0x20);
+    snapshot->resource =
+        *reinterpret_cast<ID3D12Resource* const*>(entry + 0x10);
+    snapshot->staging_base =
+        *reinterpret_cast<std::byte* const*>(entry + 0x18);
+    snapshot->staging_size = end_offset;
+    return snapshot->resource && snapshot->staging_base &&
+           end_offset >= begin_offset &&
+           end_offset - begin_offset <= (1ULL << 32);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    // This is a version-gated diagnostic hook. An unexpected layout fails
+    // closed and the original Stingray upload path still runs unchanged.
+    return false;
+  }
+}
+
+void stingray_upload_flush_hook(void* allocator) {
+  StingrayUploadSnapshot snapshot{};
+  if (allocator && take_stingray_upload_snapshot(allocator, &snapshot)) {
+    std::scoped_lock lock(buffer_resource_mutex);
+    for (auto it = buffer_resources.rbegin(); it != buffer_resources.rend();
+         ++it) {
+      if (it->resource == snapshot.resource) {
+        it->staging_base = snapshot.staging_base;
+        it->staging_size = snapshot.staging_size;
+        billboard_upload_flush_count.fetch_add(1,
+                                                std::memory_order_relaxed);
+        break;
+      }
+    }
+  }
+  original_stingray_upload_flush(allocator);
 }
 
 void STDMETHODCALLTYPE copy_descriptors_simple_hook(
@@ -3225,28 +3300,48 @@ void observe_billboard_cbv(const DescriptorInfo& descriptor) {
         1, std::memory_order_relaxed);
   }
 
-  bool first_observation{};
-  {
-    std::scoped_lock lock(buffer_resource_mutex);
-    first_observation = billboard_tested_cbvs.insert(
-        descriptor.gpu_address).second;
-  }
-  if (!first_observation) {
-    return;
-  }
-  void* mapped = resource->mapped && resource->mapped_subresource == 0
-                     ? resource->mapped_base
-                     : nullptr;
-  const bool used_tracked_mapping = mapped != nullptr;
-  bool mapped_for_observation{};
   const auto resource_offset = descriptor.gpu_address - resource->gpu_start;
   const auto readable_size = (std::min<std::uint64_t>)(
       descriptor.width == 0 ? 132 : descriptor.width,
       resource->size - resource_offset);
+  const bool used_staging_mapping =
+      resource->staging_base &&
+      resource_offset + readable_size <= resource->size;
+  if (used_staging_mapping && readable_size >= 44 &&
+      billboard_staging_write_enabled.load(std::memory_order_relaxed)) {
+    constexpr std::array<std::size_t, 6> float_indices{0, 1, 2, 8, 9, 10};
+    auto* values = reinterpret_cast<float*>(resource->staging_base +
+                                            resource_offset);
+    for (std::size_t index = 0; index < float_indices.size(); ++index) {
+      std::atomic_ref<float>(values[float_indices[index]])
+          .store(billboard_view_basis[index].load(std::memory_order_relaxed),
+                 std::memory_order_relaxed);
+    }
+    billboard_basis_patch_count.fetch_add(1, std::memory_order_relaxed);
+  }
+  bool first_observation{};
+  {
+    std::scoped_lock lock(buffer_resource_mutex);
+    first_observation =
+        (used_staging_mapping ? billboard_staging_tested_cbvs
+                              : billboard_tested_cbvs)
+            .insert(descriptor.gpu_address)
+            .second;
+  }
+  if (!first_observation) {
+    return;
+  }
+  void* mapped = used_staging_mapping
+                     ? resource->staging_base
+                     : resource->mapped && resource->mapped_subresource == 0
+                           ? resource->mapped_base
+                           : nullptr;
+  const bool used_tracked_mapping = !used_staging_mapping && mapped != nullptr;
+  bool mapped_for_observation{};
   const D3D12_RANGE cpu_read_range{
       static_cast<SIZE_T>(resource_offset),
       static_cast<SIZE_T>(resource_offset + readable_size)};
-  if (used_tracked_mapping ||
+  if (used_staging_mapping || used_tracked_mapping ||
       (SUCCEEDED(resource->resource->Map(0, &cpu_read_range, &mapped)) &&
        mapped && (mapped_for_observation = true))) {
     billboard_exact_map_success_count.fetch_add(1,
@@ -3255,31 +3350,44 @@ void observe_billboard_cbv(const DescriptorInfo& descriptor) {
                                           std::memory_order_relaxed);
     billboard_selected_size.store(readable_size, std::memory_order_relaxed);
     billboard_selected_cpu_address.store(
-        used_tracked_mapping
+        used_staging_mapping
+            ? reinterpret_cast<std::uintptr_t>(resource->staging_base +
+                                               resource_offset)
+            : used_tracked_mapping
             ? reinterpret_cast<std::uintptr_t>(
                   static_cast<std::byte*>(mapped) + resource_offset)
             : 0,
         std::memory_order_release);
     const auto sample_index =
-        billboard_cbv_log_count.fetch_add(1, std::memory_order_relaxed);
+        (used_staging_mapping ? billboard_staging_log_count
+                              : billboard_cbv_log_count)
+            .fetch_add(1, std::memory_order_relaxed);
     if (sample_index < 32 && readable_size >= sizeof(float)) {
       std::scoped_lock log_lock(billboard_cbv_log_mutex);
       std::array<wchar_t, MAX_PATH> temp{};
       if (GetTempPathW(static_cast<DWORD>(temp.size()), temp.data()) != 0) {
         std::wstring path(temp.data());
-        path += L"darktidevr-billboard-cbv.tsv";
+        path += used_staging_mapping ? L"darktidevr-billboard-staging.tsv"
+                                     : L"darktidevr-billboard-cbv.tsv";
         const DWORD disposition =
-            billboard_cbv_log_initialized ? OPEN_ALWAYS : CREATE_ALWAYS;
+            (used_staging_mapping ? billboard_staging_log_initialized
+                                  : billboard_cbv_log_initialized)
+                ? OPEN_ALWAYS
+                : CREATE_ALWAYS;
         HANDLE log = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
                                  nullptr, disposition, FILE_ATTRIBUTE_NORMAL,
                                  nullptr);
         if (log != INVALID_HANDLE_VALUE) {
-          billboard_cbv_log_initialized = true;
-          std::array<char, 4096> line{};
+          if (used_staging_mapping) {
+            billboard_staging_log_initialized = true;
+          } else {
+            billboard_cbv_log_initialized = true;
+          }
+          std::array<char, 8192> line{};
           int length = std::snprintf(
               line.data(), line.size(),
               "%llu\tgpu=%llu\tbase=%llu\toffset=%llu\tcbv_size=%llu\theap=%u"
-              "\ttracked=%u\tcpu=%p",
+              "\ttracked=%u\tstaging=%u\tcpu=%p",
               static_cast<unsigned long long>(sample_index),
               static_cast<unsigned long long>(descriptor.gpu_address),
               static_cast<unsigned long long>(resource->gpu_start),
@@ -3287,10 +3395,56 @@ void observe_billboard_cbv(const DescriptorInfo& descriptor) {
               static_cast<unsigned long long>(descriptor.width),
               static_cast<unsigned>(resource->heap_type),
               used_tracked_mapping ? 1U : 0U,
-              used_tracked_mapping
+              used_staging_mapping ? 1U : 0U,
+              used_staging_mapping
+                  ? static_cast<void*>(resource->staging_base + resource_offset)
+                  : used_tracked_mapping
                   ? static_cast<void*>(static_cast<std::byte*>(mapped) +
                                        resource_offset)
                   : nullptr);
+          if (resource->last_map_stack_count > 0) {
+            billboard_selected_map_stack_count.fetch_add(
+                1, std::memory_order_relaxed);
+          }
+          for (USHORT stack_index = 0;
+               stack_index < resource->last_map_stack_count && length > 0 &&
+               static_cast<std::size_t>(length) < line.size();
+               ++stack_index) {
+            const auto frame = resource->last_map_stack[stack_index];
+            HMODULE module{};
+            std::array<wchar_t, 32768> module_path{};
+            const char* module_label = "unknown";
+            std::array<char, MAX_PATH> module_name{};
+            std::uintptr_t module_offset =
+                reinterpret_cast<std::uintptr_t>(frame);
+            if (GetModuleHandleExW(
+                    GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                        GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                    reinterpret_cast<LPCWSTR>(frame), &module)) {
+              const auto path_length = GetModuleFileNameW(
+                  module, module_path.data(),
+                  static_cast<DWORD>(module_path.size()));
+              if (path_length > 0 && path_length < module_path.size()) {
+                const auto* base_name = module_path.data();
+                for (const auto* cursor = module_path.data(); *cursor; ++cursor) {
+                  if (*cursor == L'\\' || *cursor == L'/') {
+                    base_name = cursor + 1;
+                  }
+                }
+                const auto converted = WideCharToMultiByte(
+                    CP_UTF8, 0, base_name, -1, module_name.data(),
+                    static_cast<int>(module_name.size()), nullptr, nullptr);
+                if (converted > 0) {
+                  module_label = module_name.data();
+                }
+              }
+              module_offset -= reinterpret_cast<std::uintptr_t>(module);
+            }
+            length += std::snprintf(
+                line.data() + length, line.size() - length,
+                "\tstack%u=%s+0x%llx", static_cast<unsigned>(stack_index),
+                module_label, static_cast<unsigned long long>(module_offset));
+          }
           const auto float_count = (std::min<std::size_t>)(
               readable_size / sizeof(float), 33);
           const auto* values = reinterpret_cast<const float*>(
@@ -5515,6 +5669,26 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
   const auto install_pso_substitution_hooks =
       kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
       billboard_shader_substitution_requested.load(std::memory_order_relaxed);
+  void* stingray_upload_flush_target{};
+  if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {
+    constexpr std::uintptr_t kUploadFlushRva = 0x7d5840;
+    constexpr std::array<std::byte, 12> kUploadFlushSignature{
+        std::byte{0x4c}, std::byte{0x8b}, std::byte{0xdc}, std::byte{0x48},
+        std::byte{0x83}, std::byte{0xec}, std::byte{0x48}, std::byte{0x80},
+        std::byte{0xb9}, std::byte{0xb0}, std::byte{0x00}, std::byte{0x00}};
+    auto* candidate = reinterpret_cast<std::byte*>(GetModuleHandleW(nullptr)) +
+                      kUploadFlushRva;
+    MEMORY_BASIC_INFORMATION memory{};
+    if (VirtualQuery(candidate, &memory, sizeof(memory)) == sizeof(memory) &&
+        memory.State == MEM_COMMIT &&
+        std::memcmp(candidate, kUploadFlushSignature.data(),
+                    kUploadFlushSignature.size()) == 0) {
+      stingray_upload_flush_target = candidate;
+      billboard_upload_flush_hook_state.store(1, std::memory_order_relaxed);
+    } else {
+      billboard_upload_flush_hook_state.store(2, std::memory_order_relaxed);
+    }
+  }
   if (MH_Initialize() != MH_OK ||
       MH_CreateHook(get_client_rect_target, &get_client_rect_hook,
                     reinterpret_cast<void**>(&original_get_client_rect)) !=
@@ -5582,6 +5756,10 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
        MH_CreateHook(resource_vtable[9], &resource_unmap_hook,
                      reinterpret_cast<void**>(&original_resource_unmap)) !=
            MH_OK) ||
+      (stingray_upload_flush_target &&
+       MH_CreateHook(stingray_upload_flush_target, &stingray_upload_flush_hook,
+                     reinterpret_cast<void**>(
+                         &original_stingray_upload_flush)) != MH_OK) ||
       (install_pso_substitution_hooks &&
        MH_CreateHook(device2_vtable[47], &create_pipeline_state_stream_hook,
                     reinterpret_cast<void**>(
@@ -5764,6 +5942,9 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
 
   DestroyWindow(window);
   UnregisterClassW(class_name, window_class.hInstance);
+  if (stingray_upload_flush_target) {
+    billboard_upload_flush_hook_state.store(3, std::memory_order_relaxed);
+  }
   hooks_installed.store(true, std::memory_order_release);
   return 0;
 }
@@ -6382,6 +6563,7 @@ extern "C" __declspec(dllexport) int dtvr_set_billboard_view_basis(
   }
   if (enabled == 1 && !kAllowRetiredBillboardDescriptorWrites) {
     billboard_basis_write_enabled.store(false, std::memory_order_release);
+    billboard_staging_write_enabled.store(false, std::memory_order_release);
     billboard_horizon_lock_enabled.store(false, std::memory_order_release);
     return 2;
   }
@@ -6422,10 +6604,13 @@ extern "C" __declspec(dllexport) int dtvr_set_billboard_view_basis(
     billboard_resource_map_count.store(0, std::memory_order_relaxed);
     billboard_resource_map_match_count.store(0, std::memory_order_relaxed);
     billboard_resource_unmap_count.store(0, std::memory_order_relaxed);
+    billboard_selected_map_stack_count.store(0, std::memory_order_relaxed);
+    billboard_upload_flush_count.store(0, std::memory_order_relaxed);
     billboard_selected_cpu_address.store(0, std::memory_order_relaxed);
     billboard_selected_gpu_address.store(0, std::memory_order_relaxed);
     billboard_selected_size.store(0, std::memory_order_relaxed);
     billboard_cbv_log_count.store(0, std::memory_order_relaxed);
+    billboard_staging_log_count.store(0, std::memory_order_relaxed);
     for (auto& count : billboard_shadow_stage_counts) {
       count.store(0, std::memory_order_relaxed);
     }
@@ -6435,6 +6620,7 @@ extern "C" __declspec(dllexport) int dtvr_set_billboard_view_basis(
     {
       std::scoped_lock lock(buffer_resource_mutex);
       billboard_tested_cbvs.clear();
+      billboard_staging_tested_cbvs.clear();
     }
     billboard_exact_root_mapping_count.store(0, std::memory_order_relaxed);
     billboard_root_metadata_draw_count.store(0, std::memory_order_relaxed);
@@ -6454,9 +6640,27 @@ extern "C" __declspec(dllexport) int dtvr_set_billboard_view_basis(
   }
   billboard_basis_write_enabled.store(
       enabled == 1 && kAllowRetiredBillboardDescriptorWrites,
-                                      std::memory_order_release);
-  billboard_horizon_lock_enabled.store(enabled == 2,
                                        std::memory_order_release);
+  billboard_staging_write_enabled.store(false, std::memory_order_release);
+  billboard_horizon_lock_enabled.store(enabled == 2,
+                                        std::memory_order_release);
+  return 0;
+}
+extern "C" __declspec(dllexport) int dtvr_set_billboard_staging_view_basis(
+    float right_x, float right_y, float right_z, float up_x, float up_y,
+    float up_z, int enabled) {
+  if (enabled != 0 &&
+      billboard_upload_flush_hook_state.load(std::memory_order_relaxed) != 3) {
+    billboard_staging_write_enabled.store(false, std::memory_order_release);
+    return 3;
+  }
+  const auto result = dtvr_set_billboard_view_basis(
+      right_x, right_y, right_z, up_x, up_y, up_z, enabled ? 2 : 0);
+  if (result != 0) {
+    return result;
+  }
+  billboard_staging_write_enabled.store(enabled != 0,
+                                        std::memory_order_release);
   return 0;
 }
 extern "C" __declspec(dllexport) unsigned long long
@@ -6543,6 +6747,17 @@ dtvr_billboard_resource_map_match_count() {
 extern "C" __declspec(dllexport) unsigned long long
 dtvr_billboard_resource_unmap_count() {
   return billboard_resource_unmap_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_selected_map_stack_count() {
+  return billboard_selected_map_stack_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_upload_flush_count() {
+  return billboard_upload_flush_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) int dtvr_billboard_upload_flush_hook_state() {
+  return billboard_upload_flush_hook_state.load(std::memory_order_relaxed);
 }
 extern "C" __declspec(dllexport) unsigned long long
 dtvr_billboard_selected_cpu_address() {

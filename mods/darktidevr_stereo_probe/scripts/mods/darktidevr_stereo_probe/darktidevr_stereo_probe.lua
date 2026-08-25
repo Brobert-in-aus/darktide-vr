@@ -84,7 +84,7 @@ local vertex_shader_dump_requested = false
 -- PSO-time, whitelist-only substitution. Replacement shaders are validated
 -- against the live shader interface before D3D12 ever sees them.
 local billboard_shader_substitution_requested = true
-local billboard_horizon_lock_requested = false -- disabled while the asset-level billboard path is investigated
+local billboard_horizon_lock_requested = false -- enable only with the fingerprinted diagnostic sidecar
 local billboard_selector_probe_requested = false
 local ui_table4_alias_probe_requested = false -- unsafe without exact draw identity
 local ui_present_capture_requested = false
@@ -274,6 +274,9 @@ local function ensure_ui_native_hooks()
         int dtvr_set_billboard_view_basis(float right_x, float right_y,
             float right_z, float up_x, float up_y,
             float up_z, int enabled);
+        int dtvr_set_billboard_staging_view_basis(float right_x, float right_y,
+            float right_z, float up_x, float up_y,
+            float up_z, int enabled);
         unsigned long long dtvr_billboard_stride_candidate_count(void);
         unsigned long long dtvr_billboard_b1_bound_count(void);
         unsigned long long dtvr_billboard_b2_bound_count(void);
@@ -300,6 +303,9 @@ local function ensure_ui_native_hooks()
         unsigned long long dtvr_billboard_resource_map_count(void);
         unsigned long long dtvr_billboard_resource_map_match_count(void);
         unsigned long long dtvr_billboard_resource_unmap_count(void);
+        unsigned long long dtvr_billboard_selected_map_stack_count(void);
+        unsigned long long dtvr_billboard_upload_flush_count(void);
+        int dtvr_billboard_upload_flush_hook_state(void);
         unsigned long long dtvr_billboard_selected_cpu_address(void);
         unsigned long long dtvr_billboard_selected_gpu_address(void);
         unsigned long long dtvr_billboard_selected_size(void);
@@ -392,7 +398,7 @@ local function ensure_ui_native_hooks()
     if billboard_horizon_lock_requested then
         -- Darktide is Z-up. c_billboard.view columns 0 and 2 are the sprite's
         -- screen-facing right and up axes, not right and camera-forward.
-        library.dtvr_set_billboard_view_basis(
+        library.dtvr_set_billboard_staging_view_basis(
             1, 0, 0,
             0, 0, 1,
             1
@@ -749,7 +755,7 @@ local function report_native_observer()
                 return table.concat(values, ",")
             end
             mod:info(
-                "DARKTIDEVR_STEREO billboard state=%d hook_draws=%d observed=%d slot0=%s slot1=%s particle_layout=%d exact_pso=%d cl_types=%s registers=%s cbv_slots=%s table_slots=%s selected_tables=%s descriptor_offsets=%s table_spans=%s cbv_desc=%d buffers=%d heaps=%s map=%d/%d tracked_maps=%d/%d/%d selected=%d/%d shadow_stages=%s root_meta=%d direct_cbv=%d table_cbv=%d table_cbv_bound=%d patches=%d",
+                "DARKTIDEVR_STEREO billboard state=%d hook_draws=%d observed=%d slot0=%s slot1=%s particle_layout=%d exact_pso=%d cl_types=%s registers=%s cbv_slots=%s table_slots=%s selected_tables=%s descriptor_offsets=%s table_spans=%s cbv_desc=%d buffers=%d heaps=%s map=%d/%d tracked_maps=%d/%d/%d producer_stacks=%d upload_flush=%d/%d selected=%d/%d shadow_stages=%s root_meta=%d direct_cbv=%d table_cbv=%d table_cbv_bound=%d patches=%d",
                 ui_native_capture.dtvr_billboard_probe_state(),
                 tonumber(ui_native_capture.dtvr_billboard_direct_draw_hook_count()),
                 tonumber(ui_native_capture.dtvr_billboard_observed_draw_count()),
@@ -781,6 +787,9 @@ local function report_native_observer()
                 tonumber(ui_native_capture.dtvr_billboard_resource_map_count()),
                 tonumber(ui_native_capture.dtvr_billboard_resource_map_match_count()),
                 tonumber(ui_native_capture.dtvr_billboard_resource_unmap_count()),
+                tonumber(ui_native_capture.dtvr_billboard_selected_map_stack_count()),
+                ui_native_capture.dtvr_billboard_upload_flush_hook_state(),
+                tonumber(ui_native_capture.dtvr_billboard_upload_flush_count()),
                 ui_native_capture.dtvr_billboard_selected_cpu_address() ~= 0 and 1 or 0,
                 tonumber(ui_native_capture.dtvr_billboard_selected_size()),
                 top_billboard_root_slots(
@@ -2597,15 +2606,24 @@ mod:hook(
         if ui_stereo_requested and
             target_main_menu_viewport then
 
+            local native_ready = true
             if ui_native_capture_requested then
-                enable_ui_native_capture()
+                native_ready = enable_ui_native_capture()
             end
 
-            if ui_present_capture_requested and ensure_ui_native_hooks() then
-                ui_native_capture.dtvr_enable_present_capture()
+            if native_ready and ui_present_capture_requested then
+                native_ready = ensure_ui_native_hooks()
+                if native_ready then
+                    ui_native_capture.dtvr_enable_present_capture()
+                end
             end
 
-            local ok, error_message = pcall(setup_ui_stereo, self)
+            local ok = native_ready
+            local error_message = native_ready and nil or
+                "native capture hooks unavailable"
+            if native_ready then
+                ok, error_message = pcall(setup_ui_stereo, self)
+            end
 
             if not ok then
                 mod:error(
