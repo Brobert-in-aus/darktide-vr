@@ -725,6 +725,10 @@ class OpenXrProbe {
                    : static_cast<float>(width / 2) /
                          static_cast<float>(height));
     XrFovf rendered_symmetric_fov{};
+    std::vector<std::uint32_t> image_indices(theatre_swapchain_count);
+    std::vector<ID3D12Resource*> resources(theatre_swapchain_count);
+    std::vector<D3D12_RESOURCE_BARRIER> destination_barriers(
+        theatre_swapchain_count);
 
     for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
       if (duration && std::chrono::steady_clock::now() - start >= *duration) {
@@ -868,8 +872,6 @@ class OpenXrProbe {
             XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
         XrSwapchainImageWaitInfo image_wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
         image_wait.timeout = XR_INFINITE_DURATION;
-        std::vector<std::uint32_t> image_indices(theatre_swapchain_count);
-        std::vector<ID3D12Resource*> resources(theatre_swapchain_count);
         for (std::size_t eye = 0; eye < theatre_swapchain_count; ++eye) {
           check_xr(xrAcquireSwapchainImage(theatre_swapchains[eye],
                                            &acquire_info,
@@ -996,8 +998,6 @@ class OpenXrProbe {
             ++flat_fallback_frames;
           }
         }
-        std::vector<D3D12_RESOURCE_BARRIER> destination_barriers(
-            theatre_swapchain_count);
         for (std::size_t eye = 0; eye < theatre_swapchain_count; ++eye) {
           auto& barrier = destination_barriers[eye];
           barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;

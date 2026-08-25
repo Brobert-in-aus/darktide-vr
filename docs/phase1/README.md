@@ -495,3 +495,63 @@ loss downstream of Lua and confirms a material roughly 11--13 ms second-view
 GPU interval, but does not yet assign cost to individual renderer passes.
 Timestamp profiling is opt-in after this run so its command-list allocation
 overhead is absent from normal testing.
+
+## Shared-work performance pass (2026-08-25)
+
+Inspection of Darktide's shipping `ScriptWorld.render` established a concrete
+duplicated CPU boundary. Calling the wrapper once per eye repeated shading
+blend/callback/apply, the shadow-bake check, and `World.update_lod_levels`
+before each `Application.render_world` submission. The stereo hook now uses the
+normal wrapper for the primary eye, then submits the second camera directly
+with the already prepared primary shading environment. The second eye remains
+a complete native world render with isolated depth, G-buffer, lighting and
+temporal output; only frame preparation is shared. A guarded fallback restores
+the full wrapper if the camera or shading environment is unavailable or the
+direct submission raises a Lua error.
+
+The native producer now retains completed capture command allocators/lists for
+reuse instead of creating them per eye, and the XR harness retains its
+per-frame image/resource/barrier arrays. Production also omits the dormant
+draw, dispatch, root-binding, descriptor, marker and render-target diagnostic
+detours. Boundary capture still dynamically learns the runtime output resource
+because resource identities change across runs and render-target rebuilds, but
+steady-state inspection is restricted to plausible shader-resource/render-
+target transitions. Output names are queried only for previously unknown
+resources. The expensive boundary census remains opt-in.
+
+Headset validation found unchanged stereo, lighting, tracking and overall
+appearance, with a clearly smoother lobby. During the first accepted run,
+post-loading fresh-pair intervals commonly reached roughly 80--119/s rather
+than the earlier instrumented mid-30s to upper-40s. A second run with the
+narrowed native path commonly reported roughly 90--120/s in the lobby. These
+are strong directional results but not a controlled percentage: the player
+moved and the final camera direction differed between runs. Character select
+was also affected by animated scene content. A fixed-pose gameplay benchmark
+is required before claiming a precise gain.
+
+The existing focused command trace remains the evidence for the next larger
+target: same-frame eyes contain 1,010 draws each, with 1,000/1,010 exact
+geometry/input signatures shared, while scissor and complete binding
+signatures differ for every draw. This supports view-instanced geometry with
+separate per-eye targets; it does not support replaying one completed image or
+blindly aliasing the per-eye descriptor state. Queue parallelism is deferred
+until that shared geometry boundary is implemented or ruled out.
+
+Validation commands for this pass:
+
+```powershell
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' `
+  --build --preset windows-vs2022-release --target `
+  darktidevr_native_capture darktidevr-xr-harness `
+  darktidevr-core-math-tests darktidevr-shared-head-pose-tests
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' `
+  --test-dir build/windows-vs2022 -C Release --output-on-failure `
+  -R 'presentation_policy|window_capture_recovery|shared_head_pose|native_capture_hooks|shared_eye_surfaces|core_math|xr_harness_help'
+.\tools\stereo\run-darktide-shared-eyes.ps1 -DurationSeconds 300
+```
+
+All seven focused tests passed. The deployed/source DLL SHA-256 is
+`A179595AF6D96A1296EB663B53FCA881DBF0F606C67E4B27D8A8FE30F154F256`;
+the deployed/source Lua SHA-256 is
+`F452503CA7D8BCBDE620A2358AD72AD0F5794D4B981044D51F0DC28F4AE4F69E`.
+No Mac-only validation applies to these Windows/D3D12/OpenXR changes.

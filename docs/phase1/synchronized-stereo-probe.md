@@ -1266,3 +1266,29 @@ GPU interval. The profiler is opt-in after measurement to remove its allocator
 and command-list overhead from normal VR runs. The next classification step is
 timestamping the existing marker/pass groups, not suppressing draws based only
 on their similar signatures.
+
+## Shared preparation and pooled capture optimization
+
+The first optimization stage deliberately completed reusable work before
+attempting queue parallelism. The primary eye still enters the shipping
+`ScriptWorld.render` wrapper, but the second eye calls
+`Application.render_world` directly with the primary eye's prepared shading
+environment. This removes the duplicate shading blend/callback/apply,
+shadow-bake check and LOD update while preserving a full second native render.
+Headset testing accepted stereo, lighting and tracking and reported a large
+subjective lobby improvement. Live lobby intervals frequently reached the
+90--120 fresh-pair/s range, although differing camera views prevent treating
+that as a controlled percentage.
+
+Capture command allocators/lists and harness vectors are now retained and
+reset. The production native build no longer installs renderer-investigation
+hooks for draws, roots, descriptors, markers, clears or output-merger binds.
+The required runtime output learner remains dynamic across process launches
+and target recreation; only its steady-state candidate filtering was narrowed.
+Paired capture counts remained coherent in both live runs.
+
+The next architectural investigation is view-instanced geometry, based on the
+existing 98% exact input/geometry overlap and completely distinct per-eye
+binding signatures. Independent full-render queue submission is not yet safe:
+the two views retain shared scene, history, streaming and lighting resources
+whose hazards have not been mapped.

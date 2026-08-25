@@ -83,7 +83,7 @@ local ui_reset_dlss_each_eye_requested = false
 -- Native/no-upscaler probe: after each sequential world submission, copy the
 -- directly rendered swapchain before the following eye can overwrite it.
 local ui_direct_swapchain_capture_requested = false
-local ui_boundary_census_requested = true
+local ui_boundary_census_requested = false -- expensive diagnostic logging only
 local ui_mirror_client_width = 0
 local ui_mirror_client_height = 0
 local ui_virtual_client_extent_requested = false
@@ -107,6 +107,10 @@ local render_timing_right_max_ticks = 0
 local render_timing_pair_max_ticks = 0
 local gpu_profile_values = nil
 local performance_profile_requested = false -- opt-in diagnostic; allocates GPU timestamp work
+-- Reuse the shading/LOD preparation performed by the primary eye. The second
+-- eye still receives a complete native Application.render_world submission.
+local reuse_prepared_frame_requested = true
+local reuse_prepared_frame_failed = false
 local ui_native_observer_last_present = 0
 local main_menu_ui_hidden = true
 local ui_swap_viewport_halves_requested = false -- bounded identity probe; normal mapping restored
@@ -615,6 +619,38 @@ local function record_render_timings(label, left_ticks, right_ticks, pair_ticks)
         end
         reset_render_timings(label)
     end
+end
+
+local function render_second_eye_from_prepared_frame(world, primary, right)
+    if not reuse_prepared_frame_requested or reuse_prepared_frame_failed then
+        return false
+    end
+    local camera = ScriptViewport.camera(right)
+    local shading_environment =
+        Viewport.get_data(primary, "shading_environment")
+    if not camera or not shading_environment then
+        reuse_prepared_frame_failed = true
+        mod:warning(
+            "DARKTIDEVR_PERF prepared_second_eye unavailable; restoring full wrapper"
+        )
+        return false
+    end
+    local ok, error_message = pcall(
+        Application.render_world,
+        world,
+        camera,
+        right,
+        shading_environment
+    )
+    if not ok then
+        reuse_prepared_frame_failed = true
+        mod:error(
+            "DARKTIDEVR_PERF prepared_second_eye failed error=%s",
+            tostring(error_message)
+        )
+        return false
+    end
+    return true
 end
 
 local function wait_for_eye_capture(eye, target)
@@ -1752,7 +1788,10 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
         ) + 1
         report_native_capture_result(arm_eye_capture(1))
         local right_start = performance_tick()
-        func(world, ...)
+        if not render_second_eye_from_prepared_frame(
+                world, primary, right) then
+            func(world, ...)
+        end
         local right_end = performance_tick()
         if ui_direct_swapchain_capture_requested then
             report_native_capture_result(
@@ -1815,7 +1854,10 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
         ) + 1
         report_native_capture_result(arm_eye_capture(1))
         local right_start = performance_tick()
-        func(world, ...)
+        if not render_second_eye_from_prepared_frame(
+                world, primary, right) then
+            func(world, ...)
+        end
         local right_end = performance_tick()
         if ui_direct_swapchain_capture_requested then
             report_native_capture_result(

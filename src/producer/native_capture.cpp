@@ -442,6 +442,7 @@ struct PendingCapture {
 };
 
 std::deque<PendingCapture> pending_captures;
+std::deque<PendingCapture> available_captures;
 PendingCapture staged_eye0_capture;
 bool staged_eye0_capture_valid{};
 bool staged_pair_dropped{};
@@ -543,6 +544,10 @@ std::array<std::atomic<std::uint64_t>, 2> gpu_profile_sample_counts{};
 std::array<std::atomic<std::uint64_t>, 2> gpu_profile_total_ticks{};
 std::array<std::atomic<std::uint64_t>, 2> gpu_profile_max_ticks{};
 std::atomic<bool> gpu_profile_enabled{};
+// Per-draw/root/PSO/descriptor hooks are useful for bounded renderer
+// investigations but impose thousands of detours per stereo pair. Production
+// capture needs only resource-boundary, queue, swapchain and reset hooks.
+constexpr bool kInstallDiagnosticRenderHooks = false;
 
 int capture_present_halves(IDXGISwapChain3* swapchain,
                            ID3D12CommandQueue* queue);
@@ -2138,13 +2143,13 @@ HRESULT STDMETHODCALLTYPE close_hook(ID3D12GraphicsCommandList* commands) {
 HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
                                      ID3D12CommandAllocator* allocator,
                                      ID3D12PipelineState* initial_state) {
-  {
+  if (marker_log != INVALID_HANDLE_VALUE) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
     trace = {};
     trace.pso = reinterpret_cast<std::uintptr_t>(initial_state);
   }
-  {
+  if (rich_center_sbs_remap_enabled.load(std::memory_order_relaxed)) {
     std::scoped_lock lock(viewport_remap_mutex);
     viewport_remap_states.erase(commands);
   }
@@ -2154,7 +2159,10 @@ HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
     swapchain_write_resources.erase(commands);
     camera_output_resources.erase(commands);
     camera_output_source_states.erase(commands);
-    camera_output_candidates.erase(commands);
+    const auto candidates = camera_output_candidates.find(commands);
+    if (candidates != camera_output_candidates.end()) {
+      candidates->second.clear();
+    }
     command_transition_ordinals.erase(commands);
     command_marker_stacks.erase(commands);
   }
@@ -2345,7 +2353,7 @@ void STDMETHODCALLTYPE rs_set_viewports_hook(ID3D12GraphicsCommandList* commands
           static_cast<LONG>(source.TopLeftX + source.Width + 0.5F);
     }
   }
-  {
+  if (rich_center_sbs_remap_enabled.load(std::memory_order_relaxed)) {
     std::scoped_lock lock(viewport_remap_mutex);
     viewport_remap_states[commands] = remap_state;
   }
@@ -2796,15 +2804,56 @@ void STDMETHODCALLTYPE clear_depth_stencil_view_hook(
 void STDMETHODCALLTYPE resource_barrier_hook(
     ID3D12GraphicsCommandList* commands, UINT barrier_count,
     const D3D12_RESOURCE_BARRIER* barriers) {
+  const bool census_enabled = boundary_census_log != INVALID_HANDLE_VALUE;
+  const bool enhanced_log_enabled =
+      enhanced_barrier_log != INVALID_HANDLE_VALUE;
+  const bool collect_candidates =
+      census_enabled ||
+      camera_output_candidate_index.load(std::memory_order_relaxed) >= 0;
   if (barriers) {
     std::scoped_lock lock(boundary_capture_mutex);
     for (UINT index = 0; index < barrier_count; ++index) {
       const auto& barrier = barriers[index];
       if (barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION &&
           barrier.Transition.pResource) {
-        const auto transition_ordinal = ++command_transition_ordinals[commands];
+        const auto shader_resource_state =
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        const bool is_output_reuse_begin =
+            barrier.Flags == D3D12_RESOURCE_BARRIER_FLAG_NONE &&
+            barrier.Transition.StateBefore == shader_resource_state &&
+            barrier.Transition.StateAfter ==
+                D3D12_RESOURCE_STATE_RENDER_TARGET;
+        const bool is_output_completion =
+            barrier.Flags == D3D12_RESOURCE_BARRIER_FLAG_NONE &&
+            barrier.Transition.StateBefore ==
+                D3D12_RESOURCE_STATE_RENDER_TARGET &&
+            barrier.Transition.StateAfter == shader_resource_state;
+        const bool is_swapchain_resource =
+            swapchain_back_buffers.find(barrier.Transition.pResource) !=
+            swapchain_back_buffers.end();
+        if (is_swapchain_resource &&
+            barrier.Flags != D3D12_RESOURCE_BARRIER_FLAG_BEGIN_ONLY) {
+          swapchain_back_buffer_states[barrier.Transition.pResource] =
+              barrier.Transition.StateAfter;
+        }
+        if (is_swapchain_resource &&
+            barrier.Flags != D3D12_RESOURCE_BARRIER_FLAG_BEGIN_ONLY &&
+            barrier.Transition.StateAfter == D3D12_RESOURCE_STATE_PRESENT) {
+          present_transition_resources[commands] =
+              barrier.Transition.pResource;
+          boundary_transition_count.fetch_add(1, std::memory_order_relaxed);
+        }
+        if (!census_enabled && !enhanced_log_enabled &&
+            !is_output_reuse_begin && !is_output_completion) {
+          continue;
+        }
+        const auto transition_ordinal = collect_candidates
+                                            ? ++command_transition_ordinals[commands]
+                                            : 0;
         const auto description = barrier.Transition.pResource->GetDesc();
-        if (description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
+        if (census_enabled &&
+            description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
             description.Width == camera_output_width &&
             description.Height == camera_output_height &&
             is_named_eye_output_resource(barrier.Transition.pResource)) {
@@ -2821,13 +2870,8 @@ void STDMETHODCALLTYPE resource_barrier_hook(
               static_cast<unsigned>(description.Format),
               resource_debug_name(barrier.Transition.pResource).c_str());
         }
-        if (swapchain_back_buffers.find(barrier.Transition.pResource) !=
-                swapchain_back_buffers.end() &&
-            barrier.Flags != D3D12_RESOURCE_BARRIER_FLAG_BEGIN_ONLY) {
-          swapchain_back_buffer_states[barrier.Transition.pResource] =
-              barrier.Transition.StateAfter;
-        }
-        if (description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
+        if (enhanced_log_enabled &&
+            description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
             description.Width >= 1920 && description.Height >= 1080) {
           write_enhanced_barrier_log(
               "frame=%llu\tthread=%lu\tCL=%p\tresource=%p\twidth=%llu"
@@ -2841,7 +2885,8 @@ void STDMETHODCALLTYPE resource_barrier_hook(
               static_cast<unsigned>(barrier.Transition.StateAfter),
               static_cast<unsigned>(barrier.Flags));
         }
-        if (description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
+        if (census_enabled &&
+            description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
             description.Width == camera_output_width &&
             description.Height == camera_output_height &&
             barrier.Transition.StateAfter ==
@@ -2869,34 +2914,32 @@ void STDMETHODCALLTYPE resource_barrier_hook(
               debug_name.c_str(),
               marker.c_str());
         }
-        const auto shader_resource_state =
-            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        const auto is_named_eye_final =
-            description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
-            description.Width == camera_output_width &&
-            description.Height == camera_output_height &&
-            is_named_eye_final_resource(barrier.Transition.pResource);
-        const auto is_output_reuse_begin =
-            barrier.Transition.StateBefore == shader_resource_state;
         auto is_known_output =
             known_camera_output_resources.find(
                 barrier.Transition.pResource) !=
             known_camera_output_resources.end();
+        const auto is_named_eye_final =
+            !is_known_output &&
+            description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
+            description.Width == camera_output_width &&
+            description.Height == camera_output_height &&
+            is_named_eye_final_resource(barrier.Transition.pResource);
         if (is_named_eye_final && !is_known_output) {
           known_camera_output_resources.insert(barrier.Transition.pResource);
           is_known_output = true;
-          write_boundary_census_log(
-              "frame=%llu\tOUTPUT_LEARN_NAMED\tresource=%p\tname=%s\r\n",
-              present_count.load(std::memory_order_relaxed),
-              barrier.Transition.pResource,
-              resource_debug_name(barrier.Transition.pResource).c_str());
+          if (census_enabled) {
+            write_boundary_census_log(
+                "frame=%llu\tOUTPUT_LEARN_NAMED\tresource=%p\tname=%s\r\n",
+                present_count.load(std::memory_order_relaxed),
+                barrier.Transition.pResource,
+                resource_debug_name(barrier.Transition.pResource).c_str());
+          }
         }
         if (description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
             description.Width == camera_output_width &&
             description.Height == camera_output_height &&
             (description.Format == camera_output_format ||
-             is_named_eye_final) &&
+             is_named_eye_final || is_known_output) &&
             barrier.Transition.StateAfter == D3D12_RESOURCE_STATE_RENDER_TARGET &&
             barrier.Flags == D3D12_RESOURCE_BARRIER_FLAG_NONE &&
             is_output_reuse_begin && !is_known_output) {
@@ -2915,13 +2958,14 @@ void STDMETHODCALLTYPE resource_barrier_hook(
             description.Width == camera_output_width &&
             description.Height == camera_output_height &&
             (description.Format == camera_output_format ||
-             is_named_eye_final) &&
+             is_named_eye_final || is_known_output) &&
             barrier.Transition.StateBefore ==
                 D3D12_RESOURCE_STATE_RENDER_TARGET &&
             barrier.Transition.StateAfter == shader_resource_state &&
             barrier.Flags == D3D12_RESOURCE_BARRIER_FLAG_NONE &&
             is_known_output;
-        if (description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
+        if (census_enabled &&
+            description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
             description.Width == camera_output_width &&
             description.Height == camera_output_height &&
             barrier.Transition.StateBefore ==
@@ -2947,44 +2991,38 @@ void STDMETHODCALLTYPE resource_barrier_hook(
         if (is_completed_output) {
           camera_output_resources[commands] = barrier.Transition.pResource;
           camera_output_source_states[commands] = shader_resource_state;
-          auto& candidates = camera_output_candidates[commands];
-          const auto marker_found = command_marker_stacks.find(commands);
-          const auto marker = marker_found != command_marker_stacks.end() &&
-                                      !marker_found->second.empty()
-                                  ? marker_found->second.back()
-                                  : std::string{};
-          const auto debug_name =
-              resource_debug_name(barrier.Transition.pResource);
-          candidates.push_back(
-              {barrier.Transition.pResource, transition_ordinal, marker});
-          write_boundary_census_log(
-              "frame=%llu\tMATCH\tCL=%p\tresource=%p\tordinal=%llu"
-              "\twidth=%llu\theight=%u\tbefore=%u\tafter=%u\tformat=%u\tswapchain=%u"
-              "\tname=%s\tmarker=%s\r\n",
-              present_count.load(std::memory_order_relaxed), commands,
-              barrier.Transition.pResource,
-              static_cast<unsigned long long>(transition_ordinal),
-              description.Width, description.Height,
-              static_cast<unsigned>(barrier.Transition.StateBefore),
-              static_cast<unsigned>(barrier.Transition.StateAfter),
-              static_cast<unsigned>(description.Format),
-              swapchain_back_buffers.find(barrier.Transition.pResource) !=
-                      swapchain_back_buffers.end()
-                  ? 1U
-                  : 0U,
-              debug_name.c_str(),
-              marker.c_str());
+          if (collect_candidates) {
+            auto& candidates = camera_output_candidates[commands];
+            const auto marker_found = command_marker_stacks.find(commands);
+            const auto marker = marker_found != command_marker_stacks.end() &&
+                                        !marker_found->second.empty()
+                                    ? marker_found->second.back()
+                                    : std::string{};
+            candidates.push_back(
+                {barrier.Transition.pResource, transition_ordinal, marker});
+            if (census_enabled) {
+              const auto debug_name =
+                  resource_debug_name(barrier.Transition.pResource);
+              write_boundary_census_log(
+                  "frame=%llu\tMATCH\tCL=%p\tresource=%p\tordinal=%llu"
+                  "\twidth=%llu\theight=%u\tbefore=%u\tafter=%u\tformat=%u"
+                  "\tswapchain=%u\tname=%s\tmarker=%s\r\n",
+                  present_count.load(std::memory_order_relaxed), commands,
+                  barrier.Transition.pResource,
+                  static_cast<unsigned long long>(transition_ordinal),
+                  description.Width, description.Height,
+                  static_cast<unsigned>(barrier.Transition.StateBefore),
+                  static_cast<unsigned>(barrier.Transition.StateAfter),
+                  static_cast<unsigned>(description.Format),
+                  swapchain_back_buffers.find(barrier.Transition.pResource) !=
+                          swapchain_back_buffers.end()
+                      ? 1U
+                      : 0U,
+                  debug_name.c_str(), marker.c_str());
+            }
+          }
         }
       }
-      if (barrier.Type != D3D12_RESOURCE_BARRIER_TYPE_TRANSITION ||
-          barrier.Flags == D3D12_RESOURCE_BARRIER_FLAG_BEGIN_ONLY ||
-          barrier.Transition.StateAfter != D3D12_RESOURCE_STATE_PRESENT ||
-          swapchain_back_buffers.find(barrier.Transition.pResource) ==
-              swapchain_back_buffers.end()) {
-        continue;
-      }
-      present_transition_resources[commands] = barrier.Transition.pResource;
-      boundary_transition_count.fetch_add(1, std::memory_order_relaxed);
     }
   }
   original_resource_barrier(commands, barrier_count, barriers);
@@ -2993,6 +3031,8 @@ void STDMETHODCALLTYPE resource_barrier_hook(
 void STDMETHODCALLTYPE enhanced_barrier_hook(
     ID3D12GraphicsCommandList7* commands, UINT32 group_count,
     const D3D12_BARRIER_GROUP* groups) {
+  const bool log_resources = boundary_census_log != INVALID_HANDLE_VALUE ||
+                             enhanced_barrier_log != INVALID_HANDLE_VALUE;
   if (groups) {
     std::scoped_lock lock(boundary_capture_mutex);
     for (UINT32 group_index = 0; group_index < group_count; ++group_index) {
@@ -3004,7 +3044,7 @@ void STDMETHODCALLTYPE enhanced_barrier_hook(
       for (UINT32 barrier_index = 0; barrier_index < group.NumBarriers;
            ++barrier_index) {
         const auto& barrier = group.pTextureBarriers[barrier_index];
-        if (barrier.pResource) {
+        if (barrier.pResource && log_resources) {
           const auto description = barrier.pResource->GetDesc();
           if (description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
               description.Width == camera_output_width &&
@@ -3065,10 +3105,13 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
     }
   }
   execute_call_count.fetch_add(1, std::memory_order_relaxed);
-  const auto sequence = marker_sequence.fetch_add(1, std::memory_order_relaxed);
-  write_marker_log("%llu\t%lu\tQ=%p\tEXECUTE\tcount=%u\tfirst=%p\r\n",
-                   sequence, GetCurrentThreadId(), queue, count,
-                   count > 0 ? lists[0] : nullptr);
+  if (marker_log != INVALID_HANDLE_VALUE) {
+    const auto sequence =
+        marker_sequence.fetch_add(1, std::memory_order_relaxed);
+    write_marker_log("%llu\t%lu\tQ=%p\tEXECUTE\tcount=%u\tfirst=%p\r\n",
+                     sequence, GetCurrentThreadId(), queue, count,
+                     count > 0 ? lists[0] : nullptr);
+  }
   int requested_eye = -1;
   std::uint64_t requested_pose_sequence{};
   float requested_vertical_fov{};
@@ -3140,7 +3183,9 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
       }
       camera_output_resources.erase(found);
       camera_output_source_states.erase(graphics);
-      camera_output_candidates.erase(graphics);
+      if (candidates_found != camera_output_candidates.end()) {
+        candidates_found->second.clear();
+      }
       present_transition_resources.erase(graphics);
     }
   }
@@ -3432,19 +3477,24 @@ void nudge_swapchain_client_extent(HWND window, bool requested) {
 
 HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                                         UINT interval, UINT flags) {
-  {
+  if (kInstallDiagnosticRenderHooks) {
     std::scoped_lock lock(trace_mutex);
     frame_eye0_table4_draws.clear();
     candidate_frame_eye0_table4 = {};
     candidate_frame_eye0_instance_count = 0;
   }
   const auto present = present_count.fetch_add(1, std::memory_order_relaxed) + 1;
-  const auto sequence = marker_sequence.fetch_add(1, std::memory_order_relaxed);
-  write_marker_log("%llu\t%lu\tSC=%p\tPRESENT\tframe=%llu\r\n", sequence,
-                   GetCurrentThreadId(), swapchain, present);
-  write_focused_log("phase=%d\tframe=%llu\tSC=%p\tPRESENT\r\n",
-                    focused_trace_phase.load(std::memory_order_relaxed),
-                    present, swapchain);
+  if (marker_log != INVALID_HANDLE_VALUE) {
+    const auto sequence =
+        marker_sequence.fetch_add(1, std::memory_order_relaxed);
+    write_marker_log("%llu\t%lu\tSC=%p\tPRESENT\tframe=%llu\r\n", sequence,
+                     GetCurrentThreadId(), swapchain, present);
+  }
+  if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+    write_focused_log("phase=%d\tframe=%llu\tSC=%p\tPRESENT\r\n",
+                      focused_trace_phase.load(std::memory_order_relaxed),
+                      present, swapchain);
+  }
   ComPtr<ID3D12Device> device;
   ComPtr<IDXGISwapChain3> candidate;
   if (SUCCEEDED(swapchain->GetDevice(IID_PPV_ARGS(&device))) &&
@@ -3679,156 +3729,212 @@ int install_hooks() {
       MH_CreateHook(dispatch_message_w_target, &dispatch_message_w_hook,
                     reinterpret_cast<void**>(&original_dispatch_message_w)) !=
           MH_OK ||
-      MH_CreateHook(device_vtable[10], &create_graphics_pipeline_state_hook,
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device_vtable[10], &create_graphics_pipeline_state_hook,
                     reinterpret_cast<void**>(
-                        &original_create_graphics_pipeline_state)) != MH_OK ||
-      MH_CreateHook(device_vtable[11], &create_compute_pipeline_state_hook,
+                        &original_create_graphics_pipeline_state)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device_vtable[11], &create_compute_pipeline_state_hook,
                     reinterpret_cast<void**>(
-                        &original_create_compute_pipeline_state)) != MH_OK ||
-      MH_CreateHook(device_vtable[14], &create_descriptor_heap_hook,
+                        &original_create_compute_pipeline_state)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device_vtable[14], &create_descriptor_heap_hook,
+                     reinterpret_cast<void**>(
+                         &original_create_descriptor_heap)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device_vtable[16], &create_root_signature_hook,
                     reinterpret_cast<void**>(
-                        &original_create_descriptor_heap)) != MH_OK ||
-      MH_CreateHook(device_vtable[16], &create_root_signature_hook,
+                        &original_create_root_signature)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device_vtable[17], &create_constant_buffer_view_hook,
                     reinterpret_cast<void**>(
-                        &original_create_root_signature)) != MH_OK ||
-      MH_CreateHook(device_vtable[17], &create_constant_buffer_view_hook,
+                        &original_create_constant_buffer_view)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device_vtable[18], &create_shader_resource_view_hook,
                     reinterpret_cast<void**>(
-                        &original_create_constant_buffer_view)) != MH_OK ||
-      MH_CreateHook(device_vtable[18], &create_shader_resource_view_hook,
+                        &original_create_shader_resource_view)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device_vtable[19], &create_unordered_access_view_hook,
                     reinterpret_cast<void**>(
-                        &original_create_shader_resource_view)) != MH_OK ||
-      MH_CreateHook(device_vtable[19], &create_unordered_access_view_hook,
+                        &original_create_unordered_access_view)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device_vtable[20], &create_render_target_view_hook,
+                     reinterpret_cast<void**>(
+                         &original_create_render_target_view)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device_vtable[21], &create_depth_stencil_view_hook,
                     reinterpret_cast<void**>(
-                        &original_create_unordered_access_view)) != MH_OK ||
-      MH_CreateHook(device_vtable[20], &create_render_target_view_hook,
+                        &original_create_depth_stencil_view)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device_vtable[23], &copy_descriptors_hook,
+                     reinterpret_cast<void**>(
+                         &original_copy_descriptors)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device_vtable[24], &copy_descriptors_simple_hook,
+                     reinterpret_cast<void**>(
+                         &original_copy_descriptors_simple)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device_vtable[27], &create_committed_resource_hook,
                     reinterpret_cast<void**>(
-                        &original_create_render_target_view)) != MH_OK ||
-      MH_CreateHook(device_vtable[21], &create_depth_stencil_view_hook,
+                        &original_create_committed_resource)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device_vtable[29], &create_placed_resource_hook,
                     reinterpret_cast<void**>(
-                        &original_create_depth_stencil_view)) != MH_OK ||
-      MH_CreateHook(device_vtable[23], &copy_descriptors_hook,
+                        &original_create_placed_resource)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device2_vtable[47], &create_pipeline_state_stream_hook,
                     reinterpret_cast<void**>(
-                        &original_copy_descriptors)) != MH_OK ||
-      MH_CreateHook(device_vtable[24], &copy_descriptors_simple_hook,
+                        &original_create_pipeline_state_stream)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(pipeline_library_vtable[9], &load_graphics_pipeline_hook,
                     reinterpret_cast<void**>(
-                        &original_copy_descriptors_simple)) != MH_OK ||
-      MH_CreateHook(device_vtable[27], &create_committed_resource_hook,
+                        &original_load_graphics_pipeline)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(pipeline_library_vtable[10], &load_compute_pipeline_hook,
                     reinterpret_cast<void**>(
-                        &original_create_committed_resource)) != MH_OK ||
-      MH_CreateHook(device_vtable[29], &create_placed_resource_hook,
-                    reinterpret_cast<void**>(
-                        &original_create_placed_resource)) != MH_OK ||
-      MH_CreateHook(device2_vtable[47], &create_pipeline_state_stream_hook,
-                    reinterpret_cast<void**>(
-                        &original_create_pipeline_state_stream)) != MH_OK ||
-      MH_CreateHook(pipeline_library_vtable[9], &load_graphics_pipeline_hook,
-                    reinterpret_cast<void**>(
-                        &original_load_graphics_pipeline)) != MH_OK ||
-      MH_CreateHook(pipeline_library_vtable[10], &load_compute_pipeline_hook,
-                    reinterpret_cast<void**>(
-                        &original_load_compute_pipeline)) != MH_OK ||
-      MH_CreateHook(pipeline_library1_vtable[13], &load_pipeline_hook,
+                        &original_load_compute_pipeline)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(pipeline_library1_vtable[13], &load_pipeline_hook,
                     reinterpret_cast<void**>(&original_load_pipeline)) !=
-          MH_OK ||
-      MH_CreateHook(command_list_vtable[9], &close_hook,
-                    reinterpret_cast<void**>(&original_close)) != MH_OK ||
+          MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[9], &close_hook,
+                    reinterpret_cast<void**>(&original_close)) != MH_OK) ||
       MH_CreateHook(command_list_vtable[10], &reset_hook,
                     reinterpret_cast<void**>(&original_reset)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[12], &draw_instanced_hook,
-                    reinterpret_cast<void**>(&original_draw_instanced)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[13], &draw_indexed_instanced_hook,
-                    reinterpret_cast<void**>(&original_draw_indexed_instanced)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[14], &dispatch_hook,
-                    reinterpret_cast<void**>(&original_dispatch)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[20],
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[12], &draw_instanced_hook,
+                     reinterpret_cast<void**>(&original_draw_instanced)) !=
+           MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[13], &draw_indexed_instanced_hook,
+                     reinterpret_cast<void**>(
+                         &original_draw_indexed_instanced)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[14], &dispatch_hook,
+                     reinterpret_cast<void**>(&original_dispatch)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[20],
                     &ia_set_primitive_topology_hook,
                     reinterpret_cast<void**>(
-                        &original_ia_set_primitive_topology)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[21], &rs_set_viewports_hook,
-                    reinterpret_cast<void**>(&original_rs_set_viewports)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[22], &rs_set_scissor_rects_hook,
-                    reinterpret_cast<void**>(
-                        &original_rs_set_scissor_rects)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[25], &set_pipeline_state_hook,
-                    reinterpret_cast<void**>(&original_set_pipeline_state)) != MH_OK ||
+                        &original_ia_set_primitive_topology)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[21], &rs_set_viewports_hook,
+                     reinterpret_cast<void**>(&original_rs_set_viewports)) !=
+           MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[22], &rs_set_scissor_rects_hook,
+                     reinterpret_cast<void**>(
+                         &original_rs_set_scissor_rects)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[25], &set_pipeline_state_hook,
+                     reinterpret_cast<void**>(&original_set_pipeline_state)) !=
+           MH_OK) ||
       MH_CreateHook(command_list_vtable[26], &resource_barrier_hook,
                     reinterpret_cast<void**>(&original_resource_barrier)) != MH_OK ||
       (enhanced_barriers_available &&
        MH_CreateHook(command_list7_vtable[80], &enhanced_barrier_hook,
                      reinterpret_cast<void**>(&original_enhanced_barrier)) !=
            MH_OK) ||
-      MH_CreateHook(command_list_vtable[28], &set_descriptor_heaps_hook,
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[28], &set_descriptor_heaps_hook,
+                     reinterpret_cast<void**>(
+                         &original_set_descriptor_heaps)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[29], &set_compute_root_signature_hook,
                     reinterpret_cast<void**>(
-                        &original_set_descriptor_heaps)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[29], &set_compute_root_signature_hook,
-                    reinterpret_cast<void**>(
-                        &original_set_compute_root_signature)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[30],
+                        &original_set_compute_root_signature)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[30],
                     &set_graphics_root_signature_hook,
                     reinterpret_cast<void**>(
-                        &original_set_graphics_root_signature)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[31],
+                        &original_set_graphics_root_signature)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[31],
                     &set_compute_root_descriptor_table_hook,
                     reinterpret_cast<void**>(
-                        &original_set_compute_root_descriptor_table)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[32],
+                        &original_set_compute_root_descriptor_table)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[32],
                     &set_graphics_root_descriptor_table_hook,
                     reinterpret_cast<void**>(
-                        &original_set_graphics_root_descriptor_table)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[33],
+                        &original_set_graphics_root_descriptor_table)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[33],
                     &set_compute_root_32bit_constant_hook,
                     reinterpret_cast<void**>(
-                        &original_set_compute_root_32bit_constant)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[34],
+                        &original_set_compute_root_32bit_constant)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[34],
                     &set_graphics_root_32bit_constant_hook,
                     reinterpret_cast<void**>(
-                        &original_set_graphics_root_32bit_constant)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[35],
+                        &original_set_graphics_root_32bit_constant)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[35],
                     &set_compute_root_32bit_constants_hook,
                     reinterpret_cast<void**>(
-                        &original_set_compute_root_32bit_constants)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[36],
+                        &original_set_compute_root_32bit_constants)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[36],
                     &set_graphics_root_32bit_constants_hook,
                     reinterpret_cast<void**>(
-                        &original_set_graphics_root_32bit_constants)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[37],
+                        &original_set_graphics_root_32bit_constants)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[37],
                     &set_compute_root_constant_buffer_view_hook,
                     reinterpret_cast<void**>(
-                        &original_set_compute_root_constant_buffer_view)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[38],
+                        &original_set_compute_root_constant_buffer_view)) !=
+           MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[38],
                     &set_graphics_root_constant_buffer_view_hook,
                     reinterpret_cast<void**>(
-                        &original_set_graphics_root_constant_buffer_view)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[39],
+                        &original_set_graphics_root_constant_buffer_view)) !=
+           MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[39],
                     &set_compute_root_shader_resource_view_hook,
                     reinterpret_cast<void**>(
-                        &original_set_compute_root_shader_resource_view)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[40],
+                        &original_set_compute_root_shader_resource_view)) !=
+           MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[40],
                     &set_graphics_root_shader_resource_view_hook,
                     reinterpret_cast<void**>(
-                        &original_set_graphics_root_shader_resource_view)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[41],
+                        &original_set_graphics_root_shader_resource_view)) !=
+           MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[41],
                     &set_compute_root_unordered_access_view_hook,
                     reinterpret_cast<void**>(
-                        &original_set_compute_root_unordered_access_view)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[42],
+                        &original_set_compute_root_unordered_access_view)) !=
+           MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[42],
                     &set_graphics_root_unordered_access_view_hook,
                     reinterpret_cast<void**>(
-                        &original_set_graphics_root_unordered_access_view)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[43], &ia_set_index_buffer_hook,
+                        &original_set_graphics_root_unordered_access_view)) !=
+           MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[43], &ia_set_index_buffer_hook,
                     reinterpret_cast<void**>(
-                        &original_ia_set_index_buffer)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[44], &ia_set_vertex_buffers_hook,
+                        &original_ia_set_index_buffer)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[44], &ia_set_vertex_buffers_hook,
                     reinterpret_cast<void**>(
-                        &original_ia_set_vertex_buffers)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[46], &om_set_render_targets_hook,
-                    reinterpret_cast<void**>(&original_om_set_render_targets)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[47], &clear_depth_stencil_view_hook,
+                        &original_ia_set_vertex_buffers)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[46], &om_set_render_targets_hook,
+                     reinterpret_cast<void**>(
+                         &original_om_set_render_targets)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[47], &clear_depth_stencil_view_hook,
                     reinterpret_cast<void**>(
-                        &original_clear_depth_stencil_view)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[48], &clear_render_target_view_hook,
+                        &original_clear_depth_stencil_view)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[48], &clear_render_target_view_hook,
                     reinterpret_cast<void**>(
-                        &original_clear_render_target_view)) != MH_OK ||
+                        &original_clear_render_target_view)) != MH_OK) ||
       MH_CreateHook(queue_vtable[10], &execute_command_lists_hook,
                     reinterpret_cast<void**>(&original_execute_command_lists)) !=
           MH_OK ||
@@ -3840,12 +3946,15 @@ int install_hooks() {
       MH_CreateHook(swapchain_vtable[39], &resize_buffers1_hook,
                     reinterpret_cast<void**>(&original_resize_buffers1)) !=
           MH_OK ||
-      MH_CreateHook(command_list_vtable[55], &set_marker_hook,
-                    reinterpret_cast<void**>(&original_set_marker)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[56], &begin_event_hook,
-                    reinterpret_cast<void**>(&original_begin_event)) != MH_OK ||
-      MH_CreateHook(command_list_vtable[57], &end_event_hook,
-                    reinterpret_cast<void**>(&original_end_event)) != MH_OK ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[55], &set_marker_hook,
+                     reinterpret_cast<void**>(&original_set_marker)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[56], &begin_event_hook,
+                     reinterpret_cast<void**>(&original_begin_event)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[57], &end_event_hook,
+                     reinterpret_cast<void**>(&original_end_event)) != MH_OK) ||
       MH_EnableHook(MH_ALL_HOOKS) != MH_OK) {
     DestroyWindow(window);
     UnregisterClassW(class_name, window_class.hInstance);
@@ -3901,6 +4010,7 @@ int ensure_eye_surfaces(ID3D12Device* device,
   consumed_fence.Reset();
   ready_value = 0;
   pending_captures.clear();
+  available_captures.clear();
   staged_eye0_capture = {};
   staged_eye0_capture_valid = false;
   staged_pair_dropped = false;
@@ -4004,6 +4114,8 @@ int capture_eye_from_resource(int eye, ID3D12CommandQueue* supplied_queue,
     const auto completed = ready_fence->GetCompletedValue();
     while (!pending_captures.empty() &&
            pending_captures.front().fence_value <= completed) {
+      pending_captures.front().fence_value = 0;
+      available_captures.push_back(std::move(pending_captures.front()));
       pending_captures.pop_front();
     }
     if (pending_captures.size() >= 16) {
@@ -4031,12 +4143,27 @@ int capture_eye_from_resource(int eye, ID3D12CommandQueue* supplied_queue,
 
   capture_stage.store(4, std::memory_order_relaxed);
   PendingCapture pending;
-  if (FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
-                                             IID_PPV_ARGS(&pending.allocator))) ||
-      FAILED(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
-                                       pending.allocator.Get(), nullptr,
-                                       IID_PPV_ARGS(&pending.commands)))) {
-    return 33;
+  {
+    std::scoped_lock lock(state_mutex);
+    if (!available_captures.empty()) {
+      pending = std::move(available_captures.front());
+      available_captures.pop_front();
+    }
+  }
+  if (pending.allocator && pending.commands) {
+    if (FAILED(pending.allocator->Reset()) ||
+        FAILED(pending.commands->Reset(pending.allocator.Get(), nullptr))) {
+      return 33;
+    }
+  } else {
+    if (FAILED(device->CreateCommandAllocator(
+            D3D12_COMMAND_LIST_TYPE_DIRECT,
+            IID_PPV_ARGS(&pending.allocator))) ||
+        FAILED(device->CreateCommandList(
+            0, D3D12_COMMAND_LIST_TYPE_DIRECT, pending.allocator.Get(),
+            nullptr, IID_PPV_ARGS(&pending.commands)))) {
+      return 33;
+    }
   }
 
   capture_stage.store(5, std::memory_order_relaxed);
