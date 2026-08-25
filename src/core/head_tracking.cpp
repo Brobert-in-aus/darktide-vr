@@ -41,4 +41,10 @@ math::Pose anchored_recentered_eye_pose(math::Pose recenter_pose,
       recenter_pose, math::compose(head_delta, eye_from_head));
 }
 
+math::Pose recentered_controller_pose(math::Pose recenter_head_pose,
+                                      math::Pose current_controller_pose) {
+  return math::openxr_to_darktide(math::compose(
+      math::inverse(recenter_head_pose), current_controller_pose));
+}
+
 }  // namespace darktidevr::core

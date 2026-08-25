@@ -420,6 +420,15 @@ and yaw. Thumbstick turning later changes the body/render-yaw accumulator
 explicitly. This preserves one authoritative action direction without coupling
 the user's head to the weapon.
 
+Controller poses arrive in absolute OpenXR LOCAL space. Spatial-menu rays need
+that absolute form, while gameplay aim needs a second body-local form:
+`inverse(initial_hmd_recenter) * controller_pose`, followed by the exact basis
+change from OpenXR (+X right, +Y up, -Z forward) to Darktide (+X right, +Y
+forward, +Z up). The core conversion and recentered-controller primitive are
+unit tested. The next controller-transport revision must carry both forms (or
+the immutable recenter anchor) rather than assuming the runtime's LOCAL origin
+matches the character's initial forward direction.
+
 The safest initial aim seam is Darktide's `DefaultPlayerOrientation`. Convert
 the dominant-hand OpenXR aim rotation into the game's Z-up world basis and feed
 that as ordinary yaw/pitch aim. Existing weapon actions already consume

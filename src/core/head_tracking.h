@@ -25,4 +25,11 @@ math::Pose anchored_recentered_eye_pose(math::Pose recenter_pose,
                                         math::Pose current_head_pose,
                                         math::Pose current_eye_pose);
 
+// Returns a controller pose in Darktide body-local coordinates. The OpenXR
+// controller is first made relative to the same HMD recenter anchor used by
+// head tracking, then converted from OpenXR axes to Darktide's Z-up basis.
+// Character/body rotation is intentionally composed later by the game adapter.
+math::Pose recentered_controller_pose(math::Pose recenter_head_pose,
+                                      math::Pose current_controller_pose);
+
 }  // namespace darktidevr::core

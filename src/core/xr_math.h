@@ -52,6 +52,13 @@ Quaternion multiply(Quaternion parent, Quaternion child);
 Quaternion from_axis_angle(Vec3 axis, float radians);
 Vec3 rotate(Quaternion rotation, Vec3 value);
 
+// Converts OpenXR's +X right, +Y up, -Z forward convention to Darktide's
+// +X right, +Y forward, +Z up convention. The quaternion conversion is the
+// equivalent basis change, not an Euler-angle reinterpretation.
+Vec3 openxr_to_darktide(Vec3 value);
+Quaternion openxr_to_darktide(Quaternion value);
+Pose openxr_to_darktide(Pose value);
+
 Pose compose(Pose parent, Pose child);
 Pose inverse(Pose pose);
 Vec3 transform_point(Pose pose, Vec3 point);

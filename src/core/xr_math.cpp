@@ -79,6 +79,20 @@ Vec3 rotate(Quaternion rotation, Vec3 value) {
   return {rotated.x, rotated.y, rotated.z};
 }
 
+Vec3 openxr_to_darktide(Vec3 value) {
+  return {value.x, -value.z, value.y};
+}
+
+Quaternion openxr_to_darktide(Quaternion value) {
+  value = normalized(value);
+  return {value.x, -value.z, value.y, value.w};
+}
+
+Pose openxr_to_darktide(Pose value) {
+  return {openxr_to_darktide(value.orientation),
+          openxr_to_darktide(value.position)};
+}
+
 Pose compose(Pose parent, Pose child) {
   parent.orientation = normalized(parent.orientation);
   child.orientation = normalized(child.orientation);

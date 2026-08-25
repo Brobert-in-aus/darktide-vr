@@ -36,6 +36,41 @@ int main() {
     expect_vec(rotate(yaw_90, {0.0F, 0.0F, -1.0F}), {-1.0F, 0.0F, 0.0F},
                "yaw rotation");
 
+    expect_vec(openxr_to_darktide(Vec3{0.0F, 0.0F, -1.0F}),
+               {0.0F, 1.0F, 0.0F}, "OpenXR forward to Darktide");
+    expect_vec(openxr_to_darktide(Vec3{0.0F, 1.0F, 0.0F}),
+               {0.0F, 0.0F, 1.0F}, "OpenXR up to Darktide");
+    const auto xr_pitch =
+        from_axis_angle({1.0F, 0.0F, 0.0F}, kPi * 0.25F);
+    const Vec3 xr_test_vector{0.2F, 0.4F, -0.8F};
+    expect_vec(
+        rotate(openxr_to_darktide(xr_pitch),
+               openxr_to_darktide(xr_test_vector)),
+        openxr_to_darktide(rotate(xr_pitch, xr_test_vector)),
+        "OpenXR quaternion basis conversion");
+    const Pose xr_controller{xr_pitch, {0.3F, 1.2F, -0.5F}};
+    const auto darktide_controller = openxr_to_darktide(xr_controller);
+    expect_vec(darktide_controller.position, {0.3F, 0.5F, 1.2F},
+               "OpenXR controller pose position");
+    const Pose controller_recenter{
+        from_axis_angle({0.0F, 1.0F, 0.0F}, kPi * 0.5F),
+        {3.0F, 1.6F, -2.0F}};
+    const Pose controller_body_local{
+        from_axis_angle({1.0F, 0.0F, 0.0F}, -kPi * 0.25F),
+        {0.35F, -0.25F, -0.55F}};
+    const auto absolute_controller =
+        compose(controller_recenter, controller_body_local);
+    const auto body_controller =
+        darktidevr::core::recentered_controller_pose(
+            controller_recenter, absolute_controller);
+    expect_vec(body_controller.position, {0.35F, 0.55F, -0.25F},
+               "recentered controller position");
+    expect_vec(
+        rotate(body_controller.orientation, {0.0F, 1.0F, 0.0F}),
+        openxr_to_darktide(rotate(controller_body_local.orientation,
+                                 {0.0F, 0.0F, -1.0F})),
+        "recentered controller aim direction");
+
     const Pose parent{yaw_90, {10.0F, 2.0F, 3.0F}};
     const Pose child{{}, {0.0F, 0.0F, -2.0F}};
     const auto composed = compose(parent, child);

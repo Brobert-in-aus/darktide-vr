@@ -158,6 +158,12 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   interactions and abilities consume. Controller aim must feed that shared
   gameplay rotation while the stereo render hook uses a separate body-yaw plus
   HMD basis; consumer-by-consumer weapon patches are not the selected route.
+- Core math now provides an exact OpenXR-to-Darktide vector/quaternion/pose
+  basis conversion and a recentered controller-pose primitive. Tests cover
+  forward/up axes, quaternion/vector equivalence, translated controller poses,
+  and a non-identity HMD recenter. This identified a required controller-state
+  v2 contract: retain absolute LOCAL poses for menus and also carry body-local
+  poses (or the immutable HMD recenter) for gameplay aim.
 - Added a guarded one-shot `dtvr_enter_psykhanium` workflow derived from the
   game's own training-view and Testify path. It consumes a local flag, waits for
   hub game mode plus backend authentication, opens the training view, selects
