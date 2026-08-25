@@ -4,6 +4,7 @@ local ScriptCamera = require("scripts/foundation/utilities/script_camera")
 local ScriptViewport = require("scripts/foundation/utilities/script_viewport")
 local ScriptWorld = require("scripts/foundation/utilities/script_world")
 local UIRenderer = require("scripts/managers/ui/ui_renderer")
+local UIScenegraph = require("scripts/managers/ui/ui_scenegraph")
 
 local primary_viewport_name = "player1"
 local right_viewport_name = "darktidevr_right_eye"
@@ -23,6 +24,16 @@ local active_base_rotation = nil
 -- Future snap/smooth thumbstick turning can select `yaw_only`; that path
 -- deliberately accepts only game yaw and continues rejecting pitch and roll.
 local game_rotation_mode = "fixed"
+-- World markers are authored as one screen-GUI pass from the cached player
+-- camera. Reproject and enqueue them between the sequential eye submissions so
+-- the right eye receives depth-correct marker coordinates.
+local stereo_world_markers_requested = true
+local world_markers_context = nil
+local interaction_hud_context = nil
+local world_marker_command_capture = false
+local world_marker_reprojecting = false
+local world_marker_left_commands = {}
+local world_marker_capture_logged = false
 local observed_ui_viewports = {}
 local ui_stereo_spawner = nil
 local ui_stereo_world = nil
@@ -856,11 +867,20 @@ local function setup(manager)
     -- Preserve only the scene's initial heading. Darktide's lobby camera
     -- starts with a downward presentation pitch; VR must initialize level and
     -- let the headset provide every subsequent pitch/roll component.
+    local base_yaw = Quaternion.yaw(
+        ScriptCamera.local_rotation(primary_camera)
+    )
+    local game_mode = Managers and Managers.state and
+        Managers.state.game_mode
+    local game_mode_name = game_mode and game_mode:game_mode_name()
+    if game_mode_name == "hub" then
+        -- The hub's third-person presentation camera faces back toward the
+        -- operative. Its stored yaw is opposite the desired neutral headset
+        -- heading when VR takes orientation ownership.
+        base_yaw = base_yaw + math.pi
+    end
     active_base_rotation = QuaternionBox(
-        Quaternion.axis_angle(
-            Vector3.up(),
-            Quaternion.yaw(ScriptCamera.local_rotation(primary_camera))
-        )
+        Quaternion.axis_angle(Vector3.up(), base_yaw)
     )
     -- CameraManager is also present on the title screen. Only gameplay owns
     -- this generic stereo path; character select is signalled separately by
@@ -1704,6 +1724,411 @@ mod:hook_safe("CameraManager", "_update_camera", function(self, _, _, viewport_n
     end
 end)
 
+local function retain_world_marker_command(destroy, owner, id)
+    if world_marker_command_capture and id then
+        world_marker_left_commands[#world_marker_left_commands + 1] = {
+            destroy = destroy,
+            owner = owner,
+            id = id
+        }
+    end
+end
+
+local function retain_world_marker_commands(destroy, owner, ids)
+    if type(ids) == "table" then
+        for i = 1, #ids do
+            retain_world_marker_command(destroy, owner, ids[i])
+        end
+    else
+        retain_world_marker_command(destroy, owner, ids)
+    end
+end
+
+local function destroy_marker_bitmap(renderer, id)
+    UIRenderer.destroy_bitmap(renderer, id)
+end
+
+local function destroy_marker_text(renderer, id)
+    UIRenderer.destroy_text(renderer, id)
+end
+
+local function destroy_marker_slug_icon(renderer, id)
+    UIRenderer.destroy_slug_icon(renderer, id)
+end
+
+local function destroy_marker_slug_picture(renderer, id)
+    UIRenderer.destroy_slug_picture(renderer, id)
+end
+
+local function destroy_marker_rect(renderer, id)
+    Gui.destroy_rect(renderer.gui_retained, id)
+end
+
+local function destroy_marker_triangle(renderer, id)
+    Gui.destroy_triangle(renderer.gui_retained, id)
+end
+
+-- UIRenderer caches its native Gui functions into locals when loaded, so the
+-- renderer entry points are the narrow reliable interception seam. During the
+-- original marker draw only, force otherwise-immediate primitives into the
+-- retained GUI to obtain their IDs; callers still observe the normal nil
+-- return. The IDs are destroyed after the left submission.
+mod:hook(UIRenderer, "script_draw_bitmap", function(func, self, material,
+        position, size, color, retained_id)
+    if world_marker_command_capture and not retained_id then
+        local id = func(self, material, position, size, color, true)
+        retain_world_marker_command(destroy_marker_bitmap, self, id)
+        return nil
+    end
+    return func(self, material, position, size, color, retained_id)
+end)
+
+mod:hook(UIRenderer, "script_draw_bitmap_uv", function(func, self, material,
+        position, size, uvs, color, retained_id)
+    if world_marker_command_capture and not retained_id then
+        local id = func(self, material, position, size, uvs, color, true)
+        retain_world_marker_command(destroy_marker_bitmap, self, id)
+        return nil
+    end
+    return func(self, material, position, size, uvs, color, retained_id)
+end)
+
+mod:hook(UIRenderer, "script_draw_bitmap_3d", function(func, self, material,
+        tm, position, layer, size, color, uvs, retained_id)
+    if world_marker_command_capture and not retained_id then
+        local id = func(
+            self, material, tm, position, layer, size, color, uvs, true)
+        retain_world_marker_command(destroy_marker_bitmap, self, id)
+        return nil
+    end
+    return func(
+        self, material, tm, position, layer, size, color, uvs, retained_id)
+end)
+
+mod:hook(UIRenderer, "script_draw_text", function(func, self, value,
+        font_size, font_type, position, size, color, options, retained_id)
+    if world_marker_command_capture and not retained_id then
+        local id = func(
+            self, value, font_size, font_type, position, size, color,
+            options, true)
+        retain_world_marker_command(destroy_marker_text, self, id)
+        return nil
+    end
+    return func(
+        self, value, font_size, font_type, position, size, color,
+        options, retained_id)
+end)
+
+mod:hook(UIRenderer, "draw_slug_icon", function(func, self, resource, index,
+        position, size, color, material, flags, retained_id)
+    if world_marker_command_capture and not retained_id then
+        local id = func(
+            self, resource, index, position, size, color, material, flags, true)
+        retain_world_marker_command(destroy_marker_slug_icon, self, id)
+        return nil
+    end
+    return func(
+        self, resource, index, position, size, color, material, flags,
+        retained_id)
+end)
+
+mod:hook(UIRenderer, "draw_slug_icon_rotated", function(func, self, resource,
+        index, size, position, angle, pivot, color, material, retained_id)
+    if world_marker_command_capture and not retained_id then
+        local id = func(
+            self, resource, index, size, position, angle, pivot, color,
+            material, true)
+        retain_world_marker_command(destroy_marker_slug_icon, self, id)
+        return nil
+    end
+    return func(
+        self, resource, index, size, position, angle, pivot, color, material,
+        retained_id)
+end)
+
+mod:hook(UIRenderer, "draw_slug_picture", function(func, self, resource,
+        position, size, color, material, retained_id)
+    if world_marker_command_capture and not retained_id then
+        local id = func(self, resource, position, size, color, material, true)
+        retain_world_marker_command(destroy_marker_slug_picture, self, id)
+        return nil
+    end
+    return func(self, resource, position, size, color, material, retained_id)
+end)
+
+mod:hook(UIRenderer, "draw_slug_multi_icon", function(func, self, resource,
+        index, position, size, color, axis, spacing, direction, count,
+        material, retained_ids)
+    if world_marker_command_capture and not retained_ids then
+        local ids = func(
+            self, resource, index, position, size, color, axis, spacing,
+            direction, count, material, true)
+        retain_world_marker_commands(destroy_marker_slug_icon, self, ids)
+        return nil
+    end
+    return func(
+        self, resource, index, position, size, color, axis, spacing,
+        direction, count, material, retained_ids)
+end)
+
+mod:hook(UIRenderer, "draw_rect", function(func, self, position, size, color,
+        retained_id)
+    if world_marker_command_capture and not retained_id then
+        local id = func(self, position, size, color, true)
+        retain_world_marker_command(destroy_marker_rect, self, id)
+        return nil
+    end
+    return func(self, position, size, color, retained_id)
+end)
+
+mod:hook(UIRenderer, "draw_triangle", function(func, self, position, size,
+        style, retained_id)
+    if world_marker_command_capture and not retained_id then
+        local id = func(self, position, size, style, true)
+        retain_world_marker_command(destroy_marker_triangle, self, id)
+        return nil
+    end
+    return func(self, position, size, style, retained_id)
+end)
+
+mod:hook(
+    "HudElementWorldMarkers",
+    "_draw_markers",
+    function(func, self, dt, t, input_service, ui_renderer, render_settings)
+        local capture = active and stereo_world_markers_requested and
+            not world_marker_reprojecting
+        if capture then
+            world_marker_command_capture = true
+        end
+
+        local result = func(
+            self,
+            dt,
+            t,
+            input_service,
+            ui_renderer,
+            render_settings
+        )
+
+        if capture then
+            world_marker_command_capture = false
+            world_markers_context = {
+                instance = self,
+                dt = dt,
+                t = t,
+                input_service = input_service,
+                ui_renderer = ui_renderer,
+                render_settings = render_settings,
+                -- UIRenderer.end_pass clears this transient field before the
+                -- level-world submission hook runs, so retain the scalar now.
+                inverse_scale = ui_renderer.inverse_scale or
+                    render_settings.inverse_scale or 1
+            }
+        end
+
+        return result
+    end
+)
+
+-- The interaction prompt (for example "[F] Inspect Operative") is a separate
+-- HUD element, but its scenegraph pivot is copied from the active world-marker
+-- widget. Capture its left-eye primitives into the same removable set and
+-- replay it after the marker pivot has been reprojected for the right eye.
+mod:hook(
+    "HudElementInteraction",
+    "_draw_widgets",
+    function(func, self, dt, t, input_service, ui_renderer, render_settings)
+        local capture = active and stereo_world_markers_requested and
+            not world_marker_reprojecting
+        if capture then
+            local presentation = self._active_presentation_data
+            if presentation and presentation.marker then
+                -- HudElementInteraction copies its pivot during update, while
+                -- HudElementWorldMarkers can project the source marker later
+                -- in the same frame. Refresh at the draw boundary so the
+                -- normal left-eye draw and the right-eye replay both consume
+                -- a marker coordinate produced for their own camera.
+                self:_update_interaction_hud_position(0, t)
+                UIScenegraph.update_scenegraph(
+                    self._ui_scenegraph,
+                    render_settings.scale
+                )
+            end
+        end
+        if capture then
+            world_marker_command_capture = true
+        end
+
+        local result = func(
+            self,
+            dt,
+            t,
+            input_service,
+            ui_renderer,
+            render_settings
+        )
+
+        if capture then
+            world_marker_command_capture = false
+            interaction_hud_context = {
+                instance = self,
+                dt = dt,
+                t = t,
+                input_service = input_service,
+                ui_renderer = ui_renderer,
+                render_settings = render_settings
+            }
+        end
+
+        return result
+    end
+)
+
+local function remove_left_world_marker_commands()
+    local command_count = #world_marker_left_commands
+    if not world_marker_capture_logged and command_count > 0 then
+        mod:info(
+            "DARKTIDEVR_STEREO marker_commands retained=%d",
+            command_count
+        )
+        world_marker_capture_logged = true
+    end
+    for i = 1, #world_marker_left_commands do
+        local command = world_marker_left_commands[i]
+        command.destroy(command.owner, command.id)
+    end
+    table.clear(world_marker_left_commands)
+end
+
+local function enqueue_world_markers_for_camera(camera)
+    local context = world_markers_context
+    if not context or not camera then
+        return false
+    end
+
+    local instance = context.instance
+    local original_camera = instance._player_camera
+    if not original_camera or original_camera == camera then
+        return false
+    end
+
+    -- The normal HUD update already stored a world position and left-eye
+    -- screen coordinate for every marker. Apply only the projection delta for
+    -- the right eye. This avoids replaying lifetime, raycast, animation and
+    -- template-update side effects outside their normal update scope.
+    local inverse_scale = context.inverse_scale
+    local adjusted_offsets = {}
+    for _, markers in pairs(instance._markers_by_type) do
+        for i = 1, #markers do
+            local marker = markers[i]
+            if marker.draw and marker.position then
+                local world_position = Vector3Box.unbox(marker.position)
+                local left_screen = Camera.world_to_screen(
+                    original_camera,
+                    world_position
+                )
+                local right_screen = Camera.world_to_screen(
+                    camera,
+                    world_position
+                )
+                local offset = marker.widget.offset
+                adjusted_offsets[#adjusted_offsets + 1] = {
+                    offset = offset,
+                    x = offset[1],
+                    y = offset[2]
+                }
+                offset[1] = offset[1] +
+                    (right_screen.x - left_screen.x) * inverse_scale
+                offset[2] = offset[2] +
+                    (right_screen.y - left_screen.y) * inverse_scale
+            end
+        end
+    end
+
+    instance._player_camera = camera
+
+    context.render_settings.start_layer = instance._draw_layer
+    UIRenderer.begin_pass(
+        context.ui_renderer,
+        instance._ui_scenegraph,
+        context.input_service,
+        0,
+        context.render_settings
+    )
+    world_marker_reprojecting = true
+    instance:_draw_markers(
+        0,
+        context.t,
+        context.input_service,
+        context.ui_renderer,
+        context.render_settings
+    )
+    world_marker_reprojecting = false
+    UIRenderer.end_pass(context.ui_renderer)
+
+    local interaction_context = interaction_hud_context
+    if interaction_context then
+        local interaction = interaction_context.instance
+        local presentation = interaction._active_presentation_data
+        if presentation and presentation.marker then
+            -- The marker widget currently contains the right-eye coordinate.
+            -- Rebuild only the dependent interaction pivot, then enqueue the
+            -- interaction widgets through their normal draw implementation.
+            interaction:_update_interaction_hud_position(
+                0,
+                interaction_context.t
+            )
+            UIScenegraph.update_scenegraph(
+                interaction._ui_scenegraph,
+                interaction_context.render_settings.scale
+            )
+            UIRenderer.begin_pass(
+                interaction_context.ui_renderer,
+                interaction._ui_scenegraph,
+                interaction_context.input_service,
+                0,
+                interaction_context.render_settings
+            )
+            world_marker_reprojecting = true
+            interaction:_draw_widgets(
+                0,
+                interaction_context.t,
+                interaction_context.input_service,
+                interaction_context.ui_renderer,
+                interaction_context.render_settings
+            )
+            world_marker_reprojecting = false
+            UIRenderer.end_pass(interaction_context.ui_renderer)
+        end
+    end
+    instance._player_camera = original_camera
+
+    -- Gui draw commands retain the positions passed above. Restore Darktide's
+    -- left-eye widget state for the next normal HUD update and for any code
+    -- that inspects markers after rendering.
+    for i = 1, #adjusted_offsets do
+        local saved = adjusted_offsets[i]
+        saved.offset[1] = saved.x
+        saved.offset[2] = saved.y
+    end
+
+    if interaction_context then
+        local interaction = interaction_context.instance
+        local presentation = interaction._active_presentation_data
+        if presentation and presentation.marker then
+            interaction:_update_interaction_hud_position(
+                0,
+                interaction_context.t
+            )
+            UIScenegraph.update_scenegraph(
+                interaction._ui_scenegraph,
+                interaction_context.render_settings.scale
+            )
+        end
+    end
+    return true
+end
+
 mod:hook(
     "UIWorldSpawner",
     "create_viewport",
@@ -1923,6 +2348,23 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
 
         ScriptWorld.deactivate_viewport(world, primary)
         ScriptWorld.activate_viewport(world, right)
+        if stereo_world_markers_requested then
+            local marker_ok, marker_result = pcall(
+                function()
+                    remove_left_world_marker_commands()
+                    enqueue_world_markers_for_camera(
+                        ScriptViewport.camera(right)
+                    )
+                end
+            )
+            if not marker_ok then
+                stereo_world_markers_requested = false
+                mod:error(
+                    "DARKTIDEVR_STEREO marker_reprojection_failed error=%s",
+                    tostring(marker_result)
+                )
+            end
+        end
         if ui_reset_dlss_each_eye_requested then
             Application.reset_dlss()
         end

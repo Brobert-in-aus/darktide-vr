@@ -663,13 +663,25 @@ eye pairs, not Darktide's generated display frames, so the lobby result is
 consistent with a roughly 60 real / 120 displayed configuration rather than a
 regression to 59 displayed fps.
 
-Lobby world markers expose a separate UI limitation. Darktide's
+Lobby world markers exposed a separate UI limitation. Darktide's
 `HudElementWorldMarkers` stores one `_player_camera`, projects every marker with
 `Camera.world_to_screen`, and submits one world-global screen-GUI draw list.
 That list is consumed by both sequential eye renders. The left marker therefore
 matches the left eye, while the right eye receives the same eye-relative pixel
 coordinate rather than a projection through the right camera. A constant pixel
 shift is not a valid correction because stereo disparity depends on each
-marker's world depth. The required fix is a per-eye transparent spatial-HUD
-layer using the original marker world positions and the corresponding eye
-camera; full menus remain candidates for the fixed spatial panel instead.
+marker's world depth. The implemented path retains the left marker primitives,
+removes them between submissions, applies the exact right-minus-left
+`Camera.world_to_screen` delta from each marker's stored world position, and
+replays the marker draw for the right camera. Headset validation confirmed NPC
+markers and player names at the correct position in both eyes with no duplicate
+left projection.
+
+`HudElementInteraction` is a second screen-GUI layer which copies the active
+marker widget into its own scenegraph pivot. Its normal update could precede
+the marker projection in the same frame, producing a stable right replay but a
+one-frame-old left `[F] Inspect Operative` prompt. Refreshing the dependent
+pivot at the draw boundary fixed that ordering fault; lobby validation accepted
+the prompt as stable in both eyes. Full menus remain candidates for the fixed
+spatial panel. Particle smoke is a separate native billboard path and still
+needs cylindrical, world-up alignment; it is not part of marker reprojection.

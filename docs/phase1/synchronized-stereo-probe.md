@@ -1396,14 +1396,33 @@ snap or smooth thumbstick turning without reopening game pitch/roll.
 Headset validation accepted both the physical-angle startup match and the
 absence of vertical-movement orbit.
 
-## World-marker projection limitation
+## Per-eye world-marker projection
 
-NPC markers and player names are correct in the left eye but displaced in the
-right. Source inspection identifies a single-camera path rather than an eye-
+NPC markers and player names were correct in the left eye but displaced in the
+right. Source inspection identified a single-camera path rather than an eye-
 resource defect: `HudElementWorldMarkers` caches `_player_camera`, calculates
 each widget with `Camera.world_to_screen`, then `UIHud` queues one screen GUI in
 `level_world`. Both sequential viewport submissions therefore consume the same
-left-eye-relative widget coordinates. Correcting this requires two transparent
-marker layers projected from the original world positions through their
-respective eye cameras. A fixed IPD-sized screen shift would be wrong because
-the required disparity varies with marker depth.
+left-eye-relative widget coordinates. A fixed IPD-sized screen shift would be
+wrong because the required disparity varies with marker depth.
+
+The accepted implementation captures the marker element's normally immediate
+UIRenderer primitives as retained commands, submits the left world, destroys
+those commands, and calculates each right coordinate from the marker's stored
+world position and the two actual eye cameras. It applies only the projection
+delta, replays the marker element for the right eye, then restores Darktide's
+left widget state. This avoids rerunning marker lifetime, raycast, animation,
+and template-update side effects. Headset testing confirmed correct NPC markers
+and player names in both eyes without the earlier duplicate projection.
+
+The `[F] Inspect Operative` prompt belongs to `HudElementInteraction`, which
+copies the active marker offset into an independent scenegraph pivot. Its update
+can run before the source marker's current projection, so the first version was
+stable in the right replay but jumped in the left eye. The prompt pivot is now
+refreshed at its draw boundary, and the right replay rebuilds it again from the
+right-adjusted marker. Lobby validation accepted both eyes as stable.
+
+This does not solve engine particle billboards. Binary inspection confirms
+separate native `billboard`, `billboard_cross`, and `billboard_random` render
+paths. Smoke still follows full camera pitch and roll; the desired behavior is
+cylindrical billboarding that faces the viewer in yaw while retaining world up.
