@@ -61,6 +61,10 @@ int wmain(int argc, wchar_t** argv) {
     const auto read_head_pose = reinterpret_cast<int (*)(
         float*, unsigned long long*)>(
         GetProcAddress(module, "dtvr_read_head_pose"));
+    const auto read_controller_state = reinterpret_cast<int (*)(
+        float*, unsigned int*, unsigned int*, unsigned long long*,
+        unsigned long long*)>(
+        GetProcAddress(module, "dtvr_read_controller_state"));
     const auto set_billboard_view_basis = reinterpret_cast<int (*)(
         float, float, float, float, float, float, int)>(
         GetProcAddress(module, "dtvr_set_billboard_view_basis"));
@@ -80,7 +84,8 @@ int wmain(int argc, wchar_t** argv) {
         !tag_queue_depth || !reset_tags || !wait_eye_capture ||
         !tag_reset_count || !ready || !execute_count || !present_count ||
         !capture_stage || !enable_present_capture || !disable_present_capture ||
-        !enable_marker_log || !read_head_pose || !set_billboard_view_basis ||
+        !enable_marker_log || !read_head_pose || !read_controller_state ||
+        !set_billboard_view_basis ||
         !billboard_resource_map_count ||
         !billboard_resource_map_match_count ||
         !billboard_resource_unmap_count) {
@@ -95,6 +100,11 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (read_head_pose(nullptr, nullptr) != 1) {
       throw std::runtime_error("Head-pose export must reject null output");
+    }
+    if (read_controller_state(nullptr, nullptr, nullptr, nullptr, nullptr) !=
+        1) {
+      throw std::runtime_error(
+          "Controller-state export must reject null output");
     }
     if (arm_pose(-1, 1) != 60) {
       throw std::runtime_error("Pose-tagged capture must reject invalid eyes");

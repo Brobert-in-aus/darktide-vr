@@ -9,6 +9,7 @@
 #include <MinHook.h>
 
 #include "core/shared_head_pose.h"
+#include "core/shared_controller_state.h"
 #include "core/shared_presentation_state.h"
 
 #include <algorithm>
@@ -595,6 +596,10 @@ std::atomic<float> render_aspect_ratio{};
 
 darktidevr::core::SharedHeadPoseReader& shared_head_pose_reader() {
   static darktidevr::core::SharedHeadPoseReader reader;
+  return reader;
+}
+darktidevr::core::SharedControllerStateReader& shared_controller_state_reader() {
+  static darktidevr::core::SharedControllerStateReader reader;
   return reader;
 }
 std::atomic<int> boundary_last_capture_result{};
@@ -7473,6 +7478,45 @@ extern "C" __declspec(dllexport) int dtvr_read_head_pose(
   values[18] = static_cast<float>(sample.render_height);
   values[19] = sample.ipd_metres;
   *sequence = sample.sequence;
+  return 0;
+}
+extern "C" __declspec(dllexport) int dtvr_read_controller_state(
+    float* values, unsigned int* tracking_flags, unsigned int* buttons,
+    unsigned long long* sequence, unsigned long long* timestamp_ns) {
+  if (!values || !tracking_flags || !buttons || !sequence || !timestamp_ns) {
+    return 1;
+  }
+  darktidevr::core::SharedControllerState sample{};
+  if (!shared_controller_state_reader().read(sample)) {
+    return 2;
+  }
+  for (std::size_t hand = 0; hand < 2; ++hand) {
+    const auto& source = sample.hands[hand];
+    const auto offset = hand * 18;
+    values[offset + 0] = source.aim_pose.position.x;
+    values[offset + 1] = source.aim_pose.position.y;
+    values[offset + 2] = source.aim_pose.position.z;
+    values[offset + 3] = source.aim_pose.orientation.x;
+    values[offset + 4] = source.aim_pose.orientation.y;
+    values[offset + 5] = source.aim_pose.orientation.z;
+    values[offset + 6] = source.aim_pose.orientation.w;
+    values[offset + 7] = source.grip_pose.position.x;
+    values[offset + 8] = source.grip_pose.position.y;
+    values[offset + 9] = source.grip_pose.position.z;
+    values[offset + 10] = source.grip_pose.orientation.x;
+    values[offset + 11] = source.grip_pose.orientation.y;
+    values[offset + 12] = source.grip_pose.orientation.z;
+    values[offset + 13] = source.grip_pose.orientation.w;
+    values[offset + 14] = source.trigger;
+    values[offset + 15] = source.squeeze;
+    values[offset + 16] = source.thumbstick_x;
+    values[offset + 17] = source.thumbstick_y;
+    tracking_flags[hand * 2] = source.aim_tracking_flags;
+    tracking_flags[hand * 2 + 1] = source.grip_tracking_flags;
+    buttons[hand] = source.buttons;
+  }
+  *sequence = sample.sequence;
+  *timestamp_ns = sample.timestamp_ns;
   return 0;
 }
 extern "C" __declspec(dllexport) int dtvr_enable_marker_log() {

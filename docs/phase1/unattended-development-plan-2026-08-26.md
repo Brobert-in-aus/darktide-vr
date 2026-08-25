@@ -404,6 +404,22 @@ First establish parity with an ordinary gamepad:
   once per game tick; and
 - UI mode owns these controls exclusively while a fullscreen menu is active.
 
+Source inspection narrowed the aim integration point. Local-player
+`PlayerUnitFirstPersonExtension.fixed_update` constructs
+`first_person_component.rotation` from the input extension's yaw/pitch/roll plus
+recoil. `PlayerUnitAimExtension`, the weapon system, interactions, abilities and
+many action paths consume that shared rotation. Driving ordinary mouse look
+from the controller would therefore aim correctly but would also rotate the VR
+view and movement basis. Do not patch those consumers individually.
+
+The intended split is one upstream gameplay-aim rotation plus an independent
+VR render rotation: controller orientation supplies the shared gameplay/action
+rotation, while the stereo camera hook composes its render basis from the
+character/body yaw and HMD pose rather than rereading controller-driven pitch
+and yaw. Thumbstick turning later changes the body/render-yaw accumulator
+explicitly. This preserves one authoritative action direction without coupling
+the user's head to the weapon.
+
 The safest initial aim seam is Darktide's `DefaultPlayerOrientation`. Convert
 the dominant-hand OpenXR aim rotation into the game's Z-up world basis and feed
 that as ordinary yaw/pitch aim. Existing weapon actions already consume

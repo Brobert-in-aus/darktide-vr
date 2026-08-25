@@ -132,6 +132,15 @@ local render_timing_right_max_ticks = 0
 local render_timing_pair_max_ticks = 0
 local gpu_profile_values = nil
 local gpu_stage_profile_values = nil
+local controller_observation = {
+    values = nil,
+    tracking_flags = nil,
+    buttons = nil,
+    sequence = nil,
+    timestamp_ns = nil,
+    last_sequence = 0,
+    first_tracked_logged = false
+}
 local performance_profile_requested = false -- opt-in diagnostic; allocates GPU timestamp work
 -- Reuse the shading/LOD preparation performed by the primary eye. The second
 -- eye still receives a complete native Application.render_world submission.
@@ -377,6 +386,10 @@ local function ensure_ui_native_hooks()
             unsigned int slot, unsigned int stride);
         unsigned long long dtvr_billboard_basis_patch_count(void);
         int dtvr_read_head_pose(float *values, unsigned long long *sequence);
+        int dtvr_read_controller_state(float *values,
+            unsigned int *tracking_flags, unsigned int *buttons,
+            unsigned long long *sequence,
+            unsigned long long *timestamp_ns);
         unsigned long long dtvr_qpc_ticks(void);
         unsigned long long dtvr_qpc_frequency(void);
         int dtvr_take_gpu_eye_profile(int eye, unsigned long long *values);
@@ -460,6 +473,11 @@ local function ensure_ui_native_hooks()
     ui_native_capture.dtvr_set_projection_active(0)
     head_pose_values = ffi.new("float[20]")
     head_pose_sequence = ffi.new("unsigned long long[1]")
+    controller_observation.values = ffi.new("float[36]")
+    controller_observation.tracking_flags = ffi.new("unsigned int[4]")
+    controller_observation.buttons = ffi.new("unsigned int[2]")
+    controller_observation.sequence = ffi.new("unsigned long long[1]")
+    controller_observation.timestamp_ns = ffi.new("unsigned long long[1]")
     gpu_profile_values = ffi.new("unsigned long long[4]")
     gpu_stage_profile_values = ffi.new("unsigned long long[6]")
     ui_native_capture.dtvr_set_gpu_eye_profile(
@@ -877,12 +895,32 @@ local function apply_head_tracking(clean_position, clean_rotation)
         head_render_frusta = { left_frustum, right_frustum }
     end
     local runtime_ipd = tonumber(head_pose_values[19])
+    if controller_observation.values and
+            ui_native_capture.dtvr_read_controller_state(
+                controller_observation.values,
+                controller_observation.tracking_flags,
+                controller_observation.buttons,
+                controller_observation.sequence,
+                controller_observation.timestamp_ns) == 0 then
+        local controller_sequence = tonumber(controller_observation.sequence[0])
+        controller_observation.last_sequence = controller_sequence
+        local left_aim_flags = tonumber(controller_observation.tracking_flags[0])
+        local right_aim_flags = tonumber(controller_observation.tracking_flags[2])
+        if not controller_observation.first_tracked_logged and
+                (bit.band(left_aim_flags, 4) ~= 0 or
+                 bit.band(right_aim_flags, 4) ~= 0) then
+            controller_observation.first_tracked_logged = true
+            mod:info("DARKTIDEVR_CONTROLLER observed sequence=%d left_aim_flags=%d right_aim_flags=%d",
+                controller_sequence,
+                left_aim_flags,
+                right_aim_flags)
+        end
+    end
     local character_scale = 1
     local local_player = Managers and Managers.player and
         Managers.player:local_player(1)
-    local profile = local_player and local_player:profile()
-    if profile and profile.archetype and
-            profile.archetype.name == "ogryn" then
+    local archetype_name = local_player and local_player:archetype_name()
+    if archetype_name == "ogryn" then
         -- Darktide's reviewed breed data uses 1.61 m for the Ogryn player
         -- height and 1.21 m for the baseline human. Scale physical head
         -- translation and the runtime eye separation together so the larger

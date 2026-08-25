@@ -148,6 +148,16 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
 - The same live runtime reported 62.81 mm calibrated eye separation. Startup,
   character-select, hub entry and the system-menu fallback remained clean with
   the matched v6 Lua/native deployment.
+- Added an observation-only native controller export: two aim poses, two grip
+  poses, tracking flags, analog actions, buttons, sequence and timestamp are
+  now available to Lua without changing gameplay input. Lua logs the first
+  genuinely tracked sample and otherwise remains inert.
+- Current-source inspection identified the upstream aim split:
+  `PlayerUnitFirstPersonExtension.fixed_update` authors the shared
+  `first_person_component.rotation`, which the aim extension, weapon system,
+  interactions and abilities consume. Controller aim must feed that shared
+  gameplay rotation while the stereo render hook uses a separate body-yaw plus
+  HMD basis; consumer-by-consumer weapon patches are not the selected route.
 - Added a guarded one-shot `dtvr_enter_psykhanium` workflow derived from the
   game's own training-view and Testify path. It consumes a local flag, waits for
   hub game mode plus backend authentication, opens the training view, selects
