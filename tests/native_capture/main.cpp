@@ -2,6 +2,8 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 
+#include <chrono>
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 
@@ -65,6 +67,10 @@ int wmain(int argc, wchar_t** argv) {
         float*, unsigned int*, unsigned int*, unsigned long long*,
         unsigned long long*)>(
         GetProcAddress(module, "dtvr_read_controller_state"));
+    const auto qpc_ticks = reinterpret_cast<unsigned long long (*)()>(
+        GetProcAddress(module, "dtvr_qpc_ticks"));
+    const auto qpc_frequency = reinterpret_cast<unsigned long long (*)()>(
+        GetProcAddress(module, "dtvr_qpc_frequency"));
     const auto set_billboard_view_basis = reinterpret_cast<int (*)(
         float, float, float, float, float, float, int)>(
         GetProcAddress(module, "dtvr_set_billboard_view_basis"));
@@ -85,11 +91,23 @@ int wmain(int argc, wchar_t** argv) {
         !tag_reset_count || !ready || !execute_count || !present_count ||
         !capture_stage || !enable_present_capture || !disable_present_capture ||
         !enable_marker_log || !read_head_pose || !read_controller_state ||
+        !qpc_ticks || !qpc_frequency ||
         !set_billboard_view_basis ||
         !billboard_resource_map_count ||
         !billboard_resource_map_match_count ||
         !billboard_resource_unmap_count) {
       throw std::runtime_error("Native capture export contract is incomplete");
+    }
+    const auto steady_ns = static_cast<double>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count());
+    const auto frequency = qpc_frequency();
+    const auto qpc_ns = static_cast<double>(qpc_ticks()) * 1'000'000'000.0 /
+                        static_cast<double>(frequency);
+    if (frequency == 0 || std::abs(steady_ns - qpc_ns) > 50'000'000.0) {
+      throw std::runtime_error(
+          "Controller timestamp and native QPC clocks do not share an epoch");
     }
     if (set_billboard_view_basis(1.0F, 0.0F, 0.0F, 0.0F, 0.0F,
                                  1.0F, -1) != 1 ||
