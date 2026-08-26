@@ -32,4 +32,10 @@ math::Pose anchored_recentered_eye_pose(math::Pose recenter_pose,
 math::Pose recentered_controller_pose(math::Pose recenter_head_pose,
                                       math::Pose current_controller_pose);
 
+// Converts a Darktide-basis pose relative to the immutable HMD recenter anchor
+// back into absolute OpenXR LOCAL space. Spatial shop/menu anchors use this to
+// share the same origin as controller and head tracking.
+math::Pose anchored_body_panel_pose(math::Pose recenter_head_pose,
+                                    math::Pose body_panel_pose);
+
 }  // namespace darktidevr::core

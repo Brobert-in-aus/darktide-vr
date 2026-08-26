@@ -58,6 +58,9 @@ Vec3 rotate(Quaternion rotation, Vec3 value);
 Vec3 openxr_to_darktide(Vec3 value);
 Quaternion openxr_to_darktide(Quaternion value);
 Pose openxr_to_darktide(Pose value);
+Vec3 darktide_to_openxr(Vec3 value);
+Quaternion darktide_to_openxr(Quaternion value);
+Pose darktide_to_openxr(Pose value);
 
 Pose compose(Pose parent, Pose child);
 Pose inverse(Pose pose);

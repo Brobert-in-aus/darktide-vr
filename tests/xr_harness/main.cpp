@@ -1061,9 +1061,21 @@ class OpenXrProbe {
             flat_fallback_active = use_flat_capture;
             ++flat_fallback_transitions;
             if (flat_fallback_active && current_head_valid) {
-              const auto anchored =
-                  darktidevr::core::horizon_locked_panel_pose(current_head,
-                                                              2.0F);
+              const auto world_anchored =
+                  presentation_state.mode == darktidevr::core::
+                                                 SharedPresentationMode::
+                                                     world_anchored_menu &&
+                  presentation_state.body_panel_pose_valid &&
+                  controller_recenter_pose_.has_value();
+              const auto anchored = world_anchored
+                                        ? darktidevr::core::
+                                              anchored_body_panel_pose(
+                                                  *controller_recenter_pose_,
+                                                  presentation_state.
+                                                      body_panel_pose)
+                                        : darktidevr::core::
+                                              horizon_locked_panel_pose(
+                                                  current_head, 2.0F);
               flat_fallback_pose.orientation = {
                   anchored.orientation.x, anchored.orientation.y,
                   anchored.orientation.z, anchored.orientation.w};

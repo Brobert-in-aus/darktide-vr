@@ -52,6 +52,13 @@ int main() {
     const auto darktide_controller = openxr_to_darktide(xr_controller);
     expect_vec(darktide_controller.position, {0.3F, 0.5F, 1.2F},
                "OpenXR controller pose position");
+    expect_vec(darktide_to_openxr(darktide_controller).position,
+               xr_controller.position,
+               "Darktide pose converts back to OpenXR");
+    expect_vec(rotate(darktide_to_openxr(darktide_controller).orientation,
+                      {0.0F, 0.0F, -1.0F}),
+               rotate(xr_controller.orientation, {0.0F, 0.0F, -1.0F}),
+               "Darktide quaternion converts back to OpenXR");
     const Pose controller_recenter{
         from_axis_angle({0.0F, 1.0F, 0.0F}, kPi * 0.5F),
         {3.0F, 1.6F, -2.0F}};
@@ -70,6 +77,16 @@ int main() {
         openxr_to_darktide(rotate(controller_body_local.orientation,
                                  {0.0F, 0.0F, -1.0F})),
         "recentered controller aim direction");
+    const auto reconstructed_controller =
+        darktidevr::core::anchored_body_panel_pose(controller_recenter,
+                                                   body_controller);
+    expect_vec(reconstructed_controller.position, absolute_controller.position,
+               "body-relative panel reconstructs OpenXR LOCAL position");
+    expect_vec(rotate(reconstructed_controller.orientation,
+                      {0.0F, 0.0F, -1.0F}),
+               rotate(absolute_controller.orientation,
+                      {0.0F, 0.0F, -1.0F}),
+               "body-relative panel reconstructs OpenXR LOCAL orientation");
 
     const Pose parent{yaw_90, {10.0F, 2.0F, 3.0F}};
     const Pose child{{}, {0.0F, 0.0F, -2.0F}};

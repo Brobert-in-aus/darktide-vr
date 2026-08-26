@@ -93,6 +93,20 @@ Pose openxr_to_darktide(Pose value) {
           openxr_to_darktide(value.position)};
 }
 
+Vec3 darktide_to_openxr(Vec3 value) {
+  return {value.x, value.z, -value.y};
+}
+
+Quaternion darktide_to_openxr(Quaternion value) {
+  value = normalized(value);
+  return {value.x, value.z, -value.y, value.w};
+}
+
+Pose darktide_to_openxr(Pose value) {
+  return {darktide_to_openxr(value.orientation),
+          darktide_to_openxr(value.position)};
+}
+
 Pose compose(Pose parent, Pose child) {
   parent.orientation = normalized(parent.orientation);
   child.orientation = normalized(child.orientation);

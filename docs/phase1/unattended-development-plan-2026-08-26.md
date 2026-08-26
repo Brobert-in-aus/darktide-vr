@@ -196,6 +196,22 @@ tests cover cursor pixels, scaled source/client mapping, entry suppression,
 release on exit and scroll repeat. Nested/unknown live-menu coverage, vendor
 anchoring and final worn-headset panel ergonomics remain outstanding.
 
+The first vendor-anchor implementation is now complete through the unattended
+test boundary. Presentation transport v2 carries a validated body-relative
+panel pose; the harness reconstructs it into OpenXR `LOCAL` from the immutable
+HMD recenter. `ViewInteraction:_start` supplies the exact interactee and view.
+After the stock interaction confirms that view is active, the adapter captures
+the unit's `ui_interaction_marker` (root fallback), pulls the board 0.25 m
+toward the player, locks it to world-up, and applies the inverse clean-camera
+transform already proven by tracked-controller/weapon composition. The frozen
+2 m by 2 m board therefore does not follow later head motion. Missing stereo
+pose, dead units, first-visit video substitutions and implausible interaction
+distances fail to the existing generic flat-menu panel. Closing the originating
+view clears the anchor. Transport, inverse-basis and reconstruction tests pass;
+live vendor placement remains pending because two clean hub transitions ended
+inside unmodified `PlayerHuskLocomotionExtension.post_update` before the mod or
+XR harness could request a vendor.
+
 ### Hub vendor and NPC-anchored shop mode
 
 Shop interactions receive more specific handling than generic fullscreen menus.

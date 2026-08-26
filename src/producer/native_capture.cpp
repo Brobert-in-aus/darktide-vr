@@ -6533,6 +6533,42 @@ extern "C" __declspec(dllexport) int dtvr_set_presentation_state(
                       darktidevr::core::SharedPresentationMode::stereo_world;
   return (stereo ? SetEvent(event) : ResetEvent(event)) ? 0 : 4;
 }
+extern "C" __declspec(dllexport) int dtvr_set_presentation_state_v2(
+    unsigned int mode, unsigned long long sequence, unsigned int source_width,
+    unsigned int source_height, unsigned int crop_x, unsigned int crop_y,
+    unsigned int crop_width, unsigned int crop_height,
+    float maximum_panel_width_metres, float maximum_panel_height_metres,
+    int body_panel_pose_valid, float panel_x, float panel_y, float panel_z,
+    float panel_qx, float panel_qy, float panel_qz, float panel_qw) {
+  const darktidevr::core::SharedPresentationState state{
+      sequence,
+      static_cast<darktidevr::core::SharedPresentationMode>(mode),
+      source_width,
+      source_height,
+      crop_x,
+      crop_y,
+      crop_width,
+      crop_height,
+      maximum_panel_width_metres,
+      maximum_panel_height_metres,
+      body_panel_pose_valid != 0,
+      {{panel_qx, panel_qy, panel_qz, panel_qw},
+       {panel_x, panel_y, panel_z}}};
+  if (!darktidevr::core::valid_presentation_state(state)) {
+    return 1;
+  }
+  if (!publish_presentation_state(state)) {
+    return 2;
+  }
+  static const HANDLE event = CreateEventW(
+      nullptr, TRUE, FALSE, L"Local\\DarktideVR-projection-active-v1");
+  if (!event) {
+    return 3;
+  }
+  const auto stereo = state.mode ==
+                      darktidevr::core::SharedPresentationMode::stereo_world;
+  return (stereo ? SetEvent(event) : ResetEvent(event)) ? 0 : 4;
+}
 extern "C" __declspec(dllexport) int
 dtvr_set_diagnostic_render_hooks(int enabled) {
   if (hooks_installed.load(std::memory_order_acquire)) {

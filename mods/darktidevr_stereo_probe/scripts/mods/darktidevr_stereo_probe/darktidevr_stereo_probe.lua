@@ -267,6 +267,19 @@ local presentation = {
     fullscreen_restore_delay_updates = 12,
     logged_view_classification = {},
     input_inventory_done = false,
+    vendor_anchor = {
+        valid = false,
+        view_name = nil,
+        revision = 0,
+        published_revision = -1,
+        x = 0,
+        y = 0,
+        z = 0,
+        qx = 0,
+        qy = 0,
+        qz = 0,
+        qw = 1,
+    },
     psykhanium = {
         stage = "idle",
         deadline = 0,
@@ -327,6 +340,14 @@ local function ensure_ui_native_hooks()
             unsigned int crop_width, unsigned int crop_height,
             float maximum_panel_width_metres,
             float maximum_panel_height_metres);
+        int dtvr_set_presentation_state_v2(unsigned int mode,
+            unsigned long long sequence, unsigned int source_width,
+            unsigned int source_height, unsigned int crop_x,
+            unsigned int crop_y, unsigned int crop_width,
+            unsigned int crop_height, float maximum_panel_width_metres,
+            float maximum_panel_height_metres, int body_panel_pose_valid,
+            float panel_x, float panel_y, float panel_z, float panel_qx,
+            float panel_qy, float panel_qz, float panel_qw);
         int dtvr_capture_eye(int eye);
         int dtvr_capture_armed_swapchain_eye(int eye);
         int dtvr_set_camera_output_candidate_index(int index);
@@ -585,22 +606,50 @@ local function ensure_ui_native_hooks()
 end
 
 function presentation.publish_mode(mode, reason)
-    if not ui_native_capture or presentation.mode == mode then
+    local vendor_anchor = presentation.vendor_anchor
+    local anchor_changed = mode == 3 and vendor_anchor.valid and
+        vendor_anchor.published_revision ~= vendor_anchor.revision
+    if not ui_native_capture or
+            (presentation.mode == mode and not anchor_changed) then
         return
     end
     presentation.sequence = presentation.sequence + 1
-    local result = tonumber(ui_native_capture.dtvr_set_presentation_state(
-        mode,
-        presentation.sequence,
-        ui_eye_target_width,
-        ui_eye_target_height,
-        0,
-        0,
-        ui_eye_target_width,
-        ui_eye_target_height,
-        2,
-        2
-    ))
+    local result = nil
+    if mode == 3 and vendor_anchor.valid then
+        result = tonumber(ui_native_capture.dtvr_set_presentation_state_v2(
+            mode,
+            presentation.sequence,
+            ui_eye_target_width,
+            ui_eye_target_height,
+            0,
+            0,
+            ui_eye_target_width,
+            ui_eye_target_height,
+            2,
+            2,
+            1,
+            vendor_anchor.x,
+            vendor_anchor.y,
+            vendor_anchor.z,
+            vendor_anchor.qx,
+            vendor_anchor.qy,
+            vendor_anchor.qz,
+            vendor_anchor.qw
+        ))
+    else
+        result = tonumber(ui_native_capture.dtvr_set_presentation_state(
+            mode,
+            presentation.sequence,
+            ui_eye_target_width,
+            ui_eye_target_height,
+            0,
+            0,
+            ui_eye_target_width,
+            ui_eye_target_height,
+            2,
+            2
+        ))
+    end
     if result ~= 0 then
         mod:error(
             "DARKTIDEVR_PRESENTATION publish_failed mode=%d sequence=%d code=%d",
@@ -611,6 +660,9 @@ function presentation.publish_mode(mode, reason)
         return
     end
     presentation.mode = mode
+    if mode == 3 then
+        vendor_anchor.published_revision = vendor_anchor.revision
+    end
     mod:info(
         "DARKTIDEVR_PRESENTATION mode=%d sequence=%d reason=%s source=%dx%d",
         mode,
@@ -627,6 +679,10 @@ function presentation.classify_active_view(manager, view_name)
     end
     if presentation.flat_loading_views[view_name] then
         return 2, "loading_or_cinematic"
+    end
+    if presentation.vendor_anchor.valid and
+            presentation.vendor_anchor.view_name == view_name then
+        return 3, "interacted_world_anchor"
     end
 
     local settings = nil
@@ -674,7 +730,9 @@ function presentation.reconcile_fullscreen_views(manager)
         local mode, reason = presentation.classify_active_view(manager, view_name)
         if mode then
             classified[#classified + 1] = tostring(view_name) .. ":" .. reason
-            if mode == 2 or not desired_mode then
+            if mode == 2 or
+                    (mode == 3 and desired_mode ~= 2) or
+                    not desired_mode then
                 desired_mode = mode
             end
         end
@@ -726,6 +784,17 @@ function presentation.on_view_close(manager, view_name)
         "DARKTIDEVR_PRESENTATION close view=%s",
         tostring(view_name)
     )
+    local vendor_anchor = presentation.vendor_anchor
+    if vendor_anchor.valid and vendor_anchor.view_name == view_name then
+        vendor_anchor.valid = false
+        vendor_anchor.view_name = nil
+        vendor_anchor.revision = vendor_anchor.revision + 1
+        mod:info(
+            "DARKTIDEVR_PRESENTATION world_anchor cleared view=%s revision=%d",
+            tostring(view_name),
+            vendor_anchor.revision
+        )
+    end
     presentation.reconcile_fullscreen_views(manager)
 end
 
@@ -3271,6 +3340,73 @@ function presentation.inverse_quaternion(rotation)
     return Quaternion.from_elements(-x, -y, -z, w)
 end
 
+-- Freeze a hub interaction panel in the same body-relative coordinates used
+-- by tracked controllers. The clean camera is the game-world pose of the
+-- immutable OpenXR recenter; applying its inverse here is the exact inverse of
+-- controller_grip_target(), rather than an independent world/XR transform.
+function presentation.capture_vendor_anchor(view_name, interactee_unit)
+    if not active or not interactee_unit or not Unit.alive(interactee_unit) or
+            not controller_observation.body_anchor_qw then
+        return false, "stereo_or_pose_unavailable"
+    end
+    local marker_node = Unit.has_node(interactee_unit,
+        "ui_interaction_marker") and
+        Unit.node(interactee_unit, "ui_interaction_marker") or 1
+    local marker_position = Unit.world_position(interactee_unit, marker_node)
+    local anchor_position = Vector3(
+        controller_observation.body_anchor_x,
+        controller_observation.body_anchor_y,
+        controller_observation.body_anchor_z)
+    local anchor_rotation = Quaternion.from_elements(
+        controller_observation.body_anchor_qx,
+        controller_observation.body_anchor_qy,
+        controller_observation.body_anchor_qz,
+        controller_observation.body_anchor_qw)
+    local from_camera = marker_position - anchor_position
+    local dx = Vector3.x(from_camera)
+    local dy = Vector3.y(from_camera)
+    local horizontal_distance = math.sqrt(dx * dx + dy * dy)
+    if horizontal_distance < 0.25 or horizontal_distance > 10 then
+        return false, "interaction_distance_out_of_range"
+    end
+
+    -- Pull the two-metre board slightly toward the player so it occupies the
+    -- interaction space in front of the NPC instead of intersecting its mesh.
+    local horizontal_direction = Vector3(
+        dx / horizontal_distance,
+        dy / horizontal_distance,
+        0)
+    local panel_position = marker_position - horizontal_direction * 0.25
+    local panel_world_rotation = Quaternion.look(
+        horizontal_direction,
+        Vector3.up())
+    local inverse_anchor = presentation.inverse_quaternion(anchor_rotation)
+    local body_position = presentation.rotate_vector(
+        inverse_anchor,
+        panel_position - anchor_position)
+    local body_rotation = Quaternion.normalize(Quaternion.multiply(
+        inverse_anchor,
+        panel_world_rotation))
+    local anchor = presentation.vendor_anchor
+    anchor.x = Vector3.x(body_position)
+    anchor.y = Vector3.y(body_position)
+    anchor.z = Vector3.z(body_position)
+    anchor.qx, anchor.qy, anchor.qz, anchor.qw =
+        Quaternion.to_elements(body_rotation)
+    anchor.valid = true
+    anchor.view_name = view_name
+    anchor.revision = anchor.revision + 1
+    mod:info(
+        "DARKTIDEVR_PRESENTATION world_anchor captured view=%s revision=%d body_pos=%.3f,%.3f,%.3f",
+        tostring(view_name),
+        anchor.revision,
+        anchor.x,
+        anchor.y,
+        anchor.z
+    )
+    return true, "captured"
+end
+
 function presentation.scene_graph_root(unit, node)
     local current = node
     local parent = Unit.scene_graph_parent(unit, current)
@@ -3737,6 +3873,39 @@ mod:hook_safe(
                 controller_observation.last_sequence,
                 self._world)
         end
+    end)
+
+-- ViewInteraction is the authoritative hub seam: it preserves the exact
+-- interactee that opened a vendor/facility view. Capture only after the stock
+-- start completed and only when that exact view became active; first-visit
+-- cinematics therefore remain on the ordinary flat-loading fallback.
+mod:hook_safe(
+    require("scripts/extension_systems/interaction/interactions/view_interaction"),
+    "_start",
+    function(self, _, interactee_unit)
+        local ui_interaction = self:_ui_interaction(interactee_unit)
+        local manager = Managers and Managers.ui
+        local active_ok, view_active = manager and
+            pcall(manager.view_active, manager, ui_interaction)
+        if not active_ok or not view_active then
+            return
+        end
+        local ok, captured, reason = pcall(
+            presentation.capture_vendor_anchor,
+            ui_interaction,
+            interactee_unit)
+        if not ok or not captured then
+            mod:warning(
+                "DARKTIDEVR_PRESENTATION world_anchor unavailable view=%s reason=%s",
+                tostring(ui_interaction),
+                tostring(ok and reason or captured)
+            )
+            return
+        end
+        presentation.fullscreen_empty_updates = 0
+        presentation.publish_mode(
+            3,
+            tostring(ui_interaction) .. ":interacted_world_anchor")
     end)
 
 mod:hook_safe(

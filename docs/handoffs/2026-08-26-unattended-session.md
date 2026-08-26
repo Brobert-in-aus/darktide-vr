@@ -378,6 +378,33 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   returned to `disabled`; controller aim and gameplay origin remained disabled
   and unchanged throughout.
 
+### Vendor/NPC-anchored menu transport
+
+- Upgraded the shared presentation mapping to
+  `Local\DarktideVR-presentation-state-v2`. It appends a seqlock-protected,
+  validated body-relative panel pose while preserving the old publication API
+  for stereo, loading and generic flat-menu modes. `world_anchored_menu` now
+  fails closed unless that pose is present, finite, normalized and within a
+  100 m transport bound.
+- Added the inverse Darktide-to-OpenXR vector/quaternion/pose conversion and a
+  tested reconstruction primitive:
+  `initial_hmd_recenter * darktide_to_openxr(body_panel_pose)`. The OpenXR
+  harness snapshots this result only when the menu presentation sequence
+  changes, so later headset motion cannot drag an NPC panel.
+- Added a production-shaped `ViewInteraction:_start` observer. It acts only
+  after the exact requested view is active, captures the interactee's
+  `ui_interaction_marker` (unit root fallback), places a horizon-locked 2 m by
+  2 m board 0.25 m toward the player, and converts it through the inverse of
+  the clean pre-HMD camera transform already used by tracked weapons. Closing
+  that view invalidates the anchor. Cinematic substitutions, unavailable
+  stereo/body poses, dead units and distances outside 0.25--10 m retain the
+  generic head-anchored menu fallback.
+- The complete Debug build and all 27 CTests pass, including new transport,
+  inverse-basis round-trip and anchored-pose reconstruction coverage. Live
+  vendor validation is deferred: two launcher-path attempts crashed during hub
+  transition in unmodified `PlayerHuskLocomotionExtension.post_update` before
+  any vendor request, adapter enablement or synthetic harness run.
+
 ## Validation commands
 
 ```powershell
@@ -413,10 +440,11 @@ Steam close grace between normal runs.
 
 ## Next action
 
-Retry the private Shooting Range transition after the hub session is healthy,
-then enable both the gameplay adapter and the synthetic gameplay-input harness
-for one bounded six-phase action audit. Keep the adapter disabled everywhere
-else. In parallel, finish menu-context consumption for Back/menu and keep
-gameplay edges suppressed across every presentation-mode transition. Preserve
-the raw LOCAL pose for spatial-menu tests and retain all tracked-weapon invalid,
-stale and over-reach fallbacks.
+Keep the new vendor transport normal-on but avoid repeated hub launches until a
+clean hub session is available. Then open a non-purchasing vendor through its
+ordinary interaction, verify the board is stationary in `LOCAL`, exercise only
+a tab/back control, and confirm stereo restoration. Meanwhile continue the
+independent billboard producer investigation and offline full-IK/control
+architecture. When the hub transition is healthy, retry the private Shooting
+Range action audit with both gameplay gates bounded and disabled everywhere
+else.

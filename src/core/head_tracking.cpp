@@ -47,4 +47,10 @@ math::Pose recentered_controller_pose(math::Pose recenter_head_pose,
       math::inverse(recenter_head_pose), current_controller_pose));
 }
 
+math::Pose anchored_body_panel_pose(math::Pose recenter_head_pose,
+                                    math::Pose body_panel_pose) {
+  return math::compose(recenter_head_pose,
+                       math::darktide_to_openxr(body_panel_pose));
+}
+
 }  // namespace darktidevr::core

@@ -40,6 +40,26 @@ int main() {
       state.sequence = 8;
       state.crop_width = 1920;
       expect(!writer.publish(state), "Out-of-bounds crop must fail closed");
+
+      state = {9,
+               SharedPresentationMode::world_anchored_menu,
+               1920,
+               1080,
+               0,
+               0,
+               1920,
+               1080,
+               2.0F,
+               2.0F,
+               true,
+               {{0.0F, 0.0F, 0.0F, 1.0F}, {1.0F, 2.0F, 1.5F}}};
+      expect(writer.publish(state), "Valid world-anchored menu should publish");
+      expect(reader.read(observed) && observed.body_panel_pose_valid &&
+                 observed.body_panel_pose.position.y == 2.0F,
+             "Reader should preserve the body-relative panel pose");
+      state.body_panel_pose_valid = false;
+      expect(!writer.publish(state),
+             "World-anchored menu without a pose must fail closed");
     }
 
     std::cout << "presentation_state_transport.result=pass\n";

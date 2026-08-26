@@ -21,6 +21,8 @@ struct SharedLayout {
   volatile LONG crop_height{};
   float maximum_panel_width_metres{2.0F};
   float maximum_panel_height_metres{2.0F};
+  volatile LONG body_panel_pose_valid{};
+  float body_panel_pose[7]{};
 };
 
 static_assert(alignof(SharedLayout) >= alignof(LONG64));
@@ -46,6 +48,31 @@ bool valid_presentation_state(const SharedPresentationState& state) {
       state.crop_width >= 1 && state.crop_height >= 1 &&
       state.crop_x <= state.source_width - state.crop_width &&
       state.crop_y <= state.source_height - state.crop_height;
+  const auto& pose = state.body_panel_pose;
+  const auto pose_finite = std::isfinite(pose.position.x) &&
+                           std::isfinite(pose.position.y) &&
+                           std::isfinite(pose.position.z) &&
+                           std::isfinite(pose.orientation.x) &&
+                           std::isfinite(pose.orientation.y) &&
+                           std::isfinite(pose.orientation.z) &&
+                           std::isfinite(pose.orientation.w);
+  const auto position_limit = 100.0F;
+  const auto position_plausible =
+      std::abs(pose.position.x) <= position_limit &&
+      std::abs(pose.position.y) <= position_limit &&
+      std::abs(pose.position.z) <= position_limit;
+  const auto quaternion_length =
+      pose.orientation.x * pose.orientation.x +
+      pose.orientation.y * pose.orientation.y +
+      pose.orientation.z * pose.orientation.z +
+      pose.orientation.w * pose.orientation.w;
+  const auto pose_valid = !state.body_panel_pose_valid ||
+                          (pose_finite && position_plausible &&
+                           quaternion_length >= 0.99F &&
+                           quaternion_length <= 1.01F);
+  const auto world_anchor_available =
+      state.mode != SharedPresentationMode::world_anchored_menu ||
+      state.body_panel_pose_valid;
   return state.sequence != 0 &&
          state.sequence <=
              static_cast<std::uint64_t>(std::numeric_limits<LONG64>::max()) &&
@@ -56,7 +83,8 @@ bool valid_presentation_state(const SharedPresentationState& state) {
          state.maximum_panel_width_metres > 0.0F &&
          state.maximum_panel_width_metres <= 10.0F &&
          state.maximum_panel_height_metres > 0.0F &&
-         state.maximum_panel_height_metres <= 10.0F;
+         state.maximum_panel_height_metres <= 10.0F && pose_valid &&
+         world_anchor_available;
 }
 
 SharedPresentationStateWriter::SharedPresentationStateWriter() {
@@ -86,6 +114,8 @@ SharedPresentationStateWriter::SharedPresentationStateWriter() {
   data.crop_height = 1;
   data.maximum_panel_width_metres = 2.0F;
   data.maximum_panel_height_metres = 2.0F;
+  data.body_panel_pose_valid = 0;
+  data.body_panel_pose[6] = 1.0F;
   MemoryBarrier();
   InterlockedExchange64(&data.epoch, 2);
 }
@@ -110,6 +140,14 @@ bool SharedPresentationStateWriter::publish(
   data.crop_height = static_cast<LONG>(state.crop_height);
   data.maximum_panel_width_metres = state.maximum_panel_width_metres;
   data.maximum_panel_height_metres = state.maximum_panel_height_metres;
+  data.body_panel_pose_valid = state.body_panel_pose_valid ? 1 : 0;
+  data.body_panel_pose[0] = state.body_panel_pose.position.x;
+  data.body_panel_pose[1] = state.body_panel_pose.position.y;
+  data.body_panel_pose[2] = state.body_panel_pose.position.z;
+  data.body_panel_pose[3] = state.body_panel_pose.orientation.x;
+  data.body_panel_pose[4] = state.body_panel_pose.orientation.y;
+  data.body_panel_pose[5] = state.body_panel_pose.orientation.z;
+  data.body_panel_pose[6] = state.body_panel_pose.orientation.w;
   InterlockedExchange64(&data.sequence, static_cast<LONG64>(state.sequence));
   MemoryBarrier();
   InterlockedIncrement64(&data.epoch);
@@ -159,7 +197,12 @@ bool SharedPresentationStateReader::read(SharedPresentationState& state) {
         static_cast<std::uint32_t>(data.crop_width),
         static_cast<std::uint32_t>(data.crop_height),
         data.maximum_panel_width_metres,
-        data.maximum_panel_height_metres};
+        data.maximum_panel_height_metres,
+        data.body_panel_pose_valid != 0,
+        {{data.body_panel_pose[3], data.body_panel_pose[4],
+          data.body_panel_pose[5], data.body_panel_pose[6]},
+         {data.body_panel_pose[0], data.body_panel_pose[1],
+          data.body_panel_pose[2]}}};
     MemoryBarrier();
     const auto after = data.epoch;
     if (before == after && (after & 1) == 0 &&

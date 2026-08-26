@@ -1,11 +1,13 @@
 #pragma once
 
+#include "core/xr_math.h"
+
 #include <cstdint>
 
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedPresentationStateName[] =
-    L"Local\\DarktideVR-presentation-state-v1";
+    L"Local\\DarktideVR-presentation-state-v2";
 
 enum class SharedPresentationMode : std::uint32_t {
   disabled = 0,
@@ -27,6 +29,8 @@ struct SharedPresentationState {
   std::uint32_t crop_height{};
   float maximum_panel_width_metres{2.0F};
   float maximum_panel_height_metres{2.0F};
+  bool body_panel_pose_valid{};
+  math::Pose body_panel_pose{};
 };
 
 class SharedPresentationStateWriter {
