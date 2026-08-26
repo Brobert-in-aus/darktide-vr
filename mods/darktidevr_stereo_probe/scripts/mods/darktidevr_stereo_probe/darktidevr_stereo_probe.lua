@@ -167,6 +167,7 @@ local controller_observation = {
     primary_action_weapon_context_logged = false,
     primary_action_weapon_observed = false,
     primary_action_shot_observed = false,
+    primary_action_projectile_observed = false,
     primary_action_stage = "idle",
     primary_action_last_check_t = -math.huge
 }
@@ -2942,6 +2943,66 @@ mod:hook_safe(
             controller_observation.downstream_forward_z or 0,
             controller_observation.primary_action_sequence
         )
+    end)
+
+function presentation.observe_primary_projectile(self, direction, source)
+    if not controller_observation.primary_action_cache_observed or
+            controller_observation.primary_action_projectile_observed or
+            not direction then
+        return
+    end
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    if not local_player or self._owner_unit ~= local_player.player_unit then
+        return
+    end
+    local ok, x, y, z = pcall(function()
+        local length = Vector3.length(direction)
+        if length <= 0 then
+            return nil
+        end
+        local normalized = direction / length
+        return Vector3.x(normalized), Vector3.y(normalized), Vector3.z(normalized)
+    end)
+    if not ok or x == nil then
+        mod:warning(
+            "DARKTIDEVR_INPUT primary_action projectile_direction_unavailable source=%s error=%s",
+            tostring(source), tostring(x))
+        return
+    end
+    controller_observation.primary_action_projectile_observed = true
+    mod:info(
+        "DARKTIDEVR_INPUT primary_action projectile source=%s direction=%.4f,%.4f,%.4f authored_forward=%.4f,%.4f,%.4f sequence=%d",
+        tostring(source), x, y, z,
+        controller_observation.downstream_forward_x or 0,
+        controller_observation.downstream_forward_y or 0,
+        controller_observation.downstream_forward_z or 0,
+        controller_observation.primary_action_sequence
+    )
+end
+
+mod:hook_safe(
+    "ProjectileUnitLocomotionExtension",
+    "switch_to_manual_physics",
+    function(self, _, _, direction)
+        presentation.observe_primary_projectile(
+            self, direction, "manual_physics")
+    end)
+
+mod:hook_safe(
+    "ProjectileUnitLocomotionExtension",
+    "switch_to_true_flight",
+    function(self, _, _, direction)
+        presentation.observe_primary_projectile(
+            self, direction, "true_flight")
+    end)
+
+mod:hook_safe(
+    "ProjectileUnitLocomotionExtension",
+    "switch_to_engine_physics",
+    function(self, _, _, velocity)
+        presentation.observe_primary_projectile(
+            self, velocity, "engine_physics")
     end)
 
 -- Verify that the authored orientation reaches the shared first-person

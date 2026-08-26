@@ -296,6 +296,14 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   `first_person_component.rotation`, then applies weapon spread/targeting in
   `ActionSpawnProjectile:_fire_projectile`; it does not increment the generic
   hitscan `action_shoot.num_shots_fired` counter observed by the current probe.
+- Added delayed, read-only observers at all three projectile-locomotion
+  handoffs. A clean launcher-path rerun selected the same force staff and
+  injected at sequence 14138. `rapid_left` began on fixed frame 2532, released
+  on 2533, and the authoritative manual-physics handoff reported direction
+  `0.9549,-0.0008,-0.2971` against authored first-person forward
+  `0.9539,0.0008,-0.3000`. The small difference is the weapon's normal spread;
+  the input-to-gameplay-aim-to-projectile chain is now closed without changing
+  origin, spread, targeting, cadence or damage.
 
 ## Validation commands
 
@@ -326,10 +334,9 @@ Steam close grace between normal runs.
 
 ## Next action
 
-Add projectile-specific post-spread direction telemetry at the locomotion
-handoff, then turn the proven one-shot seam into a fail-closed binding adapter
-and begin tracked first-person weapon-unit/node discovery. Do not feed gameplay
-aim into the HMD render basis.
+Begin tracked first-person weapon-unit/node discovery, then turn the proven
+one-shot seam into a fail-closed binding adapter. Do not feed gameplay aim into
+the HMD render basis.
 Preserve the raw LOCAL pose for spatial-menu tests. Retain the horizon-lock
 billboard build for automated soaks, but defer the final smoke, fog and
 particle-orientation judgement until the user can wear the headset.

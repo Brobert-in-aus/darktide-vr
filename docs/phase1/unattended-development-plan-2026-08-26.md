@@ -518,9 +518,13 @@ same bounded click entered `rapid_left` on `forcestaff_p4_m1` at sequence 12281.
 Source inspection closes the pre-spread direction chain: that projectile action
 reads `first_person_component.rotation` as `look_rotation`, then applies its
 normal offset/spread/targeting before handing direction to projectile
-locomotion. Add a projectile-specific post-spread observer alongside the
-existing generic `ActionShoot` observer before promoting this seam to a general
-binding adapter.
+locomotion. The delayed locomotion observer completed the post-spread chain on
+the next clean run: sequence 14138 entered `rapid_left` on fixed frame 2532 and
+the manual-physics handoff received direction
+`0.9549,-0.0008,-0.2971`, compared with authored forward
+`0.9539,0.0008,-0.3000`. The residual is normal weapon spread. Both projectile
+and generic `ActionShoot` paths now have observation seams before this becomes
+a general binding adapter.
 
 This first gate deliberately keeps game-authoritative firing origins and reach.
 It must not permit shooting around walls, longer melee reach, altered cadence,
