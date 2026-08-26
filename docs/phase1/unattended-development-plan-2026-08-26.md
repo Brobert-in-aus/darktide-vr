@@ -450,10 +450,19 @@ The observation-only implementation hooks both `DefaultPlayerOrientation` and
 the hub-specific `HubPlayerOrientation`, uses the engine's own quaternion-to-
 yaw/pitch conversion, and rate-limits telemetry to two seconds. It does not
 write orientation. Live synthetic hub validation proved advancing controller
-sequences reach this seam. The next authoring gate must compose body-local aim
-with the character/body yaw captured at XR recenter; directly treating local
-yaw as world yaw would be wrong (the validated hub began near pi radians while
-the synthetic controller local yaw was near zero).
+sequences reach this seam. The observer now captures the game body yaw once per
+XR controller sequence epoch and composes it with the body-local controller
+rotation. The accepted run retained the hub's 3.1415-radian world yaw while
+adding the synthetic controller's -0.3094 pitch and 0.0758 roll; sample ages
+were 0.213--16.567 ms and all telemetry remained `write=disabled`.
+
+Do not persist Stingray quaternion/vector userdata across frames. Store plain
+scalars and reconstruct temporary engine math values at the consuming hook.
+The next authoring gate is an explicit test-only switch: write composed yaw and
+pitch only, force gameplay roll to zero, require the dominant aim pose to be
+position-valid and orientation-tracked with age between -5 and 100 ms, and
+fail closed whenever tracking, freshness or the XR sequence epoch changes.
+Controller aim must remain independent of the HMD render basis.
 
 This first gate deliberately keeps game-authoritative firing origins and reach.
 It must not permit shooting around walls, longer melee reach, altered cadence,

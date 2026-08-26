@@ -182,6 +182,19 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   without authoring either. A clean hub run published 827 controller samples
   and logged multiple advancing observations (`class=hub`, sequences 1
   through 713, `write=disabled`) with no script error or gameplay write.
+- Completed the missing world-space composition at that observation seam. The
+  hub's initial body yaw is captured once per XR controller sequence epoch and
+  multiplied by the exported body-local controller rotation. A clean
+  launcher-path VDXR run published 578/578 controller samples; Lua observed
+  tracked flags `15/15`, sample ages from 0.213 to 16.567 ms, an anchor yaw of
+  3.1415 radians and the expected composed target
+  `3.1415,-0.3094,0.0758`, still with `write=disabled`.
+- Stingray quaternion/vector values returned to Lua are frame-temporary and
+  cannot be retained in mod tables. An earlier observer retained one and later
+  failed `Quaternion.multiply` with `Vector4 expected, got userdata`. The
+  accepted path stores only yaw/pitch/roll scalars and reconstructs both
+  quaternions immediately at the orientation hook; the clean run produced no
+  safe-hook, script or quaternion error.
 - Added a guarded one-shot `dtvr_enter_psykhanium` workflow derived from the
   game's own training-view and Testify path. It consumes a local flag, waits for
   hub game mode plus backend authentication, opens the training view, selects
@@ -228,10 +241,10 @@ Steam close grace between normal runs.
 
 ## Next action
 
-Compose the observed body-local dominant-hand rotation with the character/body
-yaw captured at XR recenter, then expose an explicit test-only flag that authors
-the resulting yaw/pitch at the same upstream seam. Do not feed controller roll
-to the gameplay aim or the HMD render basis. Preserve the raw LOCAL pose for
-spatial-menu tests. Retain the horizon-lock billboard build for automated soaks,
-but defer the final smoke, fog and particle-orientation judgement until the user
-can wear the headset.
+Expose an explicit test-only flag that authors the now-validated composed
+yaw/pitch at the same upstream seam. Exclude controller roll, require fresh
+tracked data, and fail closed on tracking loss, stale samples or a new XR
+sequence epoch. Do not feed gameplay aim into the HMD render basis. Preserve the
+raw LOCAL pose for spatial-menu tests. Retain the horizon-lock billboard build
+for automated soaks, but defer the final smoke, fog and particle-orientation
+judgement until the user can wear the headset.

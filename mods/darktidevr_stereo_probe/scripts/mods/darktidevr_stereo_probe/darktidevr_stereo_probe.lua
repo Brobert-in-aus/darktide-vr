@@ -140,9 +140,12 @@ local controller_observation = {
     timestamp_ns = nil,
     last_sequence = 0,
     first_tracked_logged = false,
+    right_aim_usable = false,
+    right_aim_age_ms = math.huge,
     right_aim_yaw = nil,
     right_aim_pitch = nil,
     right_aim_roll = nil,
+    body_yaw_anchor = nil,
     first_person_seam_last_sequence = 0,
     first_person_seam_last_log_t = -math.huge
 }
@@ -908,10 +911,32 @@ local function apply_head_tracking(clean_position, clean_rotation)
                 controller_observation.sequence,
                 controller_observation.timestamp_ns) == 0 then
         local controller_sequence = tonumber(controller_observation.sequence[0])
+        if controller_sequence < controller_observation.last_sequence then
+            -- A new harness/XR session starts controller sequencing at one.
+            -- Capture a new game-world yaw when its first pose reaches the
+            -- active orientation class.
+            controller_observation.body_yaw_anchor = nil
+            controller_observation.first_person_seam_last_sequence = 0
+        end
         controller_observation.last_sequence = controller_sequence
         local left_aim_flags = tonumber(controller_observation.tracking_flags[0])
         local right_aim_flags = tonumber(controller_observation.tracking_flags[2])
-        if bit.band(right_aim_flags, 5) == 5 then
+        local controller_timestamp_ns =
+            tonumber(controller_observation.timestamp_ns[0])
+        local qpc_frequency =
+            tonumber(ui_native_capture.dtvr_qpc_frequency())
+        local controller_age_ns = math.huge
+        if qpc_frequency > 0 then
+            controller_age_ns =
+                tonumber(ui_native_capture.dtvr_qpc_ticks()) *
+                    1000000000 / qpc_frequency - controller_timestamp_ns
+        end
+        controller_observation.right_aim_age_ms = controller_age_ns / 1000000
+        controller_observation.right_aim_usable =
+            bit.band(right_aim_flags, 5) == 5 and
+            controller_age_ns >= -5000000 and
+            controller_age_ns <= 100000000
+        if controller_observation.right_aim_usable then
             local right_aim_rotation = Quaternion.from_elements(
                 controller_observation.values[21],
                 controller_observation.values[22],
@@ -927,10 +952,12 @@ local function apply_head_tracking(clean_position, clean_rotation)
                 (bit.band(left_aim_flags, 4) ~= 0 or
                  bit.band(right_aim_flags, 4) ~= 0) then
             controller_observation.first_tracked_logged = true
-            mod:info("DARKTIDEVR_CONTROLLER observed sequence=%d left_aim_flags=%d right_aim_flags=%d",
+            mod:info("DARKTIDEVR_CONTROLLER observed sequence=%d left_aim_flags=%d right_aim_flags=%d right_aim_age_ms=%.3f usable=%s",
                 controller_sequence,
                 left_aim_flags,
-                right_aim_flags)
+                right_aim_flags,
+                controller_observation.right_aim_age_ms,
+                tostring(controller_observation.right_aim_usable))
         end
     end
     local character_scale = 1
@@ -2406,24 +2433,45 @@ end)
 -- the single upstream orientation seam and coordinate convention before any
 -- gameplay state is authored. The stereo camera remains HMD-owned throughout.
 function presentation.observe_controller_aim(self, main_t, orientation_class)
-    if not controller_observation.right_aim_yaw or
+    if not controller_observation.right_aim_usable or
+            not controller_observation.right_aim_yaw or
             controller_observation.last_sequence ==
                 controller_observation.first_person_seam_last_sequence then
         return
     end
     controller_observation.first_person_seam_last_sequence =
         controller_observation.last_sequence
+    if not controller_observation.body_yaw_anchor then
+        controller_observation.body_yaw_anchor = self._orientation.yaw
+    end
+    local world_aim_rotation = Quaternion.multiply(
+        Quaternion.from_yaw_pitch_roll(
+            controller_observation.body_yaw_anchor, 0, 0
+        ),
+        Quaternion.from_yaw_pitch_roll(
+            controller_observation.right_aim_yaw,
+            controller_observation.right_aim_pitch,
+            controller_observation.right_aim_roll
+        )
+    )
+    local target_yaw, target_pitch, target_roll =
+        Quaternion.to_yaw_pitch_roll(world_aim_rotation)
     if main_t < controller_observation.first_person_seam_last_log_t + 2 then
         return
     end
     controller_observation.first_person_seam_last_log_t = main_t
     mod:info(
-        "DARKTIDEVR_AIM observation class=%s sequence=%d controller_ypr=%.4f,%.4f,%.4f game_ypr=%.4f,%.4f,%.4f write=disabled",
+        "DARKTIDEVR_AIM observation class=%s sequence=%d age_ms=%.3f controller_ypr=%.4f,%.4f,%.4f anchor_yaw=%.4f target_ypr=%.4f,%.4f,%.4f game_ypr=%.4f,%.4f,%.4f write=disabled",
         orientation_class,
         controller_observation.last_sequence,
+        controller_observation.right_aim_age_ms,
         controller_observation.right_aim_yaw,
         controller_observation.right_aim_pitch,
         controller_observation.right_aim_roll,
+        controller_observation.body_yaw_anchor,
+        target_yaw,
+        target_pitch,
+        target_roll,
         self._orientation.yaw,
         self._orientation.pitch,
         self._orientation.roll
