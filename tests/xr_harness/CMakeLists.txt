@@ -23,6 +23,13 @@ target_compile_options(darktidevr-synthetic-controller PRIVATE
   /W4 /WX /permissive-)
 target_link_libraries(darktidevr-synthetic-controller PUBLIC darktidevr_core)
 
+add_library(darktidevr-synthetic-head STATIC synthetic_head_path.cpp)
+target_include_directories(darktidevr-synthetic-head PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(darktidevr-synthetic-head PRIVATE
+  /W4 /WX /permissive-)
+target_link_libraries(darktidevr-synthetic-head PUBLIC darktidevr_core)
+
 add_executable(darktidevr-eye-capture eye_capture.cpp)
 target_compile_options(darktidevr-eye-capture PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-eye-capture PRIVATE
@@ -37,6 +44,7 @@ target_compile_definitions(darktidevr-xr-harness PRIVATE
 target_link_libraries(darktidevr-xr-harness PRIVATE
   OpenXR::openxr_loader darktidevr_core darktidevr_bridge darktidevr-window-capture
   darktidevr-menu-input darktidevr-synthetic-controller
+  darktidevr-synthetic-head
   d3d12 d3dcompiler dxgi dxguid)
 
 add_custom_command(TARGET darktidevr-xr-harness POST_BUILD
@@ -60,6 +68,16 @@ if(BUILD_TESTING)
     COMMAND darktidevr-synthetic-controller-tests)
   set_tests_properties(synthetic_controller_path PROPERTIES
     LABELS "phase1;input;pointer")
+
+  add_executable(darktidevr-synthetic-head-tests
+    synthetic_head_path_tests.cpp)
+  target_compile_options(darktidevr-synthetic-head-tests PRIVATE
+    /W4 /WX /permissive-)
+  target_link_libraries(darktidevr-synthetic-head-tests PRIVATE
+    darktidevr-synthetic-head)
+  add_test(NAME synthetic_head_path COMMAND darktidevr-synthetic-head-tests)
+  set_tests_properties(synthetic_head_path PROPERTIES
+    LABELS "phase1;headset;billboard")
 
   add_executable(darktidevr-menu-input-tests menu_input_injector_tests.cpp)
   target_compile_options(darktidevr-menu-input-tests PRIVATE

@@ -11,7 +11,9 @@ param(
 
     [switch] $EnableMenuInput,
 
-    [switch] $SyntheticControllerPath
+    [switch] $SyntheticControllerPath,
+
+    [switch] $SyntheticHeadSweep
 )
 
 Set-StrictMode -Version Latest
@@ -61,6 +63,9 @@ if ($EnableMenuInput) {
 }
 if ($SyntheticControllerPath) {
     $arguments += '--synthetic-controller-path'
+}
+if ($SyntheticHeadSweep) {
+    $arguments += '--synthetic-head-sweep'
 }
 
 & $harnessPath @arguments

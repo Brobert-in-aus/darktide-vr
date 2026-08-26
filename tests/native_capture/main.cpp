@@ -74,6 +74,12 @@ int wmain(int argc, wchar_t** argv) {
     const auto set_billboard_view_basis = reinterpret_cast<int (*)(
         float, float, float, float, float, float, int)>(
         GetProcAddress(module, "dtvr_set_billboard_view_basis"));
+    const auto set_billboard_staging_view_basis = reinterpret_cast<int (*)(
+        float, float, float, float, float, float, int)>(
+        GetProcAddress(module, "dtvr_set_billboard_staging_view_basis"));
+    const auto set_billboard_direct_view_direction =
+        reinterpret_cast<int (*)(float, float, int)>(GetProcAddress(
+            module, "dtvr_set_billboard_direct_view_direction"));
     const auto billboard_resource_map_count =
         reinterpret_cast<unsigned long long (*)()>(GetProcAddress(
             module, "dtvr_billboard_resource_map_count"));
@@ -92,7 +98,8 @@ int wmain(int argc, wchar_t** argv) {
         !capture_stage || !enable_present_capture || !disable_present_capture ||
         !enable_marker_log || !read_head_pose || !read_controller_state ||
         !qpc_ticks || !qpc_frequency ||
-        !set_billboard_view_basis ||
+        !set_billboard_view_basis || !set_billboard_staging_view_basis ||
+        !set_billboard_direct_view_direction ||
         !billboard_resource_map_count ||
         !billboard_resource_map_match_count ||
         !billboard_resource_unmap_count) {
@@ -115,6 +122,12 @@ int wmain(int argc, wchar_t** argv) {
                                  1.0F, 1) != 2) {
       throw std::runtime_error(
           "Retired billboard descriptor writes must remain fail-closed");
+    }
+    if (set_billboard_staging_view_basis(1.0F, 0.0F, 0.0F, 0.0F,
+                                         0.0F, 1.0F, 1) != 4 ||
+        set_billboard_direct_view_direction(1.0F, 0.0F, 1) != 3) {
+      throw std::runtime_error(
+          "Billboard writes must fail closed before diagnostic selection");
     }
     if (read_head_pose(nullptr, nullptr) != 1) {
       throw std::runtime_error("Head-pose export must reject null output");
@@ -152,7 +165,11 @@ int wmain(int argc, wchar_t** argv) {
         tag_queue_depth() != 0) {
       throw std::runtime_error("Synchronized eye wait/reset contract failed");
     }
-    if (set_diagnostic_hooks(1) != 0 || install() != 0 || install() != 0) {
+    if (set_diagnostic_hooks(1) != 0 ||
+        set_billboard_direct_view_direction(0.0F, 0.0F, 1) != 2 ||
+        set_billboard_direct_view_direction(3.0F, 4.0F, 1) != 0 ||
+        set_billboard_direct_view_direction(0.0F, 0.0F, 0) != 0 ||
+        install() != 0 || install() != 0) {
       throw std::runtime_error("Hook installation must succeed and be idempotent");
     }
     if (set_diagnostic_hooks(0) != 1) {

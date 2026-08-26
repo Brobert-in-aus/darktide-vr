@@ -34,14 +34,14 @@ Virtual Desktop restart was justified.
   remain available.
 - Diagnostic resource hooks now track buffer `Map`/`Unmap`, associate the CPU
   base with the recorded GPU virtual-address range, and expose aggregate counts.
-- An exact reflected `c_billboard` observation records whether it came from a
-  persistent engine mapping and exports a selected persistent CPU address only
-  when that address remains valid. A temporary diagnostic `Map` is never
-  exported as a writer-breakpoint target.
+- An exact reflected `c_billboard` observation records both the bound upload
+  resource and any engine scratch pointer. Scratch addresses are retained only
+  for diagnostics; the accepted writer maps the exact GPU-visible resource at
+  the draw boundary and never exports a temporary `Map` as a breakpoint target.
 - Added a production-independent Z-up cylindrical basis calculation with
   deterministic vertical/invalid-input fallback.
 
-### Billboard producer localized and first safe patch
+### Billboard constant layout and accepted direct-CBV patch
 
 - The D3D12 bootstrap now reads an explicit diagnostic sidecar before native
   hook installation. This fixes the startup-order conflict where Lua requested
@@ -52,19 +52,28 @@ Virtual Desktop restart was justified.
   their draw. Their Map stacks consistently resolve through
   `Darktide.exe+0x7d589d` to the Stingray upload flush beginning at
   `Darktide.exe+0x7d5840`.
-- The upload flush is enabled only when the current executable matches a
-  reviewed 12-byte signature. It exposes the persistent CPU staging allocation
-  corresponding to each D3D12 upload resource without changing the upload.
+- The upload flush remains fingerprinted and diagnostic-only. It exposes a CPU
+  scratch allocation, but direct mapping proved that allocation is not a byte
+  mirror of the exact bound upload resource (`0/3825` matches).
 - A bounded write watcher hit the selected staging address 32/32 times at the
   instruction ending at `Darktide.exe+0x670395`. Disassembly identifies the
   writer as the SIMD per-instance matrix composer beginning at
   `Darktide.exe+0x66fa70`; the write itself is the 16-byte store at `+0x670390`.
-- The first horizon-lock path now writes only six approved basis floats in the
-  persistent staging CBV after exact reflected billboard identity is proven.
-  It does not alter descriptor heaps, root tables or GPU-visible allocations.
-- A 35-second clean character-select soak recorded 11,404 exact billboard CBVs
-  and exactly 11,404 staging patches, with the fingerprinted upload hook active
-  and no Lua, engine, D3D12 device-removal or device-hung error.
+- Two scratch-arena write experiments reached the GPU and reproducibly ended in
+  `DXGI_ERROR_DEVICE_HUNG`. The apparent stability of the older draw-time
+  staging write was a timing illusion. Enabling that path now fails closed.
+- `dxc -dumpbin` disassembly of all five captured billboard vertex shaders
+  shows that `c_billboard[0].xy` is normalized and used as horizontal facing;
+  registers 1-3 are not read by those vertex shaders and registers 4-7 form the
+  world-to-clip matrix. The earlier six-float interpretation was incorrect.
+- The accepted writer acts at exact reflected draw identity, requires
+  `D3D12_HEAP_TYPE_UPLOAD`, maps the bound GPU-visible CBV before recording the
+  draw, normalizes horizontal camera right and changes only register 0 XY. It
+  does not rewrite descriptor heaps or root tables.
+- A live character-select soak exceeded 7,800 direct patches without a device
+  error. A subsequent 15-second synthetic pitch/roll XR run reached more than
+  88,000 direct patches, submitted 1,105 frames / 1,104 fresh stereo pairs,
+  reused no frames and recorded no pair timeout or device removal.
 
 The standalone debugger watcher is diagnostic-only. It produced the needed
 writer evidence, but Darktide exited after debugger detachment and opened Crash
@@ -415,6 +424,7 @@ $cmake = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Co
 & .\tools\unattended\invoke-unattended-preflight.ps1 -RunXrSmoke -XrFrames 600
 & .\tools\stereo\set-controller-aim-test.ps1 -Enabled
 & .\tools\stereo\run-darktide-shared-eyes.ps1 -DurationSeconds 300 -SyntheticControllerPath
+& .\tools\stereo\run-darktide-shared-eyes.ps1 -DurationSeconds 15 -SyntheticHeadSweep
 & .\tools\stereo\request-primary-action-test.ps1
 & .\tools\stereo\request-weapon-inventory.ps1
 & .\tools\stereo\set-weapon-pose-trace.ps1 -Mode Enabled
@@ -422,16 +432,17 @@ $cmake = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Co
 & .\tools\stereo\set-gameplay-input-test.ps1 -Mode Disabled
 ```
 
-Results: all 27 Debug CTest tests passed. The native-capture test now installs the
+Results: all 28 Debug CTest tests passed. The native-capture test now installs the
 diagnostic hook set, creates/maps/unmaps an upload buffer and verifies exactly
-one matched Map and Unmap. Core math covers cardinal headings, pitched and
+one matched Map and Unmap. It also proves retired descriptor/staging writes fail
+closed and validates direct billboard direction gating. Core math covers cardinal headings, pitched and
 vertical views, and non-finite billboard inputs. Presentation tests cover the
 shared transport, horizon-locked panel pose and aspect-preserving extent. New
 controller and pointer tests cover snapshot freshness/validity, finite panel
 intersection, crop mapping, menu input transitions, runtime-IPD transport, and
 the complete synthetic offscreen/over-reach/tracking-loss cycle.
 
-The controller-binding validation built every Debug target and passed all 27
+The controller-binding validation built every Debug target and passed all 28
 tests, including the new gameplay mapper and opt-in synthetic button cycle.
 The Release native capture and XR harness also built successfully. Live
 validation used the
@@ -443,8 +454,10 @@ Steam close grace between normal runs.
 Keep the new vendor transport normal-on but avoid repeated hub launches until a
 clean hub session is available. Then open a non-purchasing vendor through its
 ordinary interaction, verify the board is stationary in `LOCAL`, exercise only
-a tab/back control, and confirm stereo restoration. Meanwhile continue the
-independent billboard producer investigation and offline full-IK/control
-architecture. When the hub transition is healthy, retry the private Shooting
+a tab/back control, and confirm stereo restoration. Meanwhile retain the
+accepted direct-CBV billboard path, optimize its map/unmap cost only after
+appearance is confirmed, and continue offline full-IK/control architecture.
+When the user is available, perform the final worn-headset smoke horizon check
+during pitch/roll. When the hub transition is healthy, retry the private Shooting
 Range action audit with both gameplay gates bounded and disabled everywhere
 else.

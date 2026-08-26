@@ -11,6 +11,7 @@
 #include "synthetic_scene.h"
 #include "menu_input_injector.h"
 #include "synthetic_controller_path.h"
+#include "synthetic_head_path.h"
 #include "window_capture.h"
 #include "bridge/shared_eye_surfaces.h"
 #include "core/head_tracking.h"
@@ -448,7 +449,8 @@ class OpenXrProbe {
                                bool enable_menu_input,
                                const std::wstring& menu_input_title,
                                bool synthetic_controller_path,
-                               bool synthetic_gameplay_input) {
+                               bool synthetic_gameplay_input,
+                               bool synthetic_head_sweep) {
     if (session_ == XR_NULL_HANDLE || view_space_ == XR_NULL_HANDLE) {
       throw std::runtime_error("OpenXR theatre loop requires a session and VIEW space");
     }
@@ -729,6 +731,8 @@ class OpenXrProbe {
     std::uint64_t last_live_fresh_shared_pairs{};
     std::uint32_t last_live_fallback_frames{};
     std::uint32_t processed_frames{};
+    std::uint64_t synthetic_head_frames{};
+    std::array<std::uint64_t, 4> synthetic_head_phase_frames{};
     constexpr auto shared_stale_after = std::chrono::milliseconds(500);
     const float render_aspect_ratio =
         separate_shared_eye_swapchains
@@ -877,8 +881,16 @@ class OpenXrProbe {
             head_recenter_pose = current_head;
             controller_recenter_pose_ = current_head;
           }
-          const auto delta = darktidevr::core::recentered_head_delta(
+          auto delta = darktidevr::core::recentered_head_delta(
               *head_recenter_pose, current_head, {0.25F, 0.18F});
+          if (synthetic_head_sweep) {
+            const auto synthetic =
+                darktidevr::harness::synthetic_head_path_sample(
+                    synthetic_head_frames++, delta.position);
+            delta = synthetic.delta;
+            ++synthetic_head_phase_frames[
+                static_cast<std::size_t>(synthetic.phase)];
+          }
           darktidevr::core::SharedHeadPoseSample pose_sample{};
           pose_sample.sequence = ++head_pose_sequence;
           pose_sample.pose = delta;
@@ -1640,6 +1652,15 @@ class OpenXrProbe {
          index < synthetic_controller_phase_frames_.size(); ++index) {
       std::cout << (index == 0 ? "" : ",")
                 << synthetic_controller_phase_frames_[index];
+    }
+    std::cout << '\n'
+              << "openxr.synthetic_head_frames=" << synthetic_head_frames
+              << '\n'
+              << "openxr.synthetic_head_phase_frames=";
+    for (std::size_t index = 0;
+         index < synthetic_head_phase_frames.size(); ++index) {
+      std::cout << (index == 0 ? "" : ",")
+                << synthetic_head_phase_frames[index];
     }
     std::cout << '\n';
     if (upload) {
@@ -2512,6 +2533,7 @@ void usage() {
                 "[--enable-menu-input [--menu-input-window-title TEXT]] "
                 "[--synthetic-controller-path] "
                 "[--synthetic-gameplay-input] "
+                "[--synthetic-head-sweep] "
                 "[--shared-pose-sequence-offset N] "
                "[--pair-driven-shared | --continuous-shared] "
                "[--resize-at N]\n\n"
@@ -2541,6 +2563,7 @@ int wmain(int argc, wchar_t** argv) {
     bool enable_menu_input = false;
     bool synthetic_controller_path = false;
     bool synthetic_gameplay_input = false;
+    bool synthetic_head_sweep = false;
     std::wstring menu_input_title = L"Warhammer 40,000: Darktide";
     std::optional<std::wstring> capture_window_title;
     std::uint32_t xr_frames{};
@@ -2586,6 +2609,8 @@ int wmain(int argc, wchar_t** argv) {
         synthetic_controller_path = true;
       } else if (argument == L"--synthetic-gameplay-input") {
         synthetic_gameplay_input = true;
+      } else if (argument == L"--synthetic-head-sweep") {
+        synthetic_head_sweep = true;
       } else if (argument == L"--menu-input-window-title" &&
                  index + 1 < argc) {
         menu_input_title = argv[++index];
@@ -2630,6 +2655,10 @@ int wmain(int argc, wchar_t** argv) {
       throw std::invalid_argument(
           "--synthetic-gameplay-input requires --synthetic-controller-path");
     }
+    if (synthetic_head_sweep && !shared_eyes) {
+      throw std::invalid_argument(
+          "--synthetic-head-sweep requires --shared-eyes");
+    }
     if (xr_duration && xr_duration->count() == 0) {
       throw std::invalid_argument("--xr-seconds must be greater than zero");
     }
@@ -2658,7 +2687,8 @@ int wmain(int argc, wchar_t** argv) {
                                      true, enable_menu_input,
                                      menu_input_title,
                                      synthetic_controller_path,
-                                     synthetic_gameplay_input);
+                                     synthetic_gameplay_input,
+                                     synthetic_head_sweep);
       } else {
         openxr.run_frame_lifecycle(xr_frames, harness.device(), harness.queue(),
                                    require_rendering);

@@ -70,12 +70,12 @@ Large captures remain timestamped artifacts rather than Git content.
 ### Rationale
 
 Per-shader substitution is a proven diagnostic and safe fallback, but it does
-not scale to an unknown number of subtle material permutations. The spherical
-permutations already inspected share a 128-byte `c_billboard` constant holding
-`view` and `view_proj`. The production target is the CPU producer of that
-constant: preserve `view_proj` and camera translation/forward data, but replace
-the billboard right/up basis with a yaw-projected right vector and Darktide's
-world-Z up vector before command recording.
+not scale to an unknown number of subtle material permutations. Disassembly of
+all five captured spherical permutations shows a 128/144-byte `c_billboard`
+constant. Register 0 XY is normalized by every vertex shader and used as the
+horizontal facing direction; registers 4-7 are the full world-to-clip matrix.
+The production target therefore preserves every word except register 0 XY and
+replaces only that pair with a yaw-projected, normalized camera-right vector.
 
 This is different from the rejected descriptor experiment. It does not alter a
 bound descriptor heap or rewrite a GPU-visible allocation after state assembly.
@@ -88,9 +88,9 @@ bound descriptor heap or rewrite a GPU-visible allocation after state assembly.
    register and root binding to the exact `BufferLocation`, size, resource, and
    byte offset.
 3. Extend mapped-upload tracking so every `ID3D12Resource::Map` result records
-   its CPU base together with the resource's GPU virtual-address range. Confirm
-   that the identified 128 bytes numerically follow the camera basis while
-   `view_proj` remains eye-specific.
+   its CPU base together with the resource's GPU virtual-address range. Compare
+   any inferred engine scratch pointer directly with the bound upload
+   resource; never assume two arenas are byte mirrors.
 4. Export one selected CPU address and use a bounded hardware data breakpoint
    to capture the writing instruction and call stack. Prefer a scripted debugger
    attachment that logs and continues; use a temporary guarded-page/VEH probe
@@ -98,9 +98,9 @@ bound descriptor heap or rewrite a GPU-visible allocation after state assembly.
 5. Identify the highest stable engine call site that owns the billboard
    constant, record its module-relative address and surrounding instruction
    fingerprint, and hook it fail-closed for the exact inspected build.
-6. At that producer, calculate horizontal right from the camera forward vector,
-   normalize it with a degeneracy fallback, set up to `(0, 0, 1)`, and leave the
-   projection and remaining matrix values untouched.
+6. Immediately before recording an exact reflected billboard draw, map its
+   proven upload-heap CBV, replace only register 0 XY with normalized horizontal
+   camera right, and leave all other words untouched.
 7. Retain PSO hashes only for observation: verify that all known spherical
    permutations consume changed data without individual shader replacements.
    Leave the tangent-driven axial permutation unchanged unless its output shows
@@ -126,13 +126,23 @@ user still performs the final worn-headset smoke/particle judgement.
 
 ### Progress — 2026-08-26
 
-Steps 1–5 are complete for executable revision 135417. The exact upload path,
-persistent staging address and SIMD writer are evidence-backed and
-fingerprinted. A separate staging API now performs the six-float basis patch;
-the retired descriptor writer remains impossible to arm. The first 35-second
-character-select soak passed with a one-to-one match between exact billboard
-CBVs and patches. Scripted pitch/roll captures, broader material coverage and
-the final worn-headset judgement remain outstanding.
+Steps 1–6 are complete for executable revision 135417. The upload-flush scratch
+pointer initially looked like the CBV producer, but a direct comparison proved
+`0/3825` byte matches against the bound upload resource. Two attempts to mutate
+that scratch arena produced reproducible `DXGI_ERROR_DEVICE_HUNG`; it is now
+permanently fail-closed. Shader disassembly also disproved the earlier
+six-float layout assumption: all five known variants consume only register 0 XY
+as their horizontal facing direction.
+
+The accepted path resolves the exact reflected CBV at draw time, requires an
+upload heap, maps that GPU-visible resource immediately before the draw is
+recorded, and writes only the two shader-proven floats. A character-select soak
+and a 15-second synthetic OpenXR pitch/roll sweep completed with more than
+88,000 direct patches and no device removal. The sweep submitted 1,105 frames,
+1,104 fresh stereo pairs, zero reused frames and zero pair-driven timeouts.
+The capture is retained under `artifacts/unattended/billboard-direct-sweep/`;
+smoke is too subtle in the unattended scene for a definitive appearance call,
+so final worn-headset judgement and broader Psykhanium material coverage remain.
 
 ## Workstream B — fullscreen menu presentation
 

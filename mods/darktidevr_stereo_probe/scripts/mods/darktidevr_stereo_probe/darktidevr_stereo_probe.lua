@@ -83,8 +83,13 @@ local diagnostic_render_hooks_requested = false
 local vertex_shader_dump_requested = false
 -- PSO-time, whitelist-only substitution. Replacement shaders are validated
 -- against the live shader interface before D3D12 ever sees them.
-local billboard_shader_substitution_requested = true
-local billboard_horizon_lock_requested = false -- enable only with the fingerprinted diagnostic sidecar
+local billboard_shader_substitution_requested = false
+-- All five reflected billboard VS variants consume c_billboard[0].xy as the
+-- normalized horizontal facing direction. The exact-CBV writer is limited to
+-- exactly those two floats; registers 1-3 are unused by those VS variants and
+-- registers 4-7 are the complete world-to-clip matrix.
+local billboard_horizon_lock_requested = true
+local billboard_direct_write_requested = true
 local billboard_selector_probe_requested = false
 local ui_table4_alias_probe_requested = false -- unsafe without exact draw identity
 local ui_present_capture_requested = false
@@ -413,6 +418,8 @@ local function ensure_ui_native_hooks()
         int dtvr_set_billboard_staging_view_basis(float right_x, float right_y,
             float right_z, float up_x, float up_y,
             float up_z, int enabled);
+        int dtvr_set_billboard_direct_view_direction(float right_x,
+            float right_y, int enabled);
         unsigned long long dtvr_billboard_stride_candidate_count(void);
         unsigned long long dtvr_billboard_b1_bound_count(void);
         unsigned long long dtvr_billboard_b2_bound_count(void);
@@ -441,6 +448,7 @@ local function ensure_ui_native_hooks()
         unsigned long long dtvr_billboard_resource_unmap_count(void);
         unsigned long long dtvr_billboard_selected_map_stack_count(void);
         unsigned long long dtvr_billboard_upload_flush_count(void);
+        unsigned long long dtvr_billboard_direct_patch_count(void);
         int dtvr_billboard_upload_flush_hook_state(void);
         unsigned long long dtvr_billboard_selected_cpu_address(void);
         unsigned long long dtvr_billboard_selected_gpu_address(void);
@@ -539,13 +547,11 @@ local function ensure_ui_native_hooks()
     -- Mode 2 records state and categorizes draws but is hard-disabled from
     -- issuing any GPU writes.
     if billboard_horizon_lock_requested then
-        -- Darktide is Z-up. c_billboard.view columns 0 and 2 are the sprite's
-        -- screen-facing right and up axes, not right and camera-forward.
-        library.dtvr_set_billboard_staging_view_basis(
-            1, 0, 0,
-            0, 0, 1,
-            1
-        )
+        -- Darktide is Z-up. Only c_billboard[0].xy is the shader-proven
+        -- horizontal facing direction; the native writer leaves every other
+        -- word byte-for-byte unchanged.
+        library.dtvr_set_billboard_direct_view_direction(
+            1, 0, billboard_direct_write_requested and 1 or 0)
     elseif billboard_selector_probe_requested then
         library.dtvr_set_billboard_view_basis(
             1, 0, 0,
@@ -1477,7 +1483,7 @@ local function report_native_observer()
                 return table.concat(values, ",")
             end
             mod:info(
-                "DARKTIDEVR_STEREO billboard state=%d hook_draws=%d observed=%d slot0=%s slot1=%s particle_layout=%d exact_pso=%d cl_types=%s registers=%s cbv_slots=%s table_slots=%s selected_tables=%s descriptor_offsets=%s table_spans=%s cbv_desc=%d buffers=%d heaps=%s map=%d/%d tracked_maps=%d/%d/%d producer_stacks=%d upload_flush=%d/%d selected=%d/%d shadow_stages=%s root_meta=%d direct_cbv=%d table_cbv=%d table_cbv_bound=%d patches=%d",
+                "DARKTIDEVR_STEREO billboard state=%d hook_draws=%d observed=%d slot0=%s slot1=%s particle_layout=%d exact_pso=%d cl_types=%s registers=%s cbv_slots=%s table_slots=%s selected_tables=%s descriptor_offsets=%s table_spans=%s cbv_desc=%d buffers=%d heaps=%s map=%d/%d tracked_maps=%d/%d/%d producer_stacks=%d upload_flush=%d/%d direct_patches=%d selected=%d/%d shadow_stages=%s root_meta=%d direct_cbv=%d table_cbv=%d table_cbv_bound=%d patches=%d",
                 ui_native_capture.dtvr_billboard_probe_state(),
                 tonumber(ui_native_capture.dtvr_billboard_direct_draw_hook_count()),
                 tonumber(ui_native_capture.dtvr_billboard_observed_draw_count()),
@@ -1512,6 +1518,7 @@ local function report_native_observer()
                 tonumber(ui_native_capture.dtvr_billboard_selected_map_stack_count()),
                 ui_native_capture.dtvr_billboard_upload_flush_hook_state(),
                 tonumber(ui_native_capture.dtvr_billboard_upload_flush_count()),
+                tonumber(ui_native_capture.dtvr_billboard_direct_patch_count()),
                 ui_native_capture.dtvr_billboard_selected_cpu_address() ~= 0 and 1 or 0,
                 tonumber(ui_native_capture.dtvr_billboard_selected_size()),
                 top_billboard_root_slots(
@@ -2654,11 +2661,17 @@ local function update_stereo(manager)
             Vector3.up(), Quaternion.yaw(clean_rotation))
         local billboard_right = Quaternion.right(horizon_rotation)
         local billboard_up = Quaternion.up(horizon_rotation)
-        ui_native_capture.dtvr_set_billboard_view_basis(
-            billboard_right.x, billboard_right.y, billboard_right.z,
-            billboard_up.x, billboard_up.y, billboard_up.z,
-            billboard_horizon_lock_requested and 1 or 2
-        )
+        if billboard_horizon_lock_requested and
+                billboard_direct_write_requested then
+            ui_native_capture.dtvr_set_billboard_direct_view_direction(
+                billboard_right.x, billboard_right.y, 1)
+        else
+            ui_native_capture.dtvr_set_billboard_view_basis(
+                billboard_right.x, billboard_right.y, billboard_right.z,
+                billboard_up.x, billboard_up.y, billboard_up.z,
+                2
+            )
+        end
     end
     local eye_axis = Quaternion.right(clean_rotation)
 

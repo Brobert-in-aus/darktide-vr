@@ -669,6 +669,7 @@ std::unordered_map<std::uint64_t, std::vector<std::uint8_t>>
 std::array<std::atomic<float>, 6> billboard_view_basis{};
 std::atomic<bool> billboard_horizon_lock_enabled{};
 std::atomic<bool> billboard_staging_write_enabled{};
+std::atomic<bool> billboard_direct_write_enabled{};
 // The shadow-heap/descriptor-table rewrite was useful to prove the reflected
 // c_billboard binding, but mutating a draw's live descriptor topology is not a
 // production-safe write path. Keep its bounded observation counters available
@@ -701,6 +702,7 @@ std::atomic<std::uint64_t> billboard_resource_map_match_count{};
 std::atomic<std::uint64_t> billboard_resource_unmap_count{};
 std::atomic<std::uint64_t> billboard_selected_map_stack_count{};
 std::atomic<std::uint64_t> billboard_upload_flush_count{};
+std::atomic<std::uint64_t> billboard_direct_patch_count{};
 std::atomic<int> billboard_upload_flush_hook_state{};
 std::atomic<std::uintptr_t> billboard_selected_cpu_address{};
 std::atomic<std::uint64_t> billboard_selected_gpu_address{};
@@ -3318,17 +3320,29 @@ void observe_billboard_cbv(const DescriptorInfo& descriptor) {
   const bool used_staging_mapping =
       resource->staging_base &&
       resource_offset + readable_size <= resource->size;
-  if (used_staging_mapping && readable_size >= 44 &&
-      billboard_staging_write_enabled.load(std::memory_order_relaxed)) {
-    constexpr std::array<std::size_t, 6> float_indices{0, 1, 2, 8, 9, 10};
-    auto* values = reinterpret_cast<float*>(resource->staging_base +
-                                            resource_offset);
-    for (std::size_t index = 0; index < float_indices.size(); ++index) {
-      std::atomic_ref<float>(values[float_indices[index]])
-          .store(billboard_view_basis[index].load(std::memory_order_relaxed),
-                 std::memory_order_relaxed);
+  if (billboard_direct_write_enabled.load(std::memory_order_relaxed) &&
+      resource->heap_type == D3D12_HEAP_TYPE_UPLOAD && readable_size >= 8 &&
+      original_resource_map && original_resource_unmap) {
+    void* direct_mapping{};
+    const D3D12_RANGE no_reads{0, 0};
+    if (SUCCEEDED(original_resource_map(resource->resource, 0, &no_reads,
+                                        &direct_mapping)) &&
+        direct_mapping) {
+      auto* values = reinterpret_cast<float*>(
+          static_cast<std::byte*>(direct_mapping) + resource_offset);
+      std::atomic_ref<float>(values[0]).store(
+          billboard_view_basis[0].load(std::memory_order_relaxed),
+          std::memory_order_relaxed);
+      std::atomic_ref<float>(values[1]).store(
+          billboard_view_basis[1].load(std::memory_order_relaxed),
+          std::memory_order_relaxed);
+      const D3D12_RANGE written{
+          static_cast<SIZE_T>(resource_offset),
+          static_cast<SIZE_T>(resource_offset + 2 * sizeof(float))};
+      original_resource_unmap(resource->resource, 0, &written);
+      billboard_direct_patch_count.fetch_add(1, std::memory_order_relaxed);
+      billboard_basis_patch_count.fetch_add(1, std::memory_order_relaxed);
     }
-    billboard_basis_patch_count.fetch_add(1, std::memory_order_relaxed);
   }
   bool first_observation{};
   {
@@ -6709,6 +6723,7 @@ extern "C" __declspec(dllexport) int dtvr_set_billboard_view_basis(
     billboard_resource_unmap_count.store(0, std::memory_order_relaxed);
     billboard_selected_map_stack_count.store(0, std::memory_order_relaxed);
     billboard_upload_flush_count.store(0, std::memory_order_relaxed);
+    billboard_direct_patch_count.store(0, std::memory_order_relaxed);
     billboard_selected_cpu_address.store(0, std::memory_order_relaxed);
     billboard_selected_gpu_address.store(0, std::memory_order_relaxed);
     billboard_selected_size.store(0, std::memory_order_relaxed);
@@ -6745,6 +6760,7 @@ extern "C" __declspec(dllexport) int dtvr_set_billboard_view_basis(
       enabled == 1 && kAllowRetiredBillboardDescriptorWrites,
                                        std::memory_order_release);
   billboard_staging_write_enabled.store(false, std::memory_order_release);
+  billboard_direct_write_enabled.store(false, std::memory_order_release);
   billboard_horizon_lock_enabled.store(enabled == 2,
                                         std::memory_order_release);
   return 0;
@@ -6752,10 +6768,12 @@ extern "C" __declspec(dllexport) int dtvr_set_billboard_view_basis(
 extern "C" __declspec(dllexport) int dtvr_set_billboard_staging_view_basis(
     float right_x, float right_y, float right_z, float up_x, float up_y,
     float up_z, int enabled) {
-  if (enabled != 0 &&
-      billboard_upload_flush_hook_state.load(std::memory_order_relaxed) != 3) {
+  if (enabled != 0) {
+    // The Stingray flush pointer is a scratch arena, not a byte mirror of the
+    // bound upload resource (live comparison: 0 matches / 3825 mismatches).
+    // Never arm this retired path.
     billboard_staging_write_enabled.store(false, std::memory_order_release);
-    return 3;
+    return 4;
   }
   const auto result = dtvr_set_billboard_view_basis(
       right_x, right_y, right_z, up_x, up_y, up_z, enabled ? 2 : 0);
@@ -6764,6 +6782,38 @@ extern "C" __declspec(dllexport) int dtvr_set_billboard_staging_view_basis(
   }
   billboard_staging_write_enabled.store(enabled != 0,
                                         std::memory_order_release);
+  return 0;
+}
+extern "C" __declspec(dllexport) int
+dtvr_set_billboard_direct_view_direction(float right_x, float right_y,
+                                         int enabled) {
+  if (enabled != 0 &&
+      !kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {
+    billboard_direct_write_enabled.store(false, std::memory_order_release);
+    return 3;
+  }
+  if (!std::isfinite(right_x) || !std::isfinite(right_y)) {
+    billboard_direct_write_enabled.store(false, std::memory_order_release);
+    return 1;
+  }
+  const float length_squared = right_x * right_x + right_y * right_y;
+  if (enabled != 0 && length_squared < 1.0e-6F) {
+    billboard_direct_write_enabled.store(false, std::memory_order_release);
+    return 2;
+  }
+  if (enabled != 0) {
+    const float inverse_length = 1.0F / std::sqrt(length_squared);
+    const auto normalized_x = right_x * inverse_length;
+    const auto normalized_y = right_y * inverse_length;
+    const auto result = dtvr_set_billboard_view_basis(
+        normalized_x, normalized_y, 0.0F, 0.0F, 0.0F, 1.0F, 2);
+    if (result != 0) {
+      billboard_direct_write_enabled.store(false, std::memory_order_release);
+      return result;
+    }
+  }
+  billboard_direct_write_enabled.store(enabled != 0,
+                                       std::memory_order_release);
   return 0;
 }
 extern "C" __declspec(dllexport) unsigned long long
@@ -6858,6 +6908,10 @@ dtvr_billboard_selected_map_stack_count() {
 extern "C" __declspec(dllexport) unsigned long long
 dtvr_billboard_upload_flush_count() {
   return billboard_upload_flush_count.load(std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_direct_patch_count() {
+  return billboard_direct_patch_count.load(std::memory_order_relaxed);
 }
 extern "C" __declspec(dllexport) int dtvr_billboard_upload_flush_hook_state() {
   return billboard_upload_flush_hook_state.load(std::memory_order_relaxed);
