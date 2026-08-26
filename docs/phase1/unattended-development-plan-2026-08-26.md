@@ -186,9 +186,15 @@ The versioned presentation transport, loading/system-menu classification,
 horizon-locked LOCAL-space panel and automatic stereo restoration are complete.
 Unit tests cover transport consistency, panel horizon lock and aspect fitting.
 A live system-menu open/close run proved flat fallback and restoration to fresh
-stereo pairs without reused frames or pair-driven timeouts. Pointer interaction,
-nested/unknown menu coverage, vendor anchoring and final worn-headset panel
-ergonomics remain outstanding.
+stereo pairs without reused frames or pair-driven timeouts. The controller ray
+now drives absolute Windows pointer/click/Back input only in menu presentation
+modes. Because GDI screen capture omits the OS cursor, the harness composites a
+high-contrast crosshair into the captured panel at the exact same normalized
+source coordinate used for click mapping. Held stick scrolling repeats after a
+350 ms delay at 10 Hz, with catch-up capped to four notches per update. Unit
+tests cover cursor pixels, scaled source/client mapping, entry suppression,
+release on exit and scroll repeat. Nested/unknown live-menu coverage, vendor
+anchoring and final worn-headset panel ergonomics remain outstanding.
 
 ### Hub vendor and NPC-anchored shop mode
 
@@ -370,6 +376,12 @@ separate `--synthetic-gameplay-input` switch (which requires
 six deterministic path phases. This is intentionally noisy and is only for an
 offline/private end-to-end run; ordinary synthetic pose tests cannot fire an
 action accidentally.
+
+Gameplay input is active only while the game-side presentation state is
+`stereo_world` and Darktide's own `Managers.ui:inputs_in_use()` is false. A
+transition to any flat menu/loading state therefore runs the mapper's release
+path before the fixed input cache is authored. This closes the same-frame leak
+that Darktide's normal input service prevents with its UI filters.
 
 ### Spatial menu pointer
 

@@ -299,6 +299,13 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   harness and the adapter flag disabled. End-to-end action validation therefore
   moved behind this external hub-session blocker; startup/parser validation is
   complete.
+- Menu input now honors the same gameplay/UI boundary in both processes. Lua
+  enables gameplay edges only in `stereo_world` while
+  `Managers.ui:inputs_in_use()` is false. The XR harness composites a visible
+  high-contrast cursor into the GDI-captured menu panel because the OS cursor
+  is absent from `StretchBlt`; its normalized coordinate is identical to the
+  Windows click mapping. Held stick scrolling repeats after 350 ms at 10 Hz
+  with bounded catch-up. Pixel, mapping, edge and repeat tests pass.
 - Eagerly requiring `PlayerUnitWeaponExtension` from mod initialization caused
   a reproducible module-load loop at `scripts/utilities/action/action_handler`.
   The observer now uses DMF's delayed string-class hook; the next clean run

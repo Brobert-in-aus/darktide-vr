@@ -148,7 +148,71 @@ CapturedWindowFrame WindowCapture::capture() {
     throw std::runtime_error("StretchBlt failed during capture");
   }
   GdiFlush();
+  const auto pointer_normalized =
+      pointer_normalized_.load(std::memory_order_acquire);
+  if (pointer_normalized != UINT64_MAX) {
+    const auto normalized_x =
+        static_cast<std::uint32_t>(pointer_normalized & 0xffffffffULL);
+    const auto normalized_y =
+        static_cast<std::uint32_t>(pointer_normalized >> 32U);
+    const auto centre_x = static_cast<int>(
+        (static_cast<std::int64_t>(normalized_x) * (width_ - 1) + 32767) /
+        65535);
+    const auto centre_y = static_cast<int>(
+        (static_cast<std::int64_t>(normalized_y) * (height_ - 1) + 32767) /
+        65535);
+    const auto set_pixel = [&](int x, int y, std::byte value) {
+      if (x < 0 || y < 0 || x >= static_cast<int>(width_) ||
+          y >= static_cast<int>(height_)) {
+        return;
+      }
+      auto* pixel = pixels_ +
+                    (static_cast<std::size_t>(y) * width_ +
+                     static_cast<std::size_t>(x)) *
+                        4;
+      pixel[0] = value;
+      pixel[1] = value;
+      pixel[2] = value;
+      pixel[3] = std::byte{255};
+    };
+    for (int offset = -8; offset <= 8; ++offset) {
+      for (int thickness = -2; thickness <= 2; ++thickness) {
+        set_pixel(centre_x + offset, centre_y + thickness, std::byte{255});
+        set_pixel(centre_x + thickness, centre_y + offset, std::byte{255});
+      }
+    }
+    for (int offset = -10; offset <= 10; ++offset) {
+      set_pixel(centre_x + offset, centre_y - 3, std::byte{0});
+      set_pixel(centre_x + offset, centre_y + 3, std::byte{0});
+      set_pixel(centre_x - 3, centre_y + offset, std::byte{0});
+      set_pixel(centre_x + 3, centre_y + offset, std::byte{0});
+    }
+    set_pixel(centre_x, centre_y, std::byte{255});
+  }
   return {pixels_, width_, height_, width_ * 4};
+}
+
+void WindowCapture::set_pointer_overlay(
+    std::optional<std::pair<std::uint32_t, std::uint32_t>> source_position,
+    std::uint32_t source_width, std::uint32_t source_height) {
+  if (!source_position || source_width <= 1 || source_height <= 1 ||
+      source_position->first >= source_width ||
+      source_position->second >= source_height) {
+    pointer_normalized_.store(UINT64_MAX, std::memory_order_release);
+    return;
+  }
+  const auto normalize = [](std::uint32_t value, std::uint32_t extent) {
+    return static_cast<int>((static_cast<std::uint64_t>(value) * 65535 +
+                             (extent - 1) / 2) /
+                            (extent - 1));
+  };
+  const auto normalized_x = static_cast<std::uint32_t>(
+      normalize(source_position->first, source_width));
+  const auto normalized_y = static_cast<std::uint32_t>(
+      normalize(source_position->second, source_height));
+  pointer_normalized_.store(
+      (static_cast<std::uint64_t>(normalized_y) << 32U) | normalized_x,
+      std::memory_order_release);
 }
 
 }  // namespace darktidevr::harness

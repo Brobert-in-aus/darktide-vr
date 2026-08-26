@@ -27,6 +27,7 @@ struct MenuPointerInput {
   float trigger{};
   float thumbstick_y{};
   bool back{};
+  double time_seconds{};
 };
 
 // Converts level input into UI-owned edges. Entering pointer mode adopts the
@@ -41,6 +42,8 @@ class MenuPointerInputState {
   bool trigger_down_{};
   bool back_down_{};
   int scroll_direction_{};
+  double next_scroll_repeat_time_{};
+  double last_time_seconds_{};
 };
 
 }  // namespace darktidevr::core

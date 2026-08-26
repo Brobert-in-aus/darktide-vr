@@ -1373,6 +1373,18 @@ class OpenXrProbe {
         darktidevr::core::MenuPointerInput input{};
         input.active = menu_mode && submitted_flat_fallback_this_frame;
         input.source_position = menu_pointer_position;
+        input.time_seconds =
+            std::chrono::duration<double>(frame_start - start).count();
+        if (window_capture) {
+          window_capture->set_pointer_overlay(
+              input.active ? menu_pointer_position : std::nullopt,
+              presentation_sequence != 0
+                  ? presentation_state.source_width
+                  : width,
+              presentation_sequence != 0
+                  ? presentation_state.source_height
+                  : flat_capture_height);
+        }
         if (latest_controller_sample_) {
           const auto& left = latest_controller_sample_->hands[0];
           const auto& right = latest_controller_sample_->hands[1];

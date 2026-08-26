@@ -55,6 +55,14 @@ int wmain() {
     const auto initial = capture.capture();
     expect(initial.bgra_pixels && initial.width == 160 && initial.height == 90,
            "Visible fixture should capture at requested dimensions");
+    capture.set_pointer_overlay(std::pair{80U, 45U}, 160, 90);
+    const auto with_pointer = capture.capture();
+    const auto centre = with_pointer.bgra_pixels +
+                        (static_cast<std::size_t>(45) * 160 + 80) * 4;
+    expect(centre[0] == std::byte{255} && centre[1] == std::byte{255} &&
+               centre[2] == std::byte{255},
+           "Pointer overlay was not visible at the mapped source position");
+    capture.set_pointer_overlay(std::nullopt, 160, 90);
 
     ShowWindow(window, SW_MINIMIZE);
     bool minimized_rejected{};

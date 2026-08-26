@@ -2959,9 +2959,16 @@ function presentation.inject_gameplay_input(self, main_t)
     end
 
     local game_mode_name = active_game_mode_name()
+    local ui_inputs_in_use = false
+    if Managers and Managers.ui and
+            type(Managers.ui.inputs_in_use) == "function" then
+        local ok, value = pcall(Managers.ui.inputs_in_use, Managers.ui)
+        ui_inputs_in_use = ok and value == true
+    end
     local active = controller_observation.gameplay_input_enabled and
         (game_mode_name == "shooting_range" or
-            game_mode_name == "training_grounds")
+            game_mode_name == "training_grounds") and
+        presentation.mode == 1 and not ui_inputs_in_use
     local result = ui_native_capture.dtvr_read_gameplay_input(
         active and 1 or 0,
         controller_observation.gameplay_pressed,
