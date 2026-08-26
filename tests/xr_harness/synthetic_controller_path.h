@@ -26,6 +26,6 @@ struct SyntheticControllerPathSample {
 SyntheticControllerPathSample synthetic_controller_path_sample(
     std::uint64_t frame, std::uint64_t sequence, std::uint64_t timestamp_ns,
     math::Pose panel_pose, float panel_width_metres,
-    float panel_height_metres);
+    float panel_height_metres, bool emit_gameplay_input = false);
 
 }  // namespace darktidevr::harness

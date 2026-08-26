@@ -343,6 +343,34 @@ weapon slot, ability, reload, interact, tag/wheel, movement action and menu
 round-trip. The acceptance target is zero unreachable gameplay functions,
 despite the five-button raw deficit.
 
+#### Implemented direct-input foundation (2026-08-26)
+
+`GameplayInputMapper` now converts the 11 directly usable Quest controls into
+semantic Darktide actions and produces deterministic pressed, held and released
+sets. Trigger and squeeze thresholds use 0.55 press / 0.45 release hysteresis.
+Leaving gameplay releases every held action once, preventing attacks or
+movement modifiers from leaking into menu/loading contexts. Native tests prove
+that all 11 direct actions are reachable and that context loss is fail-closed.
+
+The game-side adapter remains normal-off behind
+`darktidevr_gameplay_input_test.flag` and is additionally restricted to the
+Shooting Range/training game modes. It feeds Darktide's existing network input
+families rather than keyboard scan codes. X intentionally emits both
+interact/reload and A emits both jump/dodge, matching the game's own shared
+gamepad aliases and leaving contextual resolution to existing gameplay code.
+The smart-tag and menu bits are transported but are not yet injected through
+`HumanInputHandler`, because those actions are consumed outside its networked
+action list. Combat ability, tactical overlay and the explicit equipment radial
+remain the three unresolved binding-layer functions; none is silently assigned
+to a latency-sensitive chord.
+
+The synthetic controller provider still emits poses only by default. Its
+separate `--synthetic-gameplay-input` switch (which requires
+`--synthetic-controller-path`) cycles all 11 direct controls across the existing
+six deterministic path phases. This is intentionally noisy and is only for an
+offline/private end-to-end run; ordinary synthetic pose tests cannot fire an
+action accidentally.
+
 ### Spatial menu pointer
 
 In `flat_menu` mode, intersect the dominant-hand aim ray with the exact LOCAL-

@@ -8,6 +8,7 @@
 
 #include <MinHook.h>
 
+#include "core/gameplay_input.h"
 #include "core/shared_head_pose.h"
 #include "core/shared_controller_state.h"
 #include "core/shared_presentation_state.h"
@@ -601,6 +602,10 @@ darktidevr::core::SharedHeadPoseReader& shared_head_pose_reader() {
 darktidevr::core::SharedControllerStateReader& shared_controller_state_reader() {
   static darktidevr::core::SharedControllerStateReader reader;
   return reader;
+}
+darktidevr::core::GameplayInputMapper& gameplay_input_mapper() {
+  static darktidevr::core::GameplayInputMapper mapper;
+  return mapper;
 }
 std::atomic<int> boundary_last_capture_result{};
 
@@ -7520,6 +7525,25 @@ extern "C" __declspec(dllexport) int dtvr_read_controller_state(
   *sequence = sample.sequence;
   *timestamp_ns = sample.timestamp_ns;
   return 0;
+}
+extern "C" __declspec(dllexport) int dtvr_read_gameplay_input(
+    int gameplay_active, unsigned long long* pressed,
+    unsigned long long* held, unsigned long long* released,
+    unsigned long long* sequence) {
+  if (!pressed || !held || !released || !sequence) {
+    return 1;
+  }
+  darktidevr::core::SharedControllerState sample{};
+  const auto available = shared_controller_state_reader().read(sample);
+  const auto frame = available
+                         ? gameplay_input_mapper().update(
+                               sample, gameplay_active != 0)
+                         : gameplay_input_mapper().reset();
+  *pressed = frame.pressed;
+  *held = frame.held;
+  *released = frame.released;
+  *sequence = available ? sample.sequence : 0;
+  return available ? 0 : 2;
 }
 extern "C" __declspec(dllexport) int dtvr_enable_marker_log() {
   std::scoped_lock lock(state_mutex);

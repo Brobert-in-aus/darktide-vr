@@ -275,6 +275,30 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   `release=true, held=false`. The correlated authored forward ray was
   `0.9533,-0.0009,-0.3021`. It produced no repeated attack, script error or
   safe-hook error.
+- Added the first production-shaped controller binding foundation. Native
+  `GameplayInputMapper` maps Quest trigger/squeeze/face/stick-click/menu state
+  to 11 semantic actions with analog hysteresis and exact edge generation.
+  Context shutdown releases all held actions once. A normal-off Lua adapter,
+  additionally restricted to private training modes, injects the nine action
+  families owned by `HumanInputHandler`; tag/menu remain explicitly pending at
+  their separate consumers. Enable only for a bounded test with
+  `tools/stereo/set-gameplay-input-test.ps1 -Mode Enabled`.
+- The synthetic path gained a second explicit
+  `--synthetic-gameplay-input` gate. Default synthetic controller runs still
+  publish zero buttons/triggers; the extra gate deterministically covers every
+  direct action for unattended Shooting Range validation.
+- The first disabled-adapter startup check parsed and registered all mod hooks,
+  authenticated and reached character select cleanly. The subsequent hub load
+  crashed before Psykhanium entry in unmodified
+  `PlayerHuskLocomotionExtension.post_update` because network object 126 lacked
+  `parent_unit_id`. No controller harness was running, the gameplay adapter was
+  disabled, and the crash stack contained no mod hook. Preserve this as an
+  external hub-transition failure rather than evidence about the adapter.
+  A fresh launcher-authenticated rerun reproduced the exit during the lobby
+  load before the one-shot Psykhanium flag was consumed, again with no XR
+  harness and the adapter flag disabled. End-to-end action validation therefore
+  moved behind this external hub-session blocker; startup/parser validation is
+  complete.
 - Eagerly requiring `PlayerUnitWeaponExtension` from mod initialization caused
   a reproducible module-load loop at `scripts/utilities/action/action_handler`.
   The observer now uses DMF's delayed string-class hook; the next clean run
@@ -361,9 +385,10 @@ $cmake = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Co
 & .\tools\stereo\request-weapon-inventory.ps1
 & .\tools\stereo\set-weapon-pose-trace.ps1 -Mode Enabled
 & .\tools\stereo\set-weapon-presentation-test.ps1 -Mode Enabled
+& .\tools\stereo\set-gameplay-input-test.ps1 -Mode Disabled
 ```
 
-Results: all 26 Release CTest tests passed. The native-capture test now installs the
+Results: all 27 Debug CTest tests passed. The native-capture test now installs the
 diagnostic hook set, creates/maps/unmaps an upload buffer and verifies exactly
 one matched Map and Unmap. Core math covers cardinal headings, pitched and
 vertical views, and non-finite billboard inputs. Presentation tests cover the
@@ -372,18 +397,19 @@ controller and pointer tests cover snapshot freshness/validity, finite panel
 intersection, crop mapping, menu input transitions, runtime-IPD transport, and
 the complete synthetic offscreen/over-reach/tracking-loss cycle.
 
-The Release validation after controller-state v2 built every target and passed
-all 26 tests. Live validation used the
+The controller-binding validation built every Debug target and passed all 27
+tests, including the new gameplay mapper and opt-in synthetic button cycle.
+The Release native capture and XR harness also built successfully. Live
+validation used the
 EAC-stopped character-select boundary and preserved the required ten-second
 Steam close grace between normal runs.
 
 ## Next action
 
-Add controller-model grip offsets and per-weapon presentation calibration on
-top of the proven post-animation root delta, then validate it with live hands.
-Retain the invalid/stale/over-reach fallback and linked attachment/FX chain.
-Keep gameplay aim/origin on the already validated path and do not feed it into
-the HMD render basis.
-Preserve the raw LOCAL pose for spatial-menu tests. Retain the horizon-lock
-billboard build for automated soaks, but defer the final smoke, fog and
-particle-orientation judgement until the user can wear the headset.
+Retry the private Shooting Range transition after the hub session is healthy,
+then enable both the gameplay adapter and the synthetic gameplay-input harness
+for one bounded six-phase action audit. Keep the adapter disabled everywhere
+else. In parallel, finish menu-context consumption for Back/menu and keep
+gameplay edges suppressed across every presentation-mode transition. Preserve
+the raw LOCAL pose for spatial-menu tests and retain all tracked-weapon invalid,
+stale and over-reach fallbacks.

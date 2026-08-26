@@ -31,6 +31,13 @@ int main() {
   const auto reacquired =
       darktidevr::harness::synthetic_controller_path_sample(
           360, 6, 6, panel, 2.0F, 2.0F);
+  const auto attack = darktidevr::harness::synthetic_controller_path_sample(
+      0, 7, 7, panel, 2.0F, 2.0F, true);
+  const auto face_buttons =
+      darktidevr::harness::synthetic_controller_path_sample(
+          180, 8, 8, panel, 2.0F, 2.0F, true);
+  const auto utility = darktidevr::harness::synthetic_controller_path_sample(
+      240, 9, 9, panel, 2.0F, 2.0F, true);
 
   const darktidevr::math::Vec3 head{0.0F, 0.0F, 0.0F};
   const bool valid =
@@ -44,6 +51,19 @@ int main() {
       invalid.state.hands[0].aim_tracking_flags == 0 &&
       invalid.state.hands[1].aim_tracking_flags == 0 &&
       reacquired.state.hands[0].aim_tracking_flags != 0 &&
+      left.state.hands[1].trigger == 0.0F &&
+      attack.state.hands[1].trigger == 1.0F &&
+      face_buttons.state.hands[0].buttons ==
+          (darktidevr::core::controller_primary |
+           darktidevr::core::controller_secondary) &&
+      face_buttons.state.hands[1].buttons ==
+          (darktidevr::core::controller_primary |
+           darktidevr::core::controller_secondary) &&
+      utility.state.hands[0].buttons ==
+          (darktidevr::core::controller_stick_click |
+           darktidevr::core::controller_menu) &&
+      utility.state.hands[1].buttons ==
+          darktidevr::core::controller_stick_click &&
       reacquired.phase ==
           darktidevr::harness::SyntheticControllerPhase::left_sweep;
   if (!valid) {

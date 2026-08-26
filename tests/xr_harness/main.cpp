@@ -447,7 +447,8 @@ class OpenXrProbe {
                                bool separate_shared_eye_swapchains,
                                bool enable_menu_input,
                                const std::wstring& menu_input_title,
-                               bool synthetic_controller_path) {
+                               bool synthetic_controller_path,
+                               bool synthetic_gameplay_input) {
     if (session_ == XR_NULL_HANDLE || view_space_ == XR_NULL_HANDLE) {
       throw std::runtime_error("OpenXR theatre loop requires a session and VIEW space");
     }
@@ -1314,7 +1315,7 @@ class OpenXrProbe {
             darktidevr::harness::synthetic_controller_path_sample(
                 synthetic_controller_frames_++, ++controller_sequence_,
                 timestamp_ns, panel_pose, panel_extent.width_metres,
-                panel_extent.height_metres);
+                panel_extent.height_metres, synthetic_gameplay_input);
         populate_body_local_controller_poses(synthetic.state);
         if (!controller_writer_->publish(synthetic.state)) {
           throw std::runtime_error(
@@ -2486,6 +2487,7 @@ void usage() {
                 "[--capture-window-title TEXT] [--shared-eyes] "
                 "[--enable-menu-input [--menu-input-window-title TEXT]] "
                 "[--synthetic-controller-path] "
+                "[--synthetic-gameplay-input] "
                 "[--shared-pose-sequence-offset N] "
                "[--pair-driven-shared | --continuous-shared] "
                "[--resize-at N]\n\n"
@@ -2514,6 +2516,7 @@ int wmain(int argc, wchar_t** argv) {
     bool pair_driven_shared = true;
     bool enable_menu_input = false;
     bool synthetic_controller_path = false;
+    bool synthetic_gameplay_input = false;
     std::wstring menu_input_title = L"Warhammer 40,000: Darktide";
     std::optional<std::wstring> capture_window_title;
     std::uint32_t xr_frames{};
@@ -2557,6 +2560,8 @@ int wmain(int argc, wchar_t** argv) {
         enable_menu_input = true;
       } else if (argument == L"--synthetic-controller-path") {
         synthetic_controller_path = true;
+      } else if (argument == L"--synthetic-gameplay-input") {
+        synthetic_gameplay_input = true;
       } else if (argument == L"--menu-input-window-title" &&
                  index + 1 < argc) {
         menu_input_title = argv[++index];
@@ -2597,6 +2602,10 @@ int wmain(int argc, wchar_t** argv) {
       throw std::invalid_argument(
           "--synthetic-controller-path requires --shared-eyes");
     }
+    if (synthetic_gameplay_input && !synthetic_controller_path) {
+      throw std::invalid_argument(
+          "--synthetic-gameplay-input requires --synthetic-controller-path");
+    }
     if (xr_duration && xr_duration->count() == 0) {
       throw std::invalid_argument("--xr-seconds must be greater than zero");
     }
@@ -2624,7 +2633,8 @@ int wmain(int argc, wchar_t** argv) {
                                      pair_driven_shared,
                                      true, enable_menu_input,
                                      menu_input_title,
-                                     synthetic_controller_path);
+                                     synthetic_controller_path,
+                                     synthetic_gameplay_input);
       } else {
         openxr.run_frame_lifecycle(xr_frames, harness.device(), harness.queue(),
                                    require_rendering);

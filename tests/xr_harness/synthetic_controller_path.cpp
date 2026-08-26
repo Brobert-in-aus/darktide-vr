@@ -7,7 +7,7 @@ namespace darktidevr::harness {
 SyntheticControllerPathSample synthetic_controller_path_sample(
     std::uint64_t frame, std::uint64_t sequence, std::uint64_t timestamp_ns,
     math::Pose panel_pose, float panel_width_metres,
-    float panel_height_metres) {
+    float panel_height_metres, bool emit_gameplay_input) {
   if (sequence == 0 || panel_width_metres <= 0.0F ||
       panel_height_metres <= 0.0F) {
     throw std::invalid_argument("Invalid synthetic controller path inputs");
@@ -66,6 +66,25 @@ SyntheticControllerPathSample synthetic_controller_path_sample(
       destination.grip_tracking_flags = destination.aim_tracking_flags;
     }
     sample.rays[hand] = {destination.aim_pose.position, panel_forward};
+  }
+  if (emit_gameplay_input) {
+    if (sample.phase == SyntheticControllerPhase::left_sweep) {
+      sample.state.hands[1].trigger = 1.0F;
+    } else if (sample.phase == SyntheticControllerPhase::right_sweep) {
+      sample.state.hands[0].trigger = 1.0F;
+    } else if (sample.phase == SyntheticControllerPhase::crossed_sweep) {
+      sample.state.hands[0].squeeze = 1.0F;
+      sample.state.hands[1].squeeze = 1.0F;
+    } else if (sample.phase == SyntheticControllerPhase::outside_panel) {
+      sample.state.hands[0].buttons = core::controller_primary |
+                                      core::controller_secondary;
+      sample.state.hands[1].buttons = core::controller_primary |
+                                      core::controller_secondary;
+    } else if (sample.phase == SyntheticControllerPhase::beyond_reach) {
+      sample.state.hands[0].buttons = core::controller_stick_click |
+                                      core::controller_menu;
+      sample.state.hands[1].buttons = core::controller_stick_click;
+    }
   }
   return sample;
 }

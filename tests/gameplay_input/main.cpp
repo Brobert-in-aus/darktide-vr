@@ -1,0 +1,88 @@
+#include "core/gameplay_input.h"
+
+#include <iostream>
+#include <stdexcept>
+
+namespace {
+
+using darktidevr::core::GameplayAction;
+using darktidevr::core::GameplayInputFrame;
+using darktidevr::core::GameplayInputMapper;
+using darktidevr::core::SharedControllerState;
+using darktidevr::core::gameplay_action_bit;
+
+void expect(bool condition, const char* message) {
+  if (!condition) {
+    throw std::runtime_error(message);
+  }
+}
+
+bool contains(std::uint64_t actions, GameplayAction action) {
+  return (actions & gameplay_action_bit(action)) != 0;
+}
+
+void expect_edge(const GameplayInputFrame& frame, GameplayAction action,
+                 bool pressed, bool held, bool released) {
+  expect(contains(frame.pressed, action) == pressed, "unexpected press edge");
+  expect(contains(frame.held, action) == held, "unexpected held state");
+  expect(contains(frame.released, action) == released,
+         "unexpected release edge");
+}
+
+}  // namespace
+
+int main() {
+  try {
+    GameplayInputMapper mapper;
+    SharedControllerState state{};
+
+    state.hands[1].trigger = 0.6F;
+    auto frame = mapper.update(state, true);
+    expect_edge(frame, GameplayAction::action_one, true, true, false);
+
+    state.hands[1].trigger = 0.5F;
+    frame = mapper.update(state, true);
+    expect_edge(frame, GameplayAction::action_one, false, true, false);
+
+    state.hands[1].trigger = 0.4F;
+    frame = mapper.update(state, true);
+    expect_edge(frame, GameplayAction::action_one, false, false, true);
+
+    state.hands[0].trigger = 1.0F;
+    state.hands[1].trigger = 1.0F;
+    state.hands[0].squeeze = 1.0F;
+    state.hands[1].squeeze = 1.0F;
+    state.hands[0].buttons = darktidevr::core::controller_primary |
+                             darktidevr::core::controller_secondary |
+                             darktidevr::core::controller_stick_click |
+                             darktidevr::core::controller_menu;
+    state.hands[1].buttons = darktidevr::core::controller_primary |
+                             darktidevr::core::controller_secondary |
+                             darktidevr::core::controller_stick_click;
+    frame = mapper.update(state, true);
+    constexpr std::uint64_t all_direct_actions = (1ULL << 11U) - 1ULL;
+    expect(frame.pressed == all_direct_actions,
+           "not every direct Quest action was reachable");
+    expect(frame.held == all_direct_actions,
+           "not every direct Quest action was held");
+
+    frame = mapper.update(state, false);
+    expect(frame.pressed == 0 && frame.held == 0 &&
+               frame.released == all_direct_actions,
+           "leaving gameplay did not release every action");
+
+    frame = mapper.update(state, false);
+    expect(frame.pressed == 0 && frame.held == 0 && frame.released == 0,
+           "inactive context repeated release edges");
+
+    state.hands[1].trigger = 0.5F;
+    frame = mapper.update(state, true);
+    expect_edge(frame, GameplayAction::action_one, false, false, false);
+
+    std::cout << "gameplay_input.result=pass\n";
+    return 0;
+  } catch (const std::exception& error) {
+    std::cerr << "gameplay_input: " << error.what() << '\n';
+    return 1;
+  }
+}

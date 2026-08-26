@@ -138,6 +138,13 @@ local controller_observation = {
     buttons = nil,
     sequence = nil,
     timestamp_ns = nil,
+    gameplay_pressed = nil,
+    gameplay_held = nil,
+    gameplay_released = nil,
+    gameplay_sequence = nil,
+    gameplay_input_enabled = false,
+    gameplay_input_last_check_t = -math.huge,
+    gameplay_input_last_sequence = 0,
     last_sequence = 0,
     first_tracked_logged = false,
     right_aim_usable = false,
@@ -448,6 +455,9 @@ local function ensure_ui_native_hooks()
             unsigned int *tracking_flags, unsigned int *buttons,
             unsigned long long *sequence,
             unsigned long long *timestamp_ns);
+        int dtvr_read_gameplay_input(int gameplay_active,
+            unsigned long long *pressed, unsigned long long *held,
+            unsigned long long *released, unsigned long long *sequence);
         unsigned long long dtvr_qpc_ticks(void);
         unsigned long long dtvr_qpc_frequency(void);
         int dtvr_take_gpu_eye_profile(int eye, unsigned long long *values);
@@ -536,6 +546,13 @@ local function ensure_ui_native_hooks()
     controller_observation.buttons = ffi.new("unsigned int[2]")
     controller_observation.sequence = ffi.new("unsigned long long[1]")
     controller_observation.timestamp_ns = ffi.new("unsigned long long[1]")
+    controller_observation.gameplay_pressed =
+        ffi.new("unsigned long long[1]")
+    controller_observation.gameplay_held = ffi.new("unsigned long long[1]")
+    controller_observation.gameplay_released =
+        ffi.new("unsigned long long[1]")
+    controller_observation.gameplay_sequence =
+        ffi.new("unsigned long long[1]")
     gpu_profile_values = ffi.new("unsigned long long[4]")
     gpu_stage_profile_values = ffi.new("unsigned long long[6]")
     ui_native_capture.dtvr_set_gpu_eye_profile(
@@ -2860,17 +2877,180 @@ function presentation.inject_primary_action(self, main_t)
     )
 end
 
+presentation.gameplay_input_bindings = {
+    {
+        mask = 1,
+        pressed = { "action_one_pressed" },
+        held = { "action_one_hold" },
+        released = { "action_one_release" }
+    },
+    {
+        mask = 2,
+        pressed = { "action_two_pressed" },
+        held = { "action_two_hold" },
+        released = { "action_two_release" }
+    },
+    {
+        mask = 4,
+        pressed = { "weapon_extra_pressed" },
+        held = { "weapon_extra_hold" },
+        released = { "weapon_extra_release" }
+    },
+    {
+        mask = 8,
+        pressed = { "interact_pressed", "weapon_reload_pressed" },
+        held = { "interact_hold", "weapon_reload_hold" },
+        released = {}
+    },
+    {
+        mask = 16,
+        pressed = { "quick_wield" },
+        held = {},
+        released = {}
+    },
+    {
+        mask = 32,
+        pressed = { "jump", "dodge" },
+        held = { "jump_held" },
+        released = {}
+    },
+    {
+        mask = 64,
+        pressed = { "crouch" },
+        held = { "crouching" },
+        released = {}
+    },
+    {
+        mask = 128,
+        pressed = { "sprint" },
+        held = { "sprinting" },
+        released = {}
+    },
+    {
+        mask = 512,
+        pressed = { "grenade_ability_pressed" },
+        held = { "grenade_ability_hold" },
+        released = { "grenade_ability_release" }
+    }
+}
+
+function presentation.inject_gameplay_input(self, main_t)
+    if not ui_native_capture or not Mods or not Mods.lua or not Mods.lua.io or
+            not controller_observation.gameplay_pressed then
+        return
+    end
+    if main_t >= controller_observation.gameplay_input_last_check_t + 0.25 then
+        controller_observation.gameplay_input_last_check_t = main_t
+        local flag = Mods.lua.io.open(
+            "./../mods/darktidevr_stereo_probe/darktidevr_gameplay_input_test.flag",
+            "r")
+        local requested = false
+        if flag then
+            local value = flag:read("*all")
+            flag:close()
+            requested = value and value:match("^%s*enabled%s*$") ~= nil
+        end
+        if requested ~= controller_observation.gameplay_input_enabled then
+            controller_observation.gameplay_input_enabled = requested
+            mod:info(
+                "DARKTIDEVR_INPUT gameplay_adapter enabled=%s",
+                tostring(requested))
+        end
+    end
+
+    local game_mode_name = active_game_mode_name()
+    local active = controller_observation.gameplay_input_enabled and
+        (game_mode_name == "shooting_range" or
+            game_mode_name == "training_grounds")
+    local result = ui_native_capture.dtvr_read_gameplay_input(
+        active and 1 or 0,
+        controller_observation.gameplay_pressed,
+        controller_observation.gameplay_held,
+        controller_observation.gameplay_released,
+        controller_observation.gameplay_sequence)
+    local pressed = tonumber(controller_observation.gameplay_pressed[0])
+    local held = tonumber(controller_observation.gameplay_held[0])
+    local released = tonumber(controller_observation.gameplay_released[0])
+    controller_observation.gameplay_input_last_sequence =
+        tonumber(controller_observation.gameplay_sequence[0])
+    if result ~= 0 and pressed == 0 and held == 0 and released == 0 then
+        return
+    end
+    if pressed ~= 0 or released ~= 0 then
+        mod:info(
+            "DARKTIDEVR_INPUT gameplay_edges sequence=%d pressed=%d held=%d released=%d",
+            controller_observation.gameplay_input_last_sequence,
+            pressed, held, released)
+    end
+
+    local actions = self._ephemeral_actions
+    local cache = self._ephemeral_action_cache
+    if type(actions) ~= "table" or type(cache) ~= "table" then
+        return
+    end
+    for binding_index = 1, #presentation.gameplay_input_bindings do
+        local binding = presentation.gameplay_input_bindings[binding_index]
+        local names = nil
+        if bit.band(pressed, binding.mask) ~= 0 then
+            names = binding.pressed
+        end
+        if names then
+            for name_index = 1, #names do
+                for action_index = 1, #actions do
+                    if actions[action_index] == names[name_index] then
+                        cache[action_index] = true
+                        break
+                    end
+                end
+            end
+        end
+        if bit.band(released, binding.mask) ~= 0 then
+            names = binding.released
+            for name_index = 1, #names do
+                for action_index = 1, #actions do
+                    if actions[action_index] == names[name_index] then
+                        cache[action_index] = true
+                        break
+                    end
+                end
+            end
+        end
+    end
+end
+
 mod:hook_safe(
     require("scripts/managers/player/player_game_states/human_input_handler"),
     "pre_update",
     function(self, _, main_t)
         presentation.inject_primary_action(self, main_t or 0)
+        presentation.inject_gameplay_input(self, main_t or 0)
     end)
 
 mod:hook_safe(
     require("scripts/managers/player/player_game_states/human_input_handler"),
     "fixed_update",
     function(self, _, _, frame)
+        local gameplay_held = controller_observation.gameplay_input_enabled and
+            tonumber(controller_observation.gameplay_held[0]) or 0
+        if gameplay_held ~= 0 and self._action_lookup and self._input_cache then
+            local cache_index = self._buffer_index and self:_buffer_index(frame)
+            if cache_index then
+                for binding_index = 1,
+                        #presentation.gameplay_input_bindings do
+                    local binding =
+                        presentation.gameplay_input_bindings[binding_index]
+                    if bit.band(gameplay_held, binding.mask) ~= 0 then
+                        for name_index = 1, #binding.held do
+                            local action_index =
+                                self._action_lookup[binding.held[name_index]]
+                            if action_index and self._input_cache[action_index] then
+                                self._input_cache[action_index][cache_index] = true
+                            end
+                        end
+                    end
+                end
+            end
+        end
         if not controller_observation.primary_action_injected then
             return
         end
