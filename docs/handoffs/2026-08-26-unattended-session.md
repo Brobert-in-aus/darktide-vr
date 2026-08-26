@@ -304,6 +304,28 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   `0.9539,0.0008,-0.3000`. The small difference is the weapon's normal spread;
   the input-to-gameplay-aim-to-projectile chain is now closed without changing
   origin, spread, targeting, cadence or damage.
+- Added a normal-off live weapon inventory request and expanded it across the
+  first-person skeleton, wielded weapon, all 1P attachment units and semantic
+  FX sources. In the exact Shooting Range mission the force staff root was
+  identical to first-person `j_rightweaponattach`; the 187-node first-person
+  rig contains `j_righthand`/`j_lefthand`, while the visible staff is seven
+  linked 1P attachment units. Its charge, muzzle and overheat aliases resolve
+  to `fx_overheat` on attachment 4. This rules out per-mesh attachment edits as
+  the primary tracked-weapon seam.
+- Added a separate normal-off weapon-pose trace. It reconstructs the right grip
+  in game world space from the recenter-relative Darktide-basis controller pose
+  and the pre-HMD camera anchor, then compares it with the animated hand,
+  `j_rightweaponattach` and wielded weapon root. A clean synthetic run emitted
+  142 samples over every sweep/outside/reach/loss phase. The attachment and
+  weapon roots remained coincident to `0.000000` m through idle and weapon-swap
+  animation, while the target crossed the view and reached roughly 3.0 m away
+  during the deliberate over-reach phase. No gameplay or visual transform was
+  authored, and the trace flag was returned to `disabled`.
+- Darktide's Lua 5.1 mod chunk is at its top-level local-variable ceiling. One
+  additional `local function` caused DMF to receive a nil compiled function and
+  disable the stereo mod at initialization. Diagnostic helpers now live on the
+  existing `presentation` table; future helpers must not add top-level locals
+  without first consolidating existing ones.
 
 ## Validation commands
 
@@ -316,6 +338,8 @@ $cmake = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Co
 & .\tools\stereo\set-controller-aim-test.ps1 -Enabled
 & .\tools\stereo\run-darktide-shared-eyes.ps1 -DurationSeconds 300 -SyntheticControllerPath
 & .\tools\stereo\request-primary-action-test.ps1
+& .\tools\stereo\request-weapon-inventory.ps1
+& .\tools\stereo\set-weapon-pose-trace.ps1 -Mode Enabled
 ```
 
 Results: all 26 Release CTest tests passed. The native-capture test now installs the
@@ -334,9 +358,11 @@ Steam close grace between normal runs.
 
 ## Next action
 
-Begin tracked first-person weapon-unit/node discovery, then turn the proven
-one-shot seam into a fail-closed binding adapter. Do not feed gameplay aim into
-the HMD render basis.
+Apply a bounded, normal-off post-animation presentation transform at the
+first-person rig/right-weapon attachment seam. Reject invalid/stale or
+over-reach controller poses, preserve the linked attachment/FX chain and keep
+gameplay aim/origin on the already validated path. Do not feed gameplay aim
+into the HMD render basis.
 Preserve the raw LOCAL pose for spatial-menu tests. Retain the horizon-lock
 billboard build for automated soaks, but defer the final smoke, fog and
 particle-orientation judgement until the user can wear the headset.

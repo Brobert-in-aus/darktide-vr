@@ -146,6 +146,22 @@ local controller_observation = {
     right_aim_yaw = nil,
     right_aim_pitch = nil,
     right_aim_roll = nil,
+    right_grip_usable = false,
+    right_grip_flags = 0,
+    right_grip_x = nil,
+    right_grip_y = nil,
+    right_grip_z = nil,
+    right_grip_qx = nil,
+    right_grip_qy = nil,
+    right_grip_qz = nil,
+    right_grip_qw = nil,
+    body_anchor_x = nil,
+    body_anchor_y = nil,
+    body_anchor_z = nil,
+    body_anchor_qx = nil,
+    body_anchor_qy = nil,
+    body_anchor_qz = nil,
+    body_anchor_qw = nil,
     body_yaw_anchor = nil,
     authoring_enabled = false,
     authoring_pose_active = false,
@@ -169,7 +185,12 @@ local controller_observation = {
     primary_action_shot_observed = false,
     primary_action_projectile_observed = false,
     primary_action_stage = "idle",
-    primary_action_last_check_t = -math.huge
+    primary_action_last_check_t = -math.huge,
+    weapon_inventory_done = false,
+    weapon_inventory_last_check_frame = -math.huge,
+    weapon_pose_trace_enabled = false,
+    weapon_pose_trace_last_check_frame = -math.huge,
+    weapon_pose_trace_last_log_frame = -math.huge
 }
 local performance_profile_requested = false -- opt-in diagnostic; allocates GPU timestamp work
 -- Reuse the shading/LOD preparation performed by the primary eye. The second
@@ -1062,7 +1083,10 @@ local function apply_head_tracking(clean_position, clean_rotation)
         controller_observation.last_sequence = controller_sequence
         local left_aim_flags = tonumber(controller_observation.tracking_flags[0])
         local right_aim_flags = tonumber(controller_observation.tracking_flags[2])
+        local right_grip_flags =
+            tonumber(controller_observation.tracking_flags[3])
         controller_observation.right_aim_flags = right_aim_flags
+        controller_observation.right_grip_flags = right_grip_flags
         local controller_timestamp_ns =
             tonumber(controller_observation.timestamp_ns[0])
         local qpc_frequency =
@@ -1079,6 +1103,25 @@ local function apply_head_tracking(clean_position, clean_rotation)
             controller_age_ns >= -5000000 and
             controller_age_ns <= 100000000 and
             controller_sequence ~= controller_observation.epoch_block_sequence
+        controller_observation.right_grip_usable =
+            bit.band(right_grip_flags, 5) == 5 and
+            controller_age_ns >= -5000000 and
+            controller_age_ns <= 100000000 and
+            controller_sequence ~= controller_observation.epoch_block_sequence
+        controller_observation.right_grip_x =
+            tonumber(controller_observation.values[25])
+        controller_observation.right_grip_y =
+            tonumber(controller_observation.values[26])
+        controller_observation.right_grip_z =
+            tonumber(controller_observation.values[27])
+        controller_observation.right_grip_qx =
+            tonumber(controller_observation.values[28])
+        controller_observation.right_grip_qy =
+            tonumber(controller_observation.values[29])
+        controller_observation.right_grip_qz =
+            tonumber(controller_observation.values[30])
+        controller_observation.right_grip_qw =
+            tonumber(controller_observation.values[31])
         if controller_observation.right_aim_usable then
             local right_aim_rotation = Quaternion.from_elements(
                 controller_observation.values[21],
@@ -2500,6 +2543,14 @@ local function update_stereo(manager)
             clean_rotation
         )
     end
+    controller_observation.body_anchor_x = Vector3.x(clean_position)
+    controller_observation.body_anchor_y = Vector3.y(clean_position)
+    controller_observation.body_anchor_z = Vector3.z(clean_position)
+    controller_observation.body_anchor_qx,
+        controller_observation.body_anchor_qy,
+        controller_observation.body_anchor_qz,
+        controller_observation.body_anchor_qw =
+            Quaternion.to_elements(clean_rotation)
     clean_position, clean_rotation = apply_head_tracking(
         clean_position,
         clean_rotation
@@ -2857,10 +2908,263 @@ mod:hook_safe(
         end
     end)
 
+function presentation.log_unit_pose(label, unit, node)
+    if not unit or not Unit.alive(unit) then
+        mod:info("DARKTIDEVR_WEAPON %s unit=missing", tostring(label))
+        return
+    end
+    local node_index = node or 1
+    local ok, error_message = pcall(function()
+        local position = Unit.world_position(unit, node_index)
+        local rotation = Unit.world_rotation(unit, node_index)
+        local yaw, pitch, roll = Quaternion.to_yaw_pitch_roll(rotation)
+        mod:info(
+            "DARKTIDEVR_WEAPON %s node=%s position=%.4f,%.4f,%.4f ypr=%.4f,%.4f,%.4f",
+            tostring(label), tostring(node_index),
+            Vector3.x(position), Vector3.y(position), Vector3.z(position),
+            yaw, pitch, roll
+        )
+    end)
+    if not ok then
+        mod:warning(
+            "DARKTIDEVR_WEAPON %s pose_error=%s",
+            tostring(label), tostring(error_message))
+    end
+end
+
+function presentation.scan_named_nodes(label, unit, node_names)
+    if not unit or not Unit.alive(unit) then
+        return
+    end
+    local count_ok, count = pcall(Unit.num_scene_graph_items, unit)
+    mod:info(
+        "DARKTIDEVR_WEAPON unit=%s scene_graph_items=%s",
+        tostring(label), tostring(count_ok and count or "unavailable")
+    )
+    for i = 1, #node_names do
+        local node_name = node_names[i]
+        if Unit.has_node(unit, node_name) then
+            presentation.log_unit_pose(
+                tostring(label) .. ":" .. node_name,
+                unit,
+                Unit.node(unit, node_name))
+        end
+    end
+end
+
+function presentation.scan_weapon_inventory(self, fixed_frame)
+    if controller_observation.weapon_inventory_done or not fixed_frame or
+            fixed_frame <
+                controller_observation.weapon_inventory_last_check_frame + 60 or
+            not Mods or not Mods.lua or not Mods.lua.io then
+        return
+    end
+    controller_observation.weapon_inventory_last_check_frame = fixed_frame
+    local flag_path =
+        "./../mods/darktidevr_stereo_probe/darktidevr_weapon_inventory.flag"
+    local flag = Mods.lua.io.open(flag_path, "r")
+    if not flag then
+        return
+    end
+    local request = flag:read("*all")
+    flag:close()
+    if not request or not request:match("^%s*scan%s*$") then
+        return
+    end
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    if not local_player or self._unit ~= local_player.player_unit then
+        return
+    end
+    local consumed = Mods.lua.io.open(flag_path, "w")
+    if consumed then
+        consumed:write("consumed\n")
+        consumed:close()
+    end
+    local slot_name = self._inventory_component and
+        self._inventory_component.wielded_slot
+    local weapon = slot_name and self._weapons and self._weapons[slot_name]
+    local template = weapon and weapon.weapon_template
+    local weapon_unit = weapon and weapon.weapon_unit
+    local visual_loadout = self._visual_loadout_extension
+    controller_observation.weapon_inventory_done = true
+    mod:info(
+        "DARKTIDEVR_WEAPON inventory slot=%s template=%s weapon_unit_alive=%s first_person_unit_alive=%s",
+        tostring(slot_name), tostring(template and template.name),
+        tostring(weapon_unit and Unit.alive(weapon_unit) or false),
+        tostring(self._first_person_unit and
+            Unit.alive(self._first_person_unit) or false)
+    )
+    presentation.log_unit_pose("weapon_root", weapon_unit, 1)
+    presentation.log_unit_pose("first_person_root", self._first_person_unit, 1)
+    local candidate_nodes = {
+        "j_righthand",
+        "j_lefthand",
+        "j_right_hand",
+        "j_left_hand",
+        "j_rightweaponattach",
+        "j_leftweaponattach",
+        "j_right_hand_ik_handle",
+        "j_left_hand_ik_handle",
+        "fx_right_hand",
+        "fx_left_hand",
+        "fx_overheat"
+    }
+    presentation.scan_named_nodes(
+        "first_person", self._first_person_unit, candidate_nodes)
+    presentation.scan_named_nodes("weapon", weapon_unit, candidate_nodes)
+    if visual_loadout and slot_name then
+        local _, _, attachments_by_unit_1p =
+            visual_loadout:unit_and_attachments_from_slot(slot_name)
+        local attachment_index = 0
+        if type(attachments_by_unit_1p) == "table" then
+            for _, attachments in pairs(attachments_by_unit_1p) do
+                if type(attachments) == "table" then
+                    for i = 1, #attachments do
+                        attachment_index = attachment_index + 1
+                        local attachment = attachments[i]
+                        presentation.log_unit_pose(
+                            "attachment_1p_" .. tostring(attachment_index) ..
+                                "_root",
+                            attachment,
+                            1)
+                        presentation.scan_named_nodes(
+                            "attachment_1p_" .. tostring(attachment_index),
+                            attachment,
+                            candidate_nodes)
+                    end
+                end
+            end
+        end
+        mod:info(
+            "DARKTIDEVR_WEAPON attachment_1p_count=%d",
+            attachment_index)
+    end
+    if template and type(template.fx_sources) == "table" and visual_loadout then
+        for source_key, node_name in pairs(template.fx_sources) do
+            local unit_1p, node_1p =
+                visual_loadout:unit_and_node_from_node_name(
+                    slot_name, node_name)
+            mod:info(
+                "DARKTIDEVR_WEAPON fx_source=%s node_name=%s resolved_1p=%s node=%s",
+                tostring(source_key), tostring(node_name),
+                tostring(unit_1p and Unit.alive(unit_1p) or false),
+                tostring(node_1p)
+            )
+            if unit_1p and node_1p then
+                presentation.log_unit_pose(
+                    "fx:" .. tostring(source_key), unit_1p, node_1p)
+            end
+        end
+    end
+end
+
+function presentation.vector_distance(left, right)
+    local x = Vector3.x(left) - Vector3.x(right)
+    local y = Vector3.y(left) - Vector3.y(right)
+    local z = Vector3.z(left) - Vector3.z(right)
+    return math.sqrt(x * x + y * y + z * z)
+end
+
+function presentation.trace_weapon_pose(self, fixed_frame)
+    if not fixed_frame or not Mods or not Mods.lua or not Mods.lua.io then
+        return
+    end
+    if fixed_frame >=
+            controller_observation.weapon_pose_trace_last_check_frame + 60 then
+        controller_observation.weapon_pose_trace_last_check_frame = fixed_frame
+        local flag_path =
+            "./../mods/darktidevr_stereo_probe/darktidevr_weapon_pose_trace.flag"
+        local flag = Mods.lua.io.open(flag_path, "r")
+        local enabled = false
+        if flag then
+            enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
+            flag:close()
+        end
+        if enabled ~= controller_observation.weapon_pose_trace_enabled then
+            controller_observation.weapon_pose_trace_enabled = enabled
+            mod:info(
+                "DARKTIDEVR_WEAPON pose_trace=%s source=test_flag",
+                enabled and "enabled" or "disabled")
+        end
+    end
+    if not controller_observation.weapon_pose_trace_enabled or
+            fixed_frame <
+                controller_observation.weapon_pose_trace_last_log_frame + 15 then
+        return
+    end
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    if not local_player or self._unit ~= local_player.player_unit or
+            not controller_observation.right_grip_usable or
+            not controller_observation.body_anchor_qw then
+        return
+    end
+    local first_person_unit = self._first_person_unit
+    if not first_person_unit or not Unit.alive(first_person_unit) or
+            not Unit.has_node(first_person_unit, "j_righthand") or
+            not Unit.has_node(first_person_unit, "j_rightweaponattach") then
+        return
+    end
+    local slot_name = self._inventory_component and
+        self._inventory_component.wielded_slot
+    local weapon = slot_name and self._weapons and self._weapons[slot_name]
+    local weapon_unit = weapon and weapon.weapon_unit
+    if not weapon_unit or not Unit.alive(weapon_unit) then
+        return
+    end
+    controller_observation.weapon_pose_trace_last_log_frame = fixed_frame
+    local anchor_position = Vector3(
+        controller_observation.body_anchor_x,
+        controller_observation.body_anchor_y,
+        controller_observation.body_anchor_z)
+    local anchor_rotation = Quaternion.from_elements(
+        controller_observation.body_anchor_qx,
+        controller_observation.body_anchor_qy,
+        controller_observation.body_anchor_qz,
+        controller_observation.body_anchor_qw)
+    local grip_position = Vector3(
+        controller_observation.right_grip_x,
+        controller_observation.right_grip_y,
+        controller_observation.right_grip_z)
+    local grip_rotation = Quaternion.from_elements(
+        controller_observation.right_grip_qx,
+        controller_observation.right_grip_qy,
+        controller_observation.right_grip_qz,
+        controller_observation.right_grip_qw)
+    local target_position = anchor_position +
+        Quaternion.right(anchor_rotation) * Vector3.x(grip_position) +
+        Quaternion.forward(anchor_rotation) * Vector3.y(grip_position) +
+        Quaternion.up(anchor_rotation) * Vector3.z(grip_position)
+    local target_rotation = Quaternion.multiply(anchor_rotation, grip_rotation)
+    local hand_node = Unit.node(first_person_unit, "j_righthand")
+    local attach_node = Unit.node(first_person_unit, "j_rightweaponattach")
+    local hand_position = Unit.world_position(first_person_unit, hand_node)
+    local attach_position = Unit.world_position(first_person_unit, attach_node)
+    local weapon_position = Unit.world_position(weapon_unit, 1)
+    local target_yaw, target_pitch, target_roll =
+        Quaternion.to_yaw_pitch_roll(target_rotation)
+    mod:info(
+        "DARKTIDEVR_WEAPON pose frame=%s sequence=%d target=%.4f,%.4f,%.4f target_ypr=%.4f,%.4f,%.4f hand=%.4f,%.4f,%.4f attach=%.4f,%.4f,%.4f weapon=%.4f,%.4f,%.4f target_hand_m=%.4f target_weapon_m=%.4f attach_weapon_m=%.6f",
+        tostring(fixed_frame), controller_observation.last_sequence,
+        Vector3.x(target_position), Vector3.y(target_position),
+        Vector3.z(target_position), target_yaw, target_pitch, target_roll,
+        Vector3.x(hand_position), Vector3.y(hand_position),
+        Vector3.z(hand_position), Vector3.x(attach_position),
+        Vector3.y(attach_position), Vector3.z(attach_position),
+        Vector3.x(weapon_position), Vector3.y(weapon_position),
+        Vector3.z(weapon_position),
+        presentation.vector_distance(target_position, hand_position),
+        presentation.vector_distance(target_position, weapon_position),
+        presentation.vector_distance(attach_position, weapon_position))
+end
+
 mod:hook_safe(
     "PlayerUnitWeaponExtension",
     "fixed_update",
     function(self, _, _, _, fixed_frame)
+        presentation.scan_weapon_inventory(self, fixed_frame)
+        presentation.trace_weapon_pose(self, fixed_frame)
         if not controller_observation.primary_action_cache_observed then
             return
         end

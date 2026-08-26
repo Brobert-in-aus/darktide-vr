@@ -544,6 +544,21 @@ capture region. This is stabilization of the physical pose, not additional
 game aim assistance. Keep the authoritative hit ray/origin on the validated game
 path until visual and gameplay alignment agree.
 
+Live hierarchy evidence now fixes the first implementation seam. The force
+staff root is coincident with the 1P skeleton's `j_rightweaponattach`, and all
+seven visible 1P attachment units plus the resolved FX node inherit that chain.
+The hands remain on the 187-node first-person skeleton. Drive the whole
+presentation chain from a post-animation delta rather than rewriting individual
+weapon meshes; retain the off-hand animation until a separate support-hand IK
+constraint is available.
+
+The normal-off pose trace also validates the controller-space conversion. Its
+synthetic path crosses the viewport, leaves the panel, exceeds reach and loses
+tracking; the trace reproduced those phases while the stock hand remained
+unchanged, and measured attachment-root/weapon-root error at `0.000000` m.
+The first authoring gate must reject stale/invalid samples and a configurable
+maximum wrist displacement before changing the presentation rig.
+
 True physical melee is a later feature. The initial implementation remains
 button-driven, uses Darktide's normal sweep animations/damage windows and merely
 aims the animation with the tracked controller. One-to-one swing collision would
