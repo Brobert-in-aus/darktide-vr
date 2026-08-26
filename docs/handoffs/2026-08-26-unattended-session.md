@@ -326,6 +326,26 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   disable the stereo mod at initialization. Diagnostic helpers now live on the
   existing `presentation` table; future helpers must not add top-level locals
   without first consolidating existing ones.
+- Implemented the first normal-off tracked weapon-presentation gate. Source
+  inspection identified `PlayerUnitFirstPersonExtension.update_unit_position`
+  as the production post-animation seam: it restores the stock root, updates
+  animation variables and calls `World.update_unit_and_children`. Earlier
+  fixed-update writes were correctly rejected as a visual result because their
+  measured post-hand error remained unchanged and the later method overwrote
+  them.
+- The accepted hook runs after that method, derives the actual scene-graph root
+  by walking six parents from `j_righthand`, applies the world-space delta that
+  maps the animated hand to the tracked grip, and explicitly propagates the
+  changed unit/children once. It is limited to the private training modes,
+  requires a fresh valid grip and an unparented 1P root, and rejects wrist
+  displacement above 0.75 m.
+- A clean synthetic VDXR run accepted 458 presentation frames. Every sampled
+  post-write hand position had `0.000000` m target error, post-hand yaw/pitch/
+  roll exactly matched the target, and the right weapon attachment stayed
+  coincident with the linked weapon root at `0.000000` m. Outside/over-reach
+  phases were blocked and tracking loss produced no write. The gate was
+  returned to `disabled`; controller aim and gameplay origin remained disabled
+  and unchanged throughout.
 
 ## Validation commands
 
@@ -340,6 +360,7 @@ $cmake = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Co
 & .\tools\stereo\request-primary-action-test.ps1
 & .\tools\stereo\request-weapon-inventory.ps1
 & .\tools\stereo\set-weapon-pose-trace.ps1 -Mode Enabled
+& .\tools\stereo\set-weapon-presentation-test.ps1 -Mode Enabled
 ```
 
 Results: all 26 Release CTest tests passed. The native-capture test now installs the
@@ -358,11 +379,11 @@ Steam close grace between normal runs.
 
 ## Next action
 
-Apply a bounded, normal-off post-animation presentation transform at the
-first-person rig/right-weapon attachment seam. Reject invalid/stale or
-over-reach controller poses, preserve the linked attachment/FX chain and keep
-gameplay aim/origin on the already validated path. Do not feed gameplay aim
-into the HMD render basis.
+Add controller-model grip offsets and per-weapon presentation calibration on
+top of the proven post-animation root delta, then validate it with live hands.
+Retain the invalid/stale/over-reach fallback and linked attachment/FX chain.
+Keep gameplay aim/origin on the already validated path and do not feed it into
+the HMD render basis.
 Preserve the raw LOCAL pose for spatial-menu tests. Retain the horizon-lock
 billboard build for automated soaks, but defer the final smoke, fog and
 particle-orientation judgement until the user can wear the headset.

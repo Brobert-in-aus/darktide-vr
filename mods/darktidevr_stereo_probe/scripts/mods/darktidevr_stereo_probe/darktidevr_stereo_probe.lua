@@ -190,7 +190,13 @@ local controller_observation = {
     weapon_inventory_last_check_frame = -math.huge,
     weapon_pose_trace_enabled = false,
     weapon_pose_trace_last_check_frame = -math.huge,
-    weapon_pose_trace_last_log_frame = -math.huge
+    weapon_pose_trace_last_log_frame = -math.huge,
+    weapon_presentation_enabled = false,
+    weapon_presentation_last_check_frame = -math.huge,
+    weapon_presentation_last_log_frame = -math.huge,
+    weapon_presentation_writes = 0,
+    weapon_presentation_max_post_error = 0,
+    weapon_presentation_block_reason = nil
 }
 local performance_profile_requested = false -- opt-in diagnostic; allocates GPU timestamp work
 -- Reuse the shading/LOD preparation performed by the primary eye. The second
@@ -1062,6 +1068,7 @@ local function apply_head_tracking(clean_position, clean_rotation)
     -- The native reader rejects stale snapshots. Clear usability before each
     -- attempt so a failed read can never leave the previous pose live.
     controller_observation.right_aim_usable = false
+    controller_observation.right_grip_usable = false
     if controller_observation.values and
             ui_native_capture.dtvr_read_controller_state(
                 controller_observation.values,
@@ -3066,6 +3073,58 @@ function presentation.vector_distance(left, right)
     return math.sqrt(x * x + y * y + z * z)
 end
 
+function presentation.rotate_vector(rotation, value)
+    return Quaternion.right(rotation) * Vector3.x(value) +
+        Quaternion.forward(rotation) * Vector3.y(value) +
+        Quaternion.up(rotation) * Vector3.z(value)
+end
+
+function presentation.inverse_quaternion(rotation)
+    local x, y, z, w = Quaternion.to_elements(rotation)
+    return Quaternion.from_elements(-x, -y, -z, w)
+end
+
+function presentation.scene_graph_root(unit, node)
+    local current = node
+    local parent = Unit.scene_graph_parent(unit, current)
+    local depth = 0
+    while parent ~= nil and depth < 256 do
+        current = parent
+        parent = Unit.scene_graph_parent(unit, current)
+        depth = depth + 1
+    end
+    return current, depth
+end
+
+function presentation.controller_grip_target()
+    if not controller_observation.right_grip_usable or
+            not controller_observation.body_anchor_qw then
+        return nil, nil
+    end
+    local anchor_position = Vector3(
+        controller_observation.body_anchor_x,
+        controller_observation.body_anchor_y,
+        controller_observation.body_anchor_z)
+    local anchor_rotation = Quaternion.from_elements(
+        controller_observation.body_anchor_qx,
+        controller_observation.body_anchor_qy,
+        controller_observation.body_anchor_qz,
+        controller_observation.body_anchor_qw)
+    local grip_position = Vector3(
+        controller_observation.right_grip_x,
+        controller_observation.right_grip_y,
+        controller_observation.right_grip_z)
+    local grip_rotation = Quaternion.from_elements(
+        controller_observation.right_grip_qx,
+        controller_observation.right_grip_qy,
+        controller_observation.right_grip_qz,
+        controller_observation.right_grip_qw)
+    local target_position = anchor_position +
+        presentation.rotate_vector(anchor_rotation, grip_position)
+    local target_rotation = Quaternion.multiply(anchor_rotation, grip_rotation)
+    return target_position, target_rotation
+end
+
 function presentation.trace_weapon_pose(self, fixed_frame)
     if not fixed_frame or not Mods or not Mods.lua or not Mods.lua.io then
         return
@@ -3114,29 +3173,8 @@ function presentation.trace_weapon_pose(self, fixed_frame)
         return
     end
     controller_observation.weapon_pose_trace_last_log_frame = fixed_frame
-    local anchor_position = Vector3(
-        controller_observation.body_anchor_x,
-        controller_observation.body_anchor_y,
-        controller_observation.body_anchor_z)
-    local anchor_rotation = Quaternion.from_elements(
-        controller_observation.body_anchor_qx,
-        controller_observation.body_anchor_qy,
-        controller_observation.body_anchor_qz,
-        controller_observation.body_anchor_qw)
-    local grip_position = Vector3(
-        controller_observation.right_grip_x,
-        controller_observation.right_grip_y,
-        controller_observation.right_grip_z)
-    local grip_rotation = Quaternion.from_elements(
-        controller_observation.right_grip_qx,
-        controller_observation.right_grip_qy,
-        controller_observation.right_grip_qz,
-        controller_observation.right_grip_qw)
-    local target_position = anchor_position +
-        Quaternion.right(anchor_rotation) * Vector3.x(grip_position) +
-        Quaternion.forward(anchor_rotation) * Vector3.y(grip_position) +
-        Quaternion.up(anchor_rotation) * Vector3.z(grip_position)
-    local target_rotation = Quaternion.multiply(anchor_rotation, grip_rotation)
+    local target_position, target_rotation =
+        presentation.controller_grip_target()
     local hand_node = Unit.node(first_person_unit, "j_righthand")
     local attach_node = Unit.node(first_person_unit, "j_rightweaponattach")
     local hand_position = Unit.world_position(first_person_unit, hand_node)
@@ -3157,6 +3195,139 @@ function presentation.trace_weapon_pose(self, fixed_frame)
         presentation.vector_distance(target_position, hand_position),
         presentation.vector_distance(target_position, weapon_position),
         presentation.vector_distance(attach_position, weapon_position))
+end
+
+function presentation.update_weapon_presentation_gate(fixed_frame)
+    if fixed_frame <
+            controller_observation.weapon_presentation_last_check_frame + 60 then
+        return
+    end
+    controller_observation.weapon_presentation_last_check_frame = fixed_frame
+    local flag_path =
+        "./../mods/darktidevr_stereo_probe/darktidevr_weapon_presentation.flag"
+    local flag = Mods.lua.io.open(flag_path, "r")
+    local enabled = false
+    if flag then
+        enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
+        flag:close()
+    end
+    if enabled ~= controller_observation.weapon_presentation_enabled then
+        controller_observation.weapon_presentation_enabled = enabled
+        controller_observation.weapon_presentation_block_reason = nil
+        mod:info(
+            "DARKTIDEVR_WEAPON presentation=%s source=test_flag writes=%d",
+            enabled and "enabled" or "disabled",
+            controller_observation.weapon_presentation_writes)
+    end
+end
+
+function presentation.author_weapon_pose(self, fixed_frame, world)
+    if not fixed_frame or not Mods or not Mods.lua or not Mods.lua.io then
+        return
+    end
+    presentation.update_weapon_presentation_gate(fixed_frame)
+    if not controller_observation.weapon_presentation_enabled then
+        return
+    end
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    local mode = active_game_mode_name()
+    if not local_player or self._unit ~= local_player.player_unit or
+            (mode ~= "shooting_range" and mode ~= "training_grounds") then
+        return
+    end
+    local first_person_unit = self._first_person_unit
+    if not first_person_unit or not Unit.alive(first_person_unit) or
+            not Unit.has_node(first_person_unit, "j_righthand") then
+        return
+    end
+    local target_position, target_rotation =
+        presentation.controller_grip_target()
+    if not target_position or not target_rotation then
+        return
+    end
+    local hand_node = Unit.node(first_person_unit, "j_righthand")
+    local root_node, root_depth =
+        presentation.scene_graph_root(first_person_unit, hand_node)
+    local root_position = Unit.world_position(first_person_unit, root_node)
+    local root_local_position = Unit.local_position(first_person_unit, root_node)
+    local hand_position = Unit.world_position(first_person_unit, hand_node)
+    local hand_rotation = Unit.world_rotation(first_person_unit, hand_node)
+    local displacement =
+        presentation.vector_distance(target_position, hand_position)
+    local root_space_error =
+        presentation.vector_distance(root_position, root_local_position)
+    local block_reason = nil
+    if displacement > 0.75 then
+        block_reason = "over_reach"
+    elseif root_space_error > 0.001 then
+        block_reason = "parented_root"
+    end
+    if block_reason then
+        if block_reason ~=
+                controller_observation.weapon_presentation_block_reason then
+            controller_observation.weapon_presentation_block_reason = block_reason
+            mod:warning(
+                "DARKTIDEVR_WEAPON presentation_blocked reason=%s displacement_m=%.4f root_space_error_m=%.6f sequence=%d",
+                block_reason, displacement, root_space_error,
+                controller_observation.last_sequence)
+        end
+        return
+    end
+    controller_observation.weapon_presentation_block_reason = nil
+    local delta_rotation = Quaternion.multiply(
+        target_rotation,
+        presentation.inverse_quaternion(hand_rotation))
+    local hand_from_root = hand_position - root_position
+    local new_root_position = target_position -
+        presentation.rotate_vector(delta_rotation, hand_from_root)
+    local root_rotation = Unit.world_rotation(first_person_unit, root_node)
+    local new_root_rotation = Quaternion.multiply(delta_rotation, root_rotation)
+    Unit.set_local_position(first_person_unit, root_node, new_root_position)
+    Unit.set_local_rotation(first_person_unit, root_node, new_root_rotation)
+    if world then
+        World.update_unit_and_children(world, first_person_unit)
+    end
+    local post_hand_position = Unit.world_position(first_person_unit, hand_node)
+    local post_hand_rotation = Unit.world_rotation(first_person_unit, hand_node)
+    local post_error =
+        presentation.vector_distance(target_position, post_hand_position)
+    controller_observation.weapon_presentation_max_post_error = math.max(
+        controller_observation.weapon_presentation_max_post_error,
+        post_error)
+    controller_observation.weapon_presentation_writes =
+        controller_observation.weapon_presentation_writes + 1
+    if fixed_frame >=
+            controller_observation.weapon_presentation_last_log_frame + 60 then
+        controller_observation.weapon_presentation_last_log_frame = fixed_frame
+        local target_yaw, target_pitch, target_roll =
+            Quaternion.to_yaw_pitch_roll(target_rotation)
+        local post_yaw, post_pitch, post_roll =
+            Quaternion.to_yaw_pitch_roll(post_hand_rotation)
+        local slot_name = self._inventory_component and
+            self._inventory_component.wielded_slot
+        local weapon = slot_name and self._weapons and self._weapons[slot_name]
+        local weapon_unit = weapon and weapon.weapon_unit
+        local attach_weapon_error = -1
+        if weapon_unit and Unit.alive(weapon_unit) and
+                Unit.has_node(first_person_unit, "j_rightweaponattach") then
+            local attach_position = Unit.world_position(
+                first_person_unit,
+                Unit.node(first_person_unit, "j_rightweaponattach"))
+            attach_weapon_error = presentation.vector_distance(
+                attach_position, Unit.world_position(weapon_unit, 1))
+        end
+        mod:info(
+            "DARKTIDEVR_WEAPON presentation_write frame=%s sequence=%d root_node=%s root_depth=%d displacement_m=%.4f post_error_m=%.6f max_post_error_m=%.6f attach_weapon_m=%.6f target_ypr=%.4f,%.4f,%.4f post_ypr=%.4f,%.4f,%.4f root_space_error_m=%.6f writes=%d",
+            tostring(fixed_frame), controller_observation.last_sequence,
+            tostring(root_node), root_depth, displacement, post_error,
+            controller_observation.weapon_presentation_max_post_error,
+            attach_weapon_error,
+            target_yaw, target_pitch, target_roll,
+            post_yaw, post_pitch, post_roll,
+            root_space_error,
+            controller_observation.weapon_presentation_writes)
+    end
 end
 
 mod:hook_safe(
@@ -3361,6 +3532,24 @@ mod:hook_safe(
             Vector3.y(forward),
             Vector3.z(forward)
         )
+    end)
+
+-- `update_unit_position` is the production post-animation seam. The game has
+-- already restored the stock 1P root, updated animation variables and called
+-- `World.update_unit_and_children` before this safe hook runs. Applying the
+-- normal-off presentation delta here makes it visible to the render without
+-- feeding back into fixed-frame gameplay state.
+mod:hook_safe(
+    require("scripts/extension_systems/first_person/player_unit_first_person_extension"),
+    "update_unit_position",
+    function(self)
+        local weapon_extension = self._weapon_extension
+        if weapon_extension then
+            presentation.author_weapon_pose(
+                weapon_extension,
+                controller_observation.last_sequence,
+                self._world)
+        end
     end)
 
 mod:hook_safe(

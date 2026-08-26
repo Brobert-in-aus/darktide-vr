@@ -559,6 +559,17 @@ unchanged, and measured attachment-root/weapon-root error at `0.000000` m.
 The first authoring gate must reject stale/invalid samples and a configurable
 maximum wrist displacement before changing the presentation rig.
 
+That first gate is now implemented and live-validated. The selected seam is a
+safe hook after `PlayerUnitFirstPersonExtension.update_unit_position`, because
+that game method restores the stock 1P root, updates animation state and calls
+`World.update_unit_and_children`. The mod maps the animated right hand to the
+tracked grip through the hand's six-parent scene-graph root and performs one
+explicit child propagation. Across 458 accepted synthetic writes, measured
+post-hand position error and attachment-to-weapon-root error were both
+`0.000000` m, with exact target orientation. Samples above 0.75 m and invalid
+tracking remained fail-closed. The feature remains normal-off pending physical
+controller grip-offset and weapon-family calibration.
+
 True physical melee is a later feature. The initial implementation remains
 button-driven, uses Darktide's normal sweep animations/damage windows and merely
 aims the animation with the tracked controller. One-to-one swing collision would
