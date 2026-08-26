@@ -365,16 +365,21 @@ panel distance, laser feel, cursor size and dominant-hand ergonomics.
 
 ## Workstream D — deterministic Psykhanium entry
 
-Darktide's own `meat_grind_stress` Testify case provides the supported sequence:
+Darktide's training views provide the supported sequence. The older
+`meat_grind_stress` Testify case is useful history but its option index is no
+longer authoritative:
 
 1. wait until the game is authenticated and in the hub;
 2. open `training_grounds_view`;
-3. trigger widget `option_button_3` (Meat Grinder);
+3. resolve the option whose semantic key is
+   `loc_training_grounds_view_shooting_range_text` and trigger its live widget;
 4. wait for `training_grounds_options_view`;
 5. trigger widget `play_button`; and
 6. wait for game mode/presence `shooting_range`.
 
-The option constructs the normal context for mission `tg_shooting_range`, and
+The current live option is index 4 because Horde was inserted at index 1; the
+old hardcoded `option_button_3` now selects Advanced Training. The selected
+option constructs the normal context for mission `tg_shooting_range`, and
 `TrainingGroundsOptionsView:_start_training_grounds` resets multiplayer state,
 boots a single-player session, changes mechanism and signals all players ready.
 The development mod will reproduce the public view/widget callbacks rather than
@@ -504,8 +509,18 @@ starts from `action_one_hold`, so the completed event now supplies pressed plus
 held for one fixed frame and release on the next. At sequence 5796, frame 1913
 reported `pressed=true, held=true` and immediately entered
 `action_melee_start_left`; frame 1914 reported `release=true, held=false`.
-Ranged `action_shoot` rotation and shot-count correlation follows before this
-seam becomes a general binding adapter.
+
+The mission selector is now exact rather than mode-based: it semantically
+resolved Shooting Range to current widget index 4, verified the options context,
+and passed only after the world reported
+`game_mode=shooting_range mission=tg_shooting_range`. With slot 2 selected, the
+same bounded click entered `rapid_left` on `forcestaff_p4_m1` at sequence 12281.
+Source inspection closes the pre-spread direction chain: that projectile action
+reads `first_person_component.rotation` as `look_rotation`, then applies its
+normal offset/spread/targeting before handing direction to projectile
+locomotion. Add a projectile-specific post-spread observer alongside the
+existing generic `ActionShoot` observer before promoting this seam to a general
+binding adapter.
 
 This first gate deliberately keeps game-authoritative firing origins and reach.
 It must not permit shooting around walls, longer melee reach, altered cadence,

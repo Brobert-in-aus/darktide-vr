@@ -215,10 +215,10 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   before writes resume. The run completed 403 writes with no script error and
   restored the file flag to `disabled`.
 - Added a guarded one-shot `dtvr_enter_psykhanium` workflow derived from the
-  game's own training-view and Testify path. It consumes a local flag, waits for
-  hub game mode plus backend authentication, opens the training view, selects
-  `option_button_3`, confirms `play_button`, and accepts either Psykhanium game
-  mode (`training_grounds` or `shooting_range`).
+  game's own training-view path. It consumes a local flag, waits for hub game
+  mode plus backend authentication, opens the training view, resolves the
+  Shooting Range option by semantic key, verifies that the options context is
+  mission `tg_shooting_range`, and only then confirms `play_button`.
 - Live evidence proved automatic character-select -> hub -> training-menu ->
   private Psykhanium entry and `GameplayStateRun`, with
   `DARKTIDEVR_PSYKHANIUM result=pass game_mode=training_grounds`.
@@ -280,6 +280,22 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   The observer now uses DMF's delayed string-class hook; the next clean run
   logged the delayed hook applying when the extension became available and
   completed normally. Do not reintroduce an eager require for this class.
+- Live testing found that the older Testify example's hardcoded
+  `option_button_3` is stale: Horde now occupies option 1, making option 3
+  Advanced Training. That route had produced the misleading
+  `game_mode=training_grounds` pass and equipped `unarmed_training_grounds`.
+  The semantic resolver selected the current Shooting Range at index 4, the
+  options view reported `mission_name=tg_shooting_range`, and the loaded world
+  passed as `game_mode=shooting_range mission=tg_shooting_range`.
+- In that exact mission, slot 1 held `forcesword_p1_m3` and the bounded click
+  entered `action_melee_start_left`. A clean rerun selected slot 2 before the
+  pulse; the context was `slot_secondary`, template `forcestaff_p4_m1`, and the
+  same one-frame pressed/held plus next-frame release sequence immediately
+  entered the ranged projectile action `rapid_left` at controller sequence
+  12281. The force-staff projectile path consumes
+  `first_person_component.rotation`, then applies weapon spread/targeting in
+  `ActionSpawnProjectile:_fire_projectile`; it does not increment the generic
+  hitscan `action_shoot.num_shots_fired` counter observed by the current probe.
 
 ## Validation commands
 
@@ -310,12 +326,10 @@ Steam close grace between normal runs.
 
 ## Next action
 
-Complete the second-stage observer for the strictly synthetic primary-action
-gate: confirm one non-`none` local weapon action starts within 30 fixed frames
-of the accepted edge, then repeat with a ranged weapon and correlate the
-`action_shoot` component's shooting rotation/shot count with the authored
-first-person forward ray before enabling general button mapping. Do not feed
-gameplay aim into the HMD render basis.
+Add projectile-specific post-spread direction telemetry at the locomotion
+handoff, then turn the proven one-shot seam into a fail-closed binding adapter
+and begin tracked first-person weapon-unit/node discovery. Do not feed gameplay
+aim into the HMD render basis.
 Preserve the raw LOCAL pose for spatial-menu tests. Retain the horizon-lock
 billboard build for automated soaks, but defer the final smoke, fog and
 particle-orientation judgement until the user can wear the headset.

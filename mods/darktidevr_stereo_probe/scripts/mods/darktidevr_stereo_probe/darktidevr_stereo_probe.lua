@@ -164,7 +164,9 @@ local controller_observation = {
     primary_action_cache_observed = false,
     primary_action_sequence = 0,
     primary_action_cache_frame = nil,
+    primary_action_weapon_context_logged = false,
     primary_action_weapon_observed = false,
+    primary_action_shot_observed = false,
     primary_action_stage = "idle",
     primary_action_last_check_t = -math.huge
 }
@@ -707,6 +709,30 @@ function presentation.trigger_widget(manager, view_name, widget_name)
     return true, nil
 end
 
+function presentation.trigger_option(manager, view_name, display_name)
+    local view = manager:view_instance(view_name)
+    local definitions = view and view._base_definitions
+    local options = definitions and definitions.button_options_definitions
+    if type(options) ~= "table" then
+        return false, "option_definitions_not_ready"
+    end
+    for index = 1, #options do
+        local option = options[index]
+        if option and option.display_name == display_name then
+            local widget_name = "option_button_" .. tostring(index)
+            local ok, reason = presentation.trigger_widget(
+                manager, view_name, widget_name)
+            if ok then
+                mod:info(
+                    "DARKTIDEVR_PSYKHANIUM selected option=%s index=%d widget=%s",
+                    tostring(display_name), index, widget_name)
+            end
+            return ok, reason
+        end
+    end
+    return false, "semantic_option_missing"
+end
+
 function presentation.update_psykhanium(manager, t)
     local state = presentation.psykhanium
     if state.stage == "idle" and Mods and Mods.lua and Mods.lua.io then
@@ -788,8 +814,10 @@ function presentation.update_psykhanium(manager, t)
         state.stage = "select_shooting_range"
     end
     if state.stage == "select_shooting_range" then
-        local ok, reason = presentation.trigger_widget(
-            manager, "training_grounds_view", "option_button_3")
+        local ok, reason = presentation.trigger_option(
+            manager,
+            "training_grounds_view",
+            "loc_training_grounds_view_shooting_range_text")
         if ok then
             state.stage = "wait_options_view"
             state.deadline = t + 20
@@ -806,6 +834,18 @@ function presentation.update_psykhanium(manager, t)
 
     if state.stage == "wait_options_view" and
             manager:view_active("training_grounds_options_view") then
+        local options_view = manager:view_instance("training_grounds_options_view")
+        local mechanism_context = options_view and options_view._context and
+            options_view._context.mechanism_context
+        local mission_name = mechanism_context and mechanism_context.mission_name
+        if mission_name ~= "tg_shooting_range" then
+            state.stage = "blocked"
+            state.last_error = "unexpected_mission:" .. tostring(mission_name)
+            mod:error(
+                "DARKTIDEVR_PSYKHANIUM blocked stage=verify_options mission=%s",
+                tostring(mission_name))
+            return
+        end
         local ok, reason = presentation.trigger_widget(
             manager, "training_grounds_options_view", "play_button")
         if ok then
@@ -827,13 +867,19 @@ function presentation.update_psykhanium(manager, t)
         local ok, game_mode = pcall(
             Managers.state.game_mode.game_mode_name,
             Managers.state.game_mode)
-        if ok and (game_mode == "shooting_range" or
-                game_mode == "training_grounds") then
+        local mission_ok, mission_name = false, nil
+        if Managers.state.mission and
+                type(Managers.state.mission.mission_name) == "function" then
+            mission_ok, mission_name = pcall(
+                Managers.state.mission.mission_name,
+                Managers.state.mission)
+        end
+        if ok and mission_ok and mission_name == "tg_shooting_range" then
             state.stage = "complete"
             state.last_error = nil
             mod:info(
-                "DARKTIDEVR_PSYKHANIUM result=pass game_mode=%s",
-                tostring(game_mode))
+                "DARKTIDEVR_PSYKHANIUM result=pass game_mode=%s mission=%s",
+                tostring(game_mode), tostring(mission_name))
         end
     end
 end
@@ -2814,8 +2860,7 @@ mod:hook_safe(
     "PlayerUnitWeaponExtension",
     "fixed_update",
     function(self, _, _, _, fixed_frame)
-        if not controller_observation.primary_action_cache_observed or
-                controller_observation.primary_action_weapon_observed then
+        if not controller_observation.primary_action_cache_observed then
             return
         end
         local cache_frame = controller_observation.primary_action_cache_frame
@@ -2831,15 +2876,70 @@ mod:hook_safe(
         local action_component = self._weapon_action_component
         local action_name = action_component and
             action_component.current_action_name
-        if not action_name or action_name == "none" then
+        if not controller_observation.primary_action_weapon_context_logged then
+            local slot = self._inventory_component and
+                self._inventory_component.wielded_slot
+            local weapon = slot and self._weapons and self._weapons[slot]
+            local template = weapon and weapon.weapon_template
+            controller_observation.primary_action_weapon_context_logged = true
+            mod:info(
+                "DARKTIDEVR_INPUT primary_action context slot=%s template=%s action=%s frame=%s sequence=%d",
+                tostring(slot),
+                tostring(template and template.name),
+                tostring(action_name),
+                tostring(fixed_frame),
+                controller_observation.primary_action_sequence
+            )
+        end
+        if action_name and action_name ~= "none" and
+                not controller_observation.primary_action_weapon_observed then
+            controller_observation.primary_action_weapon_observed = true
+            mod:info(
+                "DARKTIDEVR_INPUT primary_action weapon_action=%s frame=%s start_t=%.4f sequence=%d",
+                tostring(action_name),
+                tostring(fixed_frame),
+                tonumber(action_component.start_t) or 0,
+                controller_observation.primary_action_sequence
+            )
+        end
+        if controller_observation.primary_action_shot_observed then
             return
         end
-        controller_observation.primary_action_weapon_observed = true
+        local shoot_component = self._action_shoot_component
+        local shots = shoot_component and shoot_component.num_shots_fired or 0
+        if shots <= 0 or not shoot_component.shooting_rotation then
+            return
+        end
+        local ok, yaw, pitch, roll = pcall(
+            Quaternion.to_yaw_pitch_roll,
+            shoot_component.shooting_rotation
+        )
+        if not ok then
+            mod:warning(
+                "DARKTIDEVR_INPUT primary_action shot_rotation_unavailable=%s",
+                tostring(yaw)
+            )
+            return
+        end
+        local forward = Quaternion.forward(shoot_component.shooting_rotation)
+        local position = shoot_component.shooting_position
+        controller_observation.primary_action_shot_observed = true
         mod:info(
-            "DARKTIDEVR_INPUT primary_action weapon_action=%s frame=%s start_t=%.4f sequence=%d",
-            tostring(action_name),
+            "DARKTIDEVR_INPUT primary_action shot frame=%s shots=%d shooting_ypr=%.4f,%.4f,%.4f shooting_forward=%.4f,%.4f,%.4f shooting_position=%.4f,%.4f,%.4f authored_forward=%.4f,%.4f,%.4f sequence=%d",
             tostring(fixed_frame),
-            tonumber(action_component.start_t) or 0,
+            shots,
+            yaw,
+            pitch,
+            roll,
+            Vector3.x(forward),
+            Vector3.y(forward),
+            Vector3.z(forward),
+            Vector3.x(position),
+            Vector3.y(position),
+            Vector3.z(position),
+            controller_observation.downstream_forward_x or 0,
+            controller_observation.downstream_forward_y or 0,
+            controller_observation.downstream_forward_z or 0,
             controller_observation.primary_action_sequence
         )
     end)
