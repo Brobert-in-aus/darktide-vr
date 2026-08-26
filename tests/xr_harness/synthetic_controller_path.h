@@ -28,4 +28,10 @@ SyntheticControllerPathSample synthetic_controller_path_sample(
     math::Pose panel_pose, float panel_width_metres,
     float panel_height_metres, bool emit_gameplay_input = false);
 
+// Replaces only the recenter-relative, Darktide-basis poses with a repeatable
+// arm-scale trajectory. Absolute poses and pointer rays remain suitable for
+// the spatial-panel tests above.
+void apply_synthetic_body_reach_path(core::SharedControllerState& state,
+                                     std::uint64_t frame);
+
 }  // namespace darktidevr::harness

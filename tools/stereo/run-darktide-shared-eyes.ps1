@@ -13,6 +13,8 @@ param(
 
     [switch] $SyntheticControllerPath,
 
+    [switch] $SyntheticBodyPath,
+
     [switch] $SyntheticHeadSweep
 )
 
@@ -63,6 +65,12 @@ if ($EnableMenuInput) {
 }
 if ($SyntheticControllerPath) {
     $arguments += '--synthetic-controller-path'
+}
+if ($SyntheticBodyPath) {
+    if (-not $SyntheticControllerPath) {
+        throw '-SyntheticBodyPath requires -SyntheticControllerPath'
+    }
+    $arguments += '--synthetic-body-path'
 }
 if ($SyntheticHeadSweep) {
     $arguments += '--synthetic-head-sweep'

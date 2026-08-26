@@ -89,6 +89,9 @@ int wmain(int argc, wchar_t** argv) {
     const auto billboard_resource_unmap_count =
         reinterpret_cast<unsigned long long (*)()>(GetProcAddress(
             module, "dtvr_billboard_resource_unmap_count"));
+    const auto solve_two_bone_ik = reinterpret_cast<int (*)(
+        const float*, unsigned int, float*, unsigned int, unsigned int*)>(
+        GetProcAddress(module, "dtvr_solve_two_bone_ik"));
     if (!install || !set_diagnostic_hooks || !take_gpu_stage_profile ||
         !capture || !arm_pose ||
         !set_render_extent ||
@@ -102,7 +105,7 @@ int wmain(int argc, wchar_t** argv) {
         !set_billboard_direct_view_direction ||
         !billboard_resource_map_count ||
         !billboard_resource_map_match_count ||
-        !billboard_resource_unmap_count) {
+        !billboard_resource_unmap_count || !solve_two_bone_ik) {
       throw std::runtime_error("Native capture export contract is incomplete");
     }
     const auto steady_ns = static_cast<double>(
@@ -136,6 +139,26 @@ int wmain(int argc, wchar_t** argv) {
         1) {
       throw std::runtime_error(
           "Controller-state export must reject null output");
+    }
+    float ik_input[17]{0.0F, 0.0F, 1.5F, 0.45F, 0.35F, 1.25F,
+                       0.25F, 0.1F, 0.8F, 0.0F, 1.0F, 0.0F,
+                       0.0F, 0.0F, -1.0F, 0.36F, 0.34F};
+    float ik_output[14]{};
+    unsigned int ik_flags{};
+    if (solve_two_bone_ik(nullptr, 17, ik_output, 14, &ik_flags) != 1 ||
+        solve_two_bone_ik(ik_input, 16, ik_output, 14, &ik_flags) != 2 ||
+        solve_two_bone_ik(ik_input, 17, ik_output, 14, &ik_flags) != 0 ||
+        ik_flags != 0 || std::abs(ik_output[3] - ik_input[3]) > 1.0e-4F ||
+        std::abs(ik_output[4] - ik_input[4]) > 1.0e-4F ||
+        std::abs(ik_output[5] - ik_input[5]) > 1.0e-4F) {
+      throw std::runtime_error("Native two-bone IK export contract failed");
+    }
+    ik_input[3] = 2.0F;
+    ik_input[4] = 0.0F;
+    ik_input[5] = 1.5F;
+    if (solve_two_bone_ik(ik_input, 17, ik_output, 14, &ik_flags) != 0 ||
+        (ik_flags & 2U) == 0U || ik_output[13] >= 0.70F) {
+      throw std::runtime_error("Native two-bone IK reach clamp failed");
     }
     if (arm_pose(-1, 1) != 60) {
       throw std::runtime_error("Pose-tagged capture must reject invalid eyes");

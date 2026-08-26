@@ -701,6 +701,39 @@ the hub and Psykhanium, then exercise locomotion, crouch, ADS, reload, block,
 melee and weapon swap. Worn-headset approval is still required for embodiment,
 arm proportions, chest/pelvis inference, near-body comfort and two-hand grip.
 
+#### Progress — live rig inventory and solver foundation
+
+A read-only hub inventory on the selected human operative confirms that the
+local 3P unit is a viable procedural-body target rather than only a theoretical
+source-code seam. The live unit has 246 scene-graph items and exposes
+`j_hips_handle`, hips/spine/neck/head, both shoulder/arm/forearm/hand chains,
+both hand-IK handles, both leg/foot chains, both foot-IK handles, and a live
+`aim_constraint_target`. Arm-chain local offsets are approximately 0.2753 m
+and 0.2748 m; the live animated left segments measured 0.2615/0.2609 m and the
+right measured 0.2618/0.2612 m. The inventory performed no pose writes, loaded
+the hub normally and produced no Lua, D3D12 or device-removal error.
+
+The first solver layer is implemented once in native core rather than copied
+into Lua: an analytic two-bone solve with near/far reach clamping, pole
+projection, prior-bend fallback for axial-pole anti-flip, invalid-input
+fail-closed behavior, and explicit status flags. Its C ABI accepts only fixed
+size float buffers and is covered both by dedicated solver tests and the native
+sidecar export-contract test. A normal-off Lua trace can feed each live arm and
+tracked grip through that canonical solver and log the proposed elbow/wrist,
+segment preservation, reach flags and error without modifying the rig.
+
+The harness now has a separate body-reach trajectory layered over the existing
+spatial-panel controller path. It covers near sweeps, crossed hands, lateral
+and forward over-reach, tracking loss and reacquisition without changing the
+absolute pointer poses. A live trace caught an architectural error: body IK
+had initially reused the detached third-person camera as its world origin.
+Body targets now use the avatar's live `j_head` translation with the immutable
+OpenXR recenter horizon orientation. The corrected trace aligned exactly with
+the published phases: reachable samples solved with zero wrist error,
+sequences 246--299 clamped at the measured arm reach, and tracking loss created
+the expected gap through sequence 362. This remains read-only; bone authoring
+is the next independently gated step.
+
 ### Psykhanium test ladder
 
 1. With synthetic controller data, verify coordinate conversion, action edges,

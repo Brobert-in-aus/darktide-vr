@@ -449,6 +449,7 @@ class OpenXrProbe {
                                bool enable_menu_input,
                                const std::wstring& menu_input_title,
                                bool synthetic_controller_path,
+                               bool synthetic_body_path,
                                bool synthetic_gameplay_input,
                                bool synthetic_head_sweep) {
     if (session_ == XR_NULL_HANDLE || view_space_ == XR_NULL_HANDLE) {
@@ -1341,6 +1342,10 @@ class OpenXrProbe {
                 timestamp_ns, panel_pose, panel_extent.width_metres,
                 panel_extent.height_metres, synthetic_gameplay_input);
         populate_body_local_controller_poses(synthetic.state);
+        if (synthetic_body_path) {
+          darktidevr::harness::apply_synthetic_body_reach_path(
+              synthetic.state, synthetic_controller_frames_ - 1);
+        }
         if (!controller_writer_->publish(synthetic.state)) {
           throw std::runtime_error(
               "Shared controller state rejected synthetic sample");
@@ -2532,6 +2537,7 @@ void usage() {
                 "[--capture-window-title TEXT] [--shared-eyes] "
                 "[--enable-menu-input [--menu-input-window-title TEXT]] "
                 "[--synthetic-controller-path] "
+                "[--synthetic-body-path] "
                 "[--synthetic-gameplay-input] "
                 "[--synthetic-head-sweep] "
                 "[--shared-pose-sequence-offset N] "
@@ -2562,6 +2568,7 @@ int wmain(int argc, wchar_t** argv) {
     bool pair_driven_shared = true;
     bool enable_menu_input = false;
     bool synthetic_controller_path = false;
+    bool synthetic_body_path = false;
     bool synthetic_gameplay_input = false;
     bool synthetic_head_sweep = false;
     std::wstring menu_input_title = L"Warhammer 40,000: Darktide";
@@ -2607,6 +2614,8 @@ int wmain(int argc, wchar_t** argv) {
         enable_menu_input = true;
       } else if (argument == L"--synthetic-controller-path") {
         synthetic_controller_path = true;
+      } else if (argument == L"--synthetic-body-path") {
+        synthetic_body_path = true;
       } else if (argument == L"--synthetic-gameplay-input") {
         synthetic_gameplay_input = true;
       } else if (argument == L"--synthetic-head-sweep") {
@@ -2655,6 +2664,10 @@ int wmain(int argc, wchar_t** argv) {
       throw std::invalid_argument(
           "--synthetic-gameplay-input requires --synthetic-controller-path");
     }
+    if (synthetic_body_path && !synthetic_controller_path) {
+      throw std::invalid_argument(
+          "--synthetic-body-path requires --synthetic-controller-path");
+    }
     if (synthetic_head_sweep && !shared_eyes) {
       throw std::invalid_argument(
           "--synthetic-head-sweep requires --shared-eyes");
@@ -2687,6 +2700,7 @@ int wmain(int argc, wchar_t** argv) {
                                      true, enable_menu_input,
                                      menu_input_title,
                                      synthetic_controller_path,
+                                     synthetic_body_path,
                                      synthetic_gameplay_input,
                                      synthetic_head_sweep);
       } else {

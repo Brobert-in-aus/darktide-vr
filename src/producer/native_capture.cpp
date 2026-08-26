@@ -12,6 +12,7 @@
 #include "core/shared_head_pose.h"
 #include "core/shared_controller_state.h"
 #include "core/shared_presentation_state.h"
+#include "core/two_bone_ik.h"
 
 #include <algorithm>
 #include <array>
@@ -6814,6 +6815,51 @@ dtvr_set_billboard_direct_view_direction(float right_x, float right_y,
   }
   billboard_direct_write_enabled.store(enabled != 0,
                                        std::memory_order_release);
+  return 0;
+}
+
+extern "C" __declspec(dllexport) int dtvr_solve_two_bone_ik(
+    const float* input, unsigned int input_count, float* output,
+    unsigned int output_count, unsigned int* flags) {
+  constexpr unsigned int required_input_count = 17;
+  constexpr unsigned int required_output_count = 14;
+  if (!input || !output || !flags) {
+    return 1;
+  }
+  if (input_count < required_input_count ||
+      output_count < required_output_count) {
+    return 2;
+  }
+  darktidevr::core::TwoBoneIkInput request{};
+  request.shoulder = {input[0], input[1], input[2]};
+  request.wrist_target = {input[3], input[4], input[5]};
+  request.pole_target = {input[6], input[7], input[8]};
+  request.fallback_direction = {input[9], input[10], input[11]};
+  request.fallback_bend_direction = {input[12], input[13], input[14]};
+  request.upper_length = input[15];
+  request.lower_length = input[16];
+  const auto solved = darktidevr::core::solve_two_bone_ik(request);
+  if (!solved.valid) {
+    return 3;
+  }
+  output[0] = solved.elbow.x;
+  output[1] = solved.elbow.y;
+  output[2] = solved.elbow.z;
+  output[3] = solved.wrist.x;
+  output[4] = solved.wrist.y;
+  output[5] = solved.wrist.z;
+  output[6] = solved.reach_direction.x;
+  output[7] = solved.reach_direction.y;
+  output[8] = solved.reach_direction.z;
+  output[9] = solved.bend_direction.x;
+  output[10] = solved.bend_direction.y;
+  output[11] = solved.bend_direction.z;
+  output[12] = solved.requested_distance;
+  output[13] = solved.solved_distance;
+  *flags = (solved.clamped_near ? 1U : 0U) |
+           (solved.clamped_far ? 2U : 0U) |
+           (solved.used_direction_fallback ? 4U : 0U) |
+           (solved.used_bend_fallback ? 8U : 0U);
   return 0;
 }
 extern "C" __declspec(dllexport) unsigned long long

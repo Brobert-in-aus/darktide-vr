@@ -10,6 +10,7 @@ add_library(darktidevr_core STATIC
   shared_controller_state.cpp
   shared_head_pose.cpp
   shared_presentation_state.cpp
+  two_bone_ik.cpp
   xr_math.cpp
 )
 

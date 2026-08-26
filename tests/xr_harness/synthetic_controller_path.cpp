@@ -1,5 +1,6 @@
 #include "synthetic_controller_path.h"
 
+#include <cmath>
 #include <stdexcept>
 
 namespace darktidevr::harness {
@@ -87,6 +88,56 @@ SyntheticControllerPathSample synthetic_controller_path_sample(
     }
   }
   return sample;
+}
+
+void apply_synthetic_body_reach_path(core::SharedControllerState& state,
+                                     std::uint64_t frame) {
+  constexpr std::uint64_t phase_frames = 60;
+  const auto cycle_frame = frame % (phase_frames * 6);
+  const auto phase =
+      static_cast<SyntheticControllerPhase>(cycle_frame / phase_frames);
+  const auto phase_t = static_cast<float>(cycle_frame % phase_frames) /
+                       static_cast<float>(phase_frames - 1);
+  const auto sweep = phase_t * 0.70F - 0.35F;
+
+  // Darktide body-local basis: +X right, +Y forward and +Z up. These neutral
+  // targets sit below and in front of the HMD, close to an adult human's hand
+  // positions. The fifth phase intentionally exceeds arm reach.
+  std::array<math::Vec3, 2> positions{{
+      {-0.25F, 0.25F, -0.25F},
+      {0.25F, 0.25F, -0.25F},
+  }};
+  if (phase == SyntheticControllerPhase::left_sweep) {
+    positions[0].x = sweep;
+  } else if (phase == SyntheticControllerPhase::right_sweep) {
+    positions[1].x = sweep;
+  } else if (phase == SyntheticControllerPhase::crossed_sweep) {
+    positions[0].x = 0.25F;
+    positions[1].x = -0.25F;
+    positions[0].y += 0.05F * std::sin(phase_t * 6.28318530718F);
+    positions[1].y -= 0.05F * std::sin(phase_t * 6.28318530718F);
+  } else if (phase == SyntheticControllerPhase::outside_panel) {
+    positions[0] = {-0.65F, 0.25F, -0.25F};
+    positions[1] = {0.65F, 0.25F, -0.25F};
+  } else if (phase == SyntheticControllerPhase::beyond_reach) {
+    positions[0] = {-0.20F, 1.50F, -0.10F};
+    positions[1] = {0.20F, 1.50F, -0.10F};
+  }
+
+  for (std::size_t hand = 0; hand < 2; ++hand) {
+    auto& destination = state.hands[hand];
+    destination.body_aim_pose.position = positions[hand];
+    destination.body_grip_pose.position = positions[hand];
+    destination.body_aim_pose.orientation = {0.0F, 0.0F, 0.0F, 1.0F};
+    destination.body_grip_pose.orientation = {0.0F, 0.0F, 0.0F, 1.0F};
+    if (phase == SyntheticControllerPhase::tracking_invalid) {
+      destination.body_aim_tracking_flags = 0;
+      destination.body_grip_tracking_flags = 0;
+    } else {
+      destination.body_aim_tracking_flags = destination.aim_tracking_flags;
+      destination.body_grip_tracking_flags = destination.grip_tracking_flags;
+    }
+  }
 }
 
 }  // namespace darktidevr::harness

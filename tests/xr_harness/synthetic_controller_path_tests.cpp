@@ -1,5 +1,6 @@
 #include "synthetic_controller_path.h"
 
+#include <cmath>
 #include <iostream>
 #include <optional>
 
@@ -11,6 +12,11 @@ bool hits_panel(const darktidevr::harness::SyntheticControllerPathSample& sample
              sample.rays[hand], panel_pose, 2.0F, 2.0F, 1000, 1000, 0, 0,
              1000, 1000)
       .has_value();
+}
+
+float length(darktidevr::math::Vec3 value) {
+  return std::sqrt(value.x * value.x + value.y * value.y +
+                   value.z * value.z);
 }
 
 }  // namespace
@@ -38,6 +44,14 @@ int main() {
           180, 8, 8, panel, 2.0F, 2.0F, true);
   const auto utility = darktidevr::harness::synthetic_controller_path_sample(
       240, 9, 9, panel, 2.0F, 2.0F, true);
+  auto body_near = left.state;
+  auto body_crossed = outside.state;
+  auto body_far = far.state;
+  auto body_invalid = invalid.state;
+  darktidevr::harness::apply_synthetic_body_reach_path(body_near, 29);
+  darktidevr::harness::apply_synthetic_body_reach_path(body_crossed, 120);
+  darktidevr::harness::apply_synthetic_body_reach_path(body_far, 240);
+  darktidevr::harness::apply_synthetic_body_reach_path(body_invalid, 300);
 
   const darktidevr::math::Vec3 head{0.0F, 0.0F, 0.0F};
   const bool valid =
@@ -64,6 +78,13 @@ int main() {
            darktidevr::core::controller_menu) &&
       utility.state.hands[1].buttons ==
           darktidevr::core::controller_stick_click &&
+      length(body_near.hands[0].body_grip_pose.position) < 0.60F &&
+      body_near.hands[0].body_grip_tracking_flags != 0 &&
+      body_crossed.hands[0].body_grip_pose.position.x > 0.0F &&
+      body_crossed.hands[1].body_grip_pose.position.x < 0.0F &&
+      length(body_far.hands[0].body_grip_pose.position) > 1.0F &&
+      body_invalid.hands[0].body_grip_tracking_flags == 0 &&
+      body_invalid.hands[1].body_grip_tracking_flags == 0 &&
       reacquired.phase ==
           darktidevr::harness::SyntheticControllerPhase::left_sweep;
   if (!valid) {

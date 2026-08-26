@@ -430,9 +430,13 @@ $cmake = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Co
 & .\tools\stereo\set-weapon-pose-trace.ps1 -Mode Enabled
 & .\tools\stereo\set-weapon-presentation-test.ps1 -Mode Enabled
 & .\tools\stereo\set-gameplay-input-test.ps1 -Mode Disabled
+& .\tools\stereo\request-body-rig-inventory.ps1
+& .\tools\stereo\set-body-ik-trace.ps1 -Mode Enabled
+& .\tools\stereo\run-darktide-shared-eyes.ps1 -DurationSeconds 20 `
+    -SyntheticControllerPath -SyntheticBodyPath
 ```
 
-Results: all 28 Debug CTest tests passed. The native-capture test now installs the
+Results: all 29 Debug CTest tests passed. The native-capture test now installs the
 diagnostic hook set, creates/maps/unmaps an upload buffer and verifies exactly
 one matched Map and Unmap. It also proves retired descriptor/staging writes fail
 closed and validates direct billboard direction gating. Core math covers cardinal headings, pitched and
@@ -442,7 +446,41 @@ controller and pointer tests cover snapshot freshness/validity, finite panel
 intersection, crop mapping, menu input transitions, runtime-IPD transport, and
 the complete synthetic offscreen/over-reach/tracking-loss cycle.
 
-The controller-binding validation built every Debug target and passed all 28
+### Full-body IK foundation
+
+- Added a native analytic two-bone arm solver with reachable-annulus clamping,
+  pole projection, stable bend fallback and non-finite input rejection.
+- Exposed that exact implementation through the loaded native sidecar for Lua;
+  the export is buffer-size checked and returns explicit clamp/fallback flags.
+- Added a read-only, flag-gated local-player rig inventory and a separate
+  normal-off solver trace. Neither path writes a body pose.
+- A clean human hub inventory found 246 scene-graph items, the complete
+  hips/spine/head and arm/leg chains, both hand and foot IK handles, and the
+  live `aim_constraint_target`. Arm-chain local offsets are approximately
+  0.2753/0.2748 m; live animated shoulder-to-elbow/elbow-to-wrist lengths were
+  0.2615/0.2609 m left and 0.2618/0.2612 m right. Character select did not run
+  this 3P update seam; the flag was consumed immediately after the hub player
+  unit initialized.
+- Added a separate `--synthetic-body-path` trajectory which preserves the
+  existing absolute spatial-panel poses but replaces only recenter-relative
+  hand poses with arm-scale sweeps, crossed hands, deliberate lateral/far
+  over-reach and tracking loss. Its unit contract and the complete 29-test
+  Debug suite pass.
+- Live tracing exposed and fixed an anchor error before any body write: the
+  generic controller helper is intentionally relative to the detached render
+  camera, about 1.5 m behind this hub avatar. Body targets now translate the
+  same immutable horizon orientation to the avatar `j_head` position. After
+  correction, the initial sweeps solved unclamped at 0.24--0.51 m, the explicit
+  far phase at sequences 246--299 clamped to the measured 0.522--0.523 m reach,
+  and the invalid phase produced a matching 299--362 trace gap. Unclamped
+  wrist error was 0.0000 m and clamped error equalled the unreachable excess.
+- The final 20-second VDXR run submitted 1,111 frames (1,109 fresh pairs), with
+  zero reuse/timeouts, two startup pose mismatches and a clean teardown. It
+  produced no Lua, D3D12, native, device-hung or device-removal errors.
+- The hub loaded and closed normally with no Lua, D3D12, device-hung or
+  device-removal errors.
+
+The controller-binding validation built every Debug target and passed all 29
 tests, including the new gameplay mapper and opt-in synthetic button cycle.
 The Release native capture and XR harness also built successfully. Live
 validation used the

@@ -167,6 +167,15 @@ local controller_observation = {
     right_grip_qy = nil,
     right_grip_qz = nil,
     right_grip_qw = nil,
+    left_grip_usable = false,
+    left_grip_flags = 0,
+    left_grip_x = nil,
+    left_grip_y = nil,
+    left_grip_z = nil,
+    left_grip_qx = nil,
+    left_grip_qy = nil,
+    left_grip_qz = nil,
+    left_grip_qw = nil,
     body_anchor_x = nil,
     body_anchor_y = nil,
     body_anchor_z = nil,
@@ -208,7 +217,15 @@ local controller_observation = {
     weapon_presentation_last_log_frame = -math.huge,
     weapon_presentation_writes = 0,
     weapon_presentation_max_post_error = 0,
-    weapon_presentation_block_reason = nil
+    weapon_presentation_block_reason = nil,
+    body_rig_inventory_done = false,
+    body_rig_inventory_last_check_frame = -math.huge,
+    body_ik_trace_enabled = false,
+    body_ik_trace_last_check_frame = -math.huge,
+    body_ik_trace_last_log_frame = -math.huge,
+    ik_input = nil,
+    ik_output = nil,
+    ik_flags = nil
 }
 local performance_profile_requested = false -- opt-in diagnostic; allocates GPU timestamp work
 -- Reuse the shading/LOD preparation performed by the primary eye. The second
@@ -420,6 +437,9 @@ local function ensure_ui_native_hooks()
             float up_z, int enabled);
         int dtvr_set_billboard_direct_view_direction(float right_x,
             float right_y, int enabled);
+        int dtvr_solve_two_bone_ik(const float *input,
+            unsigned int input_count, float *output,
+            unsigned int output_count, unsigned int *flags);
         unsigned long long dtvr_billboard_stride_candidate_count(void);
         unsigned long long dtvr_billboard_b1_bound_count(void);
         unsigned long long dtvr_billboard_b2_bound_count(void);
@@ -580,6 +600,9 @@ local function ensure_ui_native_hooks()
         ffi.new("unsigned long long[1]")
     controller_observation.gameplay_sequence =
         ffi.new("unsigned long long[1]")
+    controller_observation.ik_input = ffi.new("float[17]")
+    controller_observation.ik_output = ffi.new("float[14]")
+    controller_observation.ik_flags = ffi.new("unsigned int[1]")
     gpu_profile_values = ffi.new("unsigned long long[4]")
     gpu_stage_profile_values = ffi.new("unsigned long long[6]")
     ui_native_capture.dtvr_set_gpu_eye_profile(
@@ -1161,6 +1184,7 @@ local function apply_head_tracking(clean_position, clean_rotation)
     -- attempt so a failed read can never leave the previous pose live.
     controller_observation.right_aim_usable = false
     controller_observation.right_grip_usable = false
+    controller_observation.left_grip_usable = false
     if controller_observation.values and
             ui_native_capture.dtvr_read_controller_state(
                 controller_observation.values,
@@ -1181,10 +1205,13 @@ local function apply_head_tracking(clean_position, clean_rotation)
         end
         controller_observation.last_sequence = controller_sequence
         local left_aim_flags = tonumber(controller_observation.tracking_flags[0])
+        local left_grip_flags =
+            tonumber(controller_observation.tracking_flags[1])
         local right_aim_flags = tonumber(controller_observation.tracking_flags[2])
         local right_grip_flags =
             tonumber(controller_observation.tracking_flags[3])
         controller_observation.right_aim_flags = right_aim_flags
+        controller_observation.left_grip_flags = left_grip_flags
         controller_observation.right_grip_flags = right_grip_flags
         local controller_timestamp_ns =
             tonumber(controller_observation.timestamp_ns[0])
@@ -1207,6 +1234,25 @@ local function apply_head_tracking(clean_position, clean_rotation)
             controller_age_ns >= -5000000 and
             controller_age_ns <= 100000000 and
             controller_sequence ~= controller_observation.epoch_block_sequence
+        controller_observation.left_grip_usable =
+            bit.band(left_grip_flags, 5) == 5 and
+            controller_age_ns >= -5000000 and
+            controller_age_ns <= 100000000 and
+            controller_sequence ~= controller_observation.epoch_block_sequence
+        controller_observation.left_grip_x =
+            tonumber(controller_observation.values[7])
+        controller_observation.left_grip_y =
+            tonumber(controller_observation.values[8])
+        controller_observation.left_grip_z =
+            tonumber(controller_observation.values[9])
+        controller_observation.left_grip_qx =
+            tonumber(controller_observation.values[10])
+        controller_observation.left_grip_qy =
+            tonumber(controller_observation.values[11])
+        controller_observation.left_grip_qz =
+            tonumber(controller_observation.values[12])
+        controller_observation.left_grip_qw =
+            tonumber(controller_observation.values[13])
         controller_observation.right_grip_x =
             tonumber(controller_observation.values[25])
         controller_observation.right_grip_y =
@@ -3228,6 +3274,101 @@ function presentation.scan_named_nodes(label, unit, node_names)
     end
 end
 
+function presentation.scan_body_rig(self, fixed_frame)
+    if controller_observation.body_rig_inventory_done or not fixed_frame or
+            fixed_frame <
+                controller_observation.body_rig_inventory_last_check_frame + 60 or
+            not Mods or not Mods.lua or not Mods.lua.io then
+        return
+    end
+    controller_observation.body_rig_inventory_last_check_frame = fixed_frame
+    local flag_path =
+        "./../mods/darktidevr_stereo_probe/darktidevr_body_rig_inventory.flag"
+    local flag = Mods.lua.io.open(flag_path, "r")
+    if not flag then
+        return
+    end
+    local request = flag:read("*all")
+    flag:close()
+    if not request or not request:match("^%s*scan%s*$") then
+        return
+    end
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    local player_unit = local_player and local_player.player_unit
+    if not player_unit or self._unit ~= player_unit or
+            not Unit.alive(player_unit) then
+        return
+    end
+    local consumed = Mods.lua.io.open(flag_path, "w")
+    if consumed then
+        consumed:write("consumed\n")
+        consumed:close()
+    end
+    controller_observation.body_rig_inventory_done = true
+    local unit_data = ScriptUnit.has_extension(player_unit, "unit_data_system")
+    local breed_ok, breed_name = pcall(function()
+        return unit_data and unit_data:breed_name()
+    end)
+    local nodes = {
+        "j_hips_handle", "j_hips", "j_spine", "j_spine1", "j_spine2",
+        "j_spine3", "j_neck", "j_head", "j_leftshoulder",
+        "j_leftarm", "j_leftupperarm", "j_leftforearm", "j_lefthand",
+        "j_left_hand_ik_handle", "j_rightshoulder", "j_rightupperarm",
+        "j_rightarm", "j_rightforearm", "j_righthand",
+        "j_right_hand_ik_handle",
+        "j_leftupleg", "j_leftleg", "j_leftfoot", "j_rightupleg",
+        "j_rightleg", "j_rightfoot", "j_left_foot_ik_handle",
+        "j_right_foot_ik_handle", "j_left_foot_orient_handle",
+        "j_right_foot_orient_handle"
+    }
+    local count_ok, count = pcall(Unit.num_scene_graph_items, player_unit)
+    mod:info(
+        "DARKTIDEVR_IK inventory breed=%s scene_graph_items=%s frame=%s",
+        tostring(breed_ok and breed_name or "unavailable"),
+        tostring(count_ok and count or "unavailable"),
+        tostring(fixed_frame))
+    for i = 1, #nodes do
+        local name = nodes[i]
+        if Unit.has_node(player_unit, name) then
+            local node = Unit.node(player_unit, name)
+            local parent = Unit.scene_graph_parent(player_unit, node)
+            local local_position = Unit.local_position(player_unit, node)
+            local world_position = Unit.world_position(player_unit, node)
+            mod:info(
+                "DARKTIDEVR_IK node name=%s index=%s parent=%s local=%.4f,%.4f,%.4f world=%.4f,%.4f,%.4f",
+                name, tostring(node), tostring(parent),
+                Vector3.x(local_position), Vector3.y(local_position),
+                Vector3.z(local_position), Vector3.x(world_position),
+                Vector3.y(world_position), Vector3.z(world_position))
+        end
+    end
+    local constraints = {
+        "aim_constraint_target", "look_constraint_target",
+        "left_hand_constraint_target", "right_hand_constraint_target"
+    }
+    for i = 1, #constraints do
+        local name = constraints[i]
+        local found_ok, target = pcall(
+            Unit.animation_find_constraint_target, player_unit, name)
+        if found_ok and target ~= nil then
+            local pose_ok, pose = pcall(
+                Unit.animation_get_constraint_target, player_unit, target)
+            if pose_ok and pose then
+                local position = Matrix4x4.translation(pose)
+                mod:info(
+                    "DARKTIDEVR_IK constraint name=%s index=%s position=%.4f,%.4f,%.4f",
+                    name, tostring(target), Vector3.x(position),
+                    Vector3.y(position), Vector3.z(position))
+            else
+                mod:info(
+                    "DARKTIDEVR_IK constraint name=%s index=%s pose=unavailable",
+                    name, tostring(target))
+            end
+        end
+    end
+end
+
 function presentation.scan_weapon_inventory(self, fixed_frame)
     if controller_observation.weapon_inventory_done or not fixed_frame or
             fixed_frame <
@@ -3459,6 +3600,171 @@ function presentation.controller_grip_target()
         presentation.rotate_vector(anchor_rotation, grip_position)
     local target_rotation = Quaternion.multiply(anchor_rotation, grip_rotation)
     return target_position, target_rotation
+end
+
+function presentation.left_controller_grip_target()
+    if not controller_observation.left_grip_usable or
+            not controller_observation.body_anchor_qw then
+        return nil, nil
+    end
+    local anchor_position = Vector3(
+        controller_observation.body_anchor_x,
+        controller_observation.body_anchor_y,
+        controller_observation.body_anchor_z)
+    local anchor_rotation = Quaternion.from_elements(
+        controller_observation.body_anchor_qx,
+        controller_observation.body_anchor_qy,
+        controller_observation.body_anchor_qz,
+        controller_observation.body_anchor_qw)
+    local grip_position = Vector3(
+        controller_observation.left_grip_x,
+        controller_observation.left_grip_y,
+        controller_observation.left_grip_z)
+    local grip_rotation = Quaternion.from_elements(
+        controller_observation.left_grip_qx,
+        controller_observation.left_grip_qy,
+        controller_observation.left_grip_qz,
+        controller_observation.left_grip_qw)
+    return anchor_position +
+            presentation.rotate_vector(anchor_rotation, grip_position),
+        Quaternion.multiply(anchor_rotation, grip_rotation)
+end
+
+-- Body IK is authored relative to the avatar's head, not the detached
+-- third-person render camera. Reusing controller_grip_target() here placed
+-- the hands roughly the camera boom length behind the skeleton. Keep the
+-- clean camera's horizon orientation because it is the immutable OpenXR
+-- recenter basis, but translate that basis to the live avatar head.
+function presentation.body_ik_controller_grip_target(unit, side)
+    if not unit or not Unit.alive(unit) or
+            not controller_observation.body_anchor_qw or
+            not Unit.has_node(unit, "j_head") then
+        return nil
+    end
+    local is_left = side == "left"
+    if is_left and not controller_observation.left_grip_usable then
+        return nil
+    end
+    if not is_left and not controller_observation.right_grip_usable then
+        return nil
+    end
+    local grip_position = is_left and Vector3(
+        controller_observation.left_grip_x,
+        controller_observation.left_grip_y,
+        controller_observation.left_grip_z) or Vector3(
+        controller_observation.right_grip_x,
+        controller_observation.right_grip_y,
+        controller_observation.right_grip_z)
+    local anchor_rotation = Quaternion.from_elements(
+        controller_observation.body_anchor_qx,
+        controller_observation.body_anchor_qy,
+        controller_observation.body_anchor_qz,
+        controller_observation.body_anchor_qw)
+    return Unit.world_position(unit, Unit.node(unit, "j_head")) +
+        presentation.rotate_vector(anchor_rotation, grip_position)
+end
+
+function presentation.update_body_ik_trace_gate(fixed_frame)
+    if fixed_frame <
+            controller_observation.body_ik_trace_last_check_frame + 60 then
+        return
+    end
+    controller_observation.body_ik_trace_last_check_frame = fixed_frame
+    local path =
+        "./../mods/darktidevr_stereo_probe/darktidevr_body_ik_trace.flag"
+    local flag = Mods.lua.io.open(path, "r")
+    local enabled = false
+    if flag then
+        enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
+        flag:close()
+    end
+    if enabled ~= controller_observation.body_ik_trace_enabled then
+        controller_observation.body_ik_trace_enabled = enabled
+        mod:info("DARKTIDEVR_IK trace=%s source=test_flag",
+            enabled and "enabled" or "disabled")
+    end
+end
+
+function presentation.trace_body_arm(unit, side, target_position)
+    local arm_name = side == "left" and "j_leftarm" or "j_rightarm"
+    local forearm_name = side == "left" and
+        "j_leftforearm" or "j_rightforearm"
+    local hand_name = side == "left" and "j_lefthand" or "j_righthand"
+    if not Unit.has_node(unit, arm_name) or
+            not Unit.has_node(unit, forearm_name) or
+            not Unit.has_node(unit, hand_name) then
+        return false, "nodes_missing"
+    end
+    local shoulder = Unit.world_position(unit, Unit.node(unit, arm_name))
+    local elbow = Unit.world_position(unit, Unit.node(unit, forearm_name))
+    local wrist = Unit.world_position(unit, Unit.node(unit, hand_name))
+    local upper_length = presentation.vector_distance(shoulder, elbow)
+    local lower_length = presentation.vector_distance(elbow, wrist)
+    local reach = wrist - shoulder
+    local bend = elbow - shoulder
+    local input = controller_observation.ik_input
+    local output = controller_observation.ik_output
+    local flags = controller_observation.ik_flags
+    input[0], input[1], input[2] =
+        Vector3.x(shoulder), Vector3.y(shoulder), Vector3.z(shoulder)
+    input[3], input[4], input[5] = Vector3.x(target_position),
+        Vector3.y(target_position), Vector3.z(target_position)
+    input[6], input[7], input[8] =
+        Vector3.x(elbow), Vector3.y(elbow), Vector3.z(elbow)
+    input[9], input[10], input[11] =
+        Vector3.x(reach), Vector3.y(reach), Vector3.z(reach)
+    input[12], input[13], input[14] =
+        Vector3.x(bend), Vector3.y(bend), Vector3.z(bend)
+    input[15], input[16] = upper_length, lower_length
+    local result = ui_native_capture.dtvr_solve_two_bone_ik(
+        input, 17, output, 14, flags)
+    if result ~= 0 then
+        return false, "native_" .. tostring(result)
+    end
+    local solved_elbow = Vector3(output[0], output[1], output[2])
+    local solved_wrist = Vector3(output[3], output[4], output[5])
+    mod:info(
+        "DARKTIDEVR_IK solve side=%s sequence=%d upper_m=%.4f lower_m=%.4f requested_m=%.4f solved_m=%.4f flags=%d elbow_delta_m=%.4f wrist_target_error_m=%.4f solved_elbow=%.4f,%.4f,%.4f solved_wrist=%.4f,%.4f,%.4f",
+        side, controller_observation.last_sequence, upper_length,
+        lower_length, tonumber(output[12]), tonumber(output[13]),
+        tonumber(flags[0]), presentation.vector_distance(elbow, solved_elbow),
+        presentation.vector_distance(target_position, solved_wrist),
+        Vector3.x(solved_elbow), Vector3.y(solved_elbow),
+        Vector3.z(solved_elbow), Vector3.x(solved_wrist),
+        Vector3.y(solved_wrist), Vector3.z(solved_wrist))
+    return true, "solved"
+end
+
+function presentation.trace_body_ik(self, fixed_frame)
+    if not fixed_frame or not Mods or not Mods.lua or not Mods.lua.io or
+            not ui_native_capture then
+        return
+    end
+    presentation.update_body_ik_trace_gate(fixed_frame)
+    if not controller_observation.body_ik_trace_enabled or
+            fixed_frame < controller_observation.body_ik_trace_last_log_frame + 15 then
+        return
+    end
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    if not local_player or self._unit ~= local_player.player_unit or
+            not Unit.alive(self._unit) then
+        return
+    end
+    local left_target = presentation.body_ik_controller_grip_target(
+        self._unit, "left")
+    local right_target = presentation.body_ik_controller_grip_target(
+        self._unit, "right")
+    if not left_target and not right_target then
+        return
+    end
+    controller_observation.body_ik_trace_last_log_frame = fixed_frame
+    if left_target then
+        presentation.trace_body_arm(self._unit, "left", left_target)
+    end
+    if right_target then
+        presentation.trace_body_arm(self._unit, "right", right_target)
+    end
 end
 
 function presentation.trace_weapon_pose(self, fixed_frame)
@@ -3754,6 +4060,14 @@ mod:hook_safe(
             controller_observation.downstream_forward_z or 0,
             controller_observation.primary_action_sequence
         )
+    end)
+
+mod:hook_safe(
+    "PlayerUnitAnimationExtension",
+    "fixed_update",
+    function(self, _, _, _, fixed_frame)
+        presentation.scan_body_rig(self, fixed_frame)
+        presentation.trace_body_ik(self, fixed_frame)
     end)
 
 function presentation.observe_primary_projectile(self, direction, source)
