@@ -731,8 +731,18 @@ Body targets now use the avatar's live `j_head` translation with the immutable
 OpenXR recenter horizon orientation. The corrected trace aligned exactly with
 the published phases: reachable samples solved with zero wrist error,
 sequences 246--299 clamped at the measured arm reach, and tracking loss created
-the expected gap through sequence 362. This remains read-only; bone authoring
-is the next independently gated step.
+the expected gap through sequence 362. A normal-off authoring pass now applies
+shortest-arc deltas to the animated upper-arm and forearm rotations at the
+verified post-animation `PlayerUnitFirstPersonExtension.update_unit_position`
+seam. A live synthetic pass completed 783 writes with at most 0.000018 m
+solved-wrist error, paused across tracking loss and resumed on reacquisition
+without Lua or device errors. The remaining gate is visual/anatomical: verify
+elbow poles and arm appearance in-headset, then author hand orientation and
+connect the first-person weapon pose. The flag-poll cadence was subsequently
+changed from XR sequence to a monotonic render-update counter. Two synthetic
+XR sessions in one Darktide process then proved enable/disable/re-enable and
+successful writes after the bridge sequence reset to 12, with neither reused
+frames nor Lua/device errors.
 
 ### Psykhanium test ladder
 

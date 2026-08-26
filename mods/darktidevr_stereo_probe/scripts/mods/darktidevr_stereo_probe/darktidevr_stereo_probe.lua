@@ -223,6 +223,13 @@ local controller_observation = {
     body_ik_trace_enabled = false,
     body_ik_trace_last_check_frame = -math.huge,
     body_ik_trace_last_log_frame = -math.huge,
+    body_ik_presentation_enabled = false,
+    body_ik_presentation_update_frame = 0,
+    body_ik_presentation_last_check_frame = -math.huge,
+    body_ik_presentation_last_log_frame = -math.huge,
+    body_ik_presentation_writes = 0,
+    body_ik_presentation_max_error = 0,
+    body_ik_presentation_block_reason = nil,
     ik_input = nil,
     ik_output = nil,
     ik_flags = nil
@@ -3494,6 +3501,51 @@ function presentation.inverse_quaternion(rotation)
     return Quaternion.from_elements(-x, -y, -z, w)
 end
 
+function presentation.vector_cross(left, right)
+    return Vector3(
+        Vector3.y(left) * Vector3.z(right) -
+            Vector3.z(left) * Vector3.y(right),
+        Vector3.z(left) * Vector3.x(right) -
+            Vector3.x(left) * Vector3.z(right),
+        Vector3.x(left) * Vector3.y(right) -
+            Vector3.y(left) * Vector3.x(right))
+end
+
+function presentation.vector_dot(left, right)
+    return Vector3.x(left) * Vector3.x(right) +
+        Vector3.y(left) * Vector3.y(right) +
+        Vector3.z(left) * Vector3.z(right)
+end
+
+function presentation.align_vectors_rotation(from, to)
+    local from_length = Vector3.length(from)
+    local to_length = Vector3.length(to)
+    if from_length < 0.000001 or to_length < 0.000001 then
+        return nil
+    end
+    local source = from / from_length
+    local destination = to / to_length
+    local dot = math.max(-1, math.min(1,
+        presentation.vector_dot(source, destination)))
+    if dot > 0.999999 then
+        return Quaternion.from_elements(0, 0, 0, 1)
+    end
+    local axis = presentation.vector_cross(source, destination)
+    local axis_length = Vector3.length(axis)
+    if axis_length < 0.000001 then
+        axis = presentation.vector_cross(source, Vector3.up())
+        axis_length = Vector3.length(axis)
+        if axis_length < 0.000001 then
+            axis = presentation.vector_cross(source, Vector3(1, 0, 0))
+            axis_length = Vector3.length(axis)
+        end
+    end
+    if axis_length < 0.000001 then
+        return nil
+    end
+    return Quaternion.axis_angle(axis / axis_length, math.acos(dot))
+end
+
 -- Freeze a hub interaction panel in the same body-relative coordinates used
 -- by tracked controllers. The clean camera is the game-world pose of the
 -- immutable OpenXR recenter; applying its inverse here is the exact inverse of
@@ -3685,7 +3737,7 @@ function presentation.update_body_ik_trace_gate(fixed_frame)
     end
 end
 
-function presentation.trace_body_arm(unit, side, target_position)
+function presentation.trace_body_arm(unit, side, target_position, emit_log)
     local arm_name = side == "left" and "j_leftarm" or "j_rightarm"
     local forearm_name = side == "left" and
         "j_leftforearm" or "j_rightforearm"
@@ -3723,16 +3775,161 @@ function presentation.trace_body_arm(unit, side, target_position)
     end
     local solved_elbow = Vector3(output[0], output[1], output[2])
     local solved_wrist = Vector3(output[3], output[4], output[5])
-    mod:info(
-        "DARKTIDEVR_IK solve side=%s sequence=%d upper_m=%.4f lower_m=%.4f requested_m=%.4f solved_m=%.4f flags=%d elbow_delta_m=%.4f wrist_target_error_m=%.4f solved_elbow=%.4f,%.4f,%.4f solved_wrist=%.4f,%.4f,%.4f",
-        side, controller_observation.last_sequence, upper_length,
-        lower_length, tonumber(output[12]), tonumber(output[13]),
-        tonumber(flags[0]), presentation.vector_distance(elbow, solved_elbow),
-        presentation.vector_distance(target_position, solved_wrist),
-        Vector3.x(solved_elbow), Vector3.y(solved_elbow),
-        Vector3.z(solved_elbow), Vector3.x(solved_wrist),
-        Vector3.y(solved_wrist), Vector3.z(solved_wrist))
-    return true, "solved"
+    if emit_log ~= false then
+        mod:info(
+            "DARKTIDEVR_IK solve side=%s sequence=%d upper_m=%.4f lower_m=%.4f requested_m=%.4f solved_m=%.4f flags=%d elbow_delta_m=%.4f wrist_target_error_m=%.4f solved_elbow=%.4f,%.4f,%.4f solved_wrist=%.4f,%.4f,%.4f",
+            side, controller_observation.last_sequence, upper_length,
+            lower_length, tonumber(output[12]), tonumber(output[13]),
+            tonumber(flags[0]),
+            presentation.vector_distance(elbow, solved_elbow),
+            presentation.vector_distance(target_position, solved_wrist),
+            Vector3.x(solved_elbow), Vector3.y(solved_elbow),
+            Vector3.z(solved_elbow), Vector3.x(solved_wrist),
+            Vector3.y(solved_wrist), Vector3.z(solved_wrist))
+    end
+    return true, "solved", solved_elbow, solved_wrist
+end
+
+function presentation.update_body_ik_presentation_gate(fixed_frame)
+    if fixed_frame <
+            controller_observation.body_ik_presentation_last_check_frame + 60 then
+        return
+    end
+    controller_observation.body_ik_presentation_last_check_frame = fixed_frame
+    local path =
+        "./../mods/darktidevr_stereo_probe/darktidevr_body_ik_presentation.flag"
+    local flag = Mods.lua.io.open(path, "r")
+    local enabled = false
+    if flag then
+        enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
+        flag:close()
+    end
+    if enabled ~= controller_observation.body_ik_presentation_enabled then
+        controller_observation.body_ik_presentation_enabled = enabled
+        controller_observation.body_ik_presentation_block_reason = nil
+        mod:info("DARKTIDEVR_IK presentation=%s source=test_flag",
+            enabled and "enabled" or "disabled")
+    end
+end
+
+function presentation.apply_body_arm_ik(world, unit, side, target_position)
+    local solved, reason, solved_elbow, solved_wrist =
+        presentation.trace_body_arm(unit, side, target_position, false)
+    if not solved then
+        return false, reason
+    end
+    local arm_name = side == "left" and "j_leftarm" or "j_rightarm"
+    local forearm_name = side == "left" and
+        "j_leftforearm" or "j_rightforearm"
+    local hand_name = side == "left" and "j_lefthand" or "j_righthand"
+    local arm_node = Unit.node(unit, arm_name)
+    local forearm_node = Unit.node(unit, forearm_name)
+    local hand_node = Unit.node(unit, hand_name)
+    local arm_parent = Unit.scene_graph_parent(unit, arm_node)
+    if arm_parent == nil then
+        return false, "arm_parent_missing"
+    end
+
+    local shoulder = Unit.world_position(unit, arm_node)
+    local elbow = Unit.world_position(unit, forearm_node)
+    local wrist = Unit.world_position(unit, hand_node)
+    local arm_world = Unit.world_rotation(unit, arm_node)
+    local forearm_world = Unit.world_rotation(unit, forearm_node)
+    local arm_delta = presentation.align_vectors_rotation(
+        elbow - shoulder, solved_elbow - shoulder)
+    if not arm_delta then
+        return false, "upper_alignment_invalid"
+    end
+    local solved_arm_world = Quaternion.multiply(arm_delta, arm_world)
+    local solved_arm_local = Quaternion.multiply(
+        presentation.inverse_quaternion(
+            Unit.world_rotation(unit, arm_parent)),
+        solved_arm_world)
+
+    -- Rotating the upper arm also rotates the existing lower-arm basis. Build
+    -- that provisional world pose analytically, then apply a second shortest-
+    -- arc correction to the solved lower segment.
+    local provisional_forearm_world = Quaternion.multiply(
+        arm_delta, forearm_world)
+    local provisional_lower = presentation.rotate_vector(
+        arm_delta, wrist - elbow)
+    local forearm_delta = presentation.align_vectors_rotation(
+        provisional_lower, solved_wrist - solved_elbow)
+    if not forearm_delta then
+        return false, "lower_alignment_invalid"
+    end
+    local solved_forearm_world = Quaternion.multiply(
+        forearm_delta, provisional_forearm_world)
+    local solved_forearm_local = Quaternion.multiply(
+        presentation.inverse_quaternion(solved_arm_world),
+        solved_forearm_world)
+    Unit.set_local_rotation(unit, arm_node, solved_arm_local)
+    Unit.set_local_rotation(unit, forearm_node, solved_forearm_local)
+    World.update_unit_and_children(world, unit)
+    return true, "written", presentation.vector_distance(
+        Unit.world_position(unit, hand_node), solved_wrist)
+end
+
+function presentation.apply_body_ik(unit, sequence, world)
+    controller_observation.body_ik_presentation_update_frame =
+        controller_observation.body_ik_presentation_update_frame + 1
+    local update_frame =
+        controller_observation.body_ik_presentation_update_frame
+    presentation.update_body_ik_presentation_gate(update_frame)
+    if not controller_observation.body_ik_presentation_enabled then
+        return
+    end
+    if not world or not unit or not Unit.alive(unit) then
+        controller_observation.body_ik_presentation_block_reason =
+            not world and "world_unavailable" or "unit_unavailable"
+        return
+    end
+    local left_target = presentation.body_ik_controller_grip_target(
+        unit, "left")
+    local right_target = presentation.body_ik_controller_grip_target(
+        unit, "right")
+    local wrote = false
+    local max_error = 0
+    local block_reason = nil
+    if left_target then
+        local ok, reason, error_metres = presentation.apply_body_arm_ik(
+            world, unit, "left", left_target)
+        wrote = wrote or ok
+        block_reason = not ok and "left_" .. tostring(reason) or block_reason
+        max_error = math.max(max_error, error_metres or 0)
+    end
+    if right_target then
+        local ok, reason, error_metres = presentation.apply_body_arm_ik(
+            world, unit, "right", right_target)
+        wrote = wrote or ok
+        block_reason = not ok and "right_" .. tostring(reason) or block_reason
+        max_error = math.max(max_error, error_metres or 0)
+    end
+    if wrote then
+        controller_observation.body_ik_presentation_writes =
+            controller_observation.body_ik_presentation_writes + 1
+        controller_observation.body_ik_presentation_max_error = math.max(
+            controller_observation.body_ik_presentation_max_error, max_error)
+        block_reason = nil
+    end
+    if block_reason ~= controller_observation.body_ik_presentation_block_reason then
+        controller_observation.body_ik_presentation_block_reason = block_reason
+        if block_reason then
+            mod:warning("DARKTIDEVR_IK presentation_blocked reason=%s",
+                block_reason)
+        end
+    end
+    if wrote and update_frame >=
+            controller_observation.body_ik_presentation_last_log_frame + 60 then
+        controller_observation.body_ik_presentation_last_log_frame =
+            update_frame
+        mod:info(
+            "DARKTIDEVR_IK presentation_writes=%d post_error_m=%.6f max_post_error_m=%.6f sequence=%d",
+            controller_observation.body_ik_presentation_writes,
+            max_error,
+            controller_observation.body_ik_presentation_max_error,
+            sequence or controller_observation.last_sequence)
+    end
 end
 
 function presentation.trace_body_ik(self, fixed_frame)
@@ -4199,6 +4396,20 @@ mod:hook_safe(
                 weapon_extension,
                 controller_observation.last_sequence,
                 self._world)
+        end
+        local local_player = Managers and Managers.player and
+            Managers.player:local_player(1)
+        local player_unit = local_player and local_player.player_unit
+        local ok, error_message = pcall(
+            presentation.apply_body_ik,
+            player_unit,
+            controller_observation.last_sequence,
+            self._world)
+        if not ok and controller_observation.body_ik_presentation_enabled then
+            controller_observation.body_ik_presentation_enabled = false
+            mod:error(
+                "DARKTIDEVR_IK presentation_disabled reason=lua_error error=%s",
+                tostring(error_message))
         end
     end)
 

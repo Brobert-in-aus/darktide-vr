@@ -432,6 +432,7 @@ $cmake = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Co
 & .\tools\stereo\set-gameplay-input-test.ps1 -Mode Disabled
 & .\tools\stereo\request-body-rig-inventory.ps1
 & .\tools\stereo\set-body-ik-trace.ps1 -Mode Enabled
+& .\tools\stereo\set-body-ik-presentation.ps1 -Mode Enabled
 & .\tools\stereo\run-darktide-shared-eyes.ps1 -DurationSeconds 20 `
     -SyntheticControllerPath -SyntheticBodyPath
 ```
@@ -479,6 +480,34 @@ the complete synthetic offscreen/over-reach/tracking-loss cycle.
   produced no Lua, D3D12, native, device-hung or device-removal errors.
 - The hub loaded and closed normally with no Lua, D3D12, device-hung or
   device-removal errors.
+- Added the first normal-off full-body arm authoring layer. It computes
+  shortest-arc upper-arm and forearm deltas from the live animated chain,
+  preserves the animation's existing twist, writes only the two local bone
+  rotations, and propagates the player unit once through
+  `World.update_unit_and_children`. Hand orientation is deliberately not yet
+  authored.
+- The first guarded live attempt proved that `PlayerUnitAnimationExtension`
+  does not expose a usable `_world`; the gate was detected but made zero bone
+  writes. No skeleton mutation or error occurred. Authoring was therefore
+  moved to the already verified
+  `PlayerUnitFirstPersonExtension.update_unit_position` post-animation seam,
+  which supplies the real level world and runs after stock animation restore.
+- The corrected 20-second synthetic VDXR pass made 783 post-animation arm
+  writes. Maximum measured solved-wrist error was 0.000018 m. Writes paused
+  exactly across tracking loss (241 writes at sequence 300, 242 at sequence
+  361), resumed on reacquisition, and far targets retained the solver's reach
+  clamp. The bridge submitted 1,053 frames, 1,051 fresh pairs, zero reused
+  frames/timeouts, and only the two expected startup pose mismatches. There
+  were no Lua, D3D12, device-hung or device-removal errors.
+- Review found a same-process XR restart hazard before checkpointing: the
+  authoring flag poll had used the shared XR sequence for cadence. It now uses
+  a monotonic render-hook update counter, so a newly created bridge may restart
+  its sequence at zero without delaying enable/disable changes. A clean
+  redeploy then ran two eight-second synthetic XR sessions inside one Darktide
+  process. The gate logged enabled, disabled, then enabled again; the second
+  session resumed writes at reset sequence 12 and reached 750 cumulative
+  writes with 0.000018 m maximum error. Both bridge runs passed with no reuse,
+  timeouts, Lua errors or device errors.
 
 The controller-binding validation built every Debug target and passed all 29
 tests, including the new gameplay mapper and opt-in synthetic button cycle.
