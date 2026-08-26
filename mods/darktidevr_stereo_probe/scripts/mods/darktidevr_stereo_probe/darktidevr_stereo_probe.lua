@@ -142,13 +142,16 @@ local controller_observation = {
     first_tracked_logged = false,
     right_aim_usable = false,
     right_aim_age_ms = math.huge,
+    right_aim_flags = 0,
     right_aim_yaw = nil,
     right_aim_pitch = nil,
     right_aim_roll = nil,
     body_yaw_anchor = nil,
     authoring_enabled = false,
+    authoring_pose_active = false,
     authoring_last_check_t = -math.huge,
     authoring_writes = 0,
+    epoch_block_sequence = -1,
     first_person_seam_last_sequence = 0,
     first_person_seam_last_log_t = -math.huge
 }
@@ -923,10 +926,14 @@ local function apply_head_tracking(clean_position, clean_rotation)
             -- active orientation class.
             controller_observation.body_yaw_anchor = nil
             controller_observation.first_person_seam_last_sequence = 0
+            -- One complete fresh sample must follow an epoch transition before
+            -- authoring can resume.
+            controller_observation.epoch_block_sequence = controller_sequence
         end
         controller_observation.last_sequence = controller_sequence
         local left_aim_flags = tonumber(controller_observation.tracking_flags[0])
         local right_aim_flags = tonumber(controller_observation.tracking_flags[2])
+        controller_observation.right_aim_flags = right_aim_flags
         local controller_timestamp_ns =
             tonumber(controller_observation.timestamp_ns[0])
         local qpc_frequency =
@@ -941,7 +948,8 @@ local function apply_head_tracking(clean_position, clean_rotation)
         controller_observation.right_aim_usable =
             bit.band(right_aim_flags, 5) == 5 and
             controller_age_ns >= -5000000 and
-            controller_age_ns <= 100000000
+            controller_age_ns <= 100000000 and
+            controller_sequence ~= controller_observation.epoch_block_sequence
         if controller_observation.right_aim_usable then
             local right_aim_rotation = Quaternion.from_elements(
                 controller_observation.values[21],
@@ -2451,6 +2459,9 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         end
         if enabled ~= controller_observation.authoring_enabled then
             controller_observation.authoring_enabled = enabled
+            if not enabled then
+                controller_observation.authoring_pose_active = false
+            end
             mod:info(
                 "DARKTIDEVR_AIM authoring=%s source=test_flag writes=%d",
                 enabled and "enabled" or "disabled",
@@ -2459,9 +2470,21 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         end
     end
     if not controller_observation.right_aim_usable or
-            not controller_observation.right_aim_yaw or
-            controller_observation.last_sequence ==
-                controller_observation.first_person_seam_last_sequence then
+            not controller_observation.right_aim_yaw then
+        if controller_observation.authoring_enabled and
+                controller_observation.authoring_pose_active then
+            controller_observation.authoring_pose_active = false
+            mod:warning(
+                "DARKTIDEVR_AIM suspended reason=unusable sequence=%d flags=%d age_ms=%.3f",
+                controller_observation.last_sequence,
+                controller_observation.right_aim_flags,
+                controller_observation.right_aim_age_ms
+            )
+        end
+        return
+    end
+    if controller_observation.last_sequence ==
+            controller_observation.first_person_seam_last_sequence then
         return
     end
     controller_observation.first_person_seam_last_sequence =
@@ -2504,6 +2527,7 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         self._orientation.roll = 0
         controller_observation.authoring_writes =
             controller_observation.authoring_writes + 1
+        controller_observation.authoring_pose_active = true
     end
     if main_t < controller_observation.first_person_seam_last_log_t + 2 then
         return

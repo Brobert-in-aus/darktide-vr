@@ -474,6 +474,13 @@ Before any button mapping, add a one-shot suspension record for invalid/stale
 tracking and repeat this gate in the private Psykhanium while observing the
 first-person component and authoritative shot direction.
 
+The suspension record is now validated. Synthetic tracking loss produced one
+`flags=0` suspension at sequence 301, reacquisition resumed authoring, and the
+post-session snapshot produced one stale suspension at 105.142 ms. A sequence
+epoch transition blocks its first snapshot as well. This removes the remaining
+hub-side safety gate; the next run is the same writer plus downstream rotation
+observation in the private Psykhanium.
+
 This first gate deliberately keeps game-authoritative firing origins and reach.
 It must not permit shooting around walls, longer melee reach, altered cadence,
 or stronger aim assistance.

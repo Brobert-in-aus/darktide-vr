@@ -207,6 +207,13 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   modulo-2-pi representation of the -0.3087 target). Roll remained 0.0000 and
   no script/safe-hook error occurred. The flag was returned to `disabled`
   immediately after the run.
+- The fail-closed path now emits transition-only suspension telemetry. A
+  577-sample synthetic run suspended authoring at sequence 301 when tracking
+  flags became zero, resumed after reacquisition, and suspended again when the
+  final sample aged to 105.142 ms after XR stopped. A controller-sequence epoch
+  change also blocks its first sample so a complete fresh sample must arrive
+  before writes resume. The run completed 403 writes with no script error and
+  restored the file flag to `disabled`.
 - Added a guarded one-shot `dtvr_enter_psykhanium` workflow derived from the
   game's own training-view and Testify path. It consumes a local flag, waits for
   hub game mode plus backend authentication, opens the training view, selects
@@ -253,8 +260,7 @@ Steam close grace between normal runs.
 
 ## Next action
 
-Add explicit suspension telemetry for tracking loss/stale samples, then exercise
-the same test-only yaw/pitch seam in the private Psykhanium and correlate it
+Exercise the test-only yaw/pitch seam in the private Psykhanium and correlate it
 with `first_person_component.rotation`, reticle and shot direction before
 mapping any fire action. Do not feed gameplay aim into the HMD render basis.
 Preserve the raw LOCAL pose for spatial-menu tests. Retain the horizon-lock
