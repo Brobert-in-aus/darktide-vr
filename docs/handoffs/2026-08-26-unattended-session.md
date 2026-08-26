@@ -253,6 +253,33 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   `first_person_component.rotation` was consistently
   `-1.5708,-0.3079,0.0000` with forward ray
   `0.9530,0.0000,-0.3031`. No downstream component or script error occurred.
+- Live input inventory confirmed that the active `Ingame` service exposes the
+  complete primary-action family: `action_one_pressed`, `action_one_hold` and
+  `action_one_release`, all under alias `action_one`. Current extracted source
+  confirms `action_one_pressed` is an ephemeral input which is OR-accumulated
+  by `HumanInputHandler.pre_update` and copied exactly once into the next fixed
+  input frame.
+- Added a normal-off `darktidevr_primary_action_test.flag` gate and helper. It
+  consumes only `fire_once`, waits for `training_grounds`/`shooting_range`, an
+  enabled aim-authoring gate and a fresh tracked right-hand pose, then places a
+  single `action_one_pressed` edge into Darktide's own ephemeral cache. It
+  cannot inject twice in one process and never arms in the hub or menus.
+- The first clean early-transition validation armed at controller sequence
+  9298, injected the pressed edge once, and observed `fixed_cache=true` on
+  fixed frame 1474. Source review then showed the equipped sword begins from
+  `action_one_hold`, so the final synthetic event models one complete button
+  click: pressed plus held for exactly one fixed frame, followed by release.
+- The corrected click passed end to end at controller sequence 5796. Fixed
+  frame 1913 contained `pressed=true, held=true` and the local weapon state
+  immediately became `action_melee_start_left`; frame 1914 contained
+  `release=true, held=false`. The correlated authored forward ray was
+  `0.9533,-0.0009,-0.3021`. It produced no repeated attack, script error or
+  safe-hook error.
+- Eagerly requiring `PlayerUnitWeaponExtension` from mod initialization caused
+  a reproducible module-load loop at `scripts/utilities/action/action_handler`.
+  The observer now uses DMF's delayed string-class hook; the next clean run
+  logged the delayed hook applying when the extension became available and
+  completed normally. Do not reintroduce an eager require for this class.
 
 ## Validation commands
 
@@ -262,6 +289,9 @@ $cmake = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Co
 & $cmake --build --preset windows-vs2022-debug
 & (Join-Path (Split-Path $cmake) 'ctest.exe') --preset windows-vs2022-debug
 & .\tools\unattended\invoke-unattended-preflight.ps1 -RunXrSmoke -XrFrames 600
+& .\tools\stereo\set-controller-aim-test.ps1 -Enabled
+& .\tools\stereo\run-darktide-shared-eyes.ps1 -DurationSeconds 300 -SyntheticControllerPath
+& .\tools\stereo\request-primary-action-test.ps1
 ```
 
 Results: all 26 Release CTest tests passed. The native-capture test now installs the
@@ -280,9 +310,11 @@ Steam close grace between normal runs.
 
 ## Next action
 
-Add a strictly synthetic, single-action input gate in the private Psykhanium and
-correlate one bounded primary-fire edge with the observed first-person forward
-ray and target impact before enabling general button mapping. Do not feed
+Complete the second-stage observer for the strictly synthetic primary-action
+gate: confirm one non-`none` local weapon action starts within 30 fixed frames
+of the accepted edge, then repeat with a ranged weapon and correlate the
+`action_shoot` component's shooting rotation/shot count with the authored
+first-person forward ray before enabling general button mapping. Do not feed
 gameplay aim into the HMD render basis.
 Preserve the raw LOCAL pose for spatial-menu tests. Retain the horizon-lock
 billboard build for automated soaks, but defer the final smoke, fog and

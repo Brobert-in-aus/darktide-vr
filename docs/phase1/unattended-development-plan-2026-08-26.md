@@ -491,6 +491,22 @@ combat writes. The downstream first-person component matched
 `0.9530,0.0000,-0.3031`. The next gate can therefore be one explicitly armed,
 synthetic primary-fire edge while recording the normal game action/impact path.
 
+That first input boundary is now live-proven. The active `Ingame` service
+contains `action_one_pressed`, `action_one_hold` and `action_one_release`; the
+matching extracted `HumanInputHandler` source classifies pressed/released as
+ephemeral inputs and copies their OR-accumulated value exactly once into a fixed
+frame. The normal-off test gate therefore injects only one
+`action_one_pressed` edge after the regular `pre_update` sampling, and only in
+`training_grounds`/`shooting_range` while controller aim is armed and fresh.
+At sequence 9298 the fixed cache accepted the first pressed-only probe on frame
+1474 with forward ray `0.9532,0.0006,-0.3022`. The equipped sword's template
+starts from `action_one_hold`, so the completed event now supplies pressed plus
+held for one fixed frame and release on the next. At sequence 5796, frame 1913
+reported `pressed=true, held=true` and immediately entered
+`action_melee_start_left`; frame 1914 reported `release=true, held=false`.
+Ranged `action_shoot` rotation and shot-count correlation follows before this
+seam becomes a general binding adapter.
+
 This first gate deliberately keeps game-authoritative firing origins and reach.
 It must not permit shooting around walls, longer melee reach, altered cadence,
 or stronger aim assistance.

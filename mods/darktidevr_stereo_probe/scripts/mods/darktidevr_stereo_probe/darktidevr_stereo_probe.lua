@@ -154,8 +154,19 @@ local controller_observation = {
     epoch_block_sequence = -1,
     downstream_last_sequence = 0,
     downstream_missing_logged = false,
+    downstream_forward_x = nil,
+    downstream_forward_y = nil,
+    downstream_forward_z = nil,
     first_person_seam_last_sequence = 0,
-    first_person_seam_last_log_t = -math.huge
+    first_person_seam_last_log_t = -math.huge,
+    primary_action_armed = false,
+    primary_action_injected = false,
+    primary_action_cache_observed = false,
+    primary_action_sequence = 0,
+    primary_action_cache_frame = nil,
+    primary_action_weapon_observed = false,
+    primary_action_stage = "idle",
+    primary_action_last_check_t = -math.huge
 }
 local performance_profile_requested = false -- opt-in diagnostic; allocates GPU timestamp work
 -- Reuse the shading/LOD preparation performed by the primary eye. The second
@@ -218,6 +229,7 @@ local presentation = {
     fullscreen_empty_updates = 0,
     fullscreen_restore_delay_updates = 12,
     logged_view_classification = {},
+    input_inventory_done = false,
     psykhanium = {
         stage = "idle",
         deadline = 0,
@@ -824,6 +836,74 @@ function presentation.update_psykhanium(manager, t)
                 tostring(game_mode))
         end
     end
+end
+
+function presentation.scan_input_services(manager)
+    if presentation.input_inventory_done or not Mods or not Mods.lua or
+            not Mods.lua.io then
+        return
+    end
+    local flag_path =
+        "./../mods/darktidevr_stereo_probe/darktidevr_input_inventory.flag"
+    local flag = Mods.lua.io.open(flag_path, "r")
+    if not flag then
+        return
+    end
+    local request = flag:read("*all")
+    flag:close()
+    if not string.find(request or "", "scan", 1, true) then
+        return
+    end
+    local consumed = Mods.lua.io.open(flag_path, "w")
+    if consumed then
+        consumed:write("consumed\n")
+        consumed:close()
+    end
+    presentation.input_inventory_done = true
+    local services = manager and manager._input_services or {}
+    for service_name, service in pairs(services) do
+        local fields = {}
+        for key, value in pairs(service) do
+            fields[#fields + 1] = tostring(key) .. ":" .. type(value)
+        end
+        table.sort(fields)
+        while #fields > 80 do
+            table.remove(fields)
+        end
+        mod:info(
+            "DARKTIDEVR_INPUT inventory service=%s fields=%s",
+            tostring(service_name),
+            table.concat(fields, ",")
+        )
+        for field_name, values in pairs(service) do
+            local lower_name = string.lower(tostring(field_name))
+            if type(values) == "table" and
+                    (string.find(lower_name, "action", 1, true) or
+                     string.find(lower_name, "alias", 1, true)) then
+                local names = {}
+                for name in pairs(values) do
+                    local lower = string.lower(tostring(name))
+                    if string.find(lower, "action", 1, true) or
+                            string.find(lower, "attack", 1, true) or
+                            string.find(lower, "weapon", 1, true) or
+                            string.find(lower, "shoot", 1, true) then
+                        names[#names + 1] = tostring(name)
+                    end
+                end
+                table.sort(names)
+                while #names > 100 do
+                    table.remove(names)
+                end
+                mod:info(
+                    "DARKTIDEVR_INPUT inventory service=%s table=%s names=%s",
+                    tostring(service_name),
+                    tostring(field_name),
+                    table.concat(names, ",")
+                )
+            end
+        end
+    end
+    mod:info("DARKTIDEVR_INPUT inventory result=complete")
 end
 
 local function refresh_xr_render_extent()
@@ -2445,6 +2525,10 @@ mod:hook_safe(
     presentation.update_psykhanium(self, t or 0)
 end)
 
+mod:hook_safe("InputManager", "update", function(self)
+    presentation.scan_input_services(self)
+end)
+
 -- Conventional tracked-controller aim seam. It is observation-only unless an
 -- explicit test flag is present. The stereo camera remains HMD-owned in both
 -- modes.
@@ -2568,6 +2652,198 @@ mod:hook_safe(
     presentation.observe_controller_aim(self, main_t, "hub")
     end)
 
+local function active_game_mode_name()
+    local game_mode = Managers and Managers.state and Managers.state.game_mode
+    if not game_mode or type(game_mode.game_mode_name) ~= "function" then
+        return nil
+    end
+    local ok, name = pcall(game_mode.game_mode_name, game_mode)
+    return ok and name or nil
+end
+
+function presentation.inject_primary_action(self, main_t)
+    if not Mods or not Mods.lua or not Mods.lua.io then
+        return
+    end
+    if not controller_observation.primary_action_armed and
+            main_t >= controller_observation.primary_action_last_check_t + 0.25 then
+        controller_observation.primary_action_last_check_t = main_t
+        local flag_path =
+            "./../mods/darktidevr_stereo_probe/darktidevr_primary_action_test.flag"
+        local flag = Mods.lua.io.open(flag_path, "r")
+        if flag then
+            local request = flag:read("*all")
+            flag:close()
+            if request and request:match("^%s*fire_once%s*$") then
+                local consumed = Mods.lua.io.open(flag_path, "w")
+                if consumed then
+                    consumed:write("consumed\n")
+                    consumed:close()
+                end
+                controller_observation.primary_action_armed = true
+                mod:info("DARKTIDEVR_INPUT primary_action armed")
+            end
+        end
+    end
+    if controller_observation.primary_action_stage == "held" then
+        local actions = self._ephemeral_actions
+        local cache = self._ephemeral_action_cache
+        if type(actions) == "table" and type(cache) == "table" then
+            for i = 1, #actions do
+                if actions[i] == "action_one_release" then
+                    cache[i] = true
+                    controller_observation.primary_action_stage = "release"
+                    mod:info(
+                        "DARKTIDEVR_INPUT primary_action release_queued sequence=%d",
+                        controller_observation.primary_action_sequence
+                    )
+                    break
+                end
+            end
+        end
+    end
+    if not controller_observation.primary_action_armed or
+            controller_observation.primary_action_injected then
+        return
+    end
+    local game_mode_name = active_game_mode_name()
+    if game_mode_name ~= "shooting_range" and
+            game_mode_name ~= "training_grounds" then
+        return
+    end
+    if not controller_observation.authoring_enabled or
+            not controller_observation.right_aim_usable or
+            controller_observation.last_sequence <= 0 then
+        return
+    end
+    local actions = self._ephemeral_actions
+    local cache = self._ephemeral_action_cache
+    if type(actions) ~= "table" or type(cache) ~= "table" then
+        mod:warning(
+            "DARKTIDEVR_INPUT primary_action blocked reason=missing_ephemeral_cache"
+        )
+        controller_observation.primary_action_armed = false
+        return
+    end
+    local action_index = nil
+    for i = 1, #actions do
+        if actions[i] == "action_one_pressed" then
+            action_index = i
+            break
+        end
+    end
+    if not action_index then
+        mod:warning(
+            "DARKTIDEVR_INPUT primary_action blocked reason=missing_action"
+        )
+        controller_observation.primary_action_armed = false
+        return
+    end
+    cache[action_index] = true
+    controller_observation.primary_action_armed = false
+    controller_observation.primary_action_injected = true
+    controller_observation.primary_action_stage = "press"
+    controller_observation.primary_action_sequence =
+        controller_observation.last_sequence
+    mod:info(
+        "DARKTIDEVR_INPUT primary_action injected action=action_one_pressed sequence=%d age_ms=%.3f forward=%.4f,%.4f,%.4f",
+        controller_observation.primary_action_sequence,
+        controller_observation.right_aim_age_ms,
+        controller_observation.downstream_forward_x or 0,
+        controller_observation.downstream_forward_y or 0,
+        controller_observation.downstream_forward_z or 0
+    )
+end
+
+mod:hook_safe(
+    require("scripts/managers/player/player_game_states/human_input_handler"),
+    "pre_update",
+    function(self, _, main_t)
+        presentation.inject_primary_action(self, main_t or 0)
+    end)
+
+mod:hook_safe(
+    require("scripts/managers/player/player_game_states/human_input_handler"),
+    "fixed_update",
+    function(self, _, _, frame)
+        if not controller_observation.primary_action_injected then
+            return
+        end
+        local stage = controller_observation.primary_action_stage
+        if stage == "press" then
+            local action_index = self._action_lookup and
+                self._action_lookup.action_one_hold
+            local cache_index = self._buffer_index and
+                self:_buffer_index(frame)
+            if not action_index or not cache_index or not self._input_cache or
+                    not self._input_cache[action_index] then
+                mod:warning(
+                    "DARKTIDEVR_INPUT primary_action blocked reason=missing_hold_cache"
+                )
+                controller_observation.primary_action_stage = "failed"
+                return
+            end
+            self._input_cache[action_index][cache_index] = true
+            local pressed = self:get("action_one_pressed", frame)
+            local held = self:get("action_one_hold", frame)
+            controller_observation.primary_action_cache_observed = true
+            controller_observation.primary_action_cache_frame = frame
+            controller_observation.primary_action_stage = "held"
+            mod:info(
+                "DARKTIDEVR_INPUT primary_action fixed_cache pressed=%s held=%s frame=%s sequence=%d",
+                tostring(pressed),
+                tostring(held),
+                tostring(frame),
+                controller_observation.primary_action_sequence
+            )
+        elseif stage == "release" then
+            local released = self:get("action_one_release", frame)
+            local held = self:get("action_one_hold", frame)
+            controller_observation.primary_action_stage = "complete"
+            mod:info(
+                "DARKTIDEVR_INPUT primary_action release_cache=%s held=%s frame=%s sequence=%d",
+                tostring(released),
+                tostring(held),
+                tostring(frame),
+                controller_observation.primary_action_sequence
+            )
+        end
+    end)
+
+mod:hook_safe(
+    "PlayerUnitWeaponExtension",
+    "fixed_update",
+    function(self, _, _, _, fixed_frame)
+        if not controller_observation.primary_action_cache_observed or
+                controller_observation.primary_action_weapon_observed then
+            return
+        end
+        local cache_frame = controller_observation.primary_action_cache_frame
+        if not cache_frame or fixed_frame < cache_frame or
+                fixed_frame > cache_frame + 30 then
+            return
+        end
+        local local_player = Managers and Managers.player and
+            Managers.player:local_player(1)
+        if not local_player or self._unit ~= local_player.player_unit then
+            return
+        end
+        local action_component = self._weapon_action_component
+        local action_name = action_component and
+            action_component.current_action_name
+        if not action_name or action_name == "none" then
+            return
+        end
+        controller_observation.primary_action_weapon_observed = true
+        mod:info(
+            "DARKTIDEVR_INPUT primary_action weapon_action=%s frame=%s start_t=%.4f sequence=%d",
+            tostring(action_name),
+            tostring(fixed_frame),
+            tonumber(action_component.start_t) or 0,
+            controller_observation.primary_action_sequence
+        )
+    end)
+
 -- Verify that the authored orientation reaches the shared first-person
 -- component consumed by weapons, interactions and abilities. Convert engine
 -- math values immediately; never retain their transient userdata.
@@ -2605,6 +2881,9 @@ mod:hook_safe(
             return
         end
         local forward = Quaternion.forward(rotation)
+        controller_observation.downstream_forward_x = Vector3.x(forward)
+        controller_observation.downstream_forward_y = Vector3.y(forward)
+        controller_observation.downstream_forward_z = Vector3.z(forward)
         controller_observation.downstream_last_sequence =
             controller_observation.last_sequence
         mod:info(
