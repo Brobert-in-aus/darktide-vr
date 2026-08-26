@@ -152,6 +152,8 @@ local controller_observation = {
     authoring_last_check_t = -math.huge,
     authoring_writes = 0,
     epoch_block_sequence = -1,
+    downstream_last_sequence = 0,
+    downstream_missing_logged = false,
     first_person_seam_last_sequence = 0,
     first_person_seam_last_log_t = -math.huge
 }
@@ -2564,7 +2566,58 @@ mod:hook_safe(
     "pre_update",
     function(self, main_t)
     presentation.observe_controller_aim(self, main_t, "hub")
-end)
+    end)
+
+-- Verify that the authored orientation reaches the shared first-person
+-- component consumed by weapons, interactions and abilities. Convert engine
+-- math values immediately; never retain their transient userdata.
+mod:hook_safe(
+    require("scripts/extension_systems/first_person/player_unit_first_person_extension"),
+    "fixed_update",
+    function(self)
+        if not controller_observation.authoring_enabled or
+                not controller_observation.right_aim_usable or
+                controller_observation.last_sequence <
+                    controller_observation.downstream_last_sequence + 120 then
+            return
+        end
+        local component = self._first_person_component
+        local rotation = component and component.rotation
+        if not rotation then
+            if not controller_observation.downstream_missing_logged then
+                controller_observation.downstream_missing_logged = true
+                mod:warning(
+                    "DARKTIDEVR_AIM downstream unavailable component=first_person"
+                )
+            end
+            return
+        end
+        local ok, yaw, pitch, roll = pcall(
+            Quaternion.to_yaw_pitch_roll, rotation)
+        if not ok then
+            if not controller_observation.downstream_missing_logged then
+                controller_observation.downstream_missing_logged = true
+                mod:warning(
+                    "DARKTIDEVR_AIM downstream unavailable rotation=%s",
+                    tostring(yaw)
+                )
+            end
+            return
+        end
+        local forward = Quaternion.forward(rotation)
+        controller_observation.downstream_last_sequence =
+            controller_observation.last_sequence
+        mod:info(
+            "DARKTIDEVR_AIM downstream sequence=%d component_ypr=%.4f,%.4f,%.4f forward=%.4f,%.4f,%.4f",
+            controller_observation.last_sequence,
+            yaw,
+            pitch,
+            roll,
+            Vector3.x(forward),
+            Vector3.y(forward),
+            Vector3.z(forward)
+        )
+    end)
 
 mod:hook_safe(
     require("scripts/managers/ui/ui_manager"),

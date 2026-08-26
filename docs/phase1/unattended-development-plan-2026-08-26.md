@@ -481,6 +481,16 @@ epoch transition blocks its first snapshot as well. This removes the remaining
 hub-side safety gate; the next run is the same writer plus downstream rotation
 observation in the private Psykhanium.
 
+The private-range gate now passes when armed at character select before the
+public hub populates. Entering from an already populated hub twice hit the same
+base-game remote-husk `parent_unit_id` teardown race, including after a
+30-second soak; keep the early unattended sequence and do not ship an
+unexercised error-swallowing patch. In the range, 600 XR samples produced 539
+combat writes. The downstream first-person component matched
+`-1.5708,-0.3079,0.0000` at four sampled sequences and exposed forward ray
+`0.9530,0.0000,-0.3031`. The next gate can therefore be one explicitly armed,
+synthetic primary-fire edge while recording the normal game action/impact path.
+
 This first gate deliberately keeps game-authoritative firing origins and reach.
 It must not permit shooting around walls, longer melee reach, altered cadence,
 or stronger aim assistance.

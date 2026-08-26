@@ -233,6 +233,26 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   mismatch, and 0.041 degrees maximum measured angular lag. Controller state
   was published on all 1,794 frames and remained safely untracked while the
   controllers slept.
+- Two later attempts to enter from a populated public hub reproduced a
+  base-game teardown race: `PlayerHuskLocomotionExtension.post_update` queried
+  a missing remote-husk `parent_unit_id` during `wait_shooting_range` and the
+  title crashed. A 30-second hub soak did not prevent it. No VR hook appeared
+  in either stack. Arming the one-shot transition at character select, before
+  the public hub populated, completed cleanly with
+  `result=pass game_mode=training_grounds`; this is the selected unattended
+  sequencing path. An unexercised error-swallowing guard was removed rather
+  than retained.
+- The test-only controller writer then passed in the Psykhanium. A 600-frame XR
+  run produced 539 combat-orientation writes through
+  `DefaultPlayerOrientation`, kept the 4.7124-radian body anchor, authored the
+  -0.3079 pitch and zero roll, suspended on synthetic tracking loss and stale
+  post-session data, and emitted no menu input.
+- A downstream `PlayerUnitFirstPersonExtension.fixed_update` observer converted
+  the component rotation immediately and proved the shared weapon/action seam
+  receives the authored value. At controller sequences 120, 240, 361 and 481,
+  `first_person_component.rotation` was consistently
+  `-1.5708,-0.3079,0.0000` with forward ray
+  `0.9530,0.0000,-0.3031`. No downstream component or script error occurred.
 
 ## Validation commands
 
@@ -260,9 +280,10 @@ Steam close grace between normal runs.
 
 ## Next action
 
-Exercise the test-only yaw/pitch seam in the private Psykhanium and correlate it
-with `first_person_component.rotation`, reticle and shot direction before
-mapping any fire action. Do not feed gameplay aim into the HMD render basis.
+Add a strictly synthetic, single-action input gate in the private Psykhanium and
+correlate one bounded primary-fire edge with the observed first-person forward
+ray and target impact before enabling general button mapping. Do not feed
+gameplay aim into the HMD render basis.
 Preserve the raw LOCAL pose for spatial-menu tests. Retain the horizon-lock
 billboard build for automated soaks, but defer the final smoke, fog and
 particle-orientation judgement until the user can wear the headset.
