@@ -662,14 +662,14 @@ std::atomic<std::uint64_t> billboard_pixel_shader_probe_applied_count{};
 std::atomic<std::uint64_t> billboard_pixel_shader_probe_creation_reject_count{};
 std::atomic<std::uint64_t> billboard_shader_substitution_count{};
 std::atomic<std::uint64_t> billboard_shader_substitution_reject_count{};
-constexpr std::array<std::uint64_t, 13> kBillboardVertexShaderHashes{
+constexpr std::array<std::uint64_t, 14> kBillboardVertexShaderHashes{
     0x6e5fa4d1f1e2cd16ULL, 0x25920ba45ba58e76ULL,
     0xaf848a96a230342aULL, 0x903cb53d8ac05f28ULL,
     0x13e04962148fc216ULL, 0x42f73c7d12e99db7ULL,
     0xc403cfbf17d9fc49ULL, 0x30408e39c8028272ULL,
     0xe18a274cd89282e8ULL, 0xf0c85040e349f799ULL,
     0xfe64037664924d52ULL, 0x9edf5361a4db2da1ULL,
-    0x6a0153ef1f6c56fdULL};
+    0x6a0153ef1f6c56fdULL, 0x42e436fb1ef1b392ULL};
 constexpr std::array<std::uint64_t, 9> kBillboardPixelShaderHashes{
     0x40063d327b1294edULL, 0xcb7e4e5d3e01d5bdULL,
     0x2b7d8f695f0d55beULL, 0x0e35f00186a2af32ULL,

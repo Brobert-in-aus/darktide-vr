@@ -184,6 +184,24 @@ extent, so the scale must be confined to proven particle geometry and must fail
 closed for fullscreen or emissive/light PSOs. Use the enlarged particles to
 make subsequent colour and horizon-lock validation easier.
 
+### Progress — 2026-08-27
+
+The cache-clean search is complete and supersedes the provisional teal-arc
+plan. The exact visible-mote pair is VS `42e436fb1ef1b392` / PS
+`6020f2548f29fd47`. A 10x geometry-stage probe isolated the particles without
+changing the world or lights. A geometry-stage horizon attempt then failed
+closed because the original root signature does not expose `b2` to a new GS,
+which proves that the orientation correction belongs in the original vertex
+stage.
+
+The exact VS now has a tracked, interface-compatible cylindrical replacement.
+It derives a horizontal right vector from camera forward, fixes up to world
+`+Z`, and preserves the original in-plane particle rotation and all remaining
+outputs. A 3x magenta run proved ownership and coherent quad geometry; a
+fresh-cache 1x natural-material run was visually clean and stable in both eyes.
+Only the worn pitch/roll acceptance and broader Psykhanium material census
+remain. See `docs/handoffs/2026-08-27-unattended-session.md`.
+
 ## Workstream B — fullscreen menu presentation
 
 ### Presentation model

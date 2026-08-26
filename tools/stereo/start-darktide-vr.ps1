@@ -31,10 +31,10 @@ if ($FreshPsoCache) {
     if ($resolvedCacheRoot -ne $cacheRoot) {
         throw "Unexpected Darktide cache directory: $resolvedCacheRoot"
     }
-    $cacheFiles = @(
+    $cacheFiles = @(@(
         Join-Path $cacheRoot 'shader_library.pso_lib'
         Join-Path $cacheRoot 'state_stream_library.pso_lib'
-    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
     if ($cacheFiles.Count -gt 0) {
         $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
         $backup = Join-Path $cacheRoot "pso-cache-backup-$stamp"

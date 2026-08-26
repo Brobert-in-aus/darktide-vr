@@ -700,28 +700,10 @@ Steam close grace between normal runs.
   colour neighborhood in one worn check; a final wide-palette rerun can then
   identify the exact pixel shader.
 
-## Next action
+## Superseded next action
 
-Run the already-built 115-candidate teal-arc hue wheel with
-`start-darktide-vr.ps1 -FreshPsoCache`, record the particle colour, and narrow
-once more from the complete ordered candidate list without filtering through
-the incomplete creation or draw manifests. After a cache-clean one-shader
-positive, map that exact pixel shader back to every bound vertex shader and
-draw state before attempting a cylindrical replacement. Extend pipeline-stream
-and cached/pre-recorded command diagnostics as necessary. Do not optimize or
-ship the falsified direct-CBV billboard candidate. Separately repair the shared-eye generation handshake so
-an XR-process restart cannot remain on flat fallback. Preserve the explicit first-person
-locomotion task: safety-box overflow moves the character root absolutely, while
-stick movement continues through Darktide's native acceleration, collision and
-platform handling. Keep the new vendor transport normal-on but avoid repeated
-hub launches until a clean hub session is available. Then open a non-purchasing
-vendor through its ordinary interaction, verify the board is stationary in
-`LOCAL`, exercise only a tab/back control, and confirm stereo restoration.
-
-As an immediate visibility aid after the pixel owner is confirmed, build a
-diagnostic paired-vertex replacement that multiplies the particle quad extent
-by 10. Size cannot be changed by the constant-colour pixel probe itself, so
-apply the scale only to vertex shaders/PSOs proven to pair with the isolated
-particle pixel shader. Validate that it enlarges particles without changing
-fullscreen composites or emissive/light geometry, then use the enlarged
-particles for easier colour and cylindrical-billboard inspection.
+The 2026-08-27 session completed this localization and scale-probe ladder,
+identified exact VS/PS ownership, and produced a clean cylindrical vertex-stage
+replacement. Continue from `docs/handoffs/2026-08-27-unattended-session.md`.
+The shared-eye generation handshake, first-person overflow-to-root locomotion,
+menu coverage and vendor validation remain independent outstanding work.

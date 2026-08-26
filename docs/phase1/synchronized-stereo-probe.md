@@ -1583,3 +1583,22 @@ same process-global shared-memory object during its stale-pose assertion. No
 Mac-only validation applies to this Windows/D3D12 interception checkpoint. The
 new per-hash diagnostics compile but have not yet been deployed for a fresh live
 runtime capture.
+
+### Exact particle horizon-lock checkpoint (2026-08-27)
+
+Subsequent cache-clean localization identified the visible character-select
+particle pipeline as VS `42e436fb1ef1b392` paired with PS
+`6020f2548f29fd47`. This is not one of the earlier reflection-selected
+`c_billboard` candidates. A 10x GS scale probe changed only the particles, while
+a GS that requested the original VS `b2` resource was rejected by root-stage
+visibility and fell back safely.
+
+The production intervention is therefore an exact VS replacement. Its original
+interface and material/fog calculations are retained; only the spherical
+camera right/up construction is changed to a normalized XY-facing right vector
+and world-Z up, with the original per-particle rotation applied within that
+cylindrical plane. The replacement passed reflection validation and PSO
+creation. A 3x magenta diagnostic proved exact ownership and intact six-vertex
+quad pairing. A 1x original-material run rendered clean stereo without device
+loss or pair-pose mismatch. Final worn pitch/roll acceptance and Psykhanium
+coverage remain outstanding.

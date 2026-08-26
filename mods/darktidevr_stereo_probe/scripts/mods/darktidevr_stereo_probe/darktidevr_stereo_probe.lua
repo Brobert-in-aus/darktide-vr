@@ -659,7 +659,7 @@ local function ensure_ui_native_hooks()
             "c403cfbf17d9fc49", "30408e39c8028272",
             "e18a274cd89282e8", "f0c85040e349f799",
             "fe64037664924d52", "9edf5361a4db2da1",
-            "6a0153ef1f6c56fd"
+            "6a0153ef1f6c56fd", "42e436fb1ef1b392"
         }
         for rank = 0, #shader_labels - 1 do
             mod:info(
