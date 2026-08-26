@@ -146,6 +146,9 @@ local controller_observation = {
     right_aim_pitch = nil,
     right_aim_roll = nil,
     body_yaw_anchor = nil,
+    authoring_enabled = false,
+    authoring_last_check_t = -math.huge,
+    authoring_writes = 0,
     first_person_seam_last_sequence = 0,
     first_person_seam_last_log_t = -math.huge
 }
@@ -903,6 +906,9 @@ local function apply_head_tracking(clean_position, clean_rotation)
         head_render_frusta = { left_frustum, right_frustum }
     end
     local runtime_ipd = tonumber(head_pose_values[19])
+    -- The native reader rejects stale snapshots. Clear usability before each
+    -- attempt so a failed read can never leave the previous pose live.
+    controller_observation.right_aim_usable = false
     if controller_observation.values and
             ui_native_capture.dtvr_read_controller_state(
                 controller_observation.values,
@@ -2429,10 +2435,29 @@ mod:hook_safe(
     presentation.update_psykhanium(self, t or 0)
 end)
 
--- Observation-only gate for conventional tracked-controller aim. This proves
--- the single upstream orientation seam and coordinate convention before any
--- gameplay state is authored. The stereo camera remains HMD-owned throughout.
+-- Conventional tracked-controller aim seam. It is observation-only unless an
+-- explicit test flag is present. The stereo camera remains HMD-owned in both
+-- modes.
 function presentation.observe_controller_aim(self, main_t, orientation_class)
+    if main_t >= controller_observation.authoring_last_check_t + 1 then
+        controller_observation.authoring_last_check_t = main_t
+        local flag_path =
+            "./../mods/darktidevr_stereo_probe/darktidevr_controller_aim_test.flag"
+        local flag = Mods.lua.io.open(flag_path, "r")
+        local enabled = false
+        if flag then
+            enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
+            flag:close()
+        end
+        if enabled ~= controller_observation.authoring_enabled then
+            controller_observation.authoring_enabled = enabled
+            mod:info(
+                "DARKTIDEVR_AIM authoring=%s source=test_flag writes=%d",
+                enabled and "enabled" or "disabled",
+                controller_observation.authoring_writes
+            )
+        end
+    end
     if not controller_observation.right_aim_usable or
             not controller_observation.right_aim_yaw or
             controller_observation.last_sequence ==
@@ -2456,12 +2481,36 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
     )
     local target_yaw, target_pitch, target_roll =
         Quaternion.to_yaw_pitch_roll(world_aim_rotation)
+    local game_yaw = self._orientation.yaw
+    local game_pitch = self._orientation.pitch
+    local game_roll = self._orientation.roll
+    if controller_observation.authoring_enabled then
+        -- Gameplay aim owns yaw/pitch only. Controller roll remains available
+        -- for later weapon presentation but cannot roll the player or HMD.
+        local authored_rotation = Quaternion.multiply(
+            Quaternion.from_yaw_pitch_roll(
+                controller_observation.body_yaw_anchor, 0, 0
+            ),
+            Quaternion.from_yaw_pitch_roll(
+                controller_observation.right_aim_yaw,
+                controller_observation.right_aim_pitch,
+                0
+            )
+        )
+        local authored_yaw, authored_pitch =
+            Quaternion.to_yaw_pitch_roll(authored_rotation)
+        self._orientation.yaw = authored_yaw
+        self._orientation.pitch = authored_pitch
+        self._orientation.roll = 0
+        controller_observation.authoring_writes =
+            controller_observation.authoring_writes + 1
+    end
     if main_t < controller_observation.first_person_seam_last_log_t + 2 then
         return
     end
     controller_observation.first_person_seam_last_log_t = main_t
     mod:info(
-        "DARKTIDEVR_AIM observation class=%s sequence=%d age_ms=%.3f controller_ypr=%.4f,%.4f,%.4f anchor_yaw=%.4f target_ypr=%.4f,%.4f,%.4f game_ypr=%.4f,%.4f,%.4f write=disabled",
+        "DARKTIDEVR_AIM observation class=%s sequence=%d age_ms=%.3f controller_ypr=%.4f,%.4f,%.4f anchor_yaw=%.4f target_ypr=%.4f,%.4f,%.4f game_ypr=%.4f,%.4f,%.4f write=%s",
         orientation_class,
         controller_observation.last_sequence,
         controller_observation.right_aim_age_ms,
@@ -2472,9 +2521,10 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         target_yaw,
         target_pitch,
         target_roll,
-        self._orientation.yaw,
-        self._orientation.pitch,
-        self._orientation.roll
+        game_yaw,
+        game_pitch,
+        game_roll,
+        controller_observation.authoring_enabled and "enabled" or "disabled"
     )
 end
 

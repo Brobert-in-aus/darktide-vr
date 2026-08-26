@@ -464,6 +464,16 @@ position-valid and orientation-tracked with age between -5 and 100 ms, and
 fail closed whenever tracking, freshness or the XR sequence epoch changes.
 Controller aim must remain independent of the HMD render basis.
 
+That test-only gate is now implemented and live-validated in the hub. A bounded
+synthetic run published 456 controller samples and performed 302 writes. The
+game yaw remained at the 3.1415-radian body anchor, pitch converged from 6.2832
+to 5.9745 (equivalent to the -0.3087 target), and roll remained zero. It emitted
+no menu input and produced no Lua/safe-hook error. The flag defaults to and was
+restored to `disabled`; production runs therefore remain observation-only.
+Before any button mapping, add a one-shot suspension record for invalid/stale
+tracking and repeat this gate in the private Psykhanium while observing the
+first-person component and authoritative shot direction.
+
 This first gate deliberately keeps game-authoritative firing origins and reach.
 It must not permit shooting around walls, longer melee reach, altered cadence,
 or stronger aim assistance.

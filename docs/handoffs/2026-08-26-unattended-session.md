@@ -195,6 +195,18 @@ chunk has 196 top-level locals. This was recovered before the accepted run.
   accepted path stores only yaw/pitch/roll scalars and reconstructs both
   quaternions immediately at the orientation hook; the clean run produced no
   safe-hook, script or quaternion error.
+- Added a normal-off, file-armed controller-aim authoring gate plus
+  `tools/stereo/set-controller-aim-test.ps1`. The orientation hook clears pose
+  usability before every native read, requires tracked position/orientation and
+  a -5--100 ms sample age, composes the body yaw with body-local aim, writes
+  yaw/pitch only, and forces gameplay roll to zero. The HMD render basis remains
+  on the independent stereo camera path.
+- Disabled and enabled hub runs both passed. The armed run published 456
+  controller samples, kept menu input at zero, performed 302 bounded orientation
+  writes, held yaw at 3.1415, and changed pitch from 6.2832 to 5.9745 (the
+  modulo-2-pi representation of the -0.3087 target). Roll remained 0.0000 and
+  no script/safe-hook error occurred. The flag was returned to `disabled`
+  immediately after the run.
 - Added a guarded one-shot `dtvr_enter_psykhanium` workflow derived from the
   game's own training-view and Testify path. It consumes a local flag, waits for
   hub game mode plus backend authentication, opens the training view, selects
@@ -241,10 +253,10 @@ Steam close grace between normal runs.
 
 ## Next action
 
-Expose an explicit test-only flag that authors the now-validated composed
-yaw/pitch at the same upstream seam. Exclude controller roll, require fresh
-tracked data, and fail closed on tracking loss, stale samples or a new XR
-sequence epoch. Do not feed gameplay aim into the HMD render basis. Preserve the
-raw LOCAL pose for spatial-menu tests. Retain the horizon-lock billboard build
-for automated soaks, but defer the final smoke, fog and particle-orientation
-judgement until the user can wear the headset.
+Add explicit suspension telemetry for tracking loss/stale samples, then exercise
+the same test-only yaw/pitch seam in the private Psykhanium and correlate it
+with `first_person_component.rotation`, reticle and shot direction before
+mapping any fire action. Do not feed gameplay aim into the HMD render basis.
+Preserve the raw LOCAL pose for spatial-menu tests. Retain the horizon-lock
+billboard build for automated soaks, but defer the final smoke, fog and
+particle-orientation judgement until the user can wear the headset.
