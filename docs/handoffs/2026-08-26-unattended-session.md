@@ -480,12 +480,11 @@ the complete synthetic offscreen/over-reach/tracking-loss cycle.
   produced no Lua, D3D12, native, device-hung or device-removal errors.
 - The hub loaded and closed normally with no Lua, D3D12, device-hung or
   device-removal errors.
-- Added the first normal-off full-body arm authoring layer. It computes
+- Added the first normal-off arm authoring laboratory. It computes
   shortest-arc upper-arm and forearm deltas from the live animated chain,
   preserves the animation's existing twist, writes only the two local bone
   rotations, and propagates the player unit once through
-  `World.update_unit_and_children`. Hand orientation is deliberately not yet
-  authored.
+  `World.update_unit_and_children`.
 - The first guarded live attempt proved that `PlayerUnitAnimationExtension`
   does not expose a usable `_world`; the gate was detected but made zero bone
   writes. No skeleton mutation or error occurred. Authoring was therefore
@@ -499,6 +498,12 @@ the complete synthetic offscreen/over-reach/tracking-loss cycle.
   clamp. The bridge submitted 1,053 frames, 1,051 fresh pairs, zero reused
   frames/timeouts, and only the two expected startup pose mismatches. There
   were no Lua, D3D12, device-hung or device-removal errors.
+- These writes were deliberately exercised on the hub's local third-person
+  player model to validate the engine seam, not as a proposed hub feature. The
+  hub must retain stock third-person animation. Product arm/hand authoring is
+  now restricted to the private first-person `shooting_range` and
+  `training_grounds` modes; missions remain disabled until the Psykhanium gate
+  passes.
 - Review found a same-process XR restart hazard before checkpointing: the
   authoring flag poll had used the shared XR sequence for cadence. It now uses
   a monotonic render-hook update counter, so a newly created bridge may restart
@@ -508,6 +513,56 @@ the complete synthetic offscreen/over-reach/tracking-loss cycle.
   session resumed writes at reset sequence 12 and reached 750 cumulative
   writes with 0.000018 m maximum error. Both bridge runs passed with no reuse,
   timeouts, Lua errors or device errors.
+- The first hand-orientation laboratory used a per-side calibration offset but
+  exposed that Stingray quaternion userdata cannot be retained across frames;
+  the writer failed closed. Calibration is now stored as four plain numeric
+  components and reconstructed per update. A fault latch also prevents a
+  failed writer from rearming until the external flag is explicitly disabled.
+  This correction and hand orientation require validation in the Psykhanium,
+  not the third-person hub.
+
+### Worn billboard and 6DoF clamp check
+
+- Worn character-select inspection falsified the current direct billboard-CBV
+  candidate: smoke and other billboard sprites still tilt with headset pitch
+  and roll. Although the interceptor observes and patches many draws, that
+  activity is not evidence that it owns the visible sprites. Production draw
+  patching is disabled again; the hook remains diagnostic-only.
+- Disabling billboard diagnostics initially left the early D3D12 bootstrap
+  flag enabled. The native layer correctly rejected Lua's contradictory
+  diagnostic-hook selection with code 1, so stereo never initialized and the
+  bridge showed only flat fallback. The stale flag has been moved aside.
+- A first camera trace redeploy exceeded LuaJIT's file-scope local-variable
+  ceiling and prevented the mod chunk compiling. Trace state now lives in the
+  existing presentation table and the corrected mod initializes normally.
+- The validated 6DoF camera composition is unchanged from checkpoint
+  `27606c9`, apart from the intentional per-character scale multiplier (1.0
+  for the tested Psyker). A clean instrumented run showed OpenXR translation
+  entering Lua and the corresponding rotated delta in the final camera pose.
+  Worn testing identified the apparent regression: XR established its recenter
+  while the headset was lying on the desk. Picking it up moved beyond the
+  0.25 m horizontal / 0.18 m vertical safety box, and subsequent small head
+  movements never returned inside the box, so the hard-clamped pose appeared
+  stationary. Translation worked normally when the headset remained within
+  the box. This is a recenter/clamp UX defect, not a lost camera write.
+- The recovery implementation now slides the box origin by rejected excess,
+  so donning cannot strand the current pose far outside the boundary. The
+  system Meta button remains reserved; its OpenXR `LOCAL` reference-space
+  change is the explicit recenter signal. Worn validation passed: three Meta
+  resets each produced `openxr.head_recenter=runtime-pending` followed by
+  `openxr.head_recenter=applied`, while stereo remained live at roughly 108
+  fresh pairs per second. Translation remained responsive after recenter.
+- In first-person zones, sliding the box cannot remain camera-only. Its origin
+  displacement must move the character root absolutely, while thumbstick
+  locomotion independently retains Darktide's acceleration/deceleration and
+  collision behavior. The head's position inside the box remains local camera
+  translation. The third-person hub needs no body-root application.
+- A separate XR-process restart reproduced a real transport lifecycle defect:
+  Darktide continued advancing producer capture counters, but the restarted
+  harness received zero fresh pairs from the named eye surfaces and silently
+  displayed flat fallback. Reopening the same names did not reach the active
+  generation; a clean Darktide restart restored fresh pairs. Do not conflate
+  that shared-surface generation bug with the clamp symptom.
 
 The controller-binding validation built every Debug target and passed all 29
 tests, including the new gameplay mapper and opt-in synthetic button cycle.
@@ -516,15 +571,157 @@ validation used the
 EAC-stopped character-select boundary and preserved the required ten-second
 Steam close grace between normal runs.
 
+### Splash-time XR startup
+
+- `tools/stereo/start-darktide-vr.ps1` is now the default development entry
+  point. It opens the mandatory Steam/Fatshark launcher, waits for the actual
+  Darktide splash window, and starts OpenXR immediately. The existing flat
+  capture therefore presents splash/loading content on the spatial board and
+  transitions to stereo as soon as the producer is ready.
+- `run-darktide-shared-eyes.ps1` gained a bounded `-WaitForGameSeconds` mode so
+  startup races do not require manual timing. It still enforces the known game
+  hash and EAC-inactive boundary before starting XR.
+- The first live use validated the intended transition: OpenXR began during the
+  splash with flat-fallback submissions, attached the shared-eye resources when
+  character select became ready, and then delivered fresh stereo pairs without
+  a second XR launch.
+
+### Billboard PSO substitution repair
+
+- Re-analysis of the earlier blanket run found that its three successful
+  substitutions were not evidence for three horizon variants: the generated
+  DXIL had harmless final-register padding in reflected constant-buffer sizes,
+  one output-signature order differed, and the atlas variant introduced a
+  redundant base-instance CBV plus the wrong structured-element width. Those
+  failures explain the four rejected PSOs.
+- The validator now permits only the precise DXC round-up from an original
+  partial final constant-buffer register to its 16-byte boundary. Resource
+  registers, dimensions, types, signatures and constant-buffer kinds remain
+  exact. The atlas replacement uses the native `SV_InstanceID` semantics and a
+  four-byte structured element, matching the original interface.
+- The corrected live run applied all seven observed substitutions across all
+  five versioned hashes: `1/1/2/1/2` applications respectively, with zero
+  validation rejects and zero creation rejects. Four spherical variants carry
+  the horizon construction; the tangent-driven ribbon/beam variant remains
+  intentionally unchanged. Worn smoke appearance remains the acceptance gate.
+- Worn testing then falsified ownership, not merely the horizon calculation:
+  with all five variants (including the tangent variant) successfully replaced
+  by diagnostic shaders that forced their likely color varying to saturated
+  magenta, zero purple objects or effects were visible anywhere in character
+  select. The five-hash set therefore does not own the visible smoke and is
+  disabled again.
+- The archived vertex-shader census actually contains 268 shaders with the
+  `c_billboard` reflection name among 1,907 captured shaders. The prior five
+  were not exhaustive. The next bounded step ranks only shaders whose reflected
+  `c_billboard` PSOs issue live draw calls in character select, then performs a
+  grouped color localization on that much smaller evidence-backed set.
+
+### Billboard ownership localization: pixel and draw evidence
+
+- Pixel-shader capture was expanded from the original nine candidates to all
+  586 pixel permutations paired with a reflected `c_billboard` vertex shader.
+  Interface-matched magenta replacements still changed only one rare,
+  short-lived, mostly occluded object. This falsifies the assumption that the
+  visible character-select smoke can be found merely by reflecting the
+  `c_billboard` name.
+- A census of all alpha-blended PSOs captured 1,087 pixel shaders, of which
+  1,086 were inspectable DXIL and received interface-matched magenta probes.
+  The blanket set made the entire frame magenta because it included fullscreen
+  composites. Pixel input signature count then provided a reproducible coarse
+  split: four/five-input shaders changed splash/loading backgrounds but no
+  character-select scene objects; three-input shaders changed nothing; the
+  two-input bucket contained a fullscreen composite; and the >=6-input bucket
+  changed small scene particles plus some emissive/light sources.
+- Creation-time PSO manifests now record every substituted PSO's original
+  VS/PS hashes, input layout, topology, blend/depth state, culling and formats,
+  and archive the paired vertex bytecode. They exposed an actual instanced-quad
+  generator layout (`POSITION1` per-vertex corners plus per-instance
+  `POSITION0`, `COLOR` and size/UV fields). Its VS disassembly expands the quad
+  from camera-facing basis data, directly explaining why these effects roll
+  with the headset. However, probing all 86 >=6 pixel shaders paired with this
+  creation-time layout produced no visible magenta. Created permutations are
+  not evidence that a PSO is drawn in the observed scene.
+- A bootstrap-time `darktidevr_vertex_shader_dump.flag` was added so the draw
+  logger can be selected before D3D12 hooks install. Enabling it late from Lua
+  returned code 1 and prevented normal XR startup; bootstrap selection fixed
+  that lifecycle error. A short >=6 draw census reduced 679 active probes to
+  two hashes visible in logged PASS records, but both were negative when run
+  alone. The visible source therefore lives in pre-recorded/reused work not
+  represented by the logger's newly recorded command lists.
+- The remaining bounded localization set was 593 >=6 shaders excluding the 86
+  already-negative instanced-layout permutations. One coarse split established
+  that the visible particle owner was in the upper 148 hashes of the positive
+  297-hash half; repeated binary yes/no splits were then abandoned because they
+  throw away nearly all of the information available from a rendered frame.
+- `tools/stereo/build-shader-id-probes.ps1` now assigns every candidate a
+  unique constant output colour in one run. A first 148-colour lattice put the
+  particles in the green/teal hue family despite lighting modulation. A
+  conservative hue filter reduced this to 18 candidates, which were spread at
+  20-degree intervals over a full-saturation hue wheel for a second run.
+- The full-wheel run made the particles unambiguously magenta, which would map
+  to index 15 and pixel shader `61fa6dde316a6313` if every observed colour came
+  from that run. The user's close crop confirms the particle pixels themselves
+  were magenta rather than merely teal under scene lighting. However, the first
+  isolated one-shader rerun was invalidated before its
+  visual result was accepted: Darktide's `shader_library.pso_lib` and
+  `state_stream_library.pso_lib` had been created by the prior colour run, no
+  new substitution or PSO-pair manifest entry occurred, and shutdown rewrote
+  those libraries. This proves diagnostic replacement PSOs can persist across
+  launches. Both exact cache files were moved (not deleted) into timestamped
+  backup `pso-cache-backup-20260826-203958`. The subsequent cache-clean run has
+  so far produced no `61fa6dde316a6313` substitution or PSO-pair manifest
+  entry, so the index-15 identification remains provisional pending the visual
+  check and is likely contaminated by an earlier colour lattice. If negative,
+  rerun the 148-colour then 18-colour ID stages with a fresh PSO cache at each
+  stage. `start-darktide-vr.ps1 -FreshPsoCache` now performs
+  this preservation step explicitly for future shader diagnostics, while the
+  default launch path leaves the normal game cache untouched.
+- A cache-clean rerun of the 148-candidate A2 colour set recorded 127
+  substituted PSO-pair rows covering 25 distinct candidate pixel hashes, but
+  the visible particles remained uncoloured. This invalidates the earlier A2
+  narrowing and the provisional `61fa6dde316a6313` identification.
+- A cache-clean hue-wheel run over the complete 593-candidate complement then
+  coloured the visible particles green/teal. This is the first trustworthy
+  positive colour-localization result because both persistent PSO libraries
+  were preserved and removed before launch. It bounds the owner to the teal
+  arc of that full ordered set.
+- A three-candidate follow-up selected only hashes observed in the creation
+  manifest near the teal hues (`5beaae9e972f80e9`, `737f9ac41a693fd1`, and
+  `862fe950e4f484a4`, rendered red/green/blue). The particles were uncoloured.
+  Creation-time PSO manifests are therefore incomplete for this effect, just
+  like the newly-recorded command-list logger: reused or pre-recorded work can
+  render without appearing in either data source. Do not use either manifest
+  as an exhaustive filter again.
+- The next cache-clean validation set is already built from the full ordering:
+  115 hashes spanning hue 130-200 degrees, indices 215-329, under
+  `build/generated/shader_id_full593_teal_arc_hue`. The first hash is
+  `63ea89ef5488e73a` and the last is `96f85d0f82313f95`. Spreading these 115
+  candidates over a new full hue wheel should reduce the owner to a small
+  colour neighborhood in one worn check; a final wide-palette rerun can then
+  identify the exact pixel shader.
+
 ## Next action
 
-Keep the new vendor transport normal-on but avoid repeated hub launches until a
-clean hub session is available. Then open a non-purchasing vendor through its
-ordinary interaction, verify the board is stationary in `LOCAL`, exercise only
-a tab/back control, and confirm stereo restoration. Meanwhile retain the
-accepted direct-CBV billboard path, optimize its map/unmap cost only after
-appearance is confirmed, and continue offline full-IK/control architecture.
-When the user is available, perform the final worn-headset smoke horizon check
-during pitch/roll. When the hub transition is healthy, retry the private Shooting
-Range action audit with both gameplay gates bounded and disabled everywhere
-else.
+Run the already-built 115-candidate teal-arc hue wheel with
+`start-darktide-vr.ps1 -FreshPsoCache`, record the particle colour, and narrow
+once more from the complete ordered candidate list without filtering through
+the incomplete creation or draw manifests. After a cache-clean one-shader
+positive, map that exact pixel shader back to every bound vertex shader and
+draw state before attempting a cylindrical replacement. Extend pipeline-stream
+and cached/pre-recorded command diagnostics as necessary. Do not optimize or
+ship the falsified direct-CBV billboard candidate. Separately repair the shared-eye generation handshake so
+an XR-process restart cannot remain on flat fallback. Preserve the explicit first-person
+locomotion task: safety-box overflow moves the character root absolutely, while
+stick movement continues through Darktide's native acceleration, collision and
+platform handling. Keep the new vendor transport normal-on but avoid repeated
+hub launches until a clean hub session is available. Then open a non-purchasing
+vendor through its ordinary interaction, verify the board is stationary in
+`LOCAL`, exercise only a tab/back control, and confirm stereo restoration.
+
+As an immediate visibility aid after the pixel owner is confirmed, build a
+diagnostic paired-vertex replacement that multiplies the particle quad extent
+by 10. Size cannot be changed by the constant-colour pixel probe itself, so
+apply the scale only to vertex shaders/PSOs proven to pair with the isolated
+particle pixel shader. Validate that it enlarges particles without changing
+fullscreen composites or emissive/light geometry, then use the enlarged
+particles for easier colour and cylindrical-billboard inspection.

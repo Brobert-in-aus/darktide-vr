@@ -83,14 +83,21 @@ local diagnostic_render_hooks_requested = false
 local vertex_shader_dump_requested = false
 -- PSO-time, whitelist-only substitution. Replacement shaders are validated
 -- against the live shader interface before D3D12 ever sees them.
-local billboard_shader_substitution_requested = false
+local billboard_shader_substitution_requested = true
+-- Bounded ownership probe: replace only the pixel-shader partners observed on
+-- live c_billboard draws with interface-identical constant-magenta shaders.
+local billboard_pixel_shader_probe_requested = false
 -- All five reflected billboard VS variants consume c_billboard[0].xy as the
 -- normalized horizontal facing direction. The exact-CBV writer is limited to
 -- exactly those two floats; registers 1-3 are unused by those VS variants and
 -- registers 4-7 are the complete world-to-clip matrix.
-local billboard_horizon_lock_requested = true
+-- The direct constant-buffer candidate was exercised in-headset on
+-- 2026-08-26 and did not change the visible billboard orientation.  Keep the
+-- hook available for diagnostics, but do not patch production draws while we
+-- isolate the head-tracking regression.
+local billboard_horizon_lock_requested = false
 local billboard_direct_write_requested = true
-local billboard_selector_probe_requested = false
+local billboard_selector_probe_requested = true
 local ui_table4_alias_probe_requested = false -- unsafe without exact draw identity
 local ui_present_capture_requested = false
 local ui_alternating_full_requested = false
@@ -229,6 +236,9 @@ local controller_observation = {
     body_ik_presentation_last_log_frame = -math.huge,
     body_ik_presentation_writes = 0,
     body_ik_presentation_max_error = 0,
+    body_ik_presentation_max_angle_error = 0,
+    body_ik_hand_offsets = {},
+    body_ik_presentation_faulted = false,
     body_ik_presentation_block_reason = nil,
     ik_input = nil,
     ik_output = nil,
@@ -289,6 +299,9 @@ local ui_focused_ab_sample_frames = 3
 -- immediately after the bounded test.
 local ui_stereo_requested = true -- zero-IPD stereo cached-pipeline census
 local presentation = {
+    head_translation_trace_requested = false,
+    head_translation_trace_last_sequence = 0,
+    head_translation_trace_interval = 600,
     sequence = 0,
     mode = nil,
     fullscreen_view_signature = "",
@@ -431,6 +444,7 @@ local function ensure_ui_native_hooks()
         int dtvr_enable_marker_log(void);
         int dtvr_set_diagnostic_render_hooks(int enabled);
         int dtvr_set_billboard_shader_substitution(int enabled);
+        int dtvr_set_billboard_pixel_shader_probe(int enabled);
         unsigned long long dtvr_billboard_shader_substitution_count(void);
         unsigned long long dtvr_billboard_shader_substitution_reject_count(void);
         unsigned long long dtvr_billboard_shader_substitution_result_count(
@@ -498,6 +512,15 @@ local function ensure_ui_native_hooks()
         unsigned long long dtvr_billboard_candidate_shader_count(unsigned int rank);
         unsigned int dtvr_billboard_candidate_shader_hash_low(unsigned int rank);
         unsigned int dtvr_billboard_candidate_shader_hash_high(unsigned int rank);
+        unsigned long long dtvr_billboard_candidate_pair_vertex_shader(
+            unsigned int rank);
+        unsigned long long dtvr_billboard_candidate_pair_pixel_shader(
+            unsigned int rank);
+        unsigned long long dtvr_billboard_candidate_pair_count(unsigned int rank);
+        unsigned int dtvr_billboard_candidate_pair_vertex_low(unsigned int rank);
+        unsigned int dtvr_billboard_candidate_pair_vertex_high(unsigned int rank);
+        unsigned int dtvr_billboard_candidate_pair_pixel_low(unsigned int rank);
+        unsigned int dtvr_billboard_candidate_pair_pixel_high(unsigned int rank);
         unsigned long long dtvr_billboard_table_b2_draw_count(void);
         unsigned long long dtvr_billboard_bound_table_b2_draw_count(void);
         unsigned long long dtvr_billboard_observed_draw_count(void);
@@ -549,6 +572,14 @@ local function ensure_ui_native_hooks()
     if substitution_result ~= 0 then
         mod:error("DARKTIDEVR_STEREO billboard_shader_substitution_select_failed code=%d",
             substitution_result)
+        return false
+    end
+
+    local pixel_probe_result = library.dtvr_set_billboard_pixel_shader_probe(
+        billboard_pixel_shader_probe_requested and 1 or 0)
+    if pixel_probe_result ~= 0 then
+        mod:error("DARKTIDEVR_STEREO billboard_pixel_shader_probe_select_failed code=%d",
+            pixel_probe_result)
         return false
     end
 
@@ -624,7 +655,11 @@ local function ensure_ui_native_hooks()
         local shader_labels = {
             "6e5fa4d1f1e2cd16", "25920ba45ba58e76",
             "af848a96a230342a", "903cb53d8ac05f28",
-            "13e04962148fc216"
+            "13e04962148fc216", "42f73c7d12e99db7",
+            "c403cfbf17d9fc49", "30408e39c8028272",
+            "e18a274cd89282e8", "f0c85040e349f799",
+            "fe64037664924d52", "9edf5361a4db2da1",
+            "6a0153ef1f6c56fd"
         }
         for rank = 0, #shader_labels - 1 do
             mod:info(
@@ -1332,6 +1367,23 @@ local function apply_head_tracking(clean_position, clean_rotation)
             Quaternion.up(clean_rotation) * local_z
     end
 
+    if presentation.head_translation_trace_requested and
+            (presentation.head_translation_trace_last_sequence == 0 or
+             sequence < presentation.head_translation_trace_last_sequence or
+             sequence - presentation.head_translation_trace_last_sequence >=
+                presentation.head_translation_trace_interval) then
+        mod:info(
+            "DARKTIDEVR_STEREO head_translation sequence=%d delta=%.5f,%.5f,%.5f clean=%.5f,%.5f,%.5f tracked=%.5f,%.5f,%.5f",
+            sequence,
+            tonumber(head_pose_values[0]) * character_scale,
+            tonumber(head_pose_values[1]) * character_scale,
+            tonumber(head_pose_values[2]) * character_scale,
+            Vector3.x(clean_position), Vector3.y(clean_position),
+            Vector3.z(clean_position), Vector3.x(tracked_position),
+            Vector3.y(tracked_position), Vector3.z(tracked_position))
+        presentation.head_translation_trace_last_sequence = sequence
+    end
+
     if head_pose_last_sequence == 0 then
         mod:info("DARKTIDEVR_STEREO head_tracking active mode=%s sequence=%d runtime_ipd=%.4f character_scale=%.3f",
             head_translation_requested and "6dof" or "3dof",
@@ -1610,6 +1662,26 @@ local function report_native_observer()
                 tonumber(ui_native_capture.dtvr_billboard_root_b2_candidate_draw_count()),
                 table.concat(candidate_shaders, ",")
             )
+            local candidate_pairs = {}
+            for rank = 0, 15 do
+                local vertex_low = tonumber(
+                    ui_native_capture.dtvr_billboard_candidate_pair_vertex_low(rank))
+                local vertex_high = tonumber(
+                    ui_native_capture.dtvr_billboard_candidate_pair_vertex_high(rank))
+                local pixel_low = tonumber(
+                    ui_native_capture.dtvr_billboard_candidate_pair_pixel_low(rank))
+                local pixel_high = tonumber(
+                    ui_native_capture.dtvr_billboard_candidate_pair_pixel_high(rank))
+                local count = tonumber(
+                    ui_native_capture.dtvr_billboard_candidate_pair_count(rank))
+                if count > 0 then
+                    candidate_pairs[#candidate_pairs + 1] = string.format(
+                        "%08x%08x/%08x%08x:%d",
+                        vertex_high, vertex_low, pixel_high, pixel_low, count)
+                end
+            end
+            mod:info("DARKTIDEVR_STEREO billboard_pairs %s",
+                table.concat(candidate_pairs, ","))
         end
         ui_native_observer_last_present = presents
     end
@@ -3546,6 +3618,13 @@ function presentation.align_vectors_rotation(from, to)
     return Quaternion.axis_angle(axis / axis_length, math.acos(dot))
 end
 
+function presentation.quaternion_angle_error(left, right)
+    local lx, ly, lz, lw = Quaternion.to_elements(left)
+    local rx, ry, rz, rw = Quaternion.to_elements(right)
+    local dot = math.abs(lx * rx + ly * ry + lz * rz + lw * rw)
+    return 2 * math.acos(math.max(-1, math.min(1, dot)))
+end
+
 -- Freeze a hub interaction panel in the same body-relative coordinates used
 -- by tracked controllers. The clean camera is the game-world pose of the
 -- immutable OpenXR recenter; applying its inverse here is the exact inverse of
@@ -3707,13 +3786,24 @@ function presentation.body_ik_controller_grip_target(unit, side)
         controller_observation.right_grip_x,
         controller_observation.right_grip_y,
         controller_observation.right_grip_z)
+    local grip_rotation = is_left and Quaternion.from_elements(
+        controller_observation.left_grip_qx,
+        controller_observation.left_grip_qy,
+        controller_observation.left_grip_qz,
+        controller_observation.left_grip_qw) or Quaternion.from_elements(
+        controller_observation.right_grip_qx,
+        controller_observation.right_grip_qy,
+        controller_observation.right_grip_qz,
+        controller_observation.right_grip_qw)
     local anchor_rotation = Quaternion.from_elements(
         controller_observation.body_anchor_qx,
         controller_observation.body_anchor_qy,
         controller_observation.body_anchor_qz,
         controller_observation.body_anchor_qw)
     return Unit.world_position(unit, Unit.node(unit, "j_head")) +
-        presentation.rotate_vector(anchor_rotation, grip_position)
+            presentation.rotate_vector(anchor_rotation, grip_position),
+        Quaternion.normalize(Quaternion.multiply(
+            anchor_rotation, grip_rotation))
 end
 
 function presentation.update_body_ik_trace_gate(fixed_frame)
@@ -3804,15 +3894,22 @@ function presentation.update_body_ik_presentation_gate(fixed_frame)
         enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
         flag:close()
     end
+    if not enabled then
+        controller_observation.body_ik_presentation_faulted = false
+    end
+    enabled = enabled and
+        not controller_observation.body_ik_presentation_faulted
     if enabled ~= controller_observation.body_ik_presentation_enabled then
         controller_observation.body_ik_presentation_enabled = enabled
         controller_observation.body_ik_presentation_block_reason = nil
+        controller_observation.body_ik_hand_offsets = {}
         mod:info("DARKTIDEVR_IK presentation=%s source=test_flag",
             enabled and "enabled" or "disabled")
     end
 end
 
-function presentation.apply_body_arm_ik(world, unit, side, target_position)
+function presentation.apply_body_arm_ik(
+        world, unit, side, target_position, target_rotation)
     local solved, reason, solved_elbow, solved_wrist =
         presentation.trace_body_arm(unit, side, target_position, false)
     if not solved then
@@ -3835,6 +3932,7 @@ function presentation.apply_body_arm_ik(world, unit, side, target_position)
     local wrist = Unit.world_position(unit, hand_node)
     local arm_world = Unit.world_rotation(unit, arm_node)
     local forearm_world = Unit.world_rotation(unit, forearm_node)
+    local hand_world = Unit.world_rotation(unit, hand_node)
     local arm_delta = presentation.align_vectors_rotation(
         elbow - shoulder, solved_elbow - shoulder)
     if not arm_delta then
@@ -3863,11 +3961,38 @@ function presentation.apply_body_arm_ik(world, unit, side, target_position)
     local solved_forearm_local = Quaternion.multiply(
         presentation.inverse_quaternion(solved_arm_world),
         solved_forearm_world)
+    local hand_offset = controller_observation.body_ik_hand_offsets[side]
+    if not hand_offset then
+        local offset_rotation = Quaternion.multiply(
+            presentation.inverse_quaternion(target_rotation), hand_world)
+        local offset_x, offset_y, offset_z, offset_w =
+            Quaternion.to_elements(offset_rotation)
+        hand_offset = {
+            x = offset_x,
+            y = offset_y,
+            z = offset_z,
+            w = offset_w
+        }
+        controller_observation.body_ik_hand_offsets[side] = hand_offset
+        mod:info("DARKTIDEVR_IK hand_calibrated side=%s sequence=%d",
+            side, controller_observation.last_sequence)
+    end
+    local hand_offset_rotation = Quaternion.from_elements(
+        hand_offset.x, hand_offset.y, hand_offset.z, hand_offset.w)
+    local solved_hand_world = Quaternion.normalize(Quaternion.multiply(
+        target_rotation, hand_offset_rotation))
+    local solved_hand_local = Quaternion.multiply(
+        presentation.inverse_quaternion(solved_forearm_world),
+        solved_hand_world)
     Unit.set_local_rotation(unit, arm_node, solved_arm_local)
     Unit.set_local_rotation(unit, forearm_node, solved_forearm_local)
+    Unit.set_local_rotation(unit, hand_node, solved_hand_local)
     World.update_unit_and_children(world, unit)
-    return true, "written", presentation.vector_distance(
-        Unit.world_position(unit, hand_node), solved_wrist)
+    return true, "written",
+        presentation.vector_distance(
+            Unit.world_position(unit, hand_node), solved_wrist),
+        presentation.quaternion_angle_error(
+            Unit.world_rotation(unit, hand_node), solved_hand_world)
 end
 
 function presentation.apply_body_ik(unit, sequence, world)
@@ -3879,37 +4004,59 @@ function presentation.apply_body_ik(unit, sequence, world)
     if not controller_observation.body_ik_presentation_enabled then
         return
     end
+    local mode = active_game_mode_name()
+    if mode ~= "shooting_range" and mode ~= "training_grounds" then
+        if controller_observation.body_ik_presentation_block_reason ~=
+                "not_first_person_training" then
+            controller_observation.body_ik_presentation_block_reason =
+                "not_first_person_training"
+            mod:info(
+                "DARKTIDEVR_IK presentation_blocked reason=not_first_person_training mode=%s",
+                tostring(mode))
+        end
+        return
+    end
     if not world or not unit or not Unit.alive(unit) then
         controller_observation.body_ik_presentation_block_reason =
             not world and "world_unavailable" or "unit_unavailable"
         return
     end
-    local left_target = presentation.body_ik_controller_grip_target(
+    local left_target, left_rotation =
+        presentation.body_ik_controller_grip_target(
         unit, "left")
-    local right_target = presentation.body_ik_controller_grip_target(
+    local right_target, right_rotation =
+        presentation.body_ik_controller_grip_target(
         unit, "right")
     local wrote = false
     local max_error = 0
+    local max_angle_error = 0
     local block_reason = nil
     if left_target then
-        local ok, reason, error_metres = presentation.apply_body_arm_ik(
-            world, unit, "left", left_target)
+        local ok, reason, error_metres, angle_error =
+            presentation.apply_body_arm_ik(
+                world, unit, "left", left_target, left_rotation)
         wrote = wrote or ok
         block_reason = not ok and "left_" .. tostring(reason) or block_reason
         max_error = math.max(max_error, error_metres or 0)
+        max_angle_error = math.max(max_angle_error, angle_error or 0)
     end
     if right_target then
-        local ok, reason, error_metres = presentation.apply_body_arm_ik(
-            world, unit, "right", right_target)
+        local ok, reason, error_metres, angle_error =
+            presentation.apply_body_arm_ik(
+                world, unit, "right", right_target, right_rotation)
         wrote = wrote or ok
         block_reason = not ok and "right_" .. tostring(reason) or block_reason
         max_error = math.max(max_error, error_metres or 0)
+        max_angle_error = math.max(max_angle_error, angle_error or 0)
     end
     if wrote then
         controller_observation.body_ik_presentation_writes =
             controller_observation.body_ik_presentation_writes + 1
         controller_observation.body_ik_presentation_max_error = math.max(
             controller_observation.body_ik_presentation_max_error, max_error)
+        controller_observation.body_ik_presentation_max_angle_error = math.max(
+            controller_observation.body_ik_presentation_max_angle_error,
+            max_angle_error)
         block_reason = nil
     end
     if block_reason ~= controller_observation.body_ik_presentation_block_reason then
@@ -3924,10 +4071,12 @@ function presentation.apply_body_ik(unit, sequence, world)
         controller_observation.body_ik_presentation_last_log_frame =
             update_frame
         mod:info(
-            "DARKTIDEVR_IK presentation_writes=%d post_error_m=%.6f max_post_error_m=%.6f sequence=%d",
+            "DARKTIDEVR_IK presentation_writes=%d post_error_m=%.6f max_post_error_m=%.6f angle_error_rad=%.6f max_angle_error_rad=%.6f sequence=%d",
             controller_observation.body_ik_presentation_writes,
             max_error,
             controller_observation.body_ik_presentation_max_error,
+            max_angle_error,
+            controller_observation.body_ik_presentation_max_angle_error,
             sequence or controller_observation.last_sequence)
     end
 end
@@ -4407,6 +4556,7 @@ mod:hook_safe(
             self._world)
         if not ok and controller_observation.body_ik_presentation_enabled then
             controller_observation.body_ik_presentation_enabled = false
+            controller_observation.body_ik_presentation_faulted = true
             mod:error(
                 "DARKTIDEVR_IK presentation_disabled reason=lua_error error=%s",
                 tostring(error_message))

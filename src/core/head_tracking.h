@@ -16,6 +16,13 @@ math::Pose recentered_head_delta(math::Pose recenter_pose,
                                  math::Pose current_pose,
                                  HeadTranslationLimits limits);
 
+// Applies the same bound as recentered_head_delta, but shifts the recenter
+// origin by any rejected excess. This keeps a large donning movement from
+// leaving subsequent small movements stranded far outside the safety box.
+math::Pose sliding_recentered_head_delta(math::Pose& recenter_pose,
+                                         math::Pose current_pose,
+                                         HeadTranslationLimits limits);
+
 // Reconstructs an absolute OpenXR eye pose from the same recentered head
 // delta consumed by the game camera. Keeping translation in this composition
 // is essential for 6DoF: stripping it would make the compositor's virtual

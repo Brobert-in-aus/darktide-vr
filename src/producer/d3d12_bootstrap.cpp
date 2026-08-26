@@ -100,6 +100,13 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
   const auto billboard_shader_substitution_requested =
       substitution_flag_attributes != INVALID_FILE_ATTRIBUTES &&
       (substitution_flag_attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+  const auto shader_dump_flag_path =
+      mod_bin_path + L"darktidevr_vertex_shader_dump.flag";
+  const auto shader_dump_flag_attributes =
+      GetFileAttributesW(shader_dump_flag_path.c_str());
+  const auto vertex_shader_dump_requested =
+      shader_dump_flag_attributes != INVALID_FILE_ATTRIBUTES &&
+      (shader_dump_flag_attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
   path = mod_bin_path + L"darktidevr_native_capture.dll";
   const auto native = LoadLibraryW(path.c_str());
   if (!native) {
@@ -130,7 +137,9 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
                                                  : 0)
                                        : -1;
   const auto shader_dump_result =
-      set_vertex_shader_dump ? set_vertex_shader_dump(0) : -1;
+      set_vertex_shader_dump
+          ? set_vertex_shader_dump(vertex_shader_dump_requested ? 1 : 0)
+          : -1;
   const auto basis_result =
       set_billboard_basis
           ? set_billboard_basis(1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0)
@@ -139,12 +148,13 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
   char message[224]{};
   wsprintfA(message,
             "native_results diagnostic_requested=%d diagnostics=%d "
-            "substitution_requested=%d substitution=%d shader_dump=%d "
+            "substitution_requested=%d substitution=%d "
+            "shader_dump_requested=%d shader_dump=%d "
             "basis=%d install=%d",
             diagnostic_hooks_requested ? 1 : 0, diagnostics_result,
             billboard_shader_substitution_requested ? 1 : 0,
-            substitution_result, shader_dump_result, basis_result,
-            install_result);
+            substitution_result, vertex_shader_dump_requested ? 1 : 0,
+            shader_dump_result, basis_result, install_result);
   write_bootstrap_log(message);
   return diagnostics_result == 0 && substitution_result == 0 &&
                  shader_dump_result == 0 && basis_result == 0 &&

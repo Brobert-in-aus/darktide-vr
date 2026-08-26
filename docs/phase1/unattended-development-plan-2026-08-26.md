@@ -35,6 +35,12 @@ launcher, press its Play control, then advance the loaded splash screen. A
 watchdog should distinguish launcher, game, crash reporter, and requested-exit
 states; archive logs and close crash dialogs without submitting them.
 
+The normal development entry point is now
+`tools/stereo/start-darktide-vr.ps1`. It opens the mandatory Steam/Fatshark
+launcher and waits for the Darktide splash window before starting OpenXR, so
+the splash/loading capture appears on the spatial fallback board without a
+second manual XR launch. Stereo takes over when the producer becomes ready.
+
 Do not attribute an isolated XR initialization failure to Virtual Desktop by
 default. First archive the failure, perform one ordinary clean retry, and check
 whether the failure follows the current change. Roll back to the last known-good
@@ -143,6 +149,40 @@ and a 15-second synthetic OpenXR pitch/roll sweep completed with more than
 The capture is retained under `artifacts/unattended/billboard-direct-sweep/`;
 smoke is too subtle in the unattended scene for a definitive appearance call,
 so final worn-headset judgement and broader Psykhanium material coverage remain.
+
+Worn testing subsequently falsified that draw-time CBV selection for the
+visible character-select smoke, so it remains diagnostic-only. The safer
+PSO-time route was repaired instead: its reconstructed DXIL interfaces now
+account only for DXC's final-register constant-buffer padding and preserve exact
+signatures/resource shapes. A clean character-select run applied all seven
+observed PSOs (`1/1/2/1/2` by known hash) with zero validation or creation
+rejects. Visual pitch/roll acceptance is still required before this becomes a
+production checkpoint; the tangent-driven ribbon/beam permutation remains
+unchanged.
+
+The subsequent ownership search established a mandatory diagnostic rule:
+Darktide persists substituted graphics PSOs in `shader_library.pso_lib` and
+`state_stream_library.pso_lib`. Every colour-identification launch must use
+`start-darktide-vr.ps1 -FreshPsoCache`, which moves both exact files to a
+timestamped backup before launch. Results from a reused cache are invalid.
+Creation manifests and newly-recorded command-list logs are useful positive
+evidence but are not exhaustive; the target particles can be drawn by reused
+or pre-recorded work absent from both.
+
+Tomorrow's first billboard checkpoint is the already-built cache-clean
+115-candidate teal-arc hue wheel
+(`build/generated/shader_id_full593_teal_arc_hue`). Use the worn particle hue
+to select a small neighborhood from the original full 593-candidate ordering,
+spread that neighborhood across a fresh full palette, and finish with a
+cache-clean isolated-shader confirmation. Only after that confirmation should
+the exact pixel shader be traced to all paired vertex shaders/PSOs and patched
+at their common billboard-basis producer.
+
+Once the exact pixel owner is confirmed, create a diagnostic 10x particle-size
+variant at its paired vertex shader/PSO. The pixel recolour cannot alter quad
+extent, so the scale must be confined to proven particle geometry and must fail
+closed for fullscreen or emissive/light PSOs. Use the enlarged particles to
+make subsequent colour and horizon-lock validation easier.
 
 ## Workstream B — fullscreen menu presentation
 
@@ -736,9 +776,13 @@ shortest-arc deltas to the animated upper-arm and forearm rotations at the
 verified post-animation `PlayerUnitFirstPersonExtension.update_unit_position`
 seam. A live synthetic pass completed 783 writes with at most 0.000018 m
 solved-wrist error, paused across tracking loss and resumed on reacquisition
-without Lua or device errors. The remaining gate is visual/anatomical: verify
-elbow poles and arm appearance in-headset, then author hand orientation and
-connect the first-person weapon pose. The flag-poll cadence was subsequently
+without Lua or device errors. That pass used the hub's third-person player only
+as an engine-seam laboratory; the hub must retain its stock animation. Body
+authoring is now restricted to private first-person shooting-range/training
+modes, with missions disabled until the Psykhanium gate passes. The remaining
+gate is visual/anatomical there: verify elbow poles, arms and calibrated hand
+orientation in-headset, then connect the first-person weapon pose. The
+flag-poll cadence was subsequently
 changed from XR sequence to a monotonic render-update counter. Two synthetic
 XR sessions in one Darktide process then proved enable/disable/re-enable and
 successful writes after the bridge sequence reset to 12, with neither reused
@@ -770,7 +814,9 @@ These features can advance without invalidating the three main workstreams:
    stale-resource fallback, clean XR/Game restart, and device-loss diagnostics.
 2. **Comfort camera policy:** suppress game camera pitch/roll, bob, shake,
    forced turns and recoil while retaining translation; expose recenter plus
-   dormant snap/smooth yaw paths.
+   dormant snap/smooth yaw paths. Treat the Meta button as system-reserved:
+   consume the OpenXR `LOCAL` reference-space-change event generated by the
+   Meta OS recenter instead of assigning an application controller chord.
 3. **Audio listener orientation:** make spatial audio follow HMD orientation
    rather than controller aim/body heading.
 4. **HUD completion:** finish binocular-overlap clamping, classify remaining
@@ -778,6 +824,11 @@ These features can advance without invalidating the three main workstreams:
    world projection is inappropriate.
 5. **Runtime input configuration:** handedness, stick swap, seated/standing
    height, controller/HMD-relative locomotion, dead zones and bindings.
+   First-person locomotion must split physical and stick motion: dragging the
+   head safety box directly displaces the character root, while thumbstick
+   movement retains Darktide's existing acceleration/deceleration. Combine the
+   two once, preserve collision and moving-platform behavior, and never feed
+   physical displacement back through the accelerated stick pathway.
 6. **Performance and pacing:** retain pair-driven submission, expand per-eye GPU
    timings, identify duplicated CPU/GPU work, and preserve runtime-directed
    resolution plus optional SSW/frame-generation behavior.

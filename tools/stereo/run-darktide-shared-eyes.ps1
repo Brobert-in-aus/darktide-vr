@@ -15,7 +15,13 @@ param(
 
     [switch] $SyntheticBodyPath,
 
-    [switch] $SyntheticHeadSweep
+    [switch] $SyntheticHeadSweep,
+
+    [ValidateRange(0, 1800)]
+    [int] $WaitForGameSeconds = 0,
+
+    [ValidateRange(-2.0, 2.0)]
+    [double] $ProjectionTranslationScale = 1.0
 )
 
 Set-StrictMode -Version Latest
@@ -38,9 +44,21 @@ if ($eac -and $eac.Status -ne 'Stopped') {
     throw "Darktide stereo mode refuses to run while EAC is $($eac.Status)"
 }
 
-$game = @(Get-Process Darktide -ErrorAction SilentlyContinue)
+$waitDeadline = [DateTime]::UtcNow.AddSeconds($WaitForGameSeconds)
+do {
+    $game = @(Get-Process Darktide -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Responding -and
+            $_.MainWindowTitle -eq 'Warhammer 40,000: Darktide'
+        })
+    if ($game.Count -eq 1 -or $WaitForGameSeconds -eq 0) {
+        break
+    }
+    Start-Sleep -Milliseconds 250
+} while ([DateTime]::UtcNow -lt $waitDeadline)
+
 if ($game.Count -ne 1 -or -not $game[0].Responding) {
-    throw "Expected exactly one responsive Darktide process; found $($game.Count)"
+    throw "Expected exactly one responsive Darktide window; found $($game.Count)"
 }
 if ($game[0].MainWindowTitle -ne 'Warhammer 40,000: Darktide') {
     throw 'The running Darktide process does not expose the expected capture window'
@@ -75,6 +93,9 @@ if ($SyntheticBodyPath) {
 if ($SyntheticHeadSweep) {
     $arguments += '--synthetic-head-sweep'
 }
+$arguments += '--projection-translation-scale'
+$arguments += $ProjectionTranslationScale.ToString(
+    [System.Globalization.CultureInfo]::InvariantCulture)
 
 & $harnessPath @arguments
 if ($LASTEXITCODE -ne 0) {

@@ -82,6 +82,10 @@ int main() {
       body_near.hands[0].body_grip_tracking_flags != 0 &&
       body_crossed.hands[0].body_grip_pose.position.x > 0.0F &&
       body_crossed.hands[1].body_grip_pose.position.x < 0.0F &&
+      std::abs(body_crossed.hands[0].body_grip_pose.orientation.z) > 0.20F &&
+      std::abs(body_crossed.hands[1].body_grip_pose.orientation.z) > 0.20F &&
+      body_crossed.hands[0].body_grip_pose.orientation.z ==
+          -body_crossed.hands[1].body_grip_pose.orientation.z &&
       length(body_far.hands[0].body_grip_pose.position) > 1.0F &&
       body_invalid.hands[0].body_grip_tracking_flags == 0 &&
       body_invalid.hands[1].body_grip_tracking_flags == 0 &&

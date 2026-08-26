@@ -451,7 +451,8 @@ class OpenXrProbe {
                                bool synthetic_controller_path,
                                bool synthetic_body_path,
                                bool synthetic_gameplay_input,
-                               bool synthetic_head_sweep) {
+                               bool synthetic_head_sweep,
+                               float projection_translation_scale) {
     if (session_ == XR_NULL_HANDLE || view_space_ == XR_NULL_HANDLE) {
       throw std::runtime_error("OpenXR theatre loop requires a session and VIEW space");
     }
@@ -465,6 +466,9 @@ class OpenXrProbe {
         stereo_top_bottom ||
         (shared_eyes && !separate_shared_eye_swapchains);
     const bool stereo = stereo_sbs || stereo_top_bottom_layout || shared_eyes;
+    std::cout << "openxr.projection_translation="
+              << projection_translation_scale
+              << '\n';
     // The application render and OpenXR swapchain extents follow the runtime's
     // exact recommendation. Lens distortion and hidden-area sampling belong to
     // the runtime; the game must supply the corresponding asymmetric frusta.
@@ -827,6 +831,8 @@ class OpenXrProbe {
                "xrWaitFrame(theatre)");
       XrFrameBeginInfo frame_begin{XR_TYPE_FRAME_BEGIN_INFO};
       check_xr(xrBeginFrame(session_, &frame_begin), "xrBeginFrame(theatre)");
+      bool head_recenter_requested = reference_space_recenter_pending_;
+      reference_space_recenter_pending_ = false;
       if (!synthetic_controller_path) {
         sync_controller_actions(frame_state.predictedDisplayTime);
       }
@@ -878,12 +884,21 @@ class OpenXrProbe {
           current_head_valid = true;
         }
         if (submit_layer && head_pose_writer) {
+          if (head_recenter_requested) {
+            head_recenter_pose = current_head;
+            controller_recenter_pose_ = current_head;
+            recentered_view_poses_valid = false;
+            rendered_pair_pose_ready_value = 0;
+            head_pose_history.clear();
+            std::cout << "openxr.head_recenter=applied\n";
+          }
           if (!head_recenter_pose) {
             head_recenter_pose = current_head;
             controller_recenter_pose_ = current_head;
           }
-          auto delta = darktidevr::core::recentered_head_delta(
+          auto delta = darktidevr::core::sliding_recentered_head_delta(
               *head_recenter_pose, current_head, {0.25F, 0.18F});
+          controller_recenter_pose_ = *head_recenter_pose;
           if (synthetic_head_sweep) {
             const auto synthetic =
                 darktidevr::harness::synthetic_head_path_sample(
@@ -912,6 +927,11 @@ class OpenXrProbe {
           pose_sample.ipd_metres =
               std::sqrt(eye_dx * eye_dx + eye_dy * eye_dy + eye_dz * eye_dz);
           runtime_ipd_metres_ = pose_sample.ipd_metres;
+          const darktidevr::math::Pose submitted_head_delta{
+              delta.orientation,
+              {delta.position.x * projection_translation_scale,
+               delta.position.y * projection_translation_scale,
+               delta.position.z * projection_translation_scale}};
           for (std::size_t eye = 0; eye < located_views.size(); ++eye) {
             pose_sample.render_frusta[eye] = {
                 located_views[eye].fov.angleLeft,
@@ -938,7 +958,8 @@ class OpenXrProbe {
             // runtime eye-from-head transform (including physical IPD).
             const auto anchored_eye =
                 darktidevr::core::anchored_recentered_eye_pose(
-                    *head_recenter_pose, delta, current_head, current_eye);
+                    *head_recenter_pose, submitted_head_delta, current_head,
+                    current_eye);
             recentered_view_poses[eye].orientation = {
                 anchored_eye.orientation.x, anchored_eye.orientation.y,
                 anchored_eye.orientation.z, anchored_eye.orientation.w};
@@ -2102,6 +2123,15 @@ class OpenXrProbe {
           std::cout << "openxr.session_state="
                     << static_cast<int>(session_state_) << '\n';
         }
+      } else if (event.type ==
+                 XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING) {
+        const auto* changed = reinterpret_cast<
+            const XrEventDataReferenceSpaceChangePending*>(&event);
+        if (changed->session == session_ &&
+            changed->referenceSpaceType == XR_REFERENCE_SPACE_TYPE_LOCAL) {
+          reference_space_recenter_pending_ = true;
+          std::cout << "openxr.head_recenter=runtime-pending\n";
+        }
       } else if (event.type == XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING) {
         throw std::runtime_error("OpenXR runtime reported instance loss pending");
       }
@@ -2181,6 +2211,7 @@ class OpenXrProbe {
   std::optional<darktidevr::core::SharedControllerState>
       latest_controller_sample_;
   std::optional<darktidevr::math::Pose> controller_recenter_pose_;
+  bool reference_space_recenter_pending_{};
   std::uint64_t controller_samples_{};
   float runtime_ipd_metres_{};
   std::array<std::uint64_t, 2> controller_aim_tracked_frames_{};
@@ -2540,6 +2571,7 @@ void usage() {
                 "[--synthetic-body-path] "
                 "[--synthetic-gameplay-input] "
                 "[--synthetic-head-sweep] "
+                "[--projection-translation-scale N] "
                 "[--shared-pose-sequence-offset N] "
                "[--pair-driven-shared | --continuous-shared] "
                "[--resize-at N]\n\n"
@@ -2571,6 +2603,7 @@ int wmain(int argc, wchar_t** argv) {
     bool synthetic_body_path = false;
     bool synthetic_gameplay_input = false;
     bool synthetic_head_sweep = false;
+    float projection_translation_scale = 1.0F;
     std::wstring menu_input_title = L"Warhammer 40,000: Darktide";
     std::optional<std::wstring> capture_window_title;
     std::uint32_t xr_frames{};
@@ -2620,6 +2653,9 @@ int wmain(int argc, wchar_t** argv) {
         synthetic_gameplay_input = true;
       } else if (argument == L"--synthetic-head-sweep") {
         synthetic_head_sweep = true;
+      } else if (argument == L"--projection-translation-scale" &&
+                 index + 1 < argc) {
+        projection_translation_scale = std::stof(argv[++index]);
       } else if (argument == L"--menu-input-window-title" &&
                  index + 1 < argc) {
         menu_input_title = argv[++index];
@@ -2655,6 +2691,12 @@ int wmain(int argc, wchar_t** argv) {
     if (enable_menu_input && !shared_eyes) {
       throw std::invalid_argument(
           "--enable-menu-input requires --shared-eyes");
+    }
+    if (!std::isfinite(projection_translation_scale) ||
+        projection_translation_scale < -2.0F ||
+        projection_translation_scale > 2.0F) {
+      throw std::invalid_argument(
+          "--projection-translation-scale must be finite and between -2 and 2");
     }
     if (synthetic_controller_path && !shared_eyes) {
       throw std::invalid_argument(
@@ -2702,7 +2744,8 @@ int wmain(int argc, wchar_t** argv) {
                                      synthetic_controller_path,
                                      synthetic_body_path,
                                      synthetic_gameplay_input,
-                                     synthetic_head_sweep);
+                                     synthetic_head_sweep,
+                                     projection_translation_scale);
       } else {
         openxr.run_frame_lifecycle(xr_frames, harness.device(), harness.queue(),
                                    require_rendering);

@@ -126,10 +126,14 @@ void apply_synthetic_body_reach_path(core::SharedControllerState& state,
 
   for (std::size_t hand = 0; hand < 2; ++hand) {
     auto& destination = state.hands[hand];
+    const auto wrist_yaw =
+        (hand == 0 ? 1.0F : -1.0F) * (phase_t - 0.5F) * 1.2F;
+    const auto wrist_orientation =
+        math::from_axis_angle({0.0F, 0.0F, 1.0F}, wrist_yaw);
     destination.body_aim_pose.position = positions[hand];
     destination.body_grip_pose.position = positions[hand];
-    destination.body_aim_pose.orientation = {0.0F, 0.0F, 0.0F, 1.0F};
-    destination.body_grip_pose.orientation = {0.0F, 0.0F, 0.0F, 1.0F};
+    destination.body_aim_pose.orientation = wrist_orientation;
+    destination.body_grip_pose.orientation = wrist_orientation;
     if (phase == SyntheticControllerPhase::tracking_invalid) {
       destination.body_aim_tracking_flags = 0;
       destination.body_grip_tracking_flags = 0;

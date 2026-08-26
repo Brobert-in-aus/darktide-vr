@@ -200,6 +200,20 @@ int main() {
     expect_vec(rotate(head_delta.orientation, {0.0F, 0.0F, -1.0F}),
                {-1.0F, 0.0F, 0.0F}, "recentered orientation");
 
+    Pose sliding_anchor{};
+    const auto donned = darktidevr::core::sliding_recentered_head_delta(
+        sliding_anchor, Pose{{}, {1.0F, 0.8F, 0.0F}}, {0.25F, 0.18F});
+    expect_vec(donned.position, {0.25F, 0.18F, 0.0F},
+               "donning movement remains bounded");
+    expect_vec(sliding_anchor.position, {0.75F, 0.62F, 0.0F},
+               "excess donning movement advances recenter origin");
+    const auto small_return =
+        darktidevr::core::sliding_recentered_head_delta(
+            sliding_anchor, Pose{{}, {0.98F, 0.78F, 0.0F}},
+            {0.25F, 0.18F});
+    expect_vec(small_return.position, {0.23F, 0.16F, 0.0F},
+               "small inward movement responds after donning clamp");
+
     const auto rotated_recenter = Pose{yaw_90, {0.0F, 0.0F, 0.0F}};
     const auto local_forward = darktidevr::core::recentered_head_delta(
         rotated_recenter, {yaw_90, {-1.0F, 0.0F, 0.0F}}, {2.0F, 2.0F});

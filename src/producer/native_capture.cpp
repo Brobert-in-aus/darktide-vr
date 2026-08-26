@@ -23,6 +23,7 @@
 #include <cstring>
 #include <cstdio>
 #include <deque>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -654,15 +655,34 @@ std::atomic<bool> vertex_shader_dump_requested{};
 // only needs the three PSO construction hooks. Keep it independently
 // selectable so production XR does not pay for the diagnostic draw hooks.
 std::atomic<bool> billboard_shader_substitution_requested{};
+std::atomic<bool> billboard_pixel_shader_probe_requested{};
+std::atomic<std::uint64_t> billboard_pixel_shader_probe_attempt_count{};
+std::atomic<std::uint64_t> billboard_pixel_shader_probe_validation_reject_count{};
+std::atomic<std::uint64_t> billboard_pixel_shader_probe_applied_count{};
+std::atomic<std::uint64_t> billboard_pixel_shader_probe_creation_reject_count{};
 std::atomic<std::uint64_t> billboard_shader_substitution_count{};
 std::atomic<std::uint64_t> billboard_shader_substitution_reject_count{};
-std::array<std::atomic<std::uint64_t>, 5>
+constexpr std::array<std::uint64_t, 13> kBillboardVertexShaderHashes{
+    0x6e5fa4d1f1e2cd16ULL, 0x25920ba45ba58e76ULL,
+    0xaf848a96a230342aULL, 0x903cb53d8ac05f28ULL,
+    0x13e04962148fc216ULL, 0x42f73c7d12e99db7ULL,
+    0xc403cfbf17d9fc49ULL, 0x30408e39c8028272ULL,
+    0xe18a274cd89282e8ULL, 0xf0c85040e349f799ULL,
+    0xfe64037664924d52ULL, 0x9edf5361a4db2da1ULL,
+    0x6a0153ef1f6c56fdULL};
+constexpr std::array<std::uint64_t, 9> kBillboardPixelShaderHashes{
+    0x40063d327b1294edULL, 0xcb7e4e5d3e01d5bdULL,
+    0x2b7d8f695f0d55beULL, 0x0e35f00186a2af32ULL,
+    0x4277b248ec882f15ULL, 0x7c035f0ca3365a04ULL,
+    0xc89d9f1dae60baf9ULL, 0xe977841939553e76ULL,
+    0x0bf86872f2c6ca5dULL};
+std::array<std::atomic<std::uint64_t>, kBillboardVertexShaderHashes.size()>
     billboard_shader_substitution_attempt_counts{};
-std::array<std::atomic<std::uint64_t>, 5>
+std::array<std::atomic<std::uint64_t>, kBillboardVertexShaderHashes.size()>
     billboard_shader_substitution_applied_counts{};
-std::array<std::atomic<std::uint64_t>, 5>
+std::array<std::atomic<std::uint64_t>, kBillboardVertexShaderHashes.size()>
     billboard_shader_substitution_validation_reject_counts{};
-std::array<std::atomic<std::uint64_t>, 5>
+std::array<std::atomic<std::uint64_t>, kBillboardVertexShaderHashes.size()>
     billboard_shader_substitution_creation_reject_counts{};
 std::mutex billboard_shader_replacement_mutex;
 std::unordered_map<std::uint64_t, std::vector<std::uint8_t>>
@@ -740,6 +760,8 @@ std::atomic<std::uint64_t> billboard_root_b2_candidate_draw_count{};
 std::mutex billboard_candidate_shader_mutex;
 std::unordered_map<std::uint64_t, std::uint64_t>
     billboard_candidate_shader_counts;
+std::map<std::pair<std::uint64_t, std::uint64_t>, std::uint64_t>
+    billboard_candidate_shader_pair_counts;
 constexpr std::size_t kBillboardObservedStrideCount = 257;
 std::array<std::array<std::atomic<std::uint64_t>,
                       kBillboardObservedStrideCount>,
@@ -751,6 +773,9 @@ std::atomic<std::uint64_t> billboard_b2_bound_count{};
 std::atomic<std::uint64_t> billboard_basis_patch_count{};
 std::mutex vertex_shader_dump_mutex;
 std::unordered_set<std::uint64_t> dumped_vertex_shaders;
+std::unordered_set<std::uint64_t> dumped_billboard_pixel_shaders;
+std::unordered_set<std::uint64_t> dumped_blended_pixel_shaders;
+std::unordered_set<std::uint64_t> dumped_blended_pso_pairs;
 std::unordered_set<std::uint64_t> dumped_pipeline_blobs;
 std::unordered_set<std::uint64_t> dumped_pso_shader_mappings;
 
@@ -1135,27 +1160,26 @@ std::uint64_t hash_bytes(const void* data, std::size_t size) {
 }
 
 bool is_billboard_vertex_shader(std::uint64_t hash) {
-  constexpr std::array<std::uint64_t, 5> known{
-      0x6e5fa4d1f1e2cd16ULL, 0x25920ba45ba58e76ULL,
-      0xaf848a96a230342aULL, 0x903cb53d8ac05f28ULL,
-      0x13e04962148fc216ULL};
-  return std::find(known.begin(), known.end(), hash) != known.end();
+  return std::find(kBillboardVertexShaderHashes.begin(),
+                   kBillboardVertexShaderHashes.end(), hash) !=
+         kBillboardVertexShaderHashes.end();
 }
 
 std::optional<std::size_t> billboard_vertex_shader_index(
     std::uint64_t hash) {
-  constexpr std::array<std::uint64_t, 5> known{
-      0x6e5fa4d1f1e2cd16ULL, 0x25920ba45ba58e76ULL,
-      0xaf848a96a230342aULL, 0x903cb53d8ac05f28ULL,
-      0x13e04962148fc216ULL};
-  const auto found = std::find(known.begin(), known.end(), hash);
-  return found == known.end()
+  const auto found = std::find(kBillboardVertexShaderHashes.begin(),
+                               kBillboardVertexShaderHashes.end(), hash);
+  return found == kBillboardVertexShaderHashes.end()
              ? std::nullopt
-             : std::optional<std::size_t>(found - known.begin());
+             : std::optional<std::size_t>(
+                   found - kBillboardVertexShaderHashes.begin());
 }
 
 bool compatible_shader_interfaces(const D3D12_SHADER_BYTECODE& original,
                                   const D3D12_SHADER_BYTECODE& replacement);
+bool compatible_pixel_shader_signatures(
+    const D3D12_SHADER_BYTECODE& original,
+    const D3D12_SHADER_BYTECODE& replacement);
 
 std::wstring native_capture_directory() {
   std::array<wchar_t, 32768> module_path{};
@@ -1197,14 +1221,10 @@ std::vector<std::uint8_t> read_binary_file(const std::wstring& path) {
 }
 
 void load_billboard_shader_replacements() {
-  constexpr std::array<std::uint64_t, 5> known{
-      0x6e5fa4d1f1e2cd16ULL, 0x25920ba45ba58e76ULL,
-      0xaf848a96a230342aULL, 0x903cb53d8ac05f28ULL,
-      0x13e04962148fc216ULL};
   const auto directory = native_capture_directory();
   std::scoped_lock lock(billboard_shader_replacement_mutex);
   billboard_shader_replacements.clear();
-  for (const auto hash : known) {
+  for (const auto hash : kBillboardVertexShaderHashes) {
     wchar_t name[96]{};
     swprintf_s(name, L"billboard_shaders\\vs-%016llx.dxil",
                static_cast<unsigned long long>(hash));
@@ -1212,6 +1232,37 @@ void load_billboard_shader_replacements() {
     if (!bytes.empty()) {
       billboard_shader_replacements.emplace(hash, std::move(bytes));
     }
+  }
+  for (const auto hash : kBillboardPixelShaderHashes) {
+    wchar_t name[96]{};
+    swprintf_s(name, L"billboard_shaders\\ps-%016llx.dxil",
+               static_cast<unsigned long long>(hash));
+    auto bytes = read_binary_file(directory + name);
+    if (!bytes.empty()) {
+      billboard_shader_replacements.emplace(hash, std::move(bytes));
+    }
+  }
+  const auto pixel_pattern = directory + L"billboard_shaders\\ps-*.dxil";
+  WIN32_FIND_DATAW entry{};
+  const auto search = FindFirstFileW(pixel_pattern.c_str(), &entry);
+  if (search != INVALID_HANDLE_VALUE) {
+    do {
+      const std::wstring name(entry.cFileName);
+      if (name.size() != 24 || name.rfind(L"ps-", 0) != 0 ||
+          name.substr(19) != L".dxil") {
+        continue;
+      }
+      wchar_t* end{};
+      const auto hash = _wcstoui64(name.c_str() + 3, &end, 16);
+      if (end != name.c_str() + 19) {
+        continue;
+      }
+      auto bytes = read_binary_file(directory + L"billboard_shaders\\" + name);
+      if (!bytes.empty()) {
+        billboard_shader_replacements[hash] = std::move(bytes);
+      }
+    } while (FindNextFileW(search, &entry));
+    FindClose(search);
   }
 }
 
@@ -1247,6 +1298,41 @@ bool select_billboard_shader_replacement(
         1, std::memory_order_relaxed);
     billboard_shader_substitution_validation_reject_counts[*shader_index]
         .fetch_add(1, std::memory_order_relaxed);
+    return false;
+  }
+  replacement = candidate;
+  return true;
+}
+
+bool select_billboard_pixel_shader_replacement(
+    const D3D12_SHADER_BYTECODE& original,
+    D3D12_SHADER_BYTECODE& replacement) {
+  replacement = original;
+  if (!(billboard_pixel_shader_probe_requested.load(
+            std::memory_order_relaxed) ||
+        billboard_shader_substitution_requested.load(
+            std::memory_order_relaxed)) ||
+      !original.pShaderBytecode || original.BytecodeLength == 0) {
+    return false;
+  }
+  const auto original_hash =
+      hash_bytes(original.pShaderBytecode, original.BytecodeLength);
+  std::scoped_lock lock(billboard_shader_replacement_mutex);
+  const auto found = billboard_shader_replacements.find(original_hash);
+  if (found == billboard_shader_replacements.end()) {
+    return false;
+  }
+  billboard_pixel_shader_probe_attempt_count.fetch_add(
+      1, std::memory_order_relaxed);
+  if (found->second.empty()) {
+    billboard_pixel_shader_probe_validation_reject_count.fetch_add(
+        1, std::memory_order_relaxed);
+    return false;
+  }
+  D3D12_SHADER_BYTECODE candidate{found->second.data(), found->second.size()};
+  if (!compatible_pixel_shader_signatures(original, candidate)) {
+    billboard_pixel_shader_probe_validation_reject_count.fetch_add(
+        1, std::memory_order_relaxed);
     return false;
   }
   replacement = candidate;
@@ -1870,6 +1956,43 @@ bool compatible_signature_parameter(
          left.MinPrecision == right.MinPrecision;
 }
 
+bool compatible_output_signature_parameter(
+    const D3D12_SIGNATURE_PARAMETER_DESC& left,
+    const D3D12_SIGNATURE_PARAMETER_DESC& right) {
+  // Inter-stage linkage is the register/component ABI. Reconstructed HLSL
+  // cannot express Stingray's packing of differently named varyings into the
+  // same register, so SPIRV-Cross gives the packed components a shared
+  // temporary semantic. Keep system-value identity exact and otherwise accept
+  // only an exact register, component mask/type, stream and precision match.
+  const auto system_semantic_matches =
+      left.SystemValueType == D3D_NAME_UNDEFINED ||
+      (left.SemanticName && right.SemanticName &&
+       _stricmp(left.SemanticName, right.SemanticName) == 0 &&
+       left.SemanticIndex == right.SemanticIndex);
+  return system_semantic_matches && left.Register == right.Register &&
+         left.SystemValueType == right.SystemValueType &&
+         left.ComponentType == right.ComponentType && left.Mask == right.Mask &&
+         left.ReadWriteMask == right.ReadWriteMask &&
+         left.Stream == right.Stream &&
+         left.MinPrecision == right.MinPrecision;
+}
+
+bool compatible_pixel_input_signature_parameter(
+    const D3D12_SIGNATURE_PARAMETER_DESC& left,
+    const D3D12_SIGNATURE_PARAMETER_DESC& right) {
+  // ReadWriteMask describes which interpolants this particular shader body
+  // consumes; it is not part of pixel-stage linkage. A constant-color
+  // ownership probe deliberately consumes none of them.
+  return left.SemanticName && right.SemanticName &&
+         _stricmp(left.SemanticName, right.SemanticName) == 0 &&
+         left.SemanticIndex == right.SemanticIndex &&
+         left.Register == right.Register &&
+         left.SystemValueType == right.SystemValueType &&
+         left.ComponentType == right.ComponentType && left.Mask == right.Mask &&
+         left.Stream == right.Stream &&
+         left.MinPrecision == right.MinPrecision;
+}
+
 bool compatible_resource_binding(const D3D12_SHADER_INPUT_BIND_DESC& left,
                                  const D3D12_SHADER_INPUT_BIND_DESC& right) {
   // Resource names are reflection/debug labels. Root-signature compatibility
@@ -1911,10 +2034,20 @@ bool compatible_shader_interfaces(const D3D12_SHADER_BYTECODE& original,
   }
   for (UINT index = 0; index < left_desc.OutputParameters; ++index) {
     D3D12_SIGNATURE_PARAMETER_DESC a{};
-    D3D12_SIGNATURE_PARAMETER_DESC b{};
-    if (FAILED(left->GetOutputParameterDesc(index, &a)) ||
-        FAILED(right->GetOutputParameterDesc(index, &b)) ||
-        !compatible_signature_parameter(a, b)) {
+    if (FAILED(left->GetOutputParameterDesc(index, &a))) {
+      return false;
+    }
+    bool matched{};
+    for (UINT candidate = 0; candidate < right_desc.OutputParameters;
+         ++candidate) {
+      D3D12_SIGNATURE_PARAMETER_DESC b{};
+      if (SUCCEEDED(right->GetOutputParameterDesc(candidate, &b)) &&
+          compatible_output_signature_parameter(a, b)) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
       return false;
     }
   }
@@ -1948,14 +2081,60 @@ bool compatible_shader_interfaces(const D3D12_SHADER_BYTECODE& original,
          ++candidate) {
       auto* right_buffer = right->GetConstantBufferByIndex(candidate);
       D3D12_SHADER_BUFFER_DESC right_buffer_desc{};
+      // DXC rounds a reconstructed final partial register up to 16 bytes,
+      // while the original Stingray DXIL reflection reports its exact used
+      // byte count. D3D12 CBVs are 256-byte aligned, so this padding does not
+      // alter the binding or permit the replacement to address another CBV.
+      // Accept only that single-register reflection difference.
+      const auto aligned_left_size =
+          (left_buffer_desc.Size + 15U) & ~15U;
       if (right_buffer && SUCCEEDED(right_buffer->GetDesc(&right_buffer_desc)) &&
-          left_buffer_desc.Size == right_buffer_desc.Size &&
+          (left_buffer_desc.Size == right_buffer_desc.Size ||
+           aligned_left_size == right_buffer_desc.Size) &&
           left_buffer_desc.Type == right_buffer_desc.Type) {
         matched = true;
         break;
       }
     }
     if (!matched) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool compatible_pixel_shader_signatures(
+    const D3D12_SHADER_BYTECODE& original,
+    const D3D12_SHADER_BYTECODE& replacement) {
+  const auto left = reflect_shader(original);
+  const auto right = reflect_shader(replacement);
+  if (!left || !right) {
+    return false;
+  }
+  D3D12_SHADER_DESC left_desc{};
+  D3D12_SHADER_DESC right_desc{};
+  if (FAILED(left->GetDesc(&left_desc)) || FAILED(right->GetDesc(&right_desc)) ||
+      D3D12_SHVER_GET_TYPE(left_desc.Version) != D3D12_SHVER_PIXEL_SHADER ||
+      D3D12_SHVER_GET_TYPE(right_desc.Version) != D3D12_SHVER_PIXEL_SHADER ||
+      left_desc.InputParameters != right_desc.InputParameters ||
+      left_desc.OutputParameters != right_desc.OutputParameters) {
+    return false;
+  }
+  for (UINT index = 0; index < left_desc.InputParameters; ++index) {
+    D3D12_SIGNATURE_PARAMETER_DESC a{};
+    D3D12_SIGNATURE_PARAMETER_DESC b{};
+    if (FAILED(left->GetInputParameterDesc(index, &a)) ||
+        FAILED(right->GetInputParameterDesc(index, &b)) ||
+        !compatible_pixel_input_signature_parameter(a, b)) {
+      return false;
+    }
+  }
+  for (UINT index = 0; index < left_desc.OutputParameters; ++index) {
+    D3D12_SIGNATURE_PARAMETER_DESC a{};
+    D3D12_SIGNATURE_PARAMETER_DESC b{};
+    if (FAILED(left->GetOutputParameterDesc(index, &a)) ||
+        FAILED(right->GetOutputParameterDesc(index, &b)) ||
+        !compatible_signature_parameter(a, b)) {
       return false;
     }
   }
@@ -2099,6 +2278,180 @@ void dump_vertex_shader_if_requested(
   }
 }
 
+void dump_billboard_pixel_shader(const D3D12_SHADER_BYTECODE& vertex_shader,
+                                 const D3D12_SHADER_BYTECODE& pixel_shader) {
+  if (!pixel_shader.pShaderBytecode || pixel_shader.BytecodeLength == 0) {
+    return;
+  }
+  const auto hash = hash_bytecode(pixel_shader);
+  const auto known_pixel_shader =
+      std::find(kBillboardPixelShaderHashes.begin(),
+                kBillboardPixelShaderHashes.end(), hash) !=
+      kBillboardPixelShaderHashes.end();
+  const auto vertex_shader_hash = hash_bytecode(vertex_shader);
+  if (!is_billboard_vertex_shader(vertex_shader_hash) &&
+      !reflect_billboard_register(vertex_shader).has_value() &&
+      !known_pixel_shader) {
+    return;
+  }
+  std::scoped_lock lock(vertex_shader_dump_mutex);
+  if (!dumped_billboard_pixel_shaders.insert(hash).second) {
+    return;
+  }
+  const auto module_directory = native_capture_directory();
+  if (module_directory.empty()) {
+    return;
+  }
+  const std::wstring directory =
+      module_directory + L"billboard_pixel_shaders";
+  CreateDirectoryW(directory.c_str(), nullptr);
+  wchar_t file_name[96]{};
+  swprintf_s(file_name, L"\\ps-%016llx.bin",
+             static_cast<unsigned long long>(hash));
+  const auto path = directory + file_name;
+  const auto file = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+                                nullptr, CREATE_ALWAYS,
+                                FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (file != INVALID_HANDLE_VALUE) {
+    DWORD written{};
+    WriteFile(file, pixel_shader.pShaderBytecode,
+              static_cast<DWORD>(pixel_shader.BytecodeLength), &written,
+              nullptr);
+    CloseHandle(file);
+  }
+}
+
+void dump_blended_pixel_shader(const D3D12_SHADER_BYTECODE& pixel_shader) {
+  if (!pixel_shader.pShaderBytecode || pixel_shader.BytecodeLength == 0) {
+    return;
+  }
+  const auto hash = hash_bytecode(pixel_shader);
+  std::scoped_lock lock(vertex_shader_dump_mutex);
+  if (!dumped_blended_pixel_shaders.insert(hash).second) {
+    return;
+  }
+  const auto module_directory = native_capture_directory();
+  if (module_directory.empty()) {
+    return;
+  }
+  const std::wstring directory =
+      module_directory + L"blended_pixel_shaders";
+  CreateDirectoryW(directory.c_str(), nullptr);
+  wchar_t file_name[96]{};
+  swprintf_s(file_name, L"\\ps-%016llx.bin",
+             static_cast<unsigned long long>(hash));
+  const auto path = directory + file_name;
+  const auto file = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+                                nullptr, CREATE_ALWAYS,
+                                FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (file != INVALID_HANDLE_VALUE) {
+    DWORD written{};
+    WriteFile(file, pixel_shader.pShaderBytecode,
+              static_cast<DWORD>(pixel_shader.BytecodeLength), &written,
+              nullptr);
+    CloseHandle(file);
+  }
+}
+
+void dump_substituted_blended_pso(
+    const D3D12_GRAPHICS_PIPELINE_STATE_DESC& description) {
+  if (!description.VS.pShaderBytecode || description.VS.BytecodeLength == 0 ||
+      !description.PS.pShaderBytecode || description.PS.BytecodeLength == 0) {
+    return;
+  }
+  const auto vertex_hash = hash_bytecode(description.VS);
+  const auto pixel_hash = hash_bytecode(description.PS);
+  auto pair_hash = mix_u64(vertex_hash, pixel_hash);
+  pair_hash = mix_u64(pair_hash, description.PrimitiveTopologyType);
+  const auto& blend = description.BlendState.RenderTarget[0];
+  pair_hash = mix_u64(pair_hash, blend.BlendEnable ? 1ULL : 0ULL);
+  pair_hash = mix_u64(pair_hash, static_cast<std::uint64_t>(blend.SrcBlend));
+  pair_hash = mix_u64(pair_hash, static_cast<std::uint64_t>(blend.DestBlend));
+  pair_hash = mix_u64(pair_hash,
+                      static_cast<std::uint64_t>(description.DepthStencilState.DepthWriteMask));
+
+  std::scoped_lock lock(vertex_shader_dump_mutex);
+  if (!dumped_blended_pso_pairs.insert(pair_hash).second) {
+    return;
+  }
+  const auto module_directory = native_capture_directory();
+  if (module_directory.empty()) {
+    return;
+  }
+  const std::wstring directory = module_directory + L"blended_pso_diagnostics";
+  CreateDirectoryW(directory.c_str(), nullptr);
+
+  wchar_t vertex_name[96]{};
+  swprintf_s(vertex_name, L"\\vs-%016llx.bin",
+             static_cast<unsigned long long>(vertex_hash));
+  const auto vertex_path = directory + vertex_name;
+  const auto vertex_file =
+      CreateFileW(vertex_path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                  CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (vertex_file != INVALID_HANDLE_VALUE) {
+    DWORD written{};
+    WriteFile(vertex_file, description.VS.pShaderBytecode,
+              static_cast<DWORD>(description.VS.BytecodeLength), &written,
+              nullptr);
+    CloseHandle(vertex_file);
+  }
+
+  std::string semantics;
+  for (UINT i = 0; i < description.InputLayout.NumElements; ++i) {
+    const auto& element = description.InputLayout.pInputElementDescs[i];
+    if (!semantics.empty()) {
+      semantics += ',';
+    }
+    semantics += element.SemanticName ? element.SemanticName : "?";
+    semantics += std::to_string(element.SemanticIndex);
+    semantics += ':';
+    semantics += std::to_string(static_cast<unsigned>(element.Format));
+    semantics += '@';
+    semantics += std::to_string(element.InputSlot);
+    semantics += element.InputSlotClass == D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA
+                     ? "i"
+                     : "v";
+    semantics += std::to_string(element.InstanceDataStepRate);
+  }
+
+  const auto manifest_path = directory + L"\\manifest.tsv";
+  const auto manifest =
+      CreateFileW(manifest_path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
+                  nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (manifest != INVALID_HANDLE_VALUE) {
+    char line[4096]{};
+    const auto length = snprintf(
+        line, sizeof(line),
+        "%016llx\t%016llx\ttopology=%u\tblend=%u,%u,%u,%u,%u,%u,%u\twrite=%u\tdepth=%u,%u,%u\tcull=%u\trt=%u\tdsv=%u\tinputs=%s\r\n",
+        static_cast<unsigned long long>(vertex_hash),
+        static_cast<unsigned long long>(pixel_hash),
+        static_cast<unsigned>(description.PrimitiveTopologyType),
+        blend.BlendEnable ? 1U : 0U, static_cast<unsigned>(blend.SrcBlend),
+        static_cast<unsigned>(blend.DestBlend),
+        static_cast<unsigned>(blend.BlendOp),
+        static_cast<unsigned>(blend.SrcBlendAlpha),
+        static_cast<unsigned>(blend.DestBlendAlpha),
+        static_cast<unsigned>(blend.BlendOpAlpha),
+        static_cast<unsigned>(blend.RenderTargetWriteMask),
+        description.DepthStencilState.DepthEnable ? 1U : 0U,
+        static_cast<unsigned>(description.DepthStencilState.DepthWriteMask),
+        static_cast<unsigned>(description.DepthStencilState.DepthFunc),
+        static_cast<unsigned>(description.RasterizerState.CullMode),
+        description.NumRenderTargets > 0
+            ? static_cast<unsigned>(description.RTVFormats[0])
+            : 0U,
+        static_cast<unsigned>(description.DSVFormat), semantics.c_str());
+    if (length > 0) {
+      DWORD written{};
+      WriteFile(manifest, line,
+                static_cast<DWORD>((std::min)(length,
+                                              static_cast<int>(sizeof(line)))),
+                &written, nullptr);
+    }
+    CloseHandle(manifest);
+  }
+}
+
 void dump_pipeline_blob_if_requested(ID3D12PipelineState* state) {
   wchar_t enabled[2]{};
   const auto requested =
@@ -2209,6 +2562,8 @@ PsoMetadata inspect_pipeline_stream(
   PsoMetadata metadata{};
   const auto* stream = static_cast<const std::uint8_t*>(
       description.pPipelineStateSubobjectStream);
+  D3D12_SHADER_BYTECODE vertex_shader_bytecode{};
+  D3D12_SHADER_BYTECODE pixel_shader_bytecode{};
   std::size_t offset{};
   while (stream && offset + sizeof(D3D12_PIPELINE_STATE_SUBOBJECT_TYPE) <=
                        description.SizeInBytes) {
@@ -2222,6 +2577,9 @@ PsoMetadata inspect_pipeline_stream(
         read = read_stream_subobject(stream, description.SizeInBytes, offset,
                                      value, &value_offset);
         metadata.vertex_shader = read ? hash_bytecode(value) : 0;
+        if (read) {
+          vertex_shader_bytecode = value;
+        }
         if (read && replacement_stream &&
             replacement_stream->size() == description.SizeInBytes) {
           D3D12_SHADER_BYTECODE replacement{};
@@ -2249,6 +2607,9 @@ PsoMetadata inspect_pipeline_stream(
         read = read_stream_subobject(stream, description.SizeInBytes, offset,
                                      value);
         metadata.pixel_shader = read ? hash_bytecode(value) : 0;
+        if (read) {
+          pixel_shader_bytecode = value;
+        }
         break;
       }
       case D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_CS: {
@@ -2385,6 +2746,10 @@ PsoMetadata inspect_pipeline_stream(
   metadata.kind = metadata.compute_shader != 0 && metadata.vertex_shader == 0
                       ? 'C'
                       : 'G';
+  dump_billboard_pixel_shader(vertex_shader_bytecode, pixel_shader_bytecode);
+  if (metadata.blend_enabled) {
+    dump_blended_pixel_shader(pixel_shader_bytecode);
+  }
   return metadata;
 }
 
@@ -2932,14 +3297,34 @@ HRESULT STDMETHODCALLTYPE create_graphics_pipeline_state_hook(
   if (description) {
     dump_vertex_shader_if_requested(description->VS,
                                     &description->InputLayout);
+    dump_billboard_pixel_shader(description->VS, description->PS);
+    if (description->NumRenderTargets > 0 &&
+        description->BlendState.RenderTarget[0].BlendEnable) {
+      dump_blended_pixel_shader(description->PS);
+    }
   }
   D3D12_GRAPHICS_PIPELINE_STATE_DESC replacement_description{};
   D3D12_SHADER_BYTECODE replacement_shader{};
+  D3D12_SHADER_BYTECODE replacement_pixel_shader{};
   bool substituted{};
+  bool pixel_substituted{};
+  bool description_replaced{};
   const auto* effective_description = description;
+  if (description && select_billboard_pixel_shader_replacement(
+                         description->PS, replacement_pixel_shader)) {
+    dump_substituted_blended_pso(*description);
+    replacement_description = *description;
+    replacement_description.PS = replacement_pixel_shader;
+    replacement_description.CachedPSO = {};
+    effective_description = &replacement_description;
+    pixel_substituted = true;
+    description_replaced = true;
+  }
   if (description && select_billboard_shader_replacement(
                          description->VS, replacement_shader)) {
-    replacement_description = *description;
+    if (!description_replaced) {
+      replacement_description = *description;
+    }
     replacement_description.VS = replacement_shader;
     // Cached PSO data describes the original shader and must not be offered to
     // D3D12 after changing the VS.
@@ -2949,12 +3334,15 @@ HRESULT STDMETHODCALLTYPE create_graphics_pipeline_state_hook(
   }
   auto result = original_create_graphics_pipeline_state(
       device, effective_description, iid, output);
-  if (FAILED(result) && substituted) {
-    record_billboard_shader_creation_result(hash_bytecode(description->VS),
-                                            false);
+  if (FAILED(result) && (substituted || pixel_substituted)) {
+    if (substituted) {
+      record_billboard_shader_creation_result(hash_bytecode(description->VS),
+                                              false);
+    }
     result = original_create_graphics_pipeline_state(device, description, iid,
                                                      output);
     substituted = false;
+    pixel_substituted = false;
   }
   if (SUCCEEDED(result) && substituted) {
     record_billboard_shader_creation_result(hash_bytecode(description->VS),
@@ -3010,21 +3398,41 @@ HRESULT STDMETHODCALLTYPE load_graphics_pipeline_hook(
   if (description) {
     dump_vertex_shader_if_requested(description->VS,
                                     &description->InputLayout);
+    dump_billboard_pixel_shader(description->VS, description->PS);
+    if (description->NumRenderTargets > 0 &&
+        description->BlendState.RenderTarget[0].BlendEnable) {
+      dump_blended_pixel_shader(description->PS);
+    }
   }
   D3D12_GRAPHICS_PIPELINE_STATE_DESC replacement_description{};
   D3D12_SHADER_BYTECODE replacement_shader{};
+  D3D12_SHADER_BYTECODE replacement_pixel_shader{};
   bool substituted{};
+  bool pixel_substituted{};
+  bool description_replaced{};
   const auto* effective_description = description;
+  if (description && select_billboard_pixel_shader_replacement(
+                         description->PS, replacement_pixel_shader)) {
+    dump_substituted_blended_pso(*description);
+    replacement_description = *description;
+    replacement_description.PS = replacement_pixel_shader;
+    replacement_description.CachedPSO = {};
+    effective_description = &replacement_description;
+    pixel_substituted = true;
+    description_replaced = true;
+  }
   if (description && select_billboard_shader_replacement(
                          description->VS, replacement_shader)) {
-    replacement_description = *description;
+    if (!description_replaced) {
+      replacement_description = *description;
+    }
     replacement_description.VS = replacement_shader;
     replacement_description.CachedPSO = {};
     effective_description = &replacement_description;
     substituted = true;
   }
   HRESULT result{};
-  if (substituted) {
+  if (substituted || pixel_substituted) {
     ComPtr<ID3D12Device> device;
     result = FAILED(library->GetDevice(IID_PPV_ARGS(&device)))
                  ? E_NOINTERFACE
@@ -3034,12 +3442,15 @@ HRESULT STDMETHODCALLTYPE load_graphics_pipeline_hook(
     result = original_load_graphics_pipeline(
         library, name, effective_description, iid, output);
   }
-  if (FAILED(result) && substituted) {
-    record_billboard_shader_creation_result(hash_bytecode(description->VS),
-                                            false);
+  if (FAILED(result) && (substituted || pixel_substituted)) {
+    if (substituted) {
+      record_billboard_shader_creation_result(hash_bytecode(description->VS),
+                                              false);
+    }
     result = original_load_graphics_pipeline(library, name, description, iid,
                                              output);
     substituted = false;
+    pixel_substituted = false;
   }
   if (SUCCEEDED(result) && substituted) {
     record_billboard_shader_creation_result(hash_bytecode(description->VS),
@@ -3867,10 +4278,6 @@ BillboardBindingOverride apply_billboard_view_basis(
   if (!billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) {
     return override_state;
   }
-  constexpr std::array<std::uint64_t, 5> kBillboardVertexShaders{
-      0x6e5fa4d1f1e2cd16ULL, 0x25920ba45ba58e76ULL,
-      0xaf848a96a230342aULL, 0x903cb53d8ac05f28ULL,
-      0x13e04962148fc216ULL};
   std::uintptr_t pipeline{};
   std::uintptr_t root_signature{};
   std::array<std::uint64_t, kRootSlotCount> graphics_tables{};
@@ -3909,9 +4316,10 @@ BillboardBindingOverride apply_billboard_view_basis(
        vertex_buffers[1].StrideInBytes == 8)) {
     billboard_exact_shader_draw_count.fetch_add(1, std::memory_order_relaxed);
   }
-  (void)kBillboardVertexShaders;
 
   bool billboard_pso{};
+  std::uint64_t billboard_vertex_shader{};
+  std::uint64_t billboard_pixel_shader{};
   UINT billboard_register = UINT_MAX;
   {
     std::scoped_lock lock(pso_mutex);
@@ -3919,6 +4327,8 @@ BillboardBindingOverride apply_billboard_view_basis(
     if (found != pso_metadata.end()) {
       billboard_pso = found->second.billboard_shader ||
                       is_billboard_vertex_shader(found->second.vertex_shader);
+      billboard_vertex_shader = found->second.vertex_shader;
+      billboard_pixel_shader = found->second.pixel_shader;
       billboard_register = found->second.billboard_register;
       if (billboard_register == UINT_MAX &&
           is_billboard_vertex_shader(found->second.vertex_shader)) {
@@ -3928,6 +4338,12 @@ BillboardBindingOverride apply_billboard_view_basis(
   }
   if (!billboard_pso || billboard_register == UINT_MAX) {
     return override_state;
+  }
+  if (billboard_vertex_shader != 0) {
+    std::scoped_lock lock(billboard_candidate_shader_mutex);
+    ++billboard_candidate_shader_counts[billboard_vertex_shader];
+    ++billboard_candidate_shader_pair_counts[
+        {billboard_vertex_shader, billboard_pixel_shader}];
   }
   billboard_exact_pso_draw_count.fetch_add(1, std::memory_order_relaxed);
   const auto command_list_type = static_cast<std::size_t>(commands->GetType());
@@ -5694,7 +6110,8 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
                                     : nullptr;
   const auto install_pso_substitution_hooks =
       kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
-      billboard_shader_substitution_requested.load(std::memory_order_relaxed);
+      billboard_shader_substitution_requested.load(std::memory_order_relaxed) ||
+      billboard_pixel_shader_probe_requested.load(std::memory_order_relaxed);
   void* stingray_upload_flush_target{};
   if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {
     constexpr std::uintptr_t kUploadFlushRva = 0x7d5840;
@@ -6630,6 +7047,21 @@ dtvr_set_billboard_shader_substitution(int enabled) {
   }
   return 0;
 }
+extern "C" __declspec(dllexport) int
+dtvr_set_billboard_pixel_shader_probe(int enabled) {
+  if (hooks_installed.load(std::memory_order_acquire)) {
+    return billboard_pixel_shader_probe_requested.load(
+               std::memory_order_relaxed) == (enabled != 0)
+               ? 0
+               : 1;
+  }
+  billboard_pixel_shader_probe_requested.store(enabled != 0,
+                                               std::memory_order_release);
+  if (enabled != 0) {
+    load_billboard_shader_replacements();
+  }
+  return 0;
+}
 extern "C" __declspec(dllexport) unsigned long long
 dtvr_billboard_shader_substitution_count() {
   return billboard_shader_substitution_count.load(std::memory_order_relaxed);
@@ -7084,6 +7516,74 @@ extern "C" __declspec(dllexport) unsigned int
 dtvr_billboard_candidate_shader_hash_high(unsigned int rank) {
   return static_cast<unsigned int>(
       dtvr_billboard_candidate_shader_hash(rank) >> 32U);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_candidate_pair_vertex_shader(unsigned int rank) {
+  std::vector<std::pair<std::pair<std::uint64_t, std::uint64_t>,
+                        std::uint64_t>> ranked;
+  {
+    std::scoped_lock lock(billboard_candidate_shader_mutex);
+    ranked.assign(billboard_candidate_shader_pair_counts.begin(),
+                  billboard_candidate_shader_pair_counts.end());
+  }
+  std::sort(ranked.begin(), ranked.end(), [](const auto& left,
+                                             const auto& right) {
+    return left.second != right.second ? left.second > right.second
+                                       : left.first < right.first;
+  });
+  return rank < ranked.size() ? ranked[rank].first.first : 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_candidate_pair_pixel_shader(unsigned int rank) {
+  std::vector<std::pair<std::pair<std::uint64_t, std::uint64_t>,
+                        std::uint64_t>> ranked;
+  {
+    std::scoped_lock lock(billboard_candidate_shader_mutex);
+    ranked.assign(billboard_candidate_shader_pair_counts.begin(),
+                  billboard_candidate_shader_pair_counts.end());
+  }
+  std::sort(ranked.begin(), ranked.end(), [](const auto& left,
+                                             const auto& right) {
+    return left.second != right.second ? left.second > right.second
+                                       : left.first < right.first;
+  });
+  return rank < ranked.size() ? ranked[rank].first.second : 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_candidate_pair_count(unsigned int rank) {
+  std::vector<std::pair<std::pair<std::uint64_t, std::uint64_t>,
+                        std::uint64_t>> ranked;
+  {
+    std::scoped_lock lock(billboard_candidate_shader_mutex);
+    ranked.assign(billboard_candidate_shader_pair_counts.begin(),
+                  billboard_candidate_shader_pair_counts.end());
+  }
+  std::sort(ranked.begin(), ranked.end(), [](const auto& left,
+                                             const auto& right) {
+    return left.second != right.second ? left.second > right.second
+                                       : left.first < right.first;
+  });
+  return rank < ranked.size() ? ranked[rank].second : 0;
+}
+extern "C" __declspec(dllexport) unsigned int
+dtvr_billboard_candidate_pair_vertex_low(unsigned int rank) {
+  return static_cast<unsigned int>(
+      dtvr_billboard_candidate_pair_vertex_shader(rank));
+}
+extern "C" __declspec(dllexport) unsigned int
+dtvr_billboard_candidate_pair_vertex_high(unsigned int rank) {
+  return static_cast<unsigned int>(
+      dtvr_billboard_candidate_pair_vertex_shader(rank) >> 32U);
+}
+extern "C" __declspec(dllexport) unsigned int
+dtvr_billboard_candidate_pair_pixel_low(unsigned int rank) {
+  return static_cast<unsigned int>(
+      dtvr_billboard_candidate_pair_pixel_shader(rank));
+}
+extern "C" __declspec(dllexport) unsigned int
+dtvr_billboard_candidate_pair_pixel_high(unsigned int rank) {
+  return static_cast<unsigned int>(
+      dtvr_billboard_candidate_pair_pixel_shader(rank) >> 32U);
 }
 extern "C" __declspec(dllexport) int dtvr_billboard_probe_state() {
   return (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ? 1 : 0) |

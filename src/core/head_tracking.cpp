@@ -31,6 +31,24 @@ math::Pose recentered_head_delta(math::Pose recenter_pose,
   return delta;
 }
 
+math::Pose sliding_recentered_head_delta(math::Pose& recenter_pose,
+                                         math::Pose current_pose,
+                                         HeadTranslationLimits limits) {
+  const auto raw = math::compose(math::inverse(recenter_pose), current_pose);
+  const auto bounded =
+      recentered_head_delta(recenter_pose, current_pose, limits);
+  constexpr float epsilon = 0.000001F;
+  if (std::abs(raw.position.x - bounded.position.x) > epsilon ||
+      std::abs(raw.position.y - bounded.position.y) > epsilon ||
+      std::abs(raw.position.z - bounded.position.z) > epsilon) {
+    // Preserve the complete orientation delta. Only translate the immutable
+    // basis enough that `new_recenter * bounded == current_pose`.
+    recenter_pose =
+        math::compose(current_pose, math::inverse(bounded));
+  }
+  return bounded;
+}
+
 math::Pose anchored_recentered_eye_pose(math::Pose recenter_pose,
                                         math::Pose head_delta,
                                         math::Pose current_head_pose,
