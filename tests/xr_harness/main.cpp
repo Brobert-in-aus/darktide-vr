@@ -661,7 +661,6 @@ class OpenXrProbe {
     std::uint32_t menu_scroll_sequence{};
     int last_shared_menu_scroll_steps{};
     bool last_shared_menu_primary_down{};
-    bool last_shared_menu_back_down{};
     std::unique_ptr<darktidevr::harness::MenuInputInjector>
         menu_input_injector;
     std::uint64_t menu_input_events{};
@@ -1486,6 +1485,7 @@ class OpenXrProbe {
       bool shared_menu_primary_down{};
       int shared_menu_scroll_steps{};
       bool shared_menu_back_down{};
+      bool shared_menu_back_pressed{};
       if (menu_input_injector) {
         darktidevr::core::MenuPointerInput input{};
         input.active = menu_mode && submitted_flat_fallback_this_frame;
@@ -1516,6 +1516,10 @@ class OpenXrProbe {
           if (event.type == darktidevr::core::MenuPointerEventType::scroll) {
             shared_menu_scroll_steps = event.scroll_steps;
           }
+          if (event.type == darktidevr::core::MenuPointerEventType::back) {
+            shared_menu_back_pressed = true;
+            std::cout << "openxr.menu_input_event=back\n";
+          }
           if (enable_menu_input && menu_input_injector->dispatch(
                   event,
                   presentation_sequence != 0
@@ -1536,6 +1540,7 @@ class OpenXrProbe {
         }
         if (WaitForSingleObject(menu_test_back_event, 0) == WAIT_OBJECT_0) {
           shared_menu_back_down = true;
+          shared_menu_back_pressed = true;
           std::cout << "openxr.menu_test_event=back\n";
         }
         if (WaitForSingleObject(menu_test_scroll_up_event, 0) ==
@@ -1593,8 +1598,11 @@ class OpenXrProbe {
             !last_shared_menu_primary_down) {
           ++menu_primary_press_sequence;
         }
-        if (menu_mode && submitted_flat_fallback_this_frame &&
-            shared_pointer.back_down && !last_shared_menu_back_down) {
+        // The shared Lua transport must use the debounced state-machine edge,
+        // not a second raw controller-level edge detector. The latter used to
+        // bypass menu-entry Back arming and could immediately close a menu
+        // when a sleeping controller briefly transitioned after activation.
+        if (shared_menu_back_pressed) {
           ++menu_back_press_sequence;
         }
         if (shared_menu_scroll_steps != 0) {
@@ -1608,9 +1616,6 @@ class OpenXrProbe {
         shared_pointer.scroll_sequence = menu_scroll_sequence;
         last_shared_menu_primary_down =
             shared_pointer.active && shared_pointer.primary_down;
-        last_shared_menu_back_down = menu_mode &&
-                                     submitted_flat_fallback_this_frame &&
-                                     shared_pointer.back_down;
         if (!menu_pointer_writer.publish(shared_pointer)) {
           throw std::runtime_error("Shared menu pointer rejected sample");
         }

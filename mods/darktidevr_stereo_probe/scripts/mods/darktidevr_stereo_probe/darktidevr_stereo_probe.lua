@@ -332,8 +332,11 @@ local presentation = {
         scroll_steps = 0,
         event_sequences_initialized = false,
         primary_press_sequence = 0,
+        primary_consumed_sequence = 0,
         back_press_sequence = 0,
+        back_consumed_sequence = 0,
         scroll_sequence = 0,
+        scroll_consumed_sequence = 0,
     },
     menu_input_probe = {
         stage = "idle",
@@ -1354,7 +1357,32 @@ function presentation.is_top_menu_view(instance)
     return presentation.active_menu_view_instance == instance
 end
 
-function presentation.widget_contains_menu_pointer(instance, widget, pointer)
+function presentation.aligned_pass_origin(base_left, base_top, base_width,
+        base_height, pass_style)
+    if not pass_style then
+        return base_left, base_top
+    end
+    local size = pass_style.size or { base_width, base_height }
+    local width = size[1] or base_width
+    local height = size[2] or base_height
+    local left = base_left
+    local top = base_top
+    if pass_style.horizontal_alignment == "right" then
+        left = left + base_width - width
+    elseif pass_style.horizontal_alignment == "center" then
+        left = left + (base_width - width) * 0.5
+    end
+    if pass_style.vertical_alignment == "bottom" then
+        top = top + base_height - height
+    elseif pass_style.vertical_alignment == "center" then
+        top = top + (base_height - height) * 0.5
+    end
+    local offset = pass_style.offset or { 0, 0, 0 }
+    return left + (offset[1] or 0), top + (offset[2] or 0)
+end
+
+function presentation.widget_contains_menu_pointer(instance, widget, pointer,
+        pass_style)
     if not pointer.active or not instance or not instance._ui_scenegraph or
             not widget then
         return false, nil
@@ -1363,12 +1391,14 @@ function presentation.widget_contains_menu_pointer(instance, widget, pointer)
     local scene = scenegraph_id and instance._ui_scenegraph[scenegraph_id]
     local world = scene and scene.world_position
     local offset = widget.offset or { 0, 0, 0 }
-    local size = widget.content and widget.content.size
-    if not size and widget.style and widget.style.hotspot then
-        size = widget.style.hotspot.size
+    local base_size = widget.content and widget.content.size
+    if not base_size and widget.style and widget.style.hotspot then
+        base_size = widget.style.hotspot.size
     end
-    size = size or (scene and scene.size)
-    if not world or not size or not size[1] or not size[2] then
+    base_size = base_size or (scene and scene.size)
+    local size = pass_style and pass_style.size or base_size
+    if not world or not base_size or not base_size[1] or not base_size[2] or
+            not size or not size[1] or not size[2] then
         return false, nil
     end
     local scale = RESOLUTION_LOOKUP.scale or 1
@@ -1376,8 +1406,12 @@ function presentation.widget_contains_menu_pointer(instance, widget, pointer)
     local resolution_height = RESOLUTION_LOOKUP.height
     local pointer_x = pointer.x * resolution_width / pointer.source_width
     local pointer_y = pointer.y * resolution_height / pointer.source_height
-    local left = (world[1] + (offset[1] or 0)) * scale
-    local top = (world[2] + (offset[2] or 0)) * scale
+    local base_left = world[1] + (offset[1] or 0)
+    local base_top = world[2] + (offset[2] or 0)
+    local left, top = presentation.aligned_pass_origin(
+        base_left, base_top, base_size[1], base_size[2], pass_style)
+    left = left * scale
+    top = top * scale
     local width = size[1] * scale
     local height = size[2] * scale
     return pointer_x >= left and pointer_x <= left + width and
@@ -1392,22 +1426,109 @@ function presentation.widget_contains_menu_pointer(instance, widget, pointer)
         }
 end
 
-function presentation.widget_hotspot(widget)
+function presentation.widget_hotspot_entries(widget)
     local content = widget and widget.content
     if not content then
-        return nil
+        return {}
     end
-    if content.hotspot then
-        return content.hotspot
-    end
+    local entries = {}
+    local seen = {}
     local passes = widget.passes or {}
     for i = 1, #passes do
         local pass = passes[i]
         if pass.pass_type == "hotspot" then
-            return pass.content_id and content[pass.content_id] or content
+            local content_id = pass.content_id or "hotspot"
+            local hotspot = pass.content_id and content[pass.content_id] or
+                content.hotspot or content
+            local style_id = pass.style_id or content_id
+            local style = widget.style and widget.style[style_id] or pass.style
+            local visible = not style or style.visible ~= false
+            if visible and type(pass.visibility_function) == "function" then
+                local ok, result = pcall(
+                    pass.visibility_function, content, style)
+                visible = ok and result and true or false
+            end
+            if visible and widget.type == "dropdown" and
+                    string.match(content_id, "^option_hotspot_%d+$") then
+                visible = content.exclusive_focus and true or false
+            end
+            if visible and type(hotspot) == "table" and not seen[hotspot] then
+                seen[hotspot] = true
+                entries[#entries + 1] = {
+                    hotspot = hotspot,
+                    content_id = content_id,
+                    style_id = style_id,
+                    style = style,
+                }
+            end
+        end
+    end
+    if content.hotspot and not seen[content.hotspot] then
+        entries[#entries + 1] = {
+            hotspot = content.hotspot,
+            content_id = "hotspot",
+            style_id = "hotspot",
+            style = widget.style and widget.style.hotspot,
+        }
+    end
+    return entries
+end
+
+function presentation.widget_hotspot(widget)
+    local content = widget and widget.content
+    if content and content.hotspot then
+        return content.hotspot
+    end
+    local entries = presentation.widget_hotspot_entries(widget)
+    return entries[1] and entries[1].hotspot or nil
+end
+
+function presentation.clear_widget_hotspot_forces(widget)
+    local entries = presentation.widget_hotspot_entries(widget)
+    for i = 1, #entries do
+        entries[i].hotspot.force_hover = false
+    end
+end
+
+function presentation.widget_hotspot_at_pointer(instance, widget, pointer)
+    local entries = presentation.widget_hotspot_entries(widget)
+    for i = #entries, 1, -1 do
+        local entry = entries[i]
+        if not entry.hotspot.disabled then
+            local hit = presentation.widget_contains_menu_pointer(
+                instance, widget, pointer, entry.style)
+            if hit then
+                return entry
+            end
         end
     end
     return nil
+end
+
+function presentation.log_focused_dropdown_geometry(instance, widget, pointer)
+    if not pointer.primary_pressed or not widget or widget.type ~= "dropdown" or
+            not widget.content or not widget.content.exclusive_focus then
+        return
+    end
+    local entries = presentation.widget_hotspot_entries(widget)
+    for i = 1, #entries do
+        local entry = entries[i]
+        local hit, geometry = presentation.widget_contains_menu_pointer(
+            instance, widget, pointer, entry.style)
+        if geometry then
+            mod:info(
+                "DARKTIDEVR_MENU_INPUT dropdown_geometry widget=%s hotspot=%s hit=%s pointer=%.1f,%.1f bounds=%.1f,%.1f,%.1f,%.1f",
+                tostring(widget.name),
+                tostring(entry.content_id),
+                tostring(hit),
+                geometry.pointer_x,
+                geometry.pointer_y,
+                geometry.left,
+                geometry.top,
+                geometry.width,
+                geometry.height)
+        end
+    end
 end
 
 local function refresh_xr_render_extent()
@@ -4923,22 +5044,24 @@ mod:hook(
         local pointer = presentation.read_menu_pointer()
         local widgets = self._widgets or {}
         local source_widget = nil
+        local source_entry = nil
         for i = #widgets, 1, -1 do
             local widget = widgets[i]
-            local hotspot = presentation.widget_hotspot(widget)
-            if pointer.available and hotspot then
-                hotspot.force_hover = false
+            if pointer.available then
+                presentation.clear_widget_hotspot_forces(widget)
             end
             if pointer.available and not source_widget and pointer.active and
-                    hotspot and
-                    not hotspot.disabled and
-                    presentation.widget_contains_menu_pointer(
-                        self, widget, pointer) then
-                source_widget = widget
+                    widget then
+                local entry = presentation.widget_hotspot_at_pointer(
+                    self, widget, pointer)
+                if entry then
+                    source_widget = widget
+                    source_entry = entry
+                end
             end
         end
-        if source_widget then
-            local hotspot = presentation.widget_hotspot(source_widget)
+        if source_widget and source_entry then
+            local hotspot = source_entry.hotspot
             hotspot.force_hover = true
             if pointer.scroll_steps ~= 0 then
                 local scroll_grid = nil
@@ -4985,7 +5108,8 @@ mod:hook(
                 mod:info(
                     "DARKTIDEVR_MENU_INPUT base_source_activate view=%s widget=%s sequence=%d source=%d,%d/%dx%d",
                     tostring(self.view_name or self.__class_name),
-                    tostring(source_widget.name),
+                    tostring(source_widget.name) .. ":" ..
+                        tostring(source_entry.content_id),
                     pointer.last_sequence,
                     pointer.x,
                     pointer.y,
@@ -5007,12 +5131,10 @@ mod:hook(
             input_service, ...)
         local pointer = presentation.read_menu_pointer()
         local source_widget = nil
+        local source_entry = nil
         if pointer.available then
             for i = 1, #widgets do
-                local hotspot = presentation.widget_hotspot(widgets[i])
-                if hotspot then
-                    hotspot.force_hover = false
-                end
+                presentation.clear_widget_hotspot_forces(widgets[i])
             end
         end
         if pointer.active then
@@ -5020,12 +5142,16 @@ mod:hook(
                 local widget = widgets[i]
                 local visible = not grid or
                     grid:is_widget_visible(widget)
-                local hotspot = presentation.widget_hotspot(widget)
-                local source_hit = visible and
-                    presentation.widget_contains_menu_pointer(
+                if visible then
+                    presentation.log_focused_dropdown_geometry(
                         self, widget, pointer)
-                if source_hit and hotspot and not hotspot.disabled then
+                end
+                local entry = visible and
+                    presentation.widget_hotspot_at_pointer(
+                        self, widget, pointer)
+                if entry then
                     source_widget = widget
+                    source_entry = entry
                     break
                 end
             end
@@ -5036,15 +5162,34 @@ mod:hook(
             interaction_hotspot.force_hover = source_widget ~= nil
             interaction_hotspot.is_hover = source_widget ~= nil
         end
-        if source_widget then
-            local hotspot = presentation.widget_hotspot(source_widget)
+        if source_widget and source_entry then
+            local hotspot = source_entry.hotspot
             hotspot.force_hover = true
             if pointer.primary_pressed then
-                hotspot.force_input_pressed = true
+                local opened_dropdown = false
+                if source_widget.type == "dropdown" and
+                        source_entry.content_id == "hotspot" and
+                        source_widget.content and
+                        not source_widget.content.exclusive_focus and
+                        type(self._set_exclusive_focus_on_grid_widget) ==
+                            "function" then
+                    -- Dropdowns enter their expanded state through the
+                    -- OptionsView focus coordinator, rather than through the
+                    -- ordinary pressed callback used by buttons and toggles.
+                    -- Route XR activation through that same coordinator so
+                    -- the option passes become visible before the next draw.
+                    self:_set_exclusive_focus_on_grid_widget(
+                        source_widget.name)
+                    opened_dropdown = true
+                end
+                if not opened_dropdown then
+                    hotspot.force_input_pressed = true
+                end
                 presentation.consume_menu_primary(pointer)
                 mod:info(
-                    "DARKTIDEVR_MENU_INPUT options_source_activate widget=%s sequence=%d source=%d,%d/%dx%d",
+                    "DARKTIDEVR_MENU_INPUT options_source_activate widget=%s hotspot=%s sequence=%d source=%d,%d/%dx%d",
                     tostring(source_widget.name),
+                    tostring(source_entry.content_id),
                     pointer.last_sequence,
                     pointer.x,
                     pointer.y,

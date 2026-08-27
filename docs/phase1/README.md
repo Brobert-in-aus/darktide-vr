@@ -770,6 +770,23 @@ continuous 100 ms released level before arming Back on menu entry. Tests cover
 both transient suppression and re-arming for the next intentional press; a
 live sleeping-controller confirmation remains outstanding.
 
+The clean first-menu test also exposed a separate zero/nil initialization bug:
+Lua's consumed counters were nil, so the bridge's valid initial zero looked
+like a pending event. Primary, Back and scroll consumed counters now start at
+zero, and the first SystemView remained open in live XR. The harness advances
+Back only from the debounced menu-input event; the former parallel raw-edge
+detector has been removed so it cannot bypass the 100 ms arming state machine.
+
+Widget hit testing now walks every hotspot pass and uses its authored
+visibility function, size, alignment and offset. This is required for compound
+controls such as dropdowns, whose visible options are nested hotspots on the
+same widget. Hidden options fail closed and expanded options participate only
+while the widget has exclusive focus. Opening a dropdown is routed through
+OptionsView's exclusive-focus coordinator rather than pretending it is a
+normal button press. The base Screen Mode row is live-reachable; selecting an
+expanded option remains the next live acceptance gate, followed by sliders and
+text input.
+
 A stale native DLL in the mod-local `bin` directory initially made the new
 mapping appear unreadable even though the harness published it correctly. Lua
 loads that copy, while other native paths used the `binaries` copy. The
@@ -779,6 +796,6 @@ both destinations and verifies SHA-256 equality before opening the launcher.
 All 30 automated tests pass, including the shared pointer transport, native
 export contract, and bidirectional desktop/source mapping tests. Remaining
 menu work is a controller laser (the captured panel now has a high-contrast
-source-space reticle), sliders/dropdowns/text input,
+source-space reticle), expanded dropdown selection/sliders/text input,
 remaining custom-grid classes, the fixed spatial menu panel itself, and an
 in-headset controller acceptance pass.

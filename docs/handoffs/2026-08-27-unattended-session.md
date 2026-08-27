@@ -153,6 +153,26 @@ after the settled release is delivered. This needs one live sleeping-controller
 verification, but it is independent of the validated source-space hit-test
 path.
 
+A second deterministic-close cause was found in Lua itself. The consumed event
+sequences were initially nil, so a freshly attached mapping with Back sequence
+zero compared unequal and looked like an unconsumed Back press. Initializing all
+three consumed sequences to zero made the first SystemView remain open in a
+clean live run. The harness also no longer increments Back from a second raw
+button-edge detector; only the debounced `MenuInputInjector` event advances the
+shared sequence. Together these changes remove both false-entry paths rather
+than adding another timing delay.
+
+Nested widget passes are now enumerated instead of treating every widget as a
+single `content.hotspot`. Their engine-authored visibility functions, pass
+sizes, offsets and alignment are used for source-space hit testing. Hidden
+dropdown options fail closed, and option hotspots are considered only while
+the dropdown owns exclusive focus. The base Screen Mode row was reached in a
+live OptionsView run; its expanded option selection still needs a clean live
+acceptance run. Dropdown opening is now routed through OptionsView's own
+exclusive-focus coordinator, which is the semantic path used to make its
+option passes visible. Geometry logging is retained on an expanded-dropdown
+click so the next run can confirm the exact option rectangle without guessing.
+
 ## Validation
 
 Executed on the Windows/D3D12 development PC:
@@ -164,11 +184,15 @@ Executed on the Windows/D3D12 development PC:
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build\windows-vs2022 --config Release
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build\windows-vs2022 -C Release --output-on-failure
 & .\tools\stereo\sync-darktide-vr-dev.ps1
+npx --yes luaparse --quiet --file .\mods\darktidevr_stereo_probe\scripts\mods\darktidevr_stereo_probe\darktidevr_stereo_probe.lua
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build\windows-vs2022 --config RelWithDebInfo
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build\windows-vs2022 -C RelWithDebInfo --output-on-failure
 git diff --check
 ```
 
 The shader build/interface smoke check passed, the native DLL compiled with
-the existing warning-as-error policy, and both selected tests passed. Live XR
+the existing warning-as-error policy, and the final RelWithDebInfo suite passed
+all 30 tests. Live XR
 was stable; the bridge reported zero pair-pose mismatches. No validation is
 Mac-only for this D3D12 checkpoint.
 
@@ -180,7 +204,8 @@ Mac-only for this D3D12 checkpoint.
 2. If accepted, repeat in the Psykhanium against smoke, muzzle flashes, fire
    and explosion materials; add exact hashes only when ownership is proven.
 3. Extend the proven source-coordinate menu path to hover, scroll, back,
-   nested view elements and remaining custom grids. Then verify the fixed
+   expanded dropdown options, sliders, text input and remaining custom grids.
+   Then verify the fixed
    LOCAL-space 2 m panel in-headset and run the synthetic controller path
    through viewport departure, over-reach, tracking loss and reacquisition.
 4. Continue the deterministic Psykhanium entry path and first-person input/IK
