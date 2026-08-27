@@ -25,6 +25,10 @@ int main() {
     sample.source_height = 2160;
     sample.active = true;
     sample.primary_down = true;
+    sample.scroll_steps = -2;
+    sample.primary_press_sequence = 11;
+    sample.back_press_sequence = 12;
+    sample.scroll_sequence = 13;
     expect(valid_menu_pointer_state(sample), "Valid pointer was rejected");
 
     SharedMenuPointerStateWriter writer;
@@ -37,7 +41,11 @@ int main() {
                read.source_y == sample.source_y &&
                read.source_width == sample.source_width &&
                read.source_height == sample.source_height &&
-               read.primary_down && !read.back_down,
+               read.primary_down && !read.back_down &&
+               read.scroll_steps == -2 &&
+               read.primary_press_sequence == 11 &&
+               read.back_press_sequence == 12 &&
+               read.scroll_sequence == 13,
            "Pointer transport changed the sample");
 
     sample.active = false;
@@ -52,6 +60,11 @@ int main() {
     sample.source_x = 1920;
     expect(!valid_menu_pointer_state(sample),
            "Out-of-bounds pointer was accepted");
+
+    sample.active = false;
+    sample.scroll_steps = 5;
+    expect(!valid_menu_pointer_state(sample),
+           "Out-of-range scroll burst was accepted");
 
     std::cout << "menu_pointer_state.result=pass\n";
     return 0;

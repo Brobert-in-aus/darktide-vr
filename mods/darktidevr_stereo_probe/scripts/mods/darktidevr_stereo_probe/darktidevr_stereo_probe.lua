@@ -319,6 +319,7 @@ local presentation = {
         sequence = nil,
         timestamp_ns = nil,
         last_sequence = 0,
+        available = false,
         active = false,
         x = 0,
         y = 0,
@@ -328,6 +329,11 @@ local presentation = {
         primary_pressed = false,
         back_down = false,
         back_pressed = false,
+        scroll_steps = 0,
+        event_sequences_initialized = false,
+        primary_press_sequence = 0,
+        back_press_sequence = 0,
+        scroll_sequence = 0,
     },
     menu_input_probe = {
         stage = "idle",
@@ -660,7 +666,7 @@ local function ensure_ui_native_hooks()
     controller_observation.buttons = ffi.new("unsigned int[2]")
     controller_observation.sequence = ffi.new("unsigned long long[1]")
     controller_observation.timestamp_ns = ffi.new("unsigned long long[1]")
-    presentation.menu_pointer.values = ffi.new("unsigned int[7]")
+    presentation.menu_pointer.values = ffi.new("unsigned int[11]")
     presentation.menu_pointer.sequence =
         ffi.new("unsigned long long[1]")
     presentation.menu_pointer.timestamp_ns =
@@ -1206,9 +1212,11 @@ end
 
 function presentation.read_menu_pointer()
     local pointer = presentation.menu_pointer
+    pointer.available = false
     pointer.active = false
     pointer.primary_pressed = false
     pointer.back_pressed = false
+    pointer.scroll_steps = 0
     if not ui_native_capture or not pointer.values or
             ui_native_capture.dtvr_read_menu_pointer_state(
                 pointer.values,
@@ -1229,32 +1237,121 @@ function presentation.read_menu_pointer()
     pointer.y = tonumber(pointer.values[2])
     pointer.source_width = tonumber(pointer.values[3])
     pointer.source_height = tonumber(pointer.values[4])
-    pointer.active = tonumber(pointer.values[0]) ~= 0 and
+    pointer.available = age_ns >= -5000000 and age_ns <= 100000000
+    pointer.active = pointer.available and tonumber(pointer.values[0]) ~= 0 and
         pointer.source_width > 0 and pointer.source_height > 0 and
         pointer.x >= 0 and pointer.x < pointer.source_width and
-        pointer.y >= 0 and pointer.y < pointer.source_height and
-        age_ns >= -5000000 and age_ns <= 100000000
+        pointer.y >= 0 and pointer.y < pointer.source_height
     if is_new then
         local primary_down = tonumber(pointer.values[5]) ~= 0
         local back_down = tonumber(pointer.values[6]) ~= 0
-        pointer.primary_pressed_sequence = pointer.active and primary_down and
-            not pointer.primary_down and sequence or nil
-        pointer.back_pressed_sequence = back_down and not pointer.back_down and
-            sequence or nil
+        local scroll_steps = tonumber(pointer.values[7])
+        if scroll_steps >= 2147483648 then
+            scroll_steps = scroll_steps - 4294967296
+        end
+        local primary_press_sequence = tonumber(pointer.values[8])
+        local back_press_sequence = tonumber(pointer.values[9])
+        local scroll_sequence = tonumber(pointer.values[10])
+        if not pointer.event_sequences_initialized then
+            pointer.event_sequences_initialized = true
+            mod:info(
+                "DARKTIDEVR_MENU_INPUT event_transport_initialized primary=%d back=%d scroll=%d",
+                primary_press_sequence,
+                back_press_sequence,
+                scroll_sequence)
+        elseif primary_press_sequence ~= pointer.primary_press_sequence or
+                back_press_sequence ~= pointer.back_press_sequence or
+                scroll_sequence ~= pointer.scroll_sequence then
+            mod:info(
+                "DARKTIDEVR_MENU_INPUT event_transport_changed primary=%d back=%d scroll=%d",
+                primary_press_sequence,
+                back_press_sequence,
+                scroll_sequence)
+        end
+        pointer.primary_press_sequence = primary_press_sequence
+        pointer.back_press_sequence = back_press_sequence
+        pointer.scroll_sequence = scroll_sequence
         pointer.primary_down = primary_down
         pointer.back_down = back_down
         pointer.last_sequence = sequence
     end
-    pointer.primary_pressed = pointer.primary_pressed_sequence == sequence and
-        pointer.primary_consumed_sequence ~= sequence
-    pointer.back_pressed = pointer.back_pressed_sequence == sequence and
-        pointer.back_consumed_sequence ~= sequence
+    pointer.primary_pressed = pointer.active and
+        pointer.primary_press_sequence ~= pointer.primary_consumed_sequence
+    pointer.back_pressed = pointer.available and
+        pointer.back_press_sequence ~= pointer.back_consumed_sequence
+    if pointer.available and
+            pointer.scroll_sequence ~= pointer.scroll_consumed_sequence then
+        local scroll_steps = tonumber(pointer.values[7])
+        if scroll_steps >= 2147483648 then
+            scroll_steps = scroll_steps - 4294967296
+        end
+        pointer.scroll_steps = scroll_steps
+    end
     return pointer
 end
 
 function presentation.consume_menu_primary(pointer)
-    pointer.primary_consumed_sequence = pointer.last_sequence
+    pointer.primary_consumed_sequence = pointer.primary_press_sequence
     pointer.primary_pressed = false
+end
+
+function presentation.consume_menu_back(pointer)
+    pointer.back_consumed_sequence = pointer.back_press_sequence
+    pointer.back_pressed = false
+end
+
+function presentation.consume_menu_scroll(pointer)
+    pointer.scroll_consumed_sequence = pointer.scroll_sequence
+    pointer.scroll_steps = 0
+end
+
+function presentation.scroll_menu_grid(grid, steps)
+    if not grid then
+        return false, "missing_grid"
+    end
+    if steps == 0 then
+        return false, "no_steps"
+    end
+    if not grid.can_scroll then
+        return false, "missing_can_scroll"
+    end
+    if not grid:can_scroll() then
+        return false, "not_scrollable"
+    end
+    if not grid.scrollbar_progress then
+        return false, "missing_scrollbar_progress"
+    end
+    if not grid.set_scrollbar_progress then
+        return false, "missing_set_scrollbar_progress"
+    end
+    local progress = grid:scrollbar_progress()
+    if type(progress) ~= "number" then
+        return false, "invalid_scrollbar_progress"
+    end
+    grid:set_scrollbar_progress(
+        math.clamp(progress - steps * 0.1, 0, 1),
+        true)
+    if grid._update_scroll_progress then
+        grid:_update_scroll_progress(true)
+    end
+    return true, "scrolled"
+end
+
+function presentation.is_top_menu_view(instance)
+    local manager = Managers and Managers.ui
+    if manager and manager.active_views and manager.view_instance then
+        local ok, views = pcall(manager.active_views, manager)
+        if ok and type(views) == "table" then
+            for i = #views, 1, -1 do
+                local view_ok, view = pcall(
+                    manager.view_instance, manager, views[i])
+                if view_ok and view then
+                    return view == instance
+                end
+            end
+        end
+    end
+    return presentation.active_menu_view_instance == instance
 end
 
 function presentation.widget_contains_menu_pointer(instance, widget, pointer)
@@ -4789,6 +4886,31 @@ mod:hook_safe(
     presentation.on_view_close(self, view_name)
 end)
 
+-- Keep controller/menu back semantic rather than synthesizing Escape. The
+-- engine's top view is authoritative: OptionsView, for example, first closes
+-- an expanded setting or moves back a navigation column before closing the
+-- view itself. Only the topmost instance may consume a shared button edge.
+mod:hook(
+    "BaseView",
+    "update",
+    function(func, self, dt, t, input_service, ...)
+        local pointer = presentation.read_menu_pointer()
+        if pointer.available and pointer.back_pressed and
+                presentation.is_top_menu_view(self) then
+            local callback = self.cb_on_back_pressed or
+                self.cb_on_close_pressed
+            if type(callback) == "function" then
+                presentation.consume_menu_back(pointer)
+                mod:info(
+                    "DARKTIDEVR_MENU_INPUT source_back view=%s sequence=%d",
+                    tostring(self.view_name or self.__class_name),
+                    pointer.last_sequence)
+                callback(self)
+            end
+        end
+        return func(self, dt, t, input_service, ...)
+    end)
+
 -- BaseView owns the common full-screen widget draw path used by options and
 -- most conventional menus. Resolve the XR ray against those engine-authored
 -- widget rectangles before their hotspot pass runs, then use the same
@@ -4799,28 +4921,76 @@ mod:hook(
     "_draw_widgets",
     function(func, self, dt, t, input_service, ui_renderer, ...)
         local pointer = presentation.read_menu_pointer()
-        if pointer.active and pointer.primary_pressed then
-            local widgets = self._widgets or {}
-            for i = #widgets, 1, -1 do
-                local widget = widgets[i]
-                local hotspot = presentation.widget_hotspot(widget)
-                local source_hit =
+        local widgets = self._widgets or {}
+        local source_widget = nil
+        for i = #widgets, 1, -1 do
+            local widget = widgets[i]
+            local hotspot = presentation.widget_hotspot(widget)
+            if pointer.available and hotspot then
+                hotspot.force_hover = false
+            end
+            if pointer.available and not source_widget and pointer.active and
+                    hotspot and
+                    not hotspot.disabled and
                     presentation.widget_contains_menu_pointer(
-                        self, widget, pointer)
-                if source_hit and hotspot and not hotspot.disabled then
-                    hotspot.force_input_pressed = true
-                    presentation.consume_menu_primary(pointer)
-                    mod:info(
-                        "DARKTIDEVR_MENU_INPUT base_source_activate view=%s widget=%s sequence=%d source=%d,%d/%dx%d",
-                        tostring(self.view_name or self.__class_name),
-                        tostring(widget.name),
-                        pointer.last_sequence,
-                        pointer.x,
-                        pointer.y,
-                        pointer.source_width,
-                        pointer.source_height)
-                    break
+                        self, widget, pointer) then
+                source_widget = widget
+            end
+        end
+        if source_widget then
+            local hotspot = presentation.widget_hotspot(source_widget)
+            hotspot.force_hover = true
+            if pointer.scroll_steps ~= 0 then
+                local scroll_grid = nil
+                if source_widget.name == "settings_grid_interaction" then
+                    scroll_grid = self._settings_content_grid
+                elseif source_widget.name == "category_grid_interaction" then
+                    scroll_grid = self._category_content_grid
                 end
+                local scrolled, reason = presentation.scroll_menu_grid(
+                    scroll_grid, pointer.scroll_steps)
+                if scrolled then
+                    mod:info(
+                        "DARKTIDEVR_MENU_INPUT options_source_scroll widget=%s steps=%d sequence=%d",
+                        tostring(source_widget.name),
+                        pointer.scroll_steps,
+                        pointer.last_sequence)
+                    presentation.consume_menu_scroll(pointer)
+                else
+                    pointer.scroll_diagnostic_keys =
+                        pointer.scroll_diagnostic_keys or {}
+                    local role = scroll_grid == self._settings_content_grid and
+                        "settings" or
+                        (scroll_grid == self._category_content_grid and
+                            "category" or "other")
+                    local key = tostring(pointer.scroll_sequence) .. ":" ..
+                        role .. ":" .. tostring(scroll_grid)
+                    if not pointer.scroll_diagnostic_keys[key] then
+                        pointer.scroll_diagnostic_keys[key] = true
+                        local length = scroll_grid and
+                            scroll_grid.scroll_length and
+                            scroll_grid:scroll_length() or -1
+                        mod:info(
+                            "DARKTIDEVR_MENU_INPUT options_scroll_skipped widget=%s role=%s reason=%s length=%s",
+                            tostring(source_widget.name),
+                            role,
+                            tostring(reason),
+                            tostring(length))
+                    end
+                end
+            end
+            if pointer.primary_pressed then
+                hotspot.force_input_pressed = true
+                presentation.consume_menu_primary(pointer)
+                mod:info(
+                    "DARKTIDEVR_MENU_INPUT base_source_activate view=%s widget=%s sequence=%d source=%d,%d/%dx%d",
+                    tostring(self.view_name or self.__class_name),
+                    tostring(source_widget.name),
+                    pointer.last_sequence,
+                    pointer.x,
+                    pointer.y,
+                    pointer.source_width,
+                    pointer.source_height)
             end
         end
         return func(self, dt, t, input_service, ui_renderer, ...)
@@ -4836,6 +5006,15 @@ mod:hook(
     function(func, self, grid, widgets, interaction_widget, dt, t,
             input_service, ...)
         local pointer = presentation.read_menu_pointer()
+        local source_widget = nil
+        if pointer.available then
+            for i = 1, #widgets do
+                local hotspot = presentation.widget_hotspot(widgets[i])
+                if hotspot then
+                    hotspot.force_hover = false
+                end
+            end
+        end
         if pointer.active then
             for i = #widgets, 1, -1 do
                 local widget = widgets[i]
@@ -4846,25 +5025,31 @@ mod:hook(
                     presentation.widget_contains_menu_pointer(
                         self, widget, pointer)
                 if source_hit and hotspot and not hotspot.disabled then
-                    local interaction_hotspot =
-                        presentation.widget_hotspot(interaction_widget)
-                    if interaction_hotspot then
-                        interaction_hotspot.is_hover = true
-                    end
-                    if pointer.primary_pressed then
-                        hotspot.force_input_pressed = true
-                        presentation.consume_menu_primary(pointer)
-                        mod:info(
-                            "DARKTIDEVR_MENU_INPUT options_source_activate widget=%s sequence=%d source=%d,%d/%dx%d",
-                            tostring(widget.name),
-                            pointer.last_sequence,
-                            pointer.x,
-                            pointer.y,
-                            pointer.source_width,
-                            pointer.source_height)
-                    end
+                    source_widget = widget
                     break
                 end
+            end
+        end
+        local interaction_hotspot =
+            presentation.widget_hotspot(interaction_widget)
+        if pointer.available and interaction_hotspot then
+            interaction_hotspot.force_hover = source_widget ~= nil
+            interaction_hotspot.is_hover = source_widget ~= nil
+        end
+        if source_widget then
+            local hotspot = presentation.widget_hotspot(source_widget)
+            hotspot.force_hover = true
+            if pointer.primary_pressed then
+                hotspot.force_input_pressed = true
+                presentation.consume_menu_primary(pointer)
+                mod:info(
+                    "DARKTIDEVR_MENU_INPUT options_source_activate widget=%s sequence=%d source=%d,%d/%dx%d",
+                    tostring(source_widget.name),
+                    pointer.last_sequence,
+                    pointer.x,
+                    pointer.y,
+                    pointer.source_width,
+                    pointer.source_height)
             end
         end
         return func(self, grid, widgets, interaction_widget, dt, t,
@@ -4925,9 +5110,23 @@ mod:hook(
             local source_hit =
                 presentation.widget_contains_menu_pointer(
                     self, widget, pointer)
+            if pointer.available and hotspot then
+                hotspot.force_hover = false
+            end
             if source_hit and hotspot and not hotspot.disabled and
                     not presentation.system_view_source_widget then
                 presentation.system_view_source_widget = widget
+                hotspot.force_hover = true
+                if pointer.scroll_steps ~= 0 and
+                        presentation.scroll_menu_grid(
+                            self._content_grid, pointer.scroll_steps) then
+                    mod:info(
+                        "DARKTIDEVR_MENU_INPUT source_scroll widget=%s steps=%d sequence=%d",
+                        tostring(widget.name),
+                        pointer.scroll_steps,
+                        pointer.last_sequence)
+                    presentation.consume_menu_scroll(pointer)
+                end
                 if pointer.primary_pressed then
                     hotspot.force_input_pressed = true
                     presentation.consume_menu_primary(pointer)

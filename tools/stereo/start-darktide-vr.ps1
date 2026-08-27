@@ -6,9 +6,14 @@ param(
     [ValidateRange(5, 1800)]
     [int] $GameStartTimeoutSeconds = 600,
 
+    [string] $GameRoot =
+        'D:\SteamLibrary\steamapps\common\Warhammer 40,000 DARKTIDE',
+
     [switch] $FreshPsoCache,
 
     [switch] $EnableMenuInput,
+
+    [switch] $EnableMenuTestControls,
 
     [switch] $SyntheticControllerPath,
 
@@ -21,6 +26,8 @@ param(
     [ValidateRange(-2.0, 2.0)]
     [double] $ProjectionTranslationScale = 1.0,
 
+    [switch] $SkipDeploymentSync,
+
     [switch] $DoNotOpenLauncher
 )
 
@@ -30,6 +37,19 @@ $ErrorActionPreference = 'Stop'
 $runner = Join-Path $PSScriptRoot 'run-darktide-shared-eyes.ps1'
 if (-not (Test-Path -LiteralPath $runner -PathType Leaf)) {
     throw "XR runner not found: $runner"
+}
+
+if (-not $SkipDeploymentSync) {
+    $sync = Join-Path $PSScriptRoot 'sync-darktide-vr-dev.ps1'
+    if (-not (Test-Path -LiteralPath $sync -PathType Leaf)) {
+        throw "Development sync script not found: $sync"
+    }
+    if (Get-Process Darktide -ErrorAction SilentlyContinue) {
+        Write-Warning 'Darktide is already running; deployment sync cannot update loaded files.'
+    }
+    else {
+        & $sync -GameRoot $GameRoot -Configuration Release
+    }
 }
 
 if ($FreshPsoCache) {
@@ -70,9 +90,13 @@ $runnerArguments = @{
     DurationSeconds = $DurationSeconds
     WaitForGameSeconds = $GameStartTimeoutSeconds
     ProjectionTranslationScale = $ProjectionTranslationScale
+    GameExe = Join-Path $GameRoot 'binaries\Darktide.exe'
 }
 if ($EnableMenuInput) {
     $runnerArguments.EnableMenuInput = $true
+}
+if ($EnableMenuTestControls) {
+    $runnerArguments.EnableMenuTestControls = $true
 }
 if ($SyntheticControllerPath) {
     $runnerArguments.SyntheticControllerPath = $true

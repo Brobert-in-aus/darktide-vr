@@ -748,9 +748,30 @@ widget, with both exact source coordinates recorded in the game log.
 OptionsView's native `grid_interaction` hotspot initially force-disabled the
 correct child because native hover remained false; asserting that gate only
 for a source-space hit allowed Audio to populate the complete settings pane.
-All 30 automated tests pass, including the shared pointer transport, native
-export contract, and bidirectional desktop/source mapping tests.
+The transport is now version 3 and carries persistent monotonically increasing
+sequences for primary activation, Back and scroll. This is necessary because
+the OpenXR compositor and Darktide UI loops run at different rates: a one-frame
+edge could otherwise be published and overwritten between two Lua reads. Lua
+consumes each sequence exactly once. The first nonzero sequence observed after
+attachment is actionable rather than being mistaken for initialization state.
 
-Remaining menu work is hover and laser presentation, scroll and back semantics,
-nested view elements, remaining custom-grid classes, and an in-headset
-controller acceptance pass.
+Source-space hover is asserted through each matched hotspot's `force_hover`.
+Back is routed semantically to the top engine view's own back/close callback;
+one live event returned from Audio/Options to SystemView and a second closed
+SystemView, with no synthetic Escape. Scroll resolves OptionsView's
+`settings_grid_interaction` overlay to its owning `_settings_content_grid` and
+uses the engine grid's scrollbar API. A live XR scroll moved Audio from its top
+rows to Headshot/Backstab Sound and logged one consumed sequence. Click, hover,
+scroll and nested Back therefore have desktop/live-log validation.
+
+A stale native DLL in the mod-local `bin` directory initially made the new
+mapping appear unreadable even though the harness published it correctly. Lua
+loads that copy, while other native paths used the `binaries` copy. The
+development launcher now synchronizes the source Lua plus the Release DLL to
+both destinations and verifies SHA-256 equality before opening the launcher.
+
+All 30 automated tests pass, including the shared pointer transport, native
+export contract, and bidirectional desktop/source mapping tests. Remaining
+menu work is a rendered controller laser/dot, sliders/dropdowns/text input,
+remaining custom-grid classes, the fixed spatial menu panel itself, and an
+in-headset controller acceptance pass.

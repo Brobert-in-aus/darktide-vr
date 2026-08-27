@@ -86,9 +86,48 @@ base static-widget path, SystemView dynamic grid and OptionsView category and
 settings grids are covered. OptionsView's own `grid_interaction` hotspot used to
 force-disable all children because its native cursor hover was false; the hook
 now asserts that interaction region only while the source-space pointer is over
-a visible child. Hover visuals, scrolling, back routing, nested view elements,
-other custom-grid view classes, and final controller-in-headset acceptance
-remain outstanding.
+a visible child. At this initial checkpoint, hover visuals, scrolling and Back
+routing were outstanding; the follow-up below resolves those three paths.
+Nested view elements, other custom-grid view classes, and final
+controller-in-headset acceptance remain outstanding.
+
+### Menu interaction follow-up
+
+The apparent desktop-mirror click failure is confirmed as an XR coordinate
+misalignment: the visible menu is a cropped/scaled source render, while
+Darktide's normal hit test consumes desktop-window coordinates. Source-space
+hover and activation now use the same engine-authored widget rectangles and
+hotspots, and live tests opened SystemView -> Options -> Audio.
+
+The shared menu mapping is version 3. Primary, Back and scroll are represented
+by persistent monotonically increasing counters so an event cannot disappear
+between the independently paced compositor and Darktide UI loops. Lua accepts
+an initial nonzero counter, rejects stale samples and consumes each counter
+once. Named test events are available only under `-EnableMenuTestControls`.
+
+Back is routed through the top view's own callback. A live event returned from
+Audio/Options to SystemView and a second event closed SystemView; the log
+recorded `source_back view=options_view` followed by
+`source_back view=system_view`.
+
+The first scroll attempt exposed an engine ownership detail rather than a
+transport fault. OptionsView draws the large `settings_grid_interaction`
+overlay with a nil `grid` argument; its actual scrollable grid is
+`self._settings_content_grid`. Explicitly resolving that overlay to its owner
+made the live XR event move Audio down to Headshot/Backstab Sound and log:
+
+```text
+DARKTIDEVR_MENU_INPUT options_source_scroll widget=settings_grid_interaction steps=-1
+```
+
+A separate deployment fault was also identified. Lua loads
+`mods/darktidevr_stereo_probe/bin/darktidevr_native_capture.dll`, which had
+silently fallen behind the matching DLL in `binaries`. The correct deployed
+hash made the v3 mapping immediately readable. The startup path now calls
+`tools/stereo/sync-darktide-vr-dev.ps1` before opening the launcher, copying the
+source Lua and Release native DLL to both native destinations and verifying all
+three hashes. This prevents future protocol tests from being invalidated by a
+stale loaded bridge.
 
 ## Validation
 
@@ -100,6 +139,7 @@ Executed on the Windows/D3D12 development PC:
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build\windows-vs2022 -C Release --output-on-failure -R 'native_capture_hooks|core_math|billboard'
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build\windows-vs2022 --config Release
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build\windows-vs2022 -C Release --output-on-failure
+& .\tools\stereo\sync-darktide-vr-dev.ps1
 git diff --check
 ```
 

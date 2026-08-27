@@ -8186,6 +8186,10 @@ extern "C" __declspec(dllexport) int dtvr_read_menu_pointer_state(
   values[4] = sample.source_height;
   values[5] = sample.primary_down ? 1U : 0U;
   values[6] = sample.back_down ? 1U : 0U;
+  values[7] = static_cast<unsigned int>(sample.scroll_steps);
+  values[8] = sample.primary_press_sequence;
+  values[9] = sample.back_press_sequence;
+  values[10] = sample.scroll_sequence;
   *sequence = sample.sequence;
   *timestamp_ns = sample.timestamp_ns;
   return 0;

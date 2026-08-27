@@ -30,6 +30,9 @@ void close_mapping(void*& mapping, void*& view) {
 }  // namespace
 
 bool valid_menu_pointer_state(const SharedMenuPointerState& state) {
+  if (state.scroll_steps < -4 || state.scroll_steps > 4) {
+    return false;
+  }
   if (state.sequence == 0 || state.timestamp_ns == 0 ||
       state.sequence >
           static_cast<std::uint64_t>(std::numeric_limits<LONG64>::max())) {

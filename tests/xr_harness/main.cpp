@@ -46,6 +46,11 @@ namespace {
 constexpr UINT kBufferCount = 2;
 constexpr UINT kWidth = 960;
 constexpr UINT kHeight = 540;
+constexpr auto kMenuTestBackEvent = L"Local\\DarktideVR-menu-test-back";
+constexpr auto kMenuTestScrollUpEvent =
+    L"Local\\DarktideVR-menu-test-scroll-up";
+constexpr auto kMenuTestScrollDownEvent =
+    L"Local\\DarktideVR-menu-test-scroll-down";
 
 void check(HRESULT result, const char* operation) {
   if (FAILED(result)) {
@@ -448,6 +453,7 @@ class OpenXrProbe {
                                bool pair_driven_shared,
                                bool separate_shared_eye_swapchains,
                                bool enable_menu_input,
+                               bool enable_menu_test_controls,
                                const std::wstring& menu_input_title,
                                bool synthetic_controller_path,
                                bool synthetic_body_path,
@@ -648,10 +654,19 @@ class OpenXrProbe {
     darktidevr::core::MenuPointerInputState menu_pointer_state;
     darktidevr::core::SharedMenuPointerStateWriter menu_pointer_writer;
     std::uint64_t menu_pointer_sequence{};
+    std::uint32_t menu_primary_press_sequence{};
+    std::uint32_t menu_back_press_sequence{};
+    std::uint32_t menu_scroll_sequence{};
+    int last_shared_menu_scroll_steps{};
+    bool last_shared_menu_primary_down{};
+    bool last_shared_menu_back_down{};
     std::unique_ptr<darktidevr::harness::MenuInputInjector>
         menu_input_injector;
     std::uint64_t menu_input_events{};
     std::uint64_t menu_input_dispatched{};
+    HANDLE menu_test_back_event{};
+    HANDLE menu_test_scroll_up_event{};
+    HANDLE menu_test_scroll_down_event{};
     menu_input_injector =
         std::make_unique<darktidevr::harness::MenuInputInjector>(
             menu_input_title);
@@ -659,6 +674,28 @@ class OpenXrProbe {
       std::cout << "openxr.menu_input=enabled\n";
     } else {
       std::cout << "openxr.menu_input=desktop-source-only\n";
+    }
+    if (enable_menu_test_controls) {
+      menu_test_back_event =
+          CreateEventW(nullptr, FALSE, FALSE, kMenuTestBackEvent);
+      menu_test_scroll_up_event =
+          CreateEventW(nullptr, FALSE, FALSE, kMenuTestScrollUpEvent);
+      menu_test_scroll_down_event =
+          CreateEventW(nullptr, FALSE, FALSE, kMenuTestScrollDownEvent);
+      if (!menu_test_back_event || !menu_test_scroll_up_event ||
+          !menu_test_scroll_down_event) {
+        if (menu_test_back_event) {
+          CloseHandle(menu_test_back_event);
+        }
+        if (menu_test_scroll_up_event) {
+          CloseHandle(menu_test_scroll_up_event);
+        }
+        if (menu_test_scroll_down_event) {
+          CloseHandle(menu_test_scroll_down_event);
+        }
+        throw std::runtime_error("CreateEventW(menu test controls) failed");
+      }
+      std::cout << "openxr.menu_test_controls=enabled\n";
     }
     if (shared_eyes) {
       head_pose_writer =
@@ -1437,6 +1474,8 @@ class OpenXrProbe {
           desktop_pointer_primary_down = desktop_pointer->primary_down;
         }
       }
+      int shared_menu_scroll_steps{};
+      bool shared_menu_back_down{};
       if (menu_input_injector) {
         darktidevr::core::MenuPointerInput input{};
         input.active = menu_mode && submitted_flat_fallback_this_frame;
@@ -1464,6 +1503,9 @@ class OpenXrProbe {
         }
         for (const auto& event : menu_pointer_state.update(input)) {
           ++menu_input_events;
+          if (event.type == darktidevr::core::MenuPointerEventType::scroll) {
+            shared_menu_scroll_steps = event.scroll_steps;
+          }
           if (enable_menu_input && menu_input_injector->dispatch(
                   event,
                   presentation_sequence != 0
@@ -1474,6 +1516,22 @@ class OpenXrProbe {
                       : flat_capture_height)) {
             ++menu_input_dispatched;
           }
+        }
+      }
+      if (enable_menu_test_controls) {
+        if (WaitForSingleObject(menu_test_back_event, 0) == WAIT_OBJECT_0) {
+          shared_menu_back_down = true;
+          std::cout << "openxr.menu_test_event=back\n";
+        }
+        if (WaitForSingleObject(menu_test_scroll_up_event, 0) ==
+            WAIT_OBJECT_0) {
+          shared_menu_scroll_steps = 1;
+          std::cout << "openxr.menu_test_event=scroll_up\n";
+        }
+        if (WaitForSingleObject(menu_test_scroll_down_event, 0) ==
+            WAIT_OBJECT_0) {
+          shared_menu_scroll_steps = -1;
+          std::cout << "openxr.menu_test_event=scroll_down\n";
         }
       }
       {
@@ -1491,6 +1549,7 @@ class OpenXrProbe {
                 .count());
         shared_pointer.source_width = source_width;
         shared_pointer.source_height = source_height;
+        shared_pointer.scroll_steps = shared_menu_scroll_steps;
         shared_pointer.active = menu_mode &&
                                 submitted_flat_fallback_this_frame &&
                                 menu_pointer_position.has_value();
@@ -1508,9 +1567,33 @@ class OpenXrProbe {
               (right.buttons & darktidevr::core::controller_secondary) != 0 ||
               (left.buttons & darktidevr::core::controller_menu) != 0;
         }
+        shared_pointer.back_down =
+            shared_pointer.back_down || shared_menu_back_down;
         if (desktop_pointer_active) {
           shared_pointer.primary_down = desktop_pointer_primary_down;
         }
+        if (shared_pointer.active && shared_pointer.primary_down &&
+            !last_shared_menu_primary_down) {
+          ++menu_primary_press_sequence;
+        }
+        if (menu_mode && submitted_flat_fallback_this_frame &&
+            shared_pointer.back_down && !last_shared_menu_back_down) {
+          ++menu_back_press_sequence;
+        }
+        if (shared_menu_scroll_steps != 0) {
+          last_shared_menu_scroll_steps = shared_menu_scroll_steps;
+          ++menu_scroll_sequence;
+        }
+        shared_pointer.scroll_steps = last_shared_menu_scroll_steps;
+        shared_pointer.primary_press_sequence =
+            menu_primary_press_sequence;
+        shared_pointer.back_press_sequence = menu_back_press_sequence;
+        shared_pointer.scroll_sequence = menu_scroll_sequence;
+        last_shared_menu_primary_down =
+            shared_pointer.active && shared_pointer.primary_down;
+        last_shared_menu_back_down = menu_mode &&
+                                     submitted_flat_fallback_this_frame &&
+                                     shared_pointer.back_down;
         if (!menu_pointer_writer.publish(shared_pointer)) {
           throw std::runtime_error("Shared menu pointer rejected sample");
         }
@@ -1751,6 +1834,15 @@ class OpenXrProbe {
       upload_pixels = nullptr;
     }
     CloseHandle(fence_event);
+    if (menu_test_back_event) {
+      CloseHandle(menu_test_back_event);
+    }
+    if (menu_test_scroll_up_event) {
+      CloseHandle(menu_test_scroll_up_event);
+    }
+    if (menu_test_scroll_down_event) {
+      CloseHandle(menu_test_scroll_down_event);
+    }
     for (const auto swapchain : theatre_swapchains) {
       check_xr(xrDestroySwapchain(swapchain), "xrDestroySwapchain(theatre)");
     }
@@ -2656,6 +2748,7 @@ int wmain(int argc, wchar_t** argv) {
     // submission remains available only as an explicit diagnostic control.
     bool pair_driven_shared = true;
     bool enable_menu_input = false;
+    bool enable_menu_test_controls = false;
     bool synthetic_controller_path = false;
     bool synthetic_body_path = false;
     bool synthetic_gameplay_input = false;
@@ -2702,6 +2795,8 @@ int wmain(int argc, wchar_t** argv) {
         capture_window_title = argv[++index];
       } else if (argument == L"--enable-menu-input") {
         enable_menu_input = true;
+      } else if (argument == L"--enable-menu-test-controls") {
+        enable_menu_test_controls = true;
       } else if (argument == L"--synthetic-controller-path") {
         synthetic_controller_path = true;
       } else if (argument == L"--synthetic-body-path") {
@@ -2748,6 +2843,10 @@ int wmain(int argc, wchar_t** argv) {
     if (enable_menu_input && !shared_eyes) {
       throw std::invalid_argument(
           "--enable-menu-input requires --shared-eyes");
+    }
+    if (enable_menu_test_controls && !shared_eyes) {
+      throw std::invalid_argument(
+          "--enable-menu-test-controls requires --shared-eyes");
     }
     if (!std::isfinite(projection_translation_scale) ||
         projection_translation_scale < -2.0F ||
@@ -2797,6 +2896,7 @@ int wmain(int argc, wchar_t** argv) {
                                      shared_pose_sequence_offset,
                                      pair_driven_shared,
                                      true, enable_menu_input,
+                                     enable_menu_test_controls,
                                      menu_input_title,
                                      synthetic_controller_path,
                                      synthetic_body_path,

@@ -11,6 +11,8 @@ param(
 
     [switch] $EnableMenuInput,
 
+    [switch] $EnableMenuTestControls,
+
     [switch] $SyntheticControllerPath,
 
     [switch] $SyntheticGameplayInput,
@@ -82,6 +84,9 @@ $arguments = @(
 )
 if ($EnableMenuInput) {
     $arguments += '--enable-menu-input'
+}
+if ($EnableMenuTestControls) {
+    $arguments += '--enable-menu-test-controls'
 }
 if ($SyntheticControllerPath) {
     $arguments += '--synthetic-controller-path'
