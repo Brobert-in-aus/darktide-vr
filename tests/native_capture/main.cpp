@@ -67,6 +67,9 @@ int wmain(int argc, wchar_t** argv) {
         float*, unsigned int*, unsigned int*, unsigned long long*,
         unsigned long long*)>(
         GetProcAddress(module, "dtvr_read_controller_state"));
+    const auto read_menu_pointer_state = reinterpret_cast<int (*)(
+        unsigned int*, unsigned long long*, unsigned long long*)>(
+        GetProcAddress(module, "dtvr_read_menu_pointer_state"));
     const auto qpc_ticks = reinterpret_cast<unsigned long long (*)()>(
         GetProcAddress(module, "dtvr_qpc_ticks"));
     const auto qpc_frequency = reinterpret_cast<unsigned long long (*)()>(
@@ -100,6 +103,7 @@ int wmain(int argc, wchar_t** argv) {
         !tag_reset_count || !ready || !execute_count || !present_count ||
         !capture_stage || !enable_present_capture || !disable_present_capture ||
         !enable_marker_log || !read_head_pose || !read_controller_state ||
+        !read_menu_pointer_state ||
         !qpc_ticks || !qpc_frequency ||
         !set_billboard_view_basis || !set_billboard_staging_view_basis ||
         !set_billboard_direct_view_direction ||
@@ -139,6 +143,10 @@ int wmain(int argc, wchar_t** argv) {
         1) {
       throw std::runtime_error(
           "Controller-state export must reject null output");
+    }
+    if (read_menu_pointer_state(nullptr, nullptr, nullptr) != 1) {
+      throw std::runtime_error(
+          "Menu-pointer-state export must reject null output");
     }
     float ik_input[17]{0.0F, 0.0F, 1.5F, 0.45F, 0.35F, 1.25F,
                        0.25F, 0.1F, 0.8F, 0.0F, 1.0F, 0.0F,

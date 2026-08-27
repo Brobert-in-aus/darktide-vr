@@ -20,6 +20,7 @@
 #include "core/presentation_policy.h"
 #include "core/shared_controller_state.h"
 #include "core/shared_head_pose.h"
+#include "core/shared_menu_pointer_state.h"
 #include "core/shared_presentation_state.h"
 
 #include <algorithm>
@@ -645,17 +646,19 @@ class OpenXrProbe {
     darktidevr::core::SharedPresentationState presentation_state{};
     std::uint64_t presentation_sequence{};
     darktidevr::core::MenuPointerInputState menu_pointer_state;
+    darktidevr::core::SharedMenuPointerStateWriter menu_pointer_writer;
+    std::uint64_t menu_pointer_sequence{};
     std::unique_ptr<darktidevr::harness::MenuInputInjector>
         menu_input_injector;
     std::uint64_t menu_input_events{};
     std::uint64_t menu_input_dispatched{};
+    menu_input_injector =
+        std::make_unique<darktidevr::harness::MenuInputInjector>(
+            menu_input_title);
     if (enable_menu_input) {
-      menu_input_injector =
-          std::make_unique<darktidevr::harness::MenuInputInjector>(
-              menu_input_title);
       std::cout << "openxr.menu_input=enabled\n";
     } else {
-      std::cout << "openxr.menu_input=disabled\n";
+      std::cout << "openxr.menu_input=desktop-source-only\n";
     }
     if (shared_eyes) {
       head_pose_writer =
@@ -1413,13 +1416,28 @@ class OpenXrProbe {
           }
         }
       }
+      bool desktop_pointer_active{};
+      bool desktop_pointer_primary_down{};
+      const auto menu_mode =
+          presentation_sequence != 0 &&
+          (presentation_state.mode == darktidevr::core::
+                                          SharedPresentationMode::flat_menu ||
+           presentation_state.mode == darktidevr::core::
+                                          SharedPresentationMode::world_anchored_menu);
+      if (menu_mode && submitted_flat_fallback_this_frame) {
+        const auto source_width = presentation_state.source_width;
+        const auto source_height = presentation_state.source_height;
+        const auto desktop_pointer = menu_input_injector->read_desktop_pointer(
+            source_width, source_height);
+        if (desktop_pointer &&
+            (!menu_pointer_position || desktop_pointer->primary_down)) {
+          menu_pointer_position =
+              std::pair{desktop_pointer->source_x, desktop_pointer->source_y};
+          desktop_pointer_active = true;
+          desktop_pointer_primary_down = desktop_pointer->primary_down;
+        }
+      }
       if (menu_input_injector) {
-        const auto menu_mode =
-            presentation_sequence != 0 &&
-            (presentation_state.mode == darktidevr::core::
-                                            SharedPresentationMode::flat_menu ||
-             presentation_state.mode ==
-                 darktidevr::core::SharedPresentationMode::world_anchored_menu);
         darktidevr::core::MenuPointerInput input{};
         input.active = menu_mode && submitted_flat_fallback_this_frame;
         input.source_position = menu_pointer_position;
@@ -1446,7 +1464,7 @@ class OpenXrProbe {
         }
         for (const auto& event : menu_pointer_state.update(input)) {
           ++menu_input_events;
-          if (menu_input_injector->dispatch(
+          if (enable_menu_input && menu_input_injector->dispatch(
                   event,
                   presentation_sequence != 0
                       ? presentation_state.source_width
@@ -1456,6 +1474,45 @@ class OpenXrProbe {
                       : flat_capture_height)) {
             ++menu_input_dispatched;
           }
+        }
+      }
+      {
+        const auto source_width = presentation_sequence != 0
+                                      ? presentation_state.source_width
+                                      : width;
+        const auto source_height = presentation_sequence != 0
+                                       ? presentation_state.source_height
+                                       : flat_capture_height;
+        darktidevr::core::SharedMenuPointerState shared_pointer{};
+        shared_pointer.sequence = ++menu_pointer_sequence;
+        shared_pointer.timestamp_ns = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                frame_start.time_since_epoch())
+                .count());
+        shared_pointer.source_width = source_width;
+        shared_pointer.source_height = source_height;
+        shared_pointer.active = menu_mode &&
+                                submitted_flat_fallback_this_frame &&
+                                menu_pointer_position.has_value();
+        if (menu_pointer_position) {
+          shared_pointer.source_x = menu_pointer_position->first;
+          shared_pointer.source_y = menu_pointer_position->second;
+        }
+        if (latest_controller_sample_) {
+          const auto& left = latest_controller_sample_->hands[0];
+          const auto& right = latest_controller_sample_->hands[1];
+          shared_pointer.primary_down =
+              right.trigger >= 0.55F ||
+              (right.buttons & darktidevr::core::controller_primary) != 0;
+          shared_pointer.back_down =
+              (right.buttons & darktidevr::core::controller_secondary) != 0 ||
+              (left.buttons & darktidevr::core::controller_menu) != 0;
+        }
+        if (desktop_pointer_active) {
+          shared_pointer.primary_down = desktop_pointer_primary_down;
+        }
+        if (!menu_pointer_writer.publish(shared_pointer)) {
+          throw std::runtime_error("Shared menu pointer rejected sample");
         }
       }
       XrCompositionLayerProjection projection{

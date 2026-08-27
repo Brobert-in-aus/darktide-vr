@@ -52,6 +52,44 @@ slot. `start-darktide-vr.ps1 -FreshPsoCache` also now handles a single existing
 cache file under strict mode instead of treating the scalar as lacking a
 `Count` property.
 
+## Fullscreen-menu pointer checkpoint
+
+The desktop mirror reproduced the menu-input failure as a coordinate-space
+fault. The Windows cursor could be visibly over `Options` while every Darktide
+hotspot reported `cursor_hover=false`; on a control run the game's native
+window-coordinate path opened `Party Finder` from that same visible location.
+The XR harness now maps both the right-controller panel ray and the foreground
+Darktide desktop cursor into the menu render source's pixel space. A desktop
+button-down temporarily takes ownership from an active controller ray for that
+atomic sample, while ordinary controller aiming remains preferred otherwise.
+
+The pointer, its source dimensions, both button states, a sequence and a QPC
+timestamp are published through a new shared-memory transport and native DLL
+export. Lua rejects stale samples, resolves source pixels against engine-authored
+scenegraph rectangles, and uses Darktide's own
+`hotspot.force_input_pressed` seam. It does not synthesize a guessed Windows
+coordinate inside the game.
+
+Live logs prove both currently implemented ownership paths:
+
+- `SystemView` source `(433,1341)/2112x2304` activated
+  `grid_content_pivot_widget_11` and opened `options_view`;
+- `OptionsView` source `(330,289)/2112x2304` activated its first custom-grid
+  category widget; after restoring the grid's source-space interaction gate,
+  source `(359,379)/2112x2304` activated Audio and populated the full settings
+  pane.
+
+Click edges remain readable throughout one render frame and are consumed only
+by the widget whose rectangle contains the pointer. This prevents a lower
+stacked view from stealing an edge merely by reading the shared sample. The
+base static-widget path, SystemView dynamic grid and OptionsView category and
+settings grids are covered. OptionsView's own `grid_interaction` hotspot used to
+force-disable all children because its native cursor hover was false; the hook
+now asserts that interaction region only while the source-space pointer is over
+a visible child. Hover visuals, scrolling, back routing, nested view elements,
+other custom-grid view classes, and final controller-in-headset acceptance
+remain outstanding.
+
 ## Validation
 
 Executed on the Windows/D3D12 development PC:
@@ -60,6 +98,8 @@ Executed on the Windows/D3D12 development PC:
 & .\tools\stereo\build-particle-horizon-lock.ps1
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build\windows-vs2022 --config Release --target darktidevr_native_capture
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build\windows-vs2022 -C Release --output-on-failure -R 'native_capture_hooks|core_math|billboard'
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build\windows-vs2022 --config Release
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build\windows-vs2022 -C Release --output-on-failure
 git diff --check
 ```
 
@@ -75,10 +115,9 @@ Mac-only for this D3D12 checkpoint.
    unexpectedly shares the exact hash.
 2. If accepted, repeat in the Psykhanium against smoke, muzzle flashes, fire
    and explosion materials; add exact hashes only when ownership is proven.
-3. Resume fullscreen-menu work without waiting for the visual gate: exercise
-   nested/unknown menu classification, verify the fixed LOCAL-space 2 m panel,
-   and run the synthetic controller path through viewport departure,
-   over-reach, tracking loss and reacquisition.
+3. Extend the proven source-coordinate menu path to hover, scroll, back,
+   nested view elements and remaining custom grids. Then verify the fixed
+   LOCAL-space 2 m panel in-headset and run the synthetic controller path
+   through viewport departure, over-reach, tracking loss and reacquisition.
 4. Continue the deterministic Psykhanium entry path and first-person input/IK
    gates. The third-person hub retains stock animation.
-

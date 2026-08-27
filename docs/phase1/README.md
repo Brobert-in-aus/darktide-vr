@@ -724,3 +724,33 @@ recording. This is a more fundamental blanket boundary than editing every
 particle asset or guessing at individual shader permutations. Captured and
 generated game shader binaries remain external test artifacts and are not
 committed.
+
+## Source-space fullscreen-menu input checkpoint
+
+The desktop mirror's apparent click failure is an XR coordinate-space
+misalignment, not an absence of callbacks. Darktide's normal hotspots did not
+hover at the visible cursor; a native control click over the drawn `Options`
+row could select `Party Finder`. The bridge now publishes an atomic pointer
+sample in the fullscreen-menu render source's pixel space, sourced from either
+the right-controller panel ray or the foreground Darktide desktop cursor. A
+desktop button-down temporarily overrides a simultaneously tracked controller
+ray, so desktop debugging stays deterministic without changing normal headset
+ownership.
+
+Lua validates sample freshness, maps source pixels through `RESOLUTION_LOOKUP`
+to widget scenegraph rectangles, and arms the exact engine hotspot with
+`force_input_pressed`. An input edge remains available to all stacked view
+draws until a matching widget consumes it. Dedicated hooks cover SystemView's
+dynamic content grid and both OptionsView grids; BaseView covers conventional
+static widgets. Live validation opened `options_view` through
+`grid_content_pivot_widget_11`, then activated OptionsView's first category
+widget, with both exact source coordinates recorded in the game log.
+OptionsView's native `grid_interaction` hotspot initially force-disabled the
+correct child because native hover remained false; asserting that gate only
+for a source-space hit allowed Audio to populate the complete settings pane.
+All 30 automated tests pass, including the shared pointer transport, native
+export contract, and bidirectional desktop/source mapping tests.
+
+Remaining menu work is hover and laser presentation, scroll and back semantics,
+nested view elements, remaining custom-grid classes, and an in-headset
+controller acceptance pass.

@@ -113,6 +113,36 @@ std::optional<AbsolutePointerPosition> map_source_to_absolute_pointer(
                         (desktop.height - 1))};
 }
 
+std::optional<std::pair<std::uint32_t, std::uint32_t>>
+map_client_to_source_pointer(int client_x, int client_y,
+                             std::uint32_t client_width,
+                             std::uint32_t client_height,
+                             std::uint32_t source_width,
+                             std::uint32_t source_height) {
+  if (client_width == 0 || client_height == 0 || source_width == 0 ||
+      source_height == 0 || client_x < 0 || client_y < 0 ||
+      static_cast<std::uint32_t>(client_x) >= client_width ||
+      static_cast<std::uint32_t>(client_y) >= client_height) {
+    return std::nullopt;
+  }
+  const auto scale_coordinate = [](std::uint32_t value,
+                                   std::uint32_t source_extent,
+                                   std::uint32_t target_extent) {
+    if (source_extent <= 1 || target_extent <= 1) {
+      return std::uint32_t{0};
+    }
+    return static_cast<std::uint32_t>(
+        (static_cast<std::uint64_t>(value) * (target_extent - 1) +
+         (source_extent - 1) / 2) /
+        (source_extent - 1));
+  };
+  return std::pair{
+      scale_coordinate(static_cast<std::uint32_t>(client_x), client_width,
+                       source_width),
+      scale_coordinate(static_cast<std::uint32_t>(client_y), client_height,
+                       source_height)};
+}
+
 MenuInputInjector::MenuInputInjector(std::wstring title_substring)
     : title_substring_(std::move(title_substring)) {
   if (title_substring_.empty()) {
@@ -121,6 +151,34 @@ MenuInputInjector::MenuInputInjector(std::wstring title_substring)
 }
 
 MenuInputInjector::~MenuInputInjector() { release(); }
+
+std::optional<DesktopPointerSample> MenuInputInjector::read_desktop_pointer(
+    std::uint32_t source_width, std::uint32_t source_height) const {
+  const auto target = unique_window(title_substring_);
+  if (!target || GetForegroundWindow() != *target) {
+    return std::nullopt;
+  }
+  RECT rect{};
+  POINT pointer{};
+  if (!GetClientRect(*target, &rect) || !GetCursorPos(&pointer) ||
+      !ScreenToClient(*target, &pointer)) {
+    return std::nullopt;
+  }
+  const auto width = rect.right - rect.left;
+  const auto height = rect.bottom - rect.top;
+  if (width <= 0 || height <= 0) {
+    return std::nullopt;
+  }
+  const auto source = map_client_to_source_pointer(
+      pointer.x, pointer.y, static_cast<std::uint32_t>(width),
+      static_cast<std::uint32_t>(height), source_width, source_height);
+  if (!source) {
+    return std::nullopt;
+  }
+  return DesktopPointerSample{
+      source->first, source->second,
+      (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0};
+}
 
 bool MenuInputInjector::send_mouse_flags(DWORD flags, DWORD data) {
   INPUT input{};

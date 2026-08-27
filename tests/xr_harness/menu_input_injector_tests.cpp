@@ -7,6 +7,7 @@ int main() {
   using darktidevr::harness::ClientRectOnDesktop;
   using darktidevr::harness::DesktopRect;
   using darktidevr::harness::map_source_to_absolute_pointer;
+  using darktidevr::harness::map_client_to_source_pointer;
   try {
     const DesktopRect desktop{-1920, 0, 5760, 2160};
     const ClientRectOnDesktop client{0, 0, 1920, 1080};
@@ -27,6 +28,16 @@ int main() {
     const ClientRectOnDesktop outside{6000, 0, 1920, 1080};
     if (map_source_to_absolute_pointer(0, 0, 2112, 2304, outside, desktop)) {
       throw std::runtime_error("Off-desktop client was accepted");
+    }
+    const auto source_center =
+        map_client_to_source_pointer(960, 540, 1920, 1080, 2112, 2304);
+    const auto source_last =
+        map_client_to_source_pointer(1919, 1079, 1920, 1080, 2112, 2304);
+    if (!source_center || source_center->first != 1056 ||
+        source_center->second != 1153 || !source_last ||
+        source_last->first != 2111 || source_last->second != 2303 ||
+        map_client_to_source_pointer(-1, 0, 1920, 1080, 2112, 2304)) {
+      throw std::runtime_error("Client-to-source mapping contract failed");
     }
     std::cout << "menu_input_injector.result=pass\n";
     return 0;

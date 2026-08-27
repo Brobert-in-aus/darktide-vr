@@ -8,6 +8,19 @@ param(
 
     [switch] $FreshPsoCache,
 
+    [switch] $EnableMenuInput,
+
+    [switch] $SyntheticControllerPath,
+
+    [switch] $SyntheticGameplayInput,
+
+    [switch] $SyntheticBodyPath,
+
+    [switch] $SyntheticHeadSweep,
+
+    [ValidateRange(-2.0, 2.0)]
+    [double] $ProjectionTranslationScale = 1.0,
+
     [switch] $DoNotOpenLauncher
 )
 
@@ -53,6 +66,24 @@ if (-not $DoNotOpenLauncher) {
 }
 
 Write-Output 'Waiting for the Darktide splash window; XR will start as soon as it exists.'
-& $runner `
-    -DurationSeconds $DurationSeconds `
-    -WaitForGameSeconds $GameStartTimeoutSeconds
+$runnerArguments = @{
+    DurationSeconds = $DurationSeconds
+    WaitForGameSeconds = $GameStartTimeoutSeconds
+    ProjectionTranslationScale = $ProjectionTranslationScale
+}
+if ($EnableMenuInput) {
+    $runnerArguments.EnableMenuInput = $true
+}
+if ($SyntheticControllerPath) {
+    $runnerArguments.SyntheticControllerPath = $true
+}
+if ($SyntheticGameplayInput) {
+    $runnerArguments.SyntheticGameplayInput = $true
+}
+if ($SyntheticBodyPath) {
+    $runnerArguments.SyntheticBodyPath = $true
+}
+if ($SyntheticHeadSweep) {
+    $runnerArguments.SyntheticHeadSweep = $true
+}
+& $runner @runnerArguments

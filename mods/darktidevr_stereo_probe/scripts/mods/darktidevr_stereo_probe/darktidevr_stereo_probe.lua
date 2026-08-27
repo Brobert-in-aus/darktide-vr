@@ -165,6 +165,7 @@ local controller_observation = {
     right_aim_yaw = nil,
     right_aim_pitch = nil,
     right_aim_roll = nil,
+    right_trigger = 0,
     right_grip_usable = false,
     right_grip_flags = 0,
     right_grip_x = nil,
@@ -309,6 +310,31 @@ local presentation = {
     fullscreen_restore_delay_updates = 12,
     logged_view_classification = {},
     input_inventory_done = false,
+    active_menu_view_instance = nil,
+    active_menu_input_service = nil,
+    system_view_hovered_widget = nil,
+    system_view_source_widget = nil,
+    menu_pointer = {
+        values = nil,
+        sequence = nil,
+        timestamp_ns = nil,
+        last_sequence = 0,
+        active = false,
+        x = 0,
+        y = 0,
+        source_width = 0,
+        source_height = 0,
+        primary_down = false,
+        primary_pressed = false,
+        back_down = false,
+        back_pressed = false,
+    },
+    menu_input_probe = {
+        stage = "idle",
+        poll_updates = 0,
+        action = nil,
+        hovered_widget = nil,
+    },
     vendor_anchor = {
         valid = false,
         view_name = nil,
@@ -534,6 +560,9 @@ local function ensure_ui_native_hooks()
             unsigned int *tracking_flags, unsigned int *buttons,
             unsigned long long *sequence,
             unsigned long long *timestamp_ns);
+        int dtvr_read_menu_pointer_state(unsigned int *values,
+            unsigned long long *sequence,
+            unsigned long long *timestamp_ns);
         int dtvr_read_gameplay_input(int gameplay_active,
             unsigned long long *pressed, unsigned long long *held,
             unsigned long long *released, unsigned long long *sequence);
@@ -631,6 +660,11 @@ local function ensure_ui_native_hooks()
     controller_observation.buttons = ffi.new("unsigned int[2]")
     controller_observation.sequence = ffi.new("unsigned long long[1]")
     controller_observation.timestamp_ns = ffi.new("unsigned long long[1]")
+    presentation.menu_pointer.values = ffi.new("unsigned int[7]")
+    presentation.menu_pointer.sequence =
+        ffi.new("unsigned long long[1]")
+    presentation.menu_pointer.timestamp_ns =
+        ffi.new("unsigned long long[1]")
     controller_observation.gameplay_pressed =
         ffi.new("unsigned long long[1]")
     controller_observation.gameplay_held = ffi.new("unsigned long long[1]")
@@ -1137,6 +1171,148 @@ function presentation.scan_input_services(manager)
     mod:info("DARKTIDEVR_INPUT inventory result=complete")
 end
 
+-- Diagnostic one-shot actions retained from menu-input localization. The
+-- production path below no longer depends on Windows cursor or raw-input
+-- coordinates: OpenXR publishes source pixels and Lua activates the matching
+-- engine widget through force_input_pressed.
+function presentation.update_menu_input_probe(manager)
+    local probe = presentation.menu_input_probe
+    probe.poll_updates = (probe.poll_updates or 0) + 1
+    if probe.stage == "idle" and probe.poll_updates >= 15 and
+            Mods and Mods.lua and Mods.lua.io then
+        probe.poll_updates = 0
+        local flag_path =
+            "./../mods/darktidevr_stereo_probe/darktidevr_menu_input_probe.flag"
+        local flag = Mods.lua.io.open(flag_path, "r")
+        if flag then
+            local request = flag:read("*all")
+            flag:close()
+            local action = request and request:match("^%s*([%w_]+)%s*$")
+            if action and action ~= "consumed" then
+                local consumed = Mods.lua.io.open(flag_path, "w")
+                if consumed then
+                    consumed:write("consumed\n")
+                    consumed:close()
+                end
+                probe.action = action
+                probe.stage = "press"
+                mod:info(
+                    "DARKTIDEVR_MENU_INPUT probe armed action=%s",
+                    tostring(action))
+            end
+        end
+    end
+end
+
+function presentation.read_menu_pointer()
+    local pointer = presentation.menu_pointer
+    pointer.active = false
+    pointer.primary_pressed = false
+    pointer.back_pressed = false
+    if not ui_native_capture or not pointer.values or
+            ui_native_capture.dtvr_read_menu_pointer_state(
+                pointer.values,
+                pointer.sequence,
+                pointer.timestamp_ns) ~= 0 then
+        return pointer
+    end
+    local sequence = tonumber(pointer.sequence[0])
+    local timestamp_ns = tonumber(pointer.timestamp_ns[0])
+    local qpc_frequency = tonumber(ui_native_capture.dtvr_qpc_frequency())
+    local age_ns = math.huge
+    if qpc_frequency > 0 then
+        age_ns = tonumber(ui_native_capture.dtvr_qpc_ticks()) *
+            1000000000 / qpc_frequency - timestamp_ns
+    end
+    local is_new = sequence ~= pointer.last_sequence
+    pointer.x = tonumber(pointer.values[1])
+    pointer.y = tonumber(pointer.values[2])
+    pointer.source_width = tonumber(pointer.values[3])
+    pointer.source_height = tonumber(pointer.values[4])
+    pointer.active = tonumber(pointer.values[0]) ~= 0 and
+        pointer.source_width > 0 and pointer.source_height > 0 and
+        pointer.x >= 0 and pointer.x < pointer.source_width and
+        pointer.y >= 0 and pointer.y < pointer.source_height and
+        age_ns >= -5000000 and age_ns <= 100000000
+    if is_new then
+        local primary_down = tonumber(pointer.values[5]) ~= 0
+        local back_down = tonumber(pointer.values[6]) ~= 0
+        pointer.primary_pressed_sequence = pointer.active and primary_down and
+            not pointer.primary_down and sequence or nil
+        pointer.back_pressed_sequence = back_down and not pointer.back_down and
+            sequence or nil
+        pointer.primary_down = primary_down
+        pointer.back_down = back_down
+        pointer.last_sequence = sequence
+    end
+    pointer.primary_pressed = pointer.primary_pressed_sequence == sequence and
+        pointer.primary_consumed_sequence ~= sequence
+    pointer.back_pressed = pointer.back_pressed_sequence == sequence and
+        pointer.back_consumed_sequence ~= sequence
+    return pointer
+end
+
+function presentation.consume_menu_primary(pointer)
+    pointer.primary_consumed_sequence = pointer.last_sequence
+    pointer.primary_pressed = false
+end
+
+function presentation.widget_contains_menu_pointer(instance, widget, pointer)
+    if not pointer.active or not instance or not instance._ui_scenegraph or
+            not widget then
+        return false, nil
+    end
+    local scenegraph_id = widget.scenegraph_id
+    local scene = scenegraph_id and instance._ui_scenegraph[scenegraph_id]
+    local world = scene and scene.world_position
+    local offset = widget.offset or { 0, 0, 0 }
+    local size = widget.content and widget.content.size
+    if not size and widget.style and widget.style.hotspot then
+        size = widget.style.hotspot.size
+    end
+    size = size or (scene and scene.size)
+    if not world or not size or not size[1] or not size[2] then
+        return false, nil
+    end
+    local scale = RESOLUTION_LOOKUP.scale or 1
+    local resolution_width = RESOLUTION_LOOKUP.width
+    local resolution_height = RESOLUTION_LOOKUP.height
+    local pointer_x = pointer.x * resolution_width / pointer.source_width
+    local pointer_y = pointer.y * resolution_height / pointer.source_height
+    local left = (world[1] + (offset[1] or 0)) * scale
+    local top = (world[2] + (offset[2] or 0)) * scale
+    local width = size[1] * scale
+    local height = size[2] * scale
+    return pointer_x >= left and pointer_x <= left + width and
+        pointer_y >= top and pointer_y <= top + height,
+        {
+            pointer_x = pointer_x,
+            pointer_y = pointer_y,
+            left = left,
+            top = top,
+            width = width,
+            height = height,
+        }
+end
+
+function presentation.widget_hotspot(widget)
+    local content = widget and widget.content
+    if not content then
+        return nil
+    end
+    if content.hotspot then
+        return content.hotspot
+    end
+    local passes = widget.passes or {}
+    for i = 1, #passes do
+        local pass = passes[i]
+        if pass.pass_type == "hotspot" then
+            return pass.content_id and content[pass.content_id] or content
+        end
+    end
+    return nil
+end
+
 local function refresh_xr_render_extent()
     if not ui_native_capture or not head_pose_values or not head_pose_sequence then
         return false
@@ -1309,6 +1485,8 @@ local function apply_head_tracking(clean_position, clean_rotation)
             tonumber(controller_observation.values[30])
         controller_observation.right_grip_qw =
             tonumber(controller_observation.values[31])
+        controller_observation.right_trigger =
+            tonumber(controller_observation.values[32])
         if controller_observation.right_aim_usable then
             local right_aim_rotation = Quaternion.from_elements(
                 controller_observation.values[21],
@@ -2856,6 +3034,7 @@ end)
 
 mod:hook_safe("InputManager", "update", function(self)
     presentation.scan_input_services(self)
+    presentation.update_menu_input_probe(self)
 end)
 
 -- Conventional tracked-controller aim seam. It is observation-only unless an
@@ -4610,19 +4789,350 @@ mod:hook_safe(
     presentation.on_view_close(self, view_name)
 end)
 
+-- BaseView owns the common full-screen widget draw path used by options and
+-- most conventional menus. Resolve the XR ray against those engine-authored
+-- widget rectangles before their hotspot pass runs, then use the same
+-- force_input_pressed seam as BaseView.trigger_widget_pressed. Subclasses with
+-- custom dynamic grids (including SystemView below) retain dedicated hooks.
+mod:hook(
+    "BaseView",
+    "_draw_widgets",
+    function(func, self, dt, t, input_service, ui_renderer, ...)
+        local pointer = presentation.read_menu_pointer()
+        if pointer.active and pointer.primary_pressed then
+            local widgets = self._widgets or {}
+            for i = #widgets, 1, -1 do
+                local widget = widgets[i]
+                local hotspot = presentation.widget_hotspot(widget)
+                local source_hit =
+                    presentation.widget_contains_menu_pointer(
+                        self, widget, pointer)
+                if source_hit and hotspot and not hotspot.disabled then
+                    hotspot.force_input_pressed = true
+                    presentation.consume_menu_primary(pointer)
+                    mod:info(
+                        "DARKTIDEVR_MENU_INPUT base_source_activate view=%s widget=%s sequence=%d source=%d,%d/%dx%d",
+                        tostring(self.view_name or self.__class_name),
+                        tostring(widget.name),
+                        pointer.last_sequence,
+                        pointer.x,
+                        pointer.y,
+                        pointer.source_width,
+                        pointer.source_height)
+                    break
+                end
+            end
+        end
+        return func(self, dt, t, input_service, ui_renderer, ...)
+    end)
+
+-- OptionsView draws its category and settings widgets through two custom
+-- UIWidgetGrid passes before BaseView draws its static chrome. Arm the exact
+-- visible grid widget before that pass, and consume the edge only after a hit
+-- so stacked views cannot steal it merely by reading the shared sample.
+mod:hook(
+    "OptionsView",
+    "_draw_grid",
+    function(func, self, grid, widgets, interaction_widget, dt, t,
+            input_service, ...)
+        local pointer = presentation.read_menu_pointer()
+        if pointer.active then
+            for i = #widgets, 1, -1 do
+                local widget = widgets[i]
+                local visible = not grid or
+                    grid:is_widget_visible(widget)
+                local hotspot = presentation.widget_hotspot(widget)
+                local source_hit = visible and
+                    presentation.widget_contains_menu_pointer(
+                        self, widget, pointer)
+                if source_hit and hotspot and not hotspot.disabled then
+                    local interaction_hotspot =
+                        presentation.widget_hotspot(interaction_widget)
+                    if interaction_hotspot then
+                        interaction_hotspot.is_hover = true
+                    end
+                    if pointer.primary_pressed then
+                        hotspot.force_input_pressed = true
+                        presentation.consume_menu_primary(pointer)
+                        mod:info(
+                            "DARKTIDEVR_MENU_INPUT options_source_activate widget=%s sequence=%d source=%d,%d/%dx%d",
+                            tostring(widget.name),
+                            pointer.last_sequence,
+                            pointer.x,
+                            pointer.y,
+                            pointer.source_width,
+                            pointer.source_height)
+                    end
+                    break
+                end
+            end
+        end
+        return func(self, grid, widgets, interaction_widget, dt, t,
+            input_service, ...)
+    end)
+
 -- The current hub build opens its system menu through the preloaded
 -- SystemView instance without traversing the UIManager methods or active-view
 -- list used by loading/vendor views. Observe the lifecycle at the view class
 -- as an explicit compatibility seam.
-mod:hook_safe("SystemView", "on_enter", function()
+mod:hook_safe("SystemView", "on_enter", function(self)
+    presentation.active_menu_view_instance = self
+    local input_fields = {}
+    for key, value in pairs(self) do
+        if string.find(string.lower(tostring(key)), "input", 1, true) then
+            input_fields[#input_fields + 1] = tostring(key) .. ":" .. type(value)
+        end
+    end
+    table.sort(input_fields)
+    mod:info(
+        "DARKTIDEVR_MENU_INPUT system_view fields=%s",
+        #input_fields > 0 and table.concat(input_fields, ",") or "none")
     presentation.fullscreen_empty_updates = 0
     presentation.publish_mode(4, "SystemView.on_enter")
 end)
 
 mod:hook_safe("SystemView", "on_exit", function()
+    presentation.active_menu_view_instance = nil
+    presentation.active_menu_input_service = nil
+    presentation.system_view_hovered_widget = nil
+    presentation.system_view_source_widget = nil
     presentation.mode = 4
     presentation.fullscreen_empty_updates = 0
 end)
+
+mod:hook_safe(
+    "SystemView",
+    "update",
+    function(_, _, _, input_service)
+        presentation.active_menu_input_service = input_service
+    end)
+
+-- SystemView owns a dynamic grid outside BaseView._widgets. Resolve the XR
+-- source pixel before its hotspot pass and arm only the matching callback on
+-- the same atomic pointer/button sample.
+mod:hook(
+    "SystemView",
+    "_draw_widgets",
+    function(func, self, dt, t, input_service, ui_renderer, ...)
+        presentation.system_view_hovered_widget = nil
+        presentation.system_view_source_widget = nil
+        local pointer = presentation.read_menu_pointer()
+        local widgets = self._content_widgets or {}
+        for i = 1, #widgets do
+            local widget = widgets[i]
+            local hotspot = widget and widget.content and
+                widget.content.hotspot
+            local source_hit =
+                presentation.widget_contains_menu_pointer(
+                    self, widget, pointer)
+            if source_hit and hotspot and not hotspot.disabled and
+                    not presentation.system_view_source_widget then
+                presentation.system_view_source_widget = widget
+                if pointer.primary_pressed then
+                    hotspot.force_input_pressed = true
+                    presentation.consume_menu_primary(pointer)
+                    mod:info(
+                        "DARKTIDEVR_MENU_INPUT source_activate widget=%s sequence=%d source=%d,%d/%dx%d",
+                        tostring(widget.name),
+                        pointer.last_sequence,
+                        pointer.x,
+                        pointer.y,
+                        pointer.source_width,
+                        pointer.source_height)
+                end
+            end
+        end
+        local result = func(self, dt, t, input_service, ui_renderer, ...)
+        local inventory_requested = false
+        local inventory_path =
+            "./../mods/darktidevr_stereo_probe/darktidevr_hotspot_inventory.flag"
+        if Mods and Mods.lua and Mods.lua.io then
+            local flag = Mods.lua.io.open(inventory_path, "r")
+            if flag then
+                local request = flag:read("*all")
+                flag:close()
+                inventory_requested = request and
+                    string.find(request, "scan", 1, true) ~= nil
+                if inventory_requested then
+                    local consumed = Mods.lua.io.open(inventory_path, "w")
+                    if consumed then
+                        consumed:write("consumed\n")
+                        consumed:close()
+                    end
+                end
+            end
+        end
+        for i = 1, #widgets do
+            local widget = widgets[i]
+            local hotspot = widget and widget.content and
+                widget.content.hotspot
+            local source_hit, geometry =
+                presentation.widget_contains_menu_pointer(
+                    self, widget, pointer)
+            if inventory_requested and hotspot then
+                local fields = {}
+                for key, value in pairs(hotspot) do
+                    local lower = string.lower(tostring(key))
+                    if type(value) == "boolean" or
+                            string.find(lower, "hover", 1, true) or
+                            string.find(lower, "focus", 1, true) or
+                            string.find(lower, "press", 1, true) or
+                            string.find(lower, "select", 1, true) then
+                        fields[#fields + 1] =
+                            tostring(key) .. "=" .. tostring(value)
+                    end
+                end
+                table.sort(fields)
+                mod:info(
+                    "DARKTIDEVR_MENU_INPUT hotspot widget=%s index=%d text=%s fields=%s source_hit=%s geometry=%s",
+                    tostring(widget.name),
+                    i,
+                    tostring(widget.content.text),
+                    table.concat(fields, ","),
+                    tostring(source_hit),
+                    geometry and string.format(
+                        "pointer=%.1f,%.1f rect=%.1f,%.1f,%.1f,%.1f source=%d,%d/%dx%d",
+                        geometry.pointer_x,
+                        geometry.pointer_y,
+                        geometry.left,
+                        geometry.top,
+                        geometry.width,
+                        geometry.height,
+                        pointer.x,
+                        pointer.y,
+                        pointer.source_width,
+                        pointer.source_height) or "unavailable")
+            end
+            if hotspot and hotspot.is_hover and not hotspot.disabled and
+                    not presentation.system_view_hovered_widget then
+                presentation.system_view_hovered_widget = widget
+            end
+        end
+        return result
+    end)
+
+-- Hotspots are evaluated while the view draws, after SystemView.update. Keep
+-- the simulated edge alive for exactly that call so the probe exercises the
+-- same phase as a real pointer button without leaking input into gameplay.
+mod:hook(
+    "SystemView",
+    "draw",
+    function(func, self, dt, t, input_service, layer, ...)
+        presentation.active_menu_input_service = input_service
+        local probe = presentation.menu_input_probe
+        local simulated = false
+        local forced_hotspot = false
+        if probe.stage == "press" and probe.action == "force_options" then
+            local widgets = self._content_widgets or {}
+            for i = 1, #widgets do
+                local widget = widgets[i]
+                local content = widget and widget.content
+                local text = content and string.lower(tostring(content.text or ""))
+                local hotspot = content and content.hotspot
+                if hotspot and not hotspot.disabled and
+                        string.find(text, "options", 1, true) then
+                    hotspot.force_input_pressed = true
+                    forced_hotspot = true
+                    mod:info(
+                        "DARKTIDEVR_MENU_INPUT probe forced_options widget=%s index=%d text=%s",
+                        tostring(widget.name),
+                        i,
+                        tostring(content.text))
+                    break
+                end
+            end
+            if not forced_hotspot then
+                probe.stage = "blocked"
+                mod:error(
+                    "DARKTIDEVR_MENU_INPUT probe blocked action=force_options reason=options_widget_missing")
+            end
+        elseif probe.stage == "force_pending" and probe.hovered_widget then
+            local hotspot = probe.hovered_widget.content and
+                probe.hovered_widget.content.hotspot
+            if hotspot and not hotspot.disabled then
+                hotspot.force_input_pressed = true
+                forced_hotspot = true
+                mod:info(
+                    "DARKTIDEVR_MENU_INPUT probe forced_hovered widget=%s",
+                    tostring(probe.hovered_widget.name))
+            else
+                probe.stage = "blocked"
+                mod:error(
+                    "DARKTIDEVR_MENU_INPUT probe blocked action=force_hovered reason=saved_hotspot_invalid")
+            end
+        elseif probe.stage == "press" and
+                probe.action ~= "force_hovered" and input_service then
+            local ok, error_message = pcall(
+                input_service.start_simulate_action,
+                input_service,
+                probe.action,
+                1)
+            if ok then
+                simulated = true
+                local get_ok, simulated_value = pcall(
+                    input_service.get,
+                    input_service,
+                    probe.action)
+                mod:info(
+                    "DARKTIDEVR_MENU_INPUT probe pressed action=%s service=system_view_pre_draw get_ok=%s value=%s stored=%s",
+                    tostring(probe.action),
+                    tostring(get_ok),
+                    tostring(simulated_value),
+                    tostring(input_service._simulated_actions and
+                        input_service._simulated_actions[probe.action]))
+            else
+                probe.stage = "blocked"
+                mod:error(
+                    "DARKTIDEVR_MENU_INPUT probe blocked action=%s error=%s",
+                    tostring(probe.action),
+                    tostring(error_message))
+            end
+        end
+
+        local result = func(self, dt, t, input_service, layer, ...)
+
+        if probe.stage == "press" and probe.action == "force_hovered" then
+            local widget = presentation.system_view_hovered_widget
+            if widget then
+                probe.hovered_widget = widget
+                probe.stage = "force_pending"
+                mod:info(
+                    "DARKTIDEVR_MENU_INPUT probe observed_hover widget=%s",
+                    tostring(widget.name))
+            end
+            if probe.stage ~= "force_pending" then
+                probe.stage = "blocked"
+                mod:error(
+                    "DARKTIDEVR_MENU_INPUT probe blocked action=force_hovered reason=hovered_hotspot_missing_after_draw")
+            end
+        elseif forced_hotspot then
+            probe.stage = "idle"
+            probe.poll_updates = 0
+            probe.hovered_widget = nil
+            mod:info(
+                "DARKTIDEVR_MENU_INPUT probe released action=%s phase=system_view_post_draw",
+                tostring(probe.action))
+        elseif simulated then
+            local ok, error_message = pcall(
+                input_service.stop_simulate_action,
+                input_service,
+                probe.action)
+            probe.stage = ok and "idle" or "blocked"
+            probe.poll_updates = 0
+            if ok then
+                mod:info(
+                    "DARKTIDEVR_MENU_INPUT probe released action=%s phase=system_view_post_draw",
+                    tostring(probe.action))
+            else
+                mod:error(
+                    "DARKTIDEVR_MENU_INPUT probe release_failed action=%s error=%s",
+                    tostring(probe.action),
+                    tostring(error_message))
+            end
+        end
+
+        return result
+    end)
 
 mod:hook_safe("CameraManager", "_update_camera", function(self, _, _, viewport_name)
     if viewport_name ~= primary_viewport_name then

@@ -9,6 +9,7 @@ add_library(darktidevr_core STATIC
   presentation_policy.cpp
   shared_controller_state.cpp
   shared_head_pose.cpp
+  shared_menu_pointer_state.cpp
   shared_presentation_state.cpp
   two_bone_ik.cpp
   xr_math.cpp

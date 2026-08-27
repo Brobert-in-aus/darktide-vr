@@ -13,6 +13,8 @@ param(
 
     [switch] $SyntheticControllerPath,
 
+    [switch] $SyntheticGameplayInput,
+
     [switch] $SyntheticBodyPath,
 
     [switch] $SyntheticHeadSweep,
@@ -83,6 +85,12 @@ if ($EnableMenuInput) {
 }
 if ($SyntheticControllerPath) {
     $arguments += '--synthetic-controller-path'
+}
+if ($SyntheticGameplayInput) {
+    if (-not $SyntheticControllerPath) {
+        throw '-SyntheticGameplayInput requires -SyntheticControllerPath'
+    }
+    $arguments += '--synthetic-gameplay-input'
 }
 if ($SyntheticBodyPath) {
     if (-not $SyntheticControllerPath) {

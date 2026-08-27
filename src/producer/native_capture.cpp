@@ -11,6 +11,7 @@
 #include "core/gameplay_input.h"
 #include "core/shared_head_pose.h"
 #include "core/shared_controller_state.h"
+#include "core/shared_menu_pointer_state.h"
 #include "core/shared_presentation_state.h"
 #include "core/two_bone_ik.h"
 
@@ -603,6 +604,12 @@ darktidevr::core::SharedHeadPoseReader& shared_head_pose_reader() {
 }
 darktidevr::core::SharedControllerStateReader& shared_controller_state_reader() {
   static darktidevr::core::SharedControllerStateReader reader;
+  return reader;
+}
+
+darktidevr::core::SharedMenuPointerStateReader&
+shared_menu_pointer_state_reader() {
+  static darktidevr::core::SharedMenuPointerStateReader reader;
   return reader;
 }
 darktidevr::core::GameplayInputMapper& gameplay_input_mapper() {
@@ -8158,6 +8165,27 @@ extern "C" __declspec(dllexport) int dtvr_read_controller_state(
     tracking_flags[hand * 2 + 1] = source.body_grip_tracking_flags;
     buttons[hand] = source.buttons;
   }
+  *sequence = sample.sequence;
+  *timestamp_ns = sample.timestamp_ns;
+  return 0;
+}
+extern "C" __declspec(dllexport) int dtvr_read_menu_pointer_state(
+    unsigned int* values, unsigned long long* sequence,
+    unsigned long long* timestamp_ns) {
+  if (!values || !sequence || !timestamp_ns) {
+    return 1;
+  }
+  darktidevr::core::SharedMenuPointerState sample{};
+  if (!shared_menu_pointer_state_reader().read(sample)) {
+    return 2;
+  }
+  values[0] = sample.active ? 1U : 0U;
+  values[1] = sample.source_x;
+  values[2] = sample.source_y;
+  values[3] = sample.source_width;
+  values[4] = sample.source_height;
+  values[5] = sample.primary_down ? 1U : 0U;
+  values[6] = sample.back_down ? 1U : 0U;
   *sequence = sample.sequence;
   *timestamp_ns = sample.timestamp_ns;
   return 0;
