@@ -27,6 +27,8 @@ std::vector<MenuPointerEvent> MenuPointerInputState::update(
     active_ = false;
     trigger_down_ = false;
     back_down_ = false;
+    back_armed_ = false;
+    back_release_start_seconds_ = -1.0;
     scroll_direction_ = 0;
     next_scroll_repeat_time_ = 0.0;
     last_time_seconds_ = input.time_seconds;
@@ -36,6 +38,8 @@ std::vector<MenuPointerEvent> MenuPointerInputState::update(
     active_ = true;
     trigger_down_ = trigger_down;
     back_down_ = input.back;
+    back_armed_ = false;
+    back_release_start_seconds_ = input.back ? -1.0 : input.time_seconds;
     scroll_direction_ = scroll_direction;
     next_scroll_repeat_time_ = scroll_direction == 0
                                    ? 0.0
@@ -63,7 +67,20 @@ std::vector<MenuPointerEvent> MenuPointerInputState::update(
     }
     trigger_down_ = trigger_down && input.source_position.has_value();
   }
-  if (input.back && !back_down_) {
+  if (!back_armed_) {
+    constexpr double release_settle_seconds = 0.1;
+    if (input.back) {
+      back_release_start_seconds_ = -1.0;
+    } else {
+      if (back_release_start_seconds_ < 0.0) {
+        back_release_start_seconds_ = input.time_seconds;
+      }
+      if (input.time_seconds - back_release_start_seconds_ >=
+          release_settle_seconds) {
+        back_armed_ = true;
+      }
+    }
+  } else if (input.back && !back_down_) {
     events.push_back({MenuPointerEventType::back});
   }
   back_down_ = input.back;

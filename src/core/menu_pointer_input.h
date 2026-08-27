@@ -41,6 +41,8 @@ class MenuPointerInputState {
   bool active_{};
   bool trigger_down_{};
   bool back_down_{};
+  bool back_armed_{};
+  double back_release_start_seconds_{-1.0};
   int scroll_direction_{};
   double next_scroll_repeat_time_{};
   double last_time_seconds_{};

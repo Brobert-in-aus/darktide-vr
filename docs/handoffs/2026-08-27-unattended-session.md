@@ -144,12 +144,14 @@ Back and scroll events so unattended checks can produce a deterministic click
 without depending on a controller being awake or a desktop mouse-down lasting
 long enough to cross a compositor sample.
 
-One controller-state edge remains to diagnose. On the first SystemView open
-with sleeping controllers, a shared Back edge immediately closed the view;
-the second open remained stable. The UI state machine already adopts the
-button level when entering menu mode, so this appears to be a subsequent
-short-lived OpenXR action transition rather than the original coordinate
-misalignment. Keep this separate from the now-validated hit-test path.
+The first SystemView open with sleeping controllers exposed a separate input
+edge: a short-lived OpenXR Back transition immediately closed the view, while
+the second open remained stable. Back now stays disarmed on menu entry until
+the action has reported released continuously for 100 ms. Automated coverage
+confirms that an entry transient is suppressed and that a genuine Back press
+after the settled release is delivered. This needs one live sleeping-controller
+verification, but it is independent of the validated source-space hit-test
+path.
 
 ## Validation
 

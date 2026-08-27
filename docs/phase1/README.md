@@ -764,6 +764,12 @@ uses the engine grid's scrollbar API. A live XR scroll moved Audio from its top
 rows to Headshot/Backstab Sound and logged one consumed sequence. Click, hover,
 scroll and nested Back therefore have desktop/live-log validation.
 
+A sleeping controller produced one short-lived Back transition immediately
+after the first SystemView was opened. The native input state now requires a
+continuous 100 ms released level before arming Back on menu entry. Tests cover
+both transient suppression and re-arming for the next intentional press; a
+live sleeping-controller confirmation remains outstanding.
+
 A stale native DLL in the mod-local `bin` directory initially made the new
 mapping appear unreadable even though the harness published it correctly. Lua
 loads that copy, while other native paths used the `binaries` copy. The
