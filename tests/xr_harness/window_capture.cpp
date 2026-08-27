@@ -161,7 +161,8 @@ CapturedWindowFrame WindowCapture::capture() {
     const auto centre_y = static_cast<int>(
         (static_cast<std::int64_t>(normalized_y) * (height_ - 1) + 32767) /
         65535);
-    const auto set_pixel = [&](int x, int y, std::byte value) {
+    const auto set_pixel = [&](int x, int y, std::byte blue,
+                               std::byte green, std::byte red) {
       if (x < 0 || y < 0 || x >= static_cast<int>(width_) ||
           y >= static_cast<int>(height_)) {
         return;
@@ -170,24 +171,30 @@ CapturedWindowFrame WindowCapture::capture() {
                     (static_cast<std::size_t>(y) * width_ +
                      static_cast<std::size_t>(x)) *
                         4;
-      pixel[0] = value;
-      pixel[1] = value;
-      pixel[2] = value;
+      pixel[0] = blue;
+      pixel[1] = green;
+      pixel[2] = red;
       pixel[3] = std::byte{255};
     };
-    for (int offset = -8; offset <= 8; ++offset) {
-      for (int thickness = -2; thickness <= 2; ++thickness) {
-        set_pixel(centre_x + offset, centre_y + thickness, std::byte{255});
-        set_pixel(centre_x + thickness, centre_y + offset, std::byte{255});
+    // Draw a compact high-contrast reticle directly into the captured menu
+    // image. It therefore follows the exact source-space coordinate consumed
+    // by Darktide's hotspots and remains visible in both the headset panel and
+    // diagnostic capture, independently of the OS cursor.
+    for (int y = -11; y <= 11; ++y) {
+      for (int x = -11; x <= 11; ++x) {
+        const auto distance_squared = x * x + y * y;
+        if (distance_squared <= 121 && distance_squared >= 81) {
+          set_pixel(centre_x + x, centre_y + y, std::byte{0},
+                    std::byte{0}, std::byte{0});
+        } else if (distance_squared < 81 && distance_squared >= 36) {
+          set_pixel(centre_x + x, centre_y + y, std::byte{255},
+                    std::byte{220}, std::byte{0});
+        } else if (distance_squared < 16) {
+          set_pixel(centre_x + x, centre_y + y, std::byte{255},
+                    std::byte{255}, std::byte{255});
+        }
       }
     }
-    for (int offset = -10; offset <= 10; ++offset) {
-      set_pixel(centre_x + offset, centre_y - 3, std::byte{0});
-      set_pixel(centre_x + offset, centre_y + 3, std::byte{0});
-      set_pixel(centre_x - 3, centre_y + offset, std::byte{0});
-      set_pixel(centre_x + 3, centre_y + offset, std::byte{0});
-    }
-    set_pixel(centre_x, centre_y, std::byte{255});
   }
   return {pixels_, width_, height_, width_ * 4};
 }

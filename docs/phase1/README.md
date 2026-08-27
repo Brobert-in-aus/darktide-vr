@@ -772,6 +772,7 @@ both destinations and verifies SHA-256 equality before opening the launcher.
 
 All 30 automated tests pass, including the shared pointer transport, native
 export contract, and bidirectional desktop/source mapping tests. Remaining
-menu work is a rendered controller laser/dot, sliders/dropdowns/text input,
+menu work is a controller laser (the captured panel now has a high-contrast
+source-space reticle), sliders/dropdowns/text input,
 remaining custom-grid classes, the fixed spatial menu panel itself, and an
 in-headset controller acceptance pass.

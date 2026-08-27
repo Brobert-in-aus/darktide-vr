@@ -46,6 +46,8 @@ namespace {
 constexpr UINT kBufferCount = 2;
 constexpr UINT kWidth = 960;
 constexpr UINT kHeight = 540;
+constexpr auto kMenuTestPrimaryEvent =
+    L"Local\\DarktideVR-menu-test-primary";
 constexpr auto kMenuTestBackEvent = L"Local\\DarktideVR-menu-test-back";
 constexpr auto kMenuTestScrollUpEvent =
     L"Local\\DarktideVR-menu-test-scroll-up";
@@ -664,6 +666,7 @@ class OpenXrProbe {
         menu_input_injector;
     std::uint64_t menu_input_events{};
     std::uint64_t menu_input_dispatched{};
+    HANDLE menu_test_primary_event{};
     HANDLE menu_test_back_event{};
     HANDLE menu_test_scroll_up_event{};
     HANDLE menu_test_scroll_down_event{};
@@ -676,14 +679,20 @@ class OpenXrProbe {
       std::cout << "openxr.menu_input=desktop-source-only\n";
     }
     if (enable_menu_test_controls) {
+      menu_test_primary_event =
+          CreateEventW(nullptr, FALSE, FALSE, kMenuTestPrimaryEvent);
       menu_test_back_event =
           CreateEventW(nullptr, FALSE, FALSE, kMenuTestBackEvent);
       menu_test_scroll_up_event =
           CreateEventW(nullptr, FALSE, FALSE, kMenuTestScrollUpEvent);
       menu_test_scroll_down_event =
           CreateEventW(nullptr, FALSE, FALSE, kMenuTestScrollDownEvent);
-      if (!menu_test_back_event || !menu_test_scroll_up_event ||
+      if (!menu_test_primary_event || !menu_test_back_event ||
+          !menu_test_scroll_up_event ||
           !menu_test_scroll_down_event) {
+        if (menu_test_primary_event) {
+          CloseHandle(menu_test_primary_event);
+        }
         if (menu_test_back_event) {
           CloseHandle(menu_test_back_event);
         }
@@ -1474,6 +1483,7 @@ class OpenXrProbe {
           desktop_pointer_primary_down = desktop_pointer->primary_down;
         }
       }
+      bool shared_menu_primary_down{};
       int shared_menu_scroll_steps{};
       bool shared_menu_back_down{};
       if (menu_input_injector) {
@@ -1519,6 +1529,11 @@ class OpenXrProbe {
         }
       }
       if (enable_menu_test_controls) {
+        if (WaitForSingleObject(menu_test_primary_event, 0) ==
+            WAIT_OBJECT_0) {
+          shared_menu_primary_down = true;
+          std::cout << "openxr.menu_test_event=primary\n";
+        }
         if (WaitForSingleObject(menu_test_back_event, 0) == WAIT_OBJECT_0) {
           shared_menu_back_down = true;
           std::cout << "openxr.menu_test_event=back\n";
@@ -1572,6 +1587,8 @@ class OpenXrProbe {
         if (desktop_pointer_active) {
           shared_pointer.primary_down = desktop_pointer_primary_down;
         }
+        shared_pointer.primary_down =
+            shared_pointer.primary_down || shared_menu_primary_down;
         if (shared_pointer.active && shared_pointer.primary_down &&
             !last_shared_menu_primary_down) {
           ++menu_primary_press_sequence;
@@ -1834,6 +1851,9 @@ class OpenXrProbe {
       upload_pixels = nullptr;
     }
     CloseHandle(fence_event);
+    if (menu_test_primary_event) {
+      CloseHandle(menu_test_primary_event);
+    }
     if (menu_test_back_event) {
       CloseHandle(menu_test_back_event);
     }

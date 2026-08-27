@@ -129,6 +129,28 @@ source Lua and Release native DLL to both native destinations and verifying all
 three hashes. This prevents future protocol tests from being invalidated by a
 stale loaded bridge.
 
+The following clean hub run directly reproduced the user's desktop symptom
+and then verified the fix. The desktop mirror remained on the world while the
+Quest capture showed SystemView on the spatial panel. Clicking desktop client
+coordinate `(210,376)` was published as a source-space activation and opened
+the `Mod Options` row selected by that source pixel. This proves that a menu
+does not need to be displayed in the desktop mirror for desktop debugging to
+activate its XR-visible engine widget.
+
+The capture overlay now draws a compact black-outlined cyan reticle at the
+same normalized source coordinate used by the hit test. A named
+`Local\DarktideVR-menu-test-primary` event was added alongside the existing
+Back and scroll events so unattended checks can produce a deterministic click
+without depending on a controller being awake or a desktop mouse-down lasting
+long enough to cross a compositor sample.
+
+One controller-state edge remains to diagnose. On the first SystemView open
+with sleeping controllers, a shared Back edge immediately closed the view;
+the second open remained stable. The UI state machine already adopts the
+button level when entering menu mode, so this appears to be a subsequent
+short-lived OpenXR action transition rather than the original coordinate
+misalignment. Keep this separate from the now-validated hit-test path.
+
 ## Validation
 
 Executed on the Windows/D3D12 development PC:

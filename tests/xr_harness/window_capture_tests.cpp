@@ -62,6 +62,12 @@ int wmain() {
     expect(centre[0] == std::byte{255} && centre[1] == std::byte{255} &&
                centre[2] == std::byte{255},
            "Pointer overlay was not visible at the mapped source position");
+    const auto cyan_ring = with_pointer.bgra_pixels +
+                           (static_cast<std::size_t>(45) * 160 + 87) * 4;
+    expect(cyan_ring[0] == std::byte{255} &&
+               cyan_ring[1] == std::byte{220} &&
+               cyan_ring[2] == std::byte{0},
+           "Pointer overlay ring did not use its high-contrast colour");
     capture.set_pointer_overlay(std::nullopt, 160, 90);
 
     ShowWindow(window, SW_MINIMIZE);
