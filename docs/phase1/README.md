@@ -784,8 +784,24 @@ same widget. Hidden options fail closed and expanded options participate only
 while the widget has exclusive focus. Opening a dropdown is routed through
 OptionsView's exclusive-focus coordinator rather than pretending it is a
 normal button press. The base Screen Mode row is live-reachable; selecting an
-expanded option remains the next live acceptance gate, followed by sliders and
-text input.
+expanded option is now also live-reachable. A strict named-button run logged
+`widget_setting_84:option_hotspot_1` at source `(1482,515)/2112x2304`, proving
+that the nested option was selected by the shared XR edge rather than only by
+Darktide's desktop cursor. XR option activation now schedules the matching
+cursor-mode focus close one completed OptionsView update later.
+
+Slider discovery uses the widgets' engine-authored pass geometry rather than
+screen estimates. The Video FOV `value_slider` reported a 550-source-pixel
+`track_hotspot`, a normalized value of `0.5`, and a `0.025` step. XR slider
+dragging now captures the widget on trigger-down, snaps the source-space ray to
+the authored step, retains capture if a presentation sample is temporarily
+inactive, and releases only on a fresh button-up sample. The held-trigger test
+controls provide separate primary-down/up events for deterministic unattended
+drag tests. The final live gate began and ended the Video FOV drag at normalized
+`0.5000`; after release the visible setting remained at 65 degrees. This
+confirms that transient engine resynchronization no longer overwrites the last
+XR-authored value and accepts sliders for this menu milestone. Text input is
+the next control class.
 
 A stale native DLL in the mod-local `bin` directory initially made the new
 mapping appear unreadable even though the harness published it correctly. Lua
@@ -796,6 +812,5 @@ both destinations and verifies SHA-256 equality before opening the launcher.
 All 30 automated tests pass, including the shared pointer transport, native
 export contract, and bidirectional desktop/source mapping tests. Remaining
 menu work is a controller laser (the captured panel now has a high-contrast
-source-space reticle), expanded dropdown selection/sliders/text input,
-remaining custom-grid classes, the fixed spatial menu panel itself, and an
-in-headset controller acceptance pass.
+source-space reticle), text input, remaining custom-grid classes, the fixed
+spatial menu panel itself, and an in-headset controller acceptance pass.

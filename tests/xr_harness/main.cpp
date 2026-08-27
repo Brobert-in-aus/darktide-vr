@@ -48,6 +48,10 @@ constexpr UINT kWidth = 960;
 constexpr UINT kHeight = 540;
 constexpr auto kMenuTestPrimaryEvent =
     L"Local\\DarktideVR-menu-test-primary";
+constexpr auto kMenuTestPrimaryDownEvent =
+    L"Local\\DarktideVR-menu-test-primary-down";
+constexpr auto kMenuTestPrimaryUpEvent =
+    L"Local\\DarktideVR-menu-test-primary-up";
 constexpr auto kMenuTestBackEvent = L"Local\\DarktideVR-menu-test-back";
 constexpr auto kMenuTestScrollUpEvent =
     L"Local\\DarktideVR-menu-test-scroll-up";
@@ -666,9 +670,12 @@ class OpenXrProbe {
     std::uint64_t menu_input_events{};
     std::uint64_t menu_input_dispatched{};
     HANDLE menu_test_primary_event{};
+    HANDLE menu_test_primary_down_event{};
+    HANDLE menu_test_primary_up_event{};
     HANDLE menu_test_back_event{};
     HANDLE menu_test_scroll_up_event{};
     HANDLE menu_test_scroll_down_event{};
+    bool menu_test_primary_held{};
     menu_input_injector =
         std::make_unique<darktidevr::harness::MenuInputInjector>(
             menu_input_title);
@@ -680,17 +687,28 @@ class OpenXrProbe {
     if (enable_menu_test_controls) {
       menu_test_primary_event =
           CreateEventW(nullptr, FALSE, FALSE, kMenuTestPrimaryEvent);
+      menu_test_primary_down_event =
+          CreateEventW(nullptr, FALSE, FALSE, kMenuTestPrimaryDownEvent);
+      menu_test_primary_up_event =
+          CreateEventW(nullptr, FALSE, FALSE, kMenuTestPrimaryUpEvent);
       menu_test_back_event =
           CreateEventW(nullptr, FALSE, FALSE, kMenuTestBackEvent);
       menu_test_scroll_up_event =
           CreateEventW(nullptr, FALSE, FALSE, kMenuTestScrollUpEvent);
       menu_test_scroll_down_event =
           CreateEventW(nullptr, FALSE, FALSE, kMenuTestScrollDownEvent);
-      if (!menu_test_primary_event || !menu_test_back_event ||
+      if (!menu_test_primary_event || !menu_test_primary_down_event ||
+          !menu_test_primary_up_event || !menu_test_back_event ||
           !menu_test_scroll_up_event ||
           !menu_test_scroll_down_event) {
         if (menu_test_primary_event) {
           CloseHandle(menu_test_primary_event);
+        }
+        if (menu_test_primary_down_event) {
+          CloseHandle(menu_test_primary_down_event);
+        }
+        if (menu_test_primary_up_event) {
+          CloseHandle(menu_test_primary_up_event);
         }
         if (menu_test_back_event) {
           CloseHandle(menu_test_back_event);
@@ -1474,8 +1492,13 @@ class OpenXrProbe {
         const auto source_height = presentation_state.source_height;
         const auto desktop_pointer = menu_input_injector->read_desktop_pointer(
             source_width, source_height);
+        // Test controls deliberately use desktop hover as the ray position so
+        // a named button event can validate Lua routing without also sending
+        // a native desktop click. Production keeps tracked-controller aim
+        // authoritative until the desktop mouse is actually pressed.
         if (desktop_pointer &&
-            (!menu_pointer_position || desktop_pointer->primary_down)) {
+            (enable_menu_test_controls || !menu_pointer_position ||
+             desktop_pointer->primary_down)) {
           menu_pointer_position =
               std::pair{desktop_pointer->source_x, desktop_pointer->source_y};
           desktop_pointer_active = true;
@@ -1533,6 +1556,16 @@ class OpenXrProbe {
         }
       }
       if (enable_menu_test_controls) {
+        if (WaitForSingleObject(menu_test_primary_down_event, 0) ==
+            WAIT_OBJECT_0) {
+          menu_test_primary_held = true;
+          std::cout << "openxr.menu_test_event=primary_down\n";
+        }
+        if (WaitForSingleObject(menu_test_primary_up_event, 0) ==
+            WAIT_OBJECT_0) {
+          menu_test_primary_held = false;
+          std::cout << "openxr.menu_test_event=primary_up\n";
+        }
         if (WaitForSingleObject(menu_test_primary_event, 0) ==
             WAIT_OBJECT_0) {
           shared_menu_primary_down = true;
@@ -1553,6 +1586,8 @@ class OpenXrProbe {
           shared_menu_scroll_steps = -1;
           std::cout << "openxr.menu_test_event=scroll_down\n";
         }
+        shared_menu_primary_down =
+            shared_menu_primary_down || menu_test_primary_held;
       }
       {
         const auto source_width = presentation_sequence != 0
@@ -1858,6 +1893,12 @@ class OpenXrProbe {
     CloseHandle(fence_event);
     if (menu_test_primary_event) {
       CloseHandle(menu_test_primary_event);
+    }
+    if (menu_test_primary_down_event) {
+      CloseHandle(menu_test_primary_down_event);
+    }
+    if (menu_test_primary_up_event) {
+      CloseHandle(menu_test_primary_up_event);
     }
     if (menu_test_back_event) {
       CloseHandle(menu_test_back_event);

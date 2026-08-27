@@ -314,6 +314,8 @@ local presentation = {
     active_menu_input_service = nil,
     system_view_hovered_widget = nil,
     system_view_source_widget = nil,
+    dropdown_close_pending = nil,
+    slider_drag = nil,
     menu_pointer = {
         values = nil,
         sequence = nil,
@@ -1112,6 +1114,47 @@ function presentation.update_psykhanium(manager, t)
     end
 end
 
+function presentation.update_system_menu_test(manager)
+    if not Mods or not Mods.lua or not Mods.lua.io then
+        return
+    end
+
+    local flag_path =
+        "./../mods/darktidevr_stereo_probe/darktidevr_open_system_menu.flag"
+    local flag = Mods.lua.io.open(flag_path, "r")
+    if not flag then
+        return
+    end
+
+    local request = flag:read("*all")
+    flag:close()
+    if not string.find(request or "", "open", 1, true) then
+        return
+    end
+
+    local consumed = Mods.lua.io.open(flag_path, "w")
+    if consumed then
+        consumed:write("consumed\n")
+        consumed:close()
+    end
+
+    if manager:view_active("system_view") then
+        mod:info(
+            "DARKTIDEVR_MENU_INPUT system_menu_test result=already_active")
+        return
+    end
+
+    local ok, result = pcall(manager.open_view, manager, "system_view")
+    if ok then
+        mod:info(
+            "DARKTIDEVR_MENU_INPUT system_menu_test result=requested")
+    else
+        mod:error(
+            "DARKTIDEVR_MENU_INPUT system_menu_test result=failed error=%s",
+            tostring(result))
+    end
+end
+
 function presentation.scan_input_services(manager)
     if presentation.input_inventory_done or not Mods or not Mods.lua or
             not Mods.lua.io then
@@ -1426,6 +1469,19 @@ function presentation.widget_contains_menu_pointer(instance, widget, pointer,
         }
 end
 
+function presentation.is_dropdown_widget(widget)
+    local content = widget and widget.content
+    return widget and (widget.type == "dropdown" or
+        (content and type(content.options) == "table" and
+            content.option_hotspot_1 ~= nil))
+end
+
+function presentation.is_slider_widget(widget)
+    local content = widget and widget.content
+    return content and type(content.slider_value) == "number" and
+        type(content.entry) == "table"
+end
+
 function presentation.widget_hotspot_entries(widget)
     local content = widget and widget.content
     if not content then
@@ -1448,7 +1504,7 @@ function presentation.widget_hotspot_entries(widget)
                     pass.visibility_function, content, style)
                 visible = ok and result and true or false
             end
-            if visible and widget.type == "dropdown" and
+            if visible and presentation.is_dropdown_widget(widget) and
                     string.match(content_id, "^option_hotspot_%d+$") then
                 visible = content.exclusive_focus and true or false
             end
@@ -1506,7 +1562,8 @@ function presentation.widget_hotspot_at_pointer(instance, widget, pointer)
 end
 
 function presentation.log_focused_dropdown_geometry(instance, widget, pointer)
-    if not pointer.primary_pressed or not widget or widget.type ~= "dropdown" or
+    if not pointer.primary_pressed or not widget or
+            not presentation.is_dropdown_widget(widget) or
             not widget.content or not widget.content.exclusive_focus then
         return
     end
@@ -1529,6 +1586,143 @@ function presentation.log_focused_dropdown_geometry(instance, widget, pointer)
                 geometry.height)
         end
     end
+end
+
+function presentation.log_slider_geometry(instance, widget, pointer)
+    if not pointer.primary_pressed or
+            not presentation.is_slider_widget(widget) then
+        return
+    end
+
+    local entries = {}
+    local seen = {}
+    local passes = widget.passes or {}
+    for i = 1, #passes do
+        local pass = passes[i]
+        local style_id = pass.style_id or pass.content_id
+        local style_name = string.lower(tostring(style_id or ""))
+        if (string.find(style_name, "slider", 1, true) or
+                string.find(style_name, "hotspot", 1, true)) and
+                not seen[style_name] then
+            seen[style_name] = true
+            local style = widget.style and widget.style[style_id] or pass.style
+            local hit, geometry = presentation.widget_contains_menu_pointer(
+                instance, widget, pointer, style)
+            if geometry then
+                entries[#entries + 1] = string.format(
+                    "%s:%s:%.1f,%.1f,%.1f,%.1f",
+                    tostring(style_id),
+                    hit and "hit" or "miss",
+                    geometry.left,
+                    geometry.top,
+                    geometry.width,
+                    geometry.height)
+            end
+        end
+    end
+
+    mod:info(
+        "DARKTIDEVR_MENU_INPUT slider_geometry widget=%s type=%s value=%.4f step=%s pointer=%d,%d passes=%s",
+        tostring(widget.name),
+        tostring(widget.type),
+        widget.content.slider_value,
+        tostring(widget.content.step_size),
+        pointer.x,
+        pointer.y,
+        #entries > 0 and table.concat(entries, "|") or "none")
+end
+
+function presentation.slider_track_geometry(instance, widget, pointer)
+    local style = widget and widget.style
+    if not style then
+        return false, nil
+    end
+    local track_style = style.track_hotspot or
+        style.slider_track_background
+    if not track_style then
+        return false, nil
+    end
+    return presentation.widget_contains_menu_pointer(
+        instance, widget, pointer, track_style)
+end
+
+function presentation.set_slider_from_pointer(instance, widget, pointer)
+    local _, geometry = presentation.slider_track_geometry(
+        instance, widget, pointer)
+    if not geometry or geometry.width <= 0 then
+        return false
+    end
+    local value = math.clamp(
+        (geometry.pointer_x - geometry.left) / geometry.width, 0, 1)
+    local step = widget.content.step_size
+    if type(step) == "number" and step > 0 then
+        value = math.clamp(
+            math.floor(value / step + 0.5) * step, 0, 1)
+    end
+    widget.content.slider_value = value
+    return true, value
+end
+
+function presentation.update_slider_drag(instance, pointer)
+    local drag = presentation.slider_drag
+    if not drag or drag.instance ~= instance then
+        return false
+    end
+    local widget = drag.widget
+    if not pointer.available then
+        -- A missing transport sample is not a release. Preserve the last XR
+        -- value until a fresh sample explicitly reports button-up.
+        widget.content.drag_active = true
+        widget.content.slider_value = drag.value
+        return true
+    end
+    if pointer.primary_down then
+        widget.content.drag_active = true
+        if pointer.active then
+            local updated, value = presentation.set_slider_from_pointer(
+                instance, widget, pointer)
+            if updated then
+                drag.value = value
+            end
+        else
+            widget.content.slider_value = drag.value
+        end
+        return true
+    end
+    -- Engine updates between the two eye draws may resynchronize content from
+    -- the old setting. Restore the last XR-authored value before releasing so
+    -- the blueprint's drag_previously_active path commits that value.
+    widget.content.slider_value = drag.value
+    widget.content.drag_active = false
+    mod:info(
+        "DARKTIDEVR_MENU_INPUT slider_drag_end widget=%s value=%.4f sequence=%d",
+        tostring(widget.name),
+        drag.value,
+        pointer.last_sequence)
+    presentation.slider_drag = nil
+    return false
+end
+
+function presentation.begin_slider_drag(instance, widget, pointer)
+    local hit = presentation.slider_track_geometry(instance, widget, pointer)
+    if not hit then
+        return false
+    end
+    local updated, value = presentation.set_slider_from_pointer(
+        instance, widget, pointer)
+    if not updated then
+        return false
+    end
+    widget.content.drag_active = true
+    presentation.slider_drag = {
+        instance = instance,
+        widget = widget,
+        value = value,
+    }
+    mod:info(
+        "DARKTIDEVR_MENU_INPUT slider_drag_begin widget=%s value=%.4f sequence=%d",
+        tostring(widget.name), value, pointer.last_sequence)
+    return true
 end
 
 local function refresh_xr_render_extent()
@@ -3247,6 +3441,7 @@ mod:hook_safe(
     "update",
     function(self, _, t)
     presentation.reconcile_fullscreen_views(self)
+    presentation.update_system_menu_test(self)
     presentation.update_psykhanium(self, t or 0)
 end)
 
@@ -5130,6 +5325,7 @@ mod:hook(
     function(func, self, grid, widgets, interaction_widget, dt, t,
             input_service, ...)
         local pointer = presentation.read_menu_pointer()
+        presentation.update_slider_drag(self, pointer)
         local source_widget = nil
         local source_entry = nil
         if pointer.available then
@@ -5144,6 +5340,8 @@ mod:hook(
                     grid:is_widget_visible(widget)
                 if visible then
                     presentation.log_focused_dropdown_geometry(
+                        self, widget, pointer)
+                    presentation.log_slider_geometry(
                         self, widget, pointer)
                 end
                 local entry = visible and
@@ -5167,7 +5365,11 @@ mod:hook(
             hotspot.force_hover = true
             if pointer.primary_pressed then
                 local opened_dropdown = false
-                if source_widget.type == "dropdown" and
+                local started_slider = false
+                if presentation.is_slider_widget(source_widget) then
+                    started_slider = presentation.begin_slider_drag(
+                        self, source_widget, pointer)
+                elseif presentation.is_dropdown_widget(source_widget) and
                         source_entry.content_id == "hotspot" and
                         source_widget.content and
                         not source_widget.content.exclusive_focus and
@@ -5182,8 +5384,17 @@ mod:hook(
                         source_widget.name)
                     opened_dropdown = true
                 end
-                if not opened_dropdown then
+                if not opened_dropdown and not started_slider then
                     hotspot.force_input_pressed = true
+                    if presentation.is_dropdown_widget(source_widget) and
+                            string.match(
+                                source_entry.content_id,
+                                "^option_hotspot_%d+$") then
+                        presentation.dropdown_close_pending = {
+                            instance = self,
+                            frames = 1,
+                        }
+                    end
                 end
                 presentation.consume_menu_primary(pointer)
                 mod:info(
@@ -5200,6 +5411,24 @@ mod:hook(
         return func(self, grid, widgets, interaction_widget, dt, t,
             input_service, ...)
     end)
+
+-- A cursor dropdown normally releases exclusive focus after its option pass
+-- has applied the selected value. XR supplies the same pressed edge directly
+-- to that pass, so close focus one completed OptionsView update later.
+mod:hook_safe("OptionsView", "update", function(self)
+    local pending = presentation.dropdown_close_pending
+    if not pending or pending.instance ~= self then
+        return
+    end
+    pending.frames = pending.frames - 1
+    if pending.frames <= 0 then
+        if type(self._set_exclusive_focus_on_grid_widget) == "function" then
+            self:_set_exclusive_focus_on_grid_widget(nil)
+        end
+        presentation.dropdown_close_pending = nil
+        mod:info("DARKTIDEVR_MENU_INPUT dropdown_focus_closed source=xr")
+    end
+end)
 
 -- The current hub build opens its system menu through the preloaded
 -- SystemView instance without traversing the UIManager methods or active-view

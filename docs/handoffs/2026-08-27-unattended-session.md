@@ -173,6 +173,27 @@ exclusive-focus coordinator, which is the semantic path used to make its
 option passes visible. Geometry logging is retained on an expanded-dropdown
 click so the next run can confirm the exact option rectangle without guessing.
 
+The clean follow-up reached the complete dropdown path. `Screen Mode` opened
+through `widget_setting_83:hotspot`, and a named shared-primary edge reached
+`widget_setting_84:option_hotspot_1` at source `(1482,515)/2112x2304`. This
+proves nested option routing independently of Darktide's mis-scaled desktop
+cursor. XR option activation now defers exclusive-focus closure until the next
+completed OptionsView update, matching cursor-mode release semantics.
+
+The same run identified the authored Video FOV slider geometry instead of
+guessing it: `track_hotspot` spans source x `1364..1914`, is 550 pixels wide,
+and the widget advertises 0.025 normalized steps. The Lua path now captures a
+slider on trigger-down, derives and step-snaps its normalized value from that
+track, preserves the last XR value across transient inactive samples, and
+releases only on explicit fresh button-up. The harness gained independent
+`Local\DarktideVR-menu-test-primary-down` and `-primary-up` events, and its
+test mode deliberately lets desktop hover provide source position without a
+native click. The final live gate began and ended the Video FOV drag at
+normalized `0.5000`, and the visible value remained 65 degrees after release.
+This accepts the slider path. An earlier held-input run had exposed and fixed
+both premature inactive-frame release and engine resynchronization overwriting
+the last XR-authored value.
+
 ## Validation
 
 Executed on the Windows/D3D12 development PC:
@@ -203,9 +224,8 @@ Mac-only for this D3D12 checkpoint.
    unexpectedly shares the exact hash.
 2. If accepted, repeat in the Psykhanium against smoke, muzzle flashes, fire
    and explosion materials; add exact hashes only when ownership is proven.
-3. Extend the proven source-coordinate menu path to hover, scroll, back,
-   expanded dropdown options, sliders, text input and remaining custom grids.
-   Then verify the fixed
+3. Extend the proven source-coordinate menu path to text input and remaining
+   custom grids. Then verify the fixed
    LOCAL-space 2 m panel in-headset and run the synthetic controller path
    through viewport departure, over-reach, tracking loss and reacquisition.
 4. Continue the deterministic Psykhanium entry path and first-person input/IK
