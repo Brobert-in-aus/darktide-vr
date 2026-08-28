@@ -948,6 +948,41 @@ per-eye shadow state alongside the broader visibility/LOD probe.
    then connect controller arm IK and weapon aiming without changing the
    game-authoritative attack origin, reach or timing.
 
+The first implementation of items 7 and 8 is now deployed for a range-only
+live gate. The movement injector reads the movement cache that Darktide has
+already populated, converts it to a signed two-axis vector, adds active VR
+thumbstick input, clamps the result, and writes it back. A neutral VR stick no
+longer writes four zeroes over WASD/gamepad input. Logs now include raw left
+and right OpenXR stick values, the existing game vector, the combined vector,
+and whether the VR stick claimed movement ownership.
+
+The body visibility gate uses Darktide's stock
+`EquipmentComponent.update_item_visibility` seam with its visual selection
+set to third person. It does not change `wants_1p_camera`, gameplay state, or
+the first-person component consumed by weapon logic. After that stock swap it
+hides only the third-person face, facial-hair, hair, and headgear slot units.
+The existing post-animation two-arm IK writer can therefore drive the visible
+third-person skeleton while the hidden first-person rig remains the gameplay
+driver. Both features remain explicit flags and are restricted to
+`shooting_range`/`training_grounds` until the live body, duplicate-weapon, and
+locomotion gates pass.
+
+The optimized/full-wrapper shadow A/B is also ready. A prior focused trace
+captured 25,728 primary-eye draw records and 10,469 prepared-frame second-eye
+records over the same 29 frames. This is expected evidence that the optimized
+right eye omits preparation work, not proof that those missing records cause
+the visible shadow defect. `darktidevr_full_second_eye.flag` now switches only
+the second-eye submission back to the complete `ScriptWorld.render` wrapper at
+runtime. If the enemy-shadow asymmetry disappears, the defect belongs to the
+reused preparation boundary; if it persists, the next trace must isolate
+per-eye native culling, shadow resources, or temporal state.
+
+Validation on 29 August: the Release build completed; all 27 software/non-HMD
+CTest cases passed; Lua parsing, PowerShell parsing for both new flag tools,
+and `git diff --check` passed. The three strict OpenXR smoke cases were also
+run and failed closed because VirtualDesktopXR reported `hmd-unavailable`.
+That is the remaining external live-test gate, not a software-suite failure.
+
 ## 2026-08-28 bounded menu and billboard corrections
 
 Engine-source inspection established that Stingray world-GUI content occupies

@@ -2,6 +2,8 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 
+#include "core/shared_controller_state.h"
+
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -143,6 +145,56 @@ int wmain(int argc, wchar_t** argv) {
         1) {
       throw std::runtime_error(
           "Controller-state export must reject null output");
+    }
+    darktidevr::core::SharedControllerState controller_sample{};
+    controller_sample.sequence = 42;
+    controller_sample.timestamp_ns = 123456789;
+    for (auto& hand : controller_sample.hands) {
+      hand.aim_pose.orientation.w = 1.0F;
+      hand.grip_pose.orientation.w = 1.0F;
+      hand.body_aim_pose.orientation.w = 1.0F;
+      hand.body_grip_pose.orientation.w = 1.0F;
+      hand.body_aim_tracking_flags =
+          darktidevr::core::controller_orientation_valid |
+          darktidevr::core::controller_position_valid;
+      hand.body_grip_tracking_flags = hand.body_aim_tracking_flags;
+    }
+    controller_sample.hands[0].body_aim_pose.position =
+        {0.1F, 0.2F, 0.3F};
+    controller_sample.hands[0].thumbstick_x = 0.625F;
+    controller_sample.hands[0].thumbstick_y = -0.75F;
+    controller_sample.hands[0].buttons =
+        darktidevr::core::controller_stick_click;
+    controller_sample.hands[1].body_grip_pose.position =
+        {-0.4F, 0.5F, 0.6F};
+    controller_sample.hands[1].thumbstick_x = -0.875F;
+    controller_sample.hands[1].thumbstick_y = 1.0F;
+    controller_sample.hands[1].trigger = 0.9F;
+    darktidevr::core::SharedControllerStateWriter controller_writer;
+    if (!controller_writer.publish(controller_sample)) {
+      throw std::runtime_error(
+          "Controller-state export fixture could not be published");
+    }
+    float controller_values[36]{};
+    unsigned int controller_tracking_flags[4]{};
+    unsigned int controller_buttons[2]{};
+    unsigned long long controller_sequence{};
+    unsigned long long controller_timestamp_ns{};
+    if (read_controller_state(
+            controller_values, controller_tracking_flags,
+            controller_buttons, &controller_sequence,
+            &controller_timestamp_ns) != 0 ||
+        controller_sequence != controller_sample.sequence ||
+        controller_timestamp_ns != controller_sample.timestamp_ns ||
+        std::abs(controller_values[16] - 0.625F) > 0.0001F ||
+        std::abs(controller_values[17] + 0.75F) > 0.0001F ||
+        std::abs(controller_values[34] + 0.875F) > 0.0001F ||
+        std::abs(controller_values[35] - 1.0F) > 0.0001F ||
+        controller_buttons[0] != controller_sample.hands[0].buttons ||
+        controller_tracking_flags[0] !=
+            controller_sample.hands[0].body_aim_tracking_flags) {
+      throw std::runtime_error(
+          "Controller-state export changed the Lua-facing transport layout");
     }
     if (read_menu_pointer_state(nullptr, nullptr, nullptr) != 1) {
       throw std::runtime_error(

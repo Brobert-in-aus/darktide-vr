@@ -182,6 +182,10 @@ local controller_observation = {
     right_aim_pitch = nil,
     right_aim_roll = nil,
     right_trigger = 0,
+    left_stick_x = 0,
+    left_stick_y = 0,
+    right_stick_x = 0,
+    right_stick_y = 0,
     right_grip_usable = false,
     right_grip_flags = 0,
     right_grip_x = nil,
@@ -258,6 +262,12 @@ local controller_observation = {
     weapon_presentation_block_reason = nil,
     body_rig_inventory_done = false,
     body_rig_inventory_last_check_frame = -math.huge,
+    body_visibility_enabled = false,
+    body_visibility_update_frame = 0,
+    body_visibility_last_check_frame = -math.huge,
+    body_visibility_last_apply_frame = -math.huge,
+    body_visibility_logged_slots = false,
+    body_visibility_faulted = false,
     body_ik_trace_enabled = false,
     body_ik_trace_last_check_frame = -math.huge,
     body_ik_trace_last_log_frame = -math.huge,
@@ -280,6 +290,9 @@ local performance_profile_requested = false -- opt-in diagnostic; allocates GPU 
 -- eye still receives a complete native Application.render_world submission.
 local reuse_prepared_frame_requested = true
 local reuse_prepared_frame_failed = false
+local full_second_eye_probe_requested = false
+local full_second_eye_probe_check_frame = 0
+local full_second_eye_probe_last_check_frame = -math.huge
 local ui_native_observer_last_present = 0
 local main_menu_ui_hidden = true
 local ui_swap_viewport_halves_requested = false -- bounded identity probe; normal mapping restored
@@ -2357,6 +2370,14 @@ local function apply_head_tracking(clean_position, clean_rotation)
             tonumber(controller_observation.values[31])
         controller_observation.right_trigger =
             tonumber(controller_observation.values[32])
+        controller_observation.left_stick_x =
+            tonumber(controller_observation.values[16])
+        controller_observation.left_stick_y =
+            tonumber(controller_observation.values[17])
+        controller_observation.right_stick_x =
+            tonumber(controller_observation.values[34])
+        controller_observation.right_stick_y =
+            tonumber(controller_observation.values[35])
         if controller_observation.right_aim_usable then
             local right_aim_rotation = Quaternion.from_elements(
                 controller_observation.values[21],
@@ -2373,12 +2394,16 @@ local function apply_head_tracking(clean_position, clean_rotation)
                 (bit.band(left_aim_flags, 4) ~= 0 or
                  bit.band(right_aim_flags, 4) ~= 0) then
             controller_observation.first_tracked_logged = true
-            mod:info("DARKTIDEVR_CONTROLLER observed sequence=%d left_aim_flags=%d right_aim_flags=%d right_aim_age_ms=%.3f usable=%s",
+            mod:info("DARKTIDEVR_CONTROLLER observed sequence=%d left_aim_flags=%d right_aim_flags=%d right_aim_age_ms=%.3f usable=%s left_stick=%.3f,%.3f right_stick=%.3f,%.3f",
                 controller_sequence,
                 left_aim_flags,
                 right_aim_flags,
                 controller_observation.right_aim_age_ms,
-                tostring(controller_observation.right_aim_usable))
+                tostring(controller_observation.right_aim_usable),
+                controller_observation.left_stick_x,
+                controller_observation.left_stick_y,
+                controller_observation.right_stick_x,
+                controller_observation.right_stick_y)
         end
     end
     local character_scale = 1
@@ -2905,6 +2930,30 @@ local function record_render_timings(label, left_ticks, right_ticks, pair_ticks)
 end
 
 local function render_second_eye_from_prepared_frame(world, primary, right)
+    full_second_eye_probe_check_frame = full_second_eye_probe_check_frame + 1
+    if full_second_eye_probe_check_frame >=
+            full_second_eye_probe_last_check_frame + 120 and
+            Mods and Mods.lua and Mods.lua.io then
+        full_second_eye_probe_last_check_frame =
+            full_second_eye_probe_check_frame
+        local flag = Mods.lua.io.open(
+            "./../mods/darktidevr_stereo_probe/darktidevr_full_second_eye.flag",
+            "r")
+        local enabled = false
+        if flag then
+            enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
+            flag:close()
+        end
+        if enabled ~= full_second_eye_probe_requested then
+            full_second_eye_probe_requested = enabled
+            mod:info(
+                "DARKTIDEVR_RENDER second_eye_path=%s source=test_flag",
+                enabled and "full_wrapper" or "prepared_frame")
+        end
+    end
+    if full_second_eye_probe_requested then
+        return false
+    end
     if not reuse_prepared_frame_requested or reuse_prepared_frame_failed then
         return false
     end
@@ -4387,16 +4436,44 @@ mod:hook_safe(
                     controller_observation.gameplay_movement[0])
                 local move_y = tonumber(
                     controller_observation.gameplay_movement[1])
-                local movement = {
-                    move_right = math.max(move_x, 0),
-                    move_left = math.max(-move_x, 0),
-                    move_forward = math.max(move_y, 0),
-                    move_backward = math.max(-move_y, 0)
+                local movement_names = {
+                    "move_right", "move_left",
+                    "move_forward", "move_backward"
                 }
-                for action_name, value in pairs(movement) do
+                local movement_values = {}
+                for name_index = 1, #movement_names do
+                    local action_name = movement_names[name_index]
                     local action_index = self._action_lookup[action_name]
-                    if action_index and self._input_cache[action_index] then
-                        self._input_cache[action_index][cache_index] = value
+                    local action_cache = action_index and
+                        self._input_cache[action_index]
+                    movement_values[action_name] = tonumber(
+                        action_cache and action_cache[cache_index]) or 0
+                end
+                local existing_x = movement_values.move_right -
+                    movement_values.move_left
+                local existing_y = movement_values.move_forward -
+                    movement_values.move_backward
+                local stick_active = math.abs(move_x) > 0.0001 or
+                    math.abs(move_y) > 0.0001
+                local combined_x = math.max(-1, math.min(
+                    1, existing_x + move_x))
+                local combined_y = math.max(-1, math.min(
+                    1, existing_y + move_y))
+                local movement = {
+                    move_right = math.max(combined_x, 0),
+                    move_left = math.max(-combined_x, 0),
+                    move_forward = math.max(combined_y, 0),
+                    move_backward = math.max(-combined_y, 0)
+                }
+                -- A neutral or unavailable VR stick must not claim locomotion
+                -- ownership. Leaving the cache untouched preserves keyboard,
+                -- gamepad and accessibility inputs sampled by Darktide.
+                if stick_active then
+                    for action_name, value in pairs(movement) do
+                        local action_index = self._action_lookup[action_name]
+                        if action_index and self._input_cache[action_index] then
+                            self._input_cache[action_index][cache_index] = value
+                        end
                     end
                 end
                 if type(frame) == "number" and
@@ -4408,8 +4485,15 @@ mod:hook_safe(
                     if player_unit and Unit.alive(player_unit) then
                         local player_position = Unit.world_position(player_unit, 1)
                         mod:info(
-                            "DARKTIDEVR_INPUT locomotion frame=%d move=%.3f,%.3f cache=%.3f,%.3f,%.3f,%.3f player=%.4f,%.4f,%.4f",
+                            "DARKTIDEVR_INPUT locomotion frame=%d move=%.3f,%.3f raw_left=%.3f,%.3f raw_right=%.3f,%.3f existing=%.3f,%.3f combined=%.3f,%.3f stick_active=%s cache=%.3f,%.3f,%.3f,%.3f player=%.4f,%.4f,%.4f",
                             frame, move_x, move_y,
+                            controller_observation.left_stick_x,
+                            controller_observation.left_stick_y,
+                            controller_observation.right_stick_x,
+                            controller_observation.right_stick_y,
+                            existing_x, existing_y,
+                            combined_x, combined_y,
+                            tostring(stick_active),
                             movement.move_right, movement.move_left,
                             movement.move_forward, movement.move_backward,
                             Vector3.x(player_position), Vector3.y(player_position),
@@ -4981,6 +5065,111 @@ function presentation.scan_body_rig(self, fixed_frame)
                     name, tostring(target))
             end
         end
+    end
+end
+
+local headless_body_slots = {
+    "slot_body_face",
+    "slot_body_face_hair",
+    "slot_body_hair",
+    "slot_gear_head"
+}
+
+function presentation.update_body_visibility_gate(frame)
+    if frame <
+            controller_observation.body_visibility_last_check_frame + 60 then
+        return false
+    end
+    controller_observation.body_visibility_last_check_frame = frame
+    local path =
+        "./../mods/darktidevr_stereo_probe/darktidevr_headless_body.flag"
+    local flag = Mods and Mods.lua and Mods.lua.io and
+        Mods.lua.io.open(path, "r")
+    local enabled = false
+    if flag then
+        enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
+        flag:close()
+    end
+    if not enabled then
+        controller_observation.body_visibility_faulted = false
+    end
+    enabled = enabled and
+        not controller_observation.body_visibility_faulted
+    if enabled == controller_observation.body_visibility_enabled then
+        return false
+    end
+    controller_observation.body_visibility_enabled = enabled
+    controller_observation.body_visibility_logged_slots = false
+    mod:info(
+        "DARKTIDEVR_BODY visibility=%s source=test_flag",
+        enabled and "headless_3p" or "stock_1p")
+    return true
+end
+
+function presentation.is_local_visual_loadout(self)
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    return local_player and local_player.player_unit and
+        self._unit == local_player.player_unit
+end
+
+function presentation.apply_body_visibility(self, frame, force)
+    if not presentation.is_local_visual_loadout(self) then
+        return
+    end
+    local mode = active_game_mode_name()
+    local range_mode = mode == "shooting_range" or
+        mode == "training_grounds"
+    local active = controller_observation.body_visibility_enabled and
+        range_mode
+    if not force and frame <
+            controller_observation.body_visibility_last_apply_frame + 60 then
+        return
+    end
+    controller_observation.body_visibility_last_apply_frame = frame
+
+    local EquipmentComponent = require(
+        "scripts/extension_systems/visual_loadout/equipment_component")
+    local equipment = self._equipment
+    local inventory = self._inventory_component
+    local unit_3p = self._unit
+    local unit_1p = self._first_person_unit
+    if type(equipment) ~= "table" or not inventory or
+            not unit_3p or not Unit.alive(unit_3p) then
+        return
+    end
+
+    -- This is Darktide's stock visual swap, invoked with a visual-only 3P
+    -- selection. The gameplay/camera first-person component remains unchanged.
+    EquipmentComponent.update_item_visibility(
+        equipment,
+        inventory.wielded_slot,
+        unit_3p,
+        unit_1p,
+        active and false or self._is_in_first_person_mode,
+        self._item_definitions)
+
+    if not active then
+        return
+    end
+
+    local hidden = {}
+    for i = 1, #headless_body_slots do
+        local slot_name = headless_body_slots[i]
+        local slot = equipment[slot_name]
+        local slot_unit = slot and slot.unit_3p
+        if slot_unit and Unit.alive(slot_unit) then
+            Unit.set_unit_visibility(slot_unit, false, true)
+            hidden[#hidden + 1] = slot_name
+        end
+    end
+    if not controller_observation.body_visibility_logged_slots then
+        controller_observation.body_visibility_logged_slots = true
+        mod:info(
+            "DARKTIDEVR_BODY headless_3p applied mode=%s hidden_slots=%s wielded=%s",
+            tostring(mode),
+            #hidden > 0 and table.concat(hidden, ",") or "none",
+            tostring(inventory.wielded_slot))
     end
 end
 
@@ -6024,6 +6213,49 @@ mod:hook_safe(
     function(self, _, _, velocity)
         presentation.observe_primary_projectile(
             self, velocity, "engine_physics")
+    end)
+
+local PlayerUnitVisualLoadoutExtension = require(
+    "scripts/extension_systems/visual_loadout/player_unit_visual_loadout_extension")
+
+function presentation.safe_apply_body_visibility(self, frame, force)
+    local ok, error_message = pcall(
+        presentation.apply_body_visibility, self, frame, force)
+    if not ok and controller_observation.body_visibility_enabled then
+        controller_observation.body_visibility_enabled = false
+        controller_observation.body_visibility_faulted = true
+        mod:error(
+            "DARKTIDEVR_BODY visibility_disabled reason=lua_error error=%s",
+            tostring(error_message))
+    end
+end
+
+-- Poll the normal-off range test gate after the stock loadout update. This
+-- catches both a newly created player unit and late attachment streaming.
+mod:hook_safe(
+    PlayerUnitVisualLoadoutExtension,
+    "update",
+    function(self)
+        controller_observation.body_visibility_update_frame =
+            controller_observation.body_visibility_update_frame + 1
+        local frame = controller_observation.body_visibility_update_frame
+        local changed = presentation.update_body_visibility_gate(frame)
+        presentation.safe_apply_body_visibility(self, frame, changed)
+    end)
+
+-- Any later game-driven visibility refresh (weapon swap, attachment spawn or
+-- first-person transition) is followed immediately by the visual-only body
+-- override. Gameplay remains in first person throughout.
+mod:hook_safe(
+    PlayerUnitVisualLoadoutExtension,
+    "_update_item_visibility",
+    function(self)
+        if controller_observation.body_visibility_enabled then
+            presentation.safe_apply_body_visibility(
+                self,
+                controller_observation.body_visibility_update_frame,
+                true)
+        end
     end)
 
 -- Verify that the authored orientation reaches the shared first-person
