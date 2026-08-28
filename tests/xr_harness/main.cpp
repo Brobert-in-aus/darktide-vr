@@ -2618,6 +2618,14 @@ class OpenXrProbe {
               << controller_aim_tracked_frames_[0] << '\n'
               << "openxr.controller_right_aim_tracked_frames="
               << controller_aim_tracked_frames_[1] << '\n'
+              << "openxr.controller_left_thumbstick_active_frames="
+              << controller_thumbstick_active_frames_[0] << '\n'
+              << "openxr.controller_right_thumbstick_active_frames="
+              << controller_thumbstick_active_frames_[1] << '\n'
+              << "openxr.controller_left_thumbstick_changed_frames="
+              << controller_thumbstick_changed_frames_[0] << '\n'
+              << "openxr.controller_right_thumbstick_changed_frames="
+              << controller_thumbstick_changed_frames_[1] << '\n'
               << "openxr.controller_pointer_rays=" << controller_pointer_rays_
               << '\n'
               << "openxr.controller_pointer_hits=" << controller_pointer_hits_
@@ -2950,6 +2958,10 @@ class OpenXrProbe {
       check_xr(xrGetActionStateVector2f(session_, &stick_info, &stick),
                "xrGetActionStateVector2f");
       if (stick.isActive) {
+        ++controller_thumbstick_active_frames_[hand];
+        if (stick.changedSinceLastSync) {
+          ++controller_thumbstick_changed_frames_[hand];
+        }
         destination.thumbstick_x =
             std::clamp(stick.currentState.x, -1.0F, 1.0F);
         destination.thumbstick_y =
@@ -3195,6 +3207,8 @@ class OpenXrProbe {
   std::uint64_t controller_samples_{};
   float runtime_ipd_metres_{};
   std::array<std::uint64_t, 2> controller_aim_tracked_frames_{};
+  std::array<std::uint64_t, 2> controller_thumbstick_active_frames_{};
+  std::array<std::uint64_t, 2> controller_thumbstick_changed_frames_{};
   std::uint64_t controller_pointer_rays_{};
   std::uint64_t controller_pointer_hits_{};
   std::uint32_t controller_pointer_x_{};

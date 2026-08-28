@@ -7,6 +7,10 @@
   and clamps the signed game movement vector.
 - Added raw per-hand thumbstick, existing-vector, combined-vector, and ownership
   telemetry for the next live range test.
+- Added runtime counters for each thumbstick action's OpenXR `isActive` and
+  `changedSinceLastSync` states. Together with the new native export fixture,
+  the next run can distinguish an inactive Virtual Desktop binding from a
+  transport or Lua-injection failure.
 - Added a normal-off, range-only headless third-person presentation seam using
   Darktide's own equipment visibility path. The visual swap shows the complete
   3P loadout, hides the 1P visual rig, then hides 3P face, facial hair, hair,
@@ -31,6 +35,10 @@ git diff --check
 Result: Release build passed and 27/27 non-HMD tests passed. The complete
 30-test invocation produced the same 27 passes; the three strict OpenXR smoke
 tests failed closed because VirtualDesktopXR returned `hmd-unavailable`.
+The focused native-capture test additionally publishes asymmetric left/right
+stick values through the real shared mapping and verifies Lua offsets 16/17
+and 34/35. Focused harness-help and synthetic-controller tests pass after the
+OpenXR action-state counters were added.
 
 ## Next live gates
 
