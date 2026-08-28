@@ -28,6 +28,8 @@ struct GameplayInputFrame {
   std::uint64_t pressed{};
   std::uint64_t held{};
   std::uint64_t released{};
+  float move_x{};
+  float move_y{};
 };
 
 class GameplayInputMapper {

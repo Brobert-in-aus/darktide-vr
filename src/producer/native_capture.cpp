@@ -34,6 +34,9 @@
 
 using Microsoft::WRL::ComPtr;
 
+extern "C" __declspec(dllexport) int dtvr_set_focused_trace_phase(int phase);
+extern "C" __declspec(dllexport) int dtvr_enable_marker_log();
+
 namespace {
 
 using StingrayUploadFlushFn = void (*)(void* allocator);
@@ -86,12 +89,22 @@ using CloseFn = HRESULT(STDMETHODCALLTYPE*)(ID3D12GraphicsCommandList*);
 using ResetFn = HRESULT(STDMETHODCALLTYPE*)(ID3D12GraphicsCommandList*,
                                             ID3D12CommandAllocator*,
                                             ID3D12PipelineState*);
+using ExecuteBundleFn = void(STDMETHODCALLTYPE*)(
+    ID3D12GraphicsCommandList*, ID3D12GraphicsCommandList*);
+using BeginRenderPassFn = void(STDMETHODCALLTYPE*)(
+    ID3D12GraphicsCommandList4*, UINT,
+    const D3D12_RENDER_PASS_RENDER_TARGET_DESC*,
+    const D3D12_RENDER_PASS_DEPTH_STENCIL_DESC*, D3D12_RENDER_PASS_FLAGS);
+using EndRenderPassFn = void(STDMETHODCALLTYPE*)(ID3D12GraphicsCommandList4*);
 using DrawInstancedFn = void(STDMETHODCALLTYPE*)(ID3D12GraphicsCommandList*,
                                                  UINT, UINT, UINT, UINT);
 using DrawIndexedInstancedFn = void(STDMETHODCALLTYPE*)(
     ID3D12GraphicsCommandList*, UINT, UINT, UINT, INT, UINT);
 using DispatchFn = void(STDMETHODCALLTYPE*)(ID3D12GraphicsCommandList*, UINT,
                                             UINT, UINT);
+using ExecuteIndirectFn = void(STDMETHODCALLTYPE*)(
+    ID3D12GraphicsCommandList*, ID3D12CommandSignature*, UINT,
+    ID3D12Resource*, UINT64, ID3D12Resource*, UINT64);
 using RSSetViewportsFn = void(STDMETHODCALLTYPE*)(ID3D12GraphicsCommandList*,
                                                   UINT,
                                                   const D3D12_VIEWPORT*);
@@ -129,6 +142,9 @@ using CreateGraphicsPipelineStateFn = HRESULT(STDMETHODCALLTYPE*)(
     ID3D12Device*, const D3D12_GRAPHICS_PIPELINE_STATE_DESC*, REFIID, void**);
 using CreateComputePipelineStateFn = HRESULT(STDMETHODCALLTYPE*)(
     ID3D12Device*, const D3D12_COMPUTE_PIPELINE_STATE_DESC*, REFIID, void**);
+using CreateCommandSignatureFn = HRESULT(STDMETHODCALLTYPE*)(
+    ID3D12Device*, const D3D12_COMMAND_SIGNATURE_DESC*, ID3D12RootSignature*,
+    REFIID, void**);
 using CreateDescriptorHeapFn = HRESULT(STDMETHODCALLTYPE*)(
     ID3D12Device*, const D3D12_DESCRIPTOR_HEAP_DESC*, REFIID, void**);
 using CreateConstantBufferViewFn = void(STDMETHODCALLTYPE*)(
@@ -199,9 +215,13 @@ MarkerEventFn original_begin_event{};
 EndEventFn original_end_event{};
 CloseFn original_close{};
 ResetFn original_reset{};
+ExecuteBundleFn original_execute_bundle{};
+BeginRenderPassFn original_begin_render_pass{};
+EndRenderPassFn original_end_render_pass{};
 DrawInstancedFn original_draw_instanced{};
 DrawIndexedInstancedFn original_draw_indexed_instanced{};
 DispatchFn original_dispatch{};
+ExecuteIndirectFn original_execute_indirect{};
 RSSetViewportsFn original_rs_set_viewports{};
 RSSetScissorRectsFn original_rs_set_scissor_rects{};
 IASetPrimitiveTopologyFn original_ia_set_primitive_topology{};
@@ -226,6 +246,7 @@ IASetVertexBuffersFn original_ia_set_vertex_buffers{};
 OMSetRenderTargetsFn original_om_set_render_targets{};
 CreateGraphicsPipelineStateFn original_create_graphics_pipeline_state{};
 CreateComputePipelineStateFn original_create_compute_pipeline_state{};
+CreateCommandSignatureFn original_create_command_signature{};
 CreateDescriptorHeapFn original_create_descriptor_heap{};
 CreateConstantBufferViewFn original_create_constant_buffer_view{};
 CreateShaderResourceViewFn original_create_shader_resource_view{};
@@ -258,6 +279,57 @@ std::array<HANDLE, 2> eye_handles{};
 HANDLE ready_fence_handle{};
 HANDLE consumed_fence_handle{};
 std::uint64_t ready_value{};
+ComPtr<ID3D12Resource> menu_surface;
+ComPtr<ID3D12DescriptorHeap> menu_rtv_heap;
+D3D12_CPU_DESCRIPTOR_HANDLE menu_rtv{};
+ComPtr<ID3D12Fence> menu_ready_fence;
+ComPtr<ID3D12Fence> menu_consumed_fence;
+HANDLE menu_surface_handle{};
+HANDLE menu_ready_fence_handle{};
+HANDLE menu_consumed_fence_handle{};
+std::uint64_t menu_ready_value{};
+// The stock pause/options renderer does not traverse the Lua SystemView hooks
+// used by the earlier menu experiment. Detect its stable native UI shader
+// instead, then copy the completed desktop UI buffer into the additive shared
+// menu transport while the independent stereo eye path keeps running.
+struct StockMenuShaderPair {
+  std::uint64_t vertex_shader;
+  std::uint64_t pixel_shader;
+};
+
+// A focused pre-menu/menu trace isolated one 28-draw, blended, depth-free
+// batch on the 2112x2304 UI target. These seven pairs are the complete batch:
+// panels, glyphs/icons and the remaining composited UI primitives. Keeping the
+// measured set explicit avoids capturing unrelated full-screen blur/world
+// passes merely because they also happen to be blended and depth-free.
+constexpr std::array<StockMenuShaderPair, 7> kStockMenuShaderPairs{{
+    {11843877247297039714ULL, 4205274772372006678ULL},
+    {8136461109370980353ULL, 13875852906623432269ULL},
+    {17803674457127970886ULL, 1391568350240996673ULL},
+    {18107421411819155702ULL, 15477392111526461263ULL},
+    {15208956507440652316ULL, 13151585653704074219ULL},
+    {4066249119808695432ULL, 160970739098383160ULL},
+    {8136461109370980353ULL, 18078296809113235737ULL},
+}};
+
+// The completed swapchain contains an opaque copy of the world as well as the
+// menu.  Feeding that texture to OpenXR necessarily produces the observed
+// mono/flicker regression.  The stock UI draw redirect below instead builds a
+// transparent menu-only surface while the stereo world remains untouched.
+constexpr bool kStockMenuSwapchainCaptureEnabled = false;
+constexpr bool kStockMenuDirectRenderEnabled = true;
+constexpr bool kNamedMenuResourceCaptureEnabled = false;
+std::atomic<unsigned int> current_presentation_mode{
+    static_cast<unsigned int>(
+        darktidevr::core::SharedPresentationMode::stereo_world)};
+std::atomic<std::uint64_t> stock_menu_draw_frame{
+    (std::numeric_limits<std::uint64_t>::max)()};
+std::atomic<std::uint64_t> direct_menu_render_frame{
+    (std::numeric_limits<std::uint64_t>::max)()};
+std::uint64_t direct_menu_clear_frame{
+    (std::numeric_limits<std::uint64_t>::max)()};
+std::unordered_map<ID3D12GraphicsCommandList*, ComPtr<ID3D12Resource>>
+    direct_menu_render_lists;
 std::atomic<bool> hooks_installed{};
 std::atomic<std::uint64_t> execute_call_count{};
 std::atomic<std::uint64_t> present_count{};
@@ -284,6 +356,9 @@ std::atomic<std::uint64_t> candidate_table4_match_count{};
 std::atomic<std::uint64_t> candidate_table4_ambiguous_count{};
 std::atomic<bool> rich_center_sbs_remap_enabled{};
 HANDLE marker_log{INVALID_HANDLE_VALUE};
+HANDLE menu_resource_log{INVALID_HANDLE_VALUE};
+std::mutex menu_resource_log_mutex;
+std::atomic<std::uint64_t> menu_resource_log_count{};
 HANDLE enhanced_barrier_log{INVALID_HANDLE_VALUE};
 std::atomic<std::uint64_t> enhanced_barrier_log_count{};
 std::atomic<int> focused_trace_phase{};
@@ -354,6 +429,8 @@ struct DescriptorInfo {
   UINT element_count{};
   UINT structure_stride{};
 };
+
+DescriptorInfo descriptor_snapshot(std::uint64_t handle);
 
 struct DescriptorHeapInfo {
   D3D12_DESCRIPTOR_HEAP_TYPE type{};
@@ -502,10 +579,18 @@ bool billboard_cbv_log_initialized{};
 bool billboard_staging_log_initialized{};
 std::atomic<std::uint64_t> billboard_cbv_log_count{};
 std::atomic<std::uint64_t> billboard_staging_log_count{};
+std::atomic<std::uint64_t> billboard_target_cbv_last_frame{UINT64_MAX};
+std::atomic<std::uint64_t> billboard_target_cbv_log_count{};
+std::atomic<std::uint64_t> billboard_target_cbv_attempt_count{};
 
 struct PsoMetadata {
   char kind{'U'};
   std::uint64_t vertex_shader{};
+  // Keep the source identity explicitly when a replacement VS is installed.
+  // Pipeline-library and stream creation may expose the effective bytecode at
+  // different points, and the reconstructed shader intentionally does not
+  // retain the stock c_billboard symbol used by reflection.
+  std::uint64_t substituted_vertex_shader{};
   std::uint64_t pixel_shader{};
   std::uint64_t compute_shader{};
   std::uint64_t cached_blob{};
@@ -518,8 +603,41 @@ struct PsoMetadata {
   bool depth_enabled{};
 };
 
+constexpr std::uint64_t kBillboardTargetVertexShader =
+    0x42e436fb1ef1b392ULL;
+constexpr std::uint64_t kBillboardPerObjectByteSize = 24ULL * 16ULL;
+
+void preserve_billboard_substitution(PsoMetadata& metadata,
+                                     std::uint64_t original_vertex_shader,
+                                     bool substituted) {
+  if (!substituted || original_vertex_shader == 0) {
+    return;
+  }
+  metadata.substituted_vertex_shader = original_vertex_shader;
+  metadata.billboard_shader = true;
+  if (metadata.billboard_register == UINT_MAX) {
+    metadata.billboard_register = 2;
+  }
+}
+
+bool is_stock_menu_shader_pair(const PsoMetadata& metadata) {
+  return std::any_of(kStockMenuShaderPairs.begin(),
+                     kStockMenuShaderPairs.end(), [&](const auto& pair) {
+                       return metadata.vertex_shader == pair.vertex_shader &&
+                              metadata.pixel_shader == pair.pixel_shader;
+                     });
+}
+
 std::mutex pso_mutex;
 std::unordered_map<std::uintptr_t, PsoMetadata> pso_metadata;
+std::mutex command_signature_mutex;
+std::unordered_map<std::uintptr_t, bool> command_signature_draws;
+// PSO metadata can be revisited by pipeline-library/cache paths after creation.
+// Keep successful target substitutions in a separate monotonic identity set so
+// a later descriptive metadata refresh cannot erase the fact that this PSO is
+// executing the reconstructed target shader.
+std::unordered_set<std::uintptr_t> target_billboard_psos;
+std::unordered_set<std::uintptr_t> logged_billboard_bound_psos;
 
 struct PendingCapture {
   ComPtr<ID3D12CommandAllocator> allocator;
@@ -529,6 +647,8 @@ struct PendingCapture {
 
 std::deque<PendingCapture> pending_captures;
 std::deque<PendingCapture> available_captures;
+std::deque<PendingCapture> menu_pending_captures;
+std::deque<PendingCapture> menu_available_captures;
 PendingCapture staged_eye0_capture;
 bool staged_eye0_capture_valid{};
 bool staged_pair_dropped{};
@@ -552,7 +672,13 @@ std::unordered_map<ID3D12GraphicsCommandList*, ComPtr<ID3D12Resource>>
     camera_output_resources;
 std::unordered_map<ID3D12GraphicsCommandList*, D3D12_RESOURCE_STATES>
     camera_output_source_states;
+std::unordered_map<ID3D12GraphicsCommandList*, ComPtr<ID3D12Resource>>
+    menu_output_resources;
+std::unordered_map<ID3D12GraphicsCommandList*, D3D12_RESOURCE_STATES>
+    menu_output_source_states;
 std::unordered_set<ID3D12Resource*> known_camera_output_resources;
+std::array<ID3D12Resource*, 2> named_camera_output_resources{};
+bool named_camera_outputs_ready{};
 bool camera_output_realign_pending{};
 // Diagnostic selector for completed 1920x2160 RGBA8 outputs seen on a command
 // list. -1 preserves the production behavior (the last completed candidate).
@@ -694,6 +820,43 @@ std::array<std::atomic<std::uint64_t>, kBillboardVertexShaderHashes.size()>
 std::mutex billboard_shader_replacement_mutex;
 std::unordered_map<std::uint64_t, std::vector<std::uint8_t>>
     billboard_shader_replacements;
+std::atomic<std::uint64_t> billboard_target_replacement_hash{};
+
+void write_billboard_pso_identity(const char* event, std::uintptr_t key,
+                                  const PsoMetadata& metadata) {
+  if (!billboard_shader_substitution_requested.load(
+          std::memory_order_relaxed)) {
+    return;
+  }
+  std::array<wchar_t, MAX_PATH> temporary_path{};
+  if (GetTempPathW(static_cast<DWORD>(temporary_path.size()),
+                   temporary_path.data()) == 0) {
+    return;
+  }
+  const auto path = std::wstring(temporary_path.data()) +
+                    L"darktidevr-billboard-pso-identity.tsv";
+  HANDLE log = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
+                           nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL,
+                           nullptr);
+  if (log == INVALID_HANDLE_VALUE) {
+    return;
+  }
+  char line[512]{};
+  const auto length = std::snprintf(
+      line, sizeof(line),
+      "event=%s\tpso=%p\tvs=%016llx\tsub_vs=%016llx\tps=%016llx"
+      "\tbillboard=%u\tb=%u\r\n",
+      event, reinterpret_cast<void*>(key),
+      static_cast<unsigned long long>(metadata.vertex_shader),
+      static_cast<unsigned long long>(metadata.substituted_vertex_shader),
+      static_cast<unsigned long long>(metadata.pixel_shader),
+      metadata.billboard_shader ? 1U : 0U, metadata.billboard_register);
+  if (length > 0) {
+    DWORD written{};
+    WriteFile(log, line, static_cast<DWORD>(length), &written, nullptr);
+  }
+  CloseHandle(log);
+}
 std::array<std::atomic<float>, 6> billboard_view_basis{};
 std::atomic<bool> billboard_horizon_lock_enabled{};
 std::atomic<bool> billboard_staging_write_enabled{};
@@ -987,6 +1150,29 @@ constexpr wchar_t kLeftEyeName[] = L"Local\\DarktideVR-eye-left";
 constexpr wchar_t kRightEyeName[] = L"Local\\DarktideVR-eye-right";
 constexpr wchar_t kReadyFenceName[] = L"Local\\DarktideVR-eye-ready";
 constexpr wchar_t kConsumedFenceName[] = L"Local\\DarktideVR-eye-consumed";
+constexpr wchar_t kMenuSurfaceName[] = L"Local\\DarktideVR-menu-ui";
+constexpr wchar_t kMenuReadyFenceName[] = L"Local\\DarktideVR-menu-ui-ready";
+constexpr wchar_t kMenuConsumedFenceName[] =
+    L"Local\\DarktideVR-menu-ui-consumed";
+
+int capture_menu_from_resource(ID3D12CommandQueue* queue,
+                               ID3D12Resource* source,
+                               D3D12_RESOURCE_STATES source_state,
+                               std::uint64_t capture_width = 0,
+                               UINT capture_height = 0);
+int ensure_menu_surface(ID3D12Device* device,
+                        const D3D12_RESOURCE_DESC& source_description,
+                        DXGI_FORMAT render_target_format = DXGI_FORMAT_UNKNOWN);
+
+struct MenuDrawRedirect {
+  bool active{};
+  D3D12_CPU_DESCRIPTOR_HANDLE original_target{};
+};
+
+MenuDrawRedirect begin_stock_menu_draw_redirect(
+    ID3D12GraphicsCommandList* commands, const PsoMetadata& metadata);
+void end_stock_menu_draw_redirect(ID3D12GraphicsCommandList* commands,
+                                  const MenuDrawRedirect& redirect);
 
 void write_marker_log(const char* format, ...) {
   if (marker_log == INVALID_HANDLE_VALUE ||
@@ -1031,6 +1217,41 @@ void write_boundary_census_log(const char* format, ...) {
                   length, static_cast<int>(sizeof(line) - 1))),
               &written, nullptr);
   }
+}
+
+void write_menu_resource_log(const char* format, ...) {
+  if (menu_resource_log_count.fetch_add(1, std::memory_order_relaxed) >=
+      4096) {
+    return;
+  }
+  std::scoped_lock lock(menu_resource_log_mutex);
+  if (menu_resource_log == INVALID_HANDLE_VALUE) {
+    wchar_t temporary_path[MAX_PATH]{};
+    if (GetTempPathW(MAX_PATH, temporary_path) == 0) {
+      return;
+    }
+    const std::wstring path =
+        std::wstring(temporary_path) + L"darktidevr-menu-resources.log";
+    menu_resource_log =
+        CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  }
+  if (menu_resource_log == INVALID_HANDLE_VALUE) {
+    return;
+  }
+  char line[800]{};
+  va_list arguments;
+  va_start(arguments, format);
+  const auto length = std::vsnprintf(line, sizeof(line), format, arguments);
+  va_end(arguments);
+  if (length <= 0) {
+    return;
+  }
+  DWORD written{};
+  WriteFile(menu_resource_log, line,
+            static_cast<DWORD>((std::min)(
+                length, static_cast<int>(sizeof(line) - 1))),
+            &written, nullptr);
 }
 
 std::string boundary_marker_label(UINT metadata, const void* data, UINT size) {
@@ -1231,12 +1452,18 @@ void load_billboard_shader_replacements() {
   const auto directory = native_capture_directory();
   std::scoped_lock lock(billboard_shader_replacement_mutex);
   billboard_shader_replacements.clear();
+  billboard_target_replacement_hash.store(0, std::memory_order_relaxed);
   for (const auto hash : kBillboardVertexShaderHashes) {
     wchar_t name[96]{};
     swprintf_s(name, L"billboard_shaders\\vs-%016llx.dxil",
                static_cast<unsigned long long>(hash));
     auto bytes = read_binary_file(directory + name);
     if (!bytes.empty()) {
+      if (hash == kBillboardTargetVertexShader) {
+        billboard_target_replacement_hash.store(
+            hash_bytes(bytes.data(), bytes.size()),
+            std::memory_order_relaxed);
+      }
       billboard_shader_replacements.emplace(hash, std::move(bytes));
     }
   }
@@ -1825,17 +2052,38 @@ void log_focused_draw(ID3D12GraphicsCommandList* commands,
   const auto& s4b = table4.descriptors[1];
   const auto& vb0 = trace.vertex_buffers[0];
   const auto& vb1 = trace.vertex_buffers[1];
+  PsoMetadata metadata{};
+  {
+    std::scoped_lock lock(pso_mutex);
+    const auto found = pso_metadata.find(trace.pso);
+    if (found != pso_metadata.end()) {
+      metadata = found->second;
+    }
+  }
+  auto target_is_swapchain = false;
+  {
+    const auto target = descriptor_snapshot(trace.render_target);
+    auto* resource = reinterpret_cast<ID3D12Resource*>(target.resource);
+    std::scoped_lock lock(boundary_capture_mutex);
+    target_is_swapchain = resource &&
+                          swapchain_back_buffers.find(resource) !=
+                              swapchain_back_buffers.end();
+  }
   write_focused_log(
-      "phase=%d\tframe=%llu\tCL=%p\tDRAW\teye=%d\tvpx=%u\tvpy=%u\tvpw=%u\tvph=%u\tsc=%ld,%ld,%ld,%ld\tkind=%llu\ta=%llu,%llu,%llu,%llu,%llu\tcoarse=%llu\texact=%llu\tpso=%p\tsig=%p\ttopo=%u\trtv=%llu\tdsv=%llu\tib=%llu,%u,%u\tvb0=%llu,%u,%u\tvb1=%llu,%u,%u\tbind=%llu\ttables=%llu\tconstants=%llu\tcbvs=%llu\tt4=%llu\tt7=%llu\tcbv1=%llu\ts4=%u,%llu,%llu,%u,%p,%llu,%u,%u,%p\ts7=%u,%llu,%llu\r\n",
+      "phase=%d\tframe=%llu\tCL=%p\tDRAW\teye=%d\tvpx=%u\tvpy=%u\tvpw=%u\tvph=%u\tsc=%ld,%ld,%ld,%ld\tkind=%llu\ta=%llu,%llu,%llu,%llu,%llu\tcoarse=%llu\texact=%llu\tpso=%p\tvs=%llu\tps=%llu\tblend=%u\tdepth=%u\tsig=%p\ttopo=%u\trtv=%llu\tswapchain=%u\tdsv=%llu\tib=%llu,%u,%u\tvb0=%llu,%u,%u\tvb1=%llu,%u,%u\tbind=%llu\ttables=%llu\tconstants=%llu\tcbvs=%llu\tt4=%llu\tt7=%llu\tcbv1=%llu\ts4=%u,%llu,%llu,%u,%p,%llu,%u,%u,%p\ts7=%u,%llu,%llu\r\n",
       phase, present_count.load(std::memory_order_relaxed), commands,
       trace.eye, trace.viewport_x, trace.viewport_y, trace.viewport_width,
       trace.viewport_height, trace.scissor.left, trace.scissor.top,
       trace.scissor.right, trace.scissor.bottom, draw_kind, argument0,
       argument1, argument2, argument3, argument4, coarse, exact,
       reinterpret_cast<void*>(trace.pso),
+      static_cast<unsigned long long>(metadata.vertex_shader),
+      static_cast<unsigned long long>(metadata.pixel_shader),
+      metadata.blend_enabled ? 1U : 0U, metadata.depth_enabled ? 1U : 0U,
       reinterpret_cast<void*>(trace.root_signature),
       static_cast<UINT>(trace.primitive_topology), trace.render_target,
-      trace.depth_target, trace.index_buffer.BufferLocation,
+      target_is_swapchain ? 1U : 0U, trace.depth_target,
+      trace.index_buffer.BufferLocation,
       trace.index_buffer.SizeInBytes, static_cast<UINT>(trace.index_buffer.Format),
       vb0.BufferLocation, vb0.SizeInBytes, vb0.StrideInBytes,
       vb1.BufferLocation, vb1.SizeInBytes, vb1.StrideInBytes,
@@ -2798,10 +3046,17 @@ HRESULT STDMETHODCALLTYPE create_pipeline_state_stream_hook(
   }
   if (SUCCEEDED(result) && description && output && *output) {
     auto metadata = inspect_pipeline_stream(*description);
+    preserve_billboard_substitution(metadata, original_vertex_shader,
+                                    substituted);
     record_pso_shader_mapping_if_requested(
         reinterpret_cast<ID3D12PipelineState*>(*output), metadata);
     std::scoped_lock lock(pso_mutex);
-    pso_metadata[reinterpret_cast<std::uintptr_t>(*output)] = metadata;
+    const auto key = reinterpret_cast<std::uintptr_t>(*output);
+    pso_metadata[key] = metadata;
+    if (metadata.substituted_vertex_shader == kBillboardTargetVertexShader) {
+      target_billboard_psos.insert(key);
+      write_billboard_pso_identity("target-create-stream", key, metadata);
+    }
   }
   return result;
 }
@@ -2886,10 +3141,29 @@ bool is_named_eye_final_resource(ID3D12Resource* resource) {
          name == "0x95d78df07ef0d850";   // darktidevr_right_eye_final
 }
 
+int named_eye_final_index(ID3D12Resource* resource) {
+  const auto name = resource_debug_name(resource);
+  if (name == "0xf91259166b1933b1") {  // darktidevr_left_eye_final
+    return 0;
+  }
+  if (name == "0x95d78df07ef0d850") {  // darktidevr_right_eye_final
+    return 1;
+  }
+  return -1;
+}
+
 bool is_named_eye_output_resource(ID3D12Resource* resource) {
   const auto name = resource_debug_name(resource);
   return name == "0x388e18bf99514d34" || // darktidevr_left_eye_output
          name == "0x81442e111aacc90e";   // darktidevr_right_eye_output
+}
+
+bool is_named_menu_ui_resource(ID3D12Resource* resource) {
+  // Stingray exposes resource names as MurmurHash64A IDs. This is the exact
+  // hash of the mod-authored `darktidevr_menu_ui` render target; matching the
+  // name rather than dimensions prevents a fullscreen vendor UI or an eye
+  // intermediate from being admitted to the menu transport.
+  return resource_debug_name(resource) == "0xaf0f1409769cf92b";
 }
 
 void record_descriptor_heap(ID3D12Device* device,
@@ -3371,10 +3645,17 @@ HRESULT STDMETHODCALLTYPE create_graphics_pipeline_state_hook(
     metadata.blend_enabled = description->NumRenderTargets > 0 &&
                              description->BlendState.RenderTarget[0].BlendEnable;
     metadata.depth_enabled = description->DepthStencilState.DepthEnable;
+    preserve_billboard_substitution(metadata, hash_bytecode(description->VS),
+                                    substituted);
     record_pso_shader_mapping_if_requested(
         reinterpret_cast<ID3D12PipelineState*>(*output), metadata);
     std::scoped_lock lock(pso_mutex);
-    pso_metadata[reinterpret_cast<std::uintptr_t>(*output)] = metadata;
+    const auto key = reinterpret_cast<std::uintptr_t>(*output);
+    pso_metadata[key] = metadata;
+    if (metadata.substituted_vertex_shader == kBillboardTargetVertexShader) {
+      target_billboard_psos.insert(key);
+      write_billboard_pso_identity("target-create-graphics", key, metadata);
+    }
   }
   return result;
 }
@@ -3391,7 +3672,35 @@ HRESULT STDMETHODCALLTYPE create_compute_pipeline_state_hook(
     metadata.kind = 'C';
     metadata.compute_shader = hash_bytecode(description->CS);
     std::scoped_lock lock(pso_mutex);
-    pso_metadata[reinterpret_cast<std::uintptr_t>(*output)] = metadata;
+    const auto key = reinterpret_cast<std::uintptr_t>(*output);
+    pso_metadata[key] = metadata;
+    if (metadata.substituted_vertex_shader == kBillboardTargetVertexShader) {
+      target_billboard_psos.insert(key);
+      write_billboard_pso_identity("target-load-graphics", key, metadata);
+    }
+  }
+  return result;
+}
+
+HRESULT STDMETHODCALLTYPE create_command_signature_hook(
+    ID3D12Device* device, const D3D12_COMMAND_SIGNATURE_DESC* description,
+    ID3D12RootSignature* root_signature, REFIID iid, void** output) {
+  const auto result = original_create_command_signature(
+      device, description, root_signature, iid, output);
+  if (SUCCEEDED(result) && description != nullptr && output != nullptr &&
+      *output != nullptr) {
+    bool submits_graphics_draw{};
+    for (UINT index = 0; index < description->NumArgumentDescs; ++index) {
+      const auto type = description->pArgumentDescs[index].Type;
+      if (type == D3D12_INDIRECT_ARGUMENT_TYPE_DRAW ||
+          type == D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED) {
+        submits_graphics_draw = true;
+        break;
+      }
+    }
+    std::scoped_lock lock(command_signature_mutex);
+    command_signature_draws[reinterpret_cast<std::uintptr_t>(*output)] =
+        submits_graphics_draw;
   }
   return result;
 }
@@ -3479,10 +3788,17 @@ HRESULT STDMETHODCALLTYPE load_graphics_pipeline_hook(
     metadata.blend_enabled = description->NumRenderTargets > 0 &&
                              description->BlendState.RenderTarget[0].BlendEnable;
     metadata.depth_enabled = description->DepthStencilState.DepthEnable;
+    preserve_billboard_substitution(metadata, hash_bytecode(description->VS),
+                                    substituted);
     record_pso_shader_mapping_if_requested(
         reinterpret_cast<ID3D12PipelineState*>(*output), metadata);
     std::scoped_lock lock(pso_mutex);
-    pso_metadata[reinterpret_cast<std::uintptr_t>(*output)] = metadata;
+    const auto key = reinterpret_cast<std::uintptr_t>(*output);
+    pso_metadata[key] = metadata;
+    if (metadata.substituted_vertex_shader == kBillboardTargetVertexShader) {
+      target_billboard_psos.insert(key);
+      write_billboard_pso_identity("target-load-stream", key, metadata);
+    }
   }
   return result;
 }
@@ -3554,6 +3870,8 @@ HRESULT STDMETHODCALLTYPE load_pipeline_hook(
   }
   if (SUCCEEDED(result) && description && output && *output) {
     auto metadata = inspect_pipeline_stream(*description);
+    preserve_billboard_substitution(metadata, original_vertex_shader,
+                                    substituted);
     record_pso_shader_mapping_if_requested(
         reinterpret_cast<ID3D12PipelineState*>(*output), metadata);
     std::scoped_lock lock(pso_mutex);
@@ -3563,7 +3881,7 @@ HRESULT STDMETHODCALLTYPE load_pipeline_hook(
 }
 
 HRESULT STDMETHODCALLTYPE close_hook(ID3D12GraphicsCommandList* commands) {
-  if (marker_log != INVALID_HANDLE_VALUE) {
+  if (marker_log != INVALID_HANDLE_VALUE || kStockMenuDirectRenderEnabled) {
     std::scoped_lock lock(trace_mutex);
     const auto found = command_traces.find(commands);
     if (found != command_traces.end()) {
@@ -3667,13 +3985,26 @@ HRESULT STDMETHODCALLTYPE close_hook(ID3D12GraphicsCommandList* commands) {
       }
     }
   }
+  {
+    std::scoped_lock lock(state_mutex);
+    const auto found = direct_menu_render_lists.find(commands);
+    if (found != direct_menu_render_lists.end() && found->second) {
+      D3D12_RESOURCE_BARRIER barrier{};
+      barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+      barrier.Transition.pResource = found->second.Get();
+      barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+      barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
+      barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+      commands->ResourceBarrier(1, &barrier);
+    }
+  }
   return original_close(commands);
 }
 
 HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
                                      ID3D12CommandAllocator* allocator,
                                      ID3D12PipelineState* initial_state) {
-  if (marker_log != INVALID_HANDLE_VALUE ||
+  if (marker_log != INVALID_HANDLE_VALUE || kStockMenuDirectRenderEnabled ||
       billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
@@ -3697,7 +4028,88 @@ HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
     command_transition_ordinals.erase(commands);
     command_marker_stacks.erase(commands);
   }
+  {
+    std::scoped_lock lock(state_mutex);
+    direct_menu_render_lists.erase(commands);
+  }
   return original_reset(commands, allocator, initial_state);
+}
+
+void STDMETHODCALLTYPE execute_bundle_hook(
+    ID3D12GraphicsCommandList* commands,
+    ID3D12GraphicsCommandList* bundle_commands) {
+  if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+    std::scoped_lock lock(trace_mutex);
+    const auto& parent = command_traces[commands];
+    const auto& bundle = command_traces[bundle_commands];
+    write_focused_log(
+        "phase=%d\tframe=%llu\tCL=%p\tBUNDLE_EXEC\tbundle=%p\t"
+        "parent_rtv=%llu\tparent_dsv=%llu\tparent_rt_count=%u\t"
+        "parent_vp=%u,%u,%u,%u\tparent_sc=%ld,%ld,%ld,%ld\t"
+        "bundle_pso=%p\tbundle_sig=%p\tbundle_vp=%u,%u,%u,%u\t"
+        "bundle_sc=%ld,%ld,%ld,%ld\r\n",
+        focused_trace_phase.load(std::memory_order_relaxed),
+        present_count.load(std::memory_order_relaxed), commands,
+        bundle_commands, parent.render_target, parent.depth_target,
+        parent.render_target_count, parent.viewport_x, parent.viewport_y,
+        parent.viewport_width, parent.viewport_height, parent.scissor.left,
+        parent.scissor.top, parent.scissor.right, parent.scissor.bottom,
+        reinterpret_cast<void*>(bundle.pso),
+        reinterpret_cast<void*>(bundle.root_signature), bundle.viewport_x,
+        bundle.viewport_y, bundle.viewport_width, bundle.viewport_height,
+        bundle.scissor.left, bundle.scissor.top, bundle.scissor.right,
+        bundle.scissor.bottom);
+  }
+  original_execute_bundle(commands, bundle_commands);
+}
+
+void STDMETHODCALLTYPE begin_render_pass_hook(
+    ID3D12GraphicsCommandList4* commands, UINT render_target_count,
+    const D3D12_RENDER_PASS_RENDER_TARGET_DESC* render_targets,
+    const D3D12_RENDER_PASS_DEPTH_STENCIL_DESC* depth_stencil,
+    D3D12_RENDER_PASS_FLAGS flags) {
+  if (marker_log != INVALID_HANDLE_VALUE || kStockMenuDirectRenderEnabled) {
+    std::scoped_lock lock(trace_mutex);
+    auto& trace = command_traces[commands];
+    trace.render_target_count = render_target_count;
+    trace.render_target = render_target_count > 0 && render_targets
+                              ? render_targets[0].cpuDescriptor.ptr
+                              : 0;
+    trace.depth_target = depth_stencil ? depth_stencil->cpuDescriptor.ptr : 0;
+    if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+      write_focused_log(
+          "phase=%d\tframe=%llu\tCL=%p\tBEGIN_RENDER_PASS\t"
+          "rtv_count=%u\trtv=%llu\tdsv=%llu\tflags=%u\t"
+          "vp=%u,%u,%u,%u\tsc=%ld,%ld,%ld,%ld\r\n",
+          focused_trace_phase.load(std::memory_order_relaxed),
+          present_count.load(std::memory_order_relaxed), commands,
+          render_target_count, trace.render_target, trace.depth_target,
+          static_cast<unsigned>(flags), trace.viewport_x, trace.viewport_y,
+          trace.viewport_width, trace.viewport_height, trace.scissor.left,
+          trace.scissor.top, trace.scissor.right, trace.scissor.bottom);
+    }
+  }
+  original_begin_render_pass(commands, render_target_count, render_targets,
+                             depth_stencil, flags);
+}
+
+void STDMETHODCALLTYPE end_render_pass_hook(ID3D12GraphicsCommandList4* commands) {
+  original_end_render_pass(commands);
+  if (marker_log != INVALID_HANDLE_VALUE) {
+    std::scoped_lock lock(trace_mutex);
+    auto& trace = command_traces[commands];
+    if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+      write_focused_log(
+          "phase=%d\tframe=%llu\tCL=%p\tEND_RENDER_PASS\t"
+          "rtv=%llu\tdsv=%llu\r\n",
+          focused_trace_phase.load(std::memory_order_relaxed),
+          present_count.load(std::memory_order_relaxed), commands,
+          trace.render_target, trace.depth_target);
+    }
+    trace.render_target = 0;
+    trace.depth_target = 0;
+    trace.render_target_count = 0;
+  }
 }
 
 DescriptorInfo descriptor_snapshot(std::uint64_t handle);
@@ -3917,6 +4329,139 @@ void observe_billboard_cbv(const DescriptorInfo& descriptor) {
   } else {
     billboard_exact_map_failure_count.fetch_add(1,
                                                  std::memory_order_relaxed);
+  }
+}
+
+void log_target_billboard_cbv(const DescriptorInfo& descriptor) {
+  const auto attempt = billboard_target_cbv_attempt_count.fetch_add(
+      1, std::memory_order_relaxed);
+  if (attempt < 2048) {
+    std::array<wchar_t, MAX_PATH> temporary_path{};
+    if (GetTempPathW(static_cast<DWORD>(temporary_path.size()),
+                     temporary_path.data()) != 0) {
+      const auto path = std::wstring(temporary_path.data()) +
+                        L"darktidevr-billboard-target-attempts.tsv";
+      HANDLE log = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
+                               nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL,
+                               nullptr);
+      if (log != INVALID_HANDLE_VALUE) {
+        char line[384]{};
+        const auto length = std::snprintf(
+            line, sizeof(line),
+            "attempt=%llu\tframe=%llu\tkind=%c\tgpu=%llu\twidth=%llu\r\n",
+            static_cast<unsigned long long>(attempt),
+            static_cast<unsigned long long>(
+                present_count.load(std::memory_order_relaxed)),
+            descriptor.kind, static_cast<unsigned long long>(
+                                 descriptor.gpu_address),
+            static_cast<unsigned long long>(descriptor.width));
+        if (length > 0) {
+          DWORD written{};
+          WriteFile(log, line, static_cast<DWORD>(length), &written, nullptr);
+        }
+        CloseHandle(log);
+      }
+    }
+  }
+  if (descriptor.kind != 'C' || descriptor.gpu_address == 0) {
+    return;
+  }
+  const auto frame = present_count.load(std::memory_order_relaxed);
+  const auto resource = resolve_buffer_resource(descriptor.gpu_address);
+  if (!resource || !resource->resource) {
+    return;
+  }
+  const auto resource_offset = descriptor.gpu_address - resource->gpu_start;
+  if (resource_offset >= resource->size) {
+    return;
+  }
+  const auto readable_size = (std::min<std::uint64_t>)(
+      descriptor.width == 0 ? 512 : descriptor.width,
+      resource->size - resource_offset);
+  void* mapped = resource->staging_base
+                     ? resource->staging_base
+                     : resource->mapped && resource->mapped_subresource == 0
+                           ? resource->mapped_base
+                           : nullptr;
+  bool mapped_for_observation{};
+  const D3D12_RANGE read_range{
+      static_cast<SIZE_T>(resource_offset),
+      static_cast<SIZE_T>(resource_offset + readable_size)};
+  if (!mapped &&
+      !(SUCCEEDED(resource->resource->Map(0, &read_range, &mapped)) && mapped &&
+        (mapped_for_observation = true))) {
+    return;
+  }
+  if (billboard_target_cbv_last_frame.exchange(frame,
+                                                std::memory_order_relaxed) ==
+      frame) {
+    if (mapped_for_observation) {
+      const D3D12_RANGE no_cpu_writes{0, 0};
+      resource->resource->Unmap(0, &no_cpu_writes);
+    }
+    return;
+  }
+  const auto sample = billboard_target_cbv_log_count.fetch_add(
+      1, std::memory_order_relaxed);
+  if (sample >= 2048) {
+    if (mapped_for_observation) {
+      const D3D12_RANGE no_cpu_writes{0, 0};
+      resource->resource->Unmap(0, &no_cpu_writes);
+    }
+    return;
+  }
+  const auto* bytes = resource->staging_base
+                          ? resource->staging_base + resource_offset
+                          : static_cast<const std::byte*>(mapped) +
+                                resource_offset;
+  std::array<wchar_t, MAX_PATH> temporary_path{};
+  if (GetTempPathW(static_cast<DWORD>(temporary_path.size()),
+                   temporary_path.data()) != 0) {
+    const auto path = std::wstring(temporary_path.data()) +
+                      L"darktidevr-billboard-target-cbv.tsv";
+    HANDLE log = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
+                             nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL,
+                             nullptr);
+    if (log != INVALID_HANDLE_VALUE) {
+      std::array<char, 16384> line{};
+      darktidevr::core::SharedHeadPoseSample head_pose{};
+      const bool has_head_pose = shared_head_pose_reader().read(head_pose);
+      int length = std::snprintf(
+          line.data(), line.size(),
+          "frame=%llu\tsample=%llu\tgpu=%llu\toffset=%llu\tcbv_size=%llu"
+          "\tpose_valid=%u\tpose_sequence=%llu"
+          "\tqx=%.9g\tqy=%.9g\tqz=%.9g\tqw=%.9g",
+          static_cast<unsigned long long>(frame),
+          static_cast<unsigned long long>(sample),
+          static_cast<unsigned long long>(descriptor.gpu_address),
+          static_cast<unsigned long long>(resource_offset),
+          static_cast<unsigned long long>(descriptor.width),
+          has_head_pose ? 1U : 0U,
+          static_cast<unsigned long long>(head_pose.sequence),
+          head_pose.pose.orientation.x, head_pose.pose.orientation.y,
+          head_pose.pose.orientation.z, head_pose.pose.orientation.w);
+      const auto float_count = (std::min<std::size_t>)(
+          readable_size / sizeof(float), 128);
+      const auto* values = reinterpret_cast<const float*>(bytes);
+      for (std::size_t i = 0; i < float_count && length > 0 &&
+                              static_cast<std::size_t>(length) < line.size();
+           ++i) {
+        length += std::snprintf(line.data() + length, line.size() - length,
+                                "\tf%zu=%.9g", i, values[i]);
+      }
+      if (length > 0 && static_cast<std::size_t>(length + 2) < line.size()) {
+        line[length++] = '\r';
+        line[length++] = '\n';
+        DWORD written{};
+        WriteFile(log, line.data(), static_cast<DWORD>(length), &written,
+                  nullptr);
+      }
+      CloseHandle(log);
+    }
+  }
+  if (mapped_for_observation) {
+    const D3D12_RANGE no_writes{0, 0};
+    resource->resource->Unmap(0, &no_writes);
   }
 }
 
@@ -4325,20 +4870,32 @@ BillboardBindingOverride apply_billboard_view_basis(
   }
 
   bool billboard_pso{};
+  bool target_billboard_pso{};
   std::uint64_t billboard_vertex_shader{};
+  std::uint64_t billboard_substituted_vertex_shader{};
   std::uint64_t billboard_pixel_shader{};
   UINT billboard_register = UINT_MAX;
   {
     std::scoped_lock lock(pso_mutex);
+    target_billboard_pso = target_billboard_psos.contains(pipeline);
     const auto found = pso_metadata.find(pipeline);
     if (found != pso_metadata.end()) {
-      billboard_pso = found->second.billboard_shader ||
+      billboard_pso = target_billboard_pso || found->second.billboard_shader ||
                       is_billboard_vertex_shader(found->second.vertex_shader);
       billboard_vertex_shader = found->second.vertex_shader;
+      billboard_substituted_vertex_shader =
+          found->second.substituted_vertex_shader;
       billboard_pixel_shader = found->second.pixel_shader;
       billboard_register = found->second.billboard_register;
       if (billboard_register == UINT_MAX &&
           is_billboard_vertex_shader(found->second.vertex_shader)) {
+        billboard_register = 2;
+      }
+    }
+    if (target_billboard_pso) {
+      billboard_pso = true;
+      billboard_substituted_vertex_shader = kBillboardTargetVertexShader;
+      if (billboard_register == UINT_MAX) {
         billboard_register = 2;
       }
     }
@@ -4440,13 +4997,28 @@ BillboardBindingOverride apply_billboard_view_basis(
       if (billboard_table_offset < provenance.descriptors.size()) {
         billboard_descriptor = provenance.descriptors[billboard_table_offset];
         observe_billboard_cbv(billboard_descriptor);
+        if (target_billboard_pso ||
+            billboard_vertex_shader == kBillboardTargetVertexShader ||
+            billboard_substituted_vertex_shader ==
+                kBillboardTargetVertexShader ||
+            billboard_vertex_shader == billboard_target_replacement_hash.load(
+                                           std::memory_order_relaxed)) {
+          // c_per_object is reflected as 24 float4 values (384 bytes). Smaller
+          // CBVs observed while this graphics PSO is stale belong to indirect
+          // dispatch work and cannot be this vertex binding.
+          if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) &&
+              billboard_descriptor.width >= kBillboardPerObjectByteSize) {
+            log_target_billboard_cbv(billboard_descriptor);
+          }
+        }
       }
     }
   }
   if (!billboard_basis_write_enabled.load(std::memory_order_relaxed)) {
     return override_state;
   }
-  if (billboard_table_index != UINT_MAX && billboard_descriptor.kind == 'C') {
+  if (billboard_table_index != UINT_MAX && billboard_descriptor.kind == 'C' &&
+      billboard_descriptor.width >= kBillboardPerObjectByteSize) {
     apply_billboard_in_place_descriptor_override(
         commands, billboard_table_offset, billboard_descriptor,
         graphics_tables[billboard_table_index], graphics_resource_heap);
@@ -4520,10 +5092,32 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
       }
     }
   }
+  std::uintptr_t pipeline{};
+  {
+    std::scoped_lock lock(trace_mutex);
+    pipeline = command_traces[commands].pso;
+  }
+  PsoMetadata draw_metadata{};
+  {
+    std::scoped_lock lock(pso_mutex);
+    const auto found = pso_metadata.find(pipeline);
+    if (found != pso_metadata.end()) {
+      draw_metadata = found->second;
+    }
+  }
+  const auto stock_menu_draw = is_stock_menu_shader_pair(draw_metadata);
+  if (stock_menu_draw) {
+    stock_menu_draw_frame.store(present_count.load(std::memory_order_relaxed),
+                                std::memory_order_relaxed);
+  }
+  const auto menu_redirect =
+      stock_menu_draw ? begin_stock_menu_draw_redirect(commands, draw_metadata)
+                      : MenuDrawRedirect{};
   const auto billboard_override = apply_billboard_view_basis(commands);
   original_draw_instanced(commands, vertex_count, instance_count, start_vertex,
                           start_instance);
   end_billboard_binding_override(commands, billboard_override);
+  end_stock_menu_draw_redirect(commands, menu_redirect);
 }
 
 void STDMETHODCALLTYPE draw_indexed_instanced_hook(
@@ -4551,6 +5145,27 @@ void STDMETHODCALLTYPE draw_indexed_instanced_hook(
   original_draw_indexed_instanced(commands, index_count,
                                   submitted_instance_count, start_index,
                                   base_vertex, start_instance);
+  end_billboard_binding_override(commands, billboard_override);
+}
+
+void STDMETHODCALLTYPE execute_indirect_hook(
+    ID3D12GraphicsCommandList* commands,
+    ID3D12CommandSignature* command_signature, UINT max_command_count,
+    ID3D12Resource* argument_buffer, UINT64 argument_buffer_offset,
+    ID3D12Resource* count_buffer, UINT64 count_buffer_offset) {
+  // Darktide's production particle renderer submits the exact c_billboard
+  // pipeline through ExecuteIndirect. Resolve/log (and, when enabled,
+  // override) the binding at the submission boundary so the descriptor-table
+  // state is the one actually consumed by this draw rather than an earlier
+  // table update made while the same PSO happened to remain bound.
+  // Stingray's generated particle sequence is not described as a legacy
+  // DRAW/DRAW_INDEXED signature on this build. The exact substituted graphics
+  // PSO and the reflected 384-byte c_per_object minimum are therefore the
+  // authoritative fail-closed classifiers inside apply_billboard_view_basis.
+  const auto billboard_override = apply_billboard_view_basis(commands);
+  original_execute_indirect(commands, command_signature, max_command_count,
+                            argument_buffer, argument_buffer_offset,
+                            count_buffer, count_buffer_offset);
   end_billboard_binding_override(commands, billboard_override);
 }
 
@@ -4743,7 +5358,28 @@ void STDMETHODCALLTYPE ia_set_vertex_buffers_hook(
 void STDMETHODCALLTYPE set_pipeline_state_hook(
     ID3D12GraphicsCommandList* commands, ID3D12PipelineState* state) {
   dump_pipeline_blob_if_requested(state);
-  if (marker_log != INVALID_HANDLE_VALUE ||
+  PsoMetadata first_bound_metadata{};
+  bool log_first_billboard_bind{};
+  if (billboard_shader_substitution_requested.load(std::memory_order_relaxed) &&
+      state) {
+    const auto key = reinterpret_cast<std::uintptr_t>(state);
+    std::scoped_lock lock(pso_mutex);
+    if (logged_billboard_bound_psos.size() < 4096 &&
+        logged_billboard_bound_psos.insert(key).second) {
+      const auto found = pso_metadata.find(key);
+      if (found != pso_metadata.end()) {
+        first_bound_metadata = found->second;
+      }
+      log_first_billboard_bind = true;
+    }
+  }
+  if (log_first_billboard_bind) {
+    write_billboard_pso_identity(
+        "first-bind", reinterpret_cast<std::uintptr_t>(state),
+        first_bound_metadata);
+  }
+  if (marker_log != INVALID_HANDLE_VALUE || kStockMenuSwapchainCaptureEnabled ||
+      kStockMenuDirectRenderEnabled ||
       billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) {
     bool metadata_missing{};
     {
@@ -4854,7 +5490,7 @@ void STDMETHODCALLTYPE set_graphics_root_signature_hook(
 
 void STDMETHODCALLTYPE set_compute_root_signature_hook(
     ID3D12GraphicsCommandList* commands, ID3D12RootSignature* signature) {
-  if (marker_log != INVALID_HANDLE_VALUE) {
+  if (marker_log != INVALID_HANDLE_VALUE || kStockMenuDirectRenderEnabled) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
     trace.compute_root_signature = reinterpret_cast<std::uintptr_t>(signature);
@@ -4874,8 +5510,14 @@ void STDMETHODCALLTYPE set_graphics_root_descriptor_table_hook(
        billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) &&
       root_index < kRootSlotCount) {
     std::scoped_lock lock(trace_mutex);
-    command_traces[commands].graphics_tables[root_index] = table.ptr;
+    auto& trace = command_traces[commands];
+    trace.graphics_tables[root_index] = table.ptr;
   }
+  // Do not sample the billboard CBV here. A target PSO can remain bound while
+  // the engine stages several unrelated descriptor tables, so a table update
+  // is not evidence that the descriptor will be consumed by the particle
+  // draw. The ExecuteIndirect hook samples the complete bound state at the
+  // actual submission boundary.
   original_set_graphics_root_descriptor_table(commands, root_index, table);
 }
 
@@ -5095,7 +5737,7 @@ void STDMETHODCALLTYPE om_set_render_targets_hook(
       }
     }
   }
-  if (marker_log != INVALID_HANDLE_VALUE) {
+  if (marker_log != INVALID_HANDLE_VALUE || kStockMenuDirectRenderEnabled) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
     trace.render_target_count = count;
@@ -5196,6 +5838,24 @@ void STDMETHODCALLTYPE resource_barrier_hook(
         const bool is_swapchain_resource =
             swapchain_back_buffers.find(barrier.Transition.pResource) !=
             swapchain_back_buffers.end();
+        const bool is_named_menu_completion =
+            kNamedMenuResourceCaptureEnabled &&
+            barrier.Flags == D3D12_RESOURCE_BARRIER_FLAG_NONE &&
+            barrier.Transition.StateBefore ==
+                D3D12_RESOURCE_STATE_RENDER_TARGET &&
+            barrier.Transition.StateAfter !=
+                D3D12_RESOURCE_STATE_RENDER_TARGET &&
+            is_named_menu_ui_resource(barrier.Transition.pResource);
+        if (is_named_menu_completion) {
+          menu_output_resources[commands] = barrier.Transition.pResource;
+          menu_output_source_states[commands] =
+              barrier.Transition.StateAfter;
+          write_menu_resource_log(
+              "MENU_MATCH\tframe=%llu\tCL=%p\tresource=%p\tstate=%u\r\n",
+              present_count.load(std::memory_order_relaxed), commands,
+              barrier.Transition.pResource,
+              static_cast<unsigned>(barrier.Transition.StateAfter));
+        }
         if (is_swapchain_resource &&
             barrier.Flags != D3D12_RESOURCE_BARRIER_FLAG_BEGIN_ONLY) {
           swapchain_back_buffer_states[barrier.Transition.pResource] =
@@ -5217,6 +5877,19 @@ void STDMETHODCALLTYPE resource_barrier_hook(
                                             ? ++command_transition_ordinals[commands]
                                             : 0;
         const auto description = barrier.Transition.pResource->GetDesc();
+        if (description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
+            description.Width == 2112 && description.Height == 1188) {
+          write_menu_resource_log(
+              "MENU_RESOURCE\tframe=%llu\tCL=%p\tresource=%p"
+              "\tbefore=%u\tafter=%u\tflags=%u\tformat=%u\tname=%s\r\n",
+              present_count.load(std::memory_order_relaxed), commands,
+              barrier.Transition.pResource,
+              static_cast<unsigned>(barrier.Transition.StateBefore),
+              static_cast<unsigned>(barrier.Transition.StateAfter),
+              static_cast<unsigned>(barrier.Flags),
+              static_cast<unsigned>(description.Format),
+              resource_debug_name(barrier.Transition.pResource).c_str());
+        }
         DescriptorInfo stage_target{};
         stage_target.width = description.Width;
         stage_target.height = description.Height;
@@ -5287,14 +5960,34 @@ void STDMETHODCALLTYPE resource_barrier_hook(
             known_camera_output_resources.find(
                 barrier.Transition.pResource) !=
             known_camera_output_resources.end();
-        const auto is_named_eye_final =
+        const auto named_eye_index =
             !is_known_output &&
-            description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
-            description.Width == camera_output_width &&
-            description.Height == camera_output_height &&
-            is_named_eye_final_resource(barrier.Transition.pResource);
+                    description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
+                    description.Width == camera_output_width &&
+                    description.Height == camera_output_height
+                ? named_eye_final_index(barrier.Transition.pResource)
+                : -1;
+        const bool is_named_eye_final = named_eye_index >= 0;
         if (is_named_eye_final && !is_known_output) {
-          known_camera_output_resources.insert(barrier.Transition.pResource);
+          named_camera_output_resources[static_cast<std::size_t>(
+              named_eye_index)] = barrier.Transition.pResource;
+          const bool named_pair_ready = named_camera_output_resources[0] &&
+                                        named_camera_output_resources[1];
+          if (named_pair_ready) {
+            // Once both mod-authored finals are identified, they are the
+            // complete capture set. Full-size UI worlds (notably NPC shop
+            // views) use the same format and transition pattern, so allowing
+            // the earlier anonymous fallback to keep learning would admit
+            // their output as a false eye and make stereo flicker or go mono.
+            known_camera_output_resources.clear();
+            known_camera_output_resources.insert(
+                named_camera_output_resources[0]);
+            known_camera_output_resources.insert(
+                named_camera_output_resources[1]);
+            named_camera_outputs_ready = true;
+          } else {
+            known_camera_output_resources.insert(barrier.Transition.pResource);
+          }
           is_known_output = true;
           if (census_enabled) {
             write_boundary_census_log(
@@ -5311,7 +6004,8 @@ void STDMETHODCALLTYPE resource_barrier_hook(
              is_named_eye_final || is_known_output) &&
             barrier.Transition.StateAfter == D3D12_RESOURCE_STATE_RENDER_TARGET &&
             barrier.Flags == D3D12_RESOURCE_BARRIER_FLAG_NONE &&
-            is_output_reuse_begin && !is_known_output) {
+            is_output_reuse_begin && !is_known_output &&
+            !named_camera_outputs_ready) {
             known_camera_output_resources.insert(barrier.Transition.pResource);
             camera_output_realign_pending = true;
             is_known_output = true;
@@ -5487,10 +6181,24 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
   float requested_aspect_ratio{};
   ComPtr<ID3D12Resource> completed_back_buffer;
   auto completed_source_state = D3D12_RESOURCE_STATE_RENDER_TARGET;
+  ComPtr<ID3D12Resource> completed_menu_output;
+  auto completed_menu_source_state =
+      D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
+      D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
   if (description.Type == D3D12_COMMAND_LIST_TYPE_DIRECT && count > 0) {
     std::scoped_lock lock(boundary_capture_mutex);
     for (UINT index = 0; index < count; ++index) {
       auto* graphics = static_cast<ID3D12GraphicsCommandList*>(lists[index]);
+      const auto menu_found = menu_output_resources.find(graphics);
+      if (menu_found != menu_output_resources.end()) {
+        completed_menu_output = menu_found->second;
+        const auto menu_state_found = menu_output_source_states.find(graphics);
+        if (menu_state_found != menu_output_source_states.end()) {
+          completed_menu_source_state = menu_state_found->second;
+        }
+        menu_output_resources.erase(menu_found);
+        menu_output_source_states.erase(graphics);
+      }
       const auto found = camera_output_resources.find(graphics);
       if (found == camera_output_resources.end()) {
         continue;
@@ -5558,7 +6266,29 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
       present_transition_resources.erase(graphics);
     }
   }
+  if (description.Type == D3D12_COMMAND_LIST_TYPE_DIRECT && count > 0) {
+    std::scoped_lock lock(state_mutex);
+    for (UINT index = 0; index < count; ++index) {
+      auto* graphics = static_cast<ID3D12GraphicsCommandList*>(lists[index]);
+      const auto found = direct_menu_render_lists.find(graphics);
+      if (found == direct_menu_render_lists.end()) {
+        continue;
+      }
+      direct_menu_render_lists.erase(found);
+    }
+  }
   original_execute_command_lists(queue, count, lists);
+  if (completed_menu_output) {
+    const auto menu_result = capture_menu_from_resource(
+        queue, completed_menu_output.Get(), completed_menu_source_state);
+    write_menu_resource_log(
+        "MENU_CAPTURE\tframe=%llu\tresource=%p\tstate=%u\tresult=%d"
+        "\tready=%llu\r\n",
+        present_count.load(std::memory_order_relaxed),
+        completed_menu_output.Get(),
+        static_cast<unsigned>(completed_menu_source_state), menu_result,
+        static_cast<unsigned long long>(menu_ready_value));
+  }
   if (requested_eye >= 0 && completed_back_buffer) {
     end_gpu_eye_profile(requested_eye, queue);
     std::uint64_t ready_before{};
@@ -5620,7 +6350,11 @@ HRESULT STDMETHODCALLTYPE resize_buffers_hook(IDXGISwapChain* swapchain,
     swapchain_back_buffer_states.clear();
     camera_output_resources.clear();
     camera_output_source_states.clear();
+    menu_output_resources.clear();
+    menu_output_source_states.clear();
     known_camera_output_resources.clear();
+    named_camera_output_resources = {};
+    named_camera_outputs_ready = false;
     camera_output_realign_pending = false;
     present_transition_resources.clear();
   }
@@ -5642,7 +6376,11 @@ HRESULT STDMETHODCALLTYPE resize_buffers1_hook(
     swapchain_back_buffer_states.clear();
     camera_output_resources.clear();
     camera_output_source_states.clear();
+    menu_output_resources.clear();
+    menu_output_source_states.clear();
     known_camera_output_resources.clear();
+    named_camera_output_resources = {};
+    named_camera_outputs_ready = false;
     camera_output_realign_pending = false;
     present_transition_resources.clear();
   }
@@ -5844,8 +6582,31 @@ void nudge_swapchain_client_extent(HWND window, bool requested) {
   }
 }
 
+void poll_focused_trace_request() {
+  wchar_t temporary_path[MAX_PATH]{};
+  if (GetTempPathW(MAX_PATH, temporary_path) == 0) {
+    return;
+  }
+  for (const auto phase : {1, 2, 0}) {
+    const auto path = std::wstring(temporary_path) +
+                      L"darktidevr-focused-phase-" +
+                      std::to_wstring(phase) + L".request";
+    if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) {
+      continue;
+    }
+    if (DeleteFileW(path.c_str())) {
+      if (phase == 1) {
+        (void)dtvr_enable_marker_log();
+      }
+      (void)dtvr_set_focused_trace_phase(phase);
+    }
+    break;
+  }
+}
+
 HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                                         UINT interval, UINT flags) {
+  poll_focused_trace_request();
   if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {
     std::scoped_lock lock(trace_mutex);
     frame_eye0_table4_draws.clear();
@@ -5925,6 +6686,85 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
   {
     std::scoped_lock lock(state_mutex);
     queue = game_queue;
+  }
+  const auto menu_draw_frame =
+      stock_menu_draw_frame.load(std::memory_order_relaxed);
+  const auto presentation_mode = static_cast<
+      darktidevr::core::SharedPresentationMode>(
+      current_presentation_mode.load(std::memory_order_relaxed));
+  const auto interactive_menu_active =
+      presentation_mode ==
+          darktidevr::core::SharedPresentationMode::flat_menu ||
+      presentation_mode ==
+          darktidevr::core::SharedPresentationMode::world_anchored_menu;
+  // A stock menu frame is recorded across several command lists.  Publish the
+  // transparent surface only once the game's direct queue has received every
+  // list for that frame; signaling from ExecuteCommandLists exposed whichever
+  // partial list happened to finish first.
+  const auto direct_menu_frame =
+      direct_menu_render_frame.load(std::memory_order_relaxed);
+  if constexpr (kStockMenuDirectRenderEnabled) {
+    if (interactive_menu_active && queue &&
+        direct_menu_frame != (std::numeric_limits<std::uint64_t>::max)() &&
+        direct_menu_frame + 1 == present) {
+      ComPtr<ID3D12Fence> menu_publish_fence;
+      std::uint64_t menu_publish_value{};
+      {
+        std::scoped_lock lock(state_mutex);
+        if (menu_ready_fence &&
+            (menu_ready_value == 0 || !menu_consumed_fence ||
+             menu_consumed_fence->GetCompletedValue() >= menu_ready_value)) {
+          menu_publish_fence = menu_ready_fence;
+          menu_publish_value = menu_ready_value + 1;
+        }
+      }
+      if (menu_publish_fence && menu_publish_value != 0 &&
+          SUCCEEDED(queue->Signal(menu_publish_fence.Get(),
+                                  menu_publish_value))) {
+        std::scoped_lock lock(state_mutex);
+        menu_ready_value = menu_publish_value;
+        write_menu_resource_log(
+            "MENU_DIRECT_RENDER\tframe=%llu\tready=%llu\r\n", present,
+            static_cast<unsigned long long>(menu_publish_value));
+      }
+    }
+  }
+  if constexpr (kStockMenuSwapchainCaptureEnabled) {
+    if (interactive_menu_active && candidate && queue &&
+        menu_draw_frame != (std::numeric_limits<std::uint64_t>::max)() &&
+        menu_draw_frame + 1 == present) {
+    ComPtr<ID3D12Resource> menu_back_buffer;
+    const auto buffer_index = candidate->GetCurrentBackBufferIndex();
+    if (SUCCEEDED(candidate->GetBuffer(
+            buffer_index, IID_PPV_ARGS(&menu_back_buffer)))) {
+      const auto menu_result = capture_menu_from_resource(
+          queue.Get(), menu_back_buffer.Get(), D3D12_RESOURCE_STATE_PRESENT,
+          menu_back_buffer->GetDesc().Width, [&] {
+            const auto source = menu_back_buffer->GetDesc();
+            RECT client{};
+            const auto window = game_output_window.load(
+                std::memory_order_relaxed);
+            if (window && GetClientRect(window, &client) &&
+                client.right > client.left && client.bottom > client.top) {
+              const auto client_width =
+                  static_cast<std::uint64_t>(client.right - client.left);
+              const auto client_height =
+                  static_cast<std::uint64_t>(client.bottom - client.top);
+              const auto scaled_height =
+                  (source.Width * client_height + client_width / 2U) /
+                  client_width;
+              return static_cast<UINT>((std::min)(
+                  static_cast<std::uint64_t>(source.Height), scaled_height));
+            }
+            return source.Height;
+          }());
+      write_menu_resource_log(
+          "MENU_SWAPCHAIN_CAPTURE\tframe=%llu\tresource=%p\tresult=%d"
+          "\tready=%llu\r\n",
+          present, menu_back_buffer.Get(), menu_result,
+          static_cast<unsigned long long>(menu_ready_value));
+    }
+  }
   }
   if (present_capture_enabled.load(std::memory_order_relaxed) && candidate &&
       queue) {
@@ -6117,6 +6957,7 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
                                     : nullptr;
   const auto install_pso_substitution_hooks =
       kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
+      kStockMenuDirectRenderEnabled ||
       billboard_shader_substitution_requested.load(std::memory_order_relaxed) ||
       billboard_pixel_shader_probe_requested.load(std::memory_order_relaxed);
   void* stingray_upload_flush_target{};
@@ -6174,21 +7015,25 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
        MH_CreateHook(device_vtable[19], &create_unordered_access_view_hook,
                     reinterpret_cast<void**>(
                         &original_create_unordered_access_view)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
        MH_CreateHook(device_vtable[20], &create_render_target_view_hook,
-                     reinterpret_cast<void**>(
+                    reinterpret_cast<void**>(
                          &original_create_render_target_view)) != MH_OK) ||
       (kInstallDiagnosticRenderHooks &&
        MH_CreateHook(device_vtable[21], &create_depth_stencil_view_hook,
                     reinterpret_cast<void**>(
                         &original_create_depth_stencil_view)) != MH_OK) ||
       (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(device_vtable[41], &create_command_signature_hook,
+                     reinterpret_cast<void**>(
+                         &original_create_command_signature)) != MH_OK) ||
+      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
        MH_CreateHook(device_vtable[23], &copy_descriptors_hook,
-                     reinterpret_cast<void**>(
+                    reinterpret_cast<void**>(
                          &original_copy_descriptors)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
        MH_CreateHook(device_vtable[24], &copy_descriptors_simple_hook,
-                     reinterpret_cast<void**>(
+                    reinterpret_cast<void**>(
                          &original_copy_descriptors_simple)) != MH_OK) ||
       (kInstallDiagnosticRenderHooks &&
        MH_CreateHook(device_vtable[27], &create_committed_resource_hook,
@@ -6226,18 +7071,22 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
        MH_CreateHook(pipeline_library1_vtable[13], &load_pipeline_hook,
                     reinterpret_cast<void**>(&original_load_pipeline)) !=
           MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
        MH_CreateHook(command_list_vtable[9], &close_hook,
                     reinterpret_cast<void**>(&original_close)) != MH_OK) ||
       MH_CreateHook(command_list_vtable[10], &reset_hook,
                     reinterpret_cast<void**>(&original_reset)) != MH_OK ||
       (kInstallDiagnosticRenderHooks &&
-       MH_CreateHook(command_list_vtable[12], &draw_instanced_hook,
-                     reinterpret_cast<void**>(&original_draw_instanced)) !=
+       MH_CreateHook(command_list_vtable[27], &execute_bundle_hook,
+                     reinterpret_cast<void**>(&original_execute_bundle)) !=
            MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
+       MH_CreateHook(command_list_vtable[12], &draw_instanced_hook,
+                    reinterpret_cast<void**>(&original_draw_instanced)) !=
+           MH_OK) ||
+      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
        MH_CreateHook(command_list_vtable[13], &draw_indexed_instanced_hook,
-                     reinterpret_cast<void**>(
+                    reinterpret_cast<void**>(
                          &original_draw_indexed_instanced)) != MH_OK) ||
       (kInstallDiagnosticRenderHooks &&
        MH_CreateHook(command_list_vtable[14], &dispatch_hook,
@@ -6255,15 +7104,25 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
        MH_CreateHook(command_list_vtable[22], &rs_set_scissor_rects_hook,
                      reinterpret_cast<void**>(
                          &original_rs_set_scissor_rects)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
        MH_CreateHook(command_list_vtable[25], &set_pipeline_state_hook,
-                     reinterpret_cast<void**>(&original_set_pipeline_state)) !=
+                    reinterpret_cast<void**>(&original_set_pipeline_state)) !=
            MH_OK) ||
       MH_CreateHook(command_list_vtable[26], &resource_barrier_hook,
                     reinterpret_cast<void**>(&original_resource_barrier)) != MH_OK ||
       (enhanced_barriers_available &&
        MH_CreateHook(command_list7_vtable[80], &enhanced_barrier_hook,
                      reinterpret_cast<void**>(&original_enhanced_barrier)) !=
+           MH_OK) ||
+      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
+       enhanced_barriers_available &&
+       MH_CreateHook(command_list7_vtable[68], &begin_render_pass_hook,
+                    reinterpret_cast<void**>(&original_begin_render_pass)) !=
+           MH_OK) ||
+      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
+       enhanced_barriers_available &&
+       MH_CreateHook(command_list7_vtable[69], &end_render_pass_hook,
+                    reinterpret_cast<void**>(&original_end_render_pass)) !=
            MH_OK) ||
       (kInstallDiagnosticRenderHooks &&
        MH_CreateHook(command_list_vtable[28], &set_descriptor_heaps_hook,
@@ -6352,9 +7211,9 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
        MH_CreateHook(command_list_vtable[44], &ia_set_vertex_buffers_hook,
                     reinterpret_cast<void**>(
                         &original_ia_set_vertex_buffers)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
        MH_CreateHook(command_list_vtable[46], &om_set_render_targets_hook,
-                     reinterpret_cast<void**>(
+                    reinterpret_cast<void**>(
                          &original_om_set_render_targets)) != MH_OK) ||
       (kInstallDiagnosticRenderHooks &&
        MH_CreateHook(command_list_vtable[47], &clear_depth_stencil_view_hook,
@@ -6384,6 +7243,10 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
       (kInstallDiagnosticRenderHooks &&
        MH_CreateHook(command_list_vtable[57], &end_event_hook,
                      reinterpret_cast<void**>(&original_end_event)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[59], &execute_indirect_hook,
+                     reinterpret_cast<void**>(&original_execute_indirect)) !=
+           MH_OK) ||
       MH_EnableHook(MH_ALL_HOOKS) != MH_OK) {
     DestroyWindow(window);
     UnregisterClassW(class_name, window_class.hInstance);
@@ -6416,6 +7279,316 @@ void close_shared_handles() {
   }
 }
 
+void close_menu_shared_handles() {
+  if (menu_surface_handle) {
+    CloseHandle(menu_surface_handle);
+    menu_surface_handle = nullptr;
+  }
+  if (menu_ready_fence_handle) {
+    CloseHandle(menu_ready_fence_handle);
+    menu_ready_fence_handle = nullptr;
+  }
+  if (menu_consumed_fence_handle) {
+    CloseHandle(menu_consumed_fence_handle);
+    menu_consumed_fence_handle = nullptr;
+  }
+}
+
+int ensure_menu_surface(ID3D12Device* device,
+                        const D3D12_RESOURCE_DESC& source_description,
+                        DXGI_FORMAT render_target_format) {
+  if (menu_surface &&
+      menu_surface->GetDesc().Width == source_description.Width &&
+      menu_surface->GetDesc().Height == source_description.Height &&
+      menu_surface->GetDesc().Format == source_description.Format) {
+    return 0;
+  }
+
+  close_menu_shared_handles();
+  menu_surface.Reset();
+  menu_rtv_heap.Reset();
+  menu_rtv = {};
+  menu_ready_fence.Reset();
+  menu_consumed_fence.Reset();
+  menu_ready_value = 0;
+  direct_menu_clear_frame = (std::numeric_limits<std::uint64_t>::max)();
+  direct_menu_render_frame.store((std::numeric_limits<std::uint64_t>::max)(),
+                                 std::memory_order_relaxed);
+  direct_menu_render_lists.clear();
+  menu_pending_captures.clear();
+  menu_available_captures.clear();
+
+  D3D12_HEAP_PROPERTIES heap{};
+  heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+  auto description = source_description;
+  description.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+  description.MipLevels = 1;
+  description.SampleDesc.Count = 1;
+  const D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_description{
+      D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 1, D3D12_DESCRIPTOR_HEAP_FLAG_NONE, 0};
+  const auto resource_result = device->CreateCommittedResource(
+      &heap, D3D12_HEAP_FLAG_SHARED, &description,
+      D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&menu_surface));
+  const auto handle_result =
+      SUCCEEDED(resource_result)
+          ? device->CreateSharedHandle(menu_surface.Get(), nullptr, GENERIC_ALL,
+                                       kMenuSurfaceName, &menu_surface_handle)
+          : E_FAIL;
+  const auto heap_result =
+      SUCCEEDED(handle_result)
+          ? device->CreateDescriptorHeap(&rtv_heap_description,
+                                         IID_PPV_ARGS(&menu_rtv_heap))
+          : E_FAIL;
+  if (FAILED(resource_result) || FAILED(handle_result) || FAILED(heap_result)) {
+    write_menu_resource_log(
+        "MENU_DIRECT_CREATE_FAILED\tresource=%ld\thandle=%ld\theap=%ld"
+        "\twidth=%llu\theight=%u\tresource_format=%u\trtv_format=%u\r\n",
+        resource_result, handle_result, heap_result,
+        static_cast<unsigned long long>(description.Width), description.Height,
+        static_cast<unsigned>(description.Format),
+        static_cast<unsigned>(render_target_format));
+    close_menu_shared_handles();
+    menu_surface.Reset();
+    menu_rtv_heap.Reset();
+    menu_rtv = {};
+    return 90;
+  }
+  menu_rtv = menu_rtv_heap->GetCPUDescriptorHandleForHeapStart();
+  D3D12_RENDER_TARGET_VIEW_DESC rtv_description{};
+  rtv_description.Format = render_target_format != DXGI_FORMAT_UNKNOWN
+                               ? render_target_format
+                               : description.Format;
+  rtv_description.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+  device->CreateRenderTargetView(menu_surface.Get(), &rtv_description, menu_rtv);
+  if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED,
+                                 IID_PPV_ARGS(&menu_ready_fence))) ||
+      FAILED(device->CreateSharedHandle(
+          menu_ready_fence.Get(), nullptr, GENERIC_ALL,
+          kMenuReadyFenceName, &menu_ready_fence_handle))) {
+    return 91;
+  }
+  if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED,
+                                 IID_PPV_ARGS(&menu_consumed_fence))) ||
+      FAILED(device->CreateSharedHandle(
+          menu_consumed_fence.Get(), nullptr, GENERIC_ALL,
+          kMenuConsumedFenceName, &menu_consumed_fence_handle))) {
+    return 92;
+  }
+  return 0;
+}
+
+MenuDrawRedirect begin_stock_menu_draw_redirect(
+    ID3D12GraphicsCommandList* commands, const PsoMetadata& metadata) {
+  if (!kStockMenuDirectRenderEnabled || !commands ||
+      metadata.render_target_count != 1 || metadata.depth_enabled) {
+    return {};
+  }
+  const auto mode = static_cast<darktidevr::core::SharedPresentationMode>(
+      current_presentation_mode.load(std::memory_order_relaxed));
+  if (mode != darktidevr::core::SharedPresentationMode::flat_menu &&
+      mode != darktidevr::core::SharedPresentationMode::world_anchored_menu) {
+    return {};
+  }
+
+  CommandTrace trace{};
+  {
+    std::scoped_lock lock(trace_mutex);
+    const auto found = command_traces.find(commands);
+    if (found == command_traces.end() || found->second.render_target_count != 1 ||
+        found->second.render_target == 0 || found->second.depth_target != 0) {
+      return {};
+    }
+    trace = found->second;
+  }
+  const auto original_descriptor = descriptor_snapshot(trace.render_target);
+  auto* original_resource =
+      reinterpret_cast<ID3D12Resource*>(original_descriptor.resource);
+  if (!original_resource || original_descriptor.width == 0 ||
+      original_descriptor.height == 0 ||
+      metadata.render_target_format !=
+          static_cast<DXGI_FORMAT>(original_descriptor.format)) {
+    return {};
+  }
+
+  ComPtr<ID3D12Device> device;
+  if (FAILED(commands->GetDevice(IID_PPV_ARGS(&device)))) {
+    return {};
+  }
+  {
+    std::scoped_lock lock(state_mutex);
+    const auto source_description = original_resource->GetDesc();
+    if (ensure_menu_surface(device.Get(), source_description,
+                            metadata.render_target_format) != 0 ||
+        !menu_surface || !menu_rtv_heap) {
+      return {};
+    }
+    // Never overwrite the one-slot mailbox while OpenXR is sampling it.
+    if (menu_ready_value != 0 && menu_consumed_fence &&
+        menu_consumed_fence->GetCompletedValue() < menu_ready_value) {
+      return {};
+    }
+    if (direct_menu_render_lists.find(commands) ==
+        direct_menu_render_lists.end()) {
+      D3D12_RESOURCE_BARRIER barrier{};
+      barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+      barrier.Transition.pResource = menu_surface.Get();
+      barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+      barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+      barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+      commands->ResourceBarrier(1, &barrier);
+      const auto frame = present_count.load(std::memory_order_relaxed);
+      if (direct_menu_clear_frame != frame) {
+        constexpr FLOAT transparent[4]{0.0F, 0.0F, 0.0F, 0.0F};
+        commands->ClearRenderTargetView(menu_rtv, transparent, 0, nullptr);
+        direct_menu_clear_frame = frame;
+      }
+      direct_menu_render_lists.emplace(commands, menu_surface);
+    }
+    direct_menu_render_frame.store(present_count.load(std::memory_order_relaxed),
+                                   std::memory_order_relaxed);
+    original_om_set_render_targets(commands, 1, &menu_rtv, FALSE, nullptr);
+  }
+  return {true, {trace.render_target}};
+}
+
+void end_stock_menu_draw_redirect(ID3D12GraphicsCommandList* commands,
+                                  const MenuDrawRedirect& redirect) {
+  if (!redirect.active || !commands) {
+    return;
+  }
+  original_om_set_render_targets(commands, 1, &redirect.original_target, FALSE,
+                                 nullptr);
+}
+
+int capture_menu_from_resource(ID3D12CommandQueue* queue,
+                               ID3D12Resource* source,
+                               D3D12_RESOURCE_STATES source_state,
+                               std::uint64_t capture_width,
+                               UINT capture_height) {
+  if (!queue || !source) {
+    return 93;
+  }
+  ComPtr<ID3D12Device> device;
+  if (FAILED(source->GetDevice(IID_PPV_ARGS(&device)))) {
+    return 94;
+  }
+
+  ComPtr<ID3D12Resource> destination;
+  ComPtr<ID3D12Fence> fence;
+  PendingCapture pending;
+  std::uint64_t signal_value{};
+  {
+    std::scoped_lock lock(state_mutex);
+    auto capture_description = source->GetDesc();
+    if (capture_width != 0) {
+      capture_description.Width =
+          (std::min)(capture_description.Width, capture_width);
+    }
+    if (capture_height != 0) {
+      capture_description.Height =
+          (std::min)(capture_description.Height, capture_height);
+    }
+    const auto ensure_result =
+        ensure_menu_surface(device.Get(), capture_description);
+    if (ensure_result != 0) {
+      return ensure_result;
+    }
+    const auto completed = menu_ready_fence->GetCompletedValue();
+    while (!menu_pending_captures.empty() &&
+           menu_pending_captures.front().fence_value <= completed) {
+      menu_pending_captures.front().fence_value = 0;
+      menu_available_captures.push_back(
+          std::move(menu_pending_captures.front()));
+      menu_pending_captures.pop_front();
+    }
+    // A single-slot mailbox intentionally drops producer frames rather than
+    // stalling the game queue while OpenXR is between frames or inactive.
+    if (menu_ready_value != 0 &&
+        menu_consumed_fence->GetCompletedValue() < menu_ready_value) {
+      return 0;
+    }
+    if (!menu_available_captures.empty()) {
+      pending = std::move(menu_available_captures.front());
+      menu_available_captures.pop_front();
+    }
+    destination = menu_surface;
+    fence = menu_ready_fence;
+    signal_value = menu_ready_value + 1;
+  }
+
+  if (pending.allocator && pending.commands) {
+    if (FAILED(pending.allocator->Reset()) ||
+        FAILED(pending.commands->Reset(pending.allocator.Get(), nullptr))) {
+      return 95;
+    }
+  } else if (FAILED(device->CreateCommandAllocator(
+                 D3D12_COMMAND_LIST_TYPE_DIRECT,
+                 IID_PPV_ARGS(&pending.allocator))) ||
+             FAILED(device->CreateCommandList(
+                 0, D3D12_COMMAND_LIST_TYPE_DIRECT, pending.allocator.Get(),
+                 nullptr, IID_PPV_ARGS(&pending.commands)))) {
+    return 95;
+  }
+
+  D3D12_RESOURCE_BARRIER source_barrier{};
+  source_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  source_barrier.Transition.pResource = source;
+  source_barrier.Transition.StateBefore = source_state;
+  source_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+  source_barrier.Transition.Subresource =
+      D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+  pending.commands->ResourceBarrier(1, &source_barrier);
+  D3D12_RESOURCE_BARRIER destination_barrier{};
+  destination_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  destination_barrier.Transition.pResource = destination.Get();
+  destination_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+  destination_barrier.Transition.StateAfter =
+      D3D12_RESOURCE_STATE_COPY_DEST;
+  destination_barrier.Transition.Subresource =
+      D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+  pending.commands->ResourceBarrier(1, &destination_barrier);
+  const auto source_description = source->GetDesc();
+  const auto destination_description = destination->GetDesc();
+  if (source_description.Width == destination_description.Width &&
+      source_description.Height == destination_description.Height) {
+    pending.commands->CopyResource(destination.Get(), source);
+  } else {
+    D3D12_TEXTURE_COPY_LOCATION destination_location{};
+    destination_location.pResource = destination.Get();
+    destination_location.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    D3D12_TEXTURE_COPY_LOCATION source_location{};
+    source_location.pResource = source;
+    source_location.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    D3D12_BOX source_box{};
+    source_box.right = static_cast<UINT>(destination_description.Width);
+    source_box.bottom = destination_description.Height;
+    source_box.back = 1;
+    pending.commands->CopyTextureRegion(&destination_location, 0, 0, 0,
+                                        &source_location, &source_box);
+  }
+  std::swap(destination_barrier.Transition.StateBefore,
+            destination_barrier.Transition.StateAfter);
+  pending.commands->ResourceBarrier(1, &destination_barrier);
+  std::swap(source_barrier.Transition.StateBefore,
+            source_barrier.Transition.StateAfter);
+  pending.commands->ResourceBarrier(1, &source_barrier);
+  if (FAILED(pending.commands->Close())) {
+    return 96;
+  }
+  ID3D12CommandList* command_lists[]{pending.commands.Get()};
+  original_execute_command_lists(queue, 1, command_lists);
+  if (FAILED(queue->Signal(fence.Get(), signal_value))) {
+    return 97;
+  }
+  pending.fence_value = signal_value;
+  {
+    std::scoped_lock lock(state_mutex);
+    menu_pending_captures.push_back(std::move(pending));
+    menu_ready_value = signal_value;
+  }
+  return 0;
+}
+
 int ensure_eye_surfaces(ID3D12Device* device,
                         const D3D12_RESOURCE_DESC& source_description,
                         std::uint64_t eye_width = 0,
@@ -6429,11 +7602,27 @@ int ensure_eye_surfaces(ID3D12Device* device,
   if (eye_height == 0) {
     eye_height = source_description.Height;
   }
-  if (eye_surfaces[0] &&
+  const bool matching_surfaces = eye_surfaces[0] &&
       eye_surfaces[0]->GetDesc().Width == eye_width &&
       eye_surfaces[0]->GetDesc().Height == eye_height &&
-      eye_surfaces[0]->GetDesc().Format == source_description.Format) {
+      eye_surfaces[0]->GetDesc().Format == source_description.Format;
+  const bool shared_fences_healthy =
+      ready_fence && consumed_fence &&
+      ready_fence->GetCompletedValue() != UINT64_MAX &&
+      consumed_fence->GetCompletedValue() != UINT64_MAX;
+  if (matching_surfaces && shared_fences_healthy) {
     return 0;
+  }
+  if (matching_surfaces && !shared_fences_healthy) {
+    // A shared D3D12 fence becomes permanently poisoned when an attached
+    // consumer device disappears without a graceful queue drain (for example,
+    // restarting only the XR bridge). GetCompletedValue reports UINT64_MAX in
+    // that state. Recreate the producer-owned mailbox under the same names so
+    // a later bridge can attach to a healthy generation without restarting
+    // Darktide.
+    write_boundary_census_log(
+        "frame=%llu\tSHARED_EYE_RECREATE\treason=poisoned_fence\r\n",
+        present_count.load(std::memory_order_relaxed));
   }
 
   close_shared_handles();
@@ -6935,6 +8124,8 @@ extern "C" __declspec(dllexport) int dtvr_set_projection_active(int enabled) {
           ? darktidevr::core::SharedPresentationMode::stereo_world
           : darktidevr::core::SharedPresentationMode::flat_loading_or_cinematic,
       1, 1, 0, 0, 1, 1, 2.0F, 2.0F};
+  current_presentation_mode.store(static_cast<unsigned int>(state.mode),
+                                  std::memory_order_relaxed);
   if (!publish_presentation_state(state)) {
     return 3;
   }
@@ -6959,6 +8150,8 @@ extern "C" __declspec(dllexport) int dtvr_set_presentation_state(
   if (!darktidevr::core::valid_presentation_state(state)) {
     return 1;
   }
+  current_presentation_mode.store(static_cast<unsigned int>(state.mode),
+                                  std::memory_order_relaxed);
   if (!publish_presentation_state(state)) {
     return 2;
   }
@@ -6968,9 +8161,14 @@ extern "C" __declspec(dllexport) int dtvr_set_presentation_state(
   if (!event) {
     return 3;
   }
-  const auto stereo = state.mode ==
-                      darktidevr::core::SharedPresentationMode::stereo_world;
-  return (stereo ? SetEvent(event) : ResetEvent(event)) ? 0 : 4;
+  // Interactive menu modes are overlays on the live stereo projection. Do
+  // not conflate "show a quad" with "release the projection producer";
+  // doing so lets menu open/close perturb eye ownership and produces
+  // frozen/mono transitions. Only loading/cinematic presentation suspends the
+  // immersive projection.
+  const auto projection_active =
+      darktidevr::core::immersive_projection_active(state.mode);
+  return (projection_active ? SetEvent(event) : ResetEvent(event)) ? 0 : 4;
 }
 extern "C" __declspec(dllexport) int dtvr_set_presentation_state_v2(
     unsigned int mode, unsigned long long sequence, unsigned int source_width,
@@ -6996,6 +8194,8 @@ extern "C" __declspec(dllexport) int dtvr_set_presentation_state_v2(
   if (!darktidevr::core::valid_presentation_state(state)) {
     return 1;
   }
+  current_presentation_mode.store(static_cast<unsigned int>(state.mode),
+                                  std::memory_order_relaxed);
   if (!publish_presentation_state(state)) {
     return 2;
   }
@@ -7004,9 +8204,9 @@ extern "C" __declspec(dllexport) int dtvr_set_presentation_state_v2(
   if (!event) {
     return 3;
   }
-  const auto stereo = state.mode ==
-                      darktidevr::core::SharedPresentationMode::stereo_world;
-  return (stereo ? SetEvent(event) : ResetEvent(event)) ? 0 : 4;
+  const auto projection_active =
+      darktidevr::core::immersive_projection_active(state.mode);
+  return (projection_active ? SetEvent(event) : ResetEvent(event)) ? 0 : 4;
 }
 extern "C" __declspec(dllexport) int
 dtvr_set_diagnostic_render_hooks(int enabled) {
@@ -8125,6 +9325,9 @@ extern "C" __declspec(dllexport) int dtvr_read_head_pose(
   values[17] = static_cast<float>(sample.render_width);
   values[18] = static_cast<float>(sample.render_height);
   values[19] = sample.ipd_metres;
+  values[20] = sample.body_follow_offset.x;
+  values[21] = sample.body_follow_offset.y;
+  values[22] = sample.body_follow_offset.z;
   *sequence = sample.sequence;
   return 0;
 }
@@ -8197,8 +9400,8 @@ extern "C" __declspec(dllexport) int dtvr_read_menu_pointer_state(
 extern "C" __declspec(dllexport) int dtvr_read_gameplay_input(
     int gameplay_active, unsigned long long* pressed,
     unsigned long long* held, unsigned long long* released,
-    unsigned long long* sequence) {
-  if (!pressed || !held || !released || !sequence) {
+    unsigned long long* sequence, float* movement) {
+  if (!pressed || !held || !released || !sequence || !movement) {
     return 1;
   }
   darktidevr::core::SharedControllerState sample{};
@@ -8211,6 +9414,8 @@ extern "C" __declspec(dllexport) int dtvr_read_gameplay_input(
   *held = frame.held;
   *released = frame.released;
   *sequence = available ? sample.sequence : 0;
+  movement[0] = frame.move_x;
+  movement[1] = frame.move_y;
   return available ? 0 : 2;
 }
 extern "C" __declspec(dllexport) int dtvr_enable_marker_log() {
@@ -8261,7 +9466,12 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
       CloseHandle(boundary_census_log);
       boundary_census_log = INVALID_HANDLE_VALUE;
     }
+    if (menu_resource_log != INVALID_HANDLE_VALUE) {
+      CloseHandle(menu_resource_log);
+      menu_resource_log = INVALID_HANDLE_VALUE;
+    }
     close_shared_handles();
+    close_menu_shared_handles();
   }
   return TRUE;
 }

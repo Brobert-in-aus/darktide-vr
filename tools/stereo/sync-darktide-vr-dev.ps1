@@ -4,11 +4,16 @@ param(
         'D:\SteamLibrary\steamapps\common\Warhammer 40,000 DARKTIDE',
 
     [ValidateSet('Debug', 'Release')]
-    [string] $Configuration = 'Release'
+    [string] $Configuration = 'Release',
+
+    [switch] $ParticleHorizonLock,
+
+    [switch] $ParticleDiagnosticMagenta
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
 
 if (Get-Process Darktide -ErrorAction SilentlyContinue) {
     throw 'Darktide must be fully closed before synchronizing development files.'
@@ -37,6 +42,24 @@ $destinations = @(
             'binaries\darktidevr_native_capture.dll'
     }
 )
+
+$billboardShaderDestination = Join-Path $modRoot 'bin\billboard_shaders'
+if ($ParticleHorizonLock) {
+    $destinations += [pscustomobject]@{
+        Source = Join-Path $repoRoot `
+            'build\generated\billboard_shaders\vs-42e436fb1ef1b392.dxil'
+        Destination = Join-Path $billboardShaderDestination `
+            'vs-42e436fb1ef1b392.dxil'
+    }
+}
+if ($ParticleDiagnosticMagenta) {
+    $destinations += [pscustomobject]@{
+        Source = Join-Path $repoRoot `
+            'build\generated\billboard_shaders\ps-6020f2548f29fd47.dxil'
+        Destination = Join-Path $billboardShaderDestination `
+            'ps-6020f2548f29fd47.dxil'
+    }
+}
 
 foreach ($entry in $destinations) {
     if (-not (Test-Path -LiteralPath $entry.Source -PathType Leaf)) {

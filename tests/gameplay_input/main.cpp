@@ -1,5 +1,6 @@
 #include "core/gameplay_input.h"
 
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 
@@ -36,8 +37,21 @@ int main() {
     GameplayInputMapper mapper;
     SharedControllerState state{};
 
-    state.hands[1].trigger = 0.6F;
+    state.hands[0].thumbstick_x = 0.10F;
+    state.hands[0].thumbstick_y = -0.10F;
     auto frame = mapper.update(state, true);
+    expect(frame.move_x == 0.0F && frame.move_y == 0.0F,
+           "radial locomotion deadzone was not applied");
+
+    state.hands[0].thumbstick_x = 0.6F;
+    state.hands[0].thumbstick_y = 0.8F;
+    frame = mapper.update(state, true);
+    expect(std::abs(frame.move_x - 0.6F) < 0.0001F &&
+               std::abs(frame.move_y - 0.8F) < 0.0001F,
+           "full-scale analog locomotion changed direction or magnitude");
+
+    state.hands[1].trigger = 0.6F;
+    frame = mapper.update(state, true);
     expect_edge(frame, GameplayAction::action_one, true, true, false);
 
     state.hands[1].trigger = 0.5F;
@@ -68,7 +82,8 @@ int main() {
 
     frame = mapper.update(state, false);
     expect(frame.pressed == 0 && frame.held == 0 &&
-               frame.released == all_direct_actions,
+               frame.released == all_direct_actions && frame.move_x == 0.0F &&
+               frame.move_y == 0.0F,
            "leaving gameplay did not release every action");
 
     frame = mapper.update(state, false);

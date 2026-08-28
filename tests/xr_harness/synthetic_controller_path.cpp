@@ -71,16 +71,20 @@ SyntheticControllerPathSample synthetic_controller_path_sample(
   if (emit_gameplay_input) {
     if (sample.phase == SyntheticControllerPhase::left_sweep) {
       sample.state.hands[1].trigger = 1.0F;
+      sample.state.hands[0].thumbstick_y = 1.0F;
     } else if (sample.phase == SyntheticControllerPhase::right_sweep) {
       sample.state.hands[0].trigger = 1.0F;
+      sample.state.hands[0].thumbstick_x = 1.0F;
     } else if (sample.phase == SyntheticControllerPhase::crossed_sweep) {
       sample.state.hands[0].squeeze = 1.0F;
       sample.state.hands[1].squeeze = 1.0F;
+      sample.state.hands[0].thumbstick_y = -1.0F;
     } else if (sample.phase == SyntheticControllerPhase::outside_panel) {
       sample.state.hands[0].buttons = core::controller_primary |
                                       core::controller_secondary;
       sample.state.hands[1].buttons = core::controller_primary |
                                       core::controller_secondary;
+      sample.state.hands[0].thumbstick_x = -1.0F;
     } else if (sample.phase == SyntheticControllerPhase::beyond_reach) {
       sample.state.hands[0].buttons = core::controller_stick_click |
                                       core::controller_menu;

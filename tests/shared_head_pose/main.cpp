@@ -43,12 +43,17 @@ int main(int argc, char** argv) {
     }
     auto writer = std::make_unique<darktidevr::core::SharedHeadPoseWriter>();
     darktidevr::core::SharedHeadPoseReader reader;
-    darktidevr::core::SharedHeadPoseSample sample{
-        7, {{0.0F, 0.38268343F, 0.0F, 0.92387953F},
-            {0.1F, -0.2F, 0.3F}},
-        1.7F, 0.8888889F, 2112, 2304,
-        {{-0.94F, 0.70F, -0.96F, 0.77F},
-         {-0.70F, 0.94F, -0.96F, 0.77F}}};
+    darktidevr::core::SharedHeadPoseSample sample{};
+    sample.sequence = 7;
+    sample.pose = {{0.0F, 0.38268343F, 0.0F, 0.92387953F},
+                   {0.1F, -0.2F, 0.3F}};
+    sample.body_follow_offset = {0.75F, 0.0F, -0.25F};
+    sample.render_vertical_fov_radians = 1.7F;
+    sample.render_aspect_ratio = 0.8888889F;
+    sample.render_width = 2112;
+    sample.render_height = 2304;
+    sample.render_frusta[0] = {-0.94F, 0.70F, -0.96F, 0.77F};
+    sample.render_frusta[1] = {-0.70F, 0.94F, -0.96F, 0.77F};
     expect(writer->publish(sample), "Valid shared pose was rejected");
     darktidevr::core::SharedHeadPoseSample received{};
     expect(reader.read(received), "Published shared pose was unreadable");
@@ -59,6 +64,8 @@ int main(int argc, char** argv) {
                std::abs(received.render_aspect_ratio - 0.8888889F) < 0.0001F &&
                received.render_width == 2112 &&
                received.render_height == 2304 &&
+               std::abs(received.body_follow_offset.x - 0.75F) < 0.0001F &&
+               std::abs(received.body_follow_offset.z + 0.25F) < 0.0001F &&
                std::abs(received.ipd_metres - 0.064F) < 0.0001F &&
                std::abs(received.render_frusta[0].left + 0.94F) < 0.0001F &&
                std::abs(received.render_frusta[1].right - 0.94F) < 0.0001F,

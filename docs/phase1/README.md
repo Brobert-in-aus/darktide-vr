@@ -800,8 +800,42 @@ controls provide separate primary-down/up events for deterministic unattended
 drag tests. The final live gate began and ended the Video FOV drag at normalized
 `0.5000`; after release the visible setting remained at 65 degrees. This
 confirms that transient engine resynchronization no longer overwrites the last
-XR-authored value and accepts sliders for this menu milestone. Text input is
-the next control class.
+XR-authored value and accepts sliders for this menu milestone. A subsequent
+worn pass confirmed that XR focus on DMF's category filter accepts ordinary
+physical-keyboard text input. Controller-only text entry still needs an
+in-headset surface or explicit text transport.
+
+That worn pass also showed that Back works but selection and scrolling provide
+no useful visible feedback, with no controller model or laser present. The
+logs prove trigger and stick events reached the shared transport. Named test
+mode was incorrectly allowing desktop hover to replace a valid controller ray,
+so the physical controller could operate a stale desktop position. A tracked
+controller ray now remains authoritative; desktop hover is only a fallback and
+an actual desktop button retains temporary ownership. A visible spatial ray or
+reticle and a clean controller acceptance pass are still required.
+The initial acceptance implementation submits two crossed 8 mm cyan quad
+layers from the right-hand aim pose to the panel hit plus a 3.5 cm impact quad.
+They sample one reserved opaque pixel from the existing menu swapchain, so the
+laser adds no extra swapchain or copy synchronization. The crossed geometry
+keeps one face visible across controller roll. This is deliberately a simple
+selection laser; controller models remain a separate presentation task.
+
+The first worn pass accepted that laser and all tested controls except expanded
+dropdown options: their overlay was visible, but the ray could activate the
+widget behind it. OptionsView hit testing now treats `exclusive_focus` as
+modal, so only the expanded dropdown's visible option passes participate until
+focus closes. This awaits one live option-selection check.
+
+Recenter and initial anchoring now use headset position plus yaw only. Pitch and
+roll remain in the live relative pose, preventing a leaned or tilted headset at
+initialization/reset from redefining the virtual horizon. The tilted-pose unit
+test verifies a level anchor and exact reconstruction of the original pose.
+
+For the current billboard acceptance loop, exact particle PS
+`6020f2548f29fd47` has an interface-matched magenta diagnostic compiled by
+`build-particle-horizon-lock.ps1 -DiagnosticMagenta`. That diagnostic was
+disabled after the user confirmed cylindrical behavior and does not broaden
+shader ownership beyond the confirmed particle pair.
 
 A stale native DLL in the mod-local `bin` directory initially made the new
 mapping appear unreadable even though the harness published it correctly. Lua
@@ -809,8 +843,339 @@ loads that copy, while other native paths used the `binaries` copy. The
 development launcher now synchronizes the source Lua plus the Release DLL to
 both destinations and verifies SHA-256 equality before opening the launcher.
 
+The installed desktop shortcut `Darktide VR` is the normal user entry point.
+It runs `tools/stereo/launch-darktide-vr.ps1`, which opens the ordinary Steam
+game URI, leaves the mandatory Fatshark launcher and its PLAY action intact for
+authentication, waits up to 30 minutes for the Darktide splash window, and then
+starts the production XR bridge automatically. The bridge session allows up to
+eight hours. Failures are shown in a dialog and recorded at
+`%LOCALAPPDATA%\DarktideVR\launcher.log`. Recreate the shortcut after moving the
+repository with:
+
+```powershell
+.\tools\stereo\install-darktide-vr-shortcut.ps1
+```
+
 All 30 automated tests pass, including the shared pointer transport, native
 export contract, and bidirectional desktop/source mapping tests. Remaining
-menu work is a controller laser (the captured panel now has a high-contrast
-source-space reticle), text input, remaining custom-grid classes, the fixed
-spatial menu panel itself, and an in-headset controller acceptance pass.
+menu work is a visible spatial controller laser/reticle, controller-only text
+entry, remaining custom-grid classes, the fixed spatial menu panel itself, and
+an in-headset controller acceptance pass.
+
+## 2026-08-27 spatial-menu follow-up
+
+The compositor/shared-desktop-menu experiment is retired as the active design.
+It repeatedly replaced live stereo with cached or mono imagery, introduced
+blur and flicker on menu entry/exit, inherited desktop-window occlusion, and
+could not make NPC views reliably interactive. Keeping the world alive behind
+a compositor quad did not satisfy the requirement that menus exist inside the
+game's ordinary stereo scene.
+
+The replacement experiment redirects fullscreen menu drawing to an engine
+render target named `darktidevr_menu_ui` and creates a `World.create_world_gui`
+surface in the active gameplay world. Escape now leaves presentation mode 1
+and live stereo running; the old one-eye blur renderer is destroyed instead of
+being transported through the XR bridge. Runtime telemetry proves both the
+2112x1188 menu target and a 2.000x1.125 m surface at 2 m were created. The
+latest worn test proves the surface is visible in-game, but it is black and
+lies horizontally. These are two bounded defects: fix the world-GUI basis so
+the plane is vertical, then prove that the menu target is populated and that
+the chosen material/render-pass ordering samples it. The opaque backing quad
+is diagnostic and must be removed after the texture is visible.
+
+NPC vendor/facility views do not yet use the replacement path successfully.
+They retain the prior failure: the UI appears only in the desktop view while
+XR becomes mono/flickers or freezes, and the shop cannot be clicked. A
+`contracts_background_view` hook now requests `disable_game_world = false`,
+but the live result proves that another view/presentation path still wins.
+Trace the complete NPC view lifecycle and all remaining presentation-mode
+writes before adding more capture workarounds.
+
+Broad UI-renderer interception temporarily captured the gameplay HUD while a
+menu was active, causing world markers to stop tracking their targets. Capture
+now excludes renderers attached to the active gameplay world. Normal marker
+tracking is confirmed; tracking while the Escape surface is active still needs
+one explicit regression check.
+
+The splash-screen XR regression was operational rather than architectural: a
+test was started without the project launcher/harness wrapper. Launching with
+`start-darktide-vr.ps1` again attached XR at the splash screen. Use that known
+workflow before diagnosing future splash attachment failures.
+
+Options-grid scrolling and pointer fixes remain useful but are not the current
+gate. Interaction should be reconnected only after the correct menu pixels are
+visible on a correctly oriented engine-world surface.
+
+Outstanding rendering defect: some assets select different LODs between the
+two sequential eye renders. This causes binocular geometry/detail glitches and
+needs a shared per-frame visibility/LOD decision (or an eye-union LOD policy)
+before the optimized stereo path is production-ready.
+
+Assess light culling at the same visibility boundary: the user reports that
+some lighting effects switch off near the left and right edges of each eye.
+Determine whether those lights use the stock primary-camera frustum, a
+per-submission frustum, or an undersized screen-space bounds test. Validate an
+eye-union/overscan policy for both geometry LOD and light visibility rather
+than treating the edge symptom as a post-processing artifact.
+
+Enemy shadows have a related but distinct binocular defect: at particular
+distances a shadow is present in only one eye. Rotating the head far enough to
+swap which physical eye is closer does not swap the affected rendered eye, so
+simple distance-to-eye LOD is ruled out. Correlate the asymmetry with render
+submission identity, shadow-caster culling, cascade selection and retained
+per-eye shadow state alongside the broader visibility/LOD probe.
+
+### Next session order
+
+1. Present the now-complete transparent Escape capture on the vertical
+   `World.create_world_gui` surface and validate pointer coordinates against the
+   cropped 2112x1188 menu region.
+2. Add repeatable on-demand menu readback so submenu, dropdown, toggle, and shop
+   captures can be compared without restarting XR.
+3. Instrument the full NPC shop view lifecycle, find the remaining mono or
+   desktop-only presentation transition, and route the UI into a world-space
+   panel without freezing the stereo NPC scene.
+4. Remove the opaque backing quad and old shared-menu transport only after the
+   Escape and NPC paths both pass in-headset.
+5. Run a worn natural-size acceptance pass for the strict cylindrical,
+   zero-spin particle shader, then broaden shader-family coverage.
+6. Resume per-eye LOD unification, synthetic controller-path limits, and
+   first-person/Psykhanium input and IK work after the menu gate.
+7. Fix range locomotion ownership: neutral VR input must not erase WASD, the
+   left thumbstick must reach the movement frame, and mixed inputs must combine
+   predictably before the gameplay adapter becomes default-on.
+8. Replace the visible first-person rig with the headless third-person body,
+   then connect controller arm IK and weapon aiming without changing the
+   game-authoritative attack origin, reach or timing.
+
+## 2026-08-28 bounded menu and billboard corrections
+
+Engine-source inspection established that Stingray world-GUI content occupies
+transform X/Z, not X/Y. The Escape plane now uses camera-right/world-up axes
+with horizontal camera-forward as its normal. It also samples the redirected
+menu target through `Gui2.bitmap_3d` with explicit 0..1 UVs; the previous
+screen-derived render-target-mask UVs could return black on world geometry. A
+temporary magenta-top/cyan-left target mark makes the next worn test distinguish
+target/sample success from widget-redirection failure.
+
+The native completed-output learner also had an identified NPC-view collision.
+After the two exact named eye finals are observed, anonymous same-resolution
+resources are no longer learned as eyes. This excludes the full-size UI world
+created by `contracts_background_view`, while retaining fallback discovery at
+startup and clean relearning after swapchain resize.
+
+The XR harness now has `--synthetic-billboard-sweep`: a magenta spherical quad
+and cyan cylindrical quad are rendered side by side under repeatable synthetic
+pitch/roll motion. This is an unambiguous reference independent of Darktide's
+small particles. Reflection identifies registers 8..11 as the column-major
+view matrix. Registers 8 and 10 are the stock spherical right/up inputs;
+register 9 is camera forward. The replacement now matches the controlled cyan
+reference by flattening forward register 9, deriving a perpendicular right
+axis, and forcing world-Z up. Its requested magenta diagnostic remains deployed
+pending worn validation.
+
+The sweep now also performs deterministic GPU readback of the left submitted
+eye at neutral, pitch, roll, and combined checkpoints.  It removes the resting
+HMD's common pose while preserving the runtime-reported inter-eye displacement,
+so the four images are comparable even when the unattended headset is lying at
+an arbitrary angle.  In the captured roll frame the magenta spherical control
+remains display-upright while the cyan cylindrical control follows the rolled
+world horizon.  This directly validates the basis construction used by the
+native replacement; the remaining native difference was stock per-particle
+spin rotating the completed quad back out of the world-up plane.
+
+Release native/harness builds, Lua parsing, shader interface smoke checks, and
+the focused native-capture/synthetic-head/harness tests pass. Live validation
+is pending because the Quest was not present over ADB; the PC Virtual Desktop
+Streamer remained running.
+
+### Additive shared-menu checkpoint
+
+The shared menu surface is now a proven additive OpenXR layer rather than a
+presentation fallback. Escape publishes mode 4 while the normal two-eye
+projection remains active; native capture matches the exact
+`darktidevr_menu_ui` hash (`0xaf0f1409769cf92b`), transports its typeless RGBA
+resource, and the harness attaches the 2112x1188 shared surface. A clean hub
+run retained exact stereo eye attachment with no pose mismatches and attached
+the menu layer after its expected one-frame shared-handle creation race.
+
+The texture-population gate is narrower now. Diagnostic rectangles written to
+the target are visible, but SystemView's widgets are not. Redirecting both the
+outer renderer field and the authoritative renderer argument passed to its
+dynamic `_draw_widgets` path produced the same empty target, ruling out a late
+renderer-selection bug. Trace the actual `to_screen` UI draw target at D3D12
+level next; do not regress to replacing stereo projection with a desktop
+capture.
+
+The paired D3D12 trace and direct GPU readback corrected the initial
+interpretation of the named 2112x1188 target. Its menu-phase draw signatures
+were the resource renderer's background/registration diagnostics repeated
+twice, not stock `SystemView` geometry. Every pixel containing RGB also had
+non-zero alpha (`rgb_nonzero_alpha_zero=0`), and an opaque-quad test did not
+expose native widgets. Neither D3D12 bundles nor render-pass APIs are involved;
+RTV-zero deltas were explicit depth-only world passes. The broad renderer
+replay is disabled; production work now targets the stock UI's actual completed
+resource or exact compositing boundary so only that native layer is duplicated
+into the additive menu transport.
+
+The stock menu boundary is now known. VS `4066249119808695432` / PS
+`160970739098383160` is stable in pause/options frames and absent from the hub
+baseline. Native capture copies the completed 16:9 swapchain crop into a
+`2112x1188` UNORM shared surface, and OpenXR attaches it as an additive quad
+over the still-live stereo projection. Pair-driven waiting now remains enabled
+during menus, so no compositor-rate cached-pair loop is used. Capture is gated
+by the authoritative presentation mode and stops on menu close even though the
+shader can also occur in normal HUD frames. Darktide's menu-related frame-rate
+drop and delayed recovery remain separate performance work.
+
+The exact magenta particle family can now be built at a bounded 1--20x
+diagnostic scale. A 10x run made the target quads plainly visible. The current
+live build uses natural 1x geometry with the requested magenta diagnostic;
+10x remains available for unattended motion analysis.
+
+The menu-input path now has a live unattended regression as well. The source,
+crop, shared texture, pointer overlay, and Lua input transport all agree on
+2112x1188 at the current runtime/UI scale. The six-phase synthetic controller
+path covers both hands, crossing, panel exit, a 4.5 m over-reach case, and
+tracking loss. A bounded live run produced 200 valid hits from 240 eligible
+rays and cleanly dispatched all 675 pointer updates.
+
+During that run the D3D12 debug layer found that a no-pair fallback frame could
+clear a theatre image left in `COPY_DEST`. Theatre images now enter
+`COPY_DEST` only when a shared/cached eye copy will occur; diagnostic fallback
+frames enter `RENDER_TARGET`. Focused tests and a repeated bounded live run pass
+without debug-layer errors.
+
+The menu cadence regression was diagnostic self-interference, not an inherent
+cost of the additive board. A retired focused command trace started a
+post-`SystemView.on_exit` baseline whose frame budget could only be decremented
+by `SystemView.update`; it therefore stayed armed forever after the view had
+closed. Menu tracing and marker logging are now opt-in, and exit explicitly
+sets the native trace phase to zero. A stationary clean run held approximately
+44--49 fresh stereo pairs/sec before, during, and after the menu instead of
+falling persistently to 22--24.
+
+The LOD boundary is now evidence-backed as well. A bounded hook recorded 32
+gameplay calls to `World.update_lod_levels(world, camera)`; every call used the
+stock `player1` camera and none used the added right-eye camera. This matches
+the optimized submission path: primary `ScriptWorld.render` prepares shading
+and LOD once, then the right eye calls `Application.render_world` directly.
+Reported per-eye object differences therefore do not come from two independent
+Lua-visible LOD updates. Diagnose per-camera native visibility/draw selection,
+sequential resource transitions, and per-eye temporal state before changing
+global LOD policy.
+
+The billboard path also has a repeatable native A/B. At 10x diagnostic scale
+with per-particle spin disabled, the synthetic head sweep makes the corrected
+world-Z quads rotate with the rolled scene; the stock camera-right/up control
+remains display-horizontal while the world rolls. A connected-component PCA
+cross-check measured 15.5 degrees of isolated-component mean-axis span for the
+cylindrical run versus 13.7 degrees for the spherical control. The visual A/B
+is stronger than that population statistic because moving/overlapping quads
+contaminate component axes. Production is restored to 1x, zero local spin, and
+cylindrical orientation; the temporary magenta pixel diagnostic was retired
+after worn acceptance. Retaining the
+stock local spin rotates the quad out of the world-Z cylindrical plane and
+defeats a strict horizon lock; it is now available only as an explicit
+shader-build option for comparison.
+
+The final native trace located this PSO on `ExecuteIndirect` (command-list
+vtable slot 59) and captured 2,048 clean 512-byte `c_per_object` bindings.
+Quaternion-correlated samples prove registers 8--10 contain the XR camera
+basis. The user then confirmed the enlarged magenta particles follow the world
+horizon under the synthetic head-roll sweep. Shader ownership, basis causality,
+and the worn orientation gate are therefore closed for this particle family;
+only broader material/scene compatibility remains.
+
+### Psykhanium body/weapon presentation checkpoint
+
+The one-shot semantic navigation path now enters and verifies the private
+Shooting Range without mouse movement. Synthetic body and first-person weapon
+presentation are gated to `shooting_range`/`training_grounds` and remain
+test-flag controlled.
+
+The visual weapon rig no longer drops a write when the controller exceeds the
+temporary 0.75 m presentation envelope. Its target is clamped continuously to
+that boundary while gameplay aim/origin/reach remain engine-owned. Live
+telemetry covered over 1,600 writes with repeated 1.11 m requested excursions:
+all resolved to exactly 0.7500 m, weapon-attachment error stayed 0, and maximum
+post-write hand error was 0.000001 m. The test flags were disabled after the
+run. Next first-person work can build input/aim semantics on this continuous
+visual foundation rather than debugging a synthetic-path snap.
+
+### Controller input delivery checkpoint
+
+The private Shooting Range synthetic path now validates both native edge masks
+and the exact Darktide ephemeral actions they reach. Every mapped gameplay
+name was present in the active input table across repeated cycles
+(`missing=none`): both attack families, weapon extra, grenade ability,
+interact/reload, quick wield, jump/dodge, crouch, and sprint. Smart tag and menu
+remain separate consumers by design. This closes the previous gap where logs
+proved only that a native bit mask existed, not that Lua found and injected
+the corresponding game action.
+
+Do not restart only the XR harness while retaining the game process for visual
+acceptance. That can attach to an obsolete shared-eye epoch and submit fallback
+frames despite a healthy desktop mirror. The accepted run used a full clean
+producer/consumer restart and recovered to roughly 48--60 fresh pairs/sec with
+zero pose mismatches. Raw ADB `screenrecord` is also black for the Virtual
+Desktop OpenXR compositor on this setup and cannot replace a worn visual check.
+
+### Native analog locomotion checkpoint
+
+Left-stick locomotion now uses Darktide's own fixed-update movement actions
+instead of moving the VR camera or player unit. The OpenXR mapper exports a
+radial-deadzoned analog vector; Lua populates the stock directional float
+caches and leaves the engine's locomotion, acceleration, collision, and
+platform handling intact. A clean Shooting Range run exercised forward,
+right, backward, and left phases. Downstream cache telemetry matched every
+phase and player-unit world coordinates changed by metres along the expected
+axes, proving real native locomotion rather than camera-only displacement.
+All existing mapped button actions still resolved with `missing=none`.
+
+This is the controller-movement half of the intended hybrid model. Physical
+room-scale displacement still needs a separate body-root policy that drags the
+allowed translation region with the headset and reconciles absolute physical
+motion with the native locomotion controller without bypassing collision.
+
+### Hybrid room-scale locomotion checkpoint
+
+The body-root half now has a tested collision-aware transport. Head motion is
+split into bounded camera lean and a cumulative body-follow offset in the XR
+harness, then carried through the versioned shared-head mapping. Lua consumes
+only new offset deltas and injects them as a one-fixed-tick addition to
+Darktide's existing `velocity_wanted` immediately before
+`_update_script_driven_movement`. That stock method applies drag, push and
+minion constraints and ultimately calls `Mover.move`; the original steering
+velocity is restored afterward so controller acceleration state is not
+replaced.
+
+This design is based on source and live evidence. `target_translation` is
+initialized and retained by the steering component but is not read by normal
+script-driven locomotion; a live write produced no movement. The velocity
+adapter produced matching position changes in a clean Shooting Range run.
+Running synthetic stick locomotion and synthetic room-scale motion together
+showed both contributions in the same fixed update without retained input,
+script errors, or runaway accumulation. Production enablement remains gated
+until a worn comfort/collision acceptance pass.
+
+### Transparent native menu checkpoint
+
+Do not reintroduce completed-swapchain menu capture. The swapchain is opaque
+and contains the mono/blurred world, which caused the previous freeze,
+flicker, and delayed stereo recovery. Production now intercepts the exact
+stock Escape-menu draw batch instead: 28 blended, depth-free draws across
+seven measured shader pairs are redirected into a transparent 2112x2304
+shared render target while the original game RTV is restored after each draw.
+
+The menu batch crosses command-list boundaries. Clear the shared target only
+once per game frame and publish its ready fence once at Present after all
+direct-queue work has been submitted. Signaling from each
+`ExecuteCommandLists` call yields a partial menu and is not valid. The OpenXR
+consumer crops source `(0,558,2112,1188)` into the 16:9 panel and applies the
+same source-to-panel mapping to controller input.
+
+An unattended live capture now contains the complete Escape menu—text, icons,
+button fills, arrows, and footer—while fresh stereo eye pairs continue behind
+it. Remaining gates are a worn appearance/pointer pass, options/dropdown
+coverage, and a separate trace/interception policy for NPC shop views.

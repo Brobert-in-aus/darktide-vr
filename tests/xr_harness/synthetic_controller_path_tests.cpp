@@ -39,6 +39,12 @@ int main() {
           360, 6, 6, panel, 2.0F, 2.0F);
   const auto attack = darktidevr::harness::synthetic_controller_path_sample(
       0, 7, 7, panel, 2.0F, 2.0F, true);
+  const auto move_right =
+      darktidevr::harness::synthetic_controller_path_sample(
+          60, 10, 10, panel, 2.0F, 2.0F, true);
+  const auto move_backward =
+      darktidevr::harness::synthetic_controller_path_sample(
+          120, 11, 11, panel, 2.0F, 2.0F, true);
   const auto face_buttons =
       darktidevr::harness::synthetic_controller_path_sample(
           180, 8, 8, panel, 2.0F, 2.0F, true);
@@ -67,6 +73,10 @@ int main() {
       reacquired.state.hands[0].aim_tracking_flags != 0 &&
       left.state.hands[1].trigger == 0.0F &&
       attack.state.hands[1].trigger == 1.0F &&
+      attack.state.hands[0].thumbstick_y == 1.0F &&
+      move_right.state.hands[0].thumbstick_x == 1.0F &&
+      move_backward.state.hands[0].thumbstick_y == -1.0F &&
+      face_buttons.state.hands[0].thumbstick_x == -1.0F &&
       face_buttons.state.hands[0].buttons ==
           (darktidevr::core::controller_primary |
            darktidevr::core::controller_secondary) &&

@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <string_view>
 
 namespace {
 
@@ -12,13 +13,24 @@ constexpr wchar_t kTitle[] = L"DarktideVR capture recovery fixture";
 
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam,
                              LPARAM lparam) {
-  if (message == WM_PAINT) {
+  if (message == WM_PAINT || message == WM_PRINTCLIENT) {
     PAINTSTRUCT paint{};
-    const auto dc = BeginPaint(window, &paint);
-    const auto brush = CreateSolidBrush(RGB(18, 72, 126));
-    FillRect(dc, &paint.rcPaint, brush);
+    const auto dc = message == WM_PAINT
+                        ? BeginPaint(window, &paint)
+                        : reinterpret_cast<HDC>(wparam);
+    RECT client{};
+    GetClientRect(window, &client);
+    wchar_t title[128]{};
+    GetWindowTextW(window, title, 128);
+    const auto occluder = std::wstring_view(title).find(L"occluder") !=
+                          std::wstring_view::npos;
+    const auto brush = CreateSolidBrush(occluder ? RGB(220, 10, 10)
+                                                 : RGB(18, 72, 126));
+    FillRect(dc, message == WM_PAINT ? &paint.rcPaint : &client, brush);
     DeleteObject(brush);
-    EndPaint(window, &paint);
+    if (message == WM_PAINT) {
+      EndPaint(window, &paint);
+    }
     return 0;
   }
   return DefWindowProcW(window, message, wparam, lparam);
@@ -55,7 +67,24 @@ int wmain() {
     const auto initial = capture.capture();
     expect(initial.bgra_pixels && initial.width == 160 && initial.height == 90,
            "Visible fixture should capture at requested dimensions");
-    capture.set_pointer_overlay(std::pair{80U, 45U}, 160, 90);
+
+    const auto occluder = CreateWindowExW(
+        WS_EX_TOPMOST, kClassName, L"DarktideVR capture occluder",
+        WS_POPUP | WS_VISIBLE, 20, 20, 320, 180, nullptr, nullptr,
+        window_class.hInstance, nullptr);
+    expect(occluder != nullptr, "Could not create capture occluder");
+    InvalidateRect(occluder, nullptr, TRUE);
+    UpdateWindow(occluder);
+    const auto occluded = capture.capture();
+    const auto fixture_centre = occluded.bgra_pixels +
+                                (static_cast<std::size_t>(45) * 160 + 80) * 4;
+    expect(fixture_centre[0] == std::byte{126} &&
+               fixture_centre[1] == std::byte{72} &&
+               fixture_centre[2] == std::byte{18},
+           "Occluding window leaked into the captured client surface");
+    DestroyWindow(occluder);
+    capture.set_source_crop(320, 180, 0, 0, 160, 90);
+    capture.set_pointer_overlay(std::pair{80U, 45U}, 320, 180);
     const auto with_pointer = capture.capture();
     const auto centre = with_pointer.bgra_pixels +
                         (static_cast<std::size_t>(45) * 160 + 80) * 4;
@@ -63,11 +92,18 @@ int wmain() {
                centre[2] == std::byte{255},
            "Pointer overlay was not visible at the mapped source position");
     const auto cyan_ring = with_pointer.bgra_pixels +
-                           (static_cast<std::size_t>(45) * 160 + 87) * 4;
+                           (static_cast<std::size_t>(45) * 160 + 95) * 4;
     expect(cyan_ring[0] == std::byte{255} &&
                cyan_ring[1] == std::byte{220} &&
                cyan_ring[2] == std::byte{0},
            "Pointer overlay ring did not use its high-contrast colour");
+    const auto laser_swatch = with_pointer.bgra_pixels +
+                              (static_cast<std::size_t>(89) * 160 + 159) * 4;
+    expect(laser_swatch[0] == std::byte{255} &&
+               laser_swatch[1] == std::byte{255} &&
+               laser_swatch[2] == std::byte{0} &&
+               laser_swatch[3] == std::byte{255},
+           "Pointer overlay did not publish its OpenXR laser swatch");
     capture.set_pointer_overlay(std::nullopt, 160, 90);
 
     ShowWindow(window, SW_MINIMIZE);

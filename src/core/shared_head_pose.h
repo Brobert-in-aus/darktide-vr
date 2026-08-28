@@ -7,7 +7,7 @@
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedHeadPoseName[] =
-    L"Local\\DarktideVR-head-pose-v6";
+    L"Local\\DarktideVR-head-pose-v7";
 
 struct EyeFrustumHalfAngles {
   float left{};
@@ -19,6 +19,9 @@ struct EyeFrustumHalfAngles {
 struct SharedHeadPoseSample {
   std::uint64_t sequence{};
   math::Pose pose{};
+  // Cumulative recenter-local OpenXR horizontal displacement assigned to the
+  // character body rather than the bounded camera lean.
+  math::Vec3 body_follow_offset{};
   float render_vertical_fov_radians{};
   float render_aspect_ratio{};
   std::uint32_t render_width{};

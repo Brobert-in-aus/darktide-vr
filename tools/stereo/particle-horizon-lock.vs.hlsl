@@ -2,6 +2,20 @@
 // spherical billboard basis is replaced with a world-Z cylindrical basis.
 // Compile with tools/stereo/build-particle-horizon-lock.ps1.
 
+#ifndef DTVR_PARTICLE_DIAGNOSTIC_SCALE
+#define DTVR_PARTICLE_DIAGNOSTIC_SCALE 1
+#endif
+
+#ifndef DTVR_PARTICLE_DIAGNOSTIC_ZERO_SPIN
+// Strict horizon locking requires the quad's local up axis to remain world Z.
+// The stock per-particle spin rotates that axis within the billboard plane.
+#define DTVR_PARTICLE_DIAGNOSTIC_ZERO_SPIN 1
+#endif
+
+#ifndef DTVR_PARTICLE_CYLINDRICAL
+#define DTVR_PARTICLE_CYLINDRICAL 1
+#endif
+
 static uint _156;
 static uint _157;
 static uint _158;
@@ -156,26 +170,47 @@ void vert_main()
     float _319 = (c_material_exports_m0[4u].w / _307) * _301;
     float _320 = min(max(_185, _315), _319);
     float _321 = min(max(_186, _315), _319);
-    float _336 = cos(_169);
-    float _337 = sin(_169);
-    float _356 = _272 * _320;
-    float _357 = _273 * _321;
-    float2 cylindrical_forward = c_per_object_m0[9u].xy;
-    float cylindrical_length_squared = dot(cylindrical_forward, cylindrical_forward);
-    float2 cylindrical_right;
-    if (cylindrical_length_squared > 1.0e-8f)
+    float _336 = DTVR_PARTICLE_DIAGNOSTIC_ZERO_SPIN ? 1.0f : cos(_169);
+    float _337 = DTVR_PARTICLE_DIAGNOSTIC_ZERO_SPIN ? 0.0f : sin(_169);
+    float _356 = _272 * _320 * DTVR_PARTICLE_DIAGNOSTIC_SCALE;
+    float _357 = _273 * _321 * DTVR_PARTICLE_DIAGNOSTIC_SCALE;
+    // c_per_object registers 8..11 are the reflected column-major view matrix.
+    // The stock spherical path consumes rows 8 (right) and 10 (up), while row
+    // 9 is the camera-forward axis. Match the independently validated
+    // cylindrical reference: flatten forward onto Darktide's XY ground plane,
+    // derive a perpendicular right axis, and preserve world-Z up. Flattening
+    // the stock right axis is not equivalent because headset roll contaminates
+    // that axis before projection.
+    float3 locked_right;
+    float3 locked_up;
+    if (DTVR_PARTICLE_CYLINDRICAL)
     {
-        cylindrical_forward *= rsqrt(cylindrical_length_squared);
-        cylindrical_right = float2(cylindrical_forward.y, -cylindrical_forward.x);
+        float2 cylindrical_forward = c_per_object_m0[9u].xy;
+        float cylindrical_length_squared =
+            dot(cylindrical_forward, cylindrical_forward);
+        float2 cylindrical_right;
+        if (cylindrical_length_squared > 1.0e-8f)
+        {
+            cylindrical_forward *= rsqrt(cylindrical_length_squared);
+            cylindrical_right =
+                float2(cylindrical_forward.y, -cylindrical_forward.x);
+        }
+        else
+        {
+            float2 fallback_right = c_per_object_m0[8u].xy;
+            float fallback_length_squared = dot(fallback_right, fallback_right);
+            cylindrical_right = fallback_length_squared > 1.0e-8f
+                ? fallback_right * rsqrt(fallback_length_squared)
+                : float2(1.0f, 0.0f);
+        }
+        locked_right = float3(cylindrical_right, 0.0f);
+        locked_up = float3(0.0f, 0.0f, 1.0f);
     }
     else
     {
-        float2 fallback_right = c_per_object_m0[8u].xy;
-        float fallback_length_squared = dot(fallback_right, fallback_right);
-        cylindrical_right = fallback_length_squared > 1.0e-8f ? fallback_right * rsqrt(fallback_length_squared) : float2(1.0f, 0.0f);
+        locked_right = c_per_object_m0[8u].xyz;
+        locked_up = c_per_object_m0[10u].xyz;
     }
-    float3 locked_right = float3(cylindrical_right, 0.0f);
-    float3 locked_up = float3(0.0f, 0.0f, 1.0f);
     float3 rotated_up = (locked_up * _336) - (_337 * locked_right);
     float3 rotated_right = (_337 * locked_up) + (_336 * locked_right);
     float _365 = (rotated_up.x * _357) + _196 + (rotated_right.x * _356);

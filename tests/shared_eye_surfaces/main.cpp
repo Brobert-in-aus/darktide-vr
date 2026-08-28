@@ -284,6 +284,51 @@ int main(int argc, char** argv) {
       throw std::runtime_error("Receiver accepted a mismatched eye extent");
     }
 
+    const darktidevr::bridge::SharedTextureNames texture_names{
+        prefix + L"-menu", prefix + L"-menu-ready",
+        prefix + L"-menu-consumed"};
+    ComPtr<ID3D12Resource> producer_texture;
+    check(device->CreateCommittedResource(
+              &heap, D3D12_HEAP_FLAG_SHARED, &resource,
+              D3D12_RESOURCE_STATE_COMMON, nullptr,
+              IID_PPV_ARGS(&producer_texture)),
+          "CreateCommittedResource(shared texture)");
+    HANDLE texture_handle{};
+    check(device->CreateSharedHandle(
+              producer_texture.Get(), nullptr, GENERIC_ALL,
+              texture_names.texture.c_str(), &texture_handle),
+          "CreateSharedHandle(texture)");
+    UniqueHandle producer_texture_handle(texture_handle);
+    ComPtr<ID3D12Fence> texture_ready;
+    ComPtr<ID3D12Fence> texture_consumed;
+    check(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED,
+                              IID_PPV_ARGS(&texture_ready)),
+          "CreateFence(texture ready)");
+    check(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED,
+                              IID_PPV_ARGS(&texture_consumed)),
+          "CreateFence(texture consumed)");
+    HANDLE texture_ready_handle{};
+    HANDLE texture_consumed_handle{};
+    check(device->CreateSharedHandle(
+              texture_ready.Get(), nullptr, GENERIC_ALL,
+              texture_names.ready_fence.c_str(), &texture_ready_handle),
+          "CreateSharedHandle(texture ready)");
+    check(device->CreateSharedHandle(
+              texture_consumed.Get(), nullptr, GENERIC_ALL,
+              texture_names.consumed_fence.c_str(),
+              &texture_consumed_handle),
+          "CreateSharedHandle(texture consumed)");
+    UniqueHandle producer_texture_ready_handle(texture_ready_handle);
+    UniqueHandle producer_texture_consumed_handle(texture_consumed_handle);
+
+    const auto opened_texture = darktidevr::bridge::open_shared_texture(
+        device.Get(), texture_names, description);
+    if (!opened_texture.texture || !opened_texture.ready_fence ||
+        !opened_texture.consumed_fence ||
+        opened_texture.texture->GetDesc().Width != 64) {
+      throw std::runtime_error("Receiver did not open shared texture");
+    }
+
     std::cout << "shared_eye_surfaces.result=pass\n";
     return 0;
   } catch (const std::exception& error) {

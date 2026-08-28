@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateRange(5, 3600)]
+    [ValidateRange(5, 43200)]
     [int] $DurationSeconds = 300,
 
     [string] $GameExe =
@@ -21,6 +21,8 @@ param(
 
     [switch] $SyntheticHeadSweep,
 
+    [switch] $SyntheticRoomscalePath,
+
     [ValidateRange(0, 1800)]
     [int] $WaitForGameSeconds = 0,
 
@@ -30,6 +32,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
 
 $knownPatchedSha256 =
     '6fce8db87a77a412b22ef9f33f74fa16ef85126cc0fbb24187d78b85fc7a19d3'
@@ -106,11 +109,31 @@ if ($SyntheticBodyPath) {
 if ($SyntheticHeadSweep) {
     $arguments += '--synthetic-head-sweep'
 }
+if ($SyntheticRoomscalePath) {
+    $arguments += '--synthetic-roomscale-path'
+}
 $arguments += '--projection-translation-scale'
 $arguments += $ProjectionTranslationScale.ToString(
     [System.Globalization.CultureInfo]::InvariantCulture)
 
-& $harnessPath @arguments
-if ($LASTEXITCODE -ne 0) {
-    throw "Darktide stereo harness failed with exit code $LASTEXITCODE"
+$priorErrorActionPreference = $ErrorActionPreference
+try {
+    # The Khronos loader can write a diagnostic to stderr when the harness's
+    # first API-version attempt is rejected, then succeed on its built-in
+    # compatibility retry. Windows PowerShell converts native stderr into
+    # ErrorRecord objects; with the launcher's Stop policy those records used
+    # to abort the shortcut before the successful retry. Stream both native
+    # channels back as ordinary text and use only the process exit code as the
+    # success/failure contract.
+    $ErrorActionPreference = 'Continue'
+    & $harnessPath @arguments 2>&1 | ForEach-Object {
+        Write-Output ([string] $_)
+    }
+    $harnessExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $priorErrorActionPreference
+}
+if ($harnessExitCode -ne 0) {
+    throw "Darktide stereo harness failed with exit code $harnessExitCode"
 }

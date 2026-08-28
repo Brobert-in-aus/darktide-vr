@@ -68,5 +68,6 @@ class SharedPresentationStateReader {
 };
 
 bool valid_presentation_state(const SharedPresentationState& state);
+bool immersive_projection_active(SharedPresentationMode mode);
 
 }  // namespace darktidevr::core

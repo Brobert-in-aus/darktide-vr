@@ -40,6 +40,9 @@ The normal development entry point is now
 launcher and waits for the Darktide splash window before starting OpenXR, so
 the splash/loading capture appears on the spatial fallback board without a
 second manual XR launch. Stereo takes over when the producer becomes ready.
+For ordinary user launches, the installed `Darktide VR` desktop shortcut calls
+`tools/stereo/launch-darktide-vr.ps1` and performs this same authenticated flow;
+the user only needs to press PLAY in the Fatshark launcher.
 
 Do not attribute an isolated XR initialization failure to Virtual Desktop by
 default. First archive the failure, perform one ordinary clean retry, and check
@@ -72,6 +75,27 @@ than two identical crash reproductions are needed when the logs and dump agree.
 Large captures remain timestamped artifacts rather than Git content.
 
 ## Workstream A — shared billboard-basis producer
+
+### Completion update — 2026-08-28
+
+The visible character-select particle family is complete and accepted. The
+authored magenta-spherical/cyan-cylindrical harness established the expected
+motion independently, and the native 10x magenta run was then confirmed
+cylindrical by the user under the same synthetic head sweep.
+
+Final native evidence supersedes the early 128/144-byte shared-constant theory
+below for this exact family. Its reflected `c_per_object` vertex CBV is 384
+bytes within a 512-byte binding and is consumed by an exact PSO submitted via
+`ExecuteIndirect`. Hooking vtable slot 59 at submission produced 2,048 clean
+captures; quaternion-correlated samples proved registers 8--10 contain the XR
+camera basis. The production shader derives horizontal right from camera
+forward, preserves world `+Z` up, and disables local particle spin. Production
+is deployed at 1x with original pixel colour. Treat the older experiments in
+this section as retained investigation history, not the current implementation
+contract.
+
+Remaining billboard work is compatibility coverage in other scenes/material
+families, not another search for this particle's owner or basis.
 
 ### Rationale
 
@@ -279,6 +303,15 @@ view clears the anchor. Transport, inverse-basis and reconstruction tests pass;
 live vendor placement remains pending because two clean hub transitions ended
 inside unmodified `PlayerHuskLocomotionExtension.post_update` before the mod or
 XR harness could request a vendor.
+
+The generic Escape menu now has a proven transparent direct-render batch and
+clean additive OpenXR quad lifecycle. The next menu checkpoint is deliberately
+vendor-specific: open one guarded hub vendor view, record pre-open and active
+focused traces, isolate its UI-only shader batch, and validate a complete GPU
+readback before adding those pairs to production. Do not assume the Escape
+menu's seven shader pairs cover shops. The vendor panel anchor and inverse
+world/body transform are already implemented; native UI capture and live
+pointer interaction are the remaining blockers.
 
 ### Hub vendor and NPC-anchored shop mode
 
@@ -719,6 +752,18 @@ the VR cameras while hiding the head/inside-face geometry and avoiding duplicate
 world is captured, and drive both visual rigs from one solved pose where an
 effect or weapon still depends on the first-person unit.
 
+The first worn Psykhanium inspection makes this a required bring-up step rather
+than only a final full-IK concern: Darktide's first-person arms and weapon are
+immediately unsuitable at HMD scale. Hide the complete first-person visual
+model from both VR eyes, render the local third-person body, suppress its head
+and any duplicate weapon, and retain the first-person unit only as a hidden
+gameplay/animation driver until third-person weapon ownership is validated.
+The visible third-person rig then needs controller-driven arm IK and weapon
+aiming; moving only the hidden first-person driver is not an acceptable
+presentation result. Preserve the already validated game-authoritative attack
+origin and action timing while making the visible hands, weapon and support
+grip agree with the tracked controllers.
+
 The solver hierarchy is:
 
 - HMD drives head/neck pose relative to a calibrated eye-to-neck offset;
@@ -808,6 +853,15 @@ frames nor Lua/device errors.
 
 ### Psykhanium test ladder
 
+The first worn input pass exposed a locomotion ownership bug. Enabling the VR
+gameplay adapter overwrote all four movement cache entries every fixed frame;
+the incoming controller movement remained exactly `0.000,0.000`, so the writer
+simultaneously suppressed WASD and supplied no thumbstick movement. Movement
+must be additive/non-destructive: retain keyboard/gamepad values when the VR
+stick is neutral, prove the left-stick OpenXR value reaches the shared frame,
+apply a deadzone, and combine rather than zeroing the existing cache. Keep both
+test gates disabled until that path passes automated and worn checks.
+
 1. With synthetic controller data, verify coordinate conversion, action edges,
    aim quaternion continuity and invalid-pose fallback from logs alone.
 2. Enter `tg_shooting_range` through the automated view sequence and confirm
@@ -879,26 +933,26 @@ These features can advance without invalidating the three main workstreams:
 
 ## Execution order and checkpoints
 
-The unattended queue is:
+The current unattended queue is:
 
-1. preflight/watchdog and clean control capture;
-2. billboard CBV-to-CPU mapping and writer trace;
-3. flat-menu presentation without pointer;
-4. OpenXR controller transport, binding profiles and synthetic provider;
-5. synthetic off-viewport, over-reach, loss/reacquisition pointer loop;
-6. spatial pointer and menu end-to-end callbacks;
-7. automated Psykhanium entry/exit;
-8. conventional controller aim and buttons;
-9. tracked weapon orientation;
-10. vendor/NPC-anchored shop presentation with generic-board fallback;
-11. live skeleton/constraint inventory and articulated upper-body IK;
-12. local full-body visibility, inferred pelvis/lower-body integration and
-    optional runtime body-tracking provider; and
-13. independent backlog items when a gate is blocked.
+1. **Completed:** preflight/watchdog, billboard ownership and cylindrical
+   acceptance, controller transport, synthetic pointer coverage, automated
+   Psykhanium entry, analog locomotion, collision-aware room-scale body follow,
+   and the first weapon/body solver foundation.
+2. **Next:** finish the engine-world Escape menu by correcting its black panel
+   content and horizontal orientation while preserving uninterrupted stereo.
+3. **Then:** validate pointer, scrolling, toggles and dropdowns against that
+   replacement menu without reintroducing completed-swapchain capture.
+4. Trace vendor/NPC views as a distinct renderer family, keep the hub world in
+   stereo, and place the complete interactive view at the NPC with a generic
+   world-space board fallback.
+5. Continue first-person aim/weapon semantics and the Psykhanium anatomical IK
+   gate; do not enable procedural body IK in the third-person hub.
+6. Resume independent backlog items when a renderer/user-feedback gate blocks.
 
 Checkpoint after every accepted gate with source, validation commands, hashes,
 runtime counters and captured evidence. Do not combine an unvalidated renderer
 hook with a new input or UI hook in the same live run. The user-feedback
-gates are: final billboard appearance, menu/pointer ergonomics, live weapon
+gates are: menu/pointer ergonomics, live weapon
 alignment/comfort, vendor-panel placement, and embodied-body comfort; all other
 feasible verification should be completed before requesting those checks.

@@ -16,6 +16,16 @@ void expect(bool condition, const char* message) {
 int main() {
   try {
     using namespace darktidevr::core;
+    expect(immersive_projection_active(
+               SharedPresentationMode::stereo_world) &&
+               immersive_projection_active(SharedPresentationMode::flat_menu) &&
+               immersive_projection_active(
+                   SharedPresentationMode::world_anchored_menu),
+           "Interactive menu overlays must retain immersive projection");
+    expect(!immersive_projection_active(
+               SharedPresentationMode::flat_loading_or_cinematic) &&
+               !immersive_projection_active(SharedPresentationMode::disabled),
+           "Only non-immersive modes may release projection ownership");
     SharedPresentationStateReader reader;
     {
       SharedPresentationStateWriter writer;

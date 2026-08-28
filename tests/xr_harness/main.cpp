@@ -31,6 +31,8 @@
 #include <cstring>
 #include <cstdint>
 #include <deque>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -276,7 +278,8 @@ class OpenXrProbe {
   }
 
   void run_frame_lifecycle(std::uint32_t frame_count, ID3D12Device* device,
-                           ID3D12CommandQueue* queue, bool require_rendering) {
+                           ID3D12CommandQueue* queue, bool require_rendering,
+                           bool synthetic_billboard_sweep) {
     if (session_ == XR_NULL_HANDLE) {
       throw std::runtime_error("OpenXR frame loop requires a session");
     }
@@ -304,6 +307,32 @@ class OpenXrProbe {
       throw std::runtime_error("CreateEventW(XR) failed");
     }
     UINT64 fence_value{};
+    ComPtr<ID3D12Resource> billboard_readback;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT billboard_readback_footprint{};
+    UINT64 billboard_readback_bytes{};
+    if (synthetic_billboard_sweep) {
+      const auto description = swapchain_images_[0][0].texture->GetDesc();
+      UINT rows{};
+      UINT64 row_bytes{};
+      device->GetCopyableFootprints(
+          &description, 0, 1, 0, &billboard_readback_footprint, &rows,
+          &row_bytes, &billboard_readback_bytes);
+      D3D12_HEAP_PROPERTIES heap{};
+      heap.Type = D3D12_HEAP_TYPE_READBACK;
+      D3D12_RESOURCE_DESC readback_description{};
+      readback_description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+      readback_description.Width = billboard_readback_bytes;
+      readback_description.Height = 1;
+      readback_description.DepthOrArraySize = 1;
+      readback_description.MipLevels = 1;
+      readback_description.SampleDesc.Count = 1;
+      readback_description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+      check(device->CreateCommittedResource(
+                &heap, D3D12_HEAP_FLAG_NONE, &readback_description,
+                D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                IID_PPV_ARGS(&billboard_readback)),
+            "ID3D12Device::CreateCommittedResource(billboard readback)");
+    }
 
     wait_until_ready();
 
@@ -321,6 +350,20 @@ class OpenXrProbe {
     std::uint32_t not_rendered_frames{};
     const auto xr_start = std::chrono::steady_clock::now();
     for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
+      const char* billboard_capture_label = nullptr;
+      if (synthetic_billboard_sweep) {
+        constexpr auto phase =
+            darktidevr::harness::kSyntheticHeadPhaseFrames;
+        if (frame == 0) {
+          billboard_capture_label = "neutral";
+        } else if (frame == phase + phase / 4) {
+          billboard_capture_label = "pitch";
+        } else if (frame == phase * 2 + phase / 4) {
+          billboard_capture_label = "roll";
+        } else if (frame == phase * 3 + phase / 4) {
+          billboard_capture_label = "combined";
+        }
+      }
       poll_session_events();
       XrFrameWaitInfo wait_info{XR_TYPE_FRAME_WAIT_INFO};
       XrFrameState frame_state{XR_TYPE_FRAME_STATE};
@@ -345,6 +388,32 @@ class OpenXrProbe {
                                  XR_VIEW_STATE_ORIENTATION_VALID_BIT;
         submit_layer = located_count == located_views.size() &&
                        (view_state.viewStateFlags & valid_flags) == valid_flags;
+        if (submit_layer && synthetic_billboard_sweep) {
+          const auto synthetic =
+              darktidevr::harness::synthetic_head_path_sample(frame, {});
+          // The authored A/B must not depend on where or at what angle the
+          // unattended headset happens to be resting. Preserve only the
+          // runtime's inter-eye displacement, recentered around the scene
+          // origin, and drive the common camera orientation entirely from the
+          // deterministic sweep.
+          const XrVector3f eye_midpoint{
+              (located_views[0].pose.position.x +
+               located_views[1].pose.position.x) * 0.5F,
+              (located_views[0].pose.position.y +
+               located_views[1].pose.position.y) * 0.5F,
+              (located_views[0].pose.position.z +
+               located_views[1].pose.position.z) * 0.5F};
+          for (auto& located_view : located_views) {
+            located_view.pose.orientation = {
+                synthetic.delta.orientation.x,
+                synthetic.delta.orientation.y,
+                synthetic.delta.orientation.z,
+                synthetic.delta.orientation.w};
+            located_view.pose.position.x -= eye_midpoint.x;
+            located_view.pose.position.y -= eye_midpoint.y;
+            located_view.pose.position.z -= eye_midpoint.z;
+          }
+        }
       }
 
       std::vector<std::uint32_t> acquired_indices(swapchains_.size());
@@ -376,9 +445,30 @@ class OpenXrProbe {
           scene.record(command_list.Get(), eye, acquired_indices[eye],
                        located_views[eye], frame);
 
-          std::swap(to_render.Transition.StateBefore,
-                    to_render.Transition.StateAfter);
-          command_list->ResourceBarrier(1, &to_render);
+          if (eye == 0 && billboard_capture_label) {
+            D3D12_RESOURCE_BARRIER to_copy = to_render;
+            to_copy.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            to_copy.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+            command_list->ResourceBarrier(1, &to_copy);
+            D3D12_TEXTURE_COPY_LOCATION destination{};
+            destination.pResource = billboard_readback.Get();
+            destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+            destination.PlacedFootprint = billboard_readback_footprint;
+            D3D12_TEXTURE_COPY_LOCATION source{};
+            source.pResource = resource;
+            source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            source.SubresourceIndex = 0;
+            command_list->CopyTextureRegion(&destination, 0, 0, 0, &source,
+                                            nullptr);
+            std::swap(to_copy.Transition.StateBefore,
+                      to_copy.Transition.StateAfter);
+            to_copy.Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
+            command_list->ResourceBarrier(1, &to_copy);
+          } else {
+            std::swap(to_render.Transition.StateBefore,
+                      to_render.Transition.StateAfter);
+            command_list->ResourceBarrier(1, &to_render);
+          }
 
           projection_views[eye] = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
           projection_views[eye].pose = located_views[eye].pose;
@@ -399,6 +489,44 @@ class OpenXrProbe {
           check(fence->SetEventOnCompletion(signal_value, fence_event),
                 "ID3D12Fence::SetEventOnCompletion(XR)");
           WaitForSingleObject(fence_event, INFINITE);
+        }
+        if (billboard_capture_label) {
+          void* mapped{};
+          D3D12_RANGE read_range{0, billboard_readback_bytes};
+          check(billboard_readback->Map(0, &read_range, &mapped),
+                "ID3D12Resource::Map(billboard readback)");
+          const auto width = views_[0].recommendedImageRectWidth;
+          const auto height = views_[0].recommendedImageRectHeight;
+          const auto path = std::filesystem::temp_directory_path() /
+              (std::string("darktidevr-billboard-") +
+               billboard_capture_label + ".ppm");
+          std::ofstream output(path, std::ios::binary);
+          if (!output) {
+            billboard_readback->Unmap(0, nullptr);
+            throw std::runtime_error("Could not open billboard capture output");
+          }
+          output << "P6\n" << width << ' ' << height << "\n255\n";
+          const auto* pixels = static_cast<const std::uint8_t*>(mapped);
+          const bool bgra =
+              swapchain_format_ == DXGI_FORMAT_B8G8R8A8_UNORM ||
+              swapchain_format_ == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+          std::vector<std::uint8_t> row(static_cast<std::size_t>(width) * 3);
+          for (std::uint32_t y = 0; y < height; ++y) {
+            const auto* source_row = pixels +
+                static_cast<std::size_t>(y) *
+                    billboard_readback_footprint.Footprint.RowPitch;
+            for (std::uint32_t x = 0; x < width; ++x) {
+              const auto* source = source_row + static_cast<std::size_t>(x) * 4;
+              row[static_cast<std::size_t>(x) * 3] = source[bgra ? 2 : 0];
+              row[static_cast<std::size_t>(x) * 3 + 1] = source[1];
+              row[static_cast<std::size_t>(x) * 3 + 2] = source[bgra ? 0 : 2];
+            }
+            output.write(reinterpret_cast<const char*>(row.data()),
+                         static_cast<std::streamsize>(row.size()));
+          }
+          billboard_readback->Unmap(0, nullptr);
+          std::cout << "openxr.synthetic_billboard_capture=" << path.string()
+                    << '\n';
         }
         for (const auto swapchain : swapchains_) {
           XrSwapchainImageReleaseInfo release_info{
@@ -440,6 +568,8 @@ class OpenXrProbe {
                       : 0.0)
               << '\n';
     std::cout << "openxr.projection=synthetic-depth-scene\n";
+    std::cout << "openxr.synthetic_billboard_sweep="
+              << (synthetic_billboard_sweep ? 1 : 0) << '\n';
     if (require_rendering && submitted_frames == 0) {
       request_clean_exit();
       throw std::runtime_error(
@@ -465,6 +595,7 @@ class OpenXrProbe {
                                bool synthetic_body_path,
                                bool synthetic_gameplay_input,
                                bool synthetic_head_sweep,
+                               bool synthetic_roomscale_path,
                                float projection_translation_scale) {
     if (session_ == XR_NULL_HANDLE || view_space_ == XR_NULL_HANDLE) {
       throw std::runtime_error("OpenXR theatre loop requires a session and VIEW space");
@@ -500,10 +631,13 @@ class OpenXrProbe {
                                      : (separate_shared_eye_swapchains
                                             ? shared_eye_height
                                             : (stereo ? 2160U : 1080U));
+    // The game renders a runtime-sized portrait eye target but presents only
+    // its 16:9 landscape content region at the top. Window chrome/non-content
+    // accounts for the taller observed client capture; the native producer's
+    // cropped shared resource is exactly 2112x1188 at this runtime setting.
+    const std::uint32_t flat_capture_width = shared_eye_width;
     const std::uint32_t flat_capture_height =
-        shared_eyes
-            ? (separate_shared_eye_swapchains ? height : height / 2)
-            : height;
+        (flat_capture_width * 9U + 8U) / 16U;
     XrSwapchainCreateInfo swapchain_info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     swapchain_info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT |
                                 XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
@@ -541,6 +675,60 @@ class OpenXrProbe {
       total_image_count += image_count;
     }
 
+    // Flat loading/menu presentation has a different lifetime from immersive
+    // projection. Keep it on an independent swapchain so transitional desktop
+    // frames cannot overwrite either eye while the first new stereo pair is
+    // being produced.
+    XrSwapchain flat_swapchain{XR_NULL_HANDLE};
+    std::vector<XrSwapchainImageD3D12KHR> flat_images;
+    if (capture_title) {
+      auto flat_swapchain_info = swapchain_info;
+      flat_swapchain_info.width = flat_capture_width;
+      flat_swapchain_info.height = flat_capture_height;
+      check_xr(xrCreateSwapchain(session_, &flat_swapchain_info,
+                                 &flat_swapchain),
+               "xrCreateSwapchain(flat capture)");
+      std::uint32_t flat_image_count{};
+      check_xr(xrEnumerateSwapchainImages(flat_swapchain, 0,
+                                          &flat_image_count, nullptr),
+               "xrEnumerateSwapchainImages(flat capture count)");
+      flat_images.assign(flat_image_count,
+                         {XR_TYPE_SWAPCHAIN_IMAGE_D3D12_KHR});
+      check_xr(xrEnumerateSwapchainImages(
+                   flat_swapchain, flat_image_count, &flat_image_count,
+                   reinterpret_cast<XrSwapchainImageBaseHeader*>(
+                       flat_images.data())),
+                "xrEnumerateSwapchainImages(flat capture list)");
+    }
+
+    // Preserve the last complete stereo pair independently of the producer's
+    // single shared slot. Fullscreen menus can then be a live 2 m spatial quad
+    // over a stable stereo world, and closing one never exposes the engine's
+    // transient blur/mono frames while a new pair is being produced.
+    std::array<ComPtr<ID3D12Resource>, 2> cached_eye_resources;
+    if (shared_eyes) {
+      D3D12_HEAP_PROPERTIES cache_heap{};
+      cache_heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+      cache_heap.CreationNodeMask = 1;
+      cache_heap.VisibleNodeMask = 1;
+      D3D12_RESOURCE_DESC cache_description{};
+      cache_description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+      cache_description.Width = shared_eye_width;
+      cache_description.Height = shared_eye_height;
+      cache_description.DepthOrArraySize = 1;
+      cache_description.MipLevels = 1;
+      cache_description.Format = static_cast<DXGI_FORMAT>(swapchain_format_);
+      cache_description.SampleDesc.Count = 1;
+      cache_description.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+      for (auto& cached_eye : cached_eye_resources) {
+        check(device->CreateCommittedResource(
+                  &cache_heap, D3D12_HEAP_FLAG_NONE, &cache_description,
+                  D3D12_RESOURCE_STATE_COMMON, nullptr,
+                  IID_PPV_ARGS(&cached_eye)),
+              "ID3D12Device::CreateCommittedResource(cached eye)");
+      }
+    }
+
     D3D12_DESCRIPTOR_HEAP_DESC heap_info{};
     heap_info.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     heap_info.NumDescriptors = total_image_count;
@@ -572,9 +760,8 @@ class OpenXrProbe {
     std::jthread capture_thread;
     if (capture_title) {
       window_capture = std::make_unique<darktidevr::harness::WindowCapture>(
-          *capture_title, width, flat_capture_height);
-      const auto texture_description =
-          theatre_images.front().front().texture->GetDesc();
+          *capture_title, flat_capture_width, flat_capture_height);
+      const auto texture_description = flat_images.front().texture->GetDesc();
       UINT64 upload_bytes{};
       device->GetCopyableFootprints(&texture_description, 0, 1, 0,
                                     &upload_footprint, nullptr, nullptr,
@@ -601,17 +788,18 @@ class OpenXrProbe {
             "ID3D12Resource::Map(theatre upload)");
 
       const auto capture_rgba =
-          [&window_capture, width, flat_capture_height] {
+          [&window_capture, flat_capture_width, flat_capture_height] {
         const auto captured = window_capture->capture();
-        auto converted =
-            std::make_shared<CapturePixels>(static_cast<std::size_t>(width) *
-                                            flat_capture_height * 4);
+        auto converted = std::make_shared<CapturePixels>(
+            static_cast<std::size_t>(flat_capture_width) *
+            flat_capture_height * 4);
         for (std::uint32_t y = 0; y < captured.height; ++y) {
           const auto* source = captured.bgra_pixels +
                                static_cast<std::size_t>(y) *
                                    captured.row_pitch;
           auto* destination = converted->data() +
-                              static_cast<std::size_t>(y) * width * 4;
+                              static_cast<std::size_t>(y) *
+                                  flat_capture_width * 4;
           for (std::uint32_t x = 0; x < captured.width; ++x) {
             destination[x * 4] = source[x * 4 + 2];
             destination[x * 4 + 1] = source[x * 4 + 1];
@@ -645,14 +833,24 @@ class OpenXrProbe {
     }
 
     std::optional<darktidevr::bridge::OpenedEyeSurfaces> opened_eyes;
+    std::optional<darktidevr::bridge::OpenedSharedTexture> opened_menu;
+    // Interactive UI is an additional compositor layer over uninterrupted
+    // stereo projection. It never replaces either eye and therefore cannot
+    // turn the world mono, freeze it, or expose the desktop behind the game.
+    bool shared_menu_projection_enabled = true;
     std::unique_ptr<darktidevr::core::SharedHeadPoseWriter> head_pose_writer;
     const darktidevr::bridge::SharedEyeSurfaceNames shared_eye_names{
         {L"Local\\DarktideVR-eye-left", L"Local\\DarktideVR-eye-right"},
         L"Local\\DarktideVR-eye-ready",
         L"Local\\DarktideVR-eye-consumed"};
+    const darktidevr::bridge::SharedTextureNames shared_menu_names{
+        L"Local\\DarktideVR-menu-ui",
+        L"Local\\DarktideVR-menu-ui-ready",
+        L"Local\\DarktideVR-menu-ui-consumed"};
     UINT64 shared_last_ready_value{};
     auto shared_last_advance = std::chrono::steady_clock::now();
     auto next_shared_open_attempt = std::chrono::steady_clock::now();
+    auto next_menu_open_attempt = std::chrono::steady_clock::now();
     HANDLE projection_active_event{};
     darktidevr::core::SharedPresentationStateReader presentation_state_reader;
     darktidevr::core::SharedPresentationState presentation_state{};
@@ -665,6 +863,9 @@ class OpenXrProbe {
     std::uint32_t menu_scroll_sequence{};
     int last_shared_menu_scroll_steps{};
     bool last_shared_menu_primary_down{};
+    bool shared_menu_primary_armed{};
+    std::optional<std::chrono::steady_clock::time_point>
+        shared_menu_primary_release_start;
     std::unique_ptr<darktidevr::harness::MenuInputInjector>
         menu_input_injector;
     std::uint64_t menu_input_events{};
@@ -682,7 +883,7 @@ class OpenXrProbe {
     if (enable_menu_input) {
       std::cout << "openxr.menu_input=enabled\n";
     } else {
-      std::cout << "openxr.menu_input=desktop-source-only\n";
+      std::cout << "openxr.menu_input=semantic-with-cursor-sync\n";
     }
     if (enable_menu_test_controls) {
       menu_test_primary_event =
@@ -750,6 +951,9 @@ class OpenXrProbe {
           xrDestroySwapchain(swapchain);
         }
       }
+      if (flat_swapchain != XR_NULL_HANDLE) {
+        xrDestroySwapchain(flat_swapchain);
+      }
       throw std::runtime_error("CreateEventW(theatre) failed");
     }
     UINT64 fence_value{};
@@ -776,6 +980,8 @@ class OpenXrProbe {
         views_.size(), {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW});
     bool stereo_fov_logged{};
     std::optional<darktidevr::math::Pose> head_recenter_pose;
+    std::optional<darktidevr::math::Pose> synthetic_roomscale_origin;
+    darktidevr::math::Vec3 body_follow_offset{};
     controller_recenter_pose_.reset();
     std::uint64_t head_pose_sequence{};
     std::array<XrPosef, 2> recentered_view_poses{};
@@ -783,6 +989,8 @@ class OpenXrProbe {
     std::deque<std::pair<std::uint64_t, std::array<XrPosef, 2>>>
         head_pose_history;
     std::array<XrPosef, 2> rendered_pair_view_poses{};
+    std::array<XrPosef, 2> cached_pair_view_poses{};
+    bool cached_pair_valid{};
     std::uint64_t rendered_pair_pose_ready_value{};
     std::uint64_t last_pair_pose_checked_ready_value{};
     std::uint64_t last_submitted_shared_value{};
@@ -803,6 +1011,9 @@ class OpenXrProbe {
     std::uint32_t last_live_fallback_frames{};
     std::uint32_t processed_frames{};
     std::uint64_t synthetic_head_frames{};
+    std::uint64_t synthetic_roomscale_frames{};
+    darktidevr::math::Vec3 latest_camera_translation{};
+    darktidevr::math::Vec3 latest_body_follow_offset{};
     std::array<std::uint64_t, 4> synthetic_head_phase_frames{};
     constexpr auto shared_stale_after = std::chrono::milliseconds(500);
     const float render_aspect_ratio =
@@ -818,12 +1029,37 @@ class OpenXrProbe {
     std::vector<ID3D12Resource*> resources(theatre_swapchain_count);
     std::vector<D3D12_RESOURCE_BARRIER> destination_barriers(
         theatre_swapchain_count);
+    std::uint32_t flat_image_index{};
+    ID3D12Resource* flat_resource{};
+    ComPtr<ID3D12Resource> menu_readback;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT menu_readback_footprint{};
+    std::uint64_t menu_readback_total_bytes{};
+    std::uint32_t menu_readback_copies{};
+    bool menu_readback_logged{};
+    const auto menu_readback_request_path =
+        std::filesystem::temp_directory_path() /
+        "darktidevr-menu-readback.request";
+    auto next_menu_readback_request_poll = start;
 
     for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
       if (duration && std::chrono::steady_clock::now() - start >= *duration) {
         break;
       }
       const auto frame_start = std::chrono::steady_clock::now();
+      if (frame_start >= next_menu_readback_request_poll) {
+        next_menu_readback_request_poll =
+            frame_start + std::chrono::milliseconds(250);
+        std::error_code request_error;
+        if (std::filesystem::remove(menu_readback_request_path,
+                                    request_error)) {
+          menu_readback_copies = 0;
+          menu_readback_logged = false;
+          std::cout << "openxr.shared_menu_readback=requested\n";
+        } else if (request_error) {
+          std::cerr << "warning: menu readback request poll failed: "
+                    << request_error.message() << '\n';
+        }
+      }
       if (shared_eyes && !projection_active_event) {
         projection_active_event = OpenEventW(
             SYNCHRONIZE, FALSE,
@@ -833,25 +1069,46 @@ class OpenXrProbe {
           !shared_eyes || [&] {
             darktidevr::core::SharedPresentationState newest{};
             if (presentation_state_reader.read(newest)) {
+              if (newest.sequence != presentation_sequence) {
+              }
               presentation_state = newest;
               presentation_sequence = newest.sequence;
-              return newest.mode == darktidevr::core::
-                                        SharedPresentationMode::stereo_world;
+              return darktidevr::core::immersive_projection_active(
+                  newest.mode);
             }
             return projection_active_event &&
                    WaitForSingleObject(projection_active_event, 0) ==
                        WAIT_OBJECT_0;
           }();
+      if (window_capture && presentation_sequence != 0) {
+        // PrintWindow captures the already-scaled desktop client, not the
+        // producer's 2112x2304 render target. Applying the render-target crop
+        // here retained only 1080/2304 of the physical client and visibly cut
+        // off the lower half of every menu. Capture the complete client; the
+        // producer-space crop remains useful for panel/input coordinates.
+        window_capture->set_source_crop(
+            presentation_state.source_width,
+            presentation_state.source_height, 0, 0,
+            presentation_state.source_width,
+            presentation_state.source_height);
+      }
       if (shared_eyes && !opened_eyes &&
           frame_start >= next_shared_open_attempt) {
         next_shared_open_attempt = frame_start + std::chrono::milliseconds(250);
         try {
-          opened_eyes = darktidevr::bridge::open_shared_eye_surfaces(
+          auto candidate_eyes = darktidevr::bridge::open_shared_eye_surfaces(
               device, shared_eye_names,
               {{shared_eye_width, shared_eye_height},
                DXGI_FORMAT_R8G8B8A8_UNORM});
           shared_last_ready_value =
-              opened_eyes->ready_fence->GetCompletedValue();
+              candidate_eyes.ready_fence->GetCompletedValue();
+          const auto initial_consumed_value =
+              candidate_eyes.consumed_fence->GetCompletedValue();
+          if (shared_last_ready_value == UINT64_MAX ||
+              initial_consumed_value == UINT64_MAX) {
+            throw std::runtime_error("Shared eye fence generation is poisoned");
+          }
+          opened_eyes = std::move(candidate_eyes);
           shared_last_advance = frame_start;
           if (shared_last_ready_value != 0) {
             // A pair published before attachment has no bridge-side pose
@@ -861,13 +1118,77 @@ class OpenXrProbe {
                       shared_last_ready_value),
                   "ID3D12Fence::Signal(initial untagged pair consumed)");
           }
-          std::cout << "openxr.shared_eyes=attached\n";
+          std::cout << "openxr.shared_eyes=attached initial_ready="
+                    << shared_last_ready_value << " initial_consumed="
+                    << initial_consumed_value << '\n';
         } catch (const std::exception&) {
           // The title and loading screens legitimately precede the game's
           // producer-owned eye surfaces. Keep publishing XR state and retry
           // while the spatial flat fallback remains visible.
         }
       }
+      const bool interactive_menu_projection =
+          presentation_sequence != 0 &&
+          (presentation_state.mode == darktidevr::core::
+                                          SharedPresentationMode::flat_menu ||
+           presentation_state.mode == darktidevr::core::
+                                          SharedPresentationMode::
+                                              world_anchored_menu);
+      if (shared_menu_projection_enabled && interactive_menu_projection &&
+          !opened_menu &&
+          frame_start >= next_menu_open_attempt) {
+        next_menu_open_attempt = frame_start + std::chrono::milliseconds(250);
+        try {
+          opened_menu = darktidevr::bridge::open_shared_texture(
+              device, shared_menu_names,
+              {{presentation_state.source_width,
+                presentation_state.source_height},
+               DXGI_FORMAT_R8G8B8A8_UNORM});
+          const auto initial =
+              opened_menu->ready_fence->GetCompletedValue();
+          if (initial != 0) {
+            check(opened_menu->consumed_fence->Signal(initial),
+                  "ID3D12Fence::Signal(initial menu consumed)");
+          }
+          std::cout << "openxr.shared_menu=attached source="
+                    << presentation_state.source_width << 'x'
+                    << presentation_state.source_height << " crop="
+                    << presentation_state.crop_x << ','
+                    << presentation_state.crop_y << ','
+                    << presentation_state.crop_width << 'x'
+                    << presentation_state.crop_height << '\n';
+          const auto menu_description = opened_menu->texture->GetDesc();
+          UINT menu_rows{};
+          UINT64 menu_row_bytes{};
+          device->GetCopyableFootprints(
+              &menu_description, 0, 1, 0, &menu_readback_footprint,
+              &menu_rows, &menu_row_bytes, &menu_readback_total_bytes);
+          D3D12_HEAP_PROPERTIES readback_heap{};
+          readback_heap.Type = D3D12_HEAP_TYPE_READBACK;
+          D3D12_RESOURCE_DESC readback_description{};
+          readback_description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+          readback_description.Width = menu_readback_total_bytes;
+          readback_description.Height = 1;
+          readback_description.DepthOrArraySize = 1;
+          readback_description.MipLevels = 1;
+          readback_description.SampleDesc.Count = 1;
+          readback_description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+          check(device->CreateCommittedResource(
+                    &readback_heap, D3D12_HEAP_FLAG_NONE,
+                    &readback_description, D3D12_RESOURCE_STATE_COPY_DEST,
+                    nullptr, IID_PPV_ARGS(&menu_readback)),
+                "ID3D12Device::CreateCommittedResource(menu readback)");
+        } catch (const std::exception& error) {
+          // The resource is created lazily by the first interactive menu
+          // draw. Keep the stereo world live and retry without surfacing the
+          // desktop mirror as an apparently-mono substitute.
+          std::cout << "openxr.shared_menu=waiting reason=" << error.what()
+                    << '\n';
+        }
+      }
+      // Interactive menus retain projection. They must also retain live
+      // producer pairs: freezing the last pre-menu image prevents the world
+      // from responding to head motion even though OpenXR keeps submitting.
       if (pair_driven_shared && projection_active && opened_eyes &&
           last_pair_pose_checked_ready_value != 0) {
         ++pair_driven_waits;
@@ -951,19 +1272,43 @@ class OpenXrProbe {
         }
         if (submit_layer && head_pose_writer) {
           if (head_recenter_requested) {
-            head_recenter_pose = current_head;
-            controller_recenter_pose_ = current_head;
+            head_recenter_pose =
+                darktidevr::core::horizon_locked_recenter_pose(current_head);
+            synthetic_roomscale_origin = *head_recenter_pose;
+            controller_recenter_pose_ = *head_recenter_pose;
+            body_follow_offset = {};
             recentered_view_poses_valid = false;
             rendered_pair_pose_ready_value = 0;
             head_pose_history.clear();
             std::cout << "openxr.head_recenter=applied\n";
           }
           if (!head_recenter_pose) {
-            head_recenter_pose = current_head;
-            controller_recenter_pose_ = current_head;
+            head_recenter_pose =
+                darktidevr::core::horizon_locked_recenter_pose(current_head);
+            synthetic_roomscale_origin = *head_recenter_pose;
+            controller_recenter_pose_ = *head_recenter_pose;
           }
-          auto delta = darktidevr::core::sliding_recentered_head_delta(
-              *head_recenter_pose, current_head, {0.25F, 0.18F});
+          if (synthetic_roomscale_path) {
+            if (!synthetic_roomscale_origin) {
+              synthetic_roomscale_origin = *head_recenter_pose;
+            }
+            const auto synthetic_position =
+                darktidevr::harness::synthetic_roomscale_position(
+                    synthetic_roomscale_frames++);
+            current_head.position = {
+                synthetic_roomscale_origin->position.x + synthetic_position.x,
+                synthetic_roomscale_origin->position.y + synthetic_position.y,
+                synthetic_roomscale_origin->position.z + synthetic_position.z};
+          }
+          const auto head_translation =
+              darktidevr::core::sliding_head_translation(
+                  *head_recenter_pose, current_head, {0.25F, 0.18F});
+          auto delta = head_translation.camera_delta;
+          body_follow_offset.x += head_translation.body_follow_delta.x;
+          body_follow_offset.y += head_translation.body_follow_delta.y;
+          body_follow_offset.z += head_translation.body_follow_delta.z;
+          latest_camera_translation = delta.position;
+          latest_body_follow_offset = body_follow_offset;
           controller_recenter_pose_ = *head_recenter_pose;
           if (synthetic_head_sweep) {
             const auto synthetic =
@@ -976,6 +1321,7 @@ class OpenXrProbe {
           darktidevr::core::SharedHeadPoseSample pose_sample{};
           pose_sample.sequence = ++head_pose_sequence;
           pose_sample.pose = delta;
+          pose_sample.body_follow_offset = body_follow_offset;
           pose_sample.render_vertical_fov_radians =
               rendered_symmetric_fov.angleUp -
               rendered_symmetric_fov.angleDown;
@@ -1042,7 +1388,9 @@ class OpenXrProbe {
         }
       }
       bool submitted_shared_pair_this_frame{};
+      bool submitted_cached_pair_this_frame{};
       bool submitted_flat_fallback_this_frame{};
+      bool menu_readback_copied_this_frame{};
       if (submit_layer) {
         XrSwapchainImageAcquireInfo acquire_info{
             XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
@@ -1057,12 +1405,21 @@ class OpenXrProbe {
                    "xrWaitSwapchainImage(theatre)");
           resources[eye] = theatre_images[eye][image_indices[eye]].texture;
         }
+        if (flat_swapchain != XR_NULL_HANDLE) {
+          check_xr(xrAcquireSwapchainImage(flat_swapchain, &acquire_info,
+                                           &flat_image_index),
+                   "xrAcquireSwapchainImage(flat capture)");
+          check_xr(xrWaitSwapchainImage(flat_swapchain, &image_wait),
+                   "xrWaitSwapchainImage(flat capture)");
+          flat_resource = flat_images[flat_image_index].texture;
+        }
 
         check(allocator->Reset(),
               "ID3D12CommandAllocator::Reset(theatre)");
         check(command_list->Reset(allocator.Get(), nullptr),
               "ID3D12GraphicsCommandList::Reset(theatre)");
         UINT64 shared_ready_for_frame{};
+        UINT64 menu_ready_for_frame{};
         bool discard_shared_pair_this_frame =
             opened_eyes && !projection_active;
         if (opened_eyes) {
@@ -1072,6 +1429,10 @@ class OpenXrProbe {
             shared_last_ready_value = shared_ready_for_frame;
             shared_last_advance = std::chrono::steady_clock::now();
           }
+        }
+        if (opened_menu) {
+          menu_ready_for_frame =
+              opened_menu->ready_fence->GetCompletedValue();
         }
         if (head_pose_writer && shared_ready_for_frame != 0 &&
             shared_ready_for_frame != last_pair_pose_checked_ready_value) {
@@ -1149,8 +1510,40 @@ class OpenXrProbe {
             projection_active && opened_eyes &&
             (!window_capture ||
              (shared_pair_fresh && shared_pair_pose_synced));
-        submitted_shared_pair_this_frame = use_shared_pair;
-        const bool use_flat_capture = window_capture && !use_shared_pair;
+        const bool use_cached_pair =
+            !use_shared_pair && cached_pair_valid &&
+            (presentation_sequence != 0 &&
+             (presentation_state.mode == darktidevr::core::
+                                             SharedPresentationMode::flat_menu ||
+              presentation_state.mode == darktidevr::core::
+                                             SharedPresentationMode::
+                                                 world_anchored_menu));
+        submitted_shared_pair_this_frame =
+            use_shared_pair || use_cached_pair;
+        submitted_cached_pair_this_frame = use_cached_pair;
+        const bool spatial_menu_overlay =
+            presentation_sequence != 0 &&
+            presentation_state.mode == darktidevr::core::
+                                           SharedPresentationMode::
+                                               world_anchored_menu;
+        const bool fullscreen_menu_overlay =
+            presentation_sequence != 0 &&
+            presentation_state.mode == darktidevr::core::
+                                           SharedPresentationMode::flat_menu;
+        const bool use_shared_menu = shared_menu_projection_enabled &&
+                                     interactive_menu_projection &&
+                                     opened_menu.has_value();
+        // Every interactive menu is a spatial quad over projection. Ordinary
+        // options/pause views use a head-relative opening anchor; vendor views
+        // use their body/world anchor. If a live pair is unavailable, the
+        // cached pair remains a pose-correct fallback rather than replacing
+        // the normal live-world path.
+        const bool use_window_flat_capture =
+            window_capture &&
+            !spatial_menu_overlay && !fullscreen_menu_overlay &&
+            !use_shared_pair && !use_cached_pair;
+        const bool use_flat_capture =
+            use_shared_menu || use_window_flat_capture;
         submitted_flat_fallback_this_frame = use_flat_capture;
         if (window_capture) {
           const auto flat_presentation_changed =
@@ -1198,8 +1591,13 @@ class OpenXrProbe {
           barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
           barrier.Transition.pResource = resources[eye];
           barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+          // The theatre image is a copy destination only when an eye pair is
+          // actually copied this frame. Merely having a producer or window
+          // capture object attached is insufficient: during startup, stale
+          // pose rejection, and flat-only menu frames we draw the diagnostic
+          // fallback into this image with ClearRenderTargetView instead.
           barrier.Transition.StateAfter =
-              (window_capture || opened_eyes)
+              (use_shared_pair || use_cached_pair)
                   ? D3D12_RESOURCE_STATE_COPY_DEST
                   : D3D12_RESOURCE_STATE_RENDER_TARGET;
           barrier.Transition.Subresource =
@@ -1208,38 +1606,111 @@ class OpenXrProbe {
         command_list->ResourceBarrier(
             static_cast<UINT>(destination_barriers.size()),
             destination_barriers.data());
-        if (use_flat_capture) {
-          const auto newest = latest_capture.load(std::memory_order_acquire);
-          if (newest && newest != consumed_capture) {
-            for (std::uint32_t y = 0; y < height; ++y) {
-              const auto* source = newest->data() +
-                                   static_cast<std::size_t>(
-                                       y % flat_capture_height) *
-                                       width * 4;
-              auto* destination = upload_pixels + upload_footprint.Offset +
-                                  static_cast<std::size_t>(y) *
-                                      upload_footprint.Footprint.RowPitch;
-              std::memcpy(destination, source,
-                          static_cast<std::size_t>(width) * 4);
-            }
-            consumed_capture = newest;
-            ++capture_updates;
-          } else if (capture_error.load(std::memory_order_acquire)) {
-            ++capture_stale_frames;
+        std::array<D3D12_RESOURCE_BARRIER, 2> cached_eye_barriers{};
+        if (use_shared_pair || use_cached_pair) {
+          for (std::size_t eye = 0; eye < cached_eye_resources.size(); ++eye) {
+            auto& barrier = cached_eye_barriers[eye];
+            barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barrier.Transition.pResource = cached_eye_resources[eye].Get();
+            barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+            barrier.Transition.StateAfter =
+                use_shared_pair ? D3D12_RESOURCE_STATE_COPY_DEST
+                                : D3D12_RESOURCE_STATE_COPY_SOURCE;
+            barrier.Transition.Subresource =
+                D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
           }
-          D3D12_TEXTURE_COPY_LOCATION source{};
-          source.pResource = upload.Get();
-          source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-          source.PlacedFootprint = upload_footprint;
-          for (auto* destination_resource : resources) {
+          command_list->ResourceBarrier(
+              static_cast<UINT>(cached_eye_barriers.size()),
+              cached_eye_barriers.data());
+        }
+        if (use_flat_capture) {
+          D3D12_RESOURCE_BARRIER flat_barrier{};
+          flat_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+          flat_barrier.Transition.pResource = flat_resource;
+          flat_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+          flat_barrier.Transition.StateAfter =
+              D3D12_RESOURCE_STATE_COPY_DEST;
+          flat_barrier.Transition.Subresource =
+              D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+          command_list->ResourceBarrier(1, &flat_barrier);
+          if (use_shared_menu) {
+            D3D12_RESOURCE_BARRIER menu_barrier{};
+            menu_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            menu_barrier.Transition.pResource = opened_menu->texture.Get();
+            menu_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+            menu_barrier.Transition.StateAfter =
+                D3D12_RESOURCE_STATE_COPY_SOURCE;
+            menu_barrier.Transition.Subresource =
+                D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            command_list->ResourceBarrier(1, &menu_barrier);
+            D3D12_TEXTURE_COPY_LOCATION flat_destination{};
+            flat_destination.pResource = flat_resource;
+            flat_destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            flat_destination.SubresourceIndex = 0;
+            D3D12_TEXTURE_COPY_LOCATION menu_source{};
+            menu_source.pResource = opened_menu->texture.Get();
+            menu_source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            menu_source.SubresourceIndex = 0;
+            const D3D12_BOX menu_crop{
+                presentation_state.crop_x,
+                presentation_state.crop_y,
+                0,
+                presentation_state.crop_x + presentation_state.crop_width,
+                presentation_state.crop_y + presentation_state.crop_height,
+                1};
+            command_list->CopyTextureRegion(&flat_destination, 0, 0, 0,
+                                            &menu_source, &menu_crop);
+            if (menu_readback && !menu_readback_logged) {
+              D3D12_TEXTURE_COPY_LOCATION destination{};
+              destination.pResource = menu_readback.Get();
+              destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+              destination.PlacedFootprint = menu_readback_footprint;
+              D3D12_TEXTURE_COPY_LOCATION source{};
+              source.pResource = opened_menu->texture.Get();
+              source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+              source.SubresourceIndex = 0;
+              command_list->CopyTextureRegion(&destination, 0, 0, 0,
+                                              &source, nullptr);
+              menu_readback_copied_this_frame = true;
+            }
+            std::swap(menu_barrier.Transition.StateBefore,
+                      menu_barrier.Transition.StateAfter);
+            command_list->ResourceBarrier(1, &menu_barrier);
+          } else {
+            const auto newest =
+                latest_capture.load(std::memory_order_acquire);
+            if (newest && newest != consumed_capture) {
+              for (std::uint32_t y = 0; y < flat_capture_height; ++y) {
+                const auto* source = newest->data() +
+                                     static_cast<std::size_t>(y) *
+                                         flat_capture_width * 4;
+                auto* destination = upload_pixels + upload_footprint.Offset +
+                                    static_cast<std::size_t>(y) *
+                                        upload_footprint.Footprint.RowPitch;
+                std::memcpy(destination, source,
+                            static_cast<std::size_t>(flat_capture_width) * 4);
+              }
+              consumed_capture = newest;
+              ++capture_updates;
+            } else if (capture_error.load(std::memory_order_acquire)) {
+              ++capture_stale_frames;
+            }
+            D3D12_TEXTURE_COPY_LOCATION source{};
+            source.pResource = upload.Get();
+            source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+            source.PlacedFootprint = upload_footprint;
             D3D12_TEXTURE_COPY_LOCATION destination{};
-            destination.pResource = destination_resource;
+            destination.pResource = flat_resource;
             destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
             destination.SubresourceIndex = 0;
             command_list->CopyTextureRegion(&destination, 0, 0, 0, &source,
                                             nullptr);
           }
-        } else if (use_shared_pair) {
+          std::swap(flat_barrier.Transition.StateBefore,
+                    flat_barrier.Transition.StateAfter);
+          command_list->ResourceBarrier(1, &flat_barrier);
+        }
+        if (use_shared_pair) {
           if (shared_ready_for_frame != last_submitted_shared_value) {
             last_submitted_shared_value = shared_ready_for_frame;
             ++fresh_shared_pairs;
@@ -1269,10 +1740,48 @@ class OpenXrProbe {
                     ? 0U
                     : static_cast<UINT>(eye * shared_eye_height),
                 0, &source, nullptr);
+            D3D12_TEXTURE_COPY_LOCATION cached_destination{};
+            cached_destination.pResource = cached_eye_resources[eye].Get();
+            cached_destination.Type =
+                D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            command_list->CopyTextureRegion(&cached_destination, 0, 0, 0,
+                                            &source, nullptr);
             std::swap(eye_barrier.Transition.StateBefore,
                       eye_barrier.Transition.StateAfter);
             command_list->ResourceBarrier(1, &eye_barrier);
           }
+          for (auto& barrier : cached_eye_barriers) {
+            std::swap(barrier.Transition.StateBefore,
+                      barrier.Transition.StateAfter);
+          }
+          command_list->ResourceBarrier(
+              static_cast<UINT>(cached_eye_barriers.size()),
+              cached_eye_barriers.data());
+          cached_pair_view_poses = rendered_pair_view_poses;
+          cached_pair_valid = true;
+        } else if (use_cached_pair) {
+          for (std::size_t eye = 0; eye < cached_eye_resources.size(); ++eye) {
+            D3D12_TEXTURE_COPY_LOCATION destination{};
+            destination.pResource =
+                resources[separate_shared_eye_swapchains ? eye : 0U];
+            destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            D3D12_TEXTURE_COPY_LOCATION source{};
+            source.pResource = cached_eye_resources[eye].Get();
+            source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            command_list->CopyTextureRegion(
+                &destination, 0,
+                separate_shared_eye_swapchains
+                    ? 0U
+                    : static_cast<UINT>(eye * shared_eye_height),
+                0, &source, nullptr);
+          }
+          for (auto& barrier : cached_eye_barriers) {
+            std::swap(barrier.Transition.StateBefore,
+                      barrier.Transition.StateAfter);
+          }
+          command_list->ResourceBarrier(
+              static_cast<UINT>(cached_eye_barriers.size()),
+              cached_eye_barriers.data());
         } else {
           const std::array<D3D12_RECT, 4> quadrants{{
               {0, 0, static_cast<LONG>(width / 2),
@@ -1319,6 +1828,11 @@ class OpenXrProbe {
                             shared_ready_for_frame),
                 "ID3D12CommandQueue::Wait(shared eyes)");
         }
+        if (use_shared_menu) {
+          check(queue->Wait(opened_menu->ready_fence.Get(),
+                            menu_ready_for_frame),
+                "ID3D12CommandQueue::Wait(shared menu)");
+        }
         queue->ExecuteCommandLists(1, lists);
         if (use_shared_pair) {
           check(queue->Signal(opened_eyes->consumed_fence.Get(),
@@ -1330,7 +1844,12 @@ class OpenXrProbe {
           // producer's single shared slot forever and prevent recovery on a
           // subsequent pose-associated pair.
           check(opened_eyes->consumed_fence->Signal(shared_ready_for_frame),
-                "ID3D12Fence::Signal(discarded shared eyes consumed)");
+                  "ID3D12Fence::Signal(discarded shared eyes consumed)");
+        }
+        if (use_shared_menu) {
+          check(queue->Signal(opened_menu->consumed_fence.Get(),
+                              menu_ready_for_frame),
+                "ID3D12CommandQueue::Signal(shared menu consumed)");
         }
         const auto signal_value = ++fence_value;
         check(queue->Signal(fence.Get(), signal_value),
@@ -1340,11 +1859,105 @@ class OpenXrProbe {
                 "ID3D12Fence::SetEventOnCompletion(theatre)");
           WaitForSingleObject(fence_event, INFINITE);
         }
+        if (menu_readback_copied_this_frame && !menu_readback_logged &&
+            ++menu_readback_copies >= 5) {
+          void* mapped_pixels{};
+          D3D12_RANGE read_range{0, menu_readback_total_bytes};
+          check(menu_readback->Map(0, &read_range, &mapped_pixels),
+                "ID3D12Resource::Map(menu readback)");
+          const auto* pixels = static_cast<const std::uint8_t*>(mapped_pixels);
+          std::uint64_t rgb_nonzero{};
+          std::uint64_t alpha_nonzero{};
+          std::uint64_t rgb_nonzero_alpha_zero{};
+          std::uint64_t rgb_energy_alpha_zero{};
+          auto nonzero_min_x = (std::numeric_limits<std::uint32_t>::max)();
+          auto nonzero_min_y = (std::numeric_limits<std::uint32_t>::max)();
+          std::uint32_t nonzero_max_x{};
+          std::uint32_t nonzero_max_y{};
+          const auto menu_extent = opened_menu->texture->GetDesc();
+          for (std::uint32_t y = 0; y < menu_extent.Height; ++y) {
+            const auto* row = pixels +
+                static_cast<std::size_t>(y) *
+                    menu_readback_footprint.Footprint.RowPitch;
+            for (std::uint32_t x = 0; x < menu_extent.Width; ++x) {
+              const auto* pixel = row + static_cast<std::size_t>(x) * 4;
+              const auto rgb = static_cast<unsigned>(pixel[0]) + pixel[1] +
+                               pixel[2];
+              rgb_nonzero += rgb != 0 ? 1 : 0;
+              alpha_nonzero += pixel[3] != 0 ? 1 : 0;
+              if (rgb != 0 || pixel[3] != 0) {
+                nonzero_min_x = (std::min)(nonzero_min_x, x);
+                nonzero_min_y = (std::min)(nonzero_min_y, y);
+                nonzero_max_x = (std::max)(nonzero_max_x, x);
+                nonzero_max_y = (std::max)(nonzero_max_y, y);
+              }
+              if (rgb != 0 && pixel[3] == 0) {
+                ++rgb_nonzero_alpha_zero;
+                rgb_energy_alpha_zero += rgb;
+              }
+            }
+          }
+          const auto diagnostic_path =
+              std::filesystem::temp_directory_path() /
+              "darktidevr-shared-menu.ppm";
+          std::ofstream diagnostic(diagnostic_path, std::ios::binary);
+          if (diagnostic) {
+            diagnostic << "P6\n" << presentation_state.crop_width << ' '
+                       << presentation_state.crop_height << "\n255\n";
+            std::vector<std::uint8_t> diagnostic_row(
+                static_cast<std::size_t>(presentation_state.crop_width) * 3);
+            for (std::uint32_t y = 0; y < presentation_state.crop_height; ++y) {
+              const auto source_y = presentation_state.crop_y + y;
+              const auto* source_row = pixels +
+                  static_cast<std::size_t>(source_y) *
+                      menu_readback_footprint.Footprint.RowPitch +
+                  static_cast<std::size_t>(presentation_state.crop_x) * 4;
+              for (std::uint32_t x = 0; x < presentation_state.crop_width;
+                   ++x) {
+                const auto* source =
+                    source_row + static_cast<std::size_t>(x) * 4;
+                const auto alpha = static_cast<unsigned>(source[3]);
+                const auto checker =
+                    ((x / 32 + y / 32) & 1U) != 0 ? 56U : 24U;
+                for (std::size_t channel = 0; channel < 3; ++channel) {
+                  diagnostic_row[static_cast<std::size_t>(x) * 3 + channel] =
+                      static_cast<std::uint8_t>((std::min)(
+                          255U, static_cast<unsigned>(source[channel]) +
+                                    checker * (255U - alpha) / 255U));
+                }
+              }
+              diagnostic.write(
+                  reinterpret_cast<const char*>(diagnostic_row.data()),
+                  static_cast<std::streamsize>(diagnostic_row.size()));
+            }
+            std::cout << "openxr.shared_menu_diagnostic="
+                      << diagnostic_path.string() << '\n';
+          }
+          menu_readback->Unmap(0, nullptr);
+          menu_readback_logged = true;
+          std::cout << "openxr.shared_menu_pixels rgb_nonzero="
+                    << rgb_nonzero << " alpha_nonzero=" << alpha_nonzero
+                    << " rgb_nonzero_alpha_zero="
+                    << rgb_nonzero_alpha_zero
+                    << " rgb_energy_alpha_zero=" << rgb_energy_alpha_zero;
+          if (nonzero_min_x !=
+              (std::numeric_limits<std::uint32_t>::max)()) {
+            std::cout << " bounds=" << nonzero_min_x << ',' << nonzero_min_y
+                      << '-' << nonzero_max_x << ',' << nonzero_max_y;
+          } else {
+            std::cout << " bounds=empty";
+          }
+          std::cout << '\n';
+        }
         XrSwapchainImageReleaseInfo release_info{
             XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
         for (const auto swapchain : theatre_swapchains) {
           check_xr(xrReleaseSwapchainImage(swapchain, &release_info),
                    "xrReleaseSwapchainImage(theatre)");
+        }
+        if (flat_swapchain != XR_NULL_HANDLE) {
+          check_xr(xrReleaseSwapchainImage(flat_swapchain, &release_info),
+                   "xrReleaseSwapchainImage(flat capture)");
         }
         ++submitted_frames;
       } else {
@@ -1381,17 +1994,25 @@ class OpenXrProbe {
       }
       XrCompositionLayerQuad flat_fallback_quad{
           XR_TYPE_COMPOSITION_LAYER_QUAD};
+      // Darktide's ordinary UI PSOs target an opaque desktop backbuffer and
+      // do not provide a reliable compositing alpha channel.  The dedicated
+      // shared-menu texture is therefore an opaque spatial board; treating
+      // its undefined/preserved alpha as coverage makes valid menu RGB vanish
+      // while the diagnostic primitives (which explicitly write alpha) remain.
+      flat_fallback_quad.layerFlags =
+          XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
       flat_fallback_quad.space =
           flat_fallback_pose_valid ? local_space_ : view_space_;
       flat_fallback_quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-      flat_fallback_quad.subImage.swapchain = theatre_swapchains.front();
+      flat_fallback_quad.subImage.swapchain = flat_swapchain;
       flat_fallback_quad.subImage.imageRect.offset = {0, 0};
       flat_fallback_quad.subImage.imageRect.extent = {
-          static_cast<std::int32_t>(width),
+          static_cast<std::int32_t>(flat_capture_width),
           static_cast<std::int32_t>(flat_capture_height)};
       flat_fallback_quad.pose = flat_fallback_pose;
       const auto panel_source_width =
-          presentation_sequence != 0 ? presentation_state.crop_width : width;
+          presentation_sequence != 0 ? presentation_state.crop_width
+                                     : flat_capture_width;
       const auto panel_source_height = presentation_sequence != 0
                                            ? presentation_state.crop_height
                                            : flat_capture_height;
@@ -1408,6 +2029,9 @@ class OpenXrProbe {
           panel_max_height);
       std::optional<std::pair<std::uint32_t, std::uint32_t>>
           menu_pointer_position;
+      std::optional<darktidevr::math::Pose> controller_pointer_pose;
+      std::optional<darktidevr::core::PanelPointerMapping>
+          controller_pointer_hit;
       flat_fallback_quad.size = {panel_extent.width_metres,
                                  panel_extent.height_metres};
       const darktidevr::math::Pose panel_pose{
@@ -1464,7 +2088,7 @@ class OpenXrProbe {
               {right.aim_pose.position, direction}, panel_pose,
               panel_extent.width_metres, panel_extent.height_metres,
               presentation_sequence != 0 ? presentation_state.source_width
-                                         : width,
+                                         : flat_capture_width,
               presentation_sequence != 0 ? presentation_state.source_height
                                          : flat_capture_height,
               presentation_sequence != 0 ? presentation_state.crop_x : 0,
@@ -1474,6 +2098,8 @@ class OpenXrProbe {
             ++controller_pointer_hits_;
             controller_pointer_x_ = pointer->source_x;
             controller_pointer_y_ = pointer->source_y;
+            controller_pointer_pose = right.aim_pose;
+            controller_pointer_hit = *pointer;
             menu_pointer_position =
                 std::pair{pointer->source_x, pointer->source_y};
           }
@@ -1492,13 +2118,14 @@ class OpenXrProbe {
         const auto source_height = presentation_state.source_height;
         const auto desktop_pointer = menu_input_injector->read_desktop_pointer(
             source_width, source_height);
-        // Test controls deliberately use desktop hover as the ray position so
-        // a named button event can validate Lua routing without also sending
-        // a native desktop click. Production keeps tracked-controller aim
-        // authoritative until the desktop mouse is actually pressed.
+        // A tracked controller ray remains authoritative even when named test
+        // controls are enabled. Desktop hover is only the fallback when no
+        // controller ray hits the panel, or the explicit owner while its
+        // native button is held. This lets unattended named events reuse a
+        // desktop position without making a live controller operate the stale
+        // desktop cursor.
         if (desktop_pointer &&
-            (enable_menu_test_controls || !menu_pointer_position ||
-             desktop_pointer->primary_down)) {
+            (!menu_pointer_position || desktop_pointer->primary_down)) {
           menu_pointer_position =
               std::pair{desktop_pointer->source_x, desktop_pointer->source_y};
           desktop_pointer_active = true;
@@ -1520,7 +2147,7 @@ class OpenXrProbe {
               input.active ? menu_pointer_position : std::nullopt,
               presentation_sequence != 0
                   ? presentation_state.source_width
-                  : width,
+                  : flat_capture_width,
               presentation_sequence != 0
                   ? presentation_state.source_height
                   : flat_capture_height);
@@ -1543,11 +2170,20 @@ class OpenXrProbe {
             shared_menu_back_pressed = true;
             std::cout << "openxr.menu_input_event=back\n";
           }
-          if (enable_menu_input && menu_input_injector->dispatch(
+          // Keep Windows' real cursor at the same source pixel as the XR ray,
+          // even in semantic-input mode. Darktide otherwise evaluates the
+          // stationary desktop cursor as a second hover owner. Only movement is
+          // mirrored by default; button, wheel and Escape injection remain
+          // behind the explicit legacy switch so a single trigger edge cannot
+          // be consumed twice.
+          const bool synchronize_cursor =
+              event.type == darktidevr::core::MenuPointerEventType::move;
+          if ((enable_menu_input || synchronize_cursor) &&
+              menu_input_injector->dispatch(
                   event,
                   presentation_sequence != 0
                       ? presentation_state.source_width
-                      : width,
+                      : flat_capture_width,
                   presentation_sequence != 0
                       ? presentation_state.source_height
                       : flat_capture_height)) {
@@ -1592,7 +2228,7 @@ class OpenXrProbe {
       {
         const auto source_width = presentation_sequence != 0
                                       ? presentation_state.source_width
-                                      : width;
+                                      : flat_capture_width;
         const auto source_height = presentation_sequence != 0
                                        ? presentation_state.source_height
                                        : flat_capture_height;
@@ -1625,11 +2261,30 @@ class OpenXrProbe {
         shared_pointer.back_down =
             shared_pointer.back_down || shared_menu_back_down;
         if (desktop_pointer_active) {
-          shared_pointer.primary_down = desktop_pointer_primary_down;
+          shared_pointer.primary_down =
+              shared_pointer.primary_down || desktop_pointer_primary_down;
         }
         shared_pointer.primary_down =
             shared_pointer.primary_down || shared_menu_primary_down;
-        if (shared_pointer.active && shared_pointer.primary_down &&
+        // Opening a menu can overlap the trigger release that opened it, or a
+        // stale desktop/test button level. Adopt that level instead of turning
+        // it into a delayed synthetic click. Primary input becomes eligible
+        // only after every source has been released for a short settling
+        // interval in this menu activation.
+        if (!shared_pointer.active) {
+          shared_menu_primary_armed = false;
+          shared_menu_primary_release_start.reset();
+        } else if (!shared_menu_primary_armed) {
+          if (shared_pointer.primary_down) {
+            shared_menu_primary_release_start.reset();
+          } else if (!shared_menu_primary_release_start) {
+            shared_menu_primary_release_start = frame_start;
+          } else if (frame_start - *shared_menu_primary_release_start >=
+                     std::chrono::milliseconds(100)) {
+            shared_menu_primary_armed = true;
+          }
+        }
+        if (shared_menu_primary_armed && shared_pointer.primary_down &&
             !last_shared_menu_primary_down) {
           ++menu_primary_press_sequence;
         }
@@ -1674,7 +2329,9 @@ class OpenXrProbe {
           auto& projection_view = projection_views[eye];
           projection_view = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
           const auto base_pose =
-              submitted_shared_pair_this_frame &&
+              submitted_cached_pair_this_frame
+                  ? cached_pair_view_poses[eye]
+                  : submitted_shared_pair_this_frame &&
                       rendered_pair_pose_ready_value != 0
                   ? rendered_pair_view_poses[eye]
                   : (recentered_view_poses_valid
@@ -1734,19 +2391,106 @@ class OpenXrProbe {
             static_cast<std::uint32_t>(projection_views.size());
         projection.views = projection_views.data();
       }
-      const auto* layer = submitted_flat_fallback_this_frame
-                              ? reinterpret_cast<const XrCompositionLayerBaseHeader*>(
-                                    &flat_fallback_quad)
-                          : stereo
-                              ? reinterpret_cast<const XrCompositionLayerBaseHeader*>(
-                                    &projection)
-                              : reinterpret_cast<const XrCompositionLayerBaseHeader*>(
-                                    &quads[0]);
+      std::array<XrCompositionLayerQuad, 3> pointer_quads{{
+          {XR_TYPE_COMPOSITION_LAYER_QUAD},
+          {XR_TYPE_COMPOSITION_LAYER_QUAD},
+          {XR_TYPE_COMPOSITION_LAYER_QUAD},
+      }};
+      if (submitted_flat_fallback_this_frame && controller_pointer_pose &&
+          controller_pointer_hit) {
+        const auto configure_pointer_quad =
+            [&](XrCompositionLayerQuad& quad,
+                darktidevr::math::Pose pose, XrExtent2Df size) {
+              quad.layerFlags =
+                  XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+              quad.space = local_space_;
+              quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+              quad.subImage.swapchain = flat_swapchain;
+              quad.subImage.imageRect.offset = {
+                  static_cast<std::int32_t>(flat_capture_width - 1),
+                  static_cast<std::int32_t>(flat_capture_height - 1)};
+              quad.subImage.imageRect.extent = {1, 1};
+              quad.pose.orientation = {pose.orientation.x,
+                                       pose.orientation.y,
+                                       pose.orientation.z,
+                                       pose.orientation.w};
+              quad.pose.position = {pose.position.x, pose.position.y,
+                                    pose.position.z};
+              quad.size = size;
+            };
+        const auto ray_direction = darktidevr::math::rotate(
+            controller_pointer_pose->orientation, {0.0F, 0.0F, -1.0F});
+        const auto distance = controller_pointer_hit->distance_metres;
+        const darktidevr::math::Vec3 ray_midpoint{
+            controller_pointer_pose->position.x +
+                ray_direction.x * distance * 0.5F,
+            controller_pointer_pose->position.y +
+                ray_direction.y * distance * 0.5F,
+            controller_pointer_pose->position.z +
+                ray_direction.z * distance * 0.5F};
+        constexpr float half_pi = 1.57079632679489661923F;
+        const auto ray_orientation = darktidevr::math::multiply(
+            controller_pointer_pose->orientation,
+            darktidevr::math::from_axis_angle(
+                {1.0F, 0.0F, 0.0F}, -half_pi));
+        configure_pointer_quad(
+            pointer_quads[0], {ray_orientation, ray_midpoint},
+            {0.008F, distance});
+        configure_pointer_quad(
+            pointer_quads[1],
+            {darktidevr::math::multiply(
+                 ray_orientation,
+                 darktidevr::math::from_axis_angle(
+                     {0.0F, 1.0F, 0.0F}, half_pi)),
+             ray_midpoint},
+            {0.008F, distance});
+        const darktidevr::math::Vec3 hit_position{
+            controller_pointer_pose->position.x +
+                ray_direction.x * distance,
+            controller_pointer_pose->position.y +
+                ray_direction.y * distance,
+            controller_pointer_pose->position.z +
+                ray_direction.z * distance};
+        const auto panel_normal = darktidevr::math::rotate(
+            panel_pose.orientation, {0.0F, 0.0F, 1.0F});
+        configure_pointer_quad(
+            pointer_quads[2],
+            {panel_pose.orientation,
+             {hit_position.x + panel_normal.x * 0.004F,
+              hit_position.y + panel_normal.y * 0.004F,
+              hit_position.z + panel_normal.z * 0.004F}},
+            {0.035F, 0.035F});
+      }
+      std::array<const XrCompositionLayerBaseHeader*, 5> layers{};
+      std::uint32_t layer_count{};
+      if (submit_layer) {
+        if (submitted_shared_pair_this_frame && stereo) {
+          layers[layer_count++] =
+              reinterpret_cast<const XrCompositionLayerBaseHeader*>(
+                  &projection);
+        }
+        if (submitted_flat_fallback_this_frame) {
+          layers[layer_count++] =
+              reinterpret_cast<const XrCompositionLayerBaseHeader*>(
+                  &flat_fallback_quad);
+        } else if (!stereo) {
+          layers[layer_count++] =
+              reinterpret_cast<const XrCompositionLayerBaseHeader*>(&quads[0]);
+        }
+        if (submitted_flat_fallback_this_frame && controller_pointer_pose &&
+            controller_pointer_hit) {
+          for (const auto& pointer_quad : pointer_quads) {
+            layers[layer_count++] =
+                reinterpret_cast<const XrCompositionLayerBaseHeader*>(
+                    &pointer_quad);
+          }
+        }
+      }
       XrFrameEndInfo frame_end{XR_TYPE_FRAME_END_INFO};
       frame_end.displayTime = frame_state.predictedDisplayTime;
       frame_end.environmentBlendMode = environment_blend_mode_;
-      frame_end.layerCount = submit_layer ? 1U : 0U;
-      frame_end.layers = submit_layer ? &layer : nullptr;
+      frame_end.layerCount = layer_count;
+      frame_end.layers = layer_count != 0 ? layers.data() : nullptr;
       check_xr(xrEndFrame(session_, &frame_end), "xrEndFrame(theatre)");
       ++processed_frames;
       poll_session_events();
@@ -1773,7 +2517,22 @@ class OpenXrProbe {
                   << interval_fallback_frames / interval_seconds
                   << " reused_frames=" << reused_shared_frames
                   << " pair_pose_mismatches=" << pair_pose_mismatches
+                  << " shared_ready=" << shared_last_ready_value
+                  << " checked_ready="
+                  << last_pair_pose_checked_ready_value
+                  << " rendered_tag_ready="
+                  << rendered_pair_pose_ready_value
                   << std::endl;
+        if (synthetic_roomscale_path) {
+          std::cout << "openxr.synthetic_roomscale frame="
+                    << synthetic_roomscale_frames << " camera="
+                    << latest_camera_translation.x << ','
+                    << latest_camera_translation.y << ','
+                    << latest_camera_translation.z << " body_follow="
+                    << latest_body_follow_offset.x << ','
+                    << latest_body_follow_offset.y << ','
+                    << latest_body_follow_offset.z << std::endl;
+        }
         last_live_report = report_time;
         last_live_submitted_frames = submitted_frames;
         last_live_fresh_shared_pairs = fresh_shared_pairs;
@@ -1793,7 +2552,7 @@ class OpenXrProbe {
         if (menu_input_injector->dispatch(
                 event,
                 presentation_sequence != 0 ? presentation_state.source_width
-                                           : width,
+                                           : flat_capture_width,
                 presentation_sequence != 0 ? presentation_state.source_height
                                            : flat_capture_height)) {
           ++menu_input_dispatched;
@@ -1879,6 +2638,8 @@ class OpenXrProbe {
     std::cout << '\n'
               << "openxr.synthetic_head_frames=" << synthetic_head_frames
               << '\n'
+              << "openxr.synthetic_roomscale_frames="
+              << synthetic_roomscale_frames << '\n'
               << "openxr.synthetic_head_phase_frames=";
     for (std::size_t index = 0;
          index < synthetic_head_phase_frames.size(); ++index) {
@@ -1911,6 +2672,10 @@ class OpenXrProbe {
     }
     for (const auto swapchain : theatre_swapchains) {
       check_xr(xrDestroySwapchain(swapchain), "xrDestroySwapchain(theatre)");
+    }
+    if (flat_swapchain != XR_NULL_HANDLE) {
+      check_xr(xrDestroySwapchain(flat_swapchain),
+               "xrDestroySwapchain(flat capture)");
     }
     if (require_rendering && submitted_frames == 0) {
       request_clean_exit();
@@ -2786,6 +3551,8 @@ void usage() {
                 "[--synthetic-body-path] "
                 "[--synthetic-gameplay-input] "
                 "[--synthetic-head-sweep] "
+                "[--synthetic-roomscale-path] "
+                "[--synthetic-billboard-sweep] "
                 "[--projection-translation-scale N] "
                 "[--shared-pose-sequence-offset N] "
                "[--pair-driven-shared | --continuous-shared] "
@@ -2819,6 +3586,8 @@ int wmain(int argc, wchar_t** argv) {
     bool synthetic_body_path = false;
     bool synthetic_gameplay_input = false;
     bool synthetic_head_sweep = false;
+    bool synthetic_roomscale_path = false;
+    bool synthetic_billboard_sweep = false;
     float projection_translation_scale = 1.0F;
     std::wstring menu_input_title = L"Warhammer 40,000: Darktide";
     std::optional<std::wstring> capture_window_title;
@@ -2871,6 +3640,11 @@ int wmain(int argc, wchar_t** argv) {
         synthetic_gameplay_input = true;
       } else if (argument == L"--synthetic-head-sweep") {
         synthetic_head_sweep = true;
+      } else if (argument == L"--synthetic-roomscale-path") {
+        synthetic_roomscale_path = true;
+      } else if (argument == L"--synthetic-billboard-sweep") {
+        require_openxr = true;
+        synthetic_billboard_sweep = true;
       } else if (argument == L"--projection-translation-scale" &&
                  index + 1 < argc) {
         projection_translation_scale = std::stof(argv[++index]);
@@ -2936,6 +3710,14 @@ int wmain(int argc, wchar_t** argv) {
       throw std::invalid_argument(
           "--synthetic-head-sweep requires --shared-eyes");
     }
+    if (synthetic_roomscale_path && !shared_eyes) {
+      throw std::invalid_argument(
+          "--synthetic-roomscale-path requires --shared-eyes");
+    }
+    if (synthetic_billboard_sweep && theatre) {
+      throw std::invalid_argument(
+          "--synthetic-billboard-sweep uses the standalone synthetic scene");
+    }
     if (xr_duration && xr_duration->count() == 0) {
       throw std::invalid_argument("--xr-seconds must be greater than zero");
     }
@@ -2968,10 +3750,12 @@ int wmain(int argc, wchar_t** argv) {
                                      synthetic_body_path,
                                      synthetic_gameplay_input,
                                      synthetic_head_sweep,
+                                     synthetic_roomscale_path,
                                      projection_translation_scale);
       } else {
         openxr.run_frame_lifecycle(xr_frames, harness.device(), harness.queue(),
-                                   require_rendering);
+                                   require_rendering,
+                                   synthetic_billboard_sweep);
       }
     } else if (require_rendering) {
       throw std::invalid_argument(

@@ -9,6 +9,19 @@ struct HeadTranslationLimits {
   float vertical_metres{0.18F};
 };
 
+struct SlidingHeadTranslation {
+  math::Pose camera_delta{};
+  // Incremental recenter-local OpenXR displacement rejected by the horizontal
+  // camera lean envelope. A game adapter can accumulate this into an absolute
+  // body-follow target while leaving vertical crouch/stand motion camera-only.
+  math::Vec3 body_follow_delta{};
+};
+
+// Builds a recenter anchor at the current HMD position while preserving only
+// its yaw. Pitch and roll remain in the live head delta, so a reset performed
+// while leaning or looking up/down cannot redefine the physical horizon.
+math::Pose horizon_locked_recenter_pose(math::Pose current_pose);
+
 // Returns the current HMD pose relative to the recenter pose. Translation is
 // expressed in recenter-local OpenXR metres and clamped to the configured
 // horizontal radius and vertical range. Orientation remains unconstrained.
@@ -22,6 +35,14 @@ math::Pose recentered_head_delta(math::Pose recenter_pose,
 math::Pose sliding_recentered_head_delta(math::Pose& recenter_pose,
                                          math::Pose current_pose,
                                          HeadTranslationLimits limits);
+
+// Splits physical movement into bounded camera lean and incremental horizontal
+// body following. The recenter anchor advances by all rejected translation so
+// donning and large vertical movements cannot strand tracking outside the
+// envelope, but only horizontal excess is exposed as character movement.
+SlidingHeadTranslation sliding_head_translation(
+    math::Pose& recenter_pose, math::Pose current_pose,
+    HeadTranslationLimits limits);
 
 // Reconstructs an absolute OpenXR eye pose from the same recentered head
 // delta consumed by the game camera. Keeping translation in this composition

@@ -13,6 +13,10 @@ enum class SyntheticHeadPhase {
   combined,
 };
 
+// Keep each orientation long enough for unattended capture and visual
+// comparison. At a 120 Hz runtime this is three seconds per phase.
+inline constexpr std::uint64_t kSyntheticHeadPhaseFrames = 360;
+
 struct SyntheticHeadPathSample {
   math::Pose delta{};
   SyntheticHeadPhase phase{};
@@ -23,5 +27,10 @@ struct SyntheticHeadPathSample {
 // OpenXR sample.
 SyntheticHeadPathSample synthetic_head_path_sample(
     std::uint64_t frame, math::Vec3 preserved_translation);
+
+// Deterministic test-only room-scale path. The 0.65 m excursions deliberately
+// cross the production 0.25 m camera-lean envelope so unattended tests can
+// verify that excess horizontal motion is exported as body-follow movement.
+math::Vec3 synthetic_roomscale_position(std::uint64_t frame);
 
 }  // namespace darktidevr::harness

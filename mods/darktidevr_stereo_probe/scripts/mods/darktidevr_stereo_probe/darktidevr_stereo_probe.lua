@@ -44,12 +44,10 @@ local ui_offscreen_primary_requested = true -- give each eye its own output slot
 -- Native/DLAA aliases output_target to back_buffer. Override only back_buffer
 -- for this control so the engine preserves that alias instead of layering a
 -- distinct full-size output_target over the surface under inspection.
-local ui_back_buffer_only_requested = false
 local ui_offscreen_trace_requested = false
 local ui_offscreen_trace_frame = 0
 local ui_offscreen_trace_complete = false
 local ui_offscreen_trace_warmup_frames = 180
-local ui_offscreen_trace_sample_frames = 4
 local ui_offscreen_active = false
 local ui_left_output_target = nil
 local ui_right_output_target = nil
@@ -64,7 +62,6 @@ local ui_compositor_material =
 -- Bounded pipeline-localization probe: show the left viewport's pre-final-blit
 -- output_target beside the right viewport's completed back_buffer.  The two
 -- cameras remain frozen so fixed-row artifacts can be compared directly.
-local ui_compositor_left_output_probe_requested = false
 local ui_compositor_package_id = nil
 local ui_compositor_package_loaded = false
 local ui_compositor_package_failed = false
@@ -75,6 +72,10 @@ local ui_compositor_package_failed = false
 -- than increasing this render extent for a symmetric overscan workaround.
 local ui_eye_target_width = 2112
 local ui_eye_target_height = 2304
+-- Screen-space views have a separate 16:9 design surface. Publishing the
+-- portrait eye extent for menus stretched both pixels and pointer coordinates
+-- and was the common cause of half-height UI and a duplicate hover that drifted
+-- farther from the ray as it moved down the panel.
 local ui_runtime_extent_logged = false
 local ui_native_capture_requested = true -- copy each completed full-origin eye
 local ui_camera_output_candidate_probe_index = -1
@@ -86,7 +87,6 @@ local vertex_shader_dump_requested = false
 local billboard_shader_substitution_requested = true
 -- Bounded ownership probe: replace only the pixel-shader partners observed on
 -- live c_billboard draws with interface-identical constant-magenta shaders.
-local billboard_pixel_shader_probe_requested = false
 -- All five reflected billboard VS variants consume c_billboard[0].xy as the
 -- normalized horizontal facing direction. The exact-CBV writer is limited to
 -- exactly those two floats; registers 1-3 are unused by those VS variants and
@@ -113,6 +113,14 @@ local ui_native_sync_initialized = false
 local ui_native_sync_last_result = nil
 local ui_native_sync_timeout_ms = 100
 local ui_native_sync_requested = false -- Lua blocks renderer submission; falsified
+-- The resource-renderer replay path duplicated only its own background and
+-- diagnostics; paired D3D12 traces showed no SystemView-specific draws in the
+-- target. Keep it disabled while the untouched to_screen path is traced.
+local ui_menu_resource_redirect_requested = false
+-- The stock menu PSO/resource boundary is known. Keep the former focused
+-- D3D12 trace opt-in only: its post-exit baseline used to remain armed because
+-- SystemView.update no longer runs after on_exit, halving subsequent cadence.
+local ui_menu_trace_requested = false
 -- Bounded causal probe: Darktide exposes only a global DLSS history reset.
 -- Reset before both sequential eyes to prevent either camera consuming the
 -- other eye's history. This intentionally sacrifices temporal accumulation.
@@ -121,8 +129,11 @@ local ui_reset_dlss_each_eye_requested = false
 -- directly rendered swapchain before the following eye can overwrite it.
 local ui_direct_swapchain_capture_requested = false
 local ui_boundary_census_requested = false -- expensive diagnostic logging only
-local ui_mirror_client_width = 0
-local ui_mirror_client_height = 0
+-- Keep the cheap desktop mirror in the same 16:9 coordinate space used by
+-- screen GUI. A 1280x768 (5:3) client forced non-uniform scaling and made the
+-- engine hover and XR ray disagree increasingly with vertical position.
+local ui_mirror_client_width = 1280
+local ui_mirror_client_height = 720
 local ui_virtual_client_extent_requested = false
 local ui_virtual_size_message_requested = true
 local head_pose_values = nil
@@ -154,9 +165,14 @@ local controller_observation = {
     gameplay_held = nil,
     gameplay_released = nil,
     gameplay_sequence = nil,
+    gameplay_movement = nil,
     gameplay_input_enabled = false,
+    gameplay_input_active = false,
     gameplay_input_last_check_t = -math.huge,
     gameplay_input_last_sequence = 0,
+    gameplay_locomotion_last_frame = -math.huge,
+    movement_inventory_done = false,
+    movement_inventory_last_check_frame = -math.huge,
     last_sequence = 0,
     first_tracked_logged = false,
     right_aim_usable = false,
@@ -192,6 +208,19 @@ local controller_observation = {
     body_anchor_qz = nil,
     body_anchor_qw = nil,
     body_yaw_anchor = nil,
+    body_follow_x = 0,
+    body_follow_y = 0,
+    body_follow_z = 0,
+    body_follow_mode = "disabled",
+    body_follow_last_check_t = -math.huge,
+    body_follow_last_log_t = -math.huge,
+    body_follow_last_sequence = 0,
+    body_follow_last_x = 0,
+    body_follow_last_z = 0,
+    body_follow_last_position_x = nil,
+    body_follow_last_position_y = nil,
+    body_follow_last_position_z = nil,
+    body_follow_writes = 0,
     authoring_enabled = false,
     authoring_pose_active = false,
     authoring_last_check_t = -math.huge,
@@ -224,6 +253,7 @@ local controller_observation = {
     weapon_presentation_last_check_frame = -math.huge,
     weapon_presentation_last_log_frame = -math.huge,
     weapon_presentation_writes = 0,
+    weapon_presentation_clamps = 0,
     weapon_presentation_max_post_error = 0,
     weapon_presentation_block_reason = nil,
     body_rig_inventory_done = false,
@@ -300,11 +330,37 @@ local ui_focused_ab_sample_frames = 3
 -- immediately after the bounded test.
 local ui_stereo_requested = true -- zero-IPD stereo cached-pipeline census
 local presentation = {
+    flat_target_width = 1920,
+    flat_target_height = 1080,
     head_translation_trace_requested = false,
     head_translation_trace_last_sequence = 0,
     head_translation_trace_interval = 600,
     sequence = 0,
     mode = nil,
+    menu_resource_renderer = nil,
+    menu_resource_gui = nil,
+    menu_resource_clear_time = nil,
+    menu_resource_pass_states = setmetatable({}, { __mode = "k" }),
+    menu_resource_gui_mismatches = setmetatable({}, { __mode = "k" }),
+    menu_resource_invalidated_views = setmetatable({}, { __mode = "k" }),
+    world_menu_views = {},
+    world_menu_gui = nil,
+    world_menu_gui_world = nil,
+    world_menu_material = nil,
+    world_menu_anchor = nil,
+    world_menu_draw_logged = false,
+    -- Temporary target-boundary proof for the engine-world menu path. These
+    -- opaque marks are authored into the same render pass as the menu. If they
+    -- appear on the world panel, target population and sampling are both
+    -- proven independently of the SystemView widget draw. Remove after that
+    -- live gate. This belongs in the state table rather than a file-scope
+    -- local because the mod chunk is at LuaJIT's local-variable ceiling.
+    world_menu_target_probe_requested = false,
+    -- Temporary boundary diagnostic: composite the redirected menu resource
+    -- through Darktide's documented resource-renderer `to_screen` path. This
+    -- distinguishes an empty target from a valid target that the world GUI
+    -- cannot sample at the required render-graph point.
+    world_menu_target_desktop_probe = false,
     fullscreen_view_signature = "",
     fullscreen_empty_updates = 0,
     fullscreen_restore_delay_updates = 12,
@@ -314,7 +370,10 @@ local presentation = {
     active_menu_input_service = nil,
     system_view_hovered_widget = nil,
     system_view_source_widget = nil,
+    dropdown_open_pending = nil,
     dropdown_close_pending = nil,
+    options_modal_instance = nil,
+    options_modal_widget = nil,
     slider_drag = nil,
     menu_pointer = {
         values = nil,
@@ -339,6 +398,7 @@ local presentation = {
         back_consumed_sequence = 0,
         scroll_sequence = 0,
         scroll_consumed_sequence = 0,
+        diagnostic_miss_sequence = 0,
     },
     menu_input_probe = {
         stage = "idle",
@@ -346,6 +406,7 @@ local presentation = {
         action = nil,
         hovered_widget = nil,
     },
+    vendor_menu_test_view = nil,
     vendor_anchor = {
         valid = false,
         view_name = nil,
@@ -373,6 +434,8 @@ local presentation = {
         mission_voting_view = true,
     },
     flat_loading_views = {
+        splash_view = true,
+        title_view = true,
         loading_view = true,
         mission_intro_view = true,
         video_view = true,
@@ -380,8 +443,6 @@ local presentation = {
         cutscene_view = true,
     },
     non_gameplay_views = {
-        splash_view = true,
-        title_view = true,
         class_selection_view = true,
         main_menu_view = true,
         main_menu_background_view = true,
@@ -576,7 +637,8 @@ local function ensure_ui_native_hooks()
             unsigned long long *timestamp_ns);
         int dtvr_read_gameplay_input(int gameplay_active,
             unsigned long long *pressed, unsigned long long *held,
-            unsigned long long *released, unsigned long long *sequence);
+            unsigned long long *released, unsigned long long *sequence,
+            float *movement);
         unsigned long long dtvr_qpc_ticks(void);
         unsigned long long dtvr_qpc_frequency(void);
         int dtvr_take_gpu_eye_profile(int eye, unsigned long long *values);
@@ -616,7 +678,7 @@ local function ensure_ui_native_hooks()
     end
 
     local pixel_probe_result = library.dtvr_set_billboard_pixel_shader_probe(
-        billboard_pixel_shader_probe_requested and 1 or 0)
+        false and 1 or 0)
     if pixel_probe_result ~= 0 then
         mod:error("DARKTIDEVR_STEREO billboard_pixel_shader_probe_select_failed code=%d",
             pixel_probe_result)
@@ -664,7 +726,7 @@ local function ensure_ui_native_hooks()
 
     ui_native_capture = library
     ui_native_capture.dtvr_set_projection_active(0)
-    head_pose_values = ffi.new("float[20]")
+    head_pose_values = ffi.new("float[23]")
     head_pose_sequence = ffi.new("unsigned long long[1]")
     controller_observation.values = ffi.new("float[36]")
     controller_observation.tracking_flags = ffi.new("unsigned int[4]")
@@ -683,6 +745,7 @@ local function ensure_ui_native_hooks()
         ffi.new("unsigned long long[1]")
     controller_observation.gameplay_sequence =
         ffi.new("unsigned long long[1]")
+    controller_observation.gameplay_movement = ffi.new("float[2]")
     controller_observation.ik_input = ffi.new("float[17]")
     controller_observation.ik_output = ffi.new("float[14]")
     controller_observation.ik_flags = ffi.new("unsigned int[1]")
@@ -730,17 +793,52 @@ function presentation.publish_mode(mode, reason)
         return
     end
     presentation.sequence = presentation.sequence + 1
+    local flat_mode = mode == 2 or mode == 3 or mode == 4
+    -- UI layout is authored at 1920x1080 logical pixels and then multiplied
+    -- by RESOLUTION_LOOKUP.scale. The old fixed 1920x1080 crop truncated the
+    -- scaled menu and made the XR pointer diverge from engine hotspots.
+    local ui_scale = RESOLUTION_LOOKUP and RESOLUTION_LOOKUP.scale or 1
+    local scaled_flat_width = math.floor(
+        presentation.flat_target_width * ui_scale + 0.5)
+    local scaled_flat_height = math.floor(
+        presentation.flat_target_height * ui_scale + 0.5)
+    local direct_menu_target = mode == 3 or mode == 4
+    -- Interactive menus now have a dedicated RGBA source. Loading screens
+    -- still use the portrait window/eye source until they receive their own
+    -- resource renderer.
+    local source_width = direct_menu_target and math.min(
+        scaled_flat_width, ui_eye_target_width) or ui_eye_target_width
+    -- The direct D3D12 menu target is created from the full eye-sized render
+    -- target. Publish that physical resource extent even though the authored
+    -- 16:9 menu occupies only the crop below; otherwise the XR process rejects
+    -- the valid shared handle as an extent mismatch.
+    local source_height = ui_eye_target_height
+    local crop_width = flat_mode and math.min(
+        scaled_flat_width, source_width) or source_width
+    local crop_height = flat_mode and math.min(
+        scaled_flat_height, source_height) or source_height
+    -- The stock fullscreen UI is centered vertically inside the portrait eye
+    -- target. Its non-transparent bounds were measured at y=735..1512 in a
+    -- 2112x2304 resource, so a centered 2112x1188 crop contains the complete
+    -- menu instead of the former empty-top/trimmed-bottom region.
+    local crop_y = direct_menu_target and math.floor(
+        (source_height - crop_height) * 0.5 + 0.5) or 0
+    -- Never resize the renderer on a presentation transition. The producer's
+    -- shared-eye resources are bound to a swapchain generation; resizing for a
+    -- loading panel and restoring on gameplay leaves the harness attached to
+    -- the retired generation and silently stops fresh stereo. Flat content is
+    -- fitted in the capture/compositor path instead.
     local result = nil
     if mode == 3 and vendor_anchor.valid then
         result = tonumber(ui_native_capture.dtvr_set_presentation_state_v2(
             mode,
             presentation.sequence,
-            ui_eye_target_width,
-            ui_eye_target_height,
+            source_width,
+            source_height,
             0,
-            0,
-            ui_eye_target_width,
-            ui_eye_target_height,
+            crop_y,
+            crop_width,
+            crop_height,
             2,
             2,
             1,
@@ -756,12 +854,12 @@ function presentation.publish_mode(mode, reason)
         result = tonumber(ui_native_capture.dtvr_set_presentation_state(
             mode,
             presentation.sequence,
-            ui_eye_target_width,
-            ui_eye_target_height,
+            source_width,
+            source_height,
             0,
-            0,
-            ui_eye_target_width,
-            ui_eye_target_height,
+            crop_y,
+            crop_width,
+            crop_height,
             2,
             2
         ))
@@ -780,13 +878,208 @@ function presentation.publish_mode(mode, reason)
         vendor_anchor.published_revision = vendor_anchor.revision
     end
     mod:info(
-        "DARKTIDEVR_PRESENTATION mode=%d sequence=%d reason=%s source=%dx%d",
+        "DARKTIDEVR_PRESENTATION mode=%d sequence=%d reason=%s source=%dx%d crop=0,%d,%dx%d",
         mode,
         presentation.sequence,
         tostring(reason),
-        ui_eye_target_width,
-        ui_eye_target_height
+        source_width,
+        source_height,
+        crop_y,
+        crop_width,
+        crop_height
     )
+end
+
+function presentation.menu_resource_extent()
+    local scale = RESOLUTION_LOOKUP and RESOLUTION_LOOKUP.scale or 1
+    return math.min(
+            math.floor(presentation.flat_target_width * scale + 0.5),
+            ui_eye_target_width),
+        math.min(
+            math.floor(presentation.flat_target_height * scale + 0.5),
+            ui_eye_target_height)
+end
+
+function presentation.world_menu_active()
+    return presentation.active_menu_view_instance ~= nil or
+        next(presentation.world_menu_views) ~= nil
+end
+
+function presentation.destroy_world_menu_surface()
+    local world = presentation.world_menu_gui_world
+    local gui = presentation.world_menu_gui
+    if world and gui then
+        pcall(World.destroy_gui, world, gui)
+    end
+    presentation.world_menu_gui = nil
+    presentation.world_menu_gui_world = nil
+    presentation.world_menu_material = nil
+    presentation.world_menu_anchor = nil
+    presentation.world_menu_draw_logged = false
+end
+
+function presentation.destroy_menu_resource()
+    presentation.destroy_world_menu_surface()
+    local renderer = presentation.menu_resource_renderer
+    local gui = presentation.menu_resource_gui
+    if renderer then
+        if gui and renderer.render_target_material then
+            pcall(Gui.destroy_material, gui, renderer.render_target_material)
+        end
+        if renderer.render_target then
+            pcall(Renderer.destroy_resource, renderer.render_target)
+        end
+    end
+    presentation.menu_resource_renderer = nil
+    presentation.menu_resource_gui = nil
+    presentation.menu_resource_clear_time = nil
+    presentation.menu_resource_pass_states = setmetatable({}, { __mode = "k" })
+    presentation.menu_resource_gui_mismatches =
+        setmetatable({}, { __mode = "k" })
+    presentation.menu_resource_invalidated_views =
+        setmetatable({}, { __mode = "k" })
+end
+
+function presentation.invalidate_retained_widgets(widgets)
+    local count = 0
+    if type(widgets) ~= "table" then
+        return count
+    end
+    for i = 1, #widgets do
+        local widget = widgets[i]
+        if widget then
+            widget.dirty = true
+            local passes = widget.passes
+            if type(passes) == "table" then
+                for j = 1, #passes do
+                    local pass = passes[j]
+                    if pass and pass.retained_mode and pass.data then
+                        pass.data.dirty = true
+                        count = count + 1
+                    end
+                end
+            end
+        end
+    end
+    return count
+end
+
+function presentation.ensure_menu_resource(source_renderer)
+    local resource_renderer = presentation.menu_resource_renderer
+    if resource_renderer then
+        return resource_renderer
+    end
+    local width, height = presentation.menu_resource_extent()
+    local ok, created = pcall(
+        UIRenderer.create_resource_renderer,
+        source_renderer.world,
+        source_renderer.gui,
+        source_renderer.gui_retained,
+        "darktidevr_menu_ui",
+        "content/ui/materials/render_target_masks/ui_render_target_straight_blur",
+        width,
+        height,
+        true
+    )
+    if not ok then
+        mod:error(
+            "DARKTIDEVR_MENU_TARGET create_failed renderer=%s error=%s",
+            tostring(source_renderer.name),
+            tostring(created))
+        return nil
+    end
+    presentation.menu_resource_renderer = created
+    presentation.menu_resource_gui = source_renderer.gui
+    mod:info(
+        "DARKTIDEVR_MENU_TARGET created width=%d height=%d renderer=%s",
+        width,
+        height,
+        tostring(source_renderer.name))
+    return created
+end
+
+function presentation.draw_world_menu_surface(world, position, rotation)
+    if not presentation.world_menu_active() then
+        if presentation.world_menu_gui then
+            presentation.destroy_menu_resource()
+        end
+        return
+    end
+    local resource_renderer = presentation.menu_resource_renderer
+    local render_target = resource_renderer and resource_renderer.render_target
+    if not render_target then
+        return
+    end
+    if presentation.world_menu_gui_world ~= world then
+        presentation.destroy_world_menu_surface()
+    end
+    if not presentation.world_menu_gui then
+        local gui = World.create_world_gui(
+            world, Matrix4x4.identity(), 1, 1)
+        local material = Gui.create_material(
+            gui,
+            ui_compositor_material,
+            GuiMaterialFlag.GUI_RENDER_PASS_LAYER)
+        Material.set_resource(material, "source", render_target)
+        presentation.world_menu_gui = gui
+        presentation.world_menu_gui_world = world
+        presentation.world_menu_material = material
+    end
+    if not presentation.world_menu_anchor then
+        local yaw_rotation = Quaternion.axis_angle(
+            Vector3.up(), Quaternion.yaw(rotation))
+        local forward = Quaternion.forward(yaw_rotation)
+        local tm = Matrix4x4.identity()
+        -- Darktide's Gui 2D coordinates occupy transform X/Z (see
+        -- UIRenderer.draw_rect_rotated, which maps screen Y to translation Z).
+        -- The previous basis put transform Z along -camera-forward and made
+        -- the menu lie on the floor. Keep X camera-right, Z world-up and the
+        -- transform normal on horizontal camera-forward.
+        Matrix4x4.set_right(tm, Quaternion.right(yaw_rotation))
+        Matrix4x4.set_forward(tm, forward)
+        Matrix4x4.set_up(tm, Vector3.up())
+        Matrix4x4.set_translation(tm, position + forward * 2)
+        presentation.world_menu_anchor = Matrix4x4Box(tm)
+    end
+    local tm = presentation.world_menu_anchor:unbox()
+    local width = 2
+    local height = width * 9 / 16
+    -- The render-target mask material normally derives UVs from screen
+    -- position.  That is correct for a fullscreen 2D composite, but a world
+    -- GUI has no corresponding screen-space rectangle and sampled black in
+    -- the previous Gui.bitmap_3d path.  Gui2's 3D overload exposes the same
+    -- explicit local UV contract used by the working SBS compositor.
+    Gui2.bitmap_3d(
+        presentation.world_menu_gui,
+        presentation.world_menu_material,
+        GuiMaterialFlag.GUI_RENDER_PASS_LAYER,
+        tm,
+        1000,
+        {
+            color = Color(255, 255, 255, 255),
+            position_offset = Vector3(-width * 0.5, -height * 0.5, 0),
+            size = Vector2(width, height),
+            uv00 = Vector2(0, 0),
+            uv11 = Vector2(1, 1),
+        })
+    -- A world-owned opaque backing plane makes the geometry independently
+    -- observable if the menu render target is transparent or not yet ready.
+    -- It also prevents the live scene from reducing menu legibility without
+    -- applying any post-process blur to either eye.
+    Gui.rect_3d(
+        presentation.world_menu_gui,
+        tm,
+        Vector2(-width * 0.5, -height * 0.5),
+        999,
+        Vector2(width, height),
+        Color(255, 8, 10, 12))
+    if not presentation.world_menu_draw_logged then
+        presentation.world_menu_draw_logged = true
+        mod:info(
+            "DARKTIDEVR_WORLD_MENU active width=%.3f height=%.3f distance=2.000",
+            width,
+            height)
+    end
 end
 
 function presentation.classify_active_view(manager, view_name)
@@ -799,6 +1092,9 @@ function presentation.classify_active_view(manager, view_name)
     if presentation.vendor_anchor.valid and
             presentation.vendor_anchor.view_name == view_name then
         return 3, "interacted_world_anchor"
+    end
+    if presentation.world_menu_views[view_name] then
+        return 4, "world_preserved_menu"
     end
 
     local settings = nil
@@ -841,18 +1137,26 @@ function presentation.reconcile_fullscreen_views(manager)
 
     local classified = {}
     local desired_mode = nil
+    local observed_world_menu_views = {}
     for i = 1, #views do
         local view_name = views[i]
         local mode, reason = presentation.classify_active_view(manager, view_name)
         if mode then
             classified[#classified + 1] = tostring(view_name) .. ":" .. reason
-            if mode == 2 or
-                    (mode == 3 and desired_mode ~= 2) or
-                    not desired_mode then
+            if mode == 2 then
+                desired_mode = mode
+            elseif mode == 3 or mode == 4 then
+                observed_world_menu_views[view_name] = true
+                -- Interactive menus keep the stereo projection alive, but the
+                -- compositor still needs their distinct presentation mode in
+                -- order to attach the additive shared-menu quad.  Recording
+                -- the view without selecting its mode left the producer
+                -- publishing menu frames that no consumer ever opened.
                 desired_mode = mode
             end
         end
     end
+    presentation.world_menu_views = observed_world_menu_views
     local signature = table.concat(classified, ",")
     if signature ~= presentation.fullscreen_view_signature then
         presentation.fullscreen_view_signature = signature
@@ -866,14 +1170,6 @@ function presentation.reconcile_fullscreen_views(manager)
     if desired_mode then
         presentation.fullscreen_empty_updates = 0
         presentation.publish_mode(desired_mode, signature)
-    elseif presentation.mode == 4 then
-        presentation.fullscreen_empty_updates =
-            presentation.fullscreen_empty_updates + 1
-        if presentation.fullscreen_empty_updates >=
-                presentation.fullscreen_restore_delay_updates then
-            presentation.fullscreen_empty_updates = 0
-            presentation.publish_mode(1, "fullscreen_stack_empty")
-        end
     elseif presentation.mode ~= 1 then
         presentation.publish_mode(1, "stereo_world")
     end
@@ -890,7 +1186,13 @@ function presentation.on_view_open(manager, view_name)
         local mode, reason = presentation.classify_active_view(manager, view_name)
         if mode then
             presentation.fullscreen_empty_updates = 0
-            presentation.publish_mode(mode, tostring(view_name) .. ":" .. reason)
+            if mode == 2 then
+                presentation.publish_mode(mode, tostring(view_name) .. ":" .. reason)
+            else
+                presentation.world_menu_views[view_name] = true
+                presentation.publish_mode(
+                    mode, tostring(view_name) .. ":world_space_menu")
+            end
         end
     end
 end
@@ -901,6 +1203,7 @@ function presentation.on_view_close(manager, view_name)
         tostring(view_name)
     )
     local vendor_anchor = presentation.vendor_anchor
+    presentation.world_menu_views[view_name] = nil
     if vendor_anchor.valid and vendor_anchor.view_name == view_name then
         vendor_anchor.valid = false
         vendor_anchor.view_name = nil
@@ -910,6 +1213,9 @@ function presentation.on_view_close(manager, view_name)
             tostring(view_name),
             vendor_anchor.revision
         )
+    end
+    if not presentation.world_menu_active() then
+        presentation.destroy_menu_resource()
     end
     presentation.reconcile_fullscreen_views(manager)
 end
@@ -965,7 +1271,8 @@ end
 
 function presentation.update_psykhanium(manager, t)
     local state = presentation.psykhanium
-    if state.stage == "idle" and Mods and Mods.lua and Mods.lua.io then
+    if (state.stage == "idle" or state.stage == "blocked" or
+            state.stage == "complete") and Mods and Mods.lua and Mods.lua.io then
         local flag_path =
             "./../mods/darktidevr_stereo_probe/darktidevr_enter_psykhanium.flag"
         local flag = Mods.lua.io.open(flag_path, "r")
@@ -979,7 +1286,10 @@ function presentation.update_psykhanium(manager, t)
                     consumed:close()
                 end
                 state.stage = "wait_for_hub"
-                state.deadline = t + 300
+                -- Steam/launcher/login startup can exceed five minutes during
+                -- unattended runs. Keep the one-shot armed until the hub is
+                -- genuinely ready; later stages retain their short deadlines.
+                state.deadline = t + 1200
                 state.last_error = nil
                 mod:info("DARKTIDEVR_PSYKHANIUM armed source=one_shot_flag")
             end
@@ -1128,7 +1438,8 @@ function presentation.update_system_menu_test(manager)
 
     local request = flag:read("*all")
     flag:close()
-    if not string.find(request or "", "open", 1, true) then
+    local command = string.match(request or "", "^%s*(%a+)")
+    if command ~= "open" and command ~= "close" then
         return
     end
 
@@ -1138,7 +1449,26 @@ function presentation.update_system_menu_test(manager)
         consumed:close()
     end
 
-    if manager:view_active("system_view") then
+    local active = manager:view_active("system_view")
+    if command == "close" then
+        if not active then
+            mod:info(
+                "DARKTIDEVR_MENU_INPUT system_menu_test result=already_closed")
+            return
+        end
+        local ok, result = pcall(manager.close_view, manager, "system_view")
+        if ok then
+            mod:info(
+                "DARKTIDEVR_MENU_INPUT system_menu_test result=close_requested")
+        else
+            mod:error(
+                "DARKTIDEVR_MENU_INPUT system_menu_test result=close_failed error=%s",
+                tostring(result))
+        end
+        return
+    end
+
+    if active then
         mod:info(
             "DARKTIDEVR_MENU_INPUT system_menu_test result=already_active")
         return
@@ -1152,6 +1482,82 @@ function presentation.update_system_menu_test(manager)
         mod:error(
             "DARKTIDEVR_MENU_INPUT system_menu_test result=failed error=%s",
             tostring(result))
+    end
+end
+
+function presentation.update_vendor_menu_test(manager)
+    if not Mods or not Mods.lua or not Mods.lua.io then
+        return
+    end
+
+    local flag_path =
+        "./../mods/darktidevr_stereo_probe/darktidevr_open_vendor_menu.flag"
+    local flag = Mods.lua.io.open(flag_path, "r")
+    if not flag then
+        return
+    end
+    local request = flag:read("*all")
+    flag:close()
+    local command = string.match(request or "", "^%s*([%a_]+)")
+    local allowed = {
+        crafting = "crafting_view",
+        contracts = "contracts_background_view",
+    }
+    if command ~= "close" and not allowed[command] then
+        return
+    end
+
+    local consumed = Mods.lua.io.open(flag_path, "w")
+    if consumed then
+        consumed:write("consumed\n")
+        consumed:close()
+    end
+
+    if command == "close" then
+        local view_name = presentation.vendor_menu_test_view
+        if not view_name or not manager:view_active(view_name) then
+            mod:info(
+                "DARKTIDEVR_MENU_INPUT vendor_menu_test result=already_closed")
+            presentation.vendor_menu_test_view = nil
+            return
+        end
+        local ok, result = pcall(manager.close_view, manager, view_name)
+        mod:info(
+            "DARKTIDEVR_MENU_INPUT vendor_menu_test result=%s view=%s detail=%s",
+            ok and "close_requested" or "close_failed",
+            tostring(view_name), tostring(result))
+        if ok then
+            presentation.vendor_menu_test_view = nil
+        end
+        return
+    end
+
+    local view_name = allowed[command]
+    if manager:view_active(view_name) then
+        mod:info(
+            "DARKTIDEVR_MENU_INPUT vendor_menu_test result=already_active view=%s",
+            view_name)
+        presentation.vendor_menu_test_view = view_name
+        return
+    end
+
+    -- This guarded diagnostic has no physical interactee from which to derive
+    -- a vendor anchor. Keep it on the generic horizon-locked board while the
+    -- view's native shader batch is traced; real ViewInteraction opens still
+    -- use the NPC-relative mode-3 anchor.
+    presentation.world_menu_views[view_name] = true
+    presentation.vendor_menu_test_view = view_name
+    local ok, result = pcall(manager.open_view, manager, view_name)
+    if ok then
+        mod:info(
+            "DARKTIDEVR_MENU_INPUT vendor_menu_test result=requested view=%s",
+            view_name)
+    else
+        presentation.world_menu_views[view_name] = nil
+        presentation.vendor_menu_test_view = nil
+        mod:error(
+            "DARKTIDEVR_MENU_INPUT vendor_menu_test result=failed view=%s error=%s",
+            view_name, tostring(result))
     end
 end
 
@@ -1482,7 +1888,7 @@ function presentation.is_slider_widget(widget)
         type(content.entry) == "table"
 end
 
-function presentation.widget_hotspot_entries(widget)
+function presentation.widget_hotspot_entries(widget, include_dropdown_options)
     local content = widget and widget.content
     if not content then
         return {}
@@ -1506,7 +1912,8 @@ function presentation.widget_hotspot_entries(widget)
             end
             if visible and presentation.is_dropdown_widget(widget) and
                     string.match(content_id, "^option_hotspot_%d+$") then
-                visible = content.exclusive_focus and true or false
+                visible = include_dropdown_options and
+                    content.exclusive_focus and true or false
             end
             if visible and type(hotspot) == "table" and not seen[hotspot] then
                 seen[hotspot] = true
@@ -1514,6 +1921,31 @@ function presentation.widget_hotspot_entries(widget)
                     hotspot = hotspot,
                     content_id = content_id,
                     style_id = style_id,
+                    style = style,
+                }
+            end
+        end
+    end
+    -- DMF's dropdown blueprint materializes option_hotspot_N and the matching
+    -- styles directly on the widget. In the current runtime build those
+    -- entries are not retained in widget.passes, even though the renderer uses
+    -- them and the blueprint update consumes their on_pressed state. Enumerate
+    -- the authored fields themselves so the visible overlay, rather than the
+    -- collapsed rows behind it, owns XR input.
+    if include_dropdown_options and presentation.is_dropdown_widget(widget) and
+            content.exclusive_focus then
+        local count = tonumber(content.num_visible_options) or 0
+        for i = 1, count do
+            local content_id = "option_hotspot_" .. tostring(i)
+            local hotspot = content[content_id]
+            local style = widget.style and widget.style[content_id]
+            if type(hotspot) == "table" and style and
+                    style.visible ~= false and not seen[hotspot] then
+                seen[hotspot] = true
+                entries[#entries + 1] = {
+                    hotspot = hotspot,
+                    content_id = content_id,
+                    style_id = content_id,
                     style = style,
                 }
             end
@@ -1540,14 +1972,20 @@ function presentation.widget_hotspot(widget)
 end
 
 function presentation.clear_widget_hotspot_forces(widget)
-    local entries = presentation.widget_hotspot_entries(widget)
+    -- Clear even stale authored dropdown option fields. They are deliberately
+    -- excluded from normal hit-testing unless the owning OptionsView says this
+    -- is its one authoritative selected widget.
+    local entries = presentation.widget_hotspot_entries(widget, true)
     for i = 1, #entries do
         entries[i].hotspot.force_hover = false
+        entries[i].hotspot.force_input_pressed = false
     end
 end
 
-function presentation.widget_hotspot_at_pointer(instance, widget, pointer)
-    local entries = presentation.widget_hotspot_entries(widget)
+function presentation.widget_hotspot_at_pointer(instance, widget, pointer,
+        include_dropdown_options)
+    local entries = presentation.widget_hotspot_entries(
+        widget, include_dropdown_options)
     for i = #entries, 1, -1 do
         local entry = entries[i]
         if not entry.hotspot.disabled then
@@ -1567,7 +2005,7 @@ function presentation.log_focused_dropdown_geometry(instance, widget, pointer)
             not widget.content or not widget.content.exclusive_focus then
         return
     end
-    local entries = presentation.widget_hotspot_entries(widget)
+    local entries = presentation.widget_hotspot_entries(widget, true)
     for i = 1, #entries do
         local entry = entries[i]
         local hit, geometry = presentation.widget_contains_menu_pointer(
@@ -1775,6 +2213,23 @@ local function apply_head_tracking(clean_position, clean_rotation)
     end
 
     local sequence = tonumber(head_pose_sequence[0])
+    if head_pose_last_sequence ~= 0 and sequence < head_pose_last_sequence then
+        -- The OpenXR bridge owns the shared head-pose writer and restarts its
+        -- sequence at one.  Darktide can outlive that process, leaving native
+        -- eye-capture tags from the previous bridge session queued ahead of
+        -- the new sequence.  Since producer and consumer then advance at the
+        -- same rate, the new bridge can never catch that old tag stream and
+        -- rejects every otherwise-fresh pair as pose-mismatched.  Drop those
+        -- obsolete tags at the observed epoch boundary before either camera
+        -- is armed for this frame.
+        ui_native_capture.dtvr_reset_eye_capture_tags()
+        mod:info(
+            "DARKTIDEVR_STEREO bridge_restart old_sequence=%d new_sequence=%d action=reset_capture_tags",
+            head_pose_last_sequence,
+            sequence)
+        presentation.head_translation_trace_last_sequence = 0
+        controller_observation.body_follow_last_sequence = sequence
+    end
     local render_vertical_fov = tonumber(head_pose_values[7])
     local render_aspect_ratio = tonumber(head_pose_values[8])
     if render_vertical_fov > 0 and render_vertical_fov < math.pi and
@@ -1810,6 +2265,9 @@ local function apply_head_tracking(clean_position, clean_rotation)
         head_render_frusta = { left_frustum, right_frustum }
     end
     local runtime_ipd = tonumber(head_pose_values[19])
+    controller_observation.body_follow_x = tonumber(head_pose_values[20])
+    controller_observation.body_follow_y = tonumber(head_pose_values[21])
+    controller_observation.body_follow_z = tonumber(head_pose_values[22])
     -- The native reader rejects stale snapshots. Clear usability before each
     -- attempt so a failed read can never leave the previous pose live.
     controller_observation.right_aim_usable = false
@@ -1963,11 +2421,14 @@ local function apply_head_tracking(clean_position, clean_rotation)
              sequence - presentation.head_translation_trace_last_sequence >=
                 presentation.head_translation_trace_interval) then
         mod:info(
-            "DARKTIDEVR_STEREO head_translation sequence=%d delta=%.5f,%.5f,%.5f clean=%.5f,%.5f,%.5f tracked=%.5f,%.5f,%.5f",
+            "DARKTIDEVR_STEREO head_translation sequence=%d delta=%.5f,%.5f,%.5f body_follow=%.5f,%.5f,%.5f clean=%.5f,%.5f,%.5f tracked=%.5f,%.5f,%.5f",
             sequence,
             tonumber(head_pose_values[0]) * character_scale,
             tonumber(head_pose_values[1]) * character_scale,
             tonumber(head_pose_values[2]) * character_scale,
+            controller_observation.body_follow_x * character_scale,
+            controller_observation.body_follow_y * character_scale,
+            controller_observation.body_follow_z * character_scale,
             Vector3.x(clean_position), Vector3.y(clean_position),
             Vector3.z(clean_position), Vector3.x(tracked_position),
             Vector3.y(tracked_position), Vector3.z(tracked_position))
@@ -2511,6 +2972,13 @@ local function teardown()
     active_manager = nil
     active_world = nil
     active_base_rotation = nil
+    -- The engine owns objects allocated in the world being torn down.  Do not
+    -- call into that invalid world here; only discard our handles.
+    presentation.world_menu_gui = nil
+    presentation.world_menu_gui_world = nil
+    presentation.world_menu_material = nil
+    presentation.world_menu_anchor = nil
+    presentation.world_menu_draw_logged = false
 end
 
 local function setup(manager)
@@ -3072,7 +3540,15 @@ end
 
 local function teardown_ui_stereo()
     if ui_native_capture then
-        ui_native_capture.dtvr_set_projection_active(0)
+        -- Character-select and gameplay stereo sources overlap during world
+        -- transitions. The old UI world can be destroyed after CameraManager
+        -- has already activated the gameplay producer; unconditionally
+        -- clearing this process-wide flag then silently stops fresh eye pairs.
+        -- Release projection only when no gameplay stereo owner remains.
+        ui_native_capture.dtvr_set_projection_active(active and 1 or 0)
+        mod:info(
+            "DARKTIDEVR_STEREO ui_teardown projection_owner=%s",
+            active and "gameplay" or "none")
     end
     if ui_native_capture then
         ui_native_capture.dtvr_disable_rich_center_sbs_remap()
@@ -3151,7 +3627,7 @@ local function create_eye_render_target(name, width, height)
 end
 
 local function eye_render_target_mapping(output_target, back_buffer)
-    if ui_back_buffer_only_requested then
+    if false then
         return { back_buffer = back_buffer }
     end
 
@@ -3432,6 +3908,9 @@ local function update_stereo(manager)
     end
     publish_render_projection(primary_camera)
 
+    presentation.draw_world_menu_surface(
+        world, clean_position, clean_rotation)
+
     ScriptCamera.force_update(world, primary_camera)
     ScriptCamera.force_update(world, right_camera)
 end
@@ -3442,12 +3921,55 @@ mod:hook_safe(
     function(self, _, t)
     presentation.reconcile_fullscreen_views(self)
     presentation.update_system_menu_test(self)
+    presentation.update_vendor_menu_test(self)
     presentation.update_psykhanium(self, t or 0)
 end)
+
+-- Darktide's ordinary system/options views explicitly keep the game world
+-- enabled (`disable_game_world = false`) and request `game_world_blur = 1.1`.
+-- In stereo that post effect is applied to the stock player1 viewport only,
+-- which is why menu open originally blurred the left eye. Spatial XR menus do
+-- not use that world blur: the live projection remains untouched behind the
+-- separate menu quad.
+mod:hook(
+    require("scripts/managers/ui/ui_manager"),
+    "use_fullscreen_blur",
+    function(func, self, ...)
+        local apply_blur, blur_amount = func(self, ...)
+        if presentation.world_menu_active() then
+            return false, 0
+        end
+        return apply_blur, blur_amount
+    end)
 
 mod:hook_safe("InputManager", "update", function(self)
     presentation.scan_input_services(self)
     presentation.update_menu_input_probe(self)
+    if presentation.system_view_trace_pending and ui_native_capture then
+        presentation.system_view_trace_pending = nil
+        presentation.system_view_trace_phase = 1
+        presentation.system_view_trace_frames = 4
+        local marker_result = ui_native_capture.dtvr_enable_marker_log()
+        local trace_result = ui_native_capture.dtvr_set_focused_trace_phase(1)
+        mod:info(
+            "DARKTIDEVR_MENU_TRACE started_deferred frames=%d marker_result=%s trace_result=%s",
+            presentation.system_view_trace_frames,
+            tostring(marker_result),
+            tostring(trace_result))
+    end
+    local trace_frames = presentation.system_view_trace_frames
+    if trace_frames and presentation.system_view_trace_phase == 2 then
+        trace_frames = trace_frames - 1
+        presentation.system_view_trace_frames = trace_frames
+        if trace_frames <= 0 then
+            presentation.system_view_trace_frames = nil
+            presentation.system_view_trace_phase = nil
+            if ui_native_capture then
+                ui_native_capture.dtvr_set_focused_trace_phase(0)
+            end
+            mod:info("DARKTIDEVR_MENU_TRACE stopped reason=baseline_budget")
+        end
+    end
 end)
 
 -- Conventional tracked-controller aim seam. It is observation-only unless an
@@ -3733,6 +4255,23 @@ presentation.gameplay_input_bindings = {
     }
 }
 
+function presentation.inject_ephemeral_action_names(
+        actions, cache, names, delivered, missing)
+    for name_index = 1, #names do
+        local requested_name = names[name_index]
+        local found = false
+        for action_index = 1, #actions do
+            if actions[action_index] == requested_name then
+                cache[action_index] = true
+                found = true
+                break
+            end
+        end
+        local destination = found and delivered or missing
+        destination[#destination + 1] = requested_name
+    end
+end
+
 function presentation.inject_gameplay_input(self, main_t)
     if not ui_native_capture or not Mods or not Mods.lua or not Mods.lua.io or
             not controller_observation.gameplay_pressed then
@@ -3773,7 +4312,9 @@ function presentation.inject_gameplay_input(self, main_t)
         controller_observation.gameplay_pressed,
         controller_observation.gameplay_held,
         controller_observation.gameplay_released,
-        controller_observation.gameplay_sequence)
+        controller_observation.gameplay_sequence,
+        controller_observation.gameplay_movement)
+    controller_observation.gameplay_input_active = active and result == 0
     local pressed = tonumber(controller_observation.gameplay_pressed[0])
     local held = tonumber(controller_observation.gameplay_held[0])
     local released = tonumber(controller_observation.gameplay_released[0])
@@ -3784,9 +4325,11 @@ function presentation.inject_gameplay_input(self, main_t)
     end
     if pressed ~= 0 or released ~= 0 then
         mod:info(
-            "DARKTIDEVR_INPUT gameplay_edges sequence=%d pressed=%d held=%d released=%d",
+            "DARKTIDEVR_INPUT gameplay_edges sequence=%d pressed=%d held=%d released=%d move=%.3f,%.3f",
             controller_observation.gameplay_input_last_sequence,
-            pressed, held, released)
+            pressed, held, released,
+            tonumber(controller_observation.gameplay_movement[0]),
+            tonumber(controller_observation.gameplay_movement[1]))
     end
 
     local actions = self._ephemeral_actions
@@ -3794,6 +4337,8 @@ function presentation.inject_gameplay_input(self, main_t)
     if type(actions) ~= "table" or type(cache) ~= "table" then
         return
     end
+    local delivered = {}
+    local missing = {}
     for binding_index = 1, #presentation.gameplay_input_bindings do
         local binding = presentation.gameplay_input_bindings[binding_index]
         local names = nil
@@ -3801,26 +4346,21 @@ function presentation.inject_gameplay_input(self, main_t)
             names = binding.pressed
         end
         if names then
-            for name_index = 1, #names do
-                for action_index = 1, #actions do
-                    if actions[action_index] == names[name_index] then
-                        cache[action_index] = true
-                        break
-                    end
-                end
-            end
+            presentation.inject_ephemeral_action_names(
+                actions, cache, names, delivered, missing)
         end
         if bit.band(released, binding.mask) ~= 0 then
             names = binding.released
-            for name_index = 1, #names do
-                for action_index = 1, #actions do
-                    if actions[action_index] == names[name_index] then
-                        cache[action_index] = true
-                        break
-                    end
-                end
-            end
+            presentation.inject_ephemeral_action_names(
+                actions, cache, names, delivered, missing)
         end
+    end
+    if pressed ~= 0 or released ~= 0 then
+        mod:info(
+            "DARKTIDEVR_INPUT gameplay_delivery sequence=%d delivered=%s missing=%s",
+            controller_observation.gameplay_input_last_sequence,
+            #delivered > 0 and table.concat(delivered, ",") or "none",
+            #missing > 0 and table.concat(missing, ",") or "none")
     end
 end
 
@@ -3836,11 +4376,46 @@ mod:hook_safe(
     require("scripts/managers/player/player_game_states/human_input_handler"),
     "fixed_update",
     function(self, _, _, frame)
+        presentation.scan_movement_inventory(self, frame)
         local gameplay_held = controller_observation.gameplay_input_enabled and
             tonumber(controller_observation.gameplay_held[0]) or 0
-        if gameplay_held ~= 0 and self._action_lookup and self._input_cache then
+        if controller_observation.gameplay_input_active and
+                self._action_lookup and self._input_cache then
             local cache_index = self._buffer_index and self:_buffer_index(frame)
             if cache_index then
+                local move_x = tonumber(
+                    controller_observation.gameplay_movement[0])
+                local move_y = tonumber(
+                    controller_observation.gameplay_movement[1])
+                local movement = {
+                    move_right = math.max(move_x, 0),
+                    move_left = math.max(-move_x, 0),
+                    move_forward = math.max(move_y, 0),
+                    move_backward = math.max(-move_y, 0)
+                }
+                for action_name, value in pairs(movement) do
+                    local action_index = self._action_lookup[action_name]
+                    if action_index and self._input_cache[action_index] then
+                        self._input_cache[action_index][cache_index] = value
+                    end
+                end
+                if type(frame) == "number" and
+                        frame - controller_observation.gameplay_locomotion_last_frame >= 60 then
+                    controller_observation.gameplay_locomotion_last_frame = frame
+                    local local_player = Managers and Managers.player and
+                        Managers.player:local_player(1)
+                    local player_unit = local_player and local_player.player_unit
+                    if player_unit and Unit.alive(player_unit) then
+                        local player_position = Unit.world_position(player_unit, 1)
+                        mod:info(
+                            "DARKTIDEVR_INPUT locomotion frame=%d move=%.3f,%.3f cache=%.3f,%.3f,%.3f,%.3f player=%.4f,%.4f,%.4f",
+                            frame, move_x, move_y,
+                            movement.move_right, movement.move_left,
+                            movement.move_forward, movement.move_backward,
+                            Vector3.x(player_position), Vector3.y(player_position),
+                            Vector3.z(player_position))
+                    end
+                end
                 for binding_index = 1,
                         #presentation.gameplay_input_bindings do
                     local binding =
@@ -3924,6 +4499,375 @@ function presentation.log_unit_pose(label, unit, node)
             tostring(label), tostring(error_message))
     end
 end
+
+function presentation.scan_movement_inventory(self, fixed_frame)
+    if controller_observation.movement_inventory_done or
+            not Mods or not Mods.lua or not Mods.lua.io then
+        return
+    end
+    local flag_path =
+        "./../mods/darktidevr_stereo_probe/darktidevr_movement_inventory.flag"
+    local flag = Mods.lua.io.open(flag_path, "r")
+    if not flag then
+        return
+    end
+    local request = flag:read("*all")
+    flag:close()
+    if not request or not request:match("^%s*scan%s*$") then
+        return
+    end
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    local player_unit = local_player and local_player.player_unit
+    -- HumanInputHandler owns input caches rather than the player unit. Unlike
+    -- the weapon/animation extensions it has no reliable `_unit` member, and
+    -- the fixed-update frame is not part of every shipped handler signature.
+    -- The one-shot file itself provides the necessary throttle.
+    if not player_unit or not Unit.alive(player_unit) then
+        return
+    end
+    local consumed = Mods.lua.io.open(flag_path, "w")
+    if consumed then
+        consumed:write("consumed\n")
+        consumed:close()
+    end
+    controller_observation.movement_inventory_done = true
+
+    local function relevant_name(value)
+        return type(value) == "string" and
+            (value:find("move", 1, true) or
+             value:find("locomotion", 1, true) or
+             value:find("position", 1, true) or
+             value:find("velocity", 1, true) or
+             value:find("teleport", 1, true) or
+             value:find("mover", 1, true) or
+             value:find("input", 1, true))
+    end
+    local function collect_keys(value)
+        local found = {}
+        local seen = {}
+        local function visit(candidate)
+            if type(candidate) ~= "table" or seen[candidate] then
+                return
+            end
+            seen[candidate] = true
+            for key in pairs(candidate) do
+                if relevant_name(key) then
+                    found[#found + 1] = tostring(key)
+                end
+            end
+        end
+        visit(value)
+        local mt = type(value) == "table" and getmetatable(value) or nil
+        visit(mt)
+        visit(mt and mt.__index)
+        table.sort(found)
+        return #found > 0 and table.concat(found, ",") or "none"
+    end
+    local function collect_members(value)
+        if type(value) ~= "table" then
+            return "type=" .. type(value) .. ":" .. tostring(value)
+        end
+        local found = {}
+        local ok, error_message = pcall(function()
+            for key, member in pairs(value) do
+                local member_type = type(member)
+                local rendered = member_type
+                if member_type == "number" or member_type == "boolean" or
+                        member_type == "string" then
+                    rendered = member_type .. ":" .. tostring(member)
+                end
+                found[#found + 1] = tostring(key) .. "=" .. rendered
+                if #found >= 96 then
+                    found[#found + 1] = "..."
+                    break
+                end
+            end
+        end)
+        if not ok then
+            return "pairs_error=" .. tostring(error_message)
+        end
+        table.sort(found)
+        return #found > 0 and table.concat(found, ",") or "none"
+    end
+    local function render_vector(value)
+        local ok, rendered = pcall(function()
+            return string.format(
+                "%.5f,%.5f,%.5f",
+                Vector3.x(value), Vector3.y(value), Vector3.z(value))
+        end)
+        return ok and rendered or "unavailable:" .. tostring(rendered)
+    end
+
+    mod:info(
+        "DARKTIDEVR_MOVEMENT inventory handler=%s fixed_frame=%s",
+        collect_keys(self), tostring(fixed_frame))
+    local extension_names = {
+        "locomotion_system", "movement_state_machine_system",
+        "unit_data_system", "first_person_system", "input_system",
+        "weapon_system", "mover_system", "navigation_system"
+    }
+    for index = 1, #extension_names do
+        local name = extension_names[index]
+        local ok, extension = pcall(ScriptUnit.has_extension, player_unit, name)
+        mod:info(
+            "DARKTIDEVR_MOVEMENT extension=%s present=%s keys=%s",
+            name, tostring(ok and extension ~= nil),
+            ok and extension and collect_keys(extension) or "none")
+    end
+    local locomotion_extension =
+        ScriptUnit.has_extension(player_unit, "locomotion_system")
+    if locomotion_extension then
+        local component_names = {
+            "_locomotion_component",
+            "_locomotion_force_translation_component",
+            "_locomotion_force_rotation_component",
+            "_locomotion_steering_component",
+            "_movement_settings_component",
+            "_movement_state_component"
+        }
+        for index = 1, #component_names do
+            local component_name = component_names[index]
+            local component = locomotion_extension[component_name]
+            mod:info(
+                "DARKTIDEVR_MOVEMENT component=%s members=%s",
+                component_name,
+                collect_members(component))
+            if type(component) == "table" then
+                local storage_names = {
+                    "__config", "__data", "__blackboard", "__additional_data"
+                }
+                for storage_index = 1, #storage_names do
+                    local storage_name = storage_names[storage_index]
+                    -- Component proxies interpret unknown indexed fields as
+                    -- generated schema fields and throw. Inventory metadata
+                    -- lives directly on the wrapper, so bypass __index.
+                    local storage = rawget(component, storage_name)
+                    mod:info(
+                        "DARKTIDEVR_MOVEMENT component=%s storage=%s members=%s",
+                        component_name, storage_name, collect_members(storage))
+                    if type(storage) == "table" then
+                        local nested_count = 0
+                        for key, member in pairs(storage) do
+                            if type(member) == "table" then
+                                nested_count = nested_count + 1
+                                mod:info(
+                                    "DARKTIDEVR_MOVEMENT component=%s storage=%s key=%s nested=%s",
+                                    component_name, storage_name, tostring(key),
+                                    collect_members(member))
+                                if nested_count >= 16 then
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+                local vector_fields = {
+                    "position", "velocity_current", "start_translation",
+                    "target_translation", "velocity_wanted"
+                }
+                for field_index = 1, #vector_fields do
+                    local field_name = vector_fields[field_index]
+                    if rawget(component, "__config") and
+                            rawget(component, "__config")[field_name] then
+                        mod:info(
+                            "DARKTIDEVR_MOVEMENT component=%s field=%s value=%s",
+                            component_name, field_name,
+                            render_vector(component[field_name]))
+                    end
+                end
+            end
+        end
+        local method_names = {
+            "_update_movement", "_update_script_driven_hub_movement",
+            "_update_script_driven_movement"
+        }
+        for index = 1, #method_names do
+            local method_name = method_names[index]
+            local method = locomotion_extension[method_name]
+            local info = debug and debug.getinfo and type(method) == "function" and
+                debug.getinfo(method, "Snu") or nil
+            mod:info(
+                "DARKTIDEVR_MOVEMENT method=%s source=%s line=%s params=%s upvalues=%s",
+                method_name,
+                tostring(info and (info.short_src or info.source) or "unavailable"),
+                tostring(info and info.linedefined or "unavailable"),
+                tostring(info and info.nparams or "unavailable"),
+                tostring(info and info.nups or "unavailable"))
+            if info and debug and debug.getupvalue then
+                if debug.getlocal then
+                    local parameter_names = {}
+                    for parameter_index = 1, info.nparams do
+                        local parameter_name =
+                            debug.getlocal(method, parameter_index)
+                        parameter_names[#parameter_names + 1] =
+                            tostring(parameter_name)
+                    end
+                    mod:info(
+                        "DARKTIDEVR_MOVEMENT method=%s parameters=%s",
+                        method_name, table.concat(parameter_names, ","))
+                end
+                for upvalue_index = 1, info.nups do
+                    local upvalue_name, upvalue =
+                        debug.getupvalue(method, upvalue_index)
+                    mod:info(
+                        "DARKTIDEVR_MOVEMENT method=%s upvalue=%s type=%s members=%s",
+                        method_name, tostring(upvalue_name), type(upvalue),
+                        collect_members(upvalue))
+                end
+            end
+        end
+    end
+end
+
+function presentation.refresh_body_follow_mode(t)
+    if t < controller_observation.body_follow_last_check_t + 1 or
+            not Mods or not Mods.lua or not Mods.lua.io then
+        return
+    end
+    controller_observation.body_follow_last_check_t = t
+    local flag_path =
+        "./../mods/darktidevr_stereo_probe/darktidevr_body_follow_test.flag"
+    local flag = Mods.lua.io.open(flag_path, "r")
+    local mode = "disabled"
+    if flag then
+        local request = flag:read("*all")
+        flag:close()
+        if request and request:match("^%s*trace%s*$") then
+            mode = "trace"
+        elseif request and request:match("^%s*enabled%s*$") then
+            mode = "enabled"
+        end
+    end
+    local game_mode_name = active_game_mode_name()
+    if game_mode_name ~= "shooting_range" and
+            game_mode_name ~= "training_grounds" then
+        mode = "disabled"
+    end
+    if mode ~= controller_observation.body_follow_mode then
+        controller_observation.body_follow_mode = mode
+        controller_observation.body_follow_last_sequence = head_pose_last_sequence
+        controller_observation.body_follow_last_x =
+            controller_observation.body_follow_x
+        controller_observation.body_follow_last_z =
+            controller_observation.body_follow_z
+        controller_observation.body_follow_last_position_x = nil
+        controller_observation.body_follow_last_position_y = nil
+        controller_observation.body_follow_last_position_z = nil
+        mod:info(
+            "DARKTIDEVR_MOVEMENT body_follow mode=%s source=test_flag",
+            mode)
+    end
+end
+
+function presentation.apply_body_follow_translation(
+        unit, dt, t, locomotion_component, steering_component,
+        current_position)
+    presentation.refresh_body_follow_mode(t)
+    local mode = controller_observation.body_follow_mode
+    if mode == "disabled" then
+        return nil
+    end
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    if not local_player or unit ~= local_player.player_unit or
+            not Unit.alive(unit) then
+        return nil
+    end
+
+    local sequence = head_pose_last_sequence
+    local body_x = controller_observation.body_follow_x
+    local body_z = controller_observation.body_follow_z
+    local delta_x = 0
+    local delta_z = 0
+    if sequence ~= controller_observation.body_follow_last_sequence then
+        if sequence > controller_observation.body_follow_last_sequence then
+            delta_x = body_x - controller_observation.body_follow_last_x
+            delta_z = body_z - controller_observation.body_follow_last_z
+        end
+        controller_observation.body_follow_last_sequence = sequence
+        controller_observation.body_follow_last_x = body_x
+        controller_observation.body_follow_last_z = body_z
+    end
+
+    local character_scale = 1
+    if local_player:archetype_name() == "ogryn" then
+        character_scale = 1.61 / 1.21
+    end
+    local world_delta = Vector3.zero()
+    local original_velocity = nil
+    if delta_x ~= 0 or delta_z ~= 0 then
+        local body_rotation = locomotion_component.rotation
+        world_delta =
+            Quaternion.right(body_rotation) * (delta_x * character_scale) +
+            Quaternion.forward(body_rotation) * (-delta_z * character_scale)
+        if mode == "enabled" and dt > 0 then
+            -- Normal script-driven locomotion never reads target_translation.
+            -- Feed the physical displacement through the exact velocity input
+            -- consumed by the mover/collision path for this fixed update only.
+            -- Restoring the original steering value after the wrapped call
+            -- keeps stick acceleration/deceleration state independent.
+            original_velocity = steering_component.velocity_wanted
+            steering_component.velocity_wanted =
+                original_velocity + world_delta / dt
+            controller_observation.body_follow_writes =
+                controller_observation.body_follow_writes + 1
+        end
+    end
+
+    if t >= controller_observation.body_follow_last_log_t + 0.5 then
+        local target = steering_component.target_translation
+        local velocity = steering_component.velocity_wanted
+        local position_dx = 0
+        local position_dy = 0
+        local position_dz = 0
+        if controller_observation.body_follow_last_position_x then
+            position_dx = Vector3.x(current_position) -
+                controller_observation.body_follow_last_position_x
+            position_dy = Vector3.y(current_position) -
+                controller_observation.body_follow_last_position_y
+            position_dz = Vector3.z(current_position) -
+                controller_observation.body_follow_last_position_z
+        end
+        controller_observation.body_follow_last_position_x =
+            Vector3.x(current_position)
+        controller_observation.body_follow_last_position_y =
+            Vector3.y(current_position)
+        controller_observation.body_follow_last_position_z =
+            Vector3.z(current_position)
+        controller_observation.body_follow_last_log_t = t
+        mod:info(
+            "DARKTIDEVR_MOVEMENT body_follow mode=%s sequence=%d cumulative=%.5f,%.5f delta=%.5f,%.5f world_delta=%.5f,%.5f,%.5f target=%.5f,%.5f,%.5f velocity=%.5f,%.5f,%.5f position_delta=%.5f,%.5f,%.5f local_move=%.3f,%.3f writes=%d",
+            mode, sequence, body_x, body_z, delta_x, delta_z,
+            Vector3.x(world_delta), Vector3.y(world_delta),
+            Vector3.z(world_delta), Vector3.x(target), Vector3.y(target),
+            Vector3.z(target), Vector3.x(velocity), Vector3.y(velocity),
+            Vector3.z(velocity), position_dx, position_dy, position_dz,
+            steering_component.local_move_x,
+            steering_component.local_move_y,
+            controller_observation.body_follow_writes)
+    end
+    return original_velocity
+end
+
+mod:hook(
+    require(
+        "scripts/extension_systems/locomotion/player_unit_locomotion_extension"),
+    "_update_script_driven_movement",
+    function(func, self, unit, dt, t, locomotion_component,
+            steering_component, current_position, calculate_fall_velocity,
+            on_ground, mover)
+        local original_velocity = presentation.apply_body_follow_translation(
+            unit, dt, t, locomotion_component, steering_component,
+            current_position)
+        local result = func(
+            self, unit, dt, t, locomotion_component, steering_component,
+            current_position, calculate_fall_velocity, on_ground, mover)
+        if original_velocity then
+            steering_component.velocity_wanted = original_velocity
+        end
+        return result
+    end)
 
 function presentation.scan_named_nodes(label, unit, node_names)
     if not unit or not Unit.alive(unit) then
@@ -4833,14 +5777,12 @@ function presentation.author_weapon_pose(self, fixed_frame, world)
     local root_local_position = Unit.local_position(first_person_unit, root_node)
     local hand_position = Unit.world_position(first_person_unit, hand_node)
     local hand_rotation = Unit.world_rotation(first_person_unit, hand_node)
-    local displacement =
+    local requested_displacement =
         presentation.vector_distance(target_position, hand_position)
     local root_space_error =
         presentation.vector_distance(root_position, root_local_position)
     local block_reason = nil
-    if displacement > 0.75 then
-        block_reason = "over_reach"
-    elseif root_space_error > 0.001 then
+    if root_space_error > 0.001 then
         block_reason = "parented_root"
     end
     if block_reason then
@@ -4849,12 +5791,26 @@ function presentation.author_weapon_pose(self, fixed_frame, world)
             controller_observation.weapon_presentation_block_reason = block_reason
             mod:warning(
                 "DARKTIDEVR_WEAPON presentation_blocked reason=%s displacement_m=%.4f root_space_error_m=%.6f sequence=%d",
-                block_reason, displacement, root_space_error,
+                block_reason, requested_displacement, root_space_error,
                 controller_observation.last_sequence)
         end
         return
     end
     controller_observation.weapon_presentation_block_reason = nil
+    -- Synthetic and real controller tracking can place the grip outside the
+    -- avatar's reachable envelope. Dropping the write made the weapon snap to
+    -- its stock animation for those frames. Clamp only the rendered 1P rig to
+    -- a continuous boundary; gameplay aim/origin/reach remain engine-owned.
+    local visual_reach_limit = 0.75
+    local clamped = requested_displacement > visual_reach_limit
+    if clamped then
+        target_position = hand_position +
+            (target_position - hand_position) *
+                (visual_reach_limit / requested_displacement)
+        controller_observation.weapon_presentation_clamps =
+            controller_observation.weapon_presentation_clamps + 1
+    end
+    local displacement = math.min(requested_displacement, visual_reach_limit)
     local delta_rotation = Quaternion.multiply(
         target_rotation,
         presentation.inverse_quaternion(hand_rotation))
@@ -4898,9 +5854,11 @@ function presentation.author_weapon_pose(self, fixed_frame, world)
                 attach_position, Unit.world_position(weapon_unit, 1))
         end
         mod:info(
-            "DARKTIDEVR_WEAPON presentation_write frame=%s sequence=%d root_node=%s root_depth=%d displacement_m=%.4f post_error_m=%.6f max_post_error_m=%.6f attach_weapon_m=%.6f target_ypr=%.4f,%.4f,%.4f post_ypr=%.4f,%.4f,%.4f root_space_error_m=%.6f writes=%d",
+            "DARKTIDEVR_WEAPON presentation_write frame=%s sequence=%d root_node=%s root_depth=%d requested_m=%.4f displacement_m=%.4f clamped=%s clamps=%d post_error_m=%.6f max_post_error_m=%.6f attach_weapon_m=%.6f target_ypr=%.4f,%.4f,%.4f post_ypr=%.4f,%.4f,%.4f root_space_error_m=%.6f writes=%d",
             tostring(fixed_frame), controller_observation.last_sequence,
-            tostring(root_node), root_depth, displacement, post_error,
+            tostring(root_node), root_depth, requested_displacement,
+            displacement, tostring(clamped),
+            controller_observation.weapon_presentation_clamps, post_error,
             controller_observation.weapon_presentation_max_post_error,
             attach_weapon_error,
             target_yaw, target_pitch, target_roll,
@@ -5182,24 +6140,256 @@ mod:hook_safe(
             )
             return
         end
+        presentation.world_menu_views[ui_interaction] = true
+        presentation.world_menu_anchor = nil
+        presentation.world_menu_draw_logged = false
         presentation.fullscreen_empty_updates = 0
         presentation.publish_mode(
             3,
-            tostring(ui_interaction) .. ":interacted_world_anchor")
+            tostring(ui_interaction) .. ":engine_world_menu")
     end)
 
-mod:hook_safe(
+mod:hook(
     require("scripts/managers/ui/ui_manager"),
     "open_view",
-    function(self, view_name)
-    presentation.on_view_open(self, view_name)
-end)
+    function(func, self, view_name, ...)
+        -- Interactive menus must never replace the gameplay world.  Vendor
+        -- views commonly request disable_game_world even though their UI can
+        -- be rendered into our world-owned panel.  Change that setting before
+        -- the view handler performs its transition, not after the freeze has
+        -- already occurred.
+        local handler = self._view_handler
+        local settings = nil
+        if handler and handler.settings_by_view_name then
+            local ok, value = pcall(
+                handler.settings_by_view_name, handler, view_name)
+            if ok then
+                settings = value
+            end
+        end
+        if settings and settings.disable_game_world == true and
+                not presentation.flat_loading_views[view_name] and
+                not presentation.non_gameplay_views[view_name] then
+            settings.disable_game_world = false
+            presentation.world_menu_views[view_name] = true
+            mod:info(
+                "DARKTIDEVR_WORLD_MENU preserve_world view=%s",
+                tostring(view_name))
+        end
+        local result = func(self, view_name, ...)
+        presentation.on_view_open(self, view_name)
+        return result
+    end)
 
 mod:hook_safe(
     require("scripts/managers/ui/ui_manager"),
     "close_view",
     function(self, view_name)
     presentation.on_view_close(self, view_name)
+end)
+
+-- Interactive fullscreen UI is rendered into one named RGBA resource instead
+-- of being recovered from the desktop window. Capturing the window also
+-- captured its mono eye mirror; putting that image in both headset eyes made
+-- the live stereo world appear to freeze/flicker between mono and stereo.
+-- Reusing the view's own Gui keeps retained widgets, engine hotspot geometry,
+-- and the exported texture in exactly the same coordinate space. Intercept at
+-- UIRenderer rather than BaseView: SystemView and vendor views own specialized
+-- draw methods and renderer fields, but all of them converge here.
+mod:hook(UIRenderer, "begin_pass", function(func, self, ...)
+    if not ui_menu_resource_redirect_requested then
+        return func(self, ...)
+    end
+    if not presentation.world_menu_active() then
+        return func(self, ...)
+    end
+    if self == presentation.menu_resource_renderer then
+        return func(self, ...)
+    end
+
+    local renderer_name = string.lower(tostring(self.name or ""))
+    if self.world == active_world or
+            string.find(renderer_name, "hud", 1, true) or
+            string.find(renderer_name, "constant", 1, true) or
+            string.find(renderer_name, "world_marker", 1, true) then
+        return func(self, ...)
+    end
+
+    local resource_renderer = presentation.ensure_menu_resource(self)
+    if not resource_renderer then
+        return func(self, ...)
+    end
+
+    local states = presentation.menu_resource_pass_states[self]
+    if not states then
+        states = {}
+        presentation.menu_resource_pass_states[self] = states
+    end
+    states[#states + 1] = {
+        base_render_pass = self.base_render_pass,
+        render_pass_flag = self.render_pass_flag,
+    }
+
+    local frame_time = Managers.time and Managers.time:time("ui") or 0
+    if presentation.menu_resource_clear_time ~= frame_time then
+        presentation.menu_resource_clear_time = frame_time
+        UIRenderer.clear_render_pass_queue(self)
+        UIRenderer.add_render_pass(
+            self,
+            0,
+            resource_renderer.base_render_pass,
+            true,
+            resource_renderer.render_target
+        )
+        if presentation.world_menu_target_desktop_probe then
+            UIRenderer.add_render_pass(self, 1, "to_screen", false)
+        end
+    end
+    self.base_render_pass = resource_renderer.base_render_pass
+    self.render_pass_flag = resource_renderer.render_pass_flag
+    -- Register and select the resource pass before the renderer begins its
+    -- widget pass. Darktide's own resource-backed grids follow this ordering;
+    -- doing it after begin_pass left the pass valid in Lua but produced an
+    -- untouched (black) target in the engine.
+    return func(self, ...)
+end)
+
+-- SystemView creates its materials and retained widgets against one renderer.
+-- Merely changing that renderer's pass-name fields does not migrate those
+-- retained draw records. Darktide's own resource-backed grids instead draw
+-- with the resource renderer object while registering its pass on the shared
+-- Gui. Follow that exact contract for the Escape menu.
+mod:hook(
+    require("scripts/ui/views/system_view/system_view"),
+    "draw",
+    function(func, self, ...)
+        if not ui_menu_resource_redirect_requested then
+            return func(self, ...)
+        end
+        local dt, _, input_service = ...
+        if not presentation.world_menu_active() then
+            return func(self, ...)
+        end
+        local source_renderer = self._ui_default_renderer
+        local resource_renderer =
+            presentation.ensure_menu_resource(source_renderer)
+        if not resource_renderer then
+            return func(self, ...)
+        end
+
+        UIRenderer.clear_render_pass_queue(source_renderer)
+        UIRenderer.add_render_pass(
+            source_renderer,
+            0,
+            resource_renderer.base_render_pass,
+            true,
+            resource_renderer.render_target)
+        if presentation.world_menu_target_desktop_probe then
+            UIRenderer.add_render_pass(source_renderer, 1, "to_screen", false)
+        end
+
+        if not presentation.menu_resource_invalidated_views[self] then
+            presentation.menu_resource_invalidated_views[self] = true
+            local retained_count =
+                presentation.invalidate_retained_widgets(self._widgets) +
+                presentation.invalidate_retained_widgets(
+                    self._content_widgets)
+            mod:info(
+                "DARKTIDEVR_MENU_TARGET renderer_swap view=%s retained=%d widgets=%d content=%d",
+                tostring(self.view_name or self.__class_name),
+                retained_count,
+                type(self._widgets) == "table" and #self._widgets or 0,
+                type(self._content_widgets) == "table" and
+                    #self._content_widgets or 0)
+        end
+
+        self._ui_default_renderer = resource_renderer
+        local result = func(self, ...)
+        self._ui_default_renderer = source_renderer
+
+        if presentation.world_menu_target_probe_requested then
+            UIRenderer.begin_pass(
+                resource_renderer,
+                self._ui_scenegraph,
+                input_service,
+                dt,
+                self._render_settings)
+            local ui_widget =
+                require("scripts/managers/ui/ui_widget")
+            local base_widgets = self._widgets or {}
+            for i = 1, #base_widgets do
+                ui_widget.draw(base_widgets[i], resource_renderer)
+            end
+            local content_widgets = self._content_widgets or {}
+            for i = 1, #content_widgets do
+                ui_widget.draw(content_widgets[i], resource_renderer)
+            end
+            UIRenderer.draw_rect(
+                resource_renderer,
+                Vector3(0, 0, 10000),
+                Vector3(600, 32, 0),
+                Color(255, 255, 0, 255))
+            UIRenderer.draw_rect(
+                resource_renderer,
+                Vector3(0, 0, 10001),
+                Vector3(32, 600, 0),
+                Color(255, 0, 255, 255))
+            UIRenderer.end_pass(resource_renderer)
+        end
+        if presentation.world_menu_target_desktop_probe then
+            local width, height = presentation.menu_resource_extent()
+            Gui.bitmap(
+                source_renderer.gui,
+                resource_renderer.render_target_material,
+                "render_pass",
+                "to_screen",
+                Vector3(0, 0, 20000),
+                Vector3(width, height, 0),
+                Color(255, 255, 255, 255))
+        end
+        return result
+    end)
+
+mod:hook(UIRenderer, "end_pass", function(func, self, ...)
+    if not ui_menu_resource_redirect_requested then
+        return func(self, ...)
+    end
+    local states = presentation.menu_resource_pass_states[self]
+    local state = states and states[#states] or nil
+    if state and presentation.world_menu_target_probe_requested then
+        -- Opaque L-shaped registration mark. Magenta is the top edge in UI
+        -- coordinates; cyan is the left edge. Their presence and orientation
+        -- distinguish target/sample failure from a transform-axis failure.
+        UIRenderer.draw_rect(
+            self,
+            Vector3(0, 0, 10000),
+            Vector3(600, 32, 0),
+            Color(255, 255, 0, 255))
+        UIRenderer.draw_rect(
+            self,
+            Vector3(0, 0, 10001),
+            Vector3(32, 600, 0),
+            Color(255, 0, 255, 255))
+    end
+    if state and presentation.world_menu_target_desktop_probe then
+        local resource_renderer = presentation.menu_resource_renderer
+        local width, height = presentation.menu_resource_extent()
+        Gui.bitmap(
+            self.gui,
+            resource_renderer.render_target_material,
+            "render_pass",
+            "to_screen",
+            Vector3(0, 0, 20000),
+            Vector3(width, height, 0),
+            Color(255, 255, 255, 255))
+    end
+    local result = func(self, ...)
+    if state then
+        states[#states] = nil
+        self.base_render_pass = state.base_render_pass
+        self.render_pass_flag = state.render_pass_flag
+    end
+    return result
 end)
 
 -- Keep controller/menu back semantic rather than synthesizing Escape. The
@@ -5240,12 +6430,25 @@ mod:hook(
         local widgets = self._widgets or {}
         local source_widget = nil
         local source_entry = nil
+        local modal_dropdown =
+            presentation.options_modal_instance == self and
+            presentation.options_modal_widget or nil
+        local modal_active = modal_dropdown and modal_dropdown.content and
+            modal_dropdown.content.exclusive_focus
         for i = #widgets, 1, -1 do
             local widget = widgets[i]
             if pointer.available then
                 presentation.clear_widget_hotspot_forces(widget)
             end
-            if pointer.available and not source_widget and pointer.active and
+            -- OptionsView's dynamic grids own their interaction overlays. In
+            -- particular, BaseView must not force a second grid/row hover
+            -- behind an expanded dropdown which is already handled by
+            -- OptionsView._draw_grid.
+            local dynamic_grid_interaction =
+                widget and (widget.name == "settings_grid_interaction" or
+                    widget.name == "category_grid_interaction")
+            if not modal_active and not dynamic_grid_interaction and
+                    pointer.available and not source_widget and pointer.active and
                     widget then
                 local entry = presentation.widget_hotspot_at_pointer(
                     self, widget, pointer)
@@ -5254,6 +6457,46 @@ mod:hook(
                     source_entry = entry
                 end
             end
+        end
+        if pointer.primary_pressed and not source_widget and
+                pointer.primary_press_sequence ~=
+                    pointer.diagnostic_miss_sequence then
+            pointer.diagnostic_miss_sequence =
+                pointer.primary_press_sequence
+            local diagnostics = {}
+            for i = #widgets, 1, -1 do
+                local widget = widgets[i]
+                local entries = presentation.widget_hotspot_entries(widget)
+                for j = #entries, 1, -1 do
+                    local entry = entries[j]
+                    local hit, geometry =
+                        presentation.widget_contains_menu_pointer(
+                            self, widget, pointer, entry.style)
+                    if geometry and #diagnostics < 32 then
+                        diagnostics[#diagnostics + 1] = string.format(
+                            "%s:%s:%s:%.1f,%.1f,%.1f,%.1f",
+                            tostring(widget.name),
+                            tostring(entry.content_id),
+                            hit and "hit" or "miss",
+                            geometry.left,
+                            geometry.top,
+                            geometry.width,
+                            geometry.height)
+                    end
+                end
+            end
+            mod:info(
+                "DARKTIDEVR_MENU_INPUT base_source_miss view=%s sequence=%d source=%d,%d/%dx%d pointer=%.1f,%.1f widgets=%s",
+                tostring(self.view_name or self.__class_name),
+                pointer.last_sequence,
+                pointer.x,
+                pointer.y,
+                pointer.source_width,
+                pointer.source_height,
+                pointer.x * RESOLUTION_LOOKUP.width / pointer.source_width,
+                pointer.y * RESOLUTION_LOOKUP.height / pointer.source_height,
+                #diagnostics > 0 and table.concat(diagnostics, "|") or
+                    "none")
         end
         if source_widget and source_entry then
             local hotspot = source_entry.hotspot
@@ -5334,57 +6577,119 @@ mod:hook(
             end
         end
         if pointer.active then
-            for i = #widgets, 1, -1 do
-                local widget = widgets[i]
+            -- OptionsView already owns the authoritative modal selection.
+            -- Do not infer it by scanning content.exclusive_focus: stale flags
+            -- can exist on more than one widget while a dynamic grid rebuilds.
+            local focused_dropdown = nil
+            local selected_widget = self._selected_settings_widget
+            if presentation.is_dropdown_widget(selected_widget) then
+                for i = 1, #widgets do
+                    if widgets[i] == selected_widget then
+                        focused_dropdown = selected_widget
+                        break
+                    end
+                end
+            end
+            local function consider_widget(widget)
                 local visible = not grid or
                     grid:is_widget_visible(widget)
                 if visible then
-                    presentation.log_focused_dropdown_geometry(
-                        self, widget, pointer)
+                    if widget == focused_dropdown then
+                        presentation.log_focused_dropdown_geometry(
+                            self, widget, pointer)
+                    end
                     presentation.log_slider_geometry(
                         self, widget, pointer)
                 end
                 local entry = visible and
                     presentation.widget_hotspot_at_pointer(
-                        self, widget, pointer)
+                        self, widget, pointer,
+                        widget == focused_dropdown)
                 if entry then
                     source_widget = widget
                     source_entry = entry
-                    break
+                    return true
+                end
+                return false
+            end
+            if focused_dropdown then
+                -- Exclusive focus is also visual/modal ownership. Its option
+                -- passes are drawn over later grid rows, so they must receive
+                -- the ray before (and instead of) widgets geometrically behind
+                -- the expanded list.
+                consider_widget(focused_dropdown)
+                presentation.options_modal_instance = self
+                presentation.options_modal_widget = focused_dropdown
+            else
+                if presentation.options_modal_instance == self then
+                    presentation.options_modal_instance = nil
+                    presentation.options_modal_widget = nil
+                end
+                for i = #widgets, 1, -1 do
+                    if consider_widget(widgets[i]) then
+                        break
+                    end
                 end
             end
         end
         local interaction_hotspot =
             presentation.widget_hotspot(interaction_widget)
         if pointer.available and interaction_hotspot then
-            interaction_hotspot.force_hover = source_widget ~= nil
-            interaction_hotspot.is_hover = source_widget ~= nil
+            -- This is a grid-sized input catcher, not the row under the ray.
+            -- Forcing it hovered alongside source_widget makes the grid's first
+            -- entry (Audio in the current options layout) look hovered too.
+            interaction_hotspot.force_hover = false
+        end
+        if pointer.scroll_steps ~= 0 and pointer.active and
+                interaction_widget then
+            local interaction_hit =
+                presentation.widget_contains_menu_pointer(
+                    self, interaction_widget, pointer)
+            if interaction_hit then
+                local scrolled, reason = presentation.scroll_menu_grid(
+                    grid, pointer.scroll_steps)
+                if scrolled then
+                    presentation.consume_menu_scroll(pointer)
+                    mod:info(
+                        "DARKTIDEVR_MENU_INPUT options_grid_scroll grid=%s steps=%d sequence=%d",
+                        tostring(interaction_widget.name),
+                        pointer.scroll_steps,
+                        pointer.last_sequence)
+                else
+                    mod:info(
+                        "DARKTIDEVR_MENU_INPUT options_grid_scroll_skipped grid=%s steps=%d reason=%s",
+                        tostring(interaction_widget.name),
+                        pointer.scroll_steps,
+                        tostring(reason))
+                end
+            end
         end
         if source_widget and source_entry then
             local hotspot = source_entry.hotspot
             hotspot.force_hover = true
             if pointer.primary_pressed then
-                local opened_dropdown = false
                 local started_slider = false
+                local opening_dropdown = false
                 if presentation.is_slider_widget(source_widget) then
                     started_slider = presentation.begin_slider_drag(
                         self, source_widget, pointer)
                 elseif presentation.is_dropdown_widget(source_widget) and
                         source_entry.content_id == "hotspot" and
-                        source_widget.content and
-                        not source_widget.content.exclusive_focus and
-                        type(self._set_exclusive_focus_on_grid_widget) ==
-                            "function" then
-                    -- Dropdowns enter their expanded state through the
-                    -- OptionsView focus coordinator, rather than through the
-                    -- ordinary pressed callback used by buttons and toggles.
-                    -- Route XR activation through that same coordinator so
-                    -- the option passes become visible before the next draw.
-                    self:_set_exclusive_focus_on_grid_widget(
-                        source_widget.name)
-                    opened_dropdown = true
+                        source_widget ~= self._selected_settings_widget then
+                    -- Opening through the ordinary pressed_callback makes the
+                    -- same physical trigger edge visible to OptionsView as a
+                    -- native left_pressed click-away on its following update.
+                    -- Defer only the native coordinator call until that edge
+                    -- has drained. Modal ownership thereafter remains the
+                    -- engine's authoritative _selected_settings_widget.
+                    presentation.dropdown_open_pending = {
+                        instance = self,
+                        widget_name = source_widget.name,
+                        frames = 2,
+                    }
+                    opening_dropdown = true
                 end
-                if not opened_dropdown and not started_slider then
+                if not started_slider and not opening_dropdown then
                     hotspot.force_input_pressed = true
                     if presentation.is_dropdown_widget(source_widget) and
                             string.match(
@@ -5392,7 +6697,11 @@ mod:hook(
                                 "^option_hotspot_%d+$") then
                         presentation.dropdown_close_pending = {
                             instance = self,
-                            frames = 1,
+                            -- The option's on_pressed bit is consumed by the
+                            -- next blueprint update. The hook-safe update below
+                            -- also runs once at the end of this current update,
+                            -- so two ticks are required before closing focus.
+                            frames = 2,
                         }
                     end
                 end
@@ -5412,10 +6721,24 @@ mod:hook(
             input_service, ...)
     end)
 
--- A cursor dropdown normally releases exclusive focus after its option pass
--- has applied the selected value. XR supplies the same pressed edge directly
--- to that pass, so close focus one completed OptionsView update later.
+-- A cursor dropdown normally releases exclusive focus from the engine mouse
+-- edge. XR supplies the option pressed edge directly, so close focus only
+-- after the following blueprint update has applied the selected value.
 mod:hook_safe("OptionsView", "update", function(self)
+    local open_pending = presentation.dropdown_open_pending
+    if open_pending and open_pending.instance == self then
+        open_pending.frames = open_pending.frames - 1
+        if open_pending.frames <= 0 then
+            if type(self._set_exclusive_focus_on_grid_widget) == "function" then
+                self:_set_exclusive_focus_on_grid_widget(
+                    open_pending.widget_name)
+            end
+            presentation.dropdown_open_pending = nil
+            mod:info(
+                "DARKTIDEVR_MENU_INPUT dropdown_focus_opened source=xr widget=%s",
+                tostring(open_pending.widget_name))
+        end
+    end
     local pending = presentation.dropdown_close_pending
     if not pending or pending.instance ~= self then
         return
@@ -5434,8 +6757,21 @@ end)
 -- SystemView instance without traversing the UIManager methods or active-view
 -- list used by loading/vendor views. Observe the lifecycle at the view class
 -- as an explicit compatibility seam.
-mod:hook_safe("SystemView", "on_enter", function(self)
+mod:hook_safe(
+    require("scripts/ui/views/system_view/system_view"),
+    "on_enter",
+    function(self)
     presentation.active_menu_view_instance = self
+    presentation.world_menu_anchor = nil
+    presentation.world_menu_draw_logged = false
+    -- SystemView creates a dedicated overlay viewport whose only purpose is
+    -- to shade/blur the desktop back buffer.  It is not menu content and it
+    -- acts on player1 only, so remove it while leaving the actual menu
+    -- renderer alive for offscreen capture.
+    if self._ui_background_renderer and
+            type(self._destroy_background) == "function" then
+        self:_destroy_background()
+    end
     local input_fields = {}
     for key, value in pairs(self) do
         if string.find(string.lower(tostring(key)), "input", 1, true) then
@@ -5447,23 +6783,74 @@ mod:hook_safe("SystemView", "on_enter", function(self)
         "DARKTIDEVR_MENU_INPUT system_view fields=%s",
         #input_fields > 0 and table.concat(input_fields, ",") or "none")
     presentation.fullscreen_empty_updates = 0
-    presentation.publish_mode(4, "SystemView.on_enter")
+    presentation.world_menu_views.system_view = true
+    presentation.publish_mode(4, "SystemView.on_enter:world_space_menu")
+    -- Focused command tracing is diagnostic-only now that the stock menu PSO
+    -- and completed swapchain boundary are known.
+    presentation.system_view_trace_pending =
+        ui_menu_trace_requested and true or nil
+    presentation.system_view_trace_phase = nil
+    presentation.system_view_trace_frames = nil
 end)
 
-mod:hook_safe("SystemView", "on_exit", function()
+mod:hook(
+    require("scripts/ui/views/system_view/system_view"),
+    "on_exit",
+    function(func, self, ...)
+    -- The stereo projection remains active for the entire menu lifetime. Let
+    -- the engine finish closing the view, then remove only its XR quad; there
+    -- is no flat-to-stereo handoff and no renderer or camera-mode transition.
+    local result = func(self, ...)
     presentation.active_menu_view_instance = nil
     presentation.active_menu_input_service = nil
     presentation.system_view_hovered_widget = nil
     presentation.system_view_source_widget = nil
-    presentation.mode = 4
+    presentation.system_view_trace_pending = nil
+    presentation.system_view_trace_seen = nil
+    presentation.system_view_trace_phase = nil
+    presentation.system_view_trace_frames = nil
+    if ui_native_capture then
+        ui_native_capture.dtvr_set_focused_trace_phase(0)
+    end
     presentation.fullscreen_empty_updates = 0
+    presentation.destroy_menu_resource()
+    presentation.publish_mode(1, "SystemView.on_exit:complete")
+    return result
 end)
 
 mod:hook_safe(
-    "SystemView",
+    require("scripts/ui/views/system_view/system_view"),
     "update",
     function(_, _, _, input_service)
         presentation.active_menu_input_service = input_service
+        if ui_menu_trace_requested and
+                not presentation.system_view_trace_seen and ui_native_capture then
+            presentation.system_view_trace_seen = true
+            presentation.system_view_trace_pending = nil
+            presentation.system_view_trace_phase = 1
+            presentation.system_view_trace_frames = 4
+            local marker_result = ui_native_capture.dtvr_enable_marker_log()
+            local trace_result =
+                ui_native_capture.dtvr_set_focused_trace_phase(1)
+            mod:info(
+                "DARKTIDEVR_MENU_TRACE started_update frames=%d marker_result=%s trace_result=%s",
+                presentation.system_view_trace_frames,
+                tostring(marker_result),
+                tostring(trace_result))
+        end
+        local trace_frames = presentation.system_view_trace_frames
+        if trace_frames and presentation.system_view_trace_phase == 1 then
+            trace_frames = trace_frames - 1
+            presentation.system_view_trace_frames = trace_frames
+            if trace_frames <= 0 then
+                presentation.system_view_trace_frames = nil
+                presentation.system_view_trace_phase = nil
+                if ui_native_capture then
+                    ui_native_capture.dtvr_set_focused_trace_phase(0)
+                end
+                mod:info("DARKTIDEVR_MENU_TRACE stopped reason=frame_budget")
+            end
+        end
     end)
 
 -- SystemView owns a dynamic grid outside BaseView._widgets. Resolve the XR
@@ -5581,129 +6968,6 @@ mod:hook(
                 presentation.system_view_hovered_widget = widget
             end
         end
-        return result
-    end)
-
--- Hotspots are evaluated while the view draws, after SystemView.update. Keep
--- the simulated edge alive for exactly that call so the probe exercises the
--- same phase as a real pointer button without leaking input into gameplay.
-mod:hook(
-    "SystemView",
-    "draw",
-    function(func, self, dt, t, input_service, layer, ...)
-        presentation.active_menu_input_service = input_service
-        local probe = presentation.menu_input_probe
-        local simulated = false
-        local forced_hotspot = false
-        if probe.stage == "press" and probe.action == "force_options" then
-            local widgets = self._content_widgets or {}
-            for i = 1, #widgets do
-                local widget = widgets[i]
-                local content = widget and widget.content
-                local text = content and string.lower(tostring(content.text or ""))
-                local hotspot = content and content.hotspot
-                if hotspot and not hotspot.disabled and
-                        string.find(text, "options", 1, true) then
-                    hotspot.force_input_pressed = true
-                    forced_hotspot = true
-                    mod:info(
-                        "DARKTIDEVR_MENU_INPUT probe forced_options widget=%s index=%d text=%s",
-                        tostring(widget.name),
-                        i,
-                        tostring(content.text))
-                    break
-                end
-            end
-            if not forced_hotspot then
-                probe.stage = "blocked"
-                mod:error(
-                    "DARKTIDEVR_MENU_INPUT probe blocked action=force_options reason=options_widget_missing")
-            end
-        elseif probe.stage == "force_pending" and probe.hovered_widget then
-            local hotspot = probe.hovered_widget.content and
-                probe.hovered_widget.content.hotspot
-            if hotspot and not hotspot.disabled then
-                hotspot.force_input_pressed = true
-                forced_hotspot = true
-                mod:info(
-                    "DARKTIDEVR_MENU_INPUT probe forced_hovered widget=%s",
-                    tostring(probe.hovered_widget.name))
-            else
-                probe.stage = "blocked"
-                mod:error(
-                    "DARKTIDEVR_MENU_INPUT probe blocked action=force_hovered reason=saved_hotspot_invalid")
-            end
-        elseif probe.stage == "press" and
-                probe.action ~= "force_hovered" and input_service then
-            local ok, error_message = pcall(
-                input_service.start_simulate_action,
-                input_service,
-                probe.action,
-                1)
-            if ok then
-                simulated = true
-                local get_ok, simulated_value = pcall(
-                    input_service.get,
-                    input_service,
-                    probe.action)
-                mod:info(
-                    "DARKTIDEVR_MENU_INPUT probe pressed action=%s service=system_view_pre_draw get_ok=%s value=%s stored=%s",
-                    tostring(probe.action),
-                    tostring(get_ok),
-                    tostring(simulated_value),
-                    tostring(input_service._simulated_actions and
-                        input_service._simulated_actions[probe.action]))
-            else
-                probe.stage = "blocked"
-                mod:error(
-                    "DARKTIDEVR_MENU_INPUT probe blocked action=%s error=%s",
-                    tostring(probe.action),
-                    tostring(error_message))
-            end
-        end
-
-        local result = func(self, dt, t, input_service, layer, ...)
-
-        if probe.stage == "press" and probe.action == "force_hovered" then
-            local widget = presentation.system_view_hovered_widget
-            if widget then
-                probe.hovered_widget = widget
-                probe.stage = "force_pending"
-                mod:info(
-                    "DARKTIDEVR_MENU_INPUT probe observed_hover widget=%s",
-                    tostring(widget.name))
-            end
-            if probe.stage ~= "force_pending" then
-                probe.stage = "blocked"
-                mod:error(
-                    "DARKTIDEVR_MENU_INPUT probe blocked action=force_hovered reason=hovered_hotspot_missing_after_draw")
-            end
-        elseif forced_hotspot then
-            probe.stage = "idle"
-            probe.poll_updates = 0
-            probe.hovered_widget = nil
-            mod:info(
-                "DARKTIDEVR_MENU_INPUT probe released action=%s phase=system_view_post_draw",
-                tostring(probe.action))
-        elseif simulated then
-            local ok, error_message = pcall(
-                input_service.stop_simulate_action,
-                input_service,
-                probe.action)
-            probe.stage = ok and "idle" or "blocked"
-            probe.poll_updates = 0
-            if ok then
-                mod:info(
-                    "DARKTIDEVR_MENU_INPUT probe released action=%s phase=system_view_post_draw",
-                    tostring(probe.action))
-            else
-                mod:error(
-                    "DARKTIDEVR_MENU_INPUT probe release_failed action=%s error=%s",
-                    tostring(probe.action),
-                    tostring(error_message))
-            end
-        end
-
         return result
     end)
 
@@ -6391,7 +7655,7 @@ local function update_ui_offscreen_trace()
         )
     elseif ui_offscreen_trace_frame ==
             ui_offscreen_trace_warmup_frames +
-                ui_offscreen_trace_sample_frames then
+                4 then
         ui_native_capture.dtvr_set_focused_trace_phase(0)
         ui_offscreen_trace_complete = true
         mod:info(
@@ -6729,7 +7993,7 @@ mod:hook("MainMenuView", "draw", function(func, self, dt, t, input_service, laye
             Material.set_resource(
                 material,
                 "source",
-                ui_compositor_left_output_probe_requested and
+                false and
                     ui_left_output_target or ui_left_render_target
             )
             ui_left_material = { gui = gui, material = material }

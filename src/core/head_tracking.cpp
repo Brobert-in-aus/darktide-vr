@@ -6,6 +6,30 @@
 
 namespace darktidevr::core {
 
+math::Pose horizon_locked_recenter_pose(math::Pose current_pose) {
+  const auto forward =
+      math::rotate(current_pose.orientation, {0.0F, 0.0F, -1.0F});
+  const auto forward_horizontal =
+      std::sqrt(forward.x * forward.x + forward.z * forward.z);
+  float yaw{};
+  if (forward_horizontal > 1.0e-4F) {
+    yaw = std::atan2(-forward.x, -forward.z);
+  } else {
+    // Looking almost vertically makes projected forward undefined. The HMD's
+    // right axis still carries the same yaw except at a physically impossible
+    // degenerate orientation, so use it as the deterministic fallback.
+    const auto right =
+        math::rotate(current_pose.orientation, {1.0F, 0.0F, 0.0F});
+    const auto right_horizontal =
+        std::sqrt(right.x * right.x + right.z * right.z);
+    yaw = right_horizontal > 1.0e-4F
+              ? std::atan2(-right.z, right.x)
+              : 0.0F;
+  }
+  return {math::from_axis_angle({0.0F, 1.0F, 0.0F}, yaw),
+          current_pose.position};
+}
+
 math::Pose recentered_head_delta(math::Pose recenter_pose,
                                  math::Pose current_pose,
                                  HeadTranslationLimits limits) {
@@ -34,9 +58,19 @@ math::Pose recentered_head_delta(math::Pose recenter_pose,
 math::Pose sliding_recentered_head_delta(math::Pose& recenter_pose,
                                          math::Pose current_pose,
                                          HeadTranslationLimits limits) {
+  return sliding_head_translation(recenter_pose, current_pose, limits)
+      .camera_delta;
+}
+
+SlidingHeadTranslation sliding_head_translation(
+    math::Pose& recenter_pose, math::Pose current_pose,
+    HeadTranslationLimits limits) {
   const auto raw = math::compose(math::inverse(recenter_pose), current_pose);
   const auto bounded =
       recentered_head_delta(recenter_pose, current_pose, limits);
+  SlidingHeadTranslation result{bounded,
+                                {raw.position.x - bounded.position.x, 0.0F,
+                                 raw.position.z - bounded.position.z}};
   constexpr float epsilon = 0.000001F;
   if (std::abs(raw.position.x - bounded.position.x) > epsilon ||
       std::abs(raw.position.y - bounded.position.y) > epsilon ||
@@ -46,7 +80,7 @@ math::Pose sliding_recentered_head_delta(math::Pose& recenter_pose,
     recenter_pose =
         math::compose(current_pose, math::inverse(bounded));
   }
-  return bounded;
+  return result;
 }
 
 math::Pose anchored_recentered_eye_pose(math::Pose recenter_pose,

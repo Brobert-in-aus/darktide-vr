@@ -38,6 +38,9 @@ class SyntheticScene {
   struct Constants {
     float view_projection[16];
     float time_eye[4];
+    float camera_right[4];
+    float camera_up[4];
+    float camera_position[4];
   };
 
  private:
@@ -51,6 +54,8 @@ class SyntheticScene {
 
   Microsoft::WRL::ComPtr<ID3D12RootSignature> root_signature_;
   Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline_;
+  Microsoft::WRL::ComPtr<ID3D12PipelineState> spherical_billboard_pipeline_;
+  Microsoft::WRL::ComPtr<ID3D12PipelineState> cylindrical_billboard_pipeline_;
   Microsoft::WRL::ComPtr<ID3D12Resource> vertex_buffer_;
   D3D12_VERTEX_BUFFER_VIEW vertex_view_{};
   Microsoft::WRL::ComPtr<ID3D12Resource> constant_buffer_;
@@ -64,6 +69,9 @@ class SyntheticScene {
   UINT dsv_increment_{};
   std::uint32_t vertex_count_{};
   std::uint32_t triangle_count_{};
+  std::uint32_t scene_vertex_count_{};
+  std::uint32_t spherical_billboard_offset_{};
+  std::uint32_t cylindrical_billboard_offset_{};
 };
 
 }  // namespace darktidevr::harness

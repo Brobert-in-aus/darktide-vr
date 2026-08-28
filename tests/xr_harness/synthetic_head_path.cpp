@@ -6,7 +6,7 @@ namespace darktidevr::harness {
 
 SyntheticHeadPathSample synthetic_head_path_sample(
     std::uint64_t frame, math::Vec3 preserved_translation) {
-  constexpr std::uint64_t phase_frames = 120;
+  constexpr auto phase_frames = kSyntheticHeadPhaseFrames;
   constexpr float pi = 3.14159265358979323846F;
   const auto cycle_frame = frame % (phase_frames * 4);
   const auto phase_index = cycle_frame / phase_frames;
@@ -31,6 +31,28 @@ SyntheticHeadPathSample synthetic_head_path_sample(
         math::from_axis_angle({1.0F, 0.0F, 0.0F}, pitch));
   }
   return sample;
+}
+
+math::Vec3 synthetic_roomscale_position(std::uint64_t frame) {
+  constexpr std::uint64_t phase_frames = 120;
+  constexpr float pi = 3.14159265358979323846F;
+  constexpr float excursion_metres = 0.65F;
+  const auto cycle_frame = frame % (phase_frames * 4);
+  const auto phase = cycle_frame / phase_frames;
+  const auto phase_t = static_cast<float>(cycle_frame % phase_frames) /
+                       static_cast<float>(phase_frames - 1);
+  const auto sine = std::sin(phase_t * 2.0F * pi);
+  if (phase == 1) {
+    return {excursion_metres * sine, 0.0F, 0.0F};
+  }
+  if (phase == 2) {
+    return {0.0F, 0.0F, excursion_metres * sine};
+  }
+  if (phase == 3) {
+    return {excursion_metres * sine, 0.0F,
+            excursion_metres * std::cos(phase_t * 2.0F * pi)};
+  }
+  return {};
 }
 
 }  // namespace darktidevr::harness

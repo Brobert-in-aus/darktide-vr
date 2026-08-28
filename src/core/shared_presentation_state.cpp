@@ -40,6 +40,12 @@ void close_mapping(void*& mapping, void*& view) {
 
 }  // namespace
 
+bool immersive_projection_active(SharedPresentationMode mode) {
+  return mode == SharedPresentationMode::stereo_world ||
+         mode == SharedPresentationMode::world_anchored_menu ||
+         mode == SharedPresentationMode::flat_menu;
+}
+
 bool valid_presentation_state(const SharedPresentationState& state) {
   const auto raw_mode = static_cast<std::uint32_t>(state.mode);
   const auto dimensions_valid =

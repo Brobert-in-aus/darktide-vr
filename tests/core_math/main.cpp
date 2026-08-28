@@ -214,6 +214,47 @@ int main() {
     expect_vec(small_return.position, {0.23F, 0.16F, 0.0F},
                "small inward movement responds after donning clamp");
 
+    Pose body_follow_anchor{};
+    const auto body_follow = darktidevr::core::sliding_head_translation(
+        body_follow_anchor, Pose{{}, {1.0F, 0.8F, -0.5F}},
+        {0.25F, 0.18F});
+    expect_near(std::sqrt(
+                    body_follow.camera_delta.position.x *
+                        body_follow.camera_delta.position.x +
+                    body_follow.camera_delta.position.z *
+                        body_follow.camera_delta.position.z),
+                0.25F, 0.0001F, "body-follow camera lean remains bounded");
+    expect_vec(body_follow.body_follow_delta,
+               {1.0F - 0.25F / std::sqrt(1.25F), 0.0F,
+                -0.5F + 0.125F / std::sqrt(1.25F)},
+               "body-follow exposes horizontal excess only");
+    expect_near(body_follow_anchor.position.y, 0.62F, 0.0001F,
+                "vertical excess still advances tracking anchor");
+
+    Pose path_anchor{};
+    Vec3 cumulative_body_follow{};
+    const float physical_path[] = {
+        0.0F, 0.10F, 0.30F, 0.65F, 0.30F,
+        0.0F, -0.30F, -0.65F, -0.30F, 0.0F};
+    for (const auto physical_x : physical_path) {
+      const auto sample = darktidevr::core::sliding_head_translation(
+          path_anchor, Pose{{}, {physical_x, 0.0F, 0.0F}},
+          {0.25F, 0.18F});
+      cumulative_body_follow.x += sample.body_follow_delta.x;
+      cumulative_body_follow.z += sample.body_follow_delta.z;
+      expect_near(cumulative_body_follow.x + sample.camera_delta.position.x,
+                  physical_x, 0.0001F,
+                  "body-follow plus camera lean preserves physical position");
+      if (std::abs(sample.camera_delta.position.x) > 0.2501F) {
+        throw std::runtime_error(
+            "oscillating room-scale path escaped camera envelope");
+      }
+      if (std::abs(cumulative_body_follow.x) > 0.6501F) {
+        throw std::runtime_error(
+            "oscillating room-scale path inflated body displacement");
+      }
+    }
+
     const auto rotated_recenter = Pose{yaw_90, {0.0F, 0.0F, 0.0F}};
     const auto local_forward = darktidevr::core::recentered_head_delta(
         rotated_recenter, {yaw_90, {-1.0F, 0.0F, 0.0F}}, {2.0F, 2.0F});
@@ -228,6 +269,30 @@ int main() {
     expect_vec(rotate(roll_delta.orientation, {0.0F, 1.0F, 0.0F}),
                {0.5F, std::sqrt(3.0F) * 0.5F, 0.0F},
                "recentered roll orientation");
+
+    // Recenter preserves yaw but never adopts physical pitch or roll as the
+    // new level. Those components must remain in the first live camera delta.
+    const auto pitch_down =
+        from_axis_angle({1.0F, 0.0F, 0.0F}, -kPi / 4.0F);
+    const Pose tilted_head{
+        multiply(yaw_90, multiply(pitch_down, roll_30)),
+        {1.0F, 1.6F, -2.0F}};
+    const auto level_anchor =
+        darktidevr::core::horizon_locked_recenter_pose(tilted_head);
+    expect_vec(level_anchor.position, tilted_head.position,
+               "level recenter preserves position");
+    expect_vec(rotate(level_anchor.orientation, {0.0F, 1.0F, 0.0F}),
+               {0.0F, 1.0F, 0.0F},
+               "level recenter removes pitch and roll");
+    expect_vec(rotate(level_anchor.orientation, {0.0F, 0.0F, -1.0F}),
+               {-1.0F, 0.0F, 0.0F}, "level recenter preserves yaw");
+    const auto tilted_delta = darktidevr::core::recentered_head_delta(
+        level_anchor, tilted_head, {0.0F, 0.0F});
+    const auto tilted_reconstructed = compose(level_anchor, tilted_delta);
+    expect_vec(rotate(tilted_reconstructed.orientation,
+                      {0.0F, 1.0F, 0.0F}),
+               rotate(tilted_head.orientation, {0.0F, 1.0F, 0.0F}),
+               "level recenter retains live tilt in camera delta");
 
     // Projection poses are absolute in LOCAL space: anchoring the delta back
     // onto its baseline must reconstruct the current orientation, including

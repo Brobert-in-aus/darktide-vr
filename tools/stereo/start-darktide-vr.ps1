@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [ValidateRange(5, 3600)]
-    [int] $DurationSeconds = 3600,
+    [ValidateRange(5, 43200)]
+    [int] $DurationSeconds = 28800,
 
     [ValidateRange(5, 1800)]
     [int] $GameStartTimeoutSeconds = 600,

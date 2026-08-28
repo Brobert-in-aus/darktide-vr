@@ -28,18 +28,31 @@ class WindowCapture {
   WindowCapture& operator=(const WindowCapture&) = delete;
 
   CapturedWindowFrame capture();
+  void set_source_crop(std::uint32_t source_width,
+                       std::uint32_t source_height, std::uint32_t crop_x,
+                       std::uint32_t crop_y, std::uint32_t crop_width,
+                       std::uint32_t crop_height);
   void set_pointer_overlay(
       std::optional<std::pair<std::uint32_t, std::uint32_t>> source_position,
       std::uint32_t source_width, std::uint32_t source_height);
 
  private:
+  void ensure_source_surface(std::uint32_t width, std::uint32_t height);
+
   HWND window_{};
   HDC memory_dc_{};
   HBITMAP bitmap_{};
   HGDIOBJ previous_bitmap_{};
   std::byte* pixels_{};
+  HDC source_dc_{};
+  HBITMAP source_bitmap_{};
+  HGDIOBJ previous_source_bitmap_{};
+  std::uint32_t source_width_{};
+  std::uint32_t source_height_{};
   std::uint32_t width_{};
   std::uint32_t height_{};
+  // Four unsigned 16-bit normalized values: x, y, width, height.
+  std::atomic<std::uint64_t> source_crop_normalized_{0xffffffff00000000ULL};
   std::atomic<std::uint64_t> pointer_normalized_{UINT64_MAX};
 };
 

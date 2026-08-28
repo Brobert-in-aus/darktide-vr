@@ -1,5 +1,8 @@
 #include "core/gameplay_input.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace darktidevr::core {
 namespace {
 
@@ -11,6 +14,25 @@ void set_action(std::uint64_t& actions, GameplayAction action, bool down) {
   if (down) {
     actions |= gameplay_action_bit(action);
   }
+}
+
+void apply_radial_deadzone(float raw_x, float raw_y, float& output_x,
+                           float& output_y) {
+  constexpr float deadzone = 0.20F;
+  const auto x = std::clamp(raw_x, -1.0F, 1.0F);
+  const auto y = std::clamp(raw_y, -1.0F, 1.0F);
+  const auto magnitude = std::sqrt(x * x + y * y);
+  if (!std::isfinite(magnitude) || magnitude <= deadzone) {
+    output_x = 0.0F;
+    output_y = 0.0F;
+    return;
+  }
+  const auto normalized_magnitude = std::min(magnitude, 1.0F);
+  const auto scaled_magnitude =
+      (normalized_magnitude - deadzone) / (1.0F - deadzone);
+  const auto scale = scaled_magnitude / magnitude;
+  output_x = x * scale;
+  output_y = y * scale;
 }
 
 }  // namespace
@@ -48,7 +70,9 @@ GameplayInputFrame GameplayInputMapper::update(
   set_action(next, GameplayAction::menu,
              (left.buttons & controller_menu) != 0);
 
-  const GameplayInputFrame frame{next & ~held_, next, held_ & ~next};
+  GameplayInputFrame frame{next & ~held_, next, held_ & ~next};
+  apply_radial_deadzone(left.thumbstick_x, left.thumbstick_y, frame.move_x,
+                        frame.move_y);
   held_ = next;
   return frame;
 }

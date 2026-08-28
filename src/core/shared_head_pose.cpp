@@ -20,6 +20,9 @@ struct SharedLayout {
   float orientation_y{};
   float orientation_z{};
   float orientation_w{1.0F};
+  float body_follow_x{};
+  float body_follow_y{};
+  float body_follow_z{};
   float render_vertical_fov{};
   float render_aspect_ratio{};
   volatile LONG render_width{};
@@ -47,6 +50,7 @@ static_assert(alignof(SharedLayout) >= alignof(LONG64));
 
 bool valid(const SharedHeadPoseSample& sample) {
   const auto& p = sample.pose.position;
+  const auto& body = sample.body_follow_offset;
   const auto& q = sample.pose.orientation;
   const auto norm =
       std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
@@ -62,7 +66,9 @@ bool valid(const SharedHeadPoseSample& sample) {
          sample.sequence <=
              static_cast<std::uint64_t>(std::numeric_limits<LONG64>::max()) &&
          std::isfinite(p.x) && std::isfinite(p.y) &&
-         std::isfinite(p.z) && std::isfinite(q.x) && std::isfinite(q.y) &&
+         std::isfinite(p.z) && std::isfinite(body.x) &&
+         std::isfinite(body.y) && std::isfinite(body.z) &&
+         std::isfinite(q.x) && std::isfinite(q.y) &&
          std::isfinite(q.z) && std::isfinite(q.w) &&
          std::abs(norm - 1.0F) <= 0.01F &&
          std::isfinite(sample.render_vertical_fov_radians) &&
@@ -135,6 +141,9 @@ SharedHeadPoseWriter::SharedHeadPoseWriter() {
   data.render_aspect_ratio = 0.0F;
   data.render_width = 0;
   data.render_height = 0;
+  data.body_follow_x = 0.0F;
+  data.body_follow_y = 0.0F;
+  data.body_follow_z = 0.0F;
   data.eye0_left = 0.0F;
   data.eye0_right = 0.0F;
   data.eye0_down = 0.0F;
@@ -175,6 +184,9 @@ bool SharedHeadPoseWriter::publish(const SharedHeadPoseSample& sample) {
   data.orientation_y = sample.pose.orientation.y;
   data.orientation_z = sample.pose.orientation.z;
   data.orientation_w = sample.pose.orientation.w;
+  data.body_follow_x = sample.body_follow_offset.x;
+  data.body_follow_y = sample.body_follow_offset.y;
+  data.body_follow_z = sample.body_follow_offset.z;
   data.render_vertical_fov = sample.render_vertical_fov_radians;
   data.render_aspect_ratio = sample.render_aspect_ratio;
   data.render_width = static_cast<LONG>(sample.render_width);
@@ -263,6 +275,8 @@ bool SharedHeadPoseReader::read(SharedHeadPoseSample& sample) {
         {data.position_x, data.position_y, data.position_z};
     candidate.pose.orientation = {data.orientation_x, data.orientation_y,
                                   data.orientation_z, data.orientation_w};
+    candidate.body_follow_offset =
+        {data.body_follow_x, data.body_follow_y, data.body_follow_z};
     candidate.render_vertical_fov_radians = data.render_vertical_fov;
     candidate.render_aspect_ratio = data.render_aspect_ratio;
     candidate.render_width = static_cast<std::uint32_t>(data.render_width);

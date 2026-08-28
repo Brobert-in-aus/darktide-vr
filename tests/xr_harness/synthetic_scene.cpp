@@ -20,6 +20,9 @@ constexpr auto kShader = R"hlsl(
 cbuffer SceneConstants : register(b0) {
   column_major float4x4 viewProjection;
   float4 timeEye;
+  float4 cameraRight;
+  float4 cameraUp;
+  float4 cameraPosition;
 };
 
 struct VSInput {
@@ -51,6 +54,43 @@ PSInput vs_main(VSInput input) {
   output.position = mul(viewProjection, float4(world, 1.0));
   output.world = world;
   output.normal = input.normal;
+  output.colorMaterial = input.colorMaterial;
+  return output;
+}
+
+// Controlled reference implementation: all three camera axes participate, so
+// pitch and roll rotate the quad as well as yaw. Vertex position.xy is the
+// local corner and vertex normal carries the fixed world-space centre.
+PSInput vs_spherical_billboard(VSInput input) {
+  PSInput output;
+  float3 center = input.normal;
+  float3 world = center + cameraRight.xyz * input.position.x +
+                 cameraUp.xyz * input.position.y;
+  output.position = mul(viewProjection, float4(world, 1.0));
+  output.world = world;
+  output.normal = normalize(cameraPosition.xyz - center);
+  output.colorMaterial = input.colorMaterial;
+  return output;
+}
+
+// Controlled reference implementation: only the horizontal camera direction
+// participates. World +Y remains the exact quad up axis under camera pitch and
+// roll, which is the desired horizon-locked/cylindrical behaviour.
+PSInput vs_cylindrical_billboard(VSInput input) {
+  PSInput output;
+  float3 center = input.normal;
+  float3 toCamera = cameraPosition.xyz - center;
+  toCamera.y = 0.0;
+  float lengthSquared = dot(toCamera, toCamera);
+  float3 facing = lengthSquared > 1.0e-8
+      ? toCamera * rsqrt(lengthSquared)
+      : float3(0.0, 0.0, 1.0);
+  float3 worldUp = float3(0.0, 1.0, 0.0);
+  float3 right = normalize(cross(worldUp, facing));
+  float3 world = center + right * input.position.x + worldUp * input.position.y;
+  output.position = mul(viewProjection, float4(world, 1.0));
+  output.world = world;
+  output.normal = facing;
   output.colorMaterial = input.colorMaterial;
   return output;
 }
@@ -145,6 +185,27 @@ void add_quad(std::vector<SyntheticScene::Vertex>& vertices,
   add_triangle(vertices, a, c, d, normal, color);
 }
 
+void add_billboard(std::vector<SyntheticScene::Vertex>& vertices,
+                   std::array<float, 3> center, float half_width,
+                   float half_height, std::array<float, 4> color) {
+  // Billboard shaders interpret position.xy as a local corner and the normal
+  // channel as the immutable world centre. This keeps both test shaders on an
+  // identical input layout and makes their basis construction the only A/B.
+  const std::array<std::array<float, 3>, 6> corners{{
+      {-half_width, -half_height, 0.0F},
+      {half_width, -half_height, 0.0F},
+      {half_width, half_height, 0.0F},
+      {-half_width, -half_height, 0.0F},
+      {half_width, half_height, 0.0F},
+      {-half_width, half_height, 0.0F},
+  }};
+  for (const auto& corner : corners) {
+    vertices.push_back({{corner[0], corner[1], corner[2]},
+                        {center[0], center[1], center[2]},
+                        {color[0], color[1], color[2], color[3]}});
+  }
+}
+
 void add_box(std::vector<SyntheticScene::Vertex>& vertices, float x, float y,
              float z, float sx, float sy, float sz,
              std::array<float, 4> color) {
@@ -237,6 +298,10 @@ void SyntheticScene::create_pipeline(ID3D12Device* device,
         "ID3D12Device::CreateRootSignature");
 
   const auto vertex_shader = compile_shader("vs_main", "vs_5_1");
+  const auto spherical_vertex_shader =
+      compile_shader("vs_spherical_billboard", "vs_5_1");
+  const auto cylindrical_vertex_shader =
+      compile_shader("vs_cylindrical_billboard", "vs_5_1");
   const auto pixel_shader = compile_shader("ps_main", "ps_5_1");
   const std::array<D3D12_INPUT_ELEMENT_DESC, 3> layout{{
       {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,
@@ -249,7 +314,6 @@ void SyntheticScene::create_pipeline(ID3D12Device* device,
 
   D3D12_GRAPHICS_PIPELINE_STATE_DESC pipeline{};
   pipeline.pRootSignature = root_signature_.Get();
-  pipeline.VS = {vertex_shader->GetBufferPointer(), vertex_shader->GetBufferSize()};
   pipeline.PS = {pixel_shader->GetBufferPointer(), pixel_shader->GetBufferSize()};
   pipeline.InputLayout = {layout.data(), static_cast<UINT>(layout.size())};
   pipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
@@ -266,8 +330,21 @@ void SyntheticScene::create_pipeline(ID3D12Device* device,
   pipeline.RTVFormats[0] = color_format;
   pipeline.SampleDesc.Count = 1;
   pipeline.SampleMask = UINT_MAX;
-  check(device->CreateGraphicsPipelineState(&pipeline, IID_PPV_ARGS(&pipeline_)),
-        "ID3D12Device::CreateGraphicsPipelineState");
+  const auto create_pipeline_state =
+      [&](const ComPtr<ID3DBlob>& shader, ComPtr<ID3D12PipelineState>& output,
+          const char* operation) {
+        pipeline.VS = {shader->GetBufferPointer(), shader->GetBufferSize()};
+        check(device->CreateGraphicsPipelineState(&pipeline,
+                                                  IID_PPV_ARGS(&output)),
+              operation);
+      };
+  create_pipeline_state(vertex_shader, pipeline_,
+                        "CreateGraphicsPipelineState(scene)");
+  create_pipeline_state(spherical_vertex_shader, spherical_billboard_pipeline_,
+                        "CreateGraphicsPipelineState(spherical billboard)");
+  create_pipeline_state(cylindrical_vertex_shader,
+                        cylindrical_billboard_pipeline_,
+                        "CreateGraphicsPipelineState(cylindrical billboard)");
 }
 
 void SyntheticScene::create_mesh(ID3D12Device* device) {
@@ -315,6 +392,17 @@ void SyntheticScene::create_mesh(ID3D12Device* device) {
             row % 3 == 0 ? std::array<float, 4>{0.95F, 0.74F, 0.18F, 0.0F}
                          : std::array<float, 4>{0.72F, 0.82F, 0.93F, 0.0F});
   }
+  scene_vertex_count_ = static_cast<std::uint32_t>(vertices.size());
+  spherical_billboard_offset_ = scene_vertex_count_;
+  // Keep the authored A/B in front of the scene's diagnostic panel and near
+  // the optical centre. The earlier -3.10 m placement was coplanar with that
+  // panel, leaving only thin slivers visible in deterministic captures.
+  add_billboard(vertices, {-0.38F, 0.0F, -1.35F}, 0.28F, 0.45F,
+                {0.95F, 0.08F, 0.78F, 0.0F});
+  cylindrical_billboard_offset_ =
+      static_cast<std::uint32_t>(vertices.size());
+  add_billboard(vertices, {0.38F, 0.0F, -1.35F}, 0.28F, 0.45F,
+                {0.05F, 0.90F, 0.95F, 0.0F});
   vertex_count_ = static_cast<std::uint32_t>(vertices.size());
   triangle_count_ = vertex_count_ / 3;
   const auto bytes = static_cast<UINT64>(vertices.size() * sizeof(Vertex));
@@ -421,6 +509,17 @@ void SyntheticScene::record(ID3D12GraphicsCommandList* command_list,
             constants.view_projection);
   constants.time_eye[0] = static_cast<float>(frame_number % 120) / 120.0F;
   constants.time_eye[1] = static_cast<float>(eye);
+  const auto camera_right = rotate(eye_pose.orientation, {1.0F, 0.0F, 0.0F});
+  const auto camera_up = rotate(eye_pose.orientation, {0.0F, 1.0F, 0.0F});
+  constants.camera_right[0] = camera_right.x;
+  constants.camera_right[1] = camera_right.y;
+  constants.camera_right[2] = camera_right.z;
+  constants.camera_up[0] = camera_up.x;
+  constants.camera_up[1] = camera_up.y;
+  constants.camera_up[2] = camera_up.z;
+  constants.camera_position[0] = eye_pose.position.x;
+  constants.camera_position[1] = eye_pose.position.y;
+  constants.camera_position[2] = eye_pose.position.z;
   std::memcpy(constants_mapped_ + eye * 256, &constants, sizeof(constants));
 
   const auto rtv_start = rtv_heap_->GetCPUDescriptorHandleForHeapStart();
@@ -451,7 +550,11 @@ void SyntheticScene::record(ID3D12GraphicsCommandList* command_list,
                                       nullptr);
   command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   command_list->IASetVertexBuffers(0, 1, &vertex_view_);
-  command_list->DrawInstanced(vertex_count_, 1, 0, 0);
+  command_list->DrawInstanced(scene_vertex_count_, 1, 0, 0);
+  command_list->SetPipelineState(spherical_billboard_pipeline_.Get());
+  command_list->DrawInstanced(6, 1, spherical_billboard_offset_, 0);
+  command_list->SetPipelineState(cylindrical_billboard_pipeline_.Get());
+  command_list->DrawInstanced(6, 1, cylindrical_billboard_offset_, 0);
 }
 
 }  // namespace darktidevr::harness
