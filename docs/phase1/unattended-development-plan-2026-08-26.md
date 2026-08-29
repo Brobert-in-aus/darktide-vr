@@ -960,6 +960,20 @@ The current unattended queue is:
    `start-darktide-vr.ps1 -AutoEnterHub` for unattended hub entry; its Space and
    Enter events are gated by fresh title and character-select console states.
 
+The crafting state-diff has now produced a safe draw-level seam. The
+180-vertex/76-byte GUI-layout pass (VS `15643064314087379227`, PS
+`12642582357042194823`) yields the complete transparent Hadron interaction UI
+when added to the proven Escape-menu capture. The separate
+12-vertex/48-byte compositor pass remains excluded; redirecting both was the
+source of the earlier opaque-black result. A broad pipeline-state classifier
+was also explicitly rejected by D3D12 device hang
+`39713a0d-e1d6-488e-9331-f5ff810bea29`; keep the exact draw-shape guard.
+
+Continue item 4 with an XR pointer/worn gate, programmatic entry into a crafting
+submenu, and a second readback confirming dynamic/retained widgets. Then trace
+other vendor families against the same renderer-layout evidence rather than
+assuming the Hadron signature is universal.
+
 Checkpoint after every accepted gate with source, validation commands, hashes,
 runtime counters and captured evidence. Do not combine an unvalidated renderer
 hook with a new input or UI hook in the same live run. The user-feedback

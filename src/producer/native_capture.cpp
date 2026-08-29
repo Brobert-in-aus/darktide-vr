@@ -316,6 +316,14 @@ constexpr std::array<StockMenuShaderPair, 7> kStockMenuShaderPairs{{
     {8136461109370980353ULL, 18078296809113235737ULL},
 }};
 
+// The crafting view adds one retained GUI batch not used by the Escape menu.
+// A hub/crafting state diff isolated this 180-vertex, 76-byte-stride draw from
+// a separate 12-vertex, 48-byte-stride compositor pass.  Redirect only the GUI
+// batch; redirecting both made the opaque compositor cover the shared menu and
+// eventually hung the device.
+constexpr StockMenuShaderPair kVendorMenuWidgetShaderPair{
+    15643064314087379227ULL, 12642582357042194823ULL};
+
 // The completed swapchain contains an opaque copy of the world as well as the
 // menu.  Feeding that texture to OpenXR necessarily produces the observed
 // mono/flicker regression.  The stock UI draw redirect below instead builds a
@@ -326,6 +334,10 @@ constexpr bool kNamedMenuResourceCaptureEnabled = false;
 std::atomic<unsigned int> current_presentation_mode{
     static_cast<unsigned int>(
         darktidevr::core::SharedPresentationMode::stereo_world)};
+std::atomic<unsigned int> current_presentation_source_width{1};
+std::atomic<unsigned int> current_presentation_source_height{1};
+thread_local unsigned int menu_draw_scope_depth{};
+std::atomic<std::uint64_t> menu_draw_scope_redirect_count{};
 std::atomic<std::uint64_t> stock_menu_draw_frame{
     (std::numeric_limits<std::uint64_t>::max)()};
 std::atomic<std::uint64_t> direct_menu_render_frame{
@@ -1889,6 +1901,11 @@ TableProvenance resolve_table_provenance(std::uintptr_t signature,
     break;
   }
   return provenance;
+}
+
+bool is_vendor_menu_widget_shader_pair(const PsoMetadata& metadata) {
+  return metadata.vertex_shader == kVendorMenuWidgetShaderPair.vertex_shader &&
+         metadata.pixel_shader == kVendorMenuWidgetShaderPair.pixel_shader;
 }
 
 
@@ -5115,13 +5132,21 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
     }
   }
   const auto stock_menu_draw = is_stock_menu_shader_pair(draw_metadata);
+  const auto vendor_menu_widget_draw =
+      vertex_count == 180 && instance_count == 1 &&
+      is_vendor_menu_widget_shader_pair(draw_metadata);
+  const auto scoped_menu_draw = menu_draw_scope_depth != 0;
   if (stock_menu_draw) {
     stock_menu_draw_frame.store(present_count.load(std::memory_order_relaxed),
                                 std::memory_order_relaxed);
   }
   const auto menu_redirect =
-      stock_menu_draw ? begin_stock_menu_draw_redirect(commands, draw_metadata)
-                      : MenuDrawRedirect{};
+      (stock_menu_draw || vendor_menu_widget_draw || scoped_menu_draw)
+          ? begin_stock_menu_draw_redirect(commands, draw_metadata)
+          : MenuDrawRedirect{};
+  if (scoped_menu_draw && menu_redirect.active) {
+    menu_draw_scope_redirect_count.fetch_add(1, std::memory_order_relaxed);
+  }
   const auto billboard_override = apply_billboard_view_basis(commands);
   original_draw_instanced(commands, vertex_count, instance_count, start_vertex,
                           start_instance);
@@ -7503,6 +7528,10 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
       metadata.render_target_count != 1 || metadata.depth_enabled) {
     return {};
   }
+  const auto scoped_menu_draw = menu_draw_scope_depth != 0;
+  if (scoped_menu_draw && !metadata.blend_enabled) {
+    return {};
+  }
   const auto mode = static_cast<darktidevr::core::SharedPresentationMode>(
       current_presentation_mode.load(std::memory_order_relaxed));
   if (mode != darktidevr::core::SharedPresentationMode::flat_menu &&
@@ -7537,6 +7566,13 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
   {
     std::scoped_lock lock(state_mutex);
     const auto source_description = original_resource->GetDesc();
+    if (scoped_menu_draw &&
+        (source_description.Width !=
+             current_presentation_source_width.load(std::memory_order_relaxed) ||
+         source_description.Height != current_presentation_source_height.load(
+                                          std::memory_order_relaxed))) {
+      return {};
+    }
     if (ensure_menu_surface(device.Get(), source_description,
                             metadata.render_target_format) != 0 ||
         !menu_surface || !menu_rtv_heap) {
@@ -8299,6 +8335,10 @@ extern "C" __declspec(dllexport) int dtvr_set_projection_active(int enabled) {
       1, 1, 0, 0, 1, 1, 2.0F, 2.0F};
   current_presentation_mode.store(static_cast<unsigned int>(state.mode),
                                   std::memory_order_relaxed);
+  current_presentation_source_width.store(state.source_width,
+                                          std::memory_order_relaxed);
+  current_presentation_source_height.store(state.source_height,
+                                           std::memory_order_relaxed);
   if (!publish_presentation_state(state)) {
     return 3;
   }
@@ -8325,6 +8365,10 @@ extern "C" __declspec(dllexport) int dtvr_set_presentation_state(
   }
   current_presentation_mode.store(static_cast<unsigned int>(state.mode),
                                   std::memory_order_relaxed);
+  current_presentation_source_width.store(state.source_width,
+                                          std::memory_order_relaxed);
+  current_presentation_source_height.store(state.source_height,
+                                           std::memory_order_relaxed);
   if (!publish_presentation_state(state)) {
     return 2;
   }
@@ -8369,6 +8413,10 @@ extern "C" __declspec(dllexport) int dtvr_set_presentation_state_v2(
   }
   current_presentation_mode.store(static_cast<unsigned int>(state.mode),
                                   std::memory_order_relaxed);
+  current_presentation_source_width.store(state.source_width,
+                                          std::memory_order_relaxed);
+  current_presentation_source_height.store(state.source_height,
+                                           std::memory_order_relaxed);
   if (!publish_presentation_state(state)) {
     return 2;
   }
@@ -8381,6 +8429,21 @@ extern "C" __declspec(dllexport) int dtvr_set_presentation_state_v2(
       darktidevr::core::immersive_projection_active(state.mode);
   return (projection_active ? SetEvent(event) : ResetEvent(event)) ? 0 : 4;
 }
+extern "C" __declspec(dllexport) int
+dtvr_set_menu_draw_scope(int enabled) {
+  if (enabled) {
+    ++menu_draw_scope_depth;
+  } else if (menu_draw_scope_depth != 0) {
+    --menu_draw_scope_depth;
+  }
+  return static_cast<int>(menu_draw_scope_depth);
+}
+
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_menu_draw_scope_redirect_count() {
+  return menu_draw_scope_redirect_count.load(std::memory_order_relaxed);
+}
+
 extern "C" __declspec(dllexport) int
 dtvr_set_diagnostic_render_hooks(int enabled) {
   if (hooks_installed.load(std::memory_order_acquire)) {

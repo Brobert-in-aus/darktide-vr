@@ -476,6 +476,81 @@ Result: Lua source passed at 198/198 locals, all three focused native tests
 passed, the fresh XR session reached nonzero `shared_ready`, and the helper
 reached the hub without manual splash or character-select input.
 
+### Crafting-view renderer state diff
+
+The guarded `crafting_view` can now be opened and closed unattended from a
+clean hub. Separate focused traces were captured for the idle hub and active
+crafting presentation rather than reusing the eye-A/B phase counter (the
+global 250,000-record cap made the earlier phase-B half empty). The reusable
+`tools/stereo/analyze-focused-state-diff.py` normalizes draw counts by captured
+eye-frame and ranks application-state enrichment. The local evidence is under
+`artifacts/phase1/vendor-crafting-trace-20260829` and is intentionally not a
+production dependency.
+
+Two active-only signatures initially looked like a compact crafting UI seam:
+
+- VS `15643064314087379227`, PS `12642582357042194823`, six triangles;
+- VS `16527730207467110505`, PS `16716951665136862850`, two triangles.
+
+Both were blended, depth-disabled triangle-list draws on the full 2496x2688
+surface and occurred once per crafting presentation frame. A controlled live
+redirect disproved the interpretation: the shared-menu readback was opaque
+black (`rgb_nonzero=0`, `alpha_nonzero=6709248`) and the run later ended in a
+GPU hang. The two signatures are therefore backdrop/composition dependencies,
+not a self-contained interactive widget batch. They were removed immediately;
+the production seven-pair Escape-menu classifier remains unchanged. Do not add
+the crafting pairs back without first identifying their upstream resource and
+the complete command-list dependency chain.
+
+This narrows the vendor work: shader presence alone is insufficient because
+opening crafting replaces a substantial UI presentation world. The next trace
+must follow render-target production and sampling order for the completed
+interactive widget layer, then capture at that resource boundary. It must not
+redirect isolated draws into a resource with different lifetime/state.
+
+Validation before the rejected live gate:
+
+```powershell
+tools\stereo\test-darktide-lua-source.ps1
+cmake --build build\windows-vs2022 --config Release --target darktidevr_native_capture
+ctest --test-dir build\windows-vs2022 -C Release --output-on-failure
+```
+
+Lua remained at 198/198 locals and all 30 tests passed. The live GPU result,
+not the unit suite, rejected the candidate.
+
+### Crafting widget batch recovered
+
+The two crafting-only draws were subsequently separated by renderer evidence
+rather than tested as an undifferentiated pair. VS
+`15643064314087379227` / PS `12642582357042194823` is a 180-vertex draw with
+the same 76-byte GUI vertex layout as the proven stock menu widget renderer.
+VS `16527730207467110505` / PS `16716951665136862850` is only 12 vertices
+with the separate 48-byte compositor layout. The earlier black result came
+from redirecting both layers together.
+
+A second attempted classifier that redirected every blended, depth-free,
+full-target draw while a vendor view was active was rejected immediately. It
+crossed a resource-ownership boundary and caused a D3D12 page-fault/device-hung
+crash, dump/session `39713a0d-e1d6-488e-9331-f5ff810bea29`. That build was
+reverted and must not be restored.
+
+Redirecting only the 180-vertex GUI-layout batch was stable across two complete
+crafting-view open/close cycles. On-demand shared-menu readback contained the
+full transparent Hadron interaction layer: title, description, both action
+buttons, currency/status text and icons. Pixel diagnostics were repeatable
+across reopen (`rgb_nonzero=294996`, then `294981`; `alpha_nonzero=510588`,
+then `510610`). The desktop mirror correctly showed only the independent 3D
+Hadron presentation after the UI batch moved to the additive menu surface.
+The 12-vertex compositor draw remains on the game's target and the XR eye-pair
+transport stayed live with zero pair-pose mismatches.
+
+This is an accepted unattended visual gate, not final shop acceptance. A worn
+test still needs to verify panel placement, stereo/6DoF continuity and XR
+pointer interaction, followed by a submenu/dropdown readback. The production
+classifier remains explicit and narrowly guarded by the exact shader pair,
+180 vertices and one instance.
+
 3. Verify WASD and left-thumbstick locomotion with VR input enabled.
 4. At a repeatable enemy-shadow boundary, compare the default prepared-frame
    second eye with `darktidevr_full_second_eye.flag` enabled. Record whether

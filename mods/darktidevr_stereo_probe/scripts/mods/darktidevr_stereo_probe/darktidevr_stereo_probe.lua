@@ -690,6 +690,8 @@ local function ensure_ui_native_hooks()
         int dtvr_take_gpu_eye_profile(int eye, unsigned long long *values);
         int dtvr_take_gpu_stage_profile(int eye, unsigned long long *values);
         int dtvr_set_gpu_eye_profile(int enabled);
+        int dtvr_set_menu_draw_scope(int enabled);
+        unsigned long long dtvr_menu_draw_scope_redirect_count(void);
     ]])
 
     local ok, library = pcall(
@@ -7713,6 +7715,30 @@ mod:hook_safe(
     function(self, view_name)
     presentation.on_view_close(self, view_name)
 end)
+
+-- VendorInteractionViewBase draws its retained interactive widgets inside one
+-- synchronous UIRenderer pass. Its presentation copy of the vendor is owned by
+-- UIWorldSpawner and renders outside this call. Mark only this widget pass so
+-- native capture can redirect the complete UI layer without guessing shader
+-- hashes or touching the separate presentation world.
+mod:hook(
+    require("scripts/ui/views/vendor_interaction_view_base/vendor_interaction_view_base"),
+    "draw",
+    function(func, self, ...)
+        if not presentation.world_menu_active() or
+                not ensure_ui_native_hooks() or
+                not ui_native_capture.dtvr_set_menu_draw_scope then
+            return func(self, ...)
+        end
+
+        ui_native_capture.dtvr_set_menu_draw_scope(1)
+        local ok, result = pcall(func, self, ...)
+        ui_native_capture.dtvr_set_menu_draw_scope(0)
+        if not ok then
+            error(result)
+        end
+        return result
+    end)
 
 -- Interactive fullscreen UI is rendered into one named RGBA resource instead
 -- of being recovered from the desktop window. Capturing the window also
