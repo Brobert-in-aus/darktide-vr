@@ -34,7 +34,9 @@ param(
 
     [switch] $SkipDeploymentSync,
 
-    [switch] $DoNotOpenLauncher
+    [switch] $DoNotOpenLauncher,
+
+    [switch] $ManualLauncherPlay
 )
 
 Set-StrictMode -Version Latest
@@ -104,9 +106,39 @@ if ($FreshPsoCache) {
 }
 
 if (-not $DoNotOpenLauncher) {
-    # The Fatshark launcher remains mandatory for authentication. Steam opens
-    # it; this wrapper deliberately does not bypass or automate its Play action.
+    $expectedLauncherPath = Join-Path $GameRoot 'launcher\Launcher.exe'
+    if (-not (Test-Path -LiteralPath $expectedLauncherPath -PathType Leaf)) {
+        throw "Fatshark launcher not found: $expectedLauncherPath"
+    }
+    $expectedLauncherPath =
+        (Resolve-Path -LiteralPath $expectedLauncherPath).Path
+    $runningDarktideLaunchers = @(Get-Process Launcher `
+            -ErrorAction SilentlyContinue |
+        Where-Object {
+            try {
+                $_.Path -eq $expectedLauncherPath
+            }
+            catch {
+                $false
+            }
+        })
+    if ($runningDarktideLaunchers.Count -ne 0) {
+        throw 'A launcher process is already running; close it before a clean authenticated launch.'
+    }
+    # Preserve the supported Steam -> Fatshark launcher path. The launcher has
+    # no autoplay command-line switch, so the guarded helper invokes its normal
+    # Play control after verifying process identity and window geometry.
     Start-Process 'steam://rungameid/1361210'
+    if (-not $ManualLauncherPlay) {
+        $launcherPlayHelper = Join-Path $PSScriptRoot `
+            'invoke-darktide-launcher-play.ps1'
+        if (-not (Test-Path -LiteralPath $launcherPlayHelper -PathType Leaf)) {
+            throw "Launcher Play helper not found: $launcherPlayHelper"
+        }
+        & $launcherPlayHelper `
+            -TimeoutSeconds $GameStartTimeoutSeconds `
+            -GameRoot $GameRoot
+    }
 }
 
 if ($AutoEnterHub) {

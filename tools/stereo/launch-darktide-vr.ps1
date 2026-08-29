@@ -24,10 +24,9 @@ try {
     "$(Get-Date -Format o) Starting authenticated Darktide VR launch." |
         Add-Content -LiteralPath $logPath
 
-    # This deliberately retains the ordinary Steam -> Fatshark launcher ->
-    # Darktide authentication path. The user still presses PLAY in the Fatshark
-    # launcher; the bridge waits for the resulting splash window and then
-    # starts XR automatically.
+    # Retain the ordinary Steam -> Fatshark launcher -> Darktide authentication
+    # path. start-darktide-vr.ps1 invokes the launcher's normal Play control and
+    # the bridge attaches automatically when the resulting game process starts.
     & $startScript `
         -DurationSeconds $DurationSeconds `
         -GameStartTimeoutSeconds 1800 `

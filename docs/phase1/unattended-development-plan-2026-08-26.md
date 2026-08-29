@@ -37,12 +37,17 @@ states; archive logs and close crash dialogs without submitting them.
 
 The normal development entry point is now
 `tools/stereo/start-darktide-vr.ps1`. It opens the mandatory Steam/Fatshark
-launcher and waits for the Darktide splash window before starting OpenXR, so
-the splash/loading capture appears on the spatial fallback board without a
-second manual XR launch. Stereo takes over when the producer becomes ready.
-For ordinary user launches, the installed `Darktide VR` desktop shortcut calls
-`tools/stereo/launch-darktide-vr.ps1` and performs this same authenticated flow;
-the user only needs to press PLAY in the Fatshark launcher.
+launcher, invokes that launcher's normal Play control, and waits for the
+Darktide splash window before starting OpenXR, so the splash/loading capture
+appears on the spatial fallback board without a second manual XR launch.
+Stereo takes over when the producer becomes ready. The installed launcher has
+no autoplay argument: its command-line parser forwards every option to the
+game, while startup always constructs the WPF window. The automation therefore
+retains Steam authentication and fails closed on process identity, window
+count/title, client geometry, or missing game-process confirmation. Pass
+`-ManualLauncherPlay` to restore the manual Play step. For ordinary user
+launches, the installed `Darktide VR` desktop shortcut calls
+`tools/stereo/launch-darktide-vr.ps1` and performs this same authenticated flow.
 
 Do not attribute an isolated XR initialization failure to Virtual Desktop by
 default. First archive the failure, perform one ordinary clean retry, and check
