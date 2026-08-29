@@ -1302,7 +1302,7 @@ class OpenXrProbe {
           }
           const auto head_translation =
               darktidevr::core::sliding_head_translation(
-                  *head_recenter_pose, current_head, {0.25F, 0.18F});
+                  *head_recenter_pose, current_head, {0.0F, 0.18F});
           auto delta = head_translation.camera_delta;
           body_follow_offset.x += head_translation.body_follow_delta.x;
           body_follow_offset.y += head_translation.body_follow_delta.y;
@@ -2727,6 +2727,23 @@ class OpenXrProbe {
     return result;
   }
 
+  std::string path_string(XrPath value) const {
+    if (value == XR_NULL_PATH) {
+      return "<null>";
+    }
+    std::uint32_t required{};
+    check_xr(xrPathToString(instance_, value, 0, &required, nullptr),
+             "xrPathToString(size)");
+    std::string result(required, '\0');
+    check_xr(xrPathToString(instance_, value, required, &required,
+                            result.data()),
+             "xrPathToString(value)");
+    if (!result.empty() && result.back() == '\0') {
+      result.pop_back();
+    }
+    return result;
+  }
+
   void create_controller_actions() {
     if (controller_action_set_ == XR_NULL_HANDLE) {
       XrActionSetCreateInfo set_info{XR_TYPE_ACTION_SET_CREATE_INFO};
@@ -2981,6 +2998,50 @@ class OpenXrProbe {
                                          : 0U);
     }
     populate_body_local_controller_poses(sample);
+    for (std::size_t hand = 0; hand < hand_paths_.size(); ++hand) {
+      if (!controller_profile_logged_[hand]) {
+        const auto& state = sample.hands[hand];
+        const auto required_flags =
+            darktidevr::core::controller_orientation_valid |
+            darktidevr::core::controller_position_valid;
+        if ((state.aim_tracking_flags & required_flags) != required_flags ||
+            (state.grip_tracking_flags & required_flags) != required_flags) {
+          continue;
+        }
+        XrInteractionProfileState profile{
+            XR_TYPE_INTERACTION_PROFILE_STATE};
+        check_xr(xrGetCurrentInteractionProfile(
+                     session_, hand_paths_[hand], &profile),
+                 "xrGetCurrentInteractionProfile");
+        const auto aim_from_grip = darktidevr::math::compose(
+            darktidevr::math::inverse(state.aim_pose), state.grip_pose);
+        const auto grip_forward = darktidevr::math::rotate(
+            state.grip_pose.orientation, {0.0F, 0.0F, -1.0F});
+        const auto grip_up = darktidevr::math::rotate(
+            state.grip_pose.orientation, {0.0F, 1.0F, 0.0F});
+        const auto aim_forward = darktidevr::math::rotate(
+            state.aim_pose.orientation, {0.0F, 0.0F, -1.0F});
+        const auto dot = [](darktidevr::math::Vec3 left,
+                            darktidevr::math::Vec3 right) {
+          return left.x * right.x + left.y * right.y + left.z * right.z;
+        };
+        std::cout << "openxr.controller_profile hand="
+                  << (hand == 0 ? "left" : "right")
+                  << " profile=" << path_string(profile.interactionProfile)
+                  << " aim_from_grip_q=" << aim_from_grip.orientation.x << ','
+                  << aim_from_grip.orientation.y << ','
+                  << aim_from_grip.orientation.z << ','
+                  << aim_from_grip.orientation.w
+                  << " aim_from_grip_p=" << aim_from_grip.position.x << ','
+                  << aim_from_grip.position.y << ','
+                  << aim_from_grip.position.z
+                  << " grip_forward_dot_aim_forward="
+                  << dot(grip_forward, aim_forward)
+                  << " grip_up_dot_aim_forward="
+                  << dot(grip_up, aim_forward) << '\n';
+        controller_profile_logged_[hand] = true;
+      }
+    }
     if (!controller_writer_->publish(sample)) {
       throw std::runtime_error("Shared controller state rejected live sample");
     }
@@ -3205,6 +3266,7 @@ class OpenXrProbe {
   std::optional<darktidevr::math::Pose> controller_recenter_pose_;
   bool reference_space_recenter_pending_{};
   std::uint64_t controller_samples_{};
+  std::array<bool, 2> controller_profile_logged_{};
   float runtime_ipd_metres_{};
   std::array<std::uint64_t, 2> controller_aim_tracked_frames_{};
   std::array<std::uint64_t, 2> controller_thumbstick_active_frames_{};

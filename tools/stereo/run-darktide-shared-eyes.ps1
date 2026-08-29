@@ -34,6 +34,27 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
 
+# The shared mapping has one producer sequence and no multi-writer arbitration.
+# Two harnesses therefore make pose/frame sequence numbers run backwards and
+# the Lua consumer repeatedly resets its capture tags. Hold a named mutex for
+# the complete native session, and also reject an older harness that predates
+# this guard but is still alive.
+$singleWriterMutex = [Threading.Mutex]::new(
+    $false,
+    'Local\DarktideVR_XR_Harness_SingleWriter')
+$singleWriterAcquired = $false
+try {
+    $singleWriterAcquired = $singleWriterMutex.WaitOne(0)
+    if (-not $singleWriterAcquired) {
+        throw 'Another Darktide VR XR runner owns the shared-eye mapping.'
+    }
+    $existingHarnesses = @(Get-Process -Name 'darktidevr-xr-harness' `
+        -ErrorAction SilentlyContinue)
+    if ($existingHarnesses.Count -gt 0) {
+        $existingPids = ($existingHarnesses.Id | Sort-Object) -join ','
+        throw "A pre-guard XR harness is already running (PID $existingPids). Stop it before launching another writer."
+    }
+
 $knownPatchedSha256 =
     '6fce8db87a77a412b22ef9f33f74fa16ef85126cc0fbb24187d78b85fc7a19d3'
 
@@ -136,4 +157,11 @@ finally {
 }
 if ($harnessExitCode -ne 0) {
     throw "Darktide stereo harness failed with exit code $harnessExitCode"
+}
+}
+finally {
+    if ($singleWriterAcquired) {
+        $singleWriterMutex.ReleaseMutex()
+    }
+    $singleWriterMutex.Dispose()
 }

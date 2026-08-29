@@ -21,6 +21,12 @@ $gameRootPath = (Resolve-Path -LiteralPath $GameRoot).Path
 $gameExe = Join-Path $gameRootPath 'binaries\Darktide.exe'
 $modRoot = Join-Path $gameRootPath 'mods\darktidevr_stereo_probe'
 $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+$luaSourceCheck = Join-Path $repoRoot `
+    'tools\stereo\test-darktide-lua-source.ps1'
+if (-not (Test-Path -LiteralPath $luaSourceCheck -PathType Leaf)) {
+    throw "Lua source check not found: $luaSourceCheck"
+}
+& $luaSourceCheck
 
 if (-not $OutputPath) {
     $OutputPath = Join-Path $repoRoot "artifacts\unattended\preflight-$timestamp.json"

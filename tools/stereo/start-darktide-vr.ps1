@@ -23,6 +23,8 @@ param(
 
     [switch] $SyntheticHeadSweep,
 
+    [switch] $EnterPsykhanium,
+
     [ValidateRange(-2.0, 2.0)]
     [double] $ProjectionTranslationScale = 1.0,
 
@@ -38,6 +40,11 @@ $runner = Join-Path $PSScriptRoot 'run-darktide-shared-eyes.ps1'
 if (-not (Test-Path -LiteralPath $runner -PathType Leaf)) {
     throw "XR runner not found: $runner"
 }
+$luaSourceCheck = Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1'
+if (-not (Test-Path -LiteralPath $luaSourceCheck -PathType Leaf)) {
+    throw "Lua source check not found: $luaSourceCheck"
+}
+& $luaSourceCheck
 
 if (-not $SkipDeploymentSync) {
     $sync = Join-Path $PSScriptRoot 'sync-darktide-vr-dev.ps1'
@@ -50,6 +57,19 @@ if (-not $SkipDeploymentSync) {
     else {
         & $sync -GameRoot $GameRoot -Configuration Release
     }
+}
+
+if ($EnterPsykhanium) {
+    if (Get-Process Darktide -ErrorAction SilentlyContinue) {
+        throw 'Psykhanium entry must be armed before Darktide starts; close the game and retry.'
+    }
+    $psykhaniumFlag = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_enter_psykhanium.flag'
+    if (-not (Test-Path -LiteralPath $psykhaniumFlag -PathType Leaf)) {
+        throw "Psykhanium one-shot flag not found: $psykhaniumFlag"
+    }
+    Set-Content -LiteralPath $psykhaniumFlag -Value 'enter' -Encoding ascii
+    Write-Output 'Psykhanium entry armed before launcher startup.'
 }
 
 if ($FreshPsoCache) {

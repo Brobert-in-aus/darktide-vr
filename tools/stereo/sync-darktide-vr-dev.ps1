@@ -26,6 +26,11 @@ $sourceLua = Join-Path $repoRoot `
     'mods\darktidevr_stereo_probe\scripts\mods\darktidevr_stereo_probe\darktidevr_stereo_probe.lua'
 $sourceNative = Join-Path $repoRoot `
     "build\windows-vs2022\src\producer\$Configuration\darktidevr_native_capture.dll"
+$luaSourceCheck = Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1'
+if (-not (Test-Path -LiteralPath $luaSourceCheck -PathType Leaf)) {
+    throw "Lua source check not found: $luaSourceCheck"
+}
+& $luaSourceCheck -SourcePath $sourceLua
 $destinations = @(
     [pscustomobject]@{
         Source = $sourceLua

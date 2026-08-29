@@ -231,6 +231,18 @@ int main() {
     expect_near(body_follow_anchor.position.y, 0.62F, 0.0001F,
                 "vertical excess still advances tracking anchor");
 
+    Pose direct_body_anchor{};
+    const auto direct_body_follow =
+        darktidevr::core::sliding_head_translation(
+            direct_body_anchor, Pose{{}, {0.12F, 0.08F, -0.07F}},
+            {0.0F, 0.18F});
+    expect_vec(direct_body_follow.camera_delta.position,
+               {0.0F, 0.08F, 0.0F},
+               "zero horizontal envelope leaves only physical crouch camera motion");
+    expect_vec(direct_body_follow.body_follow_delta,
+               {0.12F, 0.0F, -0.07F},
+               "zero horizontal envelope transfers all room-scale motion to body");
+
     Pose path_anchor{};
     Vec3 cumulative_body_follow{};
     const float physical_path[] = {
