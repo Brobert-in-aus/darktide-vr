@@ -271,12 +271,20 @@ ResourceBarrierFn original_resource_barrier{};
 EnhancedBarrierFn original_enhanced_barrier{};
 std::mutex state_mutex;
 ComPtr<ID3D12CommandQueue> game_queue;
+// The first direct queue observed is suitable for the eye capture work, but it
+// is not necessarily the queue DXGI's game swapchain is presented from.
+// Injecting the desktop mirror on a different direct queue races Present and
+// can expose a horizontal mixture of two eye frames.  Learn the authoritative
+// queue from the command list that transitions a known swapchain buffer to
+// PRESENT and use it exclusively for backbuffer injection.
+ComPtr<ID3D12CommandQueue> swapchain_present_queue;
 ComPtr<IDXGISwapChain3> game_swapchain;
 std::array<ComPtr<ID3D12Resource>, 2> eye_surfaces;
 ComPtr<ID3D12Resource> desktop_mirror_surface;
 ComPtr<ID3D12Fence> desktop_mirror_fence;
 std::uint64_t desktop_mirror_fence_value{};
 std::atomic<bool> desktop_mirror_ready{};
+std::atomic<std::uint64_t> desktop_mirror_error_count{};
 ComPtr<ID3D12Fence> ready_fence;
 ComPtr<ID3D12Fence> consumed_fence;
 std::array<HANDLE, 2> eye_handles{};
@@ -336,6 +344,12 @@ std::atomic<unsigned int> current_presentation_mode{
         darktidevr::core::SharedPresentationMode::stereo_world)};
 std::atomic<unsigned int> current_presentation_source_width{1};
 std::atomic<unsigned int> current_presentation_source_height{1};
+std::atomic<bool> vendor_menu_widget_capture_enabled{false};
+// Menu shaders are reused by several retained UI scenes.  Redirecting them
+// while no world-space menu is active can retain an old title/character-select
+// target and replay it during later world Presents.  Lua enables this only for
+// an explicitly classified interactive-menu presentation.
+std::atomic<bool> menu_direct_capture_enabled{false};
 thread_local unsigned int menu_draw_scope_depth{};
 std::atomic<std::uint64_t> menu_draw_scope_redirect_count{};
 std::atomic<std::uint64_t> stock_menu_draw_frame{
@@ -5131,11 +5145,17 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
       draw_metadata = found->second;
     }
   }
-  const auto stock_menu_draw = is_stock_menu_shader_pair(draw_metadata);
+  const auto direct_menu_capture =
+      menu_direct_capture_enabled.load(std::memory_order_relaxed);
+  const auto stock_menu_draw =
+      direct_menu_capture && is_stock_menu_shader_pair(draw_metadata);
   const auto vendor_menu_widget_draw =
+      direct_menu_capture &&
+      vendor_menu_widget_capture_enabled.load(std::memory_order_relaxed) &&
       vertex_count == 180 && instance_count == 1 &&
       is_vendor_menu_widget_shader_pair(draw_metadata);
-  const auto scoped_menu_draw = menu_draw_scope_depth != 0;
+  const auto scoped_menu_draw = direct_menu_capture &&
+                                menu_draw_scope_depth != 0;
   if (stock_menu_draw) {
     stock_menu_draw_frame.store(present_count.load(std::memory_order_relaxed),
                                 std::memory_order_relaxed);
@@ -6216,6 +6236,7 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
   ComPtr<ID3D12Resource> completed_back_buffer;
   auto completed_source_state = D3D12_RESOURCE_STATE_RENDER_TARGET;
   ComPtr<ID3D12Resource> completed_menu_output;
+  bool executed_swapchain_present_transition{};
   auto completed_menu_source_state =
       D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
       D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -6223,6 +6244,10 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
     std::scoped_lock lock(boundary_capture_mutex);
     for (UINT index = 0; index < count; ++index) {
       auto* graphics = static_cast<ID3D12GraphicsCommandList*>(lists[index]);
+      if (present_transition_resources.find(graphics) !=
+          present_transition_resources.end()) {
+        executed_swapchain_present_transition = true;
+      }
       const auto menu_found = menu_output_resources.find(graphics);
       if (menu_found != menu_output_resources.end()) {
         completed_menu_output = menu_found->second;
@@ -6298,6 +6323,19 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
         candidates_found->second.clear();
       }
       present_transition_resources.erase(graphics);
+    }
+  }
+  if (executed_swapchain_present_transition) {
+    bool changed{};
+    {
+      std::scoped_lock lock(state_mutex);
+      changed = swapchain_present_queue.Get() != queue;
+      swapchain_present_queue = queue;
+    }
+    if (changed) {
+      write_boundary_census_log(
+          "frame=%llu\tSWAPCHAIN_PRESENT_QUEUE\tqueue=%p\r\n",
+          present_count.load(std::memory_order_relaxed), queue);
     }
   }
   if (description.Type == D3D12_COMMAND_LIST_TYPE_DIRECT && count > 0) {
@@ -6655,24 +6693,52 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
   PendingCapture pending;
   ComPtr<ID3D12Resource> mirror;
   ComPtr<ID3D12Fence> fence;
+  ComPtr<ID3D12Fence> capture_fence;
+  std::uint64_t capture_ready_value{};
   std::uint64_t signal_value{};
   {
-    std::scoped_lock lock(state_mutex);
+    std::unique_lock lock(state_mutex);
     mirror = desktop_mirror_surface;
     fence = desktop_mirror_fence;
-    if (!mirror || !fence) {
+    capture_fence = ready_fence;
+    capture_ready_value = ready_value;
+    if (!mirror || !fence || !capture_fence || capture_ready_value == 0) {
       return 102;
     }
-    const auto completed = fence->GetCompletedValue();
-    while (!desktop_mirror_pending.empty() &&
-           desktop_mirror_pending.front().fence_value <= completed) {
-      desktop_mirror_pending.front().fence_value = 0;
-      desktop_mirror_available.push_back(
-          std::move(desktop_mirror_pending.front()));
-      desktop_mirror_pending.pop_front();
-    }
+    auto reclaim_completed = [&] {
+      const auto completed = fence->GetCompletedValue();
+      while (!desktop_mirror_pending.empty() &&
+             desktop_mirror_pending.front().fence_value <= completed) {
+        desktop_mirror_pending.front().fence_value = 0;
+        desktop_mirror_available.push_back(
+            std::move(desktop_mirror_pending.front()));
+        desktop_mirror_pending.pop_front();
+      }
+    };
+    reclaim_completed();
     if (desktop_mirror_pending.size() >= 8) {
-      return 103;
+      // Every swapchain buffer initially contains the game's own presentation
+      // (including a retained splash/loading image). Skipping injection when
+      // the asynchronous allocator pool is full lets those stale buffers recur
+      // on the desktop. Wait for the oldest already-submitted copy and reuse
+      // it instead. This queue is ordered before Present, so a short wait here
+      // is both safe and preferable to showing the wrong frame.
+      const auto oldest = desktop_mirror_pending.front().fence_value;
+      const auto event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+      if (!event || FAILED(fence->SetEventOnCompletion(oldest, event))) {
+        if (event) {
+          CloseHandle(event);
+        }
+        return 103;
+      }
+      lock.unlock();
+      const auto wait_result = WaitForSingleObject(event, 1000);
+      CloseHandle(event);
+      lock.lock();
+      if (wait_result != WAIT_OBJECT_0) {
+        return 108;
+      }
+      reclaim_completed();
     }
     if (!desktop_mirror_available.empty()) {
       pending = std::move(desktop_mirror_available.front());
@@ -6724,6 +6790,16 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
                                     barriers.data());
   if (FAILED(pending.commands->Close())) {
     return 106;
+  }
+  // Eye capture and DXGI Present can be submitted through different direct
+  // queues. The mirror resource is populated in the eye-1 capture command
+  // list immediately before ready_fence is signalled. Without this GPU-side
+  // cross-queue dependency, Present can read that resource while it is still
+  // being written and expose a previous or partially updated frame. The XR
+  // consumer already waits on this same value; give the desktop mirror the
+  // identical completed-pair contract.
+  if (FAILED(queue->Wait(capture_fence.Get(), capture_ready_value))) {
+    return 109;
   }
   ID3D12CommandList* lists[]{pending.commands.Get()};
   original_execute_command_lists(queue, 1, lists);
@@ -6818,9 +6894,12 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
     }
   }
   ComPtr<ID3D12CommandQueue> queue;
+  ComPtr<ID3D12CommandQueue> present_queue;
   {
     std::scoped_lock lock(state_mutex);
     queue = game_queue;
+    present_queue = swapchain_present_queue ? swapchain_present_queue
+                                            : game_queue;
   }
   const auto menu_draw_frame =
       stock_menu_draw_frame.load(std::memory_order_relaxed);
@@ -6858,9 +6937,11 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                                   menu_publish_value))) {
         std::scoped_lock lock(state_mutex);
         menu_ready_value = menu_publish_value;
-        write_menu_resource_log(
-            "MENU_DIRECT_RENDER\tframe=%llu\tready=%llu\r\n", present,
-            static_cast<unsigned long long>(menu_publish_value));
+        if (menu_publish_value <= 5 || menu_publish_value % 120 == 0) {
+          write_menu_resource_log(
+              "MENU_DIRECT_RENDER\tframe=%llu\tready=%llu\r\n", present,
+              static_cast<unsigned long long>(menu_publish_value));
+        }
       }
     }
   }
@@ -6907,14 +6988,25 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
         capture_present_halves(candidate.Get(), queue.Get()),
         std::memory_order_relaxed);
   }
-  if (candidate && queue &&
+  // Flat loading/cinematic frames are already drawn authoritatively by the
+  // game window. Re-injecting the last completed eye there makes the desktop
+  // alternate between the loading view and the preceding stereo scene.
+  if (presentation_mode !=
+          darktidevr::core::SharedPresentationMode::flat_loading_or_cinematic &&
+      candidate && present_queue &&
       desktop_mirror_ready.load(std::memory_order_acquire)) {
     const auto mirror_result =
-        present_desktop_eye_mirror(candidate.Get(), queue.Get());
-    if (mirror_result != 0 && present % 120 == 0) {
-      write_menu_resource_log(
-          "DESKTOP_EYE_MIRROR\tframe=%llu\tresult=%d\r\n", present,
-          mirror_result);
+        present_desktop_eye_mirror(candidate.Get(), present_queue.Get());
+    if (mirror_result != 0) {
+      const auto error = desktop_mirror_error_count.fetch_add(
+                             1, std::memory_order_relaxed) +
+                         1;
+      if (error <= 20 || error % 120 == 0) {
+        write_menu_resource_log(
+            "DESKTOP_EYE_MIRROR\tframe=%llu\tresult=%d\terror=%llu\r\n",
+            present, mirror_result,
+            static_cast<unsigned long long>(error));
+      }
     }
   }
   const auto result = original_present(swapchain, interval, flags);
@@ -7449,6 +7541,17 @@ int ensure_menu_surface(ID3D12Device* device,
     return 0;
   }
 
+  // Recorded command lists retain the current surface through
+  // direct_menu_render_lists until their next Reset. Replacing the global
+  // surface while any such list is pending leaves the GPU referencing a
+  // destroyed resource (observed as a DRED page fault when crafting changed
+  // from its landing page to the item picker). A differently sized UI pass is
+  // not the presentation surface and must wait rather than invalidating work
+  // already recorded against it.
+  if (!direct_menu_render_lists.empty()) {
+    return 89;
+  }
+
   close_menu_shared_handles();
   menu_surface.Reset();
   menu_rtv_heap.Reset();
@@ -7528,7 +7631,9 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
       metadata.render_target_count != 1 || metadata.depth_enabled) {
     return {};
   }
-  const auto scoped_menu_draw = menu_draw_scope_depth != 0;
+  const auto scoped_menu_draw =
+      menu_direct_capture_enabled.load(std::memory_order_relaxed) &&
+      menu_draw_scope_depth != 0;
   if (scoped_menu_draw && !metadata.blend_enabled) {
     return {};
   }
@@ -7566,7 +7671,9 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
   {
     std::scoped_lock lock(state_mutex);
     const auto source_description = original_resource->GetDesc();
-    if (scoped_menu_draw &&
+    const auto presentation_sized_draw =
+        scoped_menu_draw || is_vendor_menu_widget_shader_pair(metadata);
+    if (presentation_sized_draw &&
         (source_description.Width !=
              current_presentation_source_width.load(std::memory_order_relaxed) ||
          source_description.Height != current_presentation_source_height.load(
@@ -8442,6 +8549,19 @@ dtvr_set_menu_draw_scope(int enabled) {
 extern "C" __declspec(dllexport) unsigned long long
 dtvr_menu_draw_scope_redirect_count() {
   return menu_draw_scope_redirect_count.load(std::memory_order_relaxed);
+}
+
+extern "C" __declspec(dllexport) int
+dtvr_set_vendor_menu_widget_capture(int enabled) {
+  vendor_menu_widget_capture_enabled.store(enabled != 0,
+                                           std::memory_order_relaxed);
+  return enabled != 0 ? 1 : 0;
+}
+
+extern "C" __declspec(dllexport) int __cdecl
+dtvr_set_menu_direct_capture(int enabled) {
+  menu_direct_capture_enabled.store(enabled != 0, std::memory_order_relaxed);
+  return enabled != 0 ? 1 : 0;
 }
 
 extern "C" __declspec(dllexport) int

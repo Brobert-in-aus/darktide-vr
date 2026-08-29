@@ -70,6 +70,22 @@ WindowCapture::WindowCapture(std::wstring title_substring,
   if (!EnumWindows(find_window, reinterpret_cast<LPARAM>(&context))) {
     throw std::runtime_error("EnumWindows failed during capture selection");
   }
+  if (context.matches.size() > 1) {
+    std::vector<HWND> exact_matches;
+    for (const auto window : context.matches) {
+      std::wstring title(
+          static_cast<std::size_t>(GetWindowTextLengthW(window)) + 1, L'\0');
+      const auto length = GetWindowTextW(window, title.data(),
+                                         static_cast<int>(title.size()));
+      title.resize(static_cast<std::size_t>(std::max(0, length)));
+      if (lowercase(std::move(title)) == context.needle) {
+        exact_matches.push_back(window);
+      }
+    }
+    if (exact_matches.size() == 1) {
+      context.matches = std::move(exact_matches);
+    }
+  }
   if (context.matches.size() != 1) {
     throw std::runtime_error("Window capture title must match exactly one visible window");
   }

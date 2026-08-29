@@ -60,6 +60,32 @@ foreach ($tableName in $trackedTables) {
     }
 }
 
+# The post-animation body pass must finish authoring the avatar root heading
+# before deriving the common camera/controller anchor. Sampling the calibrated,
+# off-centre eye anchor while Darktide's root still faces travel makes both
+# wrist targets trace a fixed-radius circle as the locomotion stick rotates.
+$source = Get-Content -LiteralPath $resolvedSource -Raw
+$bodyIkStart = $source.IndexOf('function presentation.apply_body_ik')
+$bodyIkEnd = $source.IndexOf(
+    'function presentation.trace_body_ik', $bodyIkStart)
+if ($bodyIkStart -lt 0 -or $bodyIkEnd -lt 0) {
+    throw 'Could not locate the complete post-animation body IK function.'
+}
+$bodyIkSource = $source.Substring($bodyIkStart, $bodyIkEnd - $bodyIkStart)
+$headingWrite = $bodyIkSource.IndexOf(
+    'presentation.apply_body_heading(world, unit)')
+$anchorRefresh = $bodyIkSource.IndexOf(
+    'presentation.refresh_body_anchor_from_avatar(unit)')
+if ($headingWrite -lt 0 -or $anchorRefresh -lt 0 -or
+        $anchorRefresh -lt $headingWrite) {
+    throw 'Body IK must refresh its shared pose anchor after applying body heading.'
+}
+
+if ($source.Contains('server_correction mapped=hub_jog->walking') -or
+        $source.Contains('server_correction incoming=hub_jog') -or
+        $source.Contains('starting_state=walking source=hub_first_person')) {
+    throw 'Public-hub locomotion must not replace the server-authoritative hub_jog state.'
+}
 $luaCompiler = Get-Command luac -ErrorAction SilentlyContinue
 if ($luaCompiler) {
     & $luaCompiler.Source -p $resolvedSource

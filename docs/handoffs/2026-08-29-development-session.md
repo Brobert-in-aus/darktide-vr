@@ -565,3 +565,348 @@ No Mac-only validation applies to this Windows PCVR work. The Quest is reachable
 over ADB, awake, and had the temporary proximity override reapplied. Virtual
 Desktop Streamer did not expose a usable Windows window or HMD during this
 session, so no headset gate was claimed.
+
+### Hub first-person presentation consolidation
+
+The hub now deliberately uses the same presentation toolset as the
+Psykhanium instead of maintaining a separate third-person exception. The
+headless-body gate also selects the hub's first-person camera/equipment policy;
+the local third-person skinned body remains visible with its head slots hidden,
+and the established controller arm IK, torso heading, crouch/leg IK, and
+controller input adapter are admitted in `hub`, `shooting_range`, and
+`training_grounds` through one shared mode predicate. The old independent
+`darktidevr_force_hub_first_person.flag` is no longer authoritative.
+
+Live inventory proved the hub selects steering move method
+`script_driven_hub` and calls `_update_script_driven_hub_movement`, while the
+Psykhanium uses `_update_script_driven_movement`. The unified hub path now
+selects ordinary `script_driven` locomotion at the shared dispatcher and also
+wraps the hub sibling as a safe fallback. Both feed the same one-fixed-tick
+physical body delta through `velocity_wanted`, retain the stock mover and
+collision path, and restore the original stick velocity afterward. A clean
+hub run emitted `body_follow mode=enabled` and 52 non-retained writes as the
+headset crossed the sliding envelope.
+
+The visible avatar previously stayed at the collision root throughout the
+bounded 25 cm camera lean. The pelvis/leg pass now applies the bounded X/Z head
+translation to the animated hips, alongside physical crouch, then solves both
+legs back to their pre-write foot transforms. Thus the rendered torso follows
+the viewer inside the envelope while only overflow moves the gameplay capsule.
+
+An attempted shortcut that invoked `DefaultPlayerOrientation.pre_update` on a
+`HubPlayerOrientation` object was rejected: the two classes do not share the
+same initialized sensitivity state. It produced a nil
+`sensitivity_modifier` script error and was removed. Future orientation
+selection must occur at the owning first-person extension, which already owns
+both initialized objects; never cross-call the class method on the wrong
+instance.
+
+The loading-screen flicker had a separate confirmed cause. The Present hook
+was injecting the last completed eye mirror during presentation mode 2, while
+the game simultaneously drew the flat loading view. Desktop eye-mirror
+injection is now suppressed for `flat_loading_or_cinematic`; the next worn run
+confirmed the hub loading flicker was gone. An intermittent variable-height
+flicker remains in the desktop mirror during the live hub, while the headset
+view is unaffected.
+
+The exact 180-vertex item-picker candidate was also rejected by a worn Hadron
+test. It showed a zoomed Hadron background asymmetrically in the eyes while
+the landing panel remained stable. Item-picker direct capture is therefore
+forced off again; the saved focused trace/readback remains useful evidence,
+but that batch is not the complete submenu foreground.
+
+Validation:
+
+```powershell
+tools\stereo\test-darktide-lua-source.ps1
+cmake --build --preset windows-vs2022-release --parallel
+ctest --test-dir build\windows-vs2022 -C Release --output-on-failure
+git diff --check
+tools\stereo\start-darktide-vr.ps1 -AutoEnterHub -EnableMenuTestControls
+```
+
+Lua remains at 198/198 file-scope locals, all 30 tests pass, fresh XR runs
+reported nonzero `shared_ready`, and the clean hub log proves headless body,
+IK, controller input, and collision-aware body follow are active together.
+
+### Late-session hub and desktop-mirror evidence
+
+The hub locomotion dispatcher substitution did not produce gameplay movement
+or locomotion animation: the user still observed stock hub acceleration,
+alternating hand poses while moving, and a sliding third-person body. It was
+removed rather than extended with more hub-state emulation. A clean pre-spawn
+test then selected the production `walking` character state. That test reached
+the real walking state and proved most required hub-unit extensions exist, but
+failed deterministically in `player_unit_peeking.lua:49` because the social-hub
+unit has no `ledge_finder_extension`. The starting-state override was removed.
+A future gameplay locomotion state for the hub must explicitly omit unsupported
+combat traversal/peeking dependencies instead of selecting stock `walking` or
+piecemeal driving `hub_jog`.
+
+The remaining desktop flicker is now characterized by a user screenshot rather
+than whole-frame descriptions: roughly the bottom fifth of the live mirror was
+from a different eye/frame, separated by one stable horizontal boundary. This
+is a partial backbuffer update (GPU ordering/Present tear), not the previously
+fixed stale splash frame and not evidence that the two eyes are separate game
+simulation ticks.
+
+The mirror source is populated on the eye-capture queue and is now guarded by
+the shared-eye ready fence. A second ordering flaw remained: the Present hook
+submitted its backbuffer copy on the first observed direct queue, although a
+D3D12 process can own multiple direct queues. The native producer now learns
+the authoritative swapchain queue from the command list that transitions a
+known swapchain buffer to `PRESENT`, logs `SWAPCHAIN_PRESENT_QUEUE`, and uses
+that queue only for mirror backbuffer injection. This ensures the mirror copy
+is ordered immediately before DXGI Present while leaving eye capture and menu
+publication on their existing render queue. Focused native transport tests
+pass; a motion test is still required to confirm that the horizontal tear is
+gone.
+
+The first hub compatibility variant now retains stock gameplay walking without
+copying the state. `PlayerUnitPeeking.fixed_update` and
+`LedgeVaulting.can_enter` return unavailable only when their optional ledge
+finder argument is nil, and the hub starts in `walking` again. A clean launch
+logged `starting_state=walking source=hub_first_person_no_ledge`, reached the
+hub, published advancing stereo pairs, and produced no further script errors
+while idle. Worn movement and animation validation remains pending.
+
+The user also identified a full-frame replay of the old character-select scene
+and dated its introduction to the crafting-menu work. Presentation logs stayed
+continuously in stereo, ruling out a Lua mode transition. The direct native
+menu shader redirect had defaulted enabled globally; because its retained UI
+shaders can also occur outside menus, it is now disabled by default and armed
+only while Lua has positively classified a mode 3/4 interactive menu. Ordinary
+stereo and flat loading explicitly disarm it.
+
+One diagnostic build additionally waits for the mirror-copy D3D12 fence before
+calling DXGI Present. This intentionally reduced hub fresh-pair rate to roughly
+36--39 FPS, but makes the next visual gate decisive. The synchronous wait is a
+diagnostic only and must not remain in the performance path.
+
+The worn diagnostic run showed no desktop flicker at all. The stronger causal
+candidate is the newly isolated direct-menu capture path, because it had been
+able to retain and replay a stale UI target during ordinary stereo. The CPU
+fence wait has therefore been removed again while the menu redirect remains
+default-off and presentation-gated. The current run is the controlled
+asynchronous-mirror check; do not re-enable global direct-menu capture when
+returning to shops.
+
+The same run resolved the apparent controller-loss locomotion switch. Runtime
+instrumentation proved that `starting_character_state_name` returned
+`walking`, but the local state machine was already in `hub_jog` before the
+first two-second input sample. A later tracking loss changed grip flags from
+15 to 3 while thumbstick publication continued; it did not cause the state
+transition. The hub is server-authoritative and its replicated correction was
+overwriting the local unit-template start choice.
+
+The local hub correction boundary now translates only the server's benign
+`hub_jog` state to `walking` for the local first-person player. Interaction,
+disabled, and all other authoritative states retain their original names. A
+fresh run logged `server_correction mapped=hub_jog->walking` and then reported
+the live state as `walking` continuously. Grip IK also retains the last fully
+tracked wrist pose while a controller is temporarily merely valid/untracked,
+so stock arm animation cannot reclaim that limb during a tracking dropout;
+the first newly tracked sample immediately replaces the held pose. Tracking
+transitions and the real character-state name are now included in runtime
+diagnostics for the next worn loss/reacquisition gate.
+
+The right controller was also proven to be authoring Darktide's gameplay
+orientation. That made ordinary `walking` feel hand-relative even though the
+character state never left `walking`: rolling or yawing the aiming hand changed
+the same orientation frame that locomotion reads. Until independent
+weapon-relative aiming is implemented, the enabled aim seam now authors yaw and
+pitch from OpenXR's centre-head (cyclopean) pose and forces roll to zero. This
+gives the implicit screen-centre reticle one binocular centre ray rather than
+choosing either eye or hand, and leaves controller poses exclusively available
+to arm IK. A future snap/smooth-turn accumulator must rotate that cyclopean ray
+without coupling it back to either controller.
+
+The remaining small hand flicker also has a concrete timing candidate. Arm IK
+runs at the post-animation first-person seam, but its tracking-to-world anchor
+was previously refreshed later by the stereo camera update. During locomotion,
+the targets therefore used the prior avatar-root transform. The IK pass now
+reconstructs the calibrated eye/body anchor from the current avatar root before
+solving either arm. A clean worn run still needs to verify both the cyclopean
+aim policy and this same-frame anchor refresh.
+
+### Crafting submenu renderer ownership
+
+The prior Hadron symptom is now explained by lifecycle and source evidence.
+`CraftingView.go_to_crafting_view` passes its `_ui_renderer` to every child via
+the view context, and `BaseView._create_ui_renderer` marks that renderer as
+external on the child. The earlier hook disabled landing-page capture whenever
+a `crafting_*` child opened, so XR correctly continued displaying the last
+published landing texture while the uncaptured live child rendered only to the
+desktop. The apparent top-level/submenu flicker was stale publication, not two
+competing XR menu cameras.
+
+The next build scopes native additive capture by that shared renderer during a
+crafting child lifetime. Every parent, child, and element `UIRenderer` pass on
+the inherited renderer is included; Hadron's independent `UIWorldSpawner`
+background is excluded. Nested passes use balanced native scope depth, and the
+close log reports the exact number of redirected draws. The default-off global
+menu gate now also guards scoped and legacy item-picker paths, preventing a
+leaked scope or rejected shader candidate from capturing outside an explicitly
+active menu. Crafting children also inherit the landing view's NPC-relative
+mode-3 panel pose; they no longer reclassify as a generic head-relative mode-4
+menu and move the board during a tab transition. The rejected item-picker
+shader-pair branch and its Lua/FFI controls were removed entirely; it is no
+longer a dormant alternative to the renderer-owned path. Lua remains at
+198/198 file-scope locals; the native target builds
+and the focused native transport tests pass. This path is source-supported but
+still requires a live landing-to-submenu readback and worn interaction gate.
+
+The first live landing-to-submenu gate rejected that native renderer scope.
+The scripted transition successfully opened
+`crafting_mechanicus_modify_view` and attached to
+`CraftingView_ui_renderer`, proving the ownership inference, but the user saw
+the left eye and mirror alternate between eye/mono content while the right eye
+alternated between a zoomed child view and the stereo world. Darktide then
+crashed about ten seconds after scope activation. The top-level Hadron panel
+remained correctly anchored and stereo throughout. The scope therefore found
+the intended child draws but redirected them at an unsafe command-list seam;
+it is not a viable presentation path.
+
+The replacement splits at view construction instead of substituting D3D12
+render targets per draw. `BaseView._create_ui_renderer` now detects a crafting
+child whose context inherits the parent renderer and replaces that dependency
+with a dedicated resource renderer before the child creates retained widgets.
+While the child is active, native direct-menu capture is disabled and the
+resource is drawn once as normal world geometry in both stereo passes. All
+shops now use the same fixed, head-initialized 16:9 board: 2 m wide, 1.125 m
+high and placed 2 m forward at open time. NPC-relative placement is deliberately
+unused because shops can be opened remotely. The bridge returns to ordinary
+stereo mode while this world-owned board is active, so the stale parent mailbox
+cannot be composited over it. This construction-time route passes the
+198-local Lua source gate but still needs a fresh live landing-to-submenu test.
+
+The post-animation body-anchor refresh removed the visible hand flicker during
+stick locomotion. A remaining deterministic error was isolated: changing stick
+direction translated both hands to a repeatable set point in that direction,
+and circular stick input traced a fixed-radius circle with the hands. The final
+diagnosis and correction are recorded below.
+# Deferred hybrid character-select presentation
+
+The reliable baseline now presents character select as an interactive flat
+16:9 board in a void. A later enhancement may retain the character-select 3D
+background in stereo *inside the same board* while keeping its UI flat. The
+intended composition is two eye-specific background quads on one fixed panel,
+plus one binocular UI-only quad at the same apparent plane. The remaining hard
+part is obtaining a clean transparent `MainMenuView` UI texture without its 3D
+background. Keep the all-flat mode as a fail-safe while developing that hybrid;
+do not revive the old full-screen character-select stereo compositor as the
+menu path.
+
+The interactive flat presentation is protocol mode 5. It releases immersive
+projection like loading mode 2 but retains controller pointer, click, back, and
+scroll handling. Pointer coordinates for mode 5 are crop-local (currently
+1280x720), rather than normalized against the 2112x2304 eye resource; mixing
+those spaces produced the measured bottom-right cursor position of roughly 61%
+across and 31% down.
+
+## Locomotion-relative hand-circle diagnosis
+
+The hand displacement was not retained thumbstick input. Live telemetry
+returned exactly to zero after release, while the user observed a repeatable
+fixed-radius offset selected by travel direction.
+
+The cause was ordering inside the post-animation body pass. Darktide's authored
+root still faced the locomotion direction when `body_stable_eye_anchor()` was
+sampled for the controller-to-world transform. The VR body-heading correction
+then restored the root to HMD heading, and the later stereo camera sampled that
+final root. Because the calibrated eye is horizontally offset from the skeleton
+root, the pre-heading and post-heading samples lie on a circle around that root.
+The camera and wrist targets therefore used different origins even though the
+arm solver itself had micrometre-scale readback error.
+
+`apply_body_ik()` now applies the final body heading before refreshing the
+shared body anchor. A clean hub run loaded stereo with nonzero `shared_ready`,
+accepted genuine Quest stick input with no synthetic path enabled, and kept arm
+solver readback below 0.028 mm during the captured sweep. Visual headset
+acceptance remains the final gate. `test-darktide-lua-source.ps1` now also fails
+closed if this heading-before-anchor ordering is reversed.
+
+Validation:
+
+```powershell
+.\tools\stereo\test-darktide-lua-source.ps1
+ctest --test-dir build\windows-vs2022 -C Release --output-on-failure -R 'core_math|synthetic_head_path|synthetic_controller_path'
+git diff --check
+```
+
+## End-of-session embodiment calibration
+
+The hub now leaves `hub_jog` authoritative. The accepted presentation applies
+the final HMD-relative visual-body heading before refreshing the calibrated
+eye/body anchor, so controller targets, the camera and the avatar root all use
+the same pose. Worn validation passed head position, hand stability, head-look
+steering and normal hub motion after the earlier local `hub_jog -> walking`
+state substitution was removed. Native horizontal head translation is again a
+1.2 m moving envelope rather than the accidentally zeroed diagnostic range.
+
+Two Quest reference screenshots were pulled without deleting the originals:
+
+- `artifacts/phase1/quest-screenshots-20260829/VirtualDesktop.Android-20260829-214248.jpg`
+- `artifacts/phase1/quest-screenshots-20260829/VirtualDesktop.Android-20260829-214250.jpg`
+
+The controller overlay established a final translational wrist correction in
+the body frame: 3 cm laterally away from the body centreline, 4 cm backward and
+1 cm down. This correction is applied after the existing 5 cm anatomical
+grip-to-wrist displacement and is shared by the reach estimator and final arm
+solver, preventing those two stages from targeting different wrist positions.
+
+The first shoulder-reach implementation independently translated clavicles.
+It supplied extra reach but did not visibly rotate the shoulder girdle. The
+second implementation converted left/right reach asymmetry into a measured
+`j_spine2` shoulder-line rotation, but incorrectly translated both clavicles by
+the entire shared request. This gave two fully extended arms more reach than a
+single arm and was rejected in-headset.
+
+The retained implementation treats the arms as independent opposing requests:
+a far-forward left hand asks for left-shoulder-forward yaw and a far-forward
+right hand asks for right-shoulder-forward yaw. Equal requests cancel to a
+square shoulder line; a shoulder starting behind its tracked hand produces the
+larger request and can rotate forward toward neutral. Each clavicle retains a
+small independent protraction capped at 2 cm. This final revision passes the
+Lua source/syntax guard but was deliberately not relaunched after the user
+ended the session, so its physical behaviour is the first worn gate tomorrow.
+
+Machine-local launcher configuration now has `SendCrashReports = false` in
+`%APPDATA%\Fatshark\Darktide\launcher.config`. Installed-launcher IL inspection
+showed this suppresses creation of the separate crash-report UI; Darktide's
+console logs and dump files remain game-owned and available. This setting is
+not repository state.
+
+## Tomorrow's first checkpoints
+
+1. Worn-test the independent shoulder solver in the hub: compare neutral,
+   single-left, single-right and equal-bilateral full reach. A unilateral reach
+   must advance that shoulder and retract the other; equal bilateral reach must
+   stay square; retracting one arm must let the other gain yaw-derived reach.
+2. Confirm the 3 cm out / 4 cm back / 1 cm down wrist calibration on both hands
+   and across at least two weapon/default hand poses. Adjust one measured body-
+   frame offset only if the residual is consistent.
+3. Add bounded shoulder telemetry only if the visual gate fails: record each
+   raw/smoothed reach request, resulting signed girdle yaw, per-clavicle travel
+   and post-solve wrist error. Do not tune signs or limits without that trace.
+4. Resume the character-select/shop flat-interactive path. Character select and
+   Create Operative pass; shop construction still crashes or loses renderer
+   ownership. Keep the desktop strictly an eye mirror and avoid the rejected
+   per-draw crafting-renderer redirection.
+5. Continue the per-eye LOD, light-edge culling and asymmetric enemy-shadow
+   investigation after the embodiment gate. Preserve the one-primary-prep plus
+   full second-eye A/B rather than conflating all three defects.
+
+End-of-session validation:
+
+```powershell
+.\tools\stereo\test-darktide-lua-source.ps1
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build --preset windows-vs2022-release --parallel
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build\windows-vs2022 -C Release --output-on-failure -E '^xr_(projection|theatre|stereo_sbs)_smoke$'
+git diff --check
+```
+
+Result: Lua syntax and source invariants pass at 198/198 file-scope locals, the
+Release build passes, and all 27 software/non-HMD tests pass. The three strict
+OpenXR smoke tests were excluded because they require the live headset runtime.
+The final independent shoulder revision still requires the worn gate above.

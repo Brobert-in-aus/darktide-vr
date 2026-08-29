@@ -24,6 +24,8 @@ int main() {
            "Interactive menu overlays must retain immersive projection");
     expect(!immersive_projection_active(
                SharedPresentationMode::flat_loading_or_cinematic) &&
+               !immersive_projection_active(
+                   SharedPresentationMode::flat_interactive) &&
                !immersive_projection_active(SharedPresentationMode::disabled),
            "Only non-immersive modes may release projection ownership");
     SharedPresentationStateReader reader;
@@ -70,6 +72,23 @@ int main() {
       state.body_panel_pose_valid = false;
       expect(!writer.publish(state),
              "World-anchored menu without a pose must fail closed");
+
+      state = {10,
+               SharedPresentationMode::flat_interactive,
+               1920,
+               1080,
+               0,
+               0,
+               1920,
+               1080,
+               2.0F,
+               2.0F};
+      expect(writer.publish(state),
+             "Valid flat interactive panel should publish");
+      expect(reader.read(observed) &&
+                 observed.mode == SharedPresentationMode::flat_interactive &&
+                 !observed.body_panel_pose_valid,
+             "Reader should preserve flat interactive mode");
     }
 
     std::cout << "presentation_state_transport.result=pass\n";

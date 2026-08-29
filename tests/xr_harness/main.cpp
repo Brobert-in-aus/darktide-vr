@@ -1072,6 +1072,13 @@ class OpenXrProbe {
             darktidevr::core::SharedPresentationState newest{};
             if (presentation_state_reader.read(newest)) {
               if (newest.sequence != presentation_sequence) {
+                std::cout << "openxr.presentation mode="
+                          << static_cast<std::uint32_t>(newest.mode)
+                          << " sequence=" << newest.sequence << " source="
+                          << newest.source_width << 'x' << newest.source_height
+                          << " crop=" << newest.crop_x << ',' << newest.crop_y
+                          << ',' << newest.crop_width << 'x'
+                          << newest.crop_height << '\n';
               }
               presentation_state = newest;
               presentation_sequence = newest.sequence;
@@ -1278,10 +1285,18 @@ class OpenXrProbe {
                 darktidevr::core::horizon_locked_recenter_pose(current_head);
             synthetic_roomscale_origin = *head_recenter_pose;
             controller_recenter_pose_ = *head_recenter_pose;
-            body_follow_offset = {};
+            // Recentring changes the tracking-space reference, not the game
+            // character's already-applied world displacement. Keep the
+            // cumulative root target continuous so reset-view cannot teleport
+            // the collision capsule back toward its spawn point.
             recentered_view_poses_valid = false;
             rendered_pair_pose_ready_value = 0;
             head_pose_history.clear();
+            // A flat panel is anchored independently in LOCAL space. Force the
+            // active presentation state to rebuild it from this same leveled
+            // centre-head pose, otherwise a recenter corrects the world while
+            // leaving a loading board at its old yaw.
+            flat_fallback_anchored_sequence = 0;
             std::cout << "openxr.head_recenter=applied\n";
           }
           if (!head_recenter_pose) {
@@ -2046,6 +2061,20 @@ class OpenXrProbe {
       std::optional<darktidevr::math::Pose> controller_pointer_pose;
       std::optional<darktidevr::core::PanelPointerMapping>
           controller_pointer_hit;
+      const auto flat_interactive_mode =
+          presentation_sequence != 0 &&
+          presentation_state.mode == darktidevr::core::
+                                         SharedPresentationMode::flat_interactive;
+      const auto menu_input_source_width =
+          flat_interactive_mode ? panel_source_width
+                                : (presentation_sequence != 0
+                                       ? presentation_state.source_width
+                                       : flat_capture_width);
+      const auto menu_input_source_height =
+          flat_interactive_mode ? panel_source_height
+                                : (presentation_sequence != 0
+                                       ? presentation_state.source_height
+                                       : flat_capture_height);
       flat_fallback_quad.size = {panel_extent.width_metres,
                                  panel_extent.height_metres};
       const darktidevr::math::Pose panel_pose{
@@ -2101,12 +2130,15 @@ class OpenXrProbe {
           const auto pointer = darktidevr::core::map_pointer_to_panel(
               {right.aim_pose.position, direction}, panel_pose,
               panel_extent.width_metres, panel_extent.height_metres,
-              presentation_sequence != 0 ? presentation_state.source_width
-                                         : flat_capture_width,
-              presentation_sequence != 0 ? presentation_state.source_height
-                                         : flat_capture_height,
-              presentation_sequence != 0 ? presentation_state.crop_x : 0,
-              presentation_sequence != 0 ? presentation_state.crop_y : 0,
+              menu_input_source_width, menu_input_source_height,
+              flat_interactive_mode
+                  ? 0
+                  : (presentation_sequence != 0 ? presentation_state.crop_x
+                                                : 0),
+              flat_interactive_mode
+                  ? 0
+                  : (presentation_sequence != 0 ? presentation_state.crop_y
+                                                : 0),
               panel_source_width, panel_source_height);
           if (pointer) {
             ++controller_pointer_hits_;
@@ -2126,12 +2158,11 @@ class OpenXrProbe {
           (presentation_state.mode == darktidevr::core::
                                           SharedPresentationMode::flat_menu ||
            presentation_state.mode == darktidevr::core::
-                                          SharedPresentationMode::world_anchored_menu);
+                                          SharedPresentationMode::world_anchored_menu ||
+           flat_interactive_mode);
       if (menu_mode && submitted_flat_fallback_this_frame) {
-        const auto source_width = presentation_state.source_width;
-        const auto source_height = presentation_state.source_height;
         const auto desktop_pointer = menu_input_injector->read_desktop_pointer(
-            source_width, source_height);
+            menu_input_source_width, menu_input_source_height);
         // A tracked controller ray remains authoritative even when named test
         // controls are enabled. Desktop hover is only the fallback when no
         // controller ray hits the panel, or the explicit owner while its
@@ -2159,12 +2190,7 @@ class OpenXrProbe {
         if (window_capture) {
           window_capture->set_pointer_overlay(
               input.active ? menu_pointer_position : std::nullopt,
-              presentation_sequence != 0
-                  ? presentation_state.source_width
-                  : flat_capture_width,
-              presentation_sequence != 0
-                  ? presentation_state.source_height
-                  : flat_capture_height);
+              menu_input_source_width, menu_input_source_height);
         }
         if (latest_controller_sample_) {
           const auto& left = latest_controller_sample_->hands[0];
@@ -2194,13 +2220,8 @@ class OpenXrProbe {
               event.type == darktidevr::core::MenuPointerEventType::move;
           if ((enable_menu_input || synchronize_cursor) &&
               menu_input_injector->dispatch(
-                  event,
-                  presentation_sequence != 0
-                      ? presentation_state.source_width
-                      : flat_capture_width,
-                  presentation_sequence != 0
-                      ? presentation_state.source_height
-                      : flat_capture_height)) {
+                  event, menu_input_source_width,
+                  menu_input_source_height)) {
             ++menu_input_dispatched;
           }
         }
@@ -2240,20 +2261,14 @@ class OpenXrProbe {
             shared_menu_primary_down || menu_test_primary_held;
       }
       {
-        const auto source_width = presentation_sequence != 0
-                                      ? presentation_state.source_width
-                                      : flat_capture_width;
-        const auto source_height = presentation_sequence != 0
-                                       ? presentation_state.source_height
-                                       : flat_capture_height;
         darktidevr::core::SharedMenuPointerState shared_pointer{};
         shared_pointer.sequence = ++menu_pointer_sequence;
         shared_pointer.timestamp_ns = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 frame_start.time_since_epoch())
                 .count());
-        shared_pointer.source_width = source_width;
-        shared_pointer.source_height = source_height;
+        shared_pointer.source_width = menu_input_source_width;
+        shared_pointer.source_height = menu_input_source_height;
         shared_pointer.scroll_steps = shared_menu_scroll_steps;
         shared_pointer.active = menu_mode &&
                                 submitted_flat_fallback_this_frame &&

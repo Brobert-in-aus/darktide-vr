@@ -15,7 +15,8 @@ enum class SharedPresentationMode : std::uint32_t {
   flat_loading_or_cinematic = 2,
   world_anchored_menu = 3,
   flat_menu = 4,
-  error = 5,
+  flat_interactive = 5,
+  error = 6,
 };
 
 struct SharedPresentationState {

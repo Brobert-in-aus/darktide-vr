@@ -1214,3 +1214,34 @@ An unattended live capture now contains the complete Escape menu—text, icons,
 button fills, arrows, and footer—while fresh stereo eye pairs continue behind
 it. Remaining gates are a worn appearance/pointer pass, options/dropdown
 coverage, and a separate trace/interception policy for NPC shop views.
+
+### 2026-08-29 current implementation order
+
+The accepted hub embodiment baseline now retains server-authoritative
+`hub_jog`, applies HMD-relative visual heading before sampling the common
+camera/controller body anchor, and keeps a 1.2 m horizontal moving translation
+envelope. Head position, stable hands, head-look steering and hub motion passed
+worn validation. The calibrated OpenXR grip-to-model-wrist translation is now
+3 cm away from the body centreline, 4 cm body-back and 1 cm world-down in
+addition to the previously accepted anatomical grip-origin correction.
+
+Shoulder reach is the immediate outstanding worn gate. Each arm independently
+requests opposing `j_spine2` girdle yaw when its calibrated wrist target nears
+full extension. Equal requests cancel to a square shoulder line, while unequal
+requests advance the reaching shoulder and retract the opposite one. Each
+clavicle retains at most 2 cm of independent protraction. The rejected shared
+protraction version gave bilateral extension an erroneous 10 cm-per-arm bonus
+and must not be restored.
+
+After that gate, continue in this order:
+
+1. Validate the measured wrist offset symmetrically and across weapon poses.
+2. Repair shop presentation using the proven flat-interactive character-select
+   route; keep the desktop as a one-eye mirror and keep the crashed scoped
+   crafting-renderer redirect disabled.
+3. Extend flat-interactive coverage while preserving 6DoF restoration and
+   pointer crop-local coordinates.
+4. Investigate per-eye LOD divergence, edge light culling and render-identity-
+   locked enemy-shadow asymmetry with separate evidence for each boundary.
+5. Continue independent gameplay aiming/weapon-hand ownership after the body
+   reach solver is accepted.
