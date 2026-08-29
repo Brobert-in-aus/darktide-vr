@@ -52,10 +52,14 @@ int main() {
       240, 9, 9, panel, 2.0F, 2.0F, true);
   auto body_near = left.state;
   auto body_crossed = outside.state;
+  auto body_crossed_mid = outside.state;
+  auto body_crossed_end = outside.state;
   auto body_far = far.state;
   auto body_invalid = invalid.state;
   darktidevr::harness::apply_synthetic_body_reach_path(body_near, 29);
   darktidevr::harness::apply_synthetic_body_reach_path(body_crossed, 120);
+  darktidevr::harness::apply_synthetic_body_reach_path(body_crossed_mid, 149);
+  darktidevr::harness::apply_synthetic_body_reach_path(body_crossed_end, 179);
   darktidevr::harness::apply_synthetic_body_reach_path(body_far, 240);
   darktidevr::harness::apply_synthetic_body_reach_path(body_invalid, 300);
 
@@ -92,10 +96,11 @@ int main() {
       body_near.hands[0].body_grip_tracking_flags != 0 &&
       body_crossed.hands[0].body_grip_pose.position.x > 0.0F &&
       body_crossed.hands[1].body_grip_pose.position.x < 0.0F &&
-      std::abs(body_crossed.hands[0].body_grip_pose.orientation.z) > 0.20F &&
-      std::abs(body_crossed.hands[1].body_grip_pose.orientation.z) > 0.20F &&
-      body_crossed.hands[0].body_grip_pose.orientation.z ==
-          -body_crossed.hands[1].body_grip_pose.orientation.z &&
+      std::abs(body_crossed.hands[0].body_grip_pose.orientation.y) > 0.90F &&
+      std::abs(body_crossed_mid.hands[0].body_grip_pose.orientation.y) < 0.05F &&
+      std::abs(body_crossed_end.hands[0].body_grip_pose.orientation.y) > 0.90F &&
+      std::abs(body_crossed.hands[1].body_grip_pose.orientation.y) > 0.90F &&
+      std::abs(body_crossed_end.hands[1].body_grip_pose.orientation.y) > 0.90F &&
       length(body_far.hands[0].body_grip_pose.position) > 1.0F &&
       body_invalid.hands[0].body_grip_tracking_flags == 0 &&
       body_invalid.hands[1].body_grip_tracking_flags == 0 &&

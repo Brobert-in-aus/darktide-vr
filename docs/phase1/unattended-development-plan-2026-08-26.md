@@ -938,17 +938,27 @@ The current unattended queue is:
 1. **Completed:** preflight/watchdog, billboard ownership and cylindrical
    acceptance, controller transport, synthetic pointer coverage, automated
    Psykhanium entry, analog locomotion, collision-aware room-scale body follow,
-   and the first weapon/body solver foundation.
-2. **Next:** finish the engine-world Escape menu by correcting its black panel
-   content and horizontal orientation while preserving uninterrupted stereo.
-3. **Then:** validate pointer, scrolling, toggles and dropdowns against that
-   replacement menu without reintroducing completed-swapchain capture.
+   the first weapon/body solver foundation, distributed forearm twist, and
+   planted-foot physical-crouch presentation IK.
+2. **Completed native evidence gate:** the ownership-safe descriptor census
+   proved the Lua-created engine-world target is not sampled by any full-eye
+   draw (target bindless index 46527; observed menu draws used other indices).
+   Do not restore the external-copy, assumed-barrier, raw-pointer scanner or
+   named-target paths. The native additive menu is the accepted content source.
+3. **Next:** headset-validate the stable one-eye desktop mirror plus native
+   additive menu: the black Lua panel must be absent, stereo and 6DoF must stay
+   uninterrupted, the desktop must remain one stable eye, and pointer,
+   scrolling, toggles and dropdowns must remain usable. The desktop mirror has
+   passed live visual inspection and native publication/error-log gates.
 4. Trace vendor/NPC views as a distinct renderer family, keep the hub world in
    stereo, and place the complete interactive view at the NPC with a generic
    world-space board fallback.
 5. Continue first-person aim/weapon semantics and the Psykhanium anatomical IK
    gate; do not enable procedural body IK in the third-person hub.
-6. Resume independent backlog items when a renderer/user-feedback gate blocks.
+6. Continue the stable-mirror performance pass, then resume independent backlog
+   items when a renderer/user-feedback gate blocks. Use
+   `start-darktide-vr.ps1 -AutoEnterHub` for unattended hub entry; its Space and
+   Enter events are gated by fresh title and character-select console states.
 
 Checkpoint after every accepted gate with source, validation commands, hashes,
 runtime counters and captured evidence. Do not combine an unvalidated renderer

@@ -596,6 +596,7 @@ class OpenXrProbe {
                                bool synthetic_gameplay_input,
                                bool synthetic_head_sweep,
                                bool synthetic_roomscale_path,
+                               bool synthetic_crouch_path,
                                float projection_translation_scale) {
     if (session_ == XR_NULL_HANDLE || view_space_ == XR_NULL_HANDLE) {
       throw std::runtime_error("OpenXR theatre loop requires a session and VIEW space");
@@ -1012,6 +1013,7 @@ class OpenXrProbe {
     std::uint32_t processed_frames{};
     std::uint64_t synthetic_head_frames{};
     std::uint64_t synthetic_roomscale_frames{};
+    std::uint64_t synthetic_crouch_frames{};
     darktidevr::math::Vec3 latest_camera_translation{};
     darktidevr::math::Vec3 latest_body_follow_offset{};
     std::array<std::uint64_t, 4> synthetic_head_phase_frames{};
@@ -1300,9 +1302,21 @@ class OpenXrProbe {
                 synthetic_roomscale_origin->position.y + synthetic_position.y,
                 synthetic_roomscale_origin->position.z + synthetic_position.z};
           }
+          if (synthetic_crouch_path) {
+            if (!synthetic_roomscale_origin) {
+              synthetic_roomscale_origin = *head_recenter_pose;
+            }
+            const auto synthetic_position =
+                darktidevr::harness::synthetic_crouch_position(
+                    synthetic_crouch_frames++);
+            current_head.position = {
+                synthetic_roomscale_origin->position.x + synthetic_position.x,
+                synthetic_roomscale_origin->position.y + synthetic_position.y,
+                synthetic_roomscale_origin->position.z + synthetic_position.z};
+          }
           const auto head_translation =
               darktidevr::core::sliding_head_translation(
-                  *head_recenter_pose, current_head, {0.0F, 0.18F});
+                  *head_recenter_pose, current_head, {0.0F, 1.2F});
           auto delta = head_translation.camera_delta;
           body_follow_offset.x += head_translation.body_follow_delta.x;
           body_follow_offset.y += head_translation.body_follow_delta.y;
@@ -2648,6 +2662,8 @@ class OpenXrProbe {
               << '\n'
               << "openxr.synthetic_roomscale_frames="
               << synthetic_roomscale_frames << '\n'
+              << "openxr.synthetic_crouch_frames="
+              << synthetic_crouch_frames << '\n'
               << "openxr.synthetic_head_phase_frames=";
     for (std::size_t index = 0;
          index < synthetic_head_phase_frames.size(); ++index) {
@@ -3628,6 +3644,7 @@ void usage() {
                 "[--synthetic-gameplay-input] "
                 "[--synthetic-head-sweep] "
                 "[--synthetic-roomscale-path] "
+                "[--synthetic-crouch-path] "
                 "[--synthetic-billboard-sweep] "
                 "[--projection-translation-scale N] "
                 "[--shared-pose-sequence-offset N] "
@@ -3663,6 +3680,7 @@ int wmain(int argc, wchar_t** argv) {
     bool synthetic_gameplay_input = false;
     bool synthetic_head_sweep = false;
     bool synthetic_roomscale_path = false;
+    bool synthetic_crouch_path = false;
     bool synthetic_billboard_sweep = false;
     float projection_translation_scale = 1.0F;
     std::wstring menu_input_title = L"Warhammer 40,000: Darktide";
@@ -3718,6 +3736,8 @@ int wmain(int argc, wchar_t** argv) {
         synthetic_head_sweep = true;
       } else if (argument == L"--synthetic-roomscale-path") {
         synthetic_roomscale_path = true;
+      } else if (argument == L"--synthetic-crouch-path") {
+        synthetic_crouch_path = true;
       } else if (argument == L"--synthetic-billboard-sweep") {
         require_openxr = true;
         synthetic_billboard_sweep = true;
@@ -3790,6 +3810,14 @@ int wmain(int argc, wchar_t** argv) {
       throw std::invalid_argument(
           "--synthetic-roomscale-path requires --shared-eyes");
     }
+    if (synthetic_crouch_path && !shared_eyes) {
+      throw std::invalid_argument(
+          "--synthetic-crouch-path requires --shared-eyes");
+    }
+    if (synthetic_crouch_path && synthetic_roomscale_path) {
+      throw std::invalid_argument(
+          "--synthetic-crouch-path and --synthetic-roomscale-path are exclusive");
+    }
     if (synthetic_billboard_sweep && theatre) {
       throw std::invalid_argument(
           "--synthetic-billboard-sweep uses the standalone synthetic scene");
@@ -3827,6 +3855,7 @@ int wmain(int argc, wchar_t** argv) {
                                      synthetic_gameplay_input,
                                      synthetic_head_sweep,
                                      synthetic_roomscale_path,
+                                     synthetic_crouch_path,
                                      projection_translation_scale);
       } else {
         openxr.run_frame_lifecycle(xr_frames, harness.device(), harness.queue(),

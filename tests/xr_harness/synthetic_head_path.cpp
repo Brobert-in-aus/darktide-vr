@@ -55,4 +55,16 @@ math::Vec3 synthetic_roomscale_position(std::uint64_t frame) {
   return {};
 }
 
+math::Vec3 synthetic_crouch_position(std::uint64_t frame) {
+  constexpr std::uint64_t phase_frames = 240;
+  constexpr float pi = 3.14159265358979323846F;
+  constexpr float crouch_metres = 0.65F;
+  const auto phase_t = static_cast<float>(frame % phase_frames) /
+                       static_cast<float>(phase_frames - 1);
+  // Starts and ends standing, reaches the full crouch at mid-cycle, and has
+  // zero velocity at both endpoints so captured frames are deterministic.
+  const auto depth = 0.5F - 0.5F * std::cos(phase_t * 2.0F * pi);
+  return {0.0F, -crouch_metres * depth, 0.0F};
+}
+
 }  // namespace darktidevr::harness

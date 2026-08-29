@@ -23,7 +23,11 @@ param(
 
     [switch] $SyntheticHeadSweep,
 
+    [switch] $SyntheticCrouchPath,
+
     [switch] $EnterPsykhanium,
+
+    [switch] $AutoEnterHub,
 
     [ValidateRange(-2.0, 2.0)]
     [double] $ProjectionTranslationScale = 1.0,
@@ -105,6 +109,24 @@ if (-not $DoNotOpenLauncher) {
     Start-Process 'steam://rungameid/1361210'
 }
 
+if ($AutoEnterHub) {
+    $advanceHelper = Join-Path $PSScriptRoot 'advance-darktide-to-hub.ps1'
+    if (-not (Test-Path -LiteralPath $advanceHelper -PathType Leaf)) {
+        throw "Darktide hub advance helper not found: $advanceHelper"
+    }
+    $powershell = (Get-Process -Id $PID).Path
+    Start-Process -FilePath $powershell -WindowStyle Hidden -ArgumentList @(
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        "`"$advanceHelper`"",
+        '-TimeoutSeconds',
+        $GameStartTimeoutSeconds
+    )
+    Write-Output 'Armed state-gated Space/Enter automation through character select.'
+}
+
 Write-Output 'Waiting for the Darktide splash window; XR will start as soon as it exists.'
 $runnerArguments = @{
     DurationSeconds = $DurationSeconds
@@ -129,5 +151,8 @@ if ($SyntheticBodyPath) {
 }
 if ($SyntheticHeadSweep) {
     $runnerArguments.SyntheticHeadSweep = $true
+}
+if ($SyntheticCrouchPath) {
+    $runnerArguments.SyntheticCrouchPath = $true
 }
 & $runner @runnerArguments

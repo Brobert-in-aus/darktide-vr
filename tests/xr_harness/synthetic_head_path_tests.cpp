@@ -18,6 +18,7 @@ int main() {
   using darktidevr::harness::SyntheticHeadPhase;
   using darktidevr::harness::kSyntheticHeadPhaseFrames;
   using darktidevr::harness::synthetic_head_path_sample;
+  using darktidevr::harness::synthetic_crouch_position;
   using darktidevr::harness::synthetic_roomscale_position;
   using darktidevr::math::rotate;
 
@@ -69,6 +70,18 @@ int main() {
          "Room-scale Z phase must cross the camera envelope");
   expect(std::abs(roomscale_combined.z) > 0.6F,
          "Room-scale combined phase must cross the camera envelope");
+
+  const auto crouch_standing = synthetic_crouch_position(0);
+  const auto crouch_low = synthetic_crouch_position(120);
+  const auto crouch_return = synthetic_crouch_position(239);
+  expect(crouch_standing.x == 0.0F && crouch_standing.y == 0.0F &&
+             crouch_standing.z == 0.0F,
+         "Crouch path must start at standing height");
+  expect(crouch_low.y < -0.64F && crouch_low.x == 0.0F &&
+             crouch_low.z == 0.0F,
+         "Crouch path must reach the requested vertical depth only");
+  expect(std::abs(crouch_return.y) < 0.0001F,
+         "Crouch path must return to standing height");
 
   std::cout << "synthetic_head_path.result=pass\n";
   return 0;

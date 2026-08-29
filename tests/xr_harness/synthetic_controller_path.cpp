@@ -132,8 +132,20 @@ void apply_synthetic_body_reach_path(core::SharedControllerState& state,
     auto& destination = state.hands[hand];
     const auto wrist_yaw =
         (hand == 0 ? 1.0F : -1.0F) * (phase_t - 0.5F) * 1.2F;
-    const auto wrist_orientation =
+    const auto yaw_orientation =
         math::from_axis_angle({0.0F, 0.0F, 1.0F}, wrist_yaw);
+    // Crossed reach also performs a complete pronation/supination sweep. The
+    // local +Y axis is Darktide forward, so this changes controller roll while
+    // keeping the requested pointing direction stable. It exists specifically
+    // to exercise the forearm's otherwise-underdetermined axial degree of
+    // freedom and both upside-down endpoints.
+    const auto wrist_roll =
+        phase == SyntheticControllerPhase::crossed_sweep
+            ? (phase_t * 2.0F - 1.0F) * 3.14159265359F
+            : 0.0F;
+    const auto wrist_orientation = math::multiply(
+        yaw_orientation,
+        math::from_axis_angle({0.0F, 1.0F, 0.0F}, wrist_roll));
     destination.body_aim_pose.position = positions[hand];
     destination.body_grip_pose.position = positions[hand];
     destination.body_aim_pose.orientation = wrist_orientation;

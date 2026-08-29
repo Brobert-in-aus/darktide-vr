@@ -244,21 +244,247 @@ validation passed this centering together with the hand, shoulder, torso and
 locomotion corrections; this is the accepted embodiment baseline for the next
 IK stage.
 
+The next arm-IK revision resolves the positional two-bone solver's remaining
+axial degree of freedom. Previously, the forearm retained an arbitrary animated
+roll and the hand joint absorbed the complete tracked-controller roll. A first
+attempt put the recovered axial angle directly on `j_leftforearm` and
+`j_rightforearm`. Although its synthetic pose/error gates passed, headset
+inspection rejected it: the complete lower arm became rigidly locked to wrist
+rotation and all visible deformation moved to the elbow. That result is now a
+recorded false path, not an accepted implementation.
+
+The replacement follows the conventional layered arm solve documented by
+Unity's Twist Correction constraint and Epic's Full Body IK guidance: retain a
+stable constrained two-bone reach solve, recover the missing axial wrist angle
+with a swing/twist-style projected-basis measurement, and distribute that twist
+over the rig's purpose-built deformers rather than the elbow control joint. A
+Darktide bundle extraction first identified exact candidate names. A fresh live
+human-player inventory then established the actual runtime hierarchy and
+placement: `j_leftforearmroll1/2` and `j_rightforearmroll1/2` are direct
+children of their respective forearm joint, positioned at approximately 0.332
+and 0.664 of the elbow-to-wrist segment. `j_leftarmroll1` and
+`j_rightarmroll1` are corresponding upper-arm deformers and are not driven by
+wrist roll.
+
+The post-animation solve now leaves the elbow-starting forearm joint at its
+shortest-arc reach orientation, maps the hand joint exactly to the tracked grip,
+and applies 33.2%/66.4% of the recovered axial angle to the two authored lower-
+arm roll bones. The fractions are measured from the live rig positions rather
+than hardcoded. The final extractor is a quaternion swing/twist decomposition;
+it no longer switches between projected palm/across bases. It carries a true
+signed-angle branch crossing only while raw per-frame motion remains physically
+plausible, snaps to the new raw pose after an impossible >90-degree frame jump,
+and clamps distributed forearm pronation/supination to +/-100 degrees. The exact
+hand joint absorbs any excess. This intentionally follows the user's constraint
+that a physical hand cannot execute arbitrary multi-turn rotation.
+
+The synthetic body path supplies a complete -180 to +180 degree controller-roll
+sweep through both upside-down endpoints. An intermediate temporal-unwrapping
+build was correctly rejected when the diagnostic phase reset accumulated 400-
+800 degree twists despite exact hand poses. The runtime validator now fails any
+sample outside the anatomical limit, preventing that false success from
+recurring. The corrected clean run authored both twist bones on both arms with
+stable measured fractions (`0.332/0.664` left and `0.333/0.665` right); observed
+twist stayed within the +/-100-degree limit while the deliberately absurd
+synthetic target continued beyond it. Maximum wrist and hand-angle error remain
+independent acceptance gates. The fresh XR harness must reach nonzero
+`shared_ready`, and any mod script/Lua, DXGI, device-removed, or device-hung
+failure rejects the run.
+
+The final 120-second pass met those gates. The harness submitted 10,210 frames,
+received 3,948 fresh shared pairs, reported zero reused frames and zero pair-
+pose mismatches, and ended with `result=pass`. The runtime validator accepted
+63 twist samples: every sample wrote both deformers on both arms, roll remained
+inside +/-100 degrees, the fractions remained `0.332/0.664` and
+`0.333/0.665`, maximum solved-wrist readback residual was 0.000384 m during a
+rapid synthetic locomotion/root-update transition, and maximum hand-angle error
+was 0.001687 rad. Ordinary frames returned immediately to micrometre-scale
+readback. The validator allows at most 1 mm to cover this scheduling boundary
+while still failing visible drift.
+
+Validation commands for the staged arm revision:
+
+```powershell
+tools\stereo\test-darktide-lua-source.ps1
+cmake --build build/windows-vs2022 --config Release --target darktidevr-synthetic-controller-tests darktidevr-xr-harness
+ctest --test-dir build/windows-vs2022 -C Release --output-on-failure -R '^synthetic_controller_path$'
+tools\stereo\request-body-rig-inventory.ps1
+tools\stereo\start-darktide-vr.ps1 -EnterPsykhanium -SyntheticControllerPath -SyntheticBodyPath -SyntheticGameplayInput -DurationSeconds 120
+tools\stereo\test-body-twist-runtime.ps1 -MinimumSamples 20
+git diff --check
+```
+
+### Physical crouch body-follow checkpoint
+
+Physical crouch is now a render-body IK operation rather than locomotion. The
+OpenXR bridge preserves up to 1.2 m of vertical head translation while keeping
+the production horizontal camera envelope at zero. Lua reads the exact tracked
+vertical delta, leaves the gameplay root/capsule untouched, and lowers only
+`j_hips`. Both authored leg chains are then solved back to their pre-write ankle
+positions and foot rotations, so the feet remain planted instead of descending
+through the floor. Head and hand targets remain exact and are applied after the
+pelvis write.
+
+The provisional comfort calibration follows all but 5 cm of downward head
+travel and caps pelvis descent at 60 cm. The residual permits small natural
+neck/spine compression while preventing the camera from entering a stationary
+torso. Ogryn uses the existing character-scale ratio. The user confirmed that
+the legs bend and asked to retain this pass; the deepest crouch looks somewhat
+exaggerated for the current smallest human body, so the cap/follow curve must
+eventually derive from the planned body-size calibration rather than remain a
+universal constant.
+
+The harness adds `--synthetic-crouch-path` / `-SyntheticCrouchPath`, a smooth
+standing-to-65-cm-crouch cycle independent of controller and locomotion paths.
+The final 120-second Psykhanium run submitted 9,905 frames, received 4,471 fresh
+shared pairs, reused zero frames, reported zero pair-pose mismatches, and ended
+with `result=pass`. Runtime validation accepted 66 samples, reached 0.5963 m of
+pelvis follow, kept maximum planted-foot error to 0.000726 m, and found no mod
+script, Lua, DXGI, or device fault. Source guard remained at 198/198 file-scope
+locals and both `core_math` and `synthetic_head_path` tests passed.
+
+Validation commands for the physical-crouch checkpoint:
+
+```powershell
+tools\stereo\test-darktide-lua-source.ps1
+cmake --build build/windows-vs2022 --config Release --target darktidevr-xr-harness darktidevr-synthetic-head-tests
+ctest --test-dir build/windows-vs2022 -C Release --output-on-failure -R 'synthetic_head_path|core_math'
+tools\stereo\start-darktide-vr.ps1 -EnterPsykhanium -SyntheticControllerPath -SyntheticBodyPath -SyntheticGameplayInput -SyntheticCrouchPath -DurationSeconds 120
+tools\stereo\test-body-crouch-runtime.ps1
+git diff --check
+```
+
+Implementation references:
+
+- Unity Animation Rigging, Twist Correction constraint:
+  <https://docs.unity3d.com/ja/Packages/com.unity.animation.rigging@1.2/manual/constraints/TwistCorrection.html>
+- Epic Games, Full-Body IK controls, preferred angles, stiffness and limits:
+  <https://dev.epicgames.com/documentation/unreal-engine/control-rig-full-body-ik-in-unreal-engine?lang=en-US>
+- CDC normal joint range-of-motion reference values for forearm pronation and
+  supination:
+  <https://archive.cdc.gov/www_cdc_gov/ncbddd/jointrom/index.html>
+- Autodesk Stingray Unit Lua API used for runtime scene-graph verification:
+  <https://help.autodesk.com/cloudhelp/2021/DEU/Max-Interactive-Help/lua_ref/obj_stingray_Unit.html>
+
 The two newest Quest recordings were pulled without deleting the device copies
 to `artifacts/phase1/quest-recordings-20260829`. The 12:02:17 capture is a
 69.434-second 1920x1080 HEVC stream at 120 fps; the 12:04:24 capture is a
 38.872-second 1920x1080 HEVC stream at 30 fps. Their SHA-256 hashes are
 `094E96502F6EE6D55F2FECB8E778E93C0B512873C8C95BDD4157E12CB39640E1`
 and `108B4C54192F333609B21AA776A34F9C94FFD3712859BDCFAC432E749CFF8F6F`.
+
+### Engine-world menu renderer investigation
+
+The stock SystemView UI can be redirected natively into a complete transparent
+`menu_surface`; a 2496x2688 readback with crop `0,642,2496x1404` contained the
+Escape menu. The older Lua resource-renderer replay remains rejected because it
+does not execute all specialized SystemView draws. The intended engine-world
+destination is the named `darktidevr_menu_ui` texture (runtime hash
+`0xaf0f1409769cf92b`), presented by the existing two-metre, 16:9 world quad.
+
+An external-queue copy into that texture was conclusively rejected. The first
+menu open produced a black panel because Stingray cleared the destination after
+the Present-time copy. Opening the menu a second time recreated the target while
+the external path still retained/crossed its lifetime and caused GPU hang crash
+`8504d592-1910-4c57-85f3-17b9f4fdddc4`. That experiment was immediately
+reverted and the staged body-IK checkpoint was redeployed unchanged.
+
+The next attempted visual gate targeted Stingray's own graphics command list,
+immediately before an assumed named-destination publication barrier. It was
+safe under repeated menu opens but never executed: the first hub panel remained
+black and the native log contained no inline-copy event. A follow-up census with
+copying disabled proved that `darktidevr_menu_ui` emits neither a matching
+legacy nor enhanced D3D12 barrier in the active menu phase. The earlier
+interpretation of its transition boundary must not be reused.
+
+A subsequent draw-table census attempted to locate the exact draw that samples
+the named texture, but the diagnostic dereferenced raw `DescriptorInfo`
+resource pointers which are not lifetime-owning. It crashed at menu open and
+produced dump/session `9fc3d701-4365-4873-81be-9d0e4fdc80eb`. No target copy
+ran in that build. The unsafe scanner was removed and the staged known-safe
+renderer, Lua and harness checkpoint was rebuilt and redeployed. Future draw
+identification must propagate an immutable `named_menu_ui` tag through
+descriptor creation/copy metadata while the resource is known-live; it must
+never query COM through a cached raw descriptor pointer.
+
+The user separately observed that the first black-panel run reduced tracking
+from 6DoF to 3DoF, and that at least one highlighted UI primitive still leaked
+to the desktop eye mirror. Those remain independent defects: menu-state camera
+translation must be preserved, and the native UI shader classification is not
+complete until the stock desktop overlay is absent.
+
+Pre-live validation used for the rejected inline gate:
+
+```powershell
+tools\stereo\test-darktide-lua-source.ps1
+git diff --check
+cmake --build build\windows-vs2022 --config Release --target darktidevr_native_capture darktidevr-xr-harness
+ctest --test-dir build\windows-vs2022 -C Release --output-on-failure
+```
+
+Result: Lua source passed at 198/198 file-scope locals and all 30 CTest tests
+passed, but live evidence rejected both experimental diagnostics. This is why
+runtime gates remain mandatory even when the unit suite is green.
+
+The ownership-safe follow-up completed the descriptor-index question. The
+Lua-created 2496x1404 RGBA8 target was assigned bindless descriptor index
+46527, while the full-eye menu draws sampled different live indices (including
+10539, 27003, 3948 and 4449). No full-eye draw sampled 46527 during the bounded
+menu census. The named target is therefore not consumed by the production eye
+render and is not a viable route for menu content. The census hooks and their
+per-draw overhead were removed after recording this result.
+
+The working native additive menu surface continues publishing complete menu
+frames (`MENU_DIRECT_RENDER` ready values advanced continuously). The desktop
+flicker was a separate swapchain ownership problem: stock fullscreen UI and the
+sequential stereo mirror alternated on the same window. Native capture now
+snapshots the completed left eye into a dedicated resource once per pair and
+copies that stable eye to the swapchain immediately before Present. A live hub
+run showed a stable one-eye mirror both before and during the open system menu,
+with no `DESKTOP_EYE_MIRROR` error result, while menu publication continued.
+Headset validation is still required to confirm the additive menu remains
+visible and interactive and that the removed Lua panel eliminates the black
+rectangle.
+
+A tempting one-copy optimization that read the live shared left-eye surface at
+Present was rejected live: successive desktop samples alternated between the
+fullscreen menu and world. The capture mailbox can be updated from another
+submission context before Present reads it, so same-queue ordering cannot be
+assumed. Keep the dedicated completed-pair snapshot until an explicitly fenced,
+multi-buffered replacement proves equivalent; correctness currently costs one
+additional eye-sized allocation and copy per pair.
+
+`start-darktide-vr.ps1 -AutoEnterHub` now starts an independent, state-gated
+helper. It waits for the fresh console log's title state before sending Space,
+then requires both the character-select stereo target and presentation-open
+messages before sending Enter. It never moves the mouse and exits after one
+pass. A full authenticated launcher run reached the hub unattended and logged
+`presentation_blocked reason=not_first_person_training mode=hub` at 05:21:43.
+
+Validation for the accepted mirror/automation revision:
+
+```powershell
+tools\stereo\test-darktide-lua-source.ps1
+cmake --build build\windows-vs2022 --config Release --target darktidevr_native_capture
+ctest --test-dir build\windows-vs2022 -C Release -R 'native_capture_hooks|shared_eye_surfaces|presentation_state' --output-on-failure
+tools\stereo\sync-darktide-vr-dev.ps1 -Configuration Release
+tools\stereo\start-darktide-vr.ps1 -AutoEnterHub
+git diff --check
+```
+
+Result: Lua source passed at 198/198 locals, all three focused native tests
+passed, the fresh XR session reached nonzero `shared_ready`, and the helper
+reached the hub without manual splash or character-select input.
+
 3. Verify WASD and left-thumbstick locomotion with VR input enabled.
 4. At a repeatable enemy-shadow boundary, compare the default prepared-frame
    second eye with `darktidevr_full_second_eye.flag` enabled. Record whether
    the eye-specific shadow defect changes and the frame-time cost.
 
-Later IK stages explicitly include a two-pose body-size calibration (T-pose,
-then hands at the player's sides) and physical-crouch body IK. The latter must
-lower the pelvis/body as tracked eye height drops so the camera does not descend
-into a stationary torso; it is separate from horizontal room-scale locomotion.
+The later IK stages still include a two-pose body-size calibration (T-pose,
+then hands at the player's sides). It must replace the accepted physical-crouch
+pass's provisional human/Ogryn scale, pelvis cap and follow curve with values
+derived from the selected avatar and measured player dimensions.
 
 No Mac-only validation applies to this Windows PCVR work. The Quest is reachable
 over ADB, awake, and had the temporary proximity override reapplied. Virtual

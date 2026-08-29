@@ -273,6 +273,10 @@ std::mutex state_mutex;
 ComPtr<ID3D12CommandQueue> game_queue;
 ComPtr<IDXGISwapChain3> game_swapchain;
 std::array<ComPtr<ID3D12Resource>, 2> eye_surfaces;
+ComPtr<ID3D12Resource> desktop_mirror_surface;
+ComPtr<ID3D12Fence> desktop_mirror_fence;
+std::uint64_t desktop_mirror_fence_value{};
+std::atomic<bool> desktop_mirror_ready{};
 ComPtr<ID3D12Fence> ready_fence;
 ComPtr<ID3D12Fence> consumed_fence;
 std::array<HANDLE, 2> eye_handles{};
@@ -649,6 +653,8 @@ std::deque<PendingCapture> pending_captures;
 std::deque<PendingCapture> available_captures;
 std::deque<PendingCapture> menu_pending_captures;
 std::deque<PendingCapture> menu_available_captures;
+std::deque<PendingCapture> desktop_mirror_pending;
+std::deque<PendingCapture> desktop_mirror_available;
 PendingCapture staged_eye0_capture;
 bool staged_eye0_capture_valid{};
 bool staged_pair_dropped{};
@@ -1173,6 +1179,8 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
     ID3D12GraphicsCommandList* commands, const PsoMetadata& metadata);
 void end_stock_menu_draw_redirect(ID3D12GraphicsCommandList* commands,
                                   const MenuDrawRedirect& redirect);
+int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
+                               ID3D12CommandQueue* queue);
 
 void write_marker_log(const char* format, ...) {
   if (marker_log == INVALID_HANDLE_VALUE ||
@@ -1882,6 +1890,7 @@ TableProvenance resolve_table_provenance(std::uintptr_t signature,
   }
   return provenance;
 }
+
 
 std::uint64_t graphics_binding_state_hash(const CommandTrace& trace) {
   auto hash = 1469598103934665603ULL;
@@ -6604,6 +6613,107 @@ void poll_focused_trace_request() {
   }
 }
 
+int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
+                               ID3D12CommandQueue* queue) {
+  if (!swapchain || !queue ||
+      !desktop_mirror_ready.load(std::memory_order_acquire)) {
+    return 100;
+  }
+  ComPtr<ID3D12Resource> back_buffer;
+  ComPtr<ID3D12Device> device;
+  if (FAILED(swapchain->GetBuffer(swapchain->GetCurrentBackBufferIndex(),
+                                  IID_PPV_ARGS(&back_buffer))) ||
+      FAILED(back_buffer->GetDevice(IID_PPV_ARGS(&device)))) {
+    return 101;
+  }
+
+  PendingCapture pending;
+  ComPtr<ID3D12Resource> mirror;
+  ComPtr<ID3D12Fence> fence;
+  std::uint64_t signal_value{};
+  {
+    std::scoped_lock lock(state_mutex);
+    mirror = desktop_mirror_surface;
+    fence = desktop_mirror_fence;
+    if (!mirror || !fence) {
+      return 102;
+    }
+    const auto completed = fence->GetCompletedValue();
+    while (!desktop_mirror_pending.empty() &&
+           desktop_mirror_pending.front().fence_value <= completed) {
+      desktop_mirror_pending.front().fence_value = 0;
+      desktop_mirror_available.push_back(
+          std::move(desktop_mirror_pending.front()));
+      desktop_mirror_pending.pop_front();
+    }
+    if (desktop_mirror_pending.size() >= 8) {
+      return 103;
+    }
+    if (!desktop_mirror_available.empty()) {
+      pending = std::move(desktop_mirror_available.front());
+      desktop_mirror_available.pop_front();
+    }
+    signal_value = desktop_mirror_fence_value + 1;
+  }
+
+  const auto source_description = mirror->GetDesc();
+  const auto destination_description = back_buffer->GetDesc();
+  if (source_description.Format != destination_description.Format ||
+      source_description.Width != destination_description.Width ||
+      source_description.Height != destination_description.Height) {
+    return 104;
+  }
+  if (pending.allocator && pending.commands) {
+    if (FAILED(pending.allocator->Reset()) ||
+        FAILED(pending.commands->Reset(pending.allocator.Get(), nullptr))) {
+      return 105;
+    }
+  } else if (FAILED(device->CreateCommandAllocator(
+                 D3D12_COMMAND_LIST_TYPE_DIRECT,
+                 IID_PPV_ARGS(&pending.allocator))) ||
+             FAILED(device->CreateCommandList(
+                 0, D3D12_COMMAND_LIST_TYPE_DIRECT, pending.allocator.Get(),
+                 nullptr, IID_PPV_ARGS(&pending.commands)))) {
+    return 105;
+  }
+
+  std::array<D3D12_RESOURCE_BARRIER, 2> barriers{};
+  barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  barriers[0].Transition.pResource = mirror.Get();
+  barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+  barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+  barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+  barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  barriers[1].Transition.pResource = back_buffer.Get();
+  barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+  barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+  barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+  pending.commands->ResourceBarrier(static_cast<UINT>(barriers.size()),
+                                    barriers.data());
+  pending.commands->CopyResource(back_buffer.Get(), mirror.Get());
+  for (auto& barrier : barriers) {
+    std::swap(barrier.Transition.StateBefore,
+              barrier.Transition.StateAfter);
+  }
+  pending.commands->ResourceBarrier(static_cast<UINT>(barriers.size()),
+                                    barriers.data());
+  if (FAILED(pending.commands->Close())) {
+    return 106;
+  }
+  ID3D12CommandList* lists[]{pending.commands.Get()};
+  original_execute_command_lists(queue, 1, lists);
+  if (FAILED(queue->Signal(fence.Get(), signal_value))) {
+    return 107;
+  }
+  pending.fence_value = signal_value;
+  {
+    std::scoped_lock lock(state_mutex);
+    desktop_mirror_fence_value = signal_value;
+    desktop_mirror_pending.push_back(std::move(pending));
+  }
+  return 0;
+}
+
 HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                                         UINT interval, UINT flags) {
   poll_focused_trace_request();
@@ -6771,6 +6881,16 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
     alternating_last_capture_result.store(
         capture_present_halves(candidate.Get(), queue.Get()),
         std::memory_order_relaxed);
+  }
+  if (candidate && queue &&
+      desktop_mirror_ready.load(std::memory_order_acquire)) {
+    const auto mirror_result =
+        present_desktop_eye_mirror(candidate.Get(), queue.Get());
+    if (mirror_result != 0 && present % 120 == 0) {
+      write_menu_resource_log(
+          "DESKTOP_EYE_MIRROR\tframe=%llu\tresult=%d\r\n", present,
+          mirror_result);
+    }
   }
   const auto result = original_present(swapchain, interval, flags);
   // Resize after DXGI Present completes. A real client-area change makes
@@ -7627,6 +7747,12 @@ int ensure_eye_surfaces(ID3D12Device* device,
 
   close_shared_handles();
   eye_surfaces = {};
+  desktop_mirror_surface.Reset();
+  desktop_mirror_fence.Reset();
+  desktop_mirror_fence_value = 0;
+  desktop_mirror_pending.clear();
+  desktop_mirror_available.clear();
+  desktop_mirror_ready.store(false, std::memory_order_relaxed);
   ready_fence.Reset();
   consumed_fence.Reset();
   ready_value = 0;
@@ -7657,6 +7783,14 @@ int ensure_eye_surfaces(ID3D12Device* device,
                                           &eye_handles[eye]))) {
       return 22 + static_cast<int>(eye);
     }
+  }
+  if (FAILED(device->CreateCommittedResource(
+          &heap, D3D12_HEAP_FLAG_NONE, &eye_description,
+          D3D12_RESOURCE_STATE_COMMON, nullptr,
+          IID_PPV_ARGS(&desktop_mirror_surface))) ||
+      FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
+                                 IID_PPV_ARGS(&desktop_mirror_fence)))) {
+    return 26;
   }
   if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED,
                                  IID_PPV_ARGS(&ready_fence))) ||
@@ -7722,6 +7856,8 @@ int capture_eye_from_resource(int eye, ID3D12CommandQueue* supplied_queue,
 
   capture_stage.store(3, std::memory_order_relaxed);
   ComPtr<ID3D12Resource> eye_surface;
+  ComPtr<ID3D12Resource> mirror_surface;
+  ComPtr<ID3D12Resource> mirror_source;
   ComPtr<ID3D12Fence> fence;
   {
     std::scoped_lock lock(state_mutex);
@@ -7759,6 +7895,10 @@ int capture_eye_from_resource(int eye, ID3D12CommandQueue* supplied_queue,
       return 37;
     }
     eye_surface = eye_surfaces[static_cast<std::size_t>(eye)];
+    if (eye == 1) {
+      mirror_surface = desktop_mirror_surface;
+      mirror_source = eye_surfaces[0];
+    }
     fence = ready_fence;
   }
 
@@ -7824,6 +7964,37 @@ int capture_eye_from_resource(int eye, ID3D12CommandQueue* supplied_queue,
   std::swap(destination_barrier.Transition.StateBefore,
             destination_barrier.Transition.StateAfter);
   pending.commands->ResourceBarrier(1, &destination_barrier);
+  if (eye == 1 && mirror_surface && mirror_source) {
+    std::array<D3D12_RESOURCE_BARRIER, 2> mirror_barriers{};
+    mirror_barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    mirror_barriers[0].Transition.pResource = mirror_source.Get();
+    mirror_barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+    mirror_barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    mirror_barriers[0].Transition.Subresource =
+        D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    mirror_barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    mirror_barriers[1].Transition.pResource = mirror_surface.Get();
+    mirror_barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+    mirror_barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+    mirror_barriers[1].Transition.Subresource =
+        D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    pending.commands->ResourceBarrier(
+        static_cast<UINT>(mirror_barriers.size()), mirror_barriers.data());
+    D3D12_TEXTURE_COPY_LOCATION mirror_destination{};
+    mirror_destination.pResource = mirror_surface.Get();
+    mirror_destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    D3D12_TEXTURE_COPY_LOCATION mirror_left_eye{};
+    mirror_left_eye.pResource = mirror_source.Get();
+    mirror_left_eye.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    pending.commands->CopyTextureRegion(&mirror_destination, 0, 0, 0,
+                                        &mirror_left_eye, nullptr);
+    for (auto& mirror_barrier : mirror_barriers) {
+      std::swap(mirror_barrier.Transition.StateBefore,
+                mirror_barrier.Transition.StateAfter);
+    }
+    pending.commands->ResourceBarrier(
+        static_cast<UINT>(mirror_barriers.size()), mirror_barriers.data());
+  }
   std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
   pending.commands->ResourceBarrier(1, &barrier);
   if (FAILED(pending.commands->Close())) {
@@ -7861,6 +8032,8 @@ int capture_eye_from_resource(int eye, ID3D12CommandQueue* supplied_queue,
     staged_eye0_capture_valid = false;
     pending_captures.push_back(std::move(pending));
     ready_value = signal_value;
+    desktop_mirror_ready.store(mirror_surface != nullptr,
+                               std::memory_order_release);
   }
   capture_stage.store(8, std::memory_order_relaxed);
   return 0;

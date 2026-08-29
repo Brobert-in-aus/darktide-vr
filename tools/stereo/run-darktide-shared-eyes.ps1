@@ -23,6 +23,8 @@ param(
 
     [switch] $SyntheticRoomscalePath,
 
+    [switch] $SyntheticCrouchPath,
+
     [ValidateRange(0, 1800)]
     [int] $WaitForGameSeconds = 0,
 
@@ -132,6 +134,9 @@ if ($SyntheticHeadSweep) {
 }
 if ($SyntheticRoomscalePath) {
     $arguments += '--synthetic-roomscale-path'
+}
+if ($SyntheticCrouchPath) {
+    $arguments += '--synthetic-crouch-path'
 }
 $arguments += '--projection-translation-scale'
 $arguments += $ProjectionTranslationScale.ToString(

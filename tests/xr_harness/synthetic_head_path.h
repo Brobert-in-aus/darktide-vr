@@ -33,4 +33,10 @@ SyntheticHeadPathSample synthetic_head_path_sample(
 // verify that excess horizontal motion is exported as body-follow movement.
 math::Vec3 synthetic_roomscale_position(std::uint64_t frame);
 
+// Deterministic test-only standing-to-crouch path. OpenXR +Y is up, so the
+// negative excursion represents a physical crouch while X/Z remain neutral.
+// The 0.65 m depth exercises the full presentation-IK range without moving
+// the character capsule.
+math::Vec3 synthetic_crouch_position(std::uint64_t frame);
+
 }  // namespace darktidevr::harness

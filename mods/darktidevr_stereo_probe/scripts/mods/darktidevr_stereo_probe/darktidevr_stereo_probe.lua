@@ -310,6 +310,10 @@ local controller_observation = {
     body_ik_shoulder_block_reason = false,
     body_ik_presentation_faulted = false,
     body_ik_presentation_block_reason = nil,
+    body_ik_crouch_offset = 0,
+    body_ik_crouch_last_t = nil,
+    body_ik_crouch_max_foot_error = 0,
+    body_ik_crouch_result = "inactive",
     ik_input = nil,
     ik_output = nil,
     ik_flags = nil
@@ -5163,13 +5167,14 @@ function presentation.scan_named_nodes(label, unit, node_names)
 end
 
 function presentation.scan_body_rig(self, fixed_frame)
-    if controller_observation.body_rig_inventory_done or not fixed_frame or
-            fixed_frame <
-                controller_observation.body_rig_inventory_last_check_frame + 60 or
+    if controller_observation.body_rig_inventory_done or
+            (fixed_frame and fixed_frame <
+                controller_observation.body_rig_inventory_last_check_frame + 60) or
             not Mods or not Mods.lua or not Mods.lua.io then
         return
     end
-    controller_observation.body_rig_inventory_last_check_frame = fixed_frame
+    controller_observation.body_rig_inventory_last_check_frame =
+        fixed_frame or 0
     local flag_path =
         "./../mods/darktidevr_stereo_probe/darktidevr_body_rig_inventory.flag"
     local flag = Mods.lua.io.open(flag_path, "r")
@@ -5202,8 +5207,18 @@ function presentation.scan_body_rig(self, fixed_frame)
         "j_hips_handle", "j_hips", "j_spine", "j_spine1", "j_spine2",
         "j_spine3", "j_neck", "j_head", "j_leftshoulder",
         "j_leftarm", "j_leftupperarm", "j_leftforearm", "j_lefthand",
+        "j_leftarmroll", "j_leftarmroll1", "j_leftarmroll1_dk",
+        "j_leftupperarmroll", "j_leftupperarmroll1",
+        "j_leftupperarmroll1_dk", "j_leftforearmroll",
+        "j_leftforearmroll1", "j_leftforearmroll1_dk",
+        "j_leftforearmroll2", "j_leftforearmroll2_dk",
         "j_left_hand_ik_handle", "j_rightshoulder", "j_rightupperarm",
         "j_rightarm", "j_rightforearm", "j_righthand",
+        "j_rightarmroll", "j_rightarmroll1", "j_rightarmroll1_dk",
+        "j_rightupperarmroll", "j_rightupperarmroll1",
+        "j_rightupperarmroll1_dk", "j_rightforearmroll",
+        "j_rightforearmroll1", "j_rightforearmroll1_dk",
+        "j_rightforearmroll2", "j_rightforearmroll2_dk",
         "j_right_hand_ik_handle",
         "j_leftupleg", "j_leftleg", "j_leftfoot", "j_rightupleg",
         "j_rightleg", "j_rightfoot", "j_left_foot_ik_handle",
@@ -5706,6 +5721,36 @@ function presentation.align_vectors_rotation(from, to)
     return Quaternion.axis_angle(axis / axis_length, math.acos(dot))
 end
 
+-- Extract the signed twist component of the world-space delta from one
+-- orientation to another around a fixed axis. Projecting the delta
+-- quaternion's vector part onto the axis is the standard swing/twist
+-- decomposition and avoids selecting an arbitrary palm basis near a
+-- singular pose.
+function presentation.signed_twist_angle(from, to, axis)
+    local axis_length = Vector3.length(axis)
+    if axis_length < 0.000001 then
+        return nil
+    end
+    local normal = axis / axis_length
+    local delta = Quaternion.multiply(
+        to, presentation.inverse_quaternion(from))
+    local x, y, z, w = Quaternion.to_elements(delta)
+    local sine = x * Vector3.x(normal) + y * Vector3.y(normal) +
+        z * Vector3.z(normal)
+    local length = math.sqrt(sine * sine + w * w)
+    if length < 0.000001 then
+        return nil
+    end
+    local angle = 2 * math.atan2(sine / length, w / length)
+    while angle > math.pi do
+        angle = angle - 2 * math.pi
+    end
+    while angle < -math.pi do
+        angle = angle + 2 * math.pi
+    end
+    return angle
+end
+
 function presentation.quaternion_angle_error(left, right)
     local lx, ly, lz, lw = Quaternion.to_elements(left)
     local rx, ry, rz, rw = Quaternion.to_elements(right)
@@ -5996,6 +6041,11 @@ function presentation.update_body_ik_presentation_gate(fixed_frame)
         controller_observation.body_ik_presentation_block_reason = nil
         controller_observation.body_ik_hand_offsets = {}
         controller_observation.body_ik_hand_anatomy = {}
+        controller_observation.body_ik_twist_state = {}
+        controller_observation.body_ik_crouch_offset = 0
+        controller_observation.body_ik_crouch_last_t = nil
+        controller_observation.body_ik_crouch_max_foot_error = 0
+        controller_observation.body_ik_crouch_result = "inactive"
         mod:info("DARKTIDEVR_IK presentation=%s source=test_flag",
             enabled and "enabled" or "disabled")
     end
@@ -6043,6 +6093,23 @@ function presentation.apply_body_arm_ik(
     local arm_world = Unit.world_rotation(unit, arm_node)
     local forearm_world = Unit.world_rotation(unit, forearm_node)
     local hand_world = Unit.world_rotation(unit, hand_node)
+    local twist_names = side == "left" and {
+        "j_leftforearmroll1", "j_leftforearmroll2"
+    } or {
+        "j_rightforearmroll1", "j_rightforearmroll2"
+    }
+    local twist_records = {}
+    for i = 1, #twist_names do
+        local twist_name = twist_names[i]
+        if Unit.has_node(unit, twist_name) then
+            local twist_node = Unit.node(unit, twist_name)
+            twist_records[twist_name] = {
+                node = twist_node,
+                parent = Unit.scene_graph_parent(unit, twist_node),
+                local_rotation = Unit.local_rotation(unit, twist_node)
+            }
+        end
+    end
     if not controller_observation.body_ik_hand_anatomy[side] then
         local middle_name = side == "left" and
             "j_lefthandmiddle1" or "j_righthandmiddle1"
@@ -6105,9 +6172,6 @@ function presentation.apply_body_arm_ik(
     end
     local solved_forearm_world = Quaternion.multiply(
         forearm_delta, provisional_forearm_world)
-    local solved_forearm_local = Quaternion.multiply(
-        presentation.inverse_quaternion(solved_arm_world),
-        solved_forearm_world)
     -- Convert the measured, pre-write hand anatomy into the tracked controller
     -- frame rather than assuming mirrored bone axes. Touch's grip +Y points
     -- down the physical handle: the live profile measurement places it 150
@@ -6127,6 +6191,71 @@ function presentation.apply_body_arm_ik(
     local solved_hand_world = Quaternion.multiply(
         target_frame,
         presentation.inverse_quaternion(source_frame))
+
+    -- A shortest-arc positional solve leaves lower-arm roll unchanged and
+    -- forces the hand joint to absorb every degree of controller roll. Recover
+    -- that missing axial angle from the calibrated hand basis. Do not put it
+    -- on j_*forearm: that control joint starts at the elbow, so doing so makes
+    -- the entire forearm rigidly follow the wrist and concentrates the visible
+    -- deformation at the elbow. Darktide's human rig supplies the conventional
+    -- sibling twist deformers j_*forearmroll1/2. After the reach solve,
+    -- distribute the wrist twist according to their authored position
+    -- along the elbow-to-wrist segment while leaving the hand effector exact.
+    -- Quaternion swing/twist decomposition separates that axial component
+    -- from wrist flexion/deviation. Unwrap the signed result against the prior
+    -- frame before applying fractional weights; otherwise equivalent +180 and
+    -- -180 degree hand orientations would make the deformers snap by 120
+    -- degrees at the branch cut.
+    local provisional_hand_world = Quaternion.multiply(
+        forearm_delta, Quaternion.multiply(arm_delta, hand_world))
+    local lower_axis = solved_wrist - solved_elbow
+    local roll = presentation.signed_twist_angle(
+        provisional_hand_world, solved_hand_world, lower_axis)
+    controller_observation.body_ik_twist_state =
+        controller_observation.body_ik_twist_state or {}
+    local twist_state = controller_observation.body_ik_twist_state[side]
+    if roll and twist_state then
+        local raw_delta = roll - twist_state.raw
+        -- Normal forearm pronation/supination is roughly 75-95 degrees in
+        -- either direction. Keep a small allowance, then let the exact hand
+        -- joint absorb any impossible excess rather than winding the mesh.
+        local twist_limit = math.pi * 5 / 9
+        if raw_delta > math.pi then
+            raw_delta = raw_delta - 2 * math.pi
+        elseif raw_delta < -math.pi then
+            raw_delta = raw_delta + 2 * math.pi
+        elseif math.abs(raw_delta) > math.pi / 2 then
+            -- A tracked wrist cannot rotate 90 degrees in one render frame.
+            -- Treat this as a new controller/session/diagnostic phase rather
+            -- than carrying the prior phase's accumulated revolution.
+            twist_state.continuous = math.max(-twist_limit,
+                math.min(twist_limit, roll))
+            raw_delta = 0
+        end
+        twist_state.continuous = math.max(-twist_limit,
+            math.min(twist_limit, twist_state.continuous + raw_delta))
+        twist_state.raw = roll
+        roll = twist_state.continuous
+    elseif roll then
+        twist_state = {
+            raw = roll,
+            continuous = math.max(-math.pi * 5 / 9,
+                math.min(math.pi * 5 / 9, roll))
+        }
+        controller_observation.body_ik_twist_state[side] = twist_state
+        roll = twist_state.continuous
+    end
+    local roll_source = "swing_twist"
+    if side == "left" then
+        controller_observation.body_ik_left_forearm_roll = roll or 0
+        controller_observation.body_ik_left_roll_source = roll_source
+    else
+        controller_observation.body_ik_right_forearm_roll = roll or 0
+        controller_observation.body_ik_right_roll_source = roll_source
+    end
+    local solved_forearm_local = Quaternion.multiply(
+        presentation.inverse_quaternion(solved_arm_world),
+        solved_forearm_world)
     local solved_hand_local = Quaternion.multiply(
         presentation.inverse_quaternion(solved_forearm_world),
         solved_hand_world)
@@ -6134,11 +6263,234 @@ function presentation.apply_body_arm_ik(
     Unit.set_local_rotation(unit, forearm_node, solved_forearm_local)
     Unit.set_local_rotation(unit, hand_node, solved_hand_local)
     World.update_unit_and_children(world, unit)
+
+    local lower_length_squared = Vector3.dot(lower_axis, lower_axis)
+    local twist_fractions = {}
+    local twist_written = 0
+    if roll and lower_length_squared > 0.000001 then
+        local lower_unit_axis = lower_axis /
+            math.sqrt(lower_length_squared)
+        for i = 1, #twist_names do
+            local twist_name = twist_names[i]
+            local twist_record = twist_records[twist_name]
+            if twist_record then
+                local twist_node = twist_record.node
+                local twist_parent = twist_record.parent
+                if twist_parent == forearm_node then
+                    local authored_position = Unit.world_position(
+                        unit, twist_node)
+                    local fraction = Vector3.dot(
+                        authored_position - solved_elbow, lower_axis) /
+                        lower_length_squared
+                    fraction = math.max(0, math.min(1, fraction))
+                    local inherited_world = Quaternion.multiply(
+                        Unit.world_rotation(unit, twist_parent),
+                        twist_record.local_rotation)
+                    local corrected_world = Quaternion.multiply(
+                        Quaternion.axis_angle(
+                            lower_unit_axis, roll * fraction),
+                        inherited_world)
+                    local corrected_local = Quaternion.multiply(
+                        presentation.inverse_quaternion(
+                            Unit.world_rotation(unit, twist_parent)),
+                        corrected_world)
+                    Unit.set_local_rotation(
+                        unit, twist_node, corrected_local)
+                    twist_fractions[#twist_fractions + 1] =
+                        string.format("%s:%.3f", twist_name, fraction)
+                    twist_written = twist_written + 1
+                else
+                    twist_fractions[#twist_fractions + 1] =
+                        string.format(
+                            "%s:parent_%s", twist_name,
+                            tostring(twist_parent))
+                end
+            else
+                twist_fractions[#twist_fractions + 1] =
+                    twist_name .. ":missing"
+            end
+        end
+        if twist_written > 0 then
+            World.update_unit_and_children(world, unit)
+        end
+    end
+    if side == "left" then
+        controller_observation.body_ik_left_twist_chain =
+            table.concat(twist_fractions, ",")
+        controller_observation.body_ik_left_twist_writes = twist_written
+    else
+        controller_observation.body_ik_right_twist_chain =
+            table.concat(twist_fractions, ",")
+        controller_observation.body_ik_right_twist_writes = twist_written
+    end
     return true, "written",
         presentation.vector_distance(
             Unit.world_position(unit, hand_node), solved_wrist),
         presentation.quaternion_angle_error(
             Unit.world_rotation(unit, hand_node), solved_hand_world)
+end
+
+function presentation.solve_body_leg(
+        world, unit, side, target_ankle, target_foot_rotation)
+    local upper_name = side == "left" and
+        "j_leftupleg" or "j_rightupleg"
+    local lower_name = side == "left" and "j_leftleg" or "j_rightleg"
+    local foot_name = side == "left" and "j_leftfoot" or "j_rightfoot"
+    if not Unit.has_node(unit, upper_name) or
+            not Unit.has_node(unit, lower_name) or
+            not Unit.has_node(unit, foot_name) then
+        return false, "nodes_missing", 0
+    end
+    local upper = Unit.node(unit, upper_name)
+    local lower = Unit.node(unit, lower_name)
+    local foot = Unit.node(unit, foot_name)
+    local upper_parent = Unit.scene_graph_parent(unit, upper)
+    if upper_parent == nil or Unit.scene_graph_parent(unit, lower) ~= upper or
+            Unit.scene_graph_parent(unit, foot) ~= lower then
+        return false, "hierarchy_mismatch", 0
+    end
+    local hip = Unit.world_position(unit, upper)
+    local knee = Unit.world_position(unit, lower)
+    local ankle = Unit.world_position(unit, foot)
+    local upper_world = Unit.world_rotation(unit, upper)
+    local lower_world = Unit.world_rotation(unit, lower)
+    local input = controller_observation.ik_input
+    local output = controller_observation.ik_output
+    local flags = controller_observation.ik_flags
+    local reach = ankle - hip
+    local bend = knee - hip
+    input[0], input[1], input[2] =
+        Vector3.x(hip), Vector3.y(hip), Vector3.z(hip)
+    input[3], input[4], input[5] =
+        Vector3.x(target_ankle), Vector3.y(target_ankle),
+        Vector3.z(target_ankle)
+    input[6], input[7], input[8] =
+        Vector3.x(knee), Vector3.y(knee), Vector3.z(knee)
+    input[9], input[10], input[11] =
+        Vector3.x(reach), Vector3.y(reach), Vector3.z(reach)
+    input[12], input[13], input[14] =
+        Vector3.x(bend), Vector3.y(bend), Vector3.z(bend)
+    input[15], input[16] =
+        presentation.vector_distance(hip, knee),
+        presentation.vector_distance(knee, ankle)
+    local native_result = ui_native_capture.dtvr_solve_two_bone_ik(
+        input, 17, output, 14, flags)
+    if native_result ~= 0 then
+        return false, "native_" .. tostring(native_result), 0
+    end
+    local solved_knee = Vector3(output[0], output[1], output[2])
+    local solved_ankle = Vector3(output[3], output[4], output[5])
+    local upper_delta = presentation.align_vectors_rotation(
+        knee - hip, solved_knee - hip)
+    if not upper_delta then
+        return false, "upper_alignment_invalid", 0
+    end
+    local solved_upper_world = Quaternion.multiply(upper_delta, upper_world)
+    local provisional_lower_world = Quaternion.multiply(
+        upper_delta, lower_world)
+    local lower_delta = presentation.align_vectors_rotation(
+        presentation.rotate_vector(upper_delta, ankle - knee),
+        solved_ankle - solved_knee)
+    if not lower_delta then
+        return false, "lower_alignment_invalid", 0
+    end
+    local solved_lower_world = Quaternion.multiply(
+        lower_delta, provisional_lower_world)
+    Unit.set_local_rotation(unit, upper, Quaternion.multiply(
+        presentation.inverse_quaternion(
+            Unit.world_rotation(unit, upper_parent)),
+        solved_upper_world))
+    Unit.set_local_rotation(unit, lower, Quaternion.multiply(
+        presentation.inverse_quaternion(solved_upper_world),
+        solved_lower_world))
+    Unit.set_local_rotation(unit, foot, Quaternion.multiply(
+        presentation.inverse_quaternion(solved_lower_world),
+        target_foot_rotation))
+    World.update_unit_and_children(world, unit)
+    return true, "written", presentation.vector_distance(
+        Unit.world_position(unit, foot), solved_ankle)
+end
+
+-- Preserve exact headset translation while allowing the visible avatar to
+-- follow a physical crouch. The gameplay root/capsule remains authoritative;
+-- only the animated pelvis is lowered. Both legs are solved back to their
+-- pre-write ankle positions, planting the feet instead of pushing them through
+-- the floor. A small standing dead zone rejects tracking noise, while partial
+-- follow leaves room for natural neck/spine compression.
+function presentation.apply_body_crouch(world, unit)
+    local raw_vertical = head_pose_values and
+        tonumber(head_pose_values[1]) or 0
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    local scale = local_player and
+        local_player:archetype_name() == "ogryn" and 1.61 / 1.21 or 1
+    -- Keep about 5 cm of relative descent for natural neck/spine compression;
+    -- the remainder follows the tracked head rather than letting the camera
+    -- sink into the chest. The 60 cm cap remains inside the measured human
+    -- leg-chain reach and permits a deep physical crouch.
+    local requested = math.min(0.60, math.max(0,
+        -raw_vertical * scale - 0.05))
+    local now = Managers and Managers.time and Managers.time:time("main") or 0
+    local last_t = controller_observation.body_ik_crouch_last_t or now
+    local dt = math.clamp(now - last_t, 0, 0.1)
+    local current = controller_observation.body_ik_crouch_offset or 0
+    current = current + (requested - current) *
+        (1 - math.exp(-12 * dt))
+    if current < 0.0001 and requested == 0 then
+        current = 0
+    end
+    controller_observation.body_ik_crouch_offset = current
+    controller_observation.body_ik_crouch_last_t = now
+    if current == 0 then
+        controller_observation.body_ik_crouch_result = "standing"
+        return true, "standing", 0
+    end
+    if not Unit.has_node(unit, "j_hips") then
+        return false, "hips_missing", 0
+    end
+    local hips = Unit.node(unit, "j_hips")
+    local hips_parent = Unit.scene_graph_parent(unit, hips)
+    if hips_parent == nil then
+        return false, "hips_parent_missing", 0
+    end
+    local targets = {}
+    for _, side in ipairs({ "left", "right" }) do
+        local foot_name = side == "left" and
+            "j_leftfoot" or "j_rightfoot"
+        if not Unit.has_node(unit, foot_name) then
+            return false, side .. "_foot_missing", 0
+        end
+        local foot = Unit.node(unit, foot_name)
+        targets[side] = {
+            position = Vector3Box(Unit.world_position(unit, foot)),
+            rotation = QuaternionBox(Unit.world_rotation(unit, foot))
+        }
+    end
+    local local_drop = presentation.rotate_vector(
+        presentation.inverse_quaternion(
+            Unit.world_rotation(unit, hips_parent)),
+        Vector3.up() * -current)
+    Unit.set_local_position(
+        unit, hips, Unit.local_position(unit, hips) + local_drop)
+    World.update_unit_and_children(world, unit)
+    local max_error = 0
+    for _, side in ipairs({ "left", "right" }) do
+        local target = targets[side]
+        local ok, reason, error_metres = presentation.solve_body_leg(
+            world, unit, side, target.position:unbox(),
+            target.rotation:unbox())
+        if not ok then
+            controller_observation.body_ik_crouch_result =
+                side .. "_" .. tostring(reason)
+            return false, controller_observation.body_ik_crouch_result,
+                max_error
+        end
+        max_error = math.max(max_error, error_metres or 0)
+    end
+    controller_observation.body_ik_crouch_max_foot_error = math.max(
+        controller_observation.body_ik_crouch_max_foot_error, max_error)
+    controller_observation.body_ik_crouch_result = "written"
+    return true, "written", max_error
 end
 
 -- Render-only body heading: the HMD drives the torso, while controller pitch,
@@ -6516,6 +6868,10 @@ function presentation.apply_body_ik(unit, sequence, world)
             not world and "world_unavailable" or "unit_unavailable"
         return
     end
+    -- The animation-extension fixed-update signature is not stable across all
+    -- game builds. Run the one-shot rig inventory from this proven player-unit
+    -- path too, so a nil/moved fixed-frame argument cannot hide skeleton data.
+    presentation.scan_body_rig({ _unit = unit }, nil)
     local emit_spine_trace = update_frame >=
         controller_observation.body_ik_spine_trace_frame + 60
     if emit_spine_trace then
@@ -6523,6 +6879,13 @@ function presentation.apply_body_ik(unit, sequence, world)
         presentation.log_body_spine_chain(unit, "before")
     end
     presentation.apply_body_heading(world, unit)
+    local crouch_ok, crouch_result, crouch_error =
+        presentation.apply_body_crouch(world, unit)
+    if not crouch_ok then
+        controller_observation.body_ik_presentation_block_reason =
+            "crouch_" .. tostring(crouch_result)
+        return
+    end
     local torso_aligned, torso_result =
         presentation.align_body_torso_neutral(world, unit)
     controller_observation.body_ik_torso_residual =
@@ -6612,12 +6975,26 @@ function presentation.apply_body_ik(unit, sequence, world)
         controller_observation.body_ik_presentation_last_log_frame =
             update_frame
         mod:info(
-            "DARKTIDEVR_IK presentation_writes=%d post_error_m=%.6f max_post_error_m=%.6f angle_error_rad=%.6f max_angle_error_rad=%.6f sequence=%d",
+            "DARKTIDEVR_IK presentation_writes=%d post_error_m=%.6f max_post_error_m=%.6f angle_error_rad=%.6f max_angle_error_rad=%.6f forearm_roll_deg=%.2f,%.2f roll_source=%s,%s twist_writes=%s,%s twist_chain=%s|%s crouch_m=%.4f crouch_result=%s crouch_foot_error_m=%.6f max_crouch_foot_error_m=%.6f sequence=%d",
             controller_observation.body_ik_presentation_writes,
             max_error,
             controller_observation.body_ik_presentation_max_error,
             max_angle_error,
             controller_observation.body_ik_presentation_max_angle_error,
+            (controller_observation.body_ik_left_forearm_roll or 0) *
+                180 / math.pi,
+            (controller_observation.body_ik_right_forearm_roll or 0) *
+                180 / math.pi,
+            tostring(controller_observation.body_ik_left_roll_source),
+            tostring(controller_observation.body_ik_right_roll_source),
+            tostring(controller_observation.body_ik_left_twist_writes or 0),
+            tostring(controller_observation.body_ik_right_twist_writes or 0),
+            tostring(controller_observation.body_ik_left_twist_chain),
+            tostring(controller_observation.body_ik_right_twist_chain),
+            controller_observation.body_ik_crouch_offset or 0,
+            tostring(crouch_result),
+            crouch_error or 0,
+            controller_observation.body_ik_crouch_max_foot_error or 0,
             sequence or controller_observation.last_sequence)
         if left_target and left_rotation then
             presentation.log_body_hand_basis(
