@@ -55,6 +55,62 @@ git diff --check
 ```
 
 Result: all three scripts parse, the native helper live test passed, and the
-working-tree diff contains no whitespace errors. A full VDXR session was not
-needed for this launcher-only gate; the established wrapper still starts the
-XR harness as soon as the confirmed Darktide process appears.
+working-tree diff contains no whitespace errors.
+
+The first complete wrapper run exposed one additional Windows foreground-lock
+case: a background PowerShell process could not foreground the WPF launcher
+with `SetForegroundWindow` alone. The helper now temporarily attaches its input
+thread to the current foreground and launcher UI threads, restores and raises
+the verified launcher window, then fails closed unless that exact window has
+actually become foreground. It detaches both input queues before clicking.
+This is the standard Win32 foreground-activation sequence and does not weaken
+the launcher's path, title, geometry, single-instance, or PID guards.
+
+The subsequent end-to-end wrapper test passed. Steam opened the authenticated
+Fatshark launcher, the helper activated and clicked Play, Darktide entered
+`StateTitle` and then `StateGameplay: hub_ship`, the stereo mod logged
+`DARKTIDEVR_STEREO active` and `native_capture publishing`, and the XR harness
+attached the shared-eye resources with increasing nonzero `shared_ready` and
+fresh paired frames. This validates the self-service authenticated XR launch
+path rather than only the isolated Play helper.
+
+Additional validation commands:
+
+```powershell
+.\tools\stereo\test-darktide-lua-source.ps1
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 28800 `
+    -EnableMenuInput -AutoEnterHub -DoNotOpenLauncher `
+    -SkipDeploymentSync
+```
+
+Result: Lua source guard passed at 198/198 file-scope locals; the revised
+launcher helper parsed; the authenticated wrapper reached live stereo in the
+hub with nonzero `shared_ready`.
+
+## Upper-limb IK industry comparison
+
+The current architecture follows the usual tracked-avatar layering: preserve
+the authored animation pose, treat head and hands as independent tracked
+effectors, solve each arm as a two-bone chain, apply exact wrist transforms,
+distribute axial wrist rotation over the rig's authored forearm twist bones,
+and add bounded shoulder-girdle/clavicle contribution only near full reach.
+Equal bilateral reach requests oppose and cancel at the girdle, while either
+arm can independently request yaw and a small amount of clavicle protraction.
+
+This is close to production practice in structure, but the shoulder layer is
+not yet equivalent to a production full-body IK solver. It currently derives a
+reach scalar from a hardcoded 94% arm-length threshold, rotates `j_spine2`
+directly, and caps independent clavicle translation at 2 cm. A mature solver
+would distribute competing hand effectors through a calibrated constrained
+spine/shoulder chain using per-bone stiffness, anatomical rotation limits and
+preferred bend angles. Darktide's heterogeneous character proportions also
+make the planned T-pose/arms-down calibration important rather than optional.
+
+The next production-quality refinement is therefore not another arbitrary
+offset pass. It is a rig-specific constrained distribution layer: retain the
+existing exact hand and twist behavior, derive per-avatar limb lengths from
+calibration, give spine/chest/clavicle bones explicit stiffness and limits, and
+validate unilateral, bilateral, crossed, overhead and tracking-reacquisition
+paths. The current solution is an appropriate staged approximation for the
+engine-access constraints, provided worn validation confirms its cancellation
+and reach behavior.

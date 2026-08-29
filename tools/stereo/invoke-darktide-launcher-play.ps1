@@ -48,6 +48,26 @@ public static class DarktideVrLauncherInput
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr window);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(
+        IntPtr window, out uint processId);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(
+        uint attach, uint attachTo, bool value);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindowAsync(IntPtr window, int command);
+
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr window);
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool ClientToScreen(IntPtr window, ref Point point);
 
@@ -90,12 +110,38 @@ public static class DarktideVrLauncherInput
         }
         try
         {
-            if (!SetForegroundWindow(window))
+            var foreground = GetForegroundWindow();
+            var currentThread = GetCurrentThreadId();
+            uint ignored;
+            var foregroundThread = foreground == IntPtr.Zero
+                ? 0 : GetWindowThreadProcessId(foreground, out ignored);
+            var targetThread = GetWindowThreadProcessId(window, out ignored);
+            var attachedForeground = foregroundThread != 0 &&
+                foregroundThread != currentThread &&
+                AttachThreadInput(currentThread, foregroundThread, true);
+            var attachedTarget = targetThread != 0 &&
+                targetThread != currentThread &&
+                targetThread != foregroundThread &&
+                AttachThreadInput(currentThread, targetThread, true);
+            try
+            {
+                ShowWindowAsync(window, 9); // SW_RESTORE
+                BringWindowToTop(window);
+                SetForegroundWindow(window);
+            }
+            finally
+            {
+                if (attachedTarget)
+                    AttachThreadInput(currentThread, targetThread, false);
+                if (attachedForeground)
+                    AttachThreadInput(currentThread, foregroundThread, false);
+            }
+            System.Threading.Thread.Sleep(50);
+            if (GetForegroundWindow() != window)
             {
                 throw new InvalidOperationException(
                     "Could not foreground the Fatshark launcher");
             }
-            System.Threading.Thread.Sleep(50);
             if (!SetCursorPos(target.X, target.Y))
             {
                 throw new System.ComponentModel.Win32Exception(
