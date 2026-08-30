@@ -117,3 +117,45 @@ cylindrically billboarded. The user's latest recollection is that those
 particles remained spherical. Treat prior acceptance wording as stale and
 re-run the worn/native particle gate only when billboard work is reached in the
 explicit priority order.
+
+## Exact per-eye visual-parity diagnosis
+
+The XR harness now supports an on-demand, synchronized readback of the two
+completed shared-eye resources. Creating
+`%TEMP%\darktidevr-shared-eye-readback.request` writes left and right PPMs only
+after the pair-copy command list and its fence complete. This avoids the
+producer race and desktop-mirror ambiguity of earlier screenshots. Shared-eye
+submission also now fails closed while `shared_ready` is zero; this fixes a
+live startup crash in which newly opened but unpublished resources supplied an
+uninitialized pose to quaternion processing.
+
+`set-coincident-eye-probe.ps1` provides an exact gameplay comparison mode. It
+coincides both eye positions and both optical/frustum rotations; coinciding
+position alone was insufficient because the runtime supplies asymmetric
+per-eye optical rotations. At 2496x2688, the production prepared-second-eye
+path measured 8.0127% changed pixels above an RGB threshold of 2, MAE 0.8554,
+PSNR 34.5915 dB and affine edge correlation 0.97714. Repeating the capture with
+the complete second `ScriptWorld.render` wrapper measured 8.0049%, MAE 0.8597,
+PSNR 34.5431 dB and edge correlation 0.97594. The signed channel errors were
+also effectively identical. Amplified differences cluster around bright and
+specular lighting, fine edges, particles and local illumination. The optimized
+Lua preparation boundary is therefore falsified as the cause of the remaining
+binocular mismatch.
+
+Resetting DLSS before each eye made the result worse (8.6221% changed pixels,
+MAE 0.8973, edge correlation 0.96963) and reduced fresh-pair throughput from
+roughly 52-56 to 43-46 pairs/s, so that experiment was rejected and reverted.
+A proper no-DLSS run reached exact stereo rendering but the native completed-
+output discovery never promoted the negotiated full-eye surfaces without its
+format-28 intermediate. That is a diagnostic boundary failure, not evidence
+about no-upscaler parity. Repair that discovery before attempting the no-DLSS
+A/B again.
+
+Runtime flags and the user graphics configuration were restored after the
+tests: coincident eyes and the full second wrapper are disabled, per-eye DLSS
+reset is false, and the backed-up DLSS/frame-generation/upscaling settings are
+active. Captures and amplified diffs are retained under
+`artifacts/unattended/visual-parity-coincident-2026-08-31/` (ignored by Git).
+The next evidence boundary is native per-submission render identity: attribute
+command lists and their shadow/light/culling resources to the completed left
+or right output instead of relying on the current `eye=-1` trace records.

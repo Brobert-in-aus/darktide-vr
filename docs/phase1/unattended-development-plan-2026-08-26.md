@@ -956,6 +956,15 @@ validation; robustness/release; and deferred refinements. Evidence-gathering
 inside a higher-priority item may prepare a later item but must not silently
 reorder these feature gates.
 
+The per-eye visual-parity item is now at the native attribution boundary. An
+exact coincident-position-and-frustum synchronized readback found effectively
+the same residual with the optimized prepared second eye and a complete second
+`ScriptWorld.render` wrapper (about 8.01% changed pixels, PSNR about 34.6 dB).
+Per-eye DLSS resets worsened parity and throughput. Do not revisit global Lua
+LOD policy or wrapper-level guesses; tag the command lists and shadow/light/
+culling resources that feed each completed eye. A no-DLSS A/B must wait until
+native completed-output discovery works without the format-28 intermediate.
+
 1. **Quantitative performance foundation completed; resource ownership next:**
    the opt-in profiler now reports true wrapper p50/p95 and per-eye GPU interval
    p50/p95. A warmed stationary hub run measured a 26.998 ms median summed-eye

@@ -925,6 +925,21 @@ simple distance-to-eye LOD is ruled out. Correlate the asymmetry with render
 submission identity, shadow-caster culling, cascade selection and retained
 per-eye shadow state alongside the broader visibility/LOD probe.
 
+The 31 August exact-pose A/B narrows this further. The bridge captured both
+completed shared-eye resources from one synchronized pair after its copy fence,
+while the gameplay cameras shared position and optical/frustum rotation. The
+prepared second-eye path and the complete second `ScriptWorld.render` wrapper
+were statistically indistinguishable: respectively 8.0127% and 8.0049% of
+pixels changed above RGB threshold 2, with PSNR 34.5915 and 34.5431 dB. Their
+amplified residuals concentrate in bright/specular illumination, particles and
+fine edges. Reused Lua preparation and the skipped second wrapper are therefore
+not the cause. Resetting DLSS per eye worsened parity and throughput and is
+rejected. A no-DLSS comparison remains blocked by completed-output discovery,
+which currently depends on the format-28 intermediate. Next attribute native
+command lists, culling/shadow resources and temporal/pass identity to the
+actual completed left/right outputs; do not change global LOD policy from this
+evidence.
+
 ### Next session order
 
 1. Present the now-complete transparent Escape capture on the vertical
@@ -1259,6 +1274,10 @@ Continue in this order:
    controller laser presentation after the UI gates.
 5. Investigate per-eye LOD divergence, edge light culling and render-identity-
    locked enemy-shadow asymmetry with separate evidence for each boundary.
+   Exact coincident-eye capture has ruled out the optimized Lua second-eye
+   wrapper boundary. Add completed-output-based native submission attribution,
+   then correlate asymmetric light/shadow/culling resources. Repair no-DLSS
+   completed-output discovery before using upscaler-off parity as evidence.
 6. Attribute and remove duplicated render work before attempting evidence-based
    pooling, multiview, view instancing or safe queue parallelism.
 7. Finish locomotion and controls: configurable head/hand-relative movement,

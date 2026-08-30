@@ -1071,6 +1071,15 @@ class OpenXrProbe {
         std::filesystem::temp_directory_path() /
         "darktidevr-menu-readback.request";
     auto next_menu_readback_request_poll = start;
+    std::array<ComPtr<ID3D12Resource>, 2> shared_eye_readbacks;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT shared_eye_readback_footprint{};
+    std::uint64_t shared_eye_readback_total_bytes{};
+    bool shared_eye_readback_requested{};
+    bool shared_eye_readback_copied_this_frame{};
+    const auto shared_eye_readback_request_path =
+        std::filesystem::temp_directory_path() /
+        "darktidevr-shared-eye-readback.request";
+    auto next_shared_eye_readback_request_poll = start;
 
     for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
       if (duration && std::chrono::steady_clock::now() - start >= *duration) {
@@ -1092,6 +1101,19 @@ class OpenXrProbe {
           std::cout << "openxr.shared_menu_readback=requested\n";
         } else if (request_error) {
           std::cerr << "warning: menu readback request poll failed: "
+                    << request_error.message() << '\n';
+        }
+      }
+      if (frame_start >= next_shared_eye_readback_request_poll) {
+        next_shared_eye_readback_request_poll =
+            frame_start + std::chrono::milliseconds(250);
+        std::error_code request_error;
+        if (std::filesystem::remove(shared_eye_readback_request_path,
+                                    request_error)) {
+          shared_eye_readback_requested = true;
+          std::cout << "openxr.shared_eye_readback=requested\n";
+        } else if (request_error) {
+          std::cerr << "warning: shared-eye readback request poll failed: "
                     << request_error.message() << '\n';
         }
       }
@@ -1173,6 +1195,29 @@ class OpenXrProbe {
             throw std::runtime_error("Shared eye fence generation is poisoned");
           }
           opened_eyes = std::move(candidate_eyes);
+          const auto eye_description = opened_eyes->eyes[0]->GetDesc();
+          UINT eye_rows{};
+          UINT64 eye_row_bytes{};
+          device->GetCopyableFootprints(
+              &eye_description, 0, 1, 0, &shared_eye_readback_footprint,
+              &eye_rows, &eye_row_bytes, &shared_eye_readback_total_bytes);
+          D3D12_HEAP_PROPERTIES readback_heap{};
+          readback_heap.Type = D3D12_HEAP_TYPE_READBACK;
+          D3D12_RESOURCE_DESC readback_description{};
+          readback_description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+          readback_description.Width = shared_eye_readback_total_bytes;
+          readback_description.Height = 1;
+          readback_description.DepthOrArraySize = 1;
+          readback_description.MipLevels = 1;
+          readback_description.SampleDesc.Count = 1;
+          readback_description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+          for (auto& readback : shared_eye_readbacks) {
+            check(device->CreateCommittedResource(
+                      &readback_heap, D3D12_HEAP_FLAG_NONE,
+                      &readback_description, D3D12_RESOURCE_STATE_COPY_DEST,
+                      nullptr, IID_PPV_ARGS(&readback)),
+                  "ID3D12Device::CreateCommittedResource(shared-eye readback)");
+          }
           shared_last_advance = frame_start;
           if (shared_last_ready_value != 0) {
             // A pair published before attachment has no bridge-side pose
@@ -1501,6 +1546,7 @@ class OpenXrProbe {
       bool submitted_cached_pair_this_frame{};
       bool submitted_flat_fallback_this_frame{};
       bool menu_readback_copied_this_frame{};
+      shared_eye_readback_copied_this_frame = false;
       if (submit_layer) {
         XrSwapchainImageAcquireInfo acquire_info{
             XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
@@ -1633,7 +1679,7 @@ class OpenXrProbe {
              rendered_pair_gameplay_generation ==
                  committed_gameplay_generation);
         const bool use_shared_pair =
-            projection_active && opened_eyes &&
+            projection_active && opened_eyes && shared_ready_for_frame != 0 &&
             (!window_capture ||
              (shared_pair_fresh && shared_pair_pose_synced &&
               projection_pair_settled));
@@ -1900,6 +1946,19 @@ class OpenXrProbe {
                 D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
             command_list->CopyTextureRegion(&cached_destination, 0, 0, 0,
                                             &source, nullptr);
+            if (shared_eye_readback_requested &&
+                shared_eye_readbacks[eye]) {
+              D3D12_TEXTURE_COPY_LOCATION readback_destination{};
+              readback_destination.pResource =
+                  shared_eye_readbacks[eye].Get();
+              readback_destination.Type =
+                  D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+              readback_destination.PlacedFootprint =
+                  shared_eye_readback_footprint;
+              command_list->CopyTextureRegion(&readback_destination, 0, 0, 0,
+                                              &source, nullptr);
+              shared_eye_readback_copied_this_frame = true;
+            }
             std::swap(eye_barrier.Transition.StateBefore,
                       eye_barrier.Transition.StateAfter);
             command_list->ResourceBarrier(1, &eye_barrier);
@@ -2012,6 +2071,54 @@ class OpenXrProbe {
           check(fence->SetEventOnCompletion(signal_value, fence_event),
                 "ID3D12Fence::SetEventOnCompletion(theatre)");
           WaitForSingleObject(fence_event, INFINITE);
+        }
+        if (shared_eye_readback_copied_this_frame) {
+          const auto eye_description = opened_eyes->eyes[0]->GetDesc();
+          const std::array<const char*, 2> labels{"left", "right"};
+          for (std::size_t eye = 0; eye < shared_eye_readbacks.size(); ++eye) {
+            void* mapped_pixels{};
+            D3D12_RANGE read_range{0, shared_eye_readback_total_bytes};
+            check(shared_eye_readbacks[eye]->Map(
+                      0, &read_range, &mapped_pixels),
+                  "ID3D12Resource::Map(shared-eye readback)");
+            const auto diagnostic_path =
+                std::filesystem::temp_directory_path() /
+                (std::string("darktidevr-shared-eye-") + labels[eye] +
+                 ".ppm");
+            std::ofstream diagnostic(diagnostic_path, std::ios::binary);
+            if (!diagnostic) {
+              shared_eye_readbacks[eye]->Unmap(0, nullptr);
+              throw std::runtime_error(
+                  "Could not open shared-eye readback output");
+            }
+            diagnostic << "P6\n" << eye_description.Width << ' '
+                       << eye_description.Height << "\n255\n";
+            const auto* pixels =
+                static_cast<const std::uint8_t*>(mapped_pixels);
+            std::vector<std::uint8_t> row(
+                static_cast<std::size_t>(eye_description.Width) * 3);
+            for (std::uint32_t y = 0; y < eye_description.Height; ++y) {
+              const auto* source_row = pixels +
+                  static_cast<std::size_t>(y) *
+                      shared_eye_readback_footprint.Footprint.RowPitch;
+              for (std::uint32_t x = 0; x < eye_description.Width; ++x) {
+                const auto* source =
+                    source_row + static_cast<std::size_t>(x) * 4;
+                auto* destination = row.data() +
+                    static_cast<std::size_t>(x) * 3;
+                destination[0] = source[0];
+                destination[1] = source[1];
+                destination[2] = source[2];
+              }
+              diagnostic.write(
+                  reinterpret_cast<const char*>(row.data()),
+                  static_cast<std::streamsize>(row.size()));
+            }
+            shared_eye_readbacks[eye]->Unmap(0, nullptr);
+            std::cout << "openxr.shared_eye_readback="
+                      << diagnostic_path.string() << '\n';
+          }
+          shared_eye_readback_requested = false;
         }
         if (menu_readback_copied_this_frame && !menu_readback_logged &&
             ++menu_readback_copies >= 5) {

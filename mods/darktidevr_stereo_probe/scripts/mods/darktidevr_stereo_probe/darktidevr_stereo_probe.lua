@@ -433,6 +433,7 @@ local presentation = {
     full_second_eye_probe_requested = false,
     full_second_eye_probe_check_frame = 0,
     full_second_eye_probe_last_check_frame = -math.huge,
+    coincident_eye_probe_requested = false,
     head_translation_trace_requested = true,
     head_translation_trace_last_sequence = 0,
     head_translation_trace_interval = 600,
@@ -4570,6 +4571,21 @@ function presentation.body_camera_anchor(unit)
             return head_position + Vector3.up() * 0.05,
                 "first_person_fallback", left_eye, right_eye, captured
         end
+        local coincident_flag = Mods.lua.io.open(
+            "./../mods/darktidevr_stereo_probe/darktidevr_coincident_eyes.flag",
+            "r")
+        local coincident_enabled = false
+        if coincident_flag then
+            coincident_enabled = coincident_flag:read("*all"):match(
+                "^%s*enabled%s*$") ~= nil
+            coincident_flag:close()
+        end
+        if coincident_enabled ~= presentation.coincident_eye_probe_requested then
+            presentation.coincident_eye_probe_requested = coincident_enabled
+            mod:info(
+                "DARKTIDEVR_STEREO coincident_eyes=%s source=test_flag",
+                tostring(coincident_enabled))
+        end
         local basis = active_base_rotation:unbox()
         local local_offset = presentation.rotate_vector(
             presentation.inverse_quaternion(basis),
@@ -4769,10 +4785,15 @@ local function update_stereo(manager)
             Camera.set_vertical_fov(right_camera, head_render_vertical_fov)
         end
     end
+    if presentation.coincident_eye_probe_requested then
+        right_optical_rotation = left_optical_rotation
+    end
 
+    local effective_half_ipd =
+        presentation.coincident_eye_probe_requested and 0 or half_ipd
     ScriptCamera.set_local_position(
         primary_camera,
-        clean_position - eye_axis * half_ipd
+        clean_position - eye_axis * effective_half_ipd
     )
     ScriptCamera.set_local_rotation(
         primary_camera,
@@ -4782,7 +4803,7 @@ local function update_stereo(manager)
     )
     ScriptCamera.set_local_position(
         right_camera,
-        clean_position + eye_axis * half_ipd
+        clean_position + eye_axis * effective_half_ipd
     )
     ScriptCamera.set_local_rotation(
         right_camera,
