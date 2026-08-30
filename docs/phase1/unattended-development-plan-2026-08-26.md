@@ -1007,9 +1007,15 @@ reorder these feature gates.
    resume evidence; retain worn laser-alignment and nested interaction as its
    user gate. The remaining brief post-shop mono flash is
    deferred transition-quality polish.
-7. Complete HUD/UI presentation and input coverage after shop menus.
+7. Complete HUD/UI presentation and input coverage after shop menus. The
+   immediate widget-pass replay now has live target-population evidence while
+   retaining one stock update/event owner; perform worn depth, parity and
+   coverage validation before making it production-default.
 8. Continue first-person ranged aim, binocular crosshair/reticle policy and
-   optional controller laser presentation after the UI gates.
+   optional controller laser presentation after the UI gates. Firearm shots now
+   have a source-derived third-person muzzle origin with a stock-origin fallback.
+   Validate it with a firearm/projectile loadout; the unattended Psyker loadout
+   is a chain-lightning action and establishes a separate targeting-module task.
 9. Continue the stable-mirror performance pass, then resume independent backlog
    items when a renderer/user-feedback gate blocks. Use
    `start-darktide-vr.ps1 -AutoEnterHub` for unattended hub entry; its Space and
@@ -1042,6 +1048,7 @@ decoupling weapon direction from the HMD camera. Remaining gates are a real
 ranged shot, projectile-action coverage, muzzle/origin occlusion policy, and
 binocular reticle or optional laser presentation.
 
-The fixed-HUD interception experiment is blocked on retained widget ownership,
-not texture transport. Keep its prototype disabled and resume only with a
-widget rebuild or newly evidenced retained-renderer seam.
+The fixed-HUD interception experiment is no longer blocked on retained widget
+ownership. Immediate replay of each fixed widget pass populated the live target
+while preserving the stock update/event owner. Keep it default-off until worn
+depth, parity, comfort and coverage validation accepts the presentation.

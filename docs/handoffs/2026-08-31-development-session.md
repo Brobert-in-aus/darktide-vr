@@ -61,3 +61,43 @@ The Premium Store landing-to-detail transition and Escape-to-Options path both
 completed without script errors or pose-pair mismatches. The validated Escape
 run reached `shared_ready=5850`; back-navigation restored continuously advancing
 fresh pairs.
+
+## Fixed HUD target population
+
+Source inspection of `UIWidget` identified why the earlier fixed-HUD resource
+target stayed empty. Setting only UIHud's element retained lookup to false did
+not change the retained mode stored on each widget pass, and an existing
+retained ID caused the draw to short-circuit before the offscreen pass. The
+prototype now temporarily sets only fixed-HUD widget passes to immediate mode,
+marks those passes dirty, authors the target once per simulation time, and then
+restores every stock retained-mode field and ID. The stock HUD remains the only
+update/event owner; spatial elements continue drawing once per eye.
+
+The feature remains default-off and can be gated with
+`darktidevr_hud_panel.flag` (`enable`/`disable`). In a fresh live hub run the
+target was created, the spatial/fixed partition was logged, fixed player/team
+HUD content remained visible after being removed from the stock eye draw, and
+the flag cleanly restored the ordinary HUD. That is direct target-population
+evidence. Worn panel depth, comfort, binocular parity and coverage are still
+required before enabling it in production.
+
+## Private-range input isolation and muzzle origin
+
+The unattended Psykhanium run exposed an ownership bug in the synthetic test
+provider: controller tracking and gameplay buttons were both published through
+flat loading and menu states. Its periodic Back/Menu phase therefore closed the
+training-options view after the mod selected Shooting Range. Synthetic tracking
+now remains continuous, while gameplay buttons are emitted only in
+`stereo_world`. A clean authenticated launch then completed the scripted flow
+with `DARKTIDEVR_PSYKHANIUM result=pass game_mode=shooting_range` and reached
+`shared_ready=17259` with one transient pose mismatch across the whole run.
+
+The ranged-action hook now derives the shot origin from Darktide's registered
+third-person muzzle source and attachment node. It preserves the stock origin
+if that live node is absent, handles alternating muzzles using the just-prepared
+shot index, and retains the existing first-projectile ownership rule for
+simultaneous groups. The available Psyker loadout used a chain-lightning staff,
+which does not inherit `ActionShoot`; synthetic primary input was delivered but
+could not exercise this firearm-specific hook. A live firearm/projectile shot
+therefore remains a user/loadout gate, and Psyker targeting modules require a
+separate controller-aim path rather than pretending this run validated them.

@@ -47,12 +47,73 @@ function controller_aim.install(mod, presentation, state)
     controller_aim.reused_simultaneous_shots = 0
     controller_aim.network_writes = 0
     controller_aim.last_origin_offset = 0
+    controller_aim.muzzle_origin_writes = 0
+    controller_aim.muzzle_origin_fallbacks = 0
 
     function controller_aim.target()
         if not state.authoring_enabled or not is_private_range() then
             return nil, nil
         end
         return presentation.controller_aim_target()
+    end
+
+    function controller_aim.third_person_muzzle(action)
+        local fx_extension = action._fx_extension
+        local action_component = action._action_component
+        if not fx_extension or
+                type(fx_extension.vfx_spawner_unit_and_node) ~= "function" or
+                not action_component then
+            return nil
+        end
+        local fire_configurations = action:_fire_configurations()
+        local fire_config = fire_configurations and
+            fire_configurations[action_component.current_fire_config]
+        if not fire_config then
+            return nil
+        end
+        local source_name
+        local fx = action._action_settings and action._action_settings.fx
+        if fx and fx.alternate_muzzle_flashes then
+            -- _prepare_shooting increments num_shots_fired before this safe
+            -- hook runs. Reconstruct the source selected for the shot that was
+            -- just prepared instead of accidentally choosing the next barrel.
+            local prepared_index = math.max(
+                0, action_component.num_shots_fired - 1)
+            source_name = prepared_index % 2 == 0 and
+                action._muzzle_fx_source_name or
+                action._muzzle_fx_source_secondary_name
+        else
+            local source_ok, source = pcall(
+                action._muzzle_fx_source, action)
+            source_name = source_ok and source or nil
+        end
+        if not source_name then
+            return nil
+        end
+        local attachment_ok, attachment = pcall(
+            action._reference_attachment_id, action, fire_config)
+        if not attachment_ok then
+            attachment = nil
+        end
+        local pose_ok, unit, node, unit_3p, node_3p = pcall(
+            fx_extension.vfx_spawner_unit_and_node,
+            fx_extension,
+            source_name,
+            attachment)
+        if not pose_ok then
+            return nil
+        end
+        local use_third_person = unit_3p and node_3p ~= nil and
+            Unit.alive(unit_3p)
+        local target_unit = use_third_person and unit_3p or unit
+        local target_node = use_third_person and node_3p or node
+        if not target_unit or not Unit.alive(target_unit) or
+                target_node == nil then
+            return nil
+        end
+        local position_ok, position = pcall(
+            Unit.world_position, target_unit, target_node)
+        return position_ok and position or nil
     end
 
     local PlayerUnitAimExtension = require(
@@ -119,9 +180,19 @@ function controller_aim.install(mod, presentation, state)
                 inverse(component.rotation), action.shooting_rotation)
             action.shooting_rotation = Quaternion.multiply(
                 aim_rotation, authored_offset)
-            if aim_position and action.shooting_position then
+            local stock_position = action.shooting_position
+            local muzzle_position = controller_aim.third_person_muzzle(self)
+            if muzzle_position then
+                action.shooting_position = muzzle_position
+                controller_aim.muzzle_origin_writes =
+                    controller_aim.muzzle_origin_writes + 1
+            else
+                controller_aim.muzzle_origin_fallbacks =
+                    controller_aim.muzzle_origin_fallbacks + 1
+            end
+            if aim_position and stock_position then
                 controller_aim.last_origin_offset = Vector3.distance(
-                    aim_position, action.shooting_position)
+                    aim_position, stock_position)
             end
             controller_aim.authored_shots =
                 controller_aim.authored_shots + 1
@@ -130,11 +201,13 @@ function controller_aim.install(mod, presentation, state)
                 local direction = Quaternion.forward(action.shooting_rotation)
                 controller_aim.last_log_sequence = state.last_sequence
                 mod:info(
-                    "DARKTIDEVR_WEAPON_AIM authored sequence=%d shots=%d reused=%d network_writes=%d origin_offset_m=%.4f direction=%.4f,%.4f,%.4f",
+                    "DARKTIDEVR_WEAPON_AIM authored sequence=%d shots=%d reused=%d network_writes=%d muzzle_writes=%d muzzle_fallbacks=%d stock_origin_offset_m=%.4f direction=%.4f,%.4f,%.4f",
                     state.last_sequence,
                     controller_aim.authored_shots,
                     controller_aim.reused_simultaneous_shots,
                     controller_aim.network_writes,
+                    controller_aim.muzzle_origin_writes,
+                    controller_aim.muzzle_origin_fallbacks,
                     controller_aim.last_origin_offset,
                     Vector3.x(direction),
                     Vector3.y(direction),
@@ -149,13 +222,15 @@ function controller_aim.install(mod, presentation, state)
             local position, rotation = controller_aim.target()
             local direction = rotation and Quaternion.forward(rotation)
             mod:echo(
-                "DARKTIDEVR_WEAPON_AIM enabled=%s mode=%s target=%s shots=%d reused=%d network_writes=%d origin_offset_m=%.4f direction=%s",
+                "DARKTIDEVR_WEAPON_AIM enabled=%s mode=%s target=%s shots=%d reused=%d network_writes=%d muzzle_writes=%d muzzle_fallbacks=%d stock_origin_offset_m=%.4f direction=%s",
                 tostring(state.authoring_enabled),
                 tostring(active_mode()),
                 tostring(position ~= nil),
                 controller_aim.authored_shots,
                 controller_aim.reused_simultaneous_shots,
                 controller_aim.network_writes,
+                controller_aim.muzzle_origin_writes,
+                controller_aim.muzzle_origin_fallbacks,
                 controller_aim.last_origin_offset,
                 direction and string.format(
                     "%.4f,%.4f,%.4f",

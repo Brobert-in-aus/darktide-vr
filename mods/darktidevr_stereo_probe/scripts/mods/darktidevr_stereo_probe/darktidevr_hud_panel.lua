@@ -17,6 +17,7 @@ local state = {
     generation = 0,
     logged = false,
     layout_logged = false,
+    flag_last_poll_t = -math.huge,
 }
 
 -- These elements derive meaning from scene depth or screen-edge direction and
@@ -147,6 +148,70 @@ local function log_partition(mod, spatial, fixed)
         table.concat(spatial_names, ","), table.concat(fixed_names, ","))
 end
 
+-- Retained HUD IDs belong to the stock retained GUI and cannot be replayed
+-- into the resource pass. Temporarily force each fixed widget pass through its
+-- immediate branch and mark it dirty so UIWidget does not short-circuit on the
+-- existing retained ID. The stock pass metadata and IDs remain authoritative
+-- and are restored immediately after the replay.
+local function begin_immediate_replay(elements)
+    local saved = {}
+    for i = 1, #elements do
+        local widgets = elements[i]._widgets or {}
+        for j = 1, #widgets do
+            local widget = widgets[j]
+            widget.dirty = true
+            local passes = widget.passes or {}
+            for k = 1, #passes do
+                local pass = passes[k]
+                saved[#saved + 1] = {
+                    pass = pass,
+                    retained_mode = pass.retained_mode,
+                }
+                pass.retained_mode = false
+                if pass.data then
+                    pass.data.dirty = true
+                end
+            end
+        end
+    end
+    return saved
+end
+
+local function end_immediate_replay(saved)
+    for i = 1, #saved do
+        local entry = saved[i]
+        entry.pass.retained_mode = entry.retained_mode
+    end
+end
+
+local function update_enabled_flag(mod, t)
+    if not Mods or not Mods.lua or not Mods.lua.io or
+            t < state.flag_last_poll_t + 0.25 then
+        return
+    end
+    state.flag_last_poll_t = t
+    local path =
+        "./../mods/darktidevr_stereo_probe/darktidevr_hud_panel.flag"
+    local flag = Mods.lua.io.open(path, "r")
+    if not flag then
+        return
+    end
+    local request = flag:read("*all")
+    flag:close()
+    local command = request and request:match("^%s*(%a+)")
+    if command ~= "enable" and command ~= "disable" then
+        return
+    end
+    local consumed = Mods.lua.io.open(path, "w")
+    if consumed then
+        consumed:write("consumed\n")
+        consumed:close()
+    end
+    HudPanel.set_enabled(command == "enable")
+    mod:info("DARKTIDEVR_HUD enabled=%s source=flag",
+        tostring(state.enabled))
+end
+
 function HudPanel.set_enabled(enabled)
     state.enabled = enabled == true
     if not state.enabled then
@@ -163,6 +228,7 @@ function HudPanel.install(mod)
         -- Keep one authoritative update/event lifecycle. A second update of
         -- fixed elements creates duplicate retained IDs and can consume input
         -- twice; only their draw is replayed below.
+        update_enabled_flag(mod, t or 0)
         return func(self, dt, t, input_service)
     end)
 
@@ -205,8 +271,10 @@ function HudPanel.install(mod)
             end
             source_renderer.base_render_pass = resource_renderer.base_render_pass
             source_renderer.render_pass_flag = resource_renderer.render_pass_flag
+            local immediate_passes = begin_immediate_replay(fixed)
             local replay_ok, replay_result = pcall(
                 func, self, dt, t, input_service)
+            end_immediate_replay(immediate_passes)
             source_renderer.base_render_pass = source_base_render_pass
             source_renderer.render_pass_flag = source_render_pass_flag
             for i = 1, #retained_modes do

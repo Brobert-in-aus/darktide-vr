@@ -2234,11 +2234,19 @@ class OpenXrProbe {
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now().time_since_epoch())
                 .count());
+        // Controller tracking is useful in every presentation state, but
+        // gameplay buttons must never leak into loading screens or menus. In
+        // particular, the synthetic utility phase includes Back/Menu and can
+        // otherwise close the state-gated Psykhanium flow before it commits.
+        const auto emit_synthetic_gameplay =
+            synthetic_gameplay_input &&
+            presentation_state.mode == darktidevr::core::
+                                           SharedPresentationMode::stereo_world;
         auto synthetic =
             darktidevr::harness::synthetic_controller_path_sample(
                 synthetic_controller_frames_++, ++controller_sequence_,
                 timestamp_ns, panel_pose, panel_extent.width_metres,
-                panel_extent.height_metres, synthetic_gameplay_input);
+                panel_extent.height_metres, emit_synthetic_gameplay);
         populate_body_local_controller_poses(synthetic.state);
         if (synthetic_body_path) {
           darktidevr::harness::apply_synthetic_body_reach_path(

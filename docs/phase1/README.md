@@ -1280,12 +1280,17 @@ The private-range ranged-aim prototype now composes the right controller aim
 pose with the body/world anchor and preserves Darktide's stock recoil, sway,
 aim-assist and spread as a local rotation delta. It also writes the native
 replicated `aim_direction`. Load, synthetic tracking, automated Psykhanium
-entry and stereo-readiness gates pass; a real ranged shot and worn alignment
-check remain outstanding. Simultaneous projectile groups now follow
+entry and stereo-readiness gates pass. Synthetic gameplay buttons are now
+suppressed outside `stereo_world`, preventing their Back/Menu phase from
+interrupting loading or automated training-menu transitions. Simultaneous
+projectile groups follow
 Darktide's own first-projectile ownership rule so reused prepared rotations
-cannot receive the controller transform twice. Live diagnostics report the
-controller-to-stock shot-origin offset without prematurely moving the gameplay
-origin from the engine's known-good position.
+cannot receive the controller transform twice. Firearm/projectile shots now
+prefer Darktide's registered third-person muzzle attachment as their origin and
+fall back to the engine's stock position if that node is unavailable. The
+available unattended Psyker loadout uses a separate chain-lightning action, so
+a real firearm shot, Psyker targeting-module coverage and worn alignment remain
+outstanding rather than being inferred from synthetic input delivery.
 
 ### Hybrid hub upper-body ownership
 
@@ -1331,14 +1336,16 @@ and ordinary draws skip the remaining menu classifier metadata lookup whenever
 direct menu capture is inactive. Worn visual and repeatable frame-time
 validation remain before claiming the size of the CPU-side gain.
 
-Fixed retained-HUD migration is separately blocked: renderer redirection,
-retained-pass registration and direct/lagged resource display all produced a
-valid panel with no fixed-HUD content. That prototype is disabled pending a
-widget-rebuild or retained-ownership seam. A safer disabled candidate now
-preserves the stock HUD as the sole update/event owner and replays only fixed
-live elements through an immediate VR-owned pass while restoring retained
-flags and renderer state. It still requires a deliberate live gate after shops
-and the hybrid body; do not enable the older duplicate-update prototype.
+Earlier retained-HUD migration attempts produced a valid panel with no fixed
+content. Source inspection found the missing ownership seam: the element
+lookup did not override retained mode on individual widget passes, and their
+existing retained IDs short-circuited the replay. The safer default-off
+candidate now preserves the stock HUD as the sole update/event owner,
+temporarily forces only fixed live widget passes through an immediate VR-owned
+target, and restores all retained fields afterward. A fresh hub gate populated
+the target and retained visible fixed player/team content while spatial
+elements stayed in the per-eye pass. Worn depth, parity and coverage remain
+pending; do not enable the older duplicate-update prototype.
 
 ### Hadron transition checkpoint
 

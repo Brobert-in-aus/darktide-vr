@@ -247,8 +247,21 @@ if (-not $controllerAimSource.Contains(
         -not $controllerAimSource.Contains(
             '(action.num_shots_fired + 1) % #configurations == 1') -or
         -not $controllerAimSource.Contains(
-            'controller_aim.reused_simultaneous_shots')) {
-    throw 'Controller-authored fire must not rebase reused simultaneous-projectile rotations.'
+            'controller_aim.reused_simultaneous_shots') -or
+        -not $controllerAimSource.Contains(
+            'fx_extension.vfx_spawner_unit_and_node') -or
+        -not $controllerAimSource.Contains(
+            'action.shooting_position = muzzle_position')) {
+    throw 'Controller-authored fire must preserve simultaneous-shot ownership and use the live third-person weapon muzzle with a stock-origin fallback.'
+}
+$hudPanelSource = Get-Content -LiteralPath (
+    Join-Path (Split-Path -Parent $resolvedSource) `
+        'darktidevr_hud_panel.lua') -Raw
+if (-not $hudPanelSource.Contains('enabled = false') -or
+        -not $hudPanelSource.Contains('begin_immediate_replay') -or
+        -not $hudPanelSource.Contains('pass.retained_mode = false') -or
+        -not $hudPanelSource.Contains('end_immediate_replay(immediate_passes)')) {
+    throw 'Fixed HUD replay must remain opt-in and force only its temporary offscreen draw through immediate widget passes.'
 }
 $luaCompiler = Get-Command luac -ErrorAction SilentlyContinue
 if ($luaCompiler) {
