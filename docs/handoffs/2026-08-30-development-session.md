@@ -750,25 +750,30 @@ the same input, capture, lifecycle and non-immersive projection policy. Only
 mode 5 with attached eye surfaces uses the portrait eye extent; mode 6 always
 fits the actual native client. `store_view` and `store_item_detail_view` select
 mode 6, while Hadron and the other currently accepted families remain mode 5.
-The XR laser, Windows cursor, Store scenegraph and semantic hotspot must all
-stay in native landscape crop coordinates. The first mode-6 implementation
-corrected panel aspect but then reapplied the mode-5 portrait-eye transform to
-semantic hover. The worn symptom reproduced the earlier crop/full-eye failure:
-laser and visible cursor agreed, while the highlighted target lagged to roughly
-two-thirds of cursor X and one-quarter of cursor Y. That is a deterministic
-coordinate-space error, not controller tracking drift.
+The XR panel, laser and visible Windows cursor stay in native landscape crop
+coordinates, but a live source miss disproved the original assumption that the
+Store scenegraph does too. At source `(626,297)/1024x576`, Store reported its
+full-grid interaction rectangle at approximately `(142,863)` with extent
+`2210x1040`: its retained widgets are still authored in the portrait eye
+canvas. The worn symptom—laser and visible cursor agreeing while the highlight
+lagged to roughly two-thirds X and one-quarter Y—was the stock Windows hover
+being normalized in the wrong space and competing with the XR semantic owner,
+not evidence that semantic hit testing should stay crop-local.
 
-Mode 6 now remains crop-local end to end. Only mode-5 gameplay shops retain the
-portrait-eye transform. Store item cards are not owned by BaseView:
+Mode 6 therefore has an explicit split contract: presentation remains native
+landscape, semantic Store hit tests transform source pixels into the portrait
+eye canvas, and stock native hover is suppressed while XR owns the pointer.
+Store item cards are not owned by BaseView:
 `StoreView._draw_grid` draws private `_grid_widgets` before the conventional
-list. Its class-specific hook resolves the native-landscape ray against those
-real cards and, while an XR ray is active, passes a null input service to the
-stock grid draw so Darktide's mis-normalized Windows cursor cannot remain a
-second hover owner. The BaseView full-grid catcher remains inert in mode 6.
+list. Its class-specific hook resolves the transformed semantic ray against
+those real cards and passes a null input service to the stock grid draw while
+an XR ray is active, so Darktide's mis-normalized Windows cursor cannot remain
+a second hover owner. The BaseView full-grid catcher remains inert in mode 6.
 
 The corrected source passes the 198/198 Lua fail-closed gate, both Release
-native targets build, and all 30 CTest cases pass. It has not received a worn
-test after the final correction. Tomorrow's first gate is premium-store card
+native targets build, and all 30 CTest cases pass. A synthetic source-pointer
+probe was added for unattended card activation evidence; worn corner alignment
+still remains authoritative. Tomorrow's first gate is premium-store card
 hover at panel corners, trigger activation into item detail, scroll and Back;
 then repeat Escape-menu open/input/close. Do not add empirical axis constants:
 if the next hover is wrong, log the native card scenegraph rectangle and shared

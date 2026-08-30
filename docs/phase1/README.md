@@ -1385,20 +1385,41 @@ semantics while fitting the native client aspect. `store_view` and
 `store_item_detail_view` use mode 6. A clean live run published 2496x1404 on a
 2x1.125 m panel without script errors.
 
-The first semantic-input revision then transformed mode-6 pointer coordinates
-back into the portrait eye canvas a second time. The laser and visible Windows
-cursor agreed, while the highlighted target lagged by approximately two-thirds
-X and one-quarter Y—the same deterministic crop/full-source signature seen in
-the earlier character-select work. Mode 6 now keeps laser, cursor, scenegraph
-and semantic hit test in native landscape crop coordinates. The portrait-eye
-transform applies only to mode-5 gameplay shops.
+Live Store geometry shows that its retained widget scenegraph remains authored
+in the portrait eye canvas even though mode 6 presents a native-landscape
+client. A source click at `(626,297)/1024x576` reported the full-grid rectangle
+near `(142,863)` with extent `2210x1040`, directly falsifying the earlier
+crop-local-scenegraph assumption. Mode 6 now keeps the panel, laser and visible
+cursor in native landscape coordinates while transforming semantic Store hit
+tests into the portrait eye canvas. The stock Windows hover is suppressed while
+XR owns the pointer; it was the offset second owner seen during the worn test.
 
 Store item cards use a private `StoreView._draw_grid` path rather than
 BaseView's conventional widget list. The generic hook could correctly hit only
-the full-grid catcher. Mode 6 now leaves that catcher inert and resolves the XR
-ray against the real `_grid_widgets`, arming only the matching item card. While
+the full-grid catcher. Mode 6 now leaves that catcher inert and resolves the
+transformed XR ray against the real `_grid_widgets`, arming only the matching
+item card. While
 the XR ray is active, StoreView's stock grid receives a null input service so
 the mis-normalized native cursor cannot highlight a second card. The Lua safety
 gate remains at 198/198 locals, both Release targets build, and all 30 CTest
 cases pass. Worn corner alignment and landing-to-detail navigation are the
-first next-session gate; they have not been inferred from desktop input.
+first worn gate. A source-pixel synthetic pointer probe provides unattended
+activation evidence without treating Windows mouse injection as XR input. A
+live `pointer_500_360_1280_720` run activated a real Store card and opened
+`store_item_detail_view`. Store samples full-grid focus before applying card
+hotspots, so the hook now publishes the interaction catcher's `is_hover` and
+`force_hover` on the same trigger frame; otherwise the correctly matched card
+was force-disabled despite the activation log.
+
+SystemView has the same presentation/semantic split. Its Escape panel is
+landscape while a live hotspot inventory placed retained rows in the portrait
+eye canvas (Options near `240,1539` with extent `650x65`). Escape semantic hit
+testing therefore transforms the source ray while leaving the visible laser in
+panel pixels. A corrected source probe at `(290,421)/1280x720` activated the
+real Options row, opened `options_view`, and cleanly returned through SystemView
+to fresh stereo gameplay. Worn laser alignment remains pending.
+
+An adjacent performance audit removed per-frame diagnostic filesystem probes.
+System/vendor menu and input-inventory flags poll every 15 UI updates;
+Psykhanium and hotspot inventory poll at 250 ms; movement inventory retains a
+60-fixed-frame gate. Active close state still advances each frame.

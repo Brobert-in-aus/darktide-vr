@@ -1559,7 +1559,9 @@ end
 function presentation.update_psykhanium(manager, t)
     local state = presentation.psykhanium
     if (state.stage == "idle" or state.stage == "blocked" or
-            state.stage == "complete") and Mods and Mods.lua and Mods.lua.io then
+            state.stage == "complete") and Mods and Mods.lua and Mods.lua.io and
+            t >= (state.flag_last_poll_t or -math.huge) + 0.25 then
+        state.flag_last_poll_t = t
         local flag_path =
             "./../mods/darktidevr_stereo_probe/darktidevr_enter_psykhanium.flag"
         local flag = Mods.lua.io.open(flag_path, "r")
@@ -1715,6 +1717,12 @@ function presentation.update_system_menu_test(manager)
     if not Mods or not Mods.lua or not Mods.lua.io then
         return
     end
+    presentation.system_menu_test_poll_updates =
+        (presentation.system_menu_test_poll_updates or 0) + 1
+    if presentation.system_menu_test_poll_updates < 15 then
+        return
+    end
+    presentation.system_menu_test_poll_updates = 0
 
     local flag_path =
         "./../mods/darktidevr_stereo_probe/darktidevr_open_system_menu.flag"
@@ -1805,6 +1813,13 @@ function presentation.update_vendor_menu_test(manager)
         end
         return
     end
+
+    presentation.vendor_menu_test_poll_updates =
+        (presentation.vendor_menu_test_poll_updates or 0) + 1
+    if presentation.vendor_menu_test_poll_updates < 15 then
+        return
+    end
+    presentation.vendor_menu_test_poll_updates = 0
 
     local flag_path =
         "./../mods/darktidevr_stereo_probe/darktidevr_open_vendor_menu.flag"
@@ -2060,6 +2075,48 @@ function presentation.update_menu_input_probe(manager)
     end
 end
 
+function presentation.apply_menu_pointer_probe(pointer)
+    local probe = presentation.menu_input_probe
+    if probe.stage ~= "press" and probe.stage ~= "armed" then
+        return pointer
+    end
+    local x, y, width, height = string.match(
+        probe.action or "", "^pointer_(%d+)_(%d+)_(%d+)_(%d+)$")
+    x = tonumber(x)
+    y = tonumber(y)
+    width = tonumber(width)
+    height = tonumber(height)
+    if not x or not y or not width or not height or width <= 0 or height <= 0 then
+        probe.stage = "idle"
+        probe.action = nil
+        return pointer
+    end
+    if probe.stage == "press" then
+        probe.sequence = math.max(
+            tonumber(probe.sequence) or 0,
+            tonumber(pointer.primary_press_sequence) or 0) + 1
+        probe.stage = "armed"
+        mod:info(
+            "DARKTIDEVR_MENU_INPUT probe pointer=%d,%d/%dx%d sequence=%d",
+            x, y, width, height, probe.sequence)
+    end
+    -- Native pointer reads occur independently in each hooked UI pass. Keep
+    -- the diagnostic edge stable across those reads until the semantic owner
+    -- consumes it; otherwise BaseView.update observes the edge and the later
+    -- Store grid sees the native sequence again.
+    pointer.primary_press_sequence = probe.sequence
+    pointer.last_sequence = probe.sequence
+    pointer.x = x
+    pointer.y = y
+    pointer.source_width = width
+    pointer.source_height = height
+    pointer.available = true
+    pointer.active = x >= 0 and x < width and y >= 0 and y < height
+    pointer.primary_pressed = pointer.primary_press_sequence ~=
+        pointer.primary_consumed_sequence
+    return pointer
+end
+
 function presentation.read_menu_pointer()
     local pointer = presentation.menu_pointer
     pointer.available = false
@@ -2072,7 +2129,7 @@ function presentation.read_menu_pointer()
                 pointer.values,
                 pointer.sequence,
                 pointer.timestamp_ns) ~= 0 then
-        return pointer
+        return presentation.apply_menu_pointer_probe(pointer)
     end
     local sequence = tonumber(pointer.sequence[0])
     local timestamp_ns = tonumber(pointer.timestamp_ns[0])
@@ -2148,12 +2205,17 @@ function presentation.read_menu_pointer()
         end
         pointer.scroll_steps = scroll_steps
     end
-    return pointer
+    return presentation.apply_menu_pointer_probe(pointer)
 end
 
 function presentation.consume_menu_primary(pointer)
     pointer.primary_consumed_sequence = pointer.primary_press_sequence
     pointer.primary_pressed = false
+    local probe = presentation.menu_input_probe
+    if probe.stage == "armed" then
+        probe.stage = "idle"
+        probe.action = nil
+    end
 end
 
 function presentation.consume_menu_back(pointer)
@@ -4806,6 +4868,12 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         controller_observation.authoring_pose_active = false
         return
     end
+    presentation.input_inventory_poll_updates =
+        (presentation.input_inventory_poll_updates or 0) + 1
+    if presentation.input_inventory_poll_updates < 15 then
+        return
+    end
+    presentation.input_inventory_poll_updates = 0
     if head_pose_last_sequence ==
             controller_observation.first_person_seam_last_sequence then
         return
@@ -5401,9 +5469,13 @@ end
 
 function presentation.scan_movement_inventory(self, fixed_frame)
     if controller_observation.movement_inventory_done or
+            (fixed_frame and fixed_frame <
+                controller_observation.movement_inventory_last_check_frame + 60) or
             not Mods or not Mods.lua or not Mods.lua.io then
         return
     end
+    controller_observation.movement_inventory_last_check_frame =
+        fixed_frame or 0
     local flag_path =
         "./../mods/darktidevr_stereo_probe/darktidevr_movement_inventory.flag"
     local flag = Mods.lua.io.open(flag_path, "r")
@@ -9686,17 +9758,17 @@ mod:hook(
         -- remain authored in Darktide's portrait eye-layout coordinates.
         -- Keep the visible laser/cursor in source pixels and transform only
         -- semantic hotspot tests into the engine canvas.
-        -- Mode 5 gameplay shops are captured from a landscape Windows client
-        -- whose UI is still authored in the portrait eye canvas. Mode 6 is
-        -- deliberately different: premium-store content and its published
-        -- panel are both native landscape. Translating mode 6 a second time
-        -- reproduces the old crop/full-eye cursor error.
-        local shop_eye_layout = presentation.mode == 5 and
+        -- Gameplay shops render into a landscape Windows client while their
+        -- retained widget scenegraphs remain authored in the portrait eye
+        -- canvas. Mode 6 changes panel geometry only; semantic hit testing
+        -- must still enter that portrait widget space.
+        local shop_eye_layout = presentation.mode == 6 or
+            (presentation.mode == 5 and
                 (presentation.shop_panel_views[self.view_name] or
                     self.view_name == "crafting_view" or
                     (type(self.view_name) == "string" and
                         string.find(
-                            self.view_name, "crafting_", 1, true) == 1))
+                            self.view_name, "crafting_", 1, true) == 1)))
         local hit_pointer = shop_eye_layout and
             presentation.vendor_eye_layout_pointer(pointer) or pointer
         local widgets = self._widgets or {}
@@ -10142,6 +10214,11 @@ mod:hook(
         presentation.system_view_hovered_widget = nil
         presentation.system_view_source_widget = nil
         local pointer = presentation.read_menu_pointer()
+        -- SystemView is captured through a landscape client panel, but its
+        -- retained grid remains authored in the portrait eye canvas just like
+        -- StoreView. Keep the laser visible in panel pixels and transform only
+        -- semantic hotspot tests.
+        local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)
         local widgets = self._content_widgets or {}
         for i = 1, #widgets do
             local widget = widgets[i]
@@ -10149,7 +10226,7 @@ mod:hook(
                 widget.content.hotspot
             local source_hit =
                 presentation.widget_contains_menu_pointer(
-                    self, widget, pointer)
+                    self, widget, hit_pointer)
             if pointer.available and hotspot then
                 hotspot.force_hover = false
             end
@@ -10185,7 +10262,10 @@ mod:hook(
         local inventory_requested = false
         local inventory_path =
             "./../mods/darktidevr_stereo_probe/darktidevr_hotspot_inventory.flag"
-        if Mods and Mods.lua and Mods.lua.io then
+        if Mods and Mods.lua and Mods.lua.io and
+                t >= (presentation.hotspot_inventory_last_poll_t or
+                    -math.huge) + 0.25 then
+            presentation.hotspot_inventory_last_poll_t = t
             local flag = Mods.lua.io.open(inventory_path, "r")
             if flag then
                 local request = flag:read("*all")
@@ -10207,7 +10287,7 @@ mod:hook(
                 widget.content.hotspot
             local source_hit, geometry =
                 presentation.widget_contains_menu_pointer(
-                    self, widget, pointer)
+                    self, widget, hit_pointer)
             if inventory_requested and hotspot then
                 local fields = {}
                 for key, value in pairs(hotspot) do
@@ -10410,8 +10490,7 @@ mod:hook(
             return func(self, dt, t, ui_renderer, input_service, render_settings)
         end
         local pointer = presentation.read_menu_pointer()
-        local hit_pointer = presentation.mode == 5 and
-            presentation.vendor_eye_layout_pointer(pointer) or pointer
+        local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)
         local widgets = self._grid_widgets or {}
         local source_widget = nil
         local source_entry = nil
@@ -10525,9 +10604,9 @@ mod:hook(
             return func(self, dt, t, input_service)
         end
         local pointer = presentation.read_menu_pointer()
-        -- StoreView is authored directly in the native landscape client
-        -- published by mode 6, so its panel ray is already in scenegraph space.
-        local hit_pointer = pointer
+        -- The published panel/laser remain native landscape, but live Store
+        -- card rectangles are retained in the portrait eye scenegraph.
+        local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)
         local widgets = self._grid_widgets or {}
         local source_widget = nil
         local source_entry = nil
@@ -10552,8 +10631,15 @@ mod:hook(
             interaction_widget.content and interaction_widget.content.hotspot
         local previous_force_hover = interaction_hotspot and
             interaction_hotspot.force_hover
+        local previous_is_hover = interaction_hotspot and
+            interaction_hotspot.is_hover
         if pointer.active and interaction_hotspot then
             interaction_hotspot.force_hover = true
+            -- StoreView samples is_hover before it begins the pass that
+            -- applies force_hover. Publish focus for this same atomic input
+            -- edge so the real card is not force-disabled on the trigger
+            -- frame.
+            interaction_hotspot.is_hover = true
         end
         if source_widget and source_entry then
             source_entry.hotspot.force_hover = true
@@ -10579,6 +10665,7 @@ mod:hook(
         local result = func(self, dt, t, draw_input_service)
         if interaction_hotspot then
             interaction_hotspot.force_hover = previous_force_hover
+            interaction_hotspot.is_hover = previous_is_hover
         end
         return result
     end)

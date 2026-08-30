@@ -170,17 +170,40 @@ foreach ($shopTestView in @(
 if (-not $source.Contains('native_aspect_shop_panel_views') -or
         -not $source.Contains('return 6, "native_aspect_shop_panel"') -or
         -not $source.Contains(
-            'local shop_eye_layout = presentation.mode == 5 and')) {
-    throw 'Native-aspect premium shops must not reapply the portrait mode-5 hotspot transform.'
+            'local shop_eye_layout = presentation.mode == 6 or')) {
+    throw 'Native-aspect premium shops must keep landscape panel pixels separate from portrait widget coordinates.'
 }
 if (-not $source.Contains(
         'require("scripts/ui/views/store_view/store_view")') -or
         -not $source.Contains(
             'DARKTIDEVR_MENU_INPUT store_grid_activate') -or
-        -not $source.Contains('local hit_pointer = pointer') -or
+        -not $source.Contains('interaction_hotspot.is_hover = true') -or
         -not $source.Contains(
             'input_service:null_service() or input_service')) {
-    throw 'Premium store item cards must retain native-landscape semantic ownership without competing stock hover.'
+    throw 'Premium store item cards must atomically retain portrait semantic focus without competing stock hover.'
+}
+if (-not $source.Contains(
+        'function presentation.apply_menu_pointer_probe(pointer)') -or
+        -not $source.Contains(
+            '"^pointer_(%d+)_(%d+)_(%d+)_(%d+)$"') -or
+        -not $source.Contains('probe.stage = "armed"')) {
+    throw 'Unattended menu validation must retain a source-pixel pointer probe without Windows input injection.'
+}
+if (-not $source.Contains(
+        'SystemView is captured through a landscape client panel') -or
+        -not $source.Contains(
+            'local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)')) {
+    throw 'Escape-menu presentation pixels and portrait widget semantics must remain explicitly separated.'
+}
+foreach ($pollGuard in @(
+        'system_menu_test_poll_updates',
+        'vendor_menu_test_poll_updates',
+        'input_inventory_poll_updates',
+        'movement_inventory_last_check_frame',
+        'hotspot_inventory_last_poll_t')) {
+    if (-not $source.Contains($pollGuard)) {
+        throw "Diagnostic file polling must remain bounded: missing $pollGuard."
+    }
 }
 if (-not $source.Contains(
         'function presentation.neck_compensated_vertical') -or

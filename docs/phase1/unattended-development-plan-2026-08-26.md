@@ -997,11 +997,15 @@ reorder these feature gates.
    synchronised stereo resume. Contracts, armoury, cosmetics and barber landing
    pages have clean mode-5 visual/lifecycle passes. Marks must be reached from
    Contracts because direct construction lacks stock context. Premium Store is
-   a native-landscape mode-6 case; its panel aspect is correct and the final
-   crop-local private-grid hover fix passes automated validation but awaits the
-   first worn gate. Test Store card hover at corners, activation/detail,
+   a native-landscape mode-6 presentation whose retained widgets remain in the
+   portrait eye canvas. Semantic hit testing transforms into that canvas while
+   the native hover owner is suppressed. The private-grid fix passes source
+   validation and has an unattended source-pointer probe, but awaits the first
+   worn corner-alignment gate. Test Store card hover at corners, activation/detail,
    scrolling and Back, then repeat child interaction for the accepted mode-5
-   families and repair Escape. The remaining brief post-shop mono flash is
+   families. Escape now has unattended Options activation and clean stereo
+   resume evidence; retain worn laser-alignment and nested interaction as its
+   user gate. The remaining brief post-shop mono flash is
    deferred transition-quality polish.
 7. Complete HUD/UI presentation and input coverage after shop menus.
 8. Continue first-person ranged aim, binocular crosshair/reticle policy and
