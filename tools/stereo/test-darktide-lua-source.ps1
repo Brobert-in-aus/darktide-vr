@@ -254,6 +254,34 @@ if (-not $controllerAimSource.Contains(
             'action.shooting_position = muzzle_position')) {
     throw 'Controller-authored fire must preserve simultaneous-shot ownership and use the live third-person weapon muzzle with a stock-origin fallback.'
 }
+if (-not $source.Contains(
+        'function presentation.left_controller_aim_target()') -or
+        -not $source.Contains(
+            'controller_observation.values[0]') -or
+        -not $controllerAimSource.Contains(
+            'settings and settings.use_charge') -or
+        -not $controllerAimSource.Contains(
+            'return position, right_rotation, "staff_tip_right_aim"') -or
+        -not $controllerAimSource.Contains(
+            'return left_position, right_rotation, "left_origin_right_aim"') -or
+        -not $controllerAimSource.Contains(
+            'right_aim_direction=') -or
+        -not $controllerAimSource.Contains(
+            'action_spawn_projectile') -or
+        -not $controllerAimSource.Contains(
+            'chain_lightning_targeting_action_module') -or
+        -not $controllerAimSource.Contains(
+            'player_unit_smart_targeting_extension')) {
+    throw 'Psyker ranged coverage must retain both controller poses, right-hand aiming, left-origin staff primary ownership, staff-tip charged ownership and controller-scoped lightning targeting.'
+}
+if ($controllerAimSource.Contains('component.position = position') -or
+        $controllerAimSource.Contains('component.rotation = rotation') -or
+        -not $controllerAimSource.Contains(
+            'action._first_person_component = proxy') -or
+        -not $controllerAimSource.Contains(
+            'action._first_person_component = component')) {
+    throw 'Controller aim must never mutate Darktide read-only first_person components; use a scoped action-local read proxy and restore it.'
+}
 $hudPanelSource = Get-Content -LiteralPath (
     Join-Path (Split-Path -Parent $resolvedSource) `
         'darktidevr_hud_panel.lua') -Raw

@@ -193,6 +193,15 @@ local controller_observation = {
     right_aim_qy = nil,
     right_aim_qz = nil,
     right_aim_qw = nil,
+    left_aim_usable = false,
+    left_aim_flags = 0,
+    left_aim_x = nil,
+    left_aim_y = nil,
+    left_aim_z = nil,
+    left_aim_qx = nil,
+    left_aim_qy = nil,
+    left_aim_qz = nil,
+    left_aim_qw = nil,
     left_trigger = 0,
     right_trigger = 0,
     left_stick_x = 0,
@@ -2787,6 +2796,7 @@ local function apply_head_tracking(clean_position, clean_rotation)
     -- stock animation graph and causes a visible ownership switch. A new
     -- valid sample replaces the held pose as soon as tracking returns.
     controller_observation.right_aim_usable = false
+    controller_observation.left_aim_usable = false
     controller_observation.right_grip_tracking_live = false
     controller_observation.left_grip_tracking_live = false
     if controller_observation.values and
@@ -2817,6 +2827,7 @@ local function apply_head_tracking(clean_position, clean_rotation)
         local right_grip_flags =
             tonumber(controller_observation.tracking_flags[3])
         controller_observation.right_aim_flags = right_aim_flags
+        controller_observation.left_aim_flags = left_aim_flags
         controller_observation.left_grip_flags = left_grip_flags
         controller_observation.right_grip_flags = right_grip_flags
         local controller_timestamp_ns =
@@ -2832,6 +2843,11 @@ local function apply_head_tracking(clean_position, clean_rotation)
         controller_observation.right_aim_age_ms = controller_age_ns / 1000000
         controller_observation.right_aim_usable =
             bit.band(right_aim_flags, 5) == 5 and
+            controller_age_ns >= -5000000 and
+            controller_age_ns <= 100000000 and
+            controller_sequence ~= controller_observation.epoch_block_sequence
+        controller_observation.left_aim_usable =
+            bit.band(left_aim_flags, 5) == 5 and
             controller_age_ns >= -5000000 and
             controller_age_ns <= 100000000 and
             controller_sequence ~= controller_observation.epoch_block_sequence
@@ -2909,6 +2925,22 @@ local function apply_head_tracking(clean_position, clean_rotation)
             tonumber(controller_observation.values[34])
         controller_observation.right_stick_y =
             tonumber(controller_observation.values[35])
+        if controller_observation.left_aim_usable then
+            controller_observation.left_aim_x =
+                tonumber(controller_observation.values[0])
+            controller_observation.left_aim_y =
+                tonumber(controller_observation.values[1])
+            controller_observation.left_aim_z =
+                tonumber(controller_observation.values[2])
+            controller_observation.left_aim_qx =
+                tonumber(controller_observation.values[3])
+            controller_observation.left_aim_qy =
+                tonumber(controller_observation.values[4])
+            controller_observation.left_aim_qz =
+                tonumber(controller_observation.values[5])
+            controller_observation.left_aim_qw =
+                tonumber(controller_observation.values[6])
+        end
         if controller_observation.right_aim_usable then
             controller_observation.right_aim_x =
                 tonumber(controller_observation.values[18])
@@ -6958,6 +6990,35 @@ function presentation.controller_aim_target()
         controller_observation.right_aim_qy,
         controller_observation.right_aim_qz,
         controller_observation.right_aim_qw)
+    return anchor_position +
+            presentation.rotate_vector(anchor_rotation, aim_position),
+        Quaternion.multiply(anchor_rotation, aim_rotation)
+end
+
+function presentation.left_controller_aim_target()
+    if not controller_observation.left_aim_usable or
+            not controller_observation.body_anchor_qw or
+            not controller_observation.left_aim_qw then
+        return nil, nil
+    end
+    local anchor_position = Vector3(
+        controller_observation.body_anchor_x,
+        controller_observation.body_anchor_y,
+        controller_observation.body_anchor_z)
+    local anchor_rotation = Quaternion.from_elements(
+        controller_observation.body_anchor_qx,
+        controller_observation.body_anchor_qy,
+        controller_observation.body_anchor_qz,
+        controller_observation.body_anchor_qw)
+    local aim_position = Vector3(
+        controller_observation.left_aim_x,
+        controller_observation.left_aim_y,
+        controller_observation.left_aim_z)
+    local aim_rotation = Quaternion.from_elements(
+        controller_observation.left_aim_qx,
+        controller_observation.left_aim_qy,
+        controller_observation.left_aim_qz,
+        controller_observation.left_aim_qw)
     return anchor_position +
             presentation.rotate_vector(anchor_rotation, aim_position),
         Quaternion.multiply(anchor_rotation, aim_rotation)

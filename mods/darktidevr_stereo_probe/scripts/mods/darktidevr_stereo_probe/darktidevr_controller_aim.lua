@@ -35,6 +35,49 @@ local function inverse(rotation)
         w / length_squared)
 end
 
+local function has_keyword(keywords, wanted)
+    if type(keywords) ~= "table" then
+        return false
+    end
+    for i = 1, #keywords do
+        if keywords[i] == wanted then
+            return true
+        end
+    end
+    return false
+end
+
+local function is_force_staff(action)
+    local template = action and action._weapon_template
+    return template and has_keyword(template.keywords, "force_staff")
+end
+
+local function with_first_person_pose(action, position, rotation, func, ...)
+    local component = action and action._first_person_component
+    if not component or not position or not rotation then
+        return func(action, ...)
+    end
+    -- Weapon actions receive a read-only unit-data component. Never write it:
+    -- substitute a scoped Lua read proxy on this action/module only, so all
+    -- fields except the tracked pose continue to resolve from Darktide's live
+    -- component and no other consumer observes the temporary ownership.
+    local proxy = setmetatable({
+        position = position,
+        rotation = rotation,
+    }, {
+        __index = function(_, key)
+            return component[key]
+        end,
+    })
+    action._first_person_component = proxy
+    local ok, result = pcall(func, action, ...)
+    action._first_person_component = component
+    if not ok then
+        error(result, 0)
+    end
+    return result
+end
+
 function controller_aim.install(mod, presentation, state)
     if controller_aim.installed then
         return controller_aim
@@ -49,12 +92,75 @@ function controller_aim.install(mod, presentation, state)
     controller_aim.last_origin_offset = 0
     controller_aim.muzzle_origin_writes = 0
     controller_aim.muzzle_origin_fallbacks = 0
+    controller_aim.staff_primary_writes = 0
+    controller_aim.staff_secondary_writes = 0
+    controller_aim.staff_tip_fallbacks = 0
+    controller_aim.lightning_pose_writes = 0
 
-    function controller_aim.target()
+    function controller_aim.target(side)
         if not state.authoring_enabled or not is_private_range() then
             return nil, nil
         end
+        if side == "left" then
+            return presentation.left_controller_aim_target()
+        end
         return presentation.controller_aim_target()
+    end
+
+    function controller_aim.staff_tip(action)
+        local fx_extension = action and action._fx_extension
+        local source_name = action and action._muzzle_fx_source_name
+        if not fx_extension or not source_name or
+                type(fx_extension.vfx_spawner_unit_and_node) ~= "function" then
+            return nil, nil
+        end
+        local ok, unit, node, unit_3p, node_3p = pcall(
+            fx_extension.vfx_spawner_unit_and_node,
+            fx_extension,
+            source_name)
+        if not ok then
+            return nil, nil
+        end
+        local use_third_person = unit_3p and node_3p ~= nil and
+            Unit.alive(unit_3p)
+        local target_unit = use_third_person and unit_3p or unit
+        local target_node = use_third_person and node_3p or node
+        if not target_unit or not Unit.alive(target_unit) or
+                target_node == nil then
+            return nil, nil
+        end
+        local position_ok, position = pcall(
+            Unit.world_position, target_unit, target_node)
+        local rotation_ok, rotation = pcall(
+            Unit.world_rotation, target_unit, target_node)
+        if not position_ok or not rotation_ok then
+            return nil, nil
+        end
+        return position, rotation
+    end
+
+    function controller_aim.projectile_target(action)
+        if not is_force_staff(action) then
+            return nil, nil, nil
+        end
+        local right_position, right_rotation =
+            controller_aim.target("right")
+        if not right_rotation then
+            return nil, nil, nil
+        end
+        local settings = action._action_settings
+        if settings and settings.use_charge then
+            local position = controller_aim.staff_tip(action)
+            if position then
+                return position, right_rotation, "staff_tip_right_aim"
+            end
+            controller_aim.staff_tip_fallbacks =
+                controller_aim.staff_tip_fallbacks + 1
+            return right_position, right_rotation,
+                "staff_tip_fallback_right"
+        end
+        local left_position = controller_aim.target("left")
+        return left_position, right_rotation, "left_origin_right_aim"
     end
 
     function controller_aim.third_person_muzzle(action)
@@ -215,6 +321,125 @@ function controller_aim.install(mod, presentation, state)
             end
         end)
 
+    local ActionSpawnProjectile = require(
+        "scripts/extension_systems/weapon/actions/action_spawn_projectile")
+    mod:hook(
+        ActionSpawnProjectile,
+        "_spawn_projectile_unit",
+        function(func, self, ...)
+            if not is_local_unit(self._player_unit) then
+                return func(self, ...)
+            end
+            local position, rotation, owner =
+                controller_aim.projectile_target(self)
+            if not position or not rotation then
+                return func(self, ...)
+            end
+            if owner == "left_origin_right_aim" then
+                controller_aim.staff_primary_writes =
+                    controller_aim.staff_primary_writes + 1
+            else
+                controller_aim.staff_secondary_writes =
+                    controller_aim.staff_secondary_writes + 1
+            end
+            local source_count = owner == "left_origin_right_aim" and
+                controller_aim.staff_primary_writes or
+                controller_aim.staff_secondary_writes
+            if source_count <= 4 then
+                local direction = Quaternion.forward(rotation)
+                mod:info(
+                    "DARKTIDEVR_WEAPON_AIM psyker_projectile owner=%s count=%d origin=%.4f,%.4f,%.4f right_aim_direction=%.4f,%.4f,%.4f",
+                    owner,
+                    source_count,
+                    Vector3.x(position),
+                    Vector3.y(position),
+                    Vector3.z(position),
+                    Vector3.x(direction),
+                    Vector3.y(direction),
+                    Vector3.z(direction))
+            end
+            return with_first_person_pose(self, position, rotation, func, ...)
+        end)
+    mod:hook(
+        ActionSpawnProjectile,
+        "_fire_projectile",
+        function(func, self, ...)
+            if not is_local_unit(self._player_unit) then
+                return func(self, ...)
+            end
+            local position, rotation = controller_aim.projectile_target(self)
+            if not position or not rotation then
+                return func(self, ...)
+            end
+            return with_first_person_pose(self, position, rotation, func, ...)
+        end)
+
+    function controller_aim.with_right_aim(action, func, ...)
+        if not is_local_unit(action._player_unit) then
+            return func(action, ...)
+        end
+        local position, rotation = controller_aim.target("right")
+        if not position or not rotation then
+            return func(action, ...)
+        end
+        controller_aim.lightning_pose_writes =
+            controller_aim.lightning_pose_writes + 1
+        if controller_aim.lightning_pose_writes <= 4 then
+            local direction = Quaternion.forward(rotation)
+            mod:info(
+                "DARKTIDEVR_WEAPON_AIM lightning right_aim count=%d origin=%.4f,%.4f,%.4f direction=%.4f,%.4f,%.4f",
+                controller_aim.lightning_pose_writes,
+                Vector3.x(position),
+                Vector3.y(position),
+                Vector3.z(position),
+                Vector3.x(direction),
+                Vector3.y(direction),
+                Vector3.z(direction))
+        end
+        return with_first_person_pose(action, position, rotation, func, ...)
+    end
+
+    local ChainLightningTargetingActionModule = require(
+        "scripts/extension_systems/weapon/actions/modules/chain_lightning_targeting_action_module")
+    mod:hook(
+        ChainLightningTargetingActionModule,
+        "fixed_update",
+        function(func, self, ...)
+            return controller_aim.with_right_aim(self, func, ...)
+        end)
+    local PsykerChainLightningSingleTargetingActionModule = require(
+        "scripts/extension_systems/weapon/actions/modules/psyker_chain_lightning_single_targeting_action_module")
+    mod:hook(
+        PsykerChainLightningSingleTargetingActionModule,
+        "fixed_update",
+        function(func, self, ...)
+            return controller_aim.with_right_aim(self, func, ...)
+        end)
+    local ActionChainLightning = require(
+        "scripts/extension_systems/weapon/actions/action_chain_lightning")
+    mod:hook(
+        ActionChainLightning,
+        "_deal_damage",
+        function(func, self, ...)
+            return controller_aim.with_right_aim(self, func, ...)
+        end)
+
+    local PlayerUnitSmartTargetingExtension = require(
+        "scripts/extension_systems/smart_targeting/player_unit_smart_targeting_extension")
+    mod:hook(
+        PlayerUnitSmartTargetingExtension,
+        "fixed_update",
+        function(func, self, ...)
+            if not self._is_local_unit then
+                return func(self, ...)
+            end
+            local position, rotation = controller_aim.target("right")
+            if not position or not rotation then
+                return func(self, ...)
+            end
+            return with_first_person_pose(self, position, rotation, func, ...)
+        end)
+
     mod:command(
         "dtvr_controller_aim_status",
         "Report controller-authored ranged aim state",
@@ -222,7 +447,7 @@ function controller_aim.install(mod, presentation, state)
             local position, rotation = controller_aim.target()
             local direction = rotation and Quaternion.forward(rotation)
             mod:echo(
-                "DARKTIDEVR_WEAPON_AIM enabled=%s mode=%s target=%s shots=%d reused=%d network_writes=%d muzzle_writes=%d muzzle_fallbacks=%d stock_origin_offset_m=%.4f direction=%s",
+                "DARKTIDEVR_WEAPON_AIM enabled=%s mode=%s target=%s shots=%d reused=%d network_writes=%d muzzle_writes=%d muzzle_fallbacks=%d staff_primary=%d staff_secondary=%d staff_tip_fallbacks=%d lightning_pose_writes=%d stock_origin_offset_m=%.4f direction=%s",
                 tostring(state.authoring_enabled),
                 tostring(active_mode()),
                 tostring(position ~= nil),
@@ -231,6 +456,10 @@ function controller_aim.install(mod, presentation, state)
                 controller_aim.network_writes,
                 controller_aim.muzzle_origin_writes,
                 controller_aim.muzzle_origin_fallbacks,
+                controller_aim.staff_primary_writes,
+                controller_aim.staff_secondary_writes,
+                controller_aim.staff_tip_fallbacks,
+                controller_aim.lightning_pose_writes,
                 controller_aim.last_origin_offset,
                 direction and string.format(
                     "%.4f,%.4f,%.4f",

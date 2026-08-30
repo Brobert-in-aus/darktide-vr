@@ -966,8 +966,9 @@ reorder these feature gates.
    ownership around the roughly 6-8 ms pre-output transition present in both
    eyes before attempting pooling, multiview or queue parallelism. No
    optimization is accepted without visual-parity and XR lifecycle validation.
-2. **Completed:** preflight/watchdog, billboard ownership and cylindrical
-   acceptance, controller transport, synthetic pointer coverage, automated
+2. **Completed foundations:** preflight/watchdog, billboard shader ownership
+   and substitution plumbing (worn cylindrical behavior disputed and pending),
+   controller transport, synthetic pointer coverage, automated
    Psykhanium entry, analog locomotion, collision-aware room-scale body follow,
    the first weapon/body solver foundation, distributed forearm twist, and
    planted-foot physical-crouch presentation IK, constrained shoulder reach,
@@ -1014,8 +1015,10 @@ reorder these feature gates.
 8. Continue first-person ranged aim, binocular crosshair/reticle policy and
    optional controller laser presentation after the UI gates. Firearm shots now
    have a source-derived third-person muzzle origin with a stock-origin fallback.
-   Validate it with a firearm/projectile loadout; the unattended Psyker loadout
-   is a chain-lightning action and establishes a separate targeting-module task.
+   Psyker validation covers right-hand aiming for lightning and both force-staff
+   modes: normal fire originates at the tracked left hand, while charged/ADS
+   fire originates at the live staff tip. Worn alignment and non-Psyker firearm
+   coverage remain.
 9. Continue the stable-mirror performance pass, then resume independent backlog
    items when a renderer/user-feedback gate blocks. Use
    `start-darktide-vr.ps1 -AutoEnterHub` for unattended hub entry; its Space and
@@ -1044,9 +1047,12 @@ feasible verification should be completed before requesting those checks.
 
 The ranged-aim foundation is implemented behind the private-range test gate.
 It preserves the stock shot-offset stack and native replicated aim while
-decoupling weapon direction from the HMD camera. Remaining gates are a real
-ranged shot, projectile-action coverage, muzzle/origin occlusion policy, and
-binocular reticle or optional laser presentation.
+decoupling weapon direction from the HMD camera. Live Psyker evidence covers
+normal staff fire (left-hand origin/right-hand aim), charged/ADS staff fire
+(staff-tip origin/right-hand aim), and chain-lightning targeting from the right
+hand. Remaining gates are worn alignment, a non-Psyker firearm shot,
+muzzle/origin occlusion policy, and binocular reticle or optional laser
+presentation.
 
 The fixed-HUD interception experiment is no longer blocked on retained widget
 ownership. Immediate replay of each fixed widget pass populated the live target

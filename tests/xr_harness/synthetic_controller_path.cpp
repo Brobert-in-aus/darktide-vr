@@ -76,8 +76,11 @@ SyntheticControllerPathSample synthetic_controller_path_sample(
       sample.state.hands[0].trigger = 1.0F;
       sample.state.hands[0].thumbstick_x = 1.0F;
     } else if (sample.phase == SyntheticControllerPhase::crossed_sweep) {
-      sample.state.hands[0].squeeze = 1.0F;
-      sample.state.hands[1].squeeze = 1.0F;
+      // Continue holding secondary from right_sweep, then press primary.
+      // This gives unattended Psyker validation a deterministic charged/ADS
+      // staff shot instead of testing the two inputs in isolation.
+      sample.state.hands[0].trigger = 1.0F;
+      sample.state.hands[1].trigger = 1.0F;
       sample.state.hands[0].thumbstick_y = -1.0F;
     } else if (sample.phase == SyntheticControllerPhase::outside_panel) {
       sample.state.hands[0].buttons = core::controller_primary |

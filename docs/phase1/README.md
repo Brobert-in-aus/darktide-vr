@@ -1263,8 +1263,9 @@ Continue in this order:
    pooling, multiview, view instancing or safe queue parallelism.
 7. Finish locomotion and controls: configurable head/hand-relative movement,
    turning, room-scale collision semantics, crouch polish and button coverage.
-8. Extend the accepted cylindrical billboard path to remaining native smoke and
-   particle families.
+8. Revalidate the disputed identified-particle cylindrical substitution in a
+   worn native scene, then extend only an accepted path to remaining native
+   smoke and particle families.
 9. Stage remote presentation: stock replicated `aim_direction` first, then a
    private versioned mod-to-mod head/two-wrist channel with interpolation and
    stock-husk fallback. See
@@ -1288,9 +1289,14 @@ Darktide's own first-projectile ownership rule so reused prepared rotations
 cannot receive the controller transform twice. Firearm/projectile shots now
 prefer Darktide's registered third-person muzzle attachment as their origin and
 fall back to the engine's stock position if that node is unavailable. The
-available unattended Psyker loadout uses a separate chain-lightning action, so
-a real firearm shot, Psyker targeting-module coverage and worn alignment remain
-outstanding rather than being inferred from synthetic input delivery.
+available unattended Psyker loadout now has explicit source ownership. Normal
+staff fire originates at the tracked left hand but aims from the right hand;
+charged/ADS fire originates at the live staff-tip attachment and also aims from
+the right hand. Chain-lightning targeting, smart-target acquisition and damage
+run against a scoped right-aim proxy without writing Darktide's read-only
+first-person component. Clean live runs logged both projectile owners and four
+lightning updates with nonzero stereo `shared_ready`. A non-Psyker firearm shot,
+worn alignment, binocular reticle policy and optional laser presentation remain.
 
 ### Hybrid hub upper-body ownership
 
@@ -1328,8 +1334,9 @@ also only the first transition to a full-output-sized resource, not a semantic
 world/post boundary.  Roughly 6-8 ms remains before that transition in both
 eyes, making prepared-frame shared-work ownership the next evidence-gathering
 target before pooling or queue parallelism.  GPU profiling is disabled in the
-production-clean build. The accepted cylindrical billboard shader substitution
-is now separated from its retired per-draw selector census. That census
+production-clean build. The disputed billboard shader substitution plumbing is
+now separated from its retired per-draw selector census. Native cylindrical
+behavior still requires a fresh worn acceptance pass. That census
 installed the full diagnostic D3D12 hook set and locked renderer metadata on
 every draw despite having no active write path. It is disabled in production,
 and ordinary draws skip the remaining menu classifier metadata lookup whenever

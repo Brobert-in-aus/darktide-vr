@@ -96,8 +96,24 @@ The ranged-action hook now derives the shot origin from Darktide's registered
 third-person muzzle source and attachment node. It preserves the stock origin
 if that live node is absent, handles alternating muzzles using the just-prepared
 shot index, and retains the existing first-projectile ownership rule for
-simultaneous groups. The available Psyker loadout used a chain-lightning staff,
-which does not inherit `ActionShoot`; synthetic primary input was delivered but
-could not exercise this firearm-specific hook. A live firearm/projectile shot
-therefore remains a user/loadout gate, and Psyker targeting modules require a
-separate controller-aim path rather than pretending this run validated them.
+simultaneous groups. The available Psyker loadout also established the non-
+`ActionShoot` routes. `ActionSpawnProjectile` now separates spawn ownership
+from aim ownership: normal staff fire uses the tracked left-hand origin and
+right-hand aim, while charged/ADS fire uses the live staff-tip attachment and
+right-hand aim. Smite/chain-lightning targeting, damage and smart-target
+queries use a scoped right-controller read proxy; Darktide's read-only
+`first_person` component is never mutated. Clean live Psykhanium runs logged
+`left_origin_right_aim`, `staff_tip_right_aim`, and four advancing lightning
+right-aim updates while stereo reached `shared_ready=9487`. The harness's
+charged-fire phase holds secondary across a phase boundary before pressing
+primary, and its C++ contract test covers that overlap. Firearm worn alignment,
+binocular reticle policy and optional laser presentation remain open.
+
+## Billboard acceptance correction
+
+The exact particle shader ownership and substitution plumbing remain useful
+evidence, but the identified native particles are **not** accepted as
+cylindrically billboarded. The user's latest recollection is that those
+particles remained spherical. Treat prior acceptance wording as stale and
+re-run the worn/native particle gate only when billboard work is reached in the
+explicit priority order.

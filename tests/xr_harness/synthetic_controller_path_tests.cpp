@@ -83,6 +83,8 @@ int main() {
       attack.state.hands[1].trigger == 1.0F &&
       attack.state.hands[0].thumbstick_y == 1.0F &&
       move_right.state.hands[0].thumbstick_x == 1.0F &&
+      move_backward.state.hands[0].trigger == 1.0F &&
+      move_backward.state.hands[1].trigger == 1.0F &&
       move_backward.state.hands[0].thumbstick_y == -1.0F &&
       face_buttons.state.hands[0].thumbstick_x == -1.0F &&
       face_buttons.state.hands[0].buttons ==
