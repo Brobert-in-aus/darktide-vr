@@ -405,11 +405,16 @@ Each frame uses the distance between the two view poses returned by OpenXR
 `xrLocateViews`. A 64 mm value exists only as a safe pre-XR initialization
 fallback and is replaced as soon as a valid runtime sample arrives.
 
-Ogryn scale both the runtime separation and physical head translation by
-`1.61 / 1.21` (~1.3306), matching Darktide's reviewed Ogryn and baseline-human
-player-height data. The game-native clean camera still supplies the taller
-character viewpoint. This produces the smaller perceived world scale expected
-for a larger body without discarding the user's calibrated IPD.
+Shared transport v9 publishes floor-relative eye height from OpenXR `STAGE`.
+Humans keep headset-native runtime separation and physical head translation.
+The physical measurement first updates an in-range character height through
+the same backend service used by the official barber; only the residual beyond
+that range becomes local visual scale, leaving the fixed mover, broadphase and
+network representation in-range. Ogryn deliberately scale IPD
+and tracked translation together by selected target height / physical height,
+preserving their larger world scale without the retired fixed `1.61 / 1.21`
+approximation. Arm length is retargeted only afterward with a separate
+source-T-pose/live-rig bone residual.
 
 ### Controller capacity and Darktide action mapping
 
@@ -944,27 +949,64 @@ These features can advance without invalidating the three main workstreams:
 
 The current unattended queue is:
 
-1. **Completed:** preflight/watchdog, billboard ownership and cylindrical
+The user-prioritized feature order is: shops and Escape menu; hybrid hub avatar
+ownership; HUD/UI; ranged combat; per-eye visual parity; performance;
+locomotion/controls; billboard coverage; multiplayer presentation; calibration
+validation; robustness/release; and deferred refinements. Evidence-gathering
+inside a higher-priority item may prepare a later item but must not silently
+reorder these feature gates.
+
+1. **Quantitative performance foundation completed; resource ownership next:**
+   the opt-in profiler now reports true wrapper p50/p95 and per-eye GPU interval
+   p50/p95. A warmed stationary hub run measured a 26.998 ms median summed-eye
+   average across twelve windows, 26.390 ms median sum-of-eye-p50, 34.873 ms
+   median sum-of-eye-p95, 0.242/0.564 ms wrapper pair p50/p95, and about 0.417 ms
+   body/weapon IK CPU. Per-eye attribution is unstable, and the first-full-size
+   boundary is structural rather than semantic. Trace exact resource/pass
+   ownership around the roughly 6-8 ms pre-output transition present in both
+   eyes before attempting pooling, multiview or queue parallelism. No
+   optimization is accepted without visual-parity and XR lifecycle validation.
+2. **Completed:** preflight/watchdog, billboard ownership and cylindrical
    acceptance, controller transport, synthetic pointer coverage, automated
    Psykhanium entry, analog locomotion, collision-aware room-scale body follow,
    the first weapon/body solver foundation, distributed forearm twist, and
    planted-foot physical-crouch presentation IK, constrained shoulder reach,
    and neck-pivot height compensation with explicit XR recenter generation.
-2. **Completed native evidence gate:** the ownership-safe descriptor census
+3. **Completed native evidence gate:** the ownership-safe descriptor census
    proved the Lua-created engine-world target is not sampled by any full-eye
    draw (target bindless index 46527; observed menu draws used other indices).
    Do not restore the external-copy, assumed-barrier, raw-pointer scanner or
    named-target paths. The native additive menu is the accepted content source.
-3. **Next:** finish the character-select VR calibration submenu. It must retain
-   physical source measurements separately from each live scaled Darktide
-   target rig and support standing/seated, bilateral and single-arm flows.
-4. Trace vendor/NPC views as a distinct renderer family, keep the hub world in
-   stereo, and place the complete interactive view at the NPC with a generic
-   world-space board fallback.
-5. Complete HUD/UI presentation and input coverage after shop menus.
-6. Continue first-person ranged aim, binocular crosshair/reticle policy and
+4. **Completed foundation; worn tuning remains:** the character-select VR
+   calibration submenu retains physical measurements separately from the live
+   target rig and supports standing/seated, bilateral and single-arm flows.
+   Standing calibration now measures floor-eye height and arm span, applies a
+   official profile height plus human residual visual scale, or coherent Ogryn
+   height/IPD scale, first,
+   then a residual live-rig arm-bone retarget.
+5. **Hybrid avatar ownership diagnosed; replacement worn gate remains:** the
+   first proxy still flickered because its private profile-spawner animation
+   displaced `j_hips` by 0.214--0.251 m per update while the authoritative hub
+   root moved only 0.008--0.022 mm. Stop the proxy animation after spawn, copy
+   the hub skeleton's current upper-body baseline after locomotion, and apply
+   tracked IK to that inherited pose. Confirm whole-body flicker removal and
+   the waist seam in-headset before accepting it as the hub default.
+6. **Hadron accepted; shop-family rollout active:** Hadron now uses a correctly
+   proportioned 16:9 flat-interactive panel with working XR-ray input, no
+   delayed opening click, preserved gameplay heading on exit and a generation-
+   synchronised stereo resume. Contracts, armoury, cosmetics and barber landing
+   pages have clean mode-5 visual/lifecycle passes. Marks must be reached from
+   Contracts because direct construction lacks stock context. Premium Store is
+   a native-landscape mode-6 case; its panel aspect is correct and the final
+   crop-local private-grid hover fix passes automated validation but awaits the
+   first worn gate. Test Store card hover at corners, activation/detail,
+   scrolling and Back, then repeat child interaction for the accepted mode-5
+   families and repair Escape. The remaining brief post-shop mono flash is
+   deferred transition-quality polish.
+7. Complete HUD/UI presentation and input coverage after shop menus.
+8. Continue first-person ranged aim, binocular crosshair/reticle policy and
    optional controller laser presentation after the UI gates.
-7. Continue the stable-mirror performance pass, then resume independent backlog
+9. Continue the stable-mirror performance pass, then resume independent backlog
    items when a renderer/user-feedback gate blocks. Use
    `start-darktide-vr.ps1 -AutoEnterHub` for unattended hub entry; its Space and
    Enter events are gated by fresh title and character-select console states.

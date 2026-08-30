@@ -1248,32 +1248,157 @@ bilateral extension an erroneous 10 cm-per-arm bonus and must not be restored.
 
 Continue in this order:
 
-1. Complete neck-pivot-aware crouch validation, then implement the
-   character-select calibration submenu with standing/seated and bilateral or
-   single-arm flows.
-2. Repair shop presentation using the proven flat-interactive character-select
-   route; keep the desktop as a one-eye mirror and keep the crashed scoped
-   crafting-renderer redirect disabled.
-3. Complete HUD/UI coverage while preserving 6DoF and pointer crop-local
-   coordinates.
+1. Extend Hadron's accepted flat-interactive mode-5 route across every shop
+   family, preserving child-view input, strict one-eye desktop mirroring and
+   generation-synchronised stereo restoration. Then repair the Escape menu.
+2. Worn-validate hybrid hub avatar ownership: stock locomotion/legs plus the
+   VR-authored upper body, with no whole-body flicker or visible waist seam.
+3. Complete HUD/UI coverage while preserving 6DoF, binocular-overlap marker
+   clamping and pointer crop-local coordinates.
 4. Continue ranged weapon aim, binocular crosshair/reticle policy and optional
    controller laser presentation after the UI gates.
 5. Investigate per-eye LOD divergence, edge light culling and render-identity-
    locked enemy-shadow asymmetry with separate evidence for each boundary.
-6. Stage remote presentation: first feed the stock replicated `aim_direction`
-   so unmodded peers see dominant-hand weapon aim, then prototype a private,
-   versioned mod-to-mod head/two-wrist pose channel with interpolation and
-   stock-husk fallback. The stock schema cannot express full independent IK;
-   see [networked VR IK feasibility](networked-vr-ik-feasibility.md).
+6. Attribute and remove duplicated render work before attempting evidence-based
+   pooling, multiview, view instancing or safe queue parallelism.
+7. Finish locomotion and controls: configurable head/hand-relative movement,
+   turning, room-scale collision semantics, crouch polish and button coverage.
+8. Extend the accepted cylindrical billboard path to remaining native smoke and
+   particle families.
+9. Stage remote presentation: stock replicated `aim_direction` first, then a
+   private versioned mod-to-mod head/two-wrist channel with interpolation and
+   stock-husk fallback. See
+   [networked VR IK feasibility](networked-vr-ik-feasibility.md).
+10. Worn-validate height-first calibration across human/Ogryn size limits and
+    standing, seated, bilateral and single-arm flows.
+11. Complete XR lifecycle robustness, authenticated release startup, packaging,
+    configuration, rollback and diagnostics.
+12. Defer transition polish, including the brief post-shop mono flash, until the
+    feature gates above are complete.
 
 The private-range ranged-aim prototype now composes the right controller aim
 pose with the body/world anchor and preserves Darktide's stock recoil, sway,
 aim-assist and spread as a local rotation delta. It also writes the native
 replicated `aim_direction`. Load, synthetic tracking, automated Psykhanium
 entry and stereo-readiness gates pass; a real ranged shot and worn alignment
-check remain outstanding.
+check remain outstanding. Simultaneous projectile groups now follow
+Darktide's own first-projectile ownership rule so reused prepared rotations
+cannot receive the controller transform twice. Live diagnostics report the
+controller-to-stock shot-origin offset without prematurely moving the gameplay
+origin from the engine's known-good position.
+
+### Hybrid hub upper-body ownership
+
+The hub no longer needs to choose between stock locomotion and a wholly
+VR-authored avatar.  The current prototype leaves the authoritative player's
+root, collision, legs and stock gait untouched, hides only its visible upper
+body, and spawns a local profile-matched upper-body proxy for torso and arm IK.
+This follows the live evidence: IK cadence matched stereo cadence and solved
+transforms survived both eye boundaries, while stock hub animation rebuilt the
+upper chain before each solve.  The proxy therefore isolates render ownership
+without replacing hub locomotion or duplicating the lower body.
+
+`UIProfileSpawner` requires `slot_unarmed` even when weapon geometry is not
+wanted, and its hair-state-machine path assumes a hair slot exists.  The proxy
+retains invisible unarmed equipment plumbing and does not enable the ignored
+hair path.  A fresh authenticated hub launch completed with the proxy active,
+no Lua errors after activation, and nonzero XR `shared_ready`.  Worn visual
+acceptance remains: verify stock animated legs, VR-authored upper body, no
+torso/arm flicker and no visible waist seam.
+
+### Quantile-based hub profiling
+
+The opt-in profiler now reports actual CPU wrapper p50/p95 samples and native
+D3D12 per-eye interval p50/p95 samples.  In a stationary authenticated hub run
+with the hybrid proxy and IK active, the final twelve warmed 240-frame windows
+had a median summed-eye average of 26.998 ms (26.075-28.414 ms range), a median
+sum of eye p50s of 26.390 ms, and a median sum of eye p95s of 34.873 ms.  The
+last two are sums of independent eye quantiles, not a paired-distribution
+quantile.  The Lua render wrapper's actual pair p50/p95 were 0.242/0.564 ms;
+body plus weapon IK averaged about 0.417 ms CPU.
+
+Per-eye attribution shifts between configurations while total work is more
+stable, so optimization decisions use the sum.  The native stage boundary is
+also only the first transition to a full-output-sized resource, not a semantic
+world/post boundary.  Roughly 6-8 ms remains before that transition in both
+eyes, making prepared-frame shared-work ownership the next evidence-gathering
+target before pooling or queue parallelism.  GPU profiling is disabled in the
+production-clean build. The accepted cylindrical billboard shader substitution
+is now separated from its retired per-draw selector census. That census
+installed the full diagnostic D3D12 hook set and locked renderer metadata on
+every draw despite having no active write path. It is disabled in production,
+and ordinary draws skip the remaining menu classifier metadata lookup whenever
+direct menu capture is inactive. Worn visual and repeatable frame-time
+validation remain before claiming the size of the CPU-side gain.
 
 Fixed retained-HUD migration is separately blocked: renderer redirection,
 retained-pass registration and direct/lagged resource display all produced a
 valid panel with no fixed-HUD content. That prototype is disabled pending a
-widget-rebuild or retained-ownership seam.
+widget-rebuild or retained-ownership seam. A safer disabled candidate now
+preserves the stock HUD as the sole update/event owner and replays only fixed
+live elements through an immediate VR-owned pass while restoring retained
+flags and renderer state. It still requires a deliberate live gate after shops
+and the hybrid body; do not enable the older duplicate-update prototype.
+
+### Hadron transition checkpoint
+
+Hadron's 16:9 flat-interactive panel is now usable with the XR ray, and
+presentation-entry input arming prevents the interaction used to open the shop
+from selecting its first option. Shop exit also preserves the VR-owned
+Darktide-coordinate gameplay heading, so locomotion and interaction facing do
+not inherit the shop camera rotation.
+
+Resume synchronization is generation-based rather than time- or frame-count-
+based. Lua commits the gameplay-orientation generation after restoration, the
+native eye producer stamps each completed pair, and the harness resumes on the
+first pose-synchronised matching pair while consuming hidden outgoing pairs.
+Observed resume latency is about 20--21 ms. A tolerably brief mono flash remains
+and is deferred as transition-quality polish.
+
+The generic shop policy now has an independent contracts-family live result.
+Programmatic `contracts_background_view` entry produced a correctly
+proportioned 2496x1404 mode-5 source, and exit returned to fresh stereo in 28 ms
+without script errors or pose mismatches. The guarded hub harness exposes the
+remaining armoury, cosmetics, barber, marks and premium-store landing views for
+the same one-family-at-a-time gate; their interactive child views and worn XR
+pointer behavior remain unaccepted until tested.
+
+Armoury, cosmetics and barber landing views now also have unattended visual
+and lifecycle passes at the same 2496x1404 source extent. Direct marks entry is
+explicitly rejected: `marks_vendor_view` requires context supplied by its
+contracts parent, and constructing it without that context corrupts the UI
+view stack. Marks must be exercised through the stock contracts transition;
+the guarded harness no longer exposes the unsafe shortcut. Premium-store
+landing and all interactive child pages remain pending.
+
+Normal deployment now owns the pre-Lua D3D12 bootstrap configuration. It
+removes stale diagnostic/shader-dump flags and retains only billboard shader
+substitution by default. This prevents a prior diagnostic session from both
+reintroducing per-draw overhead and causing the production Lua configuration
+to fail closed after hooks are already installed.
+
+Premium store is a distinct native-aspect case. Its first generic shop run
+rendered the full landing page, but a worn check found the cursor offset because
+the mode-5 compositor treated its already-landscape client as a portrait
+eye-encoded image. Presentation mode 6 now shares mode 5's capture and input
+semantics while fitting the native client aspect. `store_view` and
+`store_item_detail_view` use mode 6. A clean live run published 2496x1404 on a
+2x1.125 m panel without script errors.
+
+The first semantic-input revision then transformed mode-6 pointer coordinates
+back into the portrait eye canvas a second time. The laser and visible Windows
+cursor agreed, while the highlighted target lagged by approximately two-thirds
+X and one-quarter Y—the same deterministic crop/full-source signature seen in
+the earlier character-select work. Mode 6 now keeps laser, cursor, scenegraph
+and semantic hit test in native landscape crop coordinates. The portrait-eye
+transform applies only to mode-5 gameplay shops.
+
+Store item cards use a private `StoreView._draw_grid` path rather than
+BaseView's conventional widget list. The generic hook could correctly hit only
+the full-grid catcher. Mode 6 now leaves that catcher inert and resolves the XR
+ray against the real `_grid_widgets`, arming only the matching item card. While
+the XR ray is active, StoreView's stock grid receives a null input service so
+the mis-normalized native cursor cannot highlight a second card. The Lua safety
+gate remains at 198/198 locals, both Release targets build, and all 30 CTest
+cases pass. Worn corner alignment and landing-to-detail navigation are the
+first next-session gate; they have not been inferred from desktop input.

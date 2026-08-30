@@ -27,7 +27,10 @@ std::optional<PanelPointerMapping> map_pointer_to_panel(
       crop_x > source_width || crop_y > source_height ||
       crop_width > source_width - crop_x ||
       crop_height > source_height - crop_y) {
-    throw std::invalid_argument("Invalid spatial panel pointer inputs");
+    // Presentation metadata can change independently of the render loop while
+    // a menu opens or closes. A transiently stale crop is a pointer miss, not
+    // a fatal XR condition.
+    return std::nullopt;
   }
 
   const auto inverse_panel = math::inverse(panel_pose);

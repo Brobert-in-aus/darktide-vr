@@ -16,7 +16,8 @@ enum class SharedPresentationMode : std::uint32_t {
   world_anchored_menu = 3,
   flat_menu = 4,
   flat_interactive = 5,
-  error = 6,
+  flat_interactive_native_aspect = 6,
+  error = 7,
 };
 
 struct SharedPresentationState {
@@ -70,5 +71,8 @@ class SharedPresentationStateReader {
 
 bool valid_presentation_state(const SharedPresentationState& state);
 bool immersive_projection_active(SharedPresentationMode mode);
+bool flat_interactive_active(SharedPresentationMode mode);
+bool flat_interactive_uses_eye_aspect(SharedPresentationMode mode,
+                                      bool shared_eyes_open);
 
 }  // namespace darktidevr::core

@@ -8,7 +8,13 @@ param(
 
     [switch] $ParticleHorizonLock,
 
-    [switch] $ParticleDiagnosticMagenta
+    [switch] $ParticleDiagnosticMagenta,
+
+    [switch] $DiagnosticRenderHooks,
+
+    [bool] $BillboardShaderSubstitution = $true,
+
+    [switch] $VertexShaderDump
 )
 
 Set-StrictMode -Version Latest
@@ -108,4 +114,34 @@ foreach ($entry in $destinations) {
         throw "Development deployment hash mismatch: $($entry.Destination)"
     }
     Write-Output "Synchronized $($entry.Destination) sha256=$sourceHash"
+}
+
+# d3d12.dll loads the native capture DLL before Lua can configure it. Keep the
+# bootstrap flags authoritative on every deployment so a retired diagnostic
+# session cannot silently force the expensive hook set (or make Lua's
+# fail-closed configuration reject the launch).
+$bootstrapFlags = @(
+    [pscustomobject]@{
+        Path = Join-Path $modRoot 'bin\darktidevr_diagnostic_render_hooks.flag'
+        Enabled = [bool] $DiagnosticRenderHooks
+    },
+    [pscustomobject]@{
+        Path = Join-Path $modRoot 'bin\darktidevr_billboard_shader_substitution.flag'
+        Enabled = $BillboardShaderSubstitution
+    },
+    [pscustomobject]@{
+        Path = Join-Path $modRoot 'bin\darktidevr_vertex_shader_dump.flag'
+        Enabled = [bool] $VertexShaderDump
+    }
+)
+foreach ($flag in $bootstrapFlags) {
+    if ($flag.Enabled) {
+        if (-not (Test-Path -LiteralPath $flag.Path -PathType Leaf)) {
+            New-Item -ItemType File -Path $flag.Path | Out-Null
+        }
+        Write-Output "Bootstrap flag enabled: $($flag.Path)"
+    } elseif (Test-Path -LiteralPath $flag.Path -PathType Leaf) {
+        Remove-Item -LiteralPath $flag.Path -Force
+        Write-Output "Bootstrap flag removed: $($flag.Path)"
+    }
 }

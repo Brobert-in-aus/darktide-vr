@@ -87,14 +87,13 @@ local function ensure_resources(mod, owner, source_renderer)
             tostring(renderer))
         return nil
     end
-    -- Retained widget records belong to the source renderer/Gui. Register the
-    -- retained Gui side once; the source immediate renderer is redirected and
-    -- cleared once per update below, matching the proven menu-target path.
-    if renderer.gui_retained and renderer.gui_retained ~= renderer.gui then
-        Gui.render_pass(
-            renderer.gui_retained, 0, renderer.base_render_pass, true,
-            renderer.render_target)
-    end
+    -- Retained IDs already belong to the stock GUI/pass and cannot be moved to
+    -- this target after creation. The replay below deliberately forces those
+    -- same live widgets through their immediate draw path, so register only the
+    -- immediate GUI pass here.
+    UIRenderer.add_render_pass(
+        renderer, 0, renderer.base_render_pass, true,
+        renderer.render_target)
     local display_ok, display = pcall(
         Renderer.create_resource,
         "render_target", "R8G8B8A8", nil,
@@ -148,41 +147,23 @@ local function log_partition(mod, spatial, fixed)
         table.concat(spatial_names, ","), table.concat(fixed_names, ","))
 end
 
+function HudPanel.set_enabled(enabled)
+    state.enabled = enabled == true
+    if not state.enabled then
+        destroy_resources()
+    end
+end
+
+function HudPanel.enabled()
+    return state.enabled
+end
+
 function HudPanel.install(mod)
     mod:hook("UIHud", "update", function(func, self, dt, t, input_service)
-        if not state.enabled or not self._ui_renderer or
-                type(self._elements_array) ~= "table" then
-            return func(self, dt, t, input_service)
-        end
-        local resource_renderer = ensure_resources(mod, self, self._ui_renderer)
-        if not resource_renderer then
-            return func(self, dt, t, input_service)
-        end
-        local spatial, fixed = partition_elements(self._elements_array)
-        log_partition(mod, spatial, fixed)
-        local source_elements = self._elements_array
-        local source_renderer = self._ui_renderer
-
-        self._elements_array = spatial
-        func(self, dt, t, input_service)
-        local spatial_using_input = self._element_using_input
-
-        self._elements_array = fixed
-        local source_base_render_pass = source_renderer.base_render_pass
-        local source_render_pass_flag = source_renderer.render_pass_flag
-        UIRenderer.clear_render_pass_queue(source_renderer)
-        UIRenderer.add_render_pass(
-            source_renderer, 0, resource_renderer.base_render_pass, true,
-            resource_renderer.render_target)
-        source_renderer.base_render_pass = resource_renderer.base_render_pass
-        source_renderer.render_pass_flag = resource_renderer.render_pass_flag
-        func(self, dt, t, input_service)
-        self._element_using_input = spatial_using_input or
-            self._element_using_input
-        source_renderer.base_render_pass = source_base_render_pass
-        source_renderer.render_pass_flag = source_render_pass_flag
-
-        self._elements_array = source_elements
+        -- Keep one authoritative update/event lifecycle. A second update of
+        -- fixed elements creates duplicate retained IDs and can consume input
+        -- twice; only their draw is replayed below.
+        return func(self, dt, t, input_service)
     end)
 
     mod:hook("UIHud", "draw", function(func, self, dt, t, input_service)
@@ -212,11 +193,30 @@ function HudPanel.install(mod)
             self._elements_array = fixed
             local source_base_render_pass = source_renderer.base_render_pass
             local source_render_pass_flag = source_renderer.render_pass_flag
+            local retained_lookup = self._elements_hud_retained_mode_lookup
+            local retained_modes = {}
+            for i = 1, #fixed do
+                local name = fixed[i].__class_name
+                retained_modes[#retained_modes + 1] = {
+                    name = name,
+                    value = retained_lookup[name],
+                }
+                retained_lookup[name] = false
+            end
             source_renderer.base_render_pass = resource_renderer.base_render_pass
             source_renderer.render_pass_flag = resource_renderer.render_pass_flag
-            func(self, dt, t, input_service)
+            local replay_ok, replay_result = pcall(
+                func, self, dt, t, input_service)
             source_renderer.base_render_pass = source_base_render_pass
             source_renderer.render_pass_flag = source_render_pass_flag
+            for i = 1, #retained_modes do
+                local retained = retained_modes[i]
+                retained_lookup[retained.name] = retained.value
+            end
+            if not replay_ok then
+                self._elements_array = source_elements
+                error(replay_result)
+            end
             state.last_authored_t = t
         end
         self._elements_array = source_elements

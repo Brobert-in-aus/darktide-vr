@@ -344,6 +344,7 @@ std::atomic<unsigned int> current_presentation_mode{
         darktidevr::core::SharedPresentationMode::stereo_world)};
 std::atomic<unsigned int> current_presentation_source_width{1};
 std::atomic<unsigned int> current_presentation_source_height{1};
+std::atomic<std::uint64_t> current_gameplay_generation{};
 std::atomic<bool> vendor_menu_widget_capture_enabled{false};
 // Menu shaders are reused by several retained UI scenes.  Redirecting them
 // while no world-space menu is active can retain an old title/character-select
@@ -803,6 +804,7 @@ std::deque<GpuProfileSample> gpu_profile_pending;
 std::array<std::atomic<std::uint64_t>, 2> gpu_profile_sample_counts{};
 std::array<std::atomic<std::uint64_t>, 2> gpu_profile_total_ticks{};
 std::array<std::atomic<std::uint64_t>, 2> gpu_profile_max_ticks{};
+std::array<std::vector<std::uint64_t>, 2> gpu_profile_duration_ticks{};
 std::array<std::atomic<std::uint64_t>, 2> gpu_profile_stage_sample_counts{};
 std::array<std::atomic<std::uint64_t>, 2> gpu_profile_world_total_ticks{};
 std::array<std::atomic<std::uint64_t>, 2> gpu_profile_world_max_ticks{};
@@ -1070,6 +1072,7 @@ void harvest_gpu_profile_samples() {
       gpu_profile_total_ticks[index].fetch_add(duration,
                                                 std::memory_order_relaxed);
       update_atomic_max(gpu_profile_max_ticks[index], duration);
+      gpu_profile_duration_ticks[index].push_back(duration);
       if (sample.stage_boundary_recorded && boundary >= start &&
           end >= boundary) {
         const auto world_duration = boundary - start;
@@ -5132,21 +5135,23 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
       }
     }
   }
-  std::uintptr_t pipeline{};
-  {
-    std::scoped_lock lock(trace_mutex);
-    pipeline = command_traces[commands].pso;
-  }
   PsoMetadata draw_metadata{};
-  {
-    std::scoped_lock lock(pso_mutex);
-    const auto found = pso_metadata.find(pipeline);
-    if (found != pso_metadata.end()) {
-      draw_metadata = found->second;
-    }
-  }
   const auto direct_menu_capture =
       menu_direct_capture_enabled.load(std::memory_order_relaxed);
+  if (direct_menu_capture) {
+    std::uintptr_t pipeline{};
+    {
+      std::scoped_lock lock(trace_mutex);
+      pipeline = command_traces[commands].pso;
+    }
+    {
+      std::scoped_lock lock(pso_mutex);
+      const auto found = pso_metadata.find(pipeline);
+      if (found != pso_metadata.end()) {
+        draw_metadata = found->second;
+      }
+    }
+  }
   const auto stock_menu_draw =
       direct_menu_capture && is_stock_menu_shader_pair(draw_metadata);
   const auto vendor_menu_widget_draw =
@@ -6393,6 +6398,7 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
         if (ready_after > ready_before) {
           (void)shared_head_pose_reader().publish_rendered_pair(
               {ready_after,
+               current_gameplay_generation.load(std::memory_order_acquire),
                {boundary_staged_eye0_pose_sequence.load(
                     std::memory_order_relaxed),
                 requested_pose_sequence},
@@ -6993,8 +6999,7 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
   // alternate between the loading view and the preceding stereo scene.
   if (presentation_mode !=
           darktidevr::core::SharedPresentationMode::flat_loading_or_cinematic &&
-      presentation_mode !=
-          darktidevr::core::SharedPresentationMode::flat_interactive &&
+      !darktidevr::core::flat_interactive_active(presentation_mode) &&
       candidate && present_queue &&
       desktop_mirror_ready.load(std::memory_order_acquire)) {
     const auto mirror_result =
@@ -8270,6 +8275,7 @@ int capture_armed_eye_from_swapchain(int eye) {
     if (ready_after > ready_before) {
       (void)shared_head_pose_reader().publish_rendered_pair(
           {ready_after,
+           current_gameplay_generation.load(std::memory_order_acquire),
            {boundary_staged_eye0_pose_sequence.load(std::memory_order_relaxed),
             requested.pose_sequence},
            {boundary_staged_eye0_vertical_fov.load(std::memory_order_relaxed),
@@ -8425,6 +8431,16 @@ bool publish_presentation_state(
 }  // namespace
 
 extern "C" __declspec(dllexport) int dtvr_install() { return install_hooks(); }
+extern "C" __declspec(dllexport) int dtvr_commit_gameplay_generation(
+    unsigned long long generation) {
+  if (generation == 0) {
+    return 1;
+  }
+  current_gameplay_generation.store(generation, std::memory_order_release);
+  return shared_head_pose_reader().publish_gameplay_generation(generation)
+             ? 0
+             : 2;
+}
 extern "C" __declspec(dllexport) int
 dtvr_install_for_device(ID3D12Device* device) {
   return device ? install_hooks(device) : 20;
@@ -9207,6 +9223,16 @@ extern "C" __declspec(dllexport) int dtvr_take_gpu_eye_profile(
   values[2] = gpu_profile_max_ticks[index].exchange(
       0, std::memory_order_relaxed);
   values[3] = gpu_profile_frequency;
+  auto durations = std::move(gpu_profile_duration_ticks[index]);
+  gpu_profile_duration_ticks[index].clear();
+  if (!durations.empty()) {
+    std::sort(durations.begin(), durations.end());
+    values[4] = durations[(durations.size() - 1U) / 2U];
+    values[5] = durations[((durations.size() - 1U) * 95U) / 100U];
+  } else {
+    values[4] = 0;
+    values[5] = 0;
+  }
   return gpu_profile_frequency != 0 ? 0 : 2;
 }
 extern "C" __declspec(dllexport) int dtvr_take_gpu_stage_profile(
@@ -9687,6 +9713,7 @@ extern "C" __declspec(dllexport) int dtvr_read_head_pose(
   values[21] = sample.body_follow_offset.y;
   values[22] = sample.body_follow_offset.z;
   values[23] = static_cast<float>(sample.recenter_generation);
+  values[24] = sample.floor_eye_height_metres;
   *sequence = sample.sequence;
   return 0;
 }

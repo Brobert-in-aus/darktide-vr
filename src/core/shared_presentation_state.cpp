@@ -46,6 +46,16 @@ bool immersive_projection_active(SharedPresentationMode mode) {
          mode == SharedPresentationMode::flat_menu;
 }
 
+bool flat_interactive_active(SharedPresentationMode mode) {
+  return mode == SharedPresentationMode::flat_interactive ||
+         mode == SharedPresentationMode::flat_interactive_native_aspect;
+}
+
+bool flat_interactive_uses_eye_aspect(SharedPresentationMode mode,
+                                      bool shared_eyes_open) {
+  return mode == SharedPresentationMode::flat_interactive && shared_eyes_open;
+}
+
 bool valid_presentation_state(const SharedPresentationState& state) {
   const auto raw_mode = static_cast<std::uint32_t>(state.mode);
   const auto dimensions_valid =

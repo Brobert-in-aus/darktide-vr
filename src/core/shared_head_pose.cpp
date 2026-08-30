@@ -37,8 +37,11 @@ struct SharedLayout {
   float eye1_down{};
   float eye1_up{};
   float ipd_metres{0.064F};
+  float floor_eye_height_metres{};
   volatile LONG64 pair_epoch{};
   volatile LONG64 pair_ready_value{};
+  volatile LONG64 gameplay_generation{};
+  volatile LONG64 pair_gameplay_generation{};
   volatile LONG64 pair_eye0_pose_sequence{};
   volatile LONG64 pair_eye1_pose_sequence{};
   float pair_eye0_vertical_fov{};
@@ -82,6 +85,10 @@ bool valid(const SharedHeadPoseSample& sample) {
          sample.render_height >= 640 && sample.render_height <= 7680 &&
          std::isfinite(sample.ipd_metres) && sample.ipd_metres >= 0.03F &&
          sample.ipd_metres <= 0.10F &&
+         std::isfinite(sample.floor_eye_height_metres) &&
+         (sample.floor_eye_height_metres == 0.0F ||
+          (sample.floor_eye_height_metres >= 0.2F &&
+           sample.floor_eye_height_metres <= 3.5F)) &&
          valid_frustum(sample.render_frusta[0]) &&
          valid_frustum(sample.render_frusta[1]);
 }
@@ -156,10 +163,13 @@ SharedHeadPoseWriter::SharedHeadPoseWriter() {
   data.eye1_down = 0.0F;
   data.eye1_up = 0.0F;
   data.ipd_metres = 0.0F;
+  data.floor_eye_height_metres = 0.0F;
   MemoryBarrier();
   InterlockedExchange64(&data.epoch, 2);
   InterlockedExchange64(&data.pair_epoch, 1);
   InterlockedExchange64(&data.pair_ready_value, 0);
+  InterlockedExchange64(&data.gameplay_generation, 0);
+  InterlockedExchange64(&data.pair_gameplay_generation, 0);
   InterlockedExchange64(&data.pair_eye0_pose_sequence, 0);
   InterlockedExchange64(&data.pair_eye1_pose_sequence, 0);
   data.pair_eye0_vertical_fov = 0.0F;
@@ -203,6 +213,7 @@ bool SharedHeadPoseWriter::publish(const SharedHeadPoseSample& sample) {
   data.eye1_down = sample.render_frusta[1].down;
   data.eye1_up = sample.render_frusta[1].up;
   data.ipd_metres = sample.ipd_metres;
+  data.floor_eye_height_metres = sample.floor_eye_height_metres;
   data.recenter_generation =
       static_cast<LONG>(sample.recenter_generation);
   InterlockedExchange64(&data.sequence,
@@ -225,6 +236,7 @@ bool SharedHeadPoseWriter::read_rendered_pair(
     }
     SharedRenderedEyePairPose candidate{
         static_cast<std::uint64_t>(data.pair_ready_value),
+        static_cast<std::uint64_t>(data.pair_gameplay_generation),
         {static_cast<std::uint64_t>(data.pair_eye0_pose_sequence),
          static_cast<std::uint64_t>(data.pair_eye1_pose_sequence)},
         {data.pair_eye0_vertical_fov, data.pair_eye1_vertical_fov},
@@ -237,6 +249,12 @@ bool SharedHeadPoseWriter::read_rendered_pair(
     }
   }
   return false;
+}
+
+std::uint64_t SharedHeadPoseWriter::read_gameplay_generation() const {
+  const auto& data = *static_cast<const SharedLayout*>(view_);
+  const auto generation = data.gameplay_generation;
+  return generation > 0 ? static_cast<std::uint64_t>(generation) : 0;
 }
 
 SharedHeadPoseReader::~SharedHeadPoseReader() {
@@ -293,6 +311,7 @@ bool SharedHeadPoseReader::read(SharedHeadPoseSample& sample) {
     candidate.render_frusta[1] =
         {data.eye1_left, data.eye1_right, data.eye1_down, data.eye1_up};
     candidate.ipd_metres = data.ipd_metres;
+    candidate.floor_eye_height_metres = data.floor_eye_height_metres;
     MemoryBarrier();
     const auto after = data.epoch;
     const auto now_ms = GetTickCount64();
@@ -315,6 +334,8 @@ bool SharedHeadPoseReader::publish_rendered_pair(
   InterlockedIncrement64(&data.pair_epoch);
   InterlockedExchange64(&data.pair_ready_value,
                         static_cast<LONG64>(pair.ready_value));
+  InterlockedExchange64(&data.pair_gameplay_generation,
+                        static_cast<LONG64>(pair.gameplay_generation));
   InterlockedExchange64(&data.pair_eye0_pose_sequence,
                         static_cast<LONG64>(pair.eye_pose_sequences[0]));
   InterlockedExchange64(&data.pair_eye1_pose_sequence,
@@ -325,6 +346,19 @@ bool SharedHeadPoseReader::publish_rendered_pair(
   data.pair_eye1_aspect_ratio = pair.aspect_ratios[1];
   MemoryBarrier();
   InterlockedIncrement64(&data.pair_epoch);
+  return true;
+}
+
+bool SharedHeadPoseReader::publish_gameplay_generation(
+    std::uint64_t generation) {
+  if (!ensure_open() || generation == 0 ||
+      generation > static_cast<std::uint64_t>(
+                       std::numeric_limits<LONG64>::max())) {
+    return false;
+  }
+  auto& data = *static_cast<SharedLayout*>(view_);
+  InterlockedExchange64(&data.gameplay_generation,
+                        static_cast<LONG64>(generation));
   return true;
 }
 

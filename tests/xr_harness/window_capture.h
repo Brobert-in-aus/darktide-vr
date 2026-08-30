@@ -28,6 +28,9 @@ class WindowCapture {
   WindowCapture& operator=(const WindowCapture&) = delete;
 
   CapturedWindowFrame capture();
+  [[nodiscard]] bool source_window_alive() const noexcept;
+  [[nodiscard]] std::optional<std::pair<std::uint32_t, std::uint32_t>>
+  source_extent() const noexcept;
   void set_source_crop(std::uint32_t source_width,
                        std::uint32_t source_height, std::uint32_t crop_x,
                        std::uint32_t crop_y, std::uint32_t crop_width,

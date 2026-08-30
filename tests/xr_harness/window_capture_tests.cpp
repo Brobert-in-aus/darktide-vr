@@ -64,9 +64,21 @@ int wmain() {
     UpdateWindow(window);
 
     darktidevr::harness::WindowCapture capture(kTitle, 160, 90);
+    expect(capture.source_window_alive(),
+           "New capture must report its source window alive");
     const auto initial = capture.capture();
     expect(initial.bgra_pixels && initial.width == 160 && initial.height == 90,
            "Visible fixture should capture at requested dimensions");
+    RECT expected_client{};
+    expect(GetClientRect(window, &expected_client) != FALSE,
+           "Fixture client extent must be readable");
+    const auto source_extent = capture.source_extent();
+    expect(source_extent &&
+               source_extent->first == static_cast<std::uint32_t>(
+                                           expected_client.right) &&
+               source_extent->second == static_cast<std::uint32_t>(
+                                            expected_client.bottom),
+           "Capture must expose the physical client aspect to the XR panel");
 
     const auto occluder = CreateWindowExW(
         WS_EX_TOPMOST, kClassName, L"DarktideVR capture occluder",
@@ -124,6 +136,8 @@ int wmain() {
 
     DestroyWindow(window);
     window = nullptr;
+    expect(!capture.source_window_alive(),
+           "Destroyed source window must be reported unavailable");
     UnregisterClassW(kClassName, window_class.hInstance);
     std::cout << "window_capture_recovery.result=pass\n";
     return 0;

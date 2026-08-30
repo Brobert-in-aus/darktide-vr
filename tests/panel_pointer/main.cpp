@@ -53,6 +53,10 @@ int main() {
         2.0F, 2.0F, 1920, 1080, 0, 0, 1920, 1080);
     expect(!hit, "A ray pointing away from the panel must miss");
 
+    hit = map_pointer_to_panel(PointerRay{}, panel, 2.0F, 2.0F, 1920, 1080,
+                               0, 642, 2496, 1404);
+    expect(!hit, "Transiently stale menu crop metadata must safely miss");
+
     expect(darktidevr::core::pointer_origin_within_reach(
                {0.5F, 0.0F, 0.0F}, {}, 1.5F) &&
                !darktidevr::core::pointer_origin_within_reach(

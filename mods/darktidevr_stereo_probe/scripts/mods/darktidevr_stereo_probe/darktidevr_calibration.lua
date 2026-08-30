@@ -1,10 +1,12 @@
 local UIWidget = require("scripts/managers/ui/ui_widget")
 local ButtonPassTemplates = require("scripts/ui/pass_templates/button_pass_templates")
 local UISoundEvents = require("scripts/settings/ui/ui_sound_events")
+local Breeds = require("scripts/settings/breed/breeds")
 
 local calibration = {}
 
-function calibration.install(mod, controller_state, get_head_pose)
+function calibration.install(mod, controller_state, get_head_pose,
+        refresh_controller_state)
     if mod.darktidevr_calibration then
         return mod.darktidevr_calibration
     end
@@ -12,6 +14,7 @@ function calibration.install(mod, controller_state, get_head_pose)
     local runtime = {
         controller_state = controller_state,
         get_head_pose = get_head_pose,
+        refresh_controller_state = refresh_controller_state,
         mode = nil,
         stage = "choose_mode",
         samples = {},
@@ -19,8 +22,75 @@ function calibration.install(mod, controller_state, get_head_pose)
     }
     mod.darktidevr_calibration = runtime
 
+    -- Match the official barber flow: persist an in-range height through the
+    -- ProfilesService, then update the live profile only after the backend
+    -- accepts it. Calibration never writes an out-of-range value. Any residual
+    -- beyond the stock slider remains a local visual presentation correction.
+    function runtime:apply_official_character_height(result)
+        if not result or result.seated or
+                not tonumber(result.floor_eye_height) then
+            return false, "standing_height_unavailable"
+        end
+        local player = Managers.player and Managers.player:local_player(1)
+        local profile = player and player:profile()
+        local service = Managers.data_service and
+            Managers.data_service.profiles
+        local character_id = player and player:character_id()
+        if not profile or not profile.personal or not service or
+                not character_id then
+            result.profile_height_status = "service_unavailable"
+            return false, result.profile_height_status
+        end
+        local archetype = profile.archetype
+        local breed = archetype and Breeds[archetype.breed]
+        local height_range = breed and breed.size_variation_range
+        local authored_eye_height = breed and breed.heights and
+            tonumber(breed.heights.default)
+        if not height_range or not authored_eye_height or
+                authored_eye_height <= 0 then
+            result.profile_height_status = "breed_height_unavailable"
+            return false, result.profile_height_status
+        end
+        local target_scale = math.max(height_range[1], math.min(
+            height_range[2], tonumber(result.floor_eye_height) /
+                authored_eye_height))
+        target_scale = tonumber(string.format("%.3f", target_scale))
+        result.profile_height_previous =
+            tonumber(profile.personal.character_height)
+        result.profile_height_requested = target_scale
+        if result.profile_height_previous and math.abs(
+                result.profile_height_previous - target_scale) < 0.0005 then
+            result.profile_height_status = "already_current"
+            mod:set("vr_calibration_v1", result)
+            return true, result.profile_height_status
+        end
+        result.profile_height_status = "pending"
+        mod:set("vr_calibration_v1", result)
+        service:set_character_height(character_id, target_scale):next(function()
+            profile.personal.character_height = target_scale
+            result.profile_height_status = "accepted"
+            mod:set("vr_calibration_v1", result)
+            mod:info(
+                "DARKTIDEVR_CALIBRATION profile_height accepted previous=%s requested=%.3f archetype=%s",
+                tostring(result.profile_height_previous), target_scale,
+                tostring(archetype.name or archetype.breed))
+        end):catch(function()
+            result.profile_height_status = "rejected"
+            mod:set("vr_calibration_v1", result)
+            mod:warning(
+                "DARKTIDEVR_CALIBRATION profile_height rejected requested=%.3f archetype=%s",
+                target_scale, tostring(archetype.name or archetype.breed))
+        end)
+        return true, "pending"
+    end
+
     function runtime:sample(request)
         local state = self.controller_state
+        if self.refresh_controller_state and
+                not self.refresh_controller_state() then
+            request.error = "Waiting for a fresh controller pose."
+            return
+        end
         local head = self.get_head_pose and self.get_head_pose()
         if not head then
             request.error = "Waiting for a valid headset pose."
@@ -36,16 +106,21 @@ function calibration.install(mod, controller_state, get_head_pose)
         end
         request.sample = {
             generation = state.head_recenter_generation or 0,
+            left_tracked = state.left_grip_tracking_live == true,
+            right_tracked = state.right_grip_tracking_live == true,
+            left_trigger = tonumber(state.left_trigger) or 0,
+            right_trigger = tonumber(state.right_trigger) or 0,
             head = {
                 tonumber(head[0]), tonumber(head[2]), tonumber(head[1]),
             },
+            floor_eye_height = tonumber(head[24]) or 0,
         }
-        if request.left then
+        if state.left_grip_tracking_live then
             request.sample.left = {
                 state.left_grip_x, state.left_grip_y, state.left_grip_z,
             }
         end
-        if request.right then
+        if state.right_grip_tracking_live then
             request.sample.right = {
                 state.right_grip_x, state.right_grip_y, state.right_grip_z,
             }
@@ -122,7 +197,7 @@ function calibration.install(mod, controller_state, get_head_pose)
         end
     end)
 
-    mod:info("DARKTIDEVR_CALIBRATION registered schema=1")
+    mod:info("DARKTIDEVR_CALIBRATION registered schema=2")
     return runtime
 end
 

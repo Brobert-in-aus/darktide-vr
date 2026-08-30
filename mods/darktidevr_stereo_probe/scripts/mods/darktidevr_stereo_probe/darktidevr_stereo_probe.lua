@@ -96,8 +96,12 @@ local billboard_shader_substitution_requested = true
 -- hook available for diagnostics, but do not patch production draws while we
 -- isolate the head-tracking regression.
 local billboard_horizon_lock_requested = false
-local billboard_direct_write_requested = true
-local billboard_selector_probe_requested = true
+local billboard_direct_write_requested = false
+-- Production cylindrical billboarding is the PSO-time shader substitution
+-- above. The selector is a retired per-draw binding census whose descriptor
+-- writer is fail-closed; leaving it armed installs thousands of diagnostic
+-- D3D12 detours per stereo pair without changing the replacement shader.
+local billboard_selector_probe_requested = false
 local ui_table4_alias_probe_requested = false -- unsafe without exact draw identity
 local ui_present_capture_requested = false
 local ui_alternating_full_requested = false
@@ -113,9 +117,9 @@ local ui_native_sync_initialized = false
 local ui_native_sync_last_result = nil
 local ui_native_sync_timeout_ms = 100
 local ui_native_sync_requested = false -- Lua blocks renderer submission; falsified
--- The resource-renderer replay path duplicated only its own background and
--- diagnostics; paired D3D12 traces showed no SystemView-specific draws in the
--- target. Keep it disabled while the untouched to_screen path is traced.
+-- Resource-renderer redirection still causes cross-eye flicker for crafting.
+-- Keep it disabled while shops temporarily use the proven character-select
+-- style flat XR panel.
 local ui_menu_resource_redirect_requested = false
 -- The stock menu PSO/resource boundary is known. Keep the former focused
 -- D3D12 trace opt-in only: its post-exit baseline used to remain armed because
@@ -189,6 +193,7 @@ local controller_observation = {
     right_aim_qy = nil,
     right_aim_qz = nil,
     right_aim_qw = nil,
+    left_trigger = 0,
     right_trigger = 0,
     left_stick_x = 0,
     left_stick_y = 0,
@@ -228,6 +233,11 @@ local controller_observation = {
     head_aim_yaw = nil,
     head_aim_pitch = nil,
     head_aim_roll = nil,
+    gameplay_yaw = nil,
+    gameplay_pitch = nil,
+    gameplay_roll = nil,
+    gameplay_orientation_owner = nil,
+    gameplay_orientation_suspended = false,
     body_visual_yaw = nil,
     body_visual_yaw_last_t = nil,
     body_heading_last_head_yaw = nil,
@@ -301,6 +311,10 @@ local controller_observation = {
     body_eye_anchor_local_y = nil,
     body_eye_anchor_local_z = nil,
     body_eye_anchor_source = nil,
+    body_camera_eye_offset_unit = nil,
+    body_camera_eye_offset_x = nil,
+    body_camera_eye_offset_y = nil,
+    body_camera_eye_offset_z = nil,
     body_camera_sweep_start_t = nil,
     body_camera_sweep_last_bucket = -1,
     body_head_visible = true,
@@ -339,6 +353,9 @@ local controller_observation = {
     body_ik_neck_offset_z = nil,
     body_ik_neck_baseline_raw = nil,
     body_ik_neck_baseline_arc = nil,
+    body_ik_neck_anchor_unit = nil,
+    body_ik_neck_anchor_generation = nil,
+    body_ik_neck_anchor_local = nil,
     body_ik_neck_raw_vertical = 0,
     body_ik_neck_compensated_vertical = 0,
     body_ik_neck_arc_vertical = 0,
@@ -407,7 +424,7 @@ local presentation = {
     full_second_eye_probe_requested = false,
     full_second_eye_probe_check_frame = 0,
     full_second_eye_probe_last_check_frame = -math.huge,
-    head_translation_trace_requested = false,
+    head_translation_trace_requested = true,
     head_translation_trace_last_sequence = 0,
     head_translation_trace_interval = 600,
     sequence = 0,
@@ -427,6 +444,32 @@ local presentation = {
     flat_panel_views = {
         main_menu_view = true,
         main_menu_background_view = true,
+    },
+    -- Hub facilities are view families rather than single views. Their
+    -- background/landing view and nested interactive view have distinct names,
+    -- but must remain on the same proven native-window mode-5 panel throughout
+    -- the transition. Keep this explicit: `disable_game_world` also covers
+    -- unrelated cinematics and fullscreen flows that need separate policy.
+    shop_panel_views = {
+        barber_vendor_background_view = true,
+        character_appearance_view = true,
+        contracts_background_view = true,
+        contracts_view = true,
+        credits_vendor_background_view = true,
+        credits_vendor_view = true,
+        credits_goods_vendor_view = true,
+        cosmetics_vendor_background_view = true,
+        cosmetics_vendor_view = true,
+        marks_vendor_view = true,
+        marks_goods_vendor_view = true,
+    },
+    -- Premium-store views already author a native landscape client. Treating
+    -- their capture as a portrait eye-encoded shop made the panel geometry
+    -- disagree with its laser/cursor coordinates. Mode 6 retains the proven
+    -- mode-5 input/lifecycle behavior while fitting the actual client aspect.
+    native_aspect_shop_panel_views = {
+        store_view = true,
+        store_item_detail_view = true,
     },
     world_menu_gui = nil,
     world_menu_gui_world = nil,
@@ -577,6 +620,7 @@ local function ensure_ui_native_hooks()
             float maximum_panel_height_metres, int body_panel_pose_valid,
             float panel_x, float panel_y, float panel_z, float panel_qx,
             float panel_qy, float panel_qz, float panel_qw);
+        int dtvr_commit_gameplay_generation(unsigned long long generation);
         int dtvr_capture_eye(int eye);
         int dtvr_capture_armed_swapchain_eye(int eye);
         int dtvr_set_camera_output_candidate_index(int index);
@@ -819,7 +863,7 @@ local function ensure_ui_native_hooks()
 
     ui_native_capture = library
     ui_native_capture.dtvr_set_projection_active(0)
-    head_pose_values = ffi.new("float[24]")
+    head_pose_values = ffi.new("float[25]")
     head_pose_sequence = ffi.new("unsigned long long[1]")
     controller_observation.values = ffi.new("float[36]")
     controller_observation.tracking_flags = ffi.new("unsigned int[4]")
@@ -842,7 +886,7 @@ local function ensure_ui_native_hooks()
     controller_observation.ik_input = ffi.new("float[17]")
     controller_observation.ik_output = ffi.new("float[14]")
     controller_observation.ik_flags = ffi.new("unsigned int[1]")
-    gpu_profile_values = ffi.new("unsigned long long[4]")
+    gpu_profile_values = ffi.new("unsigned long long[6]")
     gpu_stage_profile_values = ffi.new("unsigned long long[6]")
     ui_native_capture.dtvr_set_gpu_eye_profile(
         performance_profile_requested and 1 or 0)
@@ -886,7 +930,8 @@ function presentation.publish_mode(mode, reason)
         return
     end
     presentation.sequence = presentation.sequence + 1
-    local flat_mode = mode == 2 or mode == 3 or mode == 4 or mode == 5
+    local flat_mode = mode == 2 or mode == 3 or mode == 4 or mode == 5 or
+        mode == 6
     -- UI layout is authored at 1920x1080 logical pixels and then multiplied
     -- by RESOLUTION_LOOKUP.scale. The old fixed 1920x1080 crop truncated the
     -- scaled menu and made the XR pointer diverge from engine hotspots.
@@ -896,16 +941,19 @@ function presentation.publish_mode(mode, reason)
     local scaled_flat_height = math.floor(
         presentation.flat_target_height * ui_scale + 0.5)
     local direct_menu_target = mode == 3 or mode == 4
+    local native_window_target = mode == 5 or mode == 6
     -- Interactive menus now have a dedicated RGBA source. Loading screens
     -- still use the portrait window/eye source until they receive their own
     -- resource renderer.
-    local source_width = direct_menu_target and math.min(
-        scaled_flat_width, ui_eye_target_width) or ui_eye_target_width
+    local source_width = native_window_target and scaled_flat_width or
+        (direct_menu_target and math.min(
+            scaled_flat_width, ui_eye_target_width) or ui_eye_target_width)
     -- The direct D3D12 menu target is created from the full eye-sized render
     -- target. Publish that physical resource extent even though the authored
     -- 16:9 menu occupies only the crop below; otherwise the XR process rejects
     -- the valid shared handle as an extent mismatch.
-    local source_height = ui_eye_target_height
+    local source_height = native_window_target and scaled_flat_height or
+        ui_eye_target_height
     local crop_width = flat_mode and math.min(
         scaled_flat_width, source_width) or source_width
     local crop_height = flat_mode and math.min(
@@ -1237,13 +1285,15 @@ function presentation.classify_active_view(manager, view_name)
     if presentation.flat_loading_views[view_name] then
         return 2, "loading_or_cinematic"
     end
-    if view_name == "crafting_view" or
+    if presentation.native_aspect_shop_panel_views[view_name] then
+        return 6, "native_aspect_shop_panel"
+    end
+    if presentation.shop_panel_views[view_name] or
+            view_name == "crafting_view" or
             string.find(view_name, "crafting_", 1, true) == 1 then
-        -- Crafting hard-codes its retained widgets to `to_screen`. Use the
-        -- complete native window presentation as an interim interactive flat
-        -- panel; the producer suppresses the eye mirror only for this mode so
-        -- the window-capture consumer receives the authored shop rather than
-        -- a mono eye image.
+        -- The captured-client mode-5 route is proven through Hadron. Explicit
+        -- family membership keeps each facility on that same panel while its
+        -- landing/background view hands off to nested interactive children.
         return 5, "native_window_shop_panel"
     end
     if presentation.flat_panel_views[view_name] then
@@ -1251,14 +1301,6 @@ function presentation.classify_active_view(manager, view_name)
     end
     if presentation.non_gameplay_views[view_name] then
         return 5, "non_gameplay_interactive_flat_fallback"
-    end
-    if presentation.vendor_resource_enabled and
-            (view_name == "crafting_view" or
-                string.find(view_name, "crafting_", 1, true) == 1) then
-        -- The active child was authored directly into a world-owned resource
-        -- renderer. It is already part of both stereo world passes, so the XR
-        -- bridge must not composite the parent's native flat-menu mailbox too.
-        return nil, "resource_world_board"
     end
     if presentation.vendor_anchor.valid and
             (presentation.vendor_anchor.view_name == view_name or
@@ -1324,7 +1366,7 @@ function presentation.reconcile_fullscreen_views(manager)
                 -- Loading/cinematic content is non-interactive and must win a
                 -- one-update overlap with a closing interactive view.
                 desired_mode = mode
-            elseif mode == 5 and desired_mode ~= 2 then
+            elseif (mode == 5 or mode == 6) and desired_mode ~= 2 then
                 desired_mode = mode
             elseif mode == 3 or mode == 4 then
                 observed_world_menu_views[view_name] = true
@@ -1366,6 +1408,7 @@ function presentation.on_view_open(manager, view_name)
     if active_ok and is_active then
         if view_name == "main_menu_view" or
                 view_name == "main_menu_background_view" or
+                presentation.shop_panel_views[view_name] or
                 view_name == "crafting_view" or
                 string.find(view_name, "crafting_", 1, true) == 1 then
             presentation.flat_panel_views[view_name] = true
@@ -1408,7 +1451,7 @@ function presentation.on_view_open(manager, view_name)
         local mode, reason = presentation.classify_active_view(manager, view_name)
         if mode then
             presentation.fullscreen_empty_updates = 0
-            if mode == 2 or mode == 5 then
+            if mode == 2 or mode == 5 or mode == 6 then
                 presentation.publish_mode(mode, tostring(view_name) .. ":" .. reason)
             else
                 presentation.world_menu_views[view_name] = true
@@ -1775,6 +1818,10 @@ function presentation.update_vendor_menu_test(manager)
     local allowed = {
         crafting = "crafting_view",
         contracts = "contracts_background_view",
+        armoury = "credits_vendor_background_view",
+        cosmetics = "cosmetics_vendor_background_view",
+        barber = "barber_vendor_background_view",
+        store = "store_view",
     }
     if command ~= "close" and command ~= "crafting_widgets" and
             command ~= "crafting_entreat" and not allowed[command] then
@@ -2066,10 +2113,17 @@ function presentation.read_menu_pointer()
                 back_press_sequence ~= pointer.back_press_sequence or
                 scroll_sequence ~= pointer.scroll_sequence then
             mod:info(
-                "DARKTIDEVR_MENU_INPUT event_transport_changed primary=%d back=%d scroll=%d",
+                "DARKTIDEVR_MENU_INPUT event_transport_changed primary=%d back=%d scroll=%d active=%s available=%s source=%d,%d/%dx%d consumed=%d",
                 primary_press_sequence,
                 back_press_sequence,
-                scroll_sequence)
+                scroll_sequence,
+                tostring(pointer.active),
+                tostring(pointer.available),
+                pointer.x,
+                pointer.y,
+                pointer.source_width,
+                pointer.source_height,
+                pointer.primary_consumed_sequence)
         end
         pointer.primary_press_sequence = primary_press_sequence
         pointer.back_press_sequence = back_press_sequence
@@ -2078,7 +2132,11 @@ function presentation.read_menu_pointer()
         pointer.back_down = back_down
         pointer.last_sequence = sequence
     end
-    pointer.primary_pressed = pointer.active and
+    -- A press sequence is created only while the harness has a valid panel
+    -- hit. Keep that semantic edge eligible for Lua's following UI tick even
+    -- if the current ray sample has already left the panel; the synchronized
+    -- native cursor still identifies the engine-owned hovered hotspot.
+    pointer.primary_pressed = pointer.available and
         pointer.primary_press_sequence ~= pointer.primary_consumed_sequence
     pointer.back_pressed = pointer.available and
         pointer.back_press_sequence ~= pointer.back_consumed_sequence
@@ -2202,8 +2260,12 @@ function presentation.widget_contains_menu_pointer(instance, widget, pointer,
         return false, nil
     end
     local scale = RESOLUTION_LOOKUP.scale or 1
-    local resolution_width = RESOLUTION_LOOKUP.width
-    local resolution_height = RESOLUTION_LOOKUP.height
+    local resolution_width = (presentation.mode == 5 or
+        presentation.mode == 6) and pointer.source_width or
+        RESOLUTION_LOOKUP.width
+    local resolution_height = (presentation.mode == 5 or
+        presentation.mode == 6) and pointer.source_height or
+        RESOLUTION_LOOKUP.height
     local pointer_x = pointer.x * resolution_width / pointer.source_width
     local pointer_y = pointer.y * resolution_height / pointer.source_height
     local base_left = world[1] + (offset[1] or 0)
@@ -2650,6 +2712,9 @@ local function apply_head_tracking(clean_position, clean_rotation)
         controller_observation.body_ik_neck_generation = nil
         controller_observation.body_ik_neck_baseline_raw = nil
         controller_observation.body_ik_neck_baseline_arc = nil
+        controller_observation.body_ik_neck_anchor_unit = nil
+        controller_observation.body_ik_neck_anchor_generation = nil
+        controller_observation.body_ik_neck_anchor_local = nil
         mod:info(
             "DARKTIDEVR_IK neck_pivot rebase generation=%d",
             recenter_generation)
@@ -2772,6 +2837,8 @@ local function apply_head_tracking(clean_position, clean_rotation)
         end
         controller_observation.right_trigger =
             tonumber(controller_observation.values[32])
+        controller_observation.left_trigger =
+            tonumber(controller_observation.values[14])
         controller_observation.left_stick_x =
             tonumber(controller_observation.values[16])
         controller_observation.left_stick_y =
@@ -2822,17 +2889,11 @@ local function apply_head_tracking(clean_position, clean_rotation)
                 controller_observation.right_stick_y)
         end
     end
-    local character_scale = 1
     local local_player = Managers and Managers.player and
         Managers.player:local_player(1)
-    local archetype_name = local_player and local_player:archetype_name()
-    if archetype_name == "ogryn" then
-        -- Darktide's reviewed breed data uses 1.61 m for the Ogryn player
-        -- height and 1.21 m for the baseline human. Scale physical head
-        -- translation and the runtime eye separation together so the larger
-        -- character sees a consistently smaller world.
-        character_scale = 1.61 / 1.21
-    end
+    local character_scale, scale_source, target_eye_height,
+        source_eye_height =
+            presentation.calibrated_character_scale(local_player)
     if runtime_ipd >= 0.03 and runtime_ipd <= 0.10 then
         half_ipd = runtime_ipd * character_scale * 0.5
         ui_eye_separation = half_ipd * 2
@@ -2855,15 +2916,10 @@ local function apply_head_tracking(clean_position, clean_rotation)
     if head_translation_requested then
         local raw_x = tonumber(head_pose_values[0])
         local raw_z = tonumber(head_pose_values[2])
-        if presentation.current_game_mode_name() == "hub" then
-            -- The native bridge keeps a larger moving envelope for gameplay
-            -- modes that can transfer excess room-scale travel to collision.
-            -- The public hub deliberately never moves the authoritative root,
-            -- so reconstruct the complete recenter-relative displacement and
-            -- constrain only its visual/IK presentation to 25 cm.
-            raw_x = raw_x + controller_observation.body_follow_x
-            raw_z = raw_z + controller_observation.body_follow_z
-        end
+        -- camera_delta is already relative to the bridge's sliding recenter
+        -- origin. body_follow is the cumulative excess intended for an
+        -- authoritative collision root; adding it here recreates a fixed box
+        -- and strands a donned headset at its edge in the public hub.
         local local_x, horizontal_z = presentation.clamp_hub_head_horizontal(
             raw_x * character_scale, raw_z * character_scale)
         local local_y = -horizontal_z
@@ -2895,11 +2951,13 @@ local function apply_head_tracking(clean_position, clean_rotation)
     end
 
     if head_pose_last_sequence == 0 then
-        mod:info("DARKTIDEVR_STEREO head_tracking active mode=%s sequence=%d runtime_ipd=%.4f character_scale=%.3f",
+        mod:info("DARKTIDEVR_STEREO head_tracking active mode=%s sequence=%d runtime_ipd=%.4f character_scale=%.3f scale_source=%s target_eye_height_m=%s source_eye_height_m=%s",
             head_translation_requested and "6dof" or "3dof",
             sequence,
             runtime_ipd,
-            character_scale)
+            character_scale,
+            tostring(scale_source), tostring(target_eye_height),
+            tostring(source_eye_height))
     end
     head_pose_last_sequence = sequence
 
@@ -2912,6 +2970,7 @@ end
 -- UIWorldSpawner.create_viewport is too late for shader/root localization.
 if ui_native_observer_requested or diagnostic_render_hooks_requested or
         vertex_shader_dump_requested or billboard_horizon_lock_requested or
+        billboard_shader_substitution_requested or
         billboard_selector_probe_requested or performance_profile_requested then
     ensure_ui_native_hooks()
 end
@@ -3242,6 +3301,9 @@ local function reset_render_timings(label)
     render_timing_left_max_ticks = 0
     render_timing_right_max_ticks = 0
     render_timing_pair_max_ticks = 0
+    presentation.render_timing_left_samples = {}
+    presentation.render_timing_right_samples = {}
+    presentation.render_timing_pair_samples = {}
 end
 
 local function take_gpu_eye_profile(eye)
@@ -3256,13 +3318,17 @@ local function take_gpu_eye_profile(eye)
     local total = tonumber(gpu_profile_values[1])
     local maximum = tonumber(gpu_profile_values[2])
     local frequency = tonumber(gpu_profile_values[3])
+    local median = tonumber(gpu_profile_values[4])
+    local p95 = tonumber(gpu_profile_values[5])
     if not count or count == 0 or not frequency or frequency <= 0 then
         return nil
     end
     return {
         count = count,
         average_ms = total / count * 1000 / frequency,
-        maximum_ms = maximum * 1000 / frequency
+        maximum_ms = maximum * 1000 / frequency,
+        median_ms = median / frequency * 1000,
+        p95_ms = p95 / frequency * 1000
     }
 end
 
@@ -3313,15 +3379,29 @@ local function record_render_timings(label, left_ticks, right_ticks, pair_ticks)
         render_timing_right_max_ticks, right_ticks)
     render_timing_pair_max_ticks = math.max(
         render_timing_pair_max_ticks, pair_ticks)
+    table.insert(presentation.render_timing_left_samples, left_ticks)
+    table.insert(presentation.render_timing_right_samples, right_ticks)
+    table.insert(presentation.render_timing_pair_samples, pair_ticks)
     if render_timing_samples >= 240 then
         local to_ms = 1000 / render_timing_frequency
+        table.sort(presentation.render_timing_left_samples)
+        table.sort(presentation.render_timing_right_samples)
+        table.sort(presentation.render_timing_pair_samples)
+        local p50_index = math.max(1, math.ceil(render_timing_samples * 0.50))
+        local p95_index = math.max(1, math.ceil(render_timing_samples * 0.95))
         mod:info(
-            "DARKTIDEVR_PERF target=%s samples=%d left_avg_ms=%.3f right_avg_ms=%.3f pair_avg_ms=%.3f left_max_ms=%.3f right_max_ms=%.3f pair_max_ms=%.3f",
+            "DARKTIDEVR_PERF target=%s samples=%d left_avg_ms=%.3f right_avg_ms=%.3f pair_avg_ms=%.3f left_p50_ms=%.3f right_p50_ms=%.3f pair_p50_ms=%.3f left_p95_ms=%.3f right_p95_ms=%.3f pair_p95_ms=%.3f left_max_ms=%.3f right_max_ms=%.3f pair_max_ms=%.3f",
             label,
             render_timing_samples,
             render_timing_left_ticks / render_timing_samples * to_ms,
             render_timing_right_ticks / render_timing_samples * to_ms,
             render_timing_pair_ticks / render_timing_samples * to_ms,
+            presentation.render_timing_left_samples[p50_index] * to_ms,
+            presentation.render_timing_right_samples[p50_index] * to_ms,
+            presentation.render_timing_pair_samples[p50_index] * to_ms,
+            presentation.render_timing_left_samples[p95_index] * to_ms,
+            presentation.render_timing_right_samples[p95_index] * to_ms,
+            presentation.render_timing_pair_samples[p95_index] * to_ms,
             render_timing_left_max_ticks * to_ms,
             render_timing_right_max_ticks * to_ms,
             render_timing_pair_max_ticks * to_ms
@@ -3330,13 +3410,19 @@ local function record_render_timings(label, left_ticks, right_ticks, pair_ticks)
         local right_gpu = take_gpu_eye_profile(1)
         if left_gpu and right_gpu then
             mod:info(
-                "DARKTIDEVR_GPU_PERF target=%s left_samples=%d right_samples=%d left_avg_ms=%.3f right_avg_ms=%.3f interval_sum_avg_ms=%.3f left_max_ms=%.3f right_max_ms=%.3f",
+                "DARKTIDEVR_GPU_PERF target=%s left_samples=%d right_samples=%d left_avg_ms=%.3f right_avg_ms=%.3f interval_sum_avg_ms=%.3f left_p50_ms=%.3f right_p50_ms=%.3f interval_sum_of_p50_ms=%.3f left_p95_ms=%.3f right_p95_ms=%.3f interval_sum_of_p95_ms=%.3f left_max_ms=%.3f right_max_ms=%.3f",
                 label,
                 left_gpu.count,
                 right_gpu.count,
                 left_gpu.average_ms,
                 right_gpu.average_ms,
                 left_gpu.average_ms + right_gpu.average_ms,
+                left_gpu.median_ms,
+                right_gpu.median_ms,
+                left_gpu.median_ms + right_gpu.median_ms,
+                left_gpu.p95_ms,
+                right_gpu.p95_ms,
+                left_gpu.p95_ms + right_gpu.p95_ms,
                 left_gpu.maximum_ms,
                 right_gpu.maximum_ms
             )
@@ -4364,6 +4450,51 @@ function presentation.body_stable_eye_anchor(unit)
         needs_capture
 end
 
+-- The visible body root yaws underneath the tracked viewer. Deriving the
+-- camera from that root's off-centre eye landmark makes the HMD orbit whenever
+-- the shoulders catch up to head yaw. Preserve the one-time model-eye versus
+-- authoritative first-person offset in the immutable scene basis instead.
+-- Body/shoulder rotation can then alter only the avatar, never either camera.
+function presentation.body_camera_anchor(unit)
+    if not unit or not Unit.alive(unit) then
+        return nil, "unit_unavailable"
+    end
+    local first_person_extension = ScriptUnit.has_extension(
+        unit, "first_person_system")
+    local component = first_person_extension and
+        first_person_extension._first_person_component
+    local head_position = component and component.position
+    local model_eye, eye_source, left_eye, right_eye, captured =
+        presentation.body_stable_eye_anchor(unit)
+    if not head_position then
+        return model_eye, eye_source, left_eye, right_eye, captured
+    end
+    local observation = controller_observation
+    if observation.body_camera_eye_offset_unit ~= unit or
+            observation.body_camera_eye_offset_x == nil then
+        if not model_eye or not active_base_rotation then
+            return head_position + Vector3.up() * 0.05,
+                "first_person_fallback", left_eye, right_eye, captured
+        end
+        local basis = active_base_rotation:unbox()
+        local local_offset = presentation.rotate_vector(
+            presentation.inverse_quaternion(basis),
+            model_eye - head_position)
+        observation.body_camera_eye_offset_unit = unit
+        observation.body_camera_eye_offset_x = Vector3.x(local_offset)
+        observation.body_camera_eye_offset_y = Vector3.y(local_offset)
+        observation.body_camera_eye_offset_z = Vector3.z(local_offset)
+    end
+    local basis = active_base_rotation and active_base_rotation:unbox() or
+        Quaternion.identity()
+    local local_offset = Vector3(
+        observation.body_camera_eye_offset_x,
+        observation.body_camera_eye_offset_y,
+        observation.body_camera_eye_offset_z)
+    return head_position + presentation.rotate_vector(basis, local_offset),
+        "stable_first_person_eye_offset", left_eye, right_eye, captured
+end
+
 -- Arm IK runs at the post-animation first-person seam, before the later
 -- stereo camera update refreshes its clean tracking anchor. Rebuild that
 -- anchor from the avatar's final authored root transform here; otherwise
@@ -4375,7 +4506,7 @@ function presentation.refresh_body_anchor_from_avatar(unit)
     if not active_base_rotation or not unit or not Unit.alive(unit) then
         return false
     end
-    local eye_position = presentation.body_stable_eye_anchor(unit)
+    local eye_position = presentation.body_camera_anchor(unit)
     if not eye_position then
         return false
     end
@@ -4430,7 +4561,7 @@ local function update_stereo(manager)
             local head_position = first_person_component.position
             local model_eye_position, eye_source, left_eye, right_eye,
                 eye_anchor_captured =
-                    presentation.body_stable_eye_anchor(player_unit)
+                    presentation.body_camera_anchor(player_unit)
             clean_position = model_eye_position or
                 (head_position + Vector3.up() * 0.05)
             body_anchor_position = clean_position
@@ -4656,6 +4787,11 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
             if not enabled then
                 controller_observation.authoring_pose_active = false
                 controller_observation.body_yaw_anchor = nil
+                controller_observation.gameplay_yaw = nil
+                controller_observation.gameplay_pitch = nil
+                controller_observation.gameplay_roll = nil
+                controller_observation.gameplay_orientation_owner = nil
+                controller_observation.gameplay_orientation_suspended = false
             end
             mod:info(
                 "DARKTIDEVR_AIM authoring=%s source=test_flag writes=%d",
@@ -4680,6 +4816,22 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
     local game_pitch = self._orientation.pitch
     local game_roll = self._orientation.roll
     local physical_yaw = controller_observation.physical_head_yaw or 0
+    if controller_observation.gameplay_orientation_owner ~= self then
+        controller_observation.gameplay_orientation_owner = self
+        controller_observation.gameplay_yaw = game_yaw
+        controller_observation.gameplay_pitch = game_pitch
+        controller_observation.gameplay_roll = game_roll
+        controller_observation.gameplay_orientation_suspended = false
+        controller_observation.body_yaw_anchor = physical_yaw
+        if presentation.mode == 1 then
+            local generation_result = tonumber(
+                ui_native_capture.dtvr_commit_gameplay_generation(
+                    presentation.sequence))
+            mod:info(
+                "DARKTIDEVR_AIM gameplay_generation=%d result=%d reason=orientation_owner",
+                presentation.sequence, generation_result)
+        end
+    end
     local prior_physical_yaw = controller_observation.body_yaw_anchor
     local yaw_delta = 0
     if prior_physical_yaw ~= nil then
@@ -4691,7 +4843,61 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         end
     end
     controller_observation.body_yaw_anchor = physical_yaw
-    self._orientation.yaw = game_yaw + yaw_delta
+    local gameplay_yaw = controller_observation.gameplay_yaw
+    if gameplay_yaw == nil then
+        gameplay_yaw = game_yaw
+    end
+    gameplay_yaw = gameplay_yaw + yaw_delta
+    if gameplay_yaw > math.pi * 2 then
+        gameplay_yaw = gameplay_yaw - math.pi * 2
+    elseif gameplay_yaw < 0 then
+        gameplay_yaw = gameplay_yaw + math.pi * 2
+    end
+    controller_observation.gameplay_yaw = gameplay_yaw
+
+    -- Native fullscreen shop views temporarily force Darktide's mutable
+    -- first-person orientation to their own camera. The rendered XR eyes do
+    -- not use that orientation, so adopting it here leaves locomotion and
+    -- interaction facing rotated away from what the player sees after exit.
+    -- Keep the VR-owned heading advancing from physical HMD deltas while the
+    -- shop is open, but do not feed the shop camera back into gameplay.
+    local modal_orientation = (presentation.mode == 5 or
+        presentation.mode == 6) and
+        presentation.current_game_mode_name() == "hub"
+    if modal_orientation then
+        if not controller_observation.gameplay_orientation_suspended then
+            controller_observation.gameplay_pitch = game_pitch
+            controller_observation.gameplay_roll = game_roll
+            controller_observation.gameplay_orientation_suspended = true
+            mod:info(
+                "DARKTIDEVR_AIM modal_suspend yaw=%.4f pitch=%.4f roll=%.4f",
+                gameplay_yaw, game_pitch, game_roll)
+        end
+        controller_observation.authoring_pose_active = false
+        return
+    end
+    if controller_observation.gameplay_orientation_suspended then
+        self._orientation.yaw = gameplay_yaw
+        self._orientation.pitch = controller_observation.gameplay_pitch or
+            game_pitch
+        self._orientation.roll = controller_observation.gameplay_roll or
+            game_roll
+        controller_observation.gameplay_orientation_suspended = false
+        local generation_result = tonumber(
+            ui_native_capture.dtvr_commit_gameplay_generation(
+                presentation.sequence))
+        mod:info(
+            "DARKTIDEVR_AIM modal_restore yaw=%.4f pitch=%.4f roll=%.4f replaced=%.4f,%.4f,%.4f generation=%d result=%d",
+            self._orientation.yaw,
+            self._orientation.pitch,
+            self._orientation.roll,
+            game_yaw, game_pitch, game_roll,
+            presentation.sequence, generation_result)
+    else
+        self._orientation.yaw = gameplay_yaw
+        controller_observation.gameplay_pitch = game_pitch
+        controller_observation.gameplay_roll = game_roll
+    end
     controller_observation.authoring_writes =
         controller_observation.authoring_writes + 1
     controller_observation.authoring_pose_active = true
@@ -5496,10 +5702,8 @@ function presentation.apply_body_follow_translation(
         controller_observation.body_follow_last_sequence = sequence
     end
 
-    local character_scale = 1
-    if local_player:archetype_name() == "ogryn" then
-        character_scale = 1.61 / 1.21
-    end
+    local character_scale =
+        presentation.calibrated_character_scale(local_player)
     local world_delta = Vector3.zero()
     local original_velocity = nil
     if delta_x ~= 0 or delta_z ~= 0 then
@@ -5774,10 +5978,17 @@ function presentation.update_body_visibility_gate(frame)
     controller_observation.body_eye_anchor_local_y = nil
     controller_observation.body_eye_anchor_local_z = nil
     controller_observation.body_eye_anchor_source = nil
+    controller_observation.body_camera_eye_offset_unit = nil
+    controller_observation.body_camera_eye_offset_x = nil
+    controller_observation.body_camera_eye_offset_y = nil
+    controller_observation.body_camera_eye_offset_z = nil
     controller_observation.body_ik_neck_unit = nil
     controller_observation.body_ik_neck_generation = nil
     controller_observation.body_ik_neck_baseline_raw = nil
     controller_observation.body_ik_neck_baseline_arc = nil
+    controller_observation.body_ik_neck_anchor_unit = nil
+    controller_observation.body_ik_neck_anchor_generation = nil
+    controller_observation.body_ik_neck_anchor_local = nil
     controller_observation.body_camera_sweep_start_t = nil
     controller_observation.body_camera_sweep_last_bucket = -1
     controller_observation.body_head_visible = not enabled
@@ -5896,8 +6107,12 @@ function presentation.apply_body_visibility(self, frame, force)
         if type(slot_name) == "string" and type(slot) == "table" then
             local slot_unit_3p = slot.unit_3p
             if slot_unit_3p and Unit.alive(slot_unit_3p) then
-                if presentation.headless_body_hidden_slot_lookup[slot_name] then
-                    local show_head =
+                if presentation.headless_body_hidden_slot_lookup[slot_name] or
+                        presentation.body_proxy and
+                        presentation.body_proxy.hides_source_slot(slot_name) then
+                    local proxy_hidden = presentation.body_proxy and
+                        presentation.body_proxy.hides_source_slot(slot_name)
+                    local show_head = not proxy_hidden and
                         controller_observation.body_head_visible and
                         not slot.hidden_3p
                     Unit.flow_event(
@@ -6318,6 +6533,277 @@ function presentation.left_controller_grip_target()
         Quaternion.multiply(anchor_rotation, grip_rotation)
 end
 
+-- Retarget physical tracking into the selected Darktide body. Human world
+-- scale and runtime IPD remain exactly headset-native; standing calibration
+-- changes only the local third-person presentation below. Ogryn are the one
+-- intentional world-scale exception: their authored body is substantially
+-- larger, so tracked translation and IPD scale together to preserve that
+-- fantasy without introducing an eye/world-scale disagreement.
+function presentation.calibrated_character_scale(local_player)
+    if not local_player then
+        return 1, "player_unavailable"
+    end
+    local archetype = local_player:archetype_name()
+    local profile_ok, profile = pcall(function()
+        return local_player:profile()
+    end)
+    profile = profile_ok and profile or nil
+    local profile_scale = profile and profile.personal and
+        tonumber(profile.personal.character_height)
+    local is_ogryn = archetype == "ogryn"
+    local breeds = require("scripts/settings/breed/breeds")
+    local breed_name = profile and profile.archetype and
+        profile.archetype.breed
+    local breed = breed_name and breeds[breed_name]
+    local range = breed and breed.size_variation_range
+    local range_min = range and tonumber(range[1]) or
+        (is_ogryn and 0.9 or 0.95)
+    local range_max = range and tonumber(range[2]) or
+        (is_ogryn and 0.925 or 1.08)
+    profile_scale = math.max(range_min, math.min(
+        range_max, profile_scale or (range_min + range_max) * 0.5))
+    local authored_eye_height = breed and breed.heights and
+        tonumber(breed.heights.default) or
+        (is_ogryn and 2.2 / 0.9125 or 1.65 / 1.015)
+    local target_eye_height = authored_eye_height * profile_scale
+    local result = mod.darktidevr_calibration and
+        mod.darktidevr_calibration.result or mod:get("vr_calibration_v1")
+    local source_eye_height = result and not result.seated and
+        tonumber(result.floor_eye_height)
+    if not is_ogryn then
+        local desired_visual_scale = source_eye_height and
+            source_eye_height / authored_eye_height or profile_scale
+        desired_visual_scale = math.max(0.7, math.min(
+            1.4, desired_visual_scale))
+        return 1, "human_native_world_scale",
+            authored_eye_height * desired_visual_scale, source_eye_height
+    end
+    if source_eye_height and source_eye_height >= 0.2 then
+        return math.max(0.7, math.min(
+            1.8, target_eye_height / source_eye_height)),
+            "standing_calibration", target_eye_height, source_eye_height
+    end
+    local percentile = range_max > range_min and
+        (profile_scale - range_min) / (range_max - range_min) or 0.5
+    local human_scale = 0.95 + percentile * (1.08 - 0.95)
+    local human_eye_height = 1.65 / 1.015 * human_scale
+    return target_eye_height / human_eye_height,
+        "profile_relative_fallback", target_eye_height, nil
+end
+
+-- Human calibration overrides only the local spawned presentation. The game
+-- height helper accepts arbitrary scales; the narrow limits live in character
+-- creation/backend data. The calibration module uses that official in-range
+-- backend path first. Applying only the residual wider scale here leaves the
+-- fixed locomotion mover, broadphase,
+-- first-person height, and network profile untouched. This is deliberately a
+-- client-only visual stretch/compression for unusually short or tall players.
+-- Ogryn retain their selected native profile scale; their larger tracked-space
+-- ratio is handled above.
+function presentation.apply_calibrated_body_height(world, unit, local_player)
+    if not local_player or local_player:archetype_name() == "ogryn" then
+        return true, "native_ogryn"
+    end
+    local result = mod.darktidevr_calibration and
+        mod.darktidevr_calibration.result or mod:get("vr_calibration_v1")
+    local source_eye_height = result and not result.seated and
+        tonumber(result.floor_eye_height)
+    if not source_eye_height or source_eye_height < 0.2 then
+        return true, "standing_height_unavailable"
+    end
+    local profile_ok, profile = pcall(function()
+        return local_player:profile()
+    end)
+    local breeds = require("scripts/settings/breed/breeds")
+    local breed_name = profile_ok and profile and profile.archetype and
+        profile.archetype.breed
+    local breed = breed_name and breeds[breed_name]
+    local authored_eye_height = breed and breed.heights and
+        tonumber(breed.heights.default)
+    if not authored_eye_height or authored_eye_height <= 0 then
+        return true, "breed_height_unavailable"
+    end
+    local desired_scale = math.max(0.7, math.min(
+        1.4, source_eye_height / authored_eye_height))
+    local state = controller_observation.body_calibrated_height
+    if state and state.unit == unit and
+            math.abs(state.scale - desired_scale) < 0.0001 then
+        return true, "calibrated"
+    end
+    Unit.set_local_scale(unit, 1, Vector3(
+        desired_scale, desired_scale, desired_scale))
+    World.update_unit_and_children(world, unit)
+    controller_observation.body_calibrated_height = {
+        unit = unit,
+        scale = desired_scale
+    }
+    controller_observation.body_calibration_retarget = nil
+    controller_observation.body_eye_anchor_unit = nil
+    controller_observation.body_camera_eye_offset_unit = nil
+    mod:info(
+        "DARKTIDEVR_CALIBRATION body_height breed=%s authored_eye_m=%.4f floor_eye_m=%.4f visual_scale=%.4f client_only=true collision_scale=1 clamp=0.70,1.40",
+        tostring(breed_name), authored_eye_height, source_eye_height,
+        desired_scale)
+    return true, "calibrated"
+end
+
+-- Visual body height/world scale is resolved first. The residual below changes
+-- only authored upper-limb bone lengths needed to fit the live scaled skeleton;
+-- it cannot change IPD, head translation, collision, or controller targets.
+function presentation.apply_calibrated_arm_length(world, unit)
+    local result = mod.darktidevr_calibration and
+        mod.darktidevr_calibration.result or mod:get("vr_calibration_v1")
+    if not result or not result.t_pose or not unit or
+            not Unit.alive(unit) then
+        return true, 1, "calibration_unavailable"
+    end
+    local cache = controller_observation.body_calibration_retarget
+    if cache and cache.unit == unit and cache.result == result then
+        local changed = false
+        for _, record in pairs(cache.nodes) do
+            local desired = record.authored:unbox() * cache.residual
+            if presentation.vector_distance(
+                    Unit.local_position(unit, record.node), desired) >
+                    0.00001 then
+                Unit.set_local_position(unit, record.node, desired)
+                changed = true
+            end
+        end
+        if changed then
+            World.update_unit_and_children(world, unit)
+        end
+        return true, cache.residual, cache.reason
+    end
+    if cache and cache.unit == unit and cache.result ~= result then
+        -- A repeat calibration must start from the authored limb lengths, not
+        -- compound a new residual on top of the previous calibration.
+        for _, record in pairs(cache.nodes) do
+            Unit.set_local_position(unit, record.node,
+                record.authored:unbox())
+        end
+        World.update_unit_and_children(world, unit)
+    end
+    local source_reach = 0
+    local source_count = 0
+    for _, sample_side in ipairs({ "left", "right" }) do
+        local hand = result.t_pose[sample_side]
+        if hand then
+            local head = result.t_pose.head
+            local dx = hand[1] - head[1]
+            local dy = hand[2] - head[2]
+            local dz = hand[3] - head[3]
+            source_reach = source_reach + math.sqrt(
+                dx * dx + dy * dy + dz * dz)
+            source_count = source_count + 1
+        end
+    end
+    if source_count == 0 then
+        return true, 1, "source_reach_unavailable"
+    end
+    source_reach = source_reach / source_count
+    local names = {
+        left = { "j_leftarm", "j_leftforearm", "j_lefthand" },
+        right = { "j_rightarm", "j_rightforearm", "j_righthand" }
+    }
+    for _, record in pairs(names) do
+        for i = 1, #record do
+            if not Unit.has_node(unit, record[i]) then
+                return false, 1, "target_nodes_unavailable"
+            end
+        end
+    end
+    local function position(name)
+        return Unit.world_position(unit, Unit.node(unit, name))
+    end
+    local left_arm = presentation.vector_distance(
+        position(names.left[1]), position(names.left[2])) +
+        presentation.vector_distance(
+            position(names.left[2]), position(names.left[3]))
+    local right_arm = presentation.vector_distance(
+        position(names.right[1]), position(names.right[2])) +
+        presentation.vector_distance(
+            position(names.right[2]), position(names.right[3]))
+    local shoulder_width = presentation.vector_distance(
+        position(names.left[1]), position(names.right[1]))
+    local current_arm_length = (left_arm + right_arm) * 0.5
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    local height_scale = presentation.calibrated_character_scale(local_player)
+    local desired_arm_length = math.max(0.2,
+        source_reach * height_scale - shoulder_width * 0.5)
+    local forward_required = 0
+    local forward_count = 0
+    if result.forward_pose and result.forward_pose.head and
+            controller_observation.body_anchor_qw then
+        local model_eye = presentation.body_camera_anchor(unit)
+        local anchor_rotation = Quaternion.from_elements(
+            controller_observation.body_anchor_qx,
+            controller_observation.body_anchor_qy,
+            controller_observation.body_anchor_qz,
+            controller_observation.body_anchor_qw)
+        if model_eye then
+            for _, sample_side in ipairs({ "left", "right" }) do
+                local hand = result.forward_pose[sample_side]
+                if hand then
+                    local head = result.forward_pose.head
+                    local source_delta = Vector3(
+                        hand[1] - head[1], hand[2] - head[2],
+                        hand[3] - head[3]) * height_scale
+                    local target = model_eye + presentation.rotate_vector(
+                        anchor_rotation, source_delta)
+                    forward_required = forward_required +
+                        presentation.vector_distance(
+                            position(names[sample_side][1]), target)
+                    forward_count = forward_count + 1
+                end
+            end
+        end
+    end
+    if forward_count > 0 then
+        forward_required = forward_required / forward_count
+    end
+    -- T-pose span owns skeletal limb length. The forward sample measures the
+    -- extra scapular/shoulder reach needed at runtime; using it to elongate
+    -- both arm bones produced visibly stretched 1.25x limbs. Retain a narrow
+    -- safety range around the authored proportions and let the live shoulder
+    -- solver absorb forward reach before the two-bone arm solve.
+    local residual = math.max(0.90, math.min(1.10,
+        desired_arm_length / current_arm_length))
+    local scaled_nodes = {}
+    for _, record in pairs(names) do
+        for i = 2, 3 do
+            local node = Unit.node(unit, record[i])
+            scaled_nodes[#scaled_nodes + 1] = {
+                node = node,
+                authored = Vector3Box(Unit.local_position(unit, node))
+            }
+        end
+    end
+    cache = {
+        unit = unit,
+        result = result,
+        residual = residual,
+        reason = "calibrated",
+        source_reach = source_reach,
+        current_arm_length = current_arm_length,
+        desired_arm_length = desired_arm_length,
+        height_scale = height_scale,
+        nodes = scaled_nodes
+    }
+    controller_observation.body_calibration_retarget = cache
+    mod:info(
+        "DARKTIDEVR_CALIBRATION retarget source_reach_m=%.4f forward_required_m=%.4f current_arm_m=%.4f desired_arm_m=%.4f shoulder_width_m=%.4f height_scale=%.4f arm_bone_scale=%.4f",
+        source_reach, forward_required,
+        current_arm_length, desired_arm_length,
+        shoulder_width, height_scale, residual)
+    for _, record in pairs(cache.nodes) do
+        Unit.set_local_position(unit, record.node,
+            record.authored:unbox() * residual)
+    end
+    World.update_unit_and_children(world, unit)
+    return true, residual, cache.reason
+end
+
 -- Controller body poses are already relative to the immutable OpenXR head
 -- recenter origin. Map them through the matching clean game-camera anchor.
 -- Adding that complete relative pose to the *live* avatar head double-counts
@@ -6343,6 +6829,13 @@ function presentation.body_ik_controller_grip_target(unit, side)
         controller_observation.right_grip_x,
         controller_observation.right_grip_y,
         controller_observation.right_grip_z)
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    local height_scale = presentation.calibrated_character_scale(local_player)
+    -- Grip and camera poses share the bridge's sliding recenter space. Do not
+    -- add cumulative body_follow in the hub: its gameplay root is intentionally
+    -- stationary, and adding the excess to only presentation breaks their
+    -- relative alignment at the moving envelope boundary.
     local grip_rotation = is_left and Quaternion.from_elements(
         controller_observation.left_grip_qx,
         controller_observation.left_grip_qy,
@@ -6361,10 +6854,12 @@ function presentation.body_ik_controller_grip_target(unit, side)
         controller_observation.body_anchor_x,
         controller_observation.body_anchor_y,
         controller_observation.body_anchor_z)
-    return anchor_position +
-            presentation.rotate_vector(anchor_rotation, grip_position),
-        Quaternion.normalize(Quaternion.multiply(
-            anchor_rotation, grip_rotation))
+    local source_target = anchor_position +
+        presentation.rotate_vector(anchor_rotation, grip_position)
+    local target_position = anchor_position +
+        (source_target - anchor_position) * height_scale
+    return target_position, Quaternion.normalize(Quaternion.multiply(
+        anchor_rotation, grip_rotation))
 end
 
 function presentation.controller_aim_target()
@@ -6429,6 +6924,7 @@ function presentation.update_body_ik_trace_gate(fixed_frame)
     end
     if enabled ~= controller_observation.body_ik_trace_enabled then
         controller_observation.body_ik_trace_enabled = enabled
+        controller_observation.body_capture_trace_sample = 0
         mod:info("DARKTIDEVR_IK trace=%s source=test_flag",
             enabled and "enabled" or "disabled")
     end
@@ -6521,6 +7017,9 @@ function presentation.update_body_ik_presentation_gate(fixed_frame)
         controller_observation.body_ik_neck_generation = nil
         controller_observation.body_ik_neck_baseline_raw = nil
         controller_observation.body_ik_neck_baseline_arc = nil
+        controller_observation.body_ik_neck_anchor_unit = nil
+        controller_observation.body_ik_neck_anchor_generation = nil
+        controller_observation.body_ik_neck_anchor_local = nil
         mod:info("DARKTIDEVR_IK presentation=%s source=test_flag",
             enabled and "enabled" or "disabled")
     end
@@ -6944,14 +7443,10 @@ function presentation.apply_body_crouch(world, unit)
         tonumber(head_pose_values[2]) or 0
     local local_player = Managers and Managers.player and
         Managers.player:local_player(1)
-    local scale = local_player and
-        local_player:archetype_name() == "ogryn" and 1.61 / 1.21 or 1
-    if presentation.current_game_mode_name() == "hub" then
-        raw_horizontal_x = raw_horizontal_x +
-            controller_observation.body_follow_x
-        raw_horizontal_z = raw_horizontal_z +
-            controller_observation.body_follow_z
-    end
+    local scale = presentation.calibrated_character_scale(local_player)
+    -- The hub body leans by the same sliding-local camera delta. Cumulative
+    -- body_follow belongs only to a collision-root transfer, which is disabled
+    -- in the public hub.
     raw_horizontal_x, raw_horizontal_z =
         presentation.clamp_hub_head_horizontal(
             raw_horizontal_x * scale, raw_horizontal_z * scale)
@@ -6983,7 +7478,8 @@ function presentation.apply_body_crouch(world, unit)
     end
     controller_observation.body_ik_crouch_offset = current
     controller_observation.body_ik_crouch_last_t = now
-    if current == 0 and math.abs(raw_horizontal_x) < 0.0001 and
+    if presentation.current_game_mode_name() ~= "hub" and current == 0 and
+            math.abs(raw_horizontal_x) < 0.0001 and
             math.abs(raw_horizontal_z) < 0.0001 then
         controller_observation.body_ik_crouch_result = "standing"
         return true, "standing", 0
@@ -7016,17 +7512,59 @@ function presentation.apply_body_crouch(world, unit)
             controller_observation.body_anchor_qz,
             controller_observation.body_anchor_qw) or
         Unit.world_rotation(unit, 1)
-    local body_shift =
+    local tracked_shift =
         Quaternion.right(anchor_rotation) * raw_horizontal_x +
         Quaternion.forward(anchor_rotation) * -raw_horizontal_z +
         Vector3.up() * -current
-    local local_drop = presentation.rotate_vector(
-        presentation.inverse_quaternion(
-            Unit.world_rotation(unit, hips_parent)),
-        body_shift)
-    Unit.set_local_position(
-        unit, hips, Unit.local_position(unit, hips) + local_drop)
-    World.update_unit_and_children(world, unit)
+    local body_shift = tracked_shift
+    if presentation.current_game_mode_name() == "hub" and
+            Unit.has_node(unit, "j_neck") then
+        -- Hub jog animation is allowed to animate gait, but its authored torso
+        -- lean must not move the avatar away from the physical head. Capture
+        -- the neutral root-to-neck vector once, rebuild that point from the
+        -- live locomotion root, then add only tracked lean/crouch. Translating
+        -- the hips to this estimated neck pivot leaves the camera authoritative
+        -- and the planted-leg solve below absorbs the animation correction.
+        local root = 1
+        local neck = Unit.node(unit, "j_neck")
+        local root_rotation = Unit.world_rotation(unit, root)
+        local needs_anchor =
+            controller_observation.body_ik_neck_anchor_unit ~= unit or
+            controller_observation.body_ik_neck_anchor_generation ~=
+                controller_observation.head_recenter_generation or
+            not controller_observation.body_ik_neck_anchor_local
+        if needs_anchor then
+            controller_observation.body_ik_neck_anchor_unit = unit
+            controller_observation.body_ik_neck_anchor_generation =
+                controller_observation.head_recenter_generation
+            controller_observation.body_ik_neck_anchor_local = Vector3Box(
+                presentation.rotate_vector(
+                    presentation.inverse_quaternion(root_rotation),
+                    Unit.world_position(unit, neck) -
+                        Unit.world_position(unit, root)))
+            mod:info(
+                "DARKTIDEVR_IK neck_anchor captured generation=%d source=neutral_root_space",
+                controller_observation.head_recenter_generation)
+        end
+        local neutral_neck = Unit.world_position(unit, root) +
+            presentation.rotate_vector(root_rotation,
+                controller_observation.body_ik_neck_anchor_local:unbox())
+        body_shift = neutral_neck + tracked_shift -
+            Unit.world_position(unit, neck)
+    end
+    if Vector3.length(body_shift) < 0.0001 then
+        controller_observation.body_ik_crouch_result = "anchored"
+        return true, "anchored", 0
+    end
+    if Vector3.length(body_shift) >= 0.0001 then
+        local local_drop = presentation.rotate_vector(
+            presentation.inverse_quaternion(
+                Unit.world_rotation(unit, hips_parent)),
+            body_shift)
+        Unit.set_local_position(
+            unit, hips, Unit.local_position(unit, hips) + local_drop)
+        World.update_unit_and_children(world, unit)
+    end
     local max_error = 0
     for _, side in ipairs({ "left", "right" }) do
         local target = targets[side]
@@ -7104,6 +7642,19 @@ function presentation.apply_body_heading(world, unit)
     end
     controller_observation.body_visual_yaw = visual_yaw
     controller_observation.body_visual_yaw_last_t = now
+    if presentation.current_game_mode_name() == "hub" then
+        -- Hub locomotion continuously authors the replicated root orientation.
+        -- Writing a second root yaw here made the whole body alternate between
+        -- the locomotion and VR poses. Keep the visual target for the downstream
+        -- shoulder/spine solve, but leave the root exclusively game-owned.
+        return
+    end
+    local current_yaw = Quaternion.yaw(Unit.local_rotation(unit, 1))
+    if math.abs(math.atan2(
+            math.sin(visual_yaw - current_yaw),
+            math.cos(visual_yaw - current_yaw))) < 0.0001 then
+        return
+    end
     Unit.set_local_rotation(
         unit, 1, Quaternion.axis_angle(Vector3.up(), visual_yaw))
     World.update_unit_and_children(world, unit)
@@ -7153,6 +7704,11 @@ function presentation.align_body_torso_neutral(world, unit)
     local target_axis = presentation.rotate_vector(
         Unit.world_rotation(unit, 1),
         controller_observation.body_ik_torso_axis_local:unbox())
+    local current_dot = math.max(-1, math.min(
+        1, Vector3.dot(torso_axis, target_axis)))
+    if current_dot > 0.999999 then
+        return true, math.acos(current_dot)
+    end
     local correction = presentation.align_vectors_rotation(
         torso_axis, target_axis)
     if not correction then
@@ -7214,6 +7770,9 @@ function presentation.align_body_shoulders(world, unit)
     local error = math.atan2(
         Vector3.dot(torso_forward, Quaternion.right(desired)),
         Vector3.dot(torso_forward, Quaternion.forward(desired)))
+    if math.abs(error) < 0.0005 then
+        return true, error
+    end
     local spine_parent = Unit.scene_graph_parent(unit, spine)
     if spine_parent == nil then
         return false, "spine2_parent_missing"
@@ -7317,10 +7876,12 @@ function presentation.apply_body_shoulder_reach(
                     target_delta / target_distance, torso_forward))
                 -- Position-based full-body solvers normally begin sharing an
                 -- effector pull before a limb reaches its singular straight
-                -- pose. The 90% comfort boundary and 12% pull ceiling scale
-                -- with this avatar's actual arm rather than human metres.
-                desired[side] = math.min(arm_length * 0.12, math.max(
-                    0, target_distance - arm_length * 0.90)) *
+                -- pose. Start at 86% extension and permit the shoulder girdle
+                -- to contribute up to 18% of this avatar's actual arm length;
+                -- the independently bounded clavicle write below supplies the
+                -- visible protraction before the arm solver clamps reach.
+                desired[side] = math.min(arm_length * 0.18, math.max(
+                    0, target_distance - arm_length * 0.86)) *
                     forward_fraction
             end
         end
@@ -7336,8 +7897,16 @@ function presentation.apply_body_shoulder_reach(
     local dt = math.clamp(now - (reach_state.last_t or now), 0, 0.1)
     local alpha = 1 - math.exp(-14 * dt)
     for _, side in ipairs({ "left", "right" }) do
-        local prior = reach_state[side] or 0
-        reach_state[side] = prior + (desired[side] - prior) * alpha
+        local ceiling = records[side].arm_length * 0.18
+        local prior = tonumber(reach_state[side]) or 0
+        -- This state is presentation-only and anatomically bounded. Never
+        -- allow an invalid/stale value to survive an animation-unit or timing
+        -- transition and turn into an effectively unbounded shoulder offset.
+        if prior ~= prior or prior < 0 or prior > ceiling then
+            prior = 0
+        end
+        reach_state[side] = math.clamp(
+            prior + (desired[side] - prior) * alpha, 0, ceiling)
     end
     reach_state.last_t = now
     local left_position = Unit.world_position(unit, records.left.arm)
@@ -7419,7 +7988,7 @@ function presentation.apply_body_shoulder_reach(
             authored_local = authored_local - prior_offset
         end
         local clavicle_reach = math.min(
-            record.arm_length * 0.03, reach_state[side] * 0.25)
+            record.arm_length * 0.08, reach_state[side] * 0.65)
         local offset = local_forward * clavicle_reach
         Unit.set_local_position(unit, record.node,
             authored_local + offset)
@@ -7599,7 +8168,7 @@ function presentation.log_body_alignment(unit)
         controller_observation.body_visual_yaw or 0)
 end
 
-function presentation.apply_body_ik(unit, sequence, world)
+function presentation.apply_body_ik(unit, sequence, world, anchor_unit)
     controller_observation.body_ik_presentation_update_frame =
         controller_observation.body_ik_presentation_update_frame + 1
     local update_frame =
@@ -7625,18 +8194,27 @@ function presentation.apply_body_ik(unit, sequence, world)
             not world and "world_unavailable" or "unit_unavailable"
         return
     end
+    presentation.trace_body_capture_boundary("body_before")
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    presentation.apply_calibrated_body_height(
+        world, unit, local_player)
     -- The animation-extension fixed-update signature is not stable across all
     -- game builds. Run the one-shot rig inventory from this proven player-unit
     -- path too, so a nil/moved fixed-frame argument cannot hide skeleton data.
     presentation.scan_body_rig({ _unit = unit }, nil)
-    local emit_spine_trace = update_frame >=
+    local emit_spine_trace = controller_observation.body_ik_trace_enabled and
+        update_frame >=
         controller_observation.body_ik_spine_trace_frame + 60
     if emit_spine_trace then
         controller_observation.body_ik_spine_trace_frame = update_frame
         presentation.log_body_spine_chain(unit, "before")
     end
     presentation.apply_body_heading(world, unit)
-    presentation.refresh_body_anchor_from_avatar(unit)
+    -- A local-only upper-body proxy is allowed to own the visible torso and
+    -- arms, but tracking remains anchored to the authoritative gameplay unit.
+    -- Never let the proxy replace the camera/recenter reference.
+    presentation.refresh_body_anchor_from_avatar(anchor_unit or unit)
     local crouch_ok, crouch_result, crouch_error =
         presentation.apply_body_crouch(world, unit)
     if not crouch_ok then
@@ -7679,6 +8257,13 @@ function presentation.apply_body_ik(unit, sequence, world)
                 "DARKTIDEVR_IK shoulder_alignment=active residual_deg=%.3f",
                 shoulder_result * 180 / math.pi)
         end
+    end
+    local arm_length_ok, _, arm_length_reason =
+        presentation.apply_calibrated_arm_length(world, unit)
+    if not arm_length_ok then
+        controller_observation.body_ik_presentation_block_reason =
+            "arm_length_" .. tostring(arm_length_reason)
+        return
     end
     local left_target, left_rotation =
         presentation.body_ik_controller_grip_target(
@@ -7752,7 +8337,8 @@ function presentation.apply_body_ik(unit, sequence, world)
         end
     end
     if wrote and update_frame >=
-            controller_observation.body_ik_presentation_last_log_frame + 60 then
+            controller_observation.body_ik_presentation_last_log_frame +
+                (controller_observation.body_ik_trace_enabled and 60 or 600) then
         controller_observation.body_ik_presentation_last_log_frame =
             update_frame
         mod:info(
@@ -7793,16 +8379,21 @@ function presentation.apply_body_ik(unit, sequence, world)
             controller_observation.body_ik_shoulder_reach.right_arm_length or 0,
             controller_observation.body_ik_shoulder_reach.shoulder_width or 0,
             sequence or controller_observation.last_sequence)
-        if left_target and left_rotation then
+        if controller_observation.body_ik_trace_enabled and
+                left_target and left_rotation then
             presentation.log_body_hand_basis(
                 unit, "left", left_target, left_rotation)
         end
-        if right_target and right_rotation then
+        if controller_observation.body_ik_trace_enabled and
+                right_target and right_rotation then
             presentation.log_body_hand_basis(
                 unit, "right", right_target, right_rotation)
         end
-        presentation.log_body_alignment(unit)
+        if controller_observation.body_ik_trace_enabled then
+            presentation.log_body_alignment(unit)
+        end
     end
+    presentation.trace_body_capture_boundary("body_after")
 end
 
 function presentation.trace_body_ik(self, fixed_frame)
@@ -8233,6 +8824,69 @@ function presentation.hub_first_person_requested()
     return enabled
 end
 
+-- Bounded diagnostic at the actual two-eye submission boundaries. This
+-- distinguishes animation reclaim between game frames from a mutation caused
+-- by either render submission. It is intentionally active only with the body
+-- IK trace flag and genuine stick locomotion, and stops after 90 frame pairs so
+-- logging cannot become a persistent performance cost.
+function presentation.trace_body_capture_boundary(phase)
+    if not controller_observation.body_ik_trace_enabled or
+            not controller_observation.gameplay_stick_active then
+        return
+    end
+    if phase == "body_before" then
+        controller_observation.body_capture_trace_sample =
+            (controller_observation.body_capture_trace_sample or 0) + 1
+    end
+    local sample = controller_observation.body_capture_trace_sample or 0
+    if sample < 1 or sample > 90 then
+        return
+    end
+    local local_player = Managers and Managers.player and
+        Managers.player:local_player(1)
+    local unit = local_player and local_player.player_unit
+    if not unit or not Unit.alive(unit) or
+            not Unit.has_node(unit, "j_hips") or
+            not Unit.has_node(unit, "j_spine2") or
+            not Unit.has_node(unit, "j_neck") then
+        return
+    end
+    local root_position = Unit.world_position(unit, 1)
+    local hips = Unit.node(unit, "j_hips")
+    local spine = Unit.node(unit, "j_spine2")
+    local neck = Unit.node(unit, "j_neck")
+    local hips_position = Unit.world_position(unit, hips)
+    local spine_position = Unit.world_position(unit, spine)
+    local neck_position = Unit.world_position(unit, neck)
+    local root_yaw = Quaternion.yaw(Unit.world_rotation(unit, 1))
+    local hips_yaw = Quaternion.yaw(Unit.world_rotation(unit, hips))
+    local spine_yaw = Quaternion.yaw(Unit.world_rotation(unit, spine))
+    local arm_values = {}
+    for _, name in ipairs({ "j_leftarm", "j_leftforearm", "j_lefthand",
+            "j_rightarm", "j_rightforearm", "j_righthand" }) do
+        if Unit.has_node(unit, name) then
+            local node = Unit.node(unit, name)
+            local position = Unit.world_position(unit, node)
+            arm_values[#arm_values + 1] = string.format(
+                "%s:%.5f,%.5f,%.5f,%.5f", name,
+                Vector3.x(position), Vector3.y(position), Vector3.z(position),
+                Quaternion.yaw(Unit.world_rotation(unit, node)))
+        end
+    end
+    mod:info(
+        "DARKTIDEVR_IK_CAPTURE sample=%d phase=%s root=%.5f,%.5f,%.5f hips=%.5f,%.5f,%.5f spine=%.5f,%.5f,%.5f neck=%.5f,%.5f,%.5f yaw=%.5f,%.5f,%.5f crouch=%.5f arms=%s",
+        sample, phase,
+        Vector3.x(root_position), Vector3.y(root_position),
+        Vector3.z(root_position), Vector3.x(hips_position),
+        Vector3.y(hips_position), Vector3.z(hips_position),
+        Vector3.x(spine_position), Vector3.y(spine_position),
+        Vector3.z(spine_position), Vector3.x(neck_position),
+        Vector3.y(neck_position), Vector3.z(neck_position),
+        root_yaw, hips_yaw, spine_yaw,
+        controller_observation.body_ik_crouch_offset or 0,
+        table.concat(arm_values, "|"))
+end
+
 mod:hook(
     require("scripts/managers/mission/mission_manager"),
     "force_third_person_mode",
@@ -8263,6 +8917,37 @@ mod:hook(
 -- network tick. Keep that stock state end-to-end so collision, animation and
 -- replication agree. VR still owns camera orientation, 6DoF body following and
 -- post-animation IK; mission-style locomotion remains active in gameplay maps.
+
+-- Stock hub_jog converts its cardinal input through first_person.rotation.
+-- That shared component is also owned by hub aim/orientation and can retain a
+-- stale heading across UI or controller-tracking transitions. Convert only the
+-- local VR player's hub movement through the persistent gameplay heading. It
+-- is initialized in Darktide's own orientation coordinate system and advanced
+-- by physical HMD yaw, so shop cameras cannot rotate it and it remains the
+-- same frame consumed by interaction-facing checks. The server remains
+-- authoritative for acceleration, collision, animation and replication.
+mod:hook(
+    require(
+        "scripts/extension_systems/character_state_machine/character_states/player_character_state_hub_jog"),
+    "_input_to_move_direction",
+    function(func, self, x, y, first_person_component)
+        if presentation.hub_first_person_requested() and
+                presentation.current_game_mode_name() == "hub" and
+                controller_observation.gameplay_yaw then
+            local local_direction = Vector3.normalize(Vector3(x, y, 0))
+            local head_rotation = Quaternion.from_yaw_pitch_roll(
+                controller_observation.gameplay_yaw, 0, 0)
+            -- Match stock hub_jog's basis construction exactly. Stingray's
+            -- yaw and axis-angle conventions are not interchangeable here.
+            local right = Quaternion.right(head_rotation)
+            local flat_look_direction = Vector3.cross(
+                right, Vector3.down())
+            local flat_look_rotation = Quaternion.look(
+                flat_look_direction, Vector3.up())
+            return Quaternion.rotate(flat_look_rotation, local_direction)
+        end
+        return func(self, x, y, first_person_component)
+    end)
 
 -- Darktide blends a separate full-body idle layer after the character has
 -- stopped. Some variants contain a small lateral step that moves the rendered
@@ -8503,10 +9188,12 @@ mod:hook_safe(
             extrapolated_character_height()
         local root_position = Unit.local_position(unit, 1) +
             height * Vector3.up()
-        local horizon_rotation = Quaternion.axis_angle(
+        local _, controller_rotation = presentation.controller_aim and
+            presentation.controller_aim.target()
+        local target_rotation = controller_rotation or Quaternion.axis_angle(
             Vector3.up(), controller_observation.body_head_yaw)
         local neutral_target = root_position +
-            Quaternion.forward(horizon_rotation) *
+            Quaternion.forward(target_rotation) *
                 self._aim_contraint_distance
         Unit.animation_set_constraint_target(
             unit, self._aim_constraint_variable, neutral_target)
@@ -8516,6 +9203,7 @@ mod:hook_safe(
     require("scripts/extension_systems/first_person/player_unit_first_person_extension"),
     "update_unit_position",
     function(self)
+        local weapon_start = performance_tick()
         local weapon_extension = self._weapon_extension
         if weapon_extension then
             presentation.author_weapon_pose(
@@ -8523,14 +9211,100 @@ mod:hook_safe(
                 controller_observation.last_sequence,
                 self._world)
         end
+        local weapon_end = performance_tick()
+        if weapon_start and weapon_end then
+            presentation.ik_perf_pending_weapon_ticks =
+                weapon_end - weapon_start
+        end
+    end)
+
+-- PlayerUnitFirstPersonExtension.update_unit_position is invoked from inside
+-- PlayerUnitLocomotionExtension.post_update. Darktide then propagates the
+-- stock pose through PlayerUnitVisualLoadoutExtension before post_update
+-- returns. Solving the body inside the nested first-person call therefore
+-- left a second body/attachment authority after our write. Apply body IK once
+-- at the outer seam instead: the authoritative locomotion root and stock gait
+-- remain intact, while every local skinned body/loadout update has completed
+-- before the tracked presentation is published to either eye.
+mod:hook_safe(
+    require("scripts/extension_systems/locomotion/player_unit_locomotion_extension"),
+    "post_update",
+    function(self, _, dt, t)
+        local presentation_start = performance_tick()
         local local_player = Managers and Managers.player and
             Managers.player:local_player(1)
         local player_unit = local_player and local_player.player_unit
+        if not player_unit or self._unit ~= player_unit then
+            return
+        end
+        local proxy_unit = presentation.body_proxy and
+            presentation.body_proxy.update(
+                self._world,
+                player_unit,
+                local_player,
+                controller_observation.body_visibility_enabled and
+                    presentation.current_game_mode_name() == "hub",
+                dt,
+                t)
+        if proxy_unit and
+                presentation.body_proxy.consume_ready_transition() then
+            local visual_loadout = ScriptUnit.has_extension(
+                player_unit, "visual_loadout_system")
+            if visual_loadout then
+                presentation.safe_apply_body_visibility(
+                    visual_loadout,
+                    controller_observation.body_visibility_update_frame,
+                    true)
+            end
+            mod:info(
+                "DARKTIDEVR_IK upper_body_proxy=active source=ui_profile lower_body=authoritative_hub")
+        end
+        local ik_start = presentation_start
         local ok, error_message = pcall(
             presentation.apply_body_ik,
-            player_unit,
+            proxy_unit or player_unit,
             controller_observation.last_sequence,
-            self._world)
+            self._world,
+            player_unit)
+        local ik_end = performance_tick()
+        if presentation_start and ik_start and ik_end and ui_native_capture then
+            local weapon_ticks =
+                presentation.ik_perf_pending_weapon_ticks or 0
+            presentation.ik_perf_pending_weapon_ticks = 0
+            presentation.ik_perf_samples =
+                (presentation.ik_perf_samples or 0) + 1
+            presentation.ik_perf_weapon_ticks =
+                (presentation.ik_perf_weapon_ticks or 0) +
+                    weapon_ticks
+            presentation.ik_perf_body_ticks =
+                (presentation.ik_perf_body_ticks or 0) + (ik_end - ik_start)
+            presentation.ik_perf_total_ticks =
+                (presentation.ik_perf_total_ticks or 0) +
+                    weapon_ticks + (ik_end - presentation_start)
+            presentation.ik_perf_max_ticks = math.max(
+                presentation.ik_perf_max_ticks or 0,
+                weapon_ticks + (ik_end - presentation_start))
+            if presentation.ik_perf_samples >= 600 then
+                local frequency = tonumber(
+                    ui_native_capture.dtvr_qpc_frequency())
+                if frequency and frequency > 0 then
+                    local to_ms = 1000 / frequency /
+                        presentation.ik_perf_samples
+                    mod:info(
+                        "DARKTIDEVR_IK_PERF samples=%d weapon_avg_ms=%.4f body_avg_ms=%.4f total_avg_ms=%.4f total_max_ms=%.4f",
+                        presentation.ik_perf_samples,
+                        presentation.ik_perf_weapon_ticks * to_ms,
+                        presentation.ik_perf_body_ticks * to_ms,
+                        presentation.ik_perf_total_ticks * to_ms,
+                        presentation.ik_perf_max_ticks * 1000 / frequency)
+                end
+                presentation.ik_perf_samples = 0
+                presentation.ik_perf_weapon_ticks = 0
+                presentation.ik_perf_body_ticks = 0
+                presentation.ik_perf_total_ticks = 0
+                presentation.ik_perf_max_ticks = 0
+            end
+        end
         if not ok and controller_observation.body_ik_presentation_enabled then
             controller_observation.body_ik_presentation_enabled = false
             controller_observation.body_ik_presentation_faulted = true
@@ -8908,6 +9682,23 @@ mod:hook(
     "_draw_widgets",
     function(func, self, dt, t, input_service, ui_renderer, ...)
         local pointer = presentation.read_menu_pointer()
+        -- Mode 6 presents native landscape pixels, but premium-store widgets
+        -- remain authored in Darktide's portrait eye-layout coordinates.
+        -- Keep the visible laser/cursor in source pixels and transform only
+        -- semantic hotspot tests into the engine canvas.
+        -- Mode 5 gameplay shops are captured from a landscape Windows client
+        -- whose UI is still authored in the portrait eye canvas. Mode 6 is
+        -- deliberately different: premium-store content and its published
+        -- panel are both native landscape. Translating mode 6 a second time
+        -- reproduces the old crop/full-eye cursor error.
+        local shop_eye_layout = presentation.mode == 5 and
+                (presentation.shop_panel_views[self.view_name] or
+                    self.view_name == "crafting_view" or
+                    (type(self.view_name) == "string" and
+                        string.find(
+                            self.view_name, "crafting_", 1, true) == 1))
+        local hit_pointer = shop_eye_layout and
+            presentation.vendor_eye_layout_pointer(pointer) or pointer
         local widgets = self._widgets or {}
         local source_widget = nil
         local source_entry = nil
@@ -8927,12 +9718,14 @@ mod:hook(
             -- OptionsView._draw_grid.
             local dynamic_grid_interaction =
                 widget and (widget.name == "settings_grid_interaction" or
-                    widget.name == "category_grid_interaction")
+                    widget.name == "category_grid_interaction" or
+                    (presentation.mode == 6 and
+                        widget.name == "grid_interaction"))
             if not modal_active and not dynamic_grid_interaction and
                     pointer.available and not source_widget and pointer.active and
                     widget then
                 local entry = presentation.widget_hotspot_at_pointer(
-                    self, widget, pointer)
+                    self, widget, hit_pointer)
                 if entry then
                     source_widget = widget
                     source_entry = entry
@@ -8952,7 +9745,7 @@ mod:hook(
                     local entry = entries[j]
                     local hit, geometry =
                         presentation.widget_contains_menu_pointer(
-                            self, widget, pointer, entry.style)
+                            self, widget, hit_pointer, entry.style)
                     if geometry and #diagnostics < 32 then
                         diagnostics[#diagnostics + 1] = string.format(
                             "%s:%s:%s:%.1f,%.1f,%.1f,%.1f",
@@ -8974,8 +9767,8 @@ mod:hook(
                 pointer.y,
                 pointer.source_width,
                 pointer.source_height,
-                pointer.x * RESOLUTION_LOOKUP.width / pointer.source_width,
-                pointer.y * RESOLUTION_LOOKUP.height / pointer.source_height,
+                hit_pointer.x,
+                hit_pointer.y,
                 #diagnostics > 0 and table.concat(diagnostics, "|") or
                     "none")
         end
@@ -9234,10 +10027,12 @@ mod:hook_safe("OptionsView", "update", function(self)
     end
 end)
 
--- The current hub build opens its system menu through the preloaded
--- SystemView instance without traversing the UIManager methods or active-view
--- list used by loading/vendor views. Observe the lifecycle at the view class
--- as an explicit compatibility seam.
+-- The current hub build opens its system menu through the preloaded SystemView
+-- instance without reliably traversing the UIManager lifecycle used by other
+-- views. Keep this class seam, but publish the same single captured-client
+-- mode-5 policy as character select and shops. The former mode-4 publication
+-- raced the general mode-5 classifier and produced black/horizontal/flickering
+-- menu generations.
 mod:hook_safe(
     require("scripts/ui/views/system_view/system_view"),
     "on_enter",
@@ -9264,8 +10059,9 @@ mod:hook_safe(
         "DARKTIDEVR_MENU_INPUT system_view fields=%s",
         #input_fields > 0 and table.concat(input_fields, ",") or "none")
     presentation.fullscreen_empty_updates = 0
-    presentation.world_menu_views.system_view = true
-    presentation.publish_mode(4, "SystemView.on_enter:world_space_menu")
+    presentation.world_menu_views.system_view = nil
+    presentation.flat_panel_views.system_view = true
+    presentation.publish_mode(5, "SystemView.on_enter:native_window_panel")
     -- Focused command tracing is diagnostic-only now that the stock menu PSO
     -- and completed swapchain boundary are known.
     presentation.system_view_trace_pending =
@@ -9278,9 +10074,9 @@ mod:hook(
     require("scripts/ui/views/system_view/system_view"),
     "on_exit",
     function(func, self, ...)
-    -- The stereo projection remains active for the entire menu lifetime. Let
-    -- the engine finish closing the view, then remove only its XR quad; there
-    -- is no flat-to-stereo handoff and no renderer or camera-mode transition.
+    -- Finish the engine close before retiring the captured-client panel. The
+    -- compositor retains the last valid stereo pair until the restored
+    -- gameplay generation supplies a pose-synchronised replacement.
     local result = func(self, ...)
     presentation.active_menu_view_instance = nil
     presentation.active_menu_input_service = nil
@@ -9290,6 +10086,8 @@ mod:hook(
     presentation.system_view_trace_seen = nil
     presentation.system_view_trace_phase = nil
     presentation.system_view_trace_frames = nil
+    presentation.flat_panel_views.system_view = nil
+    presentation.world_menu_views.system_view = nil
     if ui_native_capture then
         ui_native_capture.dtvr_set_focused_trace_phase(0)
     end
@@ -9448,6 +10246,339 @@ mod:hook(
                     not presentation.system_view_hovered_widget then
                 presentation.system_view_hovered_widget = widget
             end
+        end
+        return result
+    end)
+
+-- CraftingView inherits _draw_widgets before this mod installs its hooks.  The
+-- engine's class helper materializes inherited methods on the derived class,
+-- so hooking VendorInteractionViewBase produced no live calls in crafting.
+-- Hook the concrete class that owns the active draw dispatch instead.
+function presentation.vendor_eye_layout_pointer(pointer)
+    if not pointer or not pointer.active or pointer.source_width <= 0 or
+            pointer.source_height <= 0 then
+        return pointer
+    end
+    return setmetatable({
+        x = pointer.x * ui_eye_target_width / pointer.source_width,
+        y = pointer.y * ui_eye_target_height / pointer.source_height,
+        source_width = ui_eye_target_width,
+        source_height = ui_eye_target_height,
+    }, { __index = pointer })
+end
+
+mod:hook(
+    require("scripts/ui/views/crafting_view/crafting_view"),
+    "_draw_widgets",
+    function(func, self, dt, t, input_service, ui_renderer, render_settings)
+        -- Flat-interactive crafting views deliberately do not join
+        -- world_menu_views: their temporary presentation is the same native
+        -- window panel used by character select.  Requiring
+        -- world_menu_active() here therefore disabled the semantic input path
+        -- for every mode-5 shop even though its panel and pointer were live.
+        if presentation.mode ~= 5 and presentation.mode ~= 6 then
+            return func(self, dt, t, input_service, ui_renderer, render_settings)
+        end
+        local pointer = presentation.read_menu_pointer()
+        local widgets = self._button_widgets or {}
+        if not presentation.vendor_widget_hook_logged then
+            presentation.vendor_widget_hook_logged = true
+            mod:info(
+                "DARKTIDEVR_MENU_INPUT vendor_widget_hook class=%s widgets=%d",
+                tostring(self.__class_name or self.view_name),
+                #widgets)
+        end
+        local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)
+        local source_widget = nil
+        local source_entry = nil
+        for i = #widgets, 1, -1 do
+            local widget = widgets[i]
+            if pointer.available then
+                presentation.clear_widget_hotspot_forces(widget)
+            end
+            if pointer.active and not source_widget and widget then
+                local entry = presentation.widget_hotspot_at_pointer(
+                    self, widget, hit_pointer)
+                if entry and not entry.hotspot.disabled then
+                    source_widget = widget
+                    source_entry = entry
+                end
+            end
+            if not pointer.active and pointer.primary_pressed and
+                    not source_widget and widget then
+                local entries = presentation.widget_hotspot_entries(widget)
+                for j = #entries, 1, -1 do
+                    if entries[j].hotspot.is_hover and
+                            not entries[j].hotspot.disabled then
+                        source_widget = widget
+                        source_entry = entries[j]
+                        break
+                    end
+                end
+            end
+        end
+        if pointer.primary_pressed and not source_widget and
+                pointer.primary_press_sequence ~=
+                    pointer.vendor_diagnostic_miss_sequence then
+            pointer.vendor_diagnostic_miss_sequence =
+                pointer.primary_press_sequence
+            local diagnostics = {}
+            for i = #widgets, 1, -1 do
+                local widget = widgets[i]
+                local entries = presentation.widget_hotspot_entries(widget)
+                for j = #entries, 1, -1 do
+                    local entry = entries[j]
+                    local hit, geometry =
+                        presentation.widget_contains_menu_pointer(
+                            self, widget, hit_pointer, entry.style)
+                    if geometry and #diagnostics < 24 then
+                        diagnostics[#diagnostics + 1] = string.format(
+                            "%s:%s:%s:%.1f,%.1f,%.1f,%.1f",
+                            tostring(widget.name),
+                            tostring(entry.content_id),
+                            hit and "hit" or "miss",
+                            geometry.left,
+                            geometry.top,
+                            geometry.width,
+                            geometry.height)
+                    end
+                end
+            end
+            mod:info(
+                "DARKTIDEVR_MENU_INPUT vendor_source_miss class=%s sequence=%d source=%d,%d/%dx%d widgets=%s",
+                tostring(self.__class_name or self.view_name),
+                pointer.last_sequence,
+                pointer.x,
+                pointer.y,
+                pointer.source_width,
+                pointer.source_height,
+                #diagnostics > 0 and table.concat(diagnostics, "|") or
+                    "none")
+        end
+        if source_widget and source_entry then
+            source_entry.hotspot.force_hover = true
+            if pointer.primary_pressed then
+                source_entry.hotspot.force_input_pressed = true
+                presentation.consume_menu_primary(pointer)
+                mod:info(
+                    "DARKTIDEVR_MENU_INPUT vendor_option_activate widget=%s sequence=%d source=%d,%d/%dx%d",
+                    tostring(source_widget.name),
+                    pointer.last_sequence,
+                    pointer.x,
+                    pointer.y,
+                    pointer.source_width,
+                    pointer.source_height)
+            end
+        end
+        local result = func(
+            self, dt, t, input_service, ui_renderer, render_settings)
+        if pointer.primary_pressed and not pointer.available and
+                not source_widget then
+            for i = #widgets, 1, -1 do
+                local widget = widgets[i]
+                local entries = presentation.widget_hotspot_entries(widget)
+                for j = #entries, 1, -1 do
+                    local hotspot = entries[j].hotspot
+                    if hotspot.is_hover and not hotspot.disabled and
+                            type(hotspot.pressed_callback) == "function" then
+                        presentation.consume_menu_primary(pointer)
+                        hotspot.pressed_callback()
+                        mod:info(
+                            "DARKTIDEVR_MENU_INPUT vendor_option_callback widget=%s sequence=%d source=%d,%d/%dx%d",
+                            tostring(widget.name),
+                            pointer.last_sequence,
+                            pointer.x,
+                            pointer.y,
+                            pointer.source_width,
+                            pointer.source_height)
+                        return result
+                    end
+                end
+            end
+        end
+        return result
+    end)
+
+mod:hook(
+    require("scripts/ui/view_elements/view_element_grid/view_element_grid"),
+    "_draw_grid",
+    function(func, self, dt, t, ui_renderer, input_service, render_settings)
+        -- See VendorInteractionViewBase._draw_widgets above.  Mode 5 is the
+        -- authoritative gate for the temporary flat shop panel; a world-menu
+        -- owner is neither expected nor desired on this path.
+        if presentation.mode ~= 5 and presentation.mode ~= 6 then
+            return func(self, dt, t, ui_renderer, input_service, render_settings)
+        end
+        local pointer = presentation.read_menu_pointer()
+        local hit_pointer = presentation.mode == 5 and
+            presentation.vendor_eye_layout_pointer(pointer) or pointer
+        local widgets = self._grid_widgets or {}
+        local source_widget = nil
+        local source_entry = nil
+        for i = #widgets, 1, -1 do
+            local widget = widgets[i]
+            if pointer.available then
+                presentation.clear_widget_hotspot_forces(widget)
+            end
+            if pointer.active and not source_widget and widget and
+                    widget.content and widget.content.visible ~= false and
+                    (not self._grid or self._grid:is_widget_visible(widget)) then
+                local entry = presentation.widget_hotspot_at_pointer(
+                    self, widget, hit_pointer)
+                if entry and not entry.hotspot.disabled then
+                    source_widget = widget
+                    source_entry = entry
+                end
+            end
+            if not pointer.active and pointer.primary_pressed and
+                    not source_widget and widget and widget.content and
+                    widget.content.visible ~= false then
+                local entries = presentation.widget_hotspot_entries(widget)
+                for j = #entries, 1, -1 do
+                    if entries[j].hotspot.is_hover and
+                            not entries[j].hotspot.disabled then
+                        source_widget = widget
+                        source_entry = entries[j]
+                        break
+                    end
+                end
+            end
+        end
+        local interaction_widget = self._widgets_by_name and
+            self._widgets_by_name.grid_interaction
+        local interaction_hotspot = interaction_widget and
+            interaction_widget.content and interaction_widget.content.hotspot
+        local previous_interaction_force_hover = interaction_hotspot and
+            interaction_hotspot.force_hover
+        local previous_interaction_is_hover = interaction_hotspot and
+            interaction_hotspot.is_hover
+        if pointer.active and interaction_hotspot then
+            interaction_hotspot.force_hover = true
+            interaction_hotspot.is_hover = true
+        end
+        if source_widget and source_entry then
+            source_entry.hotspot.force_hover = true
+            if pointer.scroll_steps ~= 0 and self._grid then
+                local scrolled = presentation.scroll_menu_grid(
+                    self._grid, pointer.scroll_steps)
+                if scrolled then
+                    presentation.consume_menu_scroll(pointer)
+                end
+            end
+            if pointer.primary_pressed then
+                source_entry.hotspot.force_input_pressed = true
+                presentation.consume_menu_primary(pointer)
+                mod:info(
+                    "DARKTIDEVR_MENU_INPUT element_grid_activate widget=%s sequence=%d source=%d,%d/%dx%d",
+                    tostring(source_widget.name),
+                    pointer.last_sequence,
+                    pointer.x,
+                    pointer.y,
+                    pointer.source_width,
+                    pointer.source_height)
+            end
+        end
+        local result = func(
+            self, dt, t, ui_renderer, input_service, render_settings)
+        if pointer.primary_pressed and not pointer.available and
+                not source_widget then
+            for i = #widgets, 1, -1 do
+                local widget = widgets[i]
+                local entries = presentation.widget_hotspot_entries(widget)
+                for j = #entries, 1, -1 do
+                    local hotspot = entries[j].hotspot
+                    if hotspot.is_hover and not hotspot.disabled and
+                            type(hotspot.pressed_callback) == "function" then
+                        presentation.consume_menu_primary(pointer)
+                        hotspot.pressed_callback()
+                        mod:info(
+                            "DARKTIDEVR_MENU_INPUT element_grid_callback widget=%s sequence=%d source=%d,%d/%dx%d",
+                            tostring(widget.name),
+                            pointer.last_sequence,
+                            pointer.x,
+                            pointer.y,
+                            pointer.source_width,
+                            pointer.source_height)
+                        break
+                    end
+                end
+                if not pointer.primary_pressed then
+                    break
+                end
+            end
+        end
+        if interaction_hotspot then
+            interaction_hotspot.force_hover = previous_interaction_force_hover
+            interaction_hotspot.is_hover = previous_interaction_is_hover
+        end
+        return result
+end)
+
+-- Premium StoreView owns a private card grid and draws it before BaseView's
+-- conventional widget list. The generic hook can only see the full-grid input
+-- catcher, so resolve and arm the actual item hotspot at this class seam.
+mod:hook(
+    require("scripts/ui/views/store_view/store_view"),
+    "_draw_grid",
+    function(func, self, dt, t, input_service)
+        if presentation.mode ~= 6 then
+            return func(self, dt, t, input_service)
+        end
+        local pointer = presentation.read_menu_pointer()
+        -- StoreView is authored directly in the native landscape client
+        -- published by mode 6, so its panel ray is already in scenegraph space.
+        local hit_pointer = pointer
+        local widgets = self._grid_widgets or {}
+        local source_widget = nil
+        local source_entry = nil
+        for i = #widgets, 1, -1 do
+            local widget = widgets[i]
+            if pointer.available then
+                presentation.clear_widget_hotspot_forces(widget)
+            end
+            if pointer.active and not source_widget and widget and
+                    widget.content and widget.content.visible ~= false then
+                local entry = presentation.widget_hotspot_at_pointer(
+                    self, widget, hit_pointer)
+                if entry and not entry.hotspot.disabled then
+                    source_widget = widget
+                    source_entry = entry
+                end
+            end
+        end
+        local interaction_widget = self._widgets_by_name and
+            self._widgets_by_name.grid_interaction
+        local interaction_hotspot = interaction_widget and
+            interaction_widget.content and interaction_widget.content.hotspot
+        local previous_force_hover = interaction_hotspot and
+            interaction_hotspot.force_hover
+        if pointer.active and interaction_hotspot then
+            interaction_hotspot.force_hover = true
+        end
+        if source_widget and source_entry then
+            source_entry.hotspot.force_hover = true
+            if pointer.primary_pressed then
+                source_entry.hotspot.force_input_pressed = true
+                presentation.consume_menu_primary(pointer)
+                mod:info(
+                    "DARKTIDEVR_MENU_INPUT store_grid_activate widget=%s sequence=%d source=%d,%d/%dx%d",
+                    tostring(source_widget.name),
+                    pointer.last_sequence,
+                    pointer.x,
+                    pointer.y,
+                    pointer.source_width,
+                    pointer.source_height)
+            end
+        end
+        -- The stock Windows cursor is normalized through the hidden render
+        -- extent and otherwise remains a second, offset hover owner. While an
+        -- XR ray is active, let the semantic force-hover owner above drive the
+        -- real card without competing native hover state.
+        local draw_input_service = pointer.active and
+            input_service:null_service() or input_service
+        local result = func(self, dt, t, draw_input_service)
+        if interaction_hotspot then
+            interaction_hotspot.force_hover = previous_force_hover
         end
         return result
     end)
@@ -10187,10 +11318,12 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
             ui_native_capture.dtvr_boundary_eye_capture_count(0)
         ) + 1
         report_native_capture_result(arm_eye_capture(0))
+        presentation.trace_body_capture_boundary("before_left")
         local pair_start = performance_tick()
         local left_start = pair_start
         local result = func(world, ...)
         local left_end = performance_tick()
+        presentation.trace_body_capture_boundary("after_left")
         if ui_direct_swapchain_capture_requested then
             report_native_capture_result(
                 ui_native_capture.dtvr_capture_armed_swapchain_eye(0)
@@ -10231,6 +11364,7 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
             func(world, ...)
         end
         local right_end = performance_tick()
+        presentation.trace_body_capture_boundary("after_right")
         if ui_direct_swapchain_capture_requested then
             report_native_capture_result(
                 ui_native_capture.dtvr_capture_armed_swapchain_eye(1)
@@ -10704,8 +11838,57 @@ mod:command(
 mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_calibration"
 ).install(mod, controller_observation, function()
+    if ui_native_capture and head_pose_values and head_pose_sequence then
+        ui_native_capture.dtvr_read_head_pose(
+            head_pose_values, head_pose_sequence)
+        controller_observation.head_recenter_generation = math.floor(
+            tonumber(head_pose_values[23]) + 0.5)
+    end
     return head_pose_values
+end, function()
+    if not ui_native_capture or not controller_observation.values or
+            ui_native_capture.dtvr_read_controller_state(
+                controller_observation.values,
+                controller_observation.tracking_flags,
+                controller_observation.buttons,
+                controller_observation.sequence,
+                controller_observation.timestamp_ns) ~= 0 then
+        return false
+    end
+    local timestamp_ns = tonumber(controller_observation.timestamp_ns[0])
+    local frequency = tonumber(ui_native_capture.dtvr_qpc_frequency())
+    local age_ns = math.huge
+    if frequency > 0 then
+        age_ns = tonumber(ui_native_capture.dtvr_qpc_ticks()) *
+            1000000000 / frequency - timestamp_ns
+    end
+    local fresh = age_ns >= -5000000 and age_ns <= 100000000
+    controller_observation.left_grip_tracking_live = fresh and
+        bit.band(tonumber(controller_observation.tracking_flags[1]), 5) == 5
+    controller_observation.right_grip_tracking_live = fresh and
+        bit.band(tonumber(controller_observation.tracking_flags[3]), 5) == 5
+    controller_observation.left_grip_x =
+        tonumber(controller_observation.values[7])
+    controller_observation.left_grip_y =
+        tonumber(controller_observation.values[8])
+    controller_observation.left_grip_z =
+        tonumber(controller_observation.values[9])
+    controller_observation.right_grip_x =
+        tonumber(controller_observation.values[25])
+    controller_observation.right_grip_y =
+        tonumber(controller_observation.values[26])
+    controller_observation.right_grip_z =
+        tonumber(controller_observation.values[27])
+    controller_observation.left_trigger =
+        tonumber(controller_observation.values[14])
+    controller_observation.right_trigger =
+        tonumber(controller_observation.values[32])
+    return true
 end)
+
+presentation.body_proxy = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_body_proxy"
+)
 
 presentation.hud_panel = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_hud_panel"
@@ -10724,6 +11907,7 @@ mod.on_disabled = function()
     pcall(teardown)
     pcall(teardown_ui_stereo)
     pcall(destroy_ui_offscreen_resources)
+    pcall(presentation.body_proxy.destroy)
 end
 
 mod.on_unload = function()
@@ -10732,4 +11916,5 @@ mod.on_unload = function()
     pcall(teardown)
     pcall(teardown_ui_stereo)
     pcall(destroy_ui_offscreen_resources)
+    pcall(presentation.body_proxy.destroy)
 end

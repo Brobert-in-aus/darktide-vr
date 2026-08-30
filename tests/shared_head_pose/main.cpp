@@ -34,7 +34,9 @@ int main(int argc, char** argv) {
                     << received.pose.orientation.x << ','
                     << received.pose.orientation.y << ','
                     << received.pose.orientation.z << ','
-                    << received.pose.orientation.w << '\n';
+                    << received.pose.orientation.w
+                    << " floor_eye_height="
+                    << received.floor_eye_height_metres << '\n';
           return 0;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -55,6 +57,7 @@ int main(int argc, char** argv) {
     sample.render_height = 2304;
     sample.render_frusta[0] = {-0.94F, 0.70F, -0.96F, 0.77F};
     sample.render_frusta[1] = {-0.70F, 0.94F, -0.96F, 0.77F};
+    sample.floor_eye_height_metres = 1.68F;
     expect(writer->publish(sample), "Valid shared pose was rejected");
     darktidevr::core::SharedHeadPoseSample received{};
     expect(reader.read(received), "Published shared pose was unreadable");
@@ -69,27 +72,32 @@ int main(int argc, char** argv) {
                std::abs(received.body_follow_offset.x - 0.75F) < 0.0001F &&
                std::abs(received.body_follow_offset.z + 0.25F) < 0.0001F &&
                std::abs(received.ipd_metres - 0.064F) < 0.0001F &&
+               std::abs(received.floor_eye_height_metres - 1.68F) < 0.0001F &&
                std::abs(received.render_frusta[0].left + 0.94F) < 0.0001F &&
                std::abs(received.render_frusta[1].right - 0.94F) < 0.0001F,
            "Shared pose changed in transit");
+    expect(reader.publish_gameplay_generation(5) &&
+               writer->read_gameplay_generation() == 5,
+           "Gameplay generation changed in transit");
     expect(reader.publish_rendered_pair(
-               {11, {7, 7}, {1.6F, 1.6F}, {0.8888889F, 0.8888889F}}),
+               {11, 5, {7, 7}, {1.6F, 1.6F}, {0.8888889F, 0.8888889F}}),
            "Rendered-pair pose tag was rejected");
     darktidevr::core::SharedRenderedEyePairPose pair{};
     expect(writer->read_rendered_pair(pair) && pair.ready_value == 11 &&
+               pair.gameplay_generation == 5 &&
                pair.eye_pose_sequences[0] == 7 &&
                pair.eye_pose_sequences[1] == 7 &&
                std::abs(pair.vertical_fov_radians[0] - 1.6F) < 0.0001F &&
                std::abs(pair.aspect_ratios[1] - 0.8888889F) < 0.0001F,
            "Rendered-pair pose tag changed in transit");
     expect(!reader.publish_rendered_pair(
-               {0, {7, 7}, {1.6F, 1.6F}, {0.8888889F, 0.8888889F}}),
+               {0, 5, {7, 7}, {1.6F, 1.6F}, {0.8888889F, 0.8888889F}}),
            "Invalid rendered-pair tag was accepted");
     expect(!reader.publish_rendered_pair(
-               {12, {7, 7}, {0.0F, 1.6F}, {0.8888889F, 0.8888889F}}),
+               {12, 5, {7, 7}, {0.0F, 1.6F}, {0.8888889F, 0.8888889F}}),
            "Invalid rendered-pair projection was accepted");
     expect(!reader.publish_rendered_pair(
-               {std::numeric_limits<std::uint64_t>::max(),
+               {std::numeric_limits<std::uint64_t>::max(), 5,
                 {7, 7}, {1.6F, 1.6F}, {0.8888889F, 0.8888889F}}),
            "An unrepresentable rendered-pair counter was accepted");
     writer.reset();
@@ -98,6 +106,8 @@ int main(int argc, char** argv) {
            "A restarted writer retained the previous session pose");
     expect(!writer->read_rendered_pair(pair),
            "A restarted writer retained the previous rendered-pair tag");
+    expect(writer->read_gameplay_generation() == 0,
+           "A restarted writer retained the gameplay generation");
     expect(writer->publish(sample),
            "A restarted writer could not publish a new session pose");
     std::this_thread::sleep_for(std::chrono::milliseconds(275));
@@ -110,6 +120,10 @@ int main(int argc, char** argv) {
     sample.ipd_metres = 0.0F;
     expect(!writer->publish(sample), "Invalid runtime IPD was accepted");
     sample.ipd_metres = 0.064F;
+    sample.floor_eye_height_metres = 4.0F;
+    expect(!writer->publish(sample),
+           "Invalid floor-relative eye height was accepted");
+    sample.floor_eye_height_metres = 1.68F;
     sample.sequence = std::numeric_limits<std::uint64_t>::max();
     expect(!writer->publish(sample),
            "An unrepresentable shared-pose counter was accepted");

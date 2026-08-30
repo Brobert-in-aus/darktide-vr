@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cwctype>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -145,11 +146,32 @@ WindowCapture::~WindowCapture() {
   }
 }
 
+bool WindowCapture::source_window_alive() const noexcept {
+  return window_ && IsWindow(window_);
+}
+
+std::optional<std::pair<std::uint32_t, std::uint32_t>>
+WindowCapture::source_extent() const noexcept {
+  RECT client{};
+  if (!window_ || !IsWindow(window_) || !GetClientRect(window_, &client)) {
+    return std::nullopt;
+  }
+  const auto width = client.right - client.left;
+  const auto height = client.bottom - client.top;
+  if (width <= 0 || height <= 0) {
+    return std::nullopt;
+  }
+  return std::pair{static_cast<std::uint32_t>(width),
+                   static_cast<std::uint32_t>(height)};
+}
+
 void WindowCapture::ensure_source_surface(std::uint32_t width,
                                           std::uint32_t height) {
   if (source_bitmap_ && source_width_ == width && source_height_ == height) {
     return;
   }
+  std::cout << "openxr.window_capture.client_extent=" << width << 'x'
+            << height << '\n';
   if (source_bitmap_) {
     SelectObject(source_dc_, previous_source_bitmap_);
     DeleteObject(source_bitmap_);

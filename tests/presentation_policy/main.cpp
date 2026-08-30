@@ -72,6 +72,10 @@ int main() {
     expect(std::abs(tall.width_metres - 1.125F) < 1.0e-5F &&
                std::abs(tall.height_metres - 2.0F) < 1.0e-5F,
            "Tall captures must fit inside the panel without stretching");
+    const auto darktide_window = fit_panel_extent(1280, 768, 2.0F, 2.0F);
+    expect(std::abs(darktide_window.width_metres - 2.0F) < 1.0e-5F &&
+               std::abs(darktide_window.height_metres - 1.2F) < 1.0e-5F,
+           "Native shop panels must preserve the Darktide client aspect");
 
     std::cout << "presentation_policy.result=pass\n";
     return 0;

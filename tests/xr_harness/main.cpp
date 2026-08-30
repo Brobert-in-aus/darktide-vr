@@ -259,6 +259,24 @@ class OpenXrProbe {
     space_info.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
     check_xr(xrCreateReferenceSpace(session_, &space_info, &view_space_),
              "xrCreateReferenceSpace(VIEW)");
+    std::uint32_t reference_space_count{};
+    check_xr(xrEnumerateReferenceSpaces(
+                 session_, 0, &reference_space_count, nullptr),
+             "xrEnumerateReferenceSpaces(count)");
+    std::vector<XrReferenceSpaceType> reference_spaces(reference_space_count);
+    check_xr(xrEnumerateReferenceSpaces(
+                 session_, reference_space_count, &reference_space_count,
+                 reference_spaces.data()),
+             "xrEnumerateReferenceSpaces(list)");
+    if (std::find(reference_spaces.begin(), reference_spaces.end(),
+                  XR_REFERENCE_SPACE_TYPE_STAGE) != reference_spaces.end()) {
+      space_info.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
+      check_xr(xrCreateReferenceSpace(session_, &space_info, &stage_space_),
+               "xrCreateReferenceSpace(STAGE)");
+      std::cout << "openxr.floor_space=stage\n";
+    } else {
+      std::cout << "openxr.floor_space=unavailable\n";
+    }
     create_controller_actions();
 
     std::uint32_t format_count{};
@@ -852,6 +870,7 @@ class OpenXrProbe {
     UINT64 shared_last_ready_value{};
     auto shared_last_advance = std::chrono::steady_clock::now();
     auto next_shared_open_attempt = std::chrono::steady_clock::now();
+    auto next_shared_open_error_log = std::chrono::steady_clock::now();
     auto next_menu_open_attempt = std::chrono::steady_clock::now();
     HANDLE projection_active_event{};
     darktidevr::core::SharedPresentationStateReader presentation_state_reader;
@@ -866,8 +885,11 @@ class OpenXrProbe {
     int last_shared_menu_scroll_steps{};
     bool last_shared_menu_primary_down{};
     bool shared_menu_primary_armed{};
+    std::uint64_t shared_menu_primary_activation_sequence{};
     std::optional<std::chrono::steady_clock::time_point>
         shared_menu_primary_release_start;
+    std::optional<std::chrono::steady_clock::time_point>
+        shared_menu_primary_activation_start;
     std::unique_ptr<darktidevr::harness::MenuInputInjector>
         menu_input_injector;
     std::uint64_t menu_input_events{};
@@ -995,6 +1017,7 @@ class OpenXrProbe {
     std::array<XrPosef, 2> cached_pair_view_poses{};
     bool cached_pair_valid{};
     std::uint64_t rendered_pair_pose_ready_value{};
+    std::uint64_t rendered_pair_gameplay_generation{};
     std::uint64_t last_pair_pose_checked_ready_value{};
     std::uint64_t last_submitted_shared_value{};
     std::uint64_t fresh_shared_pairs{};
@@ -1007,6 +1030,10 @@ class OpenXrProbe {
     double pair_pose_angle_lag_degrees_max{};
     std::uint64_t pair_driven_waits{};
     std::uint64_t pair_driven_timeouts{};
+    std::optional<std::chrono::steady_clock::time_point>
+        projection_resume_started;
+    std::uint64_t projection_resume_ready_value{};
+    std::uint64_t projection_resume_gameplay_generation{};
     const auto start = std::chrono::steady_clock::now();
     auto last_live_report = start;
     std::uint32_t last_live_submitted_frames{};
@@ -1049,6 +1076,10 @@ class OpenXrProbe {
       if (duration && std::chrono::steady_clock::now() - start >= *duration) {
         break;
       }
+      if (window_capture && !window_capture->source_window_alive()) {
+        std::cout << "openxr.capture_window=closed session_exit=clean\n";
+        break;
+      }
       const auto frame_start = std::chrono::steady_clock::now();
       if (frame_start >= next_menu_readback_request_poll) {
         next_menu_readback_request_poll =
@@ -1074,13 +1105,35 @@ class OpenXrProbe {
             darktidevr::core::SharedPresentationState newest{};
             if (presentation_state_reader.read(newest)) {
               if (newest.sequence != presentation_sequence) {
+                const bool was_projection_active =
+                    darktidevr::core::immersive_projection_active(
+                        presentation_state.mode);
+                const bool will_be_projection_active =
+                    darktidevr::core::immersive_projection_active(newest.mode);
+                const auto panel_extent =
+                    darktidevr::core::fit_panel_extent(
+                        newest.crop_width, newest.crop_height,
+                        newest.maximum_panel_width_metres,
+                        newest.maximum_panel_height_metres);
                 std::cout << "openxr.presentation mode="
                           << static_cast<std::uint32_t>(newest.mode)
                           << " sequence=" << newest.sequence << " source="
                           << newest.source_width << 'x' << newest.source_height
                           << " crop=" << newest.crop_x << ',' << newest.crop_y
                           << ',' << newest.crop_width << 'x'
-                          << newest.crop_height << '\n';
+                          << newest.crop_height << " panel_metres="
+                          << panel_extent.width_metres << 'x'
+                          << panel_extent.height_metres << '\n';
+                if (!was_projection_active && will_be_projection_active) {
+                  projection_resume_started = frame_start;
+                  projection_resume_ready_value = shared_last_ready_value;
+                  projection_resume_gameplay_generation =
+                      head_pose_writer
+                          ? head_pose_writer->read_gameplay_generation()
+                          : 0;
+                } else if (!will_be_projection_active) {
+                  projection_resume_started.reset();
+                }
               }
               presentation_state = newest;
               presentation_sequence = newest.sequence;
@@ -1132,10 +1185,16 @@ class OpenXrProbe {
           std::cout << "openxr.shared_eyes=attached initial_ready="
                     << shared_last_ready_value << " initial_consumed="
                     << initial_consumed_value << '\n';
-        } catch (const std::exception&) {
+        } catch (const std::exception& error) {
           // The title and loading screens legitimately precede the game's
           // producer-owned eye surfaces. Keep publishing XR state and retry
           // while the spatial flat fallback remains visible.
+          if (frame_start >= next_shared_open_error_log) {
+            std::cerr << "openxr.shared_eyes=waiting reason=" << error.what()
+                      << '\n';
+            next_shared_open_error_log =
+                frame_start + std::chrono::seconds(2);
+          }
         }
       }
       const bool interactive_menu_projection =
@@ -1376,6 +1435,19 @@ class OpenXrProbe {
                               located_views[0].pose.position.z;
           pose_sample.ipd_metres =
               std::sqrt(eye_dx * eye_dx + eye_dy * eye_dy + eye_dz * eye_dz);
+          if (stage_space_ != XR_NULL_HANDLE) {
+            XrSpaceLocation stage_head{XR_TYPE_SPACE_LOCATION};
+            check_xr(xrLocateSpace(view_space_, stage_space_,
+                                   frame_state.predictedDisplayTime,
+                                   &stage_head),
+                     "xrLocateSpace(VIEW in STAGE)");
+            const auto floor_flags = XR_SPACE_LOCATION_POSITION_VALID_BIT |
+                                     XR_SPACE_LOCATION_POSITION_TRACKED_BIT;
+            if ((stage_head.locationFlags & floor_flags) == floor_flags) {
+              pose_sample.floor_eye_height_metres =
+                  stage_head.pose.position.y;
+            }
+          }
           runtime_ipd_metres_ = pose_sample.ipd_metres;
           const darktidevr::math::Pose submitted_head_delta{
               delta.orientation,
@@ -1497,6 +1569,8 @@ class OpenXrProbe {
                       static_cast<std::uint64_t>(target_sequence_signed)) {
                 rendered_pair_view_poses = entry->second;
                 rendered_pair_pose_ready_value = shared_ready_for_frame;
+                rendered_pair_gameplay_generation =
+                    rendered_pair.gameplay_generation;
                 history_match = true;
                 if (head_pose_sequence >=
                     rendered_pair.eye_pose_sequences[0]) {
@@ -1544,18 +1618,48 @@ class OpenXrProbe {
                 shared_stale_after;
         const bool shared_pair_pose_synced =
             rendered_pair_pose_ready_value == shared_ready_for_frame;
+        const auto committed_gameplay_generation =
+            head_pose_writer
+                ? head_pose_writer->read_gameplay_generation()
+                : 0;
+        // A pose-synchronised pair can still belong to the outgoing shop
+        // camera. Resume only when Lua has restored the authoritative gameplay
+        // orientation and the producer has stamped a completed pair with that
+        // newly committed generation.
+        const bool projection_pair_settled =
+            !projection_resume_started || !cached_pair_valid ||
+            (committed_gameplay_generation >
+                 projection_resume_gameplay_generation &&
+             rendered_pair_gameplay_generation ==
+                 committed_gameplay_generation);
         const bool use_shared_pair =
             projection_active && opened_eyes &&
             (!window_capture ||
-             (shared_pair_fresh && shared_pair_pose_synced));
+             (shared_pair_fresh && shared_pair_pose_synced &&
+              projection_pair_settled));
+        if (projection_active && opened_eyes && !use_shared_pair &&
+            shared_ready_for_frame != 0 && shared_pair_fresh &&
+            shared_pair_pose_synced && !projection_pair_settled) {
+          // The producer owns a single shared slot. A settling pair that is
+          // intentionally hidden behind the cached image must still be
+          // consumed, otherwise this very gate prevents the next pair it is
+          // waiting for from ever being produced.
+          discard_shared_pair_this_frame = true;
+        }
+        // On a menu-to-world transition the producer can take a variable
+        // number of frames to publish a newly pose-synchronised pair.  Keep
+        // presenting the last complete stereo pair during that interval.
+        // Falling through to the desktop capture here exposes the engine's
+        // transient mono/right-eye presentation in both eyes.
         const bool use_cached_pair =
             !use_shared_pair && cached_pair_valid &&
-            (presentation_sequence != 0 &&
-             (presentation_state.mode == darktidevr::core::
-                                             SharedPresentationMode::flat_menu ||
-              presentation_state.mode == darktidevr::core::
-                                             SharedPresentationMode::
-                                                 world_anchored_menu));
+            (projection_active ||
+             (presentation_sequence != 0 &&
+              (presentation_state.mode == darktidevr::core::
+                                              SharedPresentationMode::flat_menu ||
+               presentation_state.mode == darktidevr::core::
+                                              SharedPresentationMode::
+                                                  world_anchored_menu)));
         submitted_shared_pair_this_frame =
             use_shared_pair || use_cached_pair;
         submitted_cached_pair_this_frame = use_cached_pair;
@@ -1749,6 +1853,18 @@ class OpenXrProbe {
           command_list->ResourceBarrier(1, &flat_barrier);
         }
         if (use_shared_pair) {
+          if (projection_resume_started) {
+            const auto resume_latency =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    frame_start - *projection_resume_started);
+            std::cout << "openxr.projection_resume fresh_pair_latency_ms="
+                      << resume_latency.count() << " ready_advance="
+                      << (shared_ready_for_frame - projection_resume_ready_value)
+                      << " ready=" << shared_ready_for_frame
+                      << " gameplay_generation="
+                      << rendered_pair_gameplay_generation << '\n';
+            projection_resume_started.reset();
+          }
           if (shared_ready_for_frame != last_submitted_shared_value) {
             last_submitted_shared_value = shared_ready_for_frame;
             ++fresh_shared_pairs;
@@ -2048,12 +2164,35 @@ class OpenXrProbe {
           static_cast<std::int32_t>(flat_capture_width),
           static_cast<std::int32_t>(flat_capture_height)};
       flat_fallback_quad.pose = flat_fallback_pose;
+      const auto flat_interactive_mode =
+          presentation_sequence != 0 && darktidevr::core::
+              flat_interactive_active(presentation_state.mode);
+      const auto native_window_extent =
+          flat_interactive_mode && window_capture
+              ? window_capture->source_extent()
+              : std::nullopt;
+      // A gameplay shop is mode 5 while the live per-eye shared surfaces remain
+      // attached; its portrait eye image is squeezed into the landscape native
+      // window.  Character select is also mode 5, but has no shared eye
+      // surfaces and must retain its ordinary 16:9 aspect.  Surface ownership
+      // is stable across transient Windows client resizes, unlike comparing
+      // source dimensions.
+      const auto flat_interactive_eye_encoded =
+          presentation_sequence != 0 &&
+          darktidevr::core::flat_interactive_uses_eye_aspect(
+              presentation_state.mode, opened_eyes.has_value());
       const auto panel_source_width =
-          presentation_sequence != 0 ? presentation_state.crop_width
-                                     : flat_capture_width;
-      const auto panel_source_height = presentation_sequence != 0
-                                           ? presentation_state.crop_height
-                                           : flat_capture_height;
+          flat_interactive_eye_encoded
+              ? shared_eye_width
+              : (presentation_sequence != 0
+                     ? presentation_state.crop_width
+                     : flat_capture_width);
+      const auto panel_source_height =
+          flat_interactive_eye_encoded
+              ? shared_eye_height
+              : (presentation_sequence != 0
+                     ? presentation_state.crop_height
+                     : flat_capture_height);
       const auto panel_max_width = presentation_sequence != 0
                                        ? presentation_state
                                              .maximum_panel_width_metres
@@ -2070,17 +2209,13 @@ class OpenXrProbe {
       std::optional<darktidevr::math::Pose> controller_pointer_pose;
       std::optional<darktidevr::core::PanelPointerMapping>
           controller_pointer_hit;
-      const auto flat_interactive_mode =
-          presentation_sequence != 0 &&
-          presentation_state.mode == darktidevr::core::
-                                         SharedPresentationMode::flat_interactive;
       const auto menu_input_source_width =
-          flat_interactive_mode ? panel_source_width
+          native_window_extent ? native_window_extent->first
                                 : (presentation_sequence != 0
                                        ? presentation_state.source_width
                                        : flat_capture_width);
       const auto menu_input_source_height =
-          flat_interactive_mode ? panel_source_height
+          native_window_extent ? native_window_extent->second
                                 : (presentation_sequence != 0
                                        ? presentation_state.source_height
                                        : flat_capture_height);
@@ -2148,7 +2283,7 @@ class OpenXrProbe {
                   ? 0
                   : (presentation_sequence != 0 ? presentation_state.crop_y
                                                 : 0),
-              panel_source_width, panel_source_height);
+              menu_input_source_width, menu_input_source_height);
           if (pointer) {
             ++controller_pointer_hits_;
             controller_pointer_x_ = pointer->source_x;
@@ -2309,22 +2444,48 @@ class OpenXrProbe {
         // it into a delayed synthetic click. Primary input becomes eligible
         // only after every source has been released for a short settling
         // interval in this menu activation.
+        const bool new_menu_activation = shared_pointer.active &&
+            presentation_sequence != shared_menu_primary_activation_sequence;
         if (!shared_pointer.active) {
           shared_menu_primary_armed = false;
           shared_menu_primary_release_start.reset();
+          shared_menu_primary_activation_start.reset();
+          shared_menu_primary_activation_sequence = presentation_sequence;
+          last_shared_menu_primary_down = false;
+        } else if (new_menu_activation) {
+          shared_menu_primary_armed = false;
+          shared_menu_primary_release_start.reset();
+          shared_menu_primary_activation_start = frame_start;
+          shared_menu_primary_activation_sequence = presentation_sequence;
+          // Adopt every source's entry level. Controller bindings and tracking
+          // can disappear briefly while Darktide creates a shop view, then
+          // return as a false rising edge roughly one second later.
+          last_shared_menu_primary_down = shared_pointer.primary_down;
         } else if (!shared_menu_primary_armed) {
           if (shared_pointer.primary_down) {
             shared_menu_primary_release_start.reset();
           } else if (!shared_menu_primary_release_start) {
             shared_menu_primary_release_start = frame_start;
-          } else if (frame_start - *shared_menu_primary_release_start >=
-                     std::chrono::milliseconds(100)) {
+          } else if (shared_menu_primary_activation_start &&
+                     frame_start - *shared_menu_primary_activation_start >=
+                         std::chrono::milliseconds(1250) &&
+                     frame_start - *shared_menu_primary_release_start >=
+                         std::chrono::milliseconds(250)) {
             shared_menu_primary_armed = true;
+            std::cout << "openxr.menu_primary=armed sequence="
+                      << presentation_sequence << '\n';
           }
         }
         if (shared_menu_primary_armed && shared_pointer.primary_down &&
             !last_shared_menu_primary_down) {
           ++menu_primary_press_sequence;
+          std::cout << "openxr.menu_primary=pressed sequence="
+                    << presentation_sequence << " trigger="
+                    << (latest_controller_sample_
+                            ? latest_controller_sample_->hands[1].trigger
+                            : 0.0F)
+                    << " desktop=" << desktop_pointer_primary_down
+                    << " test=" << shared_menu_primary_down << '\n';
         }
         // The shared Lua transport must use the debounced state-machine edge,
         // not a second raw controller-level edge detector. The latter used to
@@ -2752,6 +2913,10 @@ class OpenXrProbe {
         xrDestroySpace(view_space_);
         view_space_ = XR_NULL_HANDLE;
       }
+      if (stage_space_ != XR_NULL_HANDLE) {
+        xrDestroySpace(stage_space_);
+        stage_space_ = XR_NULL_HANDLE;
+      }
       xrDestroySession(session_);
       session_ = XR_NULL_HANDLE;
       std::cout << "openxr.session=destroyed\n";
@@ -3127,6 +3292,10 @@ class OpenXrProbe {
       xrDestroySpace(view_space_);
       view_space_ = XR_NULL_HANDLE;
     }
+    if (stage_space_ != XR_NULL_HANDLE) {
+      xrDestroySpace(stage_space_);
+      stage_space_ = XR_NULL_HANDLE;
+    }
     if (session_ != XR_NULL_HANDLE) {
       xrDestroySession(session_);
       session_ = XR_NULL_HANDLE;
@@ -3284,6 +3453,7 @@ class OpenXrProbe {
   XrSession session_{XR_NULL_HANDLE};
   XrSpace local_space_{XR_NULL_HANDLE};
   XrSpace view_space_{XR_NULL_HANDLE};
+  XrSpace stage_space_{XR_NULL_HANDLE};
   XrActionSet controller_action_set_{XR_NULL_HANDLE};
   std::array<XrPath, 2> hand_paths_{XR_NULL_PATH, XR_NULL_PATH};
   XrAction aim_action_{XR_NULL_HANDLE};

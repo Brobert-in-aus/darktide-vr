@@ -26,8 +26,23 @@ int main() {
                SharedPresentationMode::flat_loading_or_cinematic) &&
                !immersive_projection_active(
                    SharedPresentationMode::flat_interactive) &&
+               !immersive_projection_active(
+                   SharedPresentationMode::flat_interactive_native_aspect) &&
                !immersive_projection_active(SharedPresentationMode::disabled),
            "Only non-immersive modes may release projection ownership");
+    expect(flat_interactive_active(SharedPresentationMode::flat_interactive) &&
+               flat_interactive_active(
+                   SharedPresentationMode::flat_interactive_native_aspect) &&
+               !flat_interactive_active(SharedPresentationMode::flat_menu),
+           "Both flat-interactive aspect policies must share input ownership");
+    expect(flat_interactive_uses_eye_aspect(
+               SharedPresentationMode::flat_interactive, true) &&
+               !flat_interactive_uses_eye_aspect(
+                   SharedPresentationMode::flat_interactive, false) &&
+               !flat_interactive_uses_eye_aspect(
+                   SharedPresentationMode::flat_interactive_native_aspect,
+                   true),
+           "Only an attached eye-encoded panel may use portrait eye aspect");
     SharedPresentationStateReader reader;
     {
       SharedPresentationStateWriter writer;
@@ -89,6 +104,15 @@ int main() {
                  observed.mode == SharedPresentationMode::flat_interactive &&
                  !observed.body_panel_pose_valid,
              "Reader should preserve flat interactive mode");
+
+      state.sequence = 11;
+      state.mode = SharedPresentationMode::flat_interactive_native_aspect;
+      expect(writer.publish(state),
+             "Valid native-aspect interactive panel should publish");
+      expect(reader.read(observed) &&
+                 observed.mode ==
+                     SharedPresentationMode::flat_interactive_native_aspect,
+             "Reader should preserve native-aspect interactive mode");
     }
 
     std::cout << "presentation_state_transport.result=pass\n";

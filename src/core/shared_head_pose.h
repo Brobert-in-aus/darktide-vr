@@ -7,7 +7,7 @@
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedHeadPoseName[] =
-    L"Local\\DarktideVR-head-pose-v8";
+    L"Local\\DarktideVR-head-pose-v10";
 
 struct EyeFrustumHalfAngles {
   float left{};
@@ -33,10 +33,17 @@ struct SharedHeadPoseSample {
   // Runtime-provided separation between the two located XrView positions.
   // This is the user's calibrated headset IPD, not a population-average guess.
   float ipd_metres{0.064F};
+  // Floor-relative centre-eye height from an OpenXR STAGE reference space.
+  // Zero means the active runtime does not expose a valid floor space.
+  float floor_eye_height_metres{};
 };
 
 struct SharedRenderedEyePairPose {
   std::uint64_t ready_value{};
+  // VR gameplay-orientation generation committed by the Lua seam before this
+  // pair was captured. A menu-resume consumer can reject pairs produced by
+  // the outgoing modal camera without guessing a frame count.
+  std::uint64_t gameplay_generation{};
   std::uint64_t eye_pose_sequences[2]{};
   float vertical_fov_radians[2]{};
   float aspect_ratios[2]{};
@@ -54,6 +61,7 @@ class SharedHeadPoseWriter {
 
   bool publish(const SharedHeadPoseSample& sample);
   bool read_rendered_pair(SharedRenderedEyePairPose& pair) const;
+  std::uint64_t read_gameplay_generation() const;
 
  private:
   void* mapping_{};
@@ -70,6 +78,7 @@ class SharedHeadPoseReader {
 
   bool read(SharedHeadPoseSample& sample);
   bool publish_rendered_pair(const SharedRenderedEyePairPose& pair);
+  bool publish_gameplay_generation(std::uint64_t generation);
 
  private:
   bool ensure_open();

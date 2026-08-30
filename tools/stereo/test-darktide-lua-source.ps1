@@ -75,7 +75,7 @@ $bodyIkSource = $source.Substring($bodyIkStart, $bodyIkEnd - $bodyIkStart)
 $headingWrite = $bodyIkSource.IndexOf(
     'presentation.apply_body_heading(world, unit)')
 $anchorRefresh = $bodyIkSource.IndexOf(
-    'presentation.refresh_body_anchor_from_avatar(unit)')
+    'presentation.refresh_body_anchor_from_avatar(anchor_unit or unit)')
 if ($headingWrite -lt 0 -or $anchorRefresh -lt 0 -or
         $anchorRefresh -lt $headingWrite) {
     throw 'Body IK must refresh its shared pose anchor after applying body heading.'
@@ -101,16 +101,131 @@ if ($bodyFollowStart -lt 0 -or $bodyFollowEnd -lt 0 -or
                 'if game_mode_name == "hub"')) {
     throw 'Hub room-scale lean must not write the authoritative root/collision path.'
 }
+$gripTargetStart = $source.IndexOf(
+    'function presentation.body_ik_controller_grip_target')
+$gripTargetEnd = $source.IndexOf(
+    'function presentation.controller_aim_target', $gripTargetStart)
+if ($gripTargetStart -lt 0 -or $gripTargetEnd -lt 0) {
+    throw 'Could not locate the complete body controller grip target function.'
+}
+$gripTargetSource = $source.Substring(
+    $gripTargetStart, $gripTargetEnd - $gripTargetStart)
+if ($gripTargetSource.Contains(
+        'controller_observation.body_follow_x') -or
+        -not $gripTargetSource.Contains(
+            "Grip and camera poses share the bridge's sliding recenter space")) {
+    throw 'Hub wrist targets must remain in the bridge sliding-recenter space and must not add cumulative body-follow travel.'
+}
+if (-not $source.Contains(
+        'Hub locomotion continuously authors the replicated root orientation') -or
+        -not $source.Contains(
+            'if presentation.current_game_mode_name() == "hub" then')) {
+    throw 'Hub locomotion must retain exclusive ownership of the root orientation.'
+}
+if (-not $source.Contains(
+        'presentation.body_proxy.hides_source_slot(slot_name)') -or
+        -not $source.Contains(
+            'presentation.body_proxy.consume_ready_transition()') -or
+        -not $source.Contains(
+            'presentation.apply_body_ik(unit, sequence, world, anchor_unit)')) {
+    throw 'Hub upper-body presentation must use the isolated local proxy while tracking remains anchored to the authoritative avatar.'
+}
+if (-not $source.Contains('prior > ceiling') -or
+        -not $source.Contains(
+            'prior + (desired[side] - prior) * alpha, 0, ceiling')) {
+    throw 'Shoulder reach smoothing state must remain anatomically bounded.'
+}
+if (-not $source.Contains('math.min(1.10,') -or
+        -not $source.Contains('record.arm_length * 0.08') -or
+        -not $source.Contains('reach_state[side] * 0.65')) {
+    throw 'Forward calibration must preserve limb proportions and assign excess reach to bounded clavicle protraction.'
+}
 if (-not $source.Contains(
         'scripts/extension_systems/aim/third_person_idle_fullbody_animation_control') -or
         -not $source.Contains('self._idle_fullbody_value = 0')) {
     throw 'Local VR hub body must suppress lateral full-body idle variants.'
 }
 if (-not $source.Contains(
+        'local billboard_shader_substitution_requested = true') -or
+        -not $source.Contains(
+            'local billboard_selector_probe_requested = false')) {
+    throw 'Production cylindrical billboards must use shader substitution without the retired per-draw selector census.'
+}
+if (-not $source.Contains(
+        'billboard_shader_substitution_requested or') -or
+        -not $source.Contains(
+            'billboard_selector_probe_requested or performance_profile_requested then')) {
+    throw 'Production shader substitution must retain the early native-hook installation trigger.'
+}
+foreach ($shopTestView in @(
+        'credits_vendor_background_view',
+        'contracts_background_view',
+        'cosmetics_vendor_background_view',
+        'barber_vendor_background_view',
+        'store_view')) {
+    if (-not $source.Contains($shopTestView)) {
+        throw "Guarded shop-family harness is missing $shopTestView."
+    }
+}
+if (-not $source.Contains('native_aspect_shop_panel_views') -or
+        -not $source.Contains('return 6, "native_aspect_shop_panel"') -or
+        -not $source.Contains(
+            'local shop_eye_layout = presentation.mode == 5 and')) {
+    throw 'Native-aspect premium shops must not reapply the portrait mode-5 hotspot transform.'
+}
+if (-not $source.Contains(
+        'require("scripts/ui/views/store_view/store_view")') -or
+        -not $source.Contains(
+            'DARKTIDEVR_MENU_INPUT store_grid_activate') -or
+        -not $source.Contains('local hit_pointer = pointer') -or
+        -not $source.Contains(
+            'input_service:null_service() or input_service')) {
+    throw 'Premium store item cards must retain native-landscape semantic ownership without competing stock hover.'
+}
+if (-not $source.Contains(
         'function presentation.neck_compensated_vertical') -or
         -not $source.Contains('body_ik_neck_baseline_arc') -or
+        -not $source.Contains('body_ik_neck_anchor_local') -or
+        -not $source.Contains('neutral_neck + tracked_shift') -or
         -not $source.Contains('head_pose_values[23]')) {
-    throw 'Crouch IK must subtract the calibrated neck-pivot arc and rebase on XR recenter.'
+    throw 'Body IK must subtract the neck-pivot arc, rebase on XR recenter, and keep the hub torso attached to the tracked neck anchor.'
+}
+if ($source.Contains('1.61 / 1.21') -or
+        -not $source.Contains(
+            'function presentation.calibrated_character_scale') -or
+        -not $source.Contains(
+            'function presentation.apply_calibrated_arm_length') -or
+        -not $source.Contains('ffi.new("float[25]")') -or
+        -not $source.Contains(
+            'half_ipd = runtime_ipd * character_scale * 0.5')) {
+    throw 'Avatar retargeting must preserve native human IPD, scale Ogryn tracking coherently, and apply a separate arm-bone residual.'
+}
+$calibrationSource = Get-Content -LiteralPath (
+    Join-Path (Split-Path -Parent $resolvedSource) 'darktidevr_calibration.lua') -Raw
+if (-not $calibrationSource.Contains(
+        'service:set_character_height(character_id, target_scale)') -or
+        -not $calibrationSource.Contains(
+            'result.profile_height_status = "accepted"')) {
+    throw 'Standing calibration must use the official backend profile-height path before visual residual scaling.'
+}
+$calibrationViewSource = Get-Content -LiteralPath (
+    Join-Path (Split-Path -Parent $resolvedSource) `
+        'darktidevr_calibration_view.lua') -Raw
+if (-not $calibrationViewSource.Contains('schema = 3') -or
+        -not $calibrationViewSource.Contains('capture_forward') -or
+        -not $calibrationViewSource.Contains('result.forward_reach')) {
+    throw 'Calibration must retain a stable forward-reach capture after T-pose and neutral poses.'
+}
+$controllerAimSource = Get-Content -LiteralPath (
+    Join-Path (Split-Path -Parent $resolvedSource) `
+        'darktidevr_controller_aim.lua') -Raw
+if (-not $controllerAimSource.Contains(
+        'MultiFireModes.simultaneous') -or
+        -not $controllerAimSource.Contains(
+            '(action.num_shots_fired + 1) % #configurations == 1') -or
+        -not $controllerAimSource.Contains(
+            'controller_aim.reused_simultaneous_shots')) {
+    throw 'Controller-authored fire must not rebase reused simultaneous-projectile rotations.'
 }
 $luaCompiler = Get-Command luac -ErrorAction SilentlyContinue
 if ($luaCompiler) {
@@ -134,4 +249,32 @@ else {
     $syntaxMode = 'luaparse'
 }
 
-Write-Output "lua_source_check=pass file_scope_locals=$fileScopeLocals limit=$MaximumFileScopeLocals syntax=$syntaxMode source=$resolvedSource"
+$runtimeModules = @(
+    'darktidevr_body_proxy.lua',
+    'darktidevr_calibration.lua',
+    'darktidevr_controller_aim.lua',
+    'darktidevr_hud_panel.lua'
+)
+$moduleRoot = Split-Path -Parent $resolvedSource
+foreach ($runtimeModule in $runtimeModules) {
+    $moduleSource = Join-Path $moduleRoot $runtimeModule
+    if (-not (Test-Path -LiteralPath $moduleSource)) {
+        throw "Required isolated runtime module is missing: $runtimeModule"
+    }
+    if ($luaCompiler) {
+        & $luaCompiler.Source -p $moduleSource
+        if ($LASTEXITCODE -ne 0) {
+            throw "luac rejected $runtimeModule with exit code $LASTEXITCODE"
+        }
+    }
+    else {
+        $parseOutput = @(& $pnpm.Source dlx luaparse --quiet --file `
+            $moduleSource 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            $details = ($parseOutput | ForEach-Object { [string] $_ }) -join "`n"
+            throw "luaparse rejected ${runtimeModule}:`n$details"
+        }
+    }
+}
+
+Write-Output "lua_source_check=pass file_scope_locals=$fileScopeLocals limit=$MaximumFileScopeLocals syntax=$syntaxMode modules=$($runtimeModules.Count) source=$resolvedSource"

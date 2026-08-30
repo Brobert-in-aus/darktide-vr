@@ -213,7 +213,22 @@ $launcher.Refresh()
 if ($launcher.HasExited -or
         $launcher.MainWindowHandle -eq [IntPtr]::Zero -or
         $launcher.MainWindowTitle -ne 'Launcher') {
-    throw 'Fatshark launcher changed state before its Play control became ready.'
+    # Steam/Fatshark can consume a retained launch request and close the
+    # launcher before its WebView Play control reaches our readiness delay.
+    # That is a successful authenticated launch, not an XR failure. Confirm a
+    # new game process before accepting it; otherwise retain the fail-closed
+    # behavior for a genuinely vanished launcher.
+    while ((Get-Date) -lt $deadline) {
+        $game = Get-Process Darktide -ErrorAction SilentlyContinue |
+            Where-Object StartTime -ge $started |
+            Select-Object -First 1
+        if ($game) {
+            Write-Output "Authenticated Darktide process started during launcher transition: PID $($game.Id)."
+            exit 0
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw 'Fatshark launcher changed state and no authenticated Darktide process appeared.'
 }
 
 # The current Fatshark launcher exposes no external UI Automation tree. Its

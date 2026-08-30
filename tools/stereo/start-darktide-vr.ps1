@@ -109,6 +109,9 @@ if ($FreshPsoCache) {
     }
 }
 
+$xrLaunchOwnsGame = $false
+$xrRunnerStarted = $false
+try {
 if (-not $DoNotOpenLauncher) {
     $expectedLauncherPath = Join-Path $GameRoot 'launcher\Launcher.exe'
     if (-not (Test-Path -LiteralPath $expectedLauncherPath -PathType Leaf)) {
@@ -132,6 +135,7 @@ if (-not $DoNotOpenLauncher) {
     # Preserve the supported Steam -> Fatshark launcher path. The launcher has
     # no autoplay command-line switch, so the guarded helper invokes its normal
     # Play control after verifying process identity and window geometry.
+    $xrLaunchOwnsGame = $true
     Start-Process 'steam://rungameid/1361210'
     if (-not $ManualLauncherPlay) {
         $launcherPlayHelper = Join-Path $PSScriptRoot `
@@ -143,6 +147,9 @@ if (-not $DoNotOpenLauncher) {
             -TimeoutSeconds $GameStartTimeoutSeconds `
             -GameRoot $GameRoot
     }
+}
+else {
+    $xrLaunchOwnsGame = $true
 }
 
 if ($AutoEnterHub -or $AutoAdvanceSplash) {
@@ -204,4 +211,34 @@ if ($SyntheticNeckPivotPath) {
 if ($SyntheticCrouchPath) {
     $runnerArguments.SyntheticCrouchPath = $true
 }
+$xrRunnerStarted = $true
 & $runner @runnerArguments
+}
+finally {
+    if ($xrLaunchOwnsGame) {
+        # A supported launch must never leave an authenticated flat Darktide
+        # process behind after its XR owner exits. Launcher Play can complete
+        # just after its UI helper reports failure, so cover that late-process
+        # race before returning the original error to the caller.
+        $cleanupDeadline = if ($xrRunnerStarted) {
+            Get-Date
+        }
+        else {
+            (Get-Date).AddSeconds(30)
+        }
+        do {
+            $orphanedGames = @(Get-Process -Name Darktide `
+                    -ErrorAction SilentlyContinue)
+            if ($orphanedGames.Count -gt 0) {
+                $orphanedGames | Stop-Process -Force
+                Write-Warning `
+                    'XR owner exited; terminated the orphaned flat Darktide process.'
+                break
+            }
+            if ((Get-Date) -ge $cleanupDeadline) {
+                break
+            }
+            Start-Sleep -Milliseconds 500
+        } while ($true)
+    }
+}
