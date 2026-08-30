@@ -182,6 +182,13 @@ local controller_observation = {
     right_aim_yaw = nil,
     right_aim_pitch = nil,
     right_aim_roll = nil,
+    right_aim_x = nil,
+    right_aim_y = nil,
+    right_aim_z = nil,
+    right_aim_qx = nil,
+    right_aim_qy = nil,
+    right_aim_qz = nil,
+    right_aim_qw = nil,
     right_trigger = 0,
     left_stick_x = 0,
     left_stick_y = 0,
@@ -324,6 +331,18 @@ local controller_observation = {
     body_ik_crouch_last_t = nil,
     body_ik_crouch_max_foot_error = 0,
     body_ik_crouch_result = "inactive",
+    head_recenter_generation = 0,
+    body_ik_neck_unit = nil,
+    body_ik_neck_generation = nil,
+    body_ik_neck_offset_x = nil,
+    body_ik_neck_offset_y = nil,
+    body_ik_neck_offset_z = nil,
+    body_ik_neck_baseline_raw = nil,
+    body_ik_neck_baseline_arc = nil,
+    body_ik_neck_raw_vertical = 0,
+    body_ik_neck_compensated_vertical = 0,
+    body_ik_neck_arc_vertical = 0,
+    body_ik_neck_last_log_t = -math.huge,
     ik_input = nil,
     ik_output = nil,
     ik_flags = nil
@@ -472,6 +491,7 @@ local presentation = {
         hovered_widget = nil,
     },
     vendor_menu_test_view = nil,
+    vendor_menu_close_pending = nil,
     vendor_widget_scope_enabled = false,
     vendor_ui_renderer = nil,
     vendor_resource_enabled = false,
@@ -515,6 +535,7 @@ local presentation = {
         main_menu_view = true,
         main_menu_background_view = true,
     },
+    hud_panel = nil,
 }
 
 -- Stingray 1.6 exposed a native SteamVR namespace when its VR subsystem was
@@ -798,7 +819,7 @@ local function ensure_ui_native_hooks()
 
     ui_native_capture = library
     ui_native_capture.dtvr_set_projection_active(0)
-    head_pose_values = ffi.new("float[23]")
+    head_pose_values = ffi.new("float[24]")
     head_pose_sequence = ffi.new("unsigned long long[1]")
     controller_observation.values = ffi.new("float[36]")
     controller_observation.tracking_flags = ffi.new("unsigned int[4]")
@@ -1215,6 +1236,15 @@ end
 function presentation.classify_active_view(manager, view_name)
     if presentation.flat_loading_views[view_name] then
         return 2, "loading_or_cinematic"
+    end
+    if view_name == "crafting_view" or
+            string.find(view_name, "crafting_", 1, true) == 1 then
+        -- Crafting hard-codes its retained widgets to `to_screen`. Use the
+        -- complete native window presentation as an interim interactive flat
+        -- panel; the producer suppresses the eye mirror only for this mode so
+        -- the window-capture consumer receives the authored shop rather than
+        -- a mono eye image.
+        return 5, "native_window_shop_panel"
     end
     if presentation.flat_panel_views[view_name] then
         return 5, "interactive_flat_fallback"
@@ -1704,6 +1734,35 @@ function presentation.update_vendor_menu_test(manager)
         return
     end
 
+    local pending_close = presentation.vendor_menu_close_pending
+    if pending_close then
+        local child_active = pending_close.child_name and
+            manager:view_active(pending_close.child_name)
+        if child_active and pending_close.frames > 0 then
+            pending_close.frames = pending_close.frames - 1
+            return
+        end
+        if child_active then
+            presentation.vendor_menu_close_pending = nil
+            mod:error(
+                "DARKTIDEVR_MENU_INPUT vendor_menu_test result=child_close_timeout view=%s parent=%s",
+                tostring(pending_close.child_name),
+                tostring(pending_close.view_name))
+            return
+        end
+        presentation.vendor_menu_close_pending = nil
+        local ok, result = pcall(
+            manager.close_view, manager, pending_close.view_name)
+        mod:info(
+            "DARKTIDEVR_MENU_INPUT vendor_menu_test result=%s view=%s detail=%s",
+            ok and "parent_close_requested" or "parent_close_failed",
+            tostring(pending_close.view_name), tostring(result))
+        if ok then
+            presentation.vendor_menu_test_view = nil
+        end
+        return
+    end
+
     local flag_path =
         "./../mods/darktidevr_stereo_probe/darktidevr_open_vendor_menu.flag"
     local flag = Mods.lua.io.open(flag_path, "r")
@@ -1735,6 +1794,31 @@ function presentation.update_vendor_menu_test(manager)
                 "DARKTIDEVR_MENU_INPUT vendor_menu_test result=already_closed")
             presentation.vendor_menu_test_view = nil
             return
+        end
+        local active_ok, active_views = pcall(manager.active_views, manager)
+        if active_ok and type(active_views) == "table" then
+            for index = #active_views, 1, -1 do
+                local child_name = active_views[index]
+                if child_name ~= view_name and
+                        string.find(child_name, "crafting_", 1, true) == 1 then
+                    local ok, result = pcall(
+                        manager.close_view, manager, child_name)
+                    mod:info(
+                        "DARKTIDEVR_MENU_INPUT vendor_menu_test result=%s view=%s parent=%s detail=%s",
+                        ok and "child_close_requested" or
+                            "child_close_failed",
+                        tostring(child_name), tostring(view_name),
+                        tostring(result))
+                    if ok then
+                        presentation.vendor_menu_close_pending = {
+                            view_name = view_name,
+                            child_name = child_name,
+                            frames = 120,
+                        }
+                    end
+                    return
+                end
+            end
         end
         local ok, result = pcall(manager.close_view, manager, view_name)
         mod:info(
@@ -2464,6 +2548,29 @@ local function refresh_xr_render_extent()
     return true
 end
 
+function presentation.current_game_mode_name()
+    return Managers and Managers.state and Managers.state.game_mode and
+        Managers.state.game_mode:game_mode_name() or nil
+end
+
+function presentation.clamp_hub_head_horizontal(x, z)
+    if presentation.current_game_mode_name() ~= "hub" then
+        controller_observation.hub_head_requested_horizontal = nil
+        controller_observation.hub_head_applied_horizontal = nil
+        return x, z
+    end
+    local distance = math.sqrt(x * x + z * z)
+    local limit = 0.25
+    controller_observation.hub_head_requested_horizontal = distance
+    controller_observation.hub_head_applied_horizontal = math.min(
+        distance, limit)
+    if distance <= limit or distance < 0.000001 then
+        return x, z
+    end
+    local fraction = limit / distance
+    return x * fraction, z * fraction
+end
+
 local function apply_head_tracking(clean_position, clean_rotation)
     if not head_tracking_requested or not ui_native_capture or
             not head_pose_values or not head_pose_sequence then
@@ -2535,6 +2642,18 @@ local function apply_head_tracking(clean_position, clean_rotation)
     controller_observation.body_follow_x = tonumber(head_pose_values[20])
     controller_observation.body_follow_y = tonumber(head_pose_values[21])
     controller_observation.body_follow_z = tonumber(head_pose_values[22])
+    local recenter_generation = math.floor(
+        tonumber(head_pose_values[23]) + 0.5)
+    if recenter_generation ~= controller_observation.head_recenter_generation then
+        controller_observation.head_recenter_generation = recenter_generation
+        controller_observation.body_ik_neck_unit = nil
+        controller_observation.body_ik_neck_generation = nil
+        controller_observation.body_ik_neck_baseline_raw = nil
+        controller_observation.body_ik_neck_baseline_arc = nil
+        mod:info(
+            "DARKTIDEVR_IK neck_pivot rebase generation=%d",
+            recenter_generation)
+    end
     -- Aim must stop authoring immediately when its live tracking is lost.
     -- Grip IK deliberately keeps the last valid wrist pose, however: dropping
     -- its target for one bad OpenXR sample hands that limb back to Darktide's
@@ -2662,11 +2781,25 @@ local function apply_head_tracking(clean_position, clean_rotation)
         controller_observation.right_stick_y =
             tonumber(controller_observation.values[35])
         if controller_observation.right_aim_usable then
+            controller_observation.right_aim_x =
+                tonumber(controller_observation.values[18])
+            controller_observation.right_aim_y =
+                tonumber(controller_observation.values[19])
+            controller_observation.right_aim_z =
+                tonumber(controller_observation.values[20])
+            controller_observation.right_aim_qx =
+                tonumber(controller_observation.values[21])
+            controller_observation.right_aim_qy =
+                tonumber(controller_observation.values[22])
+            controller_observation.right_aim_qz =
+                tonumber(controller_observation.values[23])
+            controller_observation.right_aim_qw =
+                tonumber(controller_observation.values[24])
             local right_aim_rotation = Quaternion.from_elements(
-                controller_observation.values[21],
-                controller_observation.values[22],
-                controller_observation.values[23],
-                controller_observation.values[24]
+                controller_observation.right_aim_qx,
+                controller_observation.right_aim_qy,
+                controller_observation.right_aim_qz,
+                controller_observation.right_aim_qw
             )
             controller_observation.right_aim_yaw,
                 controller_observation.right_aim_pitch,
@@ -2720,8 +2853,20 @@ local function apply_head_tracking(clean_position, clean_rotation)
     local tracked_position = clean_position
 
     if head_translation_requested then
-        local local_x = head_pose_values[0] * character_scale
-        local local_y = -head_pose_values[2] * character_scale
+        local raw_x = tonumber(head_pose_values[0])
+        local raw_z = tonumber(head_pose_values[2])
+        if presentation.current_game_mode_name() == "hub" then
+            -- The native bridge keeps a larger moving envelope for gameplay
+            -- modes that can transfer excess room-scale travel to collision.
+            -- The public hub deliberately never moves the authoritative root,
+            -- so reconstruct the complete recenter-relative displacement and
+            -- constrain only its visual/IK presentation to 25 cm.
+            raw_x = raw_x + controller_observation.body_follow_x
+            raw_z = raw_z + controller_observation.body_follow_z
+        end
+        local local_x, horizontal_z = presentation.clamp_hub_head_horizontal(
+            raw_x * character_scale, raw_z * character_scale)
+        local local_y = -horizontal_z
         local local_z = head_pose_values[1] * character_scale
         tracked_position = clean_position +
             Quaternion.right(clean_rotation) * local_x +
@@ -4427,6 +4572,7 @@ local function update_stereo(manager)
 
     presentation.draw_world_menu_surface(
         world, clean_position, clean_rotation)
+    presentation.hud_panel.draw(world, clean_position, clean_rotation)
 
     ScriptCamera.force_update(world, primary_camera)
     ScriptCamera.force_update(world, right_camera)
@@ -5287,7 +5433,11 @@ function presentation.refresh_body_follow_mode(t)
         end
     end
     local game_mode_name = active_game_mode_name()
-    if not presentation.is_first_person_body_mode(game_mode_name) then
+    if game_mode_name == "hub" or
+            not presentation.is_first_person_body_mode(game_mode_name) then
+        -- Hub room-scale motion is presentation-only. The HMD and planted-foot
+        -- IK lean inside a 25 cm envelope, while the server-authoritative root
+        -- and collision capsule remain untouched.
         mode = "disabled"
     end
     if mode ~= controller_observation.body_follow_mode then
@@ -5624,6 +5774,10 @@ function presentation.update_body_visibility_gate(frame)
     controller_observation.body_eye_anchor_local_y = nil
     controller_observation.body_eye_anchor_local_z = nil
     controller_observation.body_eye_anchor_source = nil
+    controller_observation.body_ik_neck_unit = nil
+    controller_observation.body_ik_neck_generation = nil
+    controller_observation.body_ik_neck_baseline_raw = nil
+    controller_observation.body_ik_neck_baseline_arc = nil
     controller_observation.body_camera_sweep_start_t = nil
     controller_observation.body_camera_sweep_last_bucket = -1
     controller_observation.body_head_visible = not enabled
@@ -6213,6 +6367,35 @@ function presentation.body_ik_controller_grip_target(unit, side)
             anchor_rotation, grip_rotation))
 end
 
+function presentation.controller_aim_target()
+    if not controller_observation.right_aim_usable or
+            not controller_observation.body_anchor_qw or
+            not controller_observation.right_aim_qw then
+        return nil, nil
+    end
+    local anchor_position = Vector3(
+        controller_observation.body_anchor_x,
+        controller_observation.body_anchor_y,
+        controller_observation.body_anchor_z)
+    local anchor_rotation = Quaternion.from_elements(
+        controller_observation.body_anchor_qx,
+        controller_observation.body_anchor_qy,
+        controller_observation.body_anchor_qz,
+        controller_observation.body_anchor_qw)
+    local aim_position = Vector3(
+        controller_observation.right_aim_x,
+        controller_observation.right_aim_y,
+        controller_observation.right_aim_z)
+    local aim_rotation = Quaternion.from_elements(
+        controller_observation.right_aim_qx,
+        controller_observation.right_aim_qy,
+        controller_observation.right_aim_qz,
+        controller_observation.right_aim_qw)
+    return anchor_position +
+            presentation.rotate_vector(anchor_rotation, aim_position),
+        Quaternion.multiply(anchor_rotation, aim_rotation)
+end
+
 function presentation.body_ik_calibrated_wrist_target(
         side, target_position, target_rotation)
     -- OpenXR locates the grip pose inside the Touch controller while the model
@@ -6334,6 +6517,10 @@ function presentation.update_body_ik_presentation_gate(fixed_frame)
         controller_observation.body_ik_crouch_last_t = nil
         controller_observation.body_ik_crouch_max_foot_error = 0
         controller_observation.body_ik_crouch_result = "inactive"
+        controller_observation.body_ik_neck_unit = nil
+        controller_observation.body_ik_neck_generation = nil
+        controller_observation.body_ik_neck_baseline_raw = nil
+        controller_observation.body_ik_neck_baseline_arc = nil
         mod:info("DARKTIDEVR_IK presentation=%s source=test_flag",
             enabled and "enabled" or "disabled")
     end
@@ -6701,6 +6888,53 @@ end
 -- pre-write ankle positions, planting the feet instead of pushing them through
 -- the floor. A small standing dead zone rejects tracking noise, while partial
 -- follow leaves room for natural neck/spine compression.
+function presentation.neck_compensated_vertical(unit, raw_vertical, scale)
+    if not unit or not Unit.alive(unit) or
+            not Unit.has_node(unit, "j_neck") then
+        return raw_vertical * scale, "neck_missing"
+    end
+    local head_rotation = Quaternion.from_elements(
+        head_pose_values[3], -head_pose_values[5],
+        head_pose_values[4], head_pose_values[6])
+    local generation = controller_observation.head_recenter_generation
+    local needs_capture = controller_observation.body_ik_neck_unit ~= unit or
+        controller_observation.body_ik_neck_generation ~= generation or
+        controller_observation.body_ik_neck_offset_x == nil
+    if needs_capture then
+        -- This offset belongs to the tracked player (source skeleton), not
+        -- the Darktide avatar (target skeleton). Remove the physical HMD arc
+        -- in metres before retargeting the remaining body translation by the
+        -- character scale. Character-select calibration will replace these
+        -- conservative adult landmarks with the player's measured values.
+        local offset = Vector3(0, 0.0805, 0.075)
+        local rotated = presentation.rotate_vector(head_rotation, offset)
+        controller_observation.body_ik_neck_unit = unit
+        controller_observation.body_ik_neck_generation = generation
+        controller_observation.body_ik_neck_offset_x = Vector3.x(offset)
+        controller_observation.body_ik_neck_offset_y = Vector3.y(offset)
+        controller_observation.body_ik_neck_offset_z = Vector3.z(offset)
+        controller_observation.body_ik_neck_baseline_raw =
+            raw_vertical
+        controller_observation.body_ik_neck_baseline_arc = Vector3.z(rotated)
+        mod:info(
+            "DARKTIDEVR_IK neck_pivot captured generation=%d offset_m=%.4f,%.4f,%.4f source=%s",
+            generation, Vector3.x(offset), Vector3.y(offset),
+            Vector3.z(offset), "default_physical")
+    end
+    local offset = Vector3(
+        controller_observation.body_ik_neck_offset_x,
+        controller_observation.body_ik_neck_offset_y,
+        controller_observation.body_ik_neck_offset_z)
+    local arc = Vector3.z(presentation.rotate_vector(head_rotation, offset)) -
+        controller_observation.body_ik_neck_baseline_arc
+    local compensated = (raw_vertical -
+        controller_observation.body_ik_neck_baseline_raw - arc) * scale
+    controller_observation.body_ik_neck_raw_vertical = raw_vertical
+    controller_observation.body_ik_neck_compensated_vertical = compensated
+    controller_observation.body_ik_neck_arc_vertical = arc
+    return compensated, "written"
+end
+
 function presentation.apply_body_crouch(world, unit)
     local raw_vertical = head_pose_values and
         tonumber(head_pose_values[1]) or 0
@@ -6712,13 +6946,33 @@ function presentation.apply_body_crouch(world, unit)
         Managers.player:local_player(1)
     local scale = local_player and
         local_player:archetype_name() == "ogryn" and 1.61 / 1.21 or 1
+    if presentation.current_game_mode_name() == "hub" then
+        raw_horizontal_x = raw_horizontal_x +
+            controller_observation.body_follow_x
+        raw_horizontal_z = raw_horizontal_z +
+            controller_observation.body_follow_z
+    end
+    raw_horizontal_x, raw_horizontal_z =
+        presentation.clamp_hub_head_horizontal(
+            raw_horizontal_x * scale, raw_horizontal_z * scale)
     -- Keep about 5 cm of relative descent for natural neck/spine compression;
     -- the remainder follows the tracked head rather than letting the camera
     -- sink into the chest. The 60 cm cap remains inside the measured human
     -- leg-chain reach and permits a deep physical crouch.
+    local compensated_vertical = presentation.neck_compensated_vertical(
+        unit, raw_vertical, scale)
     local requested = math.min(0.60, math.max(0,
-        -raw_vertical * scale - 0.05))
+        -compensated_vertical - 0.05))
     local now = Managers and Managers.time and Managers.time:time("main") or 0
+    if now >= controller_observation.body_ik_neck_last_log_t + 1 then
+        controller_observation.body_ik_neck_last_log_t = now
+        mod:info(
+            "DARKTIDEVR_IK neck_height raw_m=%.4f arc_m=%.4f compensated_m=%.4f requested_crouch_m=%.4f generation=%d",
+            controller_observation.body_ik_neck_raw_vertical or 0,
+            controller_observation.body_ik_neck_arc_vertical or 0,
+            compensated_vertical, requested,
+            controller_observation.head_recenter_generation or 0)
+    end
     local last_t = controller_observation.body_ik_crouch_last_t or now
     local dt = math.clamp(now - last_t, 0, 0.1)
     local current = controller_observation.body_ik_crouch_offset or 0
@@ -6763,8 +7017,8 @@ function presentation.apply_body_crouch(world, unit)
             controller_observation.body_anchor_qw) or
         Unit.world_rotation(unit, 1)
     local body_shift =
-        Quaternion.right(anchor_rotation) * (raw_horizontal_x * scale) +
-        Quaternion.forward(anchor_rotation) * (-raw_horizontal_z * scale) +
+        Quaternion.right(anchor_rotation) * raw_horizontal_x +
+        Quaternion.forward(anchor_rotation) * -raw_horizontal_z +
         Vector3.up() * -current
     local local_drop = presentation.rotate_vector(
         presentation.inverse_quaternion(
@@ -6983,19 +7237,19 @@ function presentation.align_body_shoulders(world, unit)
     return true, residual
 end
 
--- Shoulder-girdle rotation and clavicle protraction supply the final few
--- centimetres of anatomical reach. It begins only when an arm is nearly
--- straight and its tracked wrist is in front of the torso. Unequal reach yaws
--- spine2 so the reaching shoulder advances while the opposite shoulder moves
--- back. The signed left/right yaw requests are independent and oppose each
--- other, so equal two-hand reach cancels to a square girdle. A shoulder that
--- starts behind its tracked hand naturally asks for more yaw until it catches
--- up to neutral. Each clavicle also gets a small independent protraction.
+-- Distribute near-limit hand-effector pull over the scaled live rig instead of
+-- translating a frozen clavicle pose or dumping the correction into spine2.
+-- Each arm independently requests forward shoulder travel. Opposing requests
+-- cancel at the girdle, so an equal two-hand reach keeps the shoulders square;
+-- either arm alone rotates the chest and gains more reach. A small independent
+-- clavicle protraction remains available to both arms. The spine weights act as
+-- per-bone rotational stiffness, the total yaw and protraction are anatomically
+-- bounded, and every distance derives from the currently scaled skeleton.
 function presentation.apply_body_shoulder_reach(
         world, unit, left_target, left_rotation, right_target, right_rotation)
     local reach_state = controller_observation.body_ik_shoulder_reach
     if reach_state.unit ~= unit then
-        reach_state = { unit = unit, left = 0, right = 0 }
+        reach_state = { unit = unit, left = 0, right = 0, last_t = nil }
         controller_observation.body_ik_shoulder_reach = reach_state
     end
     if not controller_observation.body_visual_yaw then
@@ -7009,6 +7263,19 @@ function presentation.apply_body_shoulder_reach(
     }
     local desired = { left = 0, right = 0 }
     local records = {}
+    local function is_ancestor(ancestor, child)
+        local current = Unit.scene_graph_parent(unit, child)
+        for _ = 1, 64 do
+            if current == ancestor then
+                return true
+            end
+            if current == nil then
+                break
+            end
+            current = Unit.scene_graph_parent(unit, current)
+        end
+        return false
+    end
     for _, side in ipairs({ "left", "right" }) do
         local shoulder_name = side == "left" and
             "j_leftshoulder" or "j_rightshoulder"
@@ -7026,31 +7293,21 @@ function presentation.apply_body_shoulder_reach(
         local arm_node = Unit.node(unit, arm_name)
         local forearm_node = Unit.node(unit, forearm_name)
         local hand_node = Unit.node(unit, hand_name)
-        local current = arm_node
-        local is_ancestor = false
-        for _ = 1, 8 do
-            current = Unit.scene_graph_parent(unit, current)
-            if current == shoulder_node then
-                is_ancestor = true
-                break
-            end
-            if current == nil then
-                break
-            end
-        end
         local shoulder_parent = Unit.scene_graph_parent(unit, shoulder_node)
-        if not is_ancestor or shoulder_parent == nil then
+        if not is_ancestor(shoulder_node, arm_node) or
+                shoulder_parent == nil then
             return false, side .. "_hierarchy_mismatch"
         end
         local target = targets[side].target
         local rotation = targets[side].rotation
+        local arm_length = 0
         if target and rotation then
             target = presentation.body_ik_calibrated_wrist_target(
                 side, target, rotation)
             local arm_position = Unit.world_position(unit, arm_node)
             local elbow_position = Unit.world_position(unit, forearm_node)
             local hand_position = Unit.world_position(unit, hand_node)
-            local arm_length =
+            arm_length =
                 presentation.vector_distance(arm_position, elbow_position) +
                 presentation.vector_distance(elbow_position, hand_position)
             local target_delta = target - arm_position
@@ -7058,39 +7315,31 @@ function presentation.apply_body_shoulder_reach(
             if arm_length > 0.05 and target_distance > 0.001 then
                 local forward_fraction = math.max(0, Vector3.dot(
                     target_delta / target_distance, torso_forward))
-                desired[side] = math.min(0.10, math.max(
-                    0, target_distance - arm_length * 0.94)) *
+                -- Position-based full-body solvers normally begin sharing an
+                -- effector pull before a limb reaches its singular straight
+                -- pose. The 90% comfort boundary and 12% pull ceiling scale
+                -- with this avatar's actual arm rather than human metres.
+                desired[side] = math.min(arm_length * 0.12, math.max(
+                    0, target_distance - arm_length * 0.90)) *
                     forward_fraction
             end
-        end
-        local neutral_key = side .. "_neutral"
-        if not reach_state[neutral_key] then
-            reach_state[neutral_key] = Vector3Box(
-                Unit.local_position(unit, shoulder_node))
         end
         records[side] = {
             node = shoulder_node,
             arm = arm_node,
             parent = shoulder_parent,
-            neutral = reach_state[neutral_key]:unbox()
+            arm_length = arm_length or 0,
+            authored_local = Unit.local_position(unit, shoulder_node)
         }
     end
+    local now = Managers and Managers.time and Managers.time:time("main") or 0
+    local dt = math.clamp(now - (reach_state.last_t or now), 0, 0.1)
+    local alpha = 1 - math.exp(-14 * dt)
     for _, side in ipairs({ "left", "right" }) do
-        -- Bound the per-frame change as well as the total reach so controller
-        -- reacquisition cannot snap a clavicle between animation poses.
         local prior = reach_state[side] or 0
-        local change = math.clamp(desired[side] - prior, -0.01, 0.01)
-        reach_state[side] = prior + change
+        reach_state[side] = prior + (desired[side] - prior) * alpha
     end
-    local spine_name = "j_spine2"
-    if not Unit.has_node(unit, spine_name) then
-        return false, "spine2_missing"
-    end
-    local spine = Unit.node(unit, spine_name)
-    local spine_parent = Unit.scene_graph_parent(unit, spine)
-    if spine_parent == nil then
-        return false, "spine2_parent_missing"
-    end
+    reach_state.last_t = now
     local left_position = Unit.world_position(unit, records.left.arm)
     local right_position = Unit.world_position(unit, records.right.arm)
     local current_line = right_position - left_position
@@ -7106,24 +7355,87 @@ function presentation.apply_body_shoulder_reach(
     if not girdle_rotation then
         return false, "shoulder_line_invalid"
     end
-    local rotated_spine_world = Quaternion.multiply(
-        girdle_rotation, Unit.world_rotation(unit, spine))
-    Unit.set_local_rotation(unit, spine, Quaternion.multiply(
-        presentation.inverse_quaternion(
-            Unit.world_rotation(unit, spine_parent)),
-        rotated_spine_world))
-    World.update_unit_and_children(world, unit)
+    local requested_yaw = math.clamp(
+        Quaternion.yaw(girdle_rotation), -20 * math.pi / 180,
+        20 * math.pi / 180)
+    local chain = {}
+    local weights = { j_spine = 0.15, j_spine1 = 0.30, j_spine2 = 0.55 }
+    local limits = { j_spine = 3, j_spine1 = 6, j_spine2 = 11 }
+    local total_weight = 0
+    for _, name in ipairs({ "j_spine", "j_spine1", "j_spine2" }) do
+        if Unit.has_node(unit, name) then
+            local node = Unit.node(unit, name)
+            local parent = Unit.scene_graph_parent(unit, node)
+            if parent ~= nil and is_ancestor(node, records.left.arm) and
+                    is_ancestor(node, records.right.arm) then
+                chain[#chain + 1] = {
+                    name = name,
+                    node = node,
+                    parent = parent,
+                    weight = weights[name],
+                    limit = limits[name] * math.pi / 180
+                }
+                total_weight = total_weight + weights[name]
+            end
+        end
+    end
+    if #chain == 0 or total_weight <= 0 then
+        return false, "common_spine_chain_missing"
+    end
+    local chain_result = {}
+    for i = 1, #chain do
+        local record = chain[i]
+        local applied_yaw = math.clamp(
+            requested_yaw * record.weight / total_weight,
+            -record.limit, record.limit)
+        local rotated_world = Quaternion.multiply(
+            Quaternion.axis_angle(Vector3.up(), applied_yaw),
+            Unit.world_rotation(unit, record.node))
+        Unit.set_local_rotation(unit, record.node, Quaternion.multiply(
+            presentation.inverse_quaternion(
+                Unit.world_rotation(unit, record.parent)),
+            rotated_world))
+        World.update_unit_and_children(world, unit)
+        chain_result[#chain_result + 1] = string.format(
+            "%s:%.2f", record.name, applied_yaw * 180 / math.pi)
+    end
     for _, side in ipairs({ "left", "right" }) do
         local record = records[side]
         local parent_inverse = presentation.inverse_quaternion(
             Unit.world_rotation(unit, record.parent))
         local local_forward = presentation.rotate_vector(
             parent_inverse, torso_forward)
-        local clavicle_reach = math.min(0.02, reach_state[side] * 0.2)
+        local prior_offset_key = side .. "_clavicle_offset"
+        local prior_written_key = side .. "_clavicle_written"
+        local prior_offset = reach_state[prior_offset_key] and
+            reach_state[prior_offset_key]:unbox() or Vector3.zero()
+        -- Remove the last post-animation offset if the engine has preserved
+        -- it, while also tolerating an authored animation pose reset.
+        local authored_local = record.authored_local
+        local prior_written = reach_state[prior_written_key] and
+            reach_state[prior_written_key]:unbox()
+        if prior_written and
+                Vector3.length(authored_local - prior_written) < 0.0001 then
+            authored_local = authored_local - prior_offset
+        end
+        local clavicle_reach = math.min(
+            record.arm_length * 0.03, reach_state[side] * 0.25)
+        local offset = local_forward * clavicle_reach
         Unit.set_local_position(unit, record.node,
-            record.neutral + local_forward * clavicle_reach)
+            authored_local + offset)
+        reach_state[prior_offset_key] = Vector3Box(offset)
+        reach_state[prior_written_key] = Vector3Box(authored_local + offset)
     end
     World.update_unit_and_children(world, unit)
+    local root_scale = Unit.local_scale(unit, 1)
+    reach_state.requested_left = desired.left
+    reach_state.requested_right = desired.right
+    reach_state.applied_yaw = requested_yaw
+    reach_state.chain_result = table.concat(chain_result, ",")
+    reach_state.character_scale = Vector3.z(root_scale)
+    reach_state.left_arm_length = records.left.arm_length
+    reach_state.right_arm_length = records.right.arm_length
+    reach_state.shoulder_width = Vector3.length(current_line)
     return true, math.max(desired.left, desired.right),
         reach_state.left, reach_state.right
 end
@@ -7444,7 +7756,7 @@ function presentation.apply_body_ik(unit, sequence, world)
         controller_observation.body_ik_presentation_last_log_frame =
             update_frame
         mod:info(
-            "DARKTIDEVR_IK presentation_writes=%d post_error_m=%.6f max_post_error_m=%.6f angle_error_rad=%.6f max_angle_error_rad=%.6f forearm_roll_deg=%.2f,%.2f roll_source=%s,%s twist_writes=%s,%s twist_chain=%s|%s crouch_m=%.4f crouch_result=%s crouch_foot_error_m=%.6f max_crouch_foot_error_m=%.6f sequence=%d",
+            "DARKTIDEVR_IK presentation_writes=%d post_error_m=%.6f max_post_error_m=%.6f angle_error_rad=%.6f max_angle_error_rad=%.6f forearm_roll_deg=%.2f,%.2f roll_source=%s,%s twist_writes=%s,%s twist_chain=%s|%s crouch_m=%.4f crouch_result=%s crouch_foot_error_m=%.6f max_crouch_foot_error_m=%.6f hub_lean_m=%.4f,%.4f neck_vertical_m=%.4f,%.4f neck_arc_m=%.4f shoulder_request_m=%.4f,%.4f shoulder_applied_m=%.4f,%.4f shoulder_yaw_deg=%.2f shoulder_chain=%s character_scale=%.4f arm_length_m=%.4f,%.4f shoulder_width_m=%.4f sequence=%d",
             controller_observation.body_ik_presentation_writes,
             max_error,
             controller_observation.body_ik_presentation_max_error,
@@ -7464,6 +7776,22 @@ function presentation.apply_body_ik(unit, sequence, world)
             tostring(crouch_result),
             crouch_error or 0,
             controller_observation.body_ik_crouch_max_foot_error or 0,
+            controller_observation.hub_head_requested_horizontal or 0,
+            controller_observation.hub_head_applied_horizontal or 0,
+            controller_observation.body_ik_neck_raw_vertical or 0,
+            controller_observation.body_ik_neck_compensated_vertical or 0,
+            controller_observation.body_ik_neck_arc_vertical or 0,
+            controller_observation.body_ik_shoulder_reach.requested_left or 0,
+            controller_observation.body_ik_shoulder_reach.requested_right or 0,
+            controller_observation.body_ik_shoulder_reach.left or 0,
+            controller_observation.body_ik_shoulder_reach.right or 0,
+            (controller_observation.body_ik_shoulder_reach.applied_yaw or 0) *
+                180 / math.pi,
+            tostring(controller_observation.body_ik_shoulder_reach.chain_result),
+            controller_observation.body_ik_shoulder_reach.character_scale or 1,
+            controller_observation.body_ik_shoulder_reach.left_arm_length or 0,
+            controller_observation.body_ik_shoulder_reach.right_arm_length or 0,
+            controller_observation.body_ik_shoulder_reach.shoulder_width or 0,
             sequence or controller_observation.last_sequence)
         if left_target and left_rotation then
             presentation.log_body_hand_basis(
@@ -7936,6 +8264,31 @@ mod:hook(
 -- replication agree. VR still owns camera orientation, 6DoF body following and
 -- post-animation IK; mission-style locomotion remains active in gameplay maps.
 
+-- Darktide blends a separate full-body idle layer after the character has
+-- stopped. Some variants contain a small lateral step that moves the rendered
+-- body away from a stationary physical head. Suppress only that layer for the
+-- local VR hub body; the underlying breathing/stance animation and all moving
+-- locomotion animation remain authored by the game.
+mod:hook(
+    require(
+        "scripts/extension_systems/aim/third_person_idle_fullbody_animation_control"),
+    "update",
+    function(func, self, dt, t)
+        local local_player = Managers and Managers.player and
+            Managers.player:local_player(1)
+        if presentation.hub_first_person_requested() and
+                presentation.current_game_mode_name() == "hub" and
+                local_player and self._unit == local_player.player_unit then
+            self._idle_fullbody_value = 0
+            if self._idle_fullbody_variable then
+                Unit.animation_set_variable(
+                    self._unit, self._idle_fullbody_variable, 0)
+            end
+            return
+        end
+        return func(self, dt, t)
+    end)
+
 -- The hub unit template installs the components and extensions used by normal
 -- gameplay walking except for the ledge finder.  Stock walking treats that
 -- extension as optional during construction but unconditionally dereferences
@@ -8277,7 +8630,41 @@ mod:hook(
     require("scripts/ui/views/crafting_view/crafting_view"),
     "draw",
     function(func, self, dt, t, input_service, layer)
-        return func(self, dt, t, input_service, layer)
+        if not ui_menu_resource_redirect_requested or
+                not presentation.world_menu_active() then
+            return func(self, dt, t, input_service, layer)
+        end
+        local source_renderer = self._ui_renderer
+        local resource_renderer = source_renderer and
+            presentation.ensure_menu_resource(source_renderer)
+        if not resource_renderer then
+            return func(self, dt, t, input_service, layer)
+        end
+
+        UIRenderer.clear_render_pass_queue(source_renderer)
+        UIRenderer.add_render_pass(
+            source_renderer,
+            0,
+            resource_renderer.base_render_pass,
+            true,
+            resource_renderer.render_target)
+        if not presentation.menu_resource_invalidated_views[self] then
+            presentation.menu_resource_invalidated_views[self] = true
+            local retained_count =
+                presentation.invalidate_retained_widgets(self._widgets) +
+                presentation.invalidate_retained_widgets(
+                    self._content_widgets)
+            mod:info(
+                "DARKTIDEVR_MENU_TARGET renderer_swap view=crafting_view retained=%d widgets=%d content=%d",
+                retained_count,
+                type(self._widgets) == "table" and #self._widgets or 0,
+                type(self._content_widgets) == "table" and
+                    #self._content_widgets or 0)
+        end
+        self._ui_renderer = resource_renderer
+        local result = func(self, dt, t, input_service, layer)
+        self._ui_renderer = source_renderer
+        return result
     end)
 
 -- Interactive fullscreen UI is rendered into one named RGBA resource instead
@@ -8300,10 +8687,12 @@ mod:hook(UIRenderer, "begin_pass", function(func, self, ...)
     end
 
     local renderer_name = string.lower(tostring(self.name or ""))
-    if self.world == active_world or
-            string.find(renderer_name, "hud", 1, true) or
-            string.find(renderer_name, "constant", 1, true) or
-            string.find(renderer_name, "world_marker", 1, true) then
+    -- A renderer belonging to a view in the gameplay world still reports the
+    -- gameplay World object, so world identity cannot distinguish crafting UI
+    -- from scene/HUD rendering. Use the renderer instance captured from the
+    -- active view (with its stable name as a construction-time fallback).
+    if self ~= presentation.vendor_ui_renderer and
+            not string.find(renderer_name, "crafting", 1, true) then
         return func(self, ...)
     end
 
@@ -10311,6 +10700,23 @@ mod:command(
         )
     end
 )
+
+mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_calibration"
+).install(mod, controller_observation, function()
+    return head_pose_values
+end)
+
+presentation.hud_panel = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_hud_panel"
+)
+presentation.hud_panel.install(mod)
+
+presentation.controller_aim = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_aim"
+)
+presentation.controller_aim.install(
+    mod, presentation, controller_observation)
 
 mod.on_disabled = function()
     requested = false

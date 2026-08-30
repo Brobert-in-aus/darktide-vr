@@ -21,6 +21,8 @@ param(
 
     [switch] $SyntheticHeadSweep,
 
+    [switch] $SyntheticNeckPivotPath,
+
     [switch] $SyntheticRoomscalePath,
 
     [switch] $SyntheticCrouchPath,
@@ -131,6 +133,9 @@ if ($SyntheticBodyPath) {
 }
 if ($SyntheticHeadSweep) {
     $arguments += '--synthetic-head-sweep'
+}
+if ($SyntheticNeckPivotPath) {
+    $arguments += '--synthetic-neck-pivot-path'
 }
 if ($SyntheticRoomscalePath) {
     $arguments += '--synthetic-roomscale-path'

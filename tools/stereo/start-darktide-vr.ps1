@@ -23,11 +23,15 @@ param(
 
     [switch] $SyntheticHeadSweep,
 
+    [switch] $SyntheticNeckPivotPath,
+
     [switch] $SyntheticCrouchPath,
 
     [switch] $EnterPsykhanium,
 
     [switch] $AutoEnterHub,
+
+    [switch] $AutoAdvanceSplash,
 
     [ValidateRange(-2.0, 2.0)]
     [double] $ProjectionTranslationScale = 1.0,
@@ -141,13 +145,13 @@ if (-not $DoNotOpenLauncher) {
     }
 }
 
-if ($AutoEnterHub) {
+if ($AutoEnterHub -or $AutoAdvanceSplash) {
     $advanceHelper = Join-Path $PSScriptRoot 'advance-darktide-to-hub.ps1'
     if (-not (Test-Path -LiteralPath $advanceHelper -PathType Leaf)) {
         throw "Darktide hub advance helper not found: $advanceHelper"
     }
     $powershell = (Get-Process -Id $PID).Path
-    Start-Process -FilePath $powershell -WindowStyle Hidden -ArgumentList @(
+    $advanceArguments = @(
         '-NoProfile',
         '-ExecutionPolicy',
         'Bypass',
@@ -156,7 +160,17 @@ if ($AutoEnterHub) {
         '-TimeoutSeconds',
         $GameStartTimeoutSeconds
     )
-    Write-Output 'Armed state-gated Space/Enter automation through character select.'
+    if ($AutoAdvanceSplash -and -not $AutoEnterHub) {
+        $advanceArguments += '-StopAtCharacterSelect'
+    }
+    Start-Process -FilePath $powershell -WindowStyle Hidden `
+        -ArgumentList $advanceArguments
+    if ($AutoEnterHub) {
+        Write-Output 'Armed state-gated Space/Enter automation through character select.'
+    }
+    else {
+        Write-Output 'Armed state-gated Space automation to character select.'
+    }
 }
 
 Write-Output 'Waiting for the Darktide splash window; XR will start as soon as it exists.'
@@ -183,6 +197,9 @@ if ($SyntheticBodyPath) {
 }
 if ($SyntheticHeadSweep) {
     $runnerArguments.SyntheticHeadSweep = $true
+}
+if ($SyntheticNeckPivotPath) {
+    $runnerArguments.SyntheticNeckPivotPath = $true
 }
 if ($SyntheticCrouchPath) {
     $runnerArguments.SyntheticCrouchPath = $true

@@ -921,6 +921,10 @@ These features can advance without invalidating the three main workstreams:
 11. **Calibration, recenter and embodiment settings:** standing/seated modes,
     floor and eye height, arm-span/body-scale calibration, dominant hand,
     controller offsets, snap/smooth turn, vignette and per-user persistence.
+    Expose this as a native DMF submenu launched by a **Calibrate VR** button at
+    character select. Support bilateral standing, bilateral seated, and an
+    accessible left- or right-single-arm flow that mirrors the measured arm and
+    records that the opposite side was inferred.
 12. **Weapon and ability compatibility matrix:** audit every weapon family,
     ironsight/scope, flashlight, charge/reload/special, grenade, psyker ability,
     deployable and auspex for pose, effects, reticle and gameplay-origin parity.
@@ -944,23 +948,23 @@ The current unattended queue is:
    acceptance, controller transport, synthetic pointer coverage, automated
    Psykhanium entry, analog locomotion, collision-aware room-scale body follow,
    the first weapon/body solver foundation, distributed forearm twist, and
-   planted-foot physical-crouch presentation IK.
+   planted-foot physical-crouch presentation IK, constrained shoulder reach,
+   and neck-pivot height compensation with explicit XR recenter generation.
 2. **Completed native evidence gate:** the ownership-safe descriptor census
    proved the Lua-created engine-world target is not sampled by any full-eye
    draw (target bindless index 46527; observed menu draws used other indices).
    Do not restore the external-copy, assumed-barrier, raw-pointer scanner or
    named-target paths. The native additive menu is the accepted content source.
-3. **Next:** headset-validate the stable one-eye desktop mirror plus native
-   additive menu: the black Lua panel must be absent, stereo and 6DoF must stay
-   uninterrupted, the desktop must remain one stable eye, and pointer,
-   scrolling, toggles and dropdowns must remain usable. The desktop mirror has
-   passed live visual inspection and native publication/error-log gates.
+3. **Next:** finish the character-select VR calibration submenu. It must retain
+   physical source measurements separately from each live scaled Darktide
+   target rig and support standing/seated, bilateral and single-arm flows.
 4. Trace vendor/NPC views as a distinct renderer family, keep the hub world in
    stereo, and place the complete interactive view at the NPC with a generic
    world-space board fallback.
-5. Continue first-person aim/weapon semantics and the Psykhanium anatomical IK
-   gate; do not enable procedural body IK in the third-person hub.
-6. Continue the stable-mirror performance pass, then resume independent backlog
+5. Complete HUD/UI presentation and input coverage after shop menus.
+6. Continue first-person ranged aim, binocular crosshair/reticle policy and
+   optional controller laser presentation after the UI gates.
+7. Continue the stable-mirror performance pass, then resume independent backlog
    items when a renderer/user-feedback gate blocks. Use
    `start-darktide-vr.ps1 -AutoEnterHub` for unattended hub entry; its Space and
    Enter events are gated by fresh title and character-select console states.
@@ -985,3 +989,13 @@ hook with a new input or UI hook in the same live run. The user-feedback
 gates are: menu/pointer ergonomics, live weapon
 alignment/comfort, vendor-panel placement, and embodied-body comfort; all other
 feasible verification should be completed before requesting those checks.
+
+The ranged-aim foundation is implemented behind the private-range test gate.
+It preserves the stock shot-offset stack and native replicated aim while
+decoupling weapon direction from the HMD camera. Remaining gates are a real
+ranged shot, projectile-action coverage, muzzle/origin occlusion policy, and
+binocular reticle or optional laser presentation.
+
+The fixed-HUD interception experiment is blocked on retained widget ownership,
+not texture transport. Keep its prototype disabled and resume only with a
+widget rebuild or newly evidenced retained-renderer seam.

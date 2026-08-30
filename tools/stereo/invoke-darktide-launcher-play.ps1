@@ -148,7 +148,12 @@ public static class DarktideVrLauncherInput
                     Marshal.GetLastWin32Error(), "SetCursorPos failed");
             }
             mouse_event(MouseEventLeftDown, 0, 0, 0, UIntPtr.Zero);
+            // WebView2 dispatches the WPF-hosted button asynchronously. A
+            // zero-duration down/up followed by an immediate cursor restore
+            // can deliver hover-leave before the web control accepts click.
+            System.Threading.Thread.Sleep(100);
             mouse_event(MouseEventLeftUp, 0, 0, 0, UIntPtr.Zero);
+            System.Threading.Thread.Sleep(150);
         }
         finally
         {
@@ -196,6 +201,19 @@ if (-not $launcher -or $launcher.MainWindowHandle -eq [IntPtr]::Zero) {
 }
 if ($launcher.MainWindowTitle -ne 'Launcher') {
     throw "Unexpected Fatshark launcher title: '$($launcher.MainWindowTitle)'"
+}
+
+# The native WPF window becomes targetable several seconds before its WebView2
+# document reports OnLauncherReady. Clicking during that gap is silently
+# discarded even though foregrounding and mouse injection both succeed.
+# Allow the embedded document to finish initialization before resolving and
+# activating its stable Play region.
+Start-Sleep -Seconds 6
+$launcher.Refresh()
+if ($launcher.HasExited -or
+        $launcher.MainWindowHandle -eq [IntPtr]::Zero -or
+        $launcher.MainWindowTitle -ne 'Launcher') {
+    throw 'Fatshark launcher changed state before its Play control became ready.'
 }
 
 # The current Fatshark launcher exposes no external UI Automation tree. Its

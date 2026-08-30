@@ -45,6 +45,7 @@ int main(int argc, char** argv) {
     darktidevr::core::SharedHeadPoseReader reader;
     darktidevr::core::SharedHeadPoseSample sample{};
     sample.sequence = 7;
+    sample.recenter_generation = 3;
     sample.pose = {{0.0F, 0.38268343F, 0.0F, 0.92387953F},
                    {0.1F, -0.2F, 0.3F}};
     sample.body_follow_offset = {0.75F, 0.0F, -0.25F};
@@ -58,6 +59,7 @@ int main(int argc, char** argv) {
     darktidevr::core::SharedHeadPoseSample received{};
     expect(reader.read(received), "Published shared pose was unreadable");
     expect(received.sequence == sample.sequence &&
+               received.recenter_generation == 3 &&
                std::abs(received.pose.position.z - 0.3F) < 0.0001F &&
                std::abs(received.pose.orientation.w - 0.92387953F) < 0.0001F &&
                std::abs(received.render_vertical_fov_radians - 1.7F) < 0.0001F &&

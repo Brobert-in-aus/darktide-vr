@@ -66,4 +66,12 @@ math::Pose recentered_controller_pose(math::Pose recenter_head_pose,
 math::Pose anchored_body_panel_pose(math::Pose recenter_head_pose,
                                     math::Pose body_panel_pose);
 
+// Estimates vertical neck travel from two recenter-relative HMD poses. The
+// headset follows an arc when the user pitches around the neck; subtracting
+// that rigid head-to-neck arc leaves actual body height change. The local
+// neck-to-HMD vector is calibrated separately from the target avatar rig.
+float neck_pivot_height_delta(math::Pose baseline_head_delta,
+                              math::Pose current_head_delta,
+                              math::Vec3 neck_to_hmd_local);
+
 }  // namespace darktidevr::core

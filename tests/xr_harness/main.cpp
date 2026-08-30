@@ -595,6 +595,7 @@ class OpenXrProbe {
                                bool synthetic_body_path,
                                bool synthetic_gameplay_input,
                                bool synthetic_head_sweep,
+                               bool synthetic_neck_pivot_path,
                                bool synthetic_roomscale_path,
                                bool synthetic_crouch_path,
                                float projection_translation_scale) {
@@ -985,6 +986,7 @@ class OpenXrProbe {
     darktidevr::math::Vec3 body_follow_offset{};
     controller_recenter_pose_.reset();
     std::uint64_t head_pose_sequence{};
+    std::uint32_t head_recenter_generation{};
     std::array<XrPosef, 2> recentered_view_poses{};
     bool recentered_view_poses_valid{};
     std::deque<std::pair<std::uint64_t, std::array<XrPosef, 2>>>
@@ -1297,6 +1299,7 @@ class OpenXrProbe {
             // centre-head pose, otherwise a recenter corrects the world while
             // leaving a loading board at its old yaw.
             flat_fallback_anchored_sequence = 0;
+            ++head_recenter_generation;
             std::cout << "openxr.head_recenter=applied\n";
           }
           if (!head_recenter_pose) {
@@ -1304,6 +1307,7 @@ class OpenXrProbe {
                 darktidevr::core::horizon_locked_recenter_pose(current_head);
             synthetic_roomscale_origin = *head_recenter_pose;
             controller_recenter_pose_ = *head_recenter_pose;
+            ++head_recenter_generation;
           }
           if (synthetic_roomscale_path) {
             if (!synthetic_roomscale_origin) {
@@ -1347,8 +1351,13 @@ class OpenXrProbe {
             ++synthetic_head_phase_frames[
                 static_cast<std::size_t>(synthetic.phase)];
           }
+          if (synthetic_neck_pivot_path) {
+            delta = darktidevr::harness::synthetic_neck_pivot_path_sample(
+                synthetic_head_frames++, delta.position);
+          }
           darktidevr::core::SharedHeadPoseSample pose_sample{};
           pose_sample.sequence = ++head_pose_sequence;
+          pose_sample.recenter_generation = head_recenter_generation;
           pose_sample.pose = delta;
           pose_sample.body_follow_offset = body_follow_offset;
           pose_sample.render_vertical_fov_radians =
@@ -3658,6 +3667,7 @@ void usage() {
                 "[--synthetic-body-path] "
                 "[--synthetic-gameplay-input] "
                 "[--synthetic-head-sweep] "
+                "[--synthetic-neck-pivot-path] "
                 "[--synthetic-roomscale-path] "
                 "[--synthetic-crouch-path] "
                 "[--synthetic-billboard-sweep] "
@@ -3694,6 +3704,7 @@ int wmain(int argc, wchar_t** argv) {
     bool synthetic_body_path = false;
     bool synthetic_gameplay_input = false;
     bool synthetic_head_sweep = false;
+    bool synthetic_neck_pivot_path = false;
     bool synthetic_roomscale_path = false;
     bool synthetic_crouch_path = false;
     bool synthetic_billboard_sweep = false;
@@ -3749,6 +3760,8 @@ int wmain(int argc, wchar_t** argv) {
         synthetic_gameplay_input = true;
       } else if (argument == L"--synthetic-head-sweep") {
         synthetic_head_sweep = true;
+      } else if (argument == L"--synthetic-neck-pivot-path") {
+        synthetic_neck_pivot_path = true;
       } else if (argument == L"--synthetic-roomscale-path") {
         synthetic_roomscale_path = true;
       } else if (argument == L"--synthetic-crouch-path") {
@@ -3821,6 +3834,14 @@ int wmain(int argc, wchar_t** argv) {
       throw std::invalid_argument(
           "--synthetic-head-sweep requires --shared-eyes");
     }
+    if (synthetic_neck_pivot_path && !shared_eyes) {
+      throw std::invalid_argument(
+          "--synthetic-neck-pivot-path requires --shared-eyes");
+    }
+    if (synthetic_neck_pivot_path && synthetic_head_sweep) {
+      throw std::invalid_argument(
+          "--synthetic-neck-pivot-path and --synthetic-head-sweep are exclusive");
+    }
     if (synthetic_roomscale_path && !shared_eyes) {
       throw std::invalid_argument(
           "--synthetic-roomscale-path requires --shared-eyes");
@@ -3869,6 +3890,7 @@ int wmain(int argc, wchar_t** argv) {
                                      synthetic_body_path,
                                      synthetic_gameplay_input,
                                      synthetic_head_sweep,
+                                     synthetic_neck_pivot_path,
                                      synthetic_roomscale_path,
                                      synthetic_crouch_path,
                                      projection_translation_scale);

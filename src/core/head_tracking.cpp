@@ -105,4 +105,17 @@ math::Pose anchored_body_panel_pose(math::Pose recenter_head_pose,
                        math::darktide_to_openxr(body_panel_pose));
 }
 
+float neck_pivot_height_delta(math::Pose baseline_head_delta,
+                              math::Pose current_head_delta,
+                              math::Vec3 neck_to_hmd_local) {
+  const auto baseline_neck = baseline_head_delta.position;
+  const auto current_neck = current_head_delta.position;
+  const auto baseline_arc =
+      math::rotate(baseline_head_delta.orientation, neck_to_hmd_local);
+  const auto current_arc =
+      math::rotate(current_head_delta.orientation, neck_to_hmd_local);
+  return (current_neck.y - current_arc.y) -
+         (baseline_neck.y - baseline_arc.y);
+}
+
 }  // namespace darktidevr::core

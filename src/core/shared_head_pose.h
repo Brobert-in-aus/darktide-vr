@@ -7,7 +7,7 @@
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedHeadPoseName[] =
-    L"Local\\DarktideVR-head-pose-v7";
+    L"Local\\DarktideVR-head-pose-v8";
 
 struct EyeFrustumHalfAngles {
   float left{};
@@ -18,6 +18,9 @@ struct EyeFrustumHalfAngles {
 
 struct SharedHeadPoseSample {
   std::uint64_t sequence{};
+  // Increments whenever the runtime rebuilds its horizon-locked HMD origin.
+  // Consumers use this to rebase pose-derived body calibration atomically.
+  std::uint32_t recenter_generation{};
   math::Pose pose{};
   // Cumulative recenter-local OpenXR horizontal displacement assigned to the
   // character body rather than the bounded camera lean.

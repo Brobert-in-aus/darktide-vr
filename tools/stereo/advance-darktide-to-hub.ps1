@@ -3,6 +3,8 @@ param(
     [ValidateRange(10, 1800)]
     [int] $TimeoutSeconds = 600,
 
+    [switch] $StopAtCharacterSelect,
+
     [string] $ConsoleLogRoot =
         (Join-Path $env:APPDATA 'Fatshark\Darktide\console_logs')
 )
@@ -76,9 +78,13 @@ Start-Sleep -Seconds 1
 Send-DarktideKey -Process $title -Keys ' '
 
 $characterSelect = Wait-DarktideLogMatch -Patterns @(
-    'DARKTIDEVR_STEREO active target=ui_main_menu_world',
+    'Entering Game State StateMainMenu',
     'DARKTIDEVR_PRESENTATION open view=main_menu_view active=true'
 ) -Deadline $deadline -NotBefore $started
+if ($StopAtCharacterSelect) {
+    Write-Output 'Darktide title advanced to character select without mouse input.'
+    return
+}
 Start-Sleep -Seconds 1
 Send-DarktideKey -Process $characterSelect -Keys '{ENTER}'
 

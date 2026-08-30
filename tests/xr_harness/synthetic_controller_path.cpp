@@ -113,13 +113,17 @@ void apply_synthetic_body_reach_path(core::SharedControllerState& state,
   }};
   if (phase == SyntheticControllerPhase::left_sweep) {
     positions[0].x = sweep;
+    positions[0].y = 0.25F + phase_t * 0.90F;
   } else if (phase == SyntheticControllerPhase::right_sweep) {
     positions[1].x = sweep;
+    positions[1].y = 0.25F + phase_t * 0.90F;
   } else if (phase == SyntheticControllerPhase::crossed_sweep) {
     positions[0].x = 0.25F;
     positions[1].x = -0.25F;
-    positions[0].y += 0.05F * std::sin(phase_t * 6.28318530718F);
-    positions[1].y -= 0.05F * std::sin(phase_t * 6.28318530718F);
+    // Equal forward reach must keep the shoulder girdle square. This phase
+    // simultaneously retains the full wrist-roll and crossed-arm coverage.
+    positions[0].y = 0.25F + phase_t * 0.70F;
+    positions[1].y = positions[0].y;
   } else if (phase == SyntheticControllerPhase::outside_panel) {
     positions[0] = {-0.65F, 0.25F, -0.25F};
     positions[1] = {0.65F, 0.25F, -0.25F};

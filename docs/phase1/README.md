@@ -1219,29 +1219,61 @@ coverage, and a separate trace/interception policy for NPC shop views.
 
 The accepted hub embodiment baseline now retains server-authoritative
 `hub_jog`, applies HMD-relative visual heading before sampling the common
-camera/controller body anchor, and keeps a 1.2 m horizontal moving translation
-envelope. Head position, stable hands, head-look steering and hub motion passed
-worn validation. The calibrated OpenXR grip-to-model-wrist translation is now
+camera/controller body anchor, and uses a 0.25 m visual-only horizontal lean
+envelope. The planted-foot body follows the constrained HMD pose without
+moving the public-hub collision root or taking a room-scale step. The local VR
+body also suppresses Darktide's lateral `idle_fullbody` variants while retaining
+its subtle base stance sway. Head position, stable hands, head-look steering
+and hub motion otherwise passed worn validation. The calibrated OpenXR
+grip-to-model-wrist translation is now
 3 cm away from the body centreline, 4 cm body-back and 1 cm world-down in
 addition to the previously accepted anatomical grip-origin correction.
 
-Shoulder reach is the immediate outstanding worn gate. Each arm independently
-requests opposing `j_spine2` girdle yaw when its calibrated wrist target nears
-full extension. Equal requests cancel to a square shoulder line, while unequal
-requests advance the reaching shoulder and retract the opposite one. Each
-clavicle retains at most 2 cm of independent protraction. The rejected shared
-protraction version gave bilateral extension an erroneous 10 cm-per-arm bonus
-and must not be restored.
+Crouch height is now derived from an estimated anatomical neck point rather
+than raw headset height. The headset-to-neck rotation arc is subtracted before
+pelvis/leg IK, so ordinary +/-45-degree looking does not crouch the body while
+real simultaneous vertical movement remains intact. XR recenter generation is
+carried in shared head-pose transport v8 so a tilted reset rebases cleanly.
 
-After that gate, continue in this order:
+Shoulder reach has passed its launch-baseline worn gate. The earlier direct
+`j_spine2` approximation has been replaced by a scaled constrained solve over
+the live `j_spine`/`j_spine1`/`j_spine2` chain. Each arm independently requests
+opposing girdle yaw near 90% of its measured reach; equal requests cancel to a
+square shoulder line, while unequal requests advance the reaching shoulder and
+retract the opposite one. Each clavicle retains independent protraction capped
+at 3% of that live arm length. A 200-sample in-game synthetic pass proved
+opposing unilateral yaw, 0.00-degree bilateral cancellation, and at most
+0.000017 m tracked-hand error. The rejected shared-protraction version gave
+bilateral extension an erroneous 10 cm-per-arm bonus and must not be restored.
 
-1. Validate the measured wrist offset symmetrically and across weapon poses.
+Continue in this order:
+
+1. Complete neck-pivot-aware crouch validation, then implement the
+   character-select calibration submenu with standing/seated and bilateral or
+   single-arm flows.
 2. Repair shop presentation using the proven flat-interactive character-select
    route; keep the desktop as a one-eye mirror and keep the crashed scoped
    crafting-renderer redirect disabled.
-3. Extend flat-interactive coverage while preserving 6DoF restoration and
-   pointer crop-local coordinates.
-4. Investigate per-eye LOD divergence, edge light culling and render-identity-
+3. Complete HUD/UI coverage while preserving 6DoF and pointer crop-local
+   coordinates.
+4. Continue ranged weapon aim, binocular crosshair/reticle policy and optional
+   controller laser presentation after the UI gates.
+5. Investigate per-eye LOD divergence, edge light culling and render-identity-
    locked enemy-shadow asymmetry with separate evidence for each boundary.
-5. Continue independent gameplay aiming/weapon-hand ownership after the body
-   reach solver is accepted.
+6. Stage remote presentation: first feed the stock replicated `aim_direction`
+   so unmodded peers see dominant-hand weapon aim, then prototype a private,
+   versioned mod-to-mod head/two-wrist pose channel with interpolation and
+   stock-husk fallback. The stock schema cannot express full independent IK;
+   see [networked VR IK feasibility](networked-vr-ik-feasibility.md).
+
+The private-range ranged-aim prototype now composes the right controller aim
+pose with the body/world anchor and preserves Darktide's stock recoil, sway,
+aim-assist and spread as a local rotation delta. It also writes the native
+replicated `aim_direction`. Load, synthetic tracking, automated Psykhanium
+entry and stereo-readiness gates pass; a real ranged shot and worn alignment
+check remain outstanding.
+
+Fixed retained-HUD migration is separately blocked: renderer redirection,
+retained-pass registration and direct/lagged resource display all produced a
+valid panel with no fixed-HUD content. That prototype is disabled pending a
+widget-rebuild or retained-ownership seam.

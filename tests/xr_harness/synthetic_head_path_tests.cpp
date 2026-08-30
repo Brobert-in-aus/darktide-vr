@@ -18,6 +18,7 @@ int main() {
   using darktidevr::harness::SyntheticHeadPhase;
   using darktidevr::harness::kSyntheticHeadPhaseFrames;
   using darktidevr::harness::synthetic_head_path_sample;
+  using darktidevr::harness::synthetic_neck_pivot_path_sample;
   using darktidevr::harness::synthetic_crouch_position;
   using darktidevr::harness::synthetic_roomscale_position;
   using darktidevr::math::rotate;
@@ -57,6 +58,23 @@ int main() {
              std::abs(combined_forward.y) > 0.2F &&
              std::abs(combined_up.x) > 0.2F,
          "Combined phase must contain both pitch and roll");
+
+  const auto pivot = synthetic_neck_pivot_path_sample(90, translation);
+  expect(std::abs(rotate(pivot.orientation, {0.0F, 0.0F, -1.0F}).y) >
+             0.6F,
+         "Neck-pivot path must reach approximately 45 degrees");
+  const darktidevr::math::Vec3 neck_to_hmd{0.0F, 0.075F, -0.0805F};
+  const auto estimated_neck = darktidevr::math::Vec3{
+      pivot.position.x - rotate(pivot.orientation, neck_to_hmd).x,
+      pivot.position.y - rotate(pivot.orientation, neck_to_hmd).y,
+      pivot.position.z - rotate(pivot.orientation, neck_to_hmd).z};
+  expect(std::abs(estimated_neck.x - (translation.x - neck_to_hmd.x)) <
+             0.0001F &&
+             std::abs(estimated_neck.y - (translation.y - neck_to_hmd.y)) <
+                 0.0001F &&
+             std::abs(estimated_neck.z - (translation.z - neck_to_hmd.z)) <
+                 0.0001F,
+         "Neck-pivot synthetic path must keep the anatomical neck fixed");
 
   const auto roomscale_neutral = synthetic_roomscale_position(30);
   const auto roomscale_x = synthetic_roomscale_position(150);

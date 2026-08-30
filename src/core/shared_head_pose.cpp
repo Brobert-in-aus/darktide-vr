@@ -13,6 +13,7 @@ struct SharedLayout {
   volatile LONG64 epoch{};
   volatile LONG64 sequence{};
   volatile LONG64 published_tick_ms{};
+  volatile LONG recenter_generation{};
   float position_x{};
   float position_y{};
   float position_z{};
@@ -63,6 +64,7 @@ bool valid(const SharedHeadPoseSample& sample) {
            frustum.left < frustum.right && frustum.down < frustum.up;
   };
   return sample.sequence != 0 &&
+         sample.recenter_generation != 0 &&
          sample.sequence <=
              static_cast<std::uint64_t>(std::numeric_limits<LONG64>::max()) &&
          std::isfinite(p.x) && std::isfinite(p.y) &&
@@ -137,6 +139,7 @@ SharedHeadPoseWriter::SharedHeadPoseWriter() {
   InterlockedExchange64(&data.epoch, 1);
   InterlockedExchange64(&data.sequence, 0);
   InterlockedExchange64(&data.published_tick_ms, 0);
+  data.recenter_generation = 0;
   data.render_vertical_fov = 0.0F;
   data.render_aspect_ratio = 0.0F;
   data.render_width = 0;
@@ -200,6 +203,8 @@ bool SharedHeadPoseWriter::publish(const SharedHeadPoseSample& sample) {
   data.eye1_down = sample.render_frusta[1].down;
   data.eye1_up = sample.render_frusta[1].up;
   data.ipd_metres = sample.ipd_metres;
+  data.recenter_generation =
+      static_cast<LONG>(sample.recenter_generation);
   InterlockedExchange64(&data.sequence,
                         static_cast<LONG64>(sample.sequence));
   InterlockedExchange64(&data.published_tick_ms,
@@ -269,6 +274,8 @@ bool SharedHeadPoseReader::read(SharedHeadPoseSample& sample) {
     }
     SharedHeadPoseSample candidate{};
     candidate.sequence = static_cast<std::uint64_t>(data.sequence);
+    candidate.recenter_generation =
+        static_cast<std::uint32_t>(data.recenter_generation);
     const auto published_tick_ms =
         static_cast<std::uint64_t>(data.published_tick_ms);
     candidate.pose.position =

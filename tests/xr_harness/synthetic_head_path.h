@@ -28,6 +28,13 @@ struct SyntheticHeadPathSample {
 SyntheticHeadPathSample synthetic_head_path_sample(
     std::uint64_t frame, math::Vec3 preserved_translation);
 
+// Deterministic +/-45-degree pitch around a fixed anatomical neck point. The
+// HMD translation includes the rigid neck-to-eye arc, allowing the complete
+// runtime adapter to prove that pose compensation rejects head rotation while
+// retaining independently added body-height motion.
+math::Pose synthetic_neck_pivot_path_sample(
+    std::uint64_t frame, math::Vec3 preserved_translation);
+
 // Deterministic test-only room-scale path. The 0.65 m excursions deliberately
 // cross the production 0.25 m camera-lean envelope so unattended tests can
 // verify that excess horizontal motion is exported as body-follow movement.

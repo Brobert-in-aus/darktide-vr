@@ -86,6 +86,32 @@ if ($source.Contains('server_correction mapped=hub_jog->walking') -or
         $source.Contains('starting_state=walking source=hub_first_person')) {
     throw 'Public-hub locomotion must not replace the server-authoritative hub_jog state.'
 }
+if (-not $source.Contains(
+        'function presentation.clamp_hub_head_horizontal(x, z)') -or
+        -not $source.Contains('local limit = 0.25')) {
+    throw 'Hub HMD translation must retain the 25 cm visual lean envelope.'
+}
+$bodyFollowStart = $source.IndexOf(
+    'function presentation.refresh_body_follow_mode')
+$bodyFollowEnd = $source.IndexOf(
+    'function presentation.apply_body_follow_translation', $bodyFollowStart)
+if ($bodyFollowStart -lt 0 -or $bodyFollowEnd -lt 0 -or
+        -not $source.Substring(
+            $bodyFollowStart, $bodyFollowEnd - $bodyFollowStart).Contains(
+                'if game_mode_name == "hub"')) {
+    throw 'Hub room-scale lean must not write the authoritative root/collision path.'
+}
+if (-not $source.Contains(
+        'scripts/extension_systems/aim/third_person_idle_fullbody_animation_control') -or
+        -not $source.Contains('self._idle_fullbody_value = 0')) {
+    throw 'Local VR hub body must suppress lateral full-body idle variants.'
+}
+if (-not $source.Contains(
+        'function presentation.neck_compensated_vertical') -or
+        -not $source.Contains('body_ik_neck_baseline_arc') -or
+        -not $source.Contains('head_pose_values[23]')) {
+    throw 'Crouch IK must subtract the calibrated neck-pivot arc and rebase on XR recenter.'
+}
 $luaCompiler = Get-Command luac -ErrorAction SilentlyContinue
 if ($luaCompiler) {
     & $luaCompiler.Source -p $resolvedSource

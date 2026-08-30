@@ -6993,6 +6993,8 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
   // alternate between the loading view and the preceding stereo scene.
   if (presentation_mode !=
           darktidevr::core::SharedPresentationMode::flat_loading_or_cinematic &&
+      presentation_mode !=
+          darktidevr::core::SharedPresentationMode::flat_interactive &&
       candidate && present_queue &&
       desktop_mirror_ready.load(std::memory_order_acquire)) {
     const auto mirror_result =
@@ -9684,6 +9686,7 @@ extern "C" __declspec(dllexport) int dtvr_read_head_pose(
   values[20] = sample.body_follow_offset.x;
   values[21] = sample.body_follow_offset.y;
   values[22] = sample.body_follow_offset.z;
+  values[23] = static_cast<float>(sample.recenter_generation);
   *sequence = sample.sequence;
   return 0;
 }

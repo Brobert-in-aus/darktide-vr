@@ -51,12 +51,16 @@ int main() {
   const auto utility = darktidevr::harness::synthetic_controller_path_sample(
       240, 9, 9, panel, 2.0F, 2.0F, true);
   auto body_near = left.state;
+  auto body_left_reach = left.state;
+  auto body_right_reach = right.state;
   auto body_crossed = outside.state;
   auto body_crossed_mid = outside.state;
   auto body_crossed_end = outside.state;
   auto body_far = far.state;
   auto body_invalid = invalid.state;
-  darktidevr::harness::apply_synthetic_body_reach_path(body_near, 29);
+  darktidevr::harness::apply_synthetic_body_reach_path(body_near, 5);
+  darktidevr::harness::apply_synthetic_body_reach_path(body_left_reach, 59);
+  darktidevr::harness::apply_synthetic_body_reach_path(body_right_reach, 119);
   darktidevr::harness::apply_synthetic_body_reach_path(body_crossed, 120);
   darktidevr::harness::apply_synthetic_body_reach_path(body_crossed_mid, 149);
   darktidevr::harness::apply_synthetic_body_reach_path(body_crossed_end, 179);
@@ -94,8 +98,14 @@ int main() {
           darktidevr::core::controller_stick_click &&
       length(body_near.hands[0].body_grip_pose.position) < 0.60F &&
       body_near.hands[0].body_grip_tracking_flags != 0 &&
+      body_left_reach.hands[0].body_grip_pose.position.y > 1.10F &&
+      body_left_reach.hands[1].body_grip_pose.position.y < 0.30F &&
+      body_right_reach.hands[1].body_grip_pose.position.y > 1.10F &&
+      body_right_reach.hands[0].body_grip_pose.position.y < 0.30F &&
       body_crossed.hands[0].body_grip_pose.position.x > 0.0F &&
       body_crossed.hands[1].body_grip_pose.position.x < 0.0F &&
+      std::abs(body_crossed_mid.hands[0].body_grip_pose.position.y -
+               body_crossed_mid.hands[1].body_grip_pose.position.y) < 0.001F &&
       std::abs(body_crossed.hands[0].body_grip_pose.orientation.y) > 0.90F &&
       std::abs(body_crossed_mid.hands[0].body_grip_pose.orientation.y) < 0.05F &&
       std::abs(body_crossed_end.hands[0].body_grip_pose.orientation.y) > 0.90F &&

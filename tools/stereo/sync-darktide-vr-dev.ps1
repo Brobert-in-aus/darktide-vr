@@ -24,6 +24,7 @@ $gameRootPath = (Resolve-Path -LiteralPath $GameRoot).Path
 $modRoot = Join-Path $gameRootPath 'mods\darktidevr_stereo_probe'
 $sourceLua = Join-Path $repoRoot `
     'mods\darktidevr_stereo_probe\scripts\mods\darktidevr_stereo_probe\darktidevr_stereo_probe.lua'
+$sourceLuaRoot = Split-Path -Parent $sourceLua
 $sourceNative = Join-Path $repoRoot `
     "build\windows-vs2022\src\producer\$Configuration\darktidevr_native_capture.dll"
 $luaSourceCheck = Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1'
@@ -47,6 +48,28 @@ $destinations = @(
             'binaries\darktidevr_native_capture.dll'
     }
 )
+
+# Required Lua modules are separate LuaJIT chunks, which keeps the production
+# probe below its hard local-variable ceiling. Deploy and syntax-check every
+# module alongside the entry chunk so a clean game install cannot retain stale
+# calibration code.
+$luaParser = Get-Command pnpm -ErrorAction SilentlyContinue
+if (-not $luaParser) {
+    throw 'pnpm is required to validate Darktide VR Lua modules.'
+}
+$moduleFiles = Get-ChildItem -LiteralPath $sourceLuaRoot -Filter '*.lua' |
+    Where-Object FullName -ne $sourceLua
+foreach ($moduleFile in $moduleFiles) {
+    & $luaParser.Source dlx luaparse --quiet --file $moduleFile.FullName
+    if ($LASTEXITCODE -ne 0) {
+        throw "luaparse rejected Darktide VR module: $($moduleFile.FullName)"
+    }
+    $destinations += [pscustomobject]@{
+        Source = $moduleFile.FullName
+        Destination = Join-Path (Split-Path -Parent $destinations[0].Destination) `
+            $moduleFile.Name
+    }
+}
 
 $billboardShaderDestination = Join-Path $modRoot 'bin\billboard_shaders'
 if ($ParticleHorizonLock) {

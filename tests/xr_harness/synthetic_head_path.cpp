@@ -33,6 +33,23 @@ SyntheticHeadPathSample synthetic_head_path_sample(
   return sample;
 }
 
+math::Pose synthetic_neck_pivot_path_sample(
+    std::uint64_t frame, math::Vec3 preserved_translation) {
+  constexpr std::uint64_t phase_frames = 360;
+  constexpr float pi = 3.14159265358979323846F;
+  constexpr math::Vec3 neck_to_hmd{0.0F, 0.075F, -0.0805F};
+  const auto phase_t = static_cast<float>(frame % phase_frames) /
+                       static_cast<float>(phase_frames - 1);
+  const auto pitch = std::sin(phase_t * 2.0F * pi) * pi * 0.25F;
+  const auto orientation =
+      math::from_axis_angle({1.0F, 0.0F, 0.0F}, pitch);
+  const auto rotated_offset = math::rotate(orientation, neck_to_hmd);
+  return {orientation,
+          {preserved_translation.x + rotated_offset.x - neck_to_hmd.x,
+           preserved_translation.y + rotated_offset.y - neck_to_hmd.y,
+           preserved_translation.z + rotated_offset.z - neck_to_hmd.z}};
+}
+
 math::Vec3 synthetic_roomscale_position(std::uint64_t frame) {
   constexpr std::uint64_t phase_frames = 120;
   constexpr float pi = 3.14159265358979323846F;

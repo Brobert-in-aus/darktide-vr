@@ -306,6 +306,30 @@ int main() {
                rotate(tilted_head.orientation, {0.0F, 1.0F, 0.0F}),
                "level recenter retains live tilt in camera delta");
 
+    // The eyes translate vertically when the skull rotates about the neck.
+    // A fixed-neck +/-45 degree look must not masquerade as crouch/tiptoe,
+    // while a real simultaneous body descent must survive compensation.
+    const Vec3 neck_to_hmd{0.0F, 0.075F, -0.0805F};
+    const Pose neck_baseline{{}, {}};
+    for (const auto pitch_radians : {-kPi * 0.25F, kPi * 0.25F}) {
+      const auto orientation =
+          from_axis_angle({1.0F, 0.0F, 0.0F}, pitch_radians);
+      const auto arc = rotate(orientation, neck_to_hmd);
+      const Vec3 fixed_neck_translation{
+          arc.x - neck_to_hmd.x, arc.y - neck_to_hmd.y,
+          arc.z - neck_to_hmd.z};
+      const Pose fixed_neck_head{orientation, fixed_neck_translation};
+      expect_near(darktidevr::core::neck_pivot_height_delta(
+                      neck_baseline, fixed_neck_head, neck_to_hmd),
+                  0.0F, 0.0001F, "neck pivot rejects pitch arc");
+      auto crouched_head = fixed_neck_head;
+      crouched_head.position.y -= 0.30F;
+      expect_near(darktidevr::core::neck_pivot_height_delta(
+                      neck_baseline, crouched_head, neck_to_hmd),
+                  -0.30F, 0.0001F,
+                  "neck pivot preserves simultaneous crouch");
+    }
+
     // Projection poses are absolute in LOCAL space: anchoring the delta back
     // onto its baseline must reconstruct the current orientation, including
     // roll, rather than treating the relative delta as an absolute pose.
