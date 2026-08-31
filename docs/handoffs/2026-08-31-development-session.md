@@ -497,3 +497,30 @@ hit/animation completion. XR produced 4,185 fresh stereo pairs, zero reused
 shared frames and zero pair-driven timeouts. The one pose mismatch occurred at
 the shooting-range transition. There were no script or engine errors, and the
 temporary controller-aim and gameplay-input flags were restored.
+
+## Identified-particle billboard revalidation
+
+The disputed identified family was rechecked through the synchronized eye
+resources rather than inferred from the desktop mirror. An exact diagnostic
+build changed only VS `42e436fb1ef1b392` to 10x scale and its paired PS
+`6020f2548f29fd47` to magenta. A fresh-cache hub run applied that replacement
+once without validation or creation rejection, drove the deterministic head
+pitch/roll path, and captured 30 synchronized left/right pairs over a complete
+cycle. Level frames show the enlarged quads level; rolled frames show them
+rotating with the world rather than remaining display-upright. This is direct
+shared-eye evidence that this exact family is using the cylindrical path. The
+user's remembered spherical smoke therefore remains a different, still-
+unidentified particle family rather than grounds for broadening this exact
+shader substitution.
+
+The run produced 3,250 fresh pairs, zero shared-frame reuse, zero pair-driven
+timeouts and zero pose mismatches. Captures and component measurements are in
+`artifacts/unattended/billboard-hub-roll-20260831-151501/` (ignored by Git).
+Production was restored immediately afterward to the natural-colour 1x shader;
+the magenta pixel shader is absent from the deployed mod.
+
+This pass also fixed a real deployment fault. Ordinary development sync used
+to enable the billboard bootstrap flag without copying the replacement vertex
+shader, and could retain an earlier 10x or magenta diagnostic. A normal sync
+now rebuilds and deploys the natural 1x cylindrical vertex shader whenever
+substitution is enabled, while an unrequested magenta diagnostic is removed.

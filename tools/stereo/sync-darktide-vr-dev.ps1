@@ -78,10 +78,25 @@ foreach ($moduleFile in $moduleFiles) {
 }
 
 $billboardShaderDestination = Join-Path $modRoot 'bin\billboard_shaders'
-if ($ParticleHorizonLock) {
+$billboardVertexSource = Join-Path $repoRoot `
+    'build\generated\billboard_shaders\vs-42e436fb1ef1b392.dxil'
+$billboardPixelDiagnosticDestination = Join-Path $billboardShaderDestination `
+    'ps-6020f2548f29fd47.dxil'
+if ($BillboardShaderSubstitution -and -not $ParticleHorizonLock) {
+    # An ordinary production sync must be self-contained.  Previously the
+    # bootstrap flag was enabled while the replacement shader was copied only
+    # by an explicit diagnostic switch, allowing a clean install to run stock
+    # spherical particles or retain a prior 10x diagnostic vertex shader.
+    $buildHorizonLock = Join-Path $PSScriptRoot `
+        'build-particle-horizon-lock.ps1'
+    if (-not (Test-Path -LiteralPath $buildHorizonLock -PathType Leaf)) {
+        throw "Particle horizon-lock build script not found: $buildHorizonLock"
+    }
+    & $buildHorizonLock
+}
+if ($BillboardShaderSubstitution) {
     $destinations += [pscustomobject]@{
-        Source = Join-Path $repoRoot `
-            'build\generated\billboard_shaders\vs-42e436fb1ef1b392.dxil'
+        Source = $billboardVertexSource
         Destination = Join-Path $billboardShaderDestination `
             'vs-42e436fb1ef1b392.dxil'
     }
@@ -114,6 +129,16 @@ foreach ($entry in $destinations) {
         throw "Development deployment hash mismatch: $($entry.Destination)"
     }
     Write-Output "Synchronized $($entry.Destination) sha256=$sourceHash"
+}
+
+# Magenta is an ownership diagnostic, never a production default.  Remove its
+# exact deployed shader when the current sync did not request it so a prior
+# colour-search run cannot leak into later launches.
+if (-not $ParticleDiagnosticMagenta -and
+        (Test-Path -LiteralPath $billboardPixelDiagnosticDestination `
+            -PathType Leaf)) {
+    Remove-Item -LiteralPath $billboardPixelDiagnosticDestination -Force
+    Write-Output "Removed stale particle diagnostic: $billboardPixelDiagnosticDestination"
 }
 
 # d3d12.dll loads the native capture DLL before Lua can configure it. Keep the

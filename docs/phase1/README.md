@@ -1621,3 +1621,21 @@ zero shared-frame reuse, zero pair-driven timeouts, no Lua or engine errors, and
 restored its temporary flags. This closes unattended source/direction coverage
 for the available Psyker ranged attacks; worn aim/reticle acceptance and a
 non-Psyker firearm remain open.
+
+### Identified-particle billboard revalidation checkpoint
+
+The exact VS/PS pair `42e436fb1ef1b392` / `6020f2548f29fd47` has now been
+revalidated from synchronized shared-eye captures. A fresh-cache 10x magenta
+diagnostic made the family unambiguous in the hub while the deterministic head
+sweep supplied level and rolled views. Thirty captured stereo pairs show the
+quads rotating with the rolled world instead of remaining display-upright, so
+this exact family is cylindrically billboarded. The reported spherical smoke
+belongs to another material family and must be identified independently.
+
+Normal development deployment is now fail-safe for this feature: enabling
+billboard substitution also rebuilds/copies the natural 1x vertex replacement,
+and sync removes a stale magenta diagnostic unless explicitly requested. This
+prevents both a clean install with only the bootstrap flag and leakage from a
+prior enlarged colour probe. The captured run delivered 3,250 fresh pairs with
+no reuse, timeout or pose mismatch, after which production 1x/natural output
+was restored.
