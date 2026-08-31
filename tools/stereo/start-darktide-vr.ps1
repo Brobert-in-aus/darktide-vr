@@ -130,7 +130,22 @@ $gameplayInputFlagPath = $null
 $gameplayInputFlagOriginal = $null
 $hudPanelFlagPath = $null
 $hudPanelFlagOriginal = $null
+$controllerAimFlagPath = $null
+$controllerAimFlagOriginal = $null
 try {
+if ($EnableGameplayReticle) {
+    $candidateControllerAimFlagPath = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_controller_aim_test.flag'
+    if (-not (Test-Path -LiteralPath $candidateControllerAimFlagPath -PathType Leaf)) {
+        throw "Controller-aim test flag not found: $candidateControllerAimFlagPath"
+    }
+    $controllerAimFlagOriginal = Get-Content -LiteralPath `
+        $candidateControllerAimFlagPath -Raw
+    $controllerAimFlagPath = $candidateControllerAimFlagPath
+    Set-Content -LiteralPath $controllerAimFlagPath -Value 'enabled' `
+        -Encoding ascii
+    Write-Output 'Controller aim enabled for this reticle run.'
+}
 if ($EnableHudPanel) {
     $candidateHudPanelFlagPath = Join-Path $GameRoot `
         'mods\darktidevr_stereo_probe\darktidevr_hud_panel.flag'
@@ -264,6 +279,11 @@ $xrRunnerStarted = $true
 & $runner @runnerArguments
 }
 finally {
+    if ($controllerAimFlagPath) {
+        Set-Content -LiteralPath $controllerAimFlagPath `
+            -Value $controllerAimFlagOriginal.Trim() -Encoding ascii
+        Write-Output 'Restored the prior controller-aim test flag.'
+    }
     if ($hudPanelFlagPath) {
         Set-Content -LiteralPath $hudPanelFlagPath `
             -Value $hudPanelFlagOriginal.Trim() -Encoding ascii

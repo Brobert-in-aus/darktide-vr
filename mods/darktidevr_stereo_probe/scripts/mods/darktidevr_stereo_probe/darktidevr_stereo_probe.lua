@@ -638,6 +638,8 @@ local function ensure_ui_native_hooks()
             float panel_x, float panel_y, float panel_z, float panel_qx,
             float panel_qy, float panel_qz, float panel_qw);
         int dtvr_commit_gameplay_generation(unsigned long long generation);
+        int dtvr_set_gameplay_aim_state(int active, int hit,
+            float distance_metres);
         int dtvr_capture_eye(int eye);
         int dtvr_capture_armed_swapchain_eye(int eye);
         int dtvr_set_camera_output_candidate_index(int index);
@@ -7196,6 +7198,18 @@ function presentation.left_controller_aim_target()
     return anchor_position +
             presentation.rotate_vector(anchor_rotation, aim_position),
         Quaternion.multiply(anchor_rotation, aim_rotation)
+end
+
+function presentation.publish_gameplay_aim_state(active, hit, distance)
+    if not ui_native_capture or
+            not ui_native_capture.dtvr_set_gameplay_aim_state then
+        return false
+    end
+    local result = ui_native_capture.dtvr_set_gameplay_aim_state(
+        active and 1 or 0,
+        hit and 1 or 0,
+        active and distance or 0)
+    return tonumber(result) == 0
 end
 
 function presentation.body_ik_calibrated_wrist_target(

@@ -8,6 +8,7 @@ add_library(darktidevr_core STATIC
   pose_snapshot.cpp
   presentation_policy.cpp
   shared_controller_state.cpp
+  shared_gameplay_aim_state.cpp
   shared_head_pose.cpp
   shared_menu_pointer_state.cpp
   shared_presentation_state.cpp

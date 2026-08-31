@@ -1579,3 +1579,24 @@ visibility/draw preparation and state assembly before eye-dependent command
 recording. It is not blind command-list replay or queue parallelism. The
 fresh-process trace is armed with `set-performance-pass-trace.ps1`; analyze it
 with `analyze-gpu-batch-trace.py`. Both remain diagnostic-only.
+
+### Depth-aware controller aim checkpoint
+
+The diagnostic compositor reticle is no longer hardcoded at 8 m. During a
+private Psykhanium run, Darktide now performs an all-hit query from the tracked
+right controller using the shipping player-shooting collision filter, skips the
+local avatar that encloses the hand origin, and publishes the first remaining
+surface distance over a validated shared-memory state. The harness consumes
+that state only for stereo-world frames and applies a distance-scaled reticle
+size to keep its apparent angular extent bounded.
+
+A clean synthetic-controller run recorded 7,571 transport updates and 3,450
+reticle frames, all with scene hits. Distances varied with the synthetic sweep
+from about 10 to 33 m rather than collapsing to the initial 0.05 m self-hit.
+Stereo delivery remained stable at 10,175 fresh pairs, no shared-frame reuse
+and no pair-driven timeout; both test-only flags restored automatically. This
+is an unattended depth/transport pass, not worn acceptance. Perceived alignment,
+occlusion and comfort still need a headset check, and deterministic weapon
+selection/firing must separately cover sword, lightning, staff primary
+(left-hand origin/right-hand direction) and staff charged
+(staff-tip origin/right-hand direction).

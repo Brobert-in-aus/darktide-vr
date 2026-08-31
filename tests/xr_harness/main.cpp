@@ -19,6 +19,7 @@
 #include "core/panel_pointer.h"
 #include "core/presentation_policy.h"
 #include "core/shared_controller_state.h"
+#include "core/shared_gameplay_aim_state.h"
 #include "core/shared_head_pose.h"
 #include "core/shared_menu_pointer_state.h"
 #include "core/shared_presentation_state.h"
@@ -878,6 +879,9 @@ class OpenXrProbe {
     darktidevr::core::SharedPresentationStateReader presentation_state_reader;
     darktidevr::core::SharedPresentationState presentation_state{};
     std::uint64_t presentation_sequence{};
+    darktidevr::core::SharedGameplayAimStateReader gameplay_aim_state_reader;
+    darktidevr::core::SharedGameplayAimState gameplay_aim_state{};
+    std::uint64_t gameplay_aim_sequence{};
     darktidevr::core::MenuPointerInputState menu_pointer_state;
     darktidevr::core::SharedMenuPointerStateWriter menu_pointer_writer;
     std::uint64_t menu_pointer_sequence{};
@@ -2718,14 +2722,25 @@ class OpenXrProbe {
           presentation_state.mode == darktidevr::core::
                                          SharedPresentationMode::stereo_world &&
           latest_controller_sample_ && current_head_valid) {
+        darktidevr::core::SharedGameplayAimState newest_aim{};
+        if (gameplay_aim_state_reader.read(newest_aim) &&
+            newest_aim.sequence >= gameplay_aim_sequence) {
+          if (newest_aim.sequence != gameplay_aim_sequence) {
+            ++gameplay_reticle_transport_samples_;
+          }
+          gameplay_aim_state = newest_aim;
+          gameplay_aim_sequence = newest_aim.sequence;
+        }
         const auto& right = latest_controller_sample_->hands[1];
         const auto required =
             darktidevr::core::controller_orientation_valid |
             darktidevr::core::controller_position_valid;
-        if ((right.aim_tracking_flags & required) == required &&
+        if (gameplay_aim_state.active &&
+            (right.aim_tracking_flags & required) == required &&
             darktidevr::core::pointer_origin_within_reach(
                 right.aim_pose.position, current_head.position, 1.5F)) {
-          constexpr float reticle_distance_metres = 8.0F;
+          const auto reticle_distance_metres =
+              gameplay_aim_state.distance_metres;
           const auto direction = darktidevr::math::rotate(
               right.aim_pose.orientation, {0.0F, 0.0F, -1.0F});
           gameplay_reticle_pose = darktidevr::math::Pose{
@@ -2737,6 +2752,12 @@ class OpenXrProbe {
                right.aim_pose.position.z +
                    direction.z * reticle_distance_metres}};
           ++gameplay_reticle_frames_;
+          if (gameplay_aim_state.hit) {
+            ++gameplay_reticle_hit_frames_;
+          } else {
+            ++gameplay_reticle_miss_frames_;
+          }
+          gameplay_reticle_distance_metres_ = reticle_distance_metres;
         }
       }
       std::array<XrCompositionLayerQuad, 3> pointer_quads{{
@@ -2830,7 +2851,10 @@ class OpenXrProbe {
             gameplay_reticle_pose->position.x,
             gameplay_reticle_pose->position.y,
             gameplay_reticle_pose->position.z};
-        gameplay_reticle_quad.size = {0.06F, 0.06F};
+        const auto angular_size_metres = std::clamp(
+            gameplay_reticle_distance_metres_ * 0.007F, 0.015F, 0.12F);
+        gameplay_reticle_quad.size = {angular_size_metres,
+                                      angular_size_metres};
       }
       std::array<const XrCompositionLayerBaseHeader*, 6> layers{};
       std::uint32_t layer_count{};
@@ -3010,6 +3034,14 @@ class OpenXrProbe {
               << controller_pointer_x_ << ',' << controller_pointer_y_ << '\n'
               << "openxr.gameplay_reticle_frames="
               << gameplay_reticle_frames_ << '\n'
+              << "openxr.gameplay_reticle_hit_frames="
+              << gameplay_reticle_hit_frames_ << '\n'
+              << "openxr.gameplay_reticle_miss_frames="
+              << gameplay_reticle_miss_frames_ << '\n'
+              << "openxr.gameplay_reticle_transport_samples="
+              << gameplay_reticle_transport_samples_ << '\n'
+              << "openxr.gameplay_reticle_distance_metres="
+              << gameplay_reticle_distance_metres_ << '\n'
               << "openxr.menu_input_events=" << menu_input_events << '\n'
               << "openxr.menu_input_dispatched=" << menu_input_dispatched
               << '\n'
@@ -3664,6 +3696,10 @@ class OpenXrProbe {
   std::array<std::uint64_t, 2> controller_thumbstick_changed_frames_{};
   std::uint64_t controller_pointer_rays_{};
   std::uint64_t gameplay_reticle_frames_{};
+  std::uint64_t gameplay_reticle_hit_frames_{};
+  std::uint64_t gameplay_reticle_miss_frames_{};
+  std::uint64_t gameplay_reticle_transport_samples_{};
+  float gameplay_reticle_distance_metres_{};
   std::uint64_t controller_pointer_hits_{};
   std::uint32_t controller_pointer_x_{};
   std::uint32_t controller_pointer_y_{};

@@ -435,3 +435,33 @@ source probe at `(995,105)/1280x720` then opened the stock Resolution dropdown
 (`widget_setting_82`) and published correct modal option geometry, without
 changing the selected resolution. Selection, toggle and drag remain worn/live
 acceptance work rather than assumptions from an open-only probe.
+
+## Depth-aware right-controller reticle
+
+The earlier 8 m compositor reticle was only a direction diagnostic. The game
+now raycasts the tracked right-controller aim through Darktide's own
+`filter_player_character_shooting_raycast`, rejects local-avatar intersections,
+and publishes the first usable scene distance through a versioned typed shared
+memory transport. The OpenXR harness consumes that distance only in live
+stereo-world presentation and sizes the binocular reticle approximately by
+constant angular extent. Normal staff fire retains left-hand origin plus
+right-hand direction; charged staff fire retains staff-tip origin plus
+right-hand direction; lightning and other ranged paths remain right-hand aimed.
+
+The first live range run exposed a real ownership bug: a closest-hit query
+selected the local avatar around 5 cm from the controller. An all-hit query with
+explicit local-unit rejection removed that false surface. A clean authenticated
+Psykhanium run then produced 10,175 fresh stereo pairs, zero reused frames and
+zero pair-driven timeouts. It submitted 3,450 hit reticle frames from 7,571
+transport samples; sampled scene distances cycled through roughly 10--33 m and
+ended at 10.22 m. Ray publication reported no failures, while the self-skip
+counter proved the local-avatar overlap was being rejected. The single pose
+mismatch occurred during the range transition. The run passed and restored both
+controller-aim and synthetic-input flags to their prior disabled states.
+
+This validates transport, scene-depth selection and compositor placement
+unattended. A worn check is still required for right-hand alignment, perceived
+depth, angular size and edge occlusion. The generic synthetic input loop did not
+deterministically wield and fire each Psyker weapon in this run, so staff normal,
+staff charged, sword and lightning firing policies remain a separate clean-range
+matrix rather than an inference from reticle evidence.

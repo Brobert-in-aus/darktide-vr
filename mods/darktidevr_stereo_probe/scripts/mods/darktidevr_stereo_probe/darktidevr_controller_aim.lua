@@ -96,6 +96,12 @@ function controller_aim.install(mod, presentation, state)
     controller_aim.staff_secondary_writes = 0
     controller_aim.staff_tip_fallbacks = 0
     controller_aim.lightning_pose_writes = 0
+    controller_aim.reticle_publishes = 0
+    controller_aim.reticle_hits = 0
+    controller_aim.reticle_misses = 0
+    controller_aim.reticle_failures = 0
+    controller_aim.reticle_self_skips = 0
+    controller_aim.last_reticle_log_sequence = 0
 
     function controller_aim.target(side)
         if not state.authoring_enabled or not is_private_range() then
@@ -105,6 +111,95 @@ function controller_aim.install(mod, presentation, state)
             return presentation.left_controller_aim_target()
         end
         return presentation.controller_aim_target()
+    end
+
+    function controller_aim.publish_reticle(extension)
+        local position, rotation = controller_aim.target("right")
+        local physics_world = extension and extension._physics_world
+        if not position or not rotation or not physics_world then
+            presentation.publish_gameplay_aim_state(false, false, 0)
+            return
+        end
+        local direction = Quaternion.forward(rotation)
+        local ok, hits, hit_count = pcall(
+            PhysicsWorld.raycast,
+            physics_world,
+            position,
+            direction,
+            200,
+            "all",
+            "types",
+            "both",
+            "max_hits",
+            64,
+            "collision_filter",
+            "filter_player_character_shooting_raycast")
+        if not ok then
+            controller_aim.reticle_failures =
+                controller_aim.reticle_failures + 1
+            presentation.publish_gameplay_aim_state(false, false, 0)
+            if controller_aim.reticle_failures == 1 then
+                mod:error(
+                    "DARKTIDEVR_WEAPON_AIM reticle_raycast_failed error=%s",
+                    tostring(hits))
+            end
+            return
+        end
+        local hit = false
+        local distance = nil
+        local count = hit_count or (hits and #hits) or 0
+        for i = 1, count do
+            local candidate = hits[i]
+            local candidate_position = candidate.position or candidate[1]
+            local candidate_distance = candidate.distance or candidate[2]
+            local candidate_actor = candidate.actor or candidate[4]
+            local candidate_unit = candidate_actor and
+                Actor.unit(candidate_actor) or nil
+            -- A hand-origin ray begins inside parts of the local third-person
+            -- avatar. Darktide's shot processing rejects its attacker unit
+            -- after the all-hit query; do the same before selecting the
+            -- reticle surface rather than clamping that zero-distance overlap.
+            if candidate_unit ~= extension._unit then
+                distance = candidate_distance or candidate_position and
+                    Vector3.distance(position, candidate_position)
+                if distance then
+                    hit = true
+                    break
+                end
+            else
+                controller_aim.reticle_self_skips =
+                    controller_aim.reticle_self_skips + 1
+            end
+        end
+        distance = hit and distance or 50
+        distance = math.max(0.05, math.min(200, distance or 50))
+        if not presentation.publish_gameplay_aim_state(
+                true, hit == true, distance) then
+            controller_aim.reticle_failures =
+                controller_aim.reticle_failures + 1
+            return
+        end
+        controller_aim.reticle_publishes =
+            controller_aim.reticle_publishes + 1
+        if hit then
+            controller_aim.reticle_hits = controller_aim.reticle_hits + 1
+        else
+            controller_aim.reticle_misses = controller_aim.reticle_misses + 1
+        end
+        if state.last_sequence >=
+                controller_aim.last_reticle_log_sequence + 600 then
+            controller_aim.last_reticle_log_sequence = state.last_sequence
+            mod:info(
+                "DARKTIDEVR_WEAPON_AIM reticle sequence=%d distance_m=%.3f hit=%s publishes=%d hits=%d misses=%d self_skips=%d failures=%d",
+                state.last_sequence,
+                distance,
+                tostring(hit == true),
+                controller_aim.reticle_publishes,
+                controller_aim.reticle_hits,
+                controller_aim.reticle_misses,
+                controller_aim.reticle_self_skips,
+                controller_aim.reticle_failures)
+        end
     end
 
     function controller_aim.staff_tip(action)
@@ -435,9 +530,13 @@ function controller_aim.install(mod, presentation, state)
             end
             local position, rotation = controller_aim.target("right")
             if not position or not rotation then
+                presentation.publish_gameplay_aim_state(false, false, 0)
                 return func(self, ...)
             end
-            return with_first_person_pose(self, position, rotation, func, ...)
+            local result = with_first_person_pose(
+                self, position, rotation, func, ...)
+            controller_aim.publish_reticle(self)
+            return result
         end)
 
     mod:command(
@@ -447,7 +546,7 @@ function controller_aim.install(mod, presentation, state)
             local position, rotation = controller_aim.target()
             local direction = rotation and Quaternion.forward(rotation)
             mod:echo(
-                "DARKTIDEVR_WEAPON_AIM enabled=%s mode=%s target=%s shots=%d reused=%d network_writes=%d muzzle_writes=%d muzzle_fallbacks=%d staff_primary=%d staff_secondary=%d staff_tip_fallbacks=%d lightning_pose_writes=%d stock_origin_offset_m=%.4f direction=%s",
+                "DARKTIDEVR_WEAPON_AIM enabled=%s mode=%s target=%s shots=%d reused=%d network_writes=%d muzzle_writes=%d muzzle_fallbacks=%d staff_primary=%d staff_secondary=%d staff_tip_fallbacks=%d lightning_pose_writes=%d reticle_publishes=%d reticle_hits=%d reticle_misses=%d reticle_self_skips=%d reticle_failures=%d stock_origin_offset_m=%.4f direction=%s",
                 tostring(state.authoring_enabled),
                 tostring(active_mode()),
                 tostring(position ~= nil),
@@ -460,6 +559,11 @@ function controller_aim.install(mod, presentation, state)
                 controller_aim.staff_secondary_writes,
                 controller_aim.staff_tip_fallbacks,
                 controller_aim.lightning_pose_writes,
+                controller_aim.reticle_publishes,
+                controller_aim.reticle_hits,
+                controller_aim.reticle_misses,
+                controller_aim.reticle_self_skips,
+                controller_aim.reticle_failures,
                 controller_aim.last_origin_offset,
                 direction and string.format(
                     "%.4f,%.4f,%.4f",

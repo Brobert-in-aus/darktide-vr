@@ -11,6 +11,7 @@
 #include "core/gameplay_input.h"
 #include "core/shared_head_pose.h"
 #include "core/shared_controller_state.h"
+#include "core/shared_gameplay_aim_state.h"
 #include "core/shared_menu_pointer_state.h"
 #include "core/shared_presentation_state.h"
 #include "core/two_bone_ik.h"
@@ -8689,9 +8690,36 @@ bool publish_presentation_state(
   }
 }
 
+bool publish_gameplay_aim_state(float distance_metres, bool active, bool hit) {
+  try {
+    static darktidevr::core::SharedGameplayAimStateWriter writer;
+    static std::atomic<std::uint64_t> transport_sequence{0};
+    const darktidevr::core::SharedGameplayAimState state{
+        transport_sequence.fetch_add(1, std::memory_order_relaxed) + 1,
+        active ? distance_metres : 0.0F,
+        active,
+        active && hit};
+    return writer.publish(state);
+  } catch (...) {
+    return false;
+  }
+}
+
 }  // namespace
 
 extern "C" __declspec(dllexport) int dtvr_install() { return install_hooks(); }
+extern "C" __declspec(dllexport) int dtvr_set_gameplay_aim_state(
+    int active, int hit, float distance_metres) {
+  if (active != 0 && active != 1) {
+    return 1;
+  }
+  if (hit != 0 && hit != 1) {
+    return 2;
+  }
+  return publish_gameplay_aim_state(distance_metres, active != 0, hit != 0)
+             ? 0
+             : 3;
+}
 extern "C" __declspec(dllexport) int dtvr_commit_gameplay_generation(
     unsigned long long generation) {
   if (generation == 0) {
