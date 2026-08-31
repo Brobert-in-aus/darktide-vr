@@ -471,6 +471,7 @@ local presentation = {
         character_appearance_view = true,
         contracts_background_view = true,
         contracts_view = true,
+        live_events_view = true,
         credits_vendor_background_view = true,
         credits_vendor_view = true,
         credits_goods_vendor_view = true,
@@ -1878,7 +1879,10 @@ function presentation.update_vendor_menu_test(manager)
             for index = #active_views, 1, -1 do
                 local child_name = active_views[index]
                 if child_name ~= view_name and
-                        string.find(child_name, "crafting_", 1, true) == 1 then
+                        (string.find(child_name, "crafting_", 1, true) == 1 or
+                            presentation.shop_panel_views[child_name] or
+                            presentation.native_aspect_shop_panel_views[
+                                child_name]) then
                     local ok, result = pcall(
                         manager.close_view, manager, child_name)
                     mod:info(

@@ -335,3 +335,24 @@ right-hand alignment, angular size, perceived depth and off-axis skew. The
 current quad is parallel to the head and always compositor-visible; a later
 depth-aware world hit and controller-aim enablement policy remain separate
 decisions.
+
+## Contracts Events lifecycle isolation
+
+The earlier Events GPU hang is now reproduced and causally bounded. An isolated
+accepted Contracts landing activated `option_button_4`, opened
+`live_events_view` through the generic world-preserved mode-4 route, and hit a
+D3D12 page fault eight seconds later (`DXGI_ERROR_DEVICE_HUNG`). The view's
+shipping declaration sets `disable_game_world=true`; the generic preserve-world
+hook registered it as a mode-4 world menu before the normal fullscreen path
+could choose a captured client.
+
+`live_events_view` is now an explicit member of the Contracts mode-5 shop
+family. The same isolated activation then remained stable for the rest of a
+four-minute run: `shared_ready=5774`, zero capture failures, zero reused frames,
+zero pose mismatches and `result=pass`. A second run added the same guarded
+child-before-parent close sequencing used by nested shop families. The harness
+returned to presentation mode 1, stereo readiness continued to 5,441, and the
+220-second run passed with zero capture failures, reuse or pose mismatches.
+Worn content/input alignment within Events remains to be checked; the renderer
+lifecycle and stereo restoration are no longer blocked by the prior device
+hang.

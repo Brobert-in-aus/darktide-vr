@@ -1273,7 +1273,10 @@ Continue in this order:
 
 1. Extend Hadron's accepted flat-interactive mode-5 route across every shop
    family, preserving child-view input, strict one-eye desktop mirroring and
-   generation-synchronised stereo restoration. Then repair the Escape menu.
+   generation-synchronised stereo restoration. Contracts Events now uses the
+   same mode-5 family route: this removes a reproducible mode-4 D3D12 page fault
+   and passes automated open/close lifecycle testing. Worn Events content and
+   input alignment remain. Then repair the Escape menu.
 2. Worn-validate hybrid hub avatar ownership: stock locomotion/legs plus the
    VR-authored upper body, with no whole-body flicker or visible waist seam.
 3. Complete HUD/UI coverage while preserving 6DoF, binocular-overlap marker

@@ -167,6 +167,7 @@ if (-not $source.Contains('local shared_shadow_cull = true') -or
 foreach ($shopTestView in @(
         'credits_vendor_background_view',
         'contracts_background_view',
+        'live_events_view',
         'cosmetics_vendor_background_view',
         'barber_vendor_background_view',
         'store_view')) {

@@ -1029,8 +1029,10 @@ work; use its explicit disabled mode only as a regression control.
    validation and has an unattended source-pointer probe, but awaits the first
    worn corner-alignment gate. Test Store card hover at corners, activation/detail,
    scrolling and Back, then repeat child interaction for the accepted mode-5
-   families. Keep `live_events_view` blocked pending an isolated lifecycle
-   investigation: its first activation was followed by a GPU hang. Escape now
+   families. Isolation reproduced the `live_events_view` GPU hang on the
+   generic mode-4 world-preserved route. Explicit mode-5 Contracts-family
+   routing now survives automated open, soak, child-first close and stereo
+   restoration; worn Events content/input alignment remains. Escape now
    has unattended Options activation and clean stereo
    resume evidence; retain worn laser-alignment and nested interaction as its
    user gate. The remaining brief post-shop mono flash is
