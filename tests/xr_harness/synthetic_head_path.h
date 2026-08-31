@@ -28,6 +28,11 @@ struct SyntheticHeadPathSample {
 SyntheticHeadPathSample synthetic_head_path_sample(
     std::uint64_t frame, math::Vec3 preserved_translation);
 
+// Fixed test-only look-down pose which keeps the complete local avatar in the
+// desktop eye mirror.  Unlike the general sweep, this is intended for
+// unattended visual inspection of hybrid upper/lower-body ownership.
+math::Pose synthetic_body_inspection_pose(math::Vec3 preserved_translation);
+
 // Deterministic +/-45-degree pitch around a fixed anatomical neck point. The
 // HMD translation includes the rigid neck-to-eye arc, allowing the complete
 // runtime adapter to prove that pose compensation rejects head rotation while

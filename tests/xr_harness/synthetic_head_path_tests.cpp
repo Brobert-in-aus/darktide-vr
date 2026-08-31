@@ -18,6 +18,7 @@ int main() {
   using darktidevr::harness::SyntheticHeadPhase;
   using darktidevr::harness::kSyntheticHeadPhaseFrames;
   using darktidevr::harness::synthetic_head_path_sample;
+  using darktidevr::harness::synthetic_body_inspection_pose;
   using darktidevr::harness::synthetic_neck_pivot_path_sample;
   using darktidevr::harness::synthetic_crouch_position;
   using darktidevr::harness::synthetic_roomscale_position;
@@ -58,6 +59,15 @@ int main() {
              std::abs(combined_forward.y) > 0.2F &&
              std::abs(combined_up.x) > 0.2F,
          "Combined phase must contain both pitch and roll");
+
+  const auto body_inspection = synthetic_body_inspection_pose(translation);
+  const auto inspection_forward =
+      rotate(body_inspection.orientation, {0.0F, 0.0F, -1.0F});
+  expect(inspection_forward.y < -0.9F &&
+             body_inspection.position.x == translation.x &&
+             body_inspection.position.y == translation.y &&
+             body_inspection.position.z == translation.z,
+         "Body-inspection pose must look steeply down without translating");
 
   const auto pivot = synthetic_neck_pivot_path_sample(90, translation);
   expect(std::abs(rotate(pivot.orientation, {0.0F, 0.0F, -1.0F}).y) >

@@ -385,6 +385,46 @@ launcher flow before this validation; it was not an XR or mod-load failure.
 Worn laser/cursor alignment and representative dropdown, slider and toggle
 actions remain the human acceptance gate.
 
+## Deterministic hybrid-avatar inspection
+
+The general synthetic head sweep did not keep enough of the local avatar in
+the desktop eye mirror to distinguish an authority flicker from ordinary arm
+motion. The harness now exposes `--synthetic-body-inspection` (and matching
+runner/start-script switches): it fixes the tracked head at a 70-degree
+look-down pitch while preserving the supplied translation. It is mutually
+exclusive with the other synthetic orientation diagnostics, has a unit test,
+and reports its applied-frame count in the final harness summary.
+
+A clean authenticated hub run combined that pose with the existing synthetic
+controller, reach and locomotion paths. Twelve approximately 100 ms-spaced
+mirror captures showed continuous torso ownership and smooth one-directional
+arm travel rather than an alternating stock/IK pose. The run completed with
+6,763 fresh pairs, zero capture failures, zero shared-frame reuse and zero pose
+mismatches. This is useful unattended evidence, but the final waist-seam and
+stereo flicker gate remains a worn check.
+
+The unattended operative-select helper now waits for the selected profile's
+`UIProfileSpawner ... cb_on_unit_3p_streaming_complete` log boundary before
+sending Enter. `main_menu_view` opens earlier, while the same Enter is silently
+ignored until profile streaming completes.
+
+## Run-scoped fixed-HUD panel gate
+
+`start-darktide-vr.ps1 -EnableHudPanel` now owns the default-off HUD-panel flag
+for exactly one XR run and restores its prior value in `finally`. A clean hub
+gate logged `DARKTIDEVR_HUD enabled=true`, created the 1920x1080 target, and
+partitioned interaction/world-marker/nameplate elements into the spatial
+per-eye pass while fixed HUD elements were authored once to the panel target.
+The harness produced 6,612 fresh pairs with zero capture failures, reuse or
+pose mismatches; the fixed look-down diagnostic was applied for all 14,772 XR
+frames. The flag was restored to `disable` after completion.
+
+A source inventory confirms that damage numbers and smart tags feed the
+existing world-marker owner, while the interaction element has its own replay
+hook. The remaining distinct `Camera.world_to_screen` consumer is the stock
+crosshair, which belongs to the controller-aim target rather than fixed-HUD
+migration. Worn HUD depth, stereo parity and coverage remain pending.
+
 The first nested probe also exposed a diagnostic-only counter handoff defect.
 Its synthetic primary sequence advanced beyond the native transport counter;
 after consumption, native sequence zero therefore appeared permanently newer

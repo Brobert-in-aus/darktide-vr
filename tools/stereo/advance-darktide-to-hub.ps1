@@ -79,7 +79,13 @@ Send-DarktideKey -Process $title -Keys ' '
 
 $characterSelect = Wait-DarktideLogMatch -Patterns @(
     'Entering Game State StateMainMenu',
-    'DARKTIDEVR_PRESENTATION open view=main_menu_view active=true'
+    'DARKTIDEVR_PRESENTATION open view=main_menu_view active=true',
+    # MainMenuView exists before its selected operative has finished
+    # streaming.  Enter sent in that interval is silently ignored, which made
+    # nominal unattended runs stop at character select.  This stock spawner
+    # completion is the first observed log-owned readiness boundary after
+    # which the same Enter action is accepted.
+    'UIProfileSpawner.*cb_on_unit_3p_streaming_complete'
 ) -Deadline $deadline -NotBefore $started
 if ($StopAtCharacterSelect) {
     Write-Output 'Darktide title advanced to character select without mouse input.'

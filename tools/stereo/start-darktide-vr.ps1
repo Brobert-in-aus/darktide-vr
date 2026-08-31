@@ -23,9 +23,13 @@ param(
 
     [switch] $EnableGameplayReticle,
 
+    [switch] $EnableHudPanel,
+
     [switch] $SyntheticBodyPath,
 
     [switch] $SyntheticHeadSweep,
+
+    [switch] $SyntheticBodyInspection,
 
     [switch] $SyntheticNeckPivotPath,
 
@@ -124,7 +128,22 @@ $xrLaunchOwnsGame = $false
 $xrRunnerStarted = $false
 $gameplayInputFlagPath = $null
 $gameplayInputFlagOriginal = $null
+$hudPanelFlagPath = $null
+$hudPanelFlagOriginal = $null
 try {
+if ($EnableHudPanel) {
+    $candidateHudPanelFlagPath = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_hud_panel.flag'
+    if (-not (Test-Path -LiteralPath $candidateHudPanelFlagPath -PathType Leaf)) {
+        throw "HUD-panel test flag not found: $candidateHudPanelFlagPath"
+    }
+    $hudPanelFlagOriginal = Get-Content -LiteralPath `
+        $candidateHudPanelFlagPath -Raw
+    $hudPanelFlagPath = $candidateHudPanelFlagPath
+    Set-Content -LiteralPath $hudPanelFlagPath -Value 'enable' `
+        -Encoding ascii
+    Write-Output 'Fixed HUD panel enabled for this XR run.'
+}
 if (-not $DoNotOpenLauncher) {
     $expectedLauncherPath = Join-Path $GameRoot 'launcher\Launcher.exe'
     if (-not (Test-Path -LiteralPath $expectedLauncherPath -PathType Leaf)) {
@@ -232,6 +251,9 @@ if ($SyntheticBodyPath) {
 if ($SyntheticHeadSweep) {
     $runnerArguments.SyntheticHeadSweep = $true
 }
+if ($SyntheticBodyInspection) {
+    $runnerArguments.SyntheticBodyInspection = $true
+}
 if ($SyntheticNeckPivotPath) {
     $runnerArguments.SyntheticNeckPivotPath = $true
 }
@@ -242,6 +264,11 @@ $xrRunnerStarted = $true
 & $runner @runnerArguments
 }
 finally {
+    if ($hudPanelFlagPath) {
+        Set-Content -LiteralPath $hudPanelFlagPath `
+            -Value $hudPanelFlagOriginal.Trim() -Encoding ascii
+        Write-Output 'Restored the prior HUD-panel test flag.'
+    }
     if ($gameplayInputFlagPath) {
         Set-Content -LiteralPath $gameplayInputFlagPath `
             -Value $gameplayInputFlagOriginal.Trim() -Encoding ascii

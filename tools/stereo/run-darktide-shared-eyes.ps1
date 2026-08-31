@@ -23,6 +23,8 @@ param(
 
     [switch] $SyntheticHeadSweep,
 
+    [switch] $SyntheticBodyInspection,
+
     [switch] $SyntheticNeckPivotPath,
 
     [switch] $SyntheticRoomscalePath,
@@ -138,6 +140,9 @@ if ($SyntheticBodyPath) {
 }
 if ($SyntheticHeadSweep) {
     $arguments += '--synthetic-head-sweep'
+}
+if ($SyntheticBodyInspection) {
+    $arguments += '--synthetic-body-inspection'
 }
 if ($SyntheticNeckPivotPath) {
     $arguments += '--synthetic-neck-pivot-path'

@@ -1366,6 +1366,15 @@ no Lua errors after activation, and nonzero XR `shared_ready`.  Worn visual
 acceptance remains: verify stock animated legs, VR-authored upper body, no
 torso/arm flicker and no visible waist seam.
 
+The harness also has a fixed 70-degree look-down body-inspection pose which can
+be combined with the synthetic controller, reach and locomotion paths. In a
+clean authenticated hub run, twelve short-interval desktop-mirror captures
+showed a continuously visible torso and smooth arm travel without the previous
+alternating-authority signature. The run delivered 6,763 fresh pairs with no
+capture failure, frame reuse or pose mismatch. This narrows the remaining gate
+to a worn stereo check for subtle flicker and the waist seam; it does not replace
+that human acceptance test.
+
 ### Quantile-based hub profiling
 
 The opt-in profiler now reports actual CPU wrapper p50/p95 samples and native
@@ -1402,6 +1411,16 @@ target, and restores all retained fields afterward. A fresh hub gate populated
 the target and retained visible fixed player/team content while spatial
 elements stayed in the per-eye pass. Worn depth, parity and coverage remain
 pending; do not enable the older duplicate-update prototype.
+
+The default-off candidate can now be enabled for one guarded run with
+`start-darktide-vr.ps1 -EnableHudPanel`; the launcher restores the exact prior
+flag state in `finally`. A clean fixed-look-down hub run created the 1920x1080
+HUD target, kept interaction/world-marker/nameplate elements spatial, delivered
+6,612 fresh pairs with no capture failure/reuse/pose mismatch, and restored the
+flag to disabled. Source auditing also places damage numbers and smart tags
+under the world-marker owner. The stock crosshair is the only remaining direct
+HUD `Camera.world_to_screen` consumer and is intentionally assigned to the
+right-controller aiming work rather than the fixed panel.
 
 ### Hadron transition checkpoint
 

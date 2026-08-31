@@ -614,6 +614,7 @@ class OpenXrProbe {
                                bool synthetic_gameplay_input,
                                bool enable_gameplay_reticle,
                                bool synthetic_head_sweep,
+                               bool synthetic_body_inspection,
                                bool synthetic_neck_pivot_path,
                                bool synthetic_roomscale_path,
                                bool synthetic_crouch_path,
@@ -1042,6 +1043,7 @@ class OpenXrProbe {
     std::uint32_t last_live_fallback_frames{};
     std::uint32_t processed_frames{};
     std::uint64_t synthetic_head_frames{};
+    std::uint64_t synthetic_body_inspection_frames{};
     std::uint64_t synthetic_roomscale_frames{};
     std::uint64_t synthetic_crouch_frames{};
     darktidevr::math::Vec3 latest_camera_translation{};
@@ -1455,6 +1457,11 @@ class OpenXrProbe {
             delta = synthetic.delta;
             ++synthetic_head_phase_frames[
                 static_cast<std::size_t>(synthetic.phase)];
+          }
+          if (synthetic_body_inspection) {
+            delta = darktidevr::harness::synthetic_body_inspection_pose(
+                delta.position);
+            ++synthetic_body_inspection_frames;
           }
           if (synthetic_neck_pivot_path) {
             delta = darktidevr::harness::synthetic_neck_pivot_path_sample(
@@ -3017,6 +3024,8 @@ class OpenXrProbe {
     std::cout << '\n'
               << "openxr.synthetic_head_frames=" << synthetic_head_frames
               << '\n'
+              << "openxr.synthetic_body_inspection_frames="
+              << synthetic_body_inspection_frames << '\n'
               << "openxr.synthetic_roomscale_frames="
               << synthetic_roomscale_frames << '\n'
               << "openxr.synthetic_crouch_frames="
@@ -4011,6 +4020,7 @@ void usage() {
                 "[--synthetic-gameplay-input] "
                 "[--enable-gameplay-reticle] "
                 "[--synthetic-head-sweep] "
+                "[--synthetic-body-inspection] "
                 "[--synthetic-neck-pivot-path] "
                 "[--synthetic-roomscale-path] "
                 "[--synthetic-crouch-path] "
@@ -4049,6 +4059,7 @@ int wmain(int argc, wchar_t** argv) {
     bool synthetic_gameplay_input = false;
     bool enable_gameplay_reticle = false;
     bool synthetic_head_sweep = false;
+    bool synthetic_body_inspection = false;
     bool synthetic_neck_pivot_path = false;
     bool synthetic_roomscale_path = false;
     bool synthetic_crouch_path = false;
@@ -4107,6 +4118,8 @@ int wmain(int argc, wchar_t** argv) {
         enable_gameplay_reticle = true;
       } else if (argument == L"--synthetic-head-sweep") {
         synthetic_head_sweep = true;
+      } else if (argument == L"--synthetic-body-inspection") {
+        synthetic_body_inspection = true;
       } else if (argument == L"--synthetic-neck-pivot-path") {
         synthetic_neck_pivot_path = true;
       } else if (argument == L"--synthetic-roomscale-path") {
@@ -4181,6 +4194,10 @@ int wmain(int argc, wchar_t** argv) {
       throw std::invalid_argument(
           "--synthetic-head-sweep requires --shared-eyes");
     }
+    if (synthetic_body_inspection && !shared_eyes) {
+      throw std::invalid_argument(
+          "--synthetic-body-inspection requires --shared-eyes");
+    }
     if (enable_gameplay_reticle && !shared_eyes) {
       throw std::invalid_argument(
           "--enable-gameplay-reticle requires --shared-eyes");
@@ -4189,9 +4206,14 @@ int wmain(int argc, wchar_t** argv) {
       throw std::invalid_argument(
           "--synthetic-neck-pivot-path requires --shared-eyes");
     }
-    if (synthetic_neck_pivot_path && synthetic_head_sweep) {
+    if (synthetic_neck_pivot_path &&
+        (synthetic_head_sweep || synthetic_body_inspection)) {
       throw std::invalid_argument(
-          "--synthetic-neck-pivot-path and --synthetic-head-sweep are exclusive");
+          "Synthetic orientation diagnostics are mutually exclusive");
+    }
+    if (synthetic_head_sweep && synthetic_body_inspection) {
+      throw std::invalid_argument(
+          "--synthetic-head-sweep and --synthetic-body-inspection are exclusive");
     }
     if (synthetic_roomscale_path && !shared_eyes) {
       throw std::invalid_argument(
@@ -4242,6 +4264,7 @@ int wmain(int argc, wchar_t** argv) {
                                      synthetic_gameplay_input,
                                      enable_gameplay_reticle,
                                      synthetic_head_sweep,
+                                     synthetic_body_inspection,
                                      synthetic_neck_pivot_path,
                                      synthetic_roomscale_path,
                                      synthetic_crouch_path,
