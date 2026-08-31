@@ -465,3 +465,35 @@ depth, angular size and edge occlusion. The generic synthetic input loop did not
 deterministically wield and fire each Psyker weapon in this run, so staff normal,
 staff charged, sword and lightning firing policies remain a separate clean-range
 matrix rather than an inference from reticle evidence.
+
+## Deterministic Psyker weapon-aim matrix
+
+The generic controller diagnostic was not valid weapon evidence: its repeating
+loop can assert quick-wield, reload, interact, jump, dodge and crouch in
+conflicting combinations, and its global frame phase can begin before the
+shooting range exists. The harness now has a purpose-specific
+`--synthetic-weapon-aim-matrix` path, exposed by
+`start-darktide-vr.ps1 -SyntheticWeaponAimMatrix`. The start switch owns the
+controller, gameplay-input, controller-aim/reticle and pre-armed Psykhanium
+requirements for the run. All gameplay controls are neutralized between matrix
+steps.
+
+The matrix epoch begins only after the typed gameplay-aim state is active, not
+when presentation mode 1 appears transiently during a level transition. Each
+720-frame cycle leaves an initial neutral second, quick-wields from sword to
+staff, fires staff primary, holds alternate fire and fires staff charged,
+equips Psyker chain lightning and fires it, quick-wields back to sword, then
+delivers sword primary. This clean separation also prevents a generic
+synthetic-controller attack leaking across the private-range activation edge.
+
+The corrected 140-second authenticated run reached
+`DARKTIDEVR_PSYKHANIUM result=pass` and completed four matrix cycles. It logged
+four `left_origin_right_aim` normal-staff projectiles, four
+`staff_tip_right_aim` charged projectiles, and four advancing
+`lightning right_aim` updates. The return-to-sword quick-wield and following
+primary press were delivered in each cycle; there is not yet a separate melee
+action-start counter, so this proves ordered input delivery rather than sword
+hit/animation completion. XR produced 4,185 fresh stereo pairs, zero reused
+shared frames and zero pair-driven timeouts. The one pose mismatch occurred at
+the shooting-range transition. There were no script or engine errors, and the
+temporary controller-aim and gameplay-input flags were restored.

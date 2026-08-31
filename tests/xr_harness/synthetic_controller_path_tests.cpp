@@ -58,6 +58,13 @@ int main() {
   auto body_crossed_end = outside.state;
   auto body_far = far.state;
   auto body_invalid = invalid.state;
+  auto matrix_staff_wield = left.state;
+  auto matrix_staff_primary = left.state;
+  auto matrix_staff_charge = left.state;
+  auto matrix_staff_fire = left.state;
+  auto matrix_lightning = left.state;
+  auto matrix_sword_wield = left.state;
+  auto matrix_sword_attack = left.state;
   darktidevr::harness::apply_synthetic_body_reach_path(body_near, 5);
   darktidevr::harness::apply_synthetic_body_reach_path(body_left_reach, 59);
   darktidevr::harness::apply_synthetic_body_reach_path(body_right_reach, 119);
@@ -66,6 +73,20 @@ int main() {
   darktidevr::harness::apply_synthetic_body_reach_path(body_crossed_end, 179);
   darktidevr::harness::apply_synthetic_body_reach_path(body_far, 240);
   darktidevr::harness::apply_synthetic_body_reach_path(body_invalid, 300);
+  darktidevr::harness::apply_synthetic_weapon_aim_matrix(
+      matrix_staff_wield, 60);
+  darktidevr::harness::apply_synthetic_weapon_aim_matrix(
+      matrix_staff_primary, 150);
+  darktidevr::harness::apply_synthetic_weapon_aim_matrix(
+      matrix_staff_charge, 240);
+  darktidevr::harness::apply_synthetic_weapon_aim_matrix(
+      matrix_staff_fire, 300);
+  darktidevr::harness::apply_synthetic_weapon_aim_matrix(
+      matrix_lightning, 480);
+  darktidevr::harness::apply_synthetic_weapon_aim_matrix(
+      matrix_sword_wield, 600);
+  darktidevr::harness::apply_synthetic_weapon_aim_matrix(
+      matrix_sword_attack, 660);
 
   const darktidevr::math::Vec3 head{0.0F, 0.0F, 0.0F};
   const bool valid =
@@ -116,6 +137,20 @@ int main() {
       length(body_far.hands[0].body_grip_pose.position) > 1.0F &&
       body_invalid.hands[0].body_grip_tracking_flags == 0 &&
       body_invalid.hands[1].body_grip_tracking_flags == 0 &&
+      matrix_staff_wield.hands[0].buttons ==
+          darktidevr::core::controller_secondary &&
+      matrix_staff_primary.hands[1].trigger == 1.0F &&
+      matrix_staff_primary.hands[0].trigger == 0.0F &&
+      matrix_staff_charge.hands[0].trigger == 1.0F &&
+      matrix_staff_charge.hands[1].trigger == 0.0F &&
+      matrix_staff_fire.hands[0].trigger == 1.0F &&
+      matrix_staff_fire.hands[1].trigger == 1.0F &&
+      matrix_lightning.hands[0].squeeze == 1.0F &&
+      matrix_lightning.hands[1].trigger == 1.0F &&
+      matrix_sword_wield.hands[0].buttons ==
+          darktidevr::core::controller_secondary &&
+      matrix_sword_attack.hands[1].trigger == 1.0F &&
+      matrix_sword_attack.hands[0].buttons == 0 &&
       reacquired.phase ==
           darktidevr::harness::SyntheticControllerPhase::left_sweep;
   if (!valid) {

@@ -34,4 +34,10 @@ SyntheticControllerPathSample synthetic_controller_path_sample(
 void apply_synthetic_body_reach_path(core::SharedControllerState& state,
                                      std::uint64_t frame);
 
+// Replaces only gameplay controls with a repeatable private-range matrix:
+// staff wield, primary projectile, charged/ADS projectile, Psyker lightning,
+// sword wield and melee primary. Tracking poses remain unchanged.
+void apply_synthetic_weapon_aim_matrix(core::SharedControllerState& state,
+                                       std::uint64_t frame);
+
 }  // namespace darktidevr::harness

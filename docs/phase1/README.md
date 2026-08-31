@@ -1600,3 +1600,24 @@ occlusion and comfort still need a headset check, and deterministic weapon
 selection/firing must separately cover sword, lightning, staff primary
 (left-hand origin/right-hand direction) and staff charged
 (staff-tip origin/right-hand direction).
+
+### Deterministic Psyker weapon matrix checkpoint
+
+`start-darktide-vr.ps1 -SyntheticWeaponAimMatrix` now runs a clean, repeatable
+private-range weapon sequence instead of reusing the broad controller diagnostic
+whose simultaneous actions made weapon ownership ambiguous. The matrix waits
+for the typed gameplay-aim state to become active before starting its own frame
+clock, resets every gameplay control between stages, then performs: sword-to-
+staff quick-wield, staff primary, held alternate plus staff charged, chain-
+lightning equip plus primary, staff-to-sword quick-wield and sword primary.
+
+A 140-second authenticated run completed four cycles. Darktide logged four
+normal-staff projectiles with tracked-left-hand origin/right-hand direction,
+four charged projectiles with live staff-tip origin/right-hand direction, and
+four chain-lightning right-aim updates. Each sword stage had ordered quick-wield
+and primary input delivery, but melee action start/hit completion has not been
+instrumented and is not claimed. The run delivered 4,185 fresh stereo pairs,
+zero shared-frame reuse, zero pair-driven timeouts, no Lua or engine errors, and
+restored its temporary flags. This closes unattended source/direction coverage
+for the available Psyker ranged attacks; worn aim/reticle acceptance and a
+non-Psyker firearm remain open.

@@ -17,6 +17,8 @@ param(
 
     [switch] $SyntheticGameplayInput,
 
+    [switch] $SyntheticWeaponAimMatrix,
+
     [switch] $EnableGameplayReticle,
 
     [switch] $SyntheticBodyPath,
@@ -128,6 +130,12 @@ if ($SyntheticGameplayInput) {
         throw '-SyntheticGameplayInput requires -SyntheticControllerPath'
     }
     $arguments += '--synthetic-gameplay-input'
+}
+if ($SyntheticWeaponAimMatrix) {
+    if (-not $SyntheticGameplayInput) {
+        throw '-SyntheticWeaponAimMatrix requires -SyntheticGameplayInput'
+    }
+    $arguments += '--synthetic-weapon-aim-matrix'
 }
 if ($EnableGameplayReticle) {
     $arguments += '--enable-gameplay-reticle'

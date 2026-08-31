@@ -613,6 +613,7 @@ class OpenXrProbe {
                                bool synthetic_controller_path,
                                bool synthetic_body_path,
                                bool synthetic_gameplay_input,
+                               bool synthetic_weapon_aim_matrix,
                                bool enable_gameplay_reticle,
                                bool synthetic_head_sweep,
                                bool synthetic_body_inspection,
@@ -2371,6 +2372,23 @@ class OpenXrProbe {
           darktidevr::harness::apply_synthetic_body_reach_path(
               synthetic.state, synthetic_controller_frames_ - 1);
         }
+        // Presentation mode 1 briefly appears during character-select/range
+        // transitions. The typed aim publisher becomes active only after Lua
+        // has accepted the private-range controller-aim contract, so use that
+        // as the matrix epoch instead of consuming phases in a transient world.
+        if (synthetic_weapon_aim_matrix) {
+          if (emit_synthetic_gameplay && gameplay_aim_state.active) {
+            darktidevr::harness::apply_synthetic_weapon_aim_matrix(
+                synthetic.state, synthetic_weapon_aim_matrix_frames_);
+            ++synthetic_weapon_aim_matrix_frames_;
+          } else {
+            // Frame zero is the matrix's explicit neutral warm-up state. Do
+            // not let the generic controller diagnostic leak an attack while
+            // the private-range aim publisher is still becoming active.
+            darktidevr::harness::apply_synthetic_weapon_aim_matrix(
+                synthetic.state, 0);
+          }
+        }
         if (!controller_writer_->publish(synthetic.state)) {
           throw std::runtime_error(
               "Shared controller state rejected synthetic sample");
@@ -3047,6 +3065,8 @@ class OpenXrProbe {
               << '\n'
               << "openxr.synthetic_controller_frames="
               << synthetic_controller_frames_ << '\n'
+              << "openxr.synthetic_weapon_aim_matrix_frames="
+              << synthetic_weapon_aim_matrix_frames_ << '\n'
               << "openxr.synthetic_controller_phase_frames=";
     for (std::size_t index = 0;
          index < synthetic_controller_phase_frames_.size(); ++index) {
@@ -3704,6 +3724,7 @@ class OpenXrProbe {
   std::uint32_t controller_pointer_x_{};
   std::uint32_t controller_pointer_y_{};
   std::uint64_t synthetic_controller_frames_{};
+  std::uint64_t synthetic_weapon_aim_matrix_frames_{};
   std::array<std::uint64_t, 6> synthetic_controller_phase_frames_{};
   bool d3d12_extension_{};
   std::optional<XrGraphicsRequirementsD3D12KHR> requirements_;
@@ -4054,6 +4075,7 @@ void usage() {
                 "[--synthetic-controller-path] "
                 "[--synthetic-body-path] "
                 "[--synthetic-gameplay-input] "
+                "[--synthetic-weapon-aim-matrix] "
                 "[--enable-gameplay-reticle] "
                 "[--synthetic-head-sweep] "
                 "[--synthetic-body-inspection] "
@@ -4093,6 +4115,7 @@ int wmain(int argc, wchar_t** argv) {
     bool synthetic_controller_path = false;
     bool synthetic_body_path = false;
     bool synthetic_gameplay_input = false;
+    bool synthetic_weapon_aim_matrix = false;
     bool enable_gameplay_reticle = false;
     bool synthetic_head_sweep = false;
     bool synthetic_body_inspection = false;
@@ -4150,6 +4173,8 @@ int wmain(int argc, wchar_t** argv) {
         synthetic_body_path = true;
       } else if (argument == L"--synthetic-gameplay-input") {
         synthetic_gameplay_input = true;
+      } else if (argument == L"--synthetic-weapon-aim-matrix") {
+        synthetic_weapon_aim_matrix = true;
       } else if (argument == L"--enable-gameplay-reticle") {
         enable_gameplay_reticle = true;
       } else if (argument == L"--synthetic-head-sweep") {
@@ -4221,6 +4246,10 @@ int wmain(int argc, wchar_t** argv) {
     if (synthetic_gameplay_input && !synthetic_controller_path) {
       throw std::invalid_argument(
           "--synthetic-gameplay-input requires --synthetic-controller-path");
+    }
+    if (synthetic_weapon_aim_matrix && !synthetic_gameplay_input) {
+      throw std::invalid_argument(
+          "--synthetic-weapon-aim-matrix requires --synthetic-gameplay-input");
     }
     if (synthetic_body_path && !synthetic_controller_path) {
       throw std::invalid_argument(
@@ -4298,6 +4327,7 @@ int wmain(int argc, wchar_t** argv) {
                                      synthetic_controller_path,
                                      synthetic_body_path,
                                      synthetic_gameplay_input,
+                                     synthetic_weapon_aim_matrix,
                                      enable_gameplay_reticle,
                                      synthetic_head_sweep,
                                      synthetic_body_inspection,

@@ -167,4 +167,46 @@ void apply_synthetic_body_reach_path(core::SharedControllerState& state,
   }
 }
 
+void apply_synthetic_weapon_aim_matrix(core::SharedControllerState& state,
+                                       std::uint64_t frame) {
+  constexpr std::uint64_t cycle_frames = 720;
+  const auto cycle_frame = frame % cycle_frames;
+  for (auto& hand : state.hands) {
+    hand.trigger = 0.0F;
+    hand.squeeze = 0.0F;
+    hand.thumbstick_x = 0.0F;
+    hand.thumbstick_y = 0.0F;
+    hand.buttons = 0;
+  }
+
+  // Begin from the range's default melee slot and switch to the force staff.
+  // Leave one second for the run-scoped Lua input adapter to observe its flag
+  // after stereo-world presentation begins; an edge on frame zero can precede
+  // that polling boundary and be correctly ignored by production input gates.
+  if (cycle_frame >= 60 && cycle_frame < 66) {
+    state.hands[0].buttons = core::controller_secondary;
+  // Normal staff projectile: right trigger, right-hand aim direction.
+  } else if (cycle_frame >= 150 && cycle_frame < 180) {
+    state.hands[1].trigger = 1.0F;
+  // Hold alternate fire, then press primary while it remains held. This is
+  // Darktide's charged/ADS-equivalent staff projectile sequence.
+  } else if (cycle_frame >= 240 && cycle_frame < 360) {
+    state.hands[0].trigger = 1.0F;
+    if (cycle_frame >= 300 && cycle_frame < 330) {
+      state.hands[1].trigger = 1.0F;
+    }
+  // Psyker grenade-ability input owns chain lightning on this test profile.
+  } else if (cycle_frame >= 420 && cycle_frame < 540) {
+    state.hands[0].squeeze = 1.0F;
+    if (cycle_frame >= 480 && cycle_frame < 510) {
+      state.hands[1].trigger = 1.0F;
+    }
+  // Return from staff to sword, then exercise its normal primary attack.
+  } else if (cycle_frame >= 600 && cycle_frame < 606) {
+    state.hands[0].buttons = core::controller_secondary;
+  } else if (cycle_frame >= 660 && cycle_frame < 690) {
+    state.hands[1].trigger = 1.0F;
+  }
+}
+
 }  // namespace darktidevr::harness

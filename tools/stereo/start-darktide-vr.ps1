@@ -21,6 +21,8 @@ param(
 
     [switch] $SyntheticGameplayInput,
 
+    [switch] $SyntheticWeaponAimMatrix,
+
     [switch] $EnableGameplayReticle,
 
     [switch] $EnableHudPanel,
@@ -63,6 +65,15 @@ if (-not (Test-Path -LiteralPath $luaSourceCheck -PathType Leaf)) {
     throw "Lua source check not found: $luaSourceCheck"
 }
 & $luaSourceCheck
+
+if ($SyntheticWeaponAimMatrix) {
+    # The matrix is a self-contained private-range gate: deterministic tracked
+    # controls, Lua gameplay adapter, controller-authored aim and depth reticle.
+    $SyntheticControllerPath = $true
+    $SyntheticGameplayInput = $true
+    $EnableGameplayReticle = $true
+    $EnterPsykhanium = $true
+}
 
 if (-not $SkipDeploymentSync) {
     $sync = Join-Path $PSScriptRoot 'sync-darktide-vr-dev.ps1'
@@ -256,6 +267,9 @@ if ($SyntheticGameplayInput) {
         -Encoding ascii
     Write-Output 'Synthetic gameplay adapter enabled for this XR run.'
     $runnerArguments.SyntheticGameplayInput = $true
+}
+if ($SyntheticWeaponAimMatrix) {
+    $runnerArguments.SyntheticWeaponAimMatrix = $true
 }
 if ($EnableGameplayReticle) {
     $runnerArguments.EnableGameplayReticle = $true
