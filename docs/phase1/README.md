@@ -1465,3 +1465,15 @@ An adjacent performance audit removed per-frame diagnostic filesystem probes.
 System/vendor menu and input-inventory flags poll every 15 UI updates;
 Psykhanium and hotspot inventory poll at 250 ms; movement inventory retains a
 60-fixed-frame gate. Active close state still advances each frame.
+
+A subsequent matched culling A/B quantified the cost of the visual-parity fix.
+Across the last twelve warmed stationary-hub windows, shared tracked-camera
+culling measured 33.773 ms summed-eye GPU average versus 30.942 ms for the old
+independent/stale-cull regression. Summed independent-eye p95s were 40.699 and
+37.312 ms respectively, while the corrected Lua pair wrapper was only
+0.324/0.582 ms average/p95. The restored geometry, shadow and lighting work is
+the source of that roughly 2.8 ms GPU difference; shared-camera culling does
+not itself share prepared visibility. It remains mandatory for parity. The next
+renderer optimization target is reusable visibility/draw preparation before
+the per-eye camera-dependent work. Focused command-list attribution is now
+inactive-cost-gated, and GPU profiling remains fresh-process, diagnostic-only.

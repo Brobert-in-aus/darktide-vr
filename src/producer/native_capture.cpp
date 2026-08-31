@@ -4052,8 +4052,12 @@ HRESULT STDMETHODCALLTYPE close_hook(ID3D12GraphicsCommandList* commands) {
 HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
                                      ID3D12CommandAllocator* allocator,
                                      ID3D12PipelineState* initial_state) {
+  const auto focused =
+      focused_trace_phase.load(std::memory_order_relaxed) != 0;
   const auto recording_generation =
-      command_recording_generation.fetch_add(1, std::memory_order_relaxed) + 1;
+      focused ? command_recording_generation.fetch_add(
+                    1, std::memory_order_relaxed) + 1
+              : 0;
   if (marker_log != INVALID_HANDLE_VALUE || kStockMenuDirectRenderEnabled ||
       billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) {
     std::scoped_lock lock(trace_mutex);
@@ -4072,7 +4076,11 @@ HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
     swapchain_write_resources.erase(commands);
     camera_output_resources.erase(commands);
     camera_output_source_states.erase(commands);
-    command_recording_generations[commands] = recording_generation;
+    if (focused) {
+      command_recording_generations[commands] = recording_generation;
+    } else {
+      command_recording_generations.erase(commands);
+    }
     const auto candidates = camera_output_candidates.find(commands);
     if (candidates != camera_output_candidates.end()) {
       candidates->second.clear();
@@ -6328,21 +6336,26 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
               present_count.load(std::memory_order_relaxed), graphics,
               selected_candidate, completed_back_buffer.Get());
         }
-        completed_named_output_eye =
-            named_eye_final_index(completed_back_buffer.Get());
-        completed_output_commands = graphics;
-        write_focused_log(
-            "phase=%d\tframe=%llu\tCL=%p\tOUTPUT_IDENTITY"
-            "\tgen=%llu\trender_eye=%d\tnamed_output_eye=%d\tpose=%llu\tresource=%p"
-            "\tname=%s\r\n",
-            focused_trace_phase.load(std::memory_order_relaxed),
-            present_count.load(std::memory_order_relaxed), graphics,
-            static_cast<unsigned long long>(
-                command_recording_generations[graphics]),
-            requested_eye, completed_named_output_eye,
-            static_cast<unsigned long long>(requested_pose_sequence),
-            completed_back_buffer.Get(),
-            resource_debug_name(completed_back_buffer.Get()).c_str());
+        if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+          completed_named_output_eye =
+              named_eye_final_index(completed_back_buffer.Get());
+          completed_output_commands = graphics;
+          const auto generation = command_recording_generations.find(graphics);
+          write_focused_log(
+              "phase=%d\tframe=%llu\tCL=%p\tOUTPUT_IDENTITY"
+              "\tgen=%llu\trender_eye=%d\tnamed_output_eye=%d\tpose=%llu\tresource=%p"
+              "\tname=%s\r\n",
+              focused_trace_phase.load(std::memory_order_relaxed),
+              present_count.load(std::memory_order_relaxed), graphics,
+              static_cast<unsigned long long>(
+                  generation == command_recording_generations.end()
+                      ? 0
+                      : generation->second),
+              requested_eye, completed_named_output_eye,
+              static_cast<unsigned long long>(requested_pose_sequence),
+              completed_back_buffer.Get(),
+              resource_debug_name(completed_back_buffer.Get()).c_str());
+        }
         const auto state_found = camera_output_source_states.find(graphics);
         if (state_found != camera_output_source_states.end()) {
           completed_source_state = state_found->second;
@@ -6355,9 +6368,11 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
       }
       present_transition_resources.erase(graphics);
     }
-    if (requested_eye >= 0) {
+    if (requested_eye >= 0 &&
+        focused_trace_phase.load(std::memory_order_relaxed) != 0) {
       for (UINT index = 0; index < count; ++index) {
         auto* graphics = static_cast<ID3D12GraphicsCommandList*>(lists[index]);
+        const auto generation = command_recording_generations.find(graphics);
         write_focused_log(
             "phase=%d\tframe=%llu\tCL=%p\tOUTPUT_BATCH_IDENTITY"
             "\tgen=%llu\trender_eye=%d\tpose=%llu\tbatch_index=%u\tbatch_count=%u"
@@ -6365,7 +6380,9 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
             focused_trace_phase.load(std::memory_order_relaxed),
             present_count.load(std::memory_order_relaxed), graphics,
             static_cast<unsigned long long>(
-                command_recording_generations[graphics]),
+                generation == command_recording_generations.end()
+                    ? 0
+                    : generation->second),
             requested_eye,
             static_cast<unsigned long long>(requested_pose_sequence), index,
             count, graphics == completed_output_commands ? 1U : 0U);

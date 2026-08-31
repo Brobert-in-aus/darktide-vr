@@ -11,6 +11,8 @@ param(
 
     [switch] $FreshPsoCache,
 
+    [switch] $DiagnosticRenderHooks,
+
     [switch] $EnableMenuInput,
 
     [switch] $EnableMenuTestControls,
@@ -65,7 +67,8 @@ if (-not $SkipDeploymentSync) {
         Write-Warning 'Darktide is already running; deployment sync cannot update loaded files.'
     }
     else {
-        & $sync -GameRoot $GameRoot -Configuration Release
+        & $sync -GameRoot $GameRoot -Configuration Release `
+            -DiagnosticRenderHooks:$DiagnosticRenderHooks
     }
 }
 

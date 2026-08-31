@@ -3066,6 +3066,22 @@ end
 -- subsequent main-menu and gameplay package loads pass their real PSO and
 -- root-signature creation descriptors through our hooks. Delaying this until
 -- UIWorldSpawner.create_viewport is too late for shader/root localization.
+function presentation.refresh_performance_profile_request()
+    local flag = Mods.lua.io.open(
+        "./../mods/darktidevr_stereo_probe/darktidevr_performance_profile.flag",
+        "r")
+    performance_profile_requested = false
+    if flag then
+        performance_profile_requested = flag:read("*all"):match(
+            "^%s*enabled%s*$") ~= nil
+        flag:close()
+    end
+    mod:info(
+        "DARKTIDEVR_PERF profile_enabled=%s",
+        tostring(performance_profile_requested))
+end
+
+presentation.refresh_performance_profile_request()
 if ui_native_observer_requested or diagnostic_render_hooks_requested or
         vertex_shader_dump_requested or billboard_horizon_lock_requested or
         billboard_shader_substitution_requested or

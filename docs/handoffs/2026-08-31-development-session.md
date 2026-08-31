@@ -200,3 +200,28 @@ mismatches; exit was clean. The Lua source gate passed at 198/198 locals, the
 Release native DLL built with warnings-as-errors, all 30 CTest cases passed,
 the diagnostic PowerShell tools parsed, Python attribution tooling compiled,
 and `git diff --check` passed.
+
+## Matched shared-cull performance control
+
+Performance profiling is now a fresh-process opt-in rather than a permanently
+active diagnostic cost. `set-performance-profile.ps1` writes the startup flag,
+and `start-darktide-vr.ps1 -DiagnosticRenderHooks` preserves the native GPU
+timestamp hooks through its own deployment sync. Newly added command-list
+generation and output-attribution bookkeeping also bypasses its atomic,
+hash-map and logging work unless a focused trace is actually armed.
+
+A matched pair of stationary authenticated hub runs compared the corrected
+shared tracked-camera cull with the old independent/stale-cull regression. The
+last twelve warmed 240-frame windows measured 33.773 ms versus 30.942 ms summed
+eye GPU average, 33.491 versus 30.544 ms summed independent-eye p50s, and
+40.699 versus 37.312 ms summed independent-eye p95s. Lua pair-wrapper CPU was
+only 0.324/0.582 ms average/p95 with shared culling and 0.367/0.603 ms in the
+control. The roughly 2.8 ms GPU increase is expected work restored by the
+visual-parity fix, not cull sharing: both eyes now render the geometry, shadows
+and lighting that the stale primary cull omitted. The next optimization seam is
+therefore reuse of completed visibility/draw preparation (and eventually
+multiview-like submission), not weakening the shared-cull correctness fix or
+micro-optimizing the already small Lua wrapper. Full logs are retained in the
+ignored `artifacts/unattended/performance-shared-cull-*-2026-08-31/` folders.
+Production flags were restored afterward: shared culling enabled, performance
+profiling disabled, and diagnostic render hooks removed.

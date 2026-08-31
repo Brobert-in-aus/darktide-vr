@@ -967,15 +967,18 @@ camera to both viewport cull decisions reduced exact-pose mismatch from about
 42 frames. Preserve that shared tracked-camera cull while moving to performance
 work; use its explicit disabled mode only as a regression control.
 
-1. **Quantitative performance foundation completed; resource ownership next:**
+1. **Quantitative performance foundation completed; shared preparation next:**
    the opt-in profiler now reports true wrapper p50/p95 and per-eye GPU interval
-   p50/p95. A warmed stationary hub run measured a 26.998 ms median summed-eye
-   average across twelve windows, 26.390 ms median sum-of-eye-p50, 34.873 ms
-   median sum-of-eye-p95, 0.242/0.564 ms wrapper pair p50/p95, and about 0.417 ms
-   body/weapon IK CPU. Per-eye attribution is unstable, and the first-full-size
-   boundary is structural rather than semantic. Trace exact resource/pass
-   ownership around the roughly 6-8 ms pre-output transition present in both
-   eyes before attempting pooling, multiview or queue parallelism. No
+   p50/p95. A matched corrected-cull versus stale/independent-cull control over
+   the last twelve warmed hub windows measured 33.773 versus 30.942 ms summed
+   eye GPU average and 40.699 versus 37.312 ms summed independent-eye p95s.
+   Pair-wrapper CPU remained only 0.324/0.582 ms average/p95 in the corrected
+   run. The roughly 2.8 ms increase is the real geometry, shadows and lighting
+   restored by the parity fix, not evidence that the corrected cull shares
+   work. Preserve it. Trace and reuse visibility/draw preparation around the
+   roughly 7-8 ms pre-full-output work in both eyes before attempting pooling,
+   multiview or queue parallelism. Focused attribution bookkeeping now bypasses
+   its atomics, maps and identity logs when no focused trace is armed. No
    optimization is accepted without visual-parity and XR lifecycle validation.
 2. **Completed foundations:** preflight/watchdog, billboard shader ownership
    and substitution plumbing (worn cylindrical behavior disputed and pending),
@@ -1026,9 +1029,11 @@ work; use its explicit disabled mode only as a regression control.
 8. Continue first-person ranged aim, binocular crosshair/reticle policy and
    optional controller laser presentation after the UI gates. Firearm shots now
    have a source-derived third-person muzzle origin with a stock-origin fallback.
-   Psyker validation covers right-hand aiming for lightning and both force-staff
-   modes: normal fire originates at the tracked left hand, while charged/ADS
-   fire originates at the live staff tip. Worn alignment and non-Psyker firearm
+   Left-hand locomotion and right-hand aim are separate owners. Psyker validation
+   covers right-hand aiming for sword/ranged orientation, lightning and both
+   force-staff modes: normal fire originates at the tracked left hand but follows
+   the right-hand aim ray, while charged/ADS fire originates at the live staff
+   tip and also follows right-hand aim. Worn alignment and non-Psyker firearm
    coverage remain.
 9. Continue the stable-mirror performance pass, then resume independent backlog
    items when a renderer/user-feedback gate blocks. Use
