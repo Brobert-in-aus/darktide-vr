@@ -2065,8 +2065,7 @@ end
 function presentation.update_menu_input_probe(manager)
     local probe = presentation.menu_input_probe
     probe.poll_updates = (probe.poll_updates or 0) + 1
-    if probe.stage == "idle" and probe.poll_updates >= 15 and
-            Mods and Mods.lua and Mods.lua.io then
+    if probe.poll_updates >= 15 and Mods and Mods.lua and Mods.lua.io then
         probe.poll_updates = 0
         local flag_path =
             "./../mods/darktidevr_stereo_probe/darktidevr_menu_input_probe.flag"
@@ -10569,6 +10568,89 @@ function presentation.vendor_eye_layout_pointer(pointer)
         source_height = ui_eye_target_height,
     }, { __index = pointer })
 end
+
+function presentation.draw_vendor_landing_widgets(
+        func, self, dt, t, input_service, ui_renderer, render_settings, ...)
+    if presentation.mode ~= 5 and presentation.mode ~= 6 then
+        return func(
+            self, dt, t, input_service, ui_renderer, render_settings, ...)
+    end
+    local pointer = presentation.read_menu_pointer()
+    local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)
+    local widgets = self._button_widgets or {}
+    presentation.vendor_landing_hook_logged =
+        presentation.vendor_landing_hook_logged or {}
+    if not presentation.vendor_landing_hook_logged[self.view_name] then
+        presentation.vendor_landing_hook_logged[self.view_name] = true
+        mod:info(
+            "DARKTIDEVR_MENU_INPUT vendor_landing_hook view=%s widgets=%d",
+            tostring(self.view_name), #widgets)
+    end
+    local source_widget = nil
+    for i = 1, #widgets do
+        local widget = widgets[i]
+        local hotspot = widget and widget.content and widget.content.hotspot
+        local source_hit = presentation.widget_contains_menu_pointer(
+            self, widget, hit_pointer)
+        -- This view can outlive the XR ray for a frame while presentation
+        -- ownership changes. Always drain our previous semantic hover instead
+        -- of leaving a landing button latched until another pointer sample.
+        if hotspot then
+            hotspot.force_hover = false
+            hotspot.force_input_pressed = false
+        end
+        if source_hit and hotspot and not hotspot.disabled and
+                not source_widget then
+            source_widget = widget
+            hotspot.force_hover = true
+            if pointer.primary_pressed then
+                hotspot.force_input_pressed = true
+                presentation.consume_menu_primary(pointer)
+                mod:info(
+                    "DARKTIDEVR_MENU_INPUT vendor_landing_activate view=%s widget=%s sequence=%d source=%d,%d/%dx%d",
+                    tostring(self.view_name), tostring(widget.name),
+                    pointer.last_sequence, pointer.x, pointer.y,
+                    pointer.source_width, pointer.source_height)
+            end
+        end
+    end
+    local draw_input = pointer.available and input_service and
+        input_service:null_service() or input_service
+    return func(
+        self, dt, t, draw_input, ui_renderer, render_settings, ...)
+end
+
+mod:hook(
+    require("scripts/ui/views/contracts_background_view/contracts_background_view"),
+    "_draw_widgets",
+    function(func, self, dt, t, input_service, ui_renderer, render_settings, ...)
+        return presentation.draw_vendor_landing_widgets(
+            func, self, dt, t, input_service, ui_renderer, render_settings, ...)
+    end)
+
+mod:hook(
+    require("scripts/ui/views/credits_vendor_background_view/credits_vendor_background_view"),
+    "_draw_widgets",
+    function(func, self, dt, t, input_service, ui_renderer, render_settings, ...)
+        return presentation.draw_vendor_landing_widgets(
+            func, self, dt, t, input_service, ui_renderer, render_settings, ...)
+    end)
+
+mod:hook(
+    require("scripts/ui/views/cosmetics_vendor_background_view/cosmetics_vendor_background_view"),
+    "_draw_widgets",
+    function(func, self, dt, t, input_service, ui_renderer, render_settings, ...)
+        return presentation.draw_vendor_landing_widgets(
+            func, self, dt, t, input_service, ui_renderer, render_settings, ...)
+    end)
+
+mod:hook(
+    require("scripts/ui/views/barber_vendor_background_view/barber_vendor_background_view"),
+    "_draw_widgets",
+    function(func, self, dt, t, input_service, ui_renderer, render_settings, ...)
+        return presentation.draw_vendor_landing_widgets(
+            func, self, dt, t, input_service, ui_renderer, render_settings, ...)
+    end)
 
 mod:hook(
     require("scripts/ui/views/crafting_view/crafting_view"),

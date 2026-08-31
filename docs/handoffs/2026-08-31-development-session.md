@@ -256,3 +256,42 @@ renderer task is to identify the CPU/engine owner of common visibility and draw
 preparation before eye-dependent recording. Production was restored after the
 trace: performance flags disabled, shared tracked-camera culling enabled and
 diagnostic render hooks removed.
+
+## Semantic XR input across shop landing views
+
+The ordinary hub shop landing pages now share one concrete semantic XR-input
+owner. Hooks on `ContractsBackgroundView`, `CreditsVendorBackgroundView`,
+`CosmeticsVendorBackgroundView` and `BarberVendorBackgroundView` transform the
+published landscape panel pointer into each retained portrait eye scenegraph,
+clear stale forced hover/press state on every draw, null the competing native
+input service while XR owns the ray, and arm only the matching `_button_widgets`
+hotspot. The menu-input diagnostic flag now polls every 15 UI updates even
+after a missed synthetic point, allowing coordinate correction without a game
+restart.
+
+Two clean authenticated hub sessions produced the following source-coordinate
+evidence at `1280x720`:
+
+- Contracts `(300,380)` activated `option_button_1` and opened
+  `contracts_view`;
+- Contracts `(300,405)` activated `option_button_2` and opened
+  `marks_vendor_view`;
+- Armoury `(300,380)` activated `option_button_1` and opened
+  `credits_vendor_view`;
+- Cosmetics `(300,380)` activated `option_button_1` and opened
+  `cosmetics_vendor_view`;
+- Barber `(300,405)` activated `option_button_2` and opened
+  `character_appearance_view`.
+
+Shared eye-resource readiness continued advancing and no script error or GPU
+failure followed any accepted path. The first test session ended at its
+configured ten-minute harness duration, not from a crash. The Contracts Events
+child is a separate blocker: an earlier `option_button_4` activation opened
+`live_events_view` and was followed by a GPU hang. Do not generalize that child
+failure to the landing owner, and do not mark Events accepted until it survives
+an isolated lifecycle run.
+
+Next shop gates are worn corner alignment, scrolling, Back and representative
+nested actions in each accepted child. Premium Store retains its separate
+mode-6 private-grid path. The brief post-shop mono flash remains deferred
+transition polish.

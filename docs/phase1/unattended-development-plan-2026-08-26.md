@@ -1018,7 +1018,10 @@ work; use its explicit disabled mode only as a regression control.
    proportioned 16:9 flat-interactive panel with working XR-ray input, no
    delayed opening click, preserved gameplay heading on exit and a generation-
    synchronised stereo resume. Contracts, armoury, cosmetics and barber landing
-   pages have clean mode-5 visual/lifecycle passes. Marks must be reached from
+   pages now have clean mode-5 visual/lifecycle passes and semantic XR
+   activation into `contracts_view`, `marks_vendor_view`,
+   `credits_vendor_view`, `cosmetics_vendor_view` and
+   `character_appearance_view`. Marks must be reached from
    Contracts because direct construction lacks stock context. Premium Store is
    a native-landscape mode-6 presentation whose retained widgets remain in the
    portrait eye canvas. Semantic hit testing transforms into that canvas while
@@ -1026,7 +1029,9 @@ work; use its explicit disabled mode only as a regression control.
    validation and has an unattended source-pointer probe, but awaits the first
    worn corner-alignment gate. Test Store card hover at corners, activation/detail,
    scrolling and Back, then repeat child interaction for the accepted mode-5
-   families. Escape now has unattended Options activation and clean stereo
+   families. Keep `live_events_view` blocked pending an isolated lifecycle
+   investigation: its first activation was followed by a GPU hang. Escape now
+   has unattended Options activation and clean stereo
    resume evidence; retain worn laser-alignment and nested interaction as its
    user gate. The remaining brief post-shop mono flash is
    deferred transition-quality polish.

@@ -212,6 +212,20 @@ foreach ($pollGuard in @(
         throw "Diagnostic file polling must remain bounded: missing $pollGuard."
     }
 }
+foreach ($landingView in @(
+        'contracts_background_view/contracts_background_view',
+        'credits_vendor_background_view/credits_vendor_background_view',
+        'cosmetics_vendor_background_view/cosmetics_vendor_background_view',
+        'barber_vendor_background_view/barber_vendor_background_view')) {
+    if (-not $source.Contains($landingView)) {
+        throw "Missing concrete semantic XR-input hook for $landingView."
+    }
+}
+if (-not $source.Contains(
+        'function presentation.draw_vendor_landing_widgets(') -or
+        -not $source.Contains('vendor_landing_activate')) {
+    throw 'Shop landing views must retain the shared semantic XR-input owner.'
+}
 if (-not $source.Contains(
         'function presentation.neck_compensated_vertical') -or
         -not $source.Contains('body_ik_neck_baseline_arc') -or

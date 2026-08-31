@@ -1397,16 +1397,39 @@ first pose-synchronised matching pair while consuming hidden outgoing pairs.
 Observed resume latency is about 20--21 ms. A tolerably brief mono flash remains
 and is deferred as transition-quality polish.
 
-The generic shop policy now has an independent contracts-family live result.
+The generic shop policy now has independent semantic-input results across the
+four ordinary hub shop families. Concrete landing-view draw hooks transform the
+published landscape XR ray into the retained portrait eye canvas, clear every
+previous semantic hover owner on every draw, suppress the competing native
+input service while the XR ray is present, and arm only the matching engine
+hotspot. Source-pixel probes activated these stock transitions in clean
+authenticated XR runs:
+
+- Contracts `option_button_1` -> `contracts_view`;
+- Contracts `option_button_2` -> `marks_vendor_view`;
+- Armoury `option_button_1` -> `credits_vendor_view`;
+- Cosmetics `option_button_1` -> `cosmetics_vendor_view`;
+- Barber `option_button_2` -> `character_appearance_view`.
+
+The shared stereo-ready counter continued advancing and no script or device
+error followed any accepted route. The Contracts Events route remains
+explicitly unaccepted: a prior `option_button_4` activation opened
+`live_events_view` and was followed by a GPU hang. Treat that child as an
+independent blocker rather than evidence against the landing owner.
+
+The generic shop policy originally gained an independent contracts-family
+live result.
 Programmatic `contracts_background_view` entry produced a correctly
 proportioned 2496x1404 mode-5 source, and exit returned to fresh stereo in 28 ms
 without script errors or pose mismatches. The guarded hub harness exposes the
 remaining armoury, cosmetics, barber, marks and premium-store landing views for
-the same one-family-at-a-time gate; their interactive child views and worn XR
-pointer behavior remain unaccepted until tested.
+the same one-family-at-a-time gate. Their primary child transitions now pass
+unattended semantic activation; worn XR corner alignment, scrolling, nested
+actions and Back remain user gates.
 
-Armoury, cosmetics and barber landing views now also have unattended visual
-and lifecycle passes at the same 2496x1404 source extent. Direct marks entry is
+Armoury, cosmetics and barber landing views now also have unattended visual,
+lifecycle and primary-child activation passes at the same 2496x1404 source
+extent. Direct marks entry is
 explicitly rejected: `marks_vendor_view` requires context supplied by its
 contracts parent, and constructing it without that context corrupts the UI
 view stack. Marks must be exercised through the stock contracts transition;
