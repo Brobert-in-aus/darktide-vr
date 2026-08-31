@@ -1520,6 +1520,17 @@ shared-frame reuse and no pose mismatch. Worn corner alignment and representativ
 dropdown/slider/toggle interaction are still required before Escape settings
 input is accepted.
 
+Synthetic menu-input probes now explicitly rejoin the native primary-button
+sequence after their one diagnostic edge is consumed. Previously a synthetic
+sequence greater than the underlying native counter made the returning native
+value look permanently unconsumed and could repeatedly exercise settings-grid
+diagnostics. A fresh run activated Video once with no repeated slider event,
+then `(995,105)/1280x720` opened the real Resolution dropdown
+(`widget_setting_82`). The focused dropdown reported its header and five modal
+option rectangles in the same portrait semantic space. No option was selected,
+so the release-critical custom render resolution was not changed; actual option
+selection, toggles and slider drag remain acceptance gates.
+
 An adjacent performance audit removed per-frame diagnostic filesystem probes.
 System/vendor menu and input-inventory flags poll every 15 UI updates;
 Psykhanium and hotspot inventory poll at 250 ms; movement inventory retains a

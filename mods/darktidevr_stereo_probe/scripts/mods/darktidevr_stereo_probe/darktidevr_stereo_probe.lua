@@ -2232,6 +2232,15 @@ function presentation.consume_menu_primary(pointer)
     pointer.primary_pressed = false
     local probe = presentation.menu_input_probe
     if probe.stage == "armed" then
+        -- The diagnostic edge deliberately advances beyond the native
+        -- transport sequence. Rejoin the native counter when the synthetic
+        -- owner consumes it; otherwise the lower native value looks like a
+        -- permanently unconsumed press on every following UI pass.
+        if pointer.values then
+            pointer.primary_consumed_sequence =
+                tonumber(pointer.values[8]) or
+                    pointer.primary_consumed_sequence
+        end
         probe.stage = "idle"
         probe.action = nil
     end

@@ -210,6 +210,12 @@ if (-not $source.Contains(
             'presentation.update_slider_drag(self, hit_pointer)')) {
     throw 'Escape-menu presentation pixels and portrait widget semantics must remain explicitly separated.'
 }
+if (-not $source.Contains(
+        'tonumber(pointer.values[8]) or') -or
+        -not $source.Contains(
+            'permanently unconsumed press on every following UI pass')) {
+    throw 'Synthetic menu probes must rejoin the native primary sequence after consumption.'
+}
 foreach ($pollGuard in @(
         'system_menu_test_poll_updates',
         'vendor_menu_test_poll_updates',

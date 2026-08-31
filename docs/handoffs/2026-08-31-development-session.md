@@ -384,3 +384,14 @@ sign-in error was dismissed and retried through the already authenticated
 launcher flow before this validation; it was not an XR or mod-load failure.
 Worn laser/cursor alignment and representative dropdown, slider and toggle
 actions remain the human acceptance gate.
+
+The first nested probe also exposed a diagnostic-only counter handoff defect.
+Its synthetic primary sequence advanced beyond the native transport counter;
+after consumption, native sequence zero therefore appeared permanently newer
+than consumed sequence two and retriggered geometry diagnostics every UI pass.
+Synthetic consumption now rejoins the underlying native counter. A clean
+relaunch activated Video exactly once with no following slider flood. A second
+source probe at `(995,105)/1280x720` then opened the stock Resolution dropdown
+(`widget_setting_82`) and published correct modal option geometry, without
+changing the selected resolution. Selection, toggle and drag remain worn/live
+acceptance work rather than assumptions from an open-only probe.
