@@ -83,6 +83,12 @@ if ($EnterPsykhanium) {
     }
     Set-Content -LiteralPath $psykhaniumFlag -Value 'enter' -Encoding ascii
     Write-Output 'Psykhanium entry armed before launcher startup.'
+
+    # The in-game one-shot state machine deliberately waits for an
+    # authenticated hub before opening the training-ground view.  Therefore
+    # Psykhanium entry also owns the guarded splash/operative advance; without
+    # it an unattended run can remain at character select until its timeout.
+    $AutoEnterHub = $true
 }
 
 if ($FreshPsoCache) {
@@ -114,6 +120,8 @@ if ($FreshPsoCache) {
 
 $xrLaunchOwnsGame = $false
 $xrRunnerStarted = $false
+$gameplayInputFlagPath = $null
+$gameplayInputFlagOriginal = $null
 try {
 if (-not $DoNotOpenLauncher) {
     $expectedLauncherPath = Join-Path $GameRoot 'launcher\Launcher.exe'
@@ -200,6 +208,17 @@ if ($SyntheticControllerPath) {
     $runnerArguments.SyntheticControllerPath = $true
 }
 if ($SyntheticGameplayInput) {
+    $candidateGameplayInputFlagPath = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_gameplay_input_test.flag'
+    if (-not (Test-Path -LiteralPath $candidateGameplayInputFlagPath -PathType Leaf)) {
+        throw "Gameplay-input test flag not found: $candidateGameplayInputFlagPath"
+    }
+    $gameplayInputFlagOriginal = Get-Content -LiteralPath `
+        $candidateGameplayInputFlagPath -Raw
+    $gameplayInputFlagPath = $candidateGameplayInputFlagPath
+    Set-Content -LiteralPath $gameplayInputFlagPath -Value 'enabled' `
+        -Encoding ascii
+    Write-Output 'Synthetic gameplay adapter enabled for this XR run.'
     $runnerArguments.SyntheticGameplayInput = $true
 }
 if ($SyntheticBodyPath) {
@@ -218,6 +237,11 @@ $xrRunnerStarted = $true
 & $runner @runnerArguments
 }
 finally {
+    if ($gameplayInputFlagPath) {
+        Set-Content -LiteralPath $gameplayInputFlagPath `
+            -Value $gameplayInputFlagOriginal.Trim() -Encoding ascii
+        Write-Output 'Restored the prior gameplay-input test flag.'
+    }
     if ($xrLaunchOwnsGame) {
         # A supported launch must never leave an authenticated flat Darktide
         # process behind after its XR owner exits. Launcher Play can complete

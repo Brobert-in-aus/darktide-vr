@@ -1326,6 +1326,13 @@ first-person component. Clean live runs logged both projectile owners and four
 lightning updates with nonzero stereo `shared_ready`. A non-Psyker firearm shot,
 worn alignment, binocular reticle policy and optional laser presentation remain.
 
+Unattended range launches are now self-contained: `-EnterPsykhanium` implies
+the guarded hub advance required by its hub-gated Lua state machine, and
+`-SyntheticGameplayInput` enables its test-only Lua adapter only for the XR
+runner lifetime before restoring the prior flag in `finally`. This prevents a
+nominal range test from either stopping at operative select or publishing
+synthetic actions which Lua deliberately ignores.
+
 ### Hybrid hub upper-body ownership
 
 The hub no longer needs to choose between stock locomotion and a wholly

@@ -295,3 +295,22 @@ Next shop gates are worn corner alignment, scrolling, Back and representative
 nested actions in each accepted child. Premium Store retains its separate
 mode-6 private-grid path. The brief post-shop mono flash remains deferred
 transition polish.
+
+## Unattended Psykhanium launch contract
+
+A clean ranged-input diagnostic exposed two orchestration gaps rather than a
+weapon-aim failure. `-EnterPsykhanium` armed an in-game state machine which
+correctly waits for an authenticated hub, but the launcher stopped at operative
+select unless `-AutoEnterHub` was also supplied. Psykhanium entry now implies
+that guarded splash/operative advance. `-SyntheticGameplayInput` also now owns
+its test-only Lua adapter flag for the lifetime of the run and restores the
+prior value in `finally`; previously it could publish synthetic buttons that
+Lua intentionally ignored. A subsequent clean launch used only
+`-EnterPsykhanium -SyntheticControllerPath -SyntheticGameplayInput`, reached
+`DARKTIDEVR_PSYKHANIUM result=pass`, advanced nonzero `shared_ready`, and
+delivered every synthetic gameplay action without missing bindings. It ended
+cleanly with `shared_ready=10938`, no reused shared frames and one transient
+pose mismatch. After selecting the available force staff, charged fire logged
+`staff_tip_right_aim`; earlier clean range evidence still covers normal
+`left_origin_right_aim` and lightning. The runner restored the gameplay flag
+automatically, and the controller-aim flag was restored disabled afterward.
