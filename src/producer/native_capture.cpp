@@ -782,12 +782,38 @@ darktidevr::core::GameplayInputMapper& gameplay_input_mapper() {
 std::atomic<int> boundary_last_capture_result{};
 
 constexpr std::size_t kGpuProfileSlotCount = 512;
+constexpr UINT kGpuProfileBaseQueryCount = 3;
+constexpr UINT kGpuPassTraceBatchCapacity = 64;
+constexpr UINT kGpuProfileQueriesPerSlot =
+    kGpuProfileBaseQueryCount + kGpuPassTraceBatchCapacity * 2U;
+struct GpuPassTraceList {
+  std::uintptr_t commands{};
+  std::uint64_t generation{};
+};
+struct GpuPassTraceBatch {
+  UINT list_offset{};
+  UINT list_count{};
+  bool terminal{};
+  int terminal_eye{-1};
+};
+struct GpuPassTraceMarker {
+  ComPtr<ID3D12CommandAllocator> allocator;
+  ComPtr<ID3D12GraphicsCommandList> commands;
+};
 struct GpuProfileSample {
   int eye{-1};
   UINT slot{};
   std::uint64_t fence_value{};
   bool internal_target_seen{};
   bool stage_boundary_recorded{};
+  bool pass_trace_enabled{};
+  int pass_trace_phase{};
+  std::uint64_t pass_trace_frame{};
+  UINT pass_trace_batch_count{};
+  std::array<GpuPassTraceBatch, kGpuPassTraceBatchCapacity>
+      pass_trace_batches{};
+  std::vector<GpuPassTraceList> pass_trace_lists;
+  std::vector<GpuPassTraceMarker> pass_trace_markers;
   ComPtr<ID3D12CommandAllocator> start_allocator;
   ComPtr<ID3D12GraphicsCommandList> start_commands;
   ComPtr<ID3D12CommandAllocator> end_allocator;
@@ -814,6 +840,7 @@ std::array<std::atomic<std::uint64_t>, 2> gpu_profile_world_total_ticks{};
 std::array<std::atomic<std::uint64_t>, 2> gpu_profile_world_max_ticks{};
 std::array<std::atomic<std::uint64_t>, 2> gpu_profile_output_total_ticks{};
 std::array<std::atomic<std::uint64_t>, 2> gpu_profile_output_max_ticks{};
+std::array<std::atomic<bool>, 2> gpu_profile_pass_trace_claimed{};
 std::atomic<bool> gpu_profile_enabled{};
 // Per-draw/root/PSO/descriptor hooks are useful for bounded renderer
 // investigations but impose thousands of detours per stereo pair. Production
@@ -993,6 +1020,7 @@ int capture_eye_from_resource(int eye, ID3D12CommandQueue* queue,
                               ID3D12Resource* back_buffer,
                               bool bypass_execute_hook,
                               D3D12_RESOURCE_STATES source_state);
+void write_focused_log(const char* format, ...);
 
 void update_atomic_max(std::atomic<std::uint64_t>& destination,
                        std::uint64_t value) {
@@ -1020,7 +1048,7 @@ bool ensure_gpu_profiler(ID3D12CommandQueue* queue) {
   D3D12_QUERY_HEAP_DESC query_description{};
   query_description.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
   query_description.Count =
-      static_cast<UINT>(kGpuProfileSlotCount * 3U);
+      static_cast<UINT>(kGpuProfileSlotCount * kGpuProfileQueriesPerSlot);
   if (FAILED(device->CreateQueryHeap(&query_description,
                                      IID_PPV_ARGS(&gpu_profile_query_heap)))) {
     return false;
@@ -1032,7 +1060,8 @@ bool ensure_gpu_profiler(ID3D12CommandQueue* queue) {
   D3D12_RESOURCE_DESC resource_description{};
   resource_description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
   resource_description.Width =
-      kGpuProfileSlotCount * 3U * sizeof(std::uint64_t);
+      kGpuProfileSlotCount * kGpuProfileQueriesPerSlot *
+      sizeof(std::uint64_t);
   resource_description.Height = 1;
   resource_description.DepthOrArraySize = 1;
   resource_description.MipLevels = 1;
@@ -1064,7 +1093,7 @@ void harvest_gpu_profile_samples() {
   while (!gpu_profile_pending.empty() &&
          gpu_profile_pending.front().fence_value <= completed) {
     const auto& sample = gpu_profile_pending.front();
-    const auto query_start = sample.slot * 3U;
+    const auto query_start = sample.slot * kGpuProfileQueriesPerSlot;
     const auto start = gpu_profile_ticks[query_start];
     const auto boundary = gpu_profile_ticks[query_start + 1U];
     const auto end = gpu_profile_ticks[query_start + 2U];
@@ -1089,6 +1118,55 @@ void harvest_gpu_profile_samples() {
             output_duration, std::memory_order_relaxed);
         update_atomic_max(gpu_profile_world_max_ticks[index], world_duration);
         update_atomic_max(gpu_profile_output_max_ticks[index], output_duration);
+      }
+      if (sample.pass_trace_enabled && sample.pass_trace_batch_count > 0 &&
+          gpu_profile_frequency != 0) {
+        for (UINT batch_index = 0;
+             batch_index < sample.pass_trace_batch_count; ++batch_index) {
+          const auto batch_start =
+              gpu_profile_ticks[query_start + kGpuProfileBaseQueryCount +
+                                batch_index * 2U];
+          const auto batch_end =
+              gpu_profile_ticks[query_start + kGpuProfileBaseQueryCount +
+                                batch_index * 2U + 1U];
+          if (batch_end < batch_start) {
+            continue;
+          }
+          const auto& batch = sample.pass_trace_batches[batch_index];
+          write_focused_log(
+              "phase=%d\tframe=%llu\tGPU_BATCH\teye=%d\tordinal=%u"
+              "\tduration_ms=%.6f\tlists=%u\tterminal=%u"
+              "\tterminal_eye=%d\r\n",
+              sample.pass_trace_phase,
+              static_cast<unsigned long long>(sample.pass_trace_frame),
+              sample.eye, batch_index,
+              static_cast<double>(batch_end - batch_start) * 1000.0 /
+                  static_cast<double>(gpu_profile_frequency),
+              batch.list_count, batch.terminal ? 1U : 0U,
+              batch.terminal_eye);
+          for (UINT list_index = 0; list_index < batch.list_count;
+               ++list_index) {
+            const auto& list = sample.pass_trace_lists[
+                batch.list_offset + list_index];
+            write_focused_log(
+                "phase=%d\tframe=%llu\tGPU_BATCH_LIST\teye=%d"
+                "\tbatch=%u\tlist_index=%u\tCL=%p\tgen=%llu\r\n",
+                sample.pass_trace_phase,
+                static_cast<unsigned long long>(sample.pass_trace_frame),
+                sample.eye, batch_index, list_index,
+                reinterpret_cast<void*>(list.commands),
+                static_cast<unsigned long long>(list.generation));
+          }
+        }
+        write_focused_log(
+            "phase=%d\tframe=%llu\tGPU_BATCH_COMPLETE\teye=%d"
+            "\tbatches=%u\ttruncated=%u\r\n",
+            sample.pass_trace_phase,
+            static_cast<unsigned long long>(sample.pass_trace_frame),
+            sample.eye, sample.pass_trace_batch_count,
+            sample.pass_trace_batch_count == kGpuPassTraceBatchCapacity
+                ? 1U
+                : 0U);
       }
     }
     gpu_profile_pending.pop_front();
@@ -1119,6 +1197,16 @@ void begin_gpu_eye_profile(int eye) {
   GpuProfileSample sample{};
   sample.eye = eye;
   sample.slot = slot;
+  const auto focused_phase =
+      focused_trace_phase.load(std::memory_order_relaxed);
+  if (focused_phase != 0 &&
+      !gpu_profile_pass_trace_claimed[eye_index].exchange(
+          true, std::memory_order_relaxed)) {
+    sample.pass_trace_enabled = true;
+    sample.pass_trace_phase = focused_phase;
+    sample.pass_trace_frame =
+        present_count.load(std::memory_order_relaxed);
+  }
   ComPtr<ID3D12Device> device;
   if (FAILED(queue->GetDevice(IID_PPV_ARGS(&device))) ||
       FAILED(device->CreateCommandAllocator(
@@ -1130,7 +1218,8 @@ void begin_gpu_eye_profile(int eye) {
     return;
   }
   sample.start_commands->EndQuery(gpu_profile_query_heap.Get(),
-                                  D3D12_QUERY_TYPE_TIMESTAMP, slot * 3U);
+                                  D3D12_QUERY_TYPE_TIMESTAMP,
+                                  slot * kGpuProfileQueriesPerSlot);
   if (FAILED(sample.start_commands->Close())) {
     return;
   }
@@ -1164,13 +1253,14 @@ void end_gpu_eye_profile(int eye, ID3D12CommandQueue* queue) {
           nullptr, IID_PPV_ARGS(&sample.end_commands)))) {
     return;
   }
-  const auto query_start = sample.slot * 3U;
+  const auto query_start = sample.slot * kGpuProfileQueriesPerSlot;
   sample.end_commands->EndQuery(gpu_profile_query_heap.Get(),
                                 D3D12_QUERY_TYPE_TIMESTAMP,
                                 query_start + 2U);
   sample.end_commands->ResolveQueryData(
       gpu_profile_query_heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query_start,
-      3, gpu_profile_readback.Get(),
+      kGpuProfileBaseQueryCount + sample.pass_trace_batch_count * 2U,
+      gpu_profile_readback.Get(),
       static_cast<UINT64>(query_start) * sizeof(std::uint64_t));
   if (FAILED(sample.end_commands->Close())) {
     return;
@@ -1183,6 +1273,99 @@ void end_gpu_eye_profile(int eye, ID3D12CommandQueue* queue) {
   }
   gpu_profile_slot_fences[sample.slot] = sample.fence_value;
   gpu_profile_pending.push_back(std::move(sample));
+}
+
+struct GpuPassTraceToken {
+  int eye{-1};
+  UINT batch{};
+};
+
+bool submit_gpu_pass_trace_marker_locked(GpuProfileSample& sample,
+                                         ID3D12CommandQueue* queue,
+                                         UINT query_index) {
+  ComPtr<ID3D12Device> device;
+  GpuPassTraceMarker marker{};
+  if (!queue || !original_execute_command_lists ||
+      FAILED(queue->GetDevice(IID_PPV_ARGS(&device))) ||
+      FAILED(device->CreateCommandAllocator(
+          D3D12_COMMAND_LIST_TYPE_DIRECT,
+          IID_PPV_ARGS(&marker.allocator))) ||
+      FAILED(device->CreateCommandList(
+          0, D3D12_COMMAND_LIST_TYPE_DIRECT, marker.allocator.Get(), nullptr,
+          IID_PPV_ARGS(&marker.commands)))) {
+    return false;
+  }
+  marker.commands->EndQuery(gpu_profile_query_heap.Get(),
+                            D3D12_QUERY_TYPE_TIMESTAMP, query_index);
+  if (FAILED(marker.commands->Close())) {
+    return false;
+  }
+  ID3D12CommandList* marker_lists[]{marker.commands.Get()};
+  original_execute_command_lists(queue, 1, marker_lists);
+  sample.pass_trace_markers.push_back(std::move(marker));
+  return true;
+}
+
+GpuPassTraceToken begin_gpu_pass_trace_batch_locked(
+    ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists,
+    int terminal_eye) {
+  for (std::size_t eye_index = 0; eye_index < gpu_profile_active.size();
+       ++eye_index) {
+    auto& active = gpu_profile_active[eye_index];
+    if (!active || !active->pass_trace_enabled ||
+        active->pass_trace_batch_count >= kGpuPassTraceBatchCapacity) {
+      continue;
+    }
+    const auto batch_index = active->pass_trace_batch_count;
+    const auto query_start = active->slot * kGpuProfileQueriesPerSlot;
+    if (!submit_gpu_pass_trace_marker_locked(
+            *active, queue,
+            query_start + kGpuProfileBaseQueryCount + batch_index * 2U)) {
+      return {};
+    }
+    auto& batch = active->pass_trace_batches[batch_index];
+    batch.list_offset =
+        static_cast<UINT>(active->pass_trace_lists.size());
+    batch.list_count = count;
+    batch.terminal = terminal_eye >= 0;
+    batch.terminal_eye = terminal_eye;
+    {
+      std::scoped_lock trace_lock(trace_mutex);
+      for (UINT list_index = 0; list_index < count; ++list_index) {
+        auto* commands = static_cast<ID3D12GraphicsCommandList*>(
+            lists[list_index]);
+        const auto generation = command_recording_generations.find(commands);
+        active->pass_trace_lists.push_back(
+            {reinterpret_cast<std::uintptr_t>(commands),
+             generation == command_recording_generations.end()
+                 ? 0
+                 : generation->second});
+      }
+    }
+    return {static_cast<int>(eye_index), batch_index};
+  }
+  return {};
+}
+
+void end_gpu_pass_trace_batch_locked(ID3D12CommandQueue* queue,
+                                     const GpuPassTraceToken& token) {
+  if (token.eye < 0 || token.eye > 1) {
+    return;
+  }
+  auto& active = gpu_profile_active[static_cast<std::size_t>(token.eye)];
+  if (!active || !active->pass_trace_enabled ||
+      token.batch != active->pass_trace_batch_count) {
+    return;
+  }
+  const auto query_start = active->slot * kGpuProfileQueriesPerSlot;
+  if (submit_gpu_pass_trace_marker_locked(
+          *active, queue,
+          query_start + kGpuProfileBaseQueryCount + token.batch * 2U + 1U)) {
+    active->pass_trace_batch_count = token.batch + 1U;
+  } else {
+    const auto& batch = active->pass_trace_batches[token.batch];
+    active->pass_trace_lists.resize(batch.list_offset);
+  }
 }
 
 constexpr wchar_t kLeftEyeName[] = L"Local\\DarktideVR-eye-left";
@@ -5479,9 +5662,14 @@ void STDMETHODCALLTYPE set_pipeline_state_hook(
     std::scoped_lock lock(trace_mutex);
     command_traces[commands].pso = reinterpret_cast<std::uintptr_t>(state);
     if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
-      write_focused_log("phase=%d\tframe=%llu\tCL=%p\tPSO\tpso=%p\r\n",
+      const auto generation = command_recording_generations.find(commands);
+      write_focused_log("phase=%d\tframe=%llu\tCL=%p\tPSO\tgen=%llu\tpso=%p\r\n",
                         focused_trace_phase.load(std::memory_order_relaxed),
                         present_count.load(std::memory_order_relaxed), commands,
+                        static_cast<unsigned long long>(
+                            generation == command_recording_generations.end()
+                                ? 0
+                                : generation->second),
                         state);
     }
   }
@@ -6413,7 +6601,21 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
       direct_menu_render_lists.erase(found);
     }
   }
-  original_execute_command_lists(queue, count, lists);
+  {
+    std::unique_lock<std::mutex> gpu_trace_lock;
+    GpuPassTraceToken gpu_trace_token{};
+    if (description.Type == D3D12_COMMAND_LIST_TYPE_DIRECT && count > 0 &&
+        gpu_profile_enabled.load(std::memory_order_relaxed) &&
+        focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+      gpu_trace_lock = std::unique_lock<std::mutex>(gpu_profile_mutex);
+      gpu_trace_token = begin_gpu_pass_trace_batch_locked(
+          queue, count, lists, requested_eye);
+    }
+    original_execute_command_lists(queue, count, lists);
+    if (gpu_trace_lock.owns_lock()) {
+      end_gpu_pass_trace_batch_locked(queue, gpu_trace_token);
+    }
+  }
   if (completed_menu_output) {
     const auto menu_result = capture_menu_from_resource(
         queue, completed_menu_output.Get(), completed_menu_source_state);
@@ -9726,6 +9928,9 @@ extern "C" __declspec(dllexport) int dtvr_set_focused_trace_phase(int phase) {
         return 62;
       }
       focused_trace_count.store(0, std::memory_order_relaxed);
+      for (auto& claimed : gpu_profile_pass_trace_claimed) {
+        claimed.store(false, std::memory_order_relaxed);
+      }
     } else if (focused_trace_log == INVALID_HANDLE_VALUE) {
       return 63;
     }

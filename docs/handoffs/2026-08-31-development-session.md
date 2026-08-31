@@ -225,3 +225,34 @@ micro-optimizing the already small Lua wrapper. Full logs are retained in the
 ignored `artifacts/unattended/performance-shared-cull-*-2026-08-31/` folders.
 Production flags were restored afterward: shared culling enabled, performance
 profiling disabled, and diagnostic render hooks removed.
+
+## Generation-aware GPU batch attribution
+
+The focused profiler now brackets each intercepted direct-queue engine
+submission with timestamp marker command lists and retains the submitted
+command-list pointer plus recording generation. This replaced an invalid
+output-target timestamp attempt: command lists are recorded out of GPU
+execution order, so timestamps inserted at target-bind time were
+non-monotonic and that prototype was discarded after a device-removal failure.
+
+The accepted stationary-hub trace completed without truncation or device loss.
+One claimed profiler sample crossed two completed-output boundaries, which is
+useful rather than an eye-label failure once segmented by terminal list
+identity. Batches 0-4 ended at render eye 1 and contained 5.499 ms of timed
+direct-queue work; batches 5-26 ended at render eye 0 and contained 6.955 ms.
+Generation-aware PSO attribution found 251 and 259 unique PSOs respectively,
+with 239 shared out of 271 total (0.882 Jaccard). Bind-count multiset Jaccard
+was 0.703. The dominant terminal batches cost 4.167 and 3.537 ms, while the
+largest preceding batches cost 1.101 and 1.333 ms. This establishes substantial
+shared pipeline-family structure but also real eye-specific command-count
+differences.
+
+`set-performance-pass-trace.ps1` owns the fresh-process diagnostic flag and
+implies ordinary GPU profiling. `analyze-gpu-batch-trace.py` emits the render
+segments, expensive batches, command-list/PSO joins and overlap metrics.
+Evidence is retained under the ignored
+`artifacts/unattended/performance-gpu-batches-2026-08-31/` directory. The next
+renderer task is to identify the CPU/engine owner of common visibility and draw
+preparation before eye-dependent recording. Production was restored after the
+trace: performance flags disabled, shared tracked-camera culling enabled and
+diagnostic render hooks removed.

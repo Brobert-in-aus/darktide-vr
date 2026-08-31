@@ -437,6 +437,9 @@ local presentation = {
     reverse_eye_order_probe_requested = false,
     inherit_viewport_metadata_probe_mode = "disabled",
     shared_shadow_cull_enabled = true,
+    performance_pass_trace_requested = false,
+    performance_pass_trace_frame = 0,
+    performance_pass_trace_complete = false,
     head_translation_trace_requested = true,
     head_translation_trace_last_sequence = 0,
     head_translation_trace_interval = 600,
@@ -3076,9 +3079,22 @@ function presentation.refresh_performance_profile_request()
             "^%s*enabled%s*$") ~= nil
         flag:close()
     end
+    local pass_flag = Mods.lua.io.open(
+        "./../mods/darktidevr_stereo_probe/darktidevr_performance_pass_trace.flag",
+        "r")
+    presentation.performance_pass_trace_requested = false
+    if pass_flag then
+        presentation.performance_pass_trace_requested =
+            pass_flag:read("*all"):match("^%s*enabled%s*$") ~= nil
+        pass_flag:close()
+    end
+    if presentation.performance_pass_trace_requested then
+        performance_profile_requested = true
+    end
     mod:info(
-        "DARKTIDEVR_PERF profile_enabled=%s",
-        tostring(performance_profile_requested))
+        "DARKTIDEVR_PERF profile_enabled=%s pass_trace=%s",
+        tostring(performance_profile_requested),
+        tostring(presentation.performance_pass_trace_requested))
 end
 
 presentation.refresh_performance_profile_request()
@@ -3418,6 +3434,29 @@ local function reset_render_timings(label)
     presentation.render_timing_left_samples = {}
     presentation.render_timing_right_samples = {}
     presentation.render_timing_pair_samples = {}
+end
+
+function presentation.update_performance_pass_trace()
+    if not presentation.performance_pass_trace_requested or
+            presentation.performance_pass_trace_complete or
+            not ui_native_capture then
+        return
+    end
+    presentation.performance_pass_trace_frame =
+        presentation.performance_pass_trace_frame + 1
+    local frame = presentation.performance_pass_trace_frame
+    if frame == 180 then
+        local result = ui_native_capture.dtvr_set_focused_trace_phase(1)
+        mod:info(
+            "DARKTIDEVR_PERF pass_trace_started result=%d",
+            tonumber(result))
+    elseif frame == 200 then
+        ui_native_capture.dtvr_set_focused_trace_phase(0)
+        presentation.performance_pass_trace_complete = true
+        mod:info(
+            "DARKTIDEVR_PERF pass_trace_complete records=%d",
+            tonumber(ui_native_capture.dtvr_focused_trace_count()))
+    end
 end
 
 local function take_gpu_eye_profile(eye)
@@ -11572,6 +11611,7 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
 
     if world == active_world and active and ui_native_capture_active and
             ui_native_capture then
+        presentation.update_performance_pass_trace()
         local primary = ScriptWorld.viewport(world, primary_viewport_name)
         local right = ScriptWorld.viewport(world, right_viewport_name)
         local first = primary

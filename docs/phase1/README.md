@@ -1477,3 +1477,16 @@ not itself share prepared visibility. It remains mandatory for parity. The next
 renderer optimization target is reusable visibility/draw preparation before
 the per-eye camera-dependent work. Focused command-list attribution is now
 inactive-cost-gated, and GPU profiling remains fresh-process, diagnostic-only.
+
+The next diagnostic step now times the direct-queue submission batches inside
+one focused stereo sample and joins every submitted command list to its
+recording generation and PSO sequence. The stationary hub trace contained two
+terminal-delimited eye renders: right-eye batches accounted for 5.499 ms of
+timed direct-queue execution and left-eye batches for 6.955 ms. They shared 239
+of 271 unique PSOs (88.2% Jaccard); bind-count multiset overlap was 70.3%.
+This is concrete evidence that most pipeline families are common while the
+per-eye command populations are not identical. The safe next target is shared
+visibility/draw preparation and state assembly before eye-dependent command
+recording. It is not blind command-list replay or queue parallelism. The
+fresh-process trace is armed with `set-performance-pass-trace.ps1`; analyze it
+with `analyze-gpu-batch-trace.py`. Both remain diagnostic-only.

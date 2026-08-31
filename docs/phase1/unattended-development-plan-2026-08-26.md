@@ -980,6 +980,14 @@ work; use its explicit disabled mode only as a regression control.
    multiview or queue parallelism. Focused attribution bookkeeping now bypasses
    its atomics, maps and identity logs when no focused trace is armed. No
    optimization is accepted without visual-parity and XR lifecycle validation.
+   A focused queue-batch trace has now split a stationary stereo sample at its
+   two completed-output submissions: eye 1 used 5.499 ms and eye 0 used 6.955
+   ms of timed direct-queue batch execution. The two segments shared 239/271
+   unique PSOs (88.2% Jaccard) and 70.3% of their PSO-bind multisets. Preserve
+   the differing per-eye command populations; use the high common-family
+   overlap to locate reusable visibility, draw preparation and state assembly.
+   Do not replay one eye unchanged or parallelize queues until dependencies are
+   classified.
 2. **Completed foundations:** preflight/watchdog, billboard shader ownership
    and substitution plumbing (worn cylindrical behavior disputed and pending),
    controller transport, synthetic pointer coverage, automated
