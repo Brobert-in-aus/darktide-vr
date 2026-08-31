@@ -1196,6 +1196,28 @@ room-scale displacement still needs a separate body-root policy that drags the
 allowed translation region with the headset and reconciles absolute physical
 motion with the native locomotion controller without bypassing collision.
 
+### Configurable movement-reference checkpoint
+
+The release-facing mod options now expose headset-relative movement (the
+default) and left-hand-relative movement. Only VR controller axes are rotated;
+keyboard and other stock accessibility inputs keep their existing semantics.
+The left-hand policy projects the tracked controller aim onto the horizontal
+plane and deterministically falls back to headset-relative movement whenever
+orientation tracking is stale or the controller points too nearly vertical.
+The same policy drives the special hub movement seam, so hub and mission zones
+do not maintain separate definitions of forward.
+
+The XR harness has a purpose-specific
+`--synthetic-movement-reference-path`, exposed through
+`start-darktide-vr.ps1 -SyntheticMovementReferencePath`. It holds left-stick
+forward while cycling the left aim through forward, +90 degrees, -90 degrees,
+and invalid tracking. A clean authenticated hub run delivered 6,448 fresh
+stereo pairs with zero shared-frame reuse, timeouts, pose mismatches, script
+errors, or engine errors. Lua observed projected movement vectors of
+approximately `(0,-1)`, `(1,0)`, and `(-1,0)`, then selected
+`head_fallback` only during the invalid-tracking phase. This closes unattended
+coordinate/basis validation; worn comfort and preference acceptance remain.
+
 ### Hybrid room-scale locomotion checkpoint
 
 The body-root half now has a tested collision-aware transport. Head motion is

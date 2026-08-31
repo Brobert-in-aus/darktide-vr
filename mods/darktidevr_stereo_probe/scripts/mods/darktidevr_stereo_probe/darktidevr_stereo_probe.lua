@@ -5506,6 +5506,8 @@ mod:hook_safe(
                     controller_observation.gameplay_movement[0])
                 local move_y = tonumber(
                     controller_observation.gameplay_movement[1])
+                move_x, move_y = presentation.rotate_controller_movement(
+                    move_x, move_y)
                 local movement_names = {
                     "move_right", "move_left",
                     "move_forward", "move_backward"
@@ -5573,9 +5575,23 @@ mod:hook_safe(
                             controller_observation.character_state_name =
                                 state_name
                         end
+                        local movement_rotation, movement_reference =
+                            presentation.movement_reference_rotation()
+                        local movement_forward = movement_rotation and
+                            Quaternion.forward(movement_rotation) or Vector3.zero()
                         mod:info(
-                            "DARKTIDEVR_INPUT locomotion frame=%d state=%s move=%.3f,%.3f raw_left=%.3f,%.3f raw_right=%.3f,%.3f existing=%.3f,%.3f combined=%.3f,%.3f stick_active=%s tracking_live=%s,%s cache=%.3f,%.3f,%.3f,%.3f player=%.4f,%.4f,%.4f",
-                            frame, tostring(state_name), move_x, move_y,
+                            "DARKTIDEVR_INPUT locomotion frame=%d state=%s reference=%s reference_yaw=%.4f head_yaw=%.4f reference_forward=%.4f,%.4f aim_q=%.4f,%.4f,%.4f,%.4f move=%.3f,%.3f raw_left=%.3f,%.3f raw_right=%.3f,%.3f existing=%.3f,%.3f combined=%.3f,%.3f stick_active=%s tracking_live=%s,%s cache=%.3f,%.3f,%.3f,%.3f player=%.4f,%.4f,%.4f",
+                            frame, tostring(state_name),
+                            tostring(movement_reference), movement_rotation and
+                                Quaternion.yaw(movement_rotation) or 0,
+                            controller_observation.gameplay_yaw or 0,
+                            Vector3.x(movement_forward),
+                            Vector3.y(movement_forward),
+                            controller_observation.left_aim_qx or 0,
+                            controller_observation.left_aim_qy or 0,
+                            controller_observation.left_aim_qz or 0,
+                            controller_observation.left_aim_qw or 0,
+                            move_x, move_y,
                             controller_observation.left_stick_x,
                             controller_observation.left_stick_y,
                             controller_observation.right_stick_x,
@@ -9247,6 +9263,81 @@ mod:hook(
 -- by physical HMD yaw, so shop cameras cannot rotate it and it remains the
 -- same frame consumed by interaction-facing checks. The server remains
 -- authoritative for acceleration, collision, animation and replication.
+function presentation.flat_movement_rotation(yaw)
+    local yaw_rotation = Quaternion.from_yaw_pitch_roll(yaw, 0, 0)
+    local right = Quaternion.right(yaw_rotation)
+    local flat_forward = Vector3.cross(right, Vector3.down())
+    return Quaternion.look(flat_forward, Vector3.up())
+end
+
+function presentation.left_hand_movement_rotation()
+    if not controller_observation.left_aim_usable then
+        return nil
+    end
+    local _, rotation = presentation.left_controller_aim_target()
+    if not rotation then
+        return nil
+    end
+    -- Derive heading from the projected ray rather than Euler yaw. That keeps
+    -- controller roll out of locomotion and rejects the undefined heading when
+    -- the hand points almost vertically.
+    local forward = Quaternion.forward(rotation)
+    local flat_forward = Vector3(
+        Vector3.x(forward), Vector3.y(forward), 0)
+    if Vector3.length_squared(flat_forward) < 0.0025 then
+        return nil
+    end
+    return Quaternion.look(Vector3.normalize(flat_forward), Vector3.up())
+end
+
+function presentation.left_hand_movement_yaw()
+    local rotation = presentation.left_hand_movement_rotation()
+    return rotation and Quaternion.yaw(rotation) or nil
+end
+
+function presentation.movement_reference_rotation()
+    if (mod:get("movement_reference") or "head") == "left_hand" then
+        local left_rotation = presentation.left_hand_movement_rotation()
+        if left_rotation then
+            return left_rotation, "left_hand"
+        end
+        return controller_observation.gameplay_yaw and
+            presentation.flat_movement_rotation(
+                controller_observation.gameplay_yaw) or nil,
+            "head_fallback"
+    end
+    return controller_observation.gameplay_yaw and
+        presentation.flat_movement_rotation(
+            controller_observation.gameplay_yaw) or nil, "head"
+end
+
+function presentation.movement_reference_yaw()
+    local rotation, reference = presentation.movement_reference_rotation()
+    return rotation and Quaternion.yaw(rotation) or
+        controller_observation.gameplay_yaw, reference
+end
+
+function presentation.rotate_controller_movement(x, y)
+    if not controller_observation.gameplay_yaw or
+            (mod:get("movement_reference") or "head") ~= "left_hand" then
+        return x, y
+    end
+    local reference_rotation = presentation.left_hand_movement_rotation()
+    if not reference_rotation then
+        return x, y
+    end
+    local local_direction = Vector3(x, y, 0)
+    if Vector3.length_squared(local_direction) < 0.00000001 then
+        return x, y
+    end
+    local desired_world = Quaternion.rotate(
+        reference_rotation, local_direction)
+    local head_local = Quaternion.rotate(
+        Quaternion.inverse(presentation.flat_movement_rotation(
+            controller_observation.gameplay_yaw)), desired_world)
+    return Vector3.x(head_local), Vector3.y(head_local)
+end
+
 mod:hook(
     require(
         "scripts/extension_systems/character_state_machine/character_states/player_character_state_hub_jog"),
@@ -9256,16 +9347,11 @@ mod:hook(
                 presentation.current_game_mode_name() == "hub" and
                 controller_observation.gameplay_yaw then
             local local_direction = Vector3.normalize(Vector3(x, y, 0))
-            local head_rotation = Quaternion.from_yaw_pitch_roll(
-                controller_observation.gameplay_yaw, 0, 0)
+            local movement_rotation = presentation.movement_reference_rotation()
             -- Match stock hub_jog's basis construction exactly. Stingray's
             -- yaw and axis-angle conventions are not interchangeable here.
-            local right = Quaternion.right(head_rotation)
-            local flat_look_direction = Vector3.cross(
-                right, Vector3.down())
-            local flat_look_rotation = Quaternion.look(
-                flat_look_direction, Vector3.up())
-            return Quaternion.rotate(flat_look_rotation, local_direction)
+            return Quaternion.rotate(
+                movement_rotation, local_direction)
         end
         return func(self, x, y, first_person_component)
     end)

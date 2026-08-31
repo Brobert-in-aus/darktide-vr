@@ -65,6 +65,10 @@ int main() {
   auto matrix_lightning = left.state;
   auto matrix_sword_wield = left.state;
   auto matrix_sword_attack = left.state;
+  auto movement_aligned = left.state;
+  auto movement_right = left.state;
+  auto movement_left = left.state;
+  auto movement_invalid = left.state;
   darktidevr::harness::apply_synthetic_body_reach_path(body_near, 5);
   darktidevr::harness::apply_synthetic_body_reach_path(body_left_reach, 59);
   darktidevr::harness::apply_synthetic_body_reach_path(body_right_reach, 119);
@@ -87,6 +91,14 @@ int main() {
       matrix_sword_wield, 600);
   darktidevr::harness::apply_synthetic_weapon_aim_matrix(
       matrix_sword_attack, 660);
+  darktidevr::harness::apply_synthetic_movement_reference_path(
+      movement_aligned, 0);
+  darktidevr::harness::apply_synthetic_movement_reference_path(
+      movement_right, 150);
+  darktidevr::harness::apply_synthetic_movement_reference_path(
+      movement_left, 300);
+  darktidevr::harness::apply_synthetic_movement_reference_path(
+      movement_invalid, 450);
 
   const darktidevr::math::Vec3 head{0.0F, 0.0F, 0.0F};
   const bool valid =
@@ -151,6 +163,16 @@ int main() {
           darktidevr::core::controller_secondary &&
       matrix_sword_attack.hands[1].trigger == 1.0F &&
       matrix_sword_attack.hands[0].buttons == 0 &&
+      movement_aligned.hands[0].thumbstick_y == 1.0F &&
+      movement_right.hands[0].thumbstick_y == 1.0F &&
+      movement_left.hands[0].thumbstick_y == 1.0F &&
+      movement_invalid.hands[0].thumbstick_y == 1.0F &&
+      movement_invalid.hands[0].aim_tracking_flags == 0 &&
+      movement_invalid.hands[0].body_aim_tracking_flags == 0 &&
+      std::abs(movement_right.hands[0].aim_pose.orientation.z -
+               movement_left.hands[0].aim_pose.orientation.z) > 1.0F &&
+      std::abs(movement_right.hands[0].body_aim_pose.orientation.z -
+               movement_left.hands[0].body_aim_pose.orientation.z) > 1.0F &&
       reacquired.phase ==
           darktidevr::harness::SyntheticControllerPhase::left_sweep;
   if (!valid) {

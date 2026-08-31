@@ -614,6 +614,7 @@ class OpenXrProbe {
                                bool synthetic_body_path,
                                bool synthetic_gameplay_input,
                                bool synthetic_weapon_aim_matrix,
+                               bool synthetic_movement_reference_path,
                                bool enable_gameplay_reticle,
                                bool synthetic_head_sweep,
                                bool synthetic_body_inspection,
@@ -2389,6 +2390,10 @@ class OpenXrProbe {
                 synthetic.state, 0);
           }
         }
+        if (synthetic_movement_reference_path && emit_synthetic_gameplay) {
+          darktidevr::harness::apply_synthetic_movement_reference_path(
+              synthetic.state, synthetic_movement_reference_frames_++);
+        }
         if (!controller_writer_->publish(synthetic.state)) {
           throw std::runtime_error(
               "Shared controller state rejected synthetic sample");
@@ -3067,6 +3072,8 @@ class OpenXrProbe {
               << synthetic_controller_frames_ << '\n'
               << "openxr.synthetic_weapon_aim_matrix_frames="
               << synthetic_weapon_aim_matrix_frames_ << '\n'
+              << "openxr.synthetic_movement_reference_frames="
+              << synthetic_movement_reference_frames_ << '\n'
               << "openxr.synthetic_controller_phase_frames=";
     for (std::size_t index = 0;
          index < synthetic_controller_phase_frames_.size(); ++index) {
@@ -3725,6 +3732,7 @@ class OpenXrProbe {
   std::uint32_t controller_pointer_y_{};
   std::uint64_t synthetic_controller_frames_{};
   std::uint64_t synthetic_weapon_aim_matrix_frames_{};
+  std::uint64_t synthetic_movement_reference_frames_{};
   std::array<std::uint64_t, 6> synthetic_controller_phase_frames_{};
   bool d3d12_extension_{};
   std::optional<XrGraphicsRequirementsD3D12KHR> requirements_;
@@ -4076,6 +4084,7 @@ void usage() {
                 "[--synthetic-body-path] "
                 "[--synthetic-gameplay-input] "
                 "[--synthetic-weapon-aim-matrix] "
+                "[--synthetic-movement-reference-path] "
                 "[--enable-gameplay-reticle] "
                 "[--synthetic-head-sweep] "
                 "[--synthetic-body-inspection] "
@@ -4116,6 +4125,7 @@ int wmain(int argc, wchar_t** argv) {
     bool synthetic_body_path = false;
     bool synthetic_gameplay_input = false;
     bool synthetic_weapon_aim_matrix = false;
+    bool synthetic_movement_reference_path = false;
     bool enable_gameplay_reticle = false;
     bool synthetic_head_sweep = false;
     bool synthetic_body_inspection = false;
@@ -4175,6 +4185,8 @@ int wmain(int argc, wchar_t** argv) {
         synthetic_gameplay_input = true;
       } else if (argument == L"--synthetic-weapon-aim-matrix") {
         synthetic_weapon_aim_matrix = true;
+      } else if (argument == L"--synthetic-movement-reference-path") {
+        synthetic_movement_reference_path = true;
       } else if (argument == L"--enable-gameplay-reticle") {
         enable_gameplay_reticle = true;
       } else if (argument == L"--synthetic-head-sweep") {
@@ -4250,6 +4262,10 @@ int wmain(int argc, wchar_t** argv) {
     if (synthetic_weapon_aim_matrix && !synthetic_gameplay_input) {
       throw std::invalid_argument(
           "--synthetic-weapon-aim-matrix requires --synthetic-gameplay-input");
+    }
+    if (synthetic_movement_reference_path && !synthetic_gameplay_input) {
+      throw std::invalid_argument(
+          "--synthetic-movement-reference-path requires --synthetic-gameplay-input");
     }
     if (synthetic_body_path && !synthetic_controller_path) {
       throw std::invalid_argument(
@@ -4328,6 +4344,7 @@ int wmain(int argc, wchar_t** argv) {
                                      synthetic_body_path,
                                      synthetic_gameplay_input,
                                      synthetic_weapon_aim_matrix,
+                                     synthetic_movement_reference_path,
                                      enable_gameplay_reticle,
                                      synthetic_head_sweep,
                                      synthetic_body_inspection,

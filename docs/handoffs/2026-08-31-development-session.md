@@ -524,3 +524,42 @@ to enable the billboard bootstrap flag without copying the replacement vertex
 shader, and could retain an earlier 10x or magenta diagnostic. A normal sync
 now rebuilds and deploys the natural 1x cylindrical vertex shader whenever
 substitution is enabled, while an unrequested magenta diagnostic is removed.
+
+## Configurable headset/left-hand movement reference
+
+The release-facing DMF settings now offer `Headset-relative` (default) and
+`Left-hand-relative` movement. The implementation rotates only injected VR
+controller axes, leaving keyboard and other stock accessibility input alone.
+Left-hand forward is derived from the world-space controller aim projected onto
+the horizontal plane. Missing/stale orientation or a near-vertical aim selects
+a deterministic headset fallback. The hub movement hook consumes the same
+policy instead of maintaining a second definition of forward.
+
+A deterministic harness path now holds the left stick forward while cycling
+left aim through forward, +90 degrees, -90 degrees, and tracking invalid. The
+first live diagnostic exposed a test-seam defect: the matrix changed raw
+`aim_pose` after body-local poses were populated, while Lua intentionally reads
+`body_aim_pose`. The matrix and its test now keep both representations and
+tracking flags in lockstep.
+
+The corrected authenticated hub run reported:
+
+- `openxr.synthetic_movement_reference_frames=6525`;
+- 6,448 fresh shared-eye pairs;
+- zero reused shared frames, pair-driven timeouts, or pose mismatches;
+- Lua movement forwards near `(0,-1)`, `(1,0)`, and `(-1,0)` for the three
+  tracked phases;
+- `reference=head_fallback` only during the invalid-tracking phase; and
+- no script or engine errors.
+
+The temporary user setting was restored to the release default `head` after
+validation.
+
+Validation commands:
+
+```powershell
+& .\tools\stereo\test-darktide-lua-source.ps1
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build\windows-vs2022 --config Release --target darktidevr-synthetic-controller-tests darktidevr-xr-harness
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build\windows-vs2022 -C Release --output-on-failure -R '^synthetic_controller_path$'
+& .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 165 -GameStartTimeoutSeconds 300 -SyntheticMovementReferencePath -AutoEnterHub -SkipDeploymentSync
+```

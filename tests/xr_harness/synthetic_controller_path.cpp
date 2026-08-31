@@ -209,4 +209,37 @@ void apply_synthetic_weapon_aim_matrix(core::SharedControllerState& state,
   }
 }
 
+void apply_synthetic_movement_reference_path(
+    core::SharedControllerState& state, std::uint64_t frame) {
+  // 150 harness frames deliberately does not alias the game's 60-fixed-frame
+  // (roughly two-second) locomotion diagnostic cadence.
+  constexpr std::uint64_t phase_frames = 150;
+  const auto phase = (frame / phase_frames) % 4;
+  for (auto& hand : state.hands) {
+    hand.trigger = 0.0F;
+    hand.squeeze = 0.0F;
+    hand.thumbstick_x = 0.0F;
+    hand.thumbstick_y = 0.0F;
+    hand.buttons = 0;
+  }
+  state.hands[0].thumbstick_y = 1.0F;
+  const auto yaw = phase == 1 ? 1.57079632679F
+                   : phase == 2 ? -1.57079632679F
+                                : 0.0F;
+  const auto yaw_rotation =
+      // Synthetic controller poses cross the shared-state seam in Darktide's
+      // body basis, whose vertical axis is +Z.
+      math::from_axis_angle({0.0F, 0.0F, 1.0F}, yaw);
+  state.hands[0].aim_pose.orientation = math::multiply(
+      yaw_rotation, state.hands[0].aim_pose.orientation);
+  // Lua consumes body_aim_pose. The generic sample has already populated it
+  // before this matrix runs, so rotate both representations in lockstep.
+  state.hands[0].body_aim_pose.orientation = math::multiply(
+      yaw_rotation, state.hands[0].body_aim_pose.orientation);
+  if (phase == 3) {
+    state.hands[0].aim_tracking_flags = 0;
+    state.hands[0].body_aim_tracking_flags = 0;
+  }
+}
+
 }  // namespace darktidevr::harness

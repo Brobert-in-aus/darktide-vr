@@ -23,6 +23,8 @@ param(
 
     [switch] $SyntheticWeaponAimMatrix,
 
+    [switch] $SyntheticMovementReferencePath,
+
     [switch] $EnableGameplayReticle,
 
     [switch] $EnableHudPanel,
@@ -73,6 +75,10 @@ if ($SyntheticWeaponAimMatrix) {
     $SyntheticGameplayInput = $true
     $EnableGameplayReticle = $true
     $EnterPsykhanium = $true
+}
+if ($SyntheticMovementReferencePath) {
+    $SyntheticControllerPath = $true
+    $SyntheticGameplayInput = $true
 }
 
 if (-not $SkipDeploymentSync) {
@@ -270,6 +276,9 @@ if ($SyntheticGameplayInput) {
 }
 if ($SyntheticWeaponAimMatrix) {
     $runnerArguments.SyntheticWeaponAimMatrix = $true
+}
+if ($SyntheticMovementReferencePath) {
+    $runnerArguments.SyntheticMovementReferencePath = $true
 }
 if ($EnableGameplayReticle) {
     $runnerArguments.EnableGameplayReticle = $true

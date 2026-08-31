@@ -40,4 +40,10 @@ void apply_synthetic_body_reach_path(core::SharedControllerState& state,
 void apply_synthetic_weapon_aim_matrix(core::SharedControllerState& state,
                                        std::uint64_t frame);
 
+// Holds forward locomotion while yawing only the left aim pose through aligned,
+// right, left and tracking-invalid phases. This isolates locomotion-reference
+// selection from body IK and weapon-aim controls.
+void apply_synthetic_movement_reference_path(
+    core::SharedControllerState& state, std::uint64_t frame);
+
 }  // namespace darktidevr::harness

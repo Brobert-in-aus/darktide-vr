@@ -309,6 +309,20 @@ if (-not $source.Contains(
             'player_unit_smart_targeting_extension')) {
     throw 'Psyker ranged coverage must retain both controller poses, right-hand aiming, left-origin staff primary ownership, staff-tip charged ownership and controller-scoped lightning targeting.'
 }
+if (-not $source.Contains(
+        'function presentation.left_hand_movement_rotation()') -or
+        -not $source.Contains(
+            'function presentation.movement_reference_rotation()') -or
+        -not $source.Contains(
+            'function presentation.rotate_controller_movement(x, y)') -or
+        -not $source.Contains(
+            'Vector3.length_squared(flat_forward) < 0.0025') -or
+        -not $source.Contains(
+            'mod:get("movement_reference") or "head"') -or
+        -not $source.Contains(
+            'Quaternion.inverse(presentation.flat_movement_rotation(')) {
+    throw 'Configurable VR locomotion must preserve headset-relative default, use the flattened live left-hand basis without an Euler round-trip, reject near-vertical rays and rotate only controller movement into the selected frame.'
+}
 if ($controllerAimSource.Contains('component.position = position') -or
         $controllerAimSource.Contains('component.rotation = rotation') -or
         -not $controllerAimSource.Contains(
