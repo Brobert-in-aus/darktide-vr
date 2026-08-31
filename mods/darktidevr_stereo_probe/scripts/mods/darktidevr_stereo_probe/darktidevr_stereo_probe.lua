@@ -9991,6 +9991,8 @@ mod:hook(
         local shop_eye_layout = presentation.mode == 6 or
             (presentation.mode == 5 and
                 (presentation.shop_panel_views[self.view_name] or
+                    self.view_name == "options_view" or
+                    self.view_name == "player_character_options_view" or
                     self.view_name == "crafting_view" or
                     (type(self.view_name) == "string" and
                         string.find(
@@ -10017,8 +10019,11 @@ mod:hook(
             local dynamic_grid_interaction =
                 widget and (widget.name == "settings_grid_interaction" or
                     widget.name == "category_grid_interaction" or
-                    (presentation.mode == 6 and
-                        widget.name == "grid_interaction"))
+                    (widget.name == "grid_interaction" and
+                        (presentation.mode == 6 or
+                            self.view_name == "options_view" or
+                            self.view_name ==
+                                "player_character_options_view")))
             if not modal_active and not dynamic_grid_interaction and
                     pointer.available and not source_widget and pointer.active and
                     widget then
@@ -10140,7 +10145,8 @@ mod:hook(
     function(func, self, grid, widgets, interaction_widget, dt, t,
             input_service, ...)
         local pointer = presentation.read_menu_pointer()
-        presentation.update_slider_drag(self, pointer)
+        local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)
+        presentation.update_slider_drag(self, hit_pointer)
         local source_widget = nil
         local source_entry = nil
         if pointer.available then
@@ -10168,14 +10174,14 @@ mod:hook(
                 if visible then
                     if widget == focused_dropdown then
                         presentation.log_focused_dropdown_geometry(
-                            self, widget, pointer)
+                            self, widget, hit_pointer)
                     end
                     presentation.log_slider_geometry(
-                        self, widget, pointer)
+                        self, widget, hit_pointer)
                 end
                 local entry = visible and
                     presentation.widget_hotspot_at_pointer(
-                        self, widget, pointer,
+                        self, widget, hit_pointer,
                         widget == focused_dropdown)
                 if entry then
                     source_widget = widget
@@ -10216,7 +10222,7 @@ mod:hook(
                 interaction_widget then
             local interaction_hit =
                 presentation.widget_contains_menu_pointer(
-                    self, interaction_widget, pointer)
+                    self, interaction_widget, hit_pointer)
             if interaction_hit then
                 local scrolled, reason = presentation.scroll_menu_grid(
                     grid, pointer.scroll_steps)
@@ -10244,7 +10250,7 @@ mod:hook(
                 local opening_dropdown = false
                 if presentation.is_slider_widget(source_widget) then
                     started_slider = presentation.begin_slider_drag(
-                        self, source_widget, pointer)
+                        self, source_widget, hit_pointer)
                 elseif presentation.is_dropdown_widget(source_widget) and
                         source_entry.content_id == "hotspot" and
                         source_widget ~= self._selected_settings_widget then

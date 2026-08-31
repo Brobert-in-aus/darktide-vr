@@ -200,7 +200,14 @@ if (-not $source.Contains(
 if (-not $source.Contains(
         'SystemView is captured through a landscape client panel') -or
         -not $source.Contains(
-            'local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)')) {
+            'local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)') -or
+        -not $source.Contains('self.view_name == "options_view"') -or
+        -not $source.Contains(
+            'self.view_name == "player_character_options_view"') -or
+        -not $source.Contains(
+            'widget.name == "grid_interaction" and') -or
+        -not $source.Contains(
+            'presentation.update_slider_drag(self, hit_pointer)')) {
     throw 'Escape-menu presentation pixels and portrait widget semantics must remain explicitly separated.'
 }
 foreach ($pollGuard in @(

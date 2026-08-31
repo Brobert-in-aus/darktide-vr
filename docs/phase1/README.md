@@ -1505,6 +1505,21 @@ panel pixels. A corrected source probe at `(290,421)/1280x720` activated the
 real Options row, opened `options_view`, and cleanly returned through SystemView
 to fresh stereo gameplay. Worn laser alignment remains pending.
 
+The nested OptionsView requires a second, explicit semantic owner. Its retained
+category/settings grids, dropdowns and sliders are still authored in the
+2496x2688 eye canvas even though the enclosing Escape panel and XR pointer are
+1280x720 landscape pixels. BaseView now excludes OptionsView's broad dynamic
+grid catchers, and `OptionsView._draw_grid` transforms the hit pointer for row,
+dropdown, slider, scroll and drag geometry while leaving the visible pointer
+and event sequence source-local. An unattended two-stage probe activated the
+real System Options row and then logged
+`options_source_activate widget=grid_content_pivot_widget_3` for nested source
+point `(180,144)/1280x720`; the previous full-grid false owner did not fire.
+The 600-second run passed with `shared_ready=6628`, no capture failures, no
+shared-frame reuse and no pose mismatch. Worn corner alignment and representative
+dropdown/slider/toggle interaction are still required before Escape settings
+input is accepted.
+
 An adjacent performance audit removed per-frame diagnostic filesystem probes.
 System/vendor menu and input-inventory flags poll every 15 UI updates;
 Psykhanium and hotspot inventory poll at 250 ms; movement inventory retains a

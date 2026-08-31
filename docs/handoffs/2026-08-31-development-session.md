@@ -356,3 +356,31 @@ returned to presentation mode 1, stereo readiness continued to 5,441, and the
 Worn content/input alignment within Events remains to be checked; the renderer
 lifecycle and stereo restoration are no longer blocked by the prior device
 hang.
+
+## Escape Options semantic-coordinate ownership
+
+SystemView and OptionsView do not share one semantic coordinate space even
+though they appear in the same landscape Escape panel. The System row probe is
+authored against the landscape client, while the nested Options grids remain
+in Darktide's 2496x2688 portrait eye canvas. Applying the source-to-eye
+transform only in BaseView proved insufficient: BaseView first consumed
+OptionsView's broad `grid_interaction` catcher, and after that catcher was
+excluded the private `OptionsView._draw_grid` still tested the raw source
+pointer.
+
+OptionsView now owns its complete semantic transform. Its row, dropdown,
+slider, scroll-catcher and slider-drag tests all use an eye-layout hit pointer,
+while the published cursor/laser and consumed input sequence remain in the
+original 1280x720 panel space. BaseView no longer claims OptionsView's three
+dynamic grid overlays. A clean source probe first activated SystemView's real
+Options row at `(290,421)/1280x720`, then a nested `(180,144)/1280x720` probe
+logged `options_source_activate widget=grid_content_pivot_widget_3`; no
+`base_source_activate ... grid_interaction` occurred. The resulting category
+populated the stock settings grid and emitted transformed slider geometry.
+
+The ten-minute authenticated run ended with `result=pass`, `shared_ready=6628`,
+zero capture failures, zero reused frames and zero pose mismatches. One backend
+sign-in error was dismissed and retried through the already authenticated
+launcher flow before this validation; it was not an XR or mod-load failure.
+Worn laser/cursor alignment and representative dropdown, slider and toggle
+actions remain the human acceptance gate.
