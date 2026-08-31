@@ -21,6 +21,8 @@ param(
 
     [switch] $SyntheticGameplayInput,
 
+    [switch] $EnableGameplayReticle,
+
     [switch] $SyntheticBodyPath,
 
     [switch] $SyntheticHeadSweep,
@@ -220,6 +222,9 @@ if ($SyntheticGameplayInput) {
         -Encoding ascii
     Write-Output 'Synthetic gameplay adapter enabled for this XR run.'
     $runnerArguments.SyntheticGameplayInput = $true
+}
+if ($EnableGameplayReticle) {
+    $runnerArguments.EnableGameplayReticle = $true
 }
 if ($SyntheticBodyPath) {
     $runnerArguments.SyntheticBodyPath = $true

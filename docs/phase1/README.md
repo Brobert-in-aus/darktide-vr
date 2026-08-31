@@ -1324,7 +1324,18 @@ the right hand. Chain-lightning targeting, smart-target acquisition and damage
 run against a scoped right-aim proxy without writing Darktide's read-only
 first-person component. Clean live runs logged both projectile owners and four
 lightning updates with nonzero stereo `shared_ready`. A non-Psyker firearm shot,
-worn alignment, binocular reticle policy and optional laser presentation remain.
+worn alignment and the production laser/reticle policy remain.
+
+An opt-in compositor reticle now supplies the first binocular presentation
+candidate. `start-darktide-vr.ps1 -EnableGameplayReticle` places a 6 cm cyan
+quad 8 m down the tracked right-controller aim ray only for fresh synchronized
+`stereo_world` pairs; loading and menu modes cannot receive it. It reuses one
+reserved texel in the existing capture swapchain rather than allocating another
+overlay resource. A clean authenticated hub run submitted 1,653 reticle frames
+across 4,840 fresh pairs with zero reuse and zero pose mismatches. Worn testing
+must still judge alignment, size, depth and off-axis skew. The diagnostic is
+intentionally always visible and head-parallel, so target occlusion, raycast
+depth and production coupling to controller-authored aim remain open policy.
 
 Unattended range launches are now self-contained: `-EnterPsykhanium` implies
 the guarded hub advance required by its hub-gated Lua state machine, and

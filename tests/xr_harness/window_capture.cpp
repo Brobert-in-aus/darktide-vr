@@ -260,6 +260,21 @@ CapturedWindowFrame WindowCapture::capture() {
     throw std::runtime_error("StretchBlt failed during capture");
   }
   GdiFlush();
+  const auto set_pixel = [&](int x, int y, std::byte blue,
+                             std::byte green, std::byte red) {
+    if (x < 0 || y < 0 || x >= static_cast<int>(width_) ||
+        y >= static_cast<int>(height_)) {
+      return;
+    }
+    auto* pixel = pixels_ +
+                  (static_cast<std::size_t>(y) * width_ +
+                   static_cast<std::size_t>(x)) *
+                      4;
+    pixel[0] = blue;
+    pixel[1] = green;
+    pixel[2] = red;
+    pixel[3] = std::byte{255};
+  };
   const auto pointer_normalized =
       pointer_normalized_.load(std::memory_order_acquire);
   if (pointer_normalized != UINT64_MAX) {
@@ -273,21 +288,6 @@ CapturedWindowFrame WindowCapture::capture() {
     const auto centre_y = static_cast<int>(
         (static_cast<std::int64_t>(normalized_y) * (height_ - 1) + 32767) /
         65535);
-    const auto set_pixel = [&](int x, int y, std::byte blue,
-                               std::byte green, std::byte red) {
-      if (x < 0 || y < 0 || x >= static_cast<int>(width_) ||
-          y >= static_cast<int>(height_)) {
-        return;
-      }
-      auto* pixel = pixels_ +
-                    (static_cast<std::size_t>(y) * width_ +
-                     static_cast<std::size_t>(x)) *
-                        4;
-      pixel[0] = blue;
-      pixel[1] = green;
-      pixel[2] = red;
-      pixel[3] = std::byte{255};
-    };
     // Draw a high-contrast reticle directly into the captured menu
     // image. It therefore follows the exact source-space coordinate consumed
     // by Darktide's hotspots and remains visible in both the headset panel and
@@ -309,12 +309,13 @@ CapturedWindowFrame WindowCapture::capture() {
         }
       }
     }
-    // Reserve the final capture pixel as an opaque cyan swatch. The OpenXR
-    // menu pointer layers sample this one pixel to render a spatial laser and
-    // impact marker without allocating or synchronizing another swapchain.
-    set_pixel(static_cast<int>(width_ - 1), static_cast<int>(height_ - 1),
-              std::byte{255}, std::byte{255}, std::byte{0});
   }
+  // Reserve the final capture pixel as an opaque cyan swatch even when the
+  // menu pointer is inactive. OpenXR samples this one texel for both menu-ray
+  // geometry and the opt-in gameplay aim reticle, avoiding a second overlay
+  // swapchain and synchronization path.
+  set_pixel(static_cast<int>(width_ - 1), static_cast<int>(height_ - 1),
+            std::byte{255}, std::byte{255}, std::byte{0});
   return {pixels_, width_, height_, width_ * 4};
 }
 

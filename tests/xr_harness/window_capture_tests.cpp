@@ -69,6 +69,13 @@ int wmain() {
     const auto initial = capture.capture();
     expect(initial.bgra_pixels && initial.width == 160 && initial.height == 90,
            "Visible fixture should capture at requested dimensions");
+    const auto idle_overlay_swatch = initial.bgra_pixels +
+        (static_cast<std::size_t>(89) * 160 + 159) * 4;
+    expect(idle_overlay_swatch[0] == std::byte{255} &&
+               idle_overlay_swatch[1] == std::byte{255} &&
+               idle_overlay_swatch[2] == std::byte{0} &&
+               idle_overlay_swatch[3] == std::byte{255},
+           "Capture did not publish its always-available XR overlay swatch");
     RECT expected_client{};
     expect(GetClientRect(window, &expected_client) != FALSE,
            "Fixture client extent must be readable");
@@ -115,7 +122,7 @@ int wmain() {
                laser_swatch[1] == std::byte{255} &&
                laser_swatch[2] == std::byte{0} &&
                laser_swatch[3] == std::byte{255},
-           "Pointer overlay did not publish its OpenXR laser swatch");
+           "Pointer overlay did not preserve its OpenXR overlay swatch");
     capture.set_pointer_overlay(std::nullopt, 160, 90);
 
     ShowWindow(window, SW_MINIMIZE);

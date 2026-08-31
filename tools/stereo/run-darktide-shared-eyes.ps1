@@ -17,6 +17,8 @@ param(
 
     [switch] $SyntheticGameplayInput,
 
+    [switch] $EnableGameplayReticle,
+
     [switch] $SyntheticBodyPath,
 
     [switch] $SyntheticHeadSweep,
@@ -124,6 +126,9 @@ if ($SyntheticGameplayInput) {
         throw '-SyntheticGameplayInput requires -SyntheticControllerPath'
     }
     $arguments += '--synthetic-gameplay-input'
+}
+if ($EnableGameplayReticle) {
+    $arguments += '--enable-gameplay-reticle'
 }
 if ($SyntheticBodyPath) {
     if (-not $SyntheticControllerPath) {

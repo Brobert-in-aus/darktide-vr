@@ -314,3 +314,24 @@ pose mismatch. After selecting the available force staff, charged fire logged
 `staff_tip_right_aim`; earlier clean range evidence still covers normal
 `left_origin_right_aim` and lightning. The runner restored the gameplay flag
 automatically, and the controller-aim flag was restored disabled afterward.
+
+## Right-hand spatial reticle diagnostic
+
+The OpenXR compositor now has an opt-in gameplay reticle path behind
+`-EnableGameplayReticle`. It samples an always-available opaque cyan texel from
+the existing flat-capture swapchain, so the prototype adds no swapchain or
+per-frame capture allocation. In `stereo_world` it places a 6 cm binocular quad
+8 m along the tracked right-controller aim ray. Submission is restricted to a
+fresh synchronized eye pair, valid position/orientation tracking and a
+controller origin within 1.5 m of the head. It is never submitted over loading
+or menu panels.
+
+A clean authenticated hub run with a synthetic controller path submitted 1,653
+reticle frames, received 4,840 fresh shared pairs, reused zero shared frames and
+reported zero pair-pose mismatches. The run ended with `result=pass`; the source
+gate, Release build and all 30 CTest tests also passed. This is deliberately a
+diagnostic switch rather than the production policy. Worn acceptance must check
+right-hand alignment, angular size, perceived depth and off-axis skew. The
+current quad is parallel to the head and always compositor-visible; a later
+depth-aware world hit and controller-aim enablement policy remain separate
+decisions.

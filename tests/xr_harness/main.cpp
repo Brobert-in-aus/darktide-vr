@@ -612,6 +612,7 @@ class OpenXrProbe {
                                bool synthetic_controller_path,
                                bool synthetic_body_path,
                                bool synthetic_gameplay_input,
+                               bool enable_gameplay_reticle,
                                bool synthetic_head_sweep,
                                bool synthetic_neck_pivot_path,
                                bool synthetic_roomscale_path,
@@ -2705,6 +2706,32 @@ class OpenXrProbe {
             static_cast<std::uint32_t>(projection_views.size());
         projection.views = projection_views.data();
       }
+      std::optional<darktidevr::math::Pose> gameplay_reticle_pose;
+      if (enable_gameplay_reticle && submitted_shared_pair_this_frame &&
+          presentation_state.mode == darktidevr::core::
+                                         SharedPresentationMode::stereo_world &&
+          latest_controller_sample_ && current_head_valid) {
+        const auto& right = latest_controller_sample_->hands[1];
+        const auto required =
+            darktidevr::core::controller_orientation_valid |
+            darktidevr::core::controller_position_valid;
+        if ((right.aim_tracking_flags & required) == required &&
+            darktidevr::core::pointer_origin_within_reach(
+                right.aim_pose.position, current_head.position, 1.5F)) {
+          constexpr float reticle_distance_metres = 8.0F;
+          const auto direction = darktidevr::math::rotate(
+              right.aim_pose.orientation, {0.0F, 0.0F, -1.0F});
+          gameplay_reticle_pose = darktidevr::math::Pose{
+              current_head.orientation,
+              {right.aim_pose.position.x +
+                   direction.x * reticle_distance_metres,
+               right.aim_pose.position.y +
+                   direction.y * reticle_distance_metres,
+               right.aim_pose.position.z +
+                   direction.z * reticle_distance_metres}};
+          ++gameplay_reticle_frames_;
+        }
+      }
       std::array<XrCompositionLayerQuad, 3> pointer_quads{{
           {XR_TYPE_COMPOSITION_LAYER_QUAD},
           {XR_TYPE_COMPOSITION_LAYER_QUAD},
@@ -2775,7 +2802,30 @@ class OpenXrProbe {
               hit_position.z + panel_normal.z * 0.004F}},
             {0.035F, 0.035F});
       }
-      std::array<const XrCompositionLayerBaseHeader*, 5> layers{};
+      XrCompositionLayerQuad gameplay_reticle_quad{
+          XR_TYPE_COMPOSITION_LAYER_QUAD};
+      if (gameplay_reticle_pose) {
+        gameplay_reticle_quad.layerFlags =
+            XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+        gameplay_reticle_quad.space = local_space_;
+        gameplay_reticle_quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+        gameplay_reticle_quad.subImage.swapchain = flat_swapchain;
+        gameplay_reticle_quad.subImage.imageRect.offset = {
+            static_cast<std::int32_t>(flat_capture_width - 1),
+            static_cast<std::int32_t>(flat_capture_height - 1)};
+        gameplay_reticle_quad.subImage.imageRect.extent = {1, 1};
+        gameplay_reticle_quad.pose.orientation = {
+            gameplay_reticle_pose->orientation.x,
+            gameplay_reticle_pose->orientation.y,
+            gameplay_reticle_pose->orientation.z,
+            gameplay_reticle_pose->orientation.w};
+        gameplay_reticle_quad.pose.position = {
+            gameplay_reticle_pose->position.x,
+            gameplay_reticle_pose->position.y,
+            gameplay_reticle_pose->position.z};
+        gameplay_reticle_quad.size = {0.06F, 0.06F};
+      }
+      std::array<const XrCompositionLayerBaseHeader*, 6> layers{};
       std::uint32_t layer_count{};
       if (submit_layer) {
         if (submitted_shared_pair_this_frame && stereo) {
@@ -2798,6 +2848,11 @@ class OpenXrProbe {
                 reinterpret_cast<const XrCompositionLayerBaseHeader*>(
                     &pointer_quad);
           }
+        }
+        if (gameplay_reticle_pose) {
+          layers[layer_count++] =
+              reinterpret_cast<const XrCompositionLayerBaseHeader*>(
+                  &gameplay_reticle_quad);
         }
       }
       XrFrameEndInfo frame_end{XR_TYPE_FRAME_END_INFO};
@@ -2946,6 +3001,8 @@ class OpenXrProbe {
               << '\n'
               << "openxr.controller_pointer_last_source="
               << controller_pointer_x_ << ',' << controller_pointer_y_ << '\n'
+              << "openxr.gameplay_reticle_frames="
+              << gameplay_reticle_frames_ << '\n'
               << "openxr.menu_input_events=" << menu_input_events << '\n'
               << "openxr.menu_input_dispatched=" << menu_input_dispatched
               << '\n'
@@ -3597,6 +3654,7 @@ class OpenXrProbe {
   std::array<std::uint64_t, 2> controller_thumbstick_active_frames_{};
   std::array<std::uint64_t, 2> controller_thumbstick_changed_frames_{};
   std::uint64_t controller_pointer_rays_{};
+  std::uint64_t gameplay_reticle_frames_{};
   std::uint64_t controller_pointer_hits_{};
   std::uint32_t controller_pointer_x_{};
   std::uint32_t controller_pointer_y_{};
@@ -3951,6 +4009,7 @@ void usage() {
                 "[--synthetic-controller-path] "
                 "[--synthetic-body-path] "
                 "[--synthetic-gameplay-input] "
+                "[--enable-gameplay-reticle] "
                 "[--synthetic-head-sweep] "
                 "[--synthetic-neck-pivot-path] "
                 "[--synthetic-roomscale-path] "
@@ -3988,6 +4047,7 @@ int wmain(int argc, wchar_t** argv) {
     bool synthetic_controller_path = false;
     bool synthetic_body_path = false;
     bool synthetic_gameplay_input = false;
+    bool enable_gameplay_reticle = false;
     bool synthetic_head_sweep = false;
     bool synthetic_neck_pivot_path = false;
     bool synthetic_roomscale_path = false;
@@ -4043,6 +4103,8 @@ int wmain(int argc, wchar_t** argv) {
         synthetic_body_path = true;
       } else if (argument == L"--synthetic-gameplay-input") {
         synthetic_gameplay_input = true;
+      } else if (argument == L"--enable-gameplay-reticle") {
+        enable_gameplay_reticle = true;
       } else if (argument == L"--synthetic-head-sweep") {
         synthetic_head_sweep = true;
       } else if (argument == L"--synthetic-neck-pivot-path") {
@@ -4119,6 +4181,10 @@ int wmain(int argc, wchar_t** argv) {
       throw std::invalid_argument(
           "--synthetic-head-sweep requires --shared-eyes");
     }
+    if (enable_gameplay_reticle && !shared_eyes) {
+      throw std::invalid_argument(
+          "--enable-gameplay-reticle requires --shared-eyes");
+    }
     if (synthetic_neck_pivot_path && !shared_eyes) {
       throw std::invalid_argument(
           "--synthetic-neck-pivot-path requires --shared-eyes");
@@ -4174,6 +4240,7 @@ int wmain(int argc, wchar_t** argv) {
                                      synthetic_controller_path,
                                      synthetic_body_path,
                                      synthetic_gameplay_input,
+                                     enable_gameplay_reticle,
                                      synthetic_head_sweep,
                                      synthetic_neck_pivot_path,
                                      synthetic_roomscale_path,
