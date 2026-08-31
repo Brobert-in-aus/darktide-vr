@@ -156,6 +156,47 @@ tests: coincident eyes and the full second wrapper are disabled, per-eye DLSS
 reset is false, and the backed-up DLSS/frame-generation/upscaling settings are
 active. Captures and amplified diffs are retained under
 `artifacts/unattended/visual-parity-coincident-2026-08-31/` (ignored by Git).
-The next evidence boundary is native per-submission render identity: attribute
-command lists and their shadow/light/culling resources to the completed left
-or right output instead of relying on the current `eye=-1` trace records.
+
+That native attribution boundary is now complete. Focused draw records carry a
+command-list recording generation, and queue submission emits the render-arm
+identity for every list in the batch. Joining on `(frame, command list,
+generation)` avoids both reused D3D12 command-list pointers and the misleading
+alternating `AMD FSR Replacement BackBuffer` resource identity. In the normal
+order, the completed right eye contained stable opaque/depth families that the
+left eye omitted by roughly 54, 20, 10, 8 and 5 draws per eye frame. Reversing
+submission order left those populations attached to the right viewport/camera
+identity, so "the second render gets richer" is falsified. Inheriting the
+primary viewport's layer, shading callback, or both also left the asymmetry
+intact.
+
+Source inspection then found the structural difference. Darktide creates the
+primary viewport through `CameraManager.create_viewport` with a dedicated
+shadow-cull camera, updates that camera before the late VR hook replaces the
+render camera pose, and registers the viewport with camera-manager observers.
+The duplicate eye was created directly without a shadow-cull camera. An initial
+probe that moved the primary's dedicated shadow camera was invalid because it
+lives on the same camera unit and visibly changed the render camera. The
+corrected probe instead assigns the already tracked primary render camera as
+the shadow-cull camera for both viewports and never manipulates the dedicated
+camera.
+
+The corrected exact-pose result is decisive. Across 42 frames it attributed
+21,454 left and 21,449 right draws; the largest remaining signature delta was
+only 0.048 draws/frame and the former stable opaque/depth families disappeared.
+At 2496x2688, pixels above threshold 2 fell from about 8.01% to **0.0948%**,
+MAE from about 0.855 to **0.0308**, PSNR rose to **48.72 dB**, and affine edge
+correlation rose to **0.99830**. The amplified remainder is confined mainly to
+small dynamic HUD markers. Shared tracked-camera culling is therefore the
+production default; `darktidevr_shared_shadow_cull.flag=disabled` remains only
+as a diagnostic regression control. Corrected evidence is retained under
+`artifacts/unattended/visual-parity-shared-render-cull-corrected-2026-08-31/`.
+
+The production-normal follow-up disabled coincident eyes, reverse order and
+metadata inheritance, synchronized the corrected Lua/DLL, and entered the hub
+through the authenticated launcher. The fresh log reported
+`shadow_cull shared=true`, normal `half_ipd=0.032`, and advancing stereo through
+`shared_ready=4264`. The 30-second hub soak had zero reused frames and zero pose
+mismatches; exit was clean. The Lua source gate passed at 198/198 locals, the
+Release native DLL built with warnings-as-errors, all 30 CTest cases passed,
+the diagnostic PowerShell tools parsed, Python attribution tooling compiled,
+and `git diff --check` passed.

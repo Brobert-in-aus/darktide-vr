@@ -956,14 +956,16 @@ validation; robustness/release; and deferred refinements. Evidence-gathering
 inside a higher-priority item may prepare a later item but must not silently
 reorder these feature gates.
 
-The per-eye visual-parity item is now at the native attribution boundary. An
-exact coincident-position-and-frustum synchronized readback found effectively
-the same residual with the optimized prepared second eye and a complete second
-`ScriptWorld.render` wrapper (about 8.01% changed pixels, PSNR about 34.6 dB).
-Per-eye DLSS resets worsened parity and throughput. Do not revisit global Lua
-LOD policy or wrapper-level guesses; tag the command lists and shadow/light/
-culling resources that feed each completed eye. A no-DLSS A/B must wait until
-native completed-output discovery works without the format-28 intermediate.
+The per-eye visual-parity implementation is now causally resolved pending a
+worn regression. Generation-aware completed-output attribution showed stable
+opaque/depth populations missing from the primary/left submission regardless
+of render order or inherited viewport metadata. Darktide's primary dedicated
+shadow-cull camera was stale relative to the late VR pose, while the duplicate
+had no dedicated cull camera. Assigning the already tracked primary render
+camera to both viewport cull decisions reduced exact-pose mismatch from about
+8.01% to 0.0948% and balanced attributed draws to 21,454 versus 21,449 across
+42 frames. Preserve that shared tracked-camera cull while moving to performance
+work; use its explicit disabled mode only as a regression control.
 
 1. **Quantitative performance foundation completed; resource ownership next:**
    the opt-in profiler now reports true wrapper p50/p95 and per-eye GPU interval

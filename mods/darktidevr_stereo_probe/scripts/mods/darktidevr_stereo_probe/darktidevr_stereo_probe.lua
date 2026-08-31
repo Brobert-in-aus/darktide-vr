@@ -434,6 +434,9 @@ local presentation = {
     full_second_eye_probe_check_frame = 0,
     full_second_eye_probe_last_check_frame = -math.huge,
     coincident_eye_probe_requested = false,
+    reverse_eye_order_probe_requested = false,
+    inherit_viewport_metadata_probe_mode = "disabled",
+    shared_shadow_cull_enabled = true,
     head_translation_trace_requested = true,
     head_translation_trace_last_sequence = 0,
     head_translation_trace_interval = 600,
@@ -3544,7 +3547,7 @@ local function record_render_timings(label, left_ticks, right_ticks, pair_ticks)
     end
 end
 
-local function render_second_eye_from_prepared_frame(world, primary, right)
+local function render_eye_from_prepared_frame(world, prepared, target)
     presentation.full_second_eye_probe_check_frame =
         presentation.full_second_eye_probe_check_frame + 1
     if presentation.full_second_eye_probe_check_frame >=
@@ -3573,9 +3576,9 @@ local function render_second_eye_from_prepared_frame(world, primary, right)
     if not reuse_prepared_frame_requested or reuse_prepared_frame_failed then
         return false
     end
-    local camera = ScriptViewport.camera(right)
+    local camera = ScriptViewport.camera(target)
     local shading_environment =
-        Viewport.get_data(primary, "shading_environment")
+        Viewport.get_data(prepared, "shading_environment")
     if not camera or not shading_environment then
         reuse_prepared_frame_failed = true
         mod:warning(
@@ -3587,7 +3590,7 @@ local function render_second_eye_from_prepared_frame(world, primary, right)
         Application.render_world,
         world,
         camera,
-        right,
+        target,
         shading_environment
     )
     if not ok then
@@ -3661,6 +3664,29 @@ local function setup(manager)
     local primary_camera = ScriptViewport.camera(primary)
     local shading_environment_name =
         Viewport.get_data(primary, "default_shading_environment_name")
+    local primary_shading_callback =
+        Viewport.get_data(primary, "shading_callback")
+    local primary_layer = Viewport.get_data(primary, "layer")
+
+    local metadata_flag = Mods.lua.io.open(
+        "./../mods/darktidevr_stereo_probe/darktidevr_inherit_viewport_metadata.flag",
+        "r")
+    local inherit_viewport_metadata_mode = "disabled"
+    if metadata_flag then
+        inherit_viewport_metadata_mode = metadata_flag:read("*all"):match(
+            "^%s*(%S+)%s*$") or "disabled"
+        metadata_flag:close()
+    end
+    local inherit_viewport_layer =
+        inherit_viewport_metadata_mode == "layer" or
+        inherit_viewport_metadata_mode == "both" or
+        inherit_viewport_metadata_mode == "enabled"
+    local inherit_viewport_callback =
+        inherit_viewport_metadata_mode == "callback" or
+        inherit_viewport_metadata_mode == "both" or
+        inherit_viewport_metadata_mode == "enabled"
+    presentation.inherit_viewport_metadata_probe_mode =
+        inherit_viewport_metadata_mode
 
     if not shading_environment_name then
         return false
@@ -3675,14 +3701,57 @@ local function setup(manager)
         world,
         right_viewport_name,
         ui_offscreen_active and "default_with_alpha" or "default",
-        2,
+        inherit_viewport_layer and primary_layer or 2,
         nil,
         nil,
         nil,
         false,
         shading_environment_name,
-        nil
+        inherit_viewport_callback and primary_shading_callback or nil
     )
+
+    local shadow_cull_flag = Mods.lua.io.open(
+        "./../mods/darktidevr_stereo_probe/darktidevr_shared_shadow_cull.flag",
+        "r")
+    -- The stock primary viewport owns a dedicated shadow-cull camera which the
+    -- camera manager updates before this late VR hook applies the tracked eye
+    -- pose.  The duplicate eye has no such camera.  Using the already tracked
+    -- primary render camera for both viewport cull decisions keeps their
+    -- lighting, shadows, decals and detail population identical.  Keep an
+    -- explicit diagnostic opt-out, but make the corrected path production
+    -- default.
+    local shared_shadow_cull = true
+    if shadow_cull_flag then
+        shared_shadow_cull = shadow_cull_flag:read("*all"):match(
+            "^%s*disabled%s*$") == nil
+        shadow_cull_flag:close()
+    end
+    presentation.shared_shadow_cull_enabled = shared_shadow_cull
+    local original_primary_shadow_cull_camera =
+        ScriptViewport.shadow_cull_camera(primary)
+    if shared_shadow_cull then
+        -- Darktide updates the primary viewport's dedicated shadow-culling
+        -- camera before the VR hook replaces the render camera transform. The
+        -- duplicate viewport has no shadow-culling camera at all. Point both
+        -- viewports at the already tracked primary render camera so they
+        -- consume one visibility/shadow-light population without moving a
+        -- second camera on the primary camera unit.
+        Viewport.set_data(primary, "shadow_cull_camera", primary_camera)
+        Viewport.set_data(right, "shadow_cull_camera", primary_camera)
+    end
+
+    mod:info(
+        "DARKTIDEVR_STEREO viewport_metadata mode=%s primary_layer=%s right_layer=%s primary_callback=%s right_callback=%s",
+        tostring(inherit_viewport_metadata_mode),
+        tostring(primary_layer),
+        tostring(Viewport.get_data(right, "layer")),
+        tostring(primary_shading_callback),
+        tostring(Viewport.get_data(right, "shading_callback")))
+    mod:info(
+        "DARKTIDEVR_STEREO shadow_cull shared=%s primary=%s right=%s",
+        tostring(shared_shadow_cull),
+        tostring(original_primary_shadow_cull_camera),
+        tostring(ScriptViewport.shadow_cull_camera(right)))
 
     if ui_native_capture_active then
         -- Each sequential submission renders from a complete, identical
@@ -4585,6 +4654,23 @@ function presentation.body_camera_anchor(unit)
             mod:info(
                 "DARKTIDEVR_STEREO coincident_eyes=%s source=test_flag",
                 tostring(coincident_enabled))
+        end
+        local reverse_order_flag = Mods.lua.io.open(
+            "./../mods/darktidevr_stereo_probe/darktidevr_reverse_eye_order.flag",
+            "r")
+        local reverse_order_enabled = false
+        if reverse_order_flag then
+            reverse_order_enabled = reverse_order_flag:read("*all"):match(
+                "^%s*enabled%s*$") ~= nil
+            reverse_order_flag:close()
+        end
+        if reverse_order_enabled ~=
+                presentation.reverse_eye_order_probe_requested then
+            presentation.reverse_eye_order_probe_requested =
+                reverse_order_enabled
+            mod:info(
+                "DARKTIDEVR_STEREO reverse_eye_order=%s source=test_flag",
+                tostring(reverse_order_enabled))
         end
         local basis = active_base_rotation:unbox()
         local local_offset = presentation.rotate_vector(
@@ -11472,21 +11558,31 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
             ui_native_capture then
         local primary = ScriptWorld.viewport(world, primary_viewport_name)
         local right = ScriptWorld.viewport(world, right_viewport_name)
+        local first = primary
+        local second = right
+        local first_eye = 0
+        local second_eye = 1
+        if presentation.reverse_eye_order_probe_requested then
+            first = right
+            second = primary
+            first_eye = 1
+            second_eye = 0
+        end
 
         if ui_native_sync_requested and not ui_native_sync_initialized then
             ui_native_capture.dtvr_reset_eye_capture_tags()
             ui_native_sync_initialized = true
         end
 
-        ScriptWorld.activate_viewport(world, primary)
-        ScriptWorld.deactivate_viewport(world, right)
+        ScriptWorld.activate_viewport(world, first)
+        ScriptWorld.deactivate_viewport(world, second)
         if ui_reset_dlss_each_eye_requested then
             Application.reset_dlss()
         end
         local left_target = tonumber(
-            ui_native_capture.dtvr_boundary_eye_capture_count(0)
+            ui_native_capture.dtvr_boundary_eye_capture_count(first_eye)
         ) + 1
-        report_native_capture_result(arm_eye_capture(0))
+        report_native_capture_result(arm_eye_capture(first_eye))
         presentation.trace_body_capture_boundary("before_left")
         local pair_start = performance_tick()
         local left_start = pair_start
@@ -11495,20 +11591,20 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
         presentation.trace_body_capture_boundary("after_left")
         if ui_direct_swapchain_capture_requested then
             report_native_capture_result(
-                ui_native_capture.dtvr_capture_armed_swapchain_eye(0)
+                ui_native_capture.dtvr_capture_armed_swapchain_eye(first_eye)
             )
         elseif ui_native_sync_requested then
-            wait_for_eye_capture(0, left_target)
+            wait_for_eye_capture(first_eye, left_target)
         end
 
-        ScriptWorld.deactivate_viewport(world, primary)
-        ScriptWorld.activate_viewport(world, right)
+        ScriptWorld.deactivate_viewport(world, first)
+        ScriptWorld.activate_viewport(world, second)
         if stereo_world_markers_requested then
             local marker_ok, marker_result = pcall(
                 function()
                     remove_left_world_marker_commands()
                     enqueue_world_markers_for_camera(
-                        ScriptViewport.camera(right)
+                        ScriptViewport.camera(second)
                     )
                 end
             )
@@ -11524,22 +11620,22 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
             Application.reset_dlss()
         end
         local right_target = tonumber(
-            ui_native_capture.dtvr_boundary_eye_capture_count(1)
+            ui_native_capture.dtvr_boundary_eye_capture_count(second_eye)
         ) + 1
-        report_native_capture_result(arm_eye_capture(1))
+        report_native_capture_result(arm_eye_capture(second_eye))
         local right_start = performance_tick()
-        if not render_second_eye_from_prepared_frame(
-                world, primary, right) then
+        if not render_eye_from_prepared_frame(
+                world, first, second) then
             func(world, ...)
         end
         local right_end = performance_tick()
         presentation.trace_body_capture_boundary("after_right")
         if ui_direct_swapchain_capture_requested then
             report_native_capture_result(
-                ui_native_capture.dtvr_capture_armed_swapchain_eye(1)
+                ui_native_capture.dtvr_capture_armed_swapchain_eye(second_eye)
             )
         elseif ui_native_sync_requested then
-            wait_for_eye_capture(1, right_target)
+            wait_for_eye_capture(second_eye, right_target)
         end
 
         -- Restore the normal active set for update code outside this hook.
@@ -11595,7 +11691,7 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
         ) + 1
         report_native_capture_result(arm_eye_capture(1))
         local right_start = performance_tick()
-        if not render_second_eye_from_prepared_frame(
+        if not render_eye_from_prepared_frame(
                 world, primary, right) then
             func(world, ...)
         end

@@ -925,20 +925,28 @@ simple distance-to-eye LOD is ruled out. Correlate the asymmetry with render
 submission identity, shadow-caster culling, cascade selection and retained
 per-eye shadow state alongside the broader visibility/LOD probe.
 
-The 31 August exact-pose A/B narrows this further. The bridge captured both
-completed shared-eye resources from one synchronized pair after its copy fence,
-while the gameplay cameras shared position and optical/frustum rotation. The
-prepared second-eye path and the complete second `ScriptWorld.render` wrapper
-were statistically indistinguishable: respectively 8.0127% and 8.0049% of
-pixels changed above RGB threshold 2, with PSNR 34.5915 and 34.5431 dB. Their
-amplified residuals concentrate in bright/specular illumination, particles and
-fine edges. Reused Lua preparation and the skipped second wrapper are therefore
-not the cause. Resetting DLSS per eye worsened parity and throughput and is
-rejected. A no-DLSS comparison remains blocked by completed-output discovery,
-which currently depends on the format-28 intermediate. Next attribute native
-command lists, culling/shadow resources and temporal/pass identity to the
-actual completed left/right outputs; do not change global LOD policy from this
-evidence.
+The 31 August exact-pose A/B narrowed and then resolved this defect. The bridge
+captured both completed shared-eye resources from one synchronized pair after
+its copy fence, while the gameplay cameras shared position and optical/frustum
+rotation. The prepared second-eye path and the complete second
+`ScriptWorld.render` wrapper were statistically indistinguishable: respectively
+8.0127% and 8.0049% of pixels changed above RGB threshold 2, with PSNR 34.5915
+and 34.5431 dB. Reused Lua preparation and the skipped second wrapper were
+therefore falsified. Resetting DLSS per eye worsened parity and throughput and
+was rejected.
+
+Generation-aware completed-output attribution then found stable opaque/depth
+draw populations on the right that were absent from the left. They stayed with
+the right viewport when render order was reversed and survived primary layer
+and shading-callback inheritance. The actual structural split was Darktide's
+dedicated primary shadow-cull camera: CameraManager updated it before the late
+VR pose, while the duplicate viewport had no shadow-cull camera. Both viewports
+now use the already tracked primary render camera for culling. In a corrected
+42-frame trace the eyes issued 21,454 and 21,449 attributed draws and no stable
+opaque/depth family differed by even one draw per frame. Exact-pose pixel
+mismatch fell to 0.0948%, MAE to 0.0308, PSNR rose to 48.72 dB, and affine edge
+correlation reached 0.99830. This shared tracked-camera cull is the production
+default; an explicit `disabled` flag remains for regression diagnosis.
 
 ### Next session order
 
@@ -1272,12 +1280,13 @@ Continue in this order:
    clamping and pointer crop-local coordinates.
 4. Continue ranged weapon aim, binocular crosshair/reticle policy and optional
    controller laser presentation after the UI gates.
-5. Investigate per-eye LOD divergence, edge light culling and render-identity-
-   locked enemy-shadow asymmetry with separate evidence for each boundary.
-   Exact coincident-eye capture has ruled out the optimized Lua second-eye
-   wrapper boundary. Add completed-output-based native submission attribution,
-   then correlate asymmetric light/shadow/culling resources. Repair no-DLSS
-   completed-output discovery before using upscaler-off parity as evidence.
+5. **Implemented; worn regression remains:** per-eye detail, lighting and
+   shadow population now use the same tracked primary render camera for culling.
+   Completed-output attribution and exact-pose readback reduced the mismatch
+   from about 8.01% to 0.0948%. Worn-check enemy shadows, edge lights and the
+   previously missing floor/detail examples with normal eye separation. Keep
+   no-DLSS output discovery as an independent compatibility task rather than a
+   prerequisite for this accepted causal fix.
 6. Attribute and remove duplicated render work before attempting evidence-based
    pooling, multiview, view instancing or safe queue parallelism.
 7. Finish locomotion and controls: configurable head/hand-relative movement,

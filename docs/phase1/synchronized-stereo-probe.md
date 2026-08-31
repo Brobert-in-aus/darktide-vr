@@ -1602,3 +1602,28 @@ creation. A 3x magenta diagnostic proved exact ownership and intact six-vertex
 quad pairing. A 1x original-material run rendered clean stereo without device
 loss or pair-pose mismatch. Final worn pitch/roll acceptance and Psykhanium
 coverage remain outstanding.
+
+### Shared tracked-camera culling checkpoint (2026-08-31)
+
+Later independent-eye rendering retained a smaller but systematic asymmetry:
+with exactly coincident eye position and optical frusta, about 8.01% of pixels
+differed and the primary/left eye omitted stable opaque/depth draw families.
+Generation-aware queue attribution joined recorded command lists to the eye arm
+that actually produced each alternating FSR replacement output. Reversing eye
+submission order and inheriting the primary viewport's layer and shading
+callback did not move or remove those draw populations.
+
+Darktide's camera-manager construction was the causal difference. The primary
+viewport owns a dedicated shadow-cull camera updated before the late VR pose;
+the directly created duplicate viewport owns none. Both viewports now point
+their `shadow_cull_camera` data at the already tracked primary render camera.
+This does not move the original dedicated camera, which shares the primary
+camera unit and produced an invalid view when manipulated directly.
+
+Across the corrected 42-frame trace, completed-output attribution found 21,454
+left and 21,449 right draws with no stable opaque/depth signature differing by
+one draw per frame. At 2496x2688 the exact-pose comparison measured 0.0948%
+changed pixels above threshold 2, MAE 0.0308, PSNR 48.72 dB and affine edge
+correlation 0.99830. The former lighting/detail population defect is therefore
+fixed at its culling boundary. The shared tracked-camera path is the default;
+the flag tool can explicitly disable it only for regression diagnosis.

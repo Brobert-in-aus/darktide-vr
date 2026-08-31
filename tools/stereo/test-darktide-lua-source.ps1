@@ -157,6 +157,13 @@ if (-not $source.Contains(
             'billboard_selector_probe_requested or performance_profile_requested then')) {
     throw 'Production shader substitution must retain the early native-hook installation trigger.'
 }
+if (-not $source.Contains('local shared_shadow_cull = true') -or
+        -not $source.Contains(
+            'Viewport.set_data(primary, "shadow_cull_camera", primary_camera)') -or
+        -not $source.Contains(
+            'Viewport.set_data(right, "shadow_cull_camera", primary_camera)')) {
+    throw 'Both gameplay eyes must default to the same tracked render-camera culling decision.'
+}
 foreach ($shopTestView in @(
         'credits_vendor_background_view',
         'contracts_background_view',
