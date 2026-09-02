@@ -159,6 +159,26 @@ control was rejected and the one-sided resources restored. The source gate now
 asserts the two spawners, both one-sided resources, rigid joint-to-controller
 alignment and per-side equipment synchronization.
 
+The cached catalog also exposes side-specific material masks named
+`mask_arms_keep_wrist_and_hands_left` and
+`mask_arms_keep_wrist_and_hands_right`. Runtime inspection found that they set
+`assymetry_right_left_body_mask` per side and use `mask_top_bottom = (0, 0.65)`.
+Darktide's `VisualLoadoutCustomization.apply_material_override_item` applied
+both masks successfully to separate rigid-root `slot_body_arms` units, but the
+60-pair direct-eye capture under
+`artifacts/unattended/hand-rigid-masked-wrists-dense-20260903` rejected the
+result: large shoulder-connected skin sections still deform into the view in
+several controller phases. The 150-second run itself passed with 12,586/12,586
+submitted frames, 5,318 fresh shared pairs, zero reuse/timeouts/capture
+failures and one startup pair-pose mismatch. The masked-body experiment was
+removed and the installed game restored to the independent one-sided-glove
+baseline. A fresh 150-second production confirmation of that restored baseline
+passed with 12,645/12,645 submitted frames, 5,282 fresh shared
+pairs, zero reuse/timeouts/capture failures and zero pair-pose mismatches.
+The 30-pair capture under
+`artifacts/unattended/hand-rigid-baseline-restored-20260903` again shows two
+stable gloves without the rejected skin geometry.
+
 ## Launcher Play retry
 
 The first Play press in that run moved WPF's `Process.MainWindowHandle` to a
@@ -217,13 +237,24 @@ source was removed.
 .\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-rigid-one-sided-dense-20260903 60 2496 2688
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 155 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
 .\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-rigid-astra-dense-20260903 30 2496 2688
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 150 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-rigid-masked-wrists-dense-20260903 60 2496 2688
+.\tools\stereo\sync-darktide-vr-dev.ps1 -Configuration Release
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 150 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-rigid-baseline-restored-20260903 30 2496 2688
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native
 hook and rebuilt shared-surface tests passed. Mandatory preflight reports for
 the later hand-surface work include
 `artifacts/unattended/preflight-20260902T212336Z.json` and
-`artifacts/unattended/preflight-20260902T213527Z.json`.
+`artifacts/unattended/preflight-20260902T213527Z.json`. The material-mask
+rejection and baseline restoration used
+`artifacts/unattended/preflight-20260902T232345Z.json` and
+`artifacts/unattended/preflight-20260902T232452Z.json`; the deployed-baseline
+confirmation used `artifacts/unattended/preflight-20260902T232544Z.json` and
+the final clean-state check used
+`artifacts/unattended/preflight-20260902T232904Z.json`.
 
 ## Next work
 
