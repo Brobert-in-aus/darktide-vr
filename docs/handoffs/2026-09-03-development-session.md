@@ -95,6 +95,37 @@ restored, along with removal of the unproven body-slot flow change. The next imp
 resource or controlled mesh duplicate rather than hiding the only rendering
 attachment.
 
+### Hand-local resource survey
+
+A one-shot live inventory scan established that the equipped human
+`slot_body_arms` item uses the same
+`content/characters/player/human/attachments_base/female/base_body/female_arms_01`
+resource for both `base_unit_1p` and `base_unit_3p`; there is no separate
+first-person body-arm resource to substitute. It also enumerated the cached
+`gear_hands` items. The only explicitly one-sided human glove resources found
+were `hmn_gloves_b_left_only` and `hmn_gloves_b_right_only`; the other glove
+items are combined profile attachments rooted at `j_spine2`.
+
+Three isolated-surface production experiments then removed the body-arm skin
+and retained only glove geometry:
+
+- `hmn_gloves_b` tracked both controller-authored wrists and eliminated the
+  long triangular arm stretch, but rendered as oversized cloth mitts;
+- the equipped `astra_gloves_b` profile attachment had correct production
+  materials and articulated detail, but exposed large cylindrical cuffs;
+- representative NPC, Imperial Guard, Frateris Militia and Missionary glove
+  items either omitted the skin/fingers or ended in a visible open cuff.
+
+Dense direct-eye evidence is under
+`artifacts/unattended/hand-compact-only-dense-cycle-20260903`,
+`artifacts/unattended/hand-profile-glove-only-dense-20260903`,
+`artifacts/unattended/hand-imperial-guard-b-dense-20260903` and the
+`hand-carousel-*` directories. These captures prove the stretch belongs to
+the shoulder-connected body skin, while standalone cosmetic glove shells are
+not complete hand replacements. The temporary item scan, compact-glove swap
+and candidate carousel were removed after the survey; tracked-hand source and
+the source gate were restored to commit `b0abd0a` behavior.
+
 ## Launcher Play retry
 
 The first Play press in that run moved WPF's `Process.MainWindowHandle` to a
@@ -145,6 +176,10 @@ source was removed.
 .\tools\stereo\start-darktide-vr.ps1 -SyntheticWeaponAimMatrix -DurationSeconds 180 -GameStartTimeoutSeconds 600 -SkipDeploymentSync
 .\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-flow-production-synthetic-20260903 12 2496 2688
 .\tools\stereo\start-darktide-vr.ps1 -SyntheticWeaponAimMatrix -DurationSeconds 120 -GameStartTimeoutSeconds 600 -SkipDeploymentSync
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 150 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-compact-only-dense-cycle-20260903 60 2496 2688
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-profile-glove-only-dense-20260903 60 2496 2688
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-imperial-guard-b-dense-20260903 40 2496 2688
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native
@@ -155,9 +190,10 @@ the later hand-surface work include
 
 ## Next work
 
-1. Build a genuinely hand-local visual proxy or controlled glove-mesh duplicate
-   that excludes the stretched forearm cuff; the body-skin-only fallback has
-   been disproved by direct captures.
+1. Build a genuinely hand-local visual proxy. The next credible route is two
+   independently rooted one-sided hand units (or a purpose-built closed hand
+   mesh); combined profile gloves and body-skin-only fallbacks have both been
+   disproved by direct captures.
 2. Perform the worn Options extent, cursor and representative control pass;
    do not change the proven pointer transform without contrary evidence.
 3. Perform the required worn Penances clustered-light acceptance.
