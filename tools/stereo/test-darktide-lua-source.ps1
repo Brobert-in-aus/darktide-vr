@@ -236,6 +236,32 @@ if (-not $bodyProxySource.Contains(
         -not $bodyProxySource.Contains('state.failed_source_unit then')) {
     throw 'Disabling or invalidating the proxy owner must clear a cached streaming failure so the same player unit can reacquire.'
 }
+if (-not $bodyProxySource.Contains(
+        'human/gear_hands/hmn_gloves_b_left_only') -or
+        -not $bodyProxySource.Contains(
+            'human/gear_hands/hmn_gloves_b_right_only') -or
+        -not $bodyProxySource.Contains(
+            '"DarktideVRRigidHand_" .. side') -or
+        -not $bodyProxySource.Contains(
+            'spawn_rigid_hand(world, source_unit, profile, "left")') -or
+        -not $bodyProxySource.Contains(
+            'spawn_rigid_hand(world, source_unit, profile, "right")') -or
+        -not $bodyProxySource.Contains(
+            'target_rotation, inverse_quaternion(relative_rotation)') -or
+        -not $bodyProxySource.Contains(
+            'root_position + target_position - Unit.world_position(unit, hand_node)') -or
+        -not $bodyProxySource.Contains(
+            'function BodyProxy.place_rigid_hands(') -or
+        -not $source.Contains(
+            'presentation.body_proxy.rigid_hands_active()') -or
+        -not $source.Contains(
+            'presentation.body_proxy.place_rigid_hands(') -or
+        -not $source.Contains(
+            'anchor_unit, left_unit, "j_lefthand"') -or
+        -not $source.Contains(
+            'anchor_unit, right_unit, "j_righthand"')) {
+    throw 'Tracked hands must use two independently rooted one-sided glove profiles, align each authored hand joint to its controller, and keep gameplay equipment synchronized per side.'
+}
 if (-not $source.Contains('"/gear_hands/"') -or
         -not $source.Contains(
             '(glove_attachment and not proxy_hidden)') -or

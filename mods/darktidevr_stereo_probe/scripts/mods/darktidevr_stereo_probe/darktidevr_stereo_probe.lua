@@ -8524,6 +8524,28 @@ function presentation.apply_tracked_arms(unit, sequence, world, anchor_unit)
         presentation.body_ik_controller_grip_target(unit, "left")
     local right_target, right_rotation =
         presentation.body_ik_controller_grip_target(unit, "right")
+    if presentation.body_proxy and
+            presentation.body_proxy.rigid_hands_active() then
+        local left_unit, right_unit, rigid_written =
+            presentation.body_proxy.place_rigid_hands(
+                world, left_target, left_rotation,
+                right_target, right_rotation)
+        if rigid_written then
+            if left_target and left_unit then
+                presentation.sync_equipment_hand_to_proxy(
+                    anchor_unit, left_unit, "j_lefthand")
+            end
+            if right_target and right_unit then
+                presentation.sync_equipment_hand_to_proxy(
+                    anchor_unit, right_unit, "j_righthand")
+            end
+            World.update_unit_and_children(world, anchor_unit)
+            controller_observation.body_ik_presentation_writes =
+                controller_observation.body_ik_presentation_writes + 1
+            controller_observation.body_ik_presentation_block_reason = nil
+        end
+        return
+    end
     local wrote = false
     local max_error = 0
     local max_angle_error = 0

@@ -126,6 +126,39 @@ not complete hand replacements. The temporary item scan, compact-glove swap
 and candidate carousel were removed after the survey; tracked-hand source and
 the source gate were restored to commit `b0abd0a` behavior.
 
+### Independent rigid-hand roots
+
+The hand-local architecture is now implemented and runtime-proven. Tracked
+hands mode creates two independent `UIProfileSpawner` roots, equips
+`hmn_gloves_b_left_only` on the left root and `hmn_gloves_b_right_only` on the
+right root, suppresses the private animation state machine, and hides every
+surface except the selected hand item. Each frame solves the root transform
+that maps the profile's authored `j_lefthand` or `j_righthand` joint exactly
+onto its corresponding controller target. The gameplay avatar remains the
+equipment owner; its left and right equipment hand joints are synchronized to
+the matching rigid root after placement.
+
+The first 180-second production run reached
+`DARKTIDEVR_IK rigid_hands=ready`, reported four visible meshes for each
+one-sided item, and completed with 14,358/14,358 submitted OpenXR frames,
+7,129 fresh shared pairs, zero reuse/timeouts/capture failures and one startup
+pair-pose mismatch. A 60-pair direct-eye capture is under
+`artifacts/unattended/hand-rigid-one-sided-dense-20260903`. It confirms two
+stable, independently positioned gloves and eliminates the shared-chain skin
+stretch. The stock one-sided meshes still expose open cloth cuffs when their
+wrist ends face the camera; that remaining asset-quality limitation needs a
+purpose-built closed hand/cuff mesh or a compatible one-sided bracer.
+
+A follow-up control used `astra_gloves_b` on both rigid roots and logged the
+mesh bounds. All four meshes share the same approximately 1.09-metre-wide
+combined-pair bounds, so there is no left/right mesh subset to suppress. Its
+30-pair capture under
+`artifacts/unattended/hand-rigid-astra-dense-20260903` shows the unwanted
+partner geometry displaced across or outside the view. The production glove
+control was rejected and the one-sided resources restored. The source gate now
+asserts the two spawners, both one-sided resources, rigid joint-to-controller
+alignment and per-side equipment synchronization.
+
 ## Launcher Play retry
 
 The first Play press in that run moved WPF's `Process.MainWindowHandle` to a
@@ -180,6 +213,10 @@ source was removed.
 .\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-compact-only-dense-cycle-20260903 60 2496 2688
 .\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-profile-glove-only-dense-20260903 60 2496 2688
 .\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-imperial-guard-b-dense-20260903 40 2496 2688
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 180 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-rigid-one-sided-dense-20260903 60 2496 2688
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 155 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-rigid-astra-dense-20260903 30 2496 2688
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native
@@ -190,10 +227,10 @@ the later hand-surface work include
 
 ## Next work
 
-1. Build a genuinely hand-local visual proxy. The next credible route is two
-   independently rooted one-sided hand units (or a purpose-built closed hand
-   mesh); combined profile gloves and body-skin-only fallbacks have both been
-   disproved by direct captures.
+1. Replace or cover the open cuffs on the now-proven independently rooted
+   one-sided gloves. Combined profile gloves cannot be separated by mesh; the
+   credible remaining routes are a purpose-built closed hand/cuff asset or a
+   compatible one-sided bracer resource.
 2. Perform the worn Options extent, cursor and representative control pass;
    do not change the proven pointer transform without contrary evidence.
 3. Perform the required worn Penances clustered-light acceptance.
