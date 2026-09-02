@@ -104,8 +104,11 @@ if (-not $runnerSource.Contains(
 }
 $launcherPlayPath = Join-Path $repoRoot 'tools\stereo\invoke-darktide-launcher-play.ps1'
 $launcherPlaySource = Get-Content -LiteralPath $launcherPlayPath -Raw
-if (-not $launcherPlaySource.Contains('$_.Path -ieq $gamePath')) {
-    throw 'Launcher Play confirmation must authenticate the configured Darktide executable path.'
+if (-not $launcherPlaySource.Contains('$_.Path -ieq $gamePath') -or
+        -not $launcherPlaySource.Contains('$launchWindowHandle') -or
+        -not $launcherPlaySource.Contains('IsOwnedWindow(') -or
+        -not $launcherPlaySource.Contains('$nextPlayRetry')) {
+    throw 'Launcher Play confirmation must authenticate the configured Darktide executable and retry only the original owned launcher window.'
 }
 $bodyIkStart = $source.IndexOf('function presentation.apply_body_ik')
 $bodyIkEnd = $source.IndexOf(

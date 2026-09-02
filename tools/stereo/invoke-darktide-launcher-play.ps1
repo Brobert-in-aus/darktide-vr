@@ -35,6 +35,7 @@ if (Get-Process Darktide -ErrorAction SilentlyContinue |
 if ($null -eq ('DarktideVrLauncherInput' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
+using System.Text;
 using System.Runtime.InteropServices;
 
 public static class DarktideVrLauncherInput
@@ -67,6 +68,10 @@ public static class DarktideVrLauncherInput
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(
         IntPtr window, out uint processId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(
+        IntPtr window, StringBuilder text, int maxCount);
 
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
@@ -103,6 +108,19 @@ public static class DarktideVrLauncherInput
                 Marshal.GetLastWin32Error(), "GetClientRect failed");
         }
         return new[] { rect.Right - rect.Left, rect.Bottom - rect.Top };
+    }
+
+    public static bool IsOwnedWindow(
+        IntPtr window, uint expectedProcessId, string expectedTitle)
+    {
+        uint processId;
+        if (window == IntPtr.Zero ||
+            GetWindowThreadProcessId(window, out processId) == 0 ||
+            processId != expectedProcessId)
+            return false;
+        var title = new StringBuilder(256);
+        GetWindowText(window, title, title.Capacity);
+        return title.ToString() == expectedTitle;
     }
 
     public static void ClickClient(IntPtr window, int x, int y)
@@ -267,12 +285,20 @@ if ($width -lt 1000 -or $height -lt 600 -or
 }
 $playX = [int] [Math]::Round($width * 0.818)
 $playY = [int] [Math]::Round($height * 0.870)
+$launchWindowHandle = $launcher.MainWindowHandle
 [DarktideVrLauncherInput]::ClickClient(
-    $launcher.MainWindowHandle, $playX, $playY)
+    $launchWindowHandle, $playX, $playY)
 Write-Output "Invoked Fatshark launcher Play at client ${playX},${playY} in ${width}x${height}."
 
 # Confirm the launch action rather than treating a successfully queued mouse
-# message as proof. The XR wrapper starts only after a new game process exists.
+# message as proof. WebView2 can acknowledge the first press by moving focus
+# while its launch handler is still settling, leaving the authenticated window
+# alive without starting the game. Retry the same verified Play region at a
+# bounded interval; retain the original window handle because WPF may promote
+# a tiny auxiliary window to Process.MainWindowHandle after the first press.
+# The XR wrapper starts only after a new game process exists.
+$nextPlayRetry = (Get-Date).AddSeconds(3)
+$playRetries = 0
 while ((Get-Date) -lt $deadline) {
     $game = Get-Process Darktide -ErrorAction SilentlyContinue |
         Where-Object {
@@ -287,6 +313,22 @@ while ((Get-Date) -lt $deadline) {
     if ($game) {
         Write-Output "Authenticated Darktide process started: PID $($game.Id)."
         exit 0
+    }
+    if ((Get-Date) -ge $nextPlayRetry) {
+        if (-not [DarktideVrLauncherInput]::IsOwnedWindow(
+                $launchWindowHandle, [uint32] $launcher.Id, 'Launcher')) {
+            throw 'Fatshark launcher Play window changed identity before the game started.'
+        }
+        $retrySize = [DarktideVrLauncherInput]::GetClientSize(
+            $launchWindowHandle)
+        if ($retrySize[0] -ne $width -or $retrySize[1] -ne $height) {
+            throw "Fatshark launcher Play window geometry changed from ${width}x${height} to $($retrySize[0])x$($retrySize[1])."
+        }
+        [DarktideVrLauncherInput]::ClickClient(
+            $launchWindowHandle, $playX, $playY)
+        $playRetries++
+        Write-Output "Retried Fatshark launcher Play ($playRetries)."
+        $nextPlayRetry = (Get-Date).AddSeconds(3)
     }
     Start-Sleep -Milliseconds 100
 }

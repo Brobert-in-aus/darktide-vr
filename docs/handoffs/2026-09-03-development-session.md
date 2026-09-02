@@ -51,8 +51,59 @@ The copy policy now canonicalizes this exact typeless backing resource to its
 typed UNORM shared surface. Unit coverage checks both the typeless conversion
 and a non-typeless pass-through. In the clean deployed follow-up, the first 173
 observed Options retained-layer copies all returned `result=0`, with zero
-description-mismatch recreations and no code-89 failures. Visual extent and
-laser alignment still require a worn check.
+description-mismatch recreations and no code-89 failures. The complete
+600-second run then passed with 28,125 of 28,125 submitted frames, 14,907 fresh
+shared pairs, and zero reused pairs, pose mismatches, capture failures, stale
+frames or pair-driven timeouts. Visual extent and laser alignment still
+require a worn check.
+
+## Tracked-hand surface visibility
+
+The hands-only profile proxy reports four enabled body-skin meshes and four
+enabled glove meshes, but those counters did not identify which resource
+actually reached the render graph. A candidate `lua_visible` flow event was
+tested on the body-skin slot because unit and mesh visibility can coexist with
+a retained hidden equipment-flow state.
+
+A fresh authenticated five-minute hub run initialized the module cleanly,
+reached nonzero `shared_ready`, and passed with 18,002 of 18,002 submitted
+frames, 11,080 fresh pairs, and zero reused pairs, pose mismatches, capture
+failures, stale frames or pair-driven timeouts. Direct readback under inactive
+controller tracking contained a rendered right-hand/glove surface, proving
+that at least one proxy surface reaches the render graph. This did not isolate
+the body-skin contribution or establish independent two-hand behavior.
+
+The follow-up 150-second offline Psykhanium matrix exercised both tracked
+hands plus repeated one-second tracking-loss/reacquisition windows. Both proxy
+chains became active, equipment-hand ownership stayed on the tracked proxy for
+7,200 sampled syncs, maximum positional error remained `0.000001 m`, and
+maximum angular error remained `0.002058 rad`; no presentation-disable or Lua
+error was logged. A concurrent direct-eye capture could not advance because
+the offline producer retained readiness generation 1, so this is pose/hold
+telemetry rather than new visual evidence.
+
+A production OpenXR synthetic follow-up supplied the missing direct-eye
+evidence. It made the remaining defect unambiguous: `astra_gloves_b` includes a forearm cuff
+skinned across the stock elbow-to-wrist chain, and that cuff balloons into a
+large detached sleeve around extended tracked poses. The hands-only proxy now
+briefly retained `slot_body_arms` plus the required unarmed record only and
+recursively hid all attachment units. A second production matrix proved that
+the body-skin slot contributes no visible hand surface in this presentation;
+all sampled phases lost the hands while the gameplay-owned weapon remained.
+That failed skin-only experiment was rejected and the prior glove selection
+restored, along with removal of the unproven body-slot flow change. The next implementation must use a genuinely hand-local visual
+resource or controlled mesh duplicate rather than hiding the only rendering
+attachment.
+
+## Launcher Play retry
+
+The first Play press in that run moved WPF's `Process.MainWindowHandle` to a
+tiny auxiliary window but did not start Darktide. The original authenticated,
+titled launcher window remained alive and accepted a second press. The launcher
+helper now retains that exact window handle and retries its already-validated
+Play region every three seconds while rechecking process ownership, title and
+client geometry. It still succeeds only after the configured Darktide
+executable appears and otherwise fails at the existing deadline.
 
 ## Runtime evidence
 
@@ -84,19 +135,31 @@ source was removed.
 .\tools\stereo\test-darktide-lua-source.ps1
 .\tools\stereo\sync-darktide-vr-dev.ps1 -Configuration Release
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 600 -GameStartTimeoutSeconds 600 -AutoEnterHub -EnableMenuInput -EnableMenuTestControls -SkipDeploymentSync
+.\tools\unattended\invoke-unattended-preflight.ps1 -RunXrSmoke -XrFrames 120
+.\tools\stereo\test-darktide-lua-source.ps1
+.\tools\stereo\sync-darktide-vr-dev.ps1 -Configuration Release
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 300 -GameStartTimeoutSeconds 600 -AutoEnterHub -SkipDeploymentSync
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-flow-visible-20260903 4 2496 2688
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-synthetic-controller-publisher.exe --seconds 360 --weapon-aim-matrix --neutral-body-pose
+.\tools\stereo\start-darktide-vr.ps1 -OfflineDualViewBenchmark -SyntheticWeaponAimMatrix -DurationSeconds 150 -GameStartTimeoutSeconds 600 -SkipDeploymentSync
+.\tools\stereo\start-darktide-vr.ps1 -SyntheticWeaponAimMatrix -DurationSeconds 180 -GameStartTimeoutSeconds 600 -SkipDeploymentSync
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-flow-production-synthetic-20260903 12 2496 2688
+.\tools\stereo\start-darktide-vr.ps1 -SyntheticWeaponAimMatrix -DurationSeconds 120 -GameStartTimeoutSeconds 600 -SkipDeploymentSync
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native
-hook and rebuilt shared-surface tests passed. The second mandatory preflight
-report is `artifacts/unattended/preflight-20260902T204605Z.json`.
+hook and rebuilt shared-surface tests passed. Mandatory preflight reports for
+the later hand-surface work include
+`artifacts/unattended/preflight-20260902T212336Z.json` and
+`artifacts/unattended/preflight-20260902T213527Z.json`.
 
 ## Next work
 
-1. Let the current bounded Options run finish and confirm its final harness
-   result and absence of device-removal/Lua errors.
+1. Build a genuinely hand-local visual proxy or controlled glove-mesh duplicate
+   that excludes the stretched forearm cuff; the body-skin-only fallback has
+   been disproved by direct captures.
 2. Perform the worn Options extent, cursor and representative control pass;
    do not change the proven pointer transform without contrary evidence.
 3. Perform the required worn Penances clustered-light acceptance.
-4. Restore independent visible default hands/gloves, then continue HUD and
+4. Complete worn independent-hand acceptance, then continue HUD and
    world-marker resolution/placement work.
-
