@@ -39,6 +39,7 @@ class GameplayInputMapper {
   GameplayInputFrame reset();
 
  private:
+  std::uint64_t transport_generation_{};
   std::uint64_t held_{};
   bool left_trigger_down_{};
   bool right_trigger_down_{};

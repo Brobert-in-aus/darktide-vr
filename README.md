@@ -108,9 +108,11 @@ has reached `XR_VISIBLE`/`XR_FOCUSED` and is allowed to submit projection layers
 error. `--resize-at N` resizes the flip-model swapchain before frame `N` and
 verifies render-target recreation and device health.
 
-See [Phase 0 status](docs/phase0/README.md) and the
-[Phase 1 status](docs/phase1/README.md), plus the
-[current bug review](docs/phase1/bug-review-2026-08-25.md), the
+See [Phase 0 status](docs/phase0/README.md), the
+[Phase 1 status](docs/phase1/README.md), the
+[current development-session handoff](docs/handoffs/2026-09-02-development-session.md),
+the [ordered 2026-09-03 work plan](docs/phase1/todo-2026-09-03.md), the
+[current bug review](docs/phase1/bug-review-2026-08-25.md), and the
 [design brief](docs/DARKTIDE-VR-DESIGN-BRIEF.md). The
 [runtime observation protocol](docs/phase0/runtime-observation-protocol.md)
 defines the explicit approval boundary before any Darktide process interaction.

@@ -61,7 +61,9 @@ int main(int argc, char** argv) {
     expect(writer->publish(sample), "Valid shared pose was rejected");
     darktidevr::core::SharedHeadPoseSample received{};
     expect(reader.read(received), "Published shared pose was unreadable");
+    const auto first_transport_generation = received.transport_generation;
     expect(received.sequence == sample.sequence &&
+               first_transport_generation != 0 &&
                received.recenter_generation == 3 &&
                std::abs(received.pose.position.z - 0.3F) < 0.0001F &&
                std::abs(received.pose.orientation.w - 0.92387953F) < 0.0001F &&
@@ -79,6 +81,16 @@ int main(int argc, char** argv) {
     expect(reader.publish_gameplay_generation(5) &&
                writer->read_gameplay_generation() == 5,
            "Gameplay generation changed in transit");
+    expect(reader.advance_eye_surface_generation() == 1 &&
+               writer->read_eye_surface_generation() == 1 &&
+               reader.advance_eye_surface_generation() == 2 &&
+               writer->read_eye_surface_generation() == 2,
+           "Eye-surface generation changed in transit");
+    expect(reader.advance_menu_surface_generation() == 1 &&
+               writer->read_menu_surface_generation() == 1 &&
+               reader.advance_menu_surface_generation() == 2 &&
+               writer->read_menu_surface_generation() == 2,
+           "Menu-surface generation changed in transit");
     expect(reader.publish_rendered_pair(
                {11, 5, {7, 7}, {1.6F, 1.6F}, {0.8888889F, 0.8888889F}}),
            "Rendered-pair pose tag was rejected");
@@ -108,8 +120,16 @@ int main(int argc, char** argv) {
            "A restarted writer retained the previous rendered-pair tag");
     expect(writer->read_gameplay_generation() == 0,
            "A restarted writer retained the gameplay generation");
+    expect(writer->read_eye_surface_generation() == 0,
+           "A restarted writer retained the eye-surface generation");
+    expect(writer->read_menu_surface_generation() == 0,
+           "A restarted writer retained the menu-surface generation");
     expect(writer->publish(sample),
            "A restarted writer could not publish a new session pose");
+    expect(reader.read(received) && received.sequence == sample.sequence &&
+               received.transport_generation ==
+                   first_transport_generation + 1,
+           "Head-pose writer generation must disambiguate an equal restart sequence");
     std::this_thread::sleep_for(std::chrono::milliseconds(275));
     expect(!reader.read(received), "Stale shared pose remained readable");
     sample.sequence = 8;

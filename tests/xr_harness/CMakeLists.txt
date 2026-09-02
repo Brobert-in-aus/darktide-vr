@@ -37,6 +37,32 @@ target_compile_definitions(darktidevr-eye-capture PRIVATE
 target_link_libraries(darktidevr-eye-capture PRIVATE
   darktidevr-window-capture user32)
 
+add_executable(darktidevr-shared-eye-capture shared_eye_capture.cpp)
+target_compile_options(darktidevr-shared-eye-capture PRIVATE
+  /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-shared-eye-capture PRIVATE
+  NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+target_link_libraries(darktidevr-shared-eye-capture PRIVATE
+  darktidevr_bridge d3d12 dxgi)
+
+add_executable(darktidevr-synthetic-controller-publisher
+  synthetic_controller_publisher.cpp)
+target_compile_options(darktidevr-synthetic-controller-publisher PRIVATE
+  /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-synthetic-controller-publisher PRIVATE
+  NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+target_link_libraries(darktidevr-synthetic-controller-publisher PRIVATE
+  darktidevr-synthetic-controller darktidevr_core)
+
+add_executable(darktidevr-synthetic-head-publisher
+  synthetic_head_publisher.cpp)
+target_compile_options(darktidevr-synthetic-head-publisher PRIVATE
+  /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-synthetic-head-publisher PRIVATE
+  NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+target_link_libraries(darktidevr-synthetic-head-publisher PRIVATE
+  darktidevr_core)
+
 add_executable(darktidevr-xr-harness main.cpp synthetic_scene.cpp)
 target_compile_options(darktidevr-xr-harness PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-xr-harness PRIVATE
@@ -103,6 +129,10 @@ if(BUILD_TESTING)
     LABELS "phase1;capture")
 
   add_test(NAME xr_harness_help COMMAND darktidevr-xr-harness --help)
+  add_test(NAME shared_eye_capture_help
+    COMMAND darktidevr-shared-eye-capture --help)
+  add_test(NAME synthetic_controller_publisher_help
+    COMMAND darktidevr-synthetic-controller-publisher --help)
   add_test(NAME d3d12_smoke COMMAND darktidevr-xr-harness --frames 3)
   set_tests_properties(d3d12_smoke PROPERTIES TIMEOUT 30)
   add_test(NAME d3d12_debug_resize

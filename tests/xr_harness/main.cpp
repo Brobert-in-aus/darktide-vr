@@ -69,6 +69,32 @@ void check(HRESULT result, const char* operation) {
   }
 }
 
+void wait_for_fence(ID3D12Fence* fence, std::uint64_t value, HANDLE event,
+                    const char* operation) {
+  constexpr DWORD timeout_ms = 10000;
+  const auto before = fence->GetCompletedValue();
+  if (before == UINT64_MAX) {
+    throw std::runtime_error(std::string(operation) +
+                             " failed: D3D12 fence is poisoned");
+  }
+  if (before >= value) {
+    return;
+  }
+  check(fence->SetEventOnCompletion(value, event), operation);
+  const auto wait_result = WaitForSingleObject(event, timeout_ms);
+  if (wait_result != WAIT_OBJECT_0) {
+    const auto after = fence->GetCompletedValue();
+    throw std::runtime_error(
+        std::string(operation) + " failed: wait_result=" +
+        std::to_string(wait_result) + " completed=" + std::to_string(after) +
+        " target=" + std::to_string(value));
+  }
+  if (fence->GetCompletedValue() == UINT64_MAX) {
+    throw std::runtime_error(std::string(operation) +
+                             " failed: D3D12 fence became poisoned");
+  }
+}
+
 std::wstring registry_string(HKEY root, const wchar_t* subkey,
                              const wchar_t* value_name) {
   DWORD bytes{};
@@ -504,11 +530,8 @@ class OpenXrProbe {
         const auto signal_value = ++fence_value;
         check(queue->Signal(fence.Get(), signal_value),
               "ID3D12CommandQueue::Signal(XR)");
-        if (fence->GetCompletedValue() < signal_value) {
-          check(fence->SetEventOnCompletion(signal_value, fence_event),
-                "ID3D12Fence::SetEventOnCompletion(XR)");
-          WaitForSingleObject(fence_event, INFINITE);
-        }
+        wait_for_fence(fence.Get(), signal_value, fence_event,
+                       "ID3D12Fence::SetEventOnCompletion(XR)");
         if (billboard_capture_label) {
           void* mapped{};
           D3D12_RANGE read_range{0, billboard_readback_bytes};
@@ -875,15 +898,19 @@ class OpenXrProbe {
     UINT64 shared_last_ready_value{};
     auto shared_last_advance = std::chrono::steady_clock::now();
     auto next_shared_open_attempt = std::chrono::steady_clock::now();
+    std::uint64_t shared_eye_generation{};
     auto next_shared_open_error_log = std::chrono::steady_clock::now();
     auto next_menu_open_attempt = std::chrono::steady_clock::now();
+    std::uint64_t shared_menu_generation{};
     HANDLE projection_active_event{};
     darktidevr::core::SharedPresentationStateReader presentation_state_reader;
     darktidevr::core::SharedPresentationState presentation_state{};
     std::uint64_t presentation_sequence{};
+    std::uint64_t presentation_transport_generation{};
     darktidevr::core::SharedGameplayAimStateReader gameplay_aim_state_reader;
     darktidevr::core::SharedGameplayAimState gameplay_aim_state{};
     std::uint64_t gameplay_aim_sequence{};
+    std::uint64_t gameplay_aim_transport_generation{};
     darktidevr::core::MenuPointerInputState menu_pointer_state;
     darktidevr::core::SharedMenuPointerStateWriter menu_pointer_writer;
     std::uint64_t menu_pointer_sequence{};
@@ -1003,7 +1030,8 @@ class OpenXrProbe {
     std::uint32_t flat_fallback_frames{};
     std::uint32_t flat_fallback_transitions{};
     bool flat_fallback_active{};
-    std::uint64_t flat_fallback_anchored_sequence{};
+    std::optional<darktidevr::core::SharedPresentationState>
+        flat_fallback_anchor_state;
     XrPosef flat_fallback_pose{{0.0F, 0.0F, 0.0F, 1.0F},
                                {0.0F, 0.0F, -2.0F}};
     bool flat_fallback_pose_valid{};
@@ -1089,6 +1117,39 @@ class OpenXrProbe {
         std::filesystem::temp_directory_path() /
         "darktidevr-shared-eye-readback.request";
     auto next_shared_eye_readback_request_poll = start;
+    auto detach_shared_eyes =
+        [&](const char* reason, UINT64 ready, UINT64 consumed,
+            std::chrono::steady_clock::time_point now) {
+          std::cerr << "openxr.shared_eyes=detached reason=" << reason
+                    << " ready=" << ready << " consumed=" << consumed
+                    << '\n';
+          opened_eyes.reset();
+          shared_eye_readbacks = {};
+          shared_eye_readback_footprint = {};
+          shared_eye_readback_total_bytes = 0;
+          shared_eye_readback_copied_this_frame = false;
+          shared_last_ready_value = 0;
+          shared_last_advance = now;
+          last_pair_pose_checked_ready_value = 0;
+          rendered_pair_pose_ready_value = 0;
+          rendered_pair_gameplay_generation = 0;
+          last_submitted_shared_value = 0;
+          next_shared_open_attempt = now;
+        };
+    auto detach_shared_menu =
+        [&](const char* reason, UINT64 ready, UINT64 consumed,
+            std::chrono::steady_clock::time_point now) {
+          std::cerr << "openxr.shared_menu=detached reason=" << reason
+                    << " ready=" << ready << " consumed=" << consumed
+                    << '\n';
+          opened_menu.reset();
+          menu_readback.Reset();
+          menu_readback_footprint = {};
+          menu_readback_total_bytes = 0;
+          menu_readback_copies = 0;
+          menu_readback_logged = false;
+          next_menu_open_attempt = now;
+        };
 
     for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
       if (duration && std::chrono::steady_clock::now() - start >= *duration) {
@@ -1126,6 +1187,16 @@ class OpenXrProbe {
                     << request_error.message() << '\n';
         }
       }
+      if (opened_eyes) {
+        const auto ready = opened_eyes->ready_fence->GetCompletedValue();
+        const auto consumed =
+            opened_eyes->consumed_fence->GetCompletedValue();
+        if (!darktidevr::bridge::shared_fence_values_healthy(ready,
+                                                             consumed)) {
+          detach_shared_eyes(
+              "poisoned_fence", ready, consumed, frame_start);
+        }
+      }
       if (shared_eyes && !projection_active_event) {
         projection_active_event = OpenEventW(
             SYNCHRONIZE, FALSE,
@@ -1133,9 +1204,16 @@ class OpenXrProbe {
       }
       const bool projection_active =
           !shared_eyes || [&] {
+            constexpr std::uint64_t kPresentationMaximumAgeMs = 1500;
+            const auto presentation_now_ms = GetTickCount64();
             darktidevr::core::SharedPresentationState newest{};
-            if (presentation_state_reader.read(newest)) {
-              if (newest.sequence != presentation_sequence) {
+            if (presentation_state_reader.read(newest) &&
+                darktidevr::core::presentation_state_fresh(
+                    newest, presentation_now_ms,
+                    kPresentationMaximumAgeMs)) {
+              if (newest.transport_generation !=
+                      presentation_transport_generation ||
+                  newest.sequence != presentation_sequence) {
                 const bool was_projection_active =
                     darktidevr::core::immersive_projection_active(
                         presentation_state.mode);
@@ -1148,6 +1226,7 @@ class OpenXrProbe {
                         newest.maximum_panel_height_metres);
                 std::cout << "openxr.presentation mode="
                           << static_cast<std::uint32_t>(newest.mode)
+                          << " generation=" << newest.transport_generation
                           << " sequence=" << newest.sequence << " source="
                           << newest.source_width << 'x' << newest.source_height
                           << " crop=" << newest.crop_x << ',' << newest.crop_y
@@ -1168,13 +1247,45 @@ class OpenXrProbe {
               }
               presentation_state = newest;
               presentation_sequence = newest.sequence;
+              presentation_transport_generation =
+                  newest.transport_generation;
               return darktidevr::core::immersive_projection_active(
                   newest.mode);
             }
-            return projection_active_event &&
-                   WaitForSingleObject(projection_active_event, 0) ==
-                       WAIT_OBJECT_0;
+            // A four-attempt seqlock read can transiently collide with a
+            // heartbeat. Reuse only a still-fresh cached packet. Once the
+            // transport has been established, an expired publisher must not
+            // fall back to a permanently signalled legacy event.
+            if (presentation_transport_generation != 0 &&
+                darktidevr::core::presentation_state_fresh(
+                    presentation_state, presentation_now_ms,
+                    kPresentationMaximumAgeMs)) {
+              return darktidevr::core::immersive_projection_active(
+                  presentation_state.mode);
+            }
+            return presentation_transport_generation == 0 &&
+                   projection_active_event &&
+                    WaitForSingleObject(projection_active_event, 0) ==
+                        WAIT_OBJECT_0;
           }();
+      if (window_capture) {
+        window_capture->set_gameplay_reticle_atlas_enabled(
+            enable_gameplay_reticle && presentation_sequence != 0 &&
+            presentation_state.mode == darktidevr::core::
+                                           SharedPresentationMode::stereo_world);
+      }
+      if (opened_eyes && head_pose_writer) {
+        const auto current_generation =
+            head_pose_writer->read_eye_surface_generation();
+        if (current_generation != shared_eye_generation) {
+          const auto old_ready =
+              opened_eyes->ready_fence->GetCompletedValue();
+          const auto old_consumed =
+              opened_eyes->consumed_fence->GetCompletedValue();
+          detach_shared_eyes("replaced_generation", old_ready,
+                             old_consumed, frame_start);
+        }
+      }
       if (window_capture && presentation_sequence != 0) {
         // PrintWindow captures the already-scaled desktop client, not the
         // producer's 2112x2304 render target. Applying the render-target crop
@@ -1199,8 +1310,8 @@ class OpenXrProbe {
               candidate_eyes.ready_fence->GetCompletedValue();
           const auto initial_consumed_value =
               candidate_eyes.consumed_fence->GetCompletedValue();
-          if (shared_last_ready_value == UINT64_MAX ||
-              initial_consumed_value == UINT64_MAX) {
+          if (!darktidevr::bridge::shared_fence_values_healthy(
+                  shared_last_ready_value, initial_consumed_value)) {
             throw std::runtime_error("Shared eye fence generation is poisoned");
           }
           opened_eyes = std::move(candidate_eyes);
@@ -1228,6 +1339,10 @@ class OpenXrProbe {
                   "ID3D12Device::CreateCommittedResource(shared-eye readback)");
           }
           shared_last_advance = frame_start;
+          shared_eye_generation =
+              head_pose_writer
+                  ? head_pose_writer->read_eye_surface_generation()
+                  : 0;
           if (shared_last_ready_value != 0) {
             // A pair published before attachment has no bridge-side pose
             // history. Acknowledge it so the producer can publish a pair
@@ -1258,6 +1373,29 @@ class OpenXrProbe {
            presentation_state.mode == darktidevr::core::
                                           SharedPresentationMode::
                                               world_anchored_menu);
+      if (opened_menu) {
+        const auto menu_ready =
+            opened_menu->ready_fence->GetCompletedValue();
+        const auto menu_consumed =
+            opened_menu->consumed_fence->GetCompletedValue();
+        if (!darktidevr::bridge::shared_fence_values_healthy(
+                menu_ready, menu_consumed)) {
+          detach_shared_menu("poisoned_fence", menu_ready, menu_consumed,
+                             frame_start);
+        }
+      }
+      if (opened_menu && head_pose_writer) {
+        const auto current_generation =
+            head_pose_writer->read_menu_surface_generation();
+        if (current_generation != shared_menu_generation) {
+          const auto old_ready =
+              opened_menu->ready_fence->GetCompletedValue();
+          const auto old_consumed =
+              opened_menu->consumed_fence->GetCompletedValue();
+          detach_shared_menu("replaced_generation", old_ready,
+                             old_consumed, frame_start);
+        }
+      }
       if (shared_menu_projection_enabled && interactive_menu_projection &&
           !opened_menu &&
           frame_start >= next_menu_open_attempt) {
@@ -1270,10 +1408,21 @@ class OpenXrProbe {
                DXGI_FORMAT_R8G8B8A8_UNORM});
           const auto initial =
               opened_menu->ready_fence->GetCompletedValue();
+          const auto initial_consumed =
+              opened_menu->consumed_fence->GetCompletedValue();
+          if (!darktidevr::bridge::shared_fence_values_healthy(
+                  initial, initial_consumed)) {
+            throw std::runtime_error(
+                "Shared menu fence generation is poisoned");
+          }
           if (initial != 0) {
             check(opened_menu->consumed_fence->Signal(initial),
                   "ID3D12Fence::Signal(initial menu consumed)");
           }
+          shared_menu_generation =
+              head_pose_writer
+                  ? head_pose_writer->read_menu_surface_generation()
+                  : 0;
           std::cout << "openxr.shared_menu=attached source="
                     << presentation_state.source_width << 'x'
                     << presentation_state.source_height << " crop="
@@ -1411,7 +1560,7 @@ class OpenXrProbe {
             // active presentation state to rebuild it from this same leveled
             // centre-head pose, otherwise a recenter corrects the world while
             // leaving a loading board at its old yaw.
-            flat_fallback_anchored_sequence = 0;
+            flat_fallback_anchor_state.reset();
             ++head_recenter_generation;
             std::cout << "openxr.head_recenter=applied\n";
           }
@@ -1595,7 +1744,15 @@ class OpenXrProbe {
         if (opened_eyes) {
           shared_ready_for_frame =
               opened_eyes->ready_fence->GetCompletedValue();
-          if (shared_ready_for_frame > shared_last_ready_value) {
+          const auto consumed =
+              opened_eyes->consumed_fence->GetCompletedValue();
+          if (!darktidevr::bridge::shared_fence_values_healthy(
+                  shared_ready_for_frame, consumed)) {
+            detach_shared_eyes("poisoned_fence_before_copy",
+                               shared_ready_for_frame, consumed, frame_start);
+            shared_ready_for_frame = 0;
+            discard_shared_pair_this_frame = false;
+          } else if (shared_ready_for_frame > shared_last_ready_value) {
             shared_last_ready_value = shared_ready_for_frame;
             shared_last_advance = std::chrono::steady_clock::now();
           }
@@ -1603,6 +1760,14 @@ class OpenXrProbe {
         if (opened_menu) {
           menu_ready_for_frame =
               opened_menu->ready_fence->GetCompletedValue();
+          const auto consumed =
+              opened_menu->consumed_fence->GetCompletedValue();
+          if (!darktidevr::bridge::shared_fence_values_healthy(
+                  menu_ready_for_frame, consumed)) {
+            detach_shared_menu("poisoned_fence_before_copy",
+                               menu_ready_for_frame, consumed, frame_start);
+            menu_ready_for_frame = 0;
+          }
         }
         if (head_pose_writer && shared_ready_for_frame != 0 &&
             shared_ready_for_frame != last_pair_pose_checked_ready_value) {
@@ -1711,15 +1876,17 @@ class OpenXrProbe {
         // presenting the last complete stereo pair during that interval.
         // Falling through to the desktop capture here exposes the engine's
         // transient mono/right-eye presentation in both eyes.
+        constexpr std::uint64_t cached_pair_grace_milliseconds = 5000;
+        const auto shared_pair_stale_milliseconds =
+            static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - shared_last_advance)
+                    .count());
         const bool use_cached_pair =
-            !use_shared_pair && cached_pair_valid &&
-            (projection_active ||
-             (presentation_sequence != 0 &&
-              (presentation_state.mode == darktidevr::core::
-                                              SharedPresentationMode::flat_menu ||
-               presentation_state.mode == darktidevr::core::
-                                              SharedPresentationMode::
-                                                  world_anchored_menu)));
+            darktidevr::core::cached_stereo_pair_allowed(
+                use_shared_pair, cached_pair_valid, projection_active,
+                shared_pair_stale_milliseconds,
+                cached_pair_grace_milliseconds);
         submitted_shared_pair_this_frame =
             use_shared_pair || use_cached_pair;
         submitted_cached_pair_this_frame = use_cached_pair;
@@ -1750,7 +1917,9 @@ class OpenXrProbe {
         if (window_capture) {
           const auto flat_presentation_changed =
               use_flat_capture && presentation_sequence != 0 &&
-              presentation_sequence != flat_fallback_anchored_sequence;
+              (!flat_fallback_anchor_state ||
+               !darktidevr::core::same_flat_panel_anchor_identity(
+                   *flat_fallback_anchor_state, presentation_state));
           if (use_flat_capture != flat_fallback_active ||
               flat_presentation_changed) {
             flat_fallback_active = use_flat_capture;
@@ -1778,10 +1947,14 @@ class OpenXrProbe {
                   anchored.position.x, anchored.position.y,
                   anchored.position.z};
               flat_fallback_pose_valid = true;
-              flat_fallback_anchored_sequence = presentation_sequence;
+              if (presentation_sequence != 0) {
+                flat_fallback_anchor_state = presentation_state;
+              } else {
+                flat_fallback_anchor_state.reset();
+              }
             } else if (!flat_fallback_active) {
               flat_fallback_pose_valid = false;
-              flat_fallback_anchored_sequence = 0;
+              flat_fallback_anchor_state.reset();
             }
           }
           if (use_flat_capture) {
@@ -2081,11 +2254,8 @@ class OpenXrProbe {
         const auto signal_value = ++fence_value;
         check(queue->Signal(fence.Get(), signal_value),
               "ID3D12CommandQueue::Signal(theatre)");
-        if (fence->GetCompletedValue() < signal_value) {
-          check(fence->SetEventOnCompletion(signal_value, fence_event),
-                "ID3D12Fence::SetEventOnCompletion(theatre)");
-          WaitForSingleObject(fence_event, INFINITE);
-        }
+        wait_for_fence(fence.Get(), signal_value, fence_event,
+                       "ID3D12Fence::SetEventOnCompletion(theatre)");
         if (shared_eye_readback_copied_this_frame) {
           const auto eye_description = opened_eyes->eyes[0]->GetDesc();
           const std::array<const char*, 2> labels{"left", "right"};
@@ -2207,6 +2377,35 @@ class OpenXrProbe {
             }
             std::cout << "openxr.shared_menu_diagnostic="
                       << diagnostic_path.string() << '\n';
+          }
+          const auto full_diagnostic_path =
+              std::filesystem::temp_directory_path() /
+              "darktidevr-shared-menu-full.ppm";
+          std::ofstream full_diagnostic(full_diagnostic_path,
+                                        std::ios::binary);
+          if (full_diagnostic) {
+            full_diagnostic << "P6\n" << menu_extent.Width << ' '
+                            << menu_extent.Height << "\n255\n";
+            std::vector<std::uint8_t> full_row(
+                static_cast<std::size_t>(menu_extent.Width) * 3);
+            for (std::uint32_t y = 0; y < menu_extent.Height; ++y) {
+              const auto* source_row = pixels +
+                  static_cast<std::size_t>(y) *
+                      menu_readback_footprint.Footprint.RowPitch;
+              for (std::uint32_t x = 0; x < menu_extent.Width; ++x) {
+                const auto* source =
+                    source_row + static_cast<std::size_t>(x) * 4;
+                for (std::size_t channel = 0; channel < 3; ++channel) {
+                  full_row[static_cast<std::size_t>(x) * 3 + channel] =
+                      source[channel];
+                }
+              }
+              full_diagnostic.write(
+                  reinterpret_cast<const char*>(full_row.data()),
+                  static_cast<std::streamsize>(full_row.size()));
+            }
+            std::cout << "openxr.shared_menu_full_diagnostic="
+                      << full_diagnostic_path.string() << '\n';
           }
           menu_readback->Unmap(0, nullptr);
           menu_readback_logged = true;
@@ -2409,7 +2608,16 @@ class OpenXrProbe {
         ++synthetic_controller_phase_frames_[
             static_cast<std::size_t>(synthetic.phase)];
       }
-      if (submitted_flat_fallback_this_frame && latest_controller_sample_) {
+      // A synthetic weapon matrix exists solely to exercise gameplay actions
+      // after the private-range aim publisher is active.  Its neutral warm-up
+      // still carries a moving tracked pose; treating that pose as a menu ray
+      // moves the real Windows cursor throughout splash/character select.
+      // Physical controllers and dedicated menu tests retain their normal
+      // pointer path, while this matrix stays completely inert until gameplay.
+      const bool synthetic_weapon_pointer_suppressed =
+          synthetic_weapon_aim_matrix && !gameplay_aim_state.active;
+      if (submitted_flat_fallback_this_frame && latest_controller_sample_ &&
+          !synthetic_weapon_pointer_suppressed) {
         const auto& right = latest_controller_sample_->hands[1];
         const auto required =
             darktidevr::core::controller_orientation_valid |
@@ -2747,18 +2955,32 @@ class OpenXrProbe {
           latest_controller_sample_ && current_head_valid) {
         darktidevr::core::SharedGameplayAimState newest_aim{};
         if (gameplay_aim_state_reader.read(newest_aim) &&
-            newest_aim.sequence >= gameplay_aim_sequence) {
-          if (newest_aim.sequence != gameplay_aim_sequence) {
+            (newest_aim.transport_generation !=
+                 gameplay_aim_transport_generation ||
+             newest_aim.sequence >= gameplay_aim_sequence)) {
+          if (newest_aim.transport_generation !=
+                  gameplay_aim_transport_generation ||
+              newest_aim.sequence != gameplay_aim_sequence) {
             ++gameplay_reticle_transport_samples_;
           }
           gameplay_aim_state = newest_aim;
           gameplay_aim_sequence = newest_aim.sequence;
+          gameplay_aim_transport_generation =
+              newest_aim.transport_generation;
         }
         const auto& right = latest_controller_sample_->hands[1];
         const auto required =
             darktidevr::core::controller_orientation_valid |
             darktidevr::core::controller_position_valid;
+        const auto gameplay_aim_now_ns = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                frame_start.time_since_epoch())
+                .count());
+        constexpr std::uint64_t maximum_gameplay_aim_age_ns = 100'000'000ULL;
         if (gameplay_aim_state.active &&
+            darktidevr::core::gameplay_aim_state_is_fresh(
+                gameplay_aim_state, gameplay_aim_now_ns,
+                maximum_gameplay_aim_age_ns) &&
             (right.aim_tracking_flags & required) == required &&
             darktidevr::core::pointer_origin_within_reach(
                 right.aim_pose.position, current_head.position, 1.5F)) {
@@ -2856,15 +3078,19 @@ class OpenXrProbe {
       XrCompositionLayerQuad gameplay_reticle_quad{
           XR_TYPE_COMPOSITION_LAYER_QUAD};
       if (gameplay_reticle_pose) {
+        constexpr std::int32_t gameplay_reticle_extent = 41;
         gameplay_reticle_quad.layerFlags =
             XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
         gameplay_reticle_quad.space = local_space_;
         gameplay_reticle_quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
         gameplay_reticle_quad.subImage.swapchain = flat_swapchain;
         gameplay_reticle_quad.subImage.imageRect.offset = {
-            static_cast<std::int32_t>(flat_capture_width - 1),
-            static_cast<std::int32_t>(flat_capture_height - 1)};
-        gameplay_reticle_quad.subImage.imageRect.extent = {1, 1};
+            static_cast<std::int32_t>(flat_capture_width) -
+                gameplay_reticle_extent - 1,
+            static_cast<std::int32_t>(flat_capture_height) -
+                gameplay_reticle_extent};
+        gameplay_reticle_quad.subImage.imageRect.extent = {
+            gameplay_reticle_extent, gameplay_reticle_extent};
         gameplay_reticle_quad.pose.orientation = {
             gameplay_reticle_pose->orientation.x,
             gameplay_reticle_pose->orientation.y,
@@ -2875,7 +3101,7 @@ class OpenXrProbe {
             gameplay_reticle_pose->position.y,
             gameplay_reticle_pose->position.z};
         const auto angular_size_metres = std::clamp(
-            gameplay_reticle_distance_metres_ * 0.007F, 0.015F, 0.12F);
+            gameplay_reticle_distance_metres_ * 0.049F, 0.105F, 0.84F);
         gameplay_reticle_quad.size = {angular_size_metres,
                                       angular_size_metres};
       }
@@ -3101,6 +3327,10 @@ class OpenXrProbe {
       upload_pixels = nullptr;
     }
     CloseHandle(fence_event);
+    if (projection_active_event) {
+      CloseHandle(projection_active_event);
+      projection_active_event = nullptr;
+    }
     if (menu_test_primary_event) {
       CloseHandle(menu_test_primary_event);
     }
@@ -4018,11 +4248,8 @@ class Harness {
   void wait_for_gpu() {
     const auto value = ++fence_value_;
     check(queue_->Signal(fence_.Get(), value), "ID3D12CommandQueue::Signal");
-    if (fence_->GetCompletedValue() < value) {
-      check(fence_->SetEventOnCompletion(value, fence_event_),
-            "ID3D12Fence::SetEventOnCompletion");
-      WaitForSingleObject(fence_event_, INFINITE);
-    }
+    wait_for_fence(fence_.Get(), value, fence_event_,
+                   "ID3D12Fence::SetEventOnCompletion");
   }
 
   void validate_debug_messages() {

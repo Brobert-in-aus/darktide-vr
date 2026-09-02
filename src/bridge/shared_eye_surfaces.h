@@ -59,4 +59,11 @@ OpenedSharedTexture open_shared_texture(
     ID3D12Device* device, const SharedTextureNames& names,
     SharedEyeSurfaceDescription expected);
 
+// D3D12 reports UINT64_MAX when a fence's device has been removed. Treating
+// that sentinel as an ordinary monotonically increasing value can queue an
+// impossible cross-device wait and permanently pin the consumer to a dead
+// producer generation.
+bool shared_fence_values_healthy(std::uint64_t ready,
+                                 std::uint64_t consumed) noexcept;
+
 }  // namespace darktidevr::bridge

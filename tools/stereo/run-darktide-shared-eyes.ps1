@@ -21,7 +21,7 @@ param(
 
     [switch] $SyntheticMovementReferencePath,
 
-    [switch] $EnableGameplayReticle,
+    [switch] $EnableGameplayReticle = $true,
 
     [switch] $SyntheticBodyPath,
 
@@ -73,6 +73,7 @@ $knownPatchedSha256 =
 if (-not (Test-Path -LiteralPath $GameExe -PathType Leaf)) {
     throw "Darktide executable not found: $GameExe"
 }
+$resolvedGameExe = (Resolve-Path -LiteralPath $GameExe).Path
 $actualHash = (Get-FileHash -LiteralPath $GameExe -Algorithm SHA256).
     Hash.ToLowerInvariant()
 if ($actualHash -ne $knownPatchedSha256) {
@@ -88,8 +89,14 @@ $waitDeadline = [DateTime]::UtcNow.AddSeconds($WaitForGameSeconds)
 do {
     $game = @(Get-Process Darktide -ErrorAction SilentlyContinue |
         Where-Object {
-            $_.Responding -and
-            $_.MainWindowTitle -eq 'Warhammer 40,000: Darktide'
+            try {
+                $_.Responding -and
+                    $_.MainWindowTitle -eq 'Warhammer 40,000: Darktide' -and
+                    $_.Path -ieq $resolvedGameExe
+            }
+            catch {
+                $false
+            }
         })
     if ($game.Count -eq 1 -or $WaitForGameSeconds -eq 0) {
         break

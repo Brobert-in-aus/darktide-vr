@@ -31,11 +31,15 @@ int main() {
     sample.scroll_sequence = 13;
     expect(valid_menu_pointer_state(sample), "Valid pointer was rejected");
 
-    SharedMenuPointerStateWriter writer;
     SharedMenuPointerStateReader reader;
-    expect(writer.publish(sample), "Pointer publish failed");
     SharedMenuPointerState read{};
-    expect(reader.read(read), "Pointer read failed");
+    std::uint64_t first_generation{};
+    {
+      SharedMenuPointerStateWriter writer;
+      expect(writer.publish(sample), "Pointer publish failed");
+      expect(reader.read(read), "Pointer read failed");
+      first_generation = read.transport_generation;
+    }
     expect(read.sequence == sample.sequence && read.active &&
                read.source_x == sample.source_x &&
                read.source_y == sample.source_y &&
@@ -47,6 +51,20 @@ int main() {
                read.back_press_sequence == 12 &&
                read.scroll_sequence == 13,
            "Pointer transport changed the sample");
+
+    sample.sequence = 1;
+    sample.primary_press_sequence = 0;
+    sample.back_press_sequence = 0;
+    sample.scroll_sequence = 0;
+    {
+      SharedMenuPointerStateWriter restarted_writer;
+      expect(restarted_writer.publish(sample),
+             "Restarted pointer publish failed");
+      expect(reader.read(read), "Restarted pointer read failed");
+    }
+    expect(read.sequence == 1 &&
+               read.transport_generation > first_generation,
+           "Pointer writer restart did not advance its transport generation");
 
     sample.active = false;
     sample.source_width = 0;

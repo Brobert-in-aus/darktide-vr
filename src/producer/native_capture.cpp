@@ -14,6 +14,7 @@
 #include "core/shared_gameplay_aim_state.h"
 #include "core/shared_menu_pointer_state.h"
 #include "core/shared_presentation_state.h"
+#include "core/shared_surface_policy.h"
 #include "core/two_bone_ik.h"
 
 #include <algorithm>
@@ -37,6 +38,11 @@ using Microsoft::WRL::ComPtr;
 
 extern "C" __declspec(dllexport) int dtvr_set_focused_trace_phase(int phase);
 extern "C" __declspec(dllexport) int dtvr_enable_marker_log();
+extern "C" __declspec(dllexport) int dtvr_enable_cluster_trace();
+extern "C" __declspec(dllexport) int
+dtvr_set_cluster_light_visibility_fix(int enabled);
+extern "C" __declspec(dllexport) int
+dtvr_cluster_light_visibility_fix_active();
 
 namespace {
 
@@ -103,6 +109,17 @@ using DrawIndexedInstancedFn = void(STDMETHODCALLTYPE*)(
     ID3D12GraphicsCommandList*, UINT, UINT, UINT, INT, UINT);
 using DispatchFn = void(STDMETHODCALLTYPE*)(ID3D12GraphicsCommandList*, UINT,
                                             UINT, UINT);
+using CopyBufferRegionFn = void(STDMETHODCALLTYPE*)(
+    ID3D12GraphicsCommandList*, ID3D12Resource*, UINT64, ID3D12Resource*,
+    UINT64, UINT64);
+using CopyTextureRegionFn = void(STDMETHODCALLTYPE*)(
+    ID3D12GraphicsCommandList*, const D3D12_TEXTURE_COPY_LOCATION*, UINT, UINT,
+    UINT, const D3D12_TEXTURE_COPY_LOCATION*, const D3D12_BOX*);
+using CopyResourceFn = void(STDMETHODCALLTYPE*)(
+    ID3D12GraphicsCommandList*, ID3D12Resource*, ID3D12Resource*);
+using ResolveSubresourceFn = void(STDMETHODCALLTYPE*)(
+    ID3D12GraphicsCommandList*, ID3D12Resource*, UINT, ID3D12Resource*, UINT,
+    DXGI_FORMAT);
 using ExecuteIndirectFn = void(STDMETHODCALLTYPE*)(
     ID3D12GraphicsCommandList*, ID3D12CommandSignature*, UINT,
     ID3D12Resource*, UINT64, ID3D12Resource*, UINT64);
@@ -222,6 +239,10 @@ EndRenderPassFn original_end_render_pass{};
 DrawInstancedFn original_draw_instanced{};
 DrawIndexedInstancedFn original_draw_indexed_instanced{};
 DispatchFn original_dispatch{};
+CopyBufferRegionFn original_copy_buffer_region{};
+CopyTextureRegionFn original_copy_texture_region{};
+CopyResourceFn original_copy_resource{};
+ResolveSubresourceFn original_resolve_subresource{};
 ExecuteIndirectFn original_execute_indirect{};
 RSSetViewportsFn original_rs_set_viewports{};
 RSSetScissorRectsFn original_rs_set_scissor_rects{};
@@ -272,6 +293,8 @@ ResourceBarrierFn original_resource_barrier{};
 EnhancedBarrierFn original_enhanced_barrier{};
 std::mutex state_mutex;
 ComPtr<ID3D12CommandQueue> game_queue;
+std::atomic<bool> game_queue_initialized{};
+std::atomic<ID3D12CommandQueue*> game_queue_identity{};
 // The first direct queue observed is suitable for the eye capture work, but it
 // is not necessarily the queue DXGI's game swapchain is presented from.
 // Injecting the desktop mirror on a different direct queue races Present and
@@ -280,6 +303,12 @@ ComPtr<ID3D12CommandQueue> game_queue;
 // PRESENT and use it exclusively for backbuffer injection.
 ComPtr<ID3D12CommandQueue> swapchain_present_queue;
 ComPtr<IDXGISwapChain3> game_swapchain;
+// The swapchain identity and its back-buffer metadata are stable between
+// successful ResizeBuffers calls. Keep a lock-free validity gate so Present
+// does not QueryInterface/GetDesc/GetBuffer and rebuild the same set every
+// frame merely to service the capture hooks.
+std::atomic<IDXGISwapChain*> game_swapchain_identity{};
+std::atomic<bool> game_swapchain_metadata_ready{};
 std::array<ComPtr<ID3D12Resource>, 2> eye_surfaces;
 ComPtr<ID3D12Resource> desktop_mirror_surface;
 ComPtr<ID3D12Fence> desktop_mirror_fence;
@@ -295,11 +324,13 @@ std::uint64_t ready_value{};
 ComPtr<ID3D12Resource> menu_surface;
 ComPtr<ID3D12DescriptorHeap> menu_rtv_heap;
 D3D12_CPU_DESCRIPTOR_HANDLE menu_rtv{};
+DXGI_FORMAT menu_rtv_format{DXGI_FORMAT_UNKNOWN};
 ComPtr<ID3D12Fence> menu_ready_fence;
 ComPtr<ID3D12Fence> menu_consumed_fence;
 HANDLE menu_surface_handle{};
 HANDLE menu_ready_fence_handle{};
 HANDLE menu_consumed_fence_handle{};
+std::atomic<HANDLE> projection_active_event{};
 std::uint64_t menu_ready_value{};
 // The stock pause/options renderer does not traverse the Lua SystemView hooks
 // used by the earlier menu experiment. Detect its stable native UI shader
@@ -332,7 +363,8 @@ constexpr std::array<StockMenuShaderPair, 7> kStockMenuShaderPairs{{
 // eventually hung the device.
 constexpr StockMenuShaderPair kVendorMenuWidgetShaderPair{
     15643064314087379227ULL, 12642582357042194823ULL};
-
+constexpr StockMenuShaderPair kOptionsWidgetShaderPair{
+    8136461109370980353ULL, 13875852906623432269ULL};
 // The completed swapchain contains an opaque copy of the world as well as the
 // menu.  Feeding that texture to OpenXR necessarily produces the observed
 // mono/flicker regression.  The stock UI draw redirect below instead builds a
@@ -340,6 +372,7 @@ constexpr StockMenuShaderPair kVendorMenuWidgetShaderPair{
 constexpr bool kStockMenuSwapchainCaptureEnabled = false;
 constexpr bool kStockMenuDirectRenderEnabled = true;
 constexpr bool kNamedMenuResourceCaptureEnabled = false;
+constexpr bool kMenuLayerConsumerProbeEnabled = false;
 std::atomic<unsigned int> current_presentation_mode{
     static_cast<unsigned int>(
         darktidevr::core::SharedPresentationMode::stereo_world)};
@@ -362,9 +395,23 @@ std::uint64_t direct_menu_clear_frame{
     (std::numeric_limits<std::uint64_t>::max)()};
 std::unordered_map<ID3D12GraphicsCommandList*, ComPtr<ID3D12Resource>>
     direct_menu_render_lists;
+std::uint64_t direct_menu_ui_stream_frame{
+    (std::numeric_limits<std::uint64_t>::max)()};
+std::array<std::atomic<ID3D12Resource*>, 2> options_layer_resources{};
+// This count is a lock-free hint for the command-list hooks. The map remains
+// authoritative under state_mutex, but ordinary gameplay should not serialize
+// Close and Reset on an empty menu-redirection map.
+std::atomic<std::uint64_t> direct_menu_render_list_count{};
 std::atomic<bool> hooks_installed{};
 std::atomic<std::uint64_t> execute_call_count{};
 std::atomic<std::uint64_t> present_count{};
+// OptionsView builds its settings pane in a retained typeless render target and
+// only samples that completed target later in the UI command stream. Lua arms
+// this for the current Present from _draw_grid; unlike the retired
+// thread-local scope, the atomic survives the engine's asynchronous render
+// recording thread.
+std::atomic<std::uint64_t> options_menu_capture_armed_frame{
+    (std::numeric_limits<std::uint64_t>::max)()};
 std::atomic<std::uint64_t> marker_count{};
 std::atomic<std::uint64_t> marker_sequence{};
 std::atomic<std::uint64_t> command_recording_generation{};
@@ -392,12 +439,103 @@ HANDLE marker_log{INVALID_HANDLE_VALUE};
 HANDLE menu_resource_log{INVALID_HANDLE_VALUE};
 std::mutex menu_resource_log_mutex;
 std::atomic<std::uint64_t> menu_resource_log_count{};
+HANDLE resize_diagnostic_log{INVALID_HANDLE_VALUE};
+std::mutex resize_diagnostic_log_mutex;
+std::atomic<std::uint64_t> resize_diagnostic_log_count{};
+std::atomic<std::uint64_t> resize_diagnostic_generation{};
+std::atomic<std::uint64_t> resize_diagnostic_burst_until_present{};
 HANDLE enhanced_barrier_log{INVALID_HANDLE_VALUE};
 std::atomic<std::uint64_t> enhanced_barrier_log_count{};
 std::atomic<int> focused_trace_phase{};
 std::atomic<std::uint64_t> focused_trace_count{};
 HANDLE focused_trace_log{INVALID_HANDLE_VALUE};
 std::mutex focused_trace_mutex;
+HANDLE cluster_trace_log{INVALID_HANDLE_VALUE};
+std::mutex cluster_trace_mutex;
+std::atomic<std::uint64_t> cluster_trace_count{};
+std::atomic<bool> cluster_trace_saw_flat_presentation{};
+constexpr std::uint64_t kClusterGridComputeShader = 0x356241c9944b66e7ULL;
+constexpr std::uint64_t kClusterListWriterComputeShader =
+    0x68d5ef81edcce164ULL;
+constexpr std::uint64_t kClusterLightRasterVertexShader =
+    0x5c6cd369626f261aULL;
+constexpr std::uint64_t kClusterLightRasterPixelShader =
+    0xbe559cb63c32aa02ULL;
+std::atomic<std::uintptr_t> cluster_linked_list_resource{};
+std::atomic<std::uint64_t> cluster_linked_list_learned_frame{};
+std::atomic<std::uint64_t> cluster_generic_dispatch_log_count{};
+std::atomic<std::uint64_t> cluster_target_dispatch_log_count{};
+std::atomic<std::uint64_t> cluster_barrier_log_count{};
+std::atomic<std::uint64_t> cluster_raster_binding_log_count{};
+std::atomic<std::uint64_t> cluster_constant_copy_log_count{};
+std::atomic<std::uint64_t> cluster_upload_flush_log_count{};
+std::atomic<bool> cluster_light_visibility_fix_requested{};
+std::atomic<bool> cluster_light_visibility_fix_active{};
+std::atomic<std::uint64_t> cluster_light_visibility_fix_candidate_count{};
+std::atomic<std::uint64_t> cluster_light_visibility_fix_patch_count{};
+std::atomic<std::uint64_t> cluster_light_visibility_fix_reject_count{};
+std::atomic<std::uint64_t> cluster_light_visibility_fix_target_draw_count{};
+std::atomic<std::uint64_t> cluster_light_visibility_fix_root_missing_count{};
+std::atomic<std::uint64_t> cluster_light_visibility_fix_resource_missing_count{};
+struct ClusterConstantBufferCopy {
+  ID3D12Resource* destination{};
+  std::uint64_t destination_offset{};
+  ID3D12Resource* source{};
+  std::uint64_t source_offset{};
+  std::uint64_t bytes{};
+};
+struct ClusterPendingConstantSample {
+  ID3D12Resource* resource{};
+  std::uint64_t resource_offset{};
+  std::uint64_t gpu_address{};
+  std::uint64_t frame{};
+  ID3D12GraphicsCommandList* commands{};
+  UINT root{};
+  bool captured{};
+};
+struct ClusterPendingTransformSample {
+  ID3D12Resource* resource{};
+  std::uint64_t resource_offset{};
+  std::uint64_t frame{};
+  ID3D12GraphicsCommandList* commands{};
+  std::uint64_t first_element{};
+  std::uint32_t element_count{};
+  std::uint32_t stride{};
+  bool captured{};
+};
+struct ClusterPendingFovPatch {
+  ID3D12Resource* resource{};
+  std::uint64_t resource_offset{};
+  std::uint64_t frame{};
+  bool valid{};
+};
+std::mutex cluster_constant_copy_mutex;
+std::unordered_set<ID3D12Resource*> cluster_constant_ring_resources;
+std::array<ClusterConstantBufferCopy, 256> cluster_constant_copies{};
+std::uint64_t cluster_constant_copy_count{};
+std::array<ClusterPendingConstantSample, 64>
+    cluster_pending_constant_samples{};
+std::uint64_t cluster_pending_constant_count{};
+std::array<ClusterPendingTransformSample, 32>
+    cluster_pending_transform_samples{};
+std::uint64_t cluster_pending_transform_count{};
+std::mutex cluster_light_visibility_fix_mutex;
+std::array<ClusterPendingFovPatch, 128>
+    cluster_pending_fov_patches{};
+std::uint64_t cluster_pending_fov_patch_cursor{};
+struct ClusterGraphicsSubmission {
+  std::uint64_t sequence{};
+  std::uintptr_t pso{};
+  const char* submission{};
+  std::array<std::uint64_t, 5> arguments{};
+};
+struct ClusterSubmissionRing {
+  std::array<ClusterGraphicsSubmission, 64> entries{};
+  std::uint64_t write_count{};
+};
+std::mutex cluster_submission_mutex;
+std::unordered_map<ID3D12GraphicsCommandList*, ClusterSubmissionRing>
+    cluster_submission_rings;
 HANDLE boundary_census_log{INVALID_HANDLE_VALUE};
 std::mutex boundary_census_log_mutex;
 std::atomic<std::uint64_t> boundary_census_log_count{};
@@ -519,8 +657,17 @@ constexpr std::size_t kRootSlotCount = 32;
 
 struct CommandTrace {
   std::uint64_t recording_generation{};
+  std::uint64_t draw_count{};
+  std::uint64_t indexed_draw_count{};
+  std::uint64_t dispatch_count{};
+  std::uint64_t indirect_count{};
+  std::uint64_t copy_count{};
+  std::uint64_t resolve_count{};
+  std::uint64_t barrier_count{};
+  std::uint64_t render_pass_count{};
   int eye{-1};
   std::uintptr_t pso{};
+  bool cluster_light_raster{};
   std::uintptr_t root_signature{};
   std::uint64_t render_target{};
   std::uint64_t depth_target{};
@@ -703,8 +850,6 @@ std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES>
 std::unordered_map<ID3D12GraphicsCommandList*, ComPtr<ID3D12Resource>>
     present_transition_resources;
 std::unordered_map<ID3D12GraphicsCommandList*, ComPtr<ID3D12Resource>>
-    swapchain_write_resources;
-std::unordered_map<ID3D12GraphicsCommandList*, ComPtr<ID3D12Resource>>
     camera_output_resources;
 std::unordered_map<ID3D12GraphicsCommandList*, D3D12_RESOURCE_STATES>
     camera_output_source_states;
@@ -717,6 +862,10 @@ std::unordered_map<ID3D12GraphicsCommandList*, D3D12_RESOURCE_STATES>
 std::unordered_set<ID3D12Resource*> known_camera_output_resources;
 std::array<ID3D12Resource*, 2> named_camera_output_resources{};
 bool named_camera_outputs_ready{};
+// Lock-free hint for OMSetRenderTargets. Once both explicit eye finals are
+// learned, production capture no longer needs to resolve every ordinary RTV
+// binding merely to discover an implicit swapchain promotion.
+std::atomic<bool> named_camera_outputs_ready_hint{};
 bool camera_output_realign_pending{};
 // Diagnostic selector for completed 1920x2160 RGBA8 outputs seen on a command
 // list. -1 preserves the production behavior (the last completed candidate).
@@ -749,6 +898,7 @@ HWND virtual_window_proc_window{};
 WNDPROC original_game_window_proc{};
 std::atomic<int> swapchain_resize_nudge_phase{};
 RECT swapchain_resize_nudge_original_window{};
+
 std::atomic<UINT> mirror_client_width{};
 std::atomic<UINT> mirror_client_height{};
 std::atomic<std::uint64_t> boundary_arm_count{};
@@ -765,6 +915,33 @@ std::atomic<float> render_aspect_ratio{};
 darktidevr::core::SharedHeadPoseReader& shared_head_pose_reader() {
   static darktidevr::core::SharedHeadPoseReader reader;
   return reader;
+}
+
+HANDLE shared_projection_active_event() {
+  auto event = projection_active_event.load(std::memory_order_acquire);
+  if (event) {
+    return event;
+  }
+  const auto created = CreateEventW(
+      nullptr, TRUE, FALSE, L"Local\\DarktideVR-projection-active-v1");
+  if (!created) {
+    return nullptr;
+  }
+  // A bridge can keep the named event object alive across a producer restart.
+  // Start each new producer generation in the fail-closed flat state instead
+  // of inheriting the previous process's last signalled value.
+  if (!ResetEvent(created)) {
+    CloseHandle(created);
+    return nullptr;
+  }
+  HANDLE expected{};
+  if (!projection_active_event.compare_exchange_strong(
+          expected, created, std::memory_order_release,
+          std::memory_order_acquire)) {
+    CloseHandle(created);
+    return expected;
+  }
+  return created;
 }
 darktidevr::core::SharedControllerStateReader& shared_controller_state_reader() {
   static darktidevr::core::SharedControllerStateReader reader;
@@ -790,6 +967,14 @@ constexpr UINT kGpuProfileQueriesPerSlot =
 struct GpuPassTraceList {
   std::uintptr_t commands{};
   std::uint64_t generation{};
+  std::uint64_t draws{};
+  std::uint64_t indexed_draws{};
+  std::uint64_t dispatches{};
+  std::uint64_t indirects{};
+  std::uint64_t copies{};
+  std::uint64_t resolves{};
+  std::uint64_t barriers{};
+  std::uint64_t passes{};
 };
 struct GpuPassTraceBatch {
   UINT list_offset{};
@@ -1009,6 +1194,8 @@ std::atomic<std::uint64_t> billboard_b2_bound_count{};
 std::atomic<std::uint64_t> billboard_basis_patch_count{};
 std::mutex vertex_shader_dump_mutex;
 std::unordered_set<std::uint64_t> dumped_vertex_shaders;
+std::unordered_set<std::uint64_t> dumped_cluster_compute_shaders;
+std::unordered_set<std::uint64_t> dumped_cluster_graphics_shader_pairs;
 std::unordered_set<std::uint64_t> dumped_billboard_pixel_shaders;
 std::unordered_set<std::uint64_t> dumped_blended_pixel_shaders;
 std::unordered_set<std::uint64_t> dumped_blended_pso_pairs;
@@ -1023,12 +1210,53 @@ int capture_eye_from_resource(int eye, ID3D12CommandQueue* queue,
                               D3D12_RESOURCE_STATES source_state);
 void write_focused_log(const char* format, ...);
 
+void write_cluster_trace_log(const char* format, ...) {
+  if (cluster_trace_log == INVALID_HANDLE_VALUE ||
+      cluster_trace_count.fetch_add(1, std::memory_order_relaxed) >= 20000) {
+    return;
+  }
+  std::array<char, 4096> line{};
+  va_list arguments;
+  va_start(arguments, format);
+  const auto length = vsnprintf_s(line.data(), line.size(), _TRUNCATE, format,
+                                  arguments);
+  va_end(arguments);
+  if (length <= 0) {
+    return;
+  }
+  std::scoped_lock lock(cluster_trace_mutex);
+  if (cluster_trace_log != INVALID_HANDLE_VALUE) {
+    DWORD written{};
+    WriteFile(cluster_trace_log, line.data(), static_cast<DWORD>(length),
+              &written, nullptr);
+  }
+}
+
 void update_atomic_max(std::atomic<std::uint64_t>& destination,
                        std::uint64_t value) {
   auto current = destination.load(std::memory_order_relaxed);
   while (current < value &&
          !destination.compare_exchange_weak(current, value,
                                             std::memory_order_relaxed)) {
+  }
+}
+
+void reset_gpu_profiler_resources() {
+  gpu_profile_active = {};
+  gpu_profile_pending.clear();
+  if (gpu_profile_readback && gpu_profile_ticks) {
+    gpu_profile_readback->Unmap(0, nullptr);
+  }
+  gpu_profile_ticks = nullptr;
+  gpu_profile_query_heap.Reset();
+  gpu_profile_readback.Reset();
+  gpu_profile_fence.Reset();
+  gpu_profile_frequency = 0;
+  gpu_profile_next_fence = 0;
+  gpu_profile_next_slot = 0;
+  gpu_profile_slot_fences.fill(0);
+  for (auto& claimed : gpu_profile_pass_trace_claimed) {
+    claimed.store(false, std::memory_order_relaxed);
   }
 }
 
@@ -1076,21 +1304,21 @@ bool ensure_gpu_profiler(ID3D12CommandQueue* queue) {
           0, nullptr, reinterpret_cast<void**>(&gpu_profile_ticks))) ||
       FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
                                  IID_PPV_ARGS(&gpu_profile_fence)))) {
-    gpu_profile_query_heap.Reset();
-    gpu_profile_readback.Reset();
-    gpu_profile_fence.Reset();
-    gpu_profile_ticks = nullptr;
-    gpu_profile_frequency = 0;
+    reset_gpu_profiler_resources();
     return false;
   }
   return true;
 }
 
-void harvest_gpu_profile_samples() {
+bool harvest_gpu_profile_samples() {
   if (!gpu_profile_fence || !gpu_profile_ticks) {
-    return;
+    return false;
   }
   const auto completed = gpu_profile_fence->GetCompletedValue();
+  if (completed == UINT64_MAX) {
+    reset_gpu_profiler_resources();
+    return false;
+  }
   while (!gpu_profile_pending.empty() &&
          gpu_profile_pending.front().fence_value <= completed) {
     const auto& sample = gpu_profile_pending.front();
@@ -1151,12 +1379,23 @@ void harvest_gpu_profile_samples() {
                 batch.list_offset + list_index];
             write_focused_log(
                 "phase=%d\tframe=%llu\tGPU_BATCH_LIST\teye=%d"
-                "\tbatch=%u\tlist_index=%u\tCL=%p\tgen=%llu\r\n",
+                "\tbatch=%u\tlist_index=%u\tCL=%p\tgen=%llu"
+                "\tdraws=%llu\tindexed=%llu\tdispatches=%llu"
+                "\tindirects=%llu\tcopies=%llu\tresolves=%llu"
+                "\tbarriers=%llu\tpasses=%llu\r\n",
                 sample.pass_trace_phase,
                 static_cast<unsigned long long>(sample.pass_trace_frame),
                 sample.eye, batch_index, list_index,
                 reinterpret_cast<void*>(list.commands),
-                static_cast<unsigned long long>(list.generation));
+                static_cast<unsigned long long>(list.generation),
+                static_cast<unsigned long long>(list.draws),
+                static_cast<unsigned long long>(list.indexed_draws),
+                static_cast<unsigned long long>(list.dispatches),
+                static_cast<unsigned long long>(list.indirects),
+                static_cast<unsigned long long>(list.copies),
+                static_cast<unsigned long long>(list.resolves),
+                static_cast<unsigned long long>(list.barriers),
+                static_cast<unsigned long long>(list.passes));
           }
         }
         write_focused_log(
@@ -1172,6 +1411,7 @@ void harvest_gpu_profile_samples() {
     }
     gpu_profile_pending.pop_front();
   }
+  return true;
 }
 
 void begin_gpu_eye_profile(int eye) {
@@ -1189,7 +1429,9 @@ void begin_gpu_eye_profile(int eye) {
   if (!ensure_gpu_profiler(queue.Get()) || gpu_profile_active[eye_index]) {
     return;
   }
-  harvest_gpu_profile_samples();
+  if (!harvest_gpu_profile_samples()) {
+    return;
+  }
   const auto completed = gpu_profile_fence->GetCompletedValue();
   const auto slot = gpu_profile_next_slot;
   if (gpu_profile_slot_fences[slot] > completed) {
@@ -1270,6 +1512,7 @@ void end_gpu_eye_profile(int eye, ID3D12CommandQueue* queue) {
   original_execute_command_lists(queue, 1, lists);
   sample.fence_value = ++gpu_profile_next_fence;
   if (FAILED(queue->Signal(gpu_profile_fence.Get(), sample.fence_value))) {
+    reset_gpu_profiler_resources();
     return;
   }
   gpu_profile_slot_fences[sample.slot] = sample.fence_value;
@@ -1335,12 +1578,21 @@ GpuPassTraceToken begin_gpu_pass_trace_batch_locked(
       for (UINT list_index = 0; list_index < count; ++list_index) {
         auto* commands = static_cast<ID3D12GraphicsCommandList*>(
             lists[list_index]);
-        const auto generation = command_recording_generations.find(commands);
-        active->pass_trace_lists.push_back(
-            {reinterpret_cast<std::uintptr_t>(commands),
-             generation == command_recording_generations.end()
-                 ? 0
-                 : generation->second});
+        GpuPassTraceList snapshot{
+            reinterpret_cast<std::uintptr_t>(commands)};
+        const auto trace = command_traces.find(commands);
+        if (trace != command_traces.end()) {
+          snapshot.generation = trace->second.recording_generation;
+          snapshot.draws = trace->second.draw_count;
+          snapshot.indexed_draws = trace->second.indexed_draw_count;
+          snapshot.dispatches = trace->second.dispatch_count;
+          snapshot.indirects = trace->second.indirect_count;
+          snapshot.copies = trace->second.copy_count;
+          snapshot.resolves = trace->second.resolve_count;
+          snapshot.barriers = trace->second.barrier_count;
+          snapshot.passes = trace->second.render_pass_count;
+        }
+        active->pass_trace_lists.push_back(snapshot);
       }
     }
     return {static_cast<int>(eye_index), batch_index};
@@ -1390,10 +1642,15 @@ int ensure_menu_surface(ID3D12Device* device,
 struct MenuDrawRedirect {
   bool active{};
   D3D12_CPU_DESCRIPTOR_HANDLE original_target{};
+  D3D12_CPU_DESCRIPTOR_HANDLE capture_target{};
+  ComPtr<ID3D12Resource> original_resource;
+  ComPtr<ID3D12Resource> capture_resource;
+  std::uint64_t diagnostic_id{};
 };
 
 MenuDrawRedirect begin_stock_menu_draw_redirect(
-    ID3D12GraphicsCommandList* commands, const PsoMetadata& metadata);
+    ID3D12GraphicsCommandList* commands, const PsoMetadata& metadata,
+    UINT vertex_count, UINT instance_count);
 void end_stock_menu_draw_redirect(ID3D12GraphicsCommandList* commands,
                                   const MenuDrawRedirect& redirect);
 int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
@@ -1474,6 +1731,41 @@ void write_menu_resource_log(const char* format, ...) {
   }
   DWORD written{};
   WriteFile(menu_resource_log, line,
+            static_cast<DWORD>((std::min)(
+                length, static_cast<int>(sizeof(line) - 1))),
+            &written, nullptr);
+}
+
+void write_resize_diagnostic_log(const char* format, ...) {
+  if (resize_diagnostic_log_count.fetch_add(1, std::memory_order_relaxed) >=
+      10000) {
+    return;
+  }
+  std::scoped_lock lock(resize_diagnostic_log_mutex);
+  if (resize_diagnostic_log == INVALID_HANDLE_VALUE) {
+    wchar_t temporary_path[MAX_PATH]{};
+    if (GetTempPathW(MAX_PATH, temporary_path) == 0) {
+      return;
+    }
+    const std::wstring path = std::wstring(temporary_path) +
+                              L"darktidevr-resize-diagnostic.log";
+    resize_diagnostic_log =
+        CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  }
+  if (resize_diagnostic_log == INVALID_HANDLE_VALUE) {
+    return;
+  }
+  char line[1200]{};
+  va_list arguments;
+  va_start(arguments, format);
+  const auto length = std::vsnprintf(line, sizeof(line), format, arguments);
+  va_end(arguments);
+  if (length <= 0) {
+    return;
+  }
+  DWORD written{};
+  WriteFile(resize_diagnostic_log, line,
             static_cast<DWORD>((std::min)(
                 length, static_cast<int>(sizeof(line) - 1))),
             &written, nullptr);
@@ -2765,6 +3057,89 @@ void dump_vertex_shader_if_requested(
   }
 }
 
+void dump_cluster_compute_shader_if_target(
+    const D3D12_SHADER_BYTECODE& bytecode) {
+  if (cluster_trace_log == INVALID_HANDLE_VALUE || !bytecode.pShaderBytecode ||
+      bytecode.BytecodeLength == 0) {
+    return;
+  }
+  // Measured in the hub trace: the grid shader dispatches twice per stereo
+  // frame at ceil(30/4) x ceil(17/4) x (64/4), and the list writer is the
+  // immediately preceding dispatch in all eight bounded command-order
+  // samples. Keep dumping scoped to those evidence-backed identities rather
+  // than collecting every compute shader in the game.
+  const auto hash = hash_bytecode(bytecode);
+  if (hash != kClusterGridComputeShader &&
+      hash != kClusterListWriterComputeShader) {
+    return;
+  }
+  std::scoped_lock lock(vertex_shader_dump_mutex);
+  if (!dumped_cluster_compute_shaders.insert(hash).second) {
+    return;
+  }
+  wchar_t temporary_path[MAX_PATH]{};
+  if (GetTempPathW(MAX_PATH, temporary_path) == 0) {
+    return;
+  }
+  const std::wstring directory =
+      std::wstring(temporary_path) + L"darktidevr-cluster-shaders";
+  CreateDirectoryW(directory.c_str(), nullptr);
+  wchar_t file_name[96]{};
+  swprintf_s(file_name, L"\\cs-%016llx.bin",
+             static_cast<unsigned long long>(hash));
+  const auto shader_file = CreateFileW(
+      (directory + file_name).c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+      CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (shader_file == INVALID_HANDLE_VALUE) {
+    return;
+  }
+  DWORD written{};
+  WriteFile(shader_file, bytecode.pShaderBytecode,
+            static_cast<DWORD>(bytecode.BytecodeLength), &written, nullptr);
+  CloseHandle(shader_file);
+}
+
+void dump_cluster_graphics_shaders_if_target(
+    const D3D12_SHADER_BYTECODE& vertex_shader,
+    const D3D12_SHADER_BYTECODE& pixel_shader) {
+  if (cluster_trace_log == INVALID_HANDLE_VALUE ||
+      hash_bytecode(vertex_shader) != kClusterLightRasterVertexShader ||
+      hash_bytecode(pixel_shader) != kClusterLightRasterPixelShader) {
+    return;
+  }
+  const auto pair_hash = mix_u64(kClusterLightRasterVertexShader,
+                                 kClusterLightRasterPixelShader);
+  std::scoped_lock lock(vertex_shader_dump_mutex);
+  if (!dumped_cluster_graphics_shader_pairs.insert(pair_hash).second) {
+    return;
+  }
+  wchar_t temporary_path[MAX_PATH]{};
+  if (GetTempPathW(MAX_PATH, temporary_path) == 0) {
+    return;
+  }
+  const std::wstring directory =
+      std::wstring(temporary_path) + L"darktidevr-cluster-shaders";
+  CreateDirectoryW(directory.c_str(), nullptr);
+  const auto write_shader = [&](const wchar_t* stage, std::uint64_t hash,
+                                const D3D12_SHADER_BYTECODE& bytecode) {
+    wchar_t file_name[96]{};
+    swprintf_s(file_name, L"\\%s-%016llx.bin", stage,
+               static_cast<unsigned long long>(hash));
+    const auto file = CreateFileW(
+        (directory + file_name).c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+        nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+      return;
+    }
+    DWORD written{};
+    WriteFile(file, bytecode.pShaderBytecode,
+              static_cast<DWORD>(bytecode.BytecodeLength), &written, nullptr);
+    CloseHandle(file);
+  };
+  write_shader(L"vs", kClusterLightRasterVertexShader, vertex_shader);
+  write_shader(L"ps", kClusterLightRasterPixelShader, pixel_shader);
+}
+
 void dump_billboard_pixel_shader(const D3D12_SHADER_BYTECODE& vertex_shader,
                                  const D3D12_SHADER_BYTECODE& pixel_shader) {
   if (!pixel_shader.pShaderBytecode || pixel_shader.BytecodeLength == 0) {
@@ -3045,7 +3420,7 @@ bool read_stream_subobject(const std::uint8_t* stream, std::size_t size,
 PsoMetadata inspect_pipeline_stream(
     const D3D12_PIPELINE_STATE_STREAM_DESC& description,
     std::vector<std::uint8_t>* replacement_stream = nullptr,
-    bool* substituted = nullptr) {
+    bool* substituted = nullptr, bool* pixel_substituted = nullptr) {
   PsoMetadata metadata{};
   const auto* stream = static_cast<const std::uint8_t*>(
       description.pPipelineStateSubobjectStream);
@@ -3091,11 +3466,23 @@ PsoMetadata inspect_pipeline_stream(
       }
       case D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS: {
         D3D12_SHADER_BYTECODE value{};
+        std::size_t value_offset{};
         read = read_stream_subobject(stream, description.SizeInBytes, offset,
-                                     value);
+                                     value, &value_offset);
         metadata.pixel_shader = read ? hash_bytecode(value) : 0;
         if (read) {
           pixel_shader_bytecode = value;
+        }
+        if (read && replacement_stream &&
+            replacement_stream->size() == description.SizeInBytes) {
+          D3D12_SHADER_BYTECODE replacement{};
+          if (select_billboard_pixel_shader_replacement(value, replacement)) {
+            std::memcpy(replacement_stream->data() + value_offset,
+                        &replacement, sizeof(replacement));
+            if (pixel_substituted) {
+              *pixel_substituted = true;
+            }
+          }
         }
         break;
       }
@@ -3233,6 +3620,8 @@ PsoMetadata inspect_pipeline_stream(
   metadata.kind = metadata.compute_shader != 0 && metadata.vertex_shader == 0
                       ? 'C'
                       : 'G';
+  dump_cluster_graphics_shaders_if_target(vertex_shader_bytecode,
+                                           pixel_shader_bytecode);
   dump_billboard_pixel_shader(vertex_shader_bytecode, pixel_shader_bytecode);
   if (metadata.blend_enabled) {
     dump_blended_pixel_shader(pixel_shader_bytecode);
@@ -3247,6 +3636,7 @@ HRESULT STDMETHODCALLTYPE create_pipeline_state_stream_hook(
   std::vector<std::uint8_t> replacement_stream;
   D3D12_PIPELINE_STATE_STREAM_DESC replacement_description{};
   bool substituted{};
+  bool pixel_substituted{};
   std::uint64_t original_vertex_shader{};
   const auto* effective_description = description;
   if (description && description->pPipelineStateSubobjectStream &&
@@ -3256,9 +3646,9 @@ HRESULT STDMETHODCALLTYPE create_pipeline_state_stream_hook(
     replacement_stream.assign(bytes, bytes + description->SizeInBytes);
     original_vertex_shader =
         inspect_pipeline_stream(*description, &replacement_stream,
-                                &substituted)
+                                &substituted, &pixel_substituted)
             .vertex_shader;
-    if (substituted) {
+    if (substituted || pixel_substituted) {
       replacement_description = *description;
       replacement_description.pPipelineStateSubobjectStream =
           replacement_stream.data();
@@ -3267,14 +3657,25 @@ HRESULT STDMETHODCALLTYPE create_pipeline_state_stream_hook(
   }
   auto result = original_create_pipeline_state_stream(
       device, effective_description, iid, output);
-  if (FAILED(result) && substituted) {
-    record_billboard_shader_creation_result(original_vertex_shader, false);
+  if (FAILED(result) && (substituted || pixel_substituted)) {
+    if (substituted) {
+      record_billboard_shader_creation_result(original_vertex_shader, false);
+    }
+    if (pixel_substituted) {
+      billboard_pixel_shader_probe_creation_reject_count.fetch_add(
+          1, std::memory_order_relaxed);
+    }
     result = original_create_pipeline_state_stream(device, description, iid,
                                                    output);
     substituted = false;
+    pixel_substituted = false;
   }
   if (SUCCEEDED(result) && substituted) {
     record_billboard_shader_creation_result(original_vertex_shader, true);
+  }
+  if (SUCCEEDED(result) && pixel_substituted) {
+    billboard_pixel_shader_probe_applied_count.fetch_add(
+        1, std::memory_order_relaxed);
   }
   if (SUCCEEDED(result) && description && output && *output) {
     auto metadata = inspect_pipeline_stream(*description);
@@ -3706,19 +4107,220 @@ bool take_stingray_upload_snapshot(void* allocator,
   }
 }
 
+bool safe_copy_bytes(void* destination, const void* source,
+                     std::size_t size) {
+  __try {
+    std::memcpy(destination, source, size);
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+}
+
 void stingray_upload_flush_hook(void* allocator) {
   StingrayUploadSnapshot snapshot{};
+  bool target_ring_known = false;
+  bool matched_target_ring = false;
+  bool matched_tracked_resource = false;
   if (allocator && take_stingray_upload_snapshot(allocator, &snapshot)) {
+    {
+      std::scoped_lock lock(cluster_constant_copy_mutex);
+      target_ring_known = !cluster_constant_ring_resources.empty();
+      matched_target_ring =
+          cluster_constant_ring_resources.contains(snapshot.resource);
+    }
     std::scoped_lock lock(buffer_resource_mutex);
     for (auto it = buffer_resources.rbegin(); it != buffer_resources.rend();
          ++it) {
       if (it->resource == snapshot.resource) {
         it->staging_base = snapshot.staging_base;
         it->staging_size = snapshot.staging_size;
+        matched_tracked_resource = true;
         billboard_upload_flush_count.fetch_add(1,
                                                 std::memory_order_relaxed);
         break;
       }
+    }
+  }
+  if (cluster_trace_log != INVALID_HANDLE_VALUE && target_ring_known &&
+      snapshot.resource &&
+      cluster_upload_flush_log_count.fetch_add(
+          1, std::memory_order_relaxed) < 512) {
+    write_cluster_trace_log(
+        "frame=%llu\tCLUSTER_UPLOAD_FLUSH\tresource=%p\tstaging=%p"
+        "\tstaging_size=%llu\ttarget=%u\ttracked=%u\r\n",
+        static_cast<unsigned long long>(
+            present_count.load(std::memory_order_relaxed)),
+        snapshot.resource, snapshot.staging_base,
+        static_cast<unsigned long long>(snapshot.staging_size),
+        matched_target_ring ? 1u : 0u,
+        matched_tracked_resource ? 1u : 0u);
+  }
+  if (cluster_trace_log != INVALID_HANDLE_VALUE && matched_target_ring &&
+      snapshot.staging_base) {
+    constexpr std::size_t kRasterConstantBytes = 84;
+    std::scoped_lock lock(cluster_constant_copy_mutex);
+    const auto pending_count = (std::min<std::uint64_t>)(
+        cluster_pending_constant_count,
+        cluster_pending_constant_samples.size());
+    for (std::uint64_t i = 0; i < pending_count; ++i) {
+      auto& pending = cluster_pending_constant_samples[i];
+      if (pending.captured || pending.resource != snapshot.resource ||
+          pending.resource_offset + kRasterConstantBytes >
+              snapshot.staging_size) {
+        continue;
+      }
+      float staged_fov{};
+      const auto* staged_fov_source = snapshot.staging_base +
+                                      pending.resource_offset + 72;
+      safe_copy_bytes(&staged_fov, staged_fov_source, sizeof(staged_fov));
+      const auto corrected_fov =
+          render_vertical_fov_radians.load(std::memory_order_relaxed);
+      // Cluster tracing is observational. The separately gated production
+      // correction below owns the write so enabling a trace cannot silently
+      // change renderer behaviour.
+      const auto fov_patched = false;
+      std::array<std::byte, kRasterConstantBytes> bytes{};
+      if (!safe_copy_bytes(bytes.data(),
+                           snapshot.staging_base + pending.resource_offset,
+                           bytes.size())) {
+        continue;
+      }
+      pending.captured = true;
+      std::array<float, 16> projection{};
+      std::uint32_t render_target_offset{};
+      float aspect{};
+      float fov{};
+      std::uint32_t vb_offset{};
+      std::uint32_t ib_offset{};
+      std::memcpy(projection.data(), bytes.data(), sizeof(projection));
+      std::memcpy(&render_target_offset, bytes.data() + 64,
+                  sizeof(render_target_offset));
+      std::memcpy(&aspect, bytes.data() + 68, sizeof(aspect));
+      std::memcpy(&fov, bytes.data() + 72, sizeof(fov));
+      std::memcpy(&vb_offset, bytes.data() + 76, sizeof(vb_offset));
+      std::memcpy(&ib_offset, bytes.data() + 80, sizeof(ib_offset));
+      write_cluster_trace_log(
+          "frame=%llu\tCLUSTER_RASTER_C0_DEFERRED\trecorded_frame=%llu"
+          "\tCL=%p\troot=%u\tgpu=%llu\tresource=%p\toffset=%llu"
+          "\tstaging_size=%llu\tstaged_fov=%g\tcorrected_fov=%g"
+          "\tfov_patched=%u"
+          "\tproj=%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g"
+          "\trt_offset=%u\taspect=%g\tfov=%g\tvb_offset=%u"
+          "\tib_offset=%u\r\n",
+          static_cast<unsigned long long>(
+              present_count.load(std::memory_order_relaxed)),
+          static_cast<unsigned long long>(pending.frame), pending.commands,
+          pending.root,
+          static_cast<unsigned long long>(pending.gpu_address),
+          pending.resource,
+          static_cast<unsigned long long>(pending.resource_offset),
+          static_cast<unsigned long long>(snapshot.staging_size),
+          staged_fov, corrected_fov, fov_patched ? 1u : 0u,
+          projection[0], projection[1], projection[2], projection[3],
+          projection[4], projection[5], projection[6], projection[7],
+          projection[8], projection[9], projection[10], projection[11],
+          projection[12], projection[13], projection[14], projection[15],
+          render_target_offset, aspect, fov, vb_offset, ib_offset);
+    }
+    const auto transform_count = (std::min<std::uint64_t>)(
+        cluster_pending_transform_count,
+        cluster_pending_transform_samples.size());
+    for (std::uint64_t i = 0; i < transform_count; ++i) {
+      auto& pending = cluster_pending_transform_samples[i];
+      const auto byte_count = static_cast<std::uint64_t>(
+          pending.element_count) * pending.stride;
+      if (pending.captured || pending.resource != snapshot.resource ||
+          pending.stride < 64 || pending.element_count == 0 ||
+          pending.resource_offset + byte_count > snapshot.staging_size) {
+        continue;
+      }
+      pending.captured = true;
+      write_cluster_trace_log(
+          "frame=%llu\tCLUSTER_LIGHT_TRANSFORMS\trecorded_frame=%llu"
+          "\tCL=%p\tresource=%p\tfirst=%llu\tcount=%u\tstride=%u\r\n",
+          static_cast<unsigned long long>(
+              present_count.load(std::memory_order_relaxed)),
+          static_cast<unsigned long long>(pending.frame), pending.commands,
+          pending.resource,
+          static_cast<unsigned long long>(pending.first_element),
+          pending.element_count,
+          pending.stride);
+      for (std::uint32_t element = 0; element < pending.element_count;
+           ++element) {
+        std::array<float, 16> matrix{};
+        const auto* source = snapshot.staging_base +
+                             pending.resource_offset +
+                             static_cast<std::uint64_t>(element) *
+                                 pending.stride;
+        if (!safe_copy_bytes(matrix.data(), source, sizeof(matrix))) {
+          continue;
+        }
+        write_cluster_trace_log(
+            "frame=%llu\tCLUSTER_LIGHT_TRANSFORM\trecorded_frame=%llu"
+            "\tCL=%p\tfirst=%llu\tcount=%u\telement=%u"
+            "\tm=%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g"
+            "\r\n",
+            static_cast<unsigned long long>(
+                present_count.load(std::memory_order_relaxed)),
+            static_cast<unsigned long long>(pending.frame), pending.commands,
+            static_cast<unsigned long long>(pending.first_element),
+            pending.element_count, element, matrix[0],
+            matrix[1], matrix[2], matrix[3], matrix[4], matrix[5], matrix[6],
+            matrix[7], matrix[8], matrix[9], matrix[10], matrix[11], matrix[12],
+            matrix[13], matrix[14], matrix[15]);
+      }
+    }
+  }
+  if (cluster_light_visibility_fix_active.load(std::memory_order_relaxed) &&
+      snapshot.resource && snapshot.staging_base) {
+    constexpr std::size_t kRasterConstantBytes = 84;
+    constexpr std::size_t kRasterFovOffset = 72;
+    constexpr float kPi = 3.14159265F;
+    const auto corrected_fov =
+        render_vertical_fov_radians.load(std::memory_order_relaxed);
+    const auto current_frame = present_count.load(std::memory_order_relaxed);
+    std::scoped_lock lock(cluster_light_visibility_fix_mutex);
+    for (auto& pending : cluster_pending_fov_patches) {
+      if (!pending.valid) {
+        continue;
+      }
+      if (current_frame > pending.frame + 8) {
+        pending.valid = false;
+        cluster_light_visibility_fix_reject_count.fetch_add(
+            1, std::memory_order_relaxed);
+        continue;
+      }
+      if (pending.resource != snapshot.resource ||
+          pending.resource_offset + kRasterConstantBytes >
+              snapshot.staging_size) {
+        continue;
+      }
+      float staged_fov{};
+      auto* staged_fov_address = snapshot.staging_base +
+                                 pending.resource_offset + kRasterFovOffset;
+      const auto staged_fov_read = safe_copy_bytes(
+          &staged_fov, staged_fov_address, sizeof(staged_fov));
+      const auto valid_values = staged_fov_read && staged_fov > 0.0F &&
+                                staged_fov < kPi && corrected_fov > 0.0F &&
+                                corrected_fov < kPi;
+      if (!valid_values) {
+        pending.valid = false;
+        cluster_light_visibility_fix_reject_count.fetch_add(
+            1, std::memory_order_relaxed);
+        continue;
+      }
+      if (std::abs(staged_fov - corrected_fov) > 0.0001F) {
+        if (safe_copy_bytes(staged_fov_address, &corrected_fov,
+                            sizeof(corrected_fov))) {
+          cluster_light_visibility_fix_patch_count.fetch_add(
+              1, std::memory_order_relaxed);
+        } else {
+          cluster_light_visibility_fix_reject_count.fetch_add(
+              1, std::memory_order_relaxed);
+        }
+      }
+      pending.valid = false;
     }
   }
   original_stingray_upload_flush(allocator);
@@ -3808,6 +4410,8 @@ HRESULT STDMETHODCALLTYPE create_graphics_pipeline_state_hook(
   diagnostic_graphics_pso_create_count.fetch_add(1,
                                                  std::memory_order_relaxed);
   if (description) {
+    dump_cluster_graphics_shaders_if_target(description->VS,
+                                             description->PS);
     dump_vertex_shader_if_requested(description->VS,
                                     &description->InputLayout);
     dump_billboard_pixel_shader(description->VS, description->PS);
@@ -3852,6 +4456,10 @@ HRESULT STDMETHODCALLTYPE create_graphics_pipeline_state_hook(
       record_billboard_shader_creation_result(hash_bytecode(description->VS),
                                               false);
     }
+    if (pixel_substituted) {
+      billboard_pixel_shader_probe_creation_reject_count.fetch_add(
+          1, std::memory_order_relaxed);
+    }
     result = original_create_graphics_pipeline_state(device, description, iid,
                                                      output);
     substituted = false;
@@ -3860,6 +4468,10 @@ HRESULT STDMETHODCALLTYPE create_graphics_pipeline_state_hook(
   if (SUCCEEDED(result) && substituted) {
     record_billboard_shader_creation_result(hash_bytecode(description->VS),
                                             true);
+  }
+  if (SUCCEEDED(result) && pixel_substituted) {
+    billboard_pixel_shader_probe_applied_count.fetch_add(
+        1, std::memory_order_relaxed);
   }
   if (SUCCEEDED(result) && description && output && *output) {
     PsoMetadata metadata{};
@@ -3897,6 +4509,9 @@ HRESULT STDMETHODCALLTYPE create_compute_pipeline_state_hook(
     REFIID iid, void** output) {
   diagnostic_compute_pso_create_count.fetch_add(1,
                                                 std::memory_order_relaxed);
+  if (description) {
+    dump_cluster_compute_shader_if_target(description->CS);
+  }
   const auto result = original_create_compute_pipeline_state(
       device, description, iid, output);
   if (SUCCEEDED(result) && description && output && *output) {
@@ -3944,6 +4559,8 @@ HRESULT STDMETHODCALLTYPE load_graphics_pipeline_hook(
   diagnostic_graphics_pipeline_load_count.fetch_add(
       1, std::memory_order_relaxed);
   if (description) {
+    dump_cluster_graphics_shaders_if_target(description->VS,
+                                             description->PS);
     dump_vertex_shader_if_requested(description->VS,
                                     &description->InputLayout);
     dump_billboard_pixel_shader(description->VS, description->PS);
@@ -3995,6 +4612,10 @@ HRESULT STDMETHODCALLTYPE load_graphics_pipeline_hook(
       record_billboard_shader_creation_result(hash_bytecode(description->VS),
                                               false);
     }
+    if (pixel_substituted) {
+      billboard_pixel_shader_probe_creation_reject_count.fetch_add(
+          1, std::memory_order_relaxed);
+    }
     result = original_load_graphics_pipeline(library, name, description, iid,
                                              output);
     substituted = false;
@@ -4003,6 +4624,10 @@ HRESULT STDMETHODCALLTYPE load_graphics_pipeline_hook(
   if (SUCCEEDED(result) && substituted) {
     record_billboard_shader_creation_result(hash_bytecode(description->VS),
                                             true);
+  }
+  if (SUCCEEDED(result) && pixel_substituted) {
+    billboard_pixel_shader_probe_applied_count.fetch_add(
+        1, std::memory_order_relaxed);
   }
   if (SUCCEEDED(result) && description && output && *output) {
     PsoMetadata metadata{};
@@ -4041,6 +4666,9 @@ HRESULT STDMETHODCALLTYPE load_compute_pipeline_hook(
     void** output) {
   diagnostic_compute_pipeline_load_count.fetch_add(1,
                                                    std::memory_order_relaxed);
+  if (description) {
+    dump_cluster_compute_shader_if_target(description->CS);
+  }
   const auto result = original_load_compute_pipeline(library, name,
                                                       description, iid,
                                                       output);
@@ -4113,7 +4741,8 @@ HRESULT STDMETHODCALLTYPE load_pipeline_hook(
 }
 
 HRESULT STDMETHODCALLTYPE close_hook(ID3D12GraphicsCommandList* commands) {
-  if (marker_log != INVALID_HANDLE_VALUE || kStockMenuDirectRenderEnabled) {
+  if (marker_log != INVALID_HANDLE_VALUE ||
+      focused_trace_phase.load(std::memory_order_relaxed) != 0) {
     std::scoped_lock lock(trace_mutex);
     const auto found = command_traces.find(commands);
     if (found != command_traces.end()) {
@@ -4217,7 +4846,7 @@ HRESULT STDMETHODCALLTYPE close_hook(ID3D12GraphicsCommandList* commands) {
       }
     }
   }
-  {
+  if (direct_menu_render_list_count.load(std::memory_order_acquire) != 0) {
     std::scoped_lock lock(state_mutex);
     const auto found = direct_menu_render_lists.find(commands);
     if (found != direct_menu_render_lists.end() && found->second) {
@@ -4236,14 +4865,23 @@ HRESULT STDMETHODCALLTYPE close_hook(ID3D12GraphicsCommandList* commands) {
 HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
                                      ID3D12CommandAllocator* allocator,
                                      ID3D12PipelineState* initial_state) {
+  const auto reset_result = original_reset(commands, allocator, initial_state);
+  if (FAILED(reset_result)) {
+    // The old recording is still owned by D3D12. Retain every resource and
+    // trace associated with it until a later Reset actually succeeds.
+    return reset_result;
+  }
   const auto focused =
       focused_trace_phase.load(std::memory_order_relaxed) != 0;
   const auto recording_generation =
       focused ? command_recording_generation.fetch_add(
                     1, std::memory_order_relaxed) + 1
               : 0;
-  if (marker_log != INVALID_HANDLE_VALUE || kStockMenuDirectRenderEnabled ||
-      billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) {
+  if (marker_log != INVALID_HANDLE_VALUE ||
+      menu_direct_capture_enabled.load(std::memory_order_relaxed) ||
+      billboard_horizon_lock_enabled.load(std::memory_order_relaxed) ||
+      cluster_light_visibility_fix_requested.load(std::memory_order_relaxed) ||
+      focused) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
     trace = {};
@@ -4257,9 +4895,14 @@ HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
   {
     std::scoped_lock lock(boundary_capture_mutex);
     present_transition_resources.erase(commands);
-    swapchain_write_resources.erase(commands);
     camera_output_resources.erase(commands);
     camera_output_source_states.erase(commands);
+    // Menu completion belongs to the command-list recording just retired by
+    // this successful Reset.  A list can be reset without ever being executed;
+    // retaining these entries would make a later unrelated recording publish
+    // the old menu resource and keep its COM reference alive across resize.
+    menu_output_resources.erase(commands);
+    menu_output_source_states.erase(commands);
     if (focused) {
       command_recording_generations[commands] = recording_generation;
     } else {
@@ -4272,11 +4915,13 @@ HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
     command_transition_ordinals.erase(commands);
     command_marker_stacks.erase(commands);
   }
-  {
+  if (direct_menu_render_list_count.load(std::memory_order_acquire) != 0) {
     std::scoped_lock lock(state_mutex);
-    direct_menu_render_lists.erase(commands);
+    if (direct_menu_render_lists.erase(commands) != 0) {
+      direct_menu_render_list_count.fetch_sub(1, std::memory_order_acq_rel);
+    }
   }
-  return original_reset(commands, allocator, initial_state);
+  return reset_result;
 }
 
 void STDMETHODCALLTYPE execute_bundle_hook(
@@ -4312,9 +4957,14 @@ void STDMETHODCALLTYPE begin_render_pass_hook(
     const D3D12_RENDER_PASS_RENDER_TARGET_DESC* render_targets,
     const D3D12_RENDER_PASS_DEPTH_STENCIL_DESC* depth_stencil,
     D3D12_RENDER_PASS_FLAGS flags) {
-  if (marker_log != INVALID_HANDLE_VALUE || kStockMenuDirectRenderEnabled) {
+  if (marker_log != INVALID_HANDLE_VALUE ||
+      menu_direct_capture_enabled.load(std::memory_order_relaxed) ||
+      focused_trace_phase.load(std::memory_order_relaxed) != 0) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
+    if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+      trace.render_pass_count++;
+    }
     trace.render_target_count = render_target_count;
     trace.render_target = render_target_count > 0 && render_targets
                               ? render_targets[0].cpuDescriptor.ptr
@@ -4339,7 +4989,9 @@ void STDMETHODCALLTYPE begin_render_pass_hook(
 
 void STDMETHODCALLTYPE end_render_pass_hook(ID3D12GraphicsCommandList4* commands) {
   original_end_render_pass(commands);
-  if (marker_log != INVALID_HANDLE_VALUE) {
+  if (marker_log != INVALID_HANDLE_VALUE ||
+      menu_direct_capture_enabled.load(std::memory_order_relaxed) ||
+      focused_trace_phase.load(std::memory_order_relaxed) != 0) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
     if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
@@ -4365,6 +5017,65 @@ std::optional<BufferResourceInfo> resolve_buffer_resource(
     if (gpu_address >= it->gpu_start &&
         gpu_address - it->gpu_start < it->size) {
       return *it;
+    }
+  }
+  return std::nullopt;
+}
+
+bool safe_copy_bytes(void* destination, const void* source,
+                     std::size_t size);
+
+bool copy_tracked_buffer_bytes(std::uint64_t gpu_address,
+                               std::byte* destination,
+                               std::size_t byte_count,
+                               BufferResourceInfo* resource_snapshot,
+                               bool* used_persistent_mapping,
+                               bool* used_staging_mapping) {
+  std::scoped_lock lock(buffer_resource_mutex);
+  for (auto it = buffer_resources.rbegin(); it != buffer_resources.rend();
+       ++it) {
+    if (gpu_address < it->gpu_start ||
+        gpu_address - it->gpu_start + byte_count > it->size) {
+      continue;
+    }
+    if (resource_snapshot) {
+      *resource_snapshot = *it;
+    }
+    const auto offset = gpu_address - it->gpu_start;
+    const std::byte* source{};
+    if (it->mapped && it->mapped_base) {
+      source = it->mapped_base + offset;
+      if (used_persistent_mapping) {
+        *used_persistent_mapping = true;
+      }
+    } else if (it->staging_base &&
+               offset + byte_count <= it->staging_size) {
+      source = it->staging_base + offset;
+      if (used_staging_mapping) {
+        *used_staging_mapping = true;
+      }
+    }
+    return source &&
+           safe_copy_bytes(destination, source, byte_count);
+  }
+  return false;
+}
+
+std::optional<ClusterConstantBufferCopy> resolve_cluster_constant_copy(
+    ID3D12Resource* destination, std::uint64_t destination_offset,
+    std::size_t byte_count) {
+  std::scoped_lock lock(cluster_constant_copy_mutex);
+  const auto available = (std::min<std::uint64_t>)(
+      cluster_constant_copy_count, cluster_constant_copies.size());
+  for (std::uint64_t distance = 0; distance < available; ++distance) {
+    const auto sequence = cluster_constant_copy_count - distance - 1;
+    const auto& copy =
+        cluster_constant_copies[sequence % cluster_constant_copies.size()];
+    if (copy.destination == destination &&
+        destination_offset >= copy.destination_offset &&
+        destination_offset - copy.destination_offset + byte_count <=
+            copy.bytes) {
+      return copy;
     }
   }
   return std::nullopt;
@@ -5279,12 +5990,359 @@ BillboardBindingOverride apply_billboard_view_basis(
   return override_state;
 }
 
+void log_cluster_light_raster_bindings(
+    ID3D12GraphicsCommandList* commands, const CommandTrace& trace) {
+  if (cluster_raster_binding_log_count.fetch_add(
+          1, std::memory_order_relaxed) >= 16) {
+    return;
+  }
+  RootSignatureMetadata metadata{};
+  {
+    std::scoped_lock lock(root_signature_mutex);
+    const auto found = root_signature_metadata.find(trace.root_signature);
+    if (found != root_signature_metadata.end()) {
+      metadata = found->second;
+    }
+  }
+  write_cluster_trace_log(
+      "frame=%llu\tCLUSTER_RASTER_BINDINGS\tCL=%p\tpso=%p\tsig=%p"
+      "\tparameters=%u\r\n",
+      static_cast<unsigned long long>(
+          present_count.load(std::memory_order_relaxed)),
+      commands, reinterpret_cast<void*>(trace.pso),
+      reinterpret_cast<void*>(trace.root_signature), metadata.parameter_count);
+  for (UINT root = 0; root < metadata.parameter_count; ++root) {
+    const auto& parameter = metadata.parameters[root];
+    const auto provenance = resolve_table_provenance(
+        trace.root_signature, root, trace.graphics_tables[root]);
+    write_cluster_trace_log(
+        "frame=%llu\tCLUSTER_RASTER_ROOT\tCL=%p\troot=%u\ttype=%u"
+        "\tvisibility=%u\tregister=%u\tspace=%u\tspan=%u"
+        "\tcounts=%llu,%llu,%llu,%llu\ttable=%llu"
+        "\tcbv=%llu\tsrv=%llu\tuav=%llu"
+        "\tprov=%u,%c,%p,%llu,%llu,%u,%u,%c,%p,%llu,%llu,%u,%u\r\n",
+        static_cast<unsigned long long>(
+            present_count.load(std::memory_order_relaxed)),
+        commands, root, parameter.type, parameter.visibility,
+        parameter.shader_register, parameter.register_space,
+        parameter.descriptor_table_span,
+        static_cast<unsigned long long>(parameter.cbv_count),
+        static_cast<unsigned long long>(parameter.srv_count),
+        static_cast<unsigned long long>(parameter.uav_count),
+        static_cast<unsigned long long>(parameter.sampler_count),
+        static_cast<unsigned long long>(trace.graphics_tables[root]),
+        static_cast<unsigned long long>(trace.graphics_cbvs[root]),
+        static_cast<unsigned long long>(trace.graphics_srvs[root]),
+        static_cast<unsigned long long>(trace.graphics_uavs[root]),
+        provenance.descriptor_count, provenance.descriptors[0].kind,
+        reinterpret_cast<void*>(provenance.descriptors[0].resource),
+        static_cast<unsigned long long>(
+            provenance.descriptors[0].gpu_address),
+        static_cast<unsigned long long>(
+            provenance.descriptors[0].first_element),
+        provenance.descriptors[0].element_count,
+        provenance.descriptors[0].structure_stride,
+        provenance.descriptors[1].kind,
+        reinterpret_cast<void*>(provenance.descriptors[1].resource),
+        static_cast<unsigned long long>(
+            provenance.descriptors[1].gpu_address),
+        static_cast<unsigned long long>(
+            provenance.descriptors[1].first_element),
+        provenance.descriptors[1].element_count,
+        provenance.descriptors[1].structure_stride);
+
+    if (root == 3 && provenance.descriptors[0].kind == 'S' &&
+        provenance.descriptors[0].resource &&
+        provenance.descriptors[0].structure_stride >= 64 &&
+        provenance.descriptors[0].element_count > 0 &&
+        provenance.descriptors[0].element_count <= 32) {
+      std::scoped_lock lock(cluster_constant_copy_mutex);
+      cluster_constant_ring_resources.insert(
+          reinterpret_cast<ID3D12Resource*>(
+              provenance.descriptors[0].resource));
+      if (cluster_pending_transform_count <
+          cluster_pending_transform_samples.size()) {
+        auto& pending = cluster_pending_transform_samples[
+            cluster_pending_transform_count++];
+        pending = ClusterPendingTransformSample{
+            reinterpret_cast<ID3D12Resource*>(
+                provenance.descriptors[0].resource),
+            static_cast<std::uint64_t>(
+                provenance.descriptors[0].first_element) *
+                provenance.descriptors[0].structure_stride,
+            present_count.load(std::memory_order_relaxed), commands,
+            provenance.descriptors[0].first_element,
+            provenance.descriptors[0].element_count,
+            provenance.descriptors[0].structure_stride, false};
+      }
+    }
+
+    if ((root == 0 || root == 2) && trace.graphics_cbvs[root] != 0) {
+      constexpr std::size_t kRasterConstantBytes = 84;
+      std::array<std::byte, kRasterConstantBytes> bytes{};
+      const auto gpu_address = trace.graphics_cbvs[root];
+      const auto resource = resolve_buffer_resource(gpu_address);
+      bool copied = false;
+      bool used_persistent_mapping = false;
+      bool used_staging_mapping = false;
+      bool used_buffer_copy = false;
+      std::uint64_t copy_source_gpu{};
+      if (resource && resource->resource) {
+        {
+          std::scoped_lock lock(cluster_constant_copy_mutex);
+          cluster_constant_ring_resources.insert(resource->resource);
+          if (cluster_pending_constant_count <
+              cluster_pending_constant_samples.size()) {
+            auto& pending = cluster_pending_constant_samples[
+                cluster_pending_constant_count++];
+            pending = ClusterPendingConstantSample{
+                resource->resource, gpu_address - resource->gpu_start,
+                gpu_address,
+                present_count.load(std::memory_order_relaxed), commands, root,
+                false};
+          }
+        }
+        BufferResourceInfo direct_snapshot{};
+        copied = copy_tracked_buffer_bytes(
+            gpu_address, bytes.data(), bytes.size(), &direct_snapshot,
+            &used_persistent_mapping, &used_staging_mapping);
+        if (!copied) {
+          const auto destination_offset =
+              gpu_address - resource->gpu_start;
+          const auto copy = resolve_cluster_constant_copy(
+              resource->resource, destination_offset, bytes.size());
+          if (copy && copy->source) {
+            copy_source_gpu = copy->source->GetGPUVirtualAddress() +
+                              copy->source_offset +
+                              (destination_offset - copy->destination_offset);
+            BufferResourceInfo source_snapshot{};
+            copied = copy_tracked_buffer_bytes(
+                copy_source_gpu, bytes.data(), bytes.size(), &source_snapshot,
+                &used_persistent_mapping, &used_staging_mapping);
+            used_buffer_copy = copied;
+          }
+        }
+      }
+
+      std::array<float, 16> projection{};
+      std::uint32_t render_target_offset{};
+      float aspect{};
+      float fov{};
+      std::uint32_t vb_offset{};
+      std::uint32_t ib_offset{};
+      if (copied) {
+        std::memcpy(projection.data(), bytes.data(), sizeof(projection));
+        std::memcpy(&render_target_offset, bytes.data() + 64,
+                    sizeof(render_target_offset));
+        std::memcpy(&aspect, bytes.data() + 68, sizeof(aspect));
+        std::memcpy(&fov, bytes.data() + 72, sizeof(fov));
+        std::memcpy(&vb_offset, bytes.data() + 76, sizeof(vb_offset));
+        std::memcpy(&ib_offset, bytes.data() + 80, sizeof(ib_offset));
+      }
+      write_cluster_trace_log(
+          "frame=%llu\tCLUSTER_RASTER_C0\tCL=%p\troot=%u\tgpu=%llu"
+          "\tresource=%p\tgpu_start=%llu\tsize=%llu\theap=%u"
+          "\toffset=%llu\tresource_mapped=%u\tstaging_base=%p"
+          "\tstaging_size=%llu\tmapped=%u\tstaging=%u\tbuffer_copy=%u"
+          "\tcopy_source_gpu=%llu\tcopied=%u"
+          "\tproj=%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g"
+          "\trt_offset=%u\taspect=%g\tfov=%g\tvb_offset=%u"
+          "\tib_offset=%u\r\n",
+          static_cast<unsigned long long>(
+              present_count.load(std::memory_order_relaxed)),
+          commands, root, static_cast<unsigned long long>(gpu_address),
+          resource ? resource->resource : nullptr,
+          static_cast<unsigned long long>(resource ? resource->gpu_start : 0),
+          static_cast<unsigned long long>(resource ? resource->size : 0),
+          static_cast<unsigned>(resource ? resource->heap_type
+                                         : D3D12_HEAP_TYPE_CUSTOM),
+          static_cast<unsigned long long>(
+              resource ? gpu_address - resource->gpu_start : 0),
+          resource && resource->mapped ? 1u : 0u,
+          resource ? resource->staging_base : nullptr,
+          static_cast<unsigned long long>(
+              resource ? resource->staging_size : 0),
+          used_persistent_mapping ? 1u : 0u,
+          used_staging_mapping ? 1u : 0u, used_buffer_copy ? 1u : 0u,
+          static_cast<unsigned long long>(copy_source_gpu),
+          copied ? 1u : 0u, projection[0],
+          projection[1], projection[2], projection[3], projection[4],
+          projection[5], projection[6], projection[7], projection[8],
+          projection[9], projection[10], projection[11], projection[12],
+          projection[13], projection[14], projection[15],
+          render_target_offset, aspect, fov, vb_offset, ib_offset);
+    }
+  }
+}
+
+void queue_cluster_light_visibility_fov_patches(
+    ID3D12GraphicsCommandList* commands) {
+  if (!cluster_light_visibility_fix_active.load(std::memory_order_relaxed) ||
+      current_presentation_mode.load(std::memory_order_relaxed) !=
+          static_cast<unsigned int>(
+              darktidevr::core::SharedPresentationMode::stereo_world)) {
+    return;
+  }
+  const auto corrected_fov =
+      render_vertical_fov_radians.load(std::memory_order_relaxed);
+  if (!(corrected_fov > 0.0F && corrected_fov < 3.14159265F)) {
+    return;
+  }
+  CommandTrace trace{};
+  {
+    std::scoped_lock lock(trace_mutex);
+    const auto found = command_traces.find(commands);
+    if (found == command_traces.end() ||
+        !found->second.cluster_light_raster) {
+      return;
+    }
+    trace = found->second;
+  }
+  cluster_light_visibility_fix_target_draw_count.fetch_add(
+      1, std::memory_order_relaxed);
+  for (const UINT root : {0U, 2U}) {
+    const auto gpu_address = trace.graphics_cbvs[root];
+    if (gpu_address == 0) {
+      cluster_light_visibility_fix_root_missing_count.fetch_add(
+          1, std::memory_order_relaxed);
+      cluster_light_visibility_fix_reject_count.fetch_add(
+          1, std::memory_order_relaxed);
+      continue;
+    }
+    const auto resource = resolve_buffer_resource(gpu_address);
+    if (!resource || !resource->resource) {
+      cluster_light_visibility_fix_resource_missing_count.fetch_add(
+          1, std::memory_order_relaxed);
+      cluster_light_visibility_fix_reject_count.fetch_add(
+          1, std::memory_order_relaxed);
+      continue;
+    }
+    cluster_light_visibility_fix_candidate_count.fetch_add(
+        1, std::memory_order_relaxed);
+    const auto resource_offset = gpu_address - resource->gpu_start;
+    std::scoped_lock lock(cluster_light_visibility_fix_mutex);
+    const auto duplicate = std::find_if(
+        cluster_pending_fov_patches.begin(),
+        cluster_pending_fov_patches.end(),
+        [resource_pointer = resource->resource,
+         resource_offset](const ClusterPendingFovPatch& pending) {
+          return pending.valid && pending.resource == resource_pointer &&
+                 pending.resource_offset == resource_offset;
+        });
+    if (duplicate != cluster_pending_fov_patches.end()) {
+      continue;
+    }
+    auto& pending = cluster_pending_fov_patches[
+        cluster_pending_fov_patch_cursor++ %
+        cluster_pending_fov_patches.size()];
+    if (pending.valid) {
+      cluster_light_visibility_fix_reject_count.fetch_add(
+          1, std::memory_order_relaxed);
+    }
+    pending = ClusterPendingFovPatch{
+        resource->resource, resource_offset,
+        present_count.load(std::memory_order_relaxed), true};
+  }
+}
+
+void record_cluster_submission(
+    ID3D12GraphicsCommandList* commands, const char* submission,
+    std::uint64_t argument0, std::uint64_t argument1,
+    std::uint64_t argument2, std::uint64_t argument3,
+    std::uint64_t argument4) {
+  if (cluster_trace_log == INVALID_HANDLE_VALUE ||
+      !cluster_trace_saw_flat_presentation.load(std::memory_order_relaxed) ||
+      current_presentation_mode.load(std::memory_order_relaxed) !=
+          static_cast<unsigned int>(
+              darktidevr::core::SharedPresentationMode::stereo_world)) {
+    return;
+  }
+  CommandTrace trace{};
+  {
+    std::scoped_lock lock(trace_mutex);
+    const auto found = command_traces.find(commands);
+    if (found == command_traces.end()) {
+      return;
+    }
+    trace = found->second;
+  }
+  if (trace.cluster_light_raster) {
+    log_cluster_light_raster_bindings(commands, trace);
+  }
+  std::scoped_lock lock(cluster_submission_mutex);
+  auto& ring = cluster_submission_rings[commands];
+  const auto sequence = ring.write_count++;
+  auto& entry = ring.entries[sequence % ring.entries.size()];
+  entry.sequence = sequence;
+  entry.pso = trace.pso;
+  entry.submission = submission;
+  entry.arguments = {argument0, argument1, argument2, argument3, argument4};
+}
+
+void log_cluster_predecessor_ring(ID3D12GraphicsCommandList* commands) {
+  ClusterSubmissionRing ring{};
+  {
+    std::scoped_lock lock(cluster_submission_mutex);
+    const auto found = cluster_submission_rings.find(commands);
+    if (found == cluster_submission_rings.end()) {
+      return;
+    }
+    ring = found->second;
+  }
+  const auto count = (std::min<std::uint64_t>)(ring.write_count,
+                                               ring.entries.size());
+  if (count == 0) {
+    return;
+  }
+  const auto first = ring.write_count > ring.entries.size()
+                         ? ring.write_count % ring.entries.size()
+                         : 0;
+  for (std::uint64_t offset = 0; offset < count; ++offset) {
+    const auto& entry = ring.entries[(first + offset) % ring.entries.size()];
+    PsoMetadata metadata{};
+    {
+      std::scoped_lock lock(pso_mutex);
+      const auto found = pso_metadata.find(entry.pso);
+      if (found != pso_metadata.end()) {
+        metadata = found->second;
+      }
+    }
+    write_cluster_trace_log(
+        "frame=%llu\tCLUSTER_PREDECESSOR\tCL=%p\tsequence=%llu"
+        "\tdistance=%llu\tsubmit=%s\tpso=%p\tvs=%016llx\tps=%016llx"
+        "\tcs=%016llx"
+        "\targs=%llu,%llu,%llu,%llu,%llu\r\n",
+        static_cast<unsigned long long>(
+            present_count.load(std::memory_order_relaxed)),
+        commands, static_cast<unsigned long long>(entry.sequence),
+        static_cast<unsigned long long>(count - offset), entry.submission,
+        reinterpret_cast<void*>(entry.pso),
+        static_cast<unsigned long long>(metadata.vertex_shader),
+        static_cast<unsigned long long>(metadata.pixel_shader),
+        static_cast<unsigned long long>(metadata.compute_shader),
+        static_cast<unsigned long long>(entry.arguments[0]),
+        static_cast<unsigned long long>(entry.arguments[1]),
+        static_cast<unsigned long long>(entry.arguments[2]),
+        static_cast<unsigned long long>(entry.arguments[3]),
+        static_cast<unsigned long long>(entry.arguments[4]));
+  }
+}
+
 void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
                                            UINT vertex_count,
                                            UINT instance_count,
                                            UINT start_vertex,
                                            UINT start_instance) {
-  billboard_direct_draw_hook_count.fetch_add(1, std::memory_order_relaxed);
+  record_cluster_submission(commands, "draw", vertex_count, instance_count,
+                            start_vertex, start_instance, 0);
+  if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
+      billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) {
+    billboard_direct_draw_hook_count.fetch_add(1, std::memory_order_relaxed);
+  }
+  if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+    std::scoped_lock lock(trace_mutex);
+    command_traces[commands].draw_count++;
+  }
   if (marker_log != INVALID_HANDLE_VALUE) {
     std::scoped_lock lock(trace_mutex);
     observe_table4_draw(commands, 0, vertex_count, instance_count,
@@ -5367,23 +6425,132 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
                                 std::memory_order_relaxed);
   }
   const auto menu_redirect =
-      (stock_menu_draw || vendor_menu_widget_draw || scoped_menu_draw)
-          ? begin_stock_menu_draw_redirect(commands, draw_metadata)
+      (stock_menu_draw || vendor_menu_widget_draw)
+          ? begin_stock_menu_draw_redirect(commands, draw_metadata,
+                                            vertex_count, instance_count)
           : MenuDrawRedirect{};
   if (scoped_menu_draw && menu_redirect.active) {
     menu_draw_scope_redirect_count.fetch_add(1, std::memory_order_relaxed);
   }
+  // Some Options passes update a retained target which the same pass then
+  // samples while composing the visible pane. Record the native draw first,
+  // then capture it, so the shared copy sees the completed retained content.
+  // The redirect helper has already performed the shared-surface transition
+  // and clear; only the render-target binding is changed here.
+  if (menu_redirect.active && stock_menu_draw) {
+    end_stock_menu_draw_redirect(commands, menu_redirect);
+    original_draw_instanced(commands, vertex_count, instance_count,
+                            start_vertex, start_instance);
+    original_om_set_render_targets(commands, 1,
+                                   &menu_redirect.capture_target, FALSE,
+                                   nullptr);
+  }
+  if (direct_menu_capture && kMenuLayerConsumerProbeEnabled &&
+      current_presentation_mode.load(std::memory_order_relaxed) ==
+          static_cast<unsigned int>(
+              darktidevr::core::SharedPresentationMode::world_anchored_menu)) {
+    const auto alias_layer =
+        options_layer_resources[0].load(std::memory_order_acquire);
+    const auto typed_layer =
+        options_layer_resources[1].load(std::memory_order_acquire);
+    if (alias_layer || typed_layer) {
+      CommandTrace routing_trace{};
+      {
+        std::scoped_lock lock(trace_mutex);
+        const auto found = command_traces.find(commands);
+        if (found != command_traces.end()) {
+          routing_trace = found->second;
+        }
+      }
+      ID3D12Resource* sampled_layer{};
+      UINT sampled_root = UINT_MAX;
+      UINT sampled_descriptor = UINT_MAX;
+      for (UINT root = 0; root < kRootSlotCount && !sampled_layer; ++root) {
+        const auto provenance = resolve_table_provenance(
+            routing_trace.root_signature, root,
+            routing_trace.graphics_tables[root]);
+        for (UINT descriptor = 0;
+             descriptor < provenance.descriptor_count &&
+             descriptor < provenance.descriptors.size();
+             ++descriptor) {
+          auto* resource = reinterpret_cast<ID3D12Resource*>(
+              provenance.descriptors[descriptor].resource);
+          if (resource == alias_layer || resource == typed_layer) {
+            sampled_layer = resource;
+            sampled_root = root;
+            sampled_descriptor = descriptor;
+            break;
+          }
+        }
+      }
+      if (sampled_layer) {
+        static std::atomic<std::uint64_t> consumer_log_count{};
+        const auto consumer_id =
+            consumer_log_count.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (consumer_id <= 1024) {
+          const auto output = descriptor_snapshot(routing_trace.render_target);
+          write_menu_resource_log(
+              "MENU_LAYER_CONSUMER\tid=%llu\tframe=%llu\tcommands=%p"
+              "\tsampled=%s\tresource=%p\troot=%u\tdescriptor=%u"
+              "\toutput=%p\toutput_width=%llu\toutput_height=%u"
+              "\toutput_format=%u\tvs=%llu\tps=%llu"
+              "\tvertices=%u\tinstances=%u\r\n",
+              static_cast<unsigned long long>(consumer_id),
+              static_cast<unsigned long long>(
+                  present_count.load(std::memory_order_relaxed)),
+              commands, sampled_layer == alias_layer ? "alias" : "typed",
+              sampled_layer, sampled_root, sampled_descriptor,
+              reinterpret_cast<void*>(output.resource),
+              static_cast<unsigned long long>(output.width), output.height,
+              output.format,
+              static_cast<unsigned long long>(draw_metadata.vertex_shader),
+              static_cast<unsigned long long>(draw_metadata.pixel_shader),
+              vertex_count, instance_count);
+        }
+      }
+    }
+  }
   const auto billboard_override = apply_billboard_view_basis(commands);
-  original_draw_instanced(commands, vertex_count, instance_count, start_vertex,
-                          start_instance);
+  if (menu_redirect.diagnostic_id != 0 &&
+      menu_redirect.diagnostic_id <= 2) {
+    write_menu_resource_log(
+        "MENU_REDIRECT_STAGE\tid=%llu\tstage=before_draw\r\n",
+        static_cast<unsigned long long>(menu_redirect.diagnostic_id));
+  }
+  original_draw_instanced(commands, vertex_count, instance_count,
+                          start_vertex, start_instance);
+  if (menu_redirect.diagnostic_id != 0 &&
+      menu_redirect.diagnostic_id <= 2) {
+    write_menu_resource_log(
+        "MENU_REDIRECT_STAGE\tid=%llu\tstage=after_draw\r\n",
+        static_cast<unsigned long long>(menu_redirect.diagnostic_id));
+  }
   end_billboard_binding_override(commands, billboard_override);
   end_stock_menu_draw_redirect(commands, menu_redirect);
+  if (menu_redirect.diagnostic_id != 0 &&
+      menu_redirect.diagnostic_id <= 2) {
+    write_menu_resource_log(
+        "MENU_REDIRECT_STAGE\tid=%llu\tstage=target_restored\r\n",
+        static_cast<unsigned long long>(menu_redirect.diagnostic_id));
+  }
 }
 
 void STDMETHODCALLTYPE draw_indexed_instanced_hook(
     ID3D12GraphicsCommandList* commands, UINT index_count, UINT instance_count,
     UINT start_index, INT base_vertex, UINT start_instance) {
-  billboard_direct_draw_hook_count.fetch_add(1, std::memory_order_relaxed);
+  queue_cluster_light_visibility_fov_patches(commands);
+  record_cluster_submission(
+      commands, "draw_indexed", index_count, instance_count, start_index,
+      static_cast<std::uint64_t>(static_cast<std::int64_t>(base_vertex)),
+      start_instance);
+  if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
+      billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) {
+    billboard_direct_draw_hook_count.fetch_add(1, std::memory_order_relaxed);
+  }
+  if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+    std::scoped_lock lock(trace_mutex);
+    command_traces[commands].indexed_draw_count++;
+  }
   auto submitted_instance_count = instance_count;
   if (marker_log != INVALID_HANDLE_VALUE) {
     std::scoped_lock lock(trace_mutex);
@@ -5413,6 +6580,11 @@ void STDMETHODCALLTYPE execute_indirect_hook(
     ID3D12CommandSignature* command_signature, UINT max_command_count,
     ID3D12Resource* argument_buffer, UINT64 argument_buffer_offset,
     ID3D12Resource* count_buffer, UINT64 count_buffer_offset) {
+  record_cluster_submission(
+      commands, "execute_indirect", max_command_count,
+      reinterpret_cast<std::uintptr_t>(argument_buffer),
+      argument_buffer_offset, reinterpret_cast<std::uintptr_t>(count_buffer),
+      count_buffer_offset);
   // Darktide's production particle renderer submits the exact c_billboard
   // pipeline through ExecuteIndirect. Resolve/log (and, when enabled,
   // override) the binding at the submission boundary so the descriptor-table
@@ -5422,6 +6594,10 @@ void STDMETHODCALLTYPE execute_indirect_hook(
   // DRAW/DRAW_INDEXED signature on this build. The exact substituted graphics
   // PSO and the reflected 384-byte c_per_object minimum are therefore the
   // authoritative fail-closed classifiers inside apply_billboard_view_basis.
+  if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+    std::scoped_lock lock(trace_mutex);
+    command_traces[commands].indirect_count++;
+  }
   const auto billboard_override = apply_billboard_view_basis(commands);
   original_execute_indirect(commands, command_signature, max_command_count,
                             argument_buffer, argument_buffer_offset,
@@ -5429,8 +6605,92 @@ void STDMETHODCALLTYPE execute_indirect_hook(
   end_billboard_binding_override(commands, billboard_override);
 }
 
+void record_copy_work(ID3D12GraphicsCommandList* commands) {
+  if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+    std::scoped_lock lock(trace_mutex);
+    command_traces[commands].copy_count++;
+  }
+}
+
+void STDMETHODCALLTYPE copy_buffer_region_hook(
+    ID3D12GraphicsCommandList* commands, ID3D12Resource* destination,
+    UINT64 destination_offset, ID3D12Resource* source, UINT64 source_offset,
+    UINT64 bytes) {
+  record_copy_work(commands);
+  bool cluster_constant_ring = false;
+  if (cluster_trace_log != INVALID_HANDLE_VALUE && destination && source) {
+    std::scoped_lock lock(cluster_constant_copy_mutex);
+    cluster_constant_ring =
+        cluster_constant_ring_resources.contains(destination);
+    if (cluster_constant_ring) {
+      auto& copy = cluster_constant_copies[
+          cluster_constant_copy_count % cluster_constant_copies.size()];
+      copy = ClusterConstantBufferCopy{destination, destination_offset, source,
+                                       source_offset, bytes};
+      ++cluster_constant_copy_count;
+    }
+  }
+  if (cluster_constant_ring &&
+      cluster_constant_copy_log_count.fetch_add(
+          1, std::memory_order_relaxed) < 256) {
+    const auto source_gpu = source->GetGPUVirtualAddress() + source_offset;
+    const auto source_info = resolve_buffer_resource(source_gpu);
+    write_cluster_trace_log(
+        "frame=%llu\tCLUSTER_C0_COPY\tCL=%p\tdestination=%p"
+        "\tdestination_offset=%llu\tsource=%p\tsource_offset=%llu"
+        "\tbytes=%llu\tsource_gpu=%llu\tsource_heap=%u"
+        "\tsource_mapped=%u\r\n",
+        static_cast<unsigned long long>(
+            present_count.load(std::memory_order_relaxed)),
+        commands, destination,
+        static_cast<unsigned long long>(destination_offset), source,
+        static_cast<unsigned long long>(source_offset),
+        static_cast<unsigned long long>(bytes),
+        static_cast<unsigned long long>(source_gpu),
+        static_cast<unsigned>(source_info ? source_info->heap_type
+                                          : D3D12_HEAP_TYPE_CUSTOM),
+        source_info && source_info->mapped ? 1u : 0u);
+  }
+  original_copy_buffer_region(commands, destination, destination_offset,
+                              source, source_offset, bytes);
+}
+
+void STDMETHODCALLTYPE copy_texture_region_hook(
+    ID3D12GraphicsCommandList* commands,
+    const D3D12_TEXTURE_COPY_LOCATION* destination, UINT destination_x,
+    UINT destination_y, UINT destination_z,
+    const D3D12_TEXTURE_COPY_LOCATION* source, const D3D12_BOX* source_box) {
+  record_copy_work(commands);
+  original_copy_texture_region(commands, destination, destination_x,
+                               destination_y, destination_z, source,
+                               source_box);
+}
+
+void STDMETHODCALLTYPE copy_resource_hook(ID3D12GraphicsCommandList* commands,
+                                          ID3D12Resource* destination,
+                                          ID3D12Resource* source) {
+  record_copy_work(commands);
+  original_copy_resource(commands, destination, source);
+}
+
+void STDMETHODCALLTYPE resolve_subresource_hook(
+    ID3D12GraphicsCommandList* commands, ID3D12Resource* destination,
+    UINT destination_subresource, ID3D12Resource* source,
+    UINT source_subresource, DXGI_FORMAT format) {
+  if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+    std::scoped_lock lock(trace_mutex);
+    command_traces[commands].resolve_count++;
+  }
+  original_resolve_subresource(commands, destination, destination_subresource,
+                               source, source_subresource, format);
+}
+
 void STDMETHODCALLTYPE dispatch_hook(ID3D12GraphicsCommandList* commands,
                                      UINT x, UINT y, UINT z) {
+  if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+    std::scoped_lock lock(trace_mutex);
+    command_traces[commands].dispatch_count++;
+  }
   if (marker_log != INVALID_HANDLE_VALUE) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
@@ -5476,6 +6736,132 @@ void STDMETHODCALLTYPE dispatch_hook(ID3D12GraphicsCommandList* commands,
           t2b.kind, reinterpret_cast<void*>(t2b.resource), t2b.gpu_address);
     }
   }
+  if (cluster_trace_log != INVALID_HANDLE_VALUE) {
+    const auto presentation_mode = static_cast<
+        darktidevr::core::SharedPresentationMode>(
+        current_presentation_mode.load(std::memory_order_relaxed));
+    if (presentation_mode !=
+        darktidevr::core::SharedPresentationMode::stereo_world) {
+      cluster_trace_saw_flat_presentation.store(true,
+                                                std::memory_order_relaxed);
+    }
+    CommandTrace trace{};
+    std::string marker{"<none>"};
+    {
+      std::scoped_lock lock(trace_mutex);
+      const auto trace_found = command_traces.find(commands);
+      if (trace_found != command_traces.end()) {
+        trace = trace_found->second;
+      }
+    }
+    {
+      std::scoped_lock lock(boundary_capture_mutex);
+      const auto marker_found = command_marker_stacks.find(commands);
+      if (marker_found != command_marker_stacks.end() &&
+          !marker_found->second.empty()) {
+        marker = marker_found->second.back();
+      }
+    }
+    // Startup and flat presentation execute many unrelated compute passes. A
+    // bounded all-dispatch capture would otherwise exhaust itself before the
+    // first hub frame. The title/loading transition provides an observed,
+    // deterministic arm: record only after a non-stereo mode has been seen and
+    // the producer has returned to the stereo-world mode.
+    if (presentation_mode ==
+            darktidevr::core::SharedPresentationMode::stereo_world &&
+        cluster_trace_saw_flat_presentation.load(std::memory_order_relaxed)) {
+      std::uint64_t compute_shader{};
+      {
+        std::scoped_lock lock(pso_mutex);
+        const auto pso_found = pso_metadata.find(trace.pso);
+        if (pso_found != pso_metadata.end()) {
+          compute_shader = pso_found->second.compute_shader;
+        }
+      }
+      std::uintptr_t linked_list_resource{};
+      TableProvenance target_table1{};
+      TableProvenance target_table2{};
+      if (compute_shader == kClusterGridComputeShader) {
+        target_table1 = resolve_table_provenance(
+            trace.compute_root_signature, 1, trace.compute_tables[1]);
+        target_table2 = resolve_table_provenance(
+            trace.compute_root_signature, 2, trace.compute_tables[2]);
+        // DXC reflection identifies cluster_linked_list as t0. The live
+        // descriptor confirms that root table 1 descriptor 0 is an SRV with
+        // 4,194,304 elements backed by a 16,777,216-byte resource. Match the
+        // reflected binding and measured element count; renderer.json's
+        // "width" is an element capacity, not the D3D12 byte width.
+        const auto& info = target_table1.descriptors[0];
+        if (target_table1.descriptor_count > 0 && info.kind == 'S' &&
+            info.element_count == 4194304 && info.resource != 0) {
+          linked_list_resource = info.resource;
+          cluster_linked_list_resource.store(info.resource,
+                                             std::memory_order_relaxed);
+          cluster_linked_list_learned_frame.store(
+              present_count.load(std::memory_order_relaxed),
+              std::memory_order_relaxed);
+        }
+        if (cluster_target_dispatch_log_count.fetch_add(
+                1, std::memory_order_relaxed) < 8) {
+          log_cluster_predecessor_ring(commands);
+        }
+      }
+      const auto log_generic = compute_shader != kClusterGridComputeShader &&
+          cluster_generic_dispatch_log_count.fetch_add(
+              1, std::memory_order_relaxed) < 512;
+      if (compute_shader == kClusterGridComputeShader || log_generic) {
+        write_cluster_trace_log(
+          "frame=%llu\tCL=%p\tmarker=%s\tgroups=%u,%u,%u\t"
+          "pso=%p\tcs=%016llx\tsig=%p\tlinked=%p\t"
+          "tables=%llu,%llu,%llu,%llu\tcbvs=%llu,%llu,%llu,%llu\t"
+          "constants=%llu,%llu,%llu,%llu\t"
+          "t1=%u,%c,%p,%llu,%u,%u,%c,%p,%llu,%u,%u\t"
+          "t2=%u,%c,%p,%llu,%u,%u,%c,%p,%llu,%u,%u\r\n",
+          static_cast<unsigned long long>(
+              present_count.load(std::memory_order_relaxed)),
+          commands, marker.c_str(), x, y, z,
+          reinterpret_cast<void*>(trace.pso),
+          static_cast<unsigned long long>(compute_shader),
+          reinterpret_cast<void*>(trace.compute_root_signature),
+          reinterpret_cast<void*>(linked_list_resource),
+          static_cast<unsigned long long>(trace.compute_tables[0]),
+          static_cast<unsigned long long>(trace.compute_tables[1]),
+          static_cast<unsigned long long>(trace.compute_tables[2]),
+          static_cast<unsigned long long>(trace.compute_tables[3]),
+          static_cast<unsigned long long>(trace.compute_cbvs[0]),
+          static_cast<unsigned long long>(trace.compute_cbvs[1]),
+          static_cast<unsigned long long>(trace.compute_cbvs[2]),
+          static_cast<unsigned long long>(trace.compute_cbvs[3]),
+          static_cast<unsigned long long>(trace.compute_constants[0]),
+          static_cast<unsigned long long>(trace.compute_constants[1]),
+          static_cast<unsigned long long>(trace.compute_constants[2]),
+          static_cast<unsigned long long>(trace.compute_constants[3]),
+          target_table1.descriptor_count,
+          target_table1.descriptors[0].kind,
+          reinterpret_cast<void*>(target_table1.descriptors[0].resource),
+          static_cast<unsigned long long>(target_table1.descriptors[0].width),
+          target_table1.descriptors[0].element_count,
+          target_table1.descriptors[0].structure_stride,
+          target_table1.descriptors[1].kind,
+          reinterpret_cast<void*>(target_table1.descriptors[1].resource),
+          static_cast<unsigned long long>(target_table1.descriptors[1].width),
+          target_table1.descriptors[1].element_count,
+          target_table1.descriptors[1].structure_stride,
+          target_table2.descriptor_count,
+          target_table2.descriptors[0].kind,
+          reinterpret_cast<void*>(target_table2.descriptors[0].resource),
+          static_cast<unsigned long long>(target_table2.descriptors[0].width),
+          target_table2.descriptors[0].element_count,
+          target_table2.descriptors[0].structure_stride,
+          target_table2.descriptors[1].kind,
+          reinterpret_cast<void*>(target_table2.descriptors[1].resource),
+          static_cast<unsigned long long>(target_table2.descriptors[1].width),
+          target_table2.descriptors[1].element_count,
+          target_table2.descriptors[1].structure_stride);
+      }
+    }
+  }
+  record_cluster_submission(commands, "dispatch", x, y, z, 0, 0);
   original_dispatch(commands, x, y, z);
 }
 
@@ -5620,7 +7006,11 @@ void STDMETHODCALLTYPE set_pipeline_state_hook(
   dump_pipeline_blob_if_requested(state);
   PsoMetadata first_bound_metadata{};
   bool log_first_billboard_bind{};
-  if (billboard_shader_substitution_requested.load(std::memory_order_relaxed) &&
+  // A full first-bind census is diagnostic data. Production shader
+  // substitution already records the small set of replacement PSOs at
+  // creation time and must not take pso_mutex on every pipeline bind.
+  if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) &&
+      billboard_shader_substitution_requested.load(std::memory_order_relaxed) &&
       state) {
     const auto key = reinterpret_cast<std::uintptr_t>(state);
     std::scoped_lock lock(pso_mutex);
@@ -5638,15 +7028,28 @@ void STDMETHODCALLTYPE set_pipeline_state_hook(
         "first-bind", reinterpret_cast<std::uintptr_t>(state),
         first_bound_metadata);
   }
-  if (marker_log != INVALID_HANDLE_VALUE || kStockMenuSwapchainCaptureEnabled ||
-      kStockMenuDirectRenderEnabled ||
-      billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) {
+  const auto focused =
+      focused_trace_phase.load(std::memory_order_relaxed) != 0;
+  if (marker_log != INVALID_HANDLE_VALUE ||
+      cluster_trace_log != INVALID_HANDLE_VALUE ||
+      cluster_light_visibility_fix_active.load(std::memory_order_relaxed) ||
+      kStockMenuSwapchainCaptureEnabled ||
+      menu_direct_capture_enabled.load(std::memory_order_relaxed) ||
+      billboard_horizon_lock_enabled.load(std::memory_order_relaxed) ||
+      focused) {
     bool metadata_missing{};
+    bool cluster_light_raster{};
     {
       std::scoped_lock lock(pso_mutex);
-      metadata_missing = state &&
-                         pso_metadata.find(reinterpret_cast<std::uintptr_t>(state)) ==
-                             pso_metadata.end();
+      const auto found = state
+                             ? pso_metadata.find(
+                                   reinterpret_cast<std::uintptr_t>(state))
+                             : pso_metadata.end();
+      metadata_missing = state && found == pso_metadata.end();
+      cluster_light_raster =
+          found != pso_metadata.end() &&
+          found->second.vertex_shader == kClusterLightRasterVertexShader &&
+          found->second.pixel_shader == kClusterLightRasterPixelShader;
     }
     if (metadata_missing) {
       ComPtr<ID3DBlob> blob;
@@ -5661,16 +7064,15 @@ void STDMETHODCALLTYPE set_pipeline_state_hook(
       pso_metadata.emplace(reinterpret_cast<std::uintptr_t>(state), metadata);
     }
     std::scoped_lock lock(trace_mutex);
-    command_traces[commands].pso = reinterpret_cast<std::uintptr_t>(state);
-    if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
-      const auto generation = command_recording_generations.find(commands);
+    auto& trace = command_traces[commands];
+    trace.pso = reinterpret_cast<std::uintptr_t>(state);
+    trace.cluster_light_raster = cluster_light_raster;
+    if (focused) {
       write_focused_log("phase=%d\tframe=%llu\tCL=%p\tPSO\tgen=%llu\tpso=%p\r\n",
                         focused_trace_phase.load(std::memory_order_relaxed),
                         present_count.load(std::memory_order_relaxed), commands,
                         static_cast<unsigned long long>(
-                            generation == command_recording_generations.end()
-                                ? 0
-                                : generation->second),
+                            trace.recording_generation),
                         state);
     }
   }
@@ -5712,6 +7114,7 @@ void STDMETHODCALLTYPE set_graphics_root_signature_hook(
     ID3D12GraphicsCommandList* commands, ID3D12RootSignature* signature) {
   const auto signature_address = reinterpret_cast<std::uintptr_t>(signature);
   if (marker_log != INVALID_HANDLE_VALUE ||
+      cluster_trace_log != INVALID_HANDLE_VALUE ||
       billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) {
     {
       std::scoped_lock lock(trace_mutex);
@@ -5755,7 +7158,9 @@ void STDMETHODCALLTYPE set_graphics_root_signature_hook(
 
 void STDMETHODCALLTYPE set_compute_root_signature_hook(
     ID3D12GraphicsCommandList* commands, ID3D12RootSignature* signature) {
-  if (marker_log != INVALID_HANDLE_VALUE || kStockMenuDirectRenderEnabled) {
+  if (marker_log != INVALID_HANDLE_VALUE ||
+      cluster_trace_log != INVALID_HANDLE_VALUE ||
+      focused_trace_phase.load(std::memory_order_relaxed) != 0) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
     trace.compute_root_signature = reinterpret_cast<std::uintptr_t>(signature);
@@ -5772,6 +7177,7 @@ void STDMETHODCALLTYPE set_graphics_root_descriptor_table_hook(
     ID3D12GraphicsCommandList* commands, UINT root_index,
     D3D12_GPU_DESCRIPTOR_HANDLE table) {
   if ((marker_log != INVALID_HANDLE_VALUE ||
+       cluster_trace_log != INVALID_HANDLE_VALUE ||
        billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) &&
       root_index < kRootSlotCount) {
     std::scoped_lock lock(trace_mutex);
@@ -5789,7 +7195,9 @@ void STDMETHODCALLTYPE set_graphics_root_descriptor_table_hook(
 void STDMETHODCALLTYPE set_compute_root_descriptor_table_hook(
     ID3D12GraphicsCommandList* commands, UINT root_index,
     D3D12_GPU_DESCRIPTOR_HANDLE table) {
-  if (marker_log != INVALID_HANDLE_VALUE && root_index < kRootSlotCount) {
+  if ((marker_log != INVALID_HANDLE_VALUE ||
+       cluster_trace_log != INVALID_HANDLE_VALUE) &&
+      root_index < kRootSlotCount) {
     std::scoped_lock lock(trace_mutex);
     command_traces[commands].compute_tables[root_index] = table.ptr;
   }
@@ -5812,7 +7220,9 @@ void STDMETHODCALLTYPE set_graphics_root_32bit_constant_hook(
 void STDMETHODCALLTYPE set_compute_root_32bit_constant_hook(
     ID3D12GraphicsCommandList* commands, UINT root_index, UINT value,
     UINT destination_offset) {
-  if (marker_log != INVALID_HANDLE_VALUE && root_index < kRootSlotCount) {
+  if ((marker_log != INVALID_HANDLE_VALUE ||
+       cluster_trace_log != INVALID_HANDLE_VALUE) &&
+      root_index < kRootSlotCount) {
     std::scoped_lock lock(trace_mutex);
     auto& state = command_traces[commands].compute_constants[root_index];
     state = mix_u64(state, destination_offset);
@@ -5841,7 +7251,9 @@ void STDMETHODCALLTYPE set_graphics_root_32bit_constants_hook(
 void STDMETHODCALLTYPE set_compute_root_32bit_constants_hook(
     ID3D12GraphicsCommandList* commands, UINT root_index, UINT value_count,
     const void* values, UINT destination_offset) {
-  if (marker_log != INVALID_HANDLE_VALUE && root_index < kRootSlotCount) {
+  if ((marker_log != INVALID_HANDLE_VALUE ||
+       cluster_trace_log != INVALID_HANDLE_VALUE) &&
+      root_index < kRootSlotCount) {
     std::scoped_lock lock(trace_mutex);
     auto& state = command_traces[commands].compute_constants[root_index];
     state = mix_u64(state, destination_offset);
@@ -5859,6 +7271,8 @@ void set_graphics_root_gpu_address(
     D3D12_GPU_VIRTUAL_ADDRESS address,
     std::array<std::uint64_t, kRootSlotCount> CommandTrace::*member) {
   if ((marker_log != INVALID_HANDLE_VALUE ||
+       cluster_trace_log != INVALID_HANDLE_VALUE ||
+       cluster_light_visibility_fix_active.load(std::memory_order_relaxed) ||
        billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) &&
       root_index < kRootSlotCount) {
     std::scoped_lock lock(trace_mutex);
@@ -5870,7 +7284,9 @@ void set_compute_root_gpu_address(
     ID3D12GraphicsCommandList* commands, UINT root_index,
     D3D12_GPU_VIRTUAL_ADDRESS address,
     std::array<std::uint64_t, kRootSlotCount> CommandTrace::*member) {
-  if (marker_log != INVALID_HANDLE_VALUE && root_index < kRootSlotCount) {
+  if ((marker_log != INVALID_HANDLE_VALUE ||
+       cluster_trace_log != INVALID_HANDLE_VALUE) &&
+      root_index < kRootSlotCount) {
     std::scoped_lock lock(trace_mutex);
     (command_traces[commands].*member)[root_index] = address;
   }
@@ -5963,7 +7379,7 @@ void record_gpu_stage_boundary(ID3D12GraphicsCommandList* commands,
         target.height == output_height) {
       commands->EndQuery(gpu_profile_query_heap.Get(),
                          D3D12_QUERY_TYPE_TIMESTAMP,
-                         active->slot * 3U + 1U);
+                         active->slot * kGpuProfileQueriesPerSlot + 1U);
       active->stage_boundary_recorded = true;
     }
   }
@@ -5987,7 +7403,10 @@ void STDMETHODCALLTYPE om_set_render_targets_hook(
     ID3D12GraphicsCommandList* commands, UINT count,
     const D3D12_CPU_DESCRIPTOR_HANDLE* targets, BOOL single_range,
     const D3D12_CPU_DESCRIPTOR_HANDLE* depth) {
-  if (count > 0 && targets) {
+  const bool inspect_bound_target =
+      gpu_profile_enabled.load(std::memory_order_relaxed) ||
+      !named_camera_outputs_ready_hint.load(std::memory_order_acquire);
+  if (inspect_bound_target && count > 0 && targets) {
     const auto target = descriptor_snapshot(targets[0].ptr);
     record_gpu_stage_boundary(commands, target);
     auto* resource = reinterpret_cast<ID3D12Resource*>(target.resource);
@@ -5995,14 +7414,18 @@ void STDMETHODCALLTYPE om_set_render_targets_hook(
       std::scoped_lock lock(boundary_capture_mutex);
       if (swapchain_back_buffers.find(resource) !=
           swapchain_back_buffers.end()) {
-        swapchain_write_resources[commands] = resource;
         swapchain_back_buffer_states[resource] =
             D3D12_RESOURCE_STATE_RENDER_TARGET;
-        boundary_transition_count.fetch_add(1, std::memory_order_relaxed);
+        if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {
+          boundary_transition_count.fetch_add(1, std::memory_order_relaxed);
+        }
       }
     }
   }
-  if (marker_log != INVALID_HANDLE_VALUE || kStockMenuDirectRenderEnabled) {
+  const auto focused =
+      focused_trace_phase.load(std::memory_order_relaxed) != 0;
+  if (marker_log != INVALID_HANDLE_VALUE ||
+      menu_direct_capture_enabled.load(std::memory_order_relaxed) || focused) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
     trace.render_target_count = count;
@@ -6010,7 +7433,7 @@ void STDMETHODCALLTYPE om_set_render_targets_hook(
         count > 0 && targets ? static_cast<std::uint64_t>(targets[0].ptr) : 0;
     trace.depth_target =
         depth ? static_cast<std::uint64_t>(depth->ptr) : 0;
-    if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+    if (focused) {
       write_focused_log(
           "phase=%d\tframe=%llu\tCL=%p\tRTV\tcount=%u\trtv=%llu\tdsv=%llu"
           "\tsingle_range=%u\r\n",
@@ -6075,13 +7498,68 @@ void STDMETHODCALLTYPE clear_depth_stencil_view_hook(
 void STDMETHODCALLTYPE resource_barrier_hook(
     ID3D12GraphicsCommandList* commands, UINT barrier_count,
     const D3D12_RESOURCE_BARRIER* barriers) {
+  if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
+    std::scoped_lock lock(trace_mutex);
+    command_traces[commands].barrier_count += barrier_count;
+  }
+  const auto cluster_resource = reinterpret_cast<ID3D12Resource*>(
+      cluster_linked_list_resource.load(std::memory_order_relaxed));
+  if (cluster_trace_log != INVALID_HANDLE_VALUE && cluster_resource &&
+      barriers) {
+    std::uintptr_t pso{};
+    {
+      std::scoped_lock lock(trace_mutex);
+      const auto found = command_traces.find(commands);
+      if (found != command_traces.end()) {
+        pso = found->second.pso;
+      }
+    }
+    for (UINT index = 0; index < barrier_count; ++index) {
+      const auto& barrier = barriers[index];
+      if (barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION &&
+          barrier.Transition.pResource == cluster_resource &&
+          cluster_barrier_log_count.fetch_add(
+              1, std::memory_order_relaxed) < 256) {
+        write_cluster_trace_log(
+            "frame=%llu\tCLUSTER_BARRIER\tCL=%p\tpso=%p\ttype=transition"
+            "\tindex=%u\tflags=%u\tbefore=%u\tafter=%u\tsubresource=%u\r\n",
+            static_cast<unsigned long long>(
+                present_count.load(std::memory_order_relaxed)),
+            commands, reinterpret_cast<void*>(pso), index,
+            static_cast<unsigned>(barrier.Flags),
+            static_cast<unsigned>(barrier.Transition.StateBefore),
+            static_cast<unsigned>(barrier.Transition.StateAfter),
+            barrier.Transition.Subresource);
+      } else if (barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_UAV &&
+                 barrier.UAV.pResource == cluster_resource &&
+                 cluster_barrier_log_count.fetch_add(
+                     1, std::memory_order_relaxed) < 256) {
+        write_cluster_trace_log(
+            "frame=%llu\tCLUSTER_BARRIER\tCL=%p\tpso=%p\ttype=uav"
+            "\tindex=%u\tflags=%u\r\n",
+            static_cast<unsigned long long>(
+                present_count.load(std::memory_order_relaxed)),
+            commands, reinterpret_cast<void*>(pso), index,
+            static_cast<unsigned>(barrier.Flags));
+      }
+    }
+  }
   const bool census_enabled = boundary_census_log != INVALID_HANDLE_VALUE;
   const bool enhanced_log_enabled =
       enhanced_barrier_log != INVALID_HANDLE_VALUE;
   const bool collect_candidates =
       census_enabled ||
       camera_output_candidate_index.load(std::memory_order_relaxed) >= 0;
+  bool has_transition_barrier{};
   if (barriers) {
+    for (UINT index = 0; index < barrier_count; ++index) {
+      if (barriers[index].Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION) {
+        has_transition_barrier = true;
+        break;
+      }
+    }
+  }
+  if (has_transition_barrier) {
     std::scoped_lock lock(boundary_capture_mutex);
     for (UINT index = 0; index < barrier_count; ++index) {
       const auto& barrier = barriers[index];
@@ -6111,15 +7589,35 @@ void STDMETHODCALLTYPE resource_barrier_hook(
             barrier.Transition.StateAfter !=
                 D3D12_RESOURCE_STATE_RENDER_TARGET &&
             is_named_menu_ui_resource(barrier.Transition.pResource);
-        if (is_named_menu_completion) {
+        const auto frame = present_count.load(std::memory_order_relaxed);
+        const auto options_armed_frame =
+            options_menu_capture_armed_frame.load(std::memory_order_relaxed);
+        const bool options_capture_armed =
+            options_armed_frame !=
+                (std::numeric_limits<std::uint64_t>::max)() &&
+            frame >= options_armed_frame &&
+            frame - options_armed_frame <= 2;
+        const bool is_options_retained_target_completion =
+            options_capture_armed && is_output_completion &&
+            barrier.Transition.pResource ==
+                options_layer_resources[0].load(std::memory_order_acquire);
+        if (is_named_menu_completion ||
+            is_options_retained_target_completion) {
           menu_output_resources[commands] = barrier.Transition.pResource;
           menu_output_source_states[commands] =
               barrier.Transition.StateAfter;
+          const auto menu_description =
+              barrier.Transition.pResource->GetDesc();
           write_menu_resource_log(
-              "MENU_MATCH\tframe=%llu\tCL=%p\tresource=%p\tstate=%u\r\n",
-              present_count.load(std::memory_order_relaxed), commands,
-              barrier.Transition.pResource,
-              static_cast<unsigned>(barrier.Transition.StateAfter));
+              "MENU_MATCH\tframe=%llu\tCL=%p\tresource=%p\tstate=%u"
+              "\twidth=%llu\theight=%u\tformat=%u\tsource=%s\r\n",
+              frame, commands, barrier.Transition.pResource,
+              static_cast<unsigned>(barrier.Transition.StateAfter),
+              static_cast<unsigned long long>(menu_description.Width),
+              menu_description.Height,
+              static_cast<unsigned>(menu_description.Format),
+              is_options_retained_target_completion ? "options_retained"
+                                                    : "named");
         }
         if (is_swapchain_resource &&
             barrier.Flags != D3D12_RESOURCE_BARRIER_FLAG_BEGIN_ONLY) {
@@ -6131,7 +7629,9 @@ void STDMETHODCALLTYPE resource_barrier_hook(
             barrier.Transition.StateAfter == D3D12_RESOURCE_STATE_PRESENT) {
           present_transition_resources[commands] =
               barrier.Transition.pResource;
-          boundary_transition_count.fetch_add(1, std::memory_order_relaxed);
+          if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {
+            boundary_transition_count.fetch_add(1, std::memory_order_relaxed);
+          }
         }
         if (!census_enabled && !enhanced_log_enabled &&
             !is_output_reuse_begin && !is_output_completion &&
@@ -6250,6 +7750,8 @@ void STDMETHODCALLTYPE resource_barrier_hook(
             known_camera_output_resources.insert(
                 named_camera_output_resources[1]);
             named_camera_outputs_ready = true;
+            named_camera_outputs_ready_hint.store(true,
+                                                  std::memory_order_release);
           } else {
             known_camera_output_resources.insert(barrier.Transition.pResource);
           }
@@ -6359,9 +7861,64 @@ void STDMETHODCALLTYPE resource_barrier_hook(
 void STDMETHODCALLTYPE enhanced_barrier_hook(
     ID3D12GraphicsCommandList7* commands, UINT32 group_count,
     const D3D12_BARRIER_GROUP* groups) {
+  if (focused_trace_phase.load(std::memory_order_relaxed) != 0 && groups) {
+    std::uint64_t barrier_count{};
+    for (UINT32 group_index = 0; group_index < group_count; ++group_index) {
+      barrier_count += groups[group_index].NumBarriers;
+    }
+    std::scoped_lock lock(trace_mutex);
+    command_traces[static_cast<ID3D12GraphicsCommandList*>(commands)]
+        .barrier_count += barrier_count;
+  }
+  const auto cluster_resource = reinterpret_cast<ID3D12Resource*>(
+      cluster_linked_list_resource.load(std::memory_order_relaxed));
+  if (cluster_trace_log != INVALID_HANDLE_VALUE && cluster_resource &&
+      groups) {
+    for (UINT32 group_index = 0; group_index < group_count; ++group_index) {
+      const auto& group = groups[group_index];
+      if (group.Type != D3D12_BARRIER_TYPE_BUFFER ||
+          !group.pBufferBarriers) {
+        continue;
+      }
+      for (UINT32 barrier_index = 0; barrier_index < group.NumBarriers;
+           ++barrier_index) {
+        const auto& barrier = group.pBufferBarriers[barrier_index];
+        if (barrier.pResource != cluster_resource ||
+            cluster_barrier_log_count.fetch_add(
+                1, std::memory_order_relaxed) >= 256) {
+          continue;
+        }
+        write_cluster_trace_log(
+            "frame=%llu\tCLUSTER_ENHANCED_BARRIER\tCL=%p"
+            "\tgroup=%u\tindex=%u\tsync_before=%llu\tsync_after=%llu"
+            "\taccess_before=%llu\taccess_after=%llu"
+            "\toffset=%llu\tsize=%llu\r\n",
+            static_cast<unsigned long long>(
+                present_count.load(std::memory_order_relaxed)),
+            commands, group_index, barrier_index,
+            static_cast<unsigned long long>(barrier.SyncBefore),
+            static_cast<unsigned long long>(barrier.SyncAfter),
+            static_cast<unsigned long long>(barrier.AccessBefore),
+            static_cast<unsigned long long>(barrier.AccessAfter),
+            static_cast<unsigned long long>(barrier.Offset),
+            static_cast<unsigned long long>(barrier.Size));
+      }
+    }
+  }
   const bool log_resources = boundary_census_log != INVALID_HANDLE_VALUE ||
                              enhanced_barrier_log != INVALID_HANDLE_VALUE;
+  bool has_texture_barriers{};
   if (groups) {
+    for (UINT32 group_index = 0; group_index < group_count; ++group_index) {
+      const auto& group = groups[group_index];
+      if (group.Type == D3D12_BARRIER_TYPE_TEXTURE &&
+          group.pTextureBarriers && group.NumBarriers != 0) {
+        has_texture_barriers = true;
+        break;
+      }
+    }
+  }
+  if (has_texture_barriers) {
     std::scoped_lock lock(boundary_capture_mutex);
     for (UINT32 group_index = 0; group_index < group_count; ++group_index) {
       const auto& group = groups[group_index];
@@ -6416,7 +7973,9 @@ void STDMETHODCALLTYPE enhanced_barrier_hook(
         present_transition_resources[
             static_cast<ID3D12GraphicsCommandList*>(commands)] =
             barrier.pResource;
-        boundary_transition_count.fetch_add(1, std::memory_order_relaxed);
+        if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {
+          boundary_transition_count.fetch_add(1, std::memory_order_relaxed);
+        }
       }
     }
   }
@@ -6425,14 +7984,23 @@ void STDMETHODCALLTYPE enhanced_barrier_hook(
 
 void STDMETHODCALLTYPE execute_command_lists_hook(
     ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists) {
-  const auto description = queue->GetDesc();
-  if (description.Type == D3D12_COMMAND_LIST_TYPE_DIRECT) {
+  const auto known_game_queue =
+      game_queue_identity.load(std::memory_order_acquire);
+  const auto queue_type = queue == known_game_queue
+                              ? D3D12_COMMAND_LIST_TYPE_DIRECT
+                              : queue->GetDesc().Type;
+  if (queue_type == D3D12_COMMAND_LIST_TYPE_DIRECT &&
+      !game_queue_initialized.load(std::memory_order_acquire)) {
     std::scoped_lock lock(state_mutex);
     if (!game_queue) {
       game_queue = queue;
+      game_queue_identity.store(queue, std::memory_order_release);
+      game_queue_initialized.store(true, std::memory_order_release);
     }
   }
-  execute_call_count.fetch_add(1, std::memory_order_relaxed);
+  if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {
+    execute_call_count.fetch_add(1, std::memory_order_relaxed);
+  }
   if (marker_log != INVALID_HANDLE_VALUE) {
     const auto sequence =
         marker_sequence.fetch_add(1, std::memory_order_relaxed);
@@ -6453,7 +8021,7 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
   auto completed_menu_source_state =
       D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
       D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-  if (description.Type == D3D12_COMMAND_LIST_TYPE_DIRECT && count > 0) {
+  if (queue_type == D3D12_COMMAND_LIST_TYPE_DIRECT && count > 0) {
     std::scoped_lock lock(boundary_capture_mutex);
     for (UINT index = 0; index < count; ++index) {
       auto* graphics = static_cast<ID3D12GraphicsCommandList*>(lists[index]);
@@ -6549,6 +8117,29 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
         if (state_found != camera_output_source_states.end()) {
           completed_source_state = state_found->second;
         }
+        const auto frame = present_count.load(std::memory_order_relaxed);
+        const auto burst_until = resize_diagnostic_burst_until_present.load(
+            std::memory_order_relaxed);
+        if (frame % 120 == 0 || frame <= burst_until) {
+          const auto description = completed_back_buffer->GetDesc();
+          write_resize_diagnostic_log(
+              "frame=%llu\tEYE_SOURCE\tgeneration=%llu\teye=%d"
+              "\tresource=%p\twidth=%llu\theight=%u\tformat=%u"
+              "\tstate=%u\tnamed_eye=%d\tknown=%llu\tcandidates=%u"
+              "\tnamed0=%p\tnamed1=%p\tname=%s\r\n",
+              frame,
+              static_cast<unsigned long long>(
+                  resize_diagnostic_generation.load(std::memory_order_relaxed)),
+              requested_eye, completed_back_buffer.Get(), description.Width,
+              description.Height, static_cast<unsigned>(description.Format),
+              static_cast<unsigned>(completed_source_state),
+              named_eye_final_index(completed_back_buffer.Get()),
+              static_cast<unsigned long long>(
+                  known_camera_output_resources.size()),
+              candidate_count, named_camera_output_resources[0],
+              named_camera_output_resources[1],
+              resource_debug_name(completed_back_buffer.Get()).c_str());
+        }
       }
       camera_output_resources.erase(found);
       camera_output_source_states.erase(graphics);
@@ -6591,21 +8182,10 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
           present_count.load(std::memory_order_relaxed), queue);
     }
   }
-  if (description.Type == D3D12_COMMAND_LIST_TYPE_DIRECT && count > 0) {
-    std::scoped_lock lock(state_mutex);
-    for (UINT index = 0; index < count; ++index) {
-      auto* graphics = static_cast<ID3D12GraphicsCommandList*>(lists[index]);
-      const auto found = direct_menu_render_lists.find(graphics);
-      if (found == direct_menu_render_lists.end()) {
-        continue;
-      }
-      direct_menu_render_lists.erase(found);
-    }
-  }
   {
     std::unique_lock<std::mutex> gpu_trace_lock;
     GpuPassTraceToken gpu_trace_token{};
-    if (description.Type == D3D12_COMMAND_LIST_TYPE_DIRECT && count > 0 &&
+    if (queue_type == D3D12_COMMAND_LIST_TYPE_DIRECT && count > 0 &&
         gpu_profile_enabled.load(std::memory_order_relaxed) &&
         focused_trace_phase.load(std::memory_order_relaxed) != 0) {
       gpu_trace_lock = std::unique_lock<std::mutex>(gpu_profile_mutex);
@@ -6680,10 +8260,27 @@ HRESULT STDMETHODCALLTYPE resize_buffers_hook(IDXGISwapChain* swapchain,
                                                UINT buffer_count, UINT width,
                                                UINT height, DXGI_FORMAT format,
                                                UINT flags) {
+  const auto requested_width = width;
+  const auto requested_height = height;
   if (swapchain_render_extent_enabled.load(std::memory_order_acquire)) {
     width = swapchain_render_width.load(std::memory_order_relaxed);
     height = swapchain_render_height.load(std::memory_order_relaxed);
   }
+  const auto frame = present_count.load(std::memory_order_relaxed);
+  const auto generation = resize_diagnostic_generation.load(
+      std::memory_order_relaxed);
+  write_resize_diagnostic_log(
+      "frame=%llu\tRESIZE_BEGIN\tapi=ResizeBuffers\tgeneration=%llu"
+      "\tswapchain=%p\trequested=%ux%u\tapplied=%ux%u\tbuffers=%u"
+      "\tformat=%u\tflags=%u\r\n",
+      frame, static_cast<unsigned long long>(generation), swapchain,
+      requested_width, requested_height, width, height, buffer_count,
+      static_cast<unsigned>(format), flags);
+  // These maps can retain COM references to a back buffer. Release them before
+  // calling DXGI, as ResizeBuffers is required to fail while such references
+  // exist. Regardless of the result, the next Present can reconstruct all raw
+  // identities and states from the still-valid or newly-created buffers.
+  game_swapchain_metadata_ready.store(false, std::memory_order_release);
   {
     std::scoped_lock lock(boundary_capture_mutex);
     swapchain_back_buffers.clear();
@@ -6695,21 +8292,48 @@ HRESULT STDMETHODCALLTYPE resize_buffers_hook(IDXGISwapChain* swapchain,
     known_camera_output_resources.clear();
     named_camera_output_resources = {};
     named_camera_outputs_ready = false;
+    named_camera_outputs_ready_hint.store(false, std::memory_order_release);
     camera_output_realign_pending = false;
     present_transition_resources.clear();
   }
-  return original_resize_buffers(swapchain, buffer_count, width, height,
-                                 format, flags);
+  const auto result = original_resize_buffers(swapchain, buffer_count, width,
+                                              height, format, flags);
+  auto next_generation = generation;
+  if (SUCCEEDED(result)) {
+    next_generation = resize_diagnostic_generation.fetch_add(
+                          1, std::memory_order_relaxed) +
+                      1;
+    resize_diagnostic_burst_until_present.store(frame + 16,
+                                                std::memory_order_relaxed);
+  }
+  write_resize_diagnostic_log(
+      "frame=%llu\tRESIZE_END\tapi=ResizeBuffers\tgeneration=%llu"
+      "\tresult=%ld\r\n",
+      frame, static_cast<unsigned long long>(next_generation), result);
+  return result;
 }
 
 HRESULT STDMETHODCALLTYPE resize_buffers1_hook(
     IDXGISwapChain3* swapchain, UINT buffer_count, UINT width, UINT height,
     DXGI_FORMAT format, UINT flags, const UINT* creation_node_masks,
     IUnknown* const* present_queues) {
+  const auto requested_width = width;
+  const auto requested_height = height;
   if (swapchain_render_extent_enabled.load(std::memory_order_acquire)) {
     width = swapchain_render_width.load(std::memory_order_relaxed);
     height = swapchain_render_height.load(std::memory_order_relaxed);
   }
+  const auto frame = present_count.load(std::memory_order_relaxed);
+  const auto generation = resize_diagnostic_generation.load(
+      std::memory_order_relaxed);
+  write_resize_diagnostic_log(
+      "frame=%llu\tRESIZE_BEGIN\tapi=ResizeBuffers1\tgeneration=%llu"
+      "\tswapchain=%p\trequested=%ux%u\tapplied=%ux%u\tbuffers=%u"
+      "\tformat=%u\tflags=%u\r\n",
+      frame, static_cast<unsigned long long>(generation), swapchain,
+      requested_width, requested_height, width, height, buffer_count,
+      static_cast<unsigned>(format), flags);
+  game_swapchain_metadata_ready.store(false, std::memory_order_release);
   {
     std::scoped_lock lock(boundary_capture_mutex);
     swapchain_back_buffers.clear();
@@ -6721,12 +8345,26 @@ HRESULT STDMETHODCALLTYPE resize_buffers1_hook(
     known_camera_output_resources.clear();
     named_camera_output_resources = {};
     named_camera_outputs_ready = false;
+    named_camera_outputs_ready_hint.store(false, std::memory_order_release);
     camera_output_realign_pending = false;
     present_transition_resources.clear();
   }
-  return original_resize_buffers1(swapchain, buffer_count, width, height,
-                                  format, flags, creation_node_masks,
-                                  present_queues);
+  const auto result = original_resize_buffers1(
+      swapchain, buffer_count, width, height, format, flags,
+      creation_node_masks, present_queues);
+  auto next_generation = generation;
+  if (SUCCEEDED(result)) {
+    next_generation = resize_diagnostic_generation.fetch_add(
+                          1, std::memory_order_relaxed) +
+                      1;
+    resize_diagnostic_burst_until_present.store(frame + 16,
+                                                std::memory_order_relaxed);
+  }
+  write_resize_diagnostic_log(
+      "frame=%llu\tRESIZE_END\tapi=ResizeBuffers1\tgeneration=%llu"
+      "\tresult=%ld\r\n",
+      frame, static_cast<unsigned long long>(next_generation), result);
+  return result;
 }
 
 BOOL WINAPI get_client_rect_hook(HWND window, LPRECT rectangle) {
@@ -6765,9 +8403,27 @@ BOOL WINAPI get_client_rect_hook(HWND window, LPRECT rectangle) {
 }
 
 LRESULT WINAPI dispatch_message_w_hook(const MSG* message) {
+  const auto game_window = game_output_window.load(std::memory_order_relaxed);
+  if (message && message->message == WM_SIZE &&
+      message->hwnd == game_window) {
+    RECT client{};
+    if (original_get_client_rect) {
+      original_get_client_rect(message->hwnd, &client);
+    }
+    write_resize_diagnostic_log(
+        "frame=%llu\tWM_SIZE_DISPATCH\twparam=%llu\tlparam=%ux%u"
+        "\tclient=%ldx%ld\tvirtual=%u\r\n",
+        present_count.load(std::memory_order_relaxed),
+        static_cast<unsigned long long>(message->wParam),
+        static_cast<unsigned>(LOWORD(message->lParam)),
+        static_cast<unsigned>(HIWORD(message->lParam)),
+        client.right - client.left, client.bottom - client.top,
+        virtual_size_message_enabled.load(std::memory_order_relaxed) ? 1U
+                                                                     : 0U);
+  }
   if (!message || message->message != WM_SIZE ||
       !virtual_size_message_enabled.load(std::memory_order_acquire) ||
-      message->hwnd != game_output_window.load(std::memory_order_relaxed)) {
+      message->hwnd != game_window) {
     return original_dispatch_message_w(message);
   }
   MSG virtual_message = *message;
@@ -6794,6 +8450,23 @@ LRESULT CALLBACK virtual_game_window_proc(HWND window, UINT message,
   }
   if (!original) {
     return DefWindowProcW(window, message, wparam, lparam);
+  }
+  if (message == WM_SIZE &&
+      window == game_output_window.load(std::memory_order_relaxed)) {
+    RECT client{};
+    if (original_get_client_rect) {
+      original_get_client_rect(window, &client);
+    }
+    write_resize_diagnostic_log(
+        "frame=%llu\tWM_SIZE_WNDPROC\twparam=%llu\tlparam=%ux%u"
+        "\tclient=%ldx%ld\tvirtual=%u\r\n",
+        present_count.load(std::memory_order_relaxed),
+        static_cast<unsigned long long>(wparam),
+        static_cast<unsigned>(LOWORD(lparam)),
+        static_cast<unsigned>(HIWORD(lparam)), client.right - client.left,
+        client.bottom - client.top,
+        virtual_size_message_enabled.load(std::memory_order_relaxed) ? 1U
+                                                                     : 0U);
   }
   if (message == WM_SIZE &&
       virtual_size_message_enabled.load(std::memory_order_acquire) &&
@@ -6829,6 +8502,11 @@ void ensure_virtual_window_proc(HWND window) {
   if (previous != 0 || GetLastError() == ERROR_SUCCESS) {
     virtual_window_proc_window = window;
     original_game_window_proc = reinterpret_cast<WNDPROC>(previous);
+    write_resize_diagnostic_log(
+        "frame=%llu\tVIRTUAL_WNDPROC_INSTALLED\twindow=%p"
+        "\toriginal=%p\r\n",
+        present_count.load(std::memory_order_relaxed), window,
+        reinterpret_cast<void*>(previous));
   }
 }
 
@@ -6886,9 +8564,28 @@ void nudge_swapchain_client_extent(HWND window, bool requested) {
                                   dpi ? dpi : USER_DEFAULT_SCREEN_DPI)) {
       return;
     }
-    if (SetWindowPos(window, nullptr, 0, 0, outer.right - outer.left,
+    write_resize_diagnostic_log(
+        "frame=%llu\tNUDGE_BEGIN\tphase=expand\tclient=%ldx%ld"
+        "\twindow=%ldx%ld\ttarget_window=%ldx%ld\r\n",
+        present_count.load(std::memory_order_relaxed),
+        client.right - client.left, client.bottom - client.top,
+        window_rect.right - window_rect.left, window_rect.bottom - window_rect.top,
+        outer.right - outer.left, outer.bottom - outer.top);
+    const auto positioned =
+        SetWindowPos(window, nullptr, 0, 0, outer.right - outer.left,
                      outer.bottom - outer.top,
-                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE)) {
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    RECT resulting_client{};
+    if (original_get_client_rect) {
+      original_get_client_rect(window, &resulting_client);
+    }
+    write_resize_diagnostic_log(
+        "frame=%llu\tNUDGE_END\tphase=expand\tresult=%u"
+        "\tclient=%ldx%ld\r\n",
+        present_count.load(std::memory_order_relaxed), positioned ? 1U : 0U,
+        resulting_client.right - resulting_client.left,
+        resulting_client.bottom - resulting_client.top);
+    if (positioned) {
       swapchain_resize_nudge_phase.store(1, std::memory_order_relaxed);
     }
     return;
@@ -6915,8 +8612,31 @@ void nudge_swapchain_client_extent(HWND window, bool requested) {
         restore_height = outer.bottom - outer.top;
       }
     }
-    if (SetWindowPos(window, nullptr, 0, 0, restore_width, restore_height,
-                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE)) {
+    RECT before_restore_client{};
+    if (original_get_client_rect) {
+      original_get_client_rect(window, &before_restore_client);
+    }
+    write_resize_diagnostic_log(
+        "frame=%llu\tNUDGE_BEGIN\tphase=restore\tclient=%ldx%ld"
+        "\ttarget_window=%ldx%ld\r\n",
+        present_count.load(std::memory_order_relaxed),
+        before_restore_client.right - before_restore_client.left,
+        before_restore_client.bottom - before_restore_client.top, restore_width,
+        restore_height);
+    const auto positioned =
+        SetWindowPos(window, nullptr, 0, 0, restore_width, restore_height,
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    RECT resulting_client{};
+    if (original_get_client_rect) {
+      original_get_client_rect(window, &resulting_client);
+    }
+    write_resize_diagnostic_log(
+        "frame=%llu\tNUDGE_END\tphase=restore\tresult=%u"
+        "\tclient=%ldx%ld\r\n",
+        present_count.load(std::memory_order_relaxed), positioned ? 1U : 0U,
+        resulting_client.right - resulting_client.left,
+        resulting_client.bottom - resulting_client.top);
+    if (positioned) {
       swapchain_resize_nudge_phase.store(2, std::memory_order_relaxed);
     }
   }
@@ -6975,6 +8695,9 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
     }
     auto reclaim_completed = [&] {
       const auto completed = fence->GetCompletedValue();
+      if (completed == UINT64_MAX) {
+        return false;
+      }
       while (!desktop_mirror_pending.empty() &&
              desktop_mirror_pending.front().fence_value <= completed) {
         desktop_mirror_pending.front().fence_value = 0;
@@ -6982,8 +8705,12 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
             std::move(desktop_mirror_pending.front()));
         desktop_mirror_pending.pop_front();
       }
+      return true;
     };
-    reclaim_completed();
+    if (capture_fence->GetCompletedValue() == UINT64_MAX ||
+        !reclaim_completed()) {
+      return 110;
+    }
     if (desktop_mirror_pending.size() >= 8) {
       // Every swapchain buffer initially contains the game's own presentation
       // (including a retained splash/loading image). Skipping injection when
@@ -6992,21 +8719,27 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
       // it instead. This queue is ordered before Present, so a short wait here
       // is both safe and preferable to showing the wrong frame.
       const auto oldest = desktop_mirror_pending.front().fence_value;
-      const auto event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-      if (!event || FAILED(fence->SetEventOnCompletion(oldest, event))) {
-        if (event) {
-          CloseHandle(event);
-        }
+      // SetEventOnCompletion retains the supplied handle until the target is
+      // reached. Closing a throwaway event after a timeout lets a later fence
+      // completion signal a recycled, unrelated Windows handle. Keep one
+      // presentation-thread-lifetime event. Present is serialized per thread;
+      // a second swapchain thread receives its own event rather than racing it.
+      thread_local HANDLE event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+      if (!event || !ResetEvent(event) ||
+          FAILED(fence->SetEventOnCompletion(oldest, event))) {
         return 103;
       }
       lock.unlock();
       const auto wait_result = WaitForSingleObject(event, 1000);
-      CloseHandle(event);
       lock.lock();
-      if (wait_result != WAIT_OBJECT_0) {
+      const auto waited_completed = fence->GetCompletedValue();
+      if (wait_result != WAIT_OBJECT_0 || waited_completed == UINT64_MAX ||
+          waited_completed < oldest) {
         return 108;
       }
-      reclaim_completed();
+      if (!reclaim_completed()) {
+        return 110;
+      }
     }
     if (!desktop_mirror_available.empty()) {
       pending = std::move(desktop_mirror_available.front());
@@ -7066,7 +8799,9 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
   // being written and expose a previous or partially updated frame. The XR
   // consumer already waits on this same value; give the desktop mirror the
   // identical completed-pair contract.
-  if (FAILED(queue->Wait(capture_fence.Get(), capture_ready_value))) {
+  if (capture_fence->GetCompletedValue() == UINT64_MAX ||
+      fence->GetCompletedValue() == UINT64_MAX ||
+      FAILED(queue->Wait(capture_fence.Get(), capture_ready_value))) {
     return 109;
   }
   ID3D12CommandList* lists[]{pending.commands.Get()};
@@ -7085,7 +8820,6 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
 
 HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                                         UINT interval, UINT flags) {
-  poll_focused_trace_request();
   if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {
     std::scoped_lock lock(trace_mutex);
     frame_eye0_table4_draws.clear();
@@ -7093,6 +8827,12 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
     candidate_frame_eye0_instance_count = 0;
   }
   const auto present = present_count.fetch_add(1, std::memory_order_relaxed) + 1;
+  // Focused tracing is an operator-triggered diagnostic, not frame-critical
+  // state. Poll promptly on startup and then at human-scale latency instead of
+  // issuing GetTempPath plus three filesystem probes on every Present.
+  if (present == 1 || present % 30 == 0) {
+    poll_focused_trace_request();
+  }
   if (marker_log != INVALID_HANDLE_VALUE) {
     const auto sequence =
         marker_sequence.fetch_add(1, std::memory_order_relaxed);
@@ -7104,46 +8844,105 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                       focused_trace_phase.load(std::memory_order_relaxed),
                       present, swapchain);
   }
-  ComPtr<ID3D12Device> device;
+  const bool refresh_swapchain_metadata =
+      game_swapchain_identity.load(std::memory_order_acquire) != swapchain ||
+      !game_swapchain_metadata_ready.load(std::memory_order_acquire);
   ComPtr<IDXGISwapChain3> candidate;
-  if (SUCCEEDED(swapchain->GetDevice(IID_PPV_ARGS(&device))) &&
-      SUCCEEDED(swapchain->QueryInterface(IID_PPV_ARGS(&candidate)))) {
-    {
-      std::scoped_lock lock(state_mutex);
-      game_swapchain = candidate;
-    }
-    DXGI_SWAP_CHAIN_DESC description{};
-    if (SUCCEEDED(candidate->GetDesc(&description))) {
-      game_output_window.store(description.OutputWindow,
-                               std::memory_order_relaxed);
-      ensure_virtual_window_proc(description.OutputWindow);
-      std::unordered_set<ID3D12Resource*> buffers;
-      D3D12_RESOURCE_DESC output_description{};
-      for (UINT index = 0; index < description.BufferCount; ++index) {
-        ComPtr<ID3D12Resource> buffer;
-        if (SUCCEEDED(candidate->GetBuffer(index, IID_PPV_ARGS(&buffer)))) {
-          buffers.insert(buffer.Get());
-          if (index == 0) {
-            output_description = buffer->GetDesc();
+  if (refresh_swapchain_metadata) {
+    ComPtr<ID3D12Device> device;
+    if (SUCCEEDED(swapchain->GetDevice(IID_PPV_ARGS(&device))) &&
+        SUCCEEDED(swapchain->QueryInterface(IID_PPV_ARGS(&candidate)))) {
+      {
+        std::scoped_lock lock(state_mutex);
+        game_swapchain = candidate;
+      }
+      DXGI_SWAP_CHAIN_DESC description{};
+      if (SUCCEEDED(candidate->GetDesc(&description))) {
+        game_output_window.store(description.OutputWindow,
+                                 std::memory_order_relaxed);
+        ensure_virtual_window_proc(description.OutputWindow);
+        std::unordered_set<ID3D12Resource*> buffers;
+        D3D12_RESOURCE_DESC output_description{};
+        for (UINT index = 0; index < description.BufferCount; ++index) {
+          ComPtr<ID3D12Resource> buffer;
+          if (SUCCEEDED(candidate->GetBuffer(index, IID_PPV_ARGS(&buffer)))) {
+            buffers.insert(buffer.Get());
+            if (index == 0) {
+              output_description = buffer->GetDesc();
+            }
           }
         }
+        const bool complete_buffer_set =
+            description.BufferCount > 0 &&
+            buffers.size() == static_cast<std::size_t>(description.BufferCount);
+        if (!complete_buffer_set) {
+          // Do not bless a partial enumeration. Leaving metadata invalid makes
+          // the next Present retry without exposing an incomplete state map.
+          candidate.Reset();
+        } else {
+        {
+          std::scoped_lock lock(boundary_capture_mutex);
+          swapchain_back_buffers = std::move(buffers);
+          swapchain_back_buffer_states.clear();
+          for (auto* buffer : swapchain_back_buffers) {
+            swapchain_back_buffer_states[buffer] =
+                D3D12_RESOURCE_STATE_PRESENT;
+          }
+          camera_output_width = output_description.Width;
+          camera_output_height = output_description.Height;
+          camera_output_format = output_description.Format;
+          if (present <= 5 || present % 120 == 0) {
+            write_boundary_census_log(
+                "frame=%llu\tOUTPUT\twidth=%llu\theight=%u\tformat=%u"
+                "\tbuffers=%u\r\n",
+                present, camera_output_width, camera_output_height,
+                static_cast<unsigned>(camera_output_format),
+                description.BufferCount);
+          }
+        }
+        game_swapchain_identity.store(swapchain, std::memory_order_release);
+        game_swapchain_metadata_ready.store(true, std::memory_order_release);
+        }
       }
-      std::scoped_lock lock(boundary_capture_mutex);
-      swapchain_back_buffers = std::move(buffers);
-      for (auto* buffer : swapchain_back_buffers) {
-        swapchain_back_buffer_states[buffer] = D3D12_RESOURCE_STATE_PRESENT;
+    }
+  }
+  const auto diagnostic_burst_until =
+      resize_diagnostic_burst_until_present.load(std::memory_order_relaxed);
+  if (present % 120 == 0 || present <= diagnostic_burst_until) {
+    ComPtr<IDXGISwapChain3> diagnostic_swapchain;
+    DXGI_SWAP_CHAIN_DESC diagnostic_description{};
+    ComPtr<ID3D12Resource> diagnostic_buffer;
+    RECT diagnostic_client{};
+    if (SUCCEEDED(swapchain->QueryInterface(
+            IID_PPV_ARGS(&diagnostic_swapchain))) &&
+        SUCCEEDED(diagnostic_swapchain->GetDesc(&diagnostic_description)) &&
+        SUCCEEDED(diagnostic_swapchain->GetBuffer(
+            diagnostic_swapchain->GetCurrentBackBufferIndex(),
+            IID_PPV_ARGS(&diagnostic_buffer)))) {
+      const auto buffer_description = diagnostic_buffer->GetDesc();
+      if (diagnostic_description.OutputWindow) {
+        if (original_get_client_rect) {
+          original_get_client_rect(diagnostic_description.OutputWindow,
+                                   &diagnostic_client);
+        } else {
+          GetClientRect(diagnostic_description.OutputWindow,
+                        &diagnostic_client);
+        }
       }
-      camera_output_width = output_description.Width;
-      camera_output_height = output_description.Height;
-      camera_output_format = output_description.Format;
-      if (present <= 5 || present % 120 == 0) {
-        write_boundary_census_log(
-            "frame=%llu\tOUTPUT\twidth=%llu\theight=%u\tformat=%u"
-            "\tbuffers=%u\r\n",
-            present, camera_output_width, camera_output_height,
-            static_cast<unsigned>(camera_output_format),
-            description.BufferCount);
-      }
+      write_resize_diagnostic_log(
+          "frame=%llu\tPRESENT_STATE\tgeneration=%llu\tswapchain=%p"
+          "\tindex=%u\tbuffer=%p\twidth=%llu\theight=%u\tformat=%u"
+          "\tclient=%ldx%ld\tmirror_ready=%u\r\n",
+          present,
+          static_cast<unsigned long long>(
+              resize_diagnostic_generation.load(std::memory_order_relaxed)),
+          swapchain, diagnostic_swapchain->GetCurrentBackBufferIndex(),
+          diagnostic_buffer.Get(), buffer_description.Width,
+          buffer_description.Height,
+          static_cast<unsigned>(buffer_description.Format),
+          diagnostic_client.right - diagnostic_client.left,
+          diagnostic_client.bottom - diagnostic_client.top,
+          desktop_mirror_ready.load(std::memory_order_relaxed) ? 1U : 0U);
     }
   }
   HWND client_lock_window{};
@@ -7167,7 +8966,11 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
     std::scoped_lock lock(state_mutex);
     queue = game_queue;
     present_queue = swapchain_present_queue ? swapchain_present_queue
-                                            : game_queue;
+                                             : game_queue;
+    if (!candidate &&
+        game_swapchain_identity.load(std::memory_order_relaxed) == swapchain) {
+      candidate = game_swapchain;
+    }
   }
   const auto menu_draw_frame =
       stock_menu_draw_frame.load(std::memory_order_relaxed);
@@ -7193,9 +8996,12 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
       std::uint64_t menu_publish_value{};
       {
         std::scoped_lock lock(state_mutex);
+        const auto consumed =
+            menu_consumed_fence ? menu_consumed_fence->GetCompletedValue()
+                                : UINT64_MAX;
         if (menu_ready_fence &&
-            (menu_ready_value == 0 || !menu_consumed_fence ||
-             menu_consumed_fence->GetCompletedValue() >= menu_ready_value)) {
+            darktidevr::core::shared_mailbox_writable(menu_ready_value,
+                                                      consumed)) {
           menu_publish_fence = menu_ready_fence;
           menu_publish_value = menu_ready_value + 1;
         }
@@ -7300,7 +9106,9 @@ void STDMETHODCALLTYPE begin_event_hook(ID3D12GraphicsCommandList* commands,
                                         UINT size) {
   log_marker_event("BEGIN", commands, metadata, data, size);
   log_focused_marker_event("BEGIN", commands, metadata, data, size);
-  if (boundary_census_log != INVALID_HANDLE_VALUE) {
+  if (boundary_census_log != INVALID_HANDLE_VALUE ||
+      marker_log != INVALID_HANDLE_VALUE ||
+      cluster_trace_log != INVALID_HANDLE_VALUE) {
     std::scoped_lock lock(boundary_capture_mutex);
     command_marker_stacks[commands].push_back(
         boundary_marker_label(metadata, data, size));
@@ -7315,7 +9123,9 @@ void STDMETHODCALLTYPE end_event_hook(ID3D12GraphicsCommandList* commands) {
   write_focused_log("phase=%d\tframe=%llu\tCL=%p\tEND\r\n",
                     focused_trace_phase.load(std::memory_order_relaxed),
                     present_count.load(std::memory_order_relaxed), commands);
-  if (boundary_census_log != INVALID_HANDLE_VALUE) {
+  if (boundary_census_log != INVALID_HANDLE_VALUE ||
+      marker_log != INVALID_HANDLE_VALUE ||
+      cluster_trace_log != INVALID_HANDLE_VALUE) {
     std::scoped_lock lock(boundary_capture_mutex);
     const auto found = command_marker_stacks.find(commands);
     if (found != command_marker_stacks.end() && !found->second.empty()) {
@@ -7461,13 +9271,21 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
                                     ? *reinterpret_cast<void***>(
                                           dummy_commands7.Get())
                                     : nullptr;
+  const auto install_cluster_trace_hooks =
+      cluster_trace_log != INVALID_HANDLE_VALUE;
+  const auto install_cluster_light_visibility_fix_hooks =
+      cluster_light_visibility_fix_requested.load(std::memory_order_relaxed);
   const auto install_pso_substitution_hooks =
       kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
       kStockMenuDirectRenderEnabled ||
+      install_cluster_trace_hooks ||
+      install_cluster_light_visibility_fix_hooks ||
       billboard_shader_substitution_requested.load(std::memory_order_relaxed) ||
       billboard_pixel_shader_probe_requested.load(std::memory_order_relaxed);
   void* stingray_upload_flush_target{};
-  if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {
+  if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
+      install_cluster_trace_hooks ||
+      install_cluster_light_visibility_fix_hooks) {
     constexpr std::uintptr_t kUploadFlushRva = 0x7d5840;
     constexpr std::array<std::byte, 12> kUploadFlushSignature{
         std::byte{0x4c}, std::byte{0x8b}, std::byte{0xdc}, std::byte{0x48},
@@ -7497,27 +9315,30 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
        MH_CreateHook(device_vtable[10], &create_graphics_pipeline_state_hook,
                     reinterpret_cast<void**>(
                         &original_create_graphics_pipeline_state)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(device_vtable[11], &create_compute_pipeline_state_hook,
                     reinterpret_cast<void**>(
                         &original_create_compute_pipeline_state)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || kMenuLayerConsumerProbeEnabled ||
+        install_cluster_trace_hooks) &&
        MH_CreateHook(device_vtable[14], &create_descriptor_heap_hook,
                      reinterpret_cast<void**>(
                          &original_create_descriptor_heap)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || kMenuLayerConsumerProbeEnabled ||
+        install_cluster_trace_hooks) &&
        MH_CreateHook(device_vtable[16], &create_root_signature_hook,
                     reinterpret_cast<void**>(
                         &original_create_root_signature)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(device_vtable[17], &create_constant_buffer_view_hook,
                     reinterpret_cast<void**>(
                         &original_create_constant_buffer_view)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || kMenuLayerConsumerProbeEnabled ||
+        install_cluster_trace_hooks) &&
        MH_CreateHook(device_vtable[18], &create_shader_resource_view_hook,
                     reinterpret_cast<void**>(
                         &original_create_shader_resource_view)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(device_vtable[19], &create_unordered_access_view_hook,
                     reinterpret_cast<void**>(
                         &original_create_unordered_access_view)) != MH_OK) ||
@@ -7533,27 +9354,31 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
        MH_CreateHook(device_vtable[41], &create_command_signature_hook,
                      reinterpret_cast<void**>(
                          &original_create_command_signature)) != MH_OK) ||
-      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
+      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled ||
+        install_cluster_trace_hooks) &&
        MH_CreateHook(device_vtable[23], &copy_descriptors_hook,
                     reinterpret_cast<void**>(
                          &original_copy_descriptors)) != MH_OK) ||
-      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
+      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled ||
+        install_cluster_trace_hooks) &&
        MH_CreateHook(device_vtable[24], &copy_descriptors_simple_hook,
                     reinterpret_cast<void**>(
                          &original_copy_descriptors_simple)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks ||
+        install_cluster_light_visibility_fix_hooks) &&
        MH_CreateHook(device_vtable[27], &create_committed_resource_hook,
                     reinterpret_cast<void**>(
                         &original_create_committed_resource)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks ||
+        install_cluster_light_visibility_fix_hooks) &&
        MH_CreateHook(device_vtable[29], &create_placed_resource_hook,
                     reinterpret_cast<void**>(
                         &original_create_placed_resource)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(resource_vtable[8], &resource_map_hook,
                      reinterpret_cast<void**>(&original_resource_map)) !=
            MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(resource_vtable[9], &resource_unmap_hook,
                      reinterpret_cast<void**>(&original_resource_unmap)) !=
            MH_OK) ||
@@ -7569,7 +9394,7 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
        MH_CreateHook(pipeline_library_vtable[9], &load_graphics_pipeline_hook,
                     reinterpret_cast<void**>(
                         &original_load_graphics_pipeline)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(pipeline_library_vtable[10], &load_compute_pipeline_hook,
                     reinterpret_cast<void**>(
                         &original_load_compute_pipeline)) != MH_OK) ||
@@ -7586,17 +9411,35 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
        MH_CreateHook(command_list_vtable[27], &execute_bundle_hook,
                      reinterpret_cast<void**>(&original_execute_bundle)) !=
            MH_OK) ||
-      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
+      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled ||
+        install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[12], &draw_instanced_hook,
                     reinterpret_cast<void**>(&original_draw_instanced)) !=
            MH_OK) ||
-      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks ||
+        install_cluster_light_visibility_fix_hooks) &&
        MH_CreateHook(command_list_vtable[13], &draw_indexed_instanced_hook,
                     reinterpret_cast<void**>(
                          &original_draw_indexed_instanced)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[14], &dispatch_hook,
                      reinterpret_cast<void**>(&original_dispatch)) != MH_OK) ||
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
+       MH_CreateHook(command_list_vtable[15], &copy_buffer_region_hook,
+                     reinterpret_cast<void**>(&original_copy_buffer_region)) !=
+           MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[16], &copy_texture_region_hook,
+                     reinterpret_cast<void**>(
+                         &original_copy_texture_region)) != MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[17], &copy_resource_hook,
+                     reinterpret_cast<void**>(&original_copy_resource)) !=
+           MH_OK) ||
+      (kInstallDiagnosticRenderHooks &&
+       MH_CreateHook(command_list_vtable[19], &resolve_subresource_hook,
+                     reinterpret_cast<void**>(
+                         &original_resolve_subresource)) != MH_OK) ||
       (kInstallDiagnosticRenderHooks &&
        MH_CreateHook(command_list_vtable[20],
                     &ia_set_primitive_topology_hook,
@@ -7610,7 +9453,9 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
        MH_CreateHook(command_list_vtable[22], &rs_set_scissor_rects_hook,
                      reinterpret_cast<void**>(
                          &original_rs_set_scissor_rects)) != MH_OK) ||
-      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled) &&
+      ((kInstallDiagnosticRenderHooks || kStockMenuDirectRenderEnabled ||
+        install_cluster_trace_hooks ||
+        install_cluster_light_visibility_fix_hooks) &&
        MH_CreateHook(command_list_vtable[25], &set_pipeline_state_hook,
                     reinterpret_cast<void**>(&original_set_pipeline_state)) !=
            MH_OK) ||
@@ -7630,30 +9475,32 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
        MH_CreateHook(command_list7_vtable[69], &end_render_pass_hook,
                     reinterpret_cast<void**>(&original_end_render_pass)) !=
            MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[28], &set_descriptor_heaps_hook,
                      reinterpret_cast<void**>(
                          &original_set_descriptor_heaps)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[29], &set_compute_root_signature_hook,
                     reinterpret_cast<void**>(
                         &original_set_compute_root_signature)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || kMenuLayerConsumerProbeEnabled ||
+        install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[30],
                     &set_graphics_root_signature_hook,
                     reinterpret_cast<void**>(
                         &original_set_graphics_root_signature)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[31],
                     &set_compute_root_descriptor_table_hook,
                     reinterpret_cast<void**>(
                         &original_set_compute_root_descriptor_table)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || kMenuLayerConsumerProbeEnabled ||
+        install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[32],
                     &set_graphics_root_descriptor_table_hook,
                     reinterpret_cast<void**>(
                         &original_set_graphics_root_descriptor_table)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[33],
                     &set_compute_root_32bit_constant_hook,
                     reinterpret_cast<void**>(
@@ -7663,7 +9510,7 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
                     &set_graphics_root_32bit_constant_hook,
                     reinterpret_cast<void**>(
                         &original_set_graphics_root_32bit_constant)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[35],
                     &set_compute_root_32bit_constants_hook,
                     reinterpret_cast<void**>(
@@ -7673,19 +9520,20 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
                     &set_graphics_root_32bit_constants_hook,
                     reinterpret_cast<void**>(
                         &original_set_graphics_root_32bit_constants)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[37],
                     &set_compute_root_constant_buffer_view_hook,
                     reinterpret_cast<void**>(
                         &original_set_compute_root_constant_buffer_view)) !=
            MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks ||
+        install_cluster_light_visibility_fix_hooks) &&
        MH_CreateHook(command_list_vtable[38],
                     &set_graphics_root_constant_buffer_view_hook,
                     reinterpret_cast<void**>(
                         &original_set_graphics_root_constant_buffer_view)) !=
            MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[39],
                     &set_compute_root_shader_resource_view_hook,
                     reinterpret_cast<void**>(
@@ -7697,7 +9545,7 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
                     reinterpret_cast<void**>(
                         &original_set_graphics_root_shader_resource_view)) !=
            MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[41],
                     &set_compute_root_unordered_access_view_hook,
                     reinterpret_cast<void**>(
@@ -7743,13 +9591,13 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
       (kInstallDiagnosticRenderHooks &&
        MH_CreateHook(command_list_vtable[55], &set_marker_hook,
                      reinterpret_cast<void**>(&original_set_marker)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[56], &begin_event_hook,
                      reinterpret_cast<void**>(&original_begin_event)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[57], &end_event_hook,
                      reinterpret_cast<void**>(&original_end_event)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[59], &execute_indirect_hook,
                      reinterpret_cast<void**>(&original_execute_indirect)) !=
            MH_OK) ||
@@ -7764,6 +9612,10 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
   if (stingray_upload_flush_target) {
     billboard_upload_flush_hook_state.store(3, std::memory_order_relaxed);
   }
+  cluster_light_visibility_fix_active.store(
+      install_cluster_light_visibility_fix_hooks &&
+          stingray_upload_flush_target != nullptr,
+      std::memory_order_release);
   hooks_installed.store(true, std::memory_order_release);
   return 0;
 }
@@ -7785,6 +9637,25 @@ void close_shared_handles() {
   }
 }
 
+void reset_eye_surface_resources() {
+  close_shared_handles();
+  eye_surfaces = {};
+  desktop_mirror_surface.Reset();
+  desktop_mirror_fence.Reset();
+  desktop_mirror_fence_value = 0;
+  desktop_mirror_pending.clear();
+  desktop_mirror_available.clear();
+  desktop_mirror_ready.store(false, std::memory_order_relaxed);
+  ready_fence.Reset();
+  consumed_fence.Reset();
+  ready_value = 0;
+  pending_captures.clear();
+  available_captures.clear();
+  staged_eye0_capture = {};
+  staged_eye0_capture_valid = false;
+  staged_pair_dropped = false;
+}
+
 void close_menu_shared_handles() {
   if (menu_surface_handle) {
     CloseHandle(menu_surface_handle);
@@ -7800,14 +9671,88 @@ void close_menu_shared_handles() {
   }
 }
 
+void reset_menu_surface_resources() {
+  close_menu_shared_handles();
+  menu_surface.Reset();
+  menu_rtv_heap.Reset();
+  menu_rtv = {};
+  menu_rtv_format = DXGI_FORMAT_UNKNOWN;
+  menu_ready_fence.Reset();
+  menu_consumed_fence.Reset();
+  menu_ready_value = 0;
+  direct_menu_clear_frame = (std::numeric_limits<std::uint64_t>::max)();
+  direct_menu_render_frame.store((std::numeric_limits<std::uint64_t>::max)(),
+                                 std::memory_order_relaxed);
+  direct_menu_render_lists.clear();
+  direct_menu_ui_stream_frame = (std::numeric_limits<std::uint64_t>::max)();
+  options_layer_resources[0].store(nullptr, std::memory_order_release);
+  options_layer_resources[1].store(nullptr, std::memory_order_release);
+  direct_menu_render_list_count.store(0, std::memory_order_release);
+  menu_pending_captures.clear();
+  menu_available_captures.clear();
+}
+
 int ensure_menu_surface(ID3D12Device* device,
                         const D3D12_RESOURCE_DESC& source_description,
                         DXGI_FORMAT render_target_format) {
-  if (menu_surface &&
-      menu_surface->GetDesc().Width == source_description.Width &&
-      menu_surface->GetDesc().Height == source_description.Height &&
-      menu_surface->GetDesc().Format == source_description.Format) {
+  const auto requested_rtv_format =
+      render_target_format != DXGI_FORMAT_UNKNOWN
+          ? render_target_format
+          : source_description.Format;
+  const auto requested_resource_format = static_cast<DXGI_FORMAT>(
+      darktidevr::core::canonical_shared_render_target_format(
+          static_cast<std::uint32_t>(source_description.Format),
+          static_cast<std::uint32_t>(requested_rtv_format)));
+  const auto current_description =
+      menu_surface ? menu_surface->GetDesc() : D3D12_RESOURCE_DESC{};
+  const bool matching_surface =
+      menu_surface && menu_rtv_heap && menu_surface_handle &&
+      darktidevr::core::shared_render_target_description_matches(
+          current_description.Width, current_description.Height,
+          static_cast<std::uint32_t>(current_description.Format),
+          source_description.Width, source_description.Height,
+          static_cast<std::uint32_t>(source_description.Format),
+          static_cast<std::uint32_t>(requested_rtv_format)) &&
+      menu_rtv_format == requested_rtv_format;
+  const bool shared_fences_healthy =
+      menu_ready_fence && menu_consumed_fence && menu_ready_fence_handle &&
+      menu_consumed_fence_handle &&
+      menu_ready_fence->GetCompletedValue() != UINT64_MAX &&
+      menu_consumed_fence->GetCompletedValue() != UINT64_MAX;
+  if (matching_surface && shared_fences_healthy) {
     return 0;
+  }
+  if (matching_surface && !shared_fences_healthy) {
+    write_menu_resource_log(
+        "MENU_SHARED_RECREATE\treason=poisoned_or_missing_fence"
+        "\tready=%llu\tconsumed=%llu\r\n",
+        menu_ready_fence
+            ? static_cast<unsigned long long>(
+                  menu_ready_fence->GetCompletedValue())
+            : 0ULL,
+        menu_consumed_fence
+            ? static_cast<unsigned long long>(
+                  menu_consumed_fence->GetCompletedValue())
+            : 0ULL);
+  } else if (menu_surface && !matching_surface) {
+    write_menu_resource_log(
+        "MENU_SHARED_RECREATE\treason=description_mismatch"
+        "\tcurrent_width=%llu\tcurrent_height=%u"
+        "\tcurrent_resource_format=%u\tcurrent_rtv_format=%u"
+        "\trequested_width=%llu\trequested_height=%u"
+        "\trequested_source_format=%u\trequested_resource_format=%u"
+        "\trequested_rtv_format=%u"
+        "\thas_heap=%u\thas_handle=%u\r\n",
+        static_cast<unsigned long long>(current_description.Width),
+        current_description.Height,
+        static_cast<unsigned>(current_description.Format),
+        static_cast<unsigned>(menu_rtv_format),
+        static_cast<unsigned long long>(source_description.Width),
+        source_description.Height,
+        static_cast<unsigned>(source_description.Format),
+        static_cast<unsigned>(requested_resource_format),
+        static_cast<unsigned>(requested_rtv_format), menu_rtv_heap ? 1U : 0U,
+        menu_surface_handle ? 1U : 0U);
   }
 
   // Recorded command lists retain the current surface through
@@ -7821,23 +9766,12 @@ int ensure_menu_surface(ID3D12Device* device,
     return 89;
   }
 
-  close_menu_shared_handles();
-  menu_surface.Reset();
-  menu_rtv_heap.Reset();
-  menu_rtv = {};
-  menu_ready_fence.Reset();
-  menu_consumed_fence.Reset();
-  menu_ready_value = 0;
-  direct_menu_clear_frame = (std::numeric_limits<std::uint64_t>::max)();
-  direct_menu_render_frame.store((std::numeric_limits<std::uint64_t>::max)(),
-                                 std::memory_order_relaxed);
-  direct_menu_render_lists.clear();
-  menu_pending_captures.clear();
-  menu_available_captures.clear();
+  reset_menu_surface_resources();
 
   D3D12_HEAP_PROPERTIES heap{};
   heap.Type = D3D12_HEAP_TYPE_DEFAULT;
   auto description = source_description;
+  description.Format = requested_resource_format;
   description.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
   description.MipLevels = 1;
   description.SampleDesc.Count = 1;
@@ -7864,38 +9798,59 @@ int ensure_menu_surface(ID3D12Device* device,
         static_cast<unsigned long long>(description.Width), description.Height,
         static_cast<unsigned>(description.Format),
         static_cast<unsigned>(render_target_format));
-    close_menu_shared_handles();
-    menu_surface.Reset();
-    menu_rtv_heap.Reset();
-    menu_rtv = {};
+    reset_menu_surface_resources();
     return 90;
   }
   menu_rtv = menu_rtv_heap->GetCPUDescriptorHandleForHeapStart();
   D3D12_RENDER_TARGET_VIEW_DESC rtv_description{};
-  rtv_description.Format = render_target_format != DXGI_FORMAT_UNKNOWN
-                               ? render_target_format
-                               : description.Format;
+  rtv_description.Format = requested_rtv_format;
   rtv_description.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
   device->CreateRenderTargetView(menu_surface.Get(), &rtv_description, menu_rtv);
-  if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED,
-                                 IID_PPV_ARGS(&menu_ready_fence))) ||
-      FAILED(device->CreateSharedHandle(
-          menu_ready_fence.Get(), nullptr, GENERIC_ALL,
-          kMenuReadyFenceName, &menu_ready_fence_handle))) {
+  menu_rtv_format = requested_rtv_format;
+  const auto ready_fence_result = device->CreateFence(
+      0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&menu_ready_fence));
+  const auto ready_handle_result =
+      SUCCEEDED(ready_fence_result)
+          ? device->CreateSharedHandle(
+                menu_ready_fence.Get(), nullptr, GENERIC_ALL,
+                kMenuReadyFenceName, &menu_ready_fence_handle)
+          : E_FAIL;
+  if (FAILED(ready_fence_result) || FAILED(ready_handle_result)) {
+    write_menu_resource_log(
+        "MENU_DIRECT_CREATE_FAILED\tready_fence=%ld\tready_handle=%ld\r\n",
+        ready_fence_result, ready_handle_result);
+    reset_menu_surface_resources();
     return 91;
   }
-  if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED,
-                                 IID_PPV_ARGS(&menu_consumed_fence))) ||
-      FAILED(device->CreateSharedHandle(
-          menu_consumed_fence.Get(), nullptr, GENERIC_ALL,
-          kMenuConsumedFenceName, &menu_consumed_fence_handle))) {
+  const auto consumed_fence_result = device->CreateFence(
+      0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&menu_consumed_fence));
+  const auto consumed_handle_result =
+      SUCCEEDED(consumed_fence_result)
+          ? device->CreateSharedHandle(
+                menu_consumed_fence.Get(), nullptr, GENERIC_ALL,
+                kMenuConsumedFenceName, &menu_consumed_fence_handle)
+          : E_FAIL;
+  if (FAILED(consumed_fence_result) || FAILED(consumed_handle_result)) {
+    write_menu_resource_log(
+        "MENU_DIRECT_CREATE_FAILED\tconsumed_fence=%ld"
+        "\tconsumed_handle=%ld\r\n",
+        consumed_fence_result, consumed_handle_result);
+    reset_menu_surface_resources();
     return 92;
+  }
+  const auto surface_generation =
+      shared_head_pose_reader().advance_menu_surface_generation();
+  if (surface_generation != 0) {
+    write_menu_resource_log(
+        "MENU_SHARED_GENERATION\tgeneration=%llu\r\n",
+        static_cast<unsigned long long>(surface_generation));
   }
   return 0;
 }
 
 MenuDrawRedirect begin_stock_menu_draw_redirect(
-    ID3D12GraphicsCommandList* commands, const PsoMetadata& metadata) {
+    ID3D12GraphicsCommandList* commands, const PsoMetadata& metadata,
+    UINT vertex_count, UINT instance_count) {
   if (!kStockMenuDirectRenderEnabled || !commands ||
       metadata.render_target_count != 1 || metadata.depth_enabled) {
     return {};
@@ -7939,7 +9894,94 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
   }
   {
     std::scoped_lock lock(state_mutex);
+    static std::atomic<std::uint64_t> diagnostic_redirect_count{};
+    const auto diagnostic_id =
+        diagnostic_redirect_count.fetch_add(1, std::memory_order_relaxed) + 1;
+    const auto trace_redirect = diagnostic_id <= 2;
     const auto source_description = original_resource->GetDesc();
+    static std::atomic<std::uint64_t> candidate_log_count{};
+    const auto candidate_id =
+        candidate_log_count.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (candidate_id <= 5000) {
+      write_menu_resource_log(
+          "MENU_DRAW_CANDIDATE\tid=%llu\tframe=%llu\tcommands=%p"
+          "\tresource=%p\tresource_format=%u\trtv_format=%u"
+          "\tvs=%llu\tps=%llu\tvertices=%u\tinstances=%u"
+          "\tstream=%s\r\n",
+          static_cast<unsigned long long>(candidate_id),
+          static_cast<unsigned long long>(
+              present_count.load(std::memory_order_relaxed)),
+          commands, original_resource,
+          static_cast<unsigned>(source_description.Format),
+          static_cast<unsigned>(metadata.render_target_format),
+          static_cast<unsigned long long>(metadata.vertex_shader),
+          static_cast<unsigned long long>(metadata.pixel_shader), vertex_count,
+          instance_count,
+          source_description.Format == metadata.render_target_format
+              ? "typed"
+              : "alias");
+    }
+    // OptionsView records the settings widgets before its typeless
+    // category-layer marker. Those content batches use the exact stock widget
+    // shader pair below; the other pre-alias pair consists of six fullscreen
+    // compositor draws and must stay on the native target. After the alias,
+    // retain the complete category/chrome stream as before.
+    const auto frame = present_count.load(std::memory_order_relaxed);
+    const auto options_armed_frame =
+        options_menu_capture_armed_frame.load(std::memory_order_relaxed);
+    const bool options_capture_armed =
+        options_armed_frame !=
+            (std::numeric_limits<std::uint64_t>::max)() &&
+        frame >= options_armed_frame && frame - options_armed_frame <= 2;
+    const auto alias_stream =
+        metadata.render_target_format != DXGI_FORMAT_UNKNOWN &&
+        source_description.Format != metadata.render_target_format;
+    const auto options_widget_draw =
+        !alias_stream &&
+        metadata.vertex_shader == kOptionsWidgetShaderPair.vertex_shader &&
+        metadata.pixel_shader == kOptionsWidgetShaderPair.pixel_shader;
+    options_layer_resources[alias_stream ? 0 : 1].store(
+        original_resource, std::memory_order_release);
+    if (options_capture_armed) {
+      // The Options settings widgets are not replayable in isolation: their
+      // draw depends on a retained target that the same command stream later
+      // samples. Leave every Options draw on its native target. The resource
+      // barrier hook snapshots the completed typeless target after execution.
+      return {};
+    }
+    const auto options_stream = options_widget_draw || alias_stream ||
+                                direct_menu_ui_stream_frame == frame;
+    if (!options_stream) {
+      static std::atomic<std::uint64_t> pre_options_skip_count{};
+      const auto skipped =
+          pre_options_skip_count.fetch_add(1, std::memory_order_relaxed) + 1;
+      if (skipped <= 4) {
+        write_menu_resource_log(
+            "MENU_REDIRECT_SKIP\treason=before_options_alias"
+            "\tsource_format=%u\trtv_format=%u\r\n",
+            static_cast<unsigned>(source_description.Format),
+            static_cast<unsigned>(metadata.render_target_format));
+      }
+      return {};
+    }
+    static std::atomic<std::uint64_t> options_stream_log_count{};
+    const auto options_stream_id =
+        options_stream_log_count.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (options_stream_id <= 5000) {
+      write_menu_resource_log(
+          "MENU_OPTIONS_STREAM\tid=%llu\tframe=%llu\tcommands=%p"
+          "\tresource=%p\tresource_format=%u\trtv_format=%u"
+          "\tvs=%llu\tps=%llu\tvertices=%u\tinstances=%u"
+          "\tblend=%u\tstage=%s\r\n",
+          static_cast<unsigned long long>(options_stream_id),
+          static_cast<unsigned long long>(frame), commands, original_resource,
+          static_cast<unsigned>(source_description.Format),
+          static_cast<unsigned>(metadata.render_target_format),
+          static_cast<unsigned long long>(metadata.vertex_shader),
+          static_cast<unsigned long long>(metadata.pixel_shader), vertex_count,
+          instance_count, metadata.blend_enabled ? 1U : 0U,
+          alias_stream ? "alias" : "after_alias");
+    }
     const auto presentation_sized_draw =
         scoped_menu_draw || is_vendor_menu_widget_shader_pair(metadata);
     if (presentation_sized_draw &&
@@ -7954,10 +9996,26 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
         !menu_surface || !menu_rtv_heap) {
       return {};
     }
+    if (trace_redirect) {
+      write_menu_resource_log(
+          "MENU_REDIRECT_STAGE\tid=%llu\tstage=surface_ready\r\n",
+          static_cast<unsigned long long>(diagnostic_id));
+    }
     // Never overwrite the one-slot mailbox while OpenXR is sampling it.
-    if (menu_ready_value != 0 && menu_consumed_fence &&
-        menu_consumed_fence->GetCompletedValue() < menu_ready_value) {
+    const auto menu_consumed =
+        menu_consumed_fence ? menu_consumed_fence->GetCompletedValue()
+                            : UINT64_MAX;
+    if (!darktidevr::core::shared_mailbox_writable(menu_ready_value,
+                                                    menu_consumed)) {
       return {};
+    }
+    if (alias_stream) {
+      direct_menu_ui_stream_frame = frame;
+    }
+    if (trace_redirect) {
+      write_menu_resource_log(
+          "MENU_REDIRECT_STAGE\tid=%llu\tstage=mailbox_writable\r\n",
+          static_cast<unsigned long long>(diagnostic_id));
     }
     if (direct_menu_render_lists.find(commands) ==
         direct_menu_render_lists.end()) {
@@ -7968,19 +10026,45 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
       barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
       barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
       commands->ResourceBarrier(1, &barrier);
-      const auto frame = present_count.load(std::memory_order_relaxed);
+      if (trace_redirect) {
+        write_menu_resource_log(
+            "MENU_REDIRECT_STAGE\tid=%llu\tstage=barrier_recorded\r\n",
+            static_cast<unsigned long long>(diagnostic_id));
+      }
       if (direct_menu_clear_frame != frame) {
         constexpr FLOAT transparent[4]{0.0F, 0.0F, 0.0F, 0.0F};
         commands->ClearRenderTargetView(menu_rtv, transparent, 0, nullptr);
         direct_menu_clear_frame = frame;
+        if (trace_redirect) {
+          write_menu_resource_log(
+              "MENU_REDIRECT_STAGE\tid=%llu\tstage=clear_recorded\r\n",
+              static_cast<unsigned long long>(diagnostic_id));
+        }
       }
-      direct_menu_render_lists.emplace(commands, menu_surface);
+      const auto insertion =
+          direct_menu_render_lists.emplace(commands, menu_surface);
+      if (insertion.second) {
+        direct_menu_render_list_count.fetch_add(1, std::memory_order_release);
+      }
     }
     direct_menu_render_frame.store(present_count.load(std::memory_order_relaxed),
                                    std::memory_order_relaxed);
     original_om_set_render_targets(commands, 1, &menu_rtv, FALSE, nullptr);
+    if (trace_redirect) {
+      write_menu_resource_log(
+          "MENU_REDIRECT_STAGE\tid=%llu\tstage=target_bound\r\n",
+          static_cast<unsigned long long>(diagnostic_id));
+    }
+    MenuDrawRedirect redirect{};
+    redirect.active = true;
+    redirect.original_target = {trace.render_target};
+    redirect.capture_target = menu_rtv;
+    redirect.original_resource = original_resource;
+    redirect.capture_resource = menu_surface;
+    redirect.diagnostic_id = diagnostic_id;
+    return redirect;
   }
-  return {true, {trace.render_target}};
+  return {};
 }
 
 void end_stock_menu_draw_redirect(ID3D12GraphicsCommandList* commands,
@@ -8035,8 +10119,8 @@ int capture_menu_from_resource(ID3D12CommandQueue* queue,
     }
     // A single-slot mailbox intentionally drops producer frames rather than
     // stalling the game queue while OpenXR is between frames or inactive.
-    if (menu_ready_value != 0 &&
-        menu_consumed_fence->GetCompletedValue() < menu_ready_value) {
+    if (!darktidevr::core::shared_mailbox_writable(
+            menu_ready_value, menu_consumed_fence->GetCompletedValue())) {
       return 0;
     }
     if (!menu_available_captures.empty()) {
@@ -8110,6 +10194,8 @@ int capture_menu_from_resource(ID3D12CommandQueue* queue,
   ID3D12CommandList* command_lists[]{pending.commands.Get()};
   original_execute_command_lists(queue, 1, command_lists);
   if (FAILED(queue->Signal(fence.Get(), signal_value))) {
+    std::scoped_lock lock(state_mutex);
+    reset_menu_surface_resources();
     return 97;
   }
   pending.fence_value = signal_value;
@@ -8134,12 +10220,17 @@ int ensure_eye_surfaces(ID3D12Device* device,
   if (eye_height == 0) {
     eye_height = source_description.Height;
   }
-  const bool matching_surfaces = eye_surfaces[0] &&
+  const bool matching_surfaces = eye_surfaces[0] && eye_surfaces[1] &&
+      eye_handles[0] && eye_handles[1] &&
       eye_surfaces[0]->GetDesc().Width == eye_width &&
       eye_surfaces[0]->GetDesc().Height == eye_height &&
-      eye_surfaces[0]->GetDesc().Format == source_description.Format;
+      eye_surfaces[0]->GetDesc().Format == source_description.Format &&
+      eye_surfaces[1]->GetDesc().Width == eye_width &&
+      eye_surfaces[1]->GetDesc().Height == eye_height &&
+      eye_surfaces[1]->GetDesc().Format == source_description.Format;
   const bool shared_fences_healthy =
-      ready_fence && consumed_fence &&
+      ready_fence && consumed_fence && ready_fence_handle &&
+      consumed_fence_handle &&
       ready_fence->GetCompletedValue() != UINT64_MAX &&
       consumed_fence->GetCompletedValue() != UINT64_MAX;
   if (matching_surfaces && shared_fences_healthy) {
@@ -8157,22 +10248,7 @@ int ensure_eye_surfaces(ID3D12Device* device,
         present_count.load(std::memory_order_relaxed));
   }
 
-  close_shared_handles();
-  eye_surfaces = {};
-  desktop_mirror_surface.Reset();
-  desktop_mirror_fence.Reset();
-  desktop_mirror_fence_value = 0;
-  desktop_mirror_pending.clear();
-  desktop_mirror_available.clear();
-  desktop_mirror_ready.store(false, std::memory_order_relaxed);
-  ready_fence.Reset();
-  consumed_fence.Reset();
-  ready_value = 0;
-  pending_captures.clear();
-  available_captures.clear();
-  staged_eye0_capture = {};
-  staged_eye0_capture_valid = false;
-  staged_pair_dropped = false;
+  reset_eye_surface_resources();
 
   D3D12_HEAP_PROPERTIES heap{};
   heap.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -8188,11 +10264,13 @@ int ensure_eye_surfaces(ID3D12Device* device,
             &heap, D3D12_HEAP_FLAG_SHARED, &eye_description,
             D3D12_RESOURCE_STATE_COMMON, nullptr,
             IID_PPV_ARGS(&eye_surfaces[eye])))) {
+      reset_eye_surface_resources();
       return 20 + static_cast<int>(eye);
     }
     if (FAILED(device->CreateSharedHandle(eye_surfaces[eye].Get(), nullptr,
                                           GENERIC_ALL, names[eye],
                                           &eye_handles[eye]))) {
+      reset_eye_surface_resources();
       return 22 + static_cast<int>(eye);
     }
   }
@@ -8202,6 +10280,7 @@ int ensure_eye_surfaces(ID3D12Device* device,
           IID_PPV_ARGS(&desktop_mirror_surface))) ||
       FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
                                  IID_PPV_ARGS(&desktop_mirror_fence)))) {
+    reset_eye_surface_resources();
     return 26;
   }
   if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED,
@@ -8209,6 +10288,7 @@ int ensure_eye_surfaces(ID3D12Device* device,
       FAILED(device->CreateSharedHandle(ready_fence.Get(), nullptr, GENERIC_ALL,
                                         kReadyFenceName,
                                         &ready_fence_handle))) {
+    reset_eye_surface_resources();
     return 24;
   }
   if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED,
@@ -8216,7 +10296,16 @@ int ensure_eye_surfaces(ID3D12Device* device,
       FAILED(device->CreateSharedHandle(
           consumed_fence.Get(), nullptr, GENERIC_ALL, kConsumedFenceName,
           &consumed_fence_handle))) {
+    reset_eye_surface_resources();
     return 25;
+  }
+  const auto surface_generation =
+      shared_head_pose_reader().advance_eye_surface_generation();
+  if (surface_generation != 0) {
+    write_boundary_census_log(
+        "frame=%llu\tSHARED_EYE_GENERATION\tgeneration=%llu\r\n",
+        present_count.load(std::memory_order_relaxed),
+        static_cast<unsigned long long>(surface_generation));
   }
   return 0;
 }
@@ -8290,8 +10379,8 @@ int capture_eye_from_resource(int eye, ID3D12CommandQueue* supplied_queue,
     if (pending_captures.size() >= 16) {
       return 36;
     }
-    if (eye == 0 && ready_value != 0 &&
-        consumed_fence->GetCompletedValue() < ready_value) {
+    if (eye == 0 && !darktidevr::core::shared_mailbox_writable(
+                        ready_value, consumed_fence->GetCompletedValue())) {
       staged_pair_dropped = true;
       return 0;
     }
@@ -8434,6 +10523,8 @@ int capture_eye_from_resource(int eye, ID3D12CommandQueue* supplied_queue,
     signal_value = ready_value + 1;
   }
   if (FAILED(queue->Signal(fence.Get(), signal_value))) {
+    std::scoped_lock lock(state_mutex);
+    reset_eye_surface_resources();
     return 35;
   }
   pending.fence_value = signal_value;
@@ -8591,6 +10682,12 @@ int capture_present_halves(IDXGISwapChain3* swapchain,
     if (pending_captures.size() >= 8) {
       return 51;
     }
+    if (!darktidevr::core::shared_mailbox_writable(
+            ready_value, consumed_fence->GetCompletedValue())) {
+      // All present-derived modes share the same single eye-pair slot. Drop
+      // producer frames until OpenXR has finished copying the published pair.
+      return 0;
+    }
     surfaces = eye_surfaces;
     fence = ready_fence;
     signal_value = ready_value + 1;
@@ -8663,7 +10760,9 @@ int capture_present_halves(IDXGISwapChain3* swapchain,
     publish = (seen & 3U) == 3U;
   }
   if (publish && FAILED(queue->Signal(fence.Get(), signal_value))) {
-      return 54;
+    std::scoped_lock lock(state_mutex);
+    reset_eye_surface_resources();
+    return 54;
   }
   pending.fence_value = signal_value;
   {
@@ -8694,8 +10793,13 @@ bool publish_gameplay_aim_state(float distance_metres, bool active, bool hit) {
   try {
     static darktidevr::core::SharedGameplayAimStateWriter writer;
     static std::atomic<std::uint64_t> transport_sequence{0};
+    const auto timestamp_ns = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count());
     const darktidevr::core::SharedGameplayAimState state{
         transport_sequence.fetch_add(1, std::memory_order_relaxed) + 1,
+        timestamp_ns,
         active ? distance_metres : 0.0F,
         active,
         active && hit};
@@ -8735,8 +10839,7 @@ dtvr_install_for_device(ID3D12Device* device) {
   return device ? install_hooks(device) : 20;
 }
 extern "C" __declspec(dllexport) int dtvr_set_projection_active(int enabled) {
-  static const HANDLE event = CreateEventW(
-      nullptr, TRUE, FALSE, L"Local\\DarktideVR-projection-active-v1");
+  const auto event = shared_projection_active_event();
   if (!event) {
     return 1;
   }
@@ -8787,8 +10890,7 @@ extern "C" __declspec(dllexport) int dtvr_set_presentation_state(
     return 2;
   }
 
-  static const HANDLE event = CreateEventW(
-      nullptr, TRUE, FALSE, L"Local\\DarktideVR-projection-active-v1");
+  const auto event = shared_projection_active_event();
   if (!event) {
     return 3;
   }
@@ -8834,8 +10936,7 @@ extern "C" __declspec(dllexport) int dtvr_set_presentation_state_v2(
   if (!publish_presentation_state(state)) {
     return 2;
   }
-  static const HANDLE event = CreateEventW(
-      nullptr, TRUE, FALSE, L"Local\\DarktideVR-projection-active-v1");
+  const auto event = shared_projection_active_event();
   if (!event) {
     return 3;
   }
@@ -8859,6 +10960,14 @@ dtvr_menu_draw_scope_redirect_count() {
 }
 
 extern "C" __declspec(dllexport) int
+dtvr_arm_options_menu_capture() {
+  options_menu_capture_armed_frame.store(
+      present_count.load(std::memory_order_relaxed),
+      std::memory_order_release);
+  return 1;
+}
+
+extern "C" __declspec(dllexport) int
 dtvr_set_vendor_menu_widget_capture(int enabled) {
   vendor_menu_widget_capture_enabled.store(enabled != 0,
                                            std::memory_order_relaxed);
@@ -8867,8 +10976,20 @@ dtvr_set_vendor_menu_widget_capture(int enabled) {
 
 extern "C" __declspec(dllexport) int __cdecl
 dtvr_set_menu_direct_capture(int enabled) {
-  menu_direct_capture_enabled.store(enabled != 0, std::memory_order_relaxed);
-  return enabled != 0 ? 1 : 0;
+  const auto requested = enabled != 0;
+  const auto previous =
+      menu_direct_capture_enabled.exchange(requested, std::memory_order_relaxed);
+  if (previous && !requested && marker_log == INVALID_HANDLE_VALUE &&
+      !billboard_horizon_lock_enabled.load(std::memory_order_relaxed) &&
+      focused_trace_phase.load(std::memory_order_relaxed) == 0) {
+    // Runtime-gated hooks stop maintaining command traces outside an
+    // interactive menu. Drop their last menu state at the transition so a
+    // later enable can only redirect a command list whose PSO/RT state was
+    // observed after that enable.
+    std::scoped_lock lock(trace_mutex);
+    command_traces.clear();
+  }
+  return requested ? 1 : 0;
 }
 
 extern "C" __declspec(dllexport) int
@@ -8882,6 +11003,73 @@ dtvr_set_diagnostic_render_hooks(int enabled) {
   kInstallDiagnosticRenderHooks.store(enabled != 0,
                                       std::memory_order_release);
   return 0;
+}
+extern "C" __declspec(dllexport) int
+dtvr_set_cluster_light_visibility_fix(int enabled) {
+  if (hooks_installed.load(std::memory_order_acquire)) {
+    return cluster_light_visibility_fix_requested.load(
+               std::memory_order_relaxed) == (enabled != 0)
+               ? 0
+               : 1;
+  }
+  cluster_light_visibility_fix_requested.store(enabled != 0,
+                                               std::memory_order_release);
+  cluster_light_visibility_fix_active.store(false,
+                                            std::memory_order_release);
+  cluster_light_visibility_fix_candidate_count.store(
+      0, std::memory_order_relaxed);
+  cluster_light_visibility_fix_patch_count.store(0,
+                                                 std::memory_order_relaxed);
+  cluster_light_visibility_fix_reject_count.store(0,
+                                                  std::memory_order_relaxed);
+  cluster_light_visibility_fix_target_draw_count.store(
+      0, std::memory_order_relaxed);
+  cluster_light_visibility_fix_root_missing_count.store(
+      0, std::memory_order_relaxed);
+  cluster_light_visibility_fix_resource_missing_count.store(
+      0, std::memory_order_relaxed);
+  {
+    std::scoped_lock lock(cluster_light_visibility_fix_mutex);
+    cluster_pending_fov_patches.fill({});
+    cluster_pending_fov_patch_cursor = 0;
+  }
+  return 0;
+}
+extern "C" __declspec(dllexport) int
+dtvr_cluster_light_visibility_fix_active() {
+  return cluster_light_visibility_fix_active.load(std::memory_order_acquire)
+             ? 1
+             : 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_cluster_light_visibility_fix_candidate_count() {
+  return cluster_light_visibility_fix_candidate_count.load(
+      std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_cluster_light_visibility_fix_patch_count() {
+  return cluster_light_visibility_fix_patch_count.load(
+      std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_cluster_light_visibility_fix_reject_count() {
+  return cluster_light_visibility_fix_reject_count.load(
+      std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_cluster_light_visibility_fix_target_draw_count() {
+  return cluster_light_visibility_fix_target_draw_count.load(
+      std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_cluster_light_visibility_fix_root_missing_count() {
+  return cluster_light_visibility_fix_root_missing_count.load(
+      std::memory_order_relaxed);
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_cluster_light_visibility_fix_resource_missing_count() {
+  return cluster_light_visibility_fix_resource_missing_count.load(
+      std::memory_order_relaxed);
 }
 extern "C" __declspec(dllexport) int
 dtvr_set_billboard_shader_substitution(int enabled) {
@@ -8927,10 +11115,37 @@ dtvr_set_billboard_pixel_shader_probe(int enabled) {
   }
   billboard_pixel_shader_probe_requested.store(enabled != 0,
                                                std::memory_order_release);
+  billboard_pixel_shader_probe_attempt_count.store(0,
+                                                   std::memory_order_relaxed);
+  billboard_pixel_shader_probe_validation_reject_count.store(
+      0, std::memory_order_relaxed);
+  billboard_pixel_shader_probe_applied_count.store(0,
+                                                   std::memory_order_relaxed);
+  billboard_pixel_shader_probe_creation_reject_count.store(
+      0, std::memory_order_relaxed);
   if (enabled != 0) {
     load_billboard_shader_replacements();
   }
   return 0;
+}
+extern "C" __declspec(dllexport) unsigned long long
+dtvr_billboard_pixel_shader_probe_result_count(unsigned int kind) {
+  switch (kind) {
+    case 0:
+      return billboard_pixel_shader_probe_attempt_count.load(
+          std::memory_order_relaxed);
+    case 1:
+      return billboard_pixel_shader_probe_applied_count.load(
+          std::memory_order_relaxed);
+    case 2:
+      return billboard_pixel_shader_probe_validation_reject_count.load(
+          std::memory_order_relaxed);
+    case 3:
+      return billboard_pixel_shader_probe_creation_reject_count.load(
+          std::memory_order_relaxed);
+    default:
+      return 0;
+  }
 }
 extern "C" __declspec(dllexport) unsigned long long
 dtvr_billboard_shader_substitution_count() {
@@ -9685,8 +11900,17 @@ extern "C" __declspec(dllexport) int dtvr_set_virtual_client_extent(
 }
 extern "C" __declspec(dllexport) int dtvr_set_virtual_size_message(
     int enabled) {
-  virtual_size_message_enabled.store(enabled != 0,
-                                     std::memory_order_release);
+  const auto requested = enabled != 0;
+  virtual_size_message_enabled.store(requested, std::memory_order_release);
+  if (requested) {
+    // The output window is normally discovered before Lua enables stereo.
+    // Install the translating window procedure at configuration time so the
+    // first real client-area nudge reaches Stingray with the XR render extent.
+    // Waiting for a later swapchain-metadata refresh leaves that first nudge
+    // physical-sized and creates viewport-dependent resources at mixed sizes.
+    ensure_virtual_window_proc(
+        game_output_window.load(std::memory_order_acquire));
+  }
   return 0;
 }
 extern "C" __declspec(dllexport) int dtvr_lock_swapchain_client_extent(
@@ -9972,8 +12196,8 @@ extern "C" __declspec(dllexport) unsigned long long
 dtvr_focused_trace_count() {
   return focused_trace_count.load(std::memory_order_relaxed);
 }
-extern "C" __declspec(dllexport) int dtvr_read_head_pose(
-    float* values, unsigned long long* sequence) {
+int read_head_pose(float* values, unsigned long long* sequence,
+                   unsigned long long* transport_generation) {
   if (!values || !sequence) {
     return 1;
   }
@@ -10007,11 +12231,27 @@ extern "C" __declspec(dllexport) int dtvr_read_head_pose(
   values[23] = static_cast<float>(sample.recenter_generation);
   values[24] = sample.floor_eye_height_metres;
   *sequence = sample.sequence;
+  if (transport_generation) {
+    *transport_generation = sample.transport_generation;
+  }
   return 0;
 }
-extern "C" __declspec(dllexport) int dtvr_read_controller_state(
+extern "C" __declspec(dllexport) int dtvr_read_head_pose(
+    float* values, unsigned long long* sequence) {
+  return read_head_pose(values, sequence, nullptr);
+}
+extern "C" __declspec(dllexport) int dtvr_read_head_pose_v2(
+    float* values, unsigned long long* sequence,
+    unsigned long long* transport_generation) {
+  if (!transport_generation) {
+    return 1;
+  }
+  return read_head_pose(values, sequence, transport_generation);
+}
+int read_controller_state(
     float* values, unsigned int* tracking_flags, unsigned int* buttons,
-    unsigned long long* sequence, unsigned long long* timestamp_ns) {
+    unsigned long long* sequence, unsigned long long* timestamp_ns,
+    unsigned long long* transport_generation) {
   if (!values || !tracking_flags || !buttons || !sequence || !timestamp_ns) {
     return 1;
   }
@@ -10048,11 +12288,31 @@ extern "C" __declspec(dllexport) int dtvr_read_controller_state(
   }
   *sequence = sample.sequence;
   *timestamp_ns = sample.timestamp_ns;
+  if (transport_generation) {
+    *transport_generation = sample.transport_generation;
+  }
   return 0;
 }
-extern "C" __declspec(dllexport) int dtvr_read_menu_pointer_state(
-    unsigned int* values, unsigned long long* sequence,
-    unsigned long long* timestamp_ns) {
+extern "C" __declspec(dllexport) int dtvr_read_controller_state(
+    float* values, unsigned int* tracking_flags, unsigned int* buttons,
+    unsigned long long* sequence, unsigned long long* timestamp_ns) {
+  return read_controller_state(values, tracking_flags, buttons, sequence,
+                               timestamp_ns, nullptr);
+}
+extern "C" __declspec(dllexport) int dtvr_read_controller_state_v2(
+    float* values, unsigned int* tracking_flags, unsigned int* buttons,
+    unsigned long long* sequence, unsigned long long* timestamp_ns,
+    unsigned long long* transport_generation) {
+  if (!transport_generation) {
+    return 1;
+  }
+  return read_controller_state(values, tracking_flags, buttons, sequence,
+                               timestamp_ns, transport_generation);
+}
+int read_menu_pointer_state(unsigned int* values,
+                            unsigned long long* sequence,
+                            unsigned long long* timestamp_ns,
+                            unsigned long long* transport_generation) {
   if (!values || !sequence || !timestamp_ns) {
     return 1;
   }
@@ -10073,7 +12333,25 @@ extern "C" __declspec(dllexport) int dtvr_read_menu_pointer_state(
   values[10] = sample.scroll_sequence;
   *sequence = sample.sequence;
   *timestamp_ns = sample.timestamp_ns;
+  if (transport_generation) {
+    *transport_generation = sample.transport_generation;
+  }
   return 0;
+}
+extern "C" __declspec(dllexport) int dtvr_read_menu_pointer_state(
+    unsigned int* values, unsigned long long* sequence,
+    unsigned long long* timestamp_ns) {
+  return read_menu_pointer_state(values, sequence, timestamp_ns, nullptr);
+}
+extern "C" __declspec(dllexport) int dtvr_read_menu_pointer_state_v2(
+    unsigned int* values, unsigned long long* sequence,
+    unsigned long long* timestamp_ns,
+    unsigned long long* transport_generation) {
+  if (!transport_generation) {
+    return 1;
+  }
+  return read_menu_pointer_state(values, sequence, timestamp_ns,
+                                 transport_generation);
 }
 extern "C" __declspec(dllexport) int dtvr_read_gameplay_input(
     int gameplay_active, unsigned long long* pressed,
@@ -10083,7 +12361,15 @@ extern "C" __declspec(dllexport) int dtvr_read_gameplay_input(
     return 1;
   }
   darktidevr::core::SharedControllerState sample{};
-  const auto available = shared_controller_state_reader().read(sample);
+  const auto read_available = shared_controller_state_reader().read(sample);
+  const auto now_ns = static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count());
+  constexpr std::uint64_t maximum_controller_age_ns = 100'000'000ULL;
+  const auto available =
+      read_available && darktidevr::core::controller_state_is_fresh(
+                            sample, now_ns, maximum_controller_age_ns);
   const auto frame = available
                          ? gameplay_input_mapper().update(
                                sample, gameplay_active != 0)
@@ -10123,6 +12409,47 @@ extern "C" __declspec(dllexport) int dtvr_enable_marker_log() {
   return marker_log == INVALID_HANDLE_VALUE ? 41 : 0;
 }
 
+extern "C" __declspec(dllexport) int dtvr_enable_cluster_trace() {
+  std::scoped_lock lock(cluster_trace_mutex);
+  if (cluster_trace_log != INVALID_HANDLE_VALUE) {
+    return 0;
+  }
+  wchar_t temporary_path[MAX_PATH]{};
+  if (GetTempPathW(MAX_PATH, temporary_path) == 0) {
+    return 42;
+  }
+  const std::wstring path =
+      std::wstring(temporary_path) + L"darktidevr-cluster-trace.log";
+  cluster_trace_log =
+      CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  cluster_trace_count.store(0, std::memory_order_relaxed);
+  cluster_trace_saw_flat_presentation.store(false, std::memory_order_relaxed);
+  cluster_linked_list_resource.store(0, std::memory_order_relaxed);
+  cluster_linked_list_learned_frame.store(0, std::memory_order_relaxed);
+  cluster_generic_dispatch_log_count.store(0, std::memory_order_relaxed);
+  cluster_target_dispatch_log_count.store(0, std::memory_order_relaxed);
+  cluster_barrier_log_count.store(0, std::memory_order_relaxed);
+  cluster_raster_binding_log_count.store(0, std::memory_order_relaxed);
+  cluster_constant_copy_log_count.store(0, std::memory_order_relaxed);
+  cluster_upload_flush_log_count.store(0, std::memory_order_relaxed);
+  {
+    std::scoped_lock copy_lock(cluster_constant_copy_mutex);
+    cluster_constant_ring_resources.clear();
+    cluster_constant_copies.fill({});
+    cluster_constant_copy_count = 0;
+    cluster_pending_constant_samples.fill({});
+    cluster_pending_constant_count = 0;
+    cluster_pending_transform_samples.fill({});
+    cluster_pending_transform_count = 0;
+  }
+  {
+    std::scoped_lock submission_lock(cluster_submission_mutex);
+    cluster_submission_rings.clear();
+  }
+  return cluster_trace_log == INVALID_HANDLE_VALUE ? 43 : 0;
+}
+
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
   if (reason == DLL_PROCESS_ATTACH) {
     native_capture_module = module;
@@ -10136,6 +12463,10 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
       CloseHandle(focused_trace_log);
       focused_trace_log = INVALID_HANDLE_VALUE;
     }
+    if (cluster_trace_log != INVALID_HANDLE_VALUE) {
+      CloseHandle(cluster_trace_log);
+      cluster_trace_log = INVALID_HANDLE_VALUE;
+    }
     if (enhanced_barrier_log != INVALID_HANDLE_VALUE) {
       CloseHandle(enhanced_barrier_log);
       enhanced_barrier_log = INVALID_HANDLE_VALUE;
@@ -10148,8 +12479,16 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
       CloseHandle(menu_resource_log);
       menu_resource_log = INVALID_HANDLE_VALUE;
     }
+    if (resize_diagnostic_log != INVALID_HANDLE_VALUE) {
+      CloseHandle(resize_diagnostic_log);
+      resize_diagnostic_log = INVALID_HANDLE_VALUE;
+    }
     close_shared_handles();
     close_menu_shared_handles();
+    if (const auto event = projection_active_event.exchange(
+            nullptr, std::memory_order_acq_rel)) {
+      CloseHandle(event);
+    }
   }
   return TRUE;
 }

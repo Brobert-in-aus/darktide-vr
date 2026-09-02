@@ -12,6 +12,8 @@ using Microsoft::WRL::ComPtr;
 using SetDiagnosticHooksFn = int (*)(int);
 using SetBillboardShaderSubstitutionFn = int (*)(int);
 using SetVertexShaderDumpFn = int (*)(int);
+using EnableClusterTraceFn = int (*)();
+using SetClusterLightVisibilityFixFn = int (*)(int);
 using SetBillboardBasisFn = int (*)(float, float, float, float, float, float,
                                     int);
 using InstallForDeviceFn = int (*)(ID3D12Device*);
@@ -47,6 +49,50 @@ void write_bootstrap_log(const char* message) {
             nullptr);
   WriteFile(file, "\r\n", 2, &written, nullptr);
   CloseHandle(file);
+}
+
+bool text_flag_enabled(const std::wstring& path) {
+  const auto file = CreateFileW(path.c_str(), GENERIC_READ,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (file == INVALID_HANDLE_VALUE) {
+    return false;
+  }
+  std::array<char, 32> text{};
+  DWORD bytes_read{};
+  const auto read = ReadFile(file, text.data(),
+                             static_cast<DWORD>(text.size() - 1), &bytes_read,
+                             nullptr);
+  CloseHandle(file);
+  if (!read) {
+    return false;
+  }
+  std::size_t begin{};
+  while (begin < bytes_read &&
+         (text[begin] == ' ' || text[begin] == '\t' || text[begin] == '\r' ||
+          text[begin] == '\n')) {
+    ++begin;
+  }
+  std::size_t end = bytes_read;
+  while (end > begin &&
+         (text[end - 1] == ' ' || text[end - 1] == '\t' ||
+          text[end - 1] == '\r' || text[end - 1] == '\n')) {
+    --end;
+  }
+  constexpr char enabled[] = "enabled";
+  if (end - begin != sizeof(enabled) - 1) {
+    return false;
+  }
+  for (std::size_t index = 0; index < sizeof(enabled) - 1; ++index) {
+    auto value = text[begin + index];
+    if (value >= 'A' && value <= 'Z') {
+      value = static_cast<char>(value - 'A' + 'a');
+    }
+    if (value != enabled[index]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 BOOL CALLBACK initialize_real_d3d12(PINIT_ONCE, PVOID, PVOID*) {
@@ -86,13 +132,46 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
   path.resize(separator + 1);
   const auto mod_bin_path =
       path + L"..\\mods\\darktidevr_stereo_probe\\bin\\";
+  const auto offline_dual_view_flag_path =
+      mod_bin_path + L"..\\darktidevr_offline_dual_view.flag";
+  const auto offline_dual_view_requested =
+      text_flag_enabled(offline_dual_view_flag_path);
+  if (offline_dual_view_requested) {
+    // The synthetic two-view benchmark needs the game's real D3D12 startup
+    // and both production viewports, but it has no OpenXR consumer. Defer the
+    // process-wide hook installation until Lua explicitly calls dtvr_install
+    // after the engine reaches its update loop. This leaves ordinary VR
+    // launches byte-for-byte on the established eager-install path.
+    write_bootstrap_log("native_install_deferred reason=offline_dual_view");
+    return TRUE;
+  }
   const auto diagnostic_flag_path =
       mod_bin_path + L"darktidevr_diagnostic_render_hooks.flag";
   const auto diagnostic_flag_attributes =
       GetFileAttributesW(diagnostic_flag_path.c_str());
-  const auto diagnostic_hooks_requested =
+  const auto diagnostic_flag_requested =
       diagnostic_flag_attributes != INVALID_FILE_ATTRIBUTES &&
       (diagnostic_flag_attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+  const auto cluster_trace_flag_path =
+      mod_bin_path + L"darktidevr_cluster_trace.flag";
+  const auto cluster_trace_flag_attributes =
+      GetFileAttributesW(cluster_trace_flag_path.c_str());
+  const auto cluster_trace_requested =
+      cluster_trace_flag_attributes != INVALID_FILE_ATTRIBUTES &&
+      (cluster_trace_flag_attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+  const auto cluster_light_visibility_fix_flag_path =
+      mod_bin_path + L"darktidevr_cluster_light_visibility_fix.flag";
+  const auto cluster_light_visibility_fix_flag_attributes =
+      GetFileAttributesW(cluster_light_visibility_fix_flag_path.c_str());
+  const auto cluster_light_visibility_fix_requested =
+      cluster_light_visibility_fix_flag_attributes != INVALID_FILE_ATTRIBUTES &&
+      (cluster_light_visibility_fix_flag_attributes &
+       FILE_ATTRIBUTE_DIRECTORY) == 0;
+  // The cluster recorder has its own narrowly gated compute hooks. Enabling
+  // the broad render diagnostics here also activates the first-bind graphics
+  // PSO census, which materially stalls renderer startup and invalidates the
+  // trace workload before the stereo mod can initialize.
+  const auto diagnostic_hooks_requested = diagnostic_flag_requested;
   const auto substitution_flag_path =
       mod_bin_path + L"darktidevr_billboard_shader_substitution.flag";
   const auto substitution_flag_attributes =
@@ -124,6 +203,11 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
           native, "dtvr_set_billboard_shader_substitution"));
   const auto set_vertex_shader_dump = reinterpret_cast<SetVertexShaderDumpFn>(
       GetProcAddress(native, "dtvr_set_vertex_shader_dump"));
+  const auto enable_cluster_trace = reinterpret_cast<EnableClusterTraceFn>(
+      GetProcAddress(native, "dtvr_enable_cluster_trace"));
+  const auto set_cluster_light_visibility_fix =
+      reinterpret_cast<SetClusterLightVisibilityFixFn>(GetProcAddress(
+          native, "dtvr_set_cluster_light_visibility_fix"));
   const auto install = reinterpret_cast<InstallForDeviceFn>(
       GetProcAddress(native, "dtvr_install_for_device"));
   const auto diagnostics_result =
@@ -140,25 +224,41 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
       set_vertex_shader_dump
           ? set_vertex_shader_dump(vertex_shader_dump_requested ? 1 : 0)
           : -1;
+  const auto cluster_trace_result =
+      cluster_trace_requested
+          ? (enable_cluster_trace ? enable_cluster_trace() : -1)
+          : 0;
+  const auto cluster_light_visibility_fix_result =
+      set_cluster_light_visibility_fix
+          ? set_cluster_light_visibility_fix(
+                cluster_light_visibility_fix_requested ? 1 : 0)
+          : -1;
   const auto basis_result =
       set_billboard_basis
           ? set_billboard_basis(1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0)
           : -1;
   const auto install_result = install ? install(first_device) : -1;
-  char message[224]{};
+  char message[384]{};
   wsprintfA(message,
             "native_results diagnostic_requested=%d diagnostics=%d "
             "substitution_requested=%d substitution=%d "
             "shader_dump_requested=%d shader_dump=%d "
+            "cluster_trace_requested=%d cluster_trace=%d "
+            "cluster_light_fix_requested=%d cluster_light_fix=%d "
             "basis=%d install=%d",
             diagnostic_hooks_requested ? 1 : 0, diagnostics_result,
             billboard_shader_substitution_requested ? 1 : 0,
             substitution_result, vertex_shader_dump_requested ? 1 : 0,
-            shader_dump_result, basis_result, install_result);
+            shader_dump_result, cluster_trace_requested ? 1 : 0,
+            cluster_trace_result,
+            cluster_light_visibility_fix_requested ? 1 : 0,
+            cluster_light_visibility_fix_result, basis_result, install_result);
   write_bootstrap_log(message);
   return diagnostics_result == 0 && substitution_result == 0 &&
-                 shader_dump_result == 0 && basis_result == 0 &&
-                 install_result == 0
+                  shader_dump_result == 0 && basis_result == 0 &&
+                  cluster_trace_result == 0 &&
+                  cluster_light_visibility_fix_result == 0 &&
+                  install_result == 0
              ? TRUE
              : FALSE;
 }

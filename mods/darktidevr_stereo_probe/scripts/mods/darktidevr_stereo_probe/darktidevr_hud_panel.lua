@@ -1,28 +1,35 @@
 local UIRenderer = require("scripts/managers/ui/ui_renderer")
+local UIWidget = require("scripts/managers/ui/ui_widget")
+local ScriptWorld = require("scripts/foundation/utilities/script_world")
 
 local HudPanel = {}
 
 local state = {
-    -- Disabled until retained HUD records can be migrated/rebuilt against the
-    -- offscreen pass. Leaving the prototype active suppresses stock fixed HUD.
     enabled = false,
+    mod = nil,
     owner = nil,
+    source_renderer = nil,
+    queue_renderer = nil,
     resource_renderer = nil,
+    render_world = nil,
+    render_viewport = nil,
+    render_viewport_name = nil,
     display_target = nil,
     world = nil,
-    gui = nil,
-    material = nil,
+    world_gui = nil,
+    world_material = nil,
+    pending_world = nil,
+    creation_failed = false,
     last_authored_t = nil,
-    last_copy_t = nil,
     generation = 0,
     logged = false,
     layout_logged = false,
     flag_last_poll_t = -math.huge,
 }
 
--- These elements derive meaning from scene depth or screen-edge direction and
--- must remain in the ordinary per-eye HUD pass. Everything else is a fixed HUD
--- group and is authored once into the head-relative panel.
+-- Scene-depth, projected-world and eye-edge elements remain on the stock
+-- per-eye renderer. Fixed status elements are authored once into a dedicated
+-- 16:9 screen-GUI target and the completed target is presented in 3D.
 local spatial_elements = {
     HudElementWorldMarkers = true,
     HudElementInteraction = true,
@@ -31,90 +38,6 @@ local spatial_elements = {
     HudElementMinionShieldHealth = true,
     HudElementDamageIndicator = true,
 }
-
-local function destroy_world_surface()
-    if state.world and state.gui then
-        pcall(World.destroy_gui, state.world, state.gui)
-    end
-    state.world = nil
-    state.gui = nil
-    state.material = nil
-end
-
-local function destroy_resources()
-    destroy_world_surface()
-    local renderer = state.resource_renderer
-    if renderer then
-        if renderer.render_target_material and renderer.gui then
-            pcall(Gui.destroy_material, renderer.gui,
-                renderer.render_target_material)
-        end
-        if renderer.render_target then
-            pcall(Renderer.destroy_resource, renderer.render_target)
-        end
-    end
-    if state.display_target then
-        pcall(Renderer.destroy_resource, state.display_target)
-    end
-    state.owner = nil
-    state.resource_renderer = nil
-    state.display_target = nil
-    state.last_authored_t = nil
-    state.last_copy_t = nil
-    state.logged = false
-    state.layout_logged = false
-end
-
-local function ensure_resources(mod, owner, source_renderer)
-    if state.owner == owner and state.resource_renderer and
-            state.display_target then
-        return state.resource_renderer
-    end
-    destroy_resources()
-    state.generation = state.generation + 1
-    local pass_name = "darktidevr_hud_ui_" .. tostring(state.generation)
-    local ok, renderer = pcall(
-        UIRenderer.create_resource_renderer,
-        source_renderer.world,
-        source_renderer.gui,
-        source_renderer.gui_retained,
-        pass_name,
-        "content/ui/materials/render_target_masks/ui_render_target_straight_blur",
-        1920,
-        1080,
-        true)
-    if not ok or not renderer then
-        mod:error("DARKTIDEVR_HUD target_create_failed error=%s",
-            tostring(renderer))
-        return nil
-    end
-    -- Retained IDs already belong to the stock GUI/pass and cannot be moved to
-    -- this target after creation. The replay below deliberately forces those
-    -- same live widgets through their immediate draw path, so register only the
-    -- immediate GUI pass here.
-    UIRenderer.add_render_pass(
-        renderer, 0, renderer.base_render_pass, true,
-        renderer.render_target)
-    local display_ok, display = pcall(
-        Renderer.create_resource,
-        "render_target", "R8G8B8A8", nil,
-        1920, 1080, "darktidevr_hud_display")
-    if not display_ok or not display then
-        mod:error("DARKTIDEVR_HUD display_create_failed error=%s",
-            tostring(display))
-        if renderer.render_target then
-            pcall(Renderer.destroy_resource, renderer.render_target)
-        end
-        return nil
-    end
-    state.owner = owner
-    state.resource_renderer = renderer
-    state.display_target = display
-    mod:info(
-        "DARKTIDEVR_HUD target_created width=1920 height=1080 generation=%d pass=%s",
-        state.generation, pass_name)
-    return renderer
-end
 
 local function partition_elements(elements)
     local spatial = {}
@@ -148,40 +71,210 @@ local function log_partition(mod, spatial, fixed)
         table.concat(spatial_names, ","), table.concat(fixed_names, ","))
 end
 
--- Retained HUD IDs belong to the stock retained GUI and cannot be replayed
--- into the resource pass. Temporarily force each fixed widget pass through its
--- immediate branch and mark it dirty so UIWidget does not short-circuit on the
--- existing retained ID. The stock pass metadata and IDs remain authoritative
--- and are restored immediately after the replay.
-local function begin_immediate_replay(elements)
-    local saved = {}
-    for i = 1, #elements do
-        local widgets = elements[i]._widgets or {}
-        for j = 1, #widgets do
-            local widget = widgets[j]
-            widget.dirty = true
-            local passes = widget.passes or {}
-            for k = 1, #passes do
-                local pass = passes[k]
-                saved[#saved + 1] = {
-                    pass = pass,
-                    retained_mode = pass.retained_mode,
-                }
-                pass.retained_mode = false
-                if pass.data then
-                    pass.data.dirty = true
+local function transfer_fixed_records(
+        owner, source_renderer, target_renderer, mod)
+    if not owner or not source_renderer or
+            type(owner._elements_array) ~= "table" then
+        return
+    end
+    local _, fixed = partition_elements(owner._elements_array)
+    local retained = owner._elements_hud_retained_mode_lookup or {}
+    local visible = owner._currently_visible_elements or {}
+    local moved = 0
+    local failed = 0
+    for i = 1, #fixed do
+        local element = fixed[i]
+        local name = element.__class_name
+        if retained[name] then
+            local ok = true
+            if element.set_visible then
+                ok = pcall(element.set_visible, element, false,
+                    source_renderer, true)
+                if ok and target_renderer and visible[name] then
+                    ok = pcall(element.set_visible, element, true,
+                        target_renderer, true)
                 end
+            else
+                local widgets = element._widgets or {}
+                for j = 1, #widgets do
+                    ok = pcall(UIWidget.destroy, source_renderer, widgets[j])
+                    widgets[j].dirty = true
+                    if target_renderer then
+                        pcall(UIWidget.set_visible, widgets[j],
+                            target_renderer, visible[name] == true)
+                    end
+                end
+            end
+            if ok then
+                moved = moved + 1
+            else
+                failed = failed + 1
             end
         end
     end
-    return saved
+    if mod then
+        mod:info(
+            "DARKTIDEVR_HUD retained_transfer moved=%d failed=%d target=%s",
+            moved, failed, tostring(target_renderer ~= nil))
+    end
 end
 
-local function end_immediate_replay(saved)
-    for i = 1, #saved do
-        local entry = saved[i]
-        entry.pass.retained_mode = entry.retained_mode
+local function target_extent()
+    local scale = RESOLUTION_LOOKUP and RESOLUTION_LOOKUP.scale or 1
+    return math.max(1, math.floor(1920 * scale + 0.5)),
+        math.max(1, math.floor(1080 * scale + 0.5))
+end
+
+local function destroy_resources()
+    if state.resource_renderer and state.source_renderer then
+        transfer_fixed_records(state.owner, state.resource_renderer,
+            state.source_renderer, nil)
     end
+    if state.world and state.world_gui then
+        pcall(World.destroy_gui, state.world, state.world_gui)
+    end
+    if state.resource_renderer then
+        if state.resource_renderer.render_target_material and
+                state.resource_renderer.gui then
+            pcall(Gui.destroy_material, state.resource_renderer.gui,
+                state.resource_renderer.render_target_material)
+        end
+        pcall(UIRenderer.destroy, state.resource_renderer,
+            state.render_world)
+    end
+    if state.queue_renderer then
+        pcall(UIRenderer.destroy, state.queue_renderer, state.render_world)
+    end
+    if state.render_world and state.render_viewport_name then
+        pcall(ScriptWorld.destroy_viewport, state.render_world,
+            state.render_viewport_name)
+    end
+    if state.render_world then
+        pcall(Managers.ui.destroy_world, Managers.ui, state.render_world)
+    end
+    if state.display_target then
+        pcall(Renderer.destroy_resource, state.display_target)
+    end
+    state.owner = nil
+    state.source_renderer = nil
+    state.queue_renderer = nil
+    state.resource_renderer = nil
+    state.render_world = nil
+    state.render_viewport = nil
+    state.render_viewport_name = nil
+    state.display_target = nil
+    state.world = nil
+    state.world_gui = nil
+    state.world_material = nil
+    state.pending_world = nil
+    state.creation_failed = false
+    state.last_authored_t = nil
+    state.logged = false
+    state.layout_logged = false
+end
+
+local function create_resources(mod, owner, source_renderer, world)
+    local width, height = target_extent()
+    state.generation = state.generation + 1
+    local name = "darktidevr_hud_" .. tostring(state.generation)
+    local render_world_ok, render_world = pcall(
+        Managers.ui.create_world, Managers.ui,
+        name .. "_world", 199, "ui")
+    if not render_world_ok or not render_world then
+        state.creation_failed = true
+        mod:error("DARKTIDEVR_HUD render_world_failed error=%s",
+            tostring(render_world))
+        return nil
+    end
+    state.render_world = render_world
+    state.render_viewport_name = name .. "_viewport"
+    local viewport_ok, viewport = pcall(
+        Managers.ui.create_viewport, Managers.ui, render_world,
+        state.render_viewport_name, "overlay", 1)
+    if not viewport_ok or not viewport then
+        mod:error("DARKTIDEVR_HUD render_viewport_failed error=%s",
+            tostring(viewport))
+        destroy_resources()
+        state.creation_failed = true
+        return nil
+    end
+    state.render_viewport = viewport
+    local queue_ok, queue_renderer = pcall(
+        UIRenderer.create_viewport_renderer,
+        render_world, name .. "_queue", "custom_size", width, height)
+    if not queue_ok or not queue_renderer then
+        mod:error("DARKTIDEVR_HUD queue_create_failed error=%s",
+            tostring(queue_renderer))
+        destroy_resources()
+        state.creation_failed = true
+        return nil
+    end
+    state.queue_renderer = queue_renderer
+    state.world = world
+    local target_ok, resource_renderer = pcall(
+        UIRenderer.create_resource_renderer,
+        render_world, queue_renderer.gui, queue_renderer.gui_retained,
+        name .. "_target",
+        "content/ui/materials/render_target_masks/ui_render_target_straight_blur",
+        width, height, true)
+    if not target_ok or not resource_renderer then
+        mod:error("DARKTIDEVR_HUD target_create_failed error=%s",
+            tostring(resource_renderer))
+        destroy_resources()
+        state.creation_failed = true
+        return nil
+    end
+    state.resource_renderer = resource_renderer
+    local display_ok, display_target = pcall(
+        Renderer.create_resource,
+        "render_target", "R8G8B8A8", nil,
+        width, height, name .. "_display")
+    if not display_ok or not display_target then
+        mod:error("DARKTIDEVR_HUD display_create_failed error=%s",
+            tostring(display_target))
+        destroy_resources()
+        state.creation_failed = true
+        return nil
+    end
+    state.display_target = display_target
+    local gui_ok, world_gui = pcall(
+        World.create_world_gui,
+        world, Matrix4x4.identity(), 1, 1)
+    if not gui_ok or not world_gui then
+        mod:error("DARKTIDEVR_HUD world_gui_failed error=%s",
+            tostring(world_gui))
+        destroy_resources()
+        state.creation_failed = true
+        return nil
+    end
+    state.world_gui = world_gui
+    local material_ok, material = pcall(
+        Gui.create_material, world_gui,
+        "content/ui/materials/render_target_masks/ui_render_target_straight_blur",
+        GuiMaterialFlag.GUI_RENDER_PASS_LAYER)
+    if not material_ok or not material then
+        mod:error("DARKTIDEVR_HUD world_material_failed error=%s",
+            tostring(material))
+        destroy_resources()
+        state.creation_failed = true
+        return nil
+    end
+    state.world_material = material
+    -- Never sample the target while the dedicated UI pass can still be
+    -- writing it. Worn hardware proved that the direct binding aliases the
+    -- binocular world render into this panel after HUD startup. Present only
+    -- the separate completed-copy resource; a one-frame-old HUD is safe,
+    -- whereas an in-flight render target is not.
+    Material.set_resource(material, "source", display_target)
+    state.owner = owner
+    state.source_renderer = source_renderer
+    state.pending_world = world
+    transfer_fixed_records(owner, source_renderer, resource_renderer, mod)
+    mod:info(
+        "DARKTIDEVR_HUD target_created width=%d height=%d generation=%d pass=%s source=display_copy",
+        width, height, state.generation,
+        tostring(resource_renderer.base_render_pass))
+    return resource_renderer
 end
 
 local function update_enabled_flag(mod, t)
@@ -224,10 +317,8 @@ function HudPanel.enabled()
 end
 
 function HudPanel.install(mod)
+    state.mod = mod
     mod:hook("UIHud", "update", function(func, self, dt, t, input_service)
-        -- Keep one authoritative update/event lifecycle. A second update of
-        -- fixed elements creates duplicate retained IDs and can consume input
-        -- twice; only their draw is replayed below.
         update_enabled_flag(mod, t or 0)
         return func(self, dt, t, input_service)
     end)
@@ -237,7 +328,13 @@ function HudPanel.install(mod)
                 type(self._elements_array) ~= "table" then
             return func(self, dt, t, input_service)
         end
-        local resource_renderer = ensure_resources(mod, self, self._ui_renderer)
+        local resource_renderer = state.resource_renderer
+        if not resource_renderer and not state.creation_failed and
+                state.pending_world and
+                self._ui_renderer.world == state.pending_world then
+            resource_renderer = create_resources(
+                mod, self, self._ui_renderer, state.pending_world)
+        end
         if not resource_renderer then
             return func(self, dt, t, input_service)
         end
@@ -249,42 +346,45 @@ function HudPanel.install(mod)
         self._elements_array = spatial
         local result = func(self, dt, t, input_service)
 
-        -- The target pass was registered once when the resource renderer was
-        -- created. Its normal begin/end lifecycle selects that pass; never
-        -- clear/re-add it here because Stingray retains GUI pass names.
-        -- UIHud.draw is reached once per eye with the same simulation time.
-        -- Author fixed HUD content only for the first eye and reuse that target
-        -- for the second; spatial HUD elements continue to draw per eye.
         if state.last_authored_t ~= t then
+            -- Gui.render_pass is a frame queue, not persistent renderer state.
+            -- Darktide's own resource-backed UI elements clear and rebuild this
+            -- queue immediately before authoring every target frame.
+            UIRenderer.clear_render_pass_queue(state.queue_renderer)
+            UIRenderer.add_render_pass(state.queue_renderer, 0,
+                resource_renderer.base_render_pass, true,
+                resource_renderer.render_target)
+            -- Match Darktide's tactical-overlay resource renderer exactly:
+            -- its offscreen pass is followed by a terminal screen pass which
+            -- samples the target. Without that dependency the dedicated UI
+            -- world can prune the entire target branch, leaving even an
+            -- immediate opaque diagnostic rectangle black. Draw the terminal
+            -- sample just outside the viewport so it schedules the target
+            -- without contaminating the one-eye desktop mirror.
+            UIRenderer.add_render_pass(state.queue_renderer, 1,
+                "to_screen", false)
             self._elements_array = fixed
-            local source_base_render_pass = source_renderer.base_render_pass
-            local source_render_pass_flag = source_renderer.render_pass_flag
-            local retained_lookup = self._elements_hud_retained_mode_lookup
-            local retained_modes = {}
-            for i = 1, #fixed do
-                local name = fixed[i].__class_name
-                retained_modes[#retained_modes + 1] = {
-                    name = name,
-                    value = retained_lookup[name],
-                }
-                retained_lookup[name] = false
-            end
-            source_renderer.base_render_pass = resource_renderer.base_render_pass
-            source_renderer.render_pass_flag = resource_renderer.render_pass_flag
-            local immediate_passes = begin_immediate_replay(fixed)
-            local replay_ok, replay_result = pcall(
-                func, self, dt, t, input_service)
-            end_immediate_replay(immediate_passes)
-            source_renderer.base_render_pass = source_base_render_pass
-            source_renderer.render_pass_flag = source_render_pass_flag
-            for i = 1, #retained_modes do
-                local retained = retained_modes[i]
-                retained_lookup[retained.name] = retained.value
-            end
-            if not replay_ok then
+            self._ui_renderer = resource_renderer
+            local ok, fixed_result = pcall(func, self, dt, t, input_service)
+            self._ui_renderer = source_renderer
+            if not ok then
                 self._elements_array = source_elements
-                error(replay_result)
+                error(fixed_result)
             end
+            -- Keep the dependency sample outside the visible viewport. The
+            -- earlier full-target diagnostic was useful for proving that this
+            -- dedicated UI world is not composited, but it must never leak
+            -- into the production one-eye mirror.
+            Gui.bitmap(
+                state.queue_renderer.gui,
+                resource_renderer.render_target_material,
+                "render_pass", "to_screen",
+                Vector3(-2, -2, 20000),
+                Vector2(1, 1),
+                Color(255, 255, 255, 255))
+            pcall(Renderer.copy_render_target_rect,
+                resource_renderer.render_target,
+                0, 0, 1, 1, state.display_target, 0, 0, 1, 1)
             state.last_authored_t = t
         end
         self._elements_array = source_elements
@@ -300,46 +400,29 @@ function HudPanel.install(mod)
 end
 
 function HudPanel.draw(world, position, rotation)
-    if not state.enabled or not state.resource_renderer or
+    if not state.enabled then
+        return
+    end
+    if state.pending_world and state.pending_world ~= world then
+        destroy_resources()
+    end
+    state.pending_world = world
+    if not state.world_gui or not state.world_material or
             not state.display_target then
         return
     end
-    local copy_t = Managers.time and Managers.time:time("ui") or 0
-    if state.last_copy_t ~= copy_t then
-        pcall(
-            Renderer.copy_render_target_rect,
-            state.resource_renderer.render_target,
-            0, 0, 1, 1,
-            state.display_target,
-            0, 0, 1, 1)
-        state.last_copy_t = copy_t
-    end
-    if state.world ~= world then
-        destroy_world_surface()
-    end
-    if not state.gui then
-        local gui = World.create_world_gui(world, Matrix4x4.identity(), 1, 1)
-        local material = Gui.create_material(
-            gui,
-            "content/ui/materials/render_target_masks/ui_render_target_straight_blur",
-            GuiMaterialFlag.GUI_RENDER_PASS_LAYER)
-        Material.set_resource(material, "source", state.display_target)
-        state.world = world
-        state.gui = gui
-        state.material = material
-    end
-
     local forward = Quaternion.forward(rotation)
     local tm = Matrix4x4.identity()
     Matrix4x4.set_right(tm, Quaternion.right(rotation))
     Matrix4x4.set_forward(tm, forward)
     Matrix4x4.set_up(tm, Quaternion.up(rotation))
-    Matrix4x4.set_translation(tm, position + forward * 2)
+    Matrix4x4.set_translation(tm, position + forward)
     local width = 2
-    local height = width * 9 / 16
+    local target_width, target_height = target_extent()
+    local height = width * target_height / target_width
     Gui2.bitmap_3d(
-        state.gui,
-        state.material,
+        state.world_gui,
+        state.world_material,
         GuiMaterialFlag.GUI_RENDER_PASS_LAYER,
         tm,
         1000,
@@ -350,6 +433,12 @@ function HudPanel.draw(world, position, rotation)
             uv00 = Vector2(0, 0),
             uv11 = Vector2(1, 1),
         })
+    if not state.logged then
+        state.logged = true
+        state.mod:info(
+            "DARKTIDEVR_HUD world_surface distance_m=1.000 width_m=%.3f height_m=%.3f",
+            width, height)
+    end
 end
 
 return HudPanel

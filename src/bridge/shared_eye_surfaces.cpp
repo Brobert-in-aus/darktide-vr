@@ -61,6 +61,11 @@ Microsoft::WRL::ComPtr<ID3D12Fence> open_fence(
 
 }  // namespace
 
+bool shared_fence_values_healthy(std::uint64_t ready,
+                                 std::uint64_t consumed) noexcept {
+  return ready != UINT64_MAX && consumed != UINT64_MAX;
+}
+
 OpenedEyeSurfaces open_shared_eye_surfaces(
     ID3D12Device* device, const SharedEyeSurfaceNames& names,
     SharedEyeSurfaceDescription expected) {

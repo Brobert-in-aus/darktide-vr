@@ -71,4 +71,13 @@ PanelExtent fit_panel_extent(std::uint32_t source_width,
                            maximum_height_metres};
 }
 
+bool cached_stereo_pair_allowed(bool fresh_pair_available,
+                                bool cached_pair_valid,
+                                bool projection_active,
+                                std::uint64_t stale_milliseconds,
+                                std::uint64_t grace_milliseconds) {
+  return !fresh_pair_available && cached_pair_valid && projection_active &&
+         grace_milliseconds != 0 && stale_milliseconds <= grace_milliseconds;
+}
+
 }  // namespace darktidevr::core

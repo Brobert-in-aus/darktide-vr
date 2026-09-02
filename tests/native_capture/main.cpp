@@ -65,17 +65,34 @@ int wmain(int argc, wchar_t** argv) {
     const auto read_head_pose = reinterpret_cast<int (*)(
         float*, unsigned long long*)>(
         GetProcAddress(module, "dtvr_read_head_pose"));
+    const auto read_head_pose_v2 = reinterpret_cast<int (*)(
+        float*, unsigned long long*, unsigned long long*)>(
+        GetProcAddress(module, "dtvr_read_head_pose_v2"));
     const auto read_controller_state = reinterpret_cast<int (*)(
         float*, unsigned int*, unsigned int*, unsigned long long*,
         unsigned long long*)>(
         GetProcAddress(module, "dtvr_read_controller_state"));
+    const auto read_controller_state_v2 = reinterpret_cast<int (*)(
+        float*, unsigned int*, unsigned int*, unsigned long long*,
+        unsigned long long*, unsigned long long*)>(
+        GetProcAddress(module, "dtvr_read_controller_state_v2"));
     const auto read_menu_pointer_state = reinterpret_cast<int (*)(
         unsigned int*, unsigned long long*, unsigned long long*)>(
         GetProcAddress(module, "dtvr_read_menu_pointer_state"));
+    const auto read_menu_pointer_state_v2 = reinterpret_cast<int (*)(
+        unsigned int*, unsigned long long*, unsigned long long*,
+        unsigned long long*)>(
+        GetProcAddress(module, "dtvr_read_menu_pointer_state_v2"));
+    const auto read_gameplay_input = reinterpret_cast<int (*)(
+        int, unsigned long long*, unsigned long long*, unsigned long long*,
+        unsigned long long*, float*)>(
+        GetProcAddress(module, "dtvr_read_gameplay_input"));
     const auto qpc_ticks = reinterpret_cast<unsigned long long (*)()>(
         GetProcAddress(module, "dtvr_qpc_ticks"));
     const auto qpc_frequency = reinterpret_cast<unsigned long long (*)()>(
         GetProcAddress(module, "dtvr_qpc_frequency"));
+    const auto arm_options_menu_capture = reinterpret_cast<int (*)()>(
+        GetProcAddress(module, "dtvr_arm_options_menu_capture"));
     const auto set_billboard_view_basis = reinterpret_cast<int (*)(
         float, float, float, float, float, float, int)>(
         GetProcAddress(module, "dtvr_set_billboard_view_basis"));
@@ -104,15 +121,21 @@ int wmain(int argc, wchar_t** argv) {
         !tag_queue_depth || !reset_tags || !wait_eye_capture ||
         !tag_reset_count || !ready || !execute_count || !present_count ||
         !capture_stage || !enable_present_capture || !disable_present_capture ||
-        !enable_marker_log || !read_head_pose || !read_controller_state ||
-        !read_menu_pointer_state ||
-        !qpc_ticks || !qpc_frequency ||
+        !enable_marker_log || !read_head_pose || !read_head_pose_v2 ||
+        !read_controller_state ||
+        !read_controller_state_v2 ||
+        !read_menu_pointer_state || !read_menu_pointer_state_v2 ||
+        !read_gameplay_input ||
+        !qpc_ticks || !qpc_frequency || !arm_options_menu_capture ||
         !set_billboard_view_basis || !set_billboard_staging_view_basis ||
         !set_billboard_direct_view_direction ||
         !billboard_resource_map_count ||
         !billboard_resource_map_match_count ||
         !billboard_resource_unmap_count || !solve_two_bone_ik) {
       throw std::runtime_error("Native capture export contract is incomplete");
+    }
+    if (arm_options_menu_capture() != 1) {
+      throw std::runtime_error("Options menu capture arm export failed");
     }
     const auto steady_ns = static_cast<double>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -141,10 +164,19 @@ int wmain(int argc, wchar_t** argv) {
     if (read_head_pose(nullptr, nullptr) != 1) {
       throw std::runtime_error("Head-pose export must reject null output");
     }
+    if (read_head_pose_v2(nullptr, nullptr, nullptr) != 1) {
+      throw std::runtime_error(
+          "Versioned head-pose export must reject null output");
+    }
     if (read_controller_state(nullptr, nullptr, nullptr, nullptr, nullptr) !=
         1) {
       throw std::runtime_error(
           "Controller-state export must reject null output");
+    }
+    if (read_controller_state_v2(nullptr, nullptr, nullptr, nullptr, nullptr,
+                                 nullptr) != 1) {
+      throw std::runtime_error(
+          "Versioned controller-state export must reject null output");
     }
     darktidevr::core::SharedControllerState controller_sample{};
     controller_sample.sequence = 42;
@@ -180,12 +212,14 @@ int wmain(int argc, wchar_t** argv) {
     unsigned int controller_buttons[2]{};
     unsigned long long controller_sequence{};
     unsigned long long controller_timestamp_ns{};
-    if (read_controller_state(
+    unsigned long long controller_transport_generation{};
+    if (read_controller_state_v2(
             controller_values, controller_tracking_flags,
             controller_buttons, &controller_sequence,
-            &controller_timestamp_ns) != 0 ||
+            &controller_timestamp_ns, &controller_transport_generation) != 0 ||
         controller_sequence != controller_sample.sequence ||
         controller_timestamp_ns != controller_sample.timestamp_ns ||
+        controller_transport_generation == 0 ||
         std::abs(controller_values[16] - 0.625F) > 0.0001F ||
         std::abs(controller_values[17] + 0.75F) > 0.0001F ||
         std::abs(controller_values[34] + 0.875F) > 0.0001F ||
@@ -199,6 +233,55 @@ int wmain(int argc, wchar_t** argv) {
     if (read_menu_pointer_state(nullptr, nullptr, nullptr) != 1) {
       throw std::runtime_error(
           "Menu-pointer-state export must reject null output");
+    }
+    if (read_menu_pointer_state_v2(nullptr, nullptr, nullptr, nullptr) != 1) {
+      throw std::runtime_error(
+          "Versioned menu-pointer export must reject null output");
+    }
+    unsigned long long gameplay_pressed{};
+    unsigned long long gameplay_held{};
+    unsigned long long gameplay_released{};
+    unsigned long long gameplay_sequence{};
+    float gameplay_movement[2]{};
+    if (read_gameplay_input(
+            1, &gameplay_pressed, &gameplay_held, &gameplay_released,
+            &gameplay_sequence, gameplay_movement) != 2 ||
+        gameplay_pressed != 0 || gameplay_held != 0 ||
+        gameplay_released != 0 || gameplay_sequence != 0 ||
+        gameplay_movement[0] != 0.0F || gameplay_movement[1] != 0.0F) {
+      throw std::runtime_error(
+          "Stale controller transport must not drive gameplay input: pressed=" +
+          std::to_string(gameplay_pressed) +
+          " held=" + std::to_string(gameplay_held) +
+          " released=" + std::to_string(gameplay_released) +
+          " sequence=" + std::to_string(gameplay_sequence) +
+          " movement=" + std::to_string(gameplay_movement[0]) + "," +
+          std::to_string(gameplay_movement[1]));
+    }
+    controller_sample.sequence = 43;
+    controller_sample.timestamp_ns = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count());
+    controller_sample.hands[1].trigger = 1.0F;
+    if (!controller_writer.publish(controller_sample) ||
+        read_gameplay_input(
+            1, &gameplay_pressed, &gameplay_held, &gameplay_released,
+            &gameplay_sequence, gameplay_movement) != 0 ||
+        (gameplay_held & 1ULL) == 0 || gameplay_sequence != 43) {
+      throw std::runtime_error(
+          "Fresh controller transport did not drive gameplay input");
+    }
+    controller_sample.sequence = 44;
+    controller_sample.timestamp_ns -= 200'000'000ULL;
+    if (!controller_writer.publish(controller_sample) ||
+        read_gameplay_input(
+            1, &gameplay_pressed, &gameplay_held, &gameplay_released,
+            &gameplay_sequence, gameplay_movement) != 2 ||
+        gameplay_held != 0 || (gameplay_released & 1ULL) == 0 ||
+        gameplay_sequence != 0) {
+      throw std::runtime_error(
+          "Expired controller transport did not release gameplay input");
     }
     float ik_input[17]{0.0F, 0.0F, 1.5F, 0.45F, 0.35F, 1.25F,
                        0.25F, 0.1F, 0.8F, 0.0F, 1.0F, 0.0F,

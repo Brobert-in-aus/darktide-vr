@@ -24,6 +24,21 @@
 - Do not commit credentials, signing material, generated build directories, or
   machine-specific agent state such as `.codex` or `.claude`.
 
+## Mandatory daily XR preflight
+
+- Before editing, building, synchronizing, launching Darktide, or starting an
+  unattended run, verify Virtual Desktop Streamer is running and VDXR is
+  available.
+- Verify exactly one authorized Quest is connected through a working ADB
+  client. Do not record its serial number or network address in Git.
+- Disable Quest proximity/wear automation with
+  `tools\quest\set-proximity-override.ps1 -Action Disable`, then run the same
+  helper with `-Action Status` so the headset cannot sleep during development.
+- Confirm the headset remains awake and Virtual Desktop can create a renderable
+  OpenXR session. Virtual Desktop suspension while Quest passthrough is active
+  is a normal recoverable state; do not fail closed or restart VD solely for
+  that suspension.
+
 ## Darktide Lua safety
 
 - Treat `darktidevr_stereo_probe.lua` as a single LuaJIT chunk with a hard

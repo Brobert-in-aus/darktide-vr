@@ -45,6 +45,12 @@ GameplayInputFrame GameplayInputMapper::update(
 
   const auto& left = controllers.hands[0];
   const auto& right = controllers.hands[1];
+  const auto transport_changed = controllers.transport_generation != 0 &&
+                                 controllers.transport_generation !=
+                                     transport_generation_;
+  if (controllers.transport_generation != 0) {
+    transport_generation_ = controllers.transport_generation;
+  }
   left_trigger_down_ = analog_button(left.trigger, left_trigger_down_);
   right_trigger_down_ = analog_button(right.trigger, right_trigger_down_);
   left_squeeze_down_ = analog_button(left.squeeze, left_squeeze_down_);
@@ -70,7 +76,11 @@ GameplayInputFrame GameplayInputMapper::update(
   set_action(next, GameplayAction::menu,
              (left.buttons & controller_menu) != 0);
 
-  GameplayInputFrame frame{next & ~held_, next, held_ & ~next};
+  // A reconnect may publish buttons already held. Preserve their held state,
+  // and release any vanished old actions, but never manufacture a new press
+  // edge merely because a different XR writer owns the same mapping.
+  GameplayInputFrame frame{
+      transport_changed ? 0 : next & ~held_, next, held_ & ~next};
   apply_radial_deadzone(left.thumbstick_x, left.thumbstick_y, frame.move_x,
                         frame.move_y);
   held_ = next;

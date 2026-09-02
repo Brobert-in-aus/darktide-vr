@@ -3,17 +3,27 @@ param(
     [ValidateSet('Disable', 'Enable', 'Status')]
     [string] $Action,
 
-    [string] $Device
+    [string] $Device,
+
+    [string] $AdbPath
 )
 
 $ErrorActionPreference = 'Stop'
-$adb = Join-Path $env:LOCALAPPDATA 'Android\Sdk\platform-tools\adb.exe'
-if (-not (Test-Path -LiteralPath $adb -PathType Leaf)) {
-    $adbCommand = Get-Command adb -ErrorAction SilentlyContinue
-    if (-not $adbCommand) {
-        throw 'adb.exe was not found in the Android SDK or PATH'
+$adb = $AdbPath
+if ($adb) {
+    if (-not (Test-Path -LiteralPath $adb -PathType Leaf)) {
+        throw "Selected adb.exe was not found: $adb"
     }
-    $adb = $adbCommand.Source
+}
+else {
+    $adb = Join-Path $env:LOCALAPPDATA 'Android\Sdk\platform-tools\adb.exe'
+    if (-not (Test-Path -LiteralPath $adb -PathType Leaf)) {
+        $adbCommand = Get-Command adb -ErrorAction SilentlyContinue
+        if (-not $adbCommand) {
+            throw 'adb.exe was not found in the Android SDK or PATH'
+        }
+        $adb = $adbCommand.Source
+    }
 }
 if (-not $Device) {
     $devices = @(

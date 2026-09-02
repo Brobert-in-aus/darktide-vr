@@ -77,6 +77,17 @@ int main() {
                std::abs(darktide_window.height_metres - 1.2F) < 1.0e-5F,
            "Native shop panels must preserve the Darktide client aspect");
 
+    expect(cached_stereo_pair_allowed(false, true, true, 5000, 5000),
+           "A cached stereo pair should cover a bounded producer gap");
+    expect(!cached_stereo_pair_allowed(false, true, true, 5001, 5000),
+           "A stale stereo pair must not freeze projection indefinitely");
+    expect(!cached_stereo_pair_allowed(true, true, true, 100, 5000),
+           "Fresh producer output must supersede the recovery cache");
+    expect(!cached_stereo_pair_allowed(false, true, false, 100, 5000),
+           "Inactive projection must not retain a cached immersive pair");
+    expect(!cached_stereo_pair_allowed(false, true, true, 0, 0),
+           "A zero recovery grace must disable cached-pair reuse");
+
     std::cout << "presentation_policy.result=pass\n";
     return 0;
   } catch (const std::exception& error) {

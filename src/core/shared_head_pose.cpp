@@ -11,6 +11,7 @@ namespace {
 
 struct SharedLayout {
   volatile LONG64 epoch{};
+  volatile LONG64 writer_generation{};
   volatile LONG64 sequence{};
   volatile LONG64 published_tick_ms{};
   volatile LONG recenter_generation{};
@@ -41,6 +42,8 @@ struct SharedLayout {
   volatile LONG64 pair_epoch{};
   volatile LONG64 pair_ready_value{};
   volatile LONG64 gameplay_generation{};
+  volatile LONG64 eye_surface_generation{};
+  volatile LONG64 menu_surface_generation{};
   volatile LONG64 pair_gameplay_generation{};
   volatile LONG64 pair_eye0_pose_sequence{};
   volatile LONG64 pair_eye1_pose_sequence{};
@@ -144,6 +147,7 @@ SharedHeadPoseWriter::SharedHeadPoseWriter() {
   // rendered-pair tag can be mistaken for data from the new XR session.
   auto& data = *static_cast<SharedLayout*>(view_);
   InterlockedExchange64(&data.epoch, 1);
+  InterlockedIncrement64(&data.writer_generation);
   InterlockedExchange64(&data.sequence, 0);
   InterlockedExchange64(&data.published_tick_ms, 0);
   data.recenter_generation = 0;
@@ -169,6 +173,8 @@ SharedHeadPoseWriter::SharedHeadPoseWriter() {
   InterlockedExchange64(&data.pair_epoch, 1);
   InterlockedExchange64(&data.pair_ready_value, 0);
   InterlockedExchange64(&data.gameplay_generation, 0);
+  InterlockedExchange64(&data.eye_surface_generation, 0);
+  InterlockedExchange64(&data.menu_surface_generation, 0);
   InterlockedExchange64(&data.pair_gameplay_generation, 0);
   InterlockedExchange64(&data.pair_eye0_pose_sequence, 0);
   InterlockedExchange64(&data.pair_eye1_pose_sequence, 0);
@@ -257,6 +263,18 @@ std::uint64_t SharedHeadPoseWriter::read_gameplay_generation() const {
   return generation > 0 ? static_cast<std::uint64_t>(generation) : 0;
 }
 
+std::uint64_t SharedHeadPoseWriter::read_eye_surface_generation() const {
+  const auto& data = *static_cast<const SharedLayout*>(view_);
+  const auto generation = data.eye_surface_generation;
+  return generation > 0 ? static_cast<std::uint64_t>(generation) : 0;
+}
+
+std::uint64_t SharedHeadPoseWriter::read_menu_surface_generation() const {
+  const auto& data = *static_cast<const SharedLayout*>(view_);
+  const auto generation = data.menu_surface_generation;
+  return generation > 0 ? static_cast<std::uint64_t>(generation) : 0;
+}
+
 SharedHeadPoseReader::~SharedHeadPoseReader() {
   close_mapping(mapping_, view_);
 }
@@ -292,6 +310,8 @@ bool SharedHeadPoseReader::read(SharedHeadPoseSample& sample) {
     }
     SharedHeadPoseSample candidate{};
     candidate.sequence = static_cast<std::uint64_t>(data.sequence);
+    candidate.transport_generation =
+        static_cast<std::uint64_t>(data.writer_generation);
     candidate.recenter_generation =
         static_cast<std::uint32_t>(data.recenter_generation);
     const auto published_tick_ms =
@@ -317,7 +337,8 @@ bool SharedHeadPoseReader::read(SharedHeadPoseSample& sample) {
     const auto now_ms = GetTickCount64();
     const auto fresh = now_ms >= published_tick_ms &&
                        now_ms - published_tick_ms <= 250;
-    if (before == after && (after & 1) == 0 && fresh && valid(candidate)) {
+    if (before == after && (after & 1) == 0 && fresh &&
+        candidate.transport_generation != 0 && valid(candidate)) {
       sample = candidate;
       return true;
     }
@@ -360,6 +381,26 @@ bool SharedHeadPoseReader::publish_gameplay_generation(
   InterlockedExchange64(&data.gameplay_generation,
                         static_cast<LONG64>(generation));
   return true;
+}
+
+std::uint64_t SharedHeadPoseReader::advance_eye_surface_generation() {
+  if (!ensure_open()) {
+    return 0;
+  }
+  auto& data = *static_cast<SharedLayout*>(view_);
+  const auto generation =
+      InterlockedIncrement64(&data.eye_surface_generation);
+  return generation > 0 ? static_cast<std::uint64_t>(generation) : 0;
+}
+
+std::uint64_t SharedHeadPoseReader::advance_menu_surface_generation() {
+  if (!ensure_open()) {
+    return 0;
+  }
+  auto& data = *static_cast<SharedLayout*>(view_);
+  const auto generation =
+      InterlockedIncrement64(&data.menu_surface_generation);
+  return generation > 0 ? static_cast<std::uint64_t>(generation) : 0;
 }
 
 }  // namespace darktidevr::core

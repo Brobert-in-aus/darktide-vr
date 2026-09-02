@@ -15,7 +15,20 @@ if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {
     throw "Fatshark launcher not found: $launcherPath"
 }
 $launcherPath = (Resolve-Path -LiteralPath $launcherPath).Path
-if (Get-Process Darktide -ErrorAction SilentlyContinue) {
+$gamePath = Join-Path $GameRoot 'binaries\Darktide.exe'
+if (-not (Test-Path -LiteralPath $gamePath -PathType Leaf)) {
+    throw "Darktide executable not found: $gamePath"
+}
+$gamePath = (Resolve-Path -LiteralPath $gamePath).Path
+if (Get-Process Darktide -ErrorAction SilentlyContinue |
+        Where-Object {
+            try {
+                $_.Path -ieq $gamePath
+            }
+            catch {
+                $false
+            }
+        }) {
     throw 'Darktide is already running; refusing to press launcher Play.'
 }
 
@@ -220,7 +233,14 @@ if ($launcher.HasExited -or
     # behavior for a genuinely vanished launcher.
     while ((Get-Date) -lt $deadline) {
         $game = Get-Process Darktide -ErrorAction SilentlyContinue |
-            Where-Object StartTime -ge $started |
+            Where-Object {
+                try {
+                    $_.StartTime -ge $started -and $_.Path -ieq $gamePath
+                }
+                catch {
+                    $false
+                }
+            } |
             Select-Object -First 1
         if ($game) {
             Write-Output "Authenticated Darktide process started during launcher transition: PID $($game.Id)."
@@ -255,7 +275,14 @@ Write-Output "Invoked Fatshark launcher Play at client ${playX},${playY} in ${wi
 # message as proof. The XR wrapper starts only after a new game process exists.
 while ((Get-Date) -lt $deadline) {
     $game = Get-Process Darktide -ErrorAction SilentlyContinue |
-        Where-Object StartTime -ge $started |
+        Where-Object {
+            try {
+                $_.StartTime -ge $started -and $_.Path -ieq $gamePath
+            }
+            catch {
+                $false
+            }
+        } |
         Select-Object -First 1
     if ($game) {
         Write-Output "Authenticated Darktide process started: PID $($game.Id)."

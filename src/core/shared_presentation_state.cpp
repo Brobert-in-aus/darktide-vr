@@ -11,6 +11,8 @@ namespace {
 
 struct SharedLayout {
   volatile LONG64 epoch{};
+  volatile LONG64 writer_generation{};
+  volatile LONG64 published_at_ms{};
   volatile LONG64 sequence{};
   volatile LONG mode{};
   volatile LONG source_width{};
@@ -56,12 +58,35 @@ bool flat_interactive_uses_eye_aspect(SharedPresentationMode mode,
   return mode == SharedPresentationMode::flat_interactive && shared_eyes_open;
 }
 
+bool same_flat_panel_anchor_identity(const SharedPresentationState& left,
+                                     const SharedPresentationState& right) {
+  if (left.transport_generation != right.transport_generation ||
+      left.mode != right.mode ||
+      left.body_panel_pose_valid != right.body_panel_pose_valid) {
+    return false;
+  }
+  if (left.mode != SharedPresentationMode::world_anchored_menu ||
+      !left.body_panel_pose_valid) {
+    return true;
+  }
+  const auto& a = left.body_panel_pose;
+  const auto& b = right.body_panel_pose;
+  return a.position.x == b.position.x && a.position.y == b.position.y &&
+         a.position.z == b.position.z &&
+         a.orientation.x == b.orientation.x &&
+         a.orientation.y == b.orientation.y &&
+         a.orientation.z == b.orientation.z &&
+         a.orientation.w == b.orientation.w;
+}
+
 bool valid_presentation_state(const SharedPresentationState& state) {
   const auto raw_mode = static_cast<std::uint32_t>(state.mode);
   const auto dimensions_valid =
       state.source_width >= 1 && state.source_width <= 16384 &&
       state.source_height >= 1 && state.source_height <= 16384 &&
       state.crop_width >= 1 && state.crop_height >= 1 &&
+      state.crop_width <= state.source_width &&
+      state.crop_height <= state.source_height &&
       state.crop_x <= state.source_width - state.crop_width &&
       state.crop_y <= state.source_height - state.crop_height;
   const auto& pose = state.body_panel_pose;
@@ -103,6 +128,13 @@ bool valid_presentation_state(const SharedPresentationState& state) {
          world_anchor_available;
 }
 
+bool presentation_state_fresh(const SharedPresentationState& state,
+                              std::uint64_t now_ms,
+                              std::uint64_t maximum_age_ms) {
+  return state.published_at_ms != 0 && now_ms >= state.published_at_ms &&
+         now_ms - state.published_at_ms <= maximum_age_ms;
+}
+
 SharedPresentationStateWriter::SharedPresentationStateWriter() {
   mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
                                 0, sizeof(SharedLayout),
@@ -120,6 +152,8 @@ SharedPresentationStateWriter::SharedPresentationStateWriter() {
 
   auto& data = *static_cast<SharedLayout*>(view_);
   InterlockedExchange64(&data.epoch, 1);
+  InterlockedIncrement64(&data.writer_generation);
+  InterlockedExchange64(&data.published_at_ms, 0);
   InterlockedExchange64(&data.sequence, 0);
   data.mode = static_cast<LONG>(SharedPresentationMode::disabled);
   data.source_width = 1;
@@ -164,6 +198,8 @@ bool SharedPresentationStateWriter::publish(
   data.body_panel_pose[4] = state.body_panel_pose.orientation.y;
   data.body_panel_pose[5] = state.body_panel_pose.orientation.z;
   data.body_panel_pose[6] = state.body_panel_pose.orientation.w;
+  InterlockedExchange64(&data.published_at_ms,
+                        static_cast<LONG64>(GetTickCount64()));
   InterlockedExchange64(&data.sequence, static_cast<LONG64>(state.sequence));
   MemoryBarrier();
   InterlockedIncrement64(&data.epoch);
@@ -218,10 +254,13 @@ bool SharedPresentationStateReader::read(SharedPresentationState& state) {
         {{data.body_panel_pose[3], data.body_panel_pose[4],
           data.body_panel_pose[5], data.body_panel_pose[6]},
          {data.body_panel_pose[0], data.body_panel_pose[1],
-          data.body_panel_pose[2]}}};
+          data.body_panel_pose[2]}},
+        static_cast<std::uint64_t>(data.writer_generation),
+        static_cast<std::uint64_t>(data.published_at_ms)};
     MemoryBarrier();
     const auto after = data.epoch;
     if (before == after && (after & 1) == 0 &&
+        candidate.transport_generation != 0 &&
         valid_presentation_state(candidate)) {
       state = candidate;
       return true;

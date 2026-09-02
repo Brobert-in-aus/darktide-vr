@@ -6,6 +6,13 @@
 inactive; no bypass, concealment, or interaction with other players.
 **Latest engineering gate:** [25 August bug review](bug-review-2026-08-25.md)
 
+**Current session checkpoint:**
+[2 September handoff](../handoffs/2026-09-02-development-session.md) and
+[3 September ordered plan](todo-2026-09-03.md). The transparent duplicate is
+fixed, the exact clustered-light candidate is production-gated pending one worn
+acceptance, and the current `2496x2688` path commonly supplies roughly 58-62
+unique stereo pairs/s in the instrumented Psykhanium sweep.
+
 ## Exit criterion
 
 Complete a 60-minute headset session with correct pose/FOV, no game-thread XR
@@ -1351,16 +1358,17 @@ first-person component. Clean live runs logged both projectile owners and four
 lightning updates with nonzero stereo `shared_ready`. A non-Psyker firearm shot,
 worn alignment and the production laser/reticle policy remain.
 
-An opt-in compositor reticle now supplies the first binocular presentation
-candidate. `start-darktide-vr.ps1 -EnableGameplayReticle` places a 6 cm cyan
-quad 8 m down the tracked right-controller aim ray only for fresh synchronized
-`stereo_world` pairs; loading and menu modes cannot receive it. It reuses one
-reserved texel in the existing capture swapchain rather than allocating another
-overlay resource. A clean authenticated hub run submitted 1,653 reticle frames
-across 4,840 fresh pairs with zero reuse and zero pose mismatches. Worn testing
-must still judge alignment, size, depth and off-axis skew. The diagnostic is
-intentionally always visible and head-parallel, so target occlusion, raycast
-depth and production coupling to controller-authored aim remain open policy.
+The compositor reticle is now a transparent-atlas, outlined white crosshair
+submitted binocularly only for fresh synchronized `stereo_world` pairs;
+loading and menu modes cannot receive it. It reuses a reserved 41x41 atlas
+region in the existing capture swapchain instead of allocating another overlay
+resource. Darktide publishes the tracked right-hand ray's first valid static or
+damage-hit-zone surface, after rejecting the local avatar, equipped items and
+broad character capsule actors. The quad follows that depth and retains a
+distant-ray fallback when no surface is hit. It is enabled by default in the
+normal development launch path. Worn testing accepted binocular depth but the
+current 10x visibility trial is oversized; the next pass reduces its angular
+size by 30 percent and makes both fill and outline partly transparent.
 
 Unattended range launches are now self-contained: `-EnterPsykhanium` implies
 the guarded hub advance required by its hub-gated Lua state machine, and
@@ -1661,3 +1669,60 @@ prevents both a clean install with only the bootstrap flag and leakage from a
 prior enlarged colour probe. The captured run delivered 3,250 fresh pairs with
 no reuse, timeout or pose mismatch, after which production 1x/natural output
 was restored.
+
+### Worn Psykhanium findings and next gates
+
+A worn private-range pass accepted stereo, 6DoF, reticle depth, and all visible
+billboard behavior in that scene. It rejected four production details: a
+recenter-invariant lateral head offset, a completely absent HUD, the diagnostic
+blue square in place of the stock reticle, and parallel (rather than converged)
+weapon rays from the left hand and staff tip. The ranged aiming contract is now
+one right-hand-selected world point with direction recomputed independently
+from every weapon's real origin.
+
+The **Darktide VR** settings category was also absent. The settings Lua itself
+exists, but the bootstrap currently passes only `mod_script` to DMF and the dev
+sync does not deploy the `.mod` bootstrap. This is an evidence-backed resource
+registration/deployment defect, not a UI-input defect.
+
+Short-term melee will use stock sword animation ownership during attack and
+recovery, followed by a controlled blend back to tracked IK. Physical
+collision-based swings remain a separate post-foundation feature.
+
+### Launch embodiment: independent tracked hands and forearms
+
+The first-launch target no longer includes a complete local third-person body.
+That path remains an opt-in post-launch experiment because hub animation
+ownership, gait and torso/head compensation consumed disproportionate work and
+repeatedly destabilized presentation. The distorted perspective-authored 1P
+arm rig is explicitly excluded.
+
+This scope change does not remove 6DoF or physical movement.  It removes only
+invisible full-body visual work: torso/shoulder heading, crouch/tiptoe, gait,
+head removal and the hub upper-body proxy.  Full body is guarded by
+`darktidevr_full_body_experimental.flag`, which normal deployment writes as
+disabled.
+
+The intermediate 3P-skeleton arms-only experiment is mechanically sound but is
+not the launch presentation. It leaves the visible wrists attached to the
+hidden avatar's arm chain, so tracked hands stop at the skeleton's reach limit.
+This Psyker outfit also proves that slot filtering is insufficient:
+`slot_body_arms` contains only exposed hands, while the candidate upper-body
+cosmetic children are indivisible shoulder-to-hand sleeve meshes. Showing them
+produced complete arms; hiding them returned to bare hands and weapons.
+
+The launch contract is therefore controller-owned hand/forearm proxies rooted
+directly at the two OpenXR tracked poses. They must preserve calibrated offsets
+and weapon attachment while remaining unconstrained by the hidden body's arm
+length. Gloves, bracers and an optional short forearm need dedicated proxy
+geometry or a controlled elbow clip; the hidden body may supply gameplay state
+but cannot own the visible wrist transform. Synthetic over-reach and tracking-
+loss/reacquisition paths are required before the next worn acceptance pass.
+
+The detailed next-session order and acceptance gates are recorded in
+[`todo-2026-09-02.md`](todo-2026-09-02.md).
+
+The authoritative next-session entry point, including working-tree ownership,
+today's worn findings, the confirmed transparent-layer root cause and exact
+validation state, is
+[`../handoffs/2026-09-01-development-session.md`](../handoffs/2026-09-01-development-session.md).

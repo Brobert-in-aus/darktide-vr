@@ -38,6 +38,7 @@ class WindowCapture {
   void set_pointer_overlay(
       std::optional<std::pair<std::uint32_t, std::uint32_t>> source_position,
       std::uint32_t source_width, std::uint32_t source_height);
+  void set_gameplay_reticle_atlas_enabled(bool enabled) noexcept;
 
  private:
   void ensure_source_surface(std::uint32_t width, std::uint32_t height);
@@ -57,6 +58,7 @@ class WindowCapture {
   // Four unsigned 16-bit normalized values: x, y, width, height.
   std::atomic<std::uint64_t> source_crop_normalized_{0xffffffff00000000ULL};
   std::atomic<std::uint64_t> pointer_normalized_{UINT64_MAX};
+  std::atomic<bool> gameplay_reticle_atlas_enabled_{};
 };
 
 }  // namespace darktidevr::harness

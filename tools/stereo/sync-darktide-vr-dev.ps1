@@ -14,7 +14,17 @@ param(
 
     [bool] $BillboardShaderSubstitution = $true,
 
-    [switch] $VertexShaderDump
+    [switch] $VertexShaderDump,
+
+    [switch] $ClusterLightTrace,
+
+    [bool] $ClusterLightVisibilityFix = $true,
+
+    [switch] $FullBodyExperimental,
+
+    [bool] $EnableGameplayInput = $true,
+
+    [bool] $EnableControllerAim = $true
 )
 
 Set-StrictMode -Version Latest
@@ -31,8 +41,12 @@ $modRoot = Join-Path $gameRootPath 'mods\darktidevr_stereo_probe'
 $sourceLua = Join-Path $repoRoot `
     'mods\darktidevr_stereo_probe\scripts\mods\darktidevr_stereo_probe\darktidevr_stereo_probe.lua'
 $sourceLuaRoot = Split-Path -Parent $sourceLua
+$sourceBootstrap = Join-Path $repoRoot `
+    'mods\darktidevr_stereo_probe\darktidevr_stereo_probe.mod'
 $sourceNative = Join-Path $repoRoot `
     "build\windows-vs2022\src\producer\$Configuration\darktidevr_native_capture.dll"
+$sourceD3D12Bootstrap = Join-Path $repoRoot `
+    "build\windows-vs2022\src\producer\$Configuration\d3d12.dll"
 $luaSourceCheck = Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1'
 if (-not (Test-Path -LiteralPath $luaSourceCheck -PathType Leaf)) {
     throw "Lua source check not found: $luaSourceCheck"
@@ -45,6 +59,10 @@ $destinations = @(
             'scripts\mods\darktidevr_stereo_probe\darktidevr_stereo_probe.lua'
     },
     [pscustomobject]@{
+        Source = $sourceBootstrap
+        Destination = Join-Path $modRoot 'darktidevr_stereo_probe.mod'
+    },
+    [pscustomobject]@{
         Source = $sourceNative
         Destination = Join-Path $modRoot 'bin\darktidevr_native_capture.dll'
     },
@@ -52,6 +70,10 @@ $destinations = @(
         Source = $sourceNative
         Destination = Join-Path $gameRootPath `
             'binaries\darktidevr_native_capture.dll'
+    },
+    [pscustomobject]@{
+        Source = $sourceD3D12Bootstrap
+        Destination = Join-Path $gameRootPath 'binaries\d3d12.dll'
     }
 )
 
@@ -62,6 +84,10 @@ $destinations = @(
 $luaParser = Get-Command pnpm -ErrorAction SilentlyContinue
 if (-not $luaParser) {
     throw 'pnpm is required to validate Darktide VR Lua modules.'
+}
+& $luaParser.Source dlx luaparse --quiet --file $sourceBootstrap
+if ($LASTEXITCODE -ne 0) {
+    throw "luaparse rejected Darktide VR bootstrap: $sourceBootstrap"
 }
 $moduleFiles = Get-ChildItem -LiteralPath $sourceLuaRoot -Filter '*.lua' |
     Where-Object FullName -ne $sourceLua
@@ -157,6 +183,15 @@ $bootstrapFlags = @(
     [pscustomobject]@{
         Path = Join-Path $modRoot 'bin\darktidevr_vertex_shader_dump.flag'
         Enabled = [bool] $VertexShaderDump
+    },
+    [pscustomobject]@{
+        Path = Join-Path $modRoot 'bin\darktidevr_cluster_trace.flag'
+        Enabled = [bool] $ClusterLightTrace
+    },
+    [pscustomobject]@{
+        Path = Join-Path $modRoot `
+            'bin\darktidevr_cluster_light_visibility_fix.flag'
+        Enabled = $ClusterLightVisibilityFix
     }
 )
 foreach ($flag in $bootstrapFlags) {
@@ -169,4 +204,53 @@ foreach ($flag in $bootstrapFlags) {
         Remove-Item -LiteralPath $flag.Path -Force
         Write-Output "Bootstrap flag removed: $($flag.Path)"
     }
+}
+
+# Tracked 3P arms are the launch embodiment.  Full-body mesh/IK remains a
+# post-launch experiment and must never leak forward from an earlier local
+# test merely because its runtime flag was left behind.
+$fullBodyFlag = Join-Path $modRoot 'darktidevr_full_body_experimental.flag'
+$fullBodyFlagValue = if ($FullBodyExperimental) { 'enabled' } else { 'disabled' }
+Set-Content -LiteralPath $fullBodyFlag -Value $fullBodyFlagValue -Encoding ascii
+Write-Output "Full-body experimental presentation=$($FullBodyExperimental.IsPresent)"
+
+# Controller locomotion and right-hand aiming are production behavior, not
+# diagnostics.  Every normal deployment reasserts them so a helper that
+# temporarily restored an old test flag cannot leave a subsequent VR launch
+# without controls or the convergence path.
+$productionRuntimeFlags = @(
+    [pscustomobject]@{
+        Path = Join-Path $modRoot 'darktidevr_gameplay_input_test.flag'
+        Enabled = $EnableGameplayInput
+    },
+    [pscustomobject]@{
+        Path = Join-Path $modRoot 'darktidevr_controller_aim_test.flag'
+        Enabled = $EnableControllerAim
+    }
+)
+foreach ($runtimeFlag in $productionRuntimeFlags) {
+    $runtimeValue = if ($runtimeFlag.Enabled) { 'enabled' } else { 'disabled' }
+    Set-Content -LiteralPath $runtimeFlag.Path -Value $runtimeValue -Encoding ascii
+    Write-Output "Production runtime flag $($runtimeFlag.Path)=$runtimeValue"
+}
+
+# Diagnostic flags are never production state. Make a normal deployment an
+# authoritative clean boundary so a profiler, trace, or A/B probe left enabled
+# by an interrupted run cannot silently alter the next headset session.
+$disabledDiagnosticFlags = @(
+    'darktidevr_body_ik_trace.flag',
+    'darktidevr_coincident_eyes.flag',
+    'darktidevr_full_second_eye.flag',
+    'darktidevr_inherit_viewport_metadata.flag',
+    'darktidevr_offline_dual_view.flag',
+    'darktidevr_performance_pass_trace.flag',
+    'darktidevr_performance_profile.flag',
+    'darktidevr_reverse_eye_order.flag',
+    'darktidevr_weapon_pose_trace.flag',
+    'darktidevr_weapon_presentation.flag'
+)
+foreach ($diagnosticFlagName in $disabledDiagnosticFlags) {
+    $diagnosticFlagPath = Join-Path $modRoot $diagnosticFlagName
+    Set-Content -LiteralPath $diagnosticFlagPath -Value 'disabled' -Encoding ascii
+    Write-Output "Diagnostic runtime flag $diagnosticFlagPath=disabled"
 }

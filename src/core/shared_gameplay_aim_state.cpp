@@ -12,6 +12,7 @@ namespace {
 
 struct SharedLayout {
   volatile LONG64 epoch{};
+  volatile LONG64 writer_generation{};
   SharedGameplayAimState state{};
 };
 
@@ -31,7 +32,7 @@ void close_mapping(void*& mapping, void*& view) {
 }  // namespace
 
 bool valid_gameplay_aim_state(const SharedGameplayAimState& state) {
-  if (state.sequence == 0 ||
+  if (state.sequence == 0 || state.timestamp_ns == 0 ||
       state.sequence >
           static_cast<std::uint64_t>(std::numeric_limits<LONG64>::max()) ||
       !std::isfinite(state.distance_metres)) {
@@ -41,6 +42,13 @@ bool valid_gameplay_aim_state(const SharedGameplayAimState& state) {
     return state.distance_metres == 0.0F && !state.hit;
   }
   return state.distance_metres >= 0.05F && state.distance_metres <= 200.0F;
+}
+
+bool gameplay_aim_state_is_fresh(const SharedGameplayAimState& state,
+                                 std::uint64_t now_ns,
+                                 std::uint64_t maximum_age_ns) {
+  return valid_gameplay_aim_state(state) && now_ns >= state.timestamp_ns &&
+         now_ns - state.timestamp_ns <= maximum_age_ns;
 }
 
 SharedGameplayAimStateWriter::SharedGameplayAimStateWriter() {
@@ -58,6 +66,7 @@ SharedGameplayAimStateWriter::SharedGameplayAimStateWriter() {
   }
   auto& data = *static_cast<SharedLayout*>(view_);
   InterlockedExchange64(&data.epoch, 1);
+  InterlockedIncrement64(&data.writer_generation);
   std::memset(&data.state, 0, sizeof(data.state));
   MemoryBarrier();
   InterlockedExchange64(&data.epoch, 2);
@@ -115,9 +124,12 @@ bool SharedGameplayAimStateReader::read(SharedGameplayAimState& state) {
     }
     SharedGameplayAimState candidate{};
     std::memcpy(&candidate, &data.state, sizeof(candidate));
+    candidate.transport_generation =
+        static_cast<std::uint64_t>(data.writer_generation);
     MemoryBarrier();
     const auto after = data.epoch;
     if (before == after && (after & 1) == 0 &&
+        candidate.transport_generation != 0 &&
         valid_gameplay_aim_state(candidate)) {
       state = candidate;
       return true;

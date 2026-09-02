@@ -94,6 +94,22 @@ int main() {
     frame = mapper.update(state, true);
     expect_edge(frame, GameplayAction::action_one, false, false, false);
 
+    GameplayInputMapper restart_mapper;
+    SharedControllerState restarted{};
+    restarted.transport_generation = 7;
+    restarted.hands[1].trigger = 1.0F;
+    frame = restart_mapper.update(restarted, true);
+    expect_edge(frame, GameplayAction::action_one, false, true, false);
+    frame = restart_mapper.update(restarted, true);
+    expect_edge(frame, GameplayAction::action_one, false, true, false);
+    restarted.transport_generation = 8;
+    restarted.hands[1].trigger = 0.0F;
+    frame = restart_mapper.update(restarted, true);
+    expect_edge(frame, GameplayAction::action_one, false, false, true);
+    restarted.hands[1].trigger = 1.0F;
+    frame = restart_mapper.update(restarted, true);
+    expect_edge(frame, GameplayAction::action_one, true, true, false);
+
     std::cout << "gameplay_input.result=pass\n";
     return 0;
   } catch (const std::exception& error) {

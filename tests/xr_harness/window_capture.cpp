@@ -261,7 +261,8 @@ CapturedWindowFrame WindowCapture::capture() {
   }
   GdiFlush();
   const auto set_pixel = [&](int x, int y, std::byte blue,
-                             std::byte green, std::byte red) {
+                             std::byte green, std::byte red,
+                             std::byte alpha) {
     if (x < 0 || y < 0 || x >= static_cast<int>(width_) ||
         y >= static_cast<int>(height_)) {
       return;
@@ -273,7 +274,7 @@ CapturedWindowFrame WindowCapture::capture() {
     pixel[0] = blue;
     pixel[1] = green;
     pixel[2] = red;
-    pixel[3] = std::byte{255};
+    pixel[3] = alpha;
   };
   const auto pointer_normalized =
       pointer_normalized_.load(std::memory_order_acquire);
@@ -297,25 +298,67 @@ CapturedWindowFrame WindowCapture::capture() {
         const auto distance_squared = x * x + y * y;
         if (distance_squared <= 400 && distance_squared >= 324) {
           set_pixel(centre_x + x, centre_y + y, std::byte{0},
-                    std::byte{0}, std::byte{0});
+                    std::byte{0}, std::byte{0}, std::byte{255});
         } else if (distance_squared < 324 && distance_squared >= 196) {
           set_pixel(centre_x + x, centre_y + y, std::byte{255},
-                    std::byte{220}, std::byte{0});
+                    std::byte{220}, std::byte{0}, std::byte{255});
         } else if (distance_squared < 36 ||
                    (std::abs(x) <= 2 && std::abs(y) <= 12) ||
                    (std::abs(y) <= 2 && std::abs(x) <= 12)) {
           set_pixel(centre_x + x, centre_y + y, std::byte{255},
-                    std::byte{255}, std::byte{255});
+                    std::byte{255}, std::byte{255}, std::byte{255});
         }
       }
     }
   }
-  // Reserve the final capture pixel as an opaque cyan swatch even when the
-  // menu pointer is inactive. OpenXR samples this one texel for both menu-ray
-  // geometry and the opt-in gameplay aim reticle, avoiding a second overlay
-  // swapchain and synchronization path.
+  // This sprite shares storage with the window capture, so it must only exist
+  // while that texture is used as an atlas in immersive gameplay. Painting it
+  // unconditionally exposes the sprite itself in the bottom-right corner when
+  // the complete texture becomes a loading or character-select panel.
+  if (gameplay_reticle_atlas_enabled_.load(std::memory_order_acquire)) {
+    constexpr int gameplay_reticle_extent = 41;
+    constexpr auto gameplay_reticle_alpha = std::byte{171};
+    const int gameplay_reticle_left =
+        static_cast<int>(width_) - gameplay_reticle_extent - 1;
+    const int gameplay_reticle_top =
+        static_cast<int>(height_) - gameplay_reticle_extent;
+    const int gameplay_reticle_centre = gameplay_reticle_extent / 2;
+    for (int y = 0; y < gameplay_reticle_extent; ++y) {
+      for (int x = 0; x < gameplay_reticle_extent; ++x) {
+        set_pixel(gameplay_reticle_left + x, gameplay_reticle_top + y,
+                  std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0});
+      }
+    }
+    for (int y = -16; y <= 16; ++y) {
+      for (int x = -16; x <= 16; ++x) {
+        const auto abs_x = std::abs(x);
+        const auto abs_y = std::abs(y);
+        const auto centre = x * x + y * y <= 16;
+        const auto vertical_outline =
+            abs_x <= 2 && abs_y >= 6 && abs_y <= 16;
+        const auto horizontal_outline =
+            abs_y <= 2 && abs_x >= 6 && abs_x <= 16;
+        const auto vertical_fill = abs_x <= 1 && abs_y >= 8 && abs_y <= 14;
+        const auto horizontal_fill = abs_y <= 1 && abs_x >= 8 && abs_x <= 14;
+        if (centre || vertical_outline || horizontal_outline) {
+          set_pixel(gameplay_reticle_left + gameplay_reticle_centre + x,
+                    gameplay_reticle_top + gameplay_reticle_centre + y,
+                    std::byte{0}, std::byte{0}, std::byte{0},
+                    gameplay_reticle_alpha);
+        }
+        if (x * x + y * y <= 4 || vertical_fill || horizontal_fill) {
+          set_pixel(gameplay_reticle_left + gameplay_reticle_centre + x,
+                    gameplay_reticle_top + gameplay_reticle_centre + y,
+                    std::byte{255}, std::byte{255}, std::byte{255},
+                    gameplay_reticle_alpha);
+        }
+      }
+    }
+  }
+  // Keep the final capture pixel as the opaque cyan swatch used by menu-ray
+  // geometry, avoiding another overlay swapchain and synchronization path.
   set_pixel(static_cast<int>(width_ - 1), static_cast<int>(height_ - 1),
-            std::byte{255}, std::byte{255}, std::byte{0});
+            std::byte{255}, std::byte{255}, std::byte{0}, std::byte{255});
   return {pixels_, width_, height_, width_ * 4};
 }
 
@@ -397,6 +440,10 @@ void WindowCapture::set_pointer_overlay(
   pointer_normalized_.store(
       (static_cast<std::uint64_t>(normalized_y) << 32U) | normalized_x,
       std::memory_order_release);
+}
+
+void WindowCapture::set_gameplay_reticle_atlas_enabled(bool enabled) noexcept {
+  gameplay_reticle_atlas_enabled_.store(enabled, std::memory_order_release);
 }
 
 }  // namespace darktidevr::harness

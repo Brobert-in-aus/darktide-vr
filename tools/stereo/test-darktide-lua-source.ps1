@@ -65,6 +65,48 @@ foreach ($tableName in $trackedTables) {
 # off-centre eye anchor while Darktide's root still faces travel makes both
 # wrist targets trace a fixed-radius circle as the locomotion stick rotates.
 $source = Get-Content -LiteralPath $resolvedSource -Raw
+$bootstrapPath = Join-Path $repoRoot `
+    'mods\darktidevr_stereo_probe\darktidevr_stereo_probe.mod'
+$bootstrap = Get-Content -LiteralPath $bootstrapPath -Raw
+foreach ($resource in @('mod_localization', 'mod_data', 'mod_script')) {
+    if (-not $bootstrap.Contains($resource)) {
+        throw "Darktide VR bootstrap must register DMF resource '$resource'."
+    }
+}
+$syncPath = Join-Path $repoRoot 'tools\stereo\sync-darktide-vr-dev.ps1'
+$syncSource = Get-Content -LiteralPath $syncPath -Raw
+if (-not $syncSource.Contains('$sourceBootstrap') -or
+        -not $syncSource.Contains("'darktidevr_stereo_probe.mod'")) {
+    throw 'Development sync must deploy the DMF bootstrap alongside Lua modules.'
+}
+$startPath = Join-Path $repoRoot 'tools\stereo\start-darktide-vr.ps1'
+$startSource = Get-Content -LiteralPath $startPath -Raw
+if (-not $startSource.Contains('[switch] $EnablePerformanceProfile') -or
+        -not $startSource.Contains('[switch] $EnablePerformancePassTrace') -or
+        -not $startSource.Contains(
+            "Write-Output 'Restored the prior performance-profile flag.'") -or
+        -not $startSource.Contains(
+            "Write-Output 'Restored the prior performance-pass trace flag.'")) {
+    throw 'Authenticated launcher must own and restore performance diagnostics for exactly one XR run.'
+}
+if (-not $startSource.Contains('$preLaunchGameProcessIds') -or
+        -not $startSource.Contains('$_.Path -ieq $expectedGamePath') -or
+        $startSource.Contains('$orphanedGames = @(Get-Process -Name Darktide `
+                    -ErrorAction SilentlyContinue)')) {
+    throw 'Authenticated launcher cleanup must preserve pre-existing processes and target only the configured game executable.'
+}
+$runnerPath = Join-Path $repoRoot 'tools\stereo\run-darktide-shared-eyes.ps1'
+$runnerSource = Get-Content -LiteralPath $runnerPath -Raw
+if (-not $runnerSource.Contains(
+        '$resolvedGameExe = (Resolve-Path -LiteralPath $GameExe).Path') -or
+        -not $runnerSource.Contains('$_.Path -ieq $resolvedGameExe')) {
+    throw 'XR runner must authenticate the responsive Darktide window by executable path.'
+}
+$launcherPlayPath = Join-Path $repoRoot 'tools\stereo\invoke-darktide-launcher-play.ps1'
+$launcherPlaySource = Get-Content -LiteralPath $launcherPlayPath -Raw
+if (-not $launcherPlaySource.Contains('$_.Path -ieq $gamePath')) {
+    throw 'Launcher Play confirmation must authenticate the configured Darktide executable path.'
+}
 $bodyIkStart = $source.IndexOf('function presentation.apply_body_ik')
 $bodyIkEnd = $source.IndexOf(
     'function presentation.trace_body_ik', $bodyIkStart)
@@ -130,6 +172,98 @@ if (-not $source.Contains(
             'presentation.apply_body_ik(unit, sequence, world, anchor_unit)')) {
     throw 'Hub upper-body presentation must use the isolated local proxy while tracking remains anchored to the authoritative avatar.'
 }
+if (-not $source.Contains(
+        'target_position - current_wrist') -or
+        -not $source.Contains(
+            'Unit.set_local_position(unit, forearm_node,') -or
+        -not $source.Contains(
+            'pose.forearm_position:unbox() - forearm_parent_position') -or
+        $source.Contains('detached_hand_local') -or
+        -not $source.Contains(
+            'function presentation.hold_body_hand_proxy') -or
+        -not $source.Contains(
+            'pose.position:unbox() - parent_position') -or
+        -not $source.Contains(
+            'presentation.apply_tracked_arms(unit, sequence, world, anchor_unit)') -or
+        -not $source.Contains(
+            'function presentation.sync_equipment_hands_to_proxy') -or
+        -not $source.Contains(
+            'presentation.sync_equipment_hands_to_proxy(')) {
+    throw 'Launch glove/bracer lower-arm subtrees and the hidden source attachment nodes for gameplay-owned equipment must follow controller-owned proxy effectors through valid tracking and world-pose hold.'
+}
+$bodyProxySourcePath = Join-Path (Split-Path -Parent $resolvedSource) `
+    'darktidevr_body_proxy.lua'
+$bodyProxySource = Get-Content -Raw -LiteralPath $bodyProxySourcePath
+if (-not $bodyProxySource.Contains('state.hands_only') -or
+        -not $bodyProxySource.Contains(
+            'return slot_name == "slot_body_arms"') -or
+        $bodyProxySource.Contains(
+            '"j_leftforearmroll1", "j_leftforearmroll2", "j_lefthand"') -or
+        $bodyProxySource.Contains(
+            '"j_rightforearmroll1", "j_rightforearmroll2", "j_righthand"')) {
+    throw 'The launch proxy must own only the hand slot, hide the source hands, and preserve its last authored wrist transforms across tracking loss.'
+}
+$eyeTransformHelperPath = Join-Path $repoRoot `
+    'tools\stereo\set-coincident-eye-probe.ps1'
+$eyeTransformHelperSource = Get-Content -Raw -LiteralPath $eyeTransformHelperPath
+if (-not $source.Contains('eye_transform_probe_mode = "disabled"') -or
+        -not $source.Contains('probe_value == "enabled" and "coincident"') -or
+        -not $source.Contains('probe_mode ~= "zero_ipd"') -or
+        -not $source.Contains('probe_mode ~= "matched_orientation"') -or
+        -not $source.Contains('probe_mode ~= "visibility_padding"') -or
+        -not $source.Contains(
+            'DARKTIDEVR_STEREO eye_transform_probe=%s source=test_flag') -or
+        -not $source.Contains(
+            'presentation.eye_transform_probe_mode == "zero_ipd"') -or
+        -not $source.Contains(
+            'presentation.eye_transform_probe_mode == "matched_orientation"') -or
+        -not $eyeTransformHelperSource.Contains("'ZeroIpd' { 'zero_ipd' }") -or
+        -not $eyeTransformHelperSource.Contains(
+            "'MatchedOrientation' { 'matched_orientation' }") -or
+        -not $eyeTransformHelperSource.Contains(
+            "'VisibilityPadding' { 'visibility_padding' }") -or
+        -not $source.Contains(
+            'presentation.eye_transform_probe_mode == "visibility_padding"') -or
+        -not $source.Contains(
+            'vertical_fov or Camera.vertical_fov(camera)')) {
+    throw 'The eye-transform diagnostic must poll live and isolate IPD translation, recentered optical-axis rotation, and engine-frustum visibility padding.'
+}
+if (-not $bodyProxySource.Contains(
+        'state.profile_spawner or state.unit_spawner or state.unit or') -or
+        -not $bodyProxySource.Contains('state.failed_source_unit then')) {
+    throw 'Disabling or invalidating the proxy owner must clear a cached streaming failure so the same player unit can reacquire.'
+}
+if (-not $source.Contains('"/gear_hands/"') -or
+        -not $source.Contains(
+            '(glove_attachment and not proxy_hidden)') -or
+        -not $source.Contains('visible_glove_units')) {
+    throw 'Source tracked-hands presentation must hide its glove attachment while the proxy owns the upper-body slot.'
+}
+if (-not $bodyProxySource.Contains('slot_gear_upperbody = true') -or
+        -not $bodyProxySource.Contains(
+            'local function apply_hands_only_surface_visibility(unit)') -or
+        -not $bodyProxySource.Contains(
+            'slot.attachments_by_unit_3p[slot_unit]') -or
+        -not $bodyProxySource.Contains(
+            'string.find(item_name, "/gear_hands/", 1, true)') -or
+        -not $bodyProxySource.Contains(
+            'local is_body_hands = slot_name == "slot_body_arms"') -or
+        -not $bodyProxySource.Contains(
+            'slot_unit, is_body_hands') -or
+        -not $bodyProxySource.Contains(
+            'hand_proxy_surface=skin_and_gloves') -or
+        -not $bodyProxySource.Contains(
+            'Unit.set_unit_visibility(unit, true, false)') -or
+        -not $bodyProxySource.Contains(
+            'Unit.set_mesh_visibility(unit, i, visible)') -or
+        $bodyProxySource.Contains(
+            'Unit.set_unit_visibility(unit, false, true)') -or
+        -not $bodyProxySource.Contains(
+            'apply_hands_only_surface_visibility(unit)') -or
+        -not $bodyProxySource.Contains(
+            'slot_name == "slot_gear_upperbody"')) {
+    throw 'Tracked-hands proxy must keep its linked skeleton hierarchy visible, expose the controller-owned body-skin hands and dedicated glove attachment, and hide unwanted meshes without recursive parent suppression every frame.'
+}
 if (-not $source.Contains('prior > ceiling') -or
         -not $source.Contains(
             'prior + (desired[side] - prior) * alpha, 0, ceiling')) {
@@ -146,6 +280,13 @@ if (-not $source.Contains(
     throw 'Local VR hub body must suppress lateral full-body idle variants.'
 }
 if (-not $source.Contains(
+        'local pair_clamped_left = projected_tangent < overlap_min') -or
+        -not $source.Contains(
+            'local pair_clamped_right = projected_tangent > overlap_max') -or
+        -not $source.Contains('local overlap_inset = overlap_width * 0.02')) {
+    throw 'World markers must switch both eye draws to one inset binocular-overlap edge when either eye loses the marker.'
+}
+if (-not $source.Contains(
         'local billboard_shader_substitution_requested = true') -or
         -not $source.Contains(
             'local billboard_selector_probe_requested = false')) {
@@ -157,12 +298,36 @@ if (-not $source.Contains(
             'billboard_selector_probe_requested or performance_profile_requested then')) {
     throw 'Production shader substitution must retain the early native-hook installation trigger.'
 }
-if (-not $source.Contains('local shared_shadow_cull = true') -or
+if (-not [regex]::IsMatch(
+        $source,
+        'dtvr_set_diagnostic_render_hooks\(\s*\(diagnostic_render_hooks_requested[\s\S]*?presentation\.performance_pass_trace_requested\)\s*and\s*1 or 0\)') -or
+        [regex]::IsMatch(
+            $source,
+            'dtvr_set_diagnostic_render_hooks\([\s\S]{0,320}performance_profile_requested')) {
+    throw 'Basic performance profiling must retain the production hook set; only explicit pass tracing may select broad diagnostic render hooks.'
+}
+if (-not $source.Contains('local shared_shadow_cull = true')) {
+    throw 'Shared gameplay shadow/light culling must remain production-default with an explicit diagnostic opt-out.'
+}
+if (-not $source.Contains(
+        'darktidevr_offline_dual_view.flag') -or
         -not $source.Contains(
-            'Viewport.set_data(primary, "shadow_cull_camera", primary_camera)') -or
+            'function presentation.apply_offline_benchmark_spin(rotation)') -or
         -not $source.Contains(
-            'Viewport.set_data(right, "shadow_cull_camera", primary_camera)')) {
-    throw 'Both gameplay eyes must default to the same tracked render-camera culling decision.'
+            'workload=hub_spin') -or
+        -not $source.Contains(
+            'clean_rotation = presentation.apply_offline_benchmark_spin(clean_rotation)')) {
+    throw 'The no-headset performance fallback must retain exact dual-view rendering with a deterministic in-place hub spin.'
+}
+if (-not $source.Contains(
+        'function presentation.update_stock_melee_animation_owner(self)') -or
+        -not $source.Contains(
+            'kind == "windup" or kind == "sweep"') -or
+        -not $source.Contains(
+            'controller_observation.stock_melee_animation_active') -or
+        -not $source.Contains(
+            'animation_owner=%s slot=%s action=%s kind=%s')) {
+    throw 'Primary-slot melee windup/sweep frames must temporarily preserve Darktide stock animation ownership.'
 }
 foreach ($shopTestView in @(
         'credits_vendor_background_view',
@@ -170,6 +335,9 @@ foreach ($shopTestView in @(
         'live_events_view',
         'cosmetics_vendor_background_view',
         'barber_vendor_background_view',
+        'penance_overview_view',
+        'training_grounds_view',
+        'training_grounds_options_view',
         'store_view')) {
     if (-not $source.Contains($shopTestView)) {
         throw "Guarded shop-family harness is missing $shopTestView."
@@ -196,6 +364,25 @@ if (-not $source.Contains(
             '"^pointer_(%d+)_(%d+)_(%d+)_(%d+)$"') -or
         -not $source.Contains('probe.stage = "armed"')) {
     throw 'Unattended menu validation must retain a source-pixel pointer probe without Windows input injection.'
+}
+if (-not $source.Contains('local ui_mirror_client_width = 1920') -or
+        -not $source.Contains('local ui_mirror_client_height = 1080')) {
+    throw 'Interactive menu capture must retain a native 1080p 16:9 mirror source.'
+}
+if (-not $source.Contains('premium_currency_purchase_view = true')) {
+    throw 'The 1920x1080 Aquila purchase child must retain the premium store native-aspect panel transform.'
+}
+if (-not $source.Contains('"attachment_item_name"') -or
+        -not $source.Contains('attachment, "unit_name"')) {
+    throw 'Garment inventory must retain attachment item and spawned resource identities.'
+}
+if (-not $source.Contains(
+        'Viewport.set_data(primary, "shadow_cull_camera", primary_camera)') -or
+        -not $source.Contains(
+            'Viewport.set_data(right, "shadow_cull_camera", primary_camera)') -or
+        $source.Contains('presentation.shared_visibility_camera_unit') -or
+        $source.Contains('source=standalone_camera_unit')) {
+    throw 'Both eyes must retain the measured tracked-primary shadow/light cull camera; the unproven standalone union camera must stay removed.'
 }
 if (-not $source.Contains(
         'SystemView is captured through a landscape client panel') -or
@@ -248,6 +435,10 @@ if (-not $source.Contains(
         -not $source.Contains('head_pose_values[23]')) {
     throw 'Body IK must subtract the neck-pivot arc, rebase on XR recenter, and keep the hub torso attached to the tracked neck anchor.'
 }
+if ($source.Contains('Quaternion.right(anchor_rotation) * 0.06') -or
+        $source.Contains('Quaternion.right(clean_rotation) * 0.06')) {
+    throw 'Camera/body anchors must not carry the retired hardcoded 6 cm lateral calibration.'
+}
 if ($source.Contains('1.61 / 1.21') -or
         -not $source.Contains(
             'function presentation.calibrated_character_scale') -or
@@ -296,18 +487,316 @@ if (-not $source.Contains(
         -not $controllerAimSource.Contains(
             'settings and settings.use_charge') -or
         -not $controllerAimSource.Contains(
-            'return position, right_rotation, "staff_tip_right_aim"') -or
+            'return position, rotation, "staff_tip_converged_aim"') -or
         -not $controllerAimSource.Contains(
-            'return left_position, right_rotation, "left_origin_right_aim"') -or
+            'return left_position, rotation, "left_origin_converged_aim"') -or
         -not $controllerAimSource.Contains(
-            'right_aim_direction=') -or
+            'controller_aim.reticle_world_point = position + direction * distance') -or
+        -not $controllerAimSource.Contains(
+            'local delta = point - origin') -or
+        -not $controllerAimSource.Contains(
+            'aim_rotation = controller_aim.converged_rotation(') -or
         -not $controllerAimSource.Contains(
             'action_spawn_projectile') -or
         -not $controllerAimSource.Contains(
             'chain_lightning_targeting_action_module') -or
         -not $controllerAimSource.Contains(
             'player_unit_smart_targeting_extension')) {
-    throw 'Psyker ranged coverage must retain both controller poses, right-hand aiming, left-origin staff primary ownership, staff-tip charged ownership and controller-scoped lightning targeting.'
+    throw 'Psyker ranged coverage must retain both controller poses, a shared right-hand world aim point, converged left/staff-tip/muzzle origins and controller-scoped lightning targeting.'
+}
+$hudPanelSource = Get-Content -LiteralPath (
+    Join-Path (Split-Path -Parent $resolvedSource) `
+        'darktidevr_hud_panel.lua') -Raw
+if (-not $hudPanelSource.Contains(
+        'local scale = RESOLUTION_LOOKUP and RESOLUTION_LOOKUP.scale or 1') -or
+        -not $hudPanelSource.Contains(
+            'self._ui_renderer = resource_renderer') -or
+        -not $hudPanelSource.Contains(
+            'World.create_world_gui,') -or
+        -not $hudPanelSource.Contains(
+            'UIRenderer.create_viewport_renderer,') -or
+        -not $hudPanelSource.Contains(
+            'UIRenderer.create_resource_renderer,') -or
+        -not $hudPanelSource.Contains(
+            'UIRenderer.clear_render_pass_queue(state.queue_renderer)') -or
+        -not $hudPanelSource.Contains(
+            'UIRenderer.add_render_pass(state.queue_renderer, 0,') -or
+        -not $hudPanelSource.Contains(
+            'transfer_fixed_records(owner, source_renderer, resource_renderer, mod)') -or
+        -not $hudPanelSource.Contains(
+            'Renderer.copy_render_target_rect,') -or
+        -not $hudPanelSource.Contains(
+            'Material.set_resource(material, "source", display_target)') -or
+        -not $hudPanelSource.Contains(
+            'Gui2.bitmap_3d(') -or
+        -not $hudPanelSource.Contains(
+            'local height = width * target_height / target_width')) {
+    throw 'Fixed HUD must use one authoritative draw, preserve spatial elements on the stock renderer, migrate retained ownership to Darktide-pattern dedicated queue/resource renderers and present an aspect-correct two-metre completed target.'
+}
+if ($hudPanelSource.Contains(
+        'Material.set_resource(material, "source", resource_renderer.render_target)')) {
+    throw 'Fixed HUD must never sample its in-flight render target; worn hardware proved that aliases the binocular world render into the panel.'
+}
+$advanceHelperPath = Join-Path $repoRoot `
+    'tools\stereo\advance-darktide-to-hub.ps1'
+$advanceHelperSource = Get-Content -LiteralPath $advanceHelperPath -Raw
+if (-not $advanceHelperSource.Contains(
+        'function Wait-DarktideLeavesCharacterSelect') -or
+        -not $advanceHelperSource.Contains('$_.Path -ieq $resolvedGameExe') -or
+        -not $advanceHelperSource.Contains(
+            "'Entering Game State StateLoading'") -or
+        -not $advanceHelperSource.Contains(
+            'Wait-DarktideLeavesCharacterSelect -Process $characterSelect')) {
+    throw 'Authenticated unattended launch must retry character-select Enter until StateLoading proves acceptance.'
+}
+$startHelperPath = Join-Path $repoRoot 'tools\stereo\start-darktide-vr.ps1'
+$startHelperSource = Get-Content -LiteralPath $startHelperPath -Raw
+if (-not $startHelperSource.Contains('[switch] $OfflineDualViewBenchmark') -or
+        -not $startHelperSource.Contains(
+            'StateGameplay:on_enter\(\): hub_ship') -or
+        -not $startHelperSource.Contains(
+            'Restored the prior offline dual-view benchmark flag.')) {
+    throw 'The launcher must retain a run-scoped, hub-gated no-headset dual-view benchmark and restore its flag.'
+}
+if ($startHelperSource -match
+        'if \(\$OfflineDualViewBenchmark\)[\s\S]{0,420}\$EnablePerformanceProfile\s*=\s*\$true' -or
+        $source -match
+        'if presentation\.offline_dual_view_requested then\s*performance_profile_requested = true') {
+    throw 'The offline dual-view baseline must not enable intrusive GPU profiling implicitly.'
+}
+$syncHelperPath = Join-Path $repoRoot 'tools\stereo\sync-darktide-vr-dev.ps1'
+$syncHelperSource = Get-Content -LiteralPath $syncHelperPath -Raw
+foreach ($diagnosticFlag in @(
+        'darktidevr_body_ik_trace.flag',
+        'darktidevr_coincident_eyes.flag',
+        'darktidevr_full_second_eye.flag',
+        'darktidevr_inherit_viewport_metadata.flag',
+        'darktidevr_offline_dual_view.flag',
+        'darktidevr_performance_pass_trace.flag',
+        'darktidevr_performance_profile.flag',
+        'darktidevr_reverse_eye_order.flag',
+        'darktidevr_weapon_pose_trace.flag',
+        'darktidevr_weapon_presentation.flag')) {
+    if (-not $syncHelperSource.Contains("'$diagnosticFlag'")) {
+        throw "Normal deployment must explicitly disable diagnostic flag $diagnosticFlag."
+    }
+}
+if (-not $startHelperSource.Contains('[switch] $SyntheticRuntimeFrusta') -or
+        -not $startHelperSource.Contains(
+            "'-SyntheticRuntimeFrusta requires -OfflineDualViewBenchmark.'") -or
+        -not $startHelperSource.Contains(
+            'darktidevr-synthetic-head-publisher.exe') -or
+        -not $startHelperSource.Contains(
+            "'Stopped the run-owned synthetic head publisher.'")) {
+    throw 'The asymmetric offline lighting probe must own a bounded synthetic runtime-frustum publisher.'
+}
+$syntheticHeadPublisherPath = Join-Path $repoRoot `
+    'tests\xr_harness\synthetic_head_publisher.cpp'
+$syntheticHeadPublisherSource = Get-Content -LiteralPath `
+    $syntheticHeadPublisherPath -Raw
+if (-not $syntheticHeadPublisherSource.Contains(
+        '{-0.942478F, 0.698132F, -0.959931F, 0.767945F}') -or
+        -not $syntheticHeadPublisherSource.Contains(
+            '{-0.698132F, 0.942478F, -0.959931F, 0.767945F}') -or
+        -not $syntheticHeadPublisherSource.Contains(
+            'sample.render_aspect_ratio = 2112.0F / 2304.0F;')) {
+    throw 'The synthetic lighting probe must retain the captured VirtualDesktopXR Medium asymmetric frusta and render aspect.'
+}
+if (-not $startHelperSource.Contains(
+        '[switch] $CaptureBillboardPsoIdentities') -or
+        -not $startHelperSource.Contains('$DiagnosticRenderHooks = $true') -or
+        -not $startHelperSource.Contains(
+            'darktidevr-billboard-pso-identity.tsv') -or
+        -not $startHelperSource.Contains('$sourceStream.Seek(') -or
+        -not $startHelperSource.Contains(
+            'Captured run-scoped billboard PSO identities')) {
+    throw 'Launcher must retain diagnostic-hook opt-in and non-destructive, byte-offset billboard identity slicing for scene comparisons.'
+}
+$nativeCapturePath = Join-Path $repoRoot 'src\producer\native_capture.cpp'
+$nativeCaptureSource = Get-Content -LiteralPath $nativeCapturePath -Raw
+$d3d12BootstrapPath = Join-Path $repoRoot 'src\producer\d3d12_bootstrap.cpp'
+$d3d12BootstrapSource = Get-Content -LiteralPath $d3d12BootstrapPath -Raw
+if (-not $source.Contains(
+        'cluster_light_visibility_fix_active = false') -or
+        -not $source.Contains(
+            'dtvr_cluster_light_visibility_fix_active(void)') -or
+        -not $source.Contains(
+            'presentation.cluster_light_visibility_fix_active or') -or
+        -not $nativeCaptureSource.Contains(
+            'constexpr std::uint64_t kClusterLightRasterVertexShader =') -or
+        -not $nativeCaptureSource.Contains('0x5c6cd369626f261aULL') -or
+        -not $nativeCaptureSource.Contains('0xbe559cb63c32aa02ULL') -or
+        -not $nativeCaptureSource.Contains(
+            'queue_cluster_light_visibility_fov_patches(commands)') -or
+        -not $nativeCaptureSource.Contains(
+            'pending.resource_offset + kRasterFovOffset') -or
+        -not $nativeCaptureSource.Contains(
+            'render_vertical_fov_radians.load(std::memory_order_relaxed)') -or
+        -not $nativeCaptureSource.Contains(
+            'cluster_light_visibility_fix_active.store(') -or
+        -not $d3d12BootstrapSource.Contains(
+            'darktidevr_cluster_light_visibility_fix.flag') -or
+        -not $d3d12BootstrapSource.Contains(
+            'dtvr_set_cluster_light_visibility_fix') -or
+        -not $syncSource.Contains(
+            '[bool] $ClusterLightVisibilityFix = $true') -or
+        -not $syncSource.Contains(
+            'darktidevr_cluster_light_visibility_fix.flag')) {
+    throw 'Cluster-light visibility correction must remain a paired, exact-shader, bootstrap-gated engine-frustum and staged-FOV fix.'
+}
+$clusterRootBindingStart = $nativeCaptureSource.IndexOf(
+    'void set_graphics_root_gpu_address(')
+$clusterRootBindingEnd = $nativeCaptureSource.IndexOf(
+    'void set_compute_root_gpu_address(', $clusterRootBindingStart)
+if ($clusterRootBindingStart -lt 0 -or
+        $clusterRootBindingEnd -le $clusterRootBindingStart -or
+        -not $nativeCaptureSource.Substring(
+            $clusterRootBindingStart,
+            $clusterRootBindingEnd - $clusterRootBindingStart).Contains(
+                'cluster_light_visibility_fix_active.load(')) {
+    throw 'The production cluster-light hook must retain direct graphics CBV bindings for its exact target draw.'
+}
+$virtualSizeSetterStart = $nativeCaptureSource.IndexOf(
+    'dtvr_set_virtual_size_message(')
+$virtualSizeSetterEnd = $nativeCaptureSource.IndexOf(
+    'dtvr_lock_swapchain_client_extent(', $virtualSizeSetterStart)
+if ($virtualSizeSetterStart -lt 0 -or
+        $virtualSizeSetterEnd -le $virtualSizeSetterStart) {
+    throw 'Native virtual-size configuration export could not be located.'
+}
+$virtualSizeSetterSource = $nativeCaptureSource.Substring(
+    $virtualSizeSetterStart,
+    $virtualSizeSetterEnd - $virtualSizeSetterStart)
+$virtualSizeEnableIndex = $virtualSizeSetterSource.IndexOf(
+    'virtual_size_message_enabled.store(')
+$virtualWndProcInstallIndex = $virtualSizeSetterSource.IndexOf(
+    'ensure_virtual_window_proc(')
+if ($virtualSizeEnableIndex -lt 0 -or
+        $virtualWndProcInstallIndex -le $virtualSizeEnableIndex) {
+    throw 'Enabling virtual WM_SIZE must install the game-window procedure immediately, before the startup client-area nudge can run.'
+}
+$questWatcherPath = Join-Path $repoRoot 'tools\quest\watch-quest-online.ps1'
+$questProximityPath = Join-Path $repoRoot 'tools\quest\set-proximity-override.ps1'
+$questWatcherSource = Get-Content -LiteralPath $questWatcherPath -Raw
+$questProximitySource = Get-Content -LiteralPath $questProximityPath -Raw
+if (-not $questWatcherSource.Contains('-AdbPath $activeAdb') -or
+        -not $questProximitySource.Contains('[string] $AdbPath') -or
+        -not $questProximitySource.Contains('$adb = $AdbPath')) {
+    throw 'Quest detection and proximity override must use the same verified ADB client.'
+}
+$gameplayInputPath = Join-Path $repoRoot 'src\core\gameplay_input.cpp'
+$gameplayInputSource = Get-Content -LiteralPath $gameplayInputPath -Raw
+$headPosePath = Join-Path $repoRoot 'src\core\shared_head_pose.cpp'
+$headPoseSource = Get-Content -LiteralPath $headPosePath -Raw
+$headPoseEpochIndex = $headPoseSource.IndexOf(
+    'InterlockedExchange64(&data.epoch, 1);')
+$headPoseGenerationIndex = $headPoseSource.IndexOf(
+    'InterlockedIncrement64(&data.writer_generation);')
+if ($headPoseEpochIndex -lt 0 -or $headPoseGenerationIndex -lt 0 -or
+        $headPoseEpochIndex -gt $headPoseGenerationIndex) {
+    throw 'Head-pose writer restart must mark its seqlock odd before publishing a new writer generation.'
+}
+$executeHookStart = $nativeCaptureSource.IndexOf(
+    'void STDMETHODCALLTYPE execute_command_lists_hook(')
+$executeHookEnd = $nativeCaptureSource.IndexOf(
+    'HRESULT STDMETHODCALLTYPE present_hook', $executeHookStart)
+if ($executeHookStart -lt 0 -or $executeHookEnd -le $executeHookStart) {
+    throw 'Native command-list execution hook could not be located.'
+}
+$executeHookSource = $nativeCaptureSource.Substring(
+    $executeHookStart, $executeHookEnd - $executeHookStart)
+if ($executeHookSource.Contains('direct_menu_render_lists.erase')) {
+    throw 'Direct-menu resources must remain retained after submission until a successful command-list Reset proves the old recording was retired.'
+}
+$resetHookStart = $nativeCaptureSource.IndexOf(
+    'HRESULT STDMETHODCALLTYPE reset_hook(')
+$resetHookEnd = $nativeCaptureSource.IndexOf(
+    'void STDMETHODCALLTYPE execute_bundle_hook', $resetHookStart)
+if ($resetHookStart -lt 0 -or $resetHookEnd -le $resetHookStart) {
+    throw 'Native command-list reset hook could not be located.'
+}
+$resetHookSource = $nativeCaptureSource.Substring(
+    $resetHookStart, $resetHookEnd - $resetHookStart)
+$resetCallIndex = $resetHookSource.IndexOf(
+    'const auto reset_result = original_reset(')
+$menuReleaseIndex = $resetHookSource.IndexOf(
+    'direct_menu_render_lists.erase(commands)')
+if ($resetCallIndex -lt 0 -or $menuReleaseIndex -le $resetCallIndex) {
+    throw 'Direct-menu resources must only be released after command-list Reset succeeds.'
+}
+if ($resetHookSource.IndexOf('menu_output_resources.erase(commands)') -le
+        $resetCallIndex -or
+        $resetHookSource.IndexOf(
+            'menu_output_source_states.erase(commands)') -le $resetCallIndex) {
+    throw 'A successful command-list Reset must retire menu completion state from the discarded recording.'
+}
+if (-not $nativeCaptureSource.Contains(
+        'std::atomic<bool> game_swapchain_metadata_ready{};') -or
+        -not $nativeCaptureSource.Contains(
+            'const bool refresh_swapchain_metadata =') -or
+        -not $nativeCaptureSource.Contains(
+            'game_swapchain_metadata_ready.store(false, std::memory_order_release);') -or
+        -not $nativeCaptureSource.Contains(
+            'const bool complete_buffer_set =')) {
+    throw 'Present must retain its resize-invalidated swapchain metadata cache and reject partial back-buffer enumeration.'
+}
+if (-not $nativeCaptureSource.Contains('if (present == 1 || present % 30 == 0)')) {
+    throw 'Focused trace request files must be polled at diagnostic cadence, not on every Present.'
+}
+if (-not $nativeCaptureSource.Contains(
+        'std::atomic<bool> named_camera_outputs_ready_hint{};') -or
+        -not $nativeCaptureSource.Contains(
+            '!named_camera_outputs_ready_hint.load(std::memory_order_acquire)') -or
+        -not $nativeCaptureSource.Contains(
+            'named_camera_outputs_ready_hint.store(false, std::memory_order_release);')) {
+    throw 'Production RTV binding inspection must stop after explicit eye outputs are learned and resume after resize.'
+}
+if (-not $nativeCaptureSource.Contains('bool has_transition_barrier{};') -or
+        -not $nativeCaptureSource.Contains('if (has_transition_barrier) {') -or
+        -not $nativeCaptureSource.Contains('bool has_texture_barriers{};') -or
+        -not $nativeCaptureSource.Contains('if (has_texture_barriers) {')) {
+    throw 'Native barrier hooks must avoid the shared capture mutex for legacy non-transition and enhanced non-texture-only batches.'
+}
+if (-not $nativeCaptureSource.Contains(
+        'std::atomic<ID3D12CommandQueue*> game_queue_identity{};') -or
+        -not $nativeCaptureSource.Contains('queue == known_game_queue') -or
+        -not $nativeCaptureSource.Contains(
+            'game_queue_identity.store(queue, std::memory_order_release);') -or
+        $nativeCaptureSource.Contains('swapchain_write_resources')) {
+    throw 'ExecuteCommandLists must cache the retained direct queue identity and must not maintain an unread swapchain-write map.'
+}
+if (-not $nativeCaptureSource.Contains(
+        'if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {') -or
+        -not $nativeCaptureSource.Contains(
+            'execute_call_count.fetch_add(1, std::memory_order_relaxed);')) {
+    throw 'Production queue and barrier telemetry atomics must remain disabled when diagnostic render hooks were not selected.'
+}
+if (-not [regex]::IsMatch(
+        $nativeCaptureSource,
+        '\(\(kInstallDiagnosticRenderHooks\s*\|\|\s*install_cluster_trace_hooks\s*\|\|\s*install_cluster_light_visibility_fix_hooks\)\s*&&\s*MH_CreateHook\(command_list_vtable\[13\],\s*&draw_indexed_instanced_hook,')) {
+    throw 'Indexed-draw interception must remain limited to broad diagnostics, the explicit cluster trace, or the exact cluster-light correction; never stock menu capture alone.'
+}
+if (-not $source.Contains('last_mode_publish_t = -math.huge') -or
+        -not $source.Contains('now - presentation.last_mode_publish_t >= 0.5') -or
+        -not $source.Contains('distinguish a healthy mod from a stopped') -or
+        -not $nativeCaptureSource.Contains('publish_presentation_state(state)')) {
+    throw 'Presentation state must retain an unchanged-mode heartbeat for stale-consumer failover.'
+}
+if (-not $source.Contains('dtvr_read_controller_state_v2') -or
+        -not $source.Contains('last_transport_generation = controller_generation')) {
+    throw 'Controller state must use an explicit writer generation across XR restarts.'
+}
+if (-not $source.Contains('dtvr_read_head_pose_v2') -or
+        -not $source.Contains('head_pose_last_transport_generation') -or
+        -not $source.Contains('presentation.read_head_pose()') -or
+        -not $nativeCaptureSource.Contains('dtvr_read_head_pose_v2(')) {
+    throw 'Head-pose state must expose and consume a writer generation so equal restart sequences reset capture tags.'
+}
+if (-not $gameplayInputSource.Contains(
+        'const auto transport_changed = controllers.transport_generation != 0') -or
+        -not $gameplayInputSource.Contains(
+            'transport_changed ? 0 : next & ~held_')) {
+    throw 'Gameplay input must baseline held buttons across a controller-writer generation change without synthesizing press edges.'
 }
 if (-not $source.Contains(
         'function presentation.left_hand_movement_rotation()') -or
@@ -323,6 +812,41 @@ if (-not $source.Contains(
             'Quaternion.inverse(presentation.flat_movement_rotation(')) {
     throw 'Configurable VR locomotion must preserve headset-relative default, use the flattened live left-hand basis without an Euler round-trip, reject near-vertical rays and rotate only controller movement into the selected frame.'
 }
+if (-not $source.Contains(
+        'presentation.menu_pointer.values = ffi.new("unsigned int[11]")') -or
+        -not $source.Contains('dtvr_read_menu_pointer_state_v2(') -or
+        -not $source.Contains(
+            'menu_pointer_v2 or library.dtvr_read_menu_pointer_state') -or
+        -not $source.Contains(
+            'transport_generation_unavailable fallback=v1') -or
+        -not $source.Contains(
+            'transport_generation ~= pointer.transport_generation') -or
+        -not $source.Contains(
+            'pointer.primary_consumed_sequence = primary_press_sequence') -or
+        -not $source.Contains(
+            'pointer.back_consumed_sequence = back_press_sequence') -or
+        -not $source.Contains(
+            'pointer.scroll_consumed_sequence = scroll_sequence')) {
+    throw 'Menu pointer transport restarts must baseline edge counters instead of synthesizing input.'
+}
+if (-not $source.Contains(
+        'Quaternion.right(clean_rotation) * local_x') -or
+        -not $source.Contains(
+            'Quaternion.forward(clean_rotation) * local_y') -or
+        $source.Contains('head_translation_basis_qw')) {
+    throw 'Room-scale translation must preserve the proven clean-camera local basis and must not rotate the already-local OpenXR delta through a second cached yaw.'
+}
+if (-not $source.Contains(
+        'active_base_rotation:unbox() or locomotion_component.rotation') -or
+        $source.Contains(
+            'local body_rotation = locomotion_component.rotation')) {
+    throw 'Collision/body-follow transfer must use the same immutable XR scene basis as camera translation.'
+}
+
+if (-not $source.Contains(
+        'observation.body_camera_eye_offset_x = 0')) {
+    throw 'The cyclopean body camera must remain on the avatar sagittal plane.'
+}
 if ($controllerAimSource.Contains('component.position = position') -or
         $controllerAimSource.Contains('component.rotation = rotation') -or
         -not $controllerAimSource.Contains(
@@ -335,10 +859,17 @@ $hudPanelSource = Get-Content -LiteralPath (
     Join-Path (Split-Path -Parent $resolvedSource) `
         'darktidevr_hud_panel.lua') -Raw
 if (-not $hudPanelSource.Contains('enabled = false') -or
-        -not $hudPanelSource.Contains('begin_immediate_replay') -or
-        -not $hudPanelSource.Contains('pass.retained_mode = false') -or
-        -not $hudPanelSource.Contains('end_immediate_replay(immediate_passes)')) {
-    throw 'Fixed HUD replay must remain opt-in and force only its temporary offscreen draw through immediate widget passes.'
+        -not $hudPanelSource.Contains(
+            'transfer_fixed_records(state.owner, state.resource_renderer,') -or
+        $hudPanelSource.Contains('begin_immediate_replay') -or
+        $hudPanelSource.Contains('pass.retained_mode = false')) {
+    throw 'Fixed HUD world rendering must remain opt-in and must not replay or mutate retained widget modes.'
+}
+if (-not $source.Contains(
+        'presentation.read_head_pose() ~= 0 then') -or
+        -not $source.Contains(
+            'return nil')) {
+    throw 'Calibration must reject unavailable or stale native head-pose samples instead of reusing its FFI buffer.'
 }
 $luaCompiler = Get-Command luac -ErrorAction SilentlyContinue
 if ($luaCompiler) {
@@ -353,9 +884,17 @@ else {
     if (-not $pnpm) {
         throw 'Neither luac nor pnpm is available for fail-closed Lua syntax validation.'
     }
-    $parseOutput = @(& $pnpm.Source dlx luaparse --quiet --file `
-        $resolvedSource 2>&1)
-    if ($LASTEXITCODE -ne 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $parseOutput = @(& $pnpm.Source dlx luaparse --quiet --file `
+            $resolvedSource 2>&1)
+        $parseExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($parseExitCode -ne 0) {
         $details = ($parseOutput | ForEach-Object { [string] $_ }) -join "`n"
         throw "luaparse rejected the stereo mod source:`n$details"
     }
@@ -381,9 +920,17 @@ foreach ($runtimeModule in $runtimeModules) {
         }
     }
     else {
-        $parseOutput = @(& $pnpm.Source dlx luaparse --quiet --file `
-            $moduleSource 2>&1)
-        if ($LASTEXITCODE -ne 0) {
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $parseOutput = @(& $pnpm.Source dlx luaparse --quiet --file `
+                $moduleSource 2>&1)
+            $parseExitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+        if ($parseExitCode -ne 0) {
             $details = ($parseOutput | ForEach-Object { [string] $_ }) -join "`n"
             throw "luaparse rejected ${runtimeModule}:`n$details"
         }

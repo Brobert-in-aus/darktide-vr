@@ -563,3 +563,144 @@ Validation commands:
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build\windows-vs2022 -C Release --output-on-failure -R '^synthetic_controller_path$'
 & .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 165 -GameStartTimeoutSeconds 300 -SyntheticMovementReferencePath -AutoEnterHub -SkipDeploymentSync
 ```
+
+## Worn Psykhanium acceptance pass
+
+The first worn pass over the deterministic Psykhanium weapon matrix established
+the following user-observed results:
+
+- stereo and full 6DoF were stable in the range;
+- every visible particle/effect in that scene faced acceptably, so no
+  Psykhanium billboard regression was observed;
+- the headset/camera origin was displaced to the user's left, and an OpenXR
+  recenter did not remove the displacement;
+- no stock HUD element was visible;
+- the depth-aware binocular aim marker landed at the correct apparent target
+  depth, but is still the blue diagnostic square rather than Darktide's normal
+  reticle;
+- normal staff fire preserved its left-hand origin but remained parallel to
+  the right-hand ray, so its impact missed the marker by approximately the
+  inter-hand displacement; and
+- charged staff fire preserved its staff-tip origin but likewise remained
+  parallel, placing the shot above the marker.
+
+The projectile evidence refines the desired contract: the tracked right hand
+selects one binocular world-space aim point, while each weapon retains its own
+authored/tracked muzzle origin and derives its final direction from that origin
+to the common aim point. A ray with no scene hit uses a distant point on the
+same right-hand ray. This is convergence, not an origin override.
+
+The same worn pass found that **Darktide VR** was absent from DMF's Mod Options.
+Source inspection subsequently found a deterministic packaging cause: the
+`.mod` bootstrap supplied only `mod_script` to `new_mod`, so DMF never loaded
+the already-authored `_localization.lua` or `_data.lua` resources. The dev sync
+also copied Lua modules but not the bootstrap `.mod` file. Both must be fixed
+and source-validated before the next launch.
+
+Melee is intentionally split into two milestones. The near-term path gives the
+stock sword attack/recovery animation temporary ownership of the attacking arm,
+blends tracked IK back in after recovery, and keeps the off hand tracked where
+the animation permits. Collision-driven physical swings, weapon-body contact,
+damage authority and multiplayer replication remain a later feature rather
+than being inferred from the ranged-aim work.
+
+Fix/test order from this acceptance pass:
+
+1. register and deploy the DMF data/localization resources, then verify the
+   **Darktide VR** category and both movement-reference choices;
+2. isolate the range-only lateral head-origin term and prove recenter invariance
+   before changing it;
+3. publish a common aim point and make left-hand/staff-tip projectile directions
+   converge on it, while preserving origins and first-projectile ownership;
+4. trace the HUD-panel gate from stock fixed widgets through its target and XR
+   composition, because the earlier unattended pass proved population but the
+   worn result proves presentation is empty; and
+5. add an explicit melee animation-ownership state machine and deterministic
+   attack/recovery/blend tests before a worn sword pass.
+
+## Launch embodiment scope reduction
+
+Full third-person body presentation and its torso, shoulder, crouch, gait and
+headless-avatar integration are now post-first-launch work.  The launch target
+is tracked forearms/hands plus the currently wielded item.  Physical 6DoF,
+room-scale locomotion transfer and collision behavior remain independent and
+must not regress merely because the unseen body solve is skipped.
+
+The stock 1P arm rig is not a fallback: worn testing already established that
+its perspective-authored geometry is compressed and distorted in world-space
+stereo.  The accepted foundation is therefore the real 3P skeleton and its
+exact two-controller wrist/forearm solve, with unwanted local-player mesh slots
+hidden.  Deployment writes `darktidevr_full_body_experimental.flag=disabled`
+unless explicitly requested, preventing a stale development flag from
+reactivating full body.
+
+The first arms-only run was mechanically clean: stereo reached nonzero
+`shared_ready`, both wrists wrote at sub-millimetre error, and only the exposed
+hands plus wielded weapon were visible. Runtime inventory explains the visual
+gap. This Psyker outfit's `slot_body_arms` contains exposed skin/hands, while
+gloves and sleeves are children of `slot_gear_upperbody`. That cosmetic root
+has no meshes; its children separate into two tall/broad torso units and two
+long, narrow shoulder-to-hand arm units.
+
+The geometry-shape filter was deployed and worn-tested rather than left as an
+inference. It showed the entire arms, not separable gloves/bracers/forearms, so
+it was reverted. The closing worn result was again exposed hands plus weapons.
+The same pass identified a more fundamental launch blocker: because those
+visible hands are still wrist nodes on the hidden 3P skeleton, physical reach
+remains clamped by the avatar arm chain. The launch solution must replace this
+with independent controller-owned hand/forearm proxies rather than continuing
+to tune visibility on a body-constrained skeleton.
+
+Controller gameplay input and controller aiming were restored for the live
+acceptance run so locomotion and projectile-convergence work can be checked in
+the same session.
+
+## End-of-day reticle and convergence state
+
+The cyan diagnostic square has been replaced by a transparent-atlas, outlined
+white crosshair sampled from a reserved 41x41 region of the existing capture
+swapchain. The normal launch scripts enable it by default. Its world point is
+published from the tracked right-controller ray and submitted to both eyes at
+the actual hit distance, preserving one binocular convergence target while
+left-hand and staff-tip attacks retain their authored origins.
+
+The reticle ray now rejects every local-player visual unit (root, 1P unit,
+equipment roots and attachment units) and ignores broad dynamic character
+capsules. It accepts static geometry or a damageable actor with an actual hit
+zone. This follows Darktide's own hit-scan semantics and addresses the worn
+reports of the marker sticking inside the right hand and stopping roughly a
+metre in front of an enemy. The code and live transport passed, but the corrected
+surface choice still needs a worn wall/enemy/empty-space acceptance matrix.
+
+The initial crosshair was too small, so the current build is the explicit 10x
+visibility trial (`distance * 0.07`, clamped to 0.15-1.2 m). The closing worn
+request is to reduce that result by 30 percent and make the black outline and
+white fill partly transparent. That is deliberately left as the first small
+presentation change tomorrow rather than silently changing the final worn
+baseline tonight.
+
+Tracked-arms mode also suppresses Darktide's full-body idle update wherever
+the first-person-body presentation is active. This is intended to remove the
+random arm drift without suppressing attack/reload ownership; it needs a worn
+idle and weapon-action check.
+
+## End-of-day validation
+
+Commands run after the launch-scope, reticle and raycast changes:
+
+```powershell
+& .\tools\stereo\test-darktide-lua-source.ps1
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build\windows-vs2022 --config Release --target darktidevr-xr-harness darktidevr-window-capture-tests
+& .\build\windows-vs2022\Release\darktidevr-window-capture-tests.exe
+git diff --check
+```
+
+The Lua source gate remains at 198/198 file-scope locals. The Release harness
+and capture test built successfully, the capture test accepted the opaque
+crosshair pixels and transparent atlas background, and the final authenticated
+Psykhanium run contained the stereo initialization messages, nonzero advancing
+`shared_ready`, and approximately 60 fresh synchronized pairs per second. No
+new script error was present in the fresh log.
+
+Tomorrow's ordered work and its explicit acceptance gates are in
+[`../phase1/todo-2026-09-01.md`](../phase1/todo-2026-09-01.md).

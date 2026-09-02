@@ -44,21 +44,37 @@ int main() {
     expect(!controller_state_is_fresh(sample, 1'030'001, 20'000),
            "Stale sample was accepted");
 
-    SharedControllerStateWriter writer;
     SharedControllerStateReader reader;
-    expect(writer.publish(sample), "Controller publish failed");
     SharedControllerState read{};
-    expect(reader.read(read), "Controller read failed");
-    expect(read.sequence == 7 && read.hands[1].trigger == 0.75F &&
-               read.hands[1].buttons == sample.hands[1].buttons &&
-               read.hands[1].body_aim_pose.position.y == 0.5F &&
-               read.hands[1].body_aim_tracking_flags ==
-                   sample.hands[1].body_aim_tracking_flags,
-           "Controller transport changed the sample");
+    std::uint64_t first_generation{};
+    {
+      SharedControllerStateWriter writer;
+      expect(writer.publish(sample), "Controller publish failed");
+      expect(reader.read(read), "Controller read failed");
+      expect(read.sequence == 7 && read.transport_generation != 0 &&
+                 read.hands[1].trigger == 0.75F &&
+                 read.hands[1].buttons == sample.hands[1].buttons &&
+                 read.hands[1].body_aim_pose.position.y == 0.5F &&
+                 read.hands[1].body_aim_tracking_flags ==
+                     sample.hands[1].body_aim_tracking_flags,
+             "Controller transport changed the sample");
+      first_generation = read.transport_generation;
 
-    sample.hands[0].trigger = 2.0F;
-    expect(!valid_controller_state(sample), "Out-of-range trigger was accepted");
-    expect(!writer.publish(sample), "Invalid controller sample was published");
+      sample.hands[0].trigger = 2.0F;
+      expect(!valid_controller_state(sample),
+             "Out-of-range trigger was accepted");
+      expect(!writer.publish(sample),
+             "Invalid controller sample was published");
+    }
+    sample.hands[0].trigger = 0.0F;
+    {
+      SharedControllerStateWriter restarted_writer;
+      expect(restarted_writer.publish(sample),
+             "Restarted controller writer could not publish");
+      expect(reader.read(read) && read.sequence == sample.sequence &&
+                 read.transport_generation == first_generation + 1,
+             "Controller writer generation must disambiguate equal restart sequences");
+    }
 
     std::cout << "controller_state.result=pass\n";
     return 0;

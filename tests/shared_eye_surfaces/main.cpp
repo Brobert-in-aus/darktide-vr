@@ -1,4 +1,5 @@
 #include "bridge/shared_eye_surfaces.h"
+#include "core/shared_surface_policy.h"
 
 #include <Windows.h>
 #include <d3d12.h>
@@ -37,6 +38,38 @@ using UniqueHandle = std::unique_ptr<void, HandleCloser>;
 
 int main(int argc, char** argv) {
   try {
+    if (!darktidevr::bridge::shared_fence_values_healthy(0, 0) ||
+        !darktidevr::bridge::shared_fence_values_healthy(42, 41) ||
+        darktidevr::bridge::shared_fence_values_healthy(UINT64_MAX, 0) ||
+        darktidevr::bridge::shared_fence_values_healthy(0, UINT64_MAX)) {
+      throw std::runtime_error(
+          "Shared fence health must reject either device-removed sentinel");
+    }
+    if (!darktidevr::core::shared_mailbox_writable(0, 0) ||
+        !darktidevr::core::shared_mailbox_writable(42, 42) ||
+        !darktidevr::core::shared_mailbox_writable(42, 43) ||
+        darktidevr::core::shared_mailbox_writable(42, 41) ||
+        darktidevr::core::shared_mailbox_writable(UINT64_MAX, UINT64_MAX)) {
+      throw std::runtime_error(
+          "One-slot shared mailbox must not be overwritten before consume");
+    }
+    if (darktidevr::core::canonical_shared_render_target_format(
+            DXGI_FORMAT_R8G8B8A8_TYPELESS,
+            DXGI_FORMAT_R8G8B8A8_UNORM) != DXGI_FORMAT_R8G8B8A8_UNORM ||
+        !darktidevr::core::shared_render_target_description_matches(
+            2496, 2688, DXGI_FORMAT_R8G8B8A8_UNORM, 2496, 2688,
+            DXGI_FORMAT_R8G8B8A8_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM) ||
+        !darktidevr::core::shared_render_target_description_matches(
+            2496, 2688, DXGI_FORMAT_R8G8B8A8_UNORM, 2496, 2688,
+            DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM) ||
+        darktidevr::core::shared_render_target_description_matches(
+            2496, 2688, DXGI_FORMAT_R8G8B8A8_UNORM, 2496, 2688,
+            DXGI_FORMAT_R8G8B8A8_TYPELESS,
+            DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)) {
+      throw std::runtime_error(
+          "Shared render target identity must canonicalize typed/typeless "
+          "backing resources to the typed RTV format");
+    }
     ComPtr<ID3D12Device> device;
     check(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_0,
                             IID_PPV_ARGS(&device)),
@@ -272,7 +305,6 @@ int main(int argc, char** argv) {
         opened.eyes[1]->GetDesc().Height != 64) {
       throw std::runtime_error("Receiver did not open both eye surfaces");
     }
-
     bool mismatch_rejected{};
     try {
       (void)darktidevr::bridge::open_shared_eye_surfaces(

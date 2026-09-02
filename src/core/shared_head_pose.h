@@ -7,7 +7,7 @@
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedHeadPoseName[] =
-    L"Local\\DarktideVR-head-pose-v10";
+    L"Local\\DarktideVR-head-pose-v12";
 
 struct EyeFrustumHalfAngles {
   float left{};
@@ -18,6 +18,9 @@ struct EyeFrustumHalfAngles {
 
 struct SharedHeadPoseSample {
   std::uint64_t sequence{};
+  // Distinguishes equal sequence values published by consecutive XR writers.
+  // Assigned by the transport reader rather than the caller.
+  std::uint64_t transport_generation{};
   // Increments whenever the runtime rebuilds its horizon-locked HMD origin.
   // Consumers use this to rebase pose-derived body calibration atomically.
   std::uint32_t recenter_generation{};
@@ -62,6 +65,8 @@ class SharedHeadPoseWriter {
   bool publish(const SharedHeadPoseSample& sample);
   bool read_rendered_pair(SharedRenderedEyePairPose& pair) const;
   std::uint64_t read_gameplay_generation() const;
+  std::uint64_t read_eye_surface_generation() const;
+  std::uint64_t read_menu_surface_generation() const;
 
  private:
   void* mapping_{};
@@ -79,6 +84,8 @@ class SharedHeadPoseReader {
   bool read(SharedHeadPoseSample& sample);
   bool publish_rendered_pair(const SharedRenderedEyePairPose& pair);
   bool publish_gameplay_generation(std::uint64_t generation);
+  std::uint64_t advance_eye_surface_generation();
+  std::uint64_t advance_menu_surface_generation();
 
  private:
   bool ensure_open();

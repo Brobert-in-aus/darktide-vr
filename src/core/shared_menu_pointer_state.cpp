@@ -11,6 +11,7 @@ namespace {
 
 struct SharedLayout {
   volatile LONG64 epoch{};
+  volatile LONG64 writer_generation{};
   SharedMenuPointerState state{};
 };
 
@@ -61,6 +62,7 @@ SharedMenuPointerStateWriter::SharedMenuPointerStateWriter() {
   }
   auto& data = *static_cast<SharedLayout*>(view_);
   InterlockedExchange64(&data.epoch, 1);
+  InterlockedIncrement64(&data.writer_generation);
   std::memset(&data.state, 0, sizeof(data.state));
   MemoryBarrier();
   InterlockedExchange64(&data.epoch, 2);
@@ -118,9 +120,12 @@ bool SharedMenuPointerStateReader::read(SharedMenuPointerState& state) {
     }
     SharedMenuPointerState candidate{};
     std::memcpy(&candidate, &data.state, sizeof(candidate));
+    candidate.transport_generation =
+        static_cast<std::uint64_t>(data.writer_generation);
     MemoryBarrier();
     const auto after = data.epoch;
     if (before == after && (after & 1) == 0 &&
+        candidate.transport_generation != 0 &&
         valid_menu_pointer_state(candidate)) {
       state = candidate;
       return true;

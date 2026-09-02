@@ -7,7 +7,7 @@
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedPresentationStateName[] =
-    L"Local\\DarktideVR-presentation-state-v2";
+    L"Local\\DarktideVR-presentation-state-v4";
 
 enum class SharedPresentationMode : std::uint32_t {
   disabled = 0,
@@ -33,6 +33,13 @@ struct SharedPresentationState {
   float maximum_panel_height_metres{2.0F};
   bool body_panel_pose_valid{};
   math::Pose body_panel_pose{};
+  // Transport-owned writer generation. Publishers leave this zero; readers
+  // use it with sequence to distinguish an identical sequence after restart.
+  std::uint64_t transport_generation{};
+  // Transport-owned monotonic publication time from GetTickCount64. The Lua
+  // producer republishes unchanged modes as a heartbeat so a live consumer can
+  // fail flat if the mod stops updating while the game process remains alive.
+  std::uint64_t published_at_ms{};
 };
 
 class SharedPresentationStateWriter {
@@ -70,9 +77,17 @@ class SharedPresentationStateReader {
 };
 
 bool valid_presentation_state(const SharedPresentationState& state);
+bool presentation_state_fresh(const SharedPresentationState& state,
+                              std::uint64_t now_ms,
+                              std::uint64_t maximum_age_ms);
 bool immersive_projection_active(SharedPresentationMode mode);
 bool flat_interactive_active(SharedPresentationMode mode);
 bool flat_interactive_uses_eye_aspect(SharedPresentationMode mode,
                                       bool shared_eyes_open);
+// Heartbeat publications advance sequence and publication time without
+// creating a new spatial panel. Only a transport/mode change, or a changed
+// authored body anchor, owns a new panel pose.
+bool same_flat_panel_anchor_identity(const SharedPresentationState& left,
+                                     const SharedPresentationState& right);
 
 }  // namespace darktidevr::core

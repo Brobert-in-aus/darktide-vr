@@ -1,5 +1,25 @@
 # Quest 3 unattended test control
 
+## Mandatory daily preflight
+
+This is the first step of every development day, before editing, building,
+synchronizing, launching Darktide or starting an unattended test:
+
+1. verify Virtual Desktop Streamer is running on the PC and VDXR is available;
+2. verify exactly one authorized Meta Quest is connected through a working ADB
+   client;
+3. disable proximity/wear automation so the Quest cannot sleep during testing;
+4. check the override status and confirm a renderable OpenXR session is
+   available.
+
+Use the repository wrapper shown below. If headset discovery required a
+specific ADB executable, pass that exact verified executable to the helper; do
+not discover through one ADB daemon and issue the override through another.
+
+Virtual Desktop can be suspended while Quest passthrough is active. Treat that
+as a normal recoverable state: do not fail closed, assume the headset is gone or
+restart Virtual Desktop solely because passthrough temporarily suspended it.
+
 The Phase 0 headset is a Quest 3 running Android 14 and connected to the PC by
 authorized wireless ADB. On 24 August 2026, the following temporary override
 kept the display/runtime active without depending on the wear sensor:

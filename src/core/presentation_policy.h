@@ -48,4 +48,12 @@ PanelExtent fit_panel_extent(std::uint32_t source_width,
                              float maximum_width_metres,
                              float maximum_height_metres);
 
+// A cached pair hides short producer gaps and menu-to-world handoffs, but it
+// must not turn a dead producer into an indefinitely frozen immersive world.
+bool cached_stereo_pair_allowed(bool fresh_pair_available,
+                                bool cached_pair_valid,
+                                bool projection_active,
+                                std::uint64_t stale_milliseconds,
+                                std::uint64_t grace_milliseconds);
+
 }  // namespace darktidevr::core

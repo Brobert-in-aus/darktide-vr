@@ -7,7 +7,7 @@
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedControllerStateName[] =
-    L"Local\\DarktideVR-controller-state-v2";
+    L"Local\\DarktideVR-controller-state-v3";
 
 enum ControllerTrackingFlags : std::uint32_t {
   controller_orientation_valid = 1U << 0U,
@@ -46,6 +46,9 @@ struct SharedControllerState {
   std::uint64_t sequence{};
   std::uint64_t timestamp_ns{};
   ControllerHandState hands[2]{};
+  // Transport-owned writer generation. Readers use it to distinguish an XR
+  // restart even when its first sequence equals the last old sequence.
+  std::uint64_t transport_generation{};
 };
 
 class SharedControllerStateWriter {

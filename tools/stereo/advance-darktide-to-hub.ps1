@@ -5,12 +5,20 @@ param(
 
     [switch] $StopAtCharacterSelect,
 
+    [string] $GameExe =
+        'D:\SteamLibrary\steamapps\common\Warhammer 40,000 DARKTIDE\binaries\Darktide.exe',
+
     [string] $ConsoleLogRoot =
         (Join-Path $env:APPDATA 'Fatshark\Darktide\console_logs')
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if (-not (Test-Path -LiteralPath $GameExe -PathType Leaf)) {
+    throw "Darktide executable not found: $GameExe"
+}
+$resolvedGameExe = (Resolve-Path -LiteralPath $GameExe).Path
 
 function Wait-DarktideLogMatch {
     param(
@@ -25,6 +33,14 @@ function Wait-DarktideLogMatch {
 
     while ((Get-Date) -lt $Deadline) {
         $process = Get-Process Darktide -ErrorAction SilentlyContinue |
+            Where-Object {
+                try {
+                    $_.Path -ieq $resolvedGameExe
+                }
+                catch {
+                    $false
+                }
+            } |
             Select-Object -First 1
         if ($process) {
             $log = Get-ChildItem -LiteralPath $ConsoleLogRoot -Filter '*.log' `
@@ -69,6 +85,44 @@ function Send-DarktideKey {
     $shell.SendKeys($Keys)
 }
 
+function Wait-DarktideLeavesCharacterSelect {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+
+        [Parameter(Mandatory)]
+        [datetime] $Deadline,
+
+        [Parameter(Mandatory)]
+        [datetime] $NotBefore
+    )
+
+    # Character-select can silently discard a correctly delivered Enter while
+    # its selected operative or foreground focus is settling.  A single input
+    # therefore is not a reliable unattended boundary.  Retry only Enter and
+    # stop as soon as the log proves that StateMainMenu has begun leaving; this
+    # avoids advancing any subsequent gameplay UI.
+    while ((Get-Date) -lt $Deadline) {
+        Send-DarktideKey -Process $Process -Keys '{ENTER}'
+        $retryDeadline = (Get-Date).AddSeconds(2)
+        if ($retryDeadline -gt $Deadline) {
+            $retryDeadline = $Deadline
+        }
+        try {
+            Wait-DarktideLogMatch -Patterns @(
+                'Entering Game State StateMainMenu',
+                'Entering Game State StateLoading'
+            ) -Deadline $retryDeadline -NotBefore $NotBefore | Out-Null
+            return
+        }
+        catch {
+            # Retry until the overall launch deadline.  The state gate above
+            # ensures that repeated input cannot leak past character select.
+        }
+    }
+    throw 'Timed out advancing Darktide from character select.'
+}
+
 $started = Get-Date
 $deadline = $started.AddSeconds($TimeoutSeconds)
 $title = Wait-DarktideLogMatch -Patterns @(
@@ -92,6 +146,7 @@ if ($StopAtCharacterSelect) {
     return
 }
 Start-Sleep -Seconds 1
-Send-DarktideKey -Process $characterSelect -Keys '{ENTER}'
+Wait-DarktideLeavesCharacterSelect -Process $characterSelect `
+    -Deadline $deadline -NotBefore $started
 
 Write-Output 'Darktide title and character select advanced without mouse input.'
