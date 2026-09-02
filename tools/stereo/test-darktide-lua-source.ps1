@@ -541,13 +541,17 @@ $advanceHelperPath = Join-Path $repoRoot `
     'tools\stereo\advance-darktide-to-hub.ps1'
 $advanceHelperSource = Get-Content -LiteralPath $advanceHelperPath -Raw
 if (-not $advanceHelperSource.Contains(
+        'function Wait-DarktideLeavesTitle') -or
+        -not $advanceHelperSource.Contains(
         'function Wait-DarktideLeavesCharacterSelect') -or
         -not $advanceHelperSource.Contains('$_.Path -ieq $resolvedGameExe') -or
+        -not $advanceHelperSource.Contains(
+            'Wait-DarktideLeavesTitle -Process $title') -or
         -not $advanceHelperSource.Contains(
             "'Entering Game State StateLoading'") -or
         -not $advanceHelperSource.Contains(
             'Wait-DarktideLeavesCharacterSelect -Process $characterSelect')) {
-    throw 'Authenticated unattended launch must retry character-select Enter until StateLoading proves acceptance.'
+    throw 'Authenticated unattended launch must retry title Space and character-select Enter until log-owned state transitions prove acceptance.'
 }
 $startHelperPath = Join-Path $repoRoot 'tools\stereo\start-darktide-vr.ps1'
 $startHelperSource = Get-Content -LiteralPath $startHelperPath -Raw

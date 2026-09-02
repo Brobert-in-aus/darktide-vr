@@ -85,6 +85,42 @@ function Send-DarktideKey {
     $shell.SendKeys($Keys)
 }
 
+function Wait-DarktideLeavesTitle {
+    param(
+        [Parameter(Mandatory)]
+        [System.Diagnostics.Process] $Process,
+
+        [Parameter(Mandatory)]
+        [datetime] $Deadline,
+
+        [Parameter(Mandatory)]
+        [datetime] $NotBefore
+    )
+
+    # StateTitle is logged before its foreground input becomes reliable.  A
+    # single Space can therefore be delivered successfully but discarded by
+    # the title view. Retry only while waiting for the next log-owned state
+    # boundary so input cannot leak through character select or into the hub.
+    while ((Get-Date) -lt $Deadline) {
+        Send-DarktideKey -Process $Process -Keys ' '
+        $retryDeadline = (Get-Date).AddSeconds(2)
+        if ($retryDeadline -gt $Deadline) {
+            $retryDeadline = $Deadline
+        }
+        try {
+            Wait-DarktideLogMatch -Patterns @(
+                'Entering Game State StateMainMenu'
+            ) -Deadline $retryDeadline -NotBefore $NotBefore | Out-Null
+            return
+        }
+        catch {
+            # Retry until the overall launch deadline. The state gate above
+            # stops retries as soon as character select begins loading.
+        }
+    }
+    throw 'Timed out advancing Darktide from the title screen.'
+}
+
 function Wait-DarktideLeavesCharacterSelect {
     param(
         [Parameter(Mandatory)]
@@ -129,7 +165,8 @@ $title = Wait-DarktideLogMatch -Patterns @(
     'Entering Game State StateTitle'
 ) -Deadline $deadline -NotBefore $started
 Start-Sleep -Seconds 1
-Send-DarktideKey -Process $title -Keys ' '
+Wait-DarktideLeavesTitle -Process $title `
+    -Deadline $deadline -NotBefore $started
 
 $characterSelect = Wait-DarktideLogMatch -Patterns @(
     'Entering Game State StateMainMenu',

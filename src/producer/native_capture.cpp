@@ -10104,8 +10104,11 @@ int capture_menu_from_resource(ID3D12CommandQueue* queue,
       capture_description.Height =
           (std::min)(capture_description.Height, capture_height);
     }
-    const auto ensure_result =
-        ensure_menu_surface(device.Get(), capture_description);
+    const auto ensure_result = ensure_menu_surface(
+        device.Get(), capture_description,
+        static_cast<DXGI_FORMAT>(
+            darktidevr::core::canonical_shared_copy_format(
+                static_cast<std::uint32_t>(capture_description.Format))));
     if (ensure_result != 0) {
       return ensure_result;
     }

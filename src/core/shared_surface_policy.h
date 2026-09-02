@@ -22,6 +22,17 @@ constexpr std::uint32_t canonical_shared_render_target_format(
   return render_target_format != 0 ? render_target_format : source_format;
 }
 
+// A completed retained UI layer can reach the copy path without its RTV
+// descriptor. Darktide's OptionsView uses an R8G8B8A8 typeless resource with
+// an R8G8B8A8 UNORM RTV; preserve that typed mailbox identity instead of
+// repeatedly trying to replace it with a typeless shared surface.
+constexpr std::uint32_t canonical_shared_copy_format(
+    std::uint32_t source_format) noexcept {
+  // DXGI_FORMAT_R8G8B8A8_TYPELESS / DXGI_FORMAT_R8G8B8A8_UNORM. Keep this
+  // header independent of the Windows SDK so core policy tests stay portable.
+  return source_format == 27U ? 28U : source_format;
+}
+
 constexpr bool shared_render_target_description_matches(
     std::uint64_t current_width, std::uint32_t current_height,
     std::uint32_t current_resource_format, std::uint64_t requested_width,

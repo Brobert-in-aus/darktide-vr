@@ -1163,7 +1163,7 @@ function presentation.publish_mode(mode, reason)
     end
     if mode_changed or anchor_changed then
         mod:info(
-            "DARKTIDEVR_PRESENTATION mode=%d sequence=%d reason=%s source=%dx%d crop=0,%d,%dx%d",
+            "DARKTIDEVR_PRESENTATION mode=%d sequence=%d reason=%s source=%dx%d crop=0,%d,%dx%d ui_lookup=%sx%s scale=%s mirror=%dx%d",
             mode,
             presentation.sequence,
             tostring(reason),
@@ -1171,7 +1171,12 @@ function presentation.publish_mode(mode, reason)
             source_height,
             crop_y,
             crop_width,
-            crop_height
+            crop_height,
+            tostring(RESOLUTION_LOOKUP and RESOLUTION_LOOKUP.width),
+            tostring(RESOLUTION_LOOKUP and RESOLUTION_LOOKUP.height),
+            tostring(RESOLUTION_LOOKUP and RESOLUTION_LOOKUP.scale),
+            ui_mirror_client_width,
+            ui_mirror_client_height
         )
     end
 end

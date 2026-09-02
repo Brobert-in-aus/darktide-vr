@@ -56,6 +56,12 @@ int main(int argc, char** argv) {
     if (darktidevr::core::canonical_shared_render_target_format(
             DXGI_FORMAT_R8G8B8A8_TYPELESS,
             DXGI_FORMAT_R8G8B8A8_UNORM) != DXGI_FORMAT_R8G8B8A8_UNORM ||
+        darktidevr::core::canonical_shared_copy_format(
+            DXGI_FORMAT_R8G8B8A8_TYPELESS) !=
+            DXGI_FORMAT_R8G8B8A8_UNORM ||
+        darktidevr::core::canonical_shared_copy_format(
+            DXGI_FORMAT_R16G16B16A16_FLOAT) !=
+            DXGI_FORMAT_R16G16B16A16_FLOAT ||
         !darktidevr::core::shared_render_target_description_matches(
             2496, 2688, DXGI_FORMAT_R8G8B8A8_UNORM, 2496, 2688,
             DXGI_FORMAT_R8G8B8A8_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM) ||
