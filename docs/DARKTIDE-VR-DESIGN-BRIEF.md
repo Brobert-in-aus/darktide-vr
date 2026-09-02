@@ -417,7 +417,9 @@ Motion-vector support is optional. If found, calibrate units, scale, sign, Y ori
 - Support spatial resolution scaling from the start.
 - Test DLSS/FSR/XeSS super-resolution separately per stereo mode; temporal history may require per-eye isolation or may be unusable in AER.
 - Disable in-game DLSS/FSR frame generation and DLSS 4 multi-frame generation by default. Generated flat frames do not carry the mod's correct eye identity, pose, depth, or OpenXR display time.
-- If VR generation is later added, use the mod's own stereo-aware extrapolation path. Prefer causal extrapolation to interpolation because interpolation adds a full source-frame of latency.
+- Treat reuse of Darktide's Streamline DLSS-G as a gated experiment, not an assumed feature. The public integration intercepts the DXGI backbuffer at `Present`, supports multiple viewports only in one backbuffer and does not support multiple swapchains ([DLSS Frame Generation programming guide](https://github.com/NVIDIA-RTX/Streamline/blob/main/docs/ProgrammingGuideDLSS_G.md)). A viable prototype must pack both eyes into one stereo backbuffer, provide independently calibrated per-eye depth/motion/UI tags, and prove that every generated result is accessible before scanout with an exact generation index. Capturing the desktop mirror is not an acceptable transport.
+- Probe `XR_EXT_frame_synthesis` as the preferred runtime-owned fallback where available. It accepts per-projection-view motion-vector/depth subimages and an application-space delta pose, allowing the compositor to own predicted display timing ([OpenXR extension](https://registry.khronos.org/OpenXR/specs/1.1/man/html/XR_EXT_frame_synthesis.html), [`XrFrameSynthesisInfoEXT`](https://registry.khronos.org/OpenXR/specs/1.1/man/html/XrFrameSynthesisInfoEXT.html)). This path is not DLSS and runtime support must be capability-probed.
+- If neither path is viable, use the mod's own stereo-aware extrapolation path. Prefer causal extrapolation to interpolation because interpolation adds a full source-frame of latency.
 - Apply stereo/AFW correction before temporal frame generation so generation operates on coherent stereo pairs.
 
 ---
@@ -966,6 +968,9 @@ Build-specific addresses, shader hashes, and pass overrides belong in separate s
 - [Darktide Mod Loader](https://github.com/Darktide-Mod-Framework/Darktide-Mod-Loader)
 - [Public Darktide source mirror - camera settings](https://github.com/Aussiemon/Darktide-Source-Code/blob/master/scripts/settings/camera/camera_settings.lua)
 - [Public Darktide source mirror - camera manager](https://github.com/Aussiemon/Darktide-Source-Code/blob/master/scripts/managers/camera/camera_manager.lua)
+- [NVIDIA Streamline DLSS Frame Generation programming guide](https://github.com/NVIDIA-RTX/Streamline/blob/main/docs/ProgrammingGuideDLSS_G.md)
+- [NVIDIA DLSS 3 integration guidance](https://developer.nvidia.com/blog/how-to-successfully-integrate-dlss-3)
+- [OpenXR `XR_EXT_frame_synthesis`](https://registry.khronos.org/OpenXR/specs/1.1/man/html/XR_EXT_frame_synthesis.html)
 - [UEVR](https://github.com/praydog/UEVR)
 - [REFramework](https://github.com/praydog/REFramework)
 - [6DOF Head-Tracking Mods Hub](https://github.com/BerZerker96/6DOF-Head-Tracking-Mods-Hub)

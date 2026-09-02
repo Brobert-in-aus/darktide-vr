@@ -140,6 +140,50 @@ The older accepted fixed-pose results at `2112x2304` were around 94-97 fresh
 pairs/s. The current extent contains about 38% more stereo output pixels, so do
 not compare these rates as though resolution were constant.
 
+## DLSS Frame Generation for XR research addendum
+
+The user's observation that DLSS Frame Generation affects only the desktop
+mirror is consistent with the current architecture. Darktide's installed
+Streamline/DLSS-G integration operates on the DXGI backbuffer at `Present`,
+while the bridge captures the left/right resources and signals them to the XR
+harness before that boundary. Consequently, generated mirror presents do not
+become new binocular XR pairs. The inspected installation contains Streamline
+`2.7.30.0` and `nvngx_dlssg.dll` `310.2.1.0`; these are observations, not stable
+identifiers, and the planned probe must log the loaded runtime versions.
+
+NVIDIA's public [DLSS Frame Generation programming
+guide](https://github.com/NVIDIA-RTX/Streamline/blob/main/docs/ProgrammingGuideDLSS_G.md)
+confirms that DLSS-G intercepts the swapchain backbuffer at `Present`, requires
+frame-matched depth, motion vectors and common constants, and supports multiple
+viewports only when they render into the same backbuffer. Multiple swapchains
+are not supported. NVIDIA's [integration
+guidance](https://developer.nvidia.com/blog/how-to-successfully-integrate-dlss-3)
+also requires Reflex, recommends hudless/UI resources and calls for explicit
+disable/restore handling around menus, loading and resolution transitions.
+
+The first candidate is therefore a proof-only side-by-side Streamline
+prototype: pack both eyes into one backbuffer, tag two independent viewports
+and their per-eye colour/depth/motion/UI inputs under one frame token, and issue
+one `Present`. Before implementation proceeds, instrumentation must prove that
+the proxy can identify and access every generated backbuffer with its exact
+generation index. If generated output is not available before scanout, the
+public API cannot feed the XR bridge directly; recapturing the desktop mirror
+is specifically rejected because it loses clean eye, pose and timing ownership
+and adds latency.
+
+Even if the generated texture is accessible, each synthetic pair needs pose
+correction for its own predicted OpenXR display time. Reusing the rendered
+pair's pose would make head motion lag. The parallel fallback is to probe
+VirtualDesktopXR for the multi-vendor
+[`XR_EXT_frame_synthesis`](https://registry.khronos.org/OpenXR/specs/1.1/man/html/XR_EXT_frame_synthesis.html)
+and legacy `XR_FB_space_warp` extensions. Runtime synthesis takes per-eye depth,
+motion vectors and application-space delta pose and can preserve compositor
+timing, but it is not DLSS and support must be measured rather than assumed.
+
+The complete measurement gates, prototype sequence and acceptance criteria are
+in [`../phase1/todo-2026-09-03.md`](../phase1/todo-2026-09-03.md). No runtime
+code was changed during this documentation/research addendum.
+
 Evidence:
 
 - `artifacts/unattended/preflight-20260902T105728Z.json`
@@ -181,8 +225,9 @@ Follow [`../phase1/todo-2026-09-03.md`](../phase1/todo-2026-09-03.md). In short:
 4. fix settings/menu extents and pointer mapping;
 5. fix HUD and world-marker resolution/placement independently of the desktop
    mirror;
-6. complete the matched performance/pass-trace comparison and then continue the
-   comprehensive bug/lifetime pass.
+6. complete the matched performance/pass-trace comparison and start the
+   proof-first DLSS-G-for-XR instrumentation in the todo; and
+7. continue the comprehensive bug/lifetime pass.
 
 ## Final validation and commit
 
