@@ -840,6 +840,10 @@ correction used `preflight-20260903T013512Z.json` through
    evaluation call. Generation-present submission, metadata publication and
    ready-fence signaling all remained disabled. Next guard staging of the two
    viewports onto one actual swapchain backbuffer without yet presenting it.
+   Current native generated candidates are 2496x2688 format 28, while the
+   packed diagnostic is 4992x2688 format 28; the analyzer reports this as
+   `stereo_present_compatible=0`. A resize/recreation or equivalent real
+   swapchain route is therefore a hard prerequisite, not an implicit copy.
    Preserve the external consumer as the later binocular-output transport gate.
 2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,

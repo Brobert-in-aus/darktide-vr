@@ -909,6 +909,8 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $nativeCaptureSource.Contains(
             'STEREO_TARGET_TOKEN\tphase=allocated') -or
         -not $nativeCaptureSource.Contains(
+            'generation_present_submitted=0') -or
+        -not $nativeCaptureSource.Contains(
             'const auto result = original_sl_get_new_frame_token(') -or
         -not $nativeCaptureSource.Contains(
             'evaluate_streamline_stereo_inputs(') -or

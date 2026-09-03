@@ -81,6 +81,8 @@ $stereoBackbuffers = @($records | Where-Object event -eq 'STEREO_BACKBUFFER')
 $stereoTransportReservations = @($records |
     Where-Object event -eq 'STEREO_TRANSPORT_RESERVATION')
 $stereoTargetTokens = @($records | Where-Object event -eq 'STEREO_TARGET_TOKEN')
+$generatedBackbufferExtents = @()
+$generatedBackbufferFormats = @()
 
 if ($probe.Count -ne 1 -or $target.Count -ne 1 -or
         $nativeTarget.Count -ne 1 -or $begins.Count -eq 0 -or
@@ -229,6 +231,11 @@ if ($asynchronousNativeSamples.Count -gt 0) {
         Write-Output "native_present.burst_generated_candidates=$($burstGenerated.Count)"
         Write-Output "native_present.burst_source_candidates=$($burstSource.Count)"
         if ($burstGenerated.Count -gt 0) {
+            $generatedBackbufferExtents = @($burstGenerated | ForEach-Object {
+                    "$($_.width)x$($_.height)"
+                } | Sort-Object -Unique)
+            $generatedBackbufferFormats = @($burstGenerated.format |
+                Sort-Object -Unique)
             $generatedDelta = @($burstGenerated | ForEach-Object {
                     if ($_.PSObject.Properties['generator_execute_delta_us']) {
                         [double]$_.generator_execute_delta_us
@@ -245,6 +252,8 @@ if ($asynchronousNativeSamples.Count -gt 0) {
                     $burstGenerated.last_execute_queue | Sort-Object -Unique
                 })
             Write-Output "native_present.burst_generated_queue_count=$($generatedQueues.Count)"
+            Write-Output "native_present.burst_generated_extents=$($generatedBackbufferExtents -join ',')"
+            Write-Output "native_present.burst_generated_formats=$($generatedBackbufferFormats -join ',')"
             Write-Output ('native_present.burst_generated_delta_us_average={0:F2}' -f $generatedDelta.Average)
             Write-Output ('native_present.burst_generated_delta_us_min={0:F2}' -f $generatedDelta.Minimum)
             Write-Output ('native_present.burst_generated_delta_us_max={0:F2}' -f $generatedDelta.Maximum)
@@ -574,10 +583,18 @@ if ($stereoTransportReservations.Count -eq 1) {
     Write-Output "input_snapshot.transport_ready_signaled=$($stereoTransportReservations[0].ready_signaled)"
 }
 if ($stereoTargetTokens.Count -eq 1) {
+    $targetGenerationPresentSubmitted = if (
+            $stereoTargetTokens[0].PSObject.Properties[
+                'generation_present_submitted']) {
+        $stereoTargetTokens[0].generation_present_submitted
+    }
+    else {
+        $stereoTargetTokens[0].evaluation_called
+    }
     Write-Output "input_snapshot.target_token_phase=$($stereoTargetTokens[0].phase)"
     Write-Output "input_snapshot.target_frame_index=$($stereoTargetTokens[0].target_frame_index)"
     Write-Output "input_snapshot.target_policy_status=$($stereoTargetTokens[0].policy_status)"
-    Write-Output "input_snapshot.target_evaluation_called=$($stereoTargetTokens[0].evaluation_called)"
+    Write-Output "input_snapshot.target_generation_present_submitted=$targetGenerationPresentSubmitted"
     Write-Output "input_snapshot.target_metadata_published=$($stereoTargetTokens[0].metadata_published)"
     Write-Output "input_snapshot.target_ready_signaled=$($stereoTargetTokens[0].ready_signaled)"
 }
@@ -589,9 +606,15 @@ if ($stereoBackbuffers.Count -gt 0) {
     $stereoBackbufferComplete = @($stereoBackbuffers |
         Where-Object phase -eq 'complete' | Select-Object -Last 1)
     if ($stereoBackbufferComplete.Count -eq 1) {
+        $stereoPresentCompatible =
+            $generatedBackbufferExtents -contains
+                "$($stereoBackbufferComplete[0].width)x$($stereoBackbufferComplete[0].height)" -and
+            $generatedBackbufferFormats -contains
+                $stereoBackbufferComplete[0].format
         Write-Output "input_snapshot.stereo_backbuffer_extent=$($stereoBackbufferComplete[0].width)x$($stereoBackbufferComplete[0].height)"
         Write-Output "input_snapshot.stereo_backbuffer_eye_width=$($stereoBackbufferComplete[0].eye_width)"
         Write-Output "input_snapshot.stereo_backbuffer_state=$($stereoBackbufferComplete[0].state)"
+        Write-Output "input_snapshot.stereo_present_compatible=$([int]$stereoPresentCompatible)"
     }
 }
 if ($inputSnapshotBindings.Count -eq 2) {
@@ -783,7 +806,7 @@ if ($targetTokenProbe -eq '1') {
                 [uint64]$inputSnapshotBindings[1].frame_index -or
             $allocatedTargetTokens[0].result -ne '0' -or
             $allocatedTargetTokens[0].policy_status -ne '6' -or
-            $allocatedTargetTokens[0].evaluation_called -ne '0' -or
+            $targetGenerationPresentSubmitted -ne '0' -or
             $allocatedTargetTokens[0].metadata_published -ne '0' -or
             $allocatedTargetTokens[0].ready_signaled -ne '0') {
         throw 'The requested stereo target token was not allocated safely.'

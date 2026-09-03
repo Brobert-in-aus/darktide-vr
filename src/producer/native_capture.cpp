@@ -8993,7 +8993,8 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
         state.failed = true;
         write_streamline_probe_log(
             "STEREO_TARGET_TOKEN\tphase=failed"
-            "\treason=unavailable_or_overflow\tevaluation_called=0"
+            "\treason=unavailable_or_overflow"
+            "\tgeneration_present_submitted=0"
             "\tmetadata_published=0\tready_signaled=0\r\n");
         return;
       }
@@ -9005,7 +9006,8 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
         state.failed = true;
         write_streamline_probe_log(
             "STEREO_TARGET_TOKEN\tphase=failed\treason=api_result"
-            "\ttarget_frame_index=%u\tresult=%d\tevaluation_called=0"
+            "\ttarget_frame_index=%u\tresult=%d"
+            "\tgeneration_present_submitted=0"
             "\tmetadata_published=0\tready_signaled=0\r\n",
             requested_frame_index, result);
         return;
@@ -9040,7 +9042,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
         write_streamline_probe_log(
             "STEREO_TARGET_TOKEN\tphase=failed\treason=policy"
             "\ttarget_frame_index=%u\tresult=%d\tpolicy_status=%u"
-            "\tevaluation_called=0\tmetadata_published=0"
+            "\tgeneration_present_submitted=0\tmetadata_published=0"
             "\tready_signaled=0\r\n",
             requested_frame_index, result,
             static_cast<unsigned>(policy_status));
@@ -9049,7 +9051,8 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
       write_streamline_probe_log(
           "STEREO_TARGET_TOKEN\tphase=allocated\ttarget_token=%p"
           "\ttarget_frame_index=%u\tsource_frame_indices=%u,%u"
-          "\tresult=%d\tpolicy_status=%u\tevaluation_called=0"
+          "\tresult=%d\tpolicy_status=%u"
+          "\tgeneration_present_submitted=0"
           "\tmetadata_published=0\tready_signaled=0\r\n",
           target_frame_token, requested_frame_index,
           state.constants[0].frame_index, state.constants[1].frame_index,
