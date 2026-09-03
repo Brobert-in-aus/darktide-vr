@@ -179,6 +179,23 @@ The 30-pair capture under
 `artifacts/unattended/hand-rigid-baseline-restored-20260903` again shows two
 stable gloves without the rejected skin geometry.
 
+A recursive scan of every cached master-item value then broadened the resource
+survey beyond item names. It found 129 human `gear_arms` items, all normally
+spine-rooted arm attachments, and only three singular hand-named resources:
+Hadron's left hand plus `servitor_arms_02_hand_01` and
+`servitor_arms_02_hand_02`. The two servitor hands spawned successfully as
+separate rigid roots with four meshes per side and no stretching. Direct-eye
+evidence under `artifacts/unattended/hand-rigid-servitor-singular-20260903`
+shows complete mechanical hands, however, so they are not acceptable player
+surfaces. A second experiment layered each servitor hand beneath the matching
+one-sided cloth glove. Both roots reached eight visible meshes and the run
+passed, but the 40-pair capture under
+`artifacts/unattended/hand-rigid-glove-servitor-underlay-20260903` shows the
+mechanical fingers and palm protruding beyond the glove in multiple phases.
+That underlay was rejected. The catalog probe and both servitor experiments
+were removed; shipped human resources are now exhausted as a compatible cuff
+solution.
+
 ## Launcher Play retry
 
 The first Play press in that run moved WPF's `Process.MainWindowHandle` to a
@@ -242,6 +259,10 @@ source was removed.
 .\tools\stereo\sync-darktide-vr-dev.ps1 -Configuration Release
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 150 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
 .\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-rigid-baseline-restored-20260903 30 2496 2688
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 120 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-rigid-servitor-singular-20260903 30 2496 2688
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 150 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-rigid-glove-servitor-underlay-20260903 40 2496 2688
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native
@@ -259,9 +280,10 @@ the final clean-state check used
 ## Next work
 
 1. Replace or cover the open cuffs on the now-proven independently rooted
-   one-sided gloves. Combined profile gloves cannot be separated by mesh; the
-   credible remaining routes are a purpose-built closed hand/cuff asset or a
-   compatible one-sided bracer resource.
+   one-sided gloves. Combined profile gloves cannot be separated by mesh, the
+   body masks retain deforming arm geometry, and the only shipped singular
+   underlays visibly protrude. The remaining credible route is a purpose-built
+   closed hand/cuff asset.
 2. Perform the worn Options extent, cursor and representative control pass;
    do not change the proven pointer transform without contrary evidence.
 3. Perform the required worn Penances clustered-light acceptance.
