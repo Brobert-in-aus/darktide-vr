@@ -336,9 +336,27 @@ threads, while the outer Present samples retained one thread, one swapchain and
 one COM identity. The run submitted 8,461/8,461 OpenXR frames, advanced 1,402
 fresh shared pairs, and reported zero reuse, capture failures, stale frames,
 pair-driven timeouts or pair-pose mismatches. This proves Darktide activates
-DLSS-G on its gameplay viewport. It does not yet show whether generated
-asynchronous presents re-enter the hooked Present path or expose a capturable
-result before scanout; that is the next feasibility gate.
+DLSS-G on its gameplay viewport.
+
+The observe-only probe now also unwraps Streamline's proxy through its exact
+`StreamlineRetrieveBaseInterface` IID and hooks the native swapchain Present
+target in Windows `dxgi.dll` 10.0.26100.9168. Before DLSS-G mode 1, every outer
+Present produced exactly one native Present on the game thread. After mode 1,
+extra native calls appeared on a second thread against the same native
+swapchain. At sampled outer frame 6,120, the native count was 7,653: 1,533
+surplus calls, effectively one generated call per source frame since
+activation. The first sampled asynchronous call was native call 4,680 at outer
+frame 4,633. Its pre-Present backbuffer was accessible through `GetBuffer` and
+was 2496x2688 `DXGI_FORMAT_R8G8B8A8_UNORM`; later asynchronous samples retained
+the same swapchain and valid rotating backbuffers. The confirming run submitted
+8,481/8,481 OpenXR frames, delivered 1,344 fresh pairs, and retained zero reuse,
+capture failures, stale frames, pair-driven timeouts or pose mismatches.
+
+This closes the generated-call interception question: the output reaches an
+addressable seam before native scanout. The remaining hard gate is a safe GPU
+synchronization and copy experiment that assigns an exact source/generated
+pair index and transports the generated resource without stalling or racing
+the plugin's private queue.
 
 ## Runtime evidence
 

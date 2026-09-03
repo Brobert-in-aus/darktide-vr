@@ -786,7 +786,7 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $nativeCaptureSource.Contains(
             'independent_state_calls=0') -or
         -not $nativeCaptureSource.Contains(
-            'initialize_streamline_probe(swapchain_vtable[8])') -or
+            'initialize_streamline_probe(swapchain_vtable[8],') -or
         -not $nativeCaptureSource.Contains(
             'const auto result = original(viewport, state, options);') -or
         -not $nativeCaptureSource.Contains(
@@ -795,6 +795,14 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
             'const auto result = original(viewport, options);') -or
         -not $nativeCaptureSource.Contains(
             'DLSSG_OPTIONS\tcall=%llu\tpresent_frame=%llu') -or
+        -not $nativeCaptureSource.Contains(
+            'NATIVE_PRESENT_TARGET\taddress=%p\tmodule=%p\tversion=%s') -or
+        -not $nativeCaptureSource.Contains(
+            'NATIVE_PRESENT_BEGIN\tcall=%llu\touter_frame=%llu') -or
+        -not $nativeCaptureSource.Contains(
+            '\tback_buffer_index=%u\tback_buffer=%p\twidth=%llu') -or
+        -not $nativeCaptureSource.Contains(
+            'streamline_native_present_count.load(std::memory_order_relaxed)') -or
         -not $nativeCaptureSource.Contains(
             '(present <= 5 || present % 120 == 0)')) {
     throw 'The Streamline probe must remain launch-scoped, bounded and observe-only; wrap and forward the game existing state call exactly once rather than adding a state query.'

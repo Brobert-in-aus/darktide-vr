@@ -30,13 +30,18 @@ $records = @(Get-Content -LiteralPath $Path |
     ForEach-Object { ConvertFrom-ProbeLine $_ })
 $probe = @($records | Where-Object event -eq 'PROBE')
 $target = @($records | Where-Object event -eq 'PRESENT_TARGET')
+$nativeTarget = @($records | Where-Object event -eq 'NATIVE_PRESENT_TARGET')
 $modules = @($records | Where-Object event -eq 'MODULE')
 $begins = @($records | Where-Object event -eq 'PRESENT_BEGIN')
 $ends = @($records | Where-Object event -eq 'PRESENT_END')
+$nativeBegins = @($records | Where-Object event -eq 'NATIVE_PRESENT_BEGIN')
+$nativeEnds = @($records | Where-Object event -eq 'NATIVE_PRESENT_END')
 $stateCalls = @($records | Where-Object event -eq 'DLSSG_STATE')
 $optionCalls = @($records | Where-Object event -eq 'DLSSG_OPTIONS')
 
-if ($probe.Count -ne 1 -or $target.Count -ne 1 -or $begins.Count -eq 0) {
+if ($probe.Count -ne 1 -or $target.Count -ne 1 -or
+        $nativeTarget.Count -ne 1 -or $begins.Count -eq 0 -or
+        $nativeBegins.Count -eq 0) {
     throw 'Streamline probe log is incomplete.'
 }
 
@@ -44,6 +49,7 @@ $threads = @($begins.thread | Sort-Object -Unique)
 $swapchains = @($begins.swapchain | Sort-Object -Unique)
 $identities = @($begins.identity | Sort-Object -Unique)
 $presentDurations = @()
+$nativePresentDurations = @()
 $endByFrame = @{}
 foreach ($record in $ends) {
     $endByFrame[$record.frame] = $record
@@ -52,6 +58,17 @@ foreach ($begin in $begins) {
     if ($endByFrame.ContainsKey($begin.frame)) {
         $presentDurations +=
             ([double]$endByFrame[$begin.frame].qpc - [double]$begin.qpc) *
+            1000.0 / [Diagnostics.Stopwatch]::Frequency
+    }
+}
+$nativeEndByCall = @{}
+foreach ($record in $nativeEnds) {
+    $nativeEndByCall[$record.call] = $record
+}
+foreach ($begin in $nativeBegins) {
+    if ($nativeEndByCall.ContainsKey($begin.call)) {
+        $nativePresentDurations +=
+            ([double]$nativeEndByCall[$begin.call].qpc - [double]$begin.qpc) *
             1000.0 / [Diagnostics.Stopwatch]::Frequency
     }
 }
@@ -71,6 +88,8 @@ Write-Output "probe.mode=$($probe[0].mode)"
 Write-Output "probe.dlssg_state_query=$($probe[0].dlssg_state_query)"
 Write-Output "present.target_path=$($target[0].path)"
 Write-Output "present.target_version=$($target[0].version)"
+Write-Output "native_present.target_path=$($nativeTarget[0].path)"
+Write-Output "native_present.target_version=$($nativeTarget[0].version)"
 foreach ($module in $modules | Where-Object loaded -eq '1') {
     Write-Output "module.$($module.name).version=$($module.version)"
     Write-Output "module.$($module.name).path=$($module.path)"
@@ -81,6 +100,27 @@ Write-Output "present.swapchain_count=$($swapchains.Count)"
 Write-Output "present.identity_count=$($identities.Count)"
 Write-Output "present.ready_samples=$($readySamples.Count)"
 Write-Output "present.ready_lag_max=$readyLagMax"
+Write-Output "native_present.samples=$($nativeBegins.Count)"
+Write-Output "native_present.thread_count=$(@($nativeBegins.thread | Sort-Object -Unique).Count)"
+Write-Output "native_present.swapchain_count=$(@($nativeBegins.swapchain | Sort-Object -Unique).Count)"
+Write-Output "native_present.back_buffer_count=$(@($nativeBegins.back_buffer | Where-Object { $_ -ne '0000000000000000' } | Sort-Object -Unique).Count)"
+$asynchronousNativeSamples = @($nativeBegins | Where-Object {
+        $_.thread -ne $threads[0]
+    })
+Write-Output "native_present.asynchronous_samples=$($asynchronousNativeSamples.Count)"
+if ($asynchronousNativeSamples.Count -gt 0) {
+    Write-Output "native_present.first_asynchronous_call=$($asynchronousNativeSamples[0].call)"
+    Write-Output "native_present.first_asynchronous_outer_frame=$($asynchronousNativeSamples[0].outer_frame)"
+}
+$lastOuterSample = $ends | Select-Object -Last 1
+if ($null -ne $lastOuterSample.native_present_count) {
+    Write-Output "native_present.count_at_last_outer_sample=$($lastOuterSample.native_present_count)"
+    Write-Output "native_present.last_outer_frame=$($lastOuterSample.frame)"
+    Write-Output ('native_present.per_outer_at_last_sample={0:F4}' -f
+        ([double]$lastOuterSample.native_present_count /
+            [double]$lastOuterSample.frame))
+    Write-Output "native_present.surplus_at_last_outer_sample=$([long]$lastOuterSample.native_present_count - [long]$lastOuterSample.frame)"
+}
 Write-Output "dlssg.state_samples=$($stateCalls.Count)"
 if ($stateCalls.Count -gt 0) {
     Write-Output "dlssg.state_thread_count=$(@($stateCalls.thread | Sort-Object -Unique).Count)"
@@ -111,5 +151,10 @@ if ($presentDurations.Count -gt 0) {
     $duration = $presentDurations | Measure-Object -Average -Maximum
     Write-Output ('present.duration_ms_average={0:F4}' -f $duration.Average)
     Write-Output ('present.duration_ms_max={0:F4}' -f $duration.Maximum)
+}
+if ($nativePresentDurations.Count -gt 0) {
+    $nativeDuration = $nativePresentDurations | Measure-Object -Average -Maximum
+    Write-Output ('native_present.duration_ms_average={0:F4}' -f $nativeDuration.Average)
+    Write-Output ('native_present.duration_ms_max={0:F4}' -f $nativeDuration.Maximum)
 }
 Write-Output 'result=pass'

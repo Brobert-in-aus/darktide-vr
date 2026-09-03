@@ -63,9 +63,11 @@ SlGetFeatureFunctionFn original_sl_get_feature_function{};
 std::atomic<SlDlssGGetStateFn> original_sl_dlssg_get_state{};
 std::atomic<SlDlssGSetOptionsFn> original_sl_dlssg_set_options{};
 void* streamline_feature_resolver_target{};
+void* streamline_native_present_target{};
 std::atomic<std::uint64_t> streamline_feature_resolve_count{};
 std::atomic<std::uint64_t> streamline_dlssg_state_count{};
 std::atomic<std::uint64_t> streamline_dlssg_options_count{};
+std::atomic<std::uint64_t> streamline_native_present_count{};
 
 BOOL CALLBACK initialize_dxc_reflection(PINIT_ONCE, PVOID, PVOID*) {
   std::array<wchar_t, 32768> module_path{};
@@ -238,6 +240,7 @@ using EnhancedBarrierFn = void(STDMETHODCALLTYPE*)(
 
 ExecuteCommandListsFn original_execute_command_lists{};
 PresentFn original_present{};
+PresentFn original_streamline_native_present{};
 GetClientRectFn original_get_client_rect{};
 DispatchMessageWFn original_dispatch_message_w{};
 ResizeBuffersFn original_resize_buffers{};
@@ -1997,7 +2000,8 @@ int sl_get_feature_function_hook(std::uint32_t feature, const char* name,
   return result;
 }
 
-void initialize_streamline_probe(void* present_target) {
+void initialize_streamline_probe(void* present_target,
+                                 void* native_present_target) {
   auto flag_path = module_path(native_capture_module);
   const auto separator = flag_path.find_last_of(L"\\/");
   if (separator == std::wstring::npos) {
@@ -2023,6 +2027,7 @@ void initialize_streamline_probe(void* present_target) {
   const auto interposer = GetModuleHandleW(L"sl.interposer.dll");
   streamline_feature_resolver_target =
       interposer ? GetProcAddress(interposer, "slGetFeatureFunction") : nullptr;
+  streamline_native_present_target = native_present_target;
   HMODULE owner{};
   if (present_target) {
     GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
@@ -2038,6 +2043,20 @@ void initialize_streamline_probe(void* present_target) {
       "PRESENT_TARGET\taddress=%p\tmodule=%p\tversion=%s\tpath=%ls\r\n",
       present_target, owner, module_file_version(owner_path).c_str(),
       owner_path.c_str());
+  HMODULE native_owner{};
+  if (native_present_target) {
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       reinterpret_cast<LPCWSTR>(native_present_target),
+                       &native_owner);
+  }
+  const auto native_owner_path = module_path(native_owner);
+  write_streamline_probe_log(
+      "NATIVE_PRESENT_TARGET\taddress=%p\tmodule=%p\tversion=%s"
+      "\tpath=%ls\r\n",
+      native_present_target, native_owner,
+      module_file_version(native_owner_path).c_str(),
+      native_owner_path.c_str());
   log_streamline_modules(true);
 }
 
@@ -9123,6 +9142,67 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
   return 0;
 }
 
+HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
+    IDXGISwapChain* swapchain, UINT interval, UINT flags) {
+  const auto call = streamline_native_present_count.fetch_add(
+                        1, std::memory_order_relaxed) +
+                    1;
+  const bool sample = call <= 100 || call % 120 == 0;
+  LARGE_INTEGER begin{};
+  UINT last_present_before{};
+  HRESULT last_present_before_result{E_FAIL};
+  if (sample) {
+    QueryPerformanceCounter(&begin);
+    last_present_before_result =
+        swapchain->GetLastPresentCount(&last_present_before);
+    ComPtr<IDXGISwapChain3> swapchain3;
+    ComPtr<ID3D12Resource> back_buffer;
+    UINT back_buffer_index{UINT_MAX};
+    D3D12_RESOURCE_DESC back_buffer_description{};
+    if (SUCCEEDED(swapchain->QueryInterface(IID_PPV_ARGS(&swapchain3)))) {
+      back_buffer_index = swapchain3->GetCurrentBackBufferIndex();
+      if (SUCCEEDED(swapchain3->GetBuffer(
+              back_buffer_index, IID_PPV_ARGS(&back_buffer)))) {
+        back_buffer_description = back_buffer->GetDesc();
+      }
+    }
+    write_streamline_probe_log(
+        "NATIVE_PRESENT_BEGIN\tcall=%llu\touter_frame=%llu\tthread=%lu"
+        "\tqpc=%lld\tswapchain=%p\tinterval=%u\tflags=%u"
+        "\tlast_present_result=%ld\tlast_present=%u"
+        "\tback_buffer_index=%u\tback_buffer=%p\twidth=%llu"
+        "\theight=%u\tformat=%u\r\n",
+        static_cast<unsigned long long>(call),
+        static_cast<unsigned long long>(
+            present_count.load(std::memory_order_relaxed)),
+        GetCurrentThreadId(), begin.QuadPart, swapchain, interval, flags,
+        last_present_before_result, last_present_before, back_buffer_index,
+        back_buffer.Get(),
+        static_cast<unsigned long long>(back_buffer_description.Width),
+        back_buffer_description.Height,
+        static_cast<unsigned>(back_buffer_description.Format));
+  }
+  const auto result =
+      original_streamline_native_present(swapchain, interval, flags);
+  if (sample) {
+    LARGE_INTEGER end{};
+    QueryPerformanceCounter(&end);
+    UINT last_present_after{};
+    const auto last_present_after_result =
+        swapchain->GetLastPresentCount(&last_present_after);
+    write_streamline_probe_log(
+        "NATIVE_PRESENT_END\tcall=%llu\touter_frame=%llu\tthread=%lu"
+        "\tqpc=%lld\tresult=%ld\tswapchain=%p"
+        "\tlast_present_result=%ld\tlast_present=%u\r\n",
+        static_cast<unsigned long long>(call),
+        static_cast<unsigned long long>(
+            present_count.load(std::memory_order_relaxed)),
+        GetCurrentThreadId(), end.QuadPart, result, swapchain,
+        last_present_after_result, last_present_after);
+  }
+  return result;
+}
+
 HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                                         UINT interval, UINT flags) {
   if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {
@@ -9153,11 +9233,14 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
     write_streamline_probe_log(
         "PRESENT_BEGIN\tframe=%llu\tthread=%lu\tqpc=%lld"
         "\tswapchain=%p\tidentity=%p\tinterval=%u\tflags=%u"
-        "\tready_fence=%p\tready_value=%llu\tready_completed=%llu\r\n",
+        "\tready_fence=%p\tready_value=%llu\tready_completed=%llu"
+        "\tnative_present_count=%llu\r\n",
         present, GetCurrentThreadId(), streamline_begin.QuadPart, swapchain,
         identity.Get(), interval, flags, capture_ready_fence.Get(),
         static_cast<unsigned long long>(capture_ready_value),
-        static_cast<unsigned long long>(completed));
+        static_cast<unsigned long long>(completed),
+        static_cast<unsigned long long>(
+            streamline_native_present_count.load(std::memory_order_relaxed)));
     log_streamline_modules(false);
   }
   // Focused tracing is an operator-triggered diagnostic, not frame-critical
@@ -9433,11 +9516,14 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                                : 0;
     write_streamline_probe_log(
         "PRESENT_END\tframe=%llu\tthread=%lu\tqpc=%lld\tresult=%ld"
-        "\tready_fence=%p\tready_value=%llu\tready_completed=%llu\r\n",
+        "\tready_fence=%p\tready_value=%llu\tready_completed=%llu"
+        "\tnative_present_count=%llu\r\n",
         present, GetCurrentThreadId(), streamline_end.QuadPart, result,
         capture_ready_fence.Get(),
         static_cast<unsigned long long>(capture_ready_value),
-        static_cast<unsigned long long>(completed));
+        static_cast<unsigned long long>(completed),
+        static_cast<unsigned long long>(
+            streamline_native_present_count.load(std::memory_order_relaxed)));
   }
   // Resize after DXGI Present completes. A real client-area change makes
   // Stingray rebuild every viewport-dependent resource; the old synthetic
@@ -9607,6 +9693,19 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
       *reinterpret_cast<void***>(pipeline_library1.Get());
   auto** swapchain_vtable =
       *reinterpret_cast<void***>(dummy_swapchain3.Get());
+  constexpr GUID kStreamlineRetrieveBaseInterface{
+      0xadec44e2, 0x61f0, 0x45c3,
+      {0xad, 0x9f, 0x1b, 0x37, 0x37, 0x92, 0x84, 0xff}};
+  ComPtr<IDXGISwapChain> streamline_native_swapchain;
+  void* streamline_native_present{};
+  if (SUCCEEDED(dummy_swapchain3->QueryInterface(
+          kStreamlineRetrieveBaseInterface,
+          reinterpret_cast<void**>(
+              streamline_native_swapchain.GetAddressOf())))) {
+    auto** native_swapchain_vtable =
+        *reinterpret_cast<void***>(streamline_native_swapchain.Get());
+    streamline_native_present = native_swapchain_vtable[8];
+  }
   auto** command_list_vtable =
       *reinterpret_cast<void***>(dummy_commands.Get());
   auto** resource_vtable =
@@ -9629,7 +9728,8 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
       cluster_trace_log != INVALID_HANDLE_VALUE;
   const auto install_cluster_light_visibility_fix_hooks =
       cluster_light_visibility_fix_requested.load(std::memory_order_relaxed);
-  initialize_streamline_probe(swapchain_vtable[8]);
+  initialize_streamline_probe(swapchain_vtable[8],
+                              streamline_native_present);
   const auto install_pso_substitution_hooks =
       kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
       kStockMenuDirectRenderEnabled ||
@@ -9940,6 +10040,12 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
       MH_CreateHook(queue_vtable[10], &execute_command_lists_hook,
                     reinterpret_cast<void**>(&original_execute_command_lists)) !=
           MH_OK ||
+      (streamline_native_present_target &&
+       streamline_native_present_target != swapchain_vtable[8] &&
+       MH_CreateHook(streamline_native_present_target,
+                     &streamline_native_present_hook,
+                     reinterpret_cast<void**>(
+                         &original_streamline_native_present)) != MH_OK) ||
       MH_CreateHook(swapchain_vtable[8], &present_hook,
                      reinterpret_cast<void**>(&original_present)) != MH_OK ||
       MH_CreateHook(swapchain_vtable[13], &resize_buffers_hook,
