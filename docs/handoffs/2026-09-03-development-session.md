@@ -460,6 +460,18 @@ transport gate is to give these slots stable shared handles plus producer-ready
 and consumer-consumed sequencing, then make the XR bridge select outputs by
 explicit metadata rather than timing or alternation.
 
+The cross-process contract now exists independently of the live hook. A
+versioned seqlock metadata mapping publishes writer generation, latest sequence,
+2496x2688/format identity, and per-slot sequence, native-call and Streamline
+frame-index identity. Sequence N deterministically maps to `(N - 1) % 3`, and a
+new writer generation resets sequence so a surviving bridge cannot confuse a
+producer restart with old ring contents. The bridge-side D3D12 helper opens and
+validates all three typed textures plus shared ready and consumed fences. Unit
+tests cover five metadata publications across slot wrap, writer restart, and
+real named-handle opening from a second D3D12 interface. The next change should
+replace the transport probe's private surfaces/fences with this tested shared
+contract, retaining its non-blocking saturation policy.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:
@@ -541,6 +553,8 @@ source was removed.
 .\tools\stereo\read-streamline-probe.ps1
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 100 -StreamlineTransportProbe -AutoEnterHub
 .\tools\stereo\read-streamline-probe.ps1
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build/windows-vs2022 --config Release --target darktidevr-generated-frame-state-tests darktidevr-shared-eye-surfaces-tests -- /p:TreatWarningsAsErrors=true
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build/windows-vs2022 -C Release -R '^(generated_frame_state|shared_eye_surfaces)$' --output-on-failure
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native

@@ -367,6 +367,66 @@ int main(int argc, char** argv) {
       throw std::runtime_error("Receiver did not open shared texture");
     }
 
+    const darktidevr::bridge::SharedGeneratedSurfaceNames generated_names{
+        {prefix + L"-generated-0", prefix + L"-generated-1",
+         prefix + L"-generated-2"},
+        prefix + L"-generated-ready",
+        prefix + L"-generated-consumed"};
+    std::array<ComPtr<ID3D12Resource>,
+               darktidevr::core::kSharedGeneratedFrameSlotCount>
+        producer_generated;
+    std::array<UniqueHandle,
+               darktidevr::core::kSharedGeneratedFrameSlotCount>
+        producer_generated_handles;
+    for (std::size_t index = 0; index < producer_generated.size(); ++index) {
+      check(device->CreateCommittedResource(
+                &heap, D3D12_HEAP_FLAG_SHARED, &resource,
+                D3D12_RESOURCE_STATE_COMMON, nullptr,
+                IID_PPV_ARGS(&producer_generated[index])),
+            "CreateCommittedResource(generated texture)");
+      HANDLE handle{};
+      check(device->CreateSharedHandle(
+                producer_generated[index].Get(), nullptr, GENERIC_ALL,
+                generated_names.textures[index].c_str(), &handle),
+            "CreateSharedHandle(generated texture)");
+      producer_generated_handles[index].reset(handle);
+    }
+    ComPtr<ID3D12Fence> generated_ready;
+    ComPtr<ID3D12Fence> generated_consumed;
+    check(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED,
+                              IID_PPV_ARGS(&generated_ready)),
+          "CreateFence(generated ready)");
+    check(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED,
+                              IID_PPV_ARGS(&generated_consumed)),
+          "CreateFence(generated consumed)");
+    HANDLE generated_ready_handle{};
+    HANDLE generated_consumed_handle{};
+    check(device->CreateSharedHandle(
+              generated_ready.Get(), nullptr, GENERIC_ALL,
+              generated_names.ready_fence.c_str(), &generated_ready_handle),
+          "CreateSharedHandle(generated ready)");
+    check(device->CreateSharedHandle(
+              generated_consumed.Get(), nullptr, GENERIC_ALL,
+              generated_names.consumed_fence.c_str(),
+              &generated_consumed_handle),
+          "CreateSharedHandle(generated consumed)");
+    UniqueHandle producer_generated_ready_handle(generated_ready_handle);
+    UniqueHandle producer_generated_consumed_handle(generated_consumed_handle);
+
+    const auto opened_generated =
+        darktidevr::bridge::open_shared_generated_surfaces(
+            device.Get(), generated_names, description);
+    if (!opened_generated.ready_fence || !opened_generated.consumed_fence) {
+      throw std::runtime_error("Receiver did not open generated fences");
+    }
+    for (const auto& texture : opened_generated.textures) {
+      if (!texture || texture->GetDesc().Width != 64 ||
+          texture->GetDesc().Height != 64) {
+        throw std::runtime_error(
+            "Receiver did not open every generated texture");
+      }
+    }
+
     std::cout << "shared_eye_surfaces.result=pass\n";
     return 0;
   } catch (const std::exception& error) {

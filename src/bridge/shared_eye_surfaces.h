@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/output_layout.h"
+#include "core/shared_generated_frame_state.h"
 
 #include <Windows.h>
 #include <d3d12.h>
@@ -43,6 +44,21 @@ struct OpenedSharedTexture {
   SharedEyeSurfaceDescription description{};
 };
 
+struct SharedGeneratedSurfaceNames {
+  std::array<std::wstring, core::kSharedGeneratedFrameSlotCount> textures;
+  std::wstring ready_fence;
+  std::wstring consumed_fence;
+};
+
+struct OpenedGeneratedSurfaces {
+  std::array<Microsoft::WRL::ComPtr<ID3D12Resource>,
+             core::kSharedGeneratedFrameSlotCount>
+      textures;
+  Microsoft::WRL::ComPtr<ID3D12Fence> ready_fence;
+  Microsoft::WRL::ComPtr<ID3D12Fence> consumed_fence;
+  SharedEyeSurfaceDescription description{};
+};
+
 // Opens producer-owned NT handles by name. The producer retains ownership and
 // signals ready_fence after transitioning both surfaces to COMMON. The
 // consumer signals consumed_fence with the same value only after its queue has
@@ -57,6 +73,13 @@ OpenedEyeSurfaces open_shared_eye_surfaces(
 // stereo eye pair.
 OpenedSharedTexture open_shared_texture(
     ID3D12Device* device, const SharedTextureNames& names,
+    SharedEyeSurfaceDescription expected);
+
+// Opens the bounded generated-output ring. Sequence N maps to
+// generated_frame_slot(N); ready fence N makes that slot and its metadata
+// visible, while consumed fence N releases it back to the producer.
+OpenedGeneratedSurfaces open_shared_generated_surfaces(
+    ID3D12Device* device, const SharedGeneratedSurfaceNames& names,
     SharedEyeSurfaceDescription expected);
 
 // D3D12 reports UINT64_MAX when a fence's device has been removed. Treating

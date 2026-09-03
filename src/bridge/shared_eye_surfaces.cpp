@@ -135,4 +135,41 @@ OpenedSharedTexture open_shared_texture(
   return opened;
 }
 
+OpenedGeneratedSurfaces open_shared_generated_surfaces(
+    ID3D12Device* device, const SharedGeneratedSurfaceNames& names,
+    SharedEyeSurfaceDescription expected) {
+  if (!device) {
+    throw std::invalid_argument("D3D12 device must not be null");
+  }
+  if (expected.extent.width == 0 || expected.extent.height == 0 ||
+      expected.format == DXGI_FORMAT_UNKNOWN) {
+    throw std::invalid_argument(
+        "Expected generated texture description is incomplete");
+  }
+  validate_name(names.ready_fence, "Generated ready fence");
+  validate_name(names.consumed_fence, "Generated consumed fence");
+
+  OpenedGeneratedSurfaces opened;
+  opened.description = expected;
+  for (std::size_t index = 0; index < opened.textures.size(); ++index) {
+    validate_name(names.textures[index], "Generated texture");
+    const auto handle = open_named_handle(
+        device, names.textures[index],
+        "ID3D12Device::OpenSharedHandleByName(generated texture)");
+    const auto result = device->OpenSharedHandle(
+        handle, IID_PPV_ARGS(&opened.textures[index]));
+    CloseHandle(handle);
+    check(result, "ID3D12Device::OpenSharedHandle(generated texture)");
+    validate_texture(opened.textures[index]->GetDesc(), expected,
+                     "Generated texture " + std::to_string(index));
+  }
+  opened.ready_fence = open_fence(
+      device, names.ready_fence,
+      "ID3D12Device::OpenSharedHandle(generated ready fence)");
+  opened.consumed_fence = open_fence(
+      device, names.consumed_fence,
+      "ID3D12Device::OpenSharedHandle(generated consumed fence)");
+  return opened;
+}
+
 }  // namespace darktidevr::bridge
