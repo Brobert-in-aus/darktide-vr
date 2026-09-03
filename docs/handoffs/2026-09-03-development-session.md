@@ -295,6 +295,38 @@ depth or motion-vector swapchains for either extension unless a future runtime
 probe reports support; continue with the separate Streamline-generated-output
 feasibility gate.
 
+## Observe-only Streamline Present probe
+
+The first Streamline feasibility layer is now launch-scoped behind
+`start-darktide-vr.ps1 -StreamlineProbe`. It opens
+`%TEMP%\darktidevr-streamline-probe.tsv` only when requested and records the
+unhooked Present target before MinHook builds its trampoline, loaded module
+paths and file versions, exported resolver availability, COM swapchain
+identity, Present thread/frame/QPC, result, and the DarktideVR ready fence
+before and after Present. Sampling is bounded to the first five frames and one
+frame in 120. `read-streamline-probe.ps1` validates and summarizes the trace.
+
+The 90-second authenticated hub run proved that the real target of the native
+Present hook is Darktide's loaded `sl.interposer.dll` 2.7.30.0. The process also
+loaded `sl.common.dll` and `sl.dlss_g.dll` 2.7.30.0 and
+`nvngx_dlssg.dll` 310.2.1.0. All 56 sampled calls used one thread, one
+swapchain pointer and the same COM identity. Once stereo attached, sampled
+ready values advanced from 20 through 1,280 and were complete or one fence
+value behind at Present entry. The OpenXR run submitted 8,700/8,700 frames,
+advanced 1,313 fresh shared pairs, and reported zero reuse, capture failures,
+stale frames, pair-driven timeouts or pair-pose mismatches. This establishes
+that the game calls the Streamline proxy Present path and correlates that path
+with the stereo producer; it does not yet prove whether generated asynchronous
+presents re-enter that same proxy method.
+
+The probe deliberately does not call `slDLSSGGetState`. NVIDIA's exact 2.7.30
+header marks the function non-thread-safe, and
+`numFramesActuallyPresented` is defined since the previous call, so a second
+observer can perturb Darktide's own query. The user settings requested DLSS-G
+with one generated frame, but that is configuration evidence rather than proof
+of live generation. Continue by observing Darktide's existing state query or
+plugin callback path; do not inject an additional state call.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:
@@ -368,6 +400,10 @@ source was removed.
 & .\build\windows-vs2022\tests\xr_harness\Release\darktidevr-xr-harness.exe --frames 1 --require-rendering --xr-frames 120
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build\windows-vs2022 --config Debug --target darktidevr-xr-harness
 .\tools\unattended\invoke-unattended-preflight.ps1 -RunXrSmoke -XrFrames 120
+& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' 'build\windows-vs2022\src\producer\darktidevr_native_capture.vcxproj' /m /p:Configuration=Release /p:Platform=x64 /t:Build /v:minimal
+.\build\windows-vs2022\tests\native_capture\Release\darktidevr-native-capture-tests.exe .\build\windows-vs2022\src\producer\Release\darktidevr_native_capture.dll
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 90 -StreamlineProbe -AutoEnterHub
+.\tools\stereo\read-streamline-probe.ps1
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native

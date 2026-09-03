@@ -18,6 +18,8 @@ param(
 
     [switch] $DiagnosticRenderHooks,
 
+    [switch] $StreamlineProbe,
+
     [switch] $ClusterLightTrace,
 
     [bool] $ClusterLightVisibilityFix = $true,
@@ -145,6 +147,9 @@ if ($CaptureBillboardPsoIdentities) {
 # runs the unrelated graphics-PSO census and can stall renderer startup.
 $offlineNoHeadset = $OfflineDualViewBenchmark -or
     $OfflineCharacterSelectCapture -or $OfflineTitleCapture
+$streamlineProbeFlagPath = $null
+$streamlineProbeFlagOriginal = $null
+$streamlineProbeFlagExisted = $false
 
 if (-not $SkipDeploymentSync) {
     $sync = Join-Path $PSScriptRoot 'sync-darktide-vr-dev.ps1'
@@ -276,6 +281,20 @@ if ($CaptureBillboardPsoIdentities) {
 }
 $launchStarted = Get-Date
 try {
+if ($StreamlineProbe) {
+    $streamlineProbeFlagPath = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_streamline_probe.flag'
+    $streamlineProbeFlagExisted = Test-Path -LiteralPath `
+        $streamlineProbeFlagPath -PathType Leaf
+    if ($streamlineProbeFlagExisted) {
+        $streamlineProbeFlagOriginal = Get-Content -LiteralPath `
+            $streamlineProbeFlagPath -Raw
+    }
+    Set-Content -LiteralPath $streamlineProbeFlagPath -Value 'enabled' `
+        -Encoding ascii
+    Write-Output `
+        'Observe-only Streamline/Present probe enabled for this run.'
+}
 if ($SyntheticRuntimeFrusta) {
     $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
     $syntheticHeadPublisherPath = Join-Path $repositoryRoot `
@@ -617,6 +636,17 @@ else {
 }
 }
 finally {
+    if ($streamlineProbeFlagPath) {
+        if ($streamlineProbeFlagExisted) {
+            Set-Content -LiteralPath $streamlineProbeFlagPath `
+                -Value $streamlineProbeFlagOriginal.Trim() -Encoding ascii
+        }
+        elseif (Test-Path -LiteralPath $streamlineProbeFlagPath `
+                -PathType Leaf) {
+            Remove-Item -LiteralPath $streamlineProbeFlagPath -Force
+        }
+        Write-Output 'Restored the prior Streamline probe flag.'
+    }
     if ($syntheticHeadPublisher) {
         if (-not $syntheticHeadPublisher.HasExited) {
             $syntheticHeadPublisher | Stop-Process -Force

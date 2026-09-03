@@ -776,6 +776,21 @@ if (-not $nativeCaptureSource.Contains(
 if (-not $nativeCaptureSource.Contains('if (present == 1 || present % 30 == 0)')) {
     throw 'Focused trace request files must be polled at diagnostic cadence, not on every Present.'
 }
+if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
+        -not $startHelperSource.Contains(
+            'darktidevr_streamline_probe.flag') -or
+        -not $nativeCaptureSource.Contains(
+            'PROBE\tmode=observe_only\tsdk_abi=2.7.30') -or
+        -not $nativeCaptureSource.Contains(
+            'dlssg_state_query=disabled') -or
+        -not $nativeCaptureSource.Contains(
+            'reason=non_thread_safe_and_resets_present_count') -or
+        -not $nativeCaptureSource.Contains(
+            'initialize_streamline_probe(swapchain_vtable[8])') -or
+        -not $nativeCaptureSource.Contains(
+            '(present <= 5 || present % 120 == 0)')) {
+    throw 'The Streamline probe must remain launch-scoped, bounded and observe-only; do not call the state API that mutates its frame counter.'
+}
 if (-not $nativeCaptureSource.Contains(
         'std::atomic<bool> named_camera_outputs_ready_hint{};') -or
         -not $nativeCaptureSource.Contains(

@@ -3,6 +3,7 @@
 #include <d3d12shader.h>
 #include <dxcapi.h>
 #include <dxgi1_6.h>
+#include <winver.h>
 #include <wrl/client.h>
 #include <intrin.h>
 
@@ -33,6 +34,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#pragma comment(lib, "version.lib")
 
 using Microsoft::WRL::ComPtr;
 
@@ -444,6 +447,10 @@ std::mutex resize_diagnostic_log_mutex;
 std::atomic<std::uint64_t> resize_diagnostic_log_count{};
 std::atomic<std::uint64_t> resize_diagnostic_generation{};
 std::atomic<std::uint64_t> resize_diagnostic_burst_until_present{};
+HANDLE streamline_probe_log{INVALID_HANDLE_VALUE};
+std::mutex streamline_probe_log_mutex;
+std::atomic<std::uint64_t> streamline_probe_log_count{};
+std::atomic<unsigned int> streamline_loaded_module_mask{};
 HANDLE enhanced_barrier_log{INVALID_HANDLE_VALUE};
 std::atomic<std::uint64_t> enhanced_barrier_log_count{};
 std::atomic<int> focused_trace_phase{};
@@ -1734,6 +1741,140 @@ void write_menu_resource_log(const char* format, ...) {
             static_cast<DWORD>((std::min)(
                 length, static_cast<int>(sizeof(line) - 1))),
             &written, nullptr);
+}
+
+void write_streamline_probe_log(const char* format, ...) {
+  if (streamline_probe_log == INVALID_HANDLE_VALUE ||
+      streamline_probe_log_count.fetch_add(1, std::memory_order_relaxed) >=
+          4096) {
+    return;
+  }
+  char line[1600]{};
+  va_list arguments;
+  va_start(arguments, format);
+  const auto length = std::vsnprintf(line, sizeof(line), format, arguments);
+  va_end(arguments);
+  if (length <= 0) {
+    return;
+  }
+  DWORD written{};
+  std::scoped_lock lock(streamline_probe_log_mutex);
+  if (streamline_probe_log != INVALID_HANDLE_VALUE) {
+    WriteFile(streamline_probe_log, line,
+              static_cast<DWORD>((std::min)(
+                  length, static_cast<int>(sizeof(line) - 1))),
+              &written, nullptr);
+  }
+}
+
+std::wstring module_path(HMODULE module) {
+  std::array<wchar_t, 32768> path{};
+  const auto length = GetModuleFileNameW(
+      module, path.data(), static_cast<DWORD>(path.size()));
+  return length != 0 && length < path.size()
+             ? std::wstring(path.data(), length)
+             : std::wstring{};
+}
+
+std::string module_file_version(const std::wstring& path) {
+  DWORD ignored{};
+  const auto bytes = GetFileVersionInfoSizeW(path.c_str(), &ignored);
+  if (bytes == 0) {
+    return "unknown";
+  }
+  std::vector<std::byte> data(bytes);
+  if (!GetFileVersionInfoW(path.c_str(), 0, bytes, data.data())) {
+    return "unknown";
+  }
+  VS_FIXEDFILEINFO* fixed{};
+  UINT fixed_bytes{};
+  if (!VerQueryValueW(data.data(), L"\\", reinterpret_cast<void**>(&fixed),
+                      &fixed_bytes) ||
+      !fixed || fixed_bytes < sizeof(*fixed)) {
+    return "unknown";
+  }
+  char version[64]{};
+  std::snprintf(version, sizeof(version), "%u.%u.%u.%u",
+                HIWORD(fixed->dwFileVersionMS), LOWORD(fixed->dwFileVersionMS),
+                HIWORD(fixed->dwFileVersionLS), LOWORD(fixed->dwFileVersionLS));
+  return version;
+}
+
+void log_streamline_modules(bool log_missing) {
+  constexpr std::array<const wchar_t*, 4> names{
+      L"sl.interposer.dll", L"sl.common.dll", L"sl.dlss_g.dll",
+      L"nvngx_dlssg.dll"};
+  for (std::size_t index = 0; index < names.size(); ++index) {
+    const auto module = GetModuleHandleW(names[index]);
+    const auto bit = 1U << index;
+    if (!module) {
+      if (log_missing) {
+        write_streamline_probe_log("MODULE\tname=%ls\tloaded=0\r\n",
+                                   names[index]);
+      }
+      continue;
+    }
+    if ((streamline_loaded_module_mask.fetch_or(bit,
+                                                std::memory_order_relaxed) &
+         bit) != 0) {
+      continue;
+    }
+    const auto path = module_path(module);
+    const auto version = module_file_version(path);
+    write_streamline_probe_log(
+        "MODULE\tname=%ls\tloaded=1\tbase=%p\tversion=%s\tpath=%ls"
+        "\tslGetFeatureFunction=%p\tslGetFeatureRequirements=%p"
+        "\tslGetFeatureVersion=%p\tslIsFeatureLoaded=%p"
+        "\tslGetNativeInterface=%p\tslGetPluginFunction=%p\r\n",
+        names[index], module, version.c_str(), path.c_str(),
+        GetProcAddress(module, "slGetFeatureFunction"),
+        GetProcAddress(module, "slGetFeatureRequirements"),
+        GetProcAddress(module, "slGetFeatureVersion"),
+        GetProcAddress(module, "slIsFeatureLoaded"),
+        GetProcAddress(module, "slGetNativeInterface"),
+        GetProcAddress(module, "slGetPluginFunction"));
+  }
+}
+
+void initialize_streamline_probe(void* present_target) {
+  auto flag_path = module_path(native_capture_module);
+  const auto separator = flag_path.find_last_of(L"\\/");
+  if (separator == std::wstring::npos) {
+    return;
+  }
+  flag_path.resize(separator + 1);
+  flag_path += L"..\\darktidevr_streamline_probe.flag";
+  if (GetFileAttributesW(flag_path.c_str()) == INVALID_FILE_ATTRIBUTES) {
+    return;
+  }
+  wchar_t temporary_path[MAX_PATH]{};
+  if (GetTempPathW(MAX_PATH, temporary_path) == 0) {
+    return;
+  }
+  const auto path = std::wstring(temporary_path) +
+                    L"darktidevr-streamline-probe.tsv";
+  streamline_probe_log =
+      CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (streamline_probe_log == INVALID_HANDLE_VALUE) {
+    return;
+  }
+  HMODULE owner{};
+  if (present_target) {
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       reinterpret_cast<LPCWSTR>(present_target), &owner);
+  }
+  const auto owner_path = module_path(owner);
+  write_streamline_probe_log(
+      "PROBE\tmode=observe_only\tsdk_abi=2.7.30"
+      "\tdlssg_state_query=disabled"
+      "\treason=non_thread_safe_and_resets_present_count\r\n");
+  write_streamline_probe_log(
+      "PRESENT_TARGET\taddress=%p\tmodule=%p\tversion=%s\tpath=%ls\r\n",
+      present_target, owner, module_file_version(owner_path).c_str(),
+      owner_path.c_str());
+  log_streamline_modules(true);
 }
 
 void write_resize_diagnostic_log(const char* format, ...) {
@@ -8827,6 +8968,34 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
     candidate_frame_eye0_instance_count = 0;
   }
   const auto present = present_count.fetch_add(1, std::memory_order_relaxed) + 1;
+  const bool sample_streamline =
+      streamline_probe_log != INVALID_HANDLE_VALUE &&
+      (present <= 5 || present % 120 == 0);
+  LARGE_INTEGER streamline_begin{};
+  if (sample_streamline) {
+    QueryPerformanceCounter(&streamline_begin);
+    ComPtr<IUnknown> identity;
+    (void)swapchain->QueryInterface(IID_PPV_ARGS(&identity));
+    ComPtr<ID3D12Fence> capture_ready_fence;
+    std::uint64_t capture_ready_value{};
+    {
+      std::scoped_lock lock(state_mutex);
+      capture_ready_fence = ready_fence;
+      capture_ready_value = ready_value;
+    }
+    const auto completed = capture_ready_fence
+                               ? capture_ready_fence->GetCompletedValue()
+                               : 0;
+    write_streamline_probe_log(
+        "PRESENT_BEGIN\tframe=%llu\tthread=%lu\tqpc=%lld"
+        "\tswapchain=%p\tidentity=%p\tinterval=%u\tflags=%u"
+        "\tready_fence=%p\tready_value=%llu\tready_completed=%llu\r\n",
+        present, GetCurrentThreadId(), streamline_begin.QuadPart, swapchain,
+        identity.Get(), interval, flags, capture_ready_fence.Get(),
+        static_cast<unsigned long long>(capture_ready_value),
+        static_cast<unsigned long long>(completed));
+    log_streamline_modules(false);
+  }
   // Focused tracing is an operator-triggered diagnostic, not frame-critical
   // state. Poll promptly on startup and then at human-scale latency instead of
   // issuing GetTempPath plus three filesystem probes on every Present.
@@ -9085,6 +9254,27 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
     }
   }
   const auto result = original_present(swapchain, interval, flags);
+  if (sample_streamline) {
+    LARGE_INTEGER streamline_end{};
+    QueryPerformanceCounter(&streamline_end);
+    ComPtr<ID3D12Fence> capture_ready_fence;
+    std::uint64_t capture_ready_value{};
+    {
+      std::scoped_lock lock(state_mutex);
+      capture_ready_fence = ready_fence;
+      capture_ready_value = ready_value;
+    }
+    const auto completed = capture_ready_fence
+                               ? capture_ready_fence->GetCompletedValue()
+                               : 0;
+    write_streamline_probe_log(
+        "PRESENT_END\tframe=%llu\tthread=%lu\tqpc=%lld\tresult=%ld"
+        "\tready_fence=%p\tready_value=%llu\tready_completed=%llu\r\n",
+        present, GetCurrentThreadId(), streamline_end.QuadPart, result,
+        capture_ready_fence.Get(),
+        static_cast<unsigned long long>(capture_ready_value),
+        static_cast<unsigned long long>(completed));
+  }
   // Resize after DXGI Present completes. A real client-area change makes
   // Stingray rebuild every viewport-dependent resource; the old synthetic
   // WM_SIZE only persisted a fake dimension and left the scene half-built.
@@ -9275,6 +9465,7 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
       cluster_trace_log != INVALID_HANDLE_VALUE;
   const auto install_cluster_light_visibility_fix_hooks =
       cluster_light_visibility_fix_requested.load(std::memory_order_relaxed);
+  initialize_streamline_probe(swapchain_vtable[8]);
   const auto install_pso_substitution_hooks =
       kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
       kStockMenuDirectRenderEnabled ||
@@ -10064,7 +10255,6 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
     redirect.diagnostic_id = diagnostic_id;
     return redirect;
   }
-  return {};
 }
 
 void end_stock_menu_draw_redirect(ID3D12GraphicsCommandList* commands,
@@ -12485,6 +12675,10 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
     if (resize_diagnostic_log != INVALID_HANDLE_VALUE) {
       CloseHandle(resize_diagnostic_log);
       resize_diagnostic_log = INVALID_HANDLE_VALUE;
+    }
+    if (streamline_probe_log != INVALID_HANDLE_VALUE) {
+      CloseHandle(streamline_probe_log);
+      streamline_probe_log = INVALID_HANDLE_VALUE;
     }
     close_shared_handles();
     close_menu_shared_handles();
