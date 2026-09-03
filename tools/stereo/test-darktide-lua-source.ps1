@@ -779,9 +779,13 @@ if (-not $nativeCaptureSource.Contains('if (present == 1 || present % 30 == 0)')
 if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $startHelperSource.Contains('[switch] $StreamlineCopyProbe') -or
         -not $startHelperSource.Contains(
+            '[switch] $StreamlineTransportProbe') -or
+        -not $startHelperSource.Contains(
             'darktidevr_streamline_probe.flag') -or
         -not $startHelperSource.Contains(
             'darktidevr_streamline_copy_probe.flag') -or
+        -not $startHelperSource.Contains(
+            'darktidevr_streamline_transport_probe.flag') -or
         -not $nativeCaptureSource.Contains(
             'PROBE\tmode=observe_only\tsdk_abi=2.7.30') -or
         -not $nativeCaptureSource.Contains(
@@ -840,6 +844,18 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
             'observed_present_queue = swapchain_present_queue;') -or
         -not $nativeCaptureSource.Contains(
             'GENERATED_COPY_COMPLETE\tresult=success') -or
+        -not $nativeCaptureSource.Contains(
+            'constexpr std::size_t kStreamlineTransportSlotCount = 3;') -or
+        -not $nativeCaptureSource.Contains(
+            'constexpr std::uint64_t kStreamlineTransportSubmissionLimit = 120;') -or
+        -not $nativeCaptureSource.Contains(
+            'GENERATED_TRANSPORT_SUBMIT\tslot=%zu\tnative_call=%llu') -or
+        -not $nativeCaptureSource.Contains(
+            'GENERATED_TRANSPORT_COMPLETE\tslot=%zu\tnative_call=%llu') -or
+        -not $nativeCaptureSource.Contains(
+            'GENERATED_TRANSPORT_DROP\treason=ring_full') -or
+        -not $nativeCaptureSource.Contains(
+            'schedule_streamline_transport_probe(') -or
         -not $nativeCaptureSource.Contains(
             'streamline_native_present_count.load(std::memory_order_relaxed)') -or
         -not $nativeCaptureSource.Contains(

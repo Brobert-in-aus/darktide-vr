@@ -75,6 +75,7 @@ std::atomic<std::uint64_t> streamline_dlssg_state_count{};
 std::atomic<std::uint64_t> streamline_dlssg_options_count{};
 std::atomic<std::uint64_t> streamline_native_present_count{};
 std::atomic<bool> streamline_copy_probe_requested{};
+std::atomic<bool> streamline_transport_probe_requested{};
 std::atomic<DWORD> streamline_outer_present_thread{};
 std::atomic<std::uint64_t> streamline_outer_present_active_frame{};
 std::atomic<std::uint64_t> streamline_native_burst_until_call{};
@@ -122,6 +123,26 @@ struct StreamlineCopyProbeState {
 
 std::mutex streamline_copy_probe_mutex;
 StreamlineCopyProbeState streamline_copy_probe_state;
+
+struct StreamlineTransportSlot {
+  bool pending{};
+  std::uint64_t fence_value{};
+  std::uint64_t native_call{};
+  std::uint32_t frame_index{UINT_MAX};
+  ComPtr<ID3D12CommandAllocator> allocator;
+  ComPtr<ID3D12GraphicsCommandList> commands;
+  ComPtr<ID3D12Resource> surface;
+  ComPtr<ID3D12Fence> fence;
+};
+
+constexpr std::size_t kStreamlineTransportSlotCount = 3;
+constexpr std::uint64_t kStreamlineTransportSubmissionLimit = 120;
+std::mutex streamline_transport_mutex;
+std::array<StreamlineTransportSlot, kStreamlineTransportSlotCount>
+    streamline_transport_slots;
+std::uint64_t streamline_transport_submitted{};
+std::uint64_t streamline_transport_completed{};
+std::uint64_t streamline_transport_dropped{};
 
 BOOL CALLBACK initialize_dxc_reflection(PINIT_ONCE, PVOID, PVOID*) {
   std::array<wchar_t, 32768> module_path{};
@@ -2145,6 +2166,12 @@ void initialize_streamline_probe(void* present_target,
   streamline_copy_probe_requested.store(
       GetFileAttributesW(copy_flag_path.c_str()) != INVALID_FILE_ATTRIBUTES,
       std::memory_order_release);
+  const auto transport_flag_path =
+      flag_directory + L"..\\darktidevr_streamline_transport_probe.flag";
+  streamline_transport_probe_requested.store(
+      GetFileAttributesW(transport_flag_path.c_str()) !=
+          INVALID_FILE_ATTRIBUTES,
+      std::memory_order_release);
   const auto interposer = GetModuleHandleW(L"sl.interposer.dll");
   streamline_feature_resolver_target =
       interposer ? GetProcAddress(interposer, "slGetFeatureFunction") : nullptr;
@@ -2163,9 +2190,12 @@ void initialize_streamline_probe(void* present_target,
   write_streamline_probe_log(
       "PROBE\tmode=observe_only\tsdk_abi=2.7.30"
       "\tdlssg_state_query=wrap_existing_calls"
-      "\tindependent_state_calls=0\tcopy_probe=%u\r\n",
+      "\tindependent_state_calls=0\tcopy_probe=%u\ttransport_probe=%u\r\n",
       streamline_copy_probe_requested.load(std::memory_order_relaxed) ? 1U
-                                                                     : 0U);
+                                                                     : 0U,
+      streamline_transport_probe_requested.load(std::memory_order_relaxed)
+          ? 1U
+          : 0U);
   write_streamline_probe_log(
       "PRESENT_TARGET\taddress=%p\tmodule=%p\tversion=%s\tpath=%ls\r\n",
       present_target, owner, module_file_version(owner_path).c_str(),
@@ -9521,10 +9551,176 @@ void schedule_streamline_copy_probe(ID3D12CommandQueue* queue,
       source_x, source_y);
 }
 
+void harvest_streamline_transport_probe() {
+  std::scoped_lock lock(streamline_transport_mutex);
+  for (std::size_t index = 0; index < streamline_transport_slots.size();
+       ++index) {
+    auto& slot = streamline_transport_slots[index];
+    if (!slot.pending || !slot.fence ||
+        slot.fence->GetCompletedValue() < slot.fence_value) {
+      continue;
+    }
+    slot.pending = false;
+    ++streamline_transport_completed;
+    write_streamline_probe_log(
+        "GENERATED_TRANSPORT_COMPLETE\tslot=%zu\tnative_call=%llu"
+        "\tframe_index=%u\tfence=%llu\tcompleted=%llu\r\n",
+        index, static_cast<unsigned long long>(slot.native_call),
+        slot.frame_index,
+        static_cast<unsigned long long>(slot.fence_value),
+        static_cast<unsigned long long>(streamline_transport_completed));
+  }
+}
+
+void schedule_streamline_transport_probe(ID3D12CommandQueue* queue,
+                                         ID3D12Resource* back_buffer,
+                                         std::uint64_t native_call,
+                                         std::uint32_t frame_index) {
+  std::scoped_lock lock(streamline_transport_mutex);
+  if (!queue || !back_buffer || !original_execute_command_lists ||
+      streamline_transport_submitted >=
+          kStreamlineTransportSubmissionLimit) {
+    return;
+  }
+  auto found = std::find_if(
+      streamline_transport_slots.begin(), streamline_transport_slots.end(),
+      [](const auto& slot) { return !slot.pending; });
+  if (found == streamline_transport_slots.end()) {
+    ++streamline_transport_dropped;
+    write_streamline_probe_log(
+        "GENERATED_TRANSPORT_DROP\treason=ring_full\tnative_call=%llu"
+        "\tframe_index=%u\tdropped=%llu\r\n",
+        static_cast<unsigned long long>(native_call), frame_index,
+        static_cast<unsigned long long>(streamline_transport_dropped));
+    return;
+  }
+  const auto slot_index = static_cast<std::size_t>(
+      std::distance(streamline_transport_slots.begin(), found));
+  auto& slot = *found;
+  const auto source = back_buffer->GetDesc();
+  if (source.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
+      source.Format != DXGI_FORMAT_R8G8B8A8_UNORM || source.Width == 0 ||
+      source.Height == 0 || source.SampleDesc.Count != 1) {
+    write_streamline_probe_log(
+        "GENERATED_TRANSPORT_DROP\treason=unsupported_resource"
+        "\tnative_call=%llu\tframe_index=%u\twidth=%llu\theight=%u"
+        "\tformat=%u\r\n",
+        static_cast<unsigned long long>(native_call), frame_index,
+        static_cast<unsigned long long>(source.Width), source.Height,
+        static_cast<unsigned>(source.Format));
+    return;
+  }
+  ComPtr<ID3D12Device> device;
+  if (FAILED(back_buffer->GetDevice(IID_PPV_ARGS(&device)))) {
+    return;
+  }
+  const auto slot_description = slot.surface
+                                    ? slot.surface->GetDesc()
+                                    : D3D12_RESOURCE_DESC{};
+  if (!slot.surface || slot_description.Width != source.Width ||
+      slot_description.Height != source.Height ||
+      slot_description.Format != source.Format) {
+    slot = {};
+    D3D12_HEAP_PROPERTIES heap{};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    auto destination = source;
+    destination.Flags = D3D12_RESOURCE_FLAG_NONE;
+    if (FAILED(device->CreateCommandAllocator(
+            D3D12_COMMAND_LIST_TYPE_DIRECT,
+            IID_PPV_ARGS(&slot.allocator))) ||
+        FAILED(device->CreateCommandList(
+            0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr,
+            IID_PPV_ARGS(&slot.commands))) ||
+        FAILED(device->CreateCommittedResource(
+            &heap, D3D12_HEAP_FLAG_NONE, &destination,
+            D3D12_RESOURCE_STATE_COMMON, nullptr,
+            IID_PPV_ARGS(&slot.surface))) ||
+        FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
+                                   IID_PPV_ARGS(&slot.fence)))) {
+      slot = {};
+      write_streamline_probe_log(
+          "GENERATED_TRANSPORT_DROP\treason=resource_creation_failed"
+          "\tnative_call=%llu\tframe_index=%u\tslot=%zu\r\n",
+          static_cast<unsigned long long>(native_call), frame_index,
+          slot_index);
+      return;
+    }
+  } else if (FAILED(slot.allocator->Reset()) ||
+             FAILED(slot.commands->Reset(slot.allocator.Get(), nullptr))) {
+    slot = {};
+    write_streamline_probe_log(
+        "GENERATED_TRANSPORT_DROP\treason=command_reset_failed"
+        "\tnative_call=%llu\tframe_index=%u\tslot=%zu\r\n",
+        static_cast<unsigned long long>(native_call), frame_index,
+        slot_index);
+    return;
+  }
+  std::array<D3D12_RESOURCE_BARRIER, 2> barriers{};
+  barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  barriers[0].Transition.pResource = back_buffer;
+  barriers[0].Transition.Subresource =
+      D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+  barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+  barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+  barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  barriers[1].Transition.pResource = slot.surface.Get();
+  barriers[1].Transition.Subresource =
+      D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+  barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+  barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+  slot.commands->ResourceBarrier(static_cast<UINT>(barriers.size()),
+                                 barriers.data());
+  slot.commands->CopyResource(slot.surface.Get(), back_buffer);
+  for (auto& barrier : barriers) {
+    std::swap(barrier.Transition.StateBefore,
+              barrier.Transition.StateAfter);
+  }
+  slot.commands->ResourceBarrier(static_cast<UINT>(barriers.size()),
+                                 barriers.data());
+  if (FAILED(slot.commands->Close())) {
+    slot = {};
+    write_streamline_probe_log(
+        "GENERATED_TRANSPORT_DROP\treason=command_close_failed"
+        "\tnative_call=%llu\tframe_index=%u\tslot=%zu\r\n",
+        static_cast<unsigned long long>(native_call), frame_index,
+        slot_index);
+    return;
+  }
+  ID3D12CommandList* lists[]{slot.commands.Get()};
+  original_execute_command_lists(queue, 1, lists);
+  const auto fence_value = slot.fence_value + 1;
+  slot.pending = true;
+  slot.native_call = native_call;
+  slot.frame_index = frame_index;
+  slot.fence_value = fence_value;
+  if (FAILED(queue->Signal(slot.fence.Get(), fence_value))) {
+    slot.fence_value = UINT64_MAX;
+    write_streamline_probe_log(
+        "GENERATED_TRANSPORT_DROP\treason=signal_failed"
+        "\tnative_call=%llu\tframe_index=%u\tslot=%zu\r\n",
+        static_cast<unsigned long long>(native_call), frame_index,
+        slot_index);
+    return;
+  }
+  ++streamline_transport_submitted;
+  write_streamline_probe_log(
+      "GENERATED_TRANSPORT_SUBMIT\tslot=%zu\tnative_call=%llu"
+      "\tframe_index=%u\tfence=%llu\twidth=%llu\theight=%u"
+      "\tformat=%u\tsubmitted=%llu\r\n",
+      slot_index, static_cast<unsigned long long>(native_call), frame_index,
+      static_cast<unsigned long long>(fence_value),
+      static_cast<unsigned long long>(source.Width), source.Height,
+      static_cast<unsigned>(source.Format),
+      static_cast<unsigned long long>(streamline_transport_submitted));
+}
+
 HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
     IDXGISwapChain* swapchain, UINT interval, UINT flags) {
   if (streamline_copy_probe_requested.load(std::memory_order_acquire)) {
     harvest_streamline_copy_probe();
+  }
+  if (streamline_transport_probe_requested.load(std::memory_order_acquire)) {
+    harvest_streamline_transport_probe();
   }
   const auto call = streamline_native_present_count.fetch_add(
                         1, std::memory_order_relaxed) +
@@ -9600,6 +9796,12 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
       schedule_streamline_copy_probe(
           observed_present_queue.Get(), back_buffer.Get(), call,
           present_count.load(std::memory_order_relaxed));
+    }
+    if (streamline_transport_probe_requested.load(std::memory_order_acquire) &&
+        generated_candidate) {
+      schedule_streamline_transport_probe(
+          observed_present_queue.Get(), back_buffer.Get(), call,
+          latest_frame_index);
     }
     write_streamline_probe_log(
         "NATIVE_PRESENT_BEGIN\tcall=%llu\touter_frame=%llu\tthread=%lu"

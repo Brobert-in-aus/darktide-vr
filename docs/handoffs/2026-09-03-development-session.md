@@ -440,6 +440,26 @@ or strict source/generated alternation. The next transport prototype can carry
 the explicit Streamline frame index, generated/source label and missing-output
 tolerance into a bounded producer/consumer ring.
 
+The opt-in `-StreamlineTransportProbe` now exercises the producer half of that
+ring without exposing an unproven cross-process ABI. It owns three reusable
+full-resolution GPU slots, submits only classified generated outputs on the
+transition/presentation queue, tags each slot with the latest explicit
+Streamline frame index and native-call identity, and never waits on the CPU.
+A slot is reused only after its private completion fence advances; a saturated
+ring drops the candidate rather than blocking Streamline. The diagnostic is
+bounded to 120 submissions.
+
+The first 100-second transport run moved 120/120 unique generated frame indices
+at 2496x2688 RGBA8, completed every GPU fence, and reported zero ring-full or
+resource failures. Only two of the three slots were needed at the observed GPU
+latency, leaving one slot of headroom. The concurrent OpenXR run submitted
+9,541/9,541 frames, delivered 1,292 fresh shared pairs, and reported zero
+reused frames, capture failures, stale frames, pair-driven timeouts or pose
+mismatches. This proves bounded, non-blocking full-frame staging. The remaining
+transport gate is to give these slots stable shared handles plus producer-ready
+and consumer-consumed sequencing, then make the XR bridge select outputs by
+explicit metadata rather than timing or alternation.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:
@@ -518,6 +538,8 @@ source was removed.
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 90 -StreamlineProbe -AutoEnterHub
 .\tools\stereo\read-streamline-probe.ps1
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 100 -StreamlineCopyProbe -AutoEnterHub
+.\tools\stereo\read-streamline-probe.ps1
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 100 -StreamlineTransportProbe -AutoEnterHub
 .\tools\stereo\read-streamline-probe.ps1
 ```
 

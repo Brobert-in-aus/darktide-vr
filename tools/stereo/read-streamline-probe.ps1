@@ -40,6 +40,12 @@ $stateCalls = @($records | Where-Object event -eq 'DLSSG_STATE')
 $optionCalls = @($records | Where-Object event -eq 'DLSSG_OPTIONS')
 $copySchedules = @($records | Where-Object event -eq 'GENERATED_COPY_SCHEDULE')
 $copyCompletions = @($records | Where-Object event -eq 'GENERATED_COPY_COMPLETE')
+$transportSubmits = @($records |
+    Where-Object event -eq 'GENERATED_TRANSPORT_SUBMIT')
+$transportCompletions = @($records |
+    Where-Object event -eq 'GENERATED_TRANSPORT_COMPLETE')
+$transportDrops = @($records |
+    Where-Object event -eq 'GENERATED_TRANSPORT_DROP')
 $executePrecursors = @($records | Where-Object event -eq 'EXECUTE_PRECURSOR')
 $frameTokens = @($records | Where-Object event -eq 'FRAME_TOKEN')
 $setConstants = @($records | Where-Object event -eq 'SET_CONSTANTS')
@@ -98,6 +104,13 @@ else {
     '0'
 }
 Write-Output "probe.copy_probe=$copyProbe"
+$transportProbe = if ($probe[0].PSObject.Properties['transport_probe']) {
+    $probe[0].transport_probe
+}
+else {
+    '0'
+}
+Write-Output "probe.transport_probe=$transportProbe"
 Write-Output "present.target_path=$($target[0].path)"
 Write-Output "present.target_version=$($target[0].version)"
 Write-Output "native_present.target_path=$($nativeTarget[0].path)"
@@ -266,6 +279,15 @@ if ($nativePresentDurations.Count -gt 0) {
 }
 Write-Output "generated_copy.schedule_samples=$($copySchedules.Count)"
 Write-Output "generated_copy.completion_samples=$($copyCompletions.Count)"
+Write-Output "generated_transport.submit_samples=$($transportSubmits.Count)"
+Write-Output "generated_transport.completion_samples=$($transportCompletions.Count)"
+Write-Output "generated_transport.drop_samples=$($transportDrops.Count)"
+if ($transportSubmits.Count -gt 0) {
+    Write-Output "generated_transport.slot_count=$(@($transportSubmits.slot | Sort-Object -Unique).Count)"
+    Write-Output "generated_transport.frame_index_count=$(@($transportSubmits.frame_index | Sort-Object -Unique).Count)"
+    Write-Output "generated_transport.extents=$(($transportSubmits | ForEach-Object { "$($_.width)x$($_.height)" } | Sort-Object -Unique) -join ',')"
+    Write-Output "generated_transport.formats=$(($transportSubmits.format | Sort-Object -Unique) -join ',')"
+}
 Write-Output "execute_precursor.samples=$($executePrecursors.Count)"
 if ($executePrecursors.Count -gt 0) {
     Write-Output "execute_precursor.native_call_count=$(@($executePrecursors.native_call | Sort-Object -Unique).Count)"
@@ -295,5 +317,14 @@ if ($copyProbe -eq '1' -and
         ($copyCompletions.Count -ne 1 -or
             $copyCompletions[0].result -ne 'success')) {
     throw 'The requested generated-backbuffer copy did not complete successfully.'
+}
+if ($transportProbe -eq '1' -and
+        ($transportSubmits.Count -ne 120 -or
+            $transportCompletions.Count -ne $transportSubmits.Count -or
+            $transportDrops.Count -ne 0 -or
+            @($transportSubmits.frame_index | Sort-Object -Unique).Count -ne
+                $transportSubmits.Count -or
+            @($transportSubmits.slot | Sort-Object -Unique).Count -gt 3)) {
+    throw 'The bounded generated-output transport did not complete cleanly.'
 }
 Write-Output 'result=pass'

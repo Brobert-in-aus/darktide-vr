@@ -22,6 +22,8 @@ param(
 
     [switch] $StreamlineCopyProbe,
 
+    [switch] $StreamlineTransportProbe,
+
     [switch] $ClusterLightTrace,
 
     [bool] $ClusterLightVisibilityFix = $true,
@@ -155,6 +157,9 @@ $streamlineProbeFlagExisted = $false
 $streamlineCopyProbeFlagPath = $null
 $streamlineCopyProbeFlagOriginal = $null
 $streamlineCopyProbeFlagExisted = $false
+$streamlineTransportProbeFlagPath = $null
+$streamlineTransportProbeFlagOriginal = $null
+$streamlineTransportProbeFlagExisted = $false
 
 if (-not $SkipDeploymentSync) {
     $sync = Join-Path $PSScriptRoot 'sync-darktide-vr-dev.ps1'
@@ -286,7 +291,8 @@ if ($CaptureBillboardPsoIdentities) {
 }
 $launchStarted = Get-Date
 try {
-if ($StreamlineProbe -or $StreamlineCopyProbe) {
+if ($StreamlineProbe -or $StreamlineCopyProbe -or
+        $StreamlineTransportProbe) {
     $streamlineProbeFlagPath = Join-Path $GameRoot `
         'mods\darktidevr_stereo_probe\darktidevr_streamline_probe.flag'
     $streamlineProbeFlagExisted = Test-Path -LiteralPath `
@@ -313,6 +319,19 @@ if ($StreamlineCopyProbe) {
         -Encoding ascii
     Write-Output `
         'One-shot Streamline generated-backbuffer copy probe enabled.'
+}
+if ($StreamlineTransportProbe) {
+    $streamlineTransportProbeFlagPath = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_streamline_transport_probe.flag'
+    $streamlineTransportProbeFlagExisted = Test-Path -LiteralPath `
+        $streamlineTransportProbeFlagPath -PathType Leaf
+    if ($streamlineTransportProbeFlagExisted) {
+        $streamlineTransportProbeFlagOriginal = Get-Content -LiteralPath `
+            $streamlineTransportProbeFlagPath -Raw
+    }
+    Set-Content -LiteralPath $streamlineTransportProbeFlagPath `
+        -Value 'enabled' -Encoding ascii
+    Write-Output 'Bounded Streamline generated-output transport probe enabled.'
 }
 if ($SyntheticRuntimeFrusta) {
     $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -676,6 +695,18 @@ finally {
             Remove-Item -LiteralPath $streamlineCopyProbeFlagPath -Force
         }
         Write-Output 'Restored the prior Streamline copy-probe flag.'
+    }
+    if ($streamlineTransportProbeFlagPath) {
+        if ($streamlineTransportProbeFlagExisted) {
+            Set-Content -LiteralPath $streamlineTransportProbeFlagPath `
+                -Value $streamlineTransportProbeFlagOriginal.Trim() `
+                -Encoding ascii
+        }
+        elseif (Test-Path -LiteralPath $streamlineTransportProbeFlagPath `
+                -PathType Leaf) {
+            Remove-Item -LiteralPath $streamlineTransportProbeFlagPath -Force
+        }
+        Write-Output 'Restored the prior Streamline transport-probe flag.'
     }
     if ($syntheticHeadPublisher) {
         if (-not $syntheticHeadPublisher.HasExited) {
