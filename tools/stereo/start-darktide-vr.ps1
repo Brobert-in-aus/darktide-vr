@@ -24,7 +24,7 @@ param(
 
     [switch] $StreamlineTransportProbe,
 
-    [switch] $StreamlineDepthSnapshotProbe,
+    [switch] $StreamlineInputSnapshotProbe,
 
     [switch] $ClusterLightTrace,
 
@@ -162,9 +162,9 @@ $streamlineCopyProbeFlagExisted = $false
 $streamlineTransportProbeFlagPath = $null
 $streamlineTransportProbeFlagOriginal = $null
 $streamlineTransportProbeFlagExisted = $false
-$streamlineDepthSnapshotProbeFlagPath = $null
-$streamlineDepthSnapshotProbeFlagOriginal = $null
-$streamlineDepthSnapshotProbeFlagExisted = $false
+$streamlineInputSnapshotProbeFlagPath = $null
+$streamlineInputSnapshotProbeFlagOriginal = $null
+$streamlineInputSnapshotProbeFlagExisted = $false
 
 if (-not $SkipDeploymentSync) {
     $sync = Join-Path $PSScriptRoot 'sync-darktide-vr-dev.ps1'
@@ -297,7 +297,7 @@ if ($CaptureBillboardPsoIdentities) {
 $launchStarted = Get-Date
 try {
 if ($StreamlineProbe -or $StreamlineCopyProbe -or
-        $StreamlineTransportProbe -or $StreamlineDepthSnapshotProbe) {
+        $StreamlineTransportProbe -or $StreamlineInputSnapshotProbe) {
     $streamlineProbeFlagPath = Join-Path $GameRoot `
         'mods\darktidevr_stereo_probe\darktidevr_streamline_probe.flag'
     $streamlineProbeFlagExisted = Test-Path -LiteralPath `
@@ -338,18 +338,18 @@ if ($StreamlineTransportProbe) {
         -Value 'enabled' -Encoding ascii
     Write-Output 'Bounded Streamline generated-output transport probe enabled.'
 }
-if ($StreamlineDepthSnapshotProbe) {
-    $streamlineDepthSnapshotProbeFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_streamline_depth_snapshot_probe.flag'
-    $streamlineDepthSnapshotProbeFlagExisted = Test-Path -LiteralPath `
-        $streamlineDepthSnapshotProbeFlagPath -PathType Leaf
-    if ($streamlineDepthSnapshotProbeFlagExisted) {
-        $streamlineDepthSnapshotProbeFlagOriginal = Get-Content -LiteralPath `
-            $streamlineDepthSnapshotProbeFlagPath -Raw
+if ($StreamlineInputSnapshotProbe) {
+    $streamlineInputSnapshotProbeFlagPath = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_streamline_input_snapshot_probe.flag'
+    $streamlineInputSnapshotProbeFlagExisted = Test-Path -LiteralPath `
+        $streamlineInputSnapshotProbeFlagPath -PathType Leaf
+    if ($streamlineInputSnapshotProbeFlagExisted) {
+        $streamlineInputSnapshotProbeFlagOriginal = Get-Content -LiteralPath `
+            $streamlineInputSnapshotProbeFlagPath -Raw
     }
-    Set-Content -LiteralPath $streamlineDepthSnapshotProbeFlagPath `
+    Set-Content -LiteralPath $streamlineInputSnapshotProbeFlagPath `
         -Value 'enabled' -Encoding ascii
-    Write-Output 'One-pair Streamline depth snapshot probe enabled.'
+    Write-Output 'One-pair Streamline input snapshot probe enabled.'
 }
 if ($SyntheticRuntimeFrusta) {
     $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -726,18 +726,18 @@ finally {
         }
         Write-Output 'Restored the prior Streamline transport-probe flag.'
     }
-    if ($streamlineDepthSnapshotProbeFlagPath) {
-        if ($streamlineDepthSnapshotProbeFlagExisted) {
-            Set-Content -LiteralPath $streamlineDepthSnapshotProbeFlagPath `
-                -Value $streamlineDepthSnapshotProbeFlagOriginal.Trim() `
+    if ($streamlineInputSnapshotProbeFlagPath) {
+        if ($streamlineInputSnapshotProbeFlagExisted) {
+            Set-Content -LiteralPath $streamlineInputSnapshotProbeFlagPath `
+                -Value $streamlineInputSnapshotProbeFlagOriginal.Trim() `
                 -Encoding ascii
         }
-        elseif (Test-Path -LiteralPath $streamlineDepthSnapshotProbeFlagPath `
+        elseif (Test-Path -LiteralPath $streamlineInputSnapshotProbeFlagPath `
                 -PathType Leaf) {
-            Remove-Item -LiteralPath $streamlineDepthSnapshotProbeFlagPath `
+            Remove-Item -LiteralPath $streamlineInputSnapshotProbeFlagPath `
                 -Force
         }
-        Write-Output 'Restored the prior Streamline depth-snapshot flag.'
+        Write-Output 'Restored the prior Streamline input-snapshot flag.'
     }
     if ($syntheticHeadPublisher) {
         if (-not $syntheticHeadPublisher.HasExited) {

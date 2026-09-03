@@ -620,6 +620,26 @@ depth. It does not prove content divergence yet; the next expansion should
 copy all five classes and add GPU/readback evidence that the two preserved
 depth images contain different eye-time content.
 
+That mechanism is now generalized behind `-StreamlineInputSnapshotProbe`.
+The confirming run copied depth, motion vectors, HUD-less colour, scaling
+input and scaling output for both eyes on one matched frame/pose. The live
+source alias mask was 27: depth, motion, scaling input and scaling output were
+shared while HUD-less colour was not. All ten committed snapshot identities
+were unique, the cross-eye snapshot alias mask was zero, and fence value 2
+completed. The run remained clean at 8,781/8,781 OpenXR submissions, 1,869
+fresh pairs, and zero capture failures, stale frames, timeouts, reuse or pose
+mismatches. These completed resources are now evaluated by the same C++
+five-class invariant used for the planned integration; only its explicit
+`ready` verdict can promote a diagnostic pair to the next stage.
+
+The policy-confirming run reported `policy_status=3` (`ready`),
+`policy_aliased_mask=0`, and `input_snapshot.ready=1`. It submitted
+9,939/9,939 OpenXR frames with 1,240 fresh shared pairs and zero capture
+failures, stale frames, timeouts, reuse or pose mismatches. The next gate is
+content identity: fence-complete GPU readback must show that the separately
+timed snapshots are populated and, where eye-dependent content is expected,
+not byte-identical.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:
@@ -707,7 +727,7 @@ source was removed.
 .\build\windows-vs2022\tests\generated_frame_transport\Release\darktidevr-generated-frame-consumer.exe 120
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 100 -StreamlineTransportProbe -AutoEnterHub
 .\tools\stereo\read-streamline-probe.ps1
-.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 100 -GameStartTimeoutSeconds 600 -StreamlineDepthSnapshotProbe -AutoEnterHub -SkipDeploymentSync
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 100 -GameStartTimeoutSeconds 600 -StreamlineInputSnapshotProbe -AutoEnterHub -SkipDeploymentSync
 .\tools\stereo\read-streamline-probe.ps1
 ```
 

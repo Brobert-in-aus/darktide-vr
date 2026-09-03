@@ -781,7 +781,7 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $startHelperSource.Contains(
             '[switch] $StreamlineTransportProbe') -or
         -not $startHelperSource.Contains(
-            '[switch] $StreamlineDepthSnapshotProbe') -or
+            '[switch] $StreamlineInputSnapshotProbe') -or
         -not $startHelperSource.Contains(
             'darktidevr_streamline_probe.flag') -or
         -not $startHelperSource.Contains(
@@ -789,7 +789,7 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $startHelperSource.Contains(
             'darktidevr_streamline_transport_probe.flag') -or
         -not $startHelperSource.Contains(
-            'darktidevr_streamline_depth_snapshot_probe.flag') -or
+            'darktidevr_streamline_input_snapshot_probe.flag') -or
         -not $nativeCaptureSource.Contains(
             'PROBE\tmode=observe_only\tsdk_abi=2.7.30') -or
         -not $nativeCaptureSource.Contains(
@@ -891,7 +891,9 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $nativeCaptureSource.Contains(
             'EYE_OUTPUT_BOUNDARY\tphase=capture_complete') -or
         -not $nativeCaptureSource.Contains(
-            'DEPTH_SNAPSHOT\tphase=complete') -or
+            'INPUT_SNAPSHOT\tphase=complete') -or
+        -not $nativeCaptureSource.Contains(
+            'evaluate_streamline_stereo_inputs(') -or
         -not $nativeCaptureSource.Contains(
             'original_execute_command_lists(queue, 1, lists);') -or
         -not $nativeCaptureSource.Contains(

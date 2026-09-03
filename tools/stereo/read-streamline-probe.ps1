@@ -68,7 +68,9 @@ $resourceTags = @($records | Where-Object event -eq 'RESOURCE_TAG')
 $resourceTagCalls = @($records | Where-Object event -eq 'RESOURCE_TAG_CALL')
 $eyeOutputBoundaries = @($records |
     Where-Object event -eq 'EYE_OUTPUT_BOUNDARY')
-$depthSnapshots = @($records | Where-Object event -eq 'DEPTH_SNAPSHOT')
+$inputSnapshots = @($records | Where-Object event -eq 'INPUT_SNAPSHOT')
+$inputSnapshotResources = @($records |
+    Where-Object event -eq 'INPUT_SNAPSHOT_RESOURCE')
 
 if ($probe.Count -ne 1 -or $target.Count -ne 1 -or
         $nativeTarget.Count -ne 1 -or $begins.Count -eq 0 -or
@@ -131,14 +133,14 @@ else {
     '0'
 }
 Write-Output "probe.transport_probe=$transportProbe"
-$depthSnapshotProbe = if (
-        $probe[0].PSObject.Properties['depth_snapshot_probe']) {
-    $probe[0].depth_snapshot_probe
+$inputSnapshotProbe = if (
+        $probe[0].PSObject.Properties['input_snapshot_probe']) {
+    $probe[0].input_snapshot_probe
 }
 else {
     '0'
 }
-Write-Output "probe.depth_snapshot_probe=$depthSnapshotProbe"
+Write-Output "probe.input_snapshot_probe=$inputSnapshotProbe"
 Write-Output "present.target_path=$($target[0].path)"
 Write-Output "present.target_version=$($target[0].version)"
 Write-Output "native_present.target_path=$($nativeTarget[0].path)"
@@ -524,18 +526,23 @@ if ($eyeOutputBoundaries.Count -gt 0) {
         }
     }
 }
-Write-Output "depth_snapshot.samples=$($depthSnapshots.Count)"
-if ($depthSnapshots.Count -gt 0) {
-    foreach ($phase in @($depthSnapshots.phase | Sort-Object -Unique)) {
-        Write-Output "depth_snapshot.${phase}.samples=$(@($depthSnapshots |
+Write-Output "input_snapshot.samples=$($inputSnapshots.Count)"
+Write-Output "input_snapshot.resource_samples=$($inputSnapshotResources.Count)"
+if ($inputSnapshots.Count -gt 0) {
+    foreach ($phase in @($inputSnapshots.phase | Sort-Object -Unique)) {
+        Write-Output "input_snapshot.${phase}.samples=$(@($inputSnapshots |
                 Where-Object phase -eq $phase).Count)"
     }
-    $depthSnapshotComplete = @($depthSnapshots |
+    $inputSnapshotComplete = @($inputSnapshots |
         Where-Object phase -eq 'complete' | Select-Object -Last 1)
-    if ($depthSnapshotComplete.Count -eq 1) {
-        Write-Output "depth_snapshot.source_alias=$($depthSnapshotComplete[0].source_alias)"
-        Write-Output "depth_snapshot.snapshot_alias=$($depthSnapshotComplete[0].snapshot_alias)"
-        Write-Output "depth_snapshot.fence_value=$($depthSnapshotComplete[0].fence_value)"
+    if ($inputSnapshotComplete.Count -eq 1) {
+        Write-Output "input_snapshot.source_alias_mask=$($inputSnapshotComplete[0].source_alias_mask)"
+        Write-Output "input_snapshot.snapshot_alias_mask=$($inputSnapshotComplete[0].snapshot_alias_mask)"
+        Write-Output "input_snapshot.snapshot_unique_count=$($inputSnapshotComplete[0].snapshot_unique_count)"
+        Write-Output "input_snapshot.policy_status=$($inputSnapshotComplete[0].policy_status)"
+        Write-Output "input_snapshot.policy_aliased_mask=$($inputSnapshotComplete[0].policy_aliased_mask)"
+        Write-Output "input_snapshot.ready=$($inputSnapshotComplete[0].snapshot_ready)"
+        Write-Output "input_snapshot.fence_value=$($inputSnapshotComplete[0].fence_value)"
     }
 }
 if ($stateCalls.Count -gt 0) {
@@ -628,12 +635,14 @@ if ($transportProbe -eq '1' -and
             @($transportSubmits.slot | Sort-Object -Unique).Count -gt 3)) {
     throw 'The bounded generated-output transport did not complete cleanly.'
 }
-if ($depthSnapshotProbe -eq '1' -and
-        (@($depthSnapshots | Where-Object phase -eq 'scheduled').Count -ne 2 -or
-            @($depthSnapshots | Where-Object phase -eq 'complete').Count -ne 1 -or
-            @($depthSnapshots | Where-Object phase -eq 'failed').Count -ne 0 -or
-            @($depthSnapshots | Where-Object phase -eq 'complete')[0].source_alias -ne '1' -or
-            @($depthSnapshots | Where-Object phase -eq 'complete')[0].snapshot_alias -ne '0')) {
-    throw 'The one-pair depth snapshot did not complete with distinct destinations.'
+if ($inputSnapshotProbe -eq '1' -and
+        (@($inputSnapshots | Where-Object phase -eq 'scheduled').Count -ne 2 -or
+            @($inputSnapshots | Where-Object phase -eq 'complete').Count -ne 1 -or
+            @($inputSnapshots | Where-Object phase -eq 'failed').Count -ne 0 -or
+            $inputSnapshotResources.Count -ne 10 -or
+            @($inputSnapshots | Where-Object phase -eq 'complete')[0].snapshot_alias_mask -ne '0' -or
+            @($inputSnapshots | Where-Object phase -eq 'complete')[0].snapshot_unique_count -ne '10' -or
+            @($inputSnapshots | Where-Object phase -eq 'complete')[0].snapshot_ready -ne '1')) {
+    throw 'The one-pair input snapshot did not complete with ten distinct destinations.'
 }
 Write-Output 'result=pass'
