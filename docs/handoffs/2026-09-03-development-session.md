@@ -196,6 +196,21 @@ That underlay was rejected. The catalog probe and both servitor experiments
 were removed; shipped human resources are now exhausted as a compatible cuff
 solution.
 
+A final semantic sweep recursively searched the live master-item catalog for
+`bracelet`, `bangle`, `vambrace`, `gauntlet`, `armguard`, `wristband`,
+`armband`, `bracer`, `cuff` and `wrist`. It completed with 419 matching values.
+Nearly all human results were the already-rejected wrist-preserving body masks.
+The only independent geometry family was the Ogryn grenadier-gauntlet weapon:
+its receiver, barrel and magazine parts belong to a chained weapon rig, not a
+small human wrist-rooted cosmetic. Two Ogryn upper-body descriptions mention
+wrist chains or a wrist plate but expose no separable wrist item. No standalone
+human cuff, bracer, bracelet, vambrace or armguard exists in the cached item
+catalog. The successful 95-second production run submitted 9,252/9,252 frames,
+advanced 2,099 fresh shared pairs and reported zero reuse, pair-pose mismatch,
+capture failure, stale frame or pair-driven timeout. The temporary semantic
+logger was removed and the installed mod was synchronized back to the clean
+one-sided-glove baseline.
+
 ## Launcher Play retry
 
 The first Play press in that run moved WPF's `Process.MainWindowHandle` to a
@@ -263,6 +278,9 @@ source was removed.
 .\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-rigid-servitor-singular-20260903 30 2496 2688
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 150 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
 .\build\windows-vs2022\tests\xr_harness\Release\darktidevr-shared-eye-capture.exe artifacts\unattended\hand-rigid-glove-servitor-underlay-20260903 40 2496 2688
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 105 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 95 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
+.\tools\stereo\sync-darktide-vr-dev.ps1
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native
@@ -275,7 +293,10 @@ rejection and baseline restoration used
 `artifacts/unattended/preflight-20260902T232452Z.json`; the deployed-baseline
 confirmation used `artifacts/unattended/preflight-20260902T232544Z.json` and
 the final clean-state check used
-`artifacts/unattended/preflight-20260902T232904Z.json`.
+`artifacts/unattended/preflight-20260902T232904Z.json`. The final semantic
+catalog sweep and clean-baseline restoration used the later
+`preflight-20260903T004741Z.json` through
+`preflight-20260903T005727Z.json` reports.
 
 ## Next work
 
