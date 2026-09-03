@@ -655,17 +655,27 @@ fresh pairs, and zero capture failures, stale frames, timeouts, reuse or pose
 mismatches. This closes the independent-content prerequisite; no snapshot was
 published to XR or passed to a Streamline evaluation.
 
-The preserved pair is now also bound to the exact observed Streamline temporal
-identity. Each eye retains its full version-2 constants plus frame token,
+The preserved pair is now also bound to its exact observed Streamline temporal
+identities. Each eye retains its full version-2 constants plus frame token,
 resolved frame-token call/index and viewport handle. The stereo-input policy
-uses that Streamline index rather than the outer Present count and fails closed
-unless both eyes share one token call/index and pose while using distinct
-viewports and constants calls. The Psykhanium confirmation resolved both eyes
-to token call 4,644 and frame index 4,643, with constants calls 2,749/2,750 and
-viewports 1,342,883,970/2,738,829,751. All ten snapshots again passed the
-content gate with `content_divergent_mask=31`. The probe also observed a valid
-pair spanning adjacent outer Presents, proving that Present equality is not a
-sound temporal join key; the Streamline token/index is authoritative.
+uses the common armed pose as the pair identity and fails closed unless source
+token calls/indices are the same or adjacent while viewports and constants
+calls are distinct. One Psykhanium confirmation resolved both eyes to token
+call 4,644 and frame index 4,643, with constants calls 2,749/2,750 and
+viewports 1,342,883,970/2,738,829,751. Another valid pair used adjacent source
+indices 4,648/4,649. All ten snapshots again passed the content gate with
+`content_divergent_mask=31`. This proves neither outer Present equality nor one
+shared source token is a universal join key; a future stereo evaluation must
+allocate one new target token after both source snapshots are ready.
+
+The first packed output resource is now complete without invoking Streamline.
+After the snapshot readback fence, the probe copies the two preserved scaling
+outputs into x=0 and x=2,496 of one 4,992x2,688 format-26 texture on the same
+direct queue, restores both sources, transitions the destination to the
+observed unordered-access state 8 and proves fence value 4. The analyzer
+requires exactly one scheduled/completed pack, the 2:1 extent invariant and no
+failure, and reported `result=pass`. This texture was not passed to Streamline
+or published to XR.
 
 ## Runtime evidence
 
@@ -787,10 +797,13 @@ correction used `preflight-20260903T013512Z.json` through
    diagnostic snapshot now proves fence completion, unique identities, a
    `ready` fail-closed policy verdict and distinct content for all five input
    classes. The preserved pair is now bound to one exact observed Streamline
-   frame token/index, two version-2 constants records and two viewport handles.
-   Next construct the diagnostic side-by-side input without changing live
-   presentation. Preserve the external consumer as the later binocular-output
-   transport gate.
+   source frame token/index records, two version-2 constants records and two
+   viewport handles. Source indices may be the same or adjacent for one pose;
+   a future evaluation must allocate one new shared target token. The
+   diagnostic 4,992x2,688 side-by-side scaling-output resource now packs and
+   reaches its fence without changing live presentation. Next define and guard
+   the opt-in evaluation transaction. Preserve the external consumer as the
+   later binocular-output transport gate.
 2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,
    radii and length if its alignment is sound; reject the route if the lack of

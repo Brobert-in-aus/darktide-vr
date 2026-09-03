@@ -155,6 +155,8 @@ struct StreamlineInputSnapshotState {
   bool failed{};
   bool readback_pending{};
   bool readback_complete{};
+  bool stereo_backbuffer_pending{};
+  bool stereo_backbuffer_complete{};
   std::uint64_t present_frame{};
   std::uint64_t pose_sequence{};
   std::uint64_t fence_value{};
@@ -173,6 +175,9 @@ struct StreamlineInputSnapshotState {
                         kStreamlineInputCount>,
              2>
       readback_footprints;
+  ComPtr<ID3D12CommandAllocator> stereo_backbuffer_allocator;
+  ComPtr<ID3D12GraphicsCommandList> stereo_backbuffer_commands;
+  ComPtr<ID3D12Resource> stereo_backbuffer;
   ComPtr<ID3D12Fence> fence;
 };
 
@@ -8907,7 +8912,147 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
   }
   std::scoped_lock lock(streamline_input_snapshot_mutex);
   auto& state = streamline_input_snapshot_state;
-  if (state.failed || state.readback_complete) {
+  if (state.failed || state.stereo_backbuffer_complete) {
+    return;
+  }
+  if (state.readback_complete && state.stereo_backbuffer_pending) {
+    const auto completed = state.fence ? state.fence->GetCompletedValue() : 0;
+    if (completed == UINT64_MAX) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "STEREO_BACKBUFFER\tphase=failed\treason=poisoned_fence\r\n");
+      return;
+    }
+    if (completed < state.fence_value) {
+      return;
+    }
+    const auto description = state.stereo_backbuffer->GetDesc();
+    state.stereo_backbuffer_pending = false;
+    state.stereo_backbuffer_complete = true;
+    write_streamline_probe_log(
+        "STEREO_BACKBUFFER\tphase=complete\tpresent_frame=%llu"
+        "\tpose=%llu\tsource_frame_indices=%u,%u"
+        "\tsource_frame_tokens=%p,%p"
+        "\tfence_value=%llu\tresource=%p\twidth=%llu\theight=%u"
+        "\tformat=%u\tstate=%u\teye_width=%llu\r\n",
+        static_cast<unsigned long long>(state.present_frame),
+        static_cast<unsigned long long>(state.pose_sequence),
+        state.constants[0].frame_index, state.constants[1].frame_index,
+        state.constants[0].frame_token, state.constants[1].frame_token,
+        static_cast<unsigned long long>(state.fence_value),
+        state.stereo_backbuffer.Get(),
+        static_cast<unsigned long long>(description.Width), description.Height,
+        static_cast<unsigned>(description.Format),
+        static_cast<unsigned>(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+        static_cast<unsigned long long>(description.Width / 2));
+    return;
+  }
+  if (state.readback_complete) {
+    ComPtr<ID3D12Device> device;
+    if (FAILED(queue->GetDevice(IID_PPV_ARGS(&device)))) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "STEREO_BACKBUFFER\tphase=failed\treason=get_device\r\n");
+      return;
+    }
+    const auto left_description = state.snapshots[0][4]->GetDesc();
+    const auto right_description = state.snapshots[1][4]->GetDesc();
+    if (left_description.Width != right_description.Width ||
+        left_description.Height != right_description.Height ||
+        left_description.Format != right_description.Format ||
+        left_description.SampleDesc.Count != right_description.SampleDesc.Count) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "STEREO_BACKBUFFER\tphase=failed\treason=eye_mismatch\r\n");
+      return;
+    }
+    auto stereo_description = left_description;
+    stereo_description.Width *= 2;
+    D3D12_HEAP_PROPERTIES heap{};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    if (FAILED(device->CreateCommittedResource(
+            &heap, D3D12_HEAP_FLAG_NONE, &stereo_description,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            IID_PPV_ARGS(&state.stereo_backbuffer))) ||
+        FAILED(device->CreateCommandAllocator(
+            D3D12_COMMAND_LIST_TYPE_DIRECT,
+            IID_PPV_ARGS(&state.stereo_backbuffer_allocator))) ||
+        FAILED(device->CreateCommandList(
+            0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+            state.stereo_backbuffer_allocator.Get(), nullptr,
+            IID_PPV_ARGS(&state.stereo_backbuffer_commands)))) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "STEREO_BACKBUFFER\tphase=failed\treason=create_resources\r\n");
+      return;
+    }
+    for (std::size_t source_eye = 0; source_eye < 2; ++source_eye) {
+      const auto& source_resource = state.snapshots[source_eye][4];
+      D3D12_RESOURCE_BARRIER barrier{};
+      barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+      barrier.Transition.pResource = source_resource.Get();
+      barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+      barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+      barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+      state.stereo_backbuffer_commands->ResourceBarrier(1, &barrier);
+      D3D12_TEXTURE_COPY_LOCATION destination{};
+      destination.pResource = state.stereo_backbuffer.Get();
+      destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+      D3D12_TEXTURE_COPY_LOCATION source{};
+      source.pResource = source_resource.Get();
+      source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+      state.stereo_backbuffer_commands->CopyTextureRegion(
+          &destination,
+          static_cast<UINT>(source_eye * left_description.Width), 0, 0,
+          &source, nullptr);
+      std::swap(barrier.Transition.StateBefore,
+                barrier.Transition.StateAfter);
+      state.stereo_backbuffer_commands->ResourceBarrier(1, &barrier);
+    }
+    D3D12_RESOURCE_BARRIER ready_barrier{};
+    ready_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    ready_barrier.Transition.pResource = state.stereo_backbuffer.Get();
+    ready_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    ready_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    ready_barrier.Transition.Subresource =
+        D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    state.stereo_backbuffer_commands->ResourceBarrier(1, &ready_barrier);
+    const auto close_result = state.stereo_backbuffer_commands->Close();
+    if (FAILED(close_result)) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "STEREO_BACKBUFFER\tphase=failed\treason=close"
+          "\thresult=0x%08x\r\n",
+          static_cast<unsigned>(close_result));
+      return;
+    }
+    ID3D12CommandList* lists[]{state.stereo_backbuffer_commands.Get()};
+    original_execute_command_lists(queue, 1, lists);
+    constexpr std::uint64_t fence_value = 4;
+    if (FAILED(queue->Signal(state.fence.Get(), fence_value))) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "STEREO_BACKBUFFER\tphase=failed\treason=signal\r\n");
+      return;
+    }
+    state.fence_value = fence_value;
+    state.stereo_backbuffer_pending = true;
+    write_streamline_probe_log(
+        "STEREO_BACKBUFFER\tphase=scheduled\tpresent_frame=%llu"
+        "\tpose=%llu\tsource_frame_indices=%u,%u"
+        "\tsource_frame_tokens=%p,%p"
+        "\tfence_value=%llu\tresource=%p\twidth=%llu\theight=%u"
+        "\tformat=%u\teye_width=%llu\r\n",
+        static_cast<unsigned long long>(state.present_frame),
+        static_cast<unsigned long long>(state.pose_sequence),
+        state.constants[0].frame_index, state.constants[1].frame_index,
+        state.constants[0].frame_token, state.constants[1].frame_token,
+        static_cast<unsigned long long>(state.fence_value),
+        state.stereo_backbuffer.Get(),
+        static_cast<unsigned long long>(stereo_description.Width),
+        stereo_description.Height,
+        static_cast<unsigned>(stereo_description.Format),
+        static_cast<unsigned long long>(left_description.Width));
     return;
   }
   if (state.complete && state.readback_pending) {
@@ -9166,7 +9311,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
            ++policy_eye) {
         darktidevr::core::begin_streamline_eye_frame(
             policy_inputs[policy_eye],
-            state.constants[policy_eye].frame_index);
+            static_cast<std::uint32_t>(state.pose_sequence));
         for (std::size_t type = 0; type < kStreamlineInputCount; ++type) {
           (void)darktidevr::core::observe_streamline_eye_resource(
               policy_inputs[policy_eye], kStreamlinePolicyResources[type],
@@ -9185,15 +9330,17 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
           "\tsource_alias_mask=%u\tsnapshot_alias_mask=%u"
           "\tsnapshot_unique_count=%zu\tpolicy_status=%u"
           "\tpolicy_aliased_mask=%u\tsnapshot_ready=%u"
-          "\tframe_index=%u\tframe_token=%p\r\n",
+          "\tpair_identity=%u\tsource_frame_indices=%u,%u"
+          "\tsource_frame_tokens=%p,%p\r\n",
           static_cast<unsigned long long>(state.present_frame),
           static_cast<unsigned long long>(state.pose_sequence),
           static_cast<unsigned long long>(state.fence_value),
           kStreamlineInputCount * 2, source_alias_mask, snapshot_alias_mask,
           unique_snapshots.size(), static_cast<unsigned>(policy.status),
           policy.aliased_mask, snapshot_ready ? 1U : 0U,
-          state.constants[0].frame_index,
-          state.constants[0].frame_token);
+          static_cast<std::uint32_t>(state.pose_sequence),
+          state.constants[0].frame_index, state.constants[1].frame_index,
+          state.constants[0].frame_token, state.constants[1].frame_token);
     }
     return;
   }
@@ -9242,11 +9389,19 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
         static_cast<unsigned long long>(state.pose_sequence));
     return;
   }
+  const auto source_indices_coherent =
+      eye == 0 || state.constants[0].frame_index == constants.frame_index ||
+      state.constants[0].frame_index + 1 == constants.frame_index ||
+      constants.frame_index + 1 == state.constants[0].frame_index;
+  const auto token_calls_coherent =
+      eye == 0 ||
+      state.constants[0].frame_token_call == constants.frame_token_call ||
+      state.constants[0].frame_token_call + 1 == constants.frame_token_call ||
+      constants.frame_token_call + 1 == state.constants[0].frame_token_call;
   if (eye == 1 &&
-      (state.constants[0].frame_token != constants.frame_token ||
-       state.constants[0].frame_token_call != constants.frame_token_call ||
-       state.constants[0].frame_index != constants.frame_index ||
-       state.constants[0].viewport == constants.viewport)) {
+      (!source_indices_coherent || !token_calls_coherent ||
+       state.constants[0].viewport == constants.viewport ||
+       state.constants[0].constants_call == constants.constants_call)) {
     state.failed = true;
     write_streamline_probe_log(
         "INPUT_SNAPSHOT\tphase=failed\treason=constants_identity"

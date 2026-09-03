@@ -77,6 +77,7 @@ $inputSnapshotReadbacks = @($records |
     Where-Object event -eq 'INPUT_SNAPSHOT_READBACK')
 $inputSnapshotSamples = @($records |
     Where-Object event -eq 'INPUT_SNAPSHOT_SAMPLE')
+$stereoBackbuffers = @($records | Where-Object event -eq 'STEREO_BACKBUFFER')
 
 if ($probe.Count -ne 1 -or $target.Count -ne 1 -or
         $nativeTarget.Count -ne 1 -or $begins.Count -eq 0 -or
@@ -554,10 +555,24 @@ if ($inputSnapshots.Count -gt 0) {
 Write-Output "input_snapshot.readback_samples=$($inputSnapshotReadbacks.Count)"
 Write-Output "input_snapshot.content_samples=$($inputSnapshotSamples.Count)"
 Write-Output "input_snapshot.binding_samples=$($inputSnapshotBindings.Count)"
+Write-Output "input_snapshot.stereo_backbuffer_samples=$($stereoBackbuffers.Count)"
+if ($stereoBackbuffers.Count -gt 0) {
+    foreach ($phase in @($stereoBackbuffers.phase | Sort-Object -Unique)) {
+        Write-Output "input_snapshot.stereo_backbuffer_${phase}.samples=$(@($stereoBackbuffers |
+                Where-Object phase -eq $phase).Count)"
+    }
+    $stereoBackbufferComplete = @($stereoBackbuffers |
+        Where-Object phase -eq 'complete' | Select-Object -Last 1)
+    if ($stereoBackbufferComplete.Count -eq 1) {
+        Write-Output "input_snapshot.stereo_backbuffer_extent=$($stereoBackbufferComplete[0].width)x$($stereoBackbufferComplete[0].height)"
+        Write-Output "input_snapshot.stereo_backbuffer_eye_width=$($stereoBackbufferComplete[0].eye_width)"
+        Write-Output "input_snapshot.stereo_backbuffer_state=$($stereoBackbufferComplete[0].state)"
+    }
+}
 if ($inputSnapshotBindings.Count -eq 2) {
-    Write-Output "input_snapshot.frame_token=$($inputSnapshotBindings[0].frame_token)"
-    Write-Output "input_snapshot.frame_token_call=$($inputSnapshotBindings[0].frame_token_call)"
-    Write-Output "input_snapshot.frame_index=$($inputSnapshotBindings[0].frame_index)"
+    Write-Output "input_snapshot.frame_tokens=$(($inputSnapshotBindings.frame_token) -join ',')"
+    Write-Output "input_snapshot.frame_token_calls=$(($inputSnapshotBindings.frame_token_call) -join ',')"
+    Write-Output "input_snapshot.frame_indices=$(($inputSnapshotBindings.frame_index) -join ',')"
     Write-Output "input_snapshot.viewports=$(($inputSnapshotBindings.viewport) -join ',')"
     Write-Output "input_snapshot.constants_calls=$(($inputSnapshotBindings.constants_call) -join ',')"
     Write-Output "input_snapshot.constants_versions=$(($inputSnapshotBindings.constants_version) -join ',')"
@@ -676,7 +691,10 @@ $inputSnapshotCompleteRecord = @($inputSnapshots |
     Where-Object phase -eq 'complete')
 $inputSnapshotReadbackComplete = @($inputSnapshotReadbacks |
     Where-Object phase -eq 'complete')
+$stereoBackbufferComplete = @($stereoBackbuffers |
+    Where-Object phase -eq 'complete')
 $inputSnapshotPopulatedTypes = @()
+$inputSnapshotSourceIdentityCoherent = $false
 if ($inputSnapshotSamples.Count -gt 0) {
     $inputSnapshotPopulatedTypes = @($inputSnapshotSamples |
         Group-Object type_name | Where-Object {
@@ -686,15 +704,23 @@ if ($inputSnapshotSamples.Count -gt 0) {
                 }).Count -eq 2
         })
 }
+if ($inputSnapshotBindings.Count -eq 2) {
+    $frameIndexDelta = [math]::Abs(
+        [int64]$inputSnapshotBindings[0].frame_index -
+        [int64]$inputSnapshotBindings[1].frame_index)
+    $tokenCallDelta = [math]::Abs(
+        [int64]$inputSnapshotBindings[0].frame_token_call -
+        [int64]$inputSnapshotBindings[1].frame_token_call)
+    $inputSnapshotSourceIdentityCoherent =
+        $frameIndexDelta -le 1 -and $tokenCallDelta -le 1
+}
 if ($inputSnapshotProbe -eq '1' -and
         (@($inputSnapshots | Where-Object phase -eq 'scheduled').Count -ne 2 -or
             $inputSnapshotCompleteRecord.Count -ne 1 -or
             @($inputSnapshots | Where-Object phase -eq 'failed').Count -ne 0 -or
             $inputSnapshotResources.Count -ne 10 -or
             $inputSnapshotBindings.Count -ne 2 -or
-            @($inputSnapshotBindings.frame_token | Sort-Object -Unique).Count -ne 1 -or
-            @($inputSnapshotBindings.frame_token_call | Sort-Object -Unique).Count -ne 1 -or
-            @($inputSnapshotBindings.frame_index | Sort-Object -Unique).Count -ne 1 -or
+            -not $inputSnapshotSourceIdentityCoherent -or
             @($inputSnapshotBindings.viewport | Sort-Object -Unique).Count -ne 2 -or
             @($inputSnapshotBindings.constants_call | Sort-Object -Unique).Count -ne 2 -or
             @($inputSnapshotBindings.constants_version | Where-Object { $_ -ne '2' }).Count -ne 0 -or
@@ -704,6 +730,12 @@ if ($inputSnapshotProbe -eq '1' -and
             $inputSnapshotSamples.Count -ne 10 -or
             $inputSnapshotPopulatedTypes.Count -ne 5 -or
             $inputSnapshotReadbackComplete[0].divergent_mask -ne '31' -or
+            @($stereoBackbuffers | Where-Object phase -eq 'scheduled').Count -ne 1 -or
+            $stereoBackbufferComplete.Count -ne 1 -or
+            @($stereoBackbuffers | Where-Object phase -eq 'failed').Count -ne 0 -or
+            [uint64]$stereoBackbufferComplete[0].width -ne
+                2 * [uint64]$stereoBackbufferComplete[0].eye_width -or
+            $stereoBackbufferComplete[0].state -ne '8' -or
             $inputSnapshotCompleteRecord[0].snapshot_alias_mask -ne '0' -or
             $inputSnapshotCompleteRecord[0].snapshot_unique_count -ne '10' -or
             $inputSnapshotCompleteRecord[0].snapshot_ready -ne '1')) {
