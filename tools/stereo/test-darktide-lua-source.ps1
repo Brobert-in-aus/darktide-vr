@@ -777,8 +777,11 @@ if (-not $nativeCaptureSource.Contains('if (present == 1 || present % 30 == 0)')
     throw 'Focused trace request files must be polled at diagnostic cadence, not on every Present.'
 }
 if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
+        -not $startHelperSource.Contains('[switch] $StreamlineCopyProbe') -or
         -not $startHelperSource.Contains(
             'darktidevr_streamline_probe.flag') -or
+        -not $startHelperSource.Contains(
+            'darktidevr_streamline_copy_probe.flag') -or
         -not $nativeCaptureSource.Contains(
             'PROBE\tmode=observe_only\tsdk_abi=2.7.30') -or
         -not $nativeCaptureSource.Contains(
@@ -805,6 +808,18 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
             '\tlast_execute_queue=%p\tlast_execute_queue_type=%u') -or
         -not $nativeCaptureSource.Contains(
             '\tlast_execute_list_count=%u\tlast_execute_delta_us=%lld') -or
+        -not $nativeCaptureSource.Contains(
+            'EXECUTE_PRECURSOR\tnative_call=%llu\touter_frame=%llu') -or
+        -not $nativeCaptureSource.Contains(
+            '\tpresent_transition=%u\tdelta_us=%lld') -or
+        -not $nativeCaptureSource.Contains(
+            'GENERATED_COPY_SCHEDULE\tresult=submitted') -or
+        -not $nativeCaptureSource.Contains(
+            '\tqueue_source=swapchain_present_transition') -or
+        -not $nativeCaptureSource.Contains(
+            'observed_present_queue = swapchain_present_queue;') -or
+        -not $nativeCaptureSource.Contains(
+            'GENERATED_COPY_COMPLETE\tresult=success') -or
         -not $nativeCaptureSource.Contains(
             'streamline_native_present_count.load(std::memory_order_relaxed)') -or
         -not $nativeCaptureSource.Contains(

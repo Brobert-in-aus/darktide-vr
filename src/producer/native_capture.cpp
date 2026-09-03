@@ -68,6 +68,8 @@ std::atomic<std::uint64_t> streamline_feature_resolve_count{};
 std::atomic<std::uint64_t> streamline_dlssg_state_count{};
 std::atomic<std::uint64_t> streamline_dlssg_options_count{};
 std::atomic<std::uint64_t> streamline_native_present_count{};
+std::atomic<bool> streamline_copy_probe_requested{};
+std::atomic<DWORD> streamline_outer_present_thread{};
 std::atomic<std::uint64_t> streamline_execute_count{};
 std::atomic<std::int64_t> streamline_last_execute_qpc{};
 std::atomic<std::uint64_t> streamline_last_execute_outer_frame{};
@@ -75,6 +77,38 @@ std::atomic<ID3D12CommandQueue*> streamline_last_execute_queue{};
 std::atomic<DWORD> streamline_last_execute_thread{};
 std::atomic<UINT> streamline_last_execute_list_count{};
 std::atomic<UINT> streamline_last_execute_queue_type{};
+
+struct StreamlineExecuteSnapshot {
+  std::atomic<std::uint64_t> call{};
+  std::atomic<std::int64_t> qpc{};
+  std::atomic<std::uint64_t> outer_frame{};
+  std::atomic<ID3D12CommandQueue*> queue{};
+  std::atomic<DWORD> thread{};
+  std::atomic<UINT> list_count{};
+  std::atomic<UINT> queue_type{};
+  std::atomic<bool> present_transition{};
+};
+
+constexpr std::size_t kStreamlineExecuteHistory = 64;
+std::array<StreamlineExecuteSnapshot, kStreamlineExecuteHistory>
+    streamline_execute_history;
+
+struct StreamlineCopyProbeState {
+  bool attempted{};
+  bool pending{};
+  bool complete{};
+  std::uint64_t native_call{};
+  std::uint64_t outer_frame{};
+  UINT source_x{};
+  UINT source_y{};
+  ComPtr<ID3D12CommandAllocator> allocator;
+  ComPtr<ID3D12GraphicsCommandList> commands;
+  ComPtr<ID3D12Resource> readback;
+  ComPtr<ID3D12Fence> fence;
+};
+
+std::mutex streamline_copy_probe_mutex;
+StreamlineCopyProbeState streamline_copy_probe_state;
 
 BOOL CALLBACK initialize_dxc_reflection(PINIT_ONCE, PVOID, PVOID*) {
   std::array<wchar_t, 32768> module_path{};
@@ -2015,6 +2049,7 @@ void initialize_streamline_probe(void* present_target,
     return;
   }
   flag_path.resize(separator + 1);
+  const auto flag_directory = flag_path;
   flag_path += L"..\\darktidevr_streamline_probe.flag";
   if (GetFileAttributesW(flag_path.c_str()) == INVALID_FILE_ATTRIBUTES) {
     return;
@@ -2031,6 +2066,11 @@ void initialize_streamline_probe(void* present_target,
   if (streamline_probe_log == INVALID_HANDLE_VALUE) {
     return;
   }
+  const auto copy_flag_path =
+      flag_directory + L"..\\darktidevr_streamline_copy_probe.flag";
+  streamline_copy_probe_requested.store(
+      GetFileAttributesW(copy_flag_path.c_str()) != INVALID_FILE_ATTRIBUTES,
+      std::memory_order_release);
   const auto interposer = GetModuleHandleW(L"sl.interposer.dll");
   streamline_feature_resolver_target =
       interposer ? GetProcAddress(interposer, "slGetFeatureFunction") : nullptr;
@@ -2045,7 +2085,9 @@ void initialize_streamline_probe(void* present_target,
   write_streamline_probe_log(
       "PROBE\tmode=observe_only\tsdk_abi=2.7.30"
       "\tdlssg_state_query=wrap_existing_calls"
-      "\tindependent_state_calls=0\r\n");
+      "\tindependent_state_calls=0\tcopy_probe=%u\r\n",
+      streamline_copy_probe_requested.load(std::memory_order_relaxed) ? 1U
+                                                                     : 0U);
   write_streamline_probe_log(
       "PRESENT_TARGET\taddress=%p\tmodule=%p\tversion=%s\tpath=%ls\r\n",
       present_target, owner, module_file_version(owner_path).c_str(),
@@ -8315,6 +8357,8 @@ void STDMETHODCALLTYPE enhanced_barrier_hook(
 
 void STDMETHODCALLTYPE execute_command_lists_hook(
     ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists) {
+  StreamlineExecuteSnapshot* streamline_snapshot{};
+  std::uint64_t streamline_execute_call{};
   const auto known_game_queue =
       game_queue_identity.load(std::memory_order_acquire);
   const auto queue_type = queue == known_game_queue
@@ -8323,7 +8367,8 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
   if (streamline_probe_log != INVALID_HANDLE_VALUE) {
     LARGE_INTEGER execute_qpc{};
     QueryPerformanceCounter(&execute_qpc);
-    streamline_execute_count.fetch_add(1, std::memory_order_relaxed);
+    streamline_execute_call =
+        streamline_execute_count.fetch_add(1, std::memory_order_relaxed) + 1;
     streamline_last_execute_outer_frame.store(
         present_count.load(std::memory_order_relaxed),
         std::memory_order_relaxed);
@@ -8336,6 +8381,21 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
         static_cast<UINT>(queue_type), std::memory_order_relaxed);
     streamline_last_execute_qpc.store(execute_qpc.QuadPart,
                                       std::memory_order_release);
+    auto& snapshot = streamline_execute_history[
+        streamline_execute_call % kStreamlineExecuteHistory];
+    streamline_snapshot = &snapshot;
+    snapshot.call.store(0, std::memory_order_release);
+    snapshot.qpc.store(execute_qpc.QuadPart, std::memory_order_relaxed);
+    snapshot.outer_frame.store(
+        present_count.load(std::memory_order_relaxed),
+        std::memory_order_relaxed);
+    snapshot.queue.store(queue, std::memory_order_relaxed);
+    snapshot.thread.store(GetCurrentThreadId(), std::memory_order_relaxed);
+    snapshot.list_count.store(count, std::memory_order_relaxed);
+    snapshot.queue_type.store(static_cast<UINT>(queue_type),
+                              std::memory_order_relaxed);
+    snapshot.present_transition.store(false, std::memory_order_relaxed);
+    snapshot.call.store(streamline_execute_call, std::memory_order_release);
   }
   if (queue_type == D3D12_COMMAND_LIST_TYPE_DIRECT &&
       !game_queue_initialized.load(std::memory_order_acquire)) {
@@ -8516,6 +8576,12 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
             count, graphics == completed_output_commands ? 1U : 0U);
       }
     }
+  }
+  if (streamline_snapshot && executed_swapchain_present_transition &&
+      streamline_snapshot->call.load(std::memory_order_acquire) ==
+          streamline_execute_call) {
+    streamline_snapshot->present_transition.store(true,
+                                                   std::memory_order_release);
   }
   if (executed_swapchain_present_transition) {
     bool changed{};
@@ -9166,8 +9232,183 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
   return 0;
 }
 
+void harvest_streamline_copy_probe() {
+  std::scoped_lock lock(streamline_copy_probe_mutex);
+  auto& probe = streamline_copy_probe_state;
+  if (!probe.pending || !probe.fence ||
+      probe.fence->GetCompletedValue() < 1) {
+    return;
+  }
+  constexpr std::size_t kCopyBytes = 64U * 256U;
+  D3D12_RANGE read_range{0, kCopyBytes};
+  void* mapped{};
+  if (FAILED(probe.readback->Map(0, &read_range, &mapped)) || !mapped) {
+    probe.pending = false;
+    write_streamline_probe_log(
+        "GENERATED_COPY_COMPLETE\tresult=map_failed\tnative_call=%llu"
+        "\touter_frame=%llu\r\n",
+        static_cast<unsigned long long>(probe.native_call),
+        static_cast<unsigned long long>(probe.outer_frame));
+    return;
+  }
+  const auto* bytes = static_cast<const std::uint8_t*>(mapped);
+  std::uint64_t hash = 1469598103934665603ULL;
+  std::uint64_t nonzero{};
+  std::uint8_t minimum{255};
+  std::uint8_t maximum{};
+  for (std::size_t index = 0; index < kCopyBytes; ++index) {
+    const auto value = bytes[index];
+    hash ^= value;
+    hash *= 1099511628211ULL;
+    nonzero += value != 0 ? 1U : 0U;
+    minimum = (std::min)(minimum, value);
+    maximum = (std::max)(maximum, value);
+  }
+  D3D12_RANGE written_range{};
+  probe.readback->Unmap(0, &written_range);
+  probe.pending = false;
+  probe.complete = true;
+  write_streamline_probe_log(
+      "GENERATED_COPY_COMPLETE\tresult=success\tnative_call=%llu"
+      "\touter_frame=%llu\tx=%u\ty=%u\twidth=64\theight=64"
+      "\trow_pitch=256\thash=%016llx\tnonzero_bytes=%llu"
+      "\tmin_byte=%u\tmax_byte=%u\r\n",
+      static_cast<unsigned long long>(probe.native_call),
+      static_cast<unsigned long long>(probe.outer_frame), probe.source_x,
+      probe.source_y, static_cast<unsigned long long>(hash),
+      static_cast<unsigned long long>(nonzero),
+      static_cast<unsigned>(minimum), static_cast<unsigned>(maximum));
+}
+
+void schedule_streamline_copy_probe(ID3D12CommandQueue* queue,
+                                    ID3D12Resource* back_buffer,
+                                    std::uint64_t native_call,
+                                    std::uint64_t outer_frame) {
+  std::scoped_lock lock(streamline_copy_probe_mutex);
+  auto& probe = streamline_copy_probe_state;
+  if (probe.attempted || !queue || !back_buffer ||
+      !original_execute_command_lists) {
+    return;
+  }
+  probe.attempted = true;
+  const auto source = back_buffer->GetDesc();
+  if (source.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
+      source.Format != DXGI_FORMAT_R8G8B8A8_UNORM || source.Width < 64 ||
+      source.Height < 64) {
+    write_streamline_probe_log(
+        "GENERATED_COPY_SCHEDULE\tresult=unsupported_resource"
+        "\tnative_call=%llu\touter_frame=%llu\twidth=%llu\theight=%u"
+        "\tformat=%u\r\n",
+        static_cast<unsigned long long>(native_call),
+        static_cast<unsigned long long>(outer_frame),
+        static_cast<unsigned long long>(source.Width), source.Height,
+        static_cast<unsigned>(source.Format));
+    return;
+  }
+  ComPtr<ID3D12Device> device;
+  ComPtr<ID3D12CommandAllocator> allocator;
+  ComPtr<ID3D12GraphicsCommandList> commands;
+  ComPtr<ID3D12Resource> readback;
+  ComPtr<ID3D12Fence> fence;
+  D3D12_HEAP_PROPERTIES heap{};
+  heap.Type = D3D12_HEAP_TYPE_READBACK;
+  heap.CreationNodeMask = 1;
+  heap.VisibleNodeMask = 1;
+  D3D12_RESOURCE_DESC buffer{};
+  buffer.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+  buffer.Width = 64U * 256U;
+  buffer.Height = 1;
+  buffer.DepthOrArraySize = 1;
+  buffer.MipLevels = 1;
+  buffer.SampleDesc.Count = 1;
+  buffer.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+  if (FAILED(back_buffer->GetDevice(IID_PPV_ARGS(&device))) ||
+      FAILED(device->CreateCommandAllocator(
+          D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator))) ||
+      FAILED(device->CreateCommandList(
+          0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator.Get(), nullptr,
+          IID_PPV_ARGS(&commands))) ||
+      FAILED(device->CreateCommittedResource(
+          &heap, D3D12_HEAP_FLAG_NONE, &buffer,
+          D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+          IID_PPV_ARGS(&readback))) ||
+      FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
+                                 IID_PPV_ARGS(&fence)))) {
+    write_streamline_probe_log(
+        "GENERATED_COPY_SCHEDULE\tresult=resource_creation_failed"
+        "\tnative_call=%llu\touter_frame=%llu\r\n",
+        static_cast<unsigned long long>(native_call),
+        static_cast<unsigned long long>(outer_frame));
+    return;
+  }
+  D3D12_RESOURCE_BARRIER barrier{};
+  barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  barrier.Transition.pResource = back_buffer;
+  barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+  barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+  barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+  commands->ResourceBarrier(1, &barrier);
+  D3D12_TEXTURE_COPY_LOCATION destination{};
+  destination.pResource = readback.Get();
+  destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+  destination.PlacedFootprint.Footprint.Format = source.Format;
+  destination.PlacedFootprint.Footprint.Width = 64;
+  destination.PlacedFootprint.Footprint.Height = 64;
+  destination.PlacedFootprint.Footprint.Depth = 1;
+  destination.PlacedFootprint.Footprint.RowPitch = 256;
+  D3D12_TEXTURE_COPY_LOCATION source_location{};
+  source_location.pResource = back_buffer;
+  source_location.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+  const auto source_x = static_cast<UINT>(source.Width / 2U - 32U);
+  const auto source_y = source.Height / 2U - 32U;
+  D3D12_BOX source_box{source_x, source_y, 0, source_x + 64U,
+                       source_y + 64U, 1};
+  commands->CopyTextureRegion(&destination, 0, 0, 0, &source_location,
+                              &source_box);
+  std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+  commands->ResourceBarrier(1, &barrier);
+  if (FAILED(commands->Close())) {
+    write_streamline_probe_log(
+        "GENERATED_COPY_SCHEDULE\tresult=command_close_failed"
+        "\tnative_call=%llu\touter_frame=%llu\r\n",
+        static_cast<unsigned long long>(native_call),
+        static_cast<unsigned long long>(outer_frame));
+    return;
+  }
+  ID3D12CommandList* copy_lists[]{commands.Get()};
+  original_execute_command_lists(queue, 1, copy_lists);
+  if (FAILED(queue->Signal(fence.Get(), 1))) {
+    write_streamline_probe_log(
+        "GENERATED_COPY_SCHEDULE\tresult=signal_failed"
+        "\tnative_call=%llu\touter_frame=%llu\r\n",
+        static_cast<unsigned long long>(native_call),
+        static_cast<unsigned long long>(outer_frame));
+    return;
+  }
+  probe.pending = true;
+  probe.native_call = native_call;
+  probe.outer_frame = outer_frame;
+  probe.source_x = source_x;
+  probe.source_y = source_y;
+  probe.allocator = std::move(allocator);
+  probe.commands = std::move(commands);
+  probe.readback = std::move(readback);
+  probe.fence = std::move(fence);
+  write_streamline_probe_log(
+      "GENERATED_COPY_SCHEDULE\tresult=submitted\tnative_call=%llu"
+      "\touter_frame=%llu\tqueue_source=swapchain_present_transition"
+      "\tqueue=%p\tback_buffer=%p"
+      "\tx=%u\ty=%u\twidth=64\theight=64\trow_pitch=256\r\n",
+      static_cast<unsigned long long>(native_call),
+      static_cast<unsigned long long>(outer_frame), queue, back_buffer,
+      source_x, source_y);
+}
+
 HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
     IDXGISwapChain* swapchain, UINT interval, UINT flags) {
+  if (streamline_copy_probe_requested.load(std::memory_order_acquire)) {
+    harvest_streamline_copy_probe();
+  }
   const auto call = streamline_native_present_count.fetch_add(
                         1, std::memory_order_relaxed) +
                     1;
@@ -9200,6 +9441,22 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
             ? (begin.QuadPart - last_execute_qpc) * 1000000LL /
                   qpc_frequency.QuadPart
             : -1;
+    const auto current_thread = GetCurrentThreadId();
+    if (streamline_copy_probe_requested.load(std::memory_order_acquire) &&
+        current_thread !=
+            streamline_outer_present_thread.load(std::memory_order_acquire) &&
+        back_buffer_description.Width == 2496 &&
+        back_buffer_description.Height == 2688 &&
+        back_buffer_description.Format == DXGI_FORMAT_R8G8B8A8_UNORM) {
+      ComPtr<ID3D12CommandQueue> observed_present_queue;
+      {
+        std::scoped_lock lock(state_mutex);
+        observed_present_queue = swapchain_present_queue;
+      }
+      schedule_streamline_copy_probe(
+          observed_present_queue.Get(), back_buffer.Get(), call,
+          present_count.load(std::memory_order_relaxed));
+    }
     write_streamline_probe_log(
         "NATIVE_PRESENT_BEGIN\tcall=%llu\touter_frame=%llu\tthread=%lu"
         "\tqpc=%lld\tswapchain=%p\tinterval=%u\tflags=%u"
@@ -9228,6 +9485,49 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
         streamline_last_execute_queue_type.load(std::memory_order_relaxed),
         streamline_last_execute_list_count.load(std::memory_order_relaxed),
         execute_delta_microseconds);
+    const auto execute_total =
+        streamline_execute_count.load(std::memory_order_acquire);
+    for (std::uint64_t offset = 0;
+         offset < kStreamlineExecuteHistory && execute_total > offset;
+         ++offset) {
+      const auto execute_call = execute_total - offset;
+      auto& snapshot = streamline_execute_history[
+          execute_call % kStreamlineExecuteHistory];
+      if (snapshot.call.load(std::memory_order_acquire) != execute_call) {
+        continue;
+      }
+      const auto execute_qpc = snapshot.qpc.load(std::memory_order_relaxed);
+      if (execute_qpc <= 0 || execute_qpc > begin.QuadPart) {
+        continue;
+      }
+      const auto delta_microseconds =
+          qpc_frequency.QuadPart > 0
+              ? (begin.QuadPart - execute_qpc) * 1000000LL /
+                    qpc_frequency.QuadPart
+              : -1;
+      if (delta_microseconds < 0 || delta_microseconds > 5000) {
+        continue;
+      }
+      write_streamline_probe_log(
+          "EXECUTE_PRECURSOR\tnative_call=%llu\touter_frame=%llu"
+          "\toffset=%llu\texecute_call=%llu\texecute_outer_frame=%llu"
+          "\tthread=%lu\tqueue=%p\tqueue_type=%u\tlist_count=%u"
+          "\tpresent_transition=%u\tdelta_us=%lld\r\n",
+          static_cast<unsigned long long>(call),
+          static_cast<unsigned long long>(
+              present_count.load(std::memory_order_relaxed)),
+          static_cast<unsigned long long>(offset),
+          static_cast<unsigned long long>(execute_call),
+          static_cast<unsigned long long>(
+              snapshot.outer_frame.load(std::memory_order_relaxed)),
+          snapshot.thread.load(std::memory_order_relaxed),
+          snapshot.queue.load(std::memory_order_relaxed),
+          snapshot.queue_type.load(std::memory_order_relaxed),
+          snapshot.list_count.load(std::memory_order_relaxed),
+          snapshot.present_transition.load(std::memory_order_acquire) ? 1U
+                                                                     : 0U,
+          delta_microseconds);
+    }
   }
   const auto result =
       original_streamline_native_present(swapchain, interval, flags);
@@ -9252,6 +9552,8 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
 
 HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                                         UINT interval, UINT flags) {
+  streamline_outer_present_thread.store(GetCurrentThreadId(),
+                                        std::memory_order_release);
   if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {
     std::scoped_lock lock(trace_mutex);
     frame_eye0_table4_draws.clear();

@@ -38,6 +38,9 @@ $nativeBegins = @($records | Where-Object event -eq 'NATIVE_PRESENT_BEGIN')
 $nativeEnds = @($records | Where-Object event -eq 'NATIVE_PRESENT_END')
 $stateCalls = @($records | Where-Object event -eq 'DLSSG_STATE')
 $optionCalls = @($records | Where-Object event -eq 'DLSSG_OPTIONS')
+$copySchedules = @($records | Where-Object event -eq 'GENERATED_COPY_SCHEDULE')
+$copyCompletions = @($records | Where-Object event -eq 'GENERATED_COPY_COMPLETE')
+$executePrecursors = @($records | Where-Object event -eq 'EXECUTE_PRECURSOR')
 
 if ($probe.Count -ne 1 -or $target.Count -ne 1 -or
         $nativeTarget.Count -ne 1 -or $begins.Count -eq 0 -or
@@ -86,6 +89,13 @@ else {
 
 Write-Output "probe.mode=$($probe[0].mode)"
 Write-Output "probe.dlssg_state_query=$($probe[0].dlssg_state_query)"
+$copyProbe = if ($probe[0].PSObject.Properties['copy_probe']) {
+    $probe[0].copy_probe
+}
+else {
+    '0'
+}
+Write-Output "probe.copy_probe=$copyProbe"
 Write-Output "present.target_path=$($target[0].path)"
 Write-Output "present.target_version=$($target[0].version)"
 Write-Output "native_present.target_path=$($nativeTarget[0].path)"
@@ -115,14 +125,16 @@ if ($asynchronousNativeSamples.Count -gt 0) {
             $_.last_execute_thread -eq $_.thread
         })
     Write-Output "native_present.asynchronous_last_execute_same_thread=$($sameThreadExecuteSamples.Count)"
-    Write-Output "native_present.same_thread_execute_queue_count=$(@($sameThreadExecuteSamples.last_execute_queue | Sort-Object -Unique).Count)"
-    Write-Output "native_present.same_thread_execute_queue_types=$(($sameThreadExecuteSamples.last_execute_queue_type | Sort-Object -Unique) -join ',')"
-    $executeDeltas = @($sameThreadExecuteSamples | ForEach-Object {
-            [double]$_.last_execute_delta_us
-        })
-    $executeDelta = $executeDeltas | Measure-Object -Average -Maximum
-    Write-Output ('native_present.same_thread_execute_delta_us_average={0:F2}' -f $executeDelta.Average)
-    Write-Output ('native_present.same_thread_execute_delta_us_max={0:F2}' -f $executeDelta.Maximum)
+    if ($sameThreadExecuteSamples.Count -gt 0) {
+        Write-Output "native_present.same_thread_execute_queue_count=$(@($sameThreadExecuteSamples.last_execute_queue | Sort-Object -Unique).Count)"
+        Write-Output "native_present.same_thread_execute_queue_types=$(($sameThreadExecuteSamples.last_execute_queue_type | Sort-Object -Unique) -join ',')"
+        $executeDeltas = @($sameThreadExecuteSamples | ForEach-Object {
+                [double]$_.last_execute_delta_us
+            })
+        $executeDelta = $executeDeltas | Measure-Object -Average -Maximum
+        Write-Output ('native_present.same_thread_execute_delta_us_average={0:F2}' -f $executeDelta.Average)
+        Write-Output ('native_present.same_thread_execute_delta_us_max={0:F2}' -f $executeDelta.Maximum)
+    }
 }
 $lastOuterSample = $ends | Select-Object -Last 1
 if ($null -ne $lastOuterSample.native_present_count) {
@@ -168,5 +180,37 @@ if ($nativePresentDurations.Count -gt 0) {
     $nativeDuration = $nativePresentDurations | Measure-Object -Average -Maximum
     Write-Output ('native_present.duration_ms_average={0:F4}' -f $nativeDuration.Average)
     Write-Output ('native_present.duration_ms_max={0:F4}' -f $nativeDuration.Maximum)
+}
+Write-Output "generated_copy.schedule_samples=$($copySchedules.Count)"
+Write-Output "generated_copy.completion_samples=$($copyCompletions.Count)"
+Write-Output "execute_precursor.samples=$($executePrecursors.Count)"
+if ($executePrecursors.Count -gt 0) {
+    Write-Output "execute_precursor.native_call_count=$(@($executePrecursors.native_call | Sort-Object -Unique).Count)"
+    Write-Output "execute_precursor.queue_count=$(@($executePrecursors.queue | Sort-Object -Unique).Count)"
+    Write-Output "execute_precursor.queue_types=$(($executePrecursors.queue_type | Sort-Object -Unique) -join ',')"
+    $presentTransitionPrecursors = @($executePrecursors | Where-Object {
+            $_.present_transition -eq '1'
+        })
+    Write-Output "execute_precursor.present_transition_samples=$($presentTransitionPrecursors.Count)"
+    if ($presentTransitionPrecursors.Count -gt 0) {
+        Write-Output "execute_precursor.present_transition_native_call_count=$(@($presentTransitionPrecursors.native_call | Sort-Object -Unique).Count)"
+        Write-Output "execute_precursor.present_transition_queue_count=$(@($presentTransitionPrecursors.queue | Sort-Object -Unique).Count)"
+    }
+}
+if ($copyCompletions.Count -gt 0) {
+    $copy = $copyCompletions | Select-Object -Last 1
+    Write-Output "generated_copy.result=$($copy.result)"
+    if ($copy.result -eq 'success') {
+        Write-Output "generated_copy.native_call=$($copy.native_call)"
+        Write-Output "generated_copy.outer_frame=$($copy.outer_frame)"
+        Write-Output "generated_copy.hash=$($copy.hash)"
+        Write-Output "generated_copy.nonzero_bytes=$($copy.nonzero_bytes)"
+        Write-Output "generated_copy.byte_range=$($copy.min_byte),$($copy.max_byte)"
+    }
+}
+if ($copyProbe -eq '1' -and
+        ($copyCompletions.Count -ne 1 -or
+            $copyCompletions[0].result -ne 'success')) {
+    throw 'The requested generated-backbuffer copy did not complete successfully.'
 }
 Write-Output 'result=pass'

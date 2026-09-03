@@ -20,6 +20,8 @@ param(
 
     [switch] $StreamlineProbe,
 
+    [switch] $StreamlineCopyProbe,
+
     [switch] $ClusterLightTrace,
 
     [bool] $ClusterLightVisibilityFix = $true,
@@ -150,6 +152,9 @@ $offlineNoHeadset = $OfflineDualViewBenchmark -or
 $streamlineProbeFlagPath = $null
 $streamlineProbeFlagOriginal = $null
 $streamlineProbeFlagExisted = $false
+$streamlineCopyProbeFlagPath = $null
+$streamlineCopyProbeFlagOriginal = $null
+$streamlineCopyProbeFlagExisted = $false
 
 if (-not $SkipDeploymentSync) {
     $sync = Join-Path $PSScriptRoot 'sync-darktide-vr-dev.ps1'
@@ -281,7 +286,7 @@ if ($CaptureBillboardPsoIdentities) {
 }
 $launchStarted = Get-Date
 try {
-if ($StreamlineProbe) {
+if ($StreamlineProbe -or $StreamlineCopyProbe) {
     $streamlineProbeFlagPath = Join-Path $GameRoot `
         'mods\darktidevr_stereo_probe\darktidevr_streamline_probe.flag'
     $streamlineProbeFlagExisted = Test-Path -LiteralPath `
@@ -294,6 +299,20 @@ if ($StreamlineProbe) {
         -Encoding ascii
     Write-Output `
         'Observe-only Streamline/Present probe enabled for this run.'
+}
+if ($StreamlineCopyProbe) {
+    $streamlineCopyProbeFlagPath = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_streamline_copy_probe.flag'
+    $streamlineCopyProbeFlagExisted = Test-Path -LiteralPath `
+        $streamlineCopyProbeFlagPath -PathType Leaf
+    if ($streamlineCopyProbeFlagExisted) {
+        $streamlineCopyProbeFlagOriginal = Get-Content -LiteralPath `
+            $streamlineCopyProbeFlagPath -Raw
+    }
+    Set-Content -LiteralPath $streamlineCopyProbeFlagPath -Value 'enabled' `
+        -Encoding ascii
+    Write-Output `
+        'One-shot Streamline generated-backbuffer copy probe enabled.'
 }
 if ($SyntheticRuntimeFrusta) {
     $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -646,6 +665,17 @@ finally {
             Remove-Item -LiteralPath $streamlineProbeFlagPath -Force
         }
         Write-Output 'Restored the prior Streamline probe flag.'
+    }
+    if ($streamlineCopyProbeFlagPath) {
+        if ($streamlineCopyProbeFlagExisted) {
+            Set-Content -LiteralPath $streamlineCopyProbeFlagPath `
+                -Value $streamlineCopyProbeFlagOriginal.Trim() -Encoding ascii
+        }
+        elseif (Test-Path -LiteralPath $streamlineCopyProbeFlagPath `
+                -PathType Leaf) {
+            Remove-Item -LiteralPath $streamlineCopyProbeFlagPath -Force
+        }
+        Write-Output 'Restored the prior Streamline copy-probe flag.'
     }
     if ($syntheticHeadPublisher) {
         if (-not $syntheticHeadPublisher.HasExited) {

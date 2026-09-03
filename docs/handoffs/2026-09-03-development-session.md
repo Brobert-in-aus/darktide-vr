@@ -368,10 +368,36 @@ The third 90-second run again showed
 mode 1 and 1,668 surplus native calls by sampled outer frame 6,120. It submitted
 8,371/8,371 OpenXR frames with 1,377 fresh shared pairs, zero reuse, capture
 failures, stale frames and pair-driven timeouts; one pair-pose mismatch was
-reported. The copy prototype should append its barrier/copy/fence work to this
-identified generator queue, then let the native Present proceed. Do not submit
-the copy on DarktideVR's game/present queue or assume the state-query input
-fence means generated output completion.
+reported.
+
+A 64-entry lock-free execute history removed the fragile same-thread
+assumption and correlated every sampled Present with all submissions in the
+preceding five milliseconds. In the confirming observe-only run, 144 command
+submissions contained a hooked swapchain transition to `PRESENT`; all 144 used
+exactly one direct queue. That resource-semantic queue was also the stable
+immediate precursor to generated native Presents. This is stronger evidence
+than timing alone and lets the probe retain the queue through the existing
+`swapchain_present_queue` COM reference.
+
+The opt-in `-StreamlineCopyProbe` then performed exactly one non-blocking GPU
+readback on that transition-verified queue. At asynchronous native call 4,440
+and outer frame 4,441 it transitioned the addressable 2496x2688 generated
+backbuffer from `PRESENT` to `COPY_SOURCE`, copied a centered 64x64 tile to a
+readback buffer, restored `PRESENT`, and used a queue fence for deferred CPU
+mapping. The copy completed successfully: all 16,384 bytes were nonzero, byte
+range 101-255, FNV hash `3e0488ee207d8211`. No additional Streamline API call
+was made and the native Present was still forwarded exactly once.
+
+The 100-second copy run submitted 8,789/8,789 OpenXR frames and delivered 1,852
+fresh shared pairs. It reported zero reused shared frames, capture failures,
+stale frames, pair-driven timeouts or pair-pose mismatches. The analyzer found
+one schedule and one successful completion, and the launcher restored both
+run-scoped probe flags. This closes the safe single-frame readback gate: a
+generated DLSS-G output is demonstrably addressable and copyable before native
+scanout without disturbing the production stereo transport. The next step is
+to assign source/generated pair identities and prototype bounded transport of
+generated outputs; do not infer pair identity from alternating Present calls
+alone.
 
 ## Runtime evidence
 
@@ -449,6 +475,8 @@ source was removed.
 & 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' 'build\windows-vs2022\src\producer\darktidevr_native_capture.vcxproj' /m /p:Configuration=Release /p:Platform=x64 /t:Build /v:minimal
 .\build\windows-vs2022\tests\native_capture\Release\darktidevr-native-capture-tests.exe .\build\windows-vs2022\src\producer\Release\darktidevr_native_capture.dll
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 90 -StreamlineProbe -AutoEnterHub
+.\tools\stereo\read-streamline-probe.ps1
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 100 -StreamlineCopyProbe -AutoEnterHub
 .\tools\stereo\read-streamline-probe.ps1
 ```
 
