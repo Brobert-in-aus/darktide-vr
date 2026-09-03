@@ -532,6 +532,19 @@ named explicitly. It also reports `resource_tag.ui_color_alpha.samples=0`;
 Darktide supplied HUD-less colour but no separately tagged UI colour/alpha in
 the bounded run.
 
+The same observe-only layer now mirrors Streamline 2.7.30 common constants v2
+and records the values Darktide already supplies, including all five row-major
+matrices. A bounded lock-free 16-entry token history resolves constants against
+the monotonic frame index despite the game's multithreaded calls and
+Streamline's six reused token pointers. The confirming run captured 119
+complete left/right frame-index pairs; all 119 pairs shared the exact token and
+jitter. Both eyes used motion-vector scale `-1,-1`, non-inverted depth, camera
+motion included, 2D undilated and unjittered motion vectors, near/far
+`0.08/1000`, FOV `1.90447712`, and aspect `0.928571403`. Mean camera-position
+separation was `0.06259995` (range `0.06259966`-`0.06260015`), matching the
+OpenXR runtime IPD of `0.0626`. The projection/inverse/lens matrices remained
+stable per eye while both temporal clip transforms evolved frame by frame.
+
 This explains why the present-seam output is unsuitable for direct binocular
 submission: the existing sequential dual-render path has two colour endpoints
 but does not preserve independent per-eye temporal inputs through Present. A
@@ -541,6 +554,10 @@ tag two viewports under one explicit frame identity before invoking DLSS-G. The
 confirming run itself remained clean at 8,829/8,829 OpenXR submissions, 1,869
 fresh shared pairs, zero reuse, capture failures, stale frames, timeouts or pose
 mismatches.
+
+The later constants-identity confirming run remained clean at 8,725/8,725
+OpenXR submissions, 1,848 fresh shared pairs, and zero reuse, capture failures,
+stale frames, timeouts or pose mismatches.
 
 ## Runtime evidence
 

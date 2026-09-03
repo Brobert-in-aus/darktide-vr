@@ -26,6 +26,16 @@ function ConvertFrom-ProbeLine {
     [pscustomobject]$record
 }
 
+function ConvertFrom-ProbeVector3 {
+    param([Parameter(Mandatory)][string] $Value)
+
+    $parts = @($Value -split ',')
+    if ($parts.Count -ne 3) {
+        throw "Expected a three-component probe vector, got: $Value"
+    }
+    @([double]$parts[0], [double]$parts[1], [double]$parts[2])
+}
+
 $records = @(Get-Content -LiteralPath $Path |
     Where-Object { $_.Length -gt 0 } |
     ForEach-Object { ConvertFrom-ProbeLine $_ })
@@ -52,6 +62,8 @@ $fatalTransportDrops = @($transportDrops |
 $executePrecursors = @($records | Where-Object event -eq 'EXECUTE_PRECURSOR')
 $frameTokens = @($records | Where-Object event -eq 'FRAME_TOKEN')
 $setConstants = @($records | Where-Object event -eq 'SET_CONSTANTS')
+$setConstantMatrices = @($records |
+    Where-Object event -eq 'SET_CONSTANTS_MATRIX')
 $resourceTags = @($records | Where-Object event -eq 'RESOURCE_TAG')
 $resourceTagCalls = @($records | Where-Object event -eq 'RESOURCE_TAG_CALL')
 
@@ -242,10 +254,84 @@ if ($frameTokens.Count -gt 0) {
     Write-Output "frame_token.requested_index_values=$(@($frameTokens.requested_index | Sort-Object -Unique).Count)"
 }
 Write-Output "set_constants.samples=$($setConstants.Count)"
+Write-Output "set_constants.matrix_samples=$($setConstantMatrices.Count)"
 if ($setConstants.Count -gt 0) {
     Write-Output "set_constants.result_values=$(($setConstants.result | Sort-Object -Unique) -join ',')"
     Write-Output "set_constants.token_count=$(@($setConstants.token | Sort-Object -Unique).Count)"
     Write-Output "set_constants.viewport_count=$(@($setConstants.viewport | Sort-Object -Unique).Count)"
+    $eyeConstants = @($setConstants | Where-Object {
+            $_.PSObject.Properties['armed_eye'] -and
+            $_.armed_eye -in @('0', '1')
+        })
+    Write-Output "set_constants.eye_labeled_samples=$($eyeConstants.Count)"
+    foreach ($eye in 0..1) {
+        $samples = @($eyeConstants | Where-Object armed_eye -eq "$eye")
+        Write-Output "set_constants.eye${eye}.samples=$($samples.Count)"
+        if ($samples.Count -gt 0) {
+            Write-Output "set_constants.eye${eye}.viewports=$(($samples.viewport | Sort-Object -Unique) -join ',')"
+            Write-Output "set_constants.eye${eye}.token_count=$(@($samples.token | Sort-Object -Unique).Count)"
+            Write-Output "set_constants.eye${eye}.versions=$(($samples.version | Sort-Object -Unique) -join ',')"
+            Write-Output "set_constants.eye${eye}.mvec_scales=$(($samples.mvec_scale | Sort-Object -Unique) -join ';')"
+            Write-Output "set_constants.eye${eye}.depth_inverted=$(($samples.depth_inverted | Sort-Object -Unique) -join ',')"
+            Write-Output "set_constants.eye${eye}.camera_motion_included=$(($samples.camera_motion_included | Sort-Object -Unique) -join ',')"
+            Write-Output "set_constants.eye${eye}.mvec_3d=$(($samples.mvec_3d | Sort-Object -Unique) -join ',')"
+            Write-Output "set_constants.eye${eye}.mvec_dilated=$(($samples.mvec_dilated | Sort-Object -Unique) -join ',')"
+            Write-Output "set_constants.eye${eye}.mvec_jittered=$(($samples.mvec_jittered | Sort-Object -Unique) -join ',')"
+            Write-Output "set_constants.eye${eye}.fov_values=$(($samples.fov | Sort-Object -Unique) -join ',')"
+            Write-Output "set_constants.eye${eye}.aspect_values=$(($samples.aspect | Sort-Object -Unique) -join ',')"
+        }
+    }
+    $pairedConstantFrames = @($eyeConstants | Where-Object {
+            $_.PSObject.Properties['frame_index'] -and
+            $_.frame_index -ne '4294967295'
+        } | Group-Object frame_index |
+        Where-Object {
+            @($_.Group | Where-Object armed_eye -eq '0').Count -gt 0 -and
+            @($_.Group | Where-Object armed_eye -eq '1').Count -gt 0
+        })
+    $sameTokenPairs = 0
+    $sameJitterPairs = 0
+    $eyeSeparations = @()
+    foreach ($pair in $pairedConstantFrames) {
+        $eye0 = $pair.Group | Where-Object armed_eye -eq '0' |
+            Select-Object -Last 1
+        $eye1 = $pair.Group | Where-Object armed_eye -eq '1' |
+            Select-Object -Last 1
+        if ($eye0.token -eq $eye1.token) {
+            ++$sameTokenPairs
+        }
+        if ($eye0.jitter -eq $eye1.jitter) {
+            ++$sameJitterPairs
+        }
+        $eye0Position = ConvertFrom-ProbeVector3 $eye0.camera_pos
+        $eye1Position = ConvertFrom-ProbeVector3 $eye1.camera_pos
+        $deltaX = $eye0Position[0] - $eye1Position[0]
+        $deltaY = $eye0Position[1] - $eye1Position[1]
+        $deltaZ = $eye0Position[2] - $eye1Position[2]
+        $eyeSeparations += [Math]::Sqrt(
+            $deltaX * $deltaX + $deltaY * $deltaY + $deltaZ * $deltaZ)
+    }
+    Write-Output "set_constants.paired_frame_count=$($pairedConstantFrames.Count)"
+    Write-Output "set_constants.paired_same_token_count=$sameTokenPairs"
+    Write-Output "set_constants.paired_same_jitter_count=$sameJitterPairs"
+    if ($eyeSeparations.Count -gt 0) {
+        $separation = $eyeSeparations | Measure-Object -Average -Minimum -Maximum
+        Write-Output ('set_constants.eye_separation_average={0:F8}' -f $separation.Average)
+        Write-Output ('set_constants.eye_separation_min={0:F8}' -f $separation.Minimum)
+        Write-Output ('set_constants.eye_separation_max={0:F8}' -f $separation.Maximum)
+    }
+}
+if ($setConstantMatrices.Count -gt 0) {
+    Write-Output "set_constants.matrix_names=$(($setConstantMatrices.name | Sort-Object -Unique) -join ',')"
+    foreach ($eye in 0..1) {
+        $eyeMatrices = @($setConstantMatrices |
+            Where-Object armed_eye -eq "$eye")
+        Write-Output "set_constants.eye${eye}.matrix_samples=$($eyeMatrices.Count)"
+        foreach ($name in @($eyeMatrices.name | Sort-Object -Unique)) {
+            $namedMatrices = @($eyeMatrices | Where-Object name -eq $name)
+            Write-Output "set_constants.eye${eye}.${name}.distinct_values=$(@($namedMatrices.values | Sort-Object -Unique).Count)"
+        }
+    }
 }
 Write-Output "resource_tag.samples=$($resourceTags.Count)"
 Write-Output "resource_tag.empty_calls=$($resourceTagCalls.Count)"

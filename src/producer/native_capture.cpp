@@ -93,6 +93,13 @@ std::atomic<std::uint64_t> streamline_set_tag_call_count{};
 std::atomic<void*> streamline_latest_frame_token{};
 std::atomic<std::uint64_t> streamline_latest_frame_token_call{};
 std::atomic<std::uint32_t> streamline_latest_frame_index{UINT_MAX};
+constexpr std::size_t kStreamlineFrameTokenHistorySize = 16;
+std::array<std::atomic<void*>, kStreamlineFrameTokenHistorySize>
+    streamline_frame_token_history_tokens{};
+std::array<std::atomic<std::uint64_t>, kStreamlineFrameTokenHistorySize>
+    streamline_frame_token_history_calls{};
+std::array<std::atomic<std::uint32_t>, kStreamlineFrameTokenHistorySize>
+    streamline_frame_token_history_indices{};
 std::atomic<std::uint64_t> streamline_execute_count{};
 std::atomic<std::int64_t> streamline_last_execute_qpc{};
 std::atomic<std::uint64_t> streamline_last_execute_outer_frame{};
@@ -1896,10 +1903,22 @@ int sl_get_new_frame_token_hook(void** token,
     streamline_latest_frame_index.store(requested_index,
                                         std::memory_order_relaxed);
     streamline_latest_frame_token_call.store(call, std::memory_order_release);
+    const auto history_slot = call % kStreamlineFrameTokenHistorySize;
+    streamline_frame_token_history_calls[history_slot].store(
+        0, std::memory_order_release);
+    streamline_frame_token_history_tokens[history_slot].store(
+        resolved_token, std::memory_order_relaxed);
+    streamline_frame_token_history_indices[history_slot].store(
+        requested_index, std::memory_order_relaxed);
+    streamline_frame_token_history_calls[history_slot].store(
+        call, std::memory_order_release);
   }
   const auto burst_until =
       streamline_native_burst_until_call.load(std::memory_order_acquire);
-  if (call <= 100 || burst_until != 0) {
+  if (call <= 100 ||
+      (burst_until != 0 &&
+       streamline_native_present_count.load(std::memory_order_relaxed) <=
+           burst_until)) {
     LARGE_INTEGER qpc{};
     QueryPerformanceCounter(&qpc);
     write_streamline_probe_log(
@@ -1924,19 +1943,137 @@ int sl_set_constants_hook(const void* constants, const void* frame,
                     1;
   const auto burst_until =
       streamline_native_burst_until_call.load(std::memory_order_acquire);
-  if (call <= 100 || burst_until != 0) {
+  if (call <= 100 ||
+      (burst_until != 0 &&
+       streamline_native_present_count.load(std::memory_order_relaxed) <=
+           burst_until)) {
+    using namespace darktidevr::producer::streamline_2_7_30;
+    const auto* constants_state = static_cast<const Constants*>(constants);
     const auto* viewport_state = static_cast<const
-        darktidevr::producer::streamline_2_7_30::ViewportHandle*>(viewport);
+        ViewportHandle*>(viewport);
     LARGE_INTEGER qpc{};
     QueryPerformanceCounter(&qpc);
+    std::uint64_t frame_token_call{};
+    std::uint32_t frame_index{UINT_MAX};
+    for (std::size_t slot = 0; slot < kStreamlineFrameTokenHistorySize;
+         ++slot) {
+      const auto first_call = streamline_frame_token_history_calls[slot].load(
+          std::memory_order_acquire);
+      if (first_call == 0 || first_call <= frame_token_call) {
+        continue;
+      }
+      const auto candidate = streamline_frame_token_history_tokens[slot].load(
+          std::memory_order_relaxed);
+      const auto candidate_index =
+          streamline_frame_token_history_indices[slot].load(
+              std::memory_order_relaxed);
+      const auto second_call = streamline_frame_token_history_calls[slot].load(
+          std::memory_order_acquire);
+      if (first_call == second_call && candidate == frame) {
+        frame_token_call = first_call;
+        frame_index = candidate_index;
+      }
+    }
+    int armed_eye = -1;
+    std::uint64_t armed_pose{};
+    std::size_t armed_count{};
+    {
+      std::unique_lock lock(boundary_capture_mutex, std::try_to_lock);
+      if (lock.owns_lock()) {
+        armed_count = armed_eye_captures.size();
+        if (!armed_eye_captures.empty()) {
+          armed_eye = armed_eye_captures.front().eye;
+          armed_pose = armed_eye_captures.front().pose_sequence;
+        }
+      }
+    }
     write_streamline_probe_log(
         "SET_CONSTANTS\tcall=%llu\tpresent_frame=%llu\tthread=%lu"
-        "\tqpc=%lld\tresult=%d\ttoken=%p\tviewport=%u\r\n",
+        "\tqpc=%lld\tresult=%d\ttoken=%p\tframe_token_call=%llu"
+        "\tframe_index=%u\tviewport=%u\tconstants=%p"
+        "\tversion=%zu\tjitter=%.9g,%.9g\tmvec_scale=%.9g,%.9g"
+        "\tpinhole=%.9g,%.9g\tcamera_pos=%.9g,%.9g,%.9g"
+        "\tcamera_up=%.9g,%.9g,%.9g\tcamera_right=%.9g,%.9g,%.9g"
+        "\tcamera_fwd=%.9g,%.9g,%.9g\tnear=%.9g\tfar=%.9g"
+        "\tfov=%.9g\taspect=%.9g\tmvec_invalid=%.9g"
+        "\tdepth_inverted=%d\tcamera_motion_included=%d\tmvec_3d=%d"
+        "\treset=%d\torthographic=%d\tmvec_dilated=%d\tmvec_jittered=%d"
+        "\tmin_relative_depth_separation=%.9g\tarmed_eye=%d"
+        "\tarmed_pose=%llu\tarmed_count=%zu\r\n",
         static_cast<unsigned long long>(call),
         static_cast<unsigned long long>(
             present_count.load(std::memory_order_relaxed)),
         GetCurrentThreadId(), qpc.QuadPart, result, frame,
-        viewport_state ? viewport_state->value : 0);
+        static_cast<unsigned long long>(frame_token_call),
+        frame_index,
+        viewport_state ? viewport_state->value : 0, constants_state,
+        constants_state ? constants_state->base.struct_version : 0,
+        constants_state ? constants_state->jitter_offset.x : 0.0f,
+        constants_state ? constants_state->jitter_offset.y : 0.0f,
+        constants_state ? constants_state->motion_vector_scale.x : 0.0f,
+        constants_state ? constants_state->motion_vector_scale.y : 0.0f,
+        constants_state ? constants_state->camera_pinhole_offset.x : 0.0f,
+        constants_state ? constants_state->camera_pinhole_offset.y : 0.0f,
+        constants_state ? constants_state->camera_position.x : 0.0f,
+        constants_state ? constants_state->camera_position.y : 0.0f,
+        constants_state ? constants_state->camera_position.z : 0.0f,
+        constants_state ? constants_state->camera_up.x : 0.0f,
+        constants_state ? constants_state->camera_up.y : 0.0f,
+        constants_state ? constants_state->camera_up.z : 0.0f,
+        constants_state ? constants_state->camera_right.x : 0.0f,
+        constants_state ? constants_state->camera_right.y : 0.0f,
+        constants_state ? constants_state->camera_right.z : 0.0f,
+        constants_state ? constants_state->camera_forward.x : 0.0f,
+        constants_state ? constants_state->camera_forward.y : 0.0f,
+        constants_state ? constants_state->camera_forward.z : 0.0f,
+        constants_state ? constants_state->camera_near : 0.0f,
+        constants_state ? constants_state->camera_far : 0.0f,
+        constants_state ? constants_state->camera_fov : 0.0f,
+        constants_state ? constants_state->camera_aspect_ratio : 0.0f,
+        constants_state ? constants_state->motion_vectors_invalid_value : 0.0f,
+        constants_state ? static_cast<int>(constants_state->depth_inverted) : -1,
+        constants_state
+            ? static_cast<int>(constants_state->camera_motion_included)
+            : -1,
+        constants_state ? static_cast<int>(constants_state->motion_vectors_3d)
+                        : -1,
+        constants_state ? static_cast<int>(constants_state->reset) : -1,
+        constants_state
+            ? static_cast<int>(constants_state->orthographic_projection)
+            : -1,
+        constants_state
+            ? static_cast<int>(constants_state->motion_vectors_dilated)
+            : -1,
+        constants_state
+            ? static_cast<int>(constants_state->motion_vectors_jittered)
+            : -1,
+        constants_state
+            ? constants_state->min_relative_linear_depth_object_separation
+            : 0.0f,
+        armed_eye, static_cast<unsigned long long>(armed_pose), armed_count);
+    if (constants_state && armed_eye >= 0) {
+      const auto log_matrix = [&](const char* name, const Float4x4& matrix) {
+        write_streamline_probe_log(
+            "SET_CONSTANTS_MATRIX\tcall=%llu\tviewport=%u\ttoken=%p"
+            "\tname=%s\tvalues=%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,"
+            "%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g"
+            "\tarmed_eye=%d\tarmed_pose=%llu\r\n",
+            static_cast<unsigned long long>(call),
+            viewport_state ? viewport_state->value : 0, frame, name,
+            matrix.row[0].x, matrix.row[0].y, matrix.row[0].z,
+            matrix.row[0].w, matrix.row[1].x, matrix.row[1].y,
+            matrix.row[1].z, matrix.row[1].w, matrix.row[2].x,
+            matrix.row[2].y, matrix.row[2].z, matrix.row[2].w,
+            matrix.row[3].x, matrix.row[3].y, matrix.row[3].z,
+            matrix.row[3].w, armed_eye,
+            static_cast<unsigned long long>(armed_pose));
+      };
+      log_matrix("camera_view_to_clip", constants_state->camera_view_to_clip);
+      log_matrix("clip_to_camera_view", constants_state->clip_to_camera_view);
+      log_matrix("clip_to_lens_clip", constants_state->clip_to_lens_clip);
+      log_matrix("clip_to_prev_clip", constants_state->clip_to_prev_clip);
+      log_matrix("prev_clip_to_clip", constants_state->prev_clip_to_clip);
+    }
   }
   return result;
 }

@@ -869,6 +869,20 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $nativeCaptureSource.Contains(
             'original_sl_set_tag_for_frame(') -or
         -not $nativeCaptureSource.Contains(
+            'SET_CONSTANTS_MATRIX\tcall=%llu\tviewport=%u\ttoken=%p') -or
+        -not $nativeCaptureSource.Contains(
+            '\tdepth_inverted=%d\tcamera_motion_included=%d\tmvec_3d=%d') -or
+        -not $nativeCaptureSource.Contains(
+            '\tframe_index=%u\tviewport=%u\tconstants=%p') -or
+        -not $nativeCaptureSource.Contains(
+            'constexpr std::size_t kStreamlineFrameTokenHistorySize = 16;') -or
+        -not $nativeCaptureSource.Contains(
+            'first_call == second_call && candidate == frame') -or
+        -not $nativeCaptureSource.Contains(
+            'original_sl_set_constants(constants, frame, viewport)') -or
+        -not $nativeCaptureSource.Contains(
+            'if (constants_state && armed_eye >= 0) {') -or
+        -not $nativeCaptureSource.Contains(
             'streamline_native_present_count.load(std::memory_order_relaxed)') -or
         -not $nativeCaptureSource.Contains(
             '(present <= 5 || present % 120 == 0)')) {

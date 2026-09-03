@@ -2,9 +2,9 @@
 
 // Minimal read-only ABI mirror for NVIDIA Streamline v2.7.30. The upstream
 // headers are MIT-licensed. Keep this deliberately limited to structures that
-// Darktide itself passes through the observed slDLSSGGetState and
-// slDLSSGSetOptions calls; the mod does not construct Streamline inputs or call
-// the feature API independently.
+// Darktide itself passes through the observed constants, resource-tag,
+// slDLSSGGetState and slDLSSGSetOptions calls; the mod does not construct
+// Streamline inputs or call the feature API independently.
 
 #include <cstddef>
 #include <cstdint>
@@ -34,6 +34,63 @@ struct Extent {
   std::uint32_t left{};
   std::uint32_t width{};
   std::uint32_t height{};
+};
+
+struct Float2 {
+  float x;
+  float y;
+};
+
+struct Float3 {
+  float x;
+  float y;
+  float z;
+};
+
+struct Float4 {
+  float x;
+  float y;
+  float z;
+  float w;
+};
+
+struct Float4x4 {
+  Float4 row[4];
+};
+
+enum class Boolean : char {
+  false_value,
+  true_value,
+  invalid,
+};
+
+struct Constants {
+  BaseStructure base;
+  Float4x4 camera_view_to_clip;
+  Float4x4 clip_to_camera_view;
+  Float4x4 clip_to_lens_clip;
+  Float4x4 clip_to_prev_clip;
+  Float4x4 prev_clip_to_clip;
+  Float2 jitter_offset;
+  Float2 motion_vector_scale;
+  Float2 camera_pinhole_offset;
+  Float3 camera_position;
+  Float3 camera_up;
+  Float3 camera_right;
+  Float3 camera_forward;
+  float camera_near;
+  float camera_far;
+  float camera_fov;
+  float camera_aspect_ratio;
+  float motion_vectors_invalid_value;
+  Boolean depth_inverted;
+  Boolean camera_motion_included;
+  Boolean motion_vectors_3d;
+  Boolean reset;
+  Boolean orthographic_projection;
+  Boolean motion_vectors_dilated;
+  Boolean motion_vectors_jittered;
+  float min_relative_linear_depth_object_separation;
 };
 
 enum class ResourceType : char {
@@ -116,6 +173,20 @@ static_assert(sizeof(BaseStructure) == 32);
 static_assert(offsetof(ViewportHandle, value) == 32);
 static_assert(sizeof(ViewportHandle) == 40);
 static_assert(sizeof(Extent) == 16);
+static_assert(sizeof(Float2) == 8);
+static_assert(sizeof(Float3) == 12);
+static_assert(sizeof(Float4) == 16);
+static_assert(sizeof(Float4x4) == 64);
+static_assert(offsetof(Constants, camera_view_to_clip) == 32);
+static_assert(offsetof(Constants, jitter_offset) == 352);
+static_assert(offsetof(Constants, motion_vector_scale) == 360);
+static_assert(offsetof(Constants, camera_position) == 376);
+static_assert(offsetof(Constants, camera_near) == 424);
+static_assert(offsetof(Constants, depth_inverted) == 444);
+static_assert(offsetof(
+                  Constants,
+                  min_relative_linear_depth_object_separation) == 452);
+static_assert(sizeof(Constants) == 456);
 static_assert(offsetof(Resource, type) == 32);
 static_assert(offsetof(Resource, native) == 40);
 static_assert(offsetof(Resource, state) == 64);
