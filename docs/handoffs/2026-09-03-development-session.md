@@ -313,7 +313,7 @@ source was removed.
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 105 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 95 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
 .\tools\stereo\sync-darktide-vr-dev.ps1
-& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build/windows-vs2022 --config Release --target darktidevr-xr-harness darktidevr-tracked-cuff-tests
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build/windows-vs2022 --config Release --target darktidevr-xr-harness darktidevr-tracked-cuff-tests darktidevr-tracked-cuff-renderer-tests
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build/windows-vs2022 -C Release --output-on-failure -R '^(tracked_cuff_mesh|tracked_cuff_renderer|xr_harness_help)$'
 .\build\windows-vs2022\tests\xr_harness\Release\darktidevr-xr-harness.exe --frames 1 --require-rendering --xr-frames 120 --shared-eyes --synthetic-controller-path --tracked-cuff-overlay
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 120 -GameStartTimeoutSeconds 600 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -TrackedCuffOverlay -SkipDeploymentSync
@@ -332,7 +332,10 @@ the final clean-state check used
 `artifacts/unattended/preflight-20260902T232904Z.json`. The final semantic
 catalog sweep and clean-baseline restoration used the later
 `preflight-20260903T004741Z.json` through
-`preflight-20260903T005727Z.json` reports.
+`preflight-20260903T005727Z.json` reports. The compositor cuff build, synthetic
+OpenXR exercise, live private-range run and GPU pixel test used
+`preflight-20260903T010908Z.json` through
+`preflight-20260903T011706Z.json`.
 
 ## Next work
 
