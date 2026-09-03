@@ -655,6 +655,18 @@ fresh pairs, and zero capture failures, stale frames, timeouts, reuse or pose
 mismatches. This closes the independent-content prerequisite; no snapshot was
 published to XR or passed to a Streamline evaluation.
 
+The preserved pair is now also bound to the exact observed Streamline temporal
+identity. Each eye retains its full version-2 constants plus frame token,
+resolved frame-token call/index and viewport handle. The stereo-input policy
+uses that Streamline index rather than the outer Present count and fails closed
+unless both eyes share one token call/index and pose while using distinct
+viewports and constants calls. The Psykhanium confirmation resolved both eyes
+to token call 4,644 and frame index 4,643, with constants calls 2,749/2,750 and
+viewports 1,342,883,970/2,738,829,751. All ten snapshots again passed the
+content gate with `content_divergent_mask=31`. The probe also observed a valid
+pair spanning adjacent outer Presents, proving that Present equality is not a
+sound temporal join key; the Streamline token/index is authoritative.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:
@@ -774,10 +786,11 @@ correction used `preflight-20260903T013512Z.json` through
    the transported desktop generated image into XR presentation. The bounded
    diagnostic snapshot now proves fence completion, unique identities, a
    `ready` fail-closed policy verdict and distinct content for all five input
-   classes. Next bind that preserved pair to the exact observed Streamline
-   frame token/index and constants, then construct the diagnostic side-by-side
-   input without changing live presentation. Preserve the external consumer as
-   the later binocular-output transport gate.
+   classes. The preserved pair is now bound to one exact observed Streamline
+   frame token/index, two version-2 constants records and two viewport handles.
+   Next construct the diagnostic side-by-side input without changing live
+   presentation. Preserve the external consumer as the later binocular-output
+   transport gate.
 2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,
    radii and length if its alignment is sound; reject the route if the lack of

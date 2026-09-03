@@ -136,6 +136,18 @@ struct StreamlineTaggedInput {
   std::uint64_t pose_sequence{};
 };
 
+struct StreamlineConstantsObservation {
+  bool valid{};
+  darktidevr::producer::streamline_2_7_30::Constants constants{};
+  void* frame_token{};
+  std::uint64_t frame_token_call{};
+  std::uint64_t constants_call{};
+  std::uint64_t present_frame{};
+  std::uint64_t pose_sequence{};
+  std::uint32_t frame_index{UINT_MAX};
+  std::uint32_t viewport{};
+};
+
 struct StreamlineInputSnapshotState {
   int next_eye{};
   bool pending{};
@@ -151,6 +163,7 @@ struct StreamlineInputSnapshotState {
       sources;
   std::array<std::array<ComPtr<ID3D12Resource>, kStreamlineInputCount>, 2>
       snapshots;
+  std::array<StreamlineConstantsObservation, 2> constants;
   std::array<ComPtr<ID3D12CommandAllocator>, 2> allocators;
   std::array<ComPtr<ID3D12GraphicsCommandList>, 2> commands;
   ComPtr<ID3D12CommandAllocator> readback_allocator;
@@ -166,6 +179,8 @@ struct StreamlineInputSnapshotState {
 std::mutex streamline_input_snapshot_mutex;
 std::array<std::array<StreamlineTaggedInput, kStreamlineInputCount>, 2>
     streamline_tagged_inputs;
+std::array<StreamlineConstantsObservation, 2>
+    streamline_constants_observations;
 StreamlineInputSnapshotState streamline_input_snapshot_state;
 
 struct StreamlineExecuteSnapshot {
@@ -2003,7 +2018,9 @@ int sl_set_constants_hook(const void* constants, const void* frame,
                     1;
   const auto burst_until =
       streamline_native_burst_until_call.load(std::memory_order_acquire);
-  if (call <= 100 ||
+  if (streamline_input_snapshot_probe_requested.load(
+          std::memory_order_acquire) ||
+      call <= 100 ||
       (burst_until != 0 &&
        streamline_native_present_count.load(std::memory_order_relaxed) <=
            burst_until)) {
@@ -2112,6 +2129,22 @@ int sl_set_constants_hook(const void* constants, const void* frame,
             : 0.0f,
         armed_eye, static_cast<unsigned long long>(armed_pose), armed_count);
     if (constants_state && armed_eye >= 0) {
+      {
+        std::scoped_lock lock(streamline_input_snapshot_mutex);
+        auto& observation = streamline_constants_observations[
+            static_cast<std::size_t>(armed_eye)];
+        observation.valid = result == 0 && frame_token_call != 0 &&
+                            frame_index != UINT_MAX && viewport_state;
+        observation.constants = *constants_state;
+        observation.frame_token = const_cast<void*>(frame);
+        observation.frame_token_call = frame_token_call;
+        observation.constants_call = call;
+        observation.present_frame =
+            present_count.load(std::memory_order_relaxed);
+        observation.pose_sequence = armed_pose;
+        observation.frame_index = frame_index;
+        observation.viewport = viewport_state ? viewport_state->value : 0;
+      }
       const auto log_matrix = [&](const char* name, const Float4x4& matrix) {
         write_streamline_probe_log(
             "SET_CONSTANTS_MATRIX\tcall=%llu\tviewport=%u\ttoken=%p"
@@ -9133,7 +9166,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
            ++policy_eye) {
         darktidevr::core::begin_streamline_eye_frame(
             policy_inputs[policy_eye],
-            static_cast<std::uint32_t>(state.present_frame));
+            state.constants[policy_eye].frame_index);
         for (std::size_t type = 0; type < kStreamlineInputCount; ++type) {
           (void)darktidevr::core::observe_streamline_eye_resource(
               policy_inputs[policy_eye], kStreamlinePolicyResources[type],
@@ -9151,13 +9184,16 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
           "\tpose=%llu\tfence_value=%llu\tresource_count=%zu"
           "\tsource_alias_mask=%u\tsnapshot_alias_mask=%u"
           "\tsnapshot_unique_count=%zu\tpolicy_status=%u"
-          "\tpolicy_aliased_mask=%u\tsnapshot_ready=%u\r\n",
+          "\tpolicy_aliased_mask=%u\tsnapshot_ready=%u"
+          "\tframe_index=%u\tframe_token=%p\r\n",
           static_cast<unsigned long long>(state.present_frame),
           static_cast<unsigned long long>(state.pose_sequence),
           static_cast<unsigned long long>(state.fence_value),
           kStreamlineInputCount * 2, source_alias_mask, snapshot_alias_mask,
           unique_snapshots.size(), static_cast<unsigned>(policy.status),
-          policy.aliased_mask, snapshot_ready ? 1U : 0U);
+          policy.aliased_mask, snapshot_ready ? 1U : 0U,
+          state.constants[0].frame_index,
+          state.constants[0].frame_token);
     }
     return;
   }
@@ -9186,15 +9222,19 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
     }
     return;
   }
+  const auto& constants = streamline_constants_observations[index];
+  if (!constants.valid || constants.present_frame != present_frame ||
+      constants.pose_sequence != pose_sequence) {
+    return;
+  }
   if (eye == 0) {
     state.present_frame = present_frame;
     state.pose_sequence = pose_sequence;
-  } else if (state.present_frame != present_frame ||
-             state.pose_sequence != pose_sequence) {
+  } else if (state.pose_sequence != pose_sequence) {
     state.failed = true;
     write_streamline_probe_log(
         "INPUT_SNAPSHOT\tphase=failed\treason=pair_identity"
-        "\tpresent_frame=%llu\tpose=%llu\texpected_frame=%llu"
+        "\tpresent_frame=%llu\tpose=%llu\tleft_present_frame=%llu"
         "\texpected_pose=%llu\r\n",
         static_cast<unsigned long long>(present_frame),
         static_cast<unsigned long long>(pose_sequence),
@@ -9202,6 +9242,41 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
         static_cast<unsigned long long>(state.pose_sequence));
     return;
   }
+  if (eye == 1 &&
+      (state.constants[0].frame_token != constants.frame_token ||
+       state.constants[0].frame_token_call != constants.frame_token_call ||
+       state.constants[0].frame_index != constants.frame_index ||
+       state.constants[0].viewport == constants.viewport)) {
+    state.failed = true;
+    write_streamline_probe_log(
+        "INPUT_SNAPSHOT\tphase=failed\treason=constants_identity"
+        "\tpresent_frame=%llu\tpose=%llu\tleft_token=%p"
+        "\tright_token=%p\tleft_frame_index=%u\tright_frame_index=%u"
+        "\tleft_viewport=%u\tright_viewport=%u\r\n",
+        static_cast<unsigned long long>(present_frame),
+        static_cast<unsigned long long>(pose_sequence),
+        state.constants[0].frame_token, constants.frame_token,
+        state.constants[0].frame_index, constants.frame_index,
+        state.constants[0].viewport, constants.viewport);
+    return;
+  }
+  state.constants[index] = constants;
+  write_streamline_probe_log(
+      "INPUT_SNAPSHOT_BINDING\tpresent_frame=%llu\tpose=%llu\teye=%d"
+      "\tframe_token=%p\tframe_token_call=%llu\tframe_index=%u"
+      "\tviewport=%u\tconstants_call=%llu\tconstants_version=%zu"
+      "\tjitter=%.9g,%.9g\tcamera_pos=%.9g,%.9g,%.9g\r\n",
+      static_cast<unsigned long long>(present_frame),
+      static_cast<unsigned long long>(pose_sequence), eye,
+      constants.frame_token,
+      static_cast<unsigned long long>(constants.frame_token_call),
+      constants.frame_index, constants.viewport,
+      static_cast<unsigned long long>(constants.constants_call),
+      constants.constants.base.struct_version,
+      constants.constants.jitter_offset.x, constants.constants.jitter_offset.y,
+      constants.constants.camera_position.x,
+      constants.constants.camera_position.y,
+      constants.constants.camera_position.z);
 
   ComPtr<ID3D12Device> device;
   if (FAILED(queue->GetDevice(IID_PPV_ARGS(&device)))) {

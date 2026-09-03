@@ -71,6 +71,8 @@ $eyeOutputBoundaries = @($records |
 $inputSnapshots = @($records | Where-Object event -eq 'INPUT_SNAPSHOT')
 $inputSnapshotResources = @($records |
     Where-Object event -eq 'INPUT_SNAPSHOT_RESOURCE')
+$inputSnapshotBindings = @($records |
+    Where-Object event -eq 'INPUT_SNAPSHOT_BINDING')
 $inputSnapshotReadbacks = @($records |
     Where-Object event -eq 'INPUT_SNAPSHOT_READBACK')
 $inputSnapshotSamples = @($records |
@@ -551,6 +553,15 @@ if ($inputSnapshots.Count -gt 0) {
 }
 Write-Output "input_snapshot.readback_samples=$($inputSnapshotReadbacks.Count)"
 Write-Output "input_snapshot.content_samples=$($inputSnapshotSamples.Count)"
+Write-Output "input_snapshot.binding_samples=$($inputSnapshotBindings.Count)"
+if ($inputSnapshotBindings.Count -eq 2) {
+    Write-Output "input_snapshot.frame_token=$($inputSnapshotBindings[0].frame_token)"
+    Write-Output "input_snapshot.frame_token_call=$($inputSnapshotBindings[0].frame_token_call)"
+    Write-Output "input_snapshot.frame_index=$($inputSnapshotBindings[0].frame_index)"
+    Write-Output "input_snapshot.viewports=$(($inputSnapshotBindings.viewport) -join ',')"
+    Write-Output "input_snapshot.constants_calls=$(($inputSnapshotBindings.constants_call) -join ',')"
+    Write-Output "input_snapshot.constants_versions=$(($inputSnapshotBindings.constants_version) -join ',')"
+}
 if ($inputSnapshotReadbacks.Count -gt 0) {
     foreach ($phase in @($inputSnapshotReadbacks.phase | Sort-Object -Unique)) {
         Write-Output "input_snapshot.readback_${phase}.samples=$(@($inputSnapshotReadbacks |
@@ -665,16 +676,28 @@ $inputSnapshotCompleteRecord = @($inputSnapshots |
     Where-Object phase -eq 'complete')
 $inputSnapshotReadbackComplete = @($inputSnapshotReadbacks |
     Where-Object phase -eq 'complete')
-$inputSnapshotPopulatedTypes = @($inputSnapshotSamples |
-    Group-Object type_name | Where-Object {
-        $_.Count -eq 2 -and
-        @($_.Group | Where-Object { [uint64]$_.nonzero_bytes -gt 0 }).Count -eq 2
-    })
+$inputSnapshotPopulatedTypes = @()
+if ($inputSnapshotSamples.Count -gt 0) {
+    $inputSnapshotPopulatedTypes = @($inputSnapshotSamples |
+        Group-Object type_name | Where-Object {
+            $_.Count -eq 2 -and
+            @($_.Group | Where-Object {
+                    [uint64]$_.nonzero_bytes -gt 0
+                }).Count -eq 2
+        })
+}
 if ($inputSnapshotProbe -eq '1' -and
         (@($inputSnapshots | Where-Object phase -eq 'scheduled').Count -ne 2 -or
             $inputSnapshotCompleteRecord.Count -ne 1 -or
             @($inputSnapshots | Where-Object phase -eq 'failed').Count -ne 0 -or
             $inputSnapshotResources.Count -ne 10 -or
+            $inputSnapshotBindings.Count -ne 2 -or
+            @($inputSnapshotBindings.frame_token | Sort-Object -Unique).Count -ne 1 -or
+            @($inputSnapshotBindings.frame_token_call | Sort-Object -Unique).Count -ne 1 -or
+            @($inputSnapshotBindings.frame_index | Sort-Object -Unique).Count -ne 1 -or
+            @($inputSnapshotBindings.viewport | Sort-Object -Unique).Count -ne 2 -or
+            @($inputSnapshotBindings.constants_call | Sort-Object -Unique).Count -ne 2 -or
+            @($inputSnapshotBindings.constants_version | Where-Object { $_ -ne '2' }).Count -ne 0 -or
             @($inputSnapshotReadbacks | Where-Object phase -eq 'scheduled').Count -ne 1 -or
             $inputSnapshotReadbackComplete.Count -ne 1 -or
             @($inputSnapshotReadbacks | Where-Object phase -eq 'failed').Count -ne 0 -or
