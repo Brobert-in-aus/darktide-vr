@@ -211,6 +211,38 @@ capture failure, stale frame or pair-driven timeout. The temporary semantic
 logger was removed and the installed mod was synchronized back to the clean
 one-sided-glove baseline.
 
+## Opt-in compositor cuff prototype
+
+The first engine-independent cuff prototype is now implemented in the OpenXR
+consumer. `tracked_cuff_mesh` generates a sealed, tapered 24-segment elliptical
+cuff aligned to each Touch grip pose. Its test verifies finite vertices, the
+intended bounds, outward winding and exactly two uses of every triangle edge.
+The harness builds a small D3D12 pipeline at runtime and draws the cuff for both
+hands into both eye swapchains after copying a valid live or cached game pair.
+It uses the pair-associated eye poses and explicit
+`COPY_DEST -> RENDER_TARGET -> COMMON` transitions.
+An offscreen GPU integration test renders a known tracked pose into a 256x256
+texture and verifies 494 bounded non-background pixels, covering the matrix,
+winding, culling, shader and readback conventions without a headset wearer.
+
+The feature is deliberately disabled by default. Pass `-TrackedCuffOverlay` to
+`start-darktide-vr.ps1` or `run-darktide-shared-eyes.ps1`; this becomes the
+harness option `--tracked-cuff-overlay`, which fails closed without
+`--shared-eyes`. The compositor does not have the game's depth buffer, so this
+opaque geometry always wins foreground occlusion. It must remain diagnostic
+until worn inspection confirms alignment and determines whether that depth
+policy is acceptable.
+
+A 120-second private-range exercise initialized the runtime shaders and PSO,
+attached the real game eye producer and completed 2,084 cuff-rendered stereo
+frames with 8,336 draws: exactly two hands times two eyes per rendered frame.
+The run submitted 11,805/11,805 OpenXR frames, advanced 2,484 fresh shared
+pairs, and recorded zero reuse, pair-driven timeout, capture failure or stale
+frame. The single pair-pose mismatch occurred at initial producer attachment;
+subsequent live reporting remained at one while the range ran. This proves the
+renderer and resource-state path, but it is not a substitute for worn visual
+acceptance.
+
 ## Launcher Play retry
 
 The first Play press in that run moved WPF's `Process.MainWindowHandle` to a
@@ -281,6 +313,10 @@ source was removed.
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 105 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 95 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -SkipDeploymentSync
 .\tools\stereo\sync-darktide-vr-dev.ps1
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build/windows-vs2022 --config Release --target darktidevr-xr-harness darktidevr-tracked-cuff-tests
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build/windows-vs2022 -C Release --output-on-failure -R '^(tracked_cuff_mesh|tracked_cuff_renderer|xr_harness_help)$'
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-xr-harness.exe --frames 1 --require-rendering --xr-frames 120 --shared-eyes --synthetic-controller-path --tracked-cuff-overlay
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 120 -GameStartTimeoutSeconds 600 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -TrackedCuffOverlay -SkipDeploymentSync
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native
@@ -300,11 +336,10 @@ catalog sweep and clean-baseline restoration used the later
 
 ## Next work
 
-1. Replace or cover the open cuffs on the now-proven independently rooted
-   one-sided gloves. Combined profile gloves cannot be separated by mesh, the
-   body masks retain deforming arm geometry, and the only shipped singular
-   underlays visibly protrude. The remaining credible route is a purpose-built
-   closed hand/cuff asset.
+1. Perform worn inspection of the opt-in compositor cuff against the proven
+   independently rooted one-sided gloves. Calibrate its grip-relative offset,
+   radii and length if its alignment is sound; reject the route if the lack of
+   game depth causes unacceptable weapon/world occlusion.
 2. Perform the worn Options extent, cursor and representative control pass;
    do not change the proven pointer transform without contrary evidence.
 3. Perform the required worn Penances clustered-light acceptance.

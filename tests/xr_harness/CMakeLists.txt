@@ -37,6 +37,17 @@ target_compile_options(darktidevr-tracked-cuff PRIVATE
   /W4 /WX /permissive-)
 target_link_libraries(darktidevr-tracked-cuff PUBLIC darktidevr_core)
 
+add_library(darktidevr-tracked-cuff-renderer STATIC tracked_cuff_renderer.cpp)
+target_include_directories(darktidevr-tracked-cuff-renderer PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(darktidevr-tracked-cuff-renderer PRIVATE
+  /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-tracked-cuff-renderer PRIVATE
+  NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(darktidevr-tracked-cuff-renderer PUBLIC
+  OpenXR::openxr_loader darktidevr-tracked-cuff darktidevr_core
+  d3d12 d3dcompiler dxgi)
+
 add_executable(darktidevr-eye-capture eye_capture.cpp)
 target_compile_options(darktidevr-eye-capture PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-eye-capture PRIVATE
@@ -77,7 +88,7 @@ target_compile_definitions(darktidevr-xr-harness PRIVATE
 target_link_libraries(darktidevr-xr-harness PRIVATE
   OpenXR::openxr_loader darktidevr_core darktidevr_bridge darktidevr-window-capture
   darktidevr-menu-input darktidevr-synthetic-controller
-  darktidevr-synthetic-head
+  darktidevr-synthetic-head darktidevr-tracked-cuff-renderer
   d3d12 d3dcompiler dxgi dxguid)
 
 add_custom_command(TARGET darktidevr-xr-harness POST_BUILD
@@ -131,6 +142,19 @@ if(BUILD_TESTING)
   add_test(NAME tracked_cuff_mesh COMMAND darktidevr-tracked-cuff-tests)
   set_tests_properties(tracked_cuff_mesh PROPERTIES
     LABELS "phase1;openxr;hands")
+
+  add_executable(darktidevr-tracked-cuff-renderer-tests
+    tracked_cuff_renderer_tests.cpp)
+  target_compile_options(darktidevr-tracked-cuff-renderer-tests PRIVATE
+    /W4 /WX /permissive-)
+  target_compile_definitions(darktidevr-tracked-cuff-renderer-tests PRIVATE
+    NOMINMAX WIN32_LEAN_AND_MEAN)
+  target_link_libraries(darktidevr-tracked-cuff-renderer-tests PRIVATE
+    darktidevr-tracked-cuff-renderer d3d12 dxgi)
+  add_test(NAME tracked_cuff_renderer
+    COMMAND darktidevr-tracked-cuff-renderer-tests)
+  set_tests_properties(tracked_cuff_renderer PROPERTIES
+    LABELS "phase1;openxr;hands;d3d12")
 
   add_executable(darktidevr-window-capture-tests window_capture_tests.cpp)
   target_compile_options(darktidevr-window-capture-tests PRIVATE

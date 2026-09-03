@@ -23,6 +23,8 @@ param(
 
     [switch] $EnableGameplayReticle = $true,
 
+    [switch] $TrackedCuffOverlay,
+
     [switch] $SyntheticBodyPath,
 
     [switch] $SyntheticHeadSweep,
@@ -154,6 +156,9 @@ if ($SyntheticMovementReferencePath) {
 }
 if ($EnableGameplayReticle) {
     $arguments += '--enable-gameplay-reticle'
+}
+if ($TrackedCuffOverlay) {
+    $arguments += '--tracked-cuff-overlay'
 }
 if ($SyntheticBodyPath) {
     if (-not $SyntheticControllerPath) {

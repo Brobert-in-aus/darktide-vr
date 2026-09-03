@@ -12,6 +12,7 @@
 #include "menu_input_injector.h"
 #include "synthetic_controller_path.h"
 #include "synthetic_head_path.h"
+#include "tracked_cuff_renderer.h"
 #include "window_capture.h"
 #include "bridge/shared_eye_surfaces.h"
 #include "core/head_tracking.h"
@@ -639,6 +640,7 @@ class OpenXrProbe {
                                bool synthetic_weapon_aim_matrix,
                                bool synthetic_movement_reference_path,
                                bool enable_gameplay_reticle,
+                               bool tracked_cuff_overlay,
                                bool synthetic_head_sweep,
                                bool synthetic_body_inspection,
                                bool synthetic_neck_pivot_path,
@@ -794,6 +796,16 @@ class OpenXrProbe {
         device->CreateRenderTargetView(image.texture, &rtv_view, rtv);
         rtv.ptr += rtv_increment;
       }
+    }
+
+    std::unique_ptr<darktidevr::harness::TrackedCuffRenderer>
+        tracked_cuff_renderer;
+    if (tracked_cuff_overlay) {
+      tracked_cuff_renderer =
+          std::make_unique<darktidevr::harness::TrackedCuffRenderer>(
+              device, static_cast<DXGI_FORMAT>(swapchain_format_),
+              theatre_images, views_);
+      std::cout << "openxr.tracked_cuff_overlay=enabled depth_policy=overlay\n";
     }
 
     std::unique_ptr<darktidevr::harness::WindowCapture> window_capture;
@@ -1058,6 +1070,8 @@ class OpenXrProbe {
     std::uint64_t last_submitted_shared_value{};
     std::uint64_t fresh_shared_pairs{};
     std::uint64_t reused_shared_frames{};
+    std::uint64_t tracked_cuff_frames{};
+    std::uint64_t tracked_cuff_draws{};
     std::uint64_t pair_pose_mismatches{};
     std::uint64_t pair_pose_sequence_lag_sum{};
     std::uint64_t pair_pose_sequence_lag_samples{};
@@ -2213,13 +2227,50 @@ class OpenXrProbe {
             }
           }
         }
-        for (auto& barrier : destination_barriers) {
-          std::swap(barrier.Transition.StateBefore,
-                    barrier.Transition.StateAfter);
+        bool rendered_tracked_cuffs{};
+        if (tracked_cuff_renderer && submitted_shared_pair_this_frame &&
+            latest_controller_sample_) {
+          for (auto& barrier : destination_barriers) {
+            barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+            barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+          }
+          command_list->ResourceBarrier(
+              static_cast<UINT>(destination_barriers.size()),
+              destination_barriers.data());
+          const auto& cuff_view_poses = use_shared_pair
+                                            ? rendered_pair_view_poses
+                                            : cached_pair_view_poses;
+          const std::array<darktidevr::core::ControllerHandState, 2>
+              cuff_hands{{latest_controller_sample_->hands[0],
+                          latest_controller_sample_->hands[1]}};
+          std::uint32_t frame_cuff_draws{};
+          for (std::size_t eye = 0; eye < theatre_swapchain_count; ++eye) {
+            frame_cuff_draws += tracked_cuff_renderer->record(
+                command_list.Get(), eye, image_indices[eye],
+                cuff_view_poses[eye], located_views[eye].fov, cuff_hands);
+          }
+          for (auto& barrier : destination_barriers) {
+            barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
+          }
+          command_list->ResourceBarrier(
+              static_cast<UINT>(destination_barriers.size()),
+              destination_barriers.data());
+          rendered_tracked_cuffs = true;
+          if (frame_cuff_draws != 0U) {
+            ++tracked_cuff_frames;
+            tracked_cuff_draws += frame_cuff_draws;
+          }
         }
-        command_list->ResourceBarrier(
-            static_cast<UINT>(destination_barriers.size()),
-            destination_barriers.data());
+        if (!rendered_tracked_cuffs) {
+          for (auto& barrier : destination_barriers) {
+            std::swap(barrier.Transition.StateBefore,
+                      barrier.Transition.StateAfter);
+          }
+          command_list->ResourceBarrier(
+              static_cast<UINT>(destination_barriers.size()),
+              destination_barriers.data());
+        }
         check(command_list->Close(),
               "ID3D12GraphicsCommandList::Close(theatre)");
         ID3D12CommandList* lists[]{command_list.Get()};
@@ -3237,6 +3288,8 @@ class OpenXrProbe {
               << "openxr.fresh_shared_pairs=" << fresh_shared_pairs << '\n'
               << "openxr.reused_shared_frames=" << reused_shared_frames
               << '\n'
+              << "openxr.tracked_cuff_frames=" << tracked_cuff_frames << '\n'
+              << "openxr.tracked_cuff_draws=" << tracked_cuff_draws << '\n'
               << "openxr.pair_pose_mismatches=" << pair_pose_mismatches
               << '\n'
               << "openxr.shared_pose_sequence_offset="
@@ -4313,6 +4366,7 @@ void usage() {
                 "[--synthetic-weapon-aim-matrix] "
                 "[--synthetic-movement-reference-path] "
                 "[--enable-gameplay-reticle] "
+                "[--tracked-cuff-overlay] "
                 "[--synthetic-head-sweep] "
                 "[--synthetic-body-inspection] "
                 "[--synthetic-neck-pivot-path] "
@@ -4354,6 +4408,7 @@ int wmain(int argc, wchar_t** argv) {
     bool synthetic_weapon_aim_matrix = false;
     bool synthetic_movement_reference_path = false;
     bool enable_gameplay_reticle = false;
+    bool tracked_cuff_overlay = false;
     bool synthetic_head_sweep = false;
     bool synthetic_body_inspection = false;
     bool synthetic_neck_pivot_path = false;
@@ -4416,6 +4471,8 @@ int wmain(int argc, wchar_t** argv) {
         synthetic_movement_reference_path = true;
       } else if (argument == L"--enable-gameplay-reticle") {
         enable_gameplay_reticle = true;
+      } else if (argument == L"--tracked-cuff-overlay") {
+        tracked_cuff_overlay = true;
       } else if (argument == L"--synthetic-head-sweep") {
         synthetic_head_sweep = true;
       } else if (argument == L"--synthetic-body-inspection") {
@@ -4510,6 +4567,10 @@ int wmain(int argc, wchar_t** argv) {
       throw std::invalid_argument(
           "--enable-gameplay-reticle requires --shared-eyes");
     }
+    if (tracked_cuff_overlay && !shared_eyes) {
+      throw std::invalid_argument(
+          "--tracked-cuff-overlay requires --shared-eyes");
+    }
     if (synthetic_neck_pivot_path && !shared_eyes) {
       throw std::invalid_argument(
           "--synthetic-neck-pivot-path requires --shared-eyes");
@@ -4573,6 +4634,7 @@ int wmain(int argc, wchar_t** argv) {
                                      synthetic_weapon_aim_matrix,
                                      synthetic_movement_reference_path,
                                      enable_gameplay_reticle,
+                                     tracked_cuff_overlay,
                                      synthetic_head_sweep,
                                      synthetic_body_inspection,
                                      synthetic_neck_pivot_path,

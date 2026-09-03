@@ -36,6 +36,8 @@ param(
 
     [switch] $EnableGameplayReticle = $true,
 
+    [switch] $TrackedCuffOverlay,
+
     [switch] $EnableHudPanel,
 
     [switch] $EnablePerformanceProfile,
@@ -506,6 +508,9 @@ if ($SyntheticMovementReferencePath) {
 }
 if ($EnableGameplayReticle -and -not $offlineNoHeadset) {
     $runnerArguments.EnableGameplayReticle = $true
+}
+if ($TrackedCuffOverlay -and -not $offlineNoHeadset) {
+    $runnerArguments.TrackedCuffOverlay = $true
 }
 if ($SyntheticBodyPath) {
     $runnerArguments.SyntheticBodyPath = $true
