@@ -33,6 +33,8 @@ $target = @($records | Where-Object event -eq 'PRESENT_TARGET')
 $modules = @($records | Where-Object event -eq 'MODULE')
 $begins = @($records | Where-Object event -eq 'PRESENT_BEGIN')
 $ends = @($records | Where-Object event -eq 'PRESENT_END')
+$stateCalls = @($records | Where-Object event -eq 'DLSSG_STATE')
+$optionCalls = @($records | Where-Object event -eq 'DLSSG_OPTIONS')
 
 if ($probe.Count -ne 1 -or $target.Count -ne 1 -or $begins.Count -eq 0) {
     throw 'Streamline probe log is incomplete.'
@@ -79,6 +81,32 @@ Write-Output "present.swapchain_count=$($swapchains.Count)"
 Write-Output "present.identity_count=$($identities.Count)"
 Write-Output "present.ready_samples=$($readySamples.Count)"
 Write-Output "present.ready_lag_max=$readyLagMax"
+Write-Output "dlssg.state_samples=$($stateCalls.Count)"
+if ($stateCalls.Count -gt 0) {
+    Write-Output "dlssg.state_thread_count=$(@($stateCalls.thread | Sort-Object -Unique).Count)"
+    Write-Output "dlssg.state_result_count=$(@($stateCalls.result | Sort-Object -Unique).Count)"
+    Write-Output "dlssg.state_version_count=$(@($stateCalls.state_version | Sort-Object -Unique).Count)"
+    Write-Output "dlssg.frames_presented_values=$(($stateCalls.frames_presented | Sort-Object -Unique) -join ',')"
+    Write-Output "dlssg.frames_to_generate_max_values=$(($stateCalls.frames_to_generate_max | Sort-Object -Unique) -join ',')"
+    Write-Output "dlssg.status_values=$(($stateCalls.status | Sort-Object -Unique) -join ',')"
+}
+Write-Output "dlssg.options_samples=$($optionCalls.Count)"
+if ($optionCalls.Count -gt 0) {
+    Write-Output "dlssg.option_thread_count=$(@($optionCalls.thread | Sort-Object -Unique).Count)"
+    Write-Output "dlssg.option_modes=$(($optionCalls.mode | Sort-Object -Unique) -join ',')"
+    Write-Output "dlssg.option_generation_counts=$(($optionCalls.frames_to_generate | Sort-Object -Unique) -join ',')"
+    Write-Output "dlssg.option_results=$(($optionCalls.result | Sort-Object -Unique) -join ',')"
+    Write-Output "dlssg.option_viewports=$(($optionCalls.viewport | Sort-Object -Unique) -join ',')"
+    foreach ($mode in @($optionCalls.mode | Sort-Object -Unique)) {
+        $modeCalls = @($optionCalls | Where-Object mode -eq $mode)
+        $firstModeCall = $modeCalls | Select-Object -First 1
+        $lastModeCall = $modeCalls | Select-Object -Last 1
+        Write-Output "dlssg.mode_${mode}.first_call=$($firstModeCall.call)"
+        Write-Output "dlssg.mode_${mode}.first_present=$($firstModeCall.present_frame)"
+        Write-Output "dlssg.mode_${mode}.last_call=$($lastModeCall.call)"
+        Write-Output "dlssg.mode_${mode}.last_present=$($lastModeCall.present_frame)"
+    }
+}
 if ($presentDurations.Count -gt 0) {
     $duration = $presentDurations | Measure-Object -Average -Maximum
     Write-Output ('present.duration_ms_average={0:F4}' -f $duration.Average)

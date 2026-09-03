@@ -319,13 +319,26 @@ that the game calls the Streamline proxy Present path and correlates that path
 with the stereo producer; it does not yet prove whether generated asynchronous
 presents re-enter that same proxy method.
 
-The probe deliberately does not call `slDLSSGGetState`. NVIDIA's exact 2.7.30
-header marks the function non-thread-safe, and
-`numFramesActuallyPresented` is defined since the previous call, so a second
-observer can perturb Darktide's own query. The user settings requested DLSS-G
-with one generated frame, but that is configuration evidence rather than proof
-of live generation. Continue by observing Darktide's existing state query or
-plugin callback path; do not inject an additional state call.
+The probe now wraps Darktide's existing `slDLSSGGetState` and
+`slDLSSGSetOptions` resolutions, forwards every intercepted invocation exactly
+once, and records bounded post-call results. It adds no Streamline API calls.
+That constraint matters because NVIDIA's exact 2.7.30 header marks the state
+function non-thread-safe and defines `numFramesActuallyPresented` since the
+previous call, so a second observer could perturb Darktide's own query.
+
+A confirming 90-second authenticated hub run observed one successful state
+query with ABI version 3, status 0, minimum dimension 100, maximum generation
+count 1, and an input-completion fence. The setter initially used mode 0 on
+viewport 1488243306. Its first sampled mode-1 call was option call 2,760 at
+Present 4,574 on viewport 1821058217; every later sample remained mode 1 with
+one generated frame requested and result 0. Calls arrived from multiple worker
+threads, while the outer Present samples retained one thread, one swapchain and
+one COM identity. The run submitted 8,461/8,461 OpenXR frames, advanced 1,402
+fresh shared pairs, and reported zero reuse, capture failures, stale frames,
+pair-driven timeouts or pair-pose mismatches. This proves Darktide activates
+DLSS-G on its gameplay viewport. It does not yet show whether generated
+asynchronous presents re-enter the hooked Present path or expose a capturable
+result before scanout; that is the next feasibility gate.
 
 ## Runtime evidence
 

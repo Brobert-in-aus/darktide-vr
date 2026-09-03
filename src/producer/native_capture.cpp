@@ -17,6 +17,7 @@
 #include "core/shared_presentation_state.h"
 #include "core/shared_surface_policy.h"
 #include "core/two_bone_ik.h"
+#include "streamline_abi_2_7_30.h"
 
 #include <algorithm>
 #include <array>
@@ -50,11 +51,21 @@ dtvr_cluster_light_visibility_fix_active();
 namespace {
 
 using StingrayUploadFlushFn = void (*)(void* allocator);
+using SlGetFeatureFunctionFn = int (*)(std::uint32_t, const char*, void**);
+using SlDlssGGetStateFn = int (*)(const void*, void*, const void*);
+using SlDlssGSetOptionsFn = int (*)(const void*, const void*);
 
 HMODULE native_capture_module{};
 INIT_ONCE dxc_reflection_once = INIT_ONCE_STATIC_INIT;
 HMODULE dxcompiler_module{};
 DxcCreateInstanceProc dxc_create_instance{};
+SlGetFeatureFunctionFn original_sl_get_feature_function{};
+std::atomic<SlDlssGGetStateFn> original_sl_dlssg_get_state{};
+std::atomic<SlDlssGSetOptionsFn> original_sl_dlssg_set_options{};
+void* streamline_feature_resolver_target{};
+std::atomic<std::uint64_t> streamline_feature_resolve_count{};
+std::atomic<std::uint64_t> streamline_dlssg_state_count{};
+std::atomic<std::uint64_t> streamline_dlssg_options_count{};
 
 BOOL CALLBACK initialize_dxc_reflection(PINIT_ONCE, PVOID, PVOID*) {
   std::array<wchar_t, 32768> module_path{};
@@ -1836,6 +1847,156 @@ void log_streamline_modules(bool log_missing) {
   }
 }
 
+int sl_dlssg_get_state_hook(const void* viewport, void* state,
+                            const void* options) {
+  const auto original =
+      original_sl_dlssg_get_state.load(std::memory_order_acquire);
+  if (!original) {
+    return 36;
+  }
+  const auto result = original(viewport, state, options);
+  const auto call = streamline_dlssg_state_count.fetch_add(
+                        1, std::memory_order_relaxed) +
+                    1;
+  if (call <= 30 || call % 120 == 0) {
+    const auto* viewport_state = static_cast<const
+        darktidevr::producer::streamline_2_7_30::ViewportHandle*>(viewport);
+    const auto* dlssg_state = static_cast<const
+        darktidevr::producer::streamline_2_7_30::DlssGState*>(state);
+    const auto version = dlssg_state ? dlssg_state->base.struct_version : 0;
+    const auto generated_max =
+        dlssg_state && version >= 2
+            ? dlssg_state->num_frames_to_generate_max
+            : 0;
+    const auto completion_fence =
+        dlssg_state && version >= 3
+            ? dlssg_state->inputs_processing_completion_fence
+            : nullptr;
+    const auto completion_value =
+        dlssg_state && version >= 3
+            ? dlssg_state
+                  ->last_present_inputs_processing_completion_fence_value
+            : 0;
+    LARGE_INTEGER qpc{};
+    QueryPerformanceCounter(&qpc);
+    write_streamline_probe_log(
+        "DLSSG_STATE\tcall=%llu\tpresent_frame=%llu\tthread=%lu"
+        "\tqpc=%lld\tresult=%d\tviewport=%u\tstate_version=%llu"
+        "\tstatus=%u\tmin_dimension=%u\tframes_presented=%u"
+        "\tframes_to_generate_max=%u\tvsync_support=%u"
+        "\tinputs_fence=%p\tinputs_fence_value=%llu\r\n",
+        static_cast<unsigned long long>(call),
+        static_cast<unsigned long long>(
+            present_count.load(std::memory_order_relaxed)),
+        GetCurrentThreadId(), qpc.QuadPart, result,
+        viewport_state ? viewport_state->value : 0,
+        static_cast<unsigned long long>(version),
+        dlssg_state ? dlssg_state->status : 0,
+        dlssg_state ? dlssg_state->min_width_or_height : 0,
+        dlssg_state ? dlssg_state->num_frames_actually_presented : 0,
+        generated_max,
+        dlssg_state && version >= 2
+            ? static_cast<unsigned>(dlssg_state->vsync_support_available)
+            : 0,
+        completion_fence,
+        static_cast<unsigned long long>(completion_value));
+  }
+  return result;
+}
+
+int sl_dlssg_set_options_hook(const void* viewport, const void* options) {
+  const auto original =
+      original_sl_dlssg_set_options.load(std::memory_order_acquire);
+  if (!original) {
+    return 36;
+  }
+  const auto* viewport_state = static_cast<const
+      darktidevr::producer::streamline_2_7_30::ViewportHandle*>(viewport);
+  const auto* dlssg_options = static_cast<const
+      darktidevr::producer::streamline_2_7_30::DlssGOptions*>(options);
+  const auto result = original(viewport, options);
+  const auto call = streamline_dlssg_options_count.fetch_add(
+                        1, std::memory_order_relaxed) +
+                    1;
+  if (call <= 100 || call % 120 == 0) {
+    LARGE_INTEGER qpc{};
+    QueryPerformanceCounter(&qpc);
+    write_streamline_probe_log(
+        "DLSSG_OPTIONS\tcall=%llu\tpresent_frame=%llu\tthread=%lu"
+        "\tqpc=%lld\tresult=%d\tviewport=%u\toptions_version=%llu"
+        "\tmode=%u\tframes_to_generate=%u\tflags=%u"
+        "\tback_buffers=%u\tmotion_depth=%ux%u\tcolor=%ux%u"
+        "\tcolor_format=%u\tmotion_format=%u\tdepth_format=%u"
+        "\thudless_format=%u\tui_format=%u\tqueue_mode=%u\r\n",
+        static_cast<unsigned long long>(call),
+        static_cast<unsigned long long>(
+            present_count.load(std::memory_order_relaxed)),
+        GetCurrentThreadId(), qpc.QuadPart, result,
+        viewport_state ? viewport_state->value : 0,
+        dlssg_options
+            ? static_cast<unsigned long long>(
+                  dlssg_options->base.struct_version)
+            : 0,
+        dlssg_options ? dlssg_options->mode : 0,
+        dlssg_options ? dlssg_options->num_frames_to_generate : 0,
+        dlssg_options ? dlssg_options->flags : 0,
+        dlssg_options ? dlssg_options->num_back_buffers : 0,
+        dlssg_options ? dlssg_options->motion_depth_width : 0,
+        dlssg_options ? dlssg_options->motion_depth_height : 0,
+        dlssg_options ? dlssg_options->color_width : 0,
+        dlssg_options ? dlssg_options->color_height : 0,
+        dlssg_options ? dlssg_options->color_buffer_format : 0,
+        dlssg_options ? dlssg_options->motion_buffer_format : 0,
+        dlssg_options ? dlssg_options->depth_buffer_format : 0,
+        dlssg_options ? dlssg_options->hudless_buffer_format : 0,
+        dlssg_options ? dlssg_options->ui_buffer_format : 0,
+        dlssg_options && dlssg_options->base.struct_version >= 3
+            ? dlssg_options->queue_parallelism_mode
+            : 0);
+  }
+  return result;
+}
+
+int sl_get_feature_function_hook(std::uint32_t feature, const char* name,
+                                 void** function) {
+  const auto result = original_sl_get_feature_function
+                          ? original_sl_get_feature_function(feature, name,
+                                                             function)
+                          : 36;
+  const auto resolved = function ? *function : nullptr;
+  bool wrapped{};
+  if (result == 0 && feature ==
+                         darktidevr::producer::streamline_2_7_30::kFeatureDlssG &&
+      name && std::strcmp(name, "slDLSSGGetState") == 0 && resolved &&
+      resolved != reinterpret_cast<void*>(&sl_dlssg_get_state_hook)) {
+    original_sl_dlssg_get_state.store(
+        reinterpret_cast<SlDlssGGetStateFn>(resolved),
+        std::memory_order_release);
+    *function = reinterpret_cast<void*>(&sl_dlssg_get_state_hook);
+    wrapped = true;
+  } else if (result == 0 &&
+             feature == darktidevr::producer::streamline_2_7_30::kFeatureDlssG &&
+             name && std::strcmp(name, "slDLSSGSetOptions") == 0 && resolved &&
+             resolved != reinterpret_cast<void*>(&sl_dlssg_set_options_hook)) {
+    original_sl_dlssg_set_options.store(
+        reinterpret_cast<SlDlssGSetOptionsFn>(resolved),
+        std::memory_order_release);
+    *function = reinterpret_cast<void*>(&sl_dlssg_set_options_hook);
+    wrapped = true;
+  }
+  const auto call = streamline_feature_resolve_count.fetch_add(
+                        1, std::memory_order_relaxed) +
+                    1;
+  if (call <= 100 || wrapped) {
+    write_streamline_probe_log(
+        "FEATURE_RESOLVE\tcall=%llu\tthread=%lu\tfeature=%u"
+        "\tname=%s\tresult=%d\tresolved=%p\twrapped=%u\r\n",
+        static_cast<unsigned long long>(call), GetCurrentThreadId(), feature,
+        name ? name : "(null)", result, resolved, wrapped ? 1U : 0U);
+  }
+  return result;
+}
+
 void initialize_streamline_probe(void* present_target) {
   auto flag_path = module_path(native_capture_module);
   const auto separator = flag_path.find_last_of(L"\\/");
@@ -1859,6 +2020,9 @@ void initialize_streamline_probe(void* present_target) {
   if (streamline_probe_log == INVALID_HANDLE_VALUE) {
     return;
   }
+  const auto interposer = GetModuleHandleW(L"sl.interposer.dll");
+  streamline_feature_resolver_target =
+      interposer ? GetProcAddress(interposer, "slGetFeatureFunction") : nullptr;
   HMODULE owner{};
   if (present_target) {
     GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
@@ -1868,8 +2032,8 @@ void initialize_streamline_probe(void* present_target) {
   const auto owner_path = module_path(owner);
   write_streamline_probe_log(
       "PROBE\tmode=observe_only\tsdk_abi=2.7.30"
-      "\tdlssg_state_query=disabled"
-      "\treason=non_thread_safe_and_resets_present_count\r\n");
+      "\tdlssg_state_query=wrap_existing_calls"
+      "\tindependent_state_calls=0\r\n");
   write_streamline_probe_log(
       "PRESENT_TARGET\taddress=%p\tmodule=%p\tversion=%s\tpath=%ls\r\n",
       present_target, owner, module_file_version(owner_path).c_str(),
@@ -9496,6 +9660,11 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
     }
   }
   if (MH_Initialize() != MH_OK ||
+      (streamline_feature_resolver_target &&
+       MH_CreateHook(streamline_feature_resolver_target,
+                     &sl_get_feature_function_hook,
+                     reinterpret_cast<void**>(
+                         &original_sl_get_feature_function)) != MH_OK) ||
       MH_CreateHook(get_client_rect_target, &get_client_rect_hook,
                     reinterpret_cast<void**>(&original_get_client_rect)) !=
           MH_OK ||

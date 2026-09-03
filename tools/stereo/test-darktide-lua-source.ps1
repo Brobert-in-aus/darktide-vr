@@ -782,14 +782,22 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $nativeCaptureSource.Contains(
             'PROBE\tmode=observe_only\tsdk_abi=2.7.30') -or
         -not $nativeCaptureSource.Contains(
-            'dlssg_state_query=disabled') -or
+            'dlssg_state_query=wrap_existing_calls') -or
         -not $nativeCaptureSource.Contains(
-            'reason=non_thread_safe_and_resets_present_count') -or
+            'independent_state_calls=0') -or
         -not $nativeCaptureSource.Contains(
             'initialize_streamline_probe(swapchain_vtable[8])') -or
         -not $nativeCaptureSource.Contains(
+            'const auto result = original(viewport, state, options);') -or
+        -not $nativeCaptureSource.Contains(
+            'DLSSG_STATE\tcall=%llu\tpresent_frame=%llu') -or
+        -not $nativeCaptureSource.Contains(
+            'const auto result = original(viewport, options);') -or
+        -not $nativeCaptureSource.Contains(
+            'DLSSG_OPTIONS\tcall=%llu\tpresent_frame=%llu') -or
+        -not $nativeCaptureSource.Contains(
             '(present <= 5 || present % 120 == 0)')) {
-    throw 'The Streamline probe must remain launch-scoped, bounded and observe-only; do not call the state API that mutates its frame counter.'
+    throw 'The Streamline probe must remain launch-scoped, bounded and observe-only; wrap and forward the game existing state call exactly once rather than adding a state query.'
 }
 if (-not $nativeCaptureSource.Contains(
         'std::atomic<bool> named_camera_outputs_ready_hint{};') -or
