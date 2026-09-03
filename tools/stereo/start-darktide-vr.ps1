@@ -30,6 +30,8 @@ param(
 
     [switch] $StreamlineStereoSwapchainProbe,
 
+    [switch] $StreamlineStereoStageProbe,
+
     [switch] $ClusterLightTrace,
 
     [bool] $ClusterLightVisibilityFix = $true,
@@ -126,6 +128,10 @@ if ($OfflineDualViewBenchmark) {
     # submissions, so enabling it here changes the workload being measured.
     $AutoEnterHub = $true
 }
+if ($StreamlineStereoStageProbe) {
+    $StreamlineTargetTokenProbe = $true
+    $StreamlineStereoSwapchainProbe = $true
+}
 if ($SyntheticRuntimeFrusta -and -not $OfflineDualViewBenchmark) {
     throw '-SyntheticRuntimeFrusta requires -OfflineDualViewBenchmark.'
 }
@@ -175,6 +181,9 @@ $streamlineTargetTokenProbeFlagExisted = $false
 $streamlineStereoSwapchainProbeFlagPath = $null
 $streamlineStereoSwapchainProbeFlagOriginal = $null
 $streamlineStereoSwapchainProbeFlagExisted = $false
+$streamlineStereoStageProbeFlagPath = $null
+$streamlineStereoStageProbeFlagOriginal = $null
+$streamlineStereoStageProbeFlagExisted = $false
 
 if (-not $SkipDeploymentSync) {
     $sync = Join-Path $PSScriptRoot 'sync-darktide-vr-dev.ps1'
@@ -310,7 +319,8 @@ $launchStarted = Get-Date
 try {
 if ($StreamlineProbe -or $StreamlineCopyProbe -or
         $StreamlineTransportProbe -or $StreamlineInputSnapshotProbe -or
-        $StreamlineTargetTokenProbe -or $StreamlineStereoSwapchainProbe) {
+        $StreamlineTargetTokenProbe -or $StreamlineStereoSwapchainProbe -or
+        $StreamlineStereoStageProbe) {
     $streamlineProbeFlagPath = Join-Path $GameRoot `
         'mods\darktidevr_stereo_probe\darktidevr_streamline_probe.flag'
     $streamlineProbeFlagExisted = Test-Path -LiteralPath `
@@ -389,6 +399,19 @@ if ($StreamlineStereoSwapchainProbe) {
     Set-Content -LiteralPath $streamlineStereoSwapchainProbeFlagPath `
         -Value 'enabled' -Encoding ascii
     Write-Output 'Wide stereo Streamline swapchain probe enabled.'
+}
+if ($StreamlineStereoStageProbe) {
+    $streamlineStereoStageProbeFlagPath = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_streamline_stereo_stage_probe.flag'
+    $streamlineStereoStageProbeFlagExisted = Test-Path -LiteralPath `
+        $streamlineStereoStageProbeFlagPath -PathType Leaf
+    if ($streamlineStereoStageProbeFlagExisted) {
+        $streamlineStereoStageProbeFlagOriginal = Get-Content -LiteralPath `
+            $streamlineStereoStageProbeFlagPath -Raw
+    }
+    Set-Content -LiteralPath $streamlineStereoStageProbeFlagPath `
+        -Value 'enabled' -Encoding ascii
+    Write-Output 'One-shot stereo Present staging probe enabled.'
 }
 if ($SyntheticRuntimeFrusta) {
     $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -803,6 +826,19 @@ finally {
                 -Force
         }
         Write-Output 'Restored the prior Streamline stereo-swapchain flag.'
+    }
+    if ($streamlineStereoStageProbeFlagPath) {
+        if ($streamlineStereoStageProbeFlagExisted) {
+            Set-Content -LiteralPath $streamlineStereoStageProbeFlagPath `
+                -Value $streamlineStereoStageProbeFlagOriginal.Trim() `
+                -Encoding ascii
+        }
+        elseif (Test-Path -LiteralPath $streamlineStereoStageProbeFlagPath `
+                -PathType Leaf) {
+            Remove-Item -LiteralPath $streamlineStereoStageProbeFlagPath `
+                -Force
+        }
+        Write-Output 'Restored the prior Streamline stereo-stage flag.'
     }
     if ($syntheticHeadPublisher) {
         if (-not $syntheticHeadPublisher.HasExited) {

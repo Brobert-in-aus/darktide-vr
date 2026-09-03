@@ -83,6 +83,8 @@ $stereoTransportReservations = @($records |
 $stereoTargetTokens = @($records | Where-Object event -eq 'STEREO_TARGET_TOKEN')
 $stereoPresentTargets = @($records |
     Where-Object event -eq 'STEREO_PRESENT_TARGET')
+$stereoPresentStages = @($records |
+    Where-Object event -eq 'STEREO_PRESENT_STAGE')
 $generatedBackbufferExtents = @()
 $generatedBackbufferFormats = @()
 
@@ -170,6 +172,14 @@ else {
     '0'
 }
 Write-Output "probe.stereo_swapchain_probe=$stereoSwapchainProbe"
+$stereoStageProbe = if (
+        $probe[0].PSObject.Properties['stereo_stage_probe']) {
+    $probe[0].stereo_stage_probe
+}
+else {
+    '0'
+}
+Write-Output "probe.stereo_stage_probe=$stereoStageProbe"
 Write-Output "present.target_path=$($target[0].path)"
 Write-Output "present.target_version=$($target[0].version)"
 Write-Output "native_present.target_path=$($nativeTarget[0].path)"
@@ -636,6 +646,14 @@ if ($stereoPresentTargets.Count -gt 0) {
     Write-Output "input_snapshot.present_target_copy_staged=$($stereoPresentTargets[-1].copy_staged)"
     Write-Output "input_snapshot.present_target_tags_staged=$($stereoPresentTargets[-1].tags_staged)"
 }
+Write-Output "input_snapshot.present_stage_samples=$($stereoPresentStages.Count)"
+if ($stereoPresentStages.Count -gt 0) {
+    foreach ($phase in @($stereoPresentStages |
+            ForEach-Object { $_.phase } | Sort-Object -Unique)) {
+        Write-Output "input_snapshot.present_stage_${phase}_samples=$(@(
+                $stereoPresentStages | Where-Object phase -eq $phase).Count)"
+    }
+}
 if ($inputSnapshotBindings.Count -eq 2) {
     Write-Output "input_snapshot.frame_tokens=$(($inputSnapshotBindings.frame_token) -join ',')"
     Write-Output "input_snapshot.frame_token_calls=$(($inputSnapshotBindings.frame_token_call) -join ',')"
@@ -848,5 +866,25 @@ if ($targetTokenProbe -eq '1' -and $stereoSwapchainProbe -eq '1' -and
             $stereoPresentTargets[0].metadata_published -ne '0' -or
             $stereoPresentTargets[0].ready_signaled -ne '0')) {
     throw 'The packed stereo resource was not safely bound to one Present target.'
+}
+if ($stereoStageProbe -eq '1') {
+    $scheduledStages = @($stereoPresentStages |
+        Where-Object phase -eq 'scheduled')
+    $completedStages = @($stereoPresentStages |
+        Where-Object phase -eq 'complete')
+    if ($scheduledStages.Count -ne 1 -or $completedStages.Count -ne 1 -or
+            @($stereoPresentStages | Where-Object phase -eq 'failed').Count -ne 0 -or
+            $scheduledStages[0].copy_staged -ne '1' -or
+            $scheduledStages[0].tags_staged -ne '0' -or
+            $scheduledStages[0].additional_present_submitted -ne '0' -or
+            $scheduledStages[0].metadata_published -ne '0' -or
+            $scheduledStages[0].ready_signaled -ne '0' -or
+            $completedStages[0].copy_staged -ne '1' -or
+            $completedStages[0].tags_staged -ne '0' -or
+            $completedStages[0].additional_present_submitted -ne '0' -or
+            $completedStages[0].metadata_published -ne '0' -or
+            $completedStages[0].ready_signaled -ne '0') {
+        throw 'The one-shot Present staging copy did not complete safely.'
+    }
 }
 Write-Output 'result=pass'

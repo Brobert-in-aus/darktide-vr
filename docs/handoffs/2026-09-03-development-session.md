@@ -798,6 +798,8 @@ source was removed.
 .\tools\stereo\read-streamline-probe.ps1
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 150 -GameStartTimeoutSeconds 600 -StreamlineStereoSwapchainProbe -StreamlineTargetTokenProbe -EnterPsykhanium -SkipDeploymentSync
 .\tools\stereo\read-streamline-probe.ps1
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 135 -GameStartTimeoutSeconds 600 -StreamlineStereoStageProbe -EnterPsykhanium -SkipDeploymentSync
+.\tools\stereo\read-streamline-probe.ps1
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native
@@ -868,8 +870,13 @@ correction used `preflight-20260903T013512Z.json` through
    4992x2688 format-28 resource matching the packed source exactly. The pure
    target-matching policy has positive, extent-mismatch and identity-alias unit
    coverage. Copy staging, tag staging, generation Present, metadata and ready
-   signaling all remained zero. Next stage one state-restoring copy without
-   changing Streamline tags or submitting an additional Present.
+   signaling all remained zero. The separately gated stage probe now completes
+   one state-restoring packed-to-swapchain copy on the real Present queue. Its
+   fence completed, it reused the game's normal outer Present, and added no
+   tags, Present calls, metadata or ready signal. Source pair 3518/3518 yielded
+   target 3519 with `content_divergent_mask=31`. Next define the exact two-
+   viewport tag/constants/options transaction and its rollback rules before
+   enabling any Streamline mutation.
    Preserve the external consumer as the later binocular-output transport gate.
 2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,

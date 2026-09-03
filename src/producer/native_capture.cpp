@@ -88,6 +88,7 @@ std::atomic<bool> streamline_transport_probe_requested{};
 std::atomic<bool> streamline_input_snapshot_probe_requested{};
 std::atomic<bool> streamline_target_token_probe_requested{};
 std::atomic<bool> streamline_stereo_swapchain_probe_requested{};
+std::atomic<bool> streamline_stereo_stage_probe_requested{};
 std::atomic<DWORD> streamline_outer_present_thread{};
 std::atomic<std::uint64_t> streamline_outer_present_active_frame{};
 std::atomic<std::uint64_t> streamline_native_burst_until_call{};
@@ -162,6 +163,8 @@ struct StreamlineInputSnapshotState {
   bool transport_slot_reserved{};
   bool target_token_allocated{};
   bool present_target_observed{};
+  bool present_stage_pending{};
+  bool present_stage_complete{};
   std::size_t transport_slot_index{};
   void* target_frame_token{};
   std::uint32_t target_frame_index{UINT_MAX};
@@ -187,6 +190,8 @@ struct StreamlineInputSnapshotState {
   ComPtr<ID3D12GraphicsCommandList> stereo_backbuffer_commands;
   ComPtr<ID3D12Resource> stereo_backbuffer;
   ComPtr<ID3D12Fence> fence;
+  ComPtr<ID3D12CommandAllocator> present_stage_allocator;
+  ComPtr<ID3D12GraphicsCommandList> present_stage_commands;
 };
 
 std::mutex streamline_input_snapshot_mutex;
@@ -2637,6 +2642,12 @@ void initialize_streamline_probe(void* present_target,
       GetFileAttributesW(stereo_swapchain_flag_path.c_str()) !=
           INVALID_FILE_ATTRIBUTES,
       std::memory_order_release);
+  const auto stereo_stage_flag_path =
+      flag_directory + L"..\\darktidevr_streamline_stereo_stage_probe.flag";
+  streamline_stereo_stage_probe_requested.store(
+      GetFileAttributesW(stereo_stage_flag_path.c_str()) !=
+          INVALID_FILE_ATTRIBUTES,
+      std::memory_order_release);
   const auto interposer = GetModuleHandleW(L"sl.interposer.dll");
   streamline_feature_resolver_target =
       interposer ? GetProcAddress(interposer, "slGetFeatureFunction") : nullptr;
@@ -2661,7 +2672,7 @@ void initialize_streamline_probe(void* present_target,
       "\tdlssg_state_query=wrap_existing_calls"
       "\tindependent_state_calls=0\tcopy_probe=%u\ttransport_probe=%u"
       "\tinput_snapshot_probe=%u\ttarget_token_probe=%u"
-      "\tstereo_swapchain_probe=%u\r\n",
+      "\tstereo_swapchain_probe=%u\tstereo_stage_probe=%u\r\n",
       streamline_copy_probe_requested.load(std::memory_order_relaxed) ? 1U
                                                                      : 0U,
       streamline_transport_probe_requested.load(std::memory_order_relaxed)
@@ -2676,6 +2687,9 @@ void initialize_streamline_probe(void* present_target,
           : 0U,
       streamline_stereo_swapchain_probe_requested.load(
           std::memory_order_relaxed)
+          ? 1U
+          : 0U,
+      streamline_stereo_stage_probe_requested.load(std::memory_order_relaxed)
           ? 1U
           : 0U);
   write_streamline_probe_log(
@@ -11620,6 +11634,24 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
           std::memory_order_acquire)) {
     std::scoped_lock lock(streamline_input_snapshot_mutex);
     auto& snapshot = streamline_input_snapshot_state;
+    if (snapshot.present_stage_pending && snapshot.fence) {
+      const auto completed = snapshot.fence->GetCompletedValue();
+      if (completed == UINT64_MAX) {
+        snapshot.failed = true;
+        snapshot.present_stage_pending = false;
+        write_streamline_probe_log(
+            "STEREO_PRESENT_STAGE\tphase=failed"
+            "\treason=poisoned_fence\r\n");
+      } else if (completed >= 5) {
+        snapshot.present_stage_pending = false;
+        snapshot.present_stage_complete = true;
+        write_streamline_probe_log(
+            "STEREO_PRESENT_STAGE\tphase=complete"
+            "\tfence_value=5\tcopy_staged=1\ttags_staged=0"
+            "\tadditional_present_submitted=0"
+            "\tmetadata_published=0\tready_signaled=0\r\n");
+      }
+    }
     if (snapshot.stereo_backbuffer_complete &&
         snapshot.target_token_allocated && !snapshot.present_target_observed) {
       ComPtr<ID3D12Resource> present_backbuffer;
@@ -11668,6 +11700,81 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
             static_cast<unsigned>(D3D12_RESOURCE_STATE_PRESENT),
             static_cast<unsigned>(D3D12_RESOURCE_STATE_PRESENT),
             compatible ? 1U : 0U);
+        if (compatible &&
+            streamline_stereo_stage_probe_requested.load(
+                std::memory_order_acquire) &&
+            present_queue && !snapshot.present_stage_pending &&
+            !snapshot.present_stage_complete) {
+          ComPtr<ID3D12Device> device;
+          if (FAILED(present_backbuffer->GetDevice(IID_PPV_ARGS(&device))) ||
+              FAILED(device->CreateCommandAllocator(
+                  D3D12_COMMAND_LIST_TYPE_DIRECT,
+                  IID_PPV_ARGS(&snapshot.present_stage_allocator))) ||
+              FAILED(device->CreateCommandList(
+                  0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+                  snapshot.present_stage_allocator.Get(), nullptr,
+                  IID_PPV_ARGS(&snapshot.present_stage_commands)))) {
+            snapshot.failed = true;
+            write_streamline_probe_log(
+                "STEREO_PRESENT_STAGE\tphase=failed"
+                "\treason=create_commands\r\n");
+          } else {
+            std::array<D3D12_RESOURCE_BARRIER, 2> barriers{};
+            barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[0].Transition.pResource =
+                snapshot.stereo_backbuffer.Get();
+            barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+            barriers[0].Transition.StateAfter =
+                D3D12_RESOURCE_STATE_COPY_SOURCE;
+            barriers[0].Transition.Subresource =
+                D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[1].Transition.pResource = present_backbuffer.Get();
+            barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+            barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+            barriers[1].Transition.Subresource =
+                D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+            snapshot.present_stage_commands->ResourceBarrier(
+                static_cast<UINT>(barriers.size()), barriers.data());
+            snapshot.present_stage_commands->CopyResource(
+                present_backbuffer.Get(), snapshot.stereo_backbuffer.Get());
+            for (auto& barrier : barriers) {
+              std::swap(barrier.Transition.StateBefore,
+                        barrier.Transition.StateAfter);
+            }
+            snapshot.present_stage_commands->ResourceBarrier(
+                static_cast<UINT>(barriers.size()), barriers.data());
+            const auto close_result = snapshot.present_stage_commands->Close();
+            if (FAILED(close_result)) {
+              snapshot.failed = true;
+              write_streamline_probe_log(
+                  "STEREO_PRESENT_STAGE\tphase=failed\treason=close"
+                  "\thresult=0x%08x\r\n",
+                  static_cast<unsigned>(close_result));
+            } else {
+              ID3D12CommandList* lists[]{snapshot.present_stage_commands.Get()};
+              original_execute_command_lists(present_queue.Get(), 1, lists);
+              if (FAILED(present_queue->Signal(snapshot.fence.Get(), 5))) {
+                snapshot.failed = true;
+                write_streamline_probe_log(
+                    "STEREO_PRESENT_STAGE\tphase=failed"
+                    "\treason=signal\r\n");
+              } else {
+                snapshot.present_stage_pending = true;
+                write_streamline_probe_log(
+                    "STEREO_PRESENT_STAGE\tphase=scheduled"
+                    "\tpresent_frame=%llu\tswapchain=%p"
+                    "\tbackbuffer_index=%u\tsource=%p\tdestination=%p"
+                    "\tfence_value=5\tcopy_staged=1\ttags_staged=0"
+                    "\tadditional_present_submitted=0"
+                    "\tmetadata_published=0\tready_signaled=0\r\n",
+                    static_cast<unsigned long long>(present), swapchain,
+                    backbuffer_index, snapshot.stereo_backbuffer.Get(),
+                    present_backbuffer.Get());
+              }
+            }
+          }
+        }
       }
     }
   }
