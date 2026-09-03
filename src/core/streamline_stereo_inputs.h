@@ -39,6 +39,91 @@ struct StreamlineStereoInputVerdict {
   std::uint32_t aliased_mask{};
 };
 
+enum class StreamlineStereoEvaluationStatus : std::uint8_t {
+  snapshot_not_ready,
+  source_timing_mismatch,
+  invalid_viewports,
+  invalid_target_frame,
+  invalid_backbuffer,
+  transport_unavailable,
+  ready_to_evaluate,
+  awaiting_generated_output,
+  ready_to_publish,
+};
+
+struct StreamlineStereoEvaluationTransaction {
+  bool snapshot_ready{};
+  std::array<std::uint32_t, 2> source_frame_indices{~0U, ~0U};
+  std::array<std::uint64_t, 2> source_token_calls{};
+  std::array<std::uint32_t, 2> source_viewports{};
+  std::uintptr_t target_frame_token{};
+  std::uint32_t target_frame_index{~0U};
+  std::uintptr_t stereo_backbuffer{};
+  std::uint64_t stereo_width{};
+  std::uint32_t stereo_height{};
+  std::uint64_t eye_width{};
+  std::uint32_t format{};
+  std::uint32_t resource_state{};
+  bool consumer_slot_reserved{};
+  bool evaluation_submitted{};
+  bool generated_output_fence_complete{};
+};
+
+constexpr bool streamline_source_values_coherent(std::uint64_t first,
+                                                  std::uint64_t second) noexcept {
+  return first == second || first + 1 == second || second + 1 == first;
+}
+
+constexpr StreamlineStereoEvaluationStatus
+evaluate_streamline_stereo_transaction(
+    const StreamlineStereoEvaluationTransaction& transaction) noexcept {
+  if (!transaction.snapshot_ready) {
+    return StreamlineStereoEvaluationStatus::snapshot_not_ready;
+  }
+  if (transaction.source_frame_indices[0] == ~0U ||
+      transaction.source_frame_indices[1] == ~0U ||
+      transaction.source_token_calls[0] == 0 ||
+      transaction.source_token_calls[1] == 0 ||
+      !streamline_source_values_coherent(
+          transaction.source_frame_indices[0],
+          transaction.source_frame_indices[1]) ||
+      !streamline_source_values_coherent(transaction.source_token_calls[0],
+                                         transaction.source_token_calls[1])) {
+    return StreamlineStereoEvaluationStatus::source_timing_mismatch;
+  }
+  if (transaction.source_viewports[0] == 0 ||
+      transaction.source_viewports[1] == 0 ||
+      transaction.source_viewports[0] == transaction.source_viewports[1]) {
+    return StreamlineStereoEvaluationStatus::invalid_viewports;
+  }
+  if (transaction.target_frame_token == 0 ||
+      transaction.target_frame_index == ~0U ||
+      transaction.target_frame_index <= transaction.source_frame_indices[0] ||
+      transaction.target_frame_index <= transaction.source_frame_indices[1]) {
+    return StreamlineStereoEvaluationStatus::invalid_target_frame;
+  }
+  constexpr std::uint32_t required_format = 26;
+  constexpr std::uint32_t required_state = 8;
+  if (transaction.stereo_backbuffer == 0 || transaction.eye_width == 0 ||
+      transaction.eye_width > (~std::uint64_t{} / 2) ||
+      transaction.stereo_width != transaction.eye_width * 2 ||
+      transaction.stereo_height == 0 ||
+      transaction.format != required_format ||
+      transaction.resource_state != required_state) {
+    return StreamlineStereoEvaluationStatus::invalid_backbuffer;
+  }
+  if (!transaction.consumer_slot_reserved) {
+    return StreamlineStereoEvaluationStatus::transport_unavailable;
+  }
+  if (!transaction.evaluation_submitted) {
+    return StreamlineStereoEvaluationStatus::ready_to_evaluate;
+  }
+  if (!transaction.generated_output_fence_complete) {
+    return StreamlineStereoEvaluationStatus::awaiting_generated_output;
+  }
+  return StreamlineStereoEvaluationStatus::ready_to_publish;
+}
+
 constexpr std::uint32_t streamline_resource_bit(
     StreamlineStereoResource resource) noexcept {
   return 1U << static_cast<std::uint32_t>(resource);

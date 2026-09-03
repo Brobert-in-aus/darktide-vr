@@ -677,6 +677,15 @@ requires exactly one scheduled/completed pack, the 2:1 extent invariant and no
 failure, and reported `result=pass`. This texture was not passed to Streamline
 or published to XR.
 
+A header-only evaluation-transaction policy now guards the next step before
+any new Streamline call exists. It requires snapshot readiness, same-or-adjacent
+source token calls/indices, distinct source viewports, a non-null target token
+whose index follows both sources, an exact 2:1 format-26/state-8 backbuffer and
+a reserved transport slot. After submission it remains non-publishable until
+the generated-output fence completes. Unit coverage exercises every rejection
+and the `ready_to_evaluate`, `awaiting_generated_output` and
+`ready_to_publish` transitions.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:
@@ -802,8 +811,10 @@ correction used `preflight-20260903T013512Z.json` through
    a future evaluation must allocate one new shared target token. The
    diagnostic 4,992x2,688 side-by-side scaling-output resource now packs and
    reaches its fence without changing live presentation. Next define and guard
-   the opt-in evaluation transaction. Preserve the external consumer as the
-   later binocular-output transport gate.
+   the opt-in evaluation transaction. The pure transaction policy is now in
+   place; next connect its transport-slot reservation without issuing an
+   evaluation. Preserve the external consumer as the later binocular-output
+   transport gate.
 2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,
    radii and length if its alignment is sound; reject the route if the lack of
