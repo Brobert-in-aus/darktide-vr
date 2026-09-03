@@ -28,6 +28,8 @@ param(
 
     [switch] $StreamlineTargetTokenProbe,
 
+    [switch] $StreamlineStereoSwapchainProbe,
+
     [switch] $ClusterLightTrace,
 
     [bool] $ClusterLightVisibilityFix = $true,
@@ -167,6 +169,12 @@ $streamlineTransportProbeFlagExisted = $false
 $streamlineInputSnapshotProbeFlagPath = $null
 $streamlineInputSnapshotProbeFlagOriginal = $null
 $streamlineInputSnapshotProbeFlagExisted = $false
+$streamlineTargetTokenProbeFlagPath = $null
+$streamlineTargetTokenProbeFlagOriginal = $null
+$streamlineTargetTokenProbeFlagExisted = $false
+$streamlineStereoSwapchainProbeFlagPath = $null
+$streamlineStereoSwapchainProbeFlagOriginal = $null
+$streamlineStereoSwapchainProbeFlagExisted = $false
 
 if (-not $SkipDeploymentSync) {
     $sync = Join-Path $PSScriptRoot 'sync-darktide-vr-dev.ps1'
@@ -300,7 +308,7 @@ $launchStarted = Get-Date
 try {
 if ($StreamlineProbe -or $StreamlineCopyProbe -or
         $StreamlineTransportProbe -or $StreamlineInputSnapshotProbe -or
-        $StreamlineTargetTokenProbe) {
+        $StreamlineTargetTokenProbe -or $StreamlineStereoSwapchainProbe) {
     $streamlineProbeFlagPath = Join-Path $GameRoot `
         'mods\darktidevr_stereo_probe\darktidevr_streamline_probe.flag'
     $streamlineProbeFlagExisted = Test-Path -LiteralPath `
@@ -366,6 +374,19 @@ if ($StreamlineTargetTokenProbe) {
     Set-Content -LiteralPath $streamlineTargetTokenProbeFlagPath `
         -Value 'enabled' -Encoding ascii
     Write-Output 'One-shot Streamline stereo target-token probe enabled.'
+}
+if ($StreamlineStereoSwapchainProbe) {
+    $streamlineStereoSwapchainProbeFlagPath = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_streamline_stereo_swapchain_probe.flag'
+    $streamlineStereoSwapchainProbeFlagExisted = Test-Path -LiteralPath `
+        $streamlineStereoSwapchainProbeFlagPath -PathType Leaf
+    if ($streamlineStereoSwapchainProbeFlagExisted) {
+        $streamlineStereoSwapchainProbeFlagOriginal = Get-Content -LiteralPath `
+            $streamlineStereoSwapchainProbeFlagPath -Raw
+    }
+    Set-Content -LiteralPath $streamlineStereoSwapchainProbeFlagPath `
+        -Value 'enabled' -Encoding ascii
+    Write-Output 'Wide stereo Streamline swapchain probe enabled.'
 }
 if ($SyntheticRuntimeFrusta) {
     $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -767,6 +788,19 @@ finally {
                 -Force
         }
         Write-Output 'Restored the prior Streamline target-token flag.'
+    }
+    if ($streamlineStereoSwapchainProbeFlagPath) {
+        if ($streamlineStereoSwapchainProbeFlagExisted) {
+            Set-Content -LiteralPath $streamlineStereoSwapchainProbeFlagPath `
+                -Value $streamlineStereoSwapchainProbeFlagOriginal.Trim() `
+                -Encoding ascii
+        }
+        elseif (Test-Path -LiteralPath $streamlineStereoSwapchainProbeFlagPath `
+                -PathType Leaf) {
+            Remove-Item -LiteralPath $streamlineStereoSwapchainProbeFlagPath `
+                -Force
+        }
+        Write-Output 'Restored the prior Streamline stereo-swapchain flag.'
     }
     if ($syntheticHeadPublisher) {
         if (-not $syntheticHeadPublisher.HasExited) {

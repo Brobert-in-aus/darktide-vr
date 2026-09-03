@@ -785,6 +785,12 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $startHelperSource.Contains(
             '[switch] $StreamlineTargetTokenProbe') -or
         -not $startHelperSource.Contains(
+            '[switch] $StreamlineStereoSwapchainProbe') -or
+        -not $startHelperSource.Contains(
+            '$streamlineTargetTokenProbeFlagPath = $null') -or
+        -not $startHelperSource.Contains(
+            '$streamlineStereoSwapchainProbeFlagPath = $null') -or
+        -not $startHelperSource.Contains(
             'darktidevr_streamline_probe.flag') -or
         -not $startHelperSource.Contains(
             'darktidevr_streamline_copy_probe.flag') -or
@@ -794,6 +800,8 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
             'darktidevr_streamline_input_snapshot_probe.flag') -or
         -not $startHelperSource.Contains(
             'darktidevr_streamline_target_token_probe.flag') -or
+        -not $startHelperSource.Contains(
+            'darktidevr_streamline_stereo_swapchain_probe.flag') -or
         -not $nativeCaptureSource.Contains(
             'PROBE\tmode=observe_only\tsdk_abi=2.7.30') -or
         -not $nativeCaptureSource.Contains(

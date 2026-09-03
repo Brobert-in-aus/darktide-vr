@@ -794,6 +794,8 @@ source was removed.
 .\tools\stereo\sync-darktide-vr-dev.ps1 -Configuration Release
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 110 -GameStartTimeoutSeconds 600 -StreamlineTargetTokenProbe -EnterPsykhanium -SkipDeploymentSync
 .\tools\stereo\read-streamline-probe.ps1
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 100 -GameStartTimeoutSeconds 600 -StreamlineStereoSwapchainProbe -EnterPsykhanium -SkipDeploymentSync
+.\tools\stereo\read-streamline-probe.ps1
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native
@@ -844,6 +846,14 @@ correction used `preflight-20260903T013512Z.json` through
    packed diagnostic is 4992x2688 format 28; the analyzer reports this as
    `stereo_present_compatible=0`. A resize/recreation or equivalent real
    swapchain route is therefore a hard prerequisite, not an implicit copy.
+   The separately gated resize probe now proves that route: one real swapchain
+   produced 121 intercepted generated-candidate samples, all 4992x2688 format
+   28, with no snapshot, token or transport activity. XR stereo later attached
+   and advanced 1,495 fresh pairs with no reuse or timeouts, although the
+   doubled render workload reduced the fresh-pair rate to about 41 Hz. Next
+   preserve 2496x2688 per-eye input discovery while the actual Present target
+   remains 4992x2688, then stage copies/tags without submitting an extra
+   generation present.
    Preserve the external consumer as the later binocular-output transport gate.
 2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,

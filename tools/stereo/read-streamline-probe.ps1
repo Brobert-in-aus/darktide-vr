@@ -160,6 +160,14 @@ else {
     '0'
 }
 Write-Output "probe.target_token_probe=$targetTokenProbe"
+$stereoSwapchainProbe = if (
+        $probe[0].PSObject.Properties['stereo_swapchain_probe']) {
+    $probe[0].stereo_swapchain_probe
+}
+else {
+    '0'
+}
+Write-Output "probe.stereo_swapchain_probe=$stereoSwapchainProbe"
 Write-Output "present.target_path=$($target[0].path)"
 Write-Output "present.target_version=$($target[0].version)"
 Write-Output "native_present.target_path=$($nativeTarget[0].path)"
@@ -811,5 +819,12 @@ if ($targetTokenProbe -eq '1') {
             $allocatedTargetTokens[0].ready_signaled -ne '0') {
         throw 'The requested stereo target token was not allocated safely.'
     }
+}
+if ($stereoSwapchainProbe -eq '1' -and
+        ($generatedBackbufferExtents.Count -ne 1 -or
+            $generatedBackbufferExtents[0] -ne '4992x2688' -or
+            $generatedBackbufferFormats.Count -ne 1 -or
+            $generatedBackbufferFormats[0] -ne '28')) {
+    throw 'The wide stereo swapchain did not reach the Streamline present path.'
 }
 Write-Output 'result=pass'

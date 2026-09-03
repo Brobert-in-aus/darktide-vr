@@ -87,6 +87,7 @@ std::atomic<bool> streamline_copy_probe_requested{};
 std::atomic<bool> streamline_transport_probe_requested{};
 std::atomic<bool> streamline_input_snapshot_probe_requested{};
 std::atomic<bool> streamline_target_token_probe_requested{};
+std::atomic<bool> streamline_stereo_swapchain_probe_requested{};
 std::atomic<DWORD> streamline_outer_present_thread{};
 std::atomic<std::uint64_t> streamline_outer_present_active_frame{};
 std::atomic<std::uint64_t> streamline_native_burst_until_call{};
@@ -2620,6 +2621,12 @@ void initialize_streamline_probe(void* present_target,
       GetFileAttributesW(target_token_flag_path.c_str()) !=
           INVALID_FILE_ATTRIBUTES,
       std::memory_order_release);
+  const auto stereo_swapchain_flag_path =
+      flag_directory + L"..\\darktidevr_streamline_stereo_swapchain_probe.flag";
+  streamline_stereo_swapchain_probe_requested.store(
+      GetFileAttributesW(stereo_swapchain_flag_path.c_str()) !=
+          INVALID_FILE_ATTRIBUTES,
+      std::memory_order_release);
   const auto interposer = GetModuleHandleW(L"sl.interposer.dll");
   streamline_feature_resolver_target =
       interposer ? GetProcAddress(interposer, "slGetFeatureFunction") : nullptr;
@@ -2643,7 +2650,8 @@ void initialize_streamline_probe(void* present_target,
       "PROBE\tmode=observe_only\tsdk_abi=2.7.30"
       "\tdlssg_state_query=wrap_existing_calls"
       "\tindependent_state_calls=0\tcopy_probe=%u\ttransport_probe=%u"
-      "\tinput_snapshot_probe=%u\ttarget_token_probe=%u\r\n",
+      "\tinput_snapshot_probe=%u\ttarget_token_probe=%u"
+      "\tstereo_swapchain_probe=%u\r\n",
       streamline_copy_probe_requested.load(std::memory_order_relaxed) ? 1U
                                                                      : 0U,
       streamline_transport_probe_requested.load(std::memory_order_relaxed)
@@ -2654,6 +2662,10 @@ void initialize_streamline_probe(void* present_target,
           ? 1U
           : 0U,
       streamline_target_token_probe_requested.load(std::memory_order_relaxed)
+          ? 1U
+          : 0U,
+      streamline_stereo_swapchain_probe_requested.load(
+          std::memory_order_relaxed)
           ? 1U
           : 0U);
   write_streamline_probe_log(
@@ -14412,6 +14424,13 @@ extern "C" __declspec(dllexport) int dtvr_set_swapchain_render_extent(
   }
   if (width < 640 || height < 640 || width > 7680 || height > 7680) {
     return 1;
+  }
+  if (streamline_stereo_swapchain_probe_requested.load(
+          std::memory_order_acquire)) {
+    if (width > 3840) {
+      return 1;
+    }
+    width *= 2;
   }
   {
     std::scoped_lock lock(boundary_census_log_mutex);
