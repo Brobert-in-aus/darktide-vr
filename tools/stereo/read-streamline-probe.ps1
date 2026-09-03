@@ -41,6 +41,8 @@ $optionCalls = @($records | Where-Object event -eq 'DLSSG_OPTIONS')
 $copySchedules = @($records | Where-Object event -eq 'GENERATED_COPY_SCHEDULE')
 $copyCompletions = @($records | Where-Object event -eq 'GENERATED_COPY_COMPLETE')
 $executePrecursors = @($records | Where-Object event -eq 'EXECUTE_PRECURSOR')
+$frameTokens = @($records | Where-Object event -eq 'FRAME_TOKEN')
+$setConstants = @($records | Where-Object event -eq 'SET_CONSTANTS')
 
 if ($probe.Count -ne 1 -or $target.Count -ne 1 -or
         $nativeTarget.Count -ne 1 -or $begins.Count -eq 0 -or
@@ -115,12 +117,64 @@ Write-Output "native_present.thread_count=$(@($nativeBegins.thread | Sort-Object
 Write-Output "native_present.swapchain_count=$(@($nativeBegins.swapchain | Sort-Object -Unique).Count)"
 Write-Output "native_present.back_buffer_count=$(@($nativeBegins.back_buffer | Where-Object { $_ -ne '0000000000000000' } | Sort-Object -Unique).Count)"
 $asynchronousNativeSamples = @($nativeBegins | Where-Object {
-        $_.thread -ne $threads[0]
+        if ($_.PSObject.Properties['class']) {
+            $_.class -eq 'asynchronous'
+        }
+        else {
+            $_.thread -ne $threads[0]
+        }
     })
 Write-Output "native_present.asynchronous_samples=$($asynchronousNativeSamples.Count)"
 if ($asynchronousNativeSamples.Count -gt 0) {
     Write-Output "native_present.first_asynchronous_call=$($asynchronousNativeSamples[0].call)"
     Write-Output "native_present.first_asynchronous_outer_frame=$($asynchronousNativeSamples[0].outer_frame)"
+    if ($asynchronousNativeSamples[0].PSObject.Properties['class']) {
+        $burstEndCall = [uint64]$asynchronousNativeSamples[0].call + 239
+        $burstSamples = @($nativeBegins | Where-Object {
+                [uint64]$_.call -ge [uint64]$asynchronousNativeSamples[0].call -and
+                [uint64]$_.call -le $burstEndCall
+            })
+        $burstAsync = @($burstSamples |
+            Where-Object class -eq 'asynchronous')
+        $burstOuter = @($burstSamples |
+            Where-Object class -eq 'outer_thread')
+        $burstGenerated = @($burstSamples | Where-Object {
+                $_.thread -eq $_.last_execute_thread -and
+                [uint32]$_.last_execute_queue_type -eq 0 -and
+                [uint32]$_.last_execute_list_count -eq 1 -and
+                [long]$_.last_execute_delta_us -ge 0 -and
+                [long]$_.last_execute_delta_us -le 500
+            })
+        $burstSource = @($burstSamples | Where-Object {
+                $_ -notin $burstGenerated
+            })
+        $activeAsync = @($burstAsync | Where-Object {
+                [uint64]$_.active_outer_frame -ne 0
+            })
+        $pairedFrames = @($burstSamples | Group-Object outer_frame |
+            Where-Object {
+                @($_.Group |
+                    Where-Object class -eq 'asynchronous').Count -eq 1 -and
+                @($_.Group |
+                    Where-Object class -eq 'outer_thread').Count -eq 1
+            })
+        Write-Output "native_present.burst_samples=$($burstSamples.Count)"
+        Write-Output "native_present.burst_asynchronous_samples=$($burstAsync.Count)"
+        Write-Output "native_present.burst_outer_thread_samples=$($burstOuter.Count)"
+        Write-Output "native_present.burst_generated_candidates=$($burstGenerated.Count)"
+        Write-Output "native_present.burst_source_candidates=$($burstSource.Count)"
+        if ($burstGenerated.Count -gt 0) {
+            $generatedDelta = @($burstGenerated | ForEach-Object {
+                    [double]$_.last_execute_delta_us
+                }) | Measure-Object -Average -Minimum -Maximum
+            Write-Output "native_present.burst_generated_queue_count=$(@($burstGenerated.last_execute_queue | Sort-Object -Unique).Count)"
+            Write-Output ('native_present.burst_generated_delta_us_average={0:F2}' -f $generatedDelta.Average)
+            Write-Output ('native_present.burst_generated_delta_us_min={0:F2}' -f $generatedDelta.Minimum)
+            Write-Output ('native_present.burst_generated_delta_us_max={0:F2}' -f $generatedDelta.Maximum)
+        }
+        Write-Output "native_present.burst_async_active_outer_samples=$($activeAsync.Count)"
+        Write-Output "native_present.burst_one_to_one_outer_frames=$($pairedFrames.Count)"
+    }
     $sameThreadExecuteSamples = @($asynchronousNativeSamples | Where-Object {
             $_.last_execute_thread -eq $_.thread
         })
@@ -146,6 +200,18 @@ if ($null -ne $lastOuterSample.native_present_count) {
     Write-Output "native_present.surplus_at_last_outer_sample=$([long]$lastOuterSample.native_present_count - [long]$lastOuterSample.frame)"
 }
 Write-Output "dlssg.state_samples=$($stateCalls.Count)"
+Write-Output "frame_token.samples=$($frameTokens.Count)"
+if ($frameTokens.Count -gt 0) {
+    Write-Output "frame_token.result_values=$(($frameTokens.result | Sort-Object -Unique) -join ',')"
+    Write-Output "frame_token.pointer_count=$(@($frameTokens.token | Sort-Object -Unique).Count)"
+    Write-Output "frame_token.requested_index_values=$(@($frameTokens.requested_index | Sort-Object -Unique).Count)"
+}
+Write-Output "set_constants.samples=$($setConstants.Count)"
+if ($setConstants.Count -gt 0) {
+    Write-Output "set_constants.result_values=$(($setConstants.result | Sort-Object -Unique) -join ',')"
+    Write-Output "set_constants.token_count=$(@($setConstants.token | Sort-Object -Unique).Count)"
+    Write-Output "set_constants.viewport_count=$(@($setConstants.viewport | Sort-Object -Unique).Count)"
+}
 if ($stateCalls.Count -gt 0) {
     Write-Output "dlssg.state_thread_count=$(@($stateCalls.thread | Sort-Object -Unique).Count)"
     Write-Output "dlssg.state_result_count=$(@($stateCalls.result | Sort-Object -Unique).Count)"

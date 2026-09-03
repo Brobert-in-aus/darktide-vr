@@ -52,6 +52,8 @@ namespace {
 
 using StingrayUploadFlushFn = void (*)(void* allocator);
 using SlGetFeatureFunctionFn = int (*)(std::uint32_t, const char*, void**);
+using SlGetNewFrameTokenFn = int (*)(void**, const std::uint32_t*);
+using SlSetConstantsFn = int (*)(const void*, const void*, const void*);
 using SlDlssGGetStateFn = int (*)(const void*, void*, const void*);
 using SlDlssGSetOptionsFn = int (*)(const void*, const void*);
 
@@ -60,9 +62,13 @@ INIT_ONCE dxc_reflection_once = INIT_ONCE_STATIC_INIT;
 HMODULE dxcompiler_module{};
 DxcCreateInstanceProc dxc_create_instance{};
 SlGetFeatureFunctionFn original_sl_get_feature_function{};
+SlGetNewFrameTokenFn original_sl_get_new_frame_token{};
+SlSetConstantsFn original_sl_set_constants{};
 std::atomic<SlDlssGGetStateFn> original_sl_dlssg_get_state{};
 std::atomic<SlDlssGSetOptionsFn> original_sl_dlssg_set_options{};
 void* streamline_feature_resolver_target{};
+void* streamline_get_new_frame_token_target{};
+void* streamline_set_constants_target{};
 void* streamline_native_present_target{};
 std::atomic<std::uint64_t> streamline_feature_resolve_count{};
 std::atomic<std::uint64_t> streamline_dlssg_state_count{};
@@ -70,6 +76,13 @@ std::atomic<std::uint64_t> streamline_dlssg_options_count{};
 std::atomic<std::uint64_t> streamline_native_present_count{};
 std::atomic<bool> streamline_copy_probe_requested{};
 std::atomic<DWORD> streamline_outer_present_thread{};
+std::atomic<std::uint64_t> streamline_outer_present_active_frame{};
+std::atomic<std::uint64_t> streamline_native_burst_until_call{};
+std::atomic<std::uint64_t> streamline_frame_token_call_count{};
+std::atomic<std::uint64_t> streamline_set_constants_call_count{};
+std::atomic<void*> streamline_latest_frame_token{};
+std::atomic<std::uint64_t> streamline_latest_frame_token_call{};
+std::atomic<std::uint32_t> streamline_latest_frame_index{UINT_MAX};
 std::atomic<std::uint64_t> streamline_execute_count{};
 std::atomic<std::int64_t> streamline_last_execute_qpc{};
 std::atomic<std::uint64_t> streamline_last_execute_outer_frame{};
@@ -1801,7 +1814,7 @@ void write_menu_resource_log(const char* format, ...) {
 void write_streamline_probe_log(const char* format, ...) {
   if (streamline_probe_log == INVALID_HANDLE_VALUE ||
       streamline_probe_log_count.fetch_add(1, std::memory_order_relaxed) >=
-          4096) {
+          8192) {
     return;
   }
   char line[1600]{};
@@ -1820,6 +1833,67 @@ void write_streamline_probe_log(const char* format, ...) {
                   length, static_cast<int>(sizeof(line) - 1))),
               &written, nullptr);
   }
+}
+
+int sl_get_new_frame_token_hook(void** token,
+                                const std::uint32_t* frame_index) {
+  const auto requested_index = frame_index ? *frame_index : UINT_MAX;
+  const auto result = original_sl_get_new_frame_token
+                          ? original_sl_get_new_frame_token(token, frame_index)
+                          : 36;
+  const auto call = streamline_frame_token_call_count.fetch_add(
+                        1, std::memory_order_relaxed) +
+                    1;
+  const auto resolved_token = token ? *token : nullptr;
+  if (result == 0 && resolved_token) {
+    streamline_latest_frame_token.store(resolved_token,
+                                        std::memory_order_relaxed);
+    streamline_latest_frame_index.store(requested_index,
+                                        std::memory_order_relaxed);
+    streamline_latest_frame_token_call.store(call, std::memory_order_release);
+  }
+  const auto burst_until =
+      streamline_native_burst_until_call.load(std::memory_order_acquire);
+  if (call <= 100 || burst_until != 0) {
+    LARGE_INTEGER qpc{};
+    QueryPerformanceCounter(&qpc);
+    write_streamline_probe_log(
+        "FRAME_TOKEN\tcall=%llu\tpresent_frame=%llu\tthread=%lu"
+        "\tqpc=%lld\tresult=%d\ttoken=%p\trequested_index=%u\r\n",
+        static_cast<unsigned long long>(call),
+        static_cast<unsigned long long>(
+            present_count.load(std::memory_order_relaxed)),
+        GetCurrentThreadId(), qpc.QuadPart, result, resolved_token,
+        requested_index);
+  }
+  return result;
+}
+
+int sl_set_constants_hook(const void* constants, const void* frame,
+                          const void* viewport) {
+  const auto result = original_sl_set_constants
+                          ? original_sl_set_constants(constants, frame, viewport)
+                          : 36;
+  const auto call = streamline_set_constants_call_count.fetch_add(
+                        1, std::memory_order_relaxed) +
+                    1;
+  const auto burst_until =
+      streamline_native_burst_until_call.load(std::memory_order_acquire);
+  if (call <= 100 || burst_until != 0) {
+    const auto* viewport_state = static_cast<const
+        darktidevr::producer::streamline_2_7_30::ViewportHandle*>(viewport);
+    LARGE_INTEGER qpc{};
+    QueryPerformanceCounter(&qpc);
+    write_streamline_probe_log(
+        "SET_CONSTANTS\tcall=%llu\tpresent_frame=%llu\tthread=%lu"
+        "\tqpc=%lld\tresult=%d\ttoken=%p\tviewport=%u\r\n",
+        static_cast<unsigned long long>(call),
+        static_cast<unsigned long long>(
+            present_count.load(std::memory_order_relaxed)),
+        GetCurrentThreadId(), qpc.QuadPart, result, frame,
+        viewport_state ? viewport_state->value : 0);
+  }
+  return result;
 }
 
 std::wstring module_path(HMODULE module) {
@@ -2074,6 +2148,10 @@ void initialize_streamline_probe(void* present_target,
   const auto interposer = GetModuleHandleW(L"sl.interposer.dll");
   streamline_feature_resolver_target =
       interposer ? GetProcAddress(interposer, "slGetFeatureFunction") : nullptr;
+  streamline_get_new_frame_token_target =
+      interposer ? GetProcAddress(interposer, "slGetNewFrameToken") : nullptr;
+  streamline_set_constants_target =
+      interposer ? GetProcAddress(interposer, "slSetConstants") : nullptr;
   streamline_native_present_target = native_present_target;
   HMODULE owner{};
   if (present_target) {
@@ -9412,7 +9490,28 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
   const auto call = streamline_native_present_count.fetch_add(
                         1, std::memory_order_relaxed) +
                     1;
-  const bool sample = call <= 100 || call % 120 == 0;
+  const auto current_thread = GetCurrentThreadId();
+  const auto outer_thread =
+      streamline_outer_present_thread.load(std::memory_order_acquire);
+  const bool asynchronous = outer_thread != 0 && current_thread != outer_thread;
+  if (asynchronous) {
+    std::uint64_t expected{};
+    (void)streamline_native_burst_until_call.compare_exchange_strong(
+        expected, call + 239, std::memory_order_acq_rel,
+        std::memory_order_relaxed);
+  }
+  const auto burst_until =
+      streamline_native_burst_until_call.load(std::memory_order_acquire);
+  const bool sample = call <= 100 || call % 120 == 0 ||
+                      (burst_until != 0 && call <= burst_until);
+  const auto active_outer_frame =
+      streamline_outer_present_active_frame.load(std::memory_order_acquire);
+  const auto latest_frame_token_call =
+      streamline_latest_frame_token_call.load(std::memory_order_acquire);
+  const auto latest_frame_token =
+      streamline_latest_frame_token.load(std::memory_order_relaxed);
+  const auto latest_frame_index =
+      streamline_latest_frame_index.load(std::memory_order_relaxed);
   LARGE_INTEGER begin{};
   UINT last_present_before{};
   HRESULT last_present_before_result{E_FAIL};
@@ -9441,10 +9540,8 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
             ? (begin.QuadPart - last_execute_qpc) * 1000000LL /
                   qpc_frequency.QuadPart
             : -1;
-    const auto current_thread = GetCurrentThreadId();
     if (streamline_copy_probe_requested.load(std::memory_order_acquire) &&
-        current_thread !=
-            streamline_outer_present_thread.load(std::memory_order_acquire) &&
+        asynchronous &&
         back_buffer_description.Width == 2496 &&
         back_buffer_description.Height == 2688 &&
         back_buffer_description.Format == DXGI_FORMAT_R8G8B8A8_UNORM) {
@@ -9459,6 +9556,8 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
     }
     write_streamline_probe_log(
         "NATIVE_PRESENT_BEGIN\tcall=%llu\touter_frame=%llu\tthread=%lu"
+        "\tclass=%s\tactive_outer_frame=%llu"
+        "\tframe_token_call=%llu\tframe_token=%p\tframe_index=%u"
         "\tqpc=%lld\tswapchain=%p\tinterval=%u\tflags=%u"
         "\tlast_present_result=%ld\tlast_present=%u"
         "\tback_buffer_index=%u\tback_buffer=%p\twidth=%llu"
@@ -9469,7 +9568,11 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
         static_cast<unsigned long long>(call),
         static_cast<unsigned long long>(
             present_count.load(std::memory_order_relaxed)),
-        GetCurrentThreadId(), begin.QuadPart, swapchain, interval, flags,
+        current_thread, asynchronous ? "asynchronous" : "outer_thread",
+        static_cast<unsigned long long>(active_outer_frame),
+        static_cast<unsigned long long>(latest_frame_token_call),
+        latest_frame_token, latest_frame_index, begin.QuadPart, swapchain,
+        interval, flags,
         last_present_before_result, last_present_before, back_buffer_index,
         back_buffer.Get(),
         static_cast<unsigned long long>(back_buffer_description.Width),
@@ -9539,12 +9642,15 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
         swapchain->GetLastPresentCount(&last_present_after);
     write_streamline_probe_log(
         "NATIVE_PRESENT_END\tcall=%llu\touter_frame=%llu\tthread=%lu"
+        "\tclass=%s\tactive_outer_frame=%llu"
         "\tqpc=%lld\tresult=%ld\tswapchain=%p"
         "\tlast_present_result=%ld\tlast_present=%u\r\n",
         static_cast<unsigned long long>(call),
         static_cast<unsigned long long>(
             present_count.load(std::memory_order_relaxed)),
-        GetCurrentThreadId(), end.QuadPart, result, swapchain,
+        current_thread, asynchronous ? "asynchronous" : "outer_thread",
+        static_cast<unsigned long long>(active_outer_frame), end.QuadPart,
+        result, swapchain,
         last_present_after_result, last_present_after);
   }
   return result;
@@ -9561,9 +9667,14 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
     candidate_frame_eye0_instance_count = 0;
   }
   const auto present = present_count.fetch_add(1, std::memory_order_relaxed) + 1;
+  const auto native_burst_until =
+      streamline_native_burst_until_call.load(std::memory_order_acquire);
   const bool sample_streamline =
       streamline_probe_log != INVALID_HANDLE_VALUE &&
-      (present <= 5 || present % 120 == 0);
+      (present <= 5 || present % 120 == 0 ||
+       (native_burst_until != 0 &&
+        streamline_native_present_count.load(std::memory_order_relaxed) <=
+            native_burst_until));
   LARGE_INTEGER streamline_begin{};
   if (sample_streamline) {
     QueryPerformanceCounter(&streamline_begin);
@@ -9849,7 +9960,10 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
       }
     }
   }
+  streamline_outer_present_active_frame.store(present,
+                                              std::memory_order_release);
   const auto result = original_present(swapchain, interval, flags);
+  streamline_outer_present_active_frame.store(0, std::memory_order_release);
   if (sample_streamline) {
     LARGE_INTEGER streamline_end{};
     QueryPerformanceCounter(&streamline_end);
@@ -10114,6 +10228,16 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
                      &sl_get_feature_function_hook,
                      reinterpret_cast<void**>(
                          &original_sl_get_feature_function)) != MH_OK) ||
+      (streamline_get_new_frame_token_target &&
+       MH_CreateHook(streamline_get_new_frame_token_target,
+                     &sl_get_new_frame_token_hook,
+                     reinterpret_cast<void**>(
+                         &original_sl_get_new_frame_token)) != MH_OK) ||
+      (streamline_set_constants_target &&
+       MH_CreateHook(streamline_set_constants_target,
+                     &sl_set_constants_hook,
+                     reinterpret_cast<void**>(
+                         &original_sl_set_constants)) != MH_OK) ||
       MH_CreateHook(get_client_rect_target, &get_client_rect_hook,
                     reinterpret_cast<void**>(&original_get_client_rect)) !=
           MH_OK ||

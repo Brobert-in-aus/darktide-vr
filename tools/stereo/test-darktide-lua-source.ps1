@@ -803,6 +803,20 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $nativeCaptureSource.Contains(
             'NATIVE_PRESENT_BEGIN\tcall=%llu\touter_frame=%llu') -or
         -not $nativeCaptureSource.Contains(
+            '\tclass=%s\tactive_outer_frame=%llu') -or
+        -not $nativeCaptureSource.Contains(
+            'streamline_native_burst_until_call.compare_exchange_strong(') -or
+        -not $nativeCaptureSource.Contains(
+            'FRAME_TOKEN\tcall=%llu\tpresent_frame=%llu\tthread=%lu') -or
+        -not $nativeCaptureSource.Contains(
+            'SET_CONSTANTS\tcall=%llu\tpresent_frame=%llu\tthread=%lu') -or
+        -not $nativeCaptureSource.Contains(
+            'MH_CreateHook(streamline_get_new_frame_token_target,') -or
+        -not $nativeCaptureSource.Contains(
+            'MH_CreateHook(streamline_set_constants_target,') -or
+        -not $nativeCaptureSource.Contains(
+            '\tframe_token_call=%llu\tframe_token=%p\tframe_index=%u') -or
+        -not $nativeCaptureSource.Contains(
             '\tback_buffer_index=%u\tback_buffer=%p\twidth=%llu') -or
         -not $nativeCaptureSource.Contains(
             '\tlast_execute_queue=%p\tlast_execute_queue_type=%u') -or

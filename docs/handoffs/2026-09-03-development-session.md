@@ -399,6 +399,25 @@ to assign source/generated pair identities and prototype bounded transport of
 generated outputs; do not infer pair identity from alternating Present calls
 alone.
 
+The follow-up pair-identity trace wraps Darktide's existing imported
+`slGetNewFrameToken` and `slSetConstants` calls, forwarding each exactly once.
+Darktide supplied an explicit, unique frame index on every observed token call;
+the 100-second run recorded 1,080 successful token calls over six recycled
+token objects and 2,061 successful constant updates over three viewports. A
+bounded 240-native-Present burst carried the latest Streamline token identity
+and frame index into every output record.
+
+Once DLSS-G owns presentation, both source and generated native Presents run on
+its worker thread, so thread identity is not an output label. The bounded burst
+instead found 111 Presents immediately preceded by a one-list direct submission
+on one verified queue, 61-300 microseconds earlier, and 129 Presents without
+that generator submission. The sequence was predominantly generated/source but
+contained source-only gaps and pacing reorderings. This provides a semantic
+generated-output classifier (the plugin's generation submission plus
+Streamline's source token), while disproving strict alternating-call pairing.
+Transport must use the classifier and tolerate missing/reordered generated
+outputs rather than incrementing a synthetic pair counter on every other call.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:
