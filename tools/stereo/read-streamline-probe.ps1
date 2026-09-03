@@ -46,6 +46,8 @@ $transportCompletions = @($records |
     Where-Object event -eq 'GENERATED_TRANSPORT_COMPLETE')
 $transportDrops = @($records |
     Where-Object event -eq 'GENERATED_TRANSPORT_DROP')
+$fatalTransportDrops = @($transportDrops |
+    Where-Object reason -ne 'ring_full')
 $executePrecursors = @($records | Where-Object event -eq 'EXECUTE_PRECURSOR')
 $frameTokens = @($records | Where-Object event -eq 'FRAME_TOKEN')
 $setConstants = @($records | Where-Object event -eq 'SET_CONSTANTS')
@@ -282,8 +284,10 @@ Write-Output "generated_copy.completion_samples=$($copyCompletions.Count)"
 Write-Output "generated_transport.submit_samples=$($transportSubmits.Count)"
 Write-Output "generated_transport.completion_samples=$($transportCompletions.Count)"
 Write-Output "generated_transport.drop_samples=$($transportDrops.Count)"
+Write-Output "generated_transport.fatal_drop_samples=$($fatalTransportDrops.Count)"
 if ($transportSubmits.Count -gt 0) {
     Write-Output "generated_transport.slot_count=$(@($transportSubmits.slot | Sort-Object -Unique).Count)"
+    Write-Output "generated_transport.sequence_count=$(@($transportSubmits.sequence | Sort-Object -Unique).Count)"
     Write-Output "generated_transport.frame_index_count=$(@($transportSubmits.frame_index | Sort-Object -Unique).Count)"
     Write-Output "generated_transport.extents=$(($transportSubmits | ForEach-Object { "$($_.width)x$($_.height)" } | Sort-Object -Unique) -join ',')"
     Write-Output "generated_transport.formats=$(($transportSubmits.format | Sort-Object -Unique) -join ',')"
@@ -321,9 +325,12 @@ if ($copyProbe -eq '1' -and
 if ($transportProbe -eq '1' -and
         ($transportSubmits.Count -ne 120 -or
             $transportCompletions.Count -ne $transportSubmits.Count -or
-            $transportDrops.Count -ne 0 -or
-            @($transportSubmits.frame_index | Sort-Object -Unique).Count -ne
+            $fatalTransportDrops.Count -ne 0 -or
+            @($transportSubmits.sequence | Sort-Object -Unique).Count -ne
                 $transportSubmits.Count -or
+            [uint64]$transportSubmits[0].sequence -ne 1 -or
+            [uint64]$transportSubmits[-1].sequence -ne
+                [uint64]$transportSubmits.Count -or
             @($transportSubmits.slot | Sort-Object -Unique).Count -gt 3)) {
     throw 'The bounded generated-output transport did not complete cleanly.'
 }

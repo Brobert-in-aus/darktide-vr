@@ -472,6 +472,40 @@ real named-handle opening from a second D3D12 interface. The next change should
 replace the transport probe's private surfaces/fences with this tested shared
 contract, retaining its non-blocking saturation policy.
 
+The live transport now uses that contract. Its three output textures are
+cross-process D3D12 shared resources, with one shared producer-ready fence and
+one consumer-consumed fence. The producer publishes metadata before submitting
+the copy and ready-fence signal, never waits for the consumer, and reuses a slot
+only after the consumed fence reaches that slot's prior sequence. The first
+deployment exposed an initialization bug: newly created command lists had not
+been closed before their first reset, so all 122 attempted candidates failed
+closed with `command_reset_failed`; no unsafe submission occurred and the
+concurrent XR run remained healthy. Closing each list during initialization
+fixed the defect.
+
+An independent D3D12 consumer executable then opened the named metadata,
+textures and fences, waited for each ready sequence, copied a center pixel from
+the deterministic slot, returned the texture to `COMMON`, and signalled the
+consumed sequence. A deliberately short observation window first delivered and
+acknowledged 118/118 frames with one `ring_full` drop, confirming that consumer
+backpressure drops rather than stalls Streamline. Expanding only the bounded
+classification window produced the final clean proof: 120/120 contiguous
+transport sequences submitted and completed across all three slots, zero drops,
+and 120/120 nonzero pixel samples in the external process. Those sequences
+covered 119 distinct Streamline source-frame indices because one source index
+legitimately repeated; transport identity therefore uses its own monotonic
+sequence rather than requiring frame-index uniqueness.
+
+The enclosing 100-second run submitted 8,982/8,982 OpenXR frames, delivered
+1,784 fresh shared-eye pairs, and reported zero not-rendered, stale, reused,
+capture-failure, timeout or pose-mismatch frames. The analyzer independently
+confirmed 120 submits, 120 completions, three slots, 120 unique contiguous
+sequences, the expected 2496x2688 RGBA8 resources, and no fatal or saturation
+drops. This closes the cross-process generated-frame transport gate. The next
+step is to make the XR bridge consume this stream in its presentation path,
+while preserving explicit source/generated identities and the existing
+fail-safe shared-eye path.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:
@@ -555,6 +589,10 @@ source was removed.
 .\tools\stereo\read-streamline-probe.ps1
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build/windows-vs2022 --config Release --target darktidevr-generated-frame-state-tests darktidevr-shared-eye-surfaces-tests -- /p:TreatWarningsAsErrors=true
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build/windows-vs2022 -C Release -R '^(generated_frame_state|shared_eye_surfaces)$' --output-on-failure
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build/windows-vs2022 --config Release --target darktidevr_native_capture darktidevr-generated-frame-consumer -- /p:TreatWarningsAsErrors=true
+.\build\windows-vs2022\tests\generated_frame_transport\Release\darktidevr-generated-frame-consumer.exe 120
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 100 -StreamlineTransportProbe -AutoEnterHub
+.\tools\stereo\read-streamline-probe.ps1
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native
@@ -579,12 +617,16 @@ correction used `preflight-20260903T013512Z.json` through
 
 ## Next work
 
-1. Perform worn inspection of the opt-in compositor cuff against the proven
+1. Integrate the generated-frame consumer with the XR bridge's presentation
+   selection, retaining explicit identities, non-blocking consumption and the
+   existing shared-eye fallback. Validate the source/generated temporal policy
+   independently of strict Present alternation.
+2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,
    radii and length if its alignment is sound; reject the route if the lack of
    game depth causes unacceptable weapon/world occlusion.
-2. Perform the worn Options extent, cursor and representative control pass;
+3. Perform the worn Options extent, cursor and representative control pass;
    do not change the proven pointer transform without contrary evidence.
-3. Perform the required worn Penances clustered-light acceptance.
-4. Complete worn independent-hand acceptance, then continue HUD and
+4. Perform the required worn Penances clustered-light acceptance.
+5. Complete worn independent-hand acceptance, then continue HUD and
    world-marker resolution/placement work.

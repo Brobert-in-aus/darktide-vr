@@ -13,6 +13,7 @@
 #include "core/shared_head_pose.h"
 #include "core/shared_controller_state.h"
 #include "core/shared_gameplay_aim_state.h"
+#include "core/shared_generated_frame_state.h"
 #include "core/shared_menu_pointer_state.h"
 #include "core/shared_presentation_state.h"
 #include "core/shared_surface_policy.h"
@@ -126,16 +127,16 @@ StreamlineCopyProbeState streamline_copy_probe_state;
 
 struct StreamlineTransportSlot {
   bool pending{};
-  std::uint64_t fence_value{};
+  std::uint64_t sequence{};
   std::uint64_t native_call{};
   std::uint32_t frame_index{UINT_MAX};
   ComPtr<ID3D12CommandAllocator> allocator;
   ComPtr<ID3D12GraphicsCommandList> commands;
   ComPtr<ID3D12Resource> surface;
-  ComPtr<ID3D12Fence> fence;
 };
 
-constexpr std::size_t kStreamlineTransportSlotCount = 3;
+constexpr std::size_t kStreamlineTransportSlotCount =
+    darktidevr::core::kSharedGeneratedFrameSlotCount;
 constexpr std::uint64_t kStreamlineTransportSubmissionLimit = 120;
 std::mutex streamline_transport_mutex;
 std::array<StreamlineTransportSlot, kStreamlineTransportSlotCount>
@@ -143,6 +144,21 @@ std::array<StreamlineTransportSlot, kStreamlineTransportSlotCount>
 std::uint64_t streamline_transport_submitted{};
 std::uint64_t streamline_transport_completed{};
 std::uint64_t streamline_transport_dropped{};
+ComPtr<ID3D12Fence> streamline_transport_ready_fence;
+ComPtr<ID3D12Fence> streamline_transport_consumed_fence;
+std::array<HANDLE, kStreamlineTransportSlotCount>
+    streamline_transport_surface_handles{};
+HANDLE streamline_transport_ready_handle{};
+HANDLE streamline_transport_consumed_handle{};
+constexpr std::array<const wchar_t*, kStreamlineTransportSlotCount>
+    kStreamlineTransportSurfaceNames{
+        L"Local\\DarktideVR-generated-frame-0",
+        L"Local\\DarktideVR-generated-frame-1",
+        L"Local\\DarktideVR-generated-frame-2"};
+constexpr wchar_t kStreamlineTransportReadyFenceName[] =
+    L"Local\\DarktideVR-generated-frame-ready";
+constexpr wchar_t kStreamlineTransportConsumedFenceName[] =
+    L"Local\\DarktideVR-generated-frame-consumed";
 
 BOOL CALLBACK initialize_dxc_reflection(PINIT_ONCE, PVOID, PVOID*) {
   std::array<wchar_t, 32768> module_path{};
@@ -9553,22 +9569,130 @@ void schedule_streamline_copy_probe(ID3D12CommandQueue* queue,
 
 void harvest_streamline_transport_probe() {
   std::scoped_lock lock(streamline_transport_mutex);
+  if (!streamline_transport_consumed_fence) {
+    return;
+  }
+  const auto consumed =
+      streamline_transport_consumed_fence->GetCompletedValue();
   for (std::size_t index = 0; index < streamline_transport_slots.size();
        ++index) {
     auto& slot = streamline_transport_slots[index];
-    if (!slot.pending || !slot.fence ||
-        slot.fence->GetCompletedValue() < slot.fence_value) {
+    if (!slot.pending || consumed < slot.sequence) {
       continue;
     }
     slot.pending = false;
     ++streamline_transport_completed;
     write_streamline_probe_log(
         "GENERATED_TRANSPORT_COMPLETE\tslot=%zu\tnative_call=%llu"
-        "\tframe_index=%u\tfence=%llu\tcompleted=%llu\r\n",
+        "\tframe_index=%u\tsequence=%llu\tconsumed=%llu"
+        "\tcompleted=%llu\r\n",
         index, static_cast<unsigned long long>(slot.native_call),
         slot.frame_index,
-        static_cast<unsigned long long>(slot.fence_value),
+        static_cast<unsigned long long>(slot.sequence),
+        static_cast<unsigned long long>(consumed),
         static_cast<unsigned long long>(streamline_transport_completed));
+  }
+}
+
+void reset_streamline_transport_resources() {
+  for (auto& handle : streamline_transport_surface_handles) {
+    if (handle) {
+      CloseHandle(handle);
+      handle = nullptr;
+    }
+  }
+  if (streamline_transport_ready_handle) {
+    CloseHandle(streamline_transport_ready_handle);
+    streamline_transport_ready_handle = nullptr;
+  }
+  if (streamline_transport_consumed_handle) {
+    CloseHandle(streamline_transport_consumed_handle);
+    streamline_transport_consumed_handle = nullptr;
+  }
+  streamline_transport_ready_fence.Reset();
+  streamline_transport_consumed_fence.Reset();
+  streamline_transport_slots = {};
+}
+
+bool ensure_streamline_transport_resources(
+    ID3D12Device* device, const D3D12_RESOURCE_DESC& source) {
+  const bool matching = streamline_transport_ready_fence &&
+      streamline_transport_consumed_fence &&
+      std::all_of(streamline_transport_slots.begin(),
+                  streamline_transport_slots.end(), [&](const auto& slot) {
+                    if (!slot.surface || !slot.allocator || !slot.commands) {
+                      return false;
+                    }
+                    const auto current = slot.surface->GetDesc();
+                    return current.Width == source.Width &&
+                           current.Height == source.Height &&
+                           current.Format == source.Format;
+                  });
+  if (matching) {
+    return true;
+  }
+  if (std::any_of(streamline_transport_slots.begin(),
+                  streamline_transport_slots.end(),
+                  [](const auto& slot) { return slot.pending; })) {
+    return false;
+  }
+  reset_streamline_transport_resources();
+  D3D12_HEAP_PROPERTIES heap{};
+  heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+  auto destination = source;
+  destination.Flags = D3D12_RESOURCE_FLAG_NONE;
+  for (std::size_t index = 0; index < streamline_transport_slots.size();
+       ++index) {
+    auto& slot = streamline_transport_slots[index];
+    if (FAILED(device->CreateCommandAllocator(
+            D3D12_COMMAND_LIST_TYPE_DIRECT,
+            IID_PPV_ARGS(&slot.allocator))) ||
+        FAILED(device->CreateCommandList(
+            0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr,
+            IID_PPV_ARGS(&slot.commands))) ||
+        FAILED(slot.commands->Close()) ||
+        FAILED(device->CreateCommittedResource(
+            &heap, D3D12_HEAP_FLAG_SHARED, &destination,
+            D3D12_RESOURCE_STATE_COMMON, nullptr,
+            IID_PPV_ARGS(&slot.surface))) ||
+        FAILED(device->CreateSharedHandle(
+            slot.surface.Get(), nullptr, GENERIC_ALL,
+            kStreamlineTransportSurfaceNames[index],
+            &streamline_transport_surface_handles[index]))) {
+      reset_streamline_transport_resources();
+      return false;
+    }
+  }
+  if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED,
+                                 IID_PPV_ARGS(
+                                     &streamline_transport_ready_fence))) ||
+      FAILED(device->CreateSharedHandle(
+          streamline_transport_ready_fence.Get(), nullptr, GENERIC_ALL,
+          kStreamlineTransportReadyFenceName,
+          &streamline_transport_ready_handle)) ||
+      FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED,
+                                 IID_PPV_ARGS(
+                                     &streamline_transport_consumed_fence))) ||
+      FAILED(device->CreateSharedHandle(
+          streamline_transport_consumed_fence.Get(), nullptr, GENERIC_ALL,
+          kStreamlineTransportConsumedFenceName,
+          &streamline_transport_consumed_handle))) {
+    reset_streamline_transport_resources();
+    return false;
+  }
+  return true;
+}
+
+bool publish_streamline_transport_metadata(
+    std::uint64_t sequence, std::uint64_t native_call,
+    std::uint32_t frame_index, const D3D12_RESOURCE_DESC& source) {
+  try {
+    static darktidevr::core::SharedGeneratedFrameStateWriter writer;
+    return writer.publish(sequence, native_call, frame_index,
+                          static_cast<std::uint32_t>(source.Width),
+                          source.Height, static_cast<std::uint32_t>(source.Format));
+  } catch (...) {
+    return false;
   }
 }
 
@@ -9582,10 +9706,10 @@ void schedule_streamline_transport_probe(ID3D12CommandQueue* queue,
           kStreamlineTransportSubmissionLimit) {
     return;
   }
-  auto found = std::find_if(
-      streamline_transport_slots.begin(), streamline_transport_slots.end(),
-      [](const auto& slot) { return !slot.pending; });
-  if (found == streamline_transport_slots.end()) {
+  const auto sequence = streamline_transport_submitted + 1;
+  const auto slot_index = darktidevr::core::generated_frame_slot(sequence);
+  auto& slot = streamline_transport_slots[slot_index];
+  if (slot.pending) {
     ++streamline_transport_dropped;
     write_streamline_probe_log(
         "GENERATED_TRANSPORT_DROP\treason=ring_full\tnative_call=%llu"
@@ -9594,9 +9718,6 @@ void schedule_streamline_transport_probe(ID3D12CommandQueue* queue,
         static_cast<unsigned long long>(streamline_transport_dropped));
     return;
   }
-  const auto slot_index = static_cast<std::size_t>(
-      std::distance(streamline_transport_slots.begin(), found));
-  auto& slot = *found;
   const auto source = back_buffer->GetDesc();
   if (source.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
       source.Format != DXGI_FORMAT_R8G8B8A8_UNORM || source.Width == 0 ||
@@ -9614,40 +9735,16 @@ void schedule_streamline_transport_probe(ID3D12CommandQueue* queue,
   if (FAILED(back_buffer->GetDevice(IID_PPV_ARGS(&device)))) {
     return;
   }
-  const auto slot_description = slot.surface
-                                    ? slot.surface->GetDesc()
-                                    : D3D12_RESOURCE_DESC{};
-  if (!slot.surface || slot_description.Width != source.Width ||
-      slot_description.Height != source.Height ||
-      slot_description.Format != source.Format) {
-    slot = {};
-    D3D12_HEAP_PROPERTIES heap{};
-    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
-    auto destination = source;
-    destination.Flags = D3D12_RESOURCE_FLAG_NONE;
-    if (FAILED(device->CreateCommandAllocator(
-            D3D12_COMMAND_LIST_TYPE_DIRECT,
-            IID_PPV_ARGS(&slot.allocator))) ||
-        FAILED(device->CreateCommandList(
-            0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr,
-            IID_PPV_ARGS(&slot.commands))) ||
-        FAILED(device->CreateCommittedResource(
-            &heap, D3D12_HEAP_FLAG_NONE, &destination,
-            D3D12_RESOURCE_STATE_COMMON, nullptr,
-            IID_PPV_ARGS(&slot.surface))) ||
-        FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
-                                   IID_PPV_ARGS(&slot.fence)))) {
-      slot = {};
-      write_streamline_probe_log(
-          "GENERATED_TRANSPORT_DROP\treason=resource_creation_failed"
-          "\tnative_call=%llu\tframe_index=%u\tslot=%zu\r\n",
-          static_cast<unsigned long long>(native_call), frame_index,
-          slot_index);
-      return;
-    }
-  } else if (FAILED(slot.allocator->Reset()) ||
+  if (!ensure_streamline_transport_resources(device.Get(), source)) {
+    write_streamline_probe_log(
+        "GENERATED_TRANSPORT_DROP\treason=resource_creation_failed"
+        "\tnative_call=%llu\tframe_index=%u\tslot=%zu\r\n",
+        static_cast<unsigned long long>(native_call), frame_index,
+        slot_index);
+    return;
+  }
+  if (FAILED(slot.allocator->Reset()) ||
              FAILED(slot.commands->Reset(slot.allocator.Get(), nullptr))) {
-    slot = {};
     write_streamline_probe_log(
         "GENERATED_TRANSPORT_DROP\treason=command_reset_failed"
         "\tnative_call=%llu\tframe_index=%u\tslot=%zu\r\n",
@@ -9678,7 +9775,6 @@ void schedule_streamline_transport_probe(ID3D12CommandQueue* queue,
   slot.commands->ResourceBarrier(static_cast<UINT>(barriers.size()),
                                  barriers.data());
   if (FAILED(slot.commands->Close())) {
-    slot = {};
     write_streamline_probe_log(
         "GENERATED_TRANSPORT_DROP\treason=command_close_failed"
         "\tnative_call=%llu\tframe_index=%u\tslot=%zu\r\n",
@@ -9686,15 +9782,24 @@ void schedule_streamline_transport_probe(ID3D12CommandQueue* queue,
         slot_index);
     return;
   }
+  if (!publish_streamline_transport_metadata(sequence, native_call,
+                                              frame_index, source)) {
+    write_streamline_probe_log(
+        "GENERATED_TRANSPORT_DROP\treason=metadata_publish_failed"
+        "\tnative_call=%llu\tframe_index=%u\tslot=%zu\r\n",
+        static_cast<unsigned long long>(native_call), frame_index,
+        slot_index);
+    return;
+  }
   ID3D12CommandList* lists[]{slot.commands.Get()};
   original_execute_command_lists(queue, 1, lists);
-  const auto fence_value = slot.fence_value + 1;
+  const auto transport_ready = streamline_transport_ready_fence;
   slot.pending = true;
+  slot.sequence = sequence;
   slot.native_call = native_call;
   slot.frame_index = frame_index;
-  slot.fence_value = fence_value;
-  if (FAILED(queue->Signal(slot.fence.Get(), fence_value))) {
-    slot.fence_value = UINT64_MAX;
+  if (FAILED(queue->Signal(transport_ready.Get(), sequence))) {
+    slot.sequence = UINT64_MAX;
     write_streamline_probe_log(
         "GENERATED_TRANSPORT_DROP\treason=signal_failed"
         "\tnative_call=%llu\tframe_index=%u\tslot=%zu\r\n",
@@ -9705,10 +9810,10 @@ void schedule_streamline_transport_probe(ID3D12CommandQueue* queue,
   ++streamline_transport_submitted;
   write_streamline_probe_log(
       "GENERATED_TRANSPORT_SUBMIT\tslot=%zu\tnative_call=%llu"
-      "\tframe_index=%u\tfence=%llu\twidth=%llu\theight=%u"
+      "\tframe_index=%u\tsequence=%llu\twidth=%llu\theight=%u"
       "\tformat=%u\tsubmitted=%llu\r\n",
       slot_index, static_cast<unsigned long long>(native_call), frame_index,
-      static_cast<unsigned long long>(fence_value),
+      static_cast<unsigned long long>(sequence),
       static_cast<unsigned long long>(source.Width), source.Height,
       static_cast<unsigned>(source.Format),
       static_cast<unsigned long long>(streamline_transport_submitted));
@@ -9731,8 +9836,12 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
   const bool asynchronous = outer_thread != 0 && current_thread != outer_thread;
   if (asynchronous) {
     std::uint64_t expected{};
+    const auto burst_span =
+        streamline_transport_probe_requested.load(std::memory_order_relaxed)
+            ? 299ULL
+            : 239ULL;
     (void)streamline_native_burst_until_call.compare_exchange_strong(
-        expected, call + 239, std::memory_order_acq_rel,
+        expected, call + burst_span, std::memory_order_acq_rel,
         std::memory_order_relaxed);
   }
   const auto burst_until =

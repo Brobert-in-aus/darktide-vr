@@ -845,7 +845,7 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $nativeCaptureSource.Contains(
             'GENERATED_COPY_COMPLETE\tresult=success') -or
         -not $nativeCaptureSource.Contains(
-            'constexpr std::size_t kStreamlineTransportSlotCount = 3;') -or
+            'darktidevr::core::kSharedGeneratedFrameSlotCount;') -or
         -not $nativeCaptureSource.Contains(
             'constexpr std::uint64_t kStreamlineTransportSubmissionLimit = 120;') -or
         -not $nativeCaptureSource.Contains(
@@ -856,6 +856,12 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
             'GENERATED_TRANSPORT_DROP\treason=ring_full') -or
         -not $nativeCaptureSource.Contains(
             'schedule_streamline_transport_probe(') -or
+        -not $nativeCaptureSource.Contains(
+            'D3D12_HEAP_FLAG_SHARED, &destination') -or
+        -not $nativeCaptureSource.Contains(
+            'streamline_transport_consumed_fence->GetCompletedValue()') -or
+        -not $nativeCaptureSource.Contains(
+            'publish_streamline_transport_metadata(') -or
         -not $nativeCaptureSource.Contains(
             'streamline_native_present_count.load(std::memory_order_relaxed)') -or
         -not $nativeCaptureSource.Contains(
