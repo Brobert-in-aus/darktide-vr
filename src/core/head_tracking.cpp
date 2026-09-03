@@ -99,10 +99,15 @@ math::Pose recentered_controller_pose(math::Pose recenter_head_pose,
       math::inverse(recenter_head_pose), current_controller_pose));
 }
 
+math::Pose anchored_controller_pose(math::Pose recenter_head_pose,
+                                    math::Pose body_controller_pose) {
+  return math::compose(recenter_head_pose,
+                       math::darktide_to_openxr(body_controller_pose));
+}
+
 math::Pose anchored_body_panel_pose(math::Pose recenter_head_pose,
                                     math::Pose body_panel_pose) {
-  return math::compose(recenter_head_pose,
-                       math::darktide_to_openxr(body_panel_pose));
+  return anchored_controller_pose(recenter_head_pose, body_panel_pose);
 }
 
 float neck_pivot_height_delta(math::Pose baseline_head_delta,

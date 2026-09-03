@@ -60,6 +60,11 @@ math::Pose anchored_recentered_eye_pose(math::Pose recenter_pose,
 math::Pose recentered_controller_pose(math::Pose recenter_head_pose,
                                       math::Pose current_controller_pose);
 
+// Reconstructs an absolute OpenXR controller pose from its Darktide body-local
+// representation. This is the inverse mapping of recentered_controller_pose.
+math::Pose anchored_controller_pose(math::Pose recenter_head_pose,
+                                    math::Pose body_controller_pose);
+
 // Converts a Darktide-basis pose relative to the immutable HMD recenter anchor
 // back into absolute OpenXR LOCAL space. Spatial shop/menu anchors use this to
 // share the same origin as controller and head tracking.

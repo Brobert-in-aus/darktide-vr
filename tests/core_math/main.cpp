@@ -78,15 +78,20 @@ int main() {
                                  {0.0F, 0.0F, -1.0F})),
         "recentered controller aim direction");
     const auto reconstructed_controller =
-        darktidevr::core::anchored_body_panel_pose(controller_recenter,
+        darktidevr::core::anchored_controller_pose(controller_recenter,
                                                    body_controller);
     expect_vec(reconstructed_controller.position, absolute_controller.position,
-               "body-relative panel reconstructs OpenXR LOCAL position");
+               "body-relative controller reconstructs OpenXR LOCAL position");
     expect_vec(rotate(reconstructed_controller.orientation,
                       {0.0F, 0.0F, -1.0F}),
                rotate(absolute_controller.orientation,
                       {0.0F, 0.0F, -1.0F}),
-               "body-relative panel reconstructs OpenXR LOCAL orientation");
+               "body-relative controller reconstructs OpenXR LOCAL orientation");
+    const auto reconstructed_panel =
+        darktidevr::core::anchored_body_panel_pose(controller_recenter,
+                                                   body_controller);
+    expect_vec(reconstructed_panel.position, reconstructed_controller.position,
+               "body panel uses the shared anchored-pose mapping");
 
     const Pose parent{yaw_90, {10.0F, 2.0F, 3.0F}};
     const Pose child{{}, {0.0F, 0.0F, -2.0F}};

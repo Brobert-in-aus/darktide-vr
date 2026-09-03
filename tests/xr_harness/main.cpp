@@ -1131,6 +1131,15 @@ class OpenXrProbe {
         std::filesystem::temp_directory_path() /
         "darktidevr-shared-eye-readback.request";
     auto next_shared_eye_readback_request_poll = start;
+    std::array<ComPtr<ID3D12Resource>, 2> projected_eye_readbacks;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT projected_eye_readback_footprint{};
+    std::uint64_t projected_eye_readback_total_bytes{};
+    bool projected_eye_readback_requested{};
+    bool projected_eye_readback_copied_this_frame{};
+    const auto projected_eye_readback_request_path =
+        std::filesystem::temp_directory_path() /
+        "darktidevr-projected-eye-readback.request";
+    auto next_projected_eye_readback_request_poll = start;
     auto detach_shared_eyes =
         [&](const char* reason, UINT64 ready, UINT64 consumed,
             std::chrono::steady_clock::time_point now) {
@@ -1198,6 +1207,46 @@ class OpenXrProbe {
           std::cout << "openxr.shared_eye_readback=requested\n";
         } else if (request_error) {
           std::cerr << "warning: shared-eye readback request poll failed: "
+                    << request_error.message() << '\n';
+        }
+      }
+      if (tracked_cuff_renderer &&
+          frame_start >= next_projected_eye_readback_request_poll) {
+        next_projected_eye_readback_request_poll =
+            frame_start + std::chrono::milliseconds(250);
+        std::error_code request_error;
+        if (std::filesystem::remove(projected_eye_readback_request_path,
+                                    request_error)) {
+          if (!projected_eye_readbacks[0]) {
+            const auto eye_description =
+                theatre_images[0][0].texture->GetDesc();
+            device->GetCopyableFootprints(
+                &eye_description, 0, 1, 0,
+                &projected_eye_readback_footprint, nullptr, nullptr,
+                &projected_eye_readback_total_bytes);
+            D3D12_HEAP_PROPERTIES readback_heap{};
+            readback_heap.Type = D3D12_HEAP_TYPE_READBACK;
+            D3D12_RESOURCE_DESC readback_description{};
+            readback_description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+            readback_description.Width = projected_eye_readback_total_bytes;
+            readback_description.Height = 1;
+            readback_description.DepthOrArraySize = 1;
+            readback_description.MipLevels = 1;
+            readback_description.SampleDesc.Count = 1;
+            readback_description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+            for (std::size_t eye = 0; eye < theatre_swapchain_count; ++eye) {
+              check(device->CreateCommittedResource(
+                        &readback_heap, D3D12_HEAP_FLAG_NONE,
+                        &readback_description,
+                        D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                        IID_PPV_ARGS(&projected_eye_readbacks[eye])),
+                    "CreateCommittedResource(projected-eye readback)");
+            }
+          }
+          projected_eye_readback_requested = true;
+          std::cout << "openxr.projected_eye_readback=requested\n";
+        } else if (request_error) {
+          std::cerr << "warning: projected-eye readback request poll failed: "
                     << request_error.message() << '\n';
         }
       }
@@ -1724,6 +1773,7 @@ class OpenXrProbe {
       bool submitted_flat_fallback_this_frame{};
       bool menu_readback_copied_this_frame{};
       shared_eye_readback_copied_this_frame = false;
+      projected_eye_readback_copied_this_frame = false;
       if (submit_layer) {
         XrSwapchainImageAcquireInfo acquire_info{
             XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
@@ -2249,13 +2299,55 @@ class OpenXrProbe {
                 command_list.Get(), eye, image_indices[eye],
                 cuff_view_poses[eye], located_views[eye].fov, cuff_hands);
           }
+          const bool capture_projected_eyes =
+              projected_eye_readback_requested && frame_cuff_draws != 0U;
+          if (capture_projected_eyes) {
+            for (std::size_t eye = 0; eye < theatre_swapchain_count; ++eye) {
+              for (std::size_t hand = 0; hand < cuff_hands.size(); ++hand) {
+                const auto clip = darktidevr::harness::
+                    tracked_cuff_clip_center(cuff_view_poses[eye],
+                                             located_views[eye].fov,
+                                             cuff_hands[hand]);
+                const auto inverse_w = clip[3] != 0.0F ? 1.0F / clip[3] : 0.0F;
+                std::cout << "openxr.tracked_cuff_clip eye=" << eye
+                          << " hand=" << hand << " ndc="
+                          << clip[0] * inverse_w << ','
+                          << clip[1] * inverse_w << ','
+                          << clip[2] * inverse_w << " w=" << clip[3] << '\n';
+              }
+            }
+          }
           for (auto& barrier : destination_barriers) {
             barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
+            barrier.Transition.StateAfter =
+                capture_projected_eyes ? D3D12_RESOURCE_STATE_COPY_SOURCE
+                                       : D3D12_RESOURCE_STATE_COMMON;
           }
           command_list->ResourceBarrier(
               static_cast<UINT>(destination_barriers.size()),
               destination_barriers.data());
+          if (capture_projected_eyes) {
+            for (std::size_t eye = 0; eye < theatre_swapchain_count; ++eye) {
+              D3D12_TEXTURE_COPY_LOCATION source{};
+              source.pResource = resources[eye];
+              source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+              D3D12_TEXTURE_COPY_LOCATION destination{};
+              destination.pResource = projected_eye_readbacks[eye].Get();
+              destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+              destination.PlacedFootprint =
+                  projected_eye_readback_footprint;
+              command_list->CopyTextureRegion(&destination, 0, 0, 0, &source,
+                                              nullptr);
+            }
+            for (auto& barrier : destination_barriers) {
+              barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+              barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
+            }
+            command_list->ResourceBarrier(
+                static_cast<UINT>(destination_barriers.size()),
+                destination_barriers.data());
+            projected_eye_readback_copied_this_frame = true;
+          }
           rendered_tracked_cuffs = true;
           if (frame_cuff_draws != 0U) {
             ++tracked_cuff_frames;
@@ -2354,6 +2446,54 @@ class OpenXrProbe {
                       << diagnostic_path.string() << '\n';
           }
           shared_eye_readback_requested = false;
+        }
+        if (projected_eye_readback_copied_this_frame) {
+          const auto eye_description = resources[0]->GetDesc();
+          const std::array<const char*, 2> labels{"left", "right"};
+          for (std::size_t eye = 0; eye < theatre_swapchain_count; ++eye) {
+            void* mapped_pixels{};
+            D3D12_RANGE read_range{0, projected_eye_readback_total_bytes};
+            check(projected_eye_readbacks[eye]->Map(
+                      0, &read_range, &mapped_pixels),
+                  "ID3D12Resource::Map(projected-eye readback)");
+            const auto diagnostic_path =
+                std::filesystem::temp_directory_path() /
+                (std::string("darktidevr-projected-eye-") + labels[eye] +
+                 ".ppm");
+            std::ofstream diagnostic(diagnostic_path, std::ios::binary);
+            if (!diagnostic) {
+              projected_eye_readbacks[eye]->Unmap(0, nullptr);
+              throw std::runtime_error(
+                  "Could not open projected-eye readback output");
+            }
+            diagnostic << "P6\n" << eye_description.Width << ' '
+                       << eye_description.Height << "\n255\n";
+            const auto* pixels =
+                static_cast<const std::uint8_t*>(mapped_pixels);
+            std::vector<std::uint8_t> row(
+                static_cast<std::size_t>(eye_description.Width) * 3);
+            for (std::uint32_t y = 0; y < eye_description.Height; ++y) {
+              const auto* source_row = pixels +
+                  static_cast<std::size_t>(y) *
+                      projected_eye_readback_footprint.Footprint.RowPitch;
+              for (std::uint32_t x = 0; x < eye_description.Width; ++x) {
+                const auto* source =
+                    source_row + static_cast<std::size_t>(x) * 4;
+                auto* destination =
+                    row.data() + static_cast<std::size_t>(x) * 3;
+                destination[0] = source[0];
+                destination[1] = source[1];
+                destination[2] = source[2];
+              }
+              diagnostic.write(
+                  reinterpret_cast<const char*>(row.data()),
+                  static_cast<std::streamsize>(row.size()));
+            }
+            projected_eye_readbacks[eye]->Unmap(0, nullptr);
+            std::cout << "openxr.projected_eye_readback="
+                      << diagnostic_path.string() << '\n';
+          }
+          projected_eye_readback_requested = false;
         }
         if (menu_readback_copied_this_frame && !menu_readback_logged &&
             ++menu_readback_copies >= 5) {
@@ -2643,6 +2783,20 @@ class OpenXrProbe {
         if (synthetic_movement_reference_path && emit_synthetic_gameplay) {
           darktidevr::harness::apply_synthetic_movement_reference_path(
               synthetic.state, synthetic_movement_reference_frames_++);
+        }
+        // Body-path diagnostics intentionally replace the game-facing poses.
+        // Reconstruct the corresponding absolute OpenXR poses afterwards so
+        // native compositor geometry and Lua-controlled hands consume one
+        // physically consistent controller sample.
+        if (synthetic_body_path && controller_recenter_pose_) {
+          for (auto& hand : synthetic.state.hands) {
+            hand.aim_pose = darktidevr::core::anchored_controller_pose(
+                *controller_recenter_pose_, hand.body_aim_pose);
+            hand.grip_pose = darktidevr::core::anchored_controller_pose(
+                *controller_recenter_pose_, hand.body_grip_pose);
+            hand.aim_tracking_flags = hand.body_aim_tracking_flags;
+            hand.grip_tracking_flags = hand.body_grip_tracking_flags;
+          }
         }
         if (!controller_writer_->publish(synthetic.state)) {
           throw std::runtime_error(

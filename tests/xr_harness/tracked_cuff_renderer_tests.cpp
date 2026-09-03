@@ -1,5 +1,8 @@
 #include "tracked_cuff_renderer.h"
 
+#include "core/head_tracking.h"
+#include "core/xr_math.h"
+
 #include <d3d12.h>
 #include <dxgi1_6.h>
 #include <wrl/client.h>
@@ -93,15 +96,34 @@ int main() {
     darktidevr::harness::TrackedCuffRenderer renderer(
         device.Get(), format, images, configurations);
 
+    // Exercise the same translated, rotated recenter/body conversion used by
+    // unattended controller paths. An identity-only render would not catch a
+    // transposed or wrong-space view/model matrix.
+    const darktidevr::math::Pose recenter_pose{
+        darktidevr::math::from_axis_angle({1.0F, 0.0F, 0.0F}, -0.65F),
+        {1.2F, 1.65F, -0.8F}};
     XrPosef eye_pose{};
-    eye_pose.orientation.w = 1.0F;
+    eye_pose.orientation = {recenter_pose.orientation.x,
+                            recenter_pose.orientation.y,
+                            recenter_pose.orientation.z,
+                            recenter_pose.orientation.w};
+    eye_pose.position = {recenter_pose.position.x, recenter_pose.position.y,
+                         recenter_pose.position.z};
     const XrFovf fov{-0.78F, 0.78F, 0.78F, -0.78F};
     std::array<darktidevr::core::ControllerHandState, 2> hands{};
-    hands[0].grip_pose.orientation.w = 1.0F;
-    hands[0].grip_pose.position = {0.0F, -0.05F, -0.5F};
+    const darktidevr::math::Pose body_grip{{}, {0.0F, 0.45F, -0.25F}};
+    hands[0].grip_pose = darktidevr::core::anchored_controller_pose(
+        recenter_pose, body_grip);
     hands[0].grip_tracking_flags =
         darktidevr::core::controller_orientation_valid |
         darktidevr::core::controller_position_valid;
+    const auto clip = darktidevr::harness::tracked_cuff_clip_center(
+        eye_pose, fov, hands[0]);
+    if (!(clip[3] > 0.0F) || std::abs(clip[0] / clip[3]) > 1.0F ||
+        std::abs(clip[1] / clip[3]) > 1.0F || clip[2] < 0.0F ||
+        clip[2] > clip[3]) {
+      throw std::runtime_error("Tracked cuff centre is outside test frustum");
+    }
     if (renderer.record(commands.Get(), 0, 0, eye_pose, fov, hands) != 1U) {
       throw std::runtime_error("Expected exactly one tracked cuff draw");
     }

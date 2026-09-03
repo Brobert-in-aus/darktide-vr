@@ -86,6 +86,24 @@ float4 ps_main(VSOutput input) : SV_Target {
 
 }  // namespace
 
+std::array<float, 4> tracked_cuff_clip_center(
+    const XrPosef& view_pose, const XrFovf& fov,
+    const core::ControllerHandState& hand) {
+  using namespace darktidevr::math;
+  const Pose eye_pose{{view_pose.orientation.x, view_pose.orientation.y,
+                       view_pose.orientation.z, view_pose.orientation.w},
+                      {view_pose.position.x, view_pose.position.y,
+                       view_pose.position.z}};
+  const Fov eye_fov{fov.angleLeft, fov.angleRight, fov.angleUp,
+                    fov.angleDown};
+  const auto view_projection =
+      multiply(projection_d3d(eye_fov, 0.025F, 100.0F),
+               pose_matrix(inverse(eye_pose)));
+  const Pose grip{hand.grip_pose.orientation, hand.grip_pose.position};
+  const auto centre = transform_point(grip, {0.0F, 0.050F, 0.0F});
+  return transform(view_projection, {centre.x, centre.y, centre.z, 1.0F});
+}
+
 TrackedCuffRenderer::TrackedCuffRenderer(
     ID3D12Device* device, DXGI_FORMAT color_format,
     const std::vector<std::vector<XrSwapchainImageD3D12KHR>>& images,

@@ -19,6 +19,12 @@
 
 namespace darktidevr::harness {
 
+// Projects the tracked cuff's wrist-offset centre with the exact transform
+// convention used by the renderer. Intended for one-shot live diagnostics.
+std::array<float, 4> tracked_cuff_clip_center(
+    const XrPosef& eye_pose, const XrFovf& fov,
+    const core::ControllerHandState& hand);
+
 class TrackedCuffRenderer {
  public:
   TrackedCuffRenderer(

@@ -243,6 +243,32 @@ subsequent live reporting remained at one while the range ran. This proves the
 renderer and resource-state path, but it is not a substitute for worn visual
 acceptance.
 
+The harness now supports an on-demand post-compositor eye readback for this
+prototype. Creating `%TEMP%\darktidevr-projected-eye-readback.request` while a
+tracked-cuff run is active writes `darktidevr-projected-eye-left.ppm` and
+`darktidevr-projected-eye-right.ppm` after the cuff draw and before swapchain
+release. A simultaneous existing shared-eye readback therefore gives a direct
+before/after pair from one command list. The request also logs each cuff
+centre's normalized device coordinates, which distinguishes a successful but
+off-frustum draw from missing raster output.
+
+This diagnostic exposed and fixed an inconsistency in `SyntheticBodyPath`:
+after replacing the Darktide body-local poses, the sample retained unrelated
+absolute OpenXR poses from the generic panel-ray path. The harness now
+reconstructs absolute aim/grip poses from the recenter anchor after all
+synthetic transforms. The inverse conversion is shared and round-trip tested
+in core math.
+
+Two synchronized live captures then established both negative and positive
+controls. With `SyntheticBodyInspection`, the deliberately pitched-down camera
+placed the cuff centres at NDC y=2.27, and raw/projected eyes were byte-identical
+as expected for fully clipped geometry. Without the inspection override, both
+eyes differed. The left-eye delta contained 13,933 pixels in bounds
+1861,1685-1996,1801; its amplified difference image cleanly isolates the
+procedural cuff. Evidence is under ignored
+`artifacts/unattended/tracked-cuff-visible-paired-20260903`. This is GPU
+readback proof of visible compositor pixels, not worn alignment acceptance.
+
 ## Launcher Play retry
 
 The first Play press in that run moved WPF's `Process.MainWindowHandle` to a
@@ -317,6 +343,12 @@ source was removed.
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build/windows-vs2022 -C Release --output-on-failure -R '^(tracked_cuff_mesh|tracked_cuff_renderer|xr_harness_help)$'
 .\build\windows-vs2022\tests\xr_harness\Release\darktidevr-xr-harness.exe --frames 1 --require-rendering --xr-frames 120 --shared-eyes --synthetic-controller-path --tracked-cuff-overlay
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 120 -GameStartTimeoutSeconds 600 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -TrackedCuffOverlay -SkipDeploymentSync
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build\windows-vs2022 --config Release --target darktidevr-core-math-tests darktidevr-synthetic-controller-tests darktidevr-tracked-cuff-renderer-tests darktidevr-xr-harness
+.\build\windows-vs2022\tests\core_math\Release\darktidevr-core-math-tests.exe
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-synthetic-controller-tests.exe
+.\build\windows-vs2022\tests\xr_harness\Release\darktidevr-tracked-cuff-renderer-tests.exe
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 150 -GameStartTimeoutSeconds 600 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -TrackedCuffOverlay -SkipDeploymentSync
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 150 -GameStartTimeoutSeconds 600 -SyntheticWeaponAimMatrix -SyntheticBodyPath -TrackedCuffOverlay -SkipDeploymentSync
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native
@@ -335,7 +367,9 @@ catalog sweep and clean-baseline restoration used the later
 `preflight-20260903T005727Z.json` reports. The compositor cuff build, synthetic
 OpenXR exercise, live private-range run and GPU pixel test used
 `preflight-20260903T010908Z.json` through
-`preflight-20260903T011706Z.json`.
+`preflight-20260903T011706Z.json`. The synchronized readback and synthetic-pose
+correction used `preflight-20260903T013512Z.json` through
+`preflight-20260903T015301Z.json`.
 
 ## Next work
 
