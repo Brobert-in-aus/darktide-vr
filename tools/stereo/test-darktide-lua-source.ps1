@@ -883,6 +883,10 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $nativeCaptureSource.Contains(
             'if (constants_state && armed_eye >= 0) {') -or
         -not $nativeCaptureSource.Contains(
+            'EYE_OUTPUT_BOUNDARY\tphase=execute_begin') -or
+        -not $nativeCaptureSource.Contains(
+            'EYE_OUTPUT_BOUNDARY\tphase=capture_complete') -or
+        -not $nativeCaptureSource.Contains(
             'streamline_native_present_count.load(std::memory_order_relaxed)') -or
         -not $nativeCaptureSource.Contains(
             '(present <= 5 || present % 120 == 0)')) {

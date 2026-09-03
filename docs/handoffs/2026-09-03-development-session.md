@@ -584,6 +584,26 @@ The frame-level resource confirming run remained clean at 8,949/8,949 OpenXR
 submissions, 1,867 fresh shared pairs, and zero reuse, capture failures, stale
 frames, timeouts or pose mismatches.
 
+The resource observer now also timestamps the existing per-eye output-copy
+boundary around the exact game `ExecuteCommandLists` call and after the
+diagnostic copy is enqueued. It remains observe-only and bounded to the same
+240-native-Present burst. The live run recorded 240 complete begin/end/capture
+triples. Correlation uses logical eye, armed pose and outer present frame so a
+pose reused by the following frame cannot be mistaken for the prior boundary.
+All 238 matched depth, motion-vector and HUD-less-colour tag groups occurred
+before their eye boundary. All 240 scaling input/output groups also occurred
+before it, by 0.555-4.420 ms (1.576 ms average). The early three-resource tag
+groups preceded it by 1.318-6.011 ms (3.657 ms average). This establishes a
+CPU ordering seam at which the current eye's complete tagged resource set is
+known before the game submission that completes the captured eye output. It
+does not yet prove those resources are safe to copy there: the next diagnostic
+must preserve the observed D3D12 states and order copies on the resource-owning
+queue without changing Streamline traffic or publishing aliased inputs.
+
+That run remained clean at 8,793/8,793 OpenXR submissions, 1,863 fresh shared
+pairs, and zero capture failures, stale frames, timeouts, reuse or pose
+mismatches.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:
@@ -698,8 +718,12 @@ correction used `preflight-20260903T013512Z.json` through
 1. Prototype independent per-eye Streamline inputs and one side-by-side stereo
    backbuffer. The current eye viewports share depth, motion and DLSS scaling
    allocations and only the primary viewport enables DLSS-G, so do not route
-   the transported desktop generated image into XR presentation. Preserve the
-   external consumer as the later binocular-output transport gate.
+   the transported desktop generated image into XR presentation. Start with a
+   bounded, diagnostic-only snapshot at the proven per-eye output execute
+   boundary: preserve the tag's observed D3D12 state, enqueue on the owning
+   direct queue, and require fence completion plus independent identities
+   before feeding the fail-closed stereo-input policy. Preserve the external
+   consumer as the later binocular-output transport gate.
 2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,
    radii and length if its alignment is sound; reject the route if the lack of

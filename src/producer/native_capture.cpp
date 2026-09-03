@@ -9032,7 +9032,44 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
       gpu_trace_token = begin_gpu_pass_trace_batch_locked(
           queue, count, lists, requested_eye);
     }
+    const auto streamline_burst_until =
+        streamline_native_burst_until_call.load(std::memory_order_acquire);
+    const auto log_streamline_eye_boundary =
+        requested_eye >= 0 && streamline_probe_log != INVALID_HANDLE_VALUE &&
+        streamline_burst_until != 0 &&
+        streamline_native_present_count.load(std::memory_order_relaxed) <=
+            streamline_burst_until;
+    if (log_streamline_eye_boundary) {
+      LARGE_INTEGER boundary_qpc{};
+      QueryPerformanceCounter(&boundary_qpc);
+      write_streamline_probe_log(
+          "EYE_OUTPUT_BOUNDARY\tphase=execute_begin\tpresent_frame=%llu"
+          "\texecute_call=%llu\teye=%d\tpose=%llu\tqueue=%p\tresource=%p"
+          "\tstate=%u\tqpc=%lld\r\n",
+          static_cast<unsigned long long>(
+              present_count.load(std::memory_order_relaxed)),
+          static_cast<unsigned long long>(streamline_execute_call),
+          requested_eye,
+          static_cast<unsigned long long>(requested_pose_sequence), queue,
+          completed_back_buffer.Get(),
+          static_cast<unsigned>(completed_source_state), boundary_qpc.QuadPart);
+    }
     original_execute_command_lists(queue, count, lists);
+    if (log_streamline_eye_boundary) {
+      LARGE_INTEGER boundary_qpc{};
+      QueryPerformanceCounter(&boundary_qpc);
+      write_streamline_probe_log(
+          "EYE_OUTPUT_BOUNDARY\tphase=execute_end\tpresent_frame=%llu"
+          "\texecute_call=%llu\teye=%d\tpose=%llu\tqueue=%p\tresource=%p"
+          "\tstate=%u\tqpc=%lld\r\n",
+          static_cast<unsigned long long>(
+              present_count.load(std::memory_order_relaxed)),
+          static_cast<unsigned long long>(streamline_execute_call),
+          requested_eye,
+          static_cast<unsigned long long>(requested_pose_sequence), queue,
+          completed_back_buffer.Get(),
+          static_cast<unsigned>(completed_source_state), boundary_qpc.QuadPart);
+    }
     if (gpu_trace_lock.owns_lock()) {
       end_gpu_pass_trace_batch_locked(queue, gpu_trace_token);
     }
@@ -9058,6 +9095,27 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
     const auto result = capture_eye_from_resource(
         requested_eye, queue, completed_back_buffer.Get(), true,
         completed_source_state);
+    const auto streamline_burst_until =
+        streamline_native_burst_until_call.load(std::memory_order_acquire);
+    if (streamline_probe_log != INVALID_HANDLE_VALUE &&
+        streamline_burst_until != 0 &&
+        streamline_native_present_count.load(std::memory_order_relaxed) <=
+            streamline_burst_until) {
+      LARGE_INTEGER boundary_qpc{};
+      QueryPerformanceCounter(&boundary_qpc);
+      write_streamline_probe_log(
+          "EYE_OUTPUT_BOUNDARY\tphase=capture_complete\tpresent_frame=%llu"
+          "\texecute_call=%llu\teye=%d\tpose=%llu\tqueue=%p\tresource=%p"
+          "\tstate=%u\tresult=%d\tqpc=%lld\r\n",
+          static_cast<unsigned long long>(
+              present_count.load(std::memory_order_relaxed)),
+          static_cast<unsigned long long>(streamline_execute_call),
+          requested_eye,
+          static_cast<unsigned long long>(requested_pose_sequence), queue,
+          completed_back_buffer.Get(),
+          static_cast<unsigned>(completed_source_state), result,
+          boundary_qpc.QuadPart);
+    }
     boundary_last_capture_result.store(result, std::memory_order_relaxed);
     if (result == 0) {
       boundary_eye_capture_counts[static_cast<std::size_t>(requested_eye)]

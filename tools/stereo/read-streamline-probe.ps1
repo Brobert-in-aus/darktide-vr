@@ -66,6 +66,8 @@ $setConstantMatrices = @($records |
     Where-Object event -eq 'SET_CONSTANTS_MATRIX')
 $resourceTags = @($records | Where-Object event -eq 'RESOURCE_TAG')
 $resourceTagCalls = @($records | Where-Object event -eq 'RESOURCE_TAG_CALL')
+$eyeOutputBoundaries = @($records |
+    Where-Object event -eq 'EYE_OUTPUT_BOUNDARY')
 
 if ($probe.Count -ne 1 -or $target.Count -ne 1 -or
         $nativeTarget.Count -ne 1 -or $begins.Count -eq 0 -or
@@ -477,6 +479,42 @@ if ($resolvedResourceTags.Count -gt 0) {
 }
 Write-Output "resource_tag.ui_color_alpha.samples=$(@($resourceTags |
         Where-Object type_name -eq 'ui_color_alpha').Count)"
+Write-Output "eye_output_boundary.samples=$($eyeOutputBoundaries.Count)"
+if ($eyeOutputBoundaries.Count -gt 0) {
+    foreach ($phase in @($eyeOutputBoundaries.phase | Sort-Object -Unique)) {
+        Write-Output "eye_output_boundary.${phase}.samples=$(@($eyeOutputBoundaries | Where-Object phase -eq $phase).Count)"
+    }
+    $executeBegins = @($eyeOutputBoundaries |
+        Where-Object phase -eq 'execute_begin')
+    foreach ($typeName in $stereoReadiness.RequiredTypes) {
+        $deltas = @()
+        foreach ($tag in @($resourceTags | Where-Object {
+                    $_.armed_eye -in @('0', '1') -and
+                    $_.type_name -eq $typeName
+                })) {
+            $candidates = @($executeBegins | Where-Object {
+                    $_.eye -eq $tag.armed_eye -and
+                    $_.pose -eq $tag.armed_pose -and
+                    $_.present_frame -eq $tag.present_frame
+                })
+            if ($candidates.Count -eq 0) {
+                continue
+            }
+            $nearest = $candidates | Sort-Object @{
+                Expression = { [Math]::Abs([double]$_.qpc - [double]$tag.qpc) }
+            } | Select-Object -First 1
+            $deltas += ([double]$tag.qpc - [double]$nearest.qpc) *
+                1000000.0 / [Diagnostics.Stopwatch]::Frequency
+        }
+        Write-Output "eye_output_boundary.${typeName}.matched_samples=$($deltas.Count)"
+        if ($deltas.Count -gt 0) {
+            $delta = $deltas | Measure-Object -Average -Minimum -Maximum
+            Write-Output ('eye_output_boundary.{0}.tag_delta_us_average={1:F2}' -f $typeName, $delta.Average)
+            Write-Output ('eye_output_boundary.{0}.tag_delta_us_min={1:F2}' -f $typeName, $delta.Minimum)
+            Write-Output ('eye_output_boundary.{0}.tag_delta_us_max={1:F2}' -f $typeName, $delta.Maximum)
+        }
+    }
+}
 if ($stateCalls.Count -gt 0) {
     Write-Output "dlssg.state_thread_count=$(@($stateCalls.thread | Sort-Object -Unique).Count)"
     Write-Output "dlssg.state_result_count=$(@($stateCalls.result | Sort-Object -Unique).Count)"
