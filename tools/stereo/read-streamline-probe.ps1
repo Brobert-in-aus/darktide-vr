@@ -68,6 +68,7 @@ $resourceTags = @($records | Where-Object event -eq 'RESOURCE_TAG')
 $resourceTagCalls = @($records | Where-Object event -eq 'RESOURCE_TAG_CALL')
 $eyeOutputBoundaries = @($records |
     Where-Object event -eq 'EYE_OUTPUT_BOUNDARY')
+$depthSnapshots = @($records | Where-Object event -eq 'DEPTH_SNAPSHOT')
 
 if ($probe.Count -ne 1 -or $target.Count -ne 1 -or
         $nativeTarget.Count -ne 1 -or $begins.Count -eq 0 -or
@@ -130,6 +131,14 @@ else {
     '0'
 }
 Write-Output "probe.transport_probe=$transportProbe"
+$depthSnapshotProbe = if (
+        $probe[0].PSObject.Properties['depth_snapshot_probe']) {
+    $probe[0].depth_snapshot_probe
+}
+else {
+    '0'
+}
+Write-Output "probe.depth_snapshot_probe=$depthSnapshotProbe"
 Write-Output "present.target_path=$($target[0].path)"
 Write-Output "present.target_version=$($target[0].version)"
 Write-Output "native_present.target_path=$($nativeTarget[0].path)"
@@ -515,6 +524,20 @@ if ($eyeOutputBoundaries.Count -gt 0) {
         }
     }
 }
+Write-Output "depth_snapshot.samples=$($depthSnapshots.Count)"
+if ($depthSnapshots.Count -gt 0) {
+    foreach ($phase in @($depthSnapshots.phase | Sort-Object -Unique)) {
+        Write-Output "depth_snapshot.${phase}.samples=$(@($depthSnapshots |
+                Where-Object phase -eq $phase).Count)"
+    }
+    $depthSnapshotComplete = @($depthSnapshots |
+        Where-Object phase -eq 'complete' | Select-Object -Last 1)
+    if ($depthSnapshotComplete.Count -eq 1) {
+        Write-Output "depth_snapshot.source_alias=$($depthSnapshotComplete[0].source_alias)"
+        Write-Output "depth_snapshot.snapshot_alias=$($depthSnapshotComplete[0].snapshot_alias)"
+        Write-Output "depth_snapshot.fence_value=$($depthSnapshotComplete[0].fence_value)"
+    }
+}
 if ($stateCalls.Count -gt 0) {
     Write-Output "dlssg.state_thread_count=$(@($stateCalls.thread | Sort-Object -Unique).Count)"
     Write-Output "dlssg.state_result_count=$(@($stateCalls.result | Sort-Object -Unique).Count)"
@@ -604,5 +627,13 @@ if ($transportProbe -eq '1' -and
                 [uint64]$transportSubmits.Count -or
             @($transportSubmits.slot | Sort-Object -Unique).Count -gt 3)) {
     throw 'The bounded generated-output transport did not complete cleanly.'
+}
+if ($depthSnapshotProbe -eq '1' -and
+        (@($depthSnapshots | Where-Object phase -eq 'scheduled').Count -ne 2 -or
+            @($depthSnapshots | Where-Object phase -eq 'complete').Count -ne 1 -or
+            @($depthSnapshots | Where-Object phase -eq 'failed').Count -ne 0 -or
+            @($depthSnapshots | Where-Object phase -eq 'complete')[0].source_alias -ne '1' -or
+            @($depthSnapshots | Where-Object phase -eq 'complete')[0].snapshot_alias -ne '0')) {
+    throw 'The one-pair depth snapshot did not complete with distinct destinations.'
 }
 Write-Output 'result=pass'

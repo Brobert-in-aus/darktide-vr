@@ -604,6 +604,22 @@ That run remained clean at 8,793/8,793 OpenXR submissions, 1,863 fresh shared
 pairs, and zero capture failures, stale frames, timeouts, reuse or pose
 mismatches.
 
+The first opt-in snapshot probe now exercises that seam without changing any
+Streamline call or publishing diagnostic resources. On one matched frame it
+retains the exact depth tag for each eye, transitions the observed state 128 to
+copy-source and back, and enqueues each copy on the existing eye's direct queue
+after the game submission. A dedicated fence proves completion without a CPU
+wait. The live pair used one aliased 1664x1792 format-19, flags-2 source for
+both eyes and produced two distinct committed destinations. Both scheduled
+copies shared present frame 4,542 and pose 7,130; fence value 2 completed and
+the analyzer reported `source_alias=1`, `snapshot_alias=0`, and `result=pass`.
+The run remained clean at 8,805/8,805 OpenXR submissions, 1,687 fresh pairs,
+and zero capture failures, stale frames, timeouts, reuse or pose mismatches.
+This proves state-preserving per-eye preservation is mechanically viable for
+depth. It does not prove content divergence yet; the next expansion should
+copy all five classes and add GPU/readback evidence that the two preserved
+depth images contain different eye-time content.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:
@@ -690,6 +706,8 @@ source was removed.
 & 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build/windows-vs2022 --config Release --target darktidevr_native_capture darktidevr-generated-frame-consumer -- /p:TreatWarningsAsErrors=true
 .\build\windows-vs2022\tests\generated_frame_transport\Release\darktidevr-generated-frame-consumer.exe 120
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 100 -StreamlineTransportProbe -AutoEnterHub
+.\tools\stereo\read-streamline-probe.ps1
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 100 -GameStartTimeoutSeconds 600 -StreamlineDepthSnapshotProbe -AutoEnterHub -SkipDeploymentSync
 .\tools\stereo\read-streamline-probe.ps1
 ```
 

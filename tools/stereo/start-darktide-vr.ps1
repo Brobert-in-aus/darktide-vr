@@ -24,6 +24,8 @@ param(
 
     [switch] $StreamlineTransportProbe,
 
+    [switch] $StreamlineDepthSnapshotProbe,
+
     [switch] $ClusterLightTrace,
 
     [bool] $ClusterLightVisibilityFix = $true,
@@ -160,6 +162,9 @@ $streamlineCopyProbeFlagExisted = $false
 $streamlineTransportProbeFlagPath = $null
 $streamlineTransportProbeFlagOriginal = $null
 $streamlineTransportProbeFlagExisted = $false
+$streamlineDepthSnapshotProbeFlagPath = $null
+$streamlineDepthSnapshotProbeFlagOriginal = $null
+$streamlineDepthSnapshotProbeFlagExisted = $false
 
 if (-not $SkipDeploymentSync) {
     $sync = Join-Path $PSScriptRoot 'sync-darktide-vr-dev.ps1'
@@ -292,7 +297,7 @@ if ($CaptureBillboardPsoIdentities) {
 $launchStarted = Get-Date
 try {
 if ($StreamlineProbe -or $StreamlineCopyProbe -or
-        $StreamlineTransportProbe) {
+        $StreamlineTransportProbe -or $StreamlineDepthSnapshotProbe) {
     $streamlineProbeFlagPath = Join-Path $GameRoot `
         'mods\darktidevr_stereo_probe\darktidevr_streamline_probe.flag'
     $streamlineProbeFlagExisted = Test-Path -LiteralPath `
@@ -332,6 +337,19 @@ if ($StreamlineTransportProbe) {
     Set-Content -LiteralPath $streamlineTransportProbeFlagPath `
         -Value 'enabled' -Encoding ascii
     Write-Output 'Bounded Streamline generated-output transport probe enabled.'
+}
+if ($StreamlineDepthSnapshotProbe) {
+    $streamlineDepthSnapshotProbeFlagPath = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_streamline_depth_snapshot_probe.flag'
+    $streamlineDepthSnapshotProbeFlagExisted = Test-Path -LiteralPath `
+        $streamlineDepthSnapshotProbeFlagPath -PathType Leaf
+    if ($streamlineDepthSnapshotProbeFlagExisted) {
+        $streamlineDepthSnapshotProbeFlagOriginal = Get-Content -LiteralPath `
+            $streamlineDepthSnapshotProbeFlagPath -Raw
+    }
+    Set-Content -LiteralPath $streamlineDepthSnapshotProbeFlagPath `
+        -Value 'enabled' -Encoding ascii
+    Write-Output 'One-pair Streamline depth snapshot probe enabled.'
 }
 if ($SyntheticRuntimeFrusta) {
     $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -707,6 +725,19 @@ finally {
             Remove-Item -LiteralPath $streamlineTransportProbeFlagPath -Force
         }
         Write-Output 'Restored the prior Streamline transport-probe flag.'
+    }
+    if ($streamlineDepthSnapshotProbeFlagPath) {
+        if ($streamlineDepthSnapshotProbeFlagExisted) {
+            Set-Content -LiteralPath $streamlineDepthSnapshotProbeFlagPath `
+                -Value $streamlineDepthSnapshotProbeFlagOriginal.Trim() `
+                -Encoding ascii
+        }
+        elseif (Test-Path -LiteralPath $streamlineDepthSnapshotProbeFlagPath `
+                -PathType Leaf) {
+            Remove-Item -LiteralPath $streamlineDepthSnapshotProbeFlagPath `
+                -Force
+        }
+        Write-Output 'Restored the prior Streamline depth-snapshot flag.'
     }
     if ($syntheticHeadPublisher) {
         if (-not $syntheticHeadPublisher.HasExited) {

@@ -84,6 +84,7 @@ std::atomic<std::uint64_t> streamline_dlssg_options_count{};
 std::atomic<std::uint64_t> streamline_native_present_count{};
 std::atomic<bool> streamline_copy_probe_requested{};
 std::atomic<bool> streamline_transport_probe_requested{};
+std::atomic<bool> streamline_depth_snapshot_probe_requested{};
 std::atomic<DWORD> streamline_outer_present_thread{};
 std::atomic<std::uint64_t> streamline_outer_present_active_frame{};
 std::atomic<std::uint64_t> streamline_native_burst_until_call{};
@@ -107,6 +108,32 @@ std::atomic<ID3D12CommandQueue*> streamline_last_execute_queue{};
 std::atomic<DWORD> streamline_last_execute_thread{};
 std::atomic<UINT> streamline_last_execute_list_count{};
 std::atomic<UINT> streamline_last_execute_queue_type{};
+
+struct StreamlineTaggedDepth {
+  ComPtr<ID3D12Resource> resource;
+  D3D12_RESOURCE_STATES state{D3D12_RESOURCE_STATE_COMMON};
+  std::uint64_t present_frame{};
+  std::uint64_t pose_sequence{};
+};
+
+struct StreamlineDepthSnapshotState {
+  int next_eye{};
+  bool pending{};
+  bool complete{};
+  bool failed{};
+  std::uint64_t present_frame{};
+  std::uint64_t pose_sequence{};
+  std::uint64_t fence_value{};
+  std::array<ComPtr<ID3D12Resource>, 2> sources;
+  std::array<ComPtr<ID3D12Resource>, 2> snapshots;
+  std::array<ComPtr<ID3D12CommandAllocator>, 2> allocators;
+  std::array<ComPtr<ID3D12GraphicsCommandList>, 2> commands;
+  ComPtr<ID3D12Fence> fence;
+};
+
+std::mutex streamline_depth_snapshot_mutex;
+std::array<StreamlineTaggedDepth, 2> streamline_tagged_depths;
+StreamlineDepthSnapshotState streamline_depth_snapshot_state;
 
 struct StreamlineExecuteSnapshot {
   std::atomic<std::uint64_t> call{};
@@ -2160,6 +2187,18 @@ void log_streamline_resource_tags(
                         ->QueryInterface(IID_PPV_ARGS(&texture)))) {
         description = texture->GetDesc();
         d3d12_resource = true;
+        if (streamline_depth_snapshot_probe_requested.load(
+                std::memory_order_acquire) &&
+            result == 0 && tag.type == 0 && armed_eye >= 0 && armed_eye <= 1) {
+          std::scoped_lock lock(streamline_depth_snapshot_mutex);
+          auto& observed =
+              streamline_tagged_depths[static_cast<std::size_t>(armed_eye)];
+          observed.resource = texture;
+          observed.state =
+              static_cast<D3D12_RESOURCE_STATES>(resource->state);
+          observed.present_frame = present_frame;
+          observed.pose_sequence = armed_pose;
+        }
       }
     }
     write_streamline_probe_log(
@@ -2486,6 +2525,12 @@ void initialize_streamline_probe(void* present_target,
       GetFileAttributesW(transport_flag_path.c_str()) !=
           INVALID_FILE_ATTRIBUTES,
       std::memory_order_release);
+  const auto depth_snapshot_flag_path =
+      flag_directory + L"..\\darktidevr_streamline_depth_snapshot_probe.flag";
+  streamline_depth_snapshot_probe_requested.store(
+      GetFileAttributesW(depth_snapshot_flag_path.c_str()) !=
+          INVALID_FILE_ATTRIBUTES,
+      std::memory_order_release);
   const auto interposer = GetModuleHandleW(L"sl.interposer.dll");
   streamline_feature_resolver_target =
       interposer ? GetProcAddress(interposer, "slGetFeatureFunction") : nullptr;
@@ -2508,10 +2553,15 @@ void initialize_streamline_probe(void* present_target,
   write_streamline_probe_log(
       "PROBE\tmode=observe_only\tsdk_abi=2.7.30"
       "\tdlssg_state_query=wrap_existing_calls"
-      "\tindependent_state_calls=0\tcopy_probe=%u\ttransport_probe=%u\r\n",
+      "\tindependent_state_calls=0\tcopy_probe=%u\ttransport_probe=%u"
+      "\tdepth_snapshot_probe=%u\r\n",
       streamline_copy_probe_requested.load(std::memory_order_relaxed) ? 1U
                                                                      : 0U,
       streamline_transport_probe_requested.load(std::memory_order_relaxed)
+          ? 1U
+          : 0U,
+      streamline_depth_snapshot_probe_requested.load(
+          std::memory_order_relaxed)
           ? 1U
           : 0U);
   write_streamline_probe_log(
@@ -8781,6 +8831,170 @@ void STDMETHODCALLTYPE enhanced_barrier_hook(
   original_enhanced_barrier(commands, group_count, groups);
 }
 
+void schedule_streamline_depth_snapshot(int eye, std::uint64_t present_frame,
+                                        std::uint64_t pose_sequence,
+                                        ID3D12CommandQueue* queue) {
+  if (eye < 0 || eye > 1 || !queue || !original_execute_command_lists) {
+    return;
+  }
+  std::scoped_lock lock(streamline_depth_snapshot_mutex);
+  auto& state = streamline_depth_snapshot_state;
+  if (state.complete || state.failed) {
+    return;
+  }
+  if (state.pending) {
+    const auto completed = state.fence ? state.fence->GetCompletedValue() : 0;
+    if (completed == UINT64_MAX) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "DEPTH_SNAPSHOT\tphase=failed\treason=poisoned_fence\r\n");
+    } else if (completed >= state.fence_value) {
+      state.pending = false;
+      state.complete = true;
+      write_streamline_probe_log(
+          "DEPTH_SNAPSHOT\tphase=complete\tpresent_frame=%llu"
+          "\tpose=%llu\tfence_value=%llu\tsource0=%p\tsource1=%p"
+          "\tsnapshot0=%p\tsnapshot1=%p\tsource_alias=%u"
+          "\tsnapshot_alias=%u\r\n",
+          static_cast<unsigned long long>(state.present_frame),
+          static_cast<unsigned long long>(state.pose_sequence),
+          static_cast<unsigned long long>(state.fence_value),
+          state.sources[0].Get(), state.sources[1].Get(),
+          state.snapshots[0].Get(), state.snapshots[1].Get(),
+          state.sources[0].Get() == state.sources[1].Get() ? 1U : 0U,
+          state.snapshots[0].Get() == state.snapshots[1].Get() ? 1U : 0U);
+    }
+    return;
+  }
+  if (eye != state.next_eye) {
+    return;
+  }
+  const auto& tagged = streamline_tagged_depths[static_cast<std::size_t>(eye)];
+  if (!tagged.resource || tagged.present_frame != present_frame ||
+      tagged.pose_sequence != pose_sequence) {
+    if (eye == 1 && present_frame > state.present_frame) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "DEPTH_SNAPSHOT\tphase=failed\treason=pair_mismatch"
+          "\tpresent_frame=%llu\tpose=%llu\texpected_frame=%llu"
+          "\texpected_pose=%llu\r\n",
+          static_cast<unsigned long long>(present_frame),
+          static_cast<unsigned long long>(pose_sequence),
+          static_cast<unsigned long long>(state.present_frame),
+          static_cast<unsigned long long>(state.pose_sequence));
+    }
+    return;
+  }
+  if (tagged.state == static_cast<D3D12_RESOURCE_STATES>(UINT_MAX)) {
+    state.failed = true;
+    write_streamline_probe_log(
+        "DEPTH_SNAPSHOT\tphase=failed\treason=invalid_source_state"
+        "\teye=%d\r\n",
+        eye);
+    return;
+  }
+  if (eye == 0) {
+    state.present_frame = present_frame;
+    state.pose_sequence = pose_sequence;
+  } else if (state.present_frame != present_frame ||
+             state.pose_sequence != pose_sequence) {
+    state.failed = true;
+    write_streamline_probe_log(
+        "DEPTH_SNAPSHOT\tphase=failed\treason=pair_identity"
+        "\tpresent_frame=%llu\tpose=%llu\texpected_frame=%llu"
+        "\texpected_pose=%llu\r\n",
+        static_cast<unsigned long long>(present_frame),
+        static_cast<unsigned long long>(pose_sequence),
+        static_cast<unsigned long long>(state.present_frame),
+        static_cast<unsigned long long>(state.pose_sequence));
+    return;
+  }
+
+  ComPtr<ID3D12Device> device;
+  if (FAILED(queue->GetDevice(IID_PPV_ARGS(&device)))) {
+    state.failed = true;
+    write_streamline_probe_log(
+        "DEPTH_SNAPSHOT\tphase=failed\treason=get_device\teye=%d\r\n",
+        eye);
+    return;
+  }
+  if (!state.fence &&
+      FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
+                                 IID_PPV_ARGS(&state.fence)))) {
+    state.failed = true;
+    write_streamline_probe_log(
+        "DEPTH_SNAPSHOT\tphase=failed\treason=create_fence\teye=%d\r\n",
+        eye);
+    return;
+  }
+  const auto description = tagged.resource->GetDesc();
+  D3D12_HEAP_PROPERTIES heap{};
+  heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+  const auto index = static_cast<std::size_t>(eye);
+  if (FAILED(device->CreateCommittedResource(
+          &heap, D3D12_HEAP_FLAG_NONE, &description,
+          D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+          IID_PPV_ARGS(&state.snapshots[index]))) ||
+      FAILED(device->CreateCommandAllocator(
+          D3D12_COMMAND_LIST_TYPE_DIRECT,
+          IID_PPV_ARGS(&state.allocators[index]))) ||
+      FAILED(device->CreateCommandList(
+          0, D3D12_COMMAND_LIST_TYPE_DIRECT, state.allocators[index].Get(),
+          nullptr, IID_PPV_ARGS(&state.commands[index])))) {
+    state.failed = true;
+    write_streamline_probe_log(
+        "DEPTH_SNAPSHOT\tphase=failed\treason=create_resources"
+        "\teye=%d\twidth=%llu\theight=%u\tformat=%u\tflags=%u\r\n",
+        eye, static_cast<unsigned long long>(description.Width),
+        description.Height, static_cast<unsigned>(description.Format),
+        static_cast<unsigned>(description.Flags));
+    return;
+  }
+  D3D12_RESOURCE_BARRIER barrier{};
+  barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  barrier.Transition.pResource = tagged.resource.Get();
+  barrier.Transition.StateBefore = tagged.state;
+  barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+  barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+  state.commands[index]->ResourceBarrier(1, &barrier);
+  state.commands[index]->CopyResource(state.snapshots[index].Get(),
+                                      tagged.resource.Get());
+  std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+  state.commands[index]->ResourceBarrier(1, &barrier);
+  if (FAILED(state.commands[index]->Close())) {
+    state.failed = true;
+    write_streamline_probe_log(
+        "DEPTH_SNAPSHOT\tphase=failed\treason=close\teye=%d\r\n", eye);
+    return;
+  }
+  ID3D12CommandList* lists[]{state.commands[index].Get()};
+  original_execute_command_lists(queue, 1, lists);
+  const auto signal_value = static_cast<std::uint64_t>(eye + 1);
+  if (FAILED(queue->Signal(state.fence.Get(), signal_value))) {
+    state.failed = true;
+    write_streamline_probe_log(
+        "DEPTH_SNAPSHOT\tphase=failed\treason=signal\teye=%d\r\n", eye);
+    return;
+  }
+  state.sources[index] = tagged.resource;
+  state.fence_value = signal_value;
+  state.next_eye = eye + 1;
+  state.pending = eye == 1;
+  write_streamline_probe_log(
+      "DEPTH_SNAPSHOT\tphase=scheduled\tpresent_frame=%llu\tpose=%llu"
+      "\teye=%d\tqueue=%p\tsource=%p\tsnapshot=%p\tstate=%u"
+      "\twidth=%llu\theight=%u\tformat=%u\tflags=%u"
+      "\tfence_value=%llu\r\n",
+      static_cast<unsigned long long>(present_frame),
+      static_cast<unsigned long long>(pose_sequence), eye, queue,
+      tagged.resource.Get(), state.snapshots[index].Get(),
+      static_cast<unsigned>(tagged.state),
+      static_cast<unsigned long long>(description.Width), description.Height,
+      static_cast<unsigned>(description.Format),
+      static_cast<unsigned>(description.Flags),
+      static_cast<unsigned long long>(signal_value));
+}
+
 void STDMETHODCALLTYPE execute_command_lists_hook(
     ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists) {
   StreamlineExecuteSnapshot* streamline_snapshot{};
@@ -9069,6 +9283,13 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
           static_cast<unsigned long long>(requested_pose_sequence), queue,
           completed_back_buffer.Get(),
           static_cast<unsigned>(completed_source_state), boundary_qpc.QuadPart);
+    }
+    if (log_streamline_eye_boundary &&
+        streamline_depth_snapshot_probe_requested.load(
+            std::memory_order_acquire)) {
+      schedule_streamline_depth_snapshot(
+          requested_eye, present_count.load(std::memory_order_relaxed),
+          requested_pose_sequence, queue);
     }
     if (gpu_trace_lock.owns_lock()) {
       end_gpu_pass_trace_batch_locked(queue, gpu_trace_token);
