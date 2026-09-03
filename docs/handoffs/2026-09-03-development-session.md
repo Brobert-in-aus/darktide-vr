@@ -669,18 +669,20 @@ shared source token is a universal join key; a future stereo evaluation must
 allocate one new target token after both source snapshots are ready.
 
 The first packed output resource is now complete without invoking Streamline.
-After the snapshot readback fence, the probe copies the two preserved scaling
-outputs into x=0 and x=2,496 of one 4,992x2,688 format-26 texture on the same
-direct queue, restores both sources, transitions the destination to the
-observed unordered-access state 8 and proves fence value 4. The analyzer
-requires exactly one scheduled/completed pack, the 2:1 extent invariant and no
-failure, and reported `result=pass`. This texture was not passed to Streamline
-or published to XR.
+After the snapshot readback fence, the probe copies the two preserved HUD-less
+RGBA images into x=0 and x=2,496 of one 4,992x2,688 format-28 texture on the
+same direct queue, restores both sources, transitions the destination to
+`PRESENT` state 0 and proves fence value 4. This matches the observed native
+generated-backbuffer transport contract; the earlier format-26 scaling-output
+pack was useful mechanically but was not a swapchain-compatible target. The
+analyzer requires exactly one scheduled/completed pack, the 2:1 extent,
+format/state invariants and no failure. This texture was not passed to
+Streamline or published to XR.
 
 A header-only evaluation-transaction policy now guards the next step before
 any new Streamline call exists. It requires snapshot readiness, same-or-adjacent
 source token calls/indices, distinct source viewports, a non-null target token
-whose index follows both sources, an exact 2:1 format-26/state-8 backbuffer and
+whose index follows both sources, an exact 2:1 format-28/PRESENT backbuffer and
 a reserved transport slot. After submission it remains non-publishable until
 the generated-output fence completes. Unit coverage exercises every rejection
 and the `ready_to_evaluate`, `awaiting_generated_output` and
@@ -809,7 +811,7 @@ correction used `preflight-20260903T013512Z.json` through
    source frame token/index records, two version-2 constants records and two
    viewport handles. Source indices may be the same or adjacent for one pose;
    a future evaluation must allocate one new shared target token. The
-   diagnostic 4,992x2,688 side-by-side scaling-output resource now packs and
+   diagnostic 4,992x2,688 side-by-side format-28 backbuffer now packs and
    reaches its fence without changing live presentation. Next define and guard
    the opt-in evaluation transaction. The pure transaction policy is now in
    place; next connect its transport-slot reservation without issuing an

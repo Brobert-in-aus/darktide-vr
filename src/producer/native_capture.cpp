@@ -8943,7 +8943,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
         state.stereo_backbuffer.Get(),
         static_cast<unsigned long long>(description.Width), description.Height,
         static_cast<unsigned>(description.Format),
-        static_cast<unsigned>(D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+        static_cast<unsigned>(D3D12_RESOURCE_STATE_PRESENT),
         static_cast<unsigned long long>(description.Width / 2));
     return;
   }
@@ -8955,8 +8955,8 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
           "STEREO_BACKBUFFER\tphase=failed\treason=get_device\r\n");
       return;
     }
-    const auto left_description = state.snapshots[0][4]->GetDesc();
-    const auto right_description = state.snapshots[1][4]->GetDesc();
+    const auto left_description = state.snapshots[0][2]->GetDesc();
+    const auto right_description = state.snapshots[1][2]->GetDesc();
     if (left_description.Width != right_description.Width ||
         left_description.Height != right_description.Height ||
         left_description.Format != right_description.Format ||
@@ -8968,6 +8968,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
     }
     auto stereo_description = left_description;
     stereo_description.Width *= 2;
+    stereo_description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_DEFAULT;
     if (FAILED(device->CreateCommittedResource(
@@ -8987,7 +8988,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
       return;
     }
     for (std::size_t source_eye = 0; source_eye < 2; ++source_eye) {
-      const auto& source_resource = state.snapshots[source_eye][4];
+      const auto& source_resource = state.snapshots[source_eye][2];
       D3D12_RESOURCE_BARRIER barrier{};
       barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
       barrier.Transition.pResource = source_resource.Get();
@@ -9013,7 +9014,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
     ready_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     ready_barrier.Transition.pResource = state.stereo_backbuffer.Get();
     ready_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    ready_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    ready_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
     ready_barrier.Transition.Subresource =
         D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     state.stereo_backbuffer_commands->ResourceBarrier(1, &ready_barrier);

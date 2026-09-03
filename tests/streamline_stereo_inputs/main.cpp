@@ -43,8 +43,8 @@ StreamlineStereoEvaluationTransaction ready_transaction() {
   transaction.stereo_width = 4992;
   transaction.stereo_height = 2688;
   transaction.eye_width = 2496;
-  transaction.format = 26;
-  transaction.resource_state = 8;
+  transaction.format = 28;
+  transaction.resource_state = 0;
   transaction.consumer_slot_reserved = true;
   return transaction;
 }

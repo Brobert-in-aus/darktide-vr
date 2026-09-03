@@ -735,7 +735,8 @@ if ($inputSnapshotProbe -eq '1' -and
             @($stereoBackbuffers | Where-Object phase -eq 'failed').Count -ne 0 -or
             [uint64]$stereoBackbufferComplete[0].width -ne
                 2 * [uint64]$stereoBackbufferComplete[0].eye_width -or
-            $stereoBackbufferComplete[0].state -ne '8' -or
+            $stereoBackbufferComplete[0].format -ne '28' -or
+            $stereoBackbufferComplete[0].state -ne '0' -or
             $inputSnapshotCompleteRecord[0].snapshot_alias_mask -ne '0' -or
             $inputSnapshotCompleteRecord[0].snapshot_unique_count -ne '10' -or
             $inputSnapshotCompleteRecord[0].snapshot_ready -ne '1')) {

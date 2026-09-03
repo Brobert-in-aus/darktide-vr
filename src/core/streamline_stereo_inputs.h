@@ -102,8 +102,8 @@ evaluate_streamline_stereo_transaction(
       transaction.target_frame_index <= transaction.source_frame_indices[1]) {
     return StreamlineStereoEvaluationStatus::invalid_target_frame;
   }
-  constexpr std::uint32_t required_format = 26;
-  constexpr std::uint32_t required_state = 8;
+  constexpr std::uint32_t required_format = 28;
+  constexpr std::uint32_t required_state = 0;
   if (transaction.stereo_backbuffer == 0 || transaction.eye_width == 0 ||
       transaction.eye_width > (~std::uint64_t{} / 2) ||
       transaction.stereo_width != transaction.eye_width * 2 ||
