@@ -86,6 +86,7 @@ std::atomic<std::uint64_t> streamline_native_present_count{};
 std::atomic<bool> streamline_copy_probe_requested{};
 std::atomic<bool> streamline_transport_probe_requested{};
 std::atomic<bool> streamline_input_snapshot_probe_requested{};
+std::atomic<bool> streamline_target_token_probe_requested{};
 std::atomic<DWORD> streamline_outer_present_thread{};
 std::atomic<std::uint64_t> streamline_outer_present_active_frame{};
 std::atomic<std::uint64_t> streamline_native_burst_until_call{};
@@ -158,7 +159,10 @@ struct StreamlineInputSnapshotState {
   bool stereo_backbuffer_pending{};
   bool stereo_backbuffer_complete{};
   bool transport_slot_reserved{};
+  bool target_token_allocated{};
   std::size_t transport_slot_index{};
+  void* target_frame_token{};
+  std::uint32_t target_frame_index{UINT_MAX};
   std::uint64_t present_frame{};
   std::uint64_t pose_sequence{};
   std::uint64_t fence_value{};
@@ -2610,6 +2614,12 @@ void initialize_streamline_probe(void* present_target,
       GetFileAttributesW(input_snapshot_flag_path.c_str()) !=
           INVALID_FILE_ATTRIBUTES,
       std::memory_order_release);
+  const auto target_token_flag_path =
+      flag_directory + L"..\\darktidevr_streamline_target_token_probe.flag";
+  streamline_target_token_probe_requested.store(
+      GetFileAttributesW(target_token_flag_path.c_str()) !=
+          INVALID_FILE_ATTRIBUTES,
+      std::memory_order_release);
   const auto interposer = GetModuleHandleW(L"sl.interposer.dll");
   streamline_feature_resolver_target =
       interposer ? GetProcAddress(interposer, "slGetFeatureFunction") : nullptr;
@@ -2633,7 +2643,7 @@ void initialize_streamline_probe(void* present_target,
       "PROBE\tmode=observe_only\tsdk_abi=2.7.30"
       "\tdlssg_state_query=wrap_existing_calls"
       "\tindependent_state_calls=0\tcopy_probe=%u\ttransport_probe=%u"
-      "\tinput_snapshot_probe=%u\r\n",
+      "\tinput_snapshot_probe=%u\ttarget_token_probe=%u\r\n",
       streamline_copy_probe_requested.load(std::memory_order_relaxed) ? 1U
                                                                      : 0U,
       streamline_transport_probe_requested.load(std::memory_order_relaxed)
@@ -2641,6 +2651,9 @@ void initialize_streamline_probe(void* present_target,
           : 0U,
       streamline_input_snapshot_probe_requested.load(
           std::memory_order_relaxed)
+          ? 1U
+          : 0U,
+      streamline_target_token_probe_requested.load(std::memory_order_relaxed)
           ? 1U
           : 0U);
   write_streamline_probe_log(
@@ -8971,6 +8984,77 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
         reserved_slot, streamline_transport_slots[reserved_slot].surface.Get(),
         static_cast<unsigned long long>(description.Width), description.Height,
         static_cast<unsigned>(description.Format));
+    if (streamline_target_token_probe_requested.load(
+            std::memory_order_acquire)) {
+      const auto source_frame_index = (std::max)(
+          state.constants[0].frame_index, state.constants[1].frame_index);
+      if (!original_sl_get_new_frame_token ||
+          source_frame_index >= UINT_MAX - 1) {
+        state.failed = true;
+        write_streamline_probe_log(
+            "STEREO_TARGET_TOKEN\tphase=failed"
+            "\treason=unavailable_or_overflow\tevaluation_called=0"
+            "\tmetadata_published=0\tready_signaled=0\r\n");
+        return;
+      }
+      const std::uint32_t requested_frame_index = source_frame_index + 1;
+      void* target_frame_token{};
+      const auto result = original_sl_get_new_frame_token(
+          &target_frame_token, &requested_frame_index);
+      if (result != 0 || !target_frame_token) {
+        state.failed = true;
+        write_streamline_probe_log(
+            "STEREO_TARGET_TOKEN\tphase=failed\treason=api_result"
+            "\ttarget_frame_index=%u\tresult=%d\tevaluation_called=0"
+            "\tmetadata_published=0\tready_signaled=0\r\n",
+            requested_frame_index, result);
+        return;
+      }
+      state.target_token_allocated = true;
+      state.target_frame_token = target_frame_token;
+      state.target_frame_index = requested_frame_index;
+      darktidevr::core::StreamlineStereoEvaluationTransaction transaction{};
+      transaction.snapshot_ready = true;
+      transaction.source_frame_indices = {state.constants[0].frame_index,
+                                          state.constants[1].frame_index};
+      transaction.source_token_calls = {state.constants[0].frame_token_call,
+                                        state.constants[1].frame_token_call};
+      transaction.source_viewports = {state.constants[0].viewport,
+                                      state.constants[1].viewport};
+      transaction.target_frame_token = reinterpret_cast<std::uintptr_t>(
+          state.target_frame_token);
+      transaction.target_frame_index = state.target_frame_index;
+      transaction.stereo_backbuffer = reinterpret_cast<std::uintptr_t>(
+          state.stereo_backbuffer.Get());
+      transaction.stereo_width = description.Width;
+      transaction.stereo_height = description.Height;
+      transaction.eye_width = description.Width / 2;
+      transaction.format = static_cast<std::uint32_t>(description.Format);
+      transaction.resource_state = D3D12_RESOURCE_STATE_PRESENT;
+      transaction.consumer_slot_reserved = state.transport_slot_reserved;
+      const auto policy_status =
+          darktidevr::core::evaluate_streamline_stereo_transaction(transaction);
+      if (policy_status !=
+          darktidevr::core::StreamlineStereoEvaluationStatus::ready_to_evaluate) {
+        state.failed = true;
+        write_streamline_probe_log(
+            "STEREO_TARGET_TOKEN\tphase=failed\treason=policy"
+            "\ttarget_frame_index=%u\tresult=%d\tpolicy_status=%u"
+            "\tevaluation_called=0\tmetadata_published=0"
+            "\tready_signaled=0\r\n",
+            requested_frame_index, result,
+            static_cast<unsigned>(policy_status));
+        return;
+      }
+      write_streamline_probe_log(
+          "STEREO_TARGET_TOKEN\tphase=allocated\ttarget_token=%p"
+          "\ttarget_frame_index=%u\tsource_frame_indices=%u,%u"
+          "\tresult=%d\tpolicy_status=%u\tevaluation_called=0"
+          "\tmetadata_published=0\tready_signaled=0\r\n",
+          target_frame_token, requested_frame_index,
+          state.constants[0].frame_index, state.constants[1].frame_index,
+          result, static_cast<unsigned>(policy_status));
+    }
     state.stereo_backbuffer_pending = false;
     state.stereo_backbuffer_complete = true;
     write_streamline_probe_log(

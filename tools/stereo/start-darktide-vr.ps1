@@ -26,6 +26,8 @@ param(
 
     [switch] $StreamlineInputSnapshotProbe,
 
+    [switch] $StreamlineTargetTokenProbe,
+
     [switch] $ClusterLightTrace,
 
     [bool] $ClusterLightVisibilityFix = $true,
@@ -297,7 +299,8 @@ if ($CaptureBillboardPsoIdentities) {
 $launchStarted = Get-Date
 try {
 if ($StreamlineProbe -or $StreamlineCopyProbe -or
-        $StreamlineTransportProbe -or $StreamlineInputSnapshotProbe) {
+        $StreamlineTransportProbe -or $StreamlineInputSnapshotProbe -or
+        $StreamlineTargetTokenProbe) {
     $streamlineProbeFlagPath = Join-Path $GameRoot `
         'mods\darktidevr_stereo_probe\darktidevr_streamline_probe.flag'
     $streamlineProbeFlagExisted = Test-Path -LiteralPath `
@@ -338,7 +341,7 @@ if ($StreamlineTransportProbe) {
         -Value 'enabled' -Encoding ascii
     Write-Output 'Bounded Streamline generated-output transport probe enabled.'
 }
-if ($StreamlineInputSnapshotProbe) {
+if ($StreamlineInputSnapshotProbe -or $StreamlineTargetTokenProbe) {
     $streamlineInputSnapshotProbeFlagPath = Join-Path $GameRoot `
         'mods\darktidevr_stereo_probe\darktidevr_streamline_input_snapshot_probe.flag'
     $streamlineInputSnapshotProbeFlagExisted = Test-Path -LiteralPath `
@@ -350,6 +353,19 @@ if ($StreamlineInputSnapshotProbe) {
     Set-Content -LiteralPath $streamlineInputSnapshotProbeFlagPath `
         -Value 'enabled' -Encoding ascii
     Write-Output 'One-pair Streamline input snapshot probe enabled.'
+}
+if ($StreamlineTargetTokenProbe) {
+    $streamlineTargetTokenProbeFlagPath = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_streamline_target_token_probe.flag'
+    $streamlineTargetTokenProbeFlagExisted = Test-Path -LiteralPath `
+        $streamlineTargetTokenProbeFlagPath -PathType Leaf
+    if ($streamlineTargetTokenProbeFlagExisted) {
+        $streamlineTargetTokenProbeFlagOriginal = Get-Content -LiteralPath `
+            $streamlineTargetTokenProbeFlagPath -Raw
+    }
+    Set-Content -LiteralPath $streamlineTargetTokenProbeFlagPath `
+        -Value 'enabled' -Encoding ascii
+    Write-Output 'One-shot Streamline stereo target-token probe enabled.'
 }
 if ($SyntheticRuntimeFrusta) {
     $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -738,6 +754,19 @@ finally {
                 -Force
         }
         Write-Output 'Restored the prior Streamline input-snapshot flag.'
+    }
+    if ($streamlineTargetTokenProbeFlagPath) {
+        if ($streamlineTargetTokenProbeFlagExisted) {
+            Set-Content -LiteralPath $streamlineTargetTokenProbeFlagPath `
+                -Value $streamlineTargetTokenProbeFlagOriginal.Trim() `
+                -Encoding ascii
+        }
+        elseif (Test-Path -LiteralPath $streamlineTargetTokenProbeFlagPath `
+                -PathType Leaf) {
+            Remove-Item -LiteralPath $streamlineTargetTokenProbeFlagPath `
+                -Force
+        }
+        Write-Output 'Restored the prior Streamline target-token flag.'
     }
     if ($syntheticHeadPublisher) {
         if (-not $syntheticHeadPublisher.HasExited) {

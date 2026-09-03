@@ -783,6 +783,8 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $startHelperSource.Contains(
             '[switch] $StreamlineInputSnapshotProbe') -or
         -not $startHelperSource.Contains(
+            '[switch] $StreamlineTargetTokenProbe') -or
+        -not $startHelperSource.Contains(
             'darktidevr_streamline_probe.flag') -or
         -not $startHelperSource.Contains(
             'darktidevr_streamline_copy_probe.flag') -or
@@ -790,6 +792,8 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
             'darktidevr_streamline_transport_probe.flag') -or
         -not $startHelperSource.Contains(
             'darktidevr_streamline_input_snapshot_probe.flag') -or
+        -not $startHelperSource.Contains(
+            'darktidevr_streamline_target_token_probe.flag') -or
         -not $nativeCaptureSource.Contains(
             'PROBE\tmode=observe_only\tsdk_abi=2.7.30') -or
         -not $nativeCaptureSource.Contains(
@@ -902,6 +906,10 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
             'STEREO_BACKBUFFER\tphase=complete') -or
         -not $nativeCaptureSource.Contains(
             'STEREO_TRANSPORT_RESERVATION\tphase=reserved') -or
+        -not $nativeCaptureSource.Contains(
+            'STEREO_TARGET_TOKEN\tphase=allocated') -or
+        -not $nativeCaptureSource.Contains(
+            'const auto result = original_sl_get_new_frame_token(') -or
         -not $nativeCaptureSource.Contains(
             'evaluate_streamline_stereo_inputs(') -or
         -not $nativeCaptureSource.Contains(

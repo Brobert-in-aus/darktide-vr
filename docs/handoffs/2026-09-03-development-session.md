@@ -785,6 +785,15 @@ source was removed.
 .\tools\stereo\read-streamline-probe.ps1
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 100 -GameStartTimeoutSeconds 600 -StreamlineInputSnapshotProbe -AutoEnterHub -SkipDeploymentSync
 .\tools\stereo\read-streamline-probe.ps1
+.\tools\unattended\invoke-unattended-preflight.ps1 -RunXrSmoke -XrFrames 120
+.\tools\stereo\test-darktide-lua-source.ps1
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build\windows-vs2022 --config Release -- /m /p:TreatWarningsAsErrors=true
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build\windows-vs2022 --config Debug -- /m /p:TreatWarningsAsErrors=true
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build\windows-vs2022 -C Release --output-on-failure
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe' --test-dir build\windows-vs2022 -C Debug --output-on-failure
+.\tools\stereo\sync-darktide-vr-dev.ps1 -Configuration Release
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 110 -GameStartTimeoutSeconds 600 -StreamlineTargetTokenProbe -EnterPsykhanium -SkipDeploymentSync
+.\tools\stereo\read-streamline-probe.ps1
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native
@@ -823,9 +832,13 @@ correction used `preflight-20260903T013512Z.json` through
    reaches its fence without changing live presentation. Next define and guard
    the opt-in evaluation transaction. The pure transaction policy is now in
    place and a matching transport slot can now be reserved without metadata or
-   fence publication. Next add explicit target-token allocation behind a new
-   opt-in flag while keeping evaluation disabled. Preserve the external
-   consumer as the later binocular-output transport gate.
+   fence publication. A separately gated live probe now allocates exactly one
+   future target token after that reservation: source indices 4507/4508 yielded
+   target index 4509, and the complete transaction reached policy status 6
+   (`ready_to_evaluate`). Evaluation, metadata publication and ready-fence
+   signaling all remained disabled. Next resolve and guard the exact DLSS-G
+   evaluation function/options contract without yet publishing its output.
+   Preserve the external consumer as the later binocular-output transport gate.
 2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,
    radii and length if its alignment is sound; reject the route if the lack of

@@ -80,6 +80,7 @@ $inputSnapshotSamples = @($records |
 $stereoBackbuffers = @($records | Where-Object event -eq 'STEREO_BACKBUFFER')
 $stereoTransportReservations = @($records |
     Where-Object event -eq 'STEREO_TRANSPORT_RESERVATION')
+$stereoTargetTokens = @($records | Where-Object event -eq 'STEREO_TARGET_TOKEN')
 
 if ($probe.Count -ne 1 -or $target.Count -ne 1 -or
         $nativeTarget.Count -ne 1 -or $begins.Count -eq 0 -or
@@ -150,6 +151,13 @@ else {
     '0'
 }
 Write-Output "probe.input_snapshot_probe=$inputSnapshotProbe"
+$targetTokenProbe = if ($probe[0].PSObject.Properties['target_token_probe']) {
+    $probe[0].target_token_probe
+}
+else {
+    '0'
+}
+Write-Output "probe.target_token_probe=$targetTokenProbe"
 Write-Output "present.target_path=$($target[0].path)"
 Write-Output "present.target_version=$($target[0].version)"
 Write-Output "native_present.target_path=$($nativeTarget[0].path)"
@@ -559,10 +567,19 @@ Write-Output "input_snapshot.content_samples=$($inputSnapshotSamples.Count)"
 Write-Output "input_snapshot.binding_samples=$($inputSnapshotBindings.Count)"
 Write-Output "input_snapshot.stereo_backbuffer_samples=$($stereoBackbuffers.Count)"
 Write-Output "input_snapshot.transport_reservation_samples=$($stereoTransportReservations.Count)"
+Write-Output "input_snapshot.target_token_samples=$($stereoTargetTokens.Count)"
 if ($stereoTransportReservations.Count -eq 1) {
     Write-Output "input_snapshot.transport_slot=$($stereoTransportReservations[0].slot)"
     Write-Output "input_snapshot.transport_metadata_published=$($stereoTransportReservations[0].metadata_published)"
     Write-Output "input_snapshot.transport_ready_signaled=$($stereoTransportReservations[0].ready_signaled)"
+}
+if ($stereoTargetTokens.Count -eq 1) {
+    Write-Output "input_snapshot.target_token_phase=$($stereoTargetTokens[0].phase)"
+    Write-Output "input_snapshot.target_frame_index=$($stereoTargetTokens[0].target_frame_index)"
+    Write-Output "input_snapshot.target_policy_status=$($stereoTargetTokens[0].policy_status)"
+    Write-Output "input_snapshot.target_evaluation_called=$($stereoTargetTokens[0].evaluation_called)"
+    Write-Output "input_snapshot.target_metadata_published=$($stereoTargetTokens[0].metadata_published)"
+    Write-Output "input_snapshot.target_ready_signaled=$($stereoTargetTokens[0].ready_signaled)"
 }
 if ($stereoBackbuffers.Count -gt 0) {
     foreach ($phase in @($stereoBackbuffers.phase | Sort-Object -Unique)) {
@@ -754,5 +771,22 @@ if ($inputSnapshotProbe -eq '1' -and
             $inputSnapshotCompleteRecord[0].snapshot_unique_count -ne '10' -or
             $inputSnapshotCompleteRecord[0].snapshot_ready -ne '1')) {
     throw 'The one-pair input snapshot/readback did not prove ten populated, distinct per-eye inputs.'
+}
+if ($targetTokenProbe -eq '1') {
+    $allocatedTargetTokens = @($stereoTargetTokens |
+        Where-Object phase -eq 'allocated')
+    if ($allocatedTargetTokens.Count -ne 1 -or
+            @($stereoTargetTokens | Where-Object phase -eq 'failed').Count -ne 0 -or
+            [uint64]$allocatedTargetTokens[0].target_frame_index -le
+                [uint64]$inputSnapshotBindings[0].frame_index -or
+            [uint64]$allocatedTargetTokens[0].target_frame_index -le
+                [uint64]$inputSnapshotBindings[1].frame_index -or
+            $allocatedTargetTokens[0].result -ne '0' -or
+            $allocatedTargetTokens[0].policy_status -ne '6' -or
+            $allocatedTargetTokens[0].evaluation_called -ne '0' -or
+            $allocatedTargetTokens[0].metadata_published -ne '0' -or
+            $allocatedTargetTokens[0].ready_signaled -ne '0') {
+        throw 'The requested stereo target token was not allocated safely.'
+    }
 }
 Write-Output 'result=pass'
