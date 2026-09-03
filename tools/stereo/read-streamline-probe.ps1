@@ -139,11 +139,16 @@ if ($asynchronousNativeSamples.Count -gt 0) {
         $burstOuter = @($burstSamples |
             Where-Object class -eq 'outer_thread')
         $burstGenerated = @($burstSamples | Where-Object {
-                $_.thread -eq $_.last_execute_thread -and
-                [uint32]$_.last_execute_queue_type -eq 0 -and
-                [uint32]$_.last_execute_list_count -eq 1 -and
-                [long]$_.last_execute_delta_us -ge 0 -and
-                [long]$_.last_execute_delta_us -le 500
+                if ($_.PSObject.Properties['generated_candidate']) {
+                    $_.generated_candidate -eq '1'
+                }
+                else {
+                    $_.thread -eq $_.last_execute_thread -and
+                    [uint32]$_.last_execute_queue_type -eq 0 -and
+                    [uint32]$_.last_execute_list_count -eq 1 -and
+                    [long]$_.last_execute_delta_us -ge 0 -and
+                    [long]$_.last_execute_delta_us -le 500
+                }
             })
         $burstSource = @($burstSamples | Where-Object {
                 $_ -notin $burstGenerated
@@ -165,9 +170,21 @@ if ($asynchronousNativeSamples.Count -gt 0) {
         Write-Output "native_present.burst_source_candidates=$($burstSource.Count)"
         if ($burstGenerated.Count -gt 0) {
             $generatedDelta = @($burstGenerated | ForEach-Object {
-                    [double]$_.last_execute_delta_us
+                    if ($_.PSObject.Properties['generator_execute_delta_us']) {
+                        [double]$_.generator_execute_delta_us
+                    }
+                    else {
+                        [double]$_.last_execute_delta_us
+                    }
                 }) | Measure-Object -Average -Minimum -Maximum
-            Write-Output "native_present.burst_generated_queue_count=$(@($burstGenerated.last_execute_queue | Sort-Object -Unique).Count)"
+            $generatedQueues = @(if ($burstGenerated[0].PSObject.Properties[
+                        'generator_queue']) {
+                    $burstGenerated.generator_queue | Sort-Object -Unique
+                }
+                else {
+                    $burstGenerated.last_execute_queue | Sort-Object -Unique
+                })
+            Write-Output "native_present.burst_generated_queue_count=$($generatedQueues.Count)"
             Write-Output ('native_present.burst_generated_delta_us_average={0:F2}' -f $generatedDelta.Average)
             Write-Output ('native_present.burst_generated_delta_us_min={0:F2}' -f $generatedDelta.Minimum)
             Write-Output ('native_present.burst_generated_delta_us_max={0:F2}' -f $generatedDelta.Maximum)

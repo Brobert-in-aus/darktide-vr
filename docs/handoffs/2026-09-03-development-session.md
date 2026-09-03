@@ -418,6 +418,28 @@ Streamline's source token), while disproving strict alternating-call pairing.
 Transport must use the classifier and tolerate missing/reordered generated
 outputs rather than incrementing a synthetic pair counter on every other call.
 
+The classifier is now explicit in the native hook. A deliberately over-strict
+first copy attempt required the generator submission and the swapchain
+transition to use the same queue; it safely classified zero candidates and
+performed no injection. Complete trace data showed that the one-list generator
+submission uses a stable direct queue distinct from the transition/presentation
+queue. The corrected design therefore uses the generator queue only to label an
+output and retains the independently proven transition/presentation queue for
+copy ordering.
+
+The corrected 100-second run classified 121 of the 240 bounded asynchronous
+Presents as generated candidates and 119 as source candidates. Every generated
+candidate correlated with the same generator queue, 52-269 microseconds before
+Present (102.71-microsecond average). Exactly one generated candidate was copied
+on the retained presentation queue; the centered 64x64 sample completed with all
+16,384 bytes nonzero, byte range 103-255 and FNV hash `2ae8b893882dec43`.
+OpenXR submitted 8,742/8,742 frames with 1,869 fresh shared pairs and zero
+reused frames, capture failures, stale frames, pair-driven timeouts or pose
+mismatches. This closes the output-labeling gate without assuming queue identity
+or strict source/generated alternation. The next transport prototype can carry
+the explicit Streamline frame index, generated/source label and missing-output
+tolerance into a bounded producer/consumer ring.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:

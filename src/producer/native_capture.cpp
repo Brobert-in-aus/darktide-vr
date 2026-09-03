@@ -9310,6 +9310,45 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
   return 0;
 }
 
+bool is_streamline_generated_present_candidate(
+    DWORD present_thread, std::int64_t present_qpc,
+    std::int64_t qpc_frequency, ID3D12CommandQueue*& matched_queue,
+    std::uint64_t& matched_execute_call,
+    std::int64_t& matched_delta_microseconds) {
+  if (present_qpc <= 0 || qpc_frequency <= 0) {
+    return false;
+  }
+  const auto execute_total =
+      streamline_execute_count.load(std::memory_order_acquire);
+  for (std::uint64_t offset = 0;
+       offset < kStreamlineExecuteHistory && execute_total > offset;
+       ++offset) {
+    const auto execute_call = execute_total - offset;
+    auto& snapshot = streamline_execute_history[
+        execute_call % kStreamlineExecuteHistory];
+    if (snapshot.call.load(std::memory_order_acquire) != execute_call ||
+        snapshot.thread.load(std::memory_order_relaxed) != present_thread ||
+        snapshot.queue_type.load(std::memory_order_relaxed) !=
+            static_cast<UINT>(D3D12_COMMAND_LIST_TYPE_DIRECT) ||
+        snapshot.list_count.load(std::memory_order_relaxed) != 1) {
+      continue;
+    }
+    const auto execute_qpc = snapshot.qpc.load(std::memory_order_relaxed);
+    const auto delta_microseconds =
+        execute_qpc > 0 && execute_qpc <= present_qpc
+            ? (present_qpc - execute_qpc) * 1000000LL / qpc_frequency
+            : -1;
+    if (delta_microseconds < 0 || delta_microseconds > 500) {
+      continue;
+    }
+    matched_queue = snapshot.queue.load(std::memory_order_relaxed);
+    matched_execute_call = execute_call;
+    matched_delta_microseconds = delta_microseconds;
+    return true;
+  }
+  return false;
+}
+
 void harvest_streamline_copy_probe() {
   std::scoped_lock lock(streamline_copy_probe_mutex);
   auto& probe = streamline_copy_probe_state;
@@ -9540,16 +9579,24 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
             ? (begin.QuadPart - last_execute_qpc) * 1000000LL /
                   qpc_frequency.QuadPart
             : -1;
-    if (streamline_copy_probe_requested.load(std::memory_order_acquire) &&
-        asynchronous &&
-        back_buffer_description.Width == 2496 &&
+    ComPtr<ID3D12CommandQueue> observed_present_queue;
+    if (asynchronous && back_buffer_description.Width == 2496 &&
         back_buffer_description.Height == 2688 &&
         back_buffer_description.Format == DXGI_FORMAT_R8G8B8A8_UNORM) {
-      ComPtr<ID3D12CommandQueue> observed_present_queue;
-      {
-        std::scoped_lock lock(state_mutex);
-        observed_present_queue = swapchain_present_queue;
-      }
+      std::scoped_lock lock(state_mutex);
+      observed_present_queue = swapchain_present_queue;
+    }
+    std::uint64_t generator_execute_call{};
+    std::int64_t generator_execute_delta_microseconds{-1};
+    ID3D12CommandQueue* generator_queue{};
+    const bool generated_candidate =
+        asynchronous && is_streamline_generated_present_candidate(
+                            current_thread, begin.QuadPart,
+                            qpc_frequency.QuadPart, generator_queue,
+                            generator_execute_call,
+                            generator_execute_delta_microseconds);
+    if (streamline_copy_probe_requested.load(std::memory_order_acquire) &&
+        generated_candidate) {
       schedule_streamline_copy_probe(
           observed_present_queue.Get(), back_buffer.Get(), call,
           present_count.load(std::memory_order_relaxed));
@@ -9558,6 +9605,8 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
         "NATIVE_PRESENT_BEGIN\tcall=%llu\touter_frame=%llu\tthread=%lu"
         "\tclass=%s\tactive_outer_frame=%llu"
         "\tframe_token_call=%llu\tframe_token=%p\tframe_index=%u"
+        "\tgenerated_candidate=%u\tgenerator_execute_call=%llu"
+        "\tgenerator_queue=%p\tgenerator_execute_delta_us=%lld"
         "\tqpc=%lld\tswapchain=%p\tinterval=%u\tflags=%u"
         "\tlast_present_result=%ld\tlast_present=%u"
         "\tback_buffer_index=%u\tback_buffer=%p\twidth=%llu"
@@ -9571,8 +9620,11 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
         current_thread, asynchronous ? "asynchronous" : "outer_thread",
         static_cast<unsigned long long>(active_outer_frame),
         static_cast<unsigned long long>(latest_frame_token_call),
-        latest_frame_token, latest_frame_index, begin.QuadPart, swapchain,
-        interval, flags,
+        latest_frame_token, latest_frame_index,
+        generated_candidate ? 1U : 0U,
+        static_cast<unsigned long long>(generator_execute_call),
+        generator_queue, generator_execute_delta_microseconds,
+        begin.QuadPart, swapchain, interval, flags,
         last_present_before_result, last_present_before, back_buffer_index,
         back_buffer.Get(),
         static_cast<unsigned long long>(back_buffer_description.Width),

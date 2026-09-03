@@ -817,6 +817,12 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $nativeCaptureSource.Contains(
             '\tframe_token_call=%llu\tframe_token=%p\tframe_index=%u') -or
         -not $nativeCaptureSource.Contains(
+            '\tgenerated_candidate=%u\tgenerator_execute_call=%llu') -or
+        -not $nativeCaptureSource.Contains(
+            '\tgenerator_queue=%p\tgenerator_execute_delta_us=%lld') -or
+        -not $nativeCaptureSource.Contains(
+            'is_streamline_generated_present_candidate(') -or
+        -not $nativeCaptureSource.Contains(
             '\tback_buffer_index=%u\tback_buffer=%p\twidth=%llu') -or
         -not $nativeCaptureSource.Contains(
             '\tlast_execute_queue=%p\tlast_execute_queue_type=%u') -or
