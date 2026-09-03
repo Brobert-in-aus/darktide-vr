@@ -893,6 +893,10 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $nativeCaptureSource.Contains(
             'INPUT_SNAPSHOT\tphase=complete') -or
         -not $nativeCaptureSource.Contains(
+            'INPUT_SNAPSHOT_READBACK\tphase=complete') -or
+        -not $nativeCaptureSource.Contains(
+            'INPUT_SNAPSHOT_SAMPLE\tpresent_frame=%llu') -or
+        -not $nativeCaptureSource.Contains(
             'evaluate_streamline_stereo_inputs(') -or
         -not $nativeCaptureSource.Contains(
             'original_execute_command_lists(queue, 1, lists);') -or

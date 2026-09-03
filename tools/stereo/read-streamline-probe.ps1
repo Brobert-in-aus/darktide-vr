@@ -71,6 +71,10 @@ $eyeOutputBoundaries = @($records |
 $inputSnapshots = @($records | Where-Object event -eq 'INPUT_SNAPSHOT')
 $inputSnapshotResources = @($records |
     Where-Object event -eq 'INPUT_SNAPSHOT_RESOURCE')
+$inputSnapshotReadbacks = @($records |
+    Where-Object event -eq 'INPUT_SNAPSHOT_READBACK')
+$inputSnapshotSamples = @($records |
+    Where-Object event -eq 'INPUT_SNAPSHOT_SAMPLE')
 
 if ($probe.Count -ne 1 -or $target.Count -ne 1 -or
         $nativeTarget.Count -ne 1 -or $begins.Count -eq 0 -or
@@ -545,6 +549,28 @@ if ($inputSnapshots.Count -gt 0) {
         Write-Output "input_snapshot.fence_value=$($inputSnapshotComplete[0].fence_value)"
     }
 }
+Write-Output "input_snapshot.readback_samples=$($inputSnapshotReadbacks.Count)"
+Write-Output "input_snapshot.content_samples=$($inputSnapshotSamples.Count)"
+if ($inputSnapshotReadbacks.Count -gt 0) {
+    foreach ($phase in @($inputSnapshotReadbacks.phase | Sort-Object -Unique)) {
+        Write-Output "input_snapshot.readback_${phase}.samples=$(@($inputSnapshotReadbacks |
+                Where-Object phase -eq $phase).Count)"
+    }
+    $readbackComplete = @($inputSnapshotReadbacks |
+        Where-Object phase -eq 'complete' | Select-Object -Last 1)
+    if ($readbackComplete.Count -eq 1) {
+        Write-Output "input_snapshot.content_divergent_mask=$($readbackComplete[0].divergent_mask)"
+    }
+}
+if ($inputSnapshotSamples.Count -gt 0) {
+    foreach ($typeName in @($inputSnapshotSamples.type_name |
+            Sort-Object -Unique)) {
+        $typeSamples = @($inputSnapshotSamples |
+            Where-Object type_name -eq $typeName)
+        Write-Output "input_snapshot.${typeName}.content_hashes=$(($typeSamples.hash) -join ',')"
+        Write-Output "input_snapshot.${typeName}.nonzero_bytes=$(($typeSamples.nonzero_bytes) -join ',')"
+    }
+}
 if ($stateCalls.Count -gt 0) {
     Write-Output "dlssg.state_thread_count=$(@($stateCalls.thread | Sort-Object -Unique).Count)"
     Write-Output "dlssg.state_result_count=$(@($stateCalls.result | Sort-Object -Unique).Count)"
@@ -635,14 +661,29 @@ if ($transportProbe -eq '1' -and
             @($transportSubmits.slot | Sort-Object -Unique).Count -gt 3)) {
     throw 'The bounded generated-output transport did not complete cleanly.'
 }
+$inputSnapshotCompleteRecord = @($inputSnapshots |
+    Where-Object phase -eq 'complete')
+$inputSnapshotReadbackComplete = @($inputSnapshotReadbacks |
+    Where-Object phase -eq 'complete')
+$inputSnapshotPopulatedTypes = @($inputSnapshotSamples |
+    Group-Object type_name | Where-Object {
+        $_.Count -eq 2 -and
+        @($_.Group | Where-Object { [uint64]$_.nonzero_bytes -gt 0 }).Count -eq 2
+    })
 if ($inputSnapshotProbe -eq '1' -and
         (@($inputSnapshots | Where-Object phase -eq 'scheduled').Count -ne 2 -or
-            @($inputSnapshots | Where-Object phase -eq 'complete').Count -ne 1 -or
+            $inputSnapshotCompleteRecord.Count -ne 1 -or
             @($inputSnapshots | Where-Object phase -eq 'failed').Count -ne 0 -or
             $inputSnapshotResources.Count -ne 10 -or
-            @($inputSnapshots | Where-Object phase -eq 'complete')[0].snapshot_alias_mask -ne '0' -or
-            @($inputSnapshots | Where-Object phase -eq 'complete')[0].snapshot_unique_count -ne '10' -or
-            @($inputSnapshots | Where-Object phase -eq 'complete')[0].snapshot_ready -ne '1')) {
-    throw 'The one-pair input snapshot did not complete with ten distinct destinations.'
+            @($inputSnapshotReadbacks | Where-Object phase -eq 'scheduled').Count -ne 1 -or
+            $inputSnapshotReadbackComplete.Count -ne 1 -or
+            @($inputSnapshotReadbacks | Where-Object phase -eq 'failed').Count -ne 0 -or
+            $inputSnapshotSamples.Count -ne 10 -or
+            $inputSnapshotPopulatedTypes.Count -ne 5 -or
+            $inputSnapshotReadbackComplete[0].divergent_mask -ne '31' -or
+            $inputSnapshotCompleteRecord[0].snapshot_alias_mask -ne '0' -or
+            $inputSnapshotCompleteRecord[0].snapshot_unique_count -ne '10' -or
+            $inputSnapshotCompleteRecord[0].snapshot_ready -ne '1')) {
+    throw 'The one-pair input snapshot/readback did not prove ten populated, distinct per-eye inputs.'
 }
 Write-Output 'result=pass'

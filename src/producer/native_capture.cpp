@@ -111,6 +111,12 @@ std::atomic<UINT> streamline_last_execute_list_count{};
 std::atomic<UINT> streamline_last_execute_queue_type{};
 
 constexpr std::size_t kStreamlineInputCount = 5;
+constexpr UINT kStreamlineInputSampleWidth = 64;
+constexpr UINT kStreamlineInputSampleHeight = 64;
+constexpr UINT kStreamlineInputSampleRowPitch = 256;
+constexpr std::uint64_t kStreamlineInputSampleBytes =
+    static_cast<std::uint64_t>(kStreamlineInputSampleRowPitch) *
+    kStreamlineInputSampleHeight;
 constexpr std::array<const char*, kStreamlineInputCount>
     kStreamlineInputNames{"depth", "motion_vectors", "hudless_color",
                           "scaling_input_color", "scaling_output_color"};
@@ -135,15 +141,25 @@ struct StreamlineInputSnapshotState {
   bool pending{};
   bool complete{};
   bool failed{};
+  bool readback_pending{};
+  bool readback_complete{};
   std::uint64_t present_frame{};
   std::uint64_t pose_sequence{};
   std::uint64_t fence_value{};
+  std::uint64_t readback_bytes{};
   std::array<std::array<ComPtr<ID3D12Resource>, kStreamlineInputCount>, 2>
       sources;
   std::array<std::array<ComPtr<ID3D12Resource>, kStreamlineInputCount>, 2>
       snapshots;
   std::array<ComPtr<ID3D12CommandAllocator>, 2> allocators;
   std::array<ComPtr<ID3D12GraphicsCommandList>, 2> commands;
+  ComPtr<ID3D12CommandAllocator> readback_allocator;
+  ComPtr<ID3D12GraphicsCommandList> readback_commands;
+  ComPtr<ID3D12Resource> readback;
+  std::array<std::array<D3D12_PLACED_SUBRESOURCE_FOOTPRINT,
+                        kStreamlineInputCount>,
+             2>
+      readback_footprints;
   ComPtr<ID3D12Fence> fence;
 };
 
@@ -8858,7 +8874,235 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
   }
   std::scoped_lock lock(streamline_input_snapshot_mutex);
   auto& state = streamline_input_snapshot_state;
-  if (state.complete || state.failed) {
+  if (state.failed || state.readback_complete) {
+    return;
+  }
+  if (state.complete && state.readback_pending) {
+    const auto completed = state.fence ? state.fence->GetCompletedValue() : 0;
+    if (completed == UINT64_MAX) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "INPUT_SNAPSHOT_READBACK\tphase=failed"
+          "\treason=poisoned_fence\r\n");
+      return;
+    }
+    if (completed < state.fence_value) {
+      return;
+    }
+    void* mapped{};
+    const D3D12_RANGE read_range{0, state.readback_bytes};
+    if (!state.readback ||
+        FAILED(state.readback->Map(0, &read_range, &mapped)) || !mapped) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "INPUT_SNAPSHOT_READBACK\tphase=failed\treason=map\r\n");
+      return;
+    }
+    std::array<std::array<std::uint64_t, kStreamlineInputCount>, 2> hashes{};
+    const auto* bytes = static_cast<const std::byte*>(mapped);
+    for (std::size_t sample_eye = 0; sample_eye < 2; ++sample_eye) {
+      for (std::size_t type = 0; type < kStreamlineInputCount; ++type) {
+        const auto& footprint = state.readback_footprints[sample_eye][type];
+        const auto description = state.snapshots[sample_eye][type]->GetDesc();
+        const auto left = type == 0
+                              ? static_cast<UINT>((description.Width -
+                                                   kStreamlineInputSampleWidth) /
+                                                  2)
+                              : 0U;
+        const auto top = type == 0
+                             ? (description.Height -
+                                kStreamlineInputSampleHeight) /
+                                   2
+                             : 0U;
+        const auto* sample = bytes + footprint.Offset +
+                             top * footprint.Footprint.RowPitch + left * 4;
+        constexpr std::uint64_t hash_offset = 1469598103934665603ULL;
+        constexpr std::uint64_t hash_prime = 1099511628211ULL;
+        auto hash = hash_offset;
+        std::uint64_t nonzero_bytes{};
+        for (UINT row = 0; row < kStreamlineInputSampleHeight; ++row) {
+          const auto* row_bytes = sample + row * footprint.Footprint.RowPitch;
+          for (UINT offset = 0; offset < kStreamlineInputSampleRowPitch;
+               ++offset) {
+            const auto value = static_cast<std::uint8_t>(row_bytes[offset]);
+            hash ^= value;
+            hash *= hash_prime;
+            nonzero_bytes += value != 0 ? 1U : 0U;
+          }
+        }
+        hashes[sample_eye][type] = hash;
+        write_streamline_probe_log(
+            "INPUT_SNAPSHOT_SAMPLE\tpresent_frame=%llu\tpose=%llu"
+            "\teye=%zu\ttype=%zu\ttype_name=%s\thash=%016llx"
+            "\tnonzero_bytes=%llu\tbytes=%llu\r\n",
+            static_cast<unsigned long long>(state.present_frame),
+            static_cast<unsigned long long>(state.pose_sequence), sample_eye,
+            type, kStreamlineInputNames[type],
+            static_cast<unsigned long long>(hashes[sample_eye][type]),
+            static_cast<unsigned long long>(nonzero_bytes),
+            static_cast<unsigned long long>(kStreamlineInputSampleBytes));
+      }
+    }
+    const D3D12_RANGE written_range{0, 0};
+    state.readback->Unmap(0, &written_range);
+    std::uint32_t divergent_mask{};
+    for (std::size_t type = 0; type < kStreamlineInputCount; ++type) {
+      if (hashes[0][type] != hashes[1][type]) {
+        divergent_mask |= 1U << type;
+      }
+    }
+    state.readback_pending = false;
+    state.readback_complete = true;
+    write_streamline_probe_log(
+        "INPUT_SNAPSHOT_READBACK\tphase=complete\tpresent_frame=%llu"
+        "\tpose=%llu\tfence_value=%llu\tsample_count=%zu"
+        "\tdivergent_mask=%u\r\n",
+        static_cast<unsigned long long>(state.present_frame),
+        static_cast<unsigned long long>(state.pose_sequence),
+        static_cast<unsigned long long>(state.fence_value),
+        kStreamlineInputCount * 2, divergent_mask);
+    return;
+  }
+  if (state.complete) {
+    ComPtr<ID3D12Device> device;
+    if (FAILED(queue->GetDevice(IID_PPV_ARGS(&device)))) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "INPUT_SNAPSHOT_READBACK\tphase=failed\treason=get_device\r\n");
+      return;
+    }
+    D3D12_HEAP_PROPERTIES readback_heap{};
+    readback_heap.Type = D3D12_HEAP_TYPE_READBACK;
+    D3D12_RESOURCE_DESC readback_description{};
+    readback_description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    std::uint64_t readback_bytes{};
+    for (std::size_t sample_eye = 0; sample_eye < 2; ++sample_eye) {
+      for (std::size_t type = 0; type < kStreamlineInputCount; ++type) {
+        auto footprint_description =
+            state.snapshots[sample_eye][type]->GetDesc();
+        footprint_description.Flags = D3D12_RESOURCE_FLAG_NONE;
+        footprint_description.DepthOrArraySize = 1;
+        footprint_description.MipLevels = 1;
+        if (type != 0) {
+          footprint_description.Width = kStreamlineInputSampleWidth;
+          footprint_description.Height = kStreamlineInputSampleHeight;
+        }
+        if (footprint_description.Format == DXGI_FORMAT_R32_TYPELESS) {
+          footprint_description.Format = DXGI_FORMAT_R32_FLOAT;
+        } else if (footprint_description.Format ==
+                   DXGI_FORMAT_R16G16_TYPELESS) {
+          footprint_description.Format = DXGI_FORMAT_R16G16_FLOAT;
+        } else if (footprint_description.Format ==
+                   DXGI_FORMAT_R8G8B8A8_TYPELESS) {
+          footprint_description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        }
+        UINT64 footprint_bytes{};
+        device->GetCopyableFootprints(
+            &footprint_description, 0, 1, readback_bytes,
+            &state.readback_footprints[sample_eye][type], nullptr, nullptr,
+            &footprint_bytes);
+        readback_bytes =
+            state.readback_footprints[sample_eye][type].Offset +
+            footprint_bytes;
+      }
+    }
+    state.readback_bytes = readback_bytes;
+    readback_description.Width = state.readback_bytes;
+    readback_description.Height = 1;
+    readback_description.DepthOrArraySize = 1;
+    readback_description.MipLevels = 1;
+    readback_description.SampleDesc.Count = 1;
+    readback_description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    if (FAILED(device->CreateCommittedResource(
+            &readback_heap, D3D12_HEAP_FLAG_NONE, &readback_description,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            IID_PPV_ARGS(&state.readback))) ||
+        FAILED(device->CreateCommandAllocator(
+            D3D12_COMMAND_LIST_TYPE_DIRECT,
+            IID_PPV_ARGS(&state.readback_allocator))) ||
+        FAILED(device->CreateCommandList(
+            0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+            state.readback_allocator.Get(), nullptr,
+            IID_PPV_ARGS(&state.readback_commands)))) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "INPUT_SNAPSHOT_READBACK\tphase=failed"
+          "\treason=create_resources\r\n");
+      return;
+    }
+    for (std::size_t sample_eye = 0; sample_eye < 2; ++sample_eye) {
+      for (std::size_t type = 0; type < kStreamlineInputCount; ++type) {
+        const auto& snapshot = state.snapshots[sample_eye][type];
+        const auto description = snapshot->GetDesc();
+        if (description.Width < kStreamlineInputSampleWidth ||
+            description.Height < kStreamlineInputSampleHeight) {
+          state.failed = true;
+          write_streamline_probe_log(
+              "INPUT_SNAPSHOT_READBACK\tphase=failed"
+              "\treason=small_resource\teye=%zu\ttype=%zu\r\n",
+              sample_eye, type);
+          return;
+        }
+        D3D12_RESOURCE_BARRIER barrier{};
+        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Transition.pResource = snapshot.Get();
+        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+        barrier.Transition.Subresource =
+            D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        state.readback_commands->ResourceBarrier(1, &barrier);
+        D3D12_TEXTURE_COPY_LOCATION destination{};
+        destination.pResource = state.readback.Get();
+        destination.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        destination.PlacedFootprint =
+            state.readback_footprints[sample_eye][type];
+        D3D12_TEXTURE_COPY_LOCATION source{};
+        source.pResource = snapshot.Get();
+        source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        const auto left = static_cast<UINT>(
+            (description.Width - kStreamlineInputSampleWidth) / 2);
+        const auto top =
+            (description.Height - kStreamlineInputSampleHeight) / 2;
+        const D3D12_BOX box{left, top, 0,
+                            left + kStreamlineInputSampleWidth,
+                            top + kStreamlineInputSampleHeight, 1};
+        state.readback_commands->CopyTextureRegion(
+            &destination, 0, 0, 0, &source, type == 0 ? nullptr : &box);
+        std::swap(barrier.Transition.StateBefore,
+                  barrier.Transition.StateAfter);
+        state.readback_commands->ResourceBarrier(1, &barrier);
+      }
+    }
+    const auto close_result = state.readback_commands->Close();
+    if (FAILED(close_result)) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "INPUT_SNAPSHOT_READBACK\tphase=failed\treason=close"
+          "\thresult=0x%08x\r\n",
+          static_cast<unsigned>(close_result));
+      return;
+    }
+    ID3D12CommandList* readback_lists[]{state.readback_commands.Get()};
+    original_execute_command_lists(queue, 1, readback_lists);
+    const std::uint64_t readback_fence_value = 3;
+    if (FAILED(queue->Signal(state.fence.Get(), readback_fence_value))) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "INPUT_SNAPSHOT_READBACK\tphase=failed\treason=signal\r\n");
+      return;
+    }
+    state.fence_value = readback_fence_value;
+    state.readback_pending = true;
+    write_streamline_probe_log(
+        "INPUT_SNAPSHOT_READBACK\tphase=scheduled\tpresent_frame=%llu"
+        "\tpose=%llu\tfence_value=%llu\tsample_count=%zu"
+        "\tsample_extent=%ux%u\treadback_bytes=%llu\r\n",
+        static_cast<unsigned long long>(state.present_frame),
+        static_cast<unsigned long long>(state.pose_sequence),
+        static_cast<unsigned long long>(state.fence_value),
+        kStreamlineInputCount * 2, kStreamlineInputSampleWidth,
+        kStreamlineInputSampleHeight,
+        static_cast<unsigned long long>(state.readback_bytes));
     return;
   }
   if (state.pending) {

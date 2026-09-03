@@ -640,6 +640,21 @@ content identity: fence-complete GPU readback must show that the separately
 timed snapshots are populated and, where eye-dependent content is expected,
 not byte-identical.
 
+That content gate now passes. The probe performs one fence-ordered, nonblocking
+readback after the ten snapshot copies complete. It uses driver-derived placed
+footprints, copies the full depth subresource as D3D12 requires, and hashes a
+centered 64x64 region from every resource. All ten samples were populated and
+all five eye pairs differed (`content_divergent_mask=31`): depth hashes were
+`91723da6b17ff476`/`8ac40b2ecb5de771`, motion vectors
+`70598842c8c7297f`/`486edabaf701d165`, HUD-less colour
+`bc90cd93ba3c4b75`/`4ac4ff4c6b2b1675`, scaling input
+`4e2a5bfb2adb8f8c`/`3eee8747c6b25062`, and scaling output
+`618188e69f3e1b63`/`acb7cb0b5d5d705a`. The analyzer reported `result=pass`.
+The confirming run remained clean at 8,258/8,258 OpenXR submissions, 1,069
+fresh pairs, and zero capture failures, stale frames, timeouts, reuse or pose
+mismatches. This closes the independent-content prerequisite; no snapshot was
+published to XR or passed to a Streamline evaluation.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:
@@ -756,12 +771,13 @@ correction used `preflight-20260903T013512Z.json` through
 1. Prototype independent per-eye Streamline inputs and one side-by-side stereo
    backbuffer. The current eye viewports share depth, motion and DLSS scaling
    allocations and only the primary viewport enables DLSS-G, so do not route
-   the transported desktop generated image into XR presentation. Start with a
-   bounded, diagnostic-only snapshot at the proven per-eye output execute
-   boundary: preserve the tag's observed D3D12 state, enqueue on the owning
-   direct queue, and require fence completion plus independent identities
-   before feeding the fail-closed stereo-input policy. Preserve the external
-   consumer as the later binocular-output transport gate.
+   the transported desktop generated image into XR presentation. The bounded
+   diagnostic snapshot now proves fence completion, unique identities, a
+   `ready` fail-closed policy verdict and distinct content for all five input
+   classes. Next bind that preserved pair to the exact observed Streamline
+   frame token/index and constants, then construct the diagnostic side-by-side
+   input without changing live presentation. Preserve the external consumer as
+   the later binocular-output transport gate.
 2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,
    radii and length if its alignment is sound; reject the route if the lack of
