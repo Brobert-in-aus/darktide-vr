@@ -802,6 +802,10 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $nativeCaptureSource.Contains(
             '\tback_buffer_index=%u\tback_buffer=%p\twidth=%llu') -or
         -not $nativeCaptureSource.Contains(
+            '\tlast_execute_queue=%p\tlast_execute_queue_type=%u') -or
+        -not $nativeCaptureSource.Contains(
+            '\tlast_execute_list_count=%u\tlast_execute_delta_us=%lld') -or
+        -not $nativeCaptureSource.Contains(
             'streamline_native_present_count.load(std::memory_order_relaxed)') -or
         -not $nativeCaptureSource.Contains(
             '(present <= 5 || present % 120 == 0)')) {

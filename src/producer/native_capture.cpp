@@ -68,6 +68,13 @@ std::atomic<std::uint64_t> streamline_feature_resolve_count{};
 std::atomic<std::uint64_t> streamline_dlssg_state_count{};
 std::atomic<std::uint64_t> streamline_dlssg_options_count{};
 std::atomic<std::uint64_t> streamline_native_present_count{};
+std::atomic<std::uint64_t> streamline_execute_count{};
+std::atomic<std::int64_t> streamline_last_execute_qpc{};
+std::atomic<std::uint64_t> streamline_last_execute_outer_frame{};
+std::atomic<ID3D12CommandQueue*> streamline_last_execute_queue{};
+std::atomic<DWORD> streamline_last_execute_thread{};
+std::atomic<UINT> streamline_last_execute_list_count{};
+std::atomic<UINT> streamline_last_execute_queue_type{};
 
 BOOL CALLBACK initialize_dxc_reflection(PINIT_ONCE, PVOID, PVOID*) {
   std::array<wchar_t, 32768> module_path{};
@@ -8313,6 +8320,23 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
   const auto queue_type = queue == known_game_queue
                               ? D3D12_COMMAND_LIST_TYPE_DIRECT
                               : queue->GetDesc().Type;
+  if (streamline_probe_log != INVALID_HANDLE_VALUE) {
+    LARGE_INTEGER execute_qpc{};
+    QueryPerformanceCounter(&execute_qpc);
+    streamline_execute_count.fetch_add(1, std::memory_order_relaxed);
+    streamline_last_execute_outer_frame.store(
+        present_count.load(std::memory_order_relaxed),
+        std::memory_order_relaxed);
+    streamline_last_execute_queue.store(queue, std::memory_order_relaxed);
+    streamline_last_execute_thread.store(GetCurrentThreadId(),
+                                         std::memory_order_relaxed);
+    streamline_last_execute_list_count.store(count,
+                                             std::memory_order_relaxed);
+    streamline_last_execute_queue_type.store(
+        static_cast<UINT>(queue_type), std::memory_order_relaxed);
+    streamline_last_execute_qpc.store(execute_qpc.QuadPart,
+                                      std::memory_order_release);
+  }
   if (queue_type == D3D12_COMMAND_LIST_TYPE_DIRECT &&
       !game_queue_initialized.load(std::memory_order_acquire)) {
     std::scoped_lock lock(state_mutex);
@@ -9166,12 +9190,25 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
         back_buffer_description = back_buffer->GetDesc();
       }
     }
+    const auto last_execute_qpc =
+        streamline_last_execute_qpc.load(std::memory_order_acquire);
+    LARGE_INTEGER qpc_frequency{};
+    QueryPerformanceFrequency(&qpc_frequency);
+    const auto execute_delta_microseconds =
+        last_execute_qpc > 0 && begin.QuadPart >= last_execute_qpc &&
+                qpc_frequency.QuadPart > 0
+            ? (begin.QuadPart - last_execute_qpc) * 1000000LL /
+                  qpc_frequency.QuadPart
+            : -1;
     write_streamline_probe_log(
         "NATIVE_PRESENT_BEGIN\tcall=%llu\touter_frame=%llu\tthread=%lu"
         "\tqpc=%lld\tswapchain=%p\tinterval=%u\tflags=%u"
         "\tlast_present_result=%ld\tlast_present=%u"
         "\tback_buffer_index=%u\tback_buffer=%p\twidth=%llu"
-        "\theight=%u\tformat=%u\r\n",
+        "\theight=%u\tformat=%u\tlast_execute_call=%llu"
+        "\tlast_execute_outer_frame=%llu\tlast_execute_thread=%lu"
+        "\tlast_execute_queue=%p\tlast_execute_queue_type=%u"
+        "\tlast_execute_list_count=%u\tlast_execute_delta_us=%lld\r\n",
         static_cast<unsigned long long>(call),
         static_cast<unsigned long long>(
             present_count.load(std::memory_order_relaxed)),
@@ -9180,7 +9217,17 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
         back_buffer.Get(),
         static_cast<unsigned long long>(back_buffer_description.Width),
         back_buffer_description.Height,
-        static_cast<unsigned>(back_buffer_description.Format));
+        static_cast<unsigned>(back_buffer_description.Format),
+        static_cast<unsigned long long>(
+            streamline_execute_count.load(std::memory_order_relaxed)),
+        static_cast<unsigned long long>(
+            streamline_last_execute_outer_frame.load(
+                std::memory_order_relaxed)),
+        streamline_last_execute_thread.load(std::memory_order_relaxed),
+        streamline_last_execute_queue.load(std::memory_order_relaxed),
+        streamline_last_execute_queue_type.load(std::memory_order_relaxed),
+        streamline_last_execute_list_count.load(std::memory_order_relaxed),
+        execute_delta_microseconds);
   }
   const auto result =
       original_streamline_native_present(swapchain, interval, flags);

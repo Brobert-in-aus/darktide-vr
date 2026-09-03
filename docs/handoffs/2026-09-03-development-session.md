@@ -358,6 +358,21 @@ synchronization and copy experiment that assigns an exact source/generated
 pair index and transports the generated resource without stalling or racing
 the plugin's private queue.
 
+The next observe-only trace identified that queue. For 26 of 29 sampled
+asynchronous Presents, the immediately preceding global `ExecuteCommandLists`
+snapshot was on the same secondary thread, used one command list on one direct
+D3D12 queue, and preceded Present by an average 86 microseconds with a
+124-microsecond maximum. The other three snapshots were overwritten by
+concurrent queue traffic rather than contradicting the same-thread sequence.
+The third 90-second run again showed
+mode 1 and 1,668 surplus native calls by sampled outer frame 6,120. It submitted
+8,371/8,371 OpenXR frames with 1,377 fresh shared pairs, zero reuse, capture
+failures, stale frames and pair-driven timeouts; one pair-pose mismatch was
+reported. The copy prototype should append its barrier/copy/fence work to this
+identified generator queue, then let the native Present proceed. Do not submit
+the copy on DarktideVR's game/present queue or assume the state-query input
+fence means generated output completion.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:

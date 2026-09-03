@@ -111,6 +111,18 @@ Write-Output "native_present.asynchronous_samples=$($asynchronousNativeSamples.C
 if ($asynchronousNativeSamples.Count -gt 0) {
     Write-Output "native_present.first_asynchronous_call=$($asynchronousNativeSamples[0].call)"
     Write-Output "native_present.first_asynchronous_outer_frame=$($asynchronousNativeSamples[0].outer_frame)"
+    $sameThreadExecuteSamples = @($asynchronousNativeSamples | Where-Object {
+            $_.last_execute_thread -eq $_.thread
+        })
+    Write-Output "native_present.asynchronous_last_execute_same_thread=$($sameThreadExecuteSamples.Count)"
+    Write-Output "native_present.same_thread_execute_queue_count=$(@($sameThreadExecuteSamples.last_execute_queue | Sort-Object -Unique).Count)"
+    Write-Output "native_present.same_thread_execute_queue_types=$(($sameThreadExecuteSamples.last_execute_queue_type | Sort-Object -Unique) -join ',')"
+    $executeDeltas = @($sameThreadExecuteSamples | ForEach-Object {
+            [double]$_.last_execute_delta_us
+        })
+    $executeDelta = $executeDeltas | Measure-Object -Average -Maximum
+    Write-Output ('native_present.same_thread_execute_delta_us_average={0:F2}' -f $executeDelta.Average)
+    Write-Output ('native_present.same_thread_execute_delta_us_max={0:F2}' -f $executeDelta.Maximum)
 }
 $lastOuterSample = $ends | Select-Object -Last 1
 if ($null -ne $lastOuterSample.native_present_count) {
