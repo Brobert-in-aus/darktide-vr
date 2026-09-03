@@ -545,6 +545,19 @@ separation was `0.06259995` (range `0.06259966`-`0.06260015`), matching the
 OpenXR runtime IPD of `0.0626`. The projection/inverse/lens matrices remained
 stable per eye while both temporal clip transforms evolved frame by frame.
 
+Because legacy `slSetTag` has no frame parameter, the analyzer correlates each
+tag to the nearest constants call sharing its exact logical eye, viewport and
+armed pose. The confirming run resolved all 1,200 gameplay resource tags. The
+early depth, motion and HUD-less calls were only 60.60 microseconds from their
+matched constants on average (227.10 microseconds maximum); the full set,
+including later scaling calls, averaged 920.36 microseconds with an 18.295 ms
+maximum. This yielded 118 complete early-resource frame pairs and 119 complete
+scaling pairs. Depth and motion aliased on all 118 early pairs; scaling input
+and output aliased on all 119 scaling pairs; HUD-less colour aliased on zero of
+118 pairs. A trial forward label agreed with the offline join on only 483/618
+comparable tags when poses repeated, so it was removed rather than promoted to
+architecture.
+
 This explains why the present-seam output is unsuitable for direct binocular
 submission: the existing sequential dual-render path has two colour endpoints
 but does not preserve independent per-eye temporal inputs through Present. A
@@ -558,6 +571,10 @@ mismatches.
 The later constants-identity confirming run remained clean at 8,725/8,725
 OpenXR submissions, 1,848 fresh shared pairs, and zero reuse, capture failures,
 stale frames, timeouts or pose mismatches.
+
+The frame-level resource confirming run remained clean at 8,949/8,949 OpenXR
+submissions, 1,867 fresh shared pairs, and zero reuse, capture failures, stale
+frames, timeouts or pose mismatches.
 
 ## Runtime evidence
 

@@ -377,6 +377,104 @@ Write-Output "resource_tag.stereo_missing_eye1_types=$($stereoReadiness.MissingE
 Write-Output "resource_tag.stereo_aliased_types=$($stereoReadiness.AliasedTypes -join ',')"
 Write-Output "resource_tag.stereo_input_ready=$([int]$stereoReadiness.Ready)"
 Write-Output "resource_tag.stereo_input_blockers=$($stereoReadiness.Blockers -join ',')"
+$nativeFrameLabeledResourceTags = @($resourceTags | Where-Object {
+        $_.PSObject.Properties['frame_index'] -and
+        $_.frame_index -ne '4294967295' -and
+        $_.armed_eye -in @('0', '1')
+    })
+Write-Output "resource_tag.native_frame_labeled_samples=$($nativeFrameLabeledResourceTags.Count)"
+$constantsByEyeViewportPose = @{}
+foreach ($constant in @($setConstants | Where-Object {
+            $_.PSObject.Properties['frame_index'] -and
+            $_.frame_index -ne '4294967295' -and
+            $_.armed_eye -in @('0', '1')
+        })) {
+    $key = "$($constant.armed_eye)|$($constant.viewport)|$($constant.armed_pose)"
+    if (-not $constantsByEyeViewportPose.ContainsKey($key)) {
+        $constantsByEyeViewportPose[$key] = @()
+    }
+    $constantsByEyeViewportPose[$key] += $constant
+}
+$resolvedResourceTags = @()
+$nativeOfflineComparable = 0
+$nativeOfflineAgreement = 0
+foreach ($tag in @($resourceTags | Where-Object {
+            $_.armed_eye -in @('0', '1')
+        })) {
+    $resolvedFrame = $null
+    $resolvedConstantsCall = $null
+    $resolutionSource = $null
+    $resolutionDeltaUs = $null
+    $key = "$($tag.armed_eye)|$($tag.viewport)|$($tag.armed_pose)"
+    if ($constantsByEyeViewportPose.ContainsKey($key)) {
+        $nearest = $constantsByEyeViewportPose[$key] | Sort-Object @{
+            Expression = { [Math]::Abs([double]$_.qpc - [double]$tag.qpc) }
+        } | Select-Object -First 1
+        $resolvedFrame = $nearest.frame_index
+        $resolvedConstantsCall = $nearest.call
+        $resolutionSource = 'offline_nearest'
+        $resolutionDeltaUs = [Math]::Abs(
+            ([double]$nearest.qpc - [double]$tag.qpc) * 1000000.0 /
+                [Diagnostics.Stopwatch]::Frequency)
+        if ($tag.PSObject.Properties['frame_index'] -and
+                $tag.frame_index -ne '4294967295') {
+            ++$nativeOfflineComparable
+            if ($tag.frame_index -eq $nearest.frame_index) {
+                ++$nativeOfflineAgreement
+            }
+        }
+    }
+    elseif ($tag.PSObject.Properties['frame_index'] -and
+            $tag.frame_index -ne '4294967295') {
+        $resolvedFrame = $tag.frame_index
+        $resolvedConstantsCall = $tag.constants_call
+        $resolutionSource = 'native_forward_fallback'
+        $resolutionDeltaUs = 0.0
+    }
+    if ($null -ne $resolvedFrame) {
+        $resolvedResourceTags += $tag | Select-Object *,
+            @{ Name = 'resolved_frame_index'; Expression = { $resolvedFrame } },
+            @{ Name = 'resolved_constants_call'; Expression = { $resolvedConstantsCall } },
+            @{ Name = 'resolution_source'; Expression = { $resolutionSource } },
+            @{ Name = 'resolution_delta_us'; Expression = { $resolutionDeltaUs } }
+    }
+}
+Write-Output "resource_tag.resolved_frame_labeled_samples=$($resolvedResourceTags.Count)"
+Write-Output "resource_tag.offline_resolved_samples=$(@($resolvedResourceTags | Where-Object resolution_source -eq 'offline_nearest').Count)"
+Write-Output "resource_tag.native_offline_comparable_samples=$nativeOfflineComparable"
+Write-Output "resource_tag.native_offline_agreement_samples=$nativeOfflineAgreement"
+if ($resolvedResourceTags.Count -gt 0) {
+    Write-Output "resource_tag.frame_constants_call_count=$(@($resolvedResourceTags.resolved_constants_call | Sort-Object -Unique).Count)"
+    $offlineResolutionDeltas = @($resolvedResourceTags |
+        Where-Object resolution_source -eq 'offline_nearest' |
+        Select-Object -ExpandProperty resolution_delta_us)
+    if ($offlineResolutionDeltas.Count -gt 0) {
+        $resolutionDelta = $offlineResolutionDeltas |
+            Measure-Object -Average -Maximum
+        Write-Output ('resource_tag.offline_resolution_delta_us_average={0:F2}' -f $resolutionDelta.Average)
+        Write-Output ('resource_tag.offline_resolution_delta_us_max={0:F2}' -f $resolutionDelta.Maximum)
+    }
+    foreach ($typeName in $stereoReadiness.RequiredTypes) {
+        $typeFrames = @($resolvedResourceTags |
+            Where-Object type_name -eq $typeName |
+            Group-Object resolved_frame_index)
+        $pairedFrames = @($typeFrames | Where-Object {
+                @($_.Group | Where-Object armed_eye -eq '0').Count -gt 0 -and
+                @($_.Group | Where-Object armed_eye -eq '1').Count -gt 0
+            })
+        $aliasedFrames = @($pairedFrames | Where-Object {
+                $eye0Native = @($_.Group |
+                    Where-Object armed_eye -eq '0' |
+                    Select-Object -ExpandProperty native -Unique)
+                $eye1Native = @($_.Group |
+                    Where-Object armed_eye -eq '1' |
+                    Select-Object -ExpandProperty native -Unique)
+                @($eye0Native | Where-Object { $eye1Native -contains $_ }).Count -gt 0
+            })
+        Write-Output "resource_tag.${typeName}.paired_frame_count=$($pairedFrames.Count)"
+        Write-Output "resource_tag.${typeName}.aliased_frame_count=$($aliasedFrames.Count)"
+    }
+}
 Write-Output "resource_tag.ui_color_alpha.samples=$(@($resourceTags |
         Where-Object type_name -eq 'ui_color_alpha').Count)"
 if ($stateCalls.Count -gt 0) {
