@@ -1103,6 +1103,8 @@ std::unordered_map<ID3D12GraphicsCommandList*, std::vector<std::string>>
 std::uint64_t camera_output_width{};
 UINT camera_output_height{};
 DXGI_FORMAT camera_output_format{DXGI_FORMAT_UNKNOWN};
+std::atomic<UINT> camera_input_width{1920};
+std::atomic<UINT> camera_input_height{2160};
 std::atomic<bool> swapchain_render_extent_enabled{};
 std::atomic<UINT> swapchain_render_width{1920};
 std::atomic<UINT> swapchain_render_height{2160};
@@ -1116,6 +1118,13 @@ HWND virtual_window_proc_window{};
 WNDPROC original_game_window_proc{};
 std::atomic<int> swapchain_resize_nudge_phase{};
 RECT swapchain_resize_nudge_original_window{};
+
+bool camera_capture_extent_matches(std::uint64_t width, UINT height) noexcept {
+  const auto input_width = camera_input_width.load(std::memory_order_relaxed);
+  const auto input_height = camera_input_height.load(std::memory_order_relaxed);
+  return (width == input_width && height == input_height) ||
+         (width == camera_output_width && height == camera_output_height);
+}
 
 std::atomic<UINT> mirror_client_width{};
 std::atomic<UINT> mirror_client_height{};
@@ -7311,8 +7320,8 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
     // captured before the upper-left output_target inset is added.
     const auto& trace = command_traces[commands];
     if (vertex_count == 3 && instance_count == 1 &&
-        trace.viewport_width == camera_output_width &&
-        trace.viewport_height == camera_output_height &&
+        camera_capture_extent_matches(trace.viewport_width,
+                                      trace.viewport_height) &&
         trace.render_target != 0) {
       const auto target = descriptor_snapshot(trace.render_target);
       auto* resource = reinterpret_cast<ID3D12Resource*>(target.resource);
@@ -8614,8 +8623,8 @@ void STDMETHODCALLTYPE resource_barrier_hook(
         record_gpu_stage_boundary(commands, stage_target);
         if (census_enabled &&
             description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
-            description.Width == camera_output_width &&
-            description.Height == camera_output_height &&
+            camera_capture_extent_matches(description.Width,
+                                          description.Height) &&
             is_named_eye_output_resource(barrier.Transition.pResource)) {
           write_boundary_census_log(
               "frame=%llu\tEYE_OUTPUT_TRANSITION\tCL=%p\tresource=%p"
@@ -8647,8 +8656,8 @@ void STDMETHODCALLTYPE resource_barrier_hook(
         }
         if (census_enabled &&
             description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
-            description.Width == camera_output_width &&
-            description.Height == camera_output_height &&
+            camera_capture_extent_matches(description.Width,
+                                          description.Height) &&
             barrier.Transition.StateAfter ==
                 D3D12_RESOURCE_STATE_RENDER_TARGET &&
             barrier.Flags == D3D12_RESOURCE_BARRIER_FLAG_NONE) {
@@ -8681,8 +8690,8 @@ void STDMETHODCALLTYPE resource_barrier_hook(
         const auto named_eye_index =
             !is_known_output &&
                     description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
-                    description.Width == camera_output_width &&
-                    description.Height == camera_output_height
+                    camera_capture_extent_matches(description.Width,
+                                                  description.Height)
                 ? named_eye_final_index(barrier.Transition.pResource)
                 : -1;
         const bool is_named_eye_final = named_eye_index >= 0;
@@ -8718,8 +8727,8 @@ void STDMETHODCALLTYPE resource_barrier_hook(
           }
         }
         if (description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
-            description.Width == camera_output_width &&
-            description.Height == camera_output_height &&
+            camera_capture_extent_matches(description.Width,
+                                          description.Height) &&
             (description.Format == camera_output_format ||
              is_named_eye_final || is_known_output) &&
             barrier.Transition.StateAfter == D3D12_RESOURCE_STATE_RENDER_TARGET &&
@@ -8738,8 +8747,8 @@ void STDMETHODCALLTYPE resource_barrier_hook(
         }
         const auto is_completed_output =
             description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
-            description.Width == camera_output_width &&
-            description.Height == camera_output_height &&
+            camera_capture_extent_matches(description.Width,
+                                          description.Height) &&
             (description.Format == camera_output_format ||
              is_named_eye_final || is_known_output) &&
             barrier.Transition.StateBefore ==
@@ -8749,8 +8758,8 @@ void STDMETHODCALLTYPE resource_barrier_hook(
             is_known_output;
         if (census_enabled &&
             description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
-            description.Width == camera_output_width &&
-            description.Height == camera_output_height &&
+            camera_capture_extent_matches(description.Width,
+                                          description.Height) &&
             barrier.Transition.StateBefore ==
                 D3D12_RESOURCE_STATE_RENDER_TARGET &&
             barrier.Transition.StateAfter == shader_resource_state &&
@@ -8885,8 +8894,8 @@ void STDMETHODCALLTYPE enhanced_barrier_hook(
         if (barrier.pResource && log_resources) {
           const auto description = barrier.pResource->GetDesc();
           if (description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
-              description.Width == camera_output_width &&
-              description.Height == camera_output_height &&
+              camera_capture_extent_matches(description.Width,
+                                            description.Height) &&
               is_named_eye_output_resource(barrier.pResource)) {
             write_boundary_census_log(
                 "frame=%llu\tEYE_OUTPUT_ENHANCED\tCL=%p\tresource=%p"
@@ -9110,7 +9119,18 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
       return;
     }
     auto stereo_description = left_description;
-    stereo_description.Width *= 2;
+    const auto requested_eye_width =
+        camera_input_width.load(std::memory_order_relaxed);
+    const auto crop_wide_eye =
+        streamline_stereo_swapchain_probe_requested.load(
+            std::memory_order_acquire) &&
+        requested_eye_width > 0 &&
+        left_description.Width ==
+            static_cast<std::uint64_t>(requested_eye_width) * 2;
+    const auto stereo_eye_width =
+        crop_wide_eye ? static_cast<std::uint64_t>(requested_eye_width)
+                      : left_description.Width;
+    stereo_description.Width = stereo_eye_width * 2;
     stereo_description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -9145,10 +9165,13 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
       D3D12_TEXTURE_COPY_LOCATION source{};
       source.pResource = source_resource.Get();
       source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+      const D3D12_BOX source_box{
+          0, 0, 0, static_cast<UINT>(stereo_eye_width),
+          left_description.Height, 1};
       state.stereo_backbuffer_commands->CopyTextureRegion(
           &destination,
-          static_cast<UINT>(source_eye * left_description.Width), 0, 0,
-          &source, nullptr);
+          static_cast<UINT>(source_eye * stereo_eye_width), 0, 0, &source,
+          crop_wide_eye ? &source_box : nullptr);
       std::swap(barrier.Transition.StateBefore,
                 barrier.Transition.StateAfter);
       state.stereo_backbuffer_commands->ResourceBarrier(1, &barrier);
@@ -9196,7 +9219,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
         static_cast<unsigned long long>(stereo_description.Width),
         stereo_description.Height,
         static_cast<unsigned>(stereo_description.Format),
-        static_cast<unsigned long long>(left_description.Width));
+        static_cast<unsigned long long>(stereo_eye_width));
     return;
   }
   if (state.complete && state.readback_pending) {
@@ -14425,6 +14448,9 @@ extern "C" __declspec(dllexport) int dtvr_set_swapchain_render_extent(
   if (width < 640 || height < 640 || width > 7680 || height > 7680) {
     return 1;
   }
+  camera_input_width.store(static_cast<UINT>(width),
+                           std::memory_order_relaxed);
+  camera_input_height.store(height, std::memory_order_relaxed);
   if (streamline_stereo_swapchain_probe_requested.load(
           std::memory_order_acquire)) {
     if (width > 3840) {

@@ -374,7 +374,8 @@ if ($setConstantMatrices.Count -gt 0) {
         $eyeMatrices = @($setConstantMatrices |
             Where-Object armed_eye -eq "$eye")
         Write-Output "set_constants.eye${eye}.matrix_samples=$($eyeMatrices.Count)"
-        foreach ($name in @($eyeMatrices.name | Sort-Object -Unique)) {
+        foreach ($name in @($eyeMatrices | ForEach-Object { $_.name } |
+                Sort-Object -Unique)) {
             $namedMatrices = @($eyeMatrices | Where-Object name -eq $name)
             Write-Output "set_constants.eye${eye}.${name}.distinct_values=$(@($namedMatrices.values | Sort-Object -Unique).Count)"
         }
@@ -396,8 +397,8 @@ if ($resourceTags.Count -gt 0) {
     }
     $eye0Tags = @($resourceTags | Where-Object armed_eye -eq '0')
     $eye1Tags = @($resourceTags | Where-Object armed_eye -eq '1')
-    foreach ($typeName in @(($eye0Tags.type_name + $eye1Tags.type_name) |
-            Sort-Object -Unique)) {
+    foreach ($typeName in @(($eye0Tags + $eye1Tags) |
+            ForEach-Object { $_.type_name } | Sort-Object -Unique)) {
         $eye0Native = @($eye0Tags | Where-Object type_name -eq $typeName |
             Select-Object -ExpandProperty native -Unique)
         $eye1Native = @($eye1Tags | Where-Object type_name -eq $typeName |
@@ -645,8 +646,8 @@ if ($inputSnapshotReadbacks.Count -gt 0) {
     }
 }
 if ($inputSnapshotSamples.Count -gt 0) {
-    foreach ($typeName in @($inputSnapshotSamples.type_name |
-            Sort-Object -Unique)) {
+    foreach ($typeName in @($inputSnapshotSamples |
+            ForEach-Object { $_.type_name } | Sort-Object -Unique)) {
         $typeSamples = @($inputSnapshotSamples |
             Where-Object type_name -eq $typeName)
         Write-Output "input_snapshot.${typeName}.content_hashes=$(($typeSamples.hash) -join ',')"

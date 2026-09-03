@@ -194,16 +194,18 @@ if (-not $SkipDeploymentSync) {
 
 $psykhaniumFlag = $null
 $psykhaniumFlagOriginal = $null
+$psykhaniumFlagExisted = $false
 if ($EnterPsykhanium) {
     if (Get-Process Darktide -ErrorAction SilentlyContinue) {
         throw 'Psykhanium entry must be armed before Darktide starts; close the game and retry.'
     }
     $psykhaniumFlag = Join-Path $GameRoot `
         'mods\darktidevr_stereo_probe\darktidevr_enter_psykhanium.flag'
-    if (-not (Test-Path -LiteralPath $psykhaniumFlag -PathType Leaf)) {
-        throw "Psykhanium one-shot flag not found: $psykhaniumFlag"
+    $psykhaniumFlagExisted =
+        Test-Path -LiteralPath $psykhaniumFlag -PathType Leaf
+    if ($psykhaniumFlagExisted) {
+        $psykhaniumFlagOriginal = Get-Content -LiteralPath $psykhaniumFlag -Raw
     }
-    $psykhaniumFlagOriginal = Get-Content -LiteralPath $psykhaniumFlag -Raw
     Set-Content -LiteralPath $psykhaniumFlag -Value 'enter' -Encoding ascii
     Write-Output 'Psykhanium entry armed before launcher startup.'
 
@@ -912,9 +914,15 @@ finally {
         } while ($true)
     }
     if ($psykhaniumFlag) {
-        Set-Content -LiteralPath $psykhaniumFlag `
-            -Value $psykhaniumFlagOriginal.Trim() -Encoding ascii
-        Write-Output 'Restored the prior Psykhanium one-shot flag.'
+        if ($psykhaniumFlagExisted) {
+            Set-Content -LiteralPath $psykhaniumFlag `
+                -Value $psykhaniumFlagOriginal.Trim() -Encoding ascii
+            Write-Output 'Restored the prior Psykhanium one-shot flag.'
+        }
+        elseif (Test-Path -LiteralPath $psykhaniumFlag -PathType Leaf) {
+            Remove-Item -LiteralPath $psykhaniumFlag -Force
+            Write-Output 'Removed the run-owned Psykhanium one-shot flag.'
+        }
     }
     if ($billboardIdentityCapturePath -and $billboardIdentityLogPath -and
             (Test-Path -LiteralPath $billboardIdentityLogPath -PathType Leaf)) {

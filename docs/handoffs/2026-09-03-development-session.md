@@ -796,6 +796,8 @@ source was removed.
 .\tools\stereo\read-streamline-probe.ps1
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 100 -GameStartTimeoutSeconds 600 -StreamlineStereoSwapchainProbe -EnterPsykhanium -SkipDeploymentSync
 .\tools\stereo\read-streamline-probe.ps1
+.\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 150 -GameStartTimeoutSeconds 600 -StreamlineStereoSwapchainProbe -StreamlineTargetTokenProbe -EnterPsykhanium -SkipDeploymentSync
+.\tools\stereo\read-streamline-probe.ps1
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native
@@ -851,9 +853,17 @@ correction used `preflight-20260903T013512Z.json` through
    28, with no snapshot, token or transport activity. XR stereo later attached
    and advanced 1,495 fresh pairs with no reuse or timeouts, although the
    doubled render workload reduced the fresh-pair rate to about 41 Hz. Next
-   preserve 2496x2688 per-eye input discovery while the actual Present target
-   remains 4992x2688, then stage copies/tags without submitting an extra
-   generation present.
+   The combined proof now passes. Darktide widens its final per-view colour
+   resources with the swapchain, so capture accepts both the requested logical
+   eye extent and the actual output extent, then crops one logical 2496-wide
+   region from each preserved view into the 4992x2688 transport target. Source
+   indices 4682/4683 yielded target 4684; all ten snapshots were unique and
+   populated, all five input classes were content-divergent, the packed target
+   matched the generated Present candidates exactly, and one transport slot
+   was reserved. Policy status was 6 (`ready_to_stage`) while generation
+   submission, metadata publication and ready signaling remained zero. Next
+   identify and guard the actual swapchain backbuffer at the outer Present seam,
+   then stage without submitting a new Present.
    Preserve the external consumer as the later binocular-output transport gate.
 2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,
