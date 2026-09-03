@@ -279,6 +279,22 @@ Play region every three seconds while rechecking process ownership, title and
 client geometry. It still succeeds only after the configured Darktide
 executable appears and otherwise fails at the existing deadline.
 
+## Runtime frame-synthesis capability gate
+
+The OpenXR harness now reports extension availability and advertised spec
+versions for `XR_EXT_frame_synthesis` and `XR_FB_space_warp` alongside the
+existing D3D12 capability. This is telemetry only; neither extension is enabled
+and presentation is unchanged. Mandatory XR preflight reports retain both
+capability lines so a runtime update cannot silently change this gate.
+
+The active VirtualDesktopXR 1.0.10 runtime reported both synthesis extensions
+`unavailable spec_version=0`. A 120-frame rendering-required smoke test still
+submitted 120/120 frames at 108.93 Hz with `result=pass`. Runtime-owned frame
+synthesis is therefore unavailable on this installed VDXR path. Do not build
+depth or motion-vector swapchains for either extension unless a future runtime
+probe reports support; continue with the separate Streamline-generated-output
+feasibility gate.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:
@@ -349,6 +365,9 @@ source was removed.
 .\build\windows-vs2022\tests\xr_harness\Release\darktidevr-tracked-cuff-renderer-tests.exe
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 150 -GameStartTimeoutSeconds 600 -SyntheticWeaponAimMatrix -SyntheticBodyPath -SyntheticBodyInspection -TrackedCuffOverlay -SkipDeploymentSync
 .\tools\stereo\start-darktide-vr.ps1 -DurationSeconds 150 -GameStartTimeoutSeconds 600 -SyntheticWeaponAimMatrix -SyntheticBodyPath -TrackedCuffOverlay -SkipDeploymentSync
+& .\build\windows-vs2022\tests\xr_harness\Release\darktidevr-xr-harness.exe --frames 1 --require-rendering --xr-frames 120
+& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' --build build\windows-vs2022 --config Debug --target darktidevr-xr-harness
+.\tools\unattended\invoke-unattended-preflight.ps1 -RunXrSmoke -XrFrames 120
 ```
 
 The Lua source gate passed at 198/198 file-scope locals throughout. The native

@@ -132,6 +132,8 @@ class OpenXrProbe {
         nullptr, 0, &extension_count, nullptr);
     if (enumerate_result == XR_ERROR_RUNTIME_UNAVAILABLE) {
       std::cout << "openxr.extension.XR_KHR_D3D12_enable=unknown\n"
+                << "openxr.extension.XR_EXT_frame_synthesis=unknown\n"
+                << "openxr.extension.XR_FB_space_warp=unknown\n"
                 << "openxr.instance=runtime-unavailable\n";
       return;
     }
@@ -142,13 +144,27 @@ class OpenXrProbe {
     check_xr(xrEnumerateInstanceExtensionProperties(
                  nullptr, extension_count, &extension_count, extensions.data()),
              "xrEnumerateInstanceExtensionProperties(list)");
-    d3d12_extension_ = std::any_of(
-        extensions.begin(), extensions.end(), [](const auto& extension) {
-          return std::strcmp(extension.extensionName,
-                             XR_KHR_D3D12_ENABLE_EXTENSION_NAME) == 0;
-        });
+    const auto extension_version = [&](const char* name) {
+      const auto found = std::find_if(
+          extensions.begin(), extensions.end(), [&](const auto& extension) {
+            return std::strcmp(extension.extensionName, name) == 0;
+          });
+      return found == extensions.end() ? 0U : found->extensionVersion;
+    };
+    d3d12_extension_ =
+        extension_version(XR_KHR_D3D12_ENABLE_EXTENSION_NAME) != 0U;
     std::cout << "openxr.extension.XR_KHR_D3D12_enable="
               << (d3d12_extension_ ? "available" : "unavailable") << '\n';
+    const auto frame_synthesis_version =
+        extension_version(XR_EXT_FRAME_SYNTHESIS_EXTENSION_NAME);
+    const auto space_warp_version =
+        extension_version(XR_FB_SPACE_WARP_EXTENSION_NAME);
+    std::cout << "openxr.extension.XR_EXT_frame_synthesis="
+              << (frame_synthesis_version != 0U ? "available" : "unavailable")
+              << " spec_version=" << frame_synthesis_version << '\n'
+              << "openxr.extension.XR_FB_space_warp="
+              << (space_warp_version != 0U ? "available" : "unavailable")
+              << " spec_version=" << space_warp_version << '\n';
 
     const char* enabled_extensions[] = {XR_KHR_D3D12_ENABLE_EXTENSION_NAME};
     XrInstanceCreateInfo create_info{XR_TYPE_INSTANCE_CREATE_INFO};

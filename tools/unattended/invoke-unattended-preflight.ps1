@@ -163,7 +163,7 @@ if ($RunXrSmoke) {
     $resultLine = $smokeOutput | Where-Object { $_ -match '^result=' } |
         Select-Object -Last 1
     $stateLines = @($smokeOutput | Where-Object {
-        $_ -match '^openxr\.(runtime_name|recommended_size|session_state|frames|submitted_frames|not_rendered_frames|submit_hz|lifecycle)='
+        $_ -match '^openxr\.(runtime_name|recommended_size|session_state|frames|submitted_frames|not_rendered_frames|submit_hz|lifecycle|extension\.XR_(EXT_frame_synthesis|FB_space_warp))='
     })
     $xrSmoke = [ordered]@{
         exit_code = $smokeExitCode
