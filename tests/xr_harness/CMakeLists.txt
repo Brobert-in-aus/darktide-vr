@@ -30,6 +30,13 @@ target_compile_options(darktidevr-synthetic-head PRIVATE
   /W4 /WX /permissive-)
 target_link_libraries(darktidevr-synthetic-head PUBLIC darktidevr_core)
 
+add_library(darktidevr-tracked-cuff STATIC tracked_cuff_mesh.cpp)
+target_include_directories(darktidevr-tracked-cuff PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(darktidevr-tracked-cuff PRIVATE
+  /W4 /WX /permissive-)
+target_link_libraries(darktidevr-tracked-cuff PUBLIC darktidevr_core)
+
 add_executable(darktidevr-eye-capture eye_capture.cpp)
 target_compile_options(darktidevr-eye-capture PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-eye-capture PRIVATE
@@ -115,6 +122,15 @@ if(BUILD_TESTING)
   add_test(NAME menu_input_injector COMMAND darktidevr-menu-input-tests)
   set_tests_properties(menu_input_injector PROPERTIES
     LABELS "phase1;input;pointer")
+
+  add_executable(darktidevr-tracked-cuff-tests tracked_cuff_mesh_tests.cpp)
+  target_compile_options(darktidevr-tracked-cuff-tests PRIVATE
+    /W4 /WX /permissive-)
+  target_link_libraries(darktidevr-tracked-cuff-tests PRIVATE
+    darktidevr-tracked-cuff)
+  add_test(NAME tracked_cuff_mesh COMMAND darktidevr-tracked-cuff-tests)
+  set_tests_properties(tracked_cuff_mesh PROPERTIES
+    LABELS "phase1;openxr;hands")
 
   add_executable(darktidevr-window-capture-tests window_capture_tests.cpp)
   target_compile_options(darktidevr-window-capture-tests PRIVATE
