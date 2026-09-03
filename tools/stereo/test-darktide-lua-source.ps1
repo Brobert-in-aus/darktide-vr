@@ -863,6 +863,12 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $nativeCaptureSource.Contains(
             'publish_streamline_transport_metadata(') -or
         -not $nativeCaptureSource.Contains(
+            'GetProcAddress(interposer, "slSetTagForFrame")') -or
+        -not $nativeCaptureSource.Contains(
+            'log_streamline_resource_tags(') -or
+        -not $nativeCaptureSource.Contains(
+            'original_sl_set_tag_for_frame(') -or
+        -not $nativeCaptureSource.Contains(
             'streamline_native_present_count.load(std::memory_order_relaxed)') -or
         -not $nativeCaptureSource.Contains(
             '(present <= 5 || present % 120 == 0)')) {

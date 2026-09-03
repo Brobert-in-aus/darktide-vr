@@ -501,10 +501,39 @@ The enclosing 100-second run submitted 8,982/8,982 OpenXR frames, delivered
 capture-failure, timeout or pose-mismatch frames. The analyzer independently
 confirmed 120 submits, 120 completions, three slots, 120 unique contiguous
 sequences, the expected 2496x2688 RGBA8 resources, and no fatal or saturation
-drops. This closes the cross-process generated-frame transport gate. The next
-step is to make the XR bridge consume this stream in its presentation path,
-while preserving explicit source/generated identities and the existing
-fail-safe shared-eye path.
+drops. This closes the cross-process mechanics gate, but the transported image
+is still Darktide's single desktop generated output, not a matched binocular
+pair. It must not enter XR presentation until independent left/right inputs and
+pair identity are proven.
+
+The next observe-only layer mirrors NVIDIA Streamline 2.7.30's exact resource,
+tag and extent ABI and wraps Darktide's existing `slSetTag` and
+`slSetTagForFrame` exports. It forwards each call exactly once, makes no new
+Streamline calls, and records only a bounded startup/generated-Present window.
+The live run used only legacy `slSetTag`, with every resource marked
+`eValidUntilPresent`; no frame token is attached by that API. The producer's
+already-armed capture boundary supplied an independent logical-eye label for
+each call without changing rendering.
+
+The 100-second confirming run established an exact dynamic mapping: one
+gameplay viewport was exclusively eye 0 and the other exclusively eye 1 during
+the bounded sample; a third viewport appeared only outside an armed gameplay
+eye. Each eye made 119 depth, motion-vector and HUD-less-colour tag calls, plus
+120-121 scaling input/output calls. Both eyes use distinct 2496x2688 format-27
+HUD-less colour resources. Critically, they alias the same 1664x1792 format-19
+depth texture, the same 1664x1792 format-33 motion-vector texture, the same
+1664x1792 format-26 scaling input and the same 2496x2688 format-26 scaling
+output. DLSS-G mode-1 options were set only on the primary eye-0 viewport.
+
+This explains why the present-seam output is unsuitable for direct binocular
+submission: the existing sequential dual-render path has two colour endpoints
+but does not preserve independent per-eye temporal inputs through Present. A
+valid next prototype must snapshot or allocate independent depth, motion and
+scaling histories per eye, pack both eyes into one side-by-side backbuffer, and
+tag two viewports under one explicit frame identity before invoking DLSS-G. The
+confirming run itself remained clean at 8,829/8,829 OpenXR submissions, 1,869
+fresh shared pairs, zero reuse, capture failures, stale frames, timeouts or pose
+mismatches.
 
 ## Runtime evidence
 
@@ -617,10 +646,11 @@ correction used `preflight-20260903T013512Z.json` through
 
 ## Next work
 
-1. Integrate the generated-frame consumer with the XR bridge's presentation
-   selection, retaining explicit identities, non-blocking consumption and the
-   existing shared-eye fallback. Validate the source/generated temporal policy
-   independently of strict Present alternation.
+1. Prototype independent per-eye Streamline inputs and one side-by-side stereo
+   backbuffer. The current eye viewports share depth, motion and DLSS scaling
+   allocations and only the primary viewport enables DLSS-G, so do not route
+   the transported desktop generated image into XR presentation. Preserve the
+   external consumer as the later binocular-output transport gate.
 2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,
    radii and length if its alignment is sound; reject the route if the lack of

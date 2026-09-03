@@ -51,6 +51,8 @@ $fatalTransportDrops = @($transportDrops |
 $executePrecursors = @($records | Where-Object event -eq 'EXECUTE_PRECURSOR')
 $frameTokens = @($records | Where-Object event -eq 'FRAME_TOKEN')
 $setConstants = @($records | Where-Object event -eq 'SET_CONSTANTS')
+$resourceTags = @($records | Where-Object event -eq 'RESOURCE_TAG')
+$resourceTagCalls = @($records | Where-Object event -eq 'RESOURCE_TAG_CALL')
 
 if ($probe.Count -ne 1 -or $target.Count -ne 1 -or
         $nativeTarget.Count -ne 1 -or $begins.Count -eq 0 -or
@@ -243,6 +245,46 @@ if ($setConstants.Count -gt 0) {
     Write-Output "set_constants.result_values=$(($setConstants.result | Sort-Object -Unique) -join ',')"
     Write-Output "set_constants.token_count=$(@($setConstants.token | Sort-Object -Unique).Count)"
     Write-Output "set_constants.viewport_count=$(@($setConstants.viewport | Sort-Object -Unique).Count)"
+}
+Write-Output "resource_tag.samples=$($resourceTags.Count)"
+Write-Output "resource_tag.empty_calls=$($resourceTagCalls.Count)"
+if ($resourceTags.Count -gt 0) {
+    Write-Output "resource_tag.apis=$(($resourceTags.api | Sort-Object -Unique) -join ',')"
+    Write-Output "resource_tag.viewports=$(($resourceTags.viewport | Sort-Object -Unique) -join ',')"
+    Write-Output "resource_tag.armed_eyes=$(($resourceTags.armed_eye | Sort-Object -Unique) -join ',')"
+    foreach ($viewport in @($resourceTags.viewport | Sort-Object -Unique)) {
+        $viewportTags = @($resourceTags | Where-Object viewport -eq $viewport)
+        Write-Output "resource_tag.viewport_${viewport}.samples=$($viewportTags.Count)"
+        Write-Output "resource_tag.viewport_${viewport}.armed_eyes=$(($viewportTags.armed_eye | Sort-Object -Unique) -join ',')"
+        Write-Output "resource_tag.viewport_${viewport}.types=$(($viewportTags.type_name | Sort-Object -Unique) -join ',')"
+    }
+    $eye0Tags = @($resourceTags | Where-Object armed_eye -eq '0')
+    $eye1Tags = @($resourceTags | Where-Object armed_eye -eq '1')
+    $aliasedTypes = @()
+    foreach ($typeName in @(($eye0Tags.type_name + $eye1Tags.type_name) |
+            Sort-Object -Unique)) {
+        $eye0Native = @($eye0Tags | Where-Object type_name -eq $typeName |
+            Select-Object -ExpandProperty native -Unique)
+        $eye1Native = @($eye1Tags | Where-Object type_name -eq $typeName |
+            Select-Object -ExpandProperty native -Unique)
+        $sharedNative = @($eye0Native | Where-Object { $eye1Native -contains $_ })
+        Write-Output "resource_tag.${typeName}.eye0_native_count=$($eye0Native.Count)"
+        Write-Output "resource_tag.${typeName}.eye1_native_count=$($eye1Native.Count)"
+        Write-Output "resource_tag.${typeName}.shared_native_count=$($sharedNative.Count)"
+        if ($sharedNative.Count -gt 0) {
+            $aliasedTypes += $typeName
+        }
+    }
+    Write-Output "resource_tag.stereo_aliased_types=$($aliasedTypes -join ',')"
+    foreach ($group in @($resourceTags | Group-Object type_name | Sort-Object Name)) {
+        $prefix = "resource_tag.$($group.Name)"
+        Write-Output "$prefix.samples=$($group.Count)"
+        Write-Output "$prefix.native_count=$(@($group.Group.native | Sort-Object -Unique).Count)"
+        Write-Output "$prefix.extents=$(($group.Group.extent | Sort-Object -Unique) -join ';')"
+        Write-Output "$prefix.formats=$(($group.Group.d3d12_format | Sort-Object -Unique) -join ',')"
+        Write-Output "$prefix.lifecycle=$(($group.Group.lifecycle | Sort-Object -Unique) -join ',')"
+        Write-Output "$prefix.frame_count=$(@($group.Group.frame | Sort-Object -Unique).Count)"
+    }
 }
 if ($stateCalls.Count -gt 0) {
     Write-Output "dlssg.state_thread_count=$(@($stateCalls.thread | Sort-Object -Unique).Count)"

@@ -29,6 +29,51 @@ struct ViewportHandle {
   std::uint32_t value;
 };
 
+struct Extent {
+  std::uint32_t top{};
+  std::uint32_t left{};
+  std::uint32_t width{};
+  std::uint32_t height{};
+};
+
+enum class ResourceType : char {
+  texture_2d,
+  buffer,
+  command_queue,
+  command_buffer,
+  command_pool,
+  fence,
+  swapchain,
+  host_fence,
+  unknown,
+};
+
+struct Resource {
+  BaseStructure base;
+  ResourceType type{ResourceType::texture_2d};
+  void* native{};
+  void* memory{};
+  void* view{};
+  std::uint32_t state{UINT32_MAX};
+  std::uint32_t width{};
+  std::uint32_t height{};
+  std::uint32_t native_format{};
+  std::uint32_t mip_levels{};
+  std::uint32_t array_layers{};
+  std::uint64_t gpu_virtual_address{};
+  std::uint32_t flags{};
+  std::uint32_t usage{};
+  std::uint32_t reserved{};
+};
+
+struct ResourceTag {
+  BaseStructure base;
+  Resource* resource{};
+  std::uint32_t type{};
+  std::uint32_t lifecycle{};
+  Extent extent{};
+};
+
 struct DlssGOptions {
   BaseStructure base;
   std::uint32_t mode;
@@ -70,6 +115,16 @@ static_assert(sizeof(StructType) == 16);
 static_assert(sizeof(BaseStructure) == 32);
 static_assert(offsetof(ViewportHandle, value) == 32);
 static_assert(sizeof(ViewportHandle) == 40);
+static_assert(sizeof(Extent) == 16);
+static_assert(offsetof(Resource, type) == 32);
+static_assert(offsetof(Resource, native) == 40);
+static_assert(offsetof(Resource, state) == 64);
+static_assert(offsetof(Resource, gpu_virtual_address) == 88);
+static_assert(sizeof(Resource) == 112);
+static_assert(offsetof(ResourceTag, resource) == 32);
+static_assert(offsetof(ResourceTag, type) == 40);
+static_assert(offsetof(ResourceTag, extent) == 48);
+static_assert(sizeof(ResourceTag) == 64);
 static_assert(offsetof(DlssGOptions, mode) == 32);
 static_assert(offsetof(DlssGOptions, num_frames_to_generate) == 36);
 static_assert(offsetof(DlssGOptions, num_back_buffers) == 52);

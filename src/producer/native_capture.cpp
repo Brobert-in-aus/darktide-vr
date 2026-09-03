@@ -55,6 +55,9 @@ using StingrayUploadFlushFn = void (*)(void* allocator);
 using SlGetFeatureFunctionFn = int (*)(std::uint32_t, const char*, void**);
 using SlGetNewFrameTokenFn = int (*)(void**, const std::uint32_t*);
 using SlSetConstantsFn = int (*)(const void*, const void*, const void*);
+using SlSetTagFn = int (*)(const void*, const void*, std::uint32_t, void*);
+using SlSetTagForFrameFn = int (*)(const void*, const void*, const void*,
+                                   std::uint32_t, void*);
 using SlDlssGGetStateFn = int (*)(const void*, void*, const void*);
 using SlDlssGSetOptionsFn = int (*)(const void*, const void*);
 
@@ -65,11 +68,15 @@ DxcCreateInstanceProc dxc_create_instance{};
 SlGetFeatureFunctionFn original_sl_get_feature_function{};
 SlGetNewFrameTokenFn original_sl_get_new_frame_token{};
 SlSetConstantsFn original_sl_set_constants{};
+SlSetTagFn original_sl_set_tag{};
+SlSetTagForFrameFn original_sl_set_tag_for_frame{};
 std::atomic<SlDlssGGetStateFn> original_sl_dlssg_get_state{};
 std::atomic<SlDlssGSetOptionsFn> original_sl_dlssg_set_options{};
 void* streamline_feature_resolver_target{};
 void* streamline_get_new_frame_token_target{};
 void* streamline_set_constants_target{};
+void* streamline_set_tag_target{};
+void* streamline_set_tag_for_frame_target{};
 void* streamline_native_present_target{};
 std::atomic<std::uint64_t> streamline_feature_resolve_count{};
 std::atomic<std::uint64_t> streamline_dlssg_state_count{};
@@ -82,6 +89,7 @@ std::atomic<std::uint64_t> streamline_outer_present_active_frame{};
 std::atomic<std::uint64_t> streamline_native_burst_until_call{};
 std::atomic<std::uint64_t> streamline_frame_token_call_count{};
 std::atomic<std::uint64_t> streamline_set_constants_call_count{};
+std::atomic<std::uint64_t> streamline_set_tag_call_count{};
 std::atomic<void*> streamline_latest_frame_token{};
 std::atomic<std::uint64_t> streamline_latest_frame_token_call{};
 std::atomic<std::uint32_t> streamline_latest_frame_index{UINT_MAX};
@@ -1851,7 +1859,7 @@ void write_menu_resource_log(const char* format, ...) {
 void write_streamline_probe_log(const char* format, ...) {
   if (streamline_probe_log == INVALID_HANDLE_VALUE ||
       streamline_probe_log_count.fetch_add(1, std::memory_order_relaxed) >=
-          8192) {
+          16384) {
     return;
   }
   char line[1600]{};
@@ -1929,6 +1937,159 @@ int sl_set_constants_hook(const void* constants, const void* frame,
             present_count.load(std::memory_order_relaxed)),
         GetCurrentThreadId(), qpc.QuadPart, result, frame,
         viewport_state ? viewport_state->value : 0);
+  }
+  return result;
+}
+
+const char* streamline_buffer_type_name(std::uint32_t type) {
+  switch (type) {
+    case 0:
+      return "depth";
+    case 1:
+      return "motion_vectors";
+    case 2:
+      return "hudless_color";
+    case 3:
+      return "scaling_input_color";
+    case 4:
+      return "scaling_output_color";
+    case 23:
+      return "ui_color_alpha";
+    case 34:
+      return "alpha";
+    case 35:
+      return "opaque_color";
+    case 48:
+      return "high_resolution_depth";
+    case 49:
+      return "linear_depth";
+    case 53:
+      return "backbuffer";
+    case 54:
+      return "no_warp_mask";
+    case 67:
+      return "scaling_output_alpha";
+    default:
+      return "other";
+  }
+}
+
+void log_streamline_resource_tags(
+    const char* api, std::uint64_t call, int result, const void* frame,
+    const void* viewport, const void* tags, std::uint32_t count,
+    void* command_buffer) {
+  using namespace darktidevr::producer::streamline_2_7_30;
+  const auto* viewport_state = static_cast<const ViewportHandle*>(viewport);
+  const auto* resource_tags = static_cast<const ResourceTag*>(tags);
+  const auto logged_count = (std::min)(count, 32U);
+  LARGE_INTEGER qpc{};
+  QueryPerformanceCounter(&qpc);
+  const auto present_frame = present_count.load(std::memory_order_relaxed);
+  int armed_eye = -1;
+  std::uint64_t armed_pose{};
+  std::size_t armed_count{};
+  {
+    std::unique_lock lock(boundary_capture_mutex, std::try_to_lock);
+    if (lock.owns_lock()) {
+      armed_count = armed_eye_captures.size();
+      if (!armed_eye_captures.empty()) {
+        armed_eye = armed_eye_captures.front().eye;
+        armed_pose = armed_eye_captures.front().pose_sequence;
+      }
+    }
+  }
+  if (!resource_tags || logged_count == 0) {
+    write_streamline_probe_log(
+        "RESOURCE_TAG_CALL\tapi=%s\tcall=%llu\tthread=%lu\tresult=%d"
+        "\tframe=%p\tviewport=%u\ttags=%u\tcommand_buffer=%p"
+        "\tqpc=%lld\tpresent_frame=%llu\tarmed_eye=%d\tarmed_pose=%llu"
+        "\tarmed_count=%zu\r\n",
+        api, static_cast<unsigned long long>(call), GetCurrentThreadId(),
+        result, frame, viewport_state ? viewport_state->value : 0, count,
+        command_buffer, qpc.QuadPart,
+        static_cast<unsigned long long>(present_frame), armed_eye,
+        static_cast<unsigned long long>(armed_pose), armed_count);
+    return;
+  }
+  for (std::uint32_t index = 0; index < logged_count; ++index) {
+    const auto& tag = resource_tags[index];
+    const auto* resource = tag.resource;
+    D3D12_RESOURCE_DESC description{};
+    bool d3d12_resource{};
+    if (resource && resource->type == ResourceType::texture_2d &&
+        resource->native) {
+      ComPtr<ID3D12Resource> texture;
+      if (SUCCEEDED(static_cast<IUnknown*>(resource->native)
+                        ->QueryInterface(IID_PPV_ARGS(&texture)))) {
+        description = texture->GetDesc();
+        d3d12_resource = true;
+      }
+    }
+    write_streamline_probe_log(
+        "RESOURCE_TAG\tapi=%s\tcall=%llu\tthread=%lu\tresult=%d"
+        "\tframe=%p\tviewport=%u\tindex=%u\tcount=%u\ttype=%u"
+        "\ttype_name=%s\tlifecycle=%u\textent=%u,%u,%u,%u"
+        "\tresource=%p\tnative=%p\tresource_type=%d\tstate=%u"
+        "\tabi_extent=%ux%u\tabi_format=%u\td3d12=%u"
+        "\td3d12_extent=%llux%u\td3d12_format=%u\td3d12_flags=%u"
+        "\tcommand_buffer=%p\tqpc=%lld\tpresent_frame=%llu"
+        "\tarmed_eye=%d\tarmed_pose=%llu\tarmed_count=%zu\r\n",
+        api, static_cast<unsigned long long>(call), GetCurrentThreadId(),
+        result, frame, viewport_state ? viewport_state->value : 0, index,
+        count, tag.type, streamline_buffer_type_name(tag.type), tag.lifecycle,
+        tag.extent.left, tag.extent.top, tag.extent.width, tag.extent.height,
+        resource, resource ? resource->native : nullptr,
+        resource ? static_cast<int>(resource->type) : -1,
+        resource ? resource->state : 0,
+        resource ? resource->width : 0, resource ? resource->height : 0,
+        resource ? resource->native_format : 0, d3d12_resource ? 1U : 0U,
+        static_cast<unsigned long long>(description.Width), description.Height,
+        static_cast<unsigned>(description.Format),
+        static_cast<unsigned>(description.Flags), command_buffer,
+        qpc.QuadPart, static_cast<unsigned long long>(present_frame), armed_eye,
+        static_cast<unsigned long long>(armed_pose), armed_count);
+  }
+}
+
+int sl_set_tag_hook(const void* viewport, const void* tags,
+                    std::uint32_t count, void* command_buffer) {
+  const auto result = original_sl_set_tag
+                          ? original_sl_set_tag(viewport, tags, count,
+                                                command_buffer)
+                          : 36;
+  const auto call = streamline_set_tag_call_count.fetch_add(
+                        1, std::memory_order_relaxed) +
+                    1;
+  const auto burst_until =
+      streamline_native_burst_until_call.load(std::memory_order_acquire);
+  if (call <= 50 ||
+      (burst_until != 0 &&
+       streamline_native_present_count.load(std::memory_order_relaxed) <=
+           burst_until)) {
+    log_streamline_resource_tags("slSetTag", call, result, nullptr, viewport,
+                                 tags, count, command_buffer);
+  }
+  return result;
+}
+
+int sl_set_tag_for_frame_hook(const void* frame, const void* viewport,
+                              const void* tags, std::uint32_t count,
+                              void* command_buffer) {
+  const auto result = original_sl_set_tag_for_frame
+                          ? original_sl_set_tag_for_frame(
+                                frame, viewport, tags, count, command_buffer)
+                          : 36;
+  const auto call = streamline_set_tag_call_count.fetch_add(
+                        1, std::memory_order_relaxed) +
+                    1;
+  const auto burst_until =
+      streamline_native_burst_until_call.load(std::memory_order_acquire);
+  if (call <= 50 ||
+      (burst_until != 0 &&
+       streamline_native_present_count.load(std::memory_order_relaxed) <=
+           burst_until)) {
+    log_streamline_resource_tags("slSetTagForFrame", call, result, frame,
+                                 viewport, tags, count, command_buffer);
   }
   return result;
 }
@@ -2195,6 +2356,10 @@ void initialize_streamline_probe(void* present_target,
       interposer ? GetProcAddress(interposer, "slGetNewFrameToken") : nullptr;
   streamline_set_constants_target =
       interposer ? GetProcAddress(interposer, "slSetConstants") : nullptr;
+  streamline_set_tag_target =
+      interposer ? GetProcAddress(interposer, "slSetTag") : nullptr;
+  streamline_set_tag_for_frame_target =
+      interposer ? GetProcAddress(interposer, "slSetTagForFrame") : nullptr;
   streamline_native_present_target = native_present_target;
   HMODULE owner{};
   if (present_target) {
@@ -10601,6 +10766,14 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
                      &sl_set_constants_hook,
                      reinterpret_cast<void**>(
                          &original_sl_set_constants)) != MH_OK) ||
+      (streamline_set_tag_target &&
+       MH_CreateHook(streamline_set_tag_target, &sl_set_tag_hook,
+                     reinterpret_cast<void**>(&original_sl_set_tag)) != MH_OK) ||
+      (streamline_set_tag_for_frame_target &&
+       MH_CreateHook(streamline_set_tag_for_frame_target,
+                     &sl_set_tag_for_frame_hook,
+                     reinterpret_cast<void**>(
+                         &original_sl_set_tag_for_frame)) != MH_OK) ||
       MH_CreateHook(get_client_rect_target, &get_client_rect_hook,
                     reinterpret_cast<void**>(&original_get_client_rect)) !=
           MH_OK ||
