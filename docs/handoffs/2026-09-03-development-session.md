@@ -572,6 +572,14 @@ The later constants-identity confirming run remained clean at 8,725/8,725
 OpenXR submissions, 1,848 fresh shared pairs, and zero reuse, capture failures,
 stale frames, timeouts or pose mismatches.
 
+The implementation groundwork now includes a platform-neutral C++ stereo-input
+policy. It accumulates the five required resource identities for each eye and
+fails closed on incomplete sets, mismatched frame identities, null resources,
+or any cross-eye alias. It reports an exact aliased-resource bitmask and marks
+inputs ready only when both complete sets are same-frame and fully distinct.
+This is the invariant the future D3D12 snapshot path must satisfy before it can
+reach Streamline evaluation or XR publication.
+
 The frame-level resource confirming run remained clean at 8,949/8,949 OpenXR
 submissions, 1,867 fresh shared pairs, and zero reuse, capture failures, stale
 frames, timeouts or pose mismatches.
