@@ -5,6 +5,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'get-streamline-stereo-input-readiness.ps1')
 
 if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
     throw "Streamline probe log not found: $Path"
@@ -248,6 +249,8 @@ if ($setConstants.Count -gt 0) {
 }
 Write-Output "resource_tag.samples=$($resourceTags.Count)"
 Write-Output "resource_tag.empty_calls=$($resourceTagCalls.Count)"
+$eye0Tags = @()
+$eye1Tags = @()
 if ($resourceTags.Count -gt 0) {
     Write-Output "resource_tag.apis=$(($resourceTags.api | Sort-Object -Unique) -join ',')"
     Write-Output "resource_tag.viewports=$(($resourceTags.viewport | Sort-Object -Unique) -join ',')"
@@ -260,7 +263,6 @@ if ($resourceTags.Count -gt 0) {
     }
     $eye0Tags = @($resourceTags | Where-Object armed_eye -eq '0')
     $eye1Tags = @($resourceTags | Where-Object armed_eye -eq '1')
-    $aliasedTypes = @()
     foreach ($typeName in @(($eye0Tags.type_name + $eye1Tags.type_name) |
             Sort-Object -Unique)) {
         $eye0Native = @($eye0Tags | Where-Object type_name -eq $typeName |
@@ -271,11 +273,7 @@ if ($resourceTags.Count -gt 0) {
         Write-Output "resource_tag.${typeName}.eye0_native_count=$($eye0Native.Count)"
         Write-Output "resource_tag.${typeName}.eye1_native_count=$($eye1Native.Count)"
         Write-Output "resource_tag.${typeName}.shared_native_count=$($sharedNative.Count)"
-        if ($sharedNative.Count -gt 0) {
-            $aliasedTypes += $typeName
-        }
     }
-    Write-Output "resource_tag.stereo_aliased_types=$($aliasedTypes -join ',')"
     foreach ($group in @($resourceTags | Group-Object type_name | Sort-Object Name)) {
         $prefix = "resource_tag.$($group.Name)"
         Write-Output "$prefix.samples=$($group.Count)"
@@ -286,6 +284,15 @@ if ($resourceTags.Count -gt 0) {
         Write-Output "$prefix.frame_count=$(@($group.Group.frame | Sort-Object -Unique).Count)"
     }
 }
+$stereoReadiness = Get-StreamlineStereoInputReadiness -ResourceTags $resourceTags
+Write-Output "resource_tag.stereo_required_types=$($stereoReadiness.RequiredTypes -join ',')"
+Write-Output "resource_tag.stereo_missing_eye0_types=$($stereoReadiness.MissingEye0Types -join ',')"
+Write-Output "resource_tag.stereo_missing_eye1_types=$($stereoReadiness.MissingEye1Types -join ',')"
+Write-Output "resource_tag.stereo_aliased_types=$($stereoReadiness.AliasedTypes -join ',')"
+Write-Output "resource_tag.stereo_input_ready=$([int]$stereoReadiness.Ready)"
+Write-Output "resource_tag.stereo_input_blockers=$($stereoReadiness.Blockers -join ',')"
+Write-Output "resource_tag.ui_color_alpha.samples=$(@($resourceTags |
+        Where-Object type_name -eq 'ui_color_alpha').Count)"
 if ($stateCalls.Count -gt 0) {
     Write-Output "dlssg.state_thread_count=$(@($stateCalls.thread | Sort-Object -Unique).Count)"
     Write-Output "dlssg.state_result_count=$(@($stateCalls.result | Sort-Object -Unique).Count)"

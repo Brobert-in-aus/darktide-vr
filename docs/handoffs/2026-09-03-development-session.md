@@ -524,6 +524,13 @@ HUD-less colour resources. Critically, they alias the same 1664x1792 format-19
 depth texture, the same 1664x1792 format-33 motion-vector texture, the same
 1664x1792 format-26 scaling input and the same 2496x2688 format-26 scaling
 output. DLSS-G mode-1 options were set only on the primary eye-0 viewport.
+The analyzer now turns this census into a fail-closed contract:
+`resource_tag.stereo_input_ready=0` with
+`resource_tag.stereo_input_blockers=cross_eye_aliasing`. Both eyes contain all
+five required tag classes, while the four shared temporal/scaling classes are
+named explicitly. It also reports `resource_tag.ui_color_alpha.samples=0`;
+Darktide supplied HUD-less colour but no separately tagged UI colour/alpha in
+the bounded run.
 
 This explains why the present-seam output is unsuitable for direct binocular
 submission: the existing sequential dual-render path has two colour endpoints
