@@ -9013,7 +9013,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
       state.target_token_allocated = true;
       state.target_frame_token = target_frame_token;
       state.target_frame_index = requested_frame_index;
-      darktidevr::core::StreamlineStereoEvaluationTransaction transaction{};
+      darktidevr::core::StreamlineStereoPresentationTransaction transaction{};
       transaction.snapshot_ready = true;
       transaction.source_frame_indices = {state.constants[0].frame_index,
                                           state.constants[1].frame_index};
@@ -9033,9 +9033,9 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
       transaction.resource_state = D3D12_RESOURCE_STATE_PRESENT;
       transaction.consumer_slot_reserved = state.transport_slot_reserved;
       const auto policy_status =
-          darktidevr::core::evaluate_streamline_stereo_transaction(transaction);
+          darktidevr::core::evaluate_streamline_stereo_presentation(transaction);
       if (policy_status !=
-          darktidevr::core::StreamlineStereoEvaluationStatus::ready_to_evaluate) {
+          darktidevr::core::StreamlineStereoPresentationStatus::ready_to_stage) {
         state.failed = true;
         write_streamline_probe_log(
             "STEREO_TARGET_TOKEN\tphase=failed\treason=policy"

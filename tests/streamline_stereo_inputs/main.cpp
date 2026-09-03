@@ -7,8 +7,8 @@
 namespace {
 
 using darktidevr::core::StreamlineEyeInputSet;
-using darktidevr::core::StreamlineStereoEvaluationStatus;
-using darktidevr::core::StreamlineStereoEvaluationTransaction;
+using darktidevr::core::StreamlineStereoPresentationStatus;
+using darktidevr::core::StreamlineStereoPresentationTransaction;
 using darktidevr::core::StreamlineStereoInputStatus;
 using darktidevr::core::StreamlineStereoResource;
 
@@ -31,8 +31,8 @@ void fill(StreamlineEyeInputSet& inputs, std::uint32_t frame,
   }
 }
 
-StreamlineStereoEvaluationTransaction ready_transaction() {
-  StreamlineStereoEvaluationTransaction transaction{};
+StreamlineStereoPresentationTransaction ready_transaction() {
+  StreamlineStereoPresentationTransaction transaction{};
   transaction.snapshot_ready = true;
   transaction.source_frame_indices = {42, 43};
   transaction.source_token_calls = {100, 101};
@@ -100,41 +100,41 @@ int main() {
            "partially observed inputs must remain incomplete");
 
     auto transaction = ready_transaction();
-    expect(darktidevr::core::evaluate_streamline_stereo_transaction(transaction) ==
-               StreamlineStereoEvaluationStatus::ready_to_evaluate,
-           "complete transaction must become evaluable");
+    expect(darktidevr::core::evaluate_streamline_stereo_presentation(transaction) ==
+               StreamlineStereoPresentationStatus::ready_to_stage,
+           "complete transaction must become ready to stage");
     transaction.source_frame_indices[1] = 44;
-    expect(darktidevr::core::evaluate_streamline_stereo_transaction(transaction) ==
-               StreamlineStereoEvaluationStatus::source_timing_mismatch,
+    expect(darktidevr::core::evaluate_streamline_stereo_presentation(transaction) ==
+               StreamlineStereoPresentationStatus::source_timing_mismatch,
            "nonadjacent source frames must fail closed");
     transaction = ready_transaction();
     transaction.source_viewports[1] = transaction.source_viewports[0];
-    expect(darktidevr::core::evaluate_streamline_stereo_transaction(transaction) ==
-               StreamlineStereoEvaluationStatus::invalid_viewports,
+    expect(darktidevr::core::evaluate_streamline_stereo_presentation(transaction) ==
+               StreamlineStereoPresentationStatus::invalid_viewports,
            "aliased viewports must fail closed");
     transaction = ready_transaction();
     transaction.target_frame_index = 43;
-    expect(darktidevr::core::evaluate_streamline_stereo_transaction(transaction) ==
-               StreamlineStereoEvaluationStatus::invalid_target_frame,
+    expect(darktidevr::core::evaluate_streamline_stereo_presentation(transaction) ==
+               StreamlineStereoPresentationStatus::invalid_target_frame,
            "target frame must follow both source frames");
     transaction = ready_transaction();
     transaction.stereo_width = 2496;
-    expect(darktidevr::core::evaluate_streamline_stereo_transaction(transaction) ==
-               StreamlineStereoEvaluationStatus::invalid_backbuffer,
+    expect(darktidevr::core::evaluate_streamline_stereo_presentation(transaction) ==
+               StreamlineStereoPresentationStatus::invalid_backbuffer,
            "non-stereo extent must fail closed");
     transaction = ready_transaction();
     transaction.consumer_slot_reserved = false;
-    expect(darktidevr::core::evaluate_streamline_stereo_transaction(transaction) ==
-               StreamlineStereoEvaluationStatus::transport_unavailable,
-           "evaluation must not start without reserved transport");
+    expect(darktidevr::core::evaluate_streamline_stereo_presentation(transaction) ==
+               StreamlineStereoPresentationStatus::transport_unavailable,
+           "generation present must not start without reserved transport");
     transaction = ready_transaction();
-    transaction.evaluation_submitted = true;
-    expect(darktidevr::core::evaluate_streamline_stereo_transaction(transaction) ==
-               StreamlineStereoEvaluationStatus::awaiting_generated_output,
-           "submitted evaluation must wait for its GPU fence");
+    transaction.generation_present_submitted = true;
+    expect(darktidevr::core::evaluate_streamline_stereo_presentation(transaction) ==
+               StreamlineStereoPresentationStatus::awaiting_generated_present,
+           "submitted generation present must wait for its GPU fence");
     transaction.generated_output_fence_complete = true;
-    expect(darktidevr::core::evaluate_streamline_stereo_transaction(transaction) ==
-               StreamlineStereoEvaluationStatus::ready_to_publish,
+    expect(darktidevr::core::evaluate_streamline_stereo_presentation(transaction) ==
+               StreamlineStereoPresentationStatus::ready_to_publish,
            "only a fence-complete output may be published");
 
     std::cout << "streamline_stereo_inputs=pass\n";

@@ -685,7 +685,7 @@ source token calls/indices, distinct source viewports, a non-null target token
 whose index follows both sources, an exact 2:1 format-28/PRESENT backbuffer and
 a reserved transport slot. After submission it remains non-publishable until
 the generated-output fence completes. Unit coverage exercises every rejection
-and the `ready_to_evaluate`, `awaiting_generated_output` and
+and the `ready_to_stage`, `awaiting_generated_present` and
 `ready_to_publish` transitions.
 
 The transport-capacity seam now passes without fabricating an output. Once the
@@ -835,9 +835,11 @@ correction used `preflight-20260903T013512Z.json` through
    fence publication. A separately gated live probe now allocates exactly one
    future target token after that reservation: source indices 4507/4508 yielded
    target index 4509, and the complete transaction reached policy status 6
-   (`ready_to_evaluate`). Evaluation, metadata publication and ready-fence
-   signaling all remained disabled. Next resolve and guard the exact DLSS-G
-   evaluation function/options contract without yet publishing its output.
+   (`ready_to_stage`). The exact 2.7.30 contract confirms that DLSS-G is driven
+   by tags, constants, options and the next `Present`; it has no independent
+   evaluation call. Generation-present submission, metadata publication and
+   ready-fence signaling all remained disabled. Next guard staging of the two
+   viewports onto one actual swapchain backbuffer without yet presenting it.
    Preserve the external consumer as the later binocular-output transport gate.
 2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,

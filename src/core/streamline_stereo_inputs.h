@@ -39,19 +39,19 @@ struct StreamlineStereoInputVerdict {
   std::uint32_t aliased_mask{};
 };
 
-enum class StreamlineStereoEvaluationStatus : std::uint8_t {
+enum class StreamlineStereoPresentationStatus : std::uint8_t {
   snapshot_not_ready,
   source_timing_mismatch,
   invalid_viewports,
   invalid_target_frame,
   invalid_backbuffer,
   transport_unavailable,
-  ready_to_evaluate,
-  awaiting_generated_output,
+  ready_to_stage,
+  awaiting_generated_present,
   ready_to_publish,
 };
 
-struct StreamlineStereoEvaluationTransaction {
+struct StreamlineStereoPresentationTransaction {
   bool snapshot_ready{};
   std::array<std::uint32_t, 2> source_frame_indices{~0U, ~0U};
   std::array<std::uint64_t, 2> source_token_calls{};
@@ -65,7 +65,7 @@ struct StreamlineStereoEvaluationTransaction {
   std::uint32_t format{};
   std::uint32_t resource_state{};
   bool consumer_slot_reserved{};
-  bool evaluation_submitted{};
+  bool generation_present_submitted{};
   bool generated_output_fence_complete{};
 };
 
@@ -74,11 +74,11 @@ constexpr bool streamline_source_values_coherent(std::uint64_t first,
   return first == second || first + 1 == second || second + 1 == first;
 }
 
-constexpr StreamlineStereoEvaluationStatus
-evaluate_streamline_stereo_transaction(
-    const StreamlineStereoEvaluationTransaction& transaction) noexcept {
+constexpr StreamlineStereoPresentationStatus
+evaluate_streamline_stereo_presentation(
+    const StreamlineStereoPresentationTransaction& transaction) noexcept {
   if (!transaction.snapshot_ready) {
-    return StreamlineStereoEvaluationStatus::snapshot_not_ready;
+    return StreamlineStereoPresentationStatus::snapshot_not_ready;
   }
   if (transaction.source_frame_indices[0] == ~0U ||
       transaction.source_frame_indices[1] == ~0U ||
@@ -89,18 +89,18 @@ evaluate_streamline_stereo_transaction(
           transaction.source_frame_indices[1]) ||
       !streamline_source_values_coherent(transaction.source_token_calls[0],
                                          transaction.source_token_calls[1])) {
-    return StreamlineStereoEvaluationStatus::source_timing_mismatch;
+    return StreamlineStereoPresentationStatus::source_timing_mismatch;
   }
   if (transaction.source_viewports[0] == 0 ||
       transaction.source_viewports[1] == 0 ||
       transaction.source_viewports[0] == transaction.source_viewports[1]) {
-    return StreamlineStereoEvaluationStatus::invalid_viewports;
+    return StreamlineStereoPresentationStatus::invalid_viewports;
   }
   if (transaction.target_frame_token == 0 ||
       transaction.target_frame_index == ~0U ||
       transaction.target_frame_index <= transaction.source_frame_indices[0] ||
       transaction.target_frame_index <= transaction.source_frame_indices[1]) {
-    return StreamlineStereoEvaluationStatus::invalid_target_frame;
+    return StreamlineStereoPresentationStatus::invalid_target_frame;
   }
   constexpr std::uint32_t required_format = 28;
   constexpr std::uint32_t required_state = 0;
@@ -110,18 +110,18 @@ evaluate_streamline_stereo_transaction(
       transaction.stereo_height == 0 ||
       transaction.format != required_format ||
       transaction.resource_state != required_state) {
-    return StreamlineStereoEvaluationStatus::invalid_backbuffer;
+    return StreamlineStereoPresentationStatus::invalid_backbuffer;
   }
   if (!transaction.consumer_slot_reserved) {
-    return StreamlineStereoEvaluationStatus::transport_unavailable;
+    return StreamlineStereoPresentationStatus::transport_unavailable;
   }
-  if (!transaction.evaluation_submitted) {
-    return StreamlineStereoEvaluationStatus::ready_to_evaluate;
+  if (!transaction.generation_present_submitted) {
+    return StreamlineStereoPresentationStatus::ready_to_stage;
   }
   if (!transaction.generated_output_fence_complete) {
-    return StreamlineStereoEvaluationStatus::awaiting_generated_output;
+    return StreamlineStereoPresentationStatus::awaiting_generated_present;
   }
-  return StreamlineStereoEvaluationStatus::ready_to_publish;
+  return StreamlineStereoPresentationStatus::ready_to_publish;
 }
 
 constexpr std::uint32_t streamline_resource_bit(
