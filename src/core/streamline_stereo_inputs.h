@@ -69,6 +69,35 @@ struct StreamlineStereoPresentationTransaction {
   bool generated_output_fence_complete{};
 };
 
+struct StreamlineStereoPresentTarget {
+  std::uintptr_t stereo_backbuffer{};
+  std::uintptr_t present_backbuffer{};
+  std::uint64_t stereo_width{};
+  std::uint64_t present_width{};
+  std::uint32_t stereo_height{};
+  std::uint32_t present_height{};
+  std::uint32_t stereo_format{};
+  std::uint32_t present_format{};
+  std::uint32_t stereo_state{};
+  std::uint32_t present_state{};
+};
+
+constexpr bool streamline_stereo_present_target_matches(
+    const StreamlineStereoPresentTarget& target) noexcept {
+  constexpr std::uint32_t required_format = 28;
+  constexpr std::uint32_t required_state = 0;
+  return target.stereo_backbuffer != 0 && target.present_backbuffer != 0 &&
+         target.stereo_backbuffer != target.present_backbuffer &&
+         target.stereo_width != 0 &&
+         target.stereo_width == target.present_width &&
+         target.stereo_height != 0 &&
+         target.stereo_height == target.present_height &&
+         target.stereo_format == required_format &&
+         target.present_format == required_format &&
+         target.stereo_state == required_state &&
+         target.present_state == required_state;
+}
+
 constexpr bool streamline_source_values_coherent(std::uint64_t first,
                                                   std::uint64_t second) noexcept {
   return first == second || first + 1 == second || second + 1 == first;

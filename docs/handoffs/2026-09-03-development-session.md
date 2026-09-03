@@ -862,8 +862,14 @@ correction used `preflight-20260903T013512Z.json` through
    matched the generated Present candidates exactly, and one transport slot
    was reserved. Policy status was 6 (`ready_to_stage`) while generation
    submission, metadata publication and ready signaling remained zero. Next
-   identify and guard the actual swapchain backbuffer at the outer Present seam,
-   then stage without submitting a new Present.
+   identify and guard the actual swapchain backbuffer at the outer Present seam.
+   That observation-only guard now passes live too: source pair 4501/4501 and
+   target 4502 reached one outer Present whose current backbuffer was a distinct
+   4992x2688 format-28 resource matching the packed source exactly. The pure
+   target-matching policy has positive, extent-mismatch and identity-alias unit
+   coverage. Copy staging, tag staging, generation Present, metadata and ready
+   signaling all remained zero. Next stage one state-restoring copy without
+   changing Streamline tags or submitting an additional Present.
    Preserve the external consumer as the later binocular-output transport gate.
 2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,

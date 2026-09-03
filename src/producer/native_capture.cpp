@@ -161,6 +161,7 @@ struct StreamlineInputSnapshotState {
   bool stereo_backbuffer_complete{};
   bool transport_slot_reserved{};
   bool target_token_allocated{};
+  bool present_target_observed{};
   std::size_t transport_slot_index{};
   void* target_frame_token{};
   std::uint32_t target_frame_index{UINT_MAX};
@@ -11610,6 +11611,63 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
             "DESKTOP_EYE_MIRROR\tframe=%llu\tresult=%d\terror=%llu\r\n",
             present, mirror_result,
             static_cast<unsigned long long>(error));
+      }
+    }
+  }
+  if (candidate &&
+      streamline_target_token_probe_requested.load(std::memory_order_acquire) &&
+      streamline_stereo_swapchain_probe_requested.load(
+          std::memory_order_acquire)) {
+    std::scoped_lock lock(streamline_input_snapshot_mutex);
+    auto& snapshot = streamline_input_snapshot_state;
+    if (snapshot.stereo_backbuffer_complete &&
+        snapshot.target_token_allocated && !snapshot.present_target_observed) {
+      ComPtr<ID3D12Resource> present_backbuffer;
+      const auto backbuffer_index = candidate->GetCurrentBackBufferIndex();
+      if (SUCCEEDED(candidate->GetBuffer(
+              backbuffer_index, IID_PPV_ARGS(&present_backbuffer)))) {
+        const auto stereo_description = snapshot.stereo_backbuffer->GetDesc();
+        const auto present_description = present_backbuffer->GetDesc();
+        darktidevr::core::StreamlineStereoPresentTarget target{};
+        target.stereo_backbuffer = reinterpret_cast<std::uintptr_t>(
+            snapshot.stereo_backbuffer.Get());
+        target.present_backbuffer = reinterpret_cast<std::uintptr_t>(
+            present_backbuffer.Get());
+        target.stereo_width = stereo_description.Width;
+        target.present_width = present_description.Width;
+        target.stereo_height = stereo_description.Height;
+        target.present_height = present_description.Height;
+        target.stereo_format = static_cast<std::uint32_t>(
+            stereo_description.Format);
+        target.present_format = static_cast<std::uint32_t>(
+            present_description.Format);
+        target.stereo_state = D3D12_RESOURCE_STATE_PRESENT;
+        target.present_state = D3D12_RESOURCE_STATE_PRESENT;
+        const auto compatible =
+            darktidevr::core::streamline_stereo_present_target_matches(target);
+        snapshot.present_target_observed = true;
+        write_streamline_probe_log(
+            "STEREO_PRESENT_TARGET\tphase=observed\tpresent_frame=%llu"
+            "\tswapchain=%p\tbackbuffer_index=%u"
+            "\tstereo_backbuffer=%p\tpresent_backbuffer=%p"
+            "\tstereo_extent=%llux%u\tpresent_extent=%llux%u"
+            "\tstereo_format=%u\tpresent_format=%u"
+            "\tstereo_state=%u\tpresent_state=%u\tcompatible=%u"
+            "\tcopy_staged=0\ttags_staged=0"
+            "\tgeneration_present_submitted=0"
+            "\tmetadata_published=0\tready_signaled=0\r\n",
+            static_cast<unsigned long long>(present), swapchain,
+            backbuffer_index, snapshot.stereo_backbuffer.Get(),
+            present_backbuffer.Get(),
+            static_cast<unsigned long long>(stereo_description.Width),
+            stereo_description.Height,
+            static_cast<unsigned long long>(present_description.Width),
+            present_description.Height,
+            static_cast<unsigned>(stereo_description.Format),
+            static_cast<unsigned>(present_description.Format),
+            static_cast<unsigned>(D3D12_RESOURCE_STATE_PRESENT),
+            static_cast<unsigned>(D3D12_RESOURCE_STATE_PRESENT),
+            compatible ? 1U : 0U);
       }
     }
   }

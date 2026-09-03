@@ -9,6 +9,7 @@ namespace {
 using darktidevr::core::StreamlineEyeInputSet;
 using darktidevr::core::StreamlineStereoPresentationStatus;
 using darktidevr::core::StreamlineStereoPresentationTransaction;
+using darktidevr::core::StreamlineStereoPresentTarget;
 using darktidevr::core::StreamlineStereoInputStatus;
 using darktidevr::core::StreamlineStereoResource;
 
@@ -47,6 +48,10 @@ StreamlineStereoPresentationTransaction ready_transaction() {
   transaction.resource_state = 0;
   transaction.consumer_slot_reserved = true;
   return transaction;
+}
+
+StreamlineStereoPresentTarget matching_present_target() {
+  return {1000, 2000, 4992, 4992, 2688, 2688, 28, 28, 0, 0};
 }
 
 }  // namespace
@@ -136,6 +141,20 @@ int main() {
     expect(darktidevr::core::evaluate_streamline_stereo_presentation(transaction) ==
                StreamlineStereoPresentationStatus::ready_to_publish,
            "only a fence-complete output may be published");
+
+    auto present_target = matching_present_target();
+    expect(darktidevr::core::streamline_stereo_present_target_matches(
+               present_target),
+           "matching distinct stereo and Present targets must pass");
+    present_target.present_width = 2496;
+    expect(!darktidevr::core::streamline_stereo_present_target_matches(
+               present_target),
+           "mismatched Present extent must fail closed");
+    present_target = matching_present_target();
+    present_target.present_backbuffer = present_target.stereo_backbuffer;
+    expect(!darktidevr::core::streamline_stereo_present_target_matches(
+               present_target),
+           "the staging source and Present destination must be distinct");
 
     std::cout << "streamline_stereo_inputs=pass\n";
     return 0;

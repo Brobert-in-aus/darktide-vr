@@ -81,6 +81,8 @@ $stereoBackbuffers = @($records | Where-Object event -eq 'STEREO_BACKBUFFER')
 $stereoTransportReservations = @($records |
     Where-Object event -eq 'STEREO_TRANSPORT_RESERVATION')
 $stereoTargetTokens = @($records | Where-Object event -eq 'STEREO_TARGET_TOKEN')
+$stereoPresentTargets = @($records |
+    Where-Object event -eq 'STEREO_PRESENT_TARGET')
 $generatedBackbufferExtents = @()
 $generatedBackbufferFormats = @()
 
@@ -626,6 +628,14 @@ if ($stereoBackbuffers.Count -gt 0) {
         Write-Output "input_snapshot.stereo_present_compatible=$([int]$stereoPresentCompatible)"
     }
 }
+Write-Output "input_snapshot.present_target_samples=$($stereoPresentTargets.Count)"
+if ($stereoPresentTargets.Count -gt 0) {
+    Write-Output "input_snapshot.present_target_compatible=$($stereoPresentTargets[-1].compatible)"
+    Write-Output "input_snapshot.present_target_extent=$($stereoPresentTargets[-1].present_extent)"
+    Write-Output "input_snapshot.present_target_format=$($stereoPresentTargets[-1].present_format)"
+    Write-Output "input_snapshot.present_target_copy_staged=$($stereoPresentTargets[-1].copy_staged)"
+    Write-Output "input_snapshot.present_target_tags_staged=$($stereoPresentTargets[-1].tags_staged)"
+}
 if ($inputSnapshotBindings.Count -eq 2) {
     Write-Output "input_snapshot.frame_tokens=$(($inputSnapshotBindings.frame_token) -join ',')"
     Write-Output "input_snapshot.frame_token_calls=$(($inputSnapshotBindings.frame_token_call) -join ',')"
@@ -827,5 +837,16 @@ if ($stereoSwapchainProbe -eq '1' -and
             $generatedBackbufferFormats.Count -ne 1 -or
             $generatedBackbufferFormats[0] -ne '28')) {
     throw 'The wide stereo swapchain did not reach the Streamline present path.'
+}
+if ($targetTokenProbe -eq '1' -and $stereoSwapchainProbe -eq '1' -and
+        ($stereoPresentTargets.Count -ne 1 -or
+            $stereoPresentTargets[0].phase -ne 'observed' -or
+            $stereoPresentTargets[0].compatible -ne '1' -or
+            $stereoPresentTargets[0].copy_staged -ne '0' -or
+            $stereoPresentTargets[0].tags_staged -ne '0' -or
+            $stereoPresentTargets[0].generation_present_submitted -ne '0' -or
+            $stereoPresentTargets[0].metadata_published -ne '0' -or
+            $stereoPresentTargets[0].ready_signaled -ne '0')) {
+    throw 'The packed stereo resource was not safely bound to one Present target.'
 }
 Write-Output 'result=pass'
