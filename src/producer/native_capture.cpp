@@ -157,6 +157,8 @@ struct StreamlineInputSnapshotState {
   bool readback_complete{};
   bool stereo_backbuffer_pending{};
   bool stereo_backbuffer_complete{};
+  bool transport_slot_reserved{};
+  std::size_t transport_slot_index{};
   std::uint64_t present_frame{};
   std::uint64_t pose_sequence{};
   std::uint64_t fence_value{};
@@ -222,6 +224,7 @@ StreamlineCopyProbeState streamline_copy_probe_state;
 
 struct StreamlineTransportSlot {
   bool pending{};
+  bool reserved{};
   std::uint64_t sequence{};
   std::uint64_t native_call{};
   std::uint32_t frame_index{UINT_MAX};
@@ -245,6 +248,9 @@ std::array<HANDLE, kStreamlineTransportSlotCount>
     streamline_transport_surface_handles{};
 HANDLE streamline_transport_ready_handle{};
 HANDLE streamline_transport_consumed_handle{};
+
+bool ensure_streamline_transport_resources(
+    ID3D12Device* device, const D3D12_RESOURCE_DESC& source);
 constexpr std::array<const wchar_t*, kStreamlineTransportSlotCount>
     kStreamlineTransportSurfaceNames{
         L"Local\\DarktideVR-generated-frame-0",
@@ -8927,6 +8933,44 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
       return;
     }
     const auto description = state.stereo_backbuffer->GetDesc();
+    ComPtr<ID3D12Device> device;
+    std::size_t reserved_slot = streamline_transport_slots.size();
+    {
+      std::scoped_lock transport_lock(streamline_transport_mutex);
+      if (FAILED(state.stereo_backbuffer->GetDevice(IID_PPV_ARGS(&device))) ||
+          !ensure_streamline_transport_resources(device.Get(), description)) {
+        state.failed = true;
+        write_streamline_probe_log(
+            "STEREO_TRANSPORT_RESERVATION\tphase=failed"
+            "\treason=resource_creation\r\n");
+        return;
+      }
+      for (std::size_t index = 0; index < streamline_transport_slots.size();
+           ++index) {
+        auto& slot = streamline_transport_slots[index];
+        if (!slot.pending && !slot.reserved) {
+          slot.reserved = true;
+          reserved_slot = index;
+          break;
+        }
+      }
+    }
+    if (reserved_slot == streamline_transport_slots.size()) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "STEREO_TRANSPORT_RESERVATION\tphase=failed"
+          "\treason=ring_full\r\n");
+      return;
+    }
+    state.transport_slot_reserved = true;
+    state.transport_slot_index = reserved_slot;
+    write_streamline_probe_log(
+        "STEREO_TRANSPORT_RESERVATION\tphase=reserved\tslot=%zu"
+        "\tresource=%p\twidth=%llu\theight=%u\tformat=%u"
+        "\tmetadata_published=0\tready_signaled=0\r\n",
+        reserved_slot, streamline_transport_slots[reserved_slot].surface.Get(),
+        static_cast<unsigned long long>(description.Width), description.Height,
+        static_cast<unsigned>(description.Format));
     state.stereo_backbuffer_pending = false;
     state.stereo_backbuffer_complete = true;
     write_streamline_probe_log(
@@ -10755,7 +10799,9 @@ bool ensure_streamline_transport_resources(
   }
   if (std::any_of(streamline_transport_slots.begin(),
                   streamline_transport_slots.end(),
-                  [](const auto& slot) { return slot.pending; })) {
+                  [](const auto& slot) {
+                    return slot.pending || slot.reserved;
+                  })) {
     return false;
   }
   reset_streamline_transport_resources();
@@ -10831,7 +10877,7 @@ void schedule_streamline_transport_probe(ID3D12CommandQueue* queue,
   const auto sequence = streamline_transport_submitted + 1;
   const auto slot_index = darktidevr::core::generated_frame_slot(sequence);
   auto& slot = streamline_transport_slots[slot_index];
-  if (slot.pending) {
+  if (slot.pending || slot.reserved) {
     ++streamline_transport_dropped;
     write_streamline_probe_log(
         "GENERATED_TRANSPORT_DROP\treason=ring_full\tnative_call=%llu"

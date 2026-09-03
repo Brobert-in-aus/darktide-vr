@@ -78,6 +78,8 @@ $inputSnapshotReadbacks = @($records |
 $inputSnapshotSamples = @($records |
     Where-Object event -eq 'INPUT_SNAPSHOT_SAMPLE')
 $stereoBackbuffers = @($records | Where-Object event -eq 'STEREO_BACKBUFFER')
+$stereoTransportReservations = @($records |
+    Where-Object event -eq 'STEREO_TRANSPORT_RESERVATION')
 
 if ($probe.Count -ne 1 -or $target.Count -ne 1 -or
         $nativeTarget.Count -ne 1 -or $begins.Count -eq 0 -or
@@ -556,6 +558,12 @@ Write-Output "input_snapshot.readback_samples=$($inputSnapshotReadbacks.Count)"
 Write-Output "input_snapshot.content_samples=$($inputSnapshotSamples.Count)"
 Write-Output "input_snapshot.binding_samples=$($inputSnapshotBindings.Count)"
 Write-Output "input_snapshot.stereo_backbuffer_samples=$($stereoBackbuffers.Count)"
+Write-Output "input_snapshot.transport_reservation_samples=$($stereoTransportReservations.Count)"
+if ($stereoTransportReservations.Count -eq 1) {
+    Write-Output "input_snapshot.transport_slot=$($stereoTransportReservations[0].slot)"
+    Write-Output "input_snapshot.transport_metadata_published=$($stereoTransportReservations[0].metadata_published)"
+    Write-Output "input_snapshot.transport_ready_signaled=$($stereoTransportReservations[0].ready_signaled)"
+}
 if ($stereoBackbuffers.Count -gt 0) {
     foreach ($phase in @($stereoBackbuffers.phase | Sort-Object -Unique)) {
         Write-Output "input_snapshot.stereo_backbuffer_${phase}.samples=$(@($stereoBackbuffers |
@@ -733,6 +741,11 @@ if ($inputSnapshotProbe -eq '1' -and
             @($stereoBackbuffers | Where-Object phase -eq 'scheduled').Count -ne 1 -or
             $stereoBackbufferComplete.Count -ne 1 -or
             @($stereoBackbuffers | Where-Object phase -eq 'failed').Count -ne 0 -or
+            @($stereoTransportReservations | Where-Object phase -eq 'reserved').Count -ne 1 -or
+            @($stereoTransportReservations | Where-Object phase -eq 'failed').Count -ne 0 -or
+            @($stereoTransportReservations | Where-Object {
+                    $_.metadata_published -ne '0' -or $_.ready_signaled -ne '0'
+                }).Count -ne 0 -or
             [uint64]$stereoBackbufferComplete[0].width -ne
                 2 * [uint64]$stereoBackbufferComplete[0].eye_width -or
             $stereoBackbufferComplete[0].format -ne '28' -or

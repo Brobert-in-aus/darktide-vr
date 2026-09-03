@@ -688,6 +688,14 @@ the generated-output fence completes. Unit coverage exercises every rejection
 and the `ready_to_evaluate`, `awaiting_generated_output` and
 `ready_to_publish` transitions.
 
+The transport-capacity seam now passes without fabricating an output. Once the
+format-28 stereo backbuffer fence completes, the snapshot probe creates the
+existing three-slot shared transport ring at 4,992x2,688 and reserves one free
+slot under the transport mutex. The live confirmation reserved slot 0 while
+reporting `metadata_published=0` and `ready_signaled=0`; the analyzer requires
+that exact nonpublication invariant. Reserved slots are excluded from the
+ordinary generated-output producer and released with the process resources.
+
 ## Runtime evidence
 
 The initial 30-minute hub run completed with:
@@ -814,9 +822,10 @@ correction used `preflight-20260903T013512Z.json` through
    diagnostic 4,992x2,688 side-by-side format-28 backbuffer now packs and
    reaches its fence without changing live presentation. Next define and guard
    the opt-in evaluation transaction. The pure transaction policy is now in
-   place; next connect its transport-slot reservation without issuing an
-   evaluation. Preserve the external consumer as the later binocular-output
-   transport gate.
+   place and a matching transport slot can now be reserved without metadata or
+   fence publication. Next add explicit target-token allocation behind a new
+   opt-in flag while keeping evaluation disabled. Preserve the external
+   consumer as the later binocular-output transport gate.
 2. Perform worn inspection of the opt-in compositor cuff against the proven
    independently rooted one-sided gloves. Calibrate its grip-relative offset,
    radii and length if its alignment is sound; reject the route if the lack of
