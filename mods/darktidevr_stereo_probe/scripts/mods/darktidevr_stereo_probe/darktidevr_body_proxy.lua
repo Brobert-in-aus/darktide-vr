@@ -222,6 +222,80 @@ local function inverse_quaternion(rotation)
     return Quaternion.from_elements(-x, -y, -z, w)
 end
 
+local function anatomical_hand_rotation(unit, side, target_rotation)
+    local hand = rigid_hands[side]
+    local target_frame = Quaternion.look(
+        Quaternion.right(target_rotation) * -1,
+        Quaternion.forward(target_rotation))
+    if hand.anatomy_inverse then
+        return Quaternion.multiply(target_frame, hand.anatomy_inverse:unbox())
+    end
+    local hand_name = side == "left" and "j_lefthand" or "j_righthand"
+    local middle_name = side == "left" and
+        "j_lefthandmiddle1" or "j_righthandmiddle1"
+    local index_name = side == "left" and
+        "j_lefthandindex1" or "j_righthandindex1"
+    local pinky_name = side == "left" and
+        "j_lefthandpinky1" or "j_righthandpinky1"
+    if not Unit.has_node(unit, hand_name) or
+            not Unit.has_node(unit, middle_name) or
+            not Unit.has_node(unit, index_name) or
+            not Unit.has_node(unit, pinky_name) then
+        return nil
+    end
+
+    -- Match the accepted articulated-hand solve instead of treating the
+    -- authored hand joint's mirrored local axes as the OpenXR grip axes.
+    -- Touch grip +Y runs down the handle: fingertips point along -grip-Y,
+    -- little-to-index follows grip-forward, and the palm normal is -grip-X.
+    local hand_node = Unit.node(unit, hand_name)
+    local wrist = Unit.world_position(unit, hand_node)
+    local inverse_hand = inverse_quaternion(Unit.world_rotation(unit, hand_node))
+    local longitudinal = Quaternion.rotate(inverse_hand,
+        Unit.world_position(unit, Unit.node(unit, middle_name)) - wrist)
+    local across = Quaternion.rotate(inverse_hand,
+        Unit.world_position(unit, Unit.node(unit, index_name)) -
+            Unit.world_position(unit, Unit.node(unit, pinky_name)))
+    longitudinal = Vector3.normalize(longitudinal)
+    across = Vector3.normalize(across)
+    local palm = Vector3.normalize(Vector3.cross(across, longitudinal))
+    local source_frame = Quaternion.look(palm, across)
+    -- Capture the authored basis before importing finger animation. Rebuilding
+    -- it from curled fingers would make an open/closed palm rotate the wrist.
+    hand.anatomy_inverse = QuaternionBox(inverse_quaternion(source_frame))
+    return Quaternion.multiply(target_frame, hand.anatomy_inverse:unbox())
+end
+
+local function copy_gameplay_fingers(hand)
+    local source = state.source_unit
+    if not source or not Unit.alive(source) then
+        return
+    end
+    if not hand.finger_nodes then
+        hand.finger_nodes = {}
+        for _, suffix in ipairs({"handindex", "handmiddle", "handring",
+                "handpinky", "handthumb", "thumb"}) do
+            for joint = 1, 4 do
+                for _, number in ipairs({tostring(joint), "0" .. joint}) do
+                    local name = "j_" .. hand.side .. suffix .. number
+                    if Unit.has_node(source, name) and Unit.has_node(hand.unit, name) then
+                        hand.finger_nodes[#hand.finger_nodes + 1] = {
+                            source = Unit.node(source, name),
+                            target = Unit.node(hand.unit, name)
+                        }
+                    end
+                end
+            end
+        end
+        print("DARKTIDEVR_IK finger_animation side=" .. hand.side ..
+            " joints=" .. #hand.finger_nodes .. " owner=gameplay")
+    end
+    for _, node in ipairs(hand.finger_nodes) do
+        Unit.set_local_rotation(hand.unit, node.target,
+            Unit.local_rotation(source, node.source))
+    end
+end
+
 local function show_rigid_hand_surface(hand)
     local unit = hand.unit
     Unit.set_unit_visibility(unit, true, false)
@@ -337,12 +411,18 @@ local function place_rigid_hand(world, hand, target_position, target_rotation)
         return false
     end
     local hand_node = Unit.node(unit, hand_name)
+    local desired_hand_rotation = anatomical_hand_rotation(
+        unit, hand.side, target_rotation)
+    if not desired_hand_rotation then
+        return false
+    end
+    copy_gameplay_fingers(hand)
     local root_rotation = Unit.world_rotation(unit, 1)
     local relative_rotation = Quaternion.multiply(
         inverse_quaternion(root_rotation),
         Unit.world_rotation(unit, hand_node))
     local desired_root_rotation = Quaternion.multiply(
-        target_rotation, inverse_quaternion(relative_rotation))
+        desired_hand_rotation, inverse_quaternion(relative_rotation))
     Unit.set_local_rotation(unit, 1, desired_root_rotation)
     World.update_unit_and_children(world, unit)
     local root_position = Unit.local_position(unit, 1)
@@ -350,6 +430,27 @@ local function place_rigid_hand(world, hand, target_position, target_rotation)
         root_position + target_position - Unit.world_position(unit, hand_node))
     World.update_unit_and_children(world, unit)
     show_rigid_hand_surface(hand)
+    hand.placement_count = (hand.placement_count or 0) + 1
+    if hand.placement_count == 1 or hand.placement_count % 600 == 0 then
+        local wrist = Unit.world_position(unit, hand_node)
+        hand.render_check_position = Vector3Box(wrist)
+        hand.render_check_rotation = QuaternionBox(Unit.world_rotation(unit, hand_node))
+        local spawn_data = hand.profile_spawner._character_spawn_data
+        local slot = spawn_data and spawn_data.slots and
+            spawn_data.slots.slot_gear_upperbody
+        local glove = slot and slot.unit_3p
+        local glove_error = -1
+        if glove and Unit.alive(glove) and Unit.has_node(glove, hand_name) then
+            glove_error = Vector3.length(
+                Unit.world_position(glove, Unit.node(glove, hand_name)) - wrist)
+        end
+        local scale = Unit.local_scale(unit, 1)
+        print(string.format(
+            "DARKTIDEVR_IK rigid_hand_pose side=%s samples=%d wrist_error_m=%.6f glove_joint_error_m=%.6f root_scale=%.4f,%.4f,%.4f",
+            hand.side, hand.placement_count,
+            Vector3.length(wrist - target_position), glove_error,
+            Vector3.x(scale), Vector3.y(scale), Vector3.z(scale)))
+    end
     return true
 end
 
@@ -470,6 +571,27 @@ end
 
 function BodyProxy.rigid_hands_active()
     return state.hands_only and BodyProxy.active()
+end
+
+function BodyProxy.check_rigid_hands_before_render()
+    for side, hand in pairs(rigid_hands) do
+        if hand.render_check_position and hand.unit and Unit.alive(hand.unit) then
+            local node = Unit.node(hand.unit,
+                side == "left" and "j_lefthand" or "j_righthand")
+            local drift = Vector3.length(Unit.world_position(hand.unit, node) -
+                hand.render_check_position:unbox())
+            local ax, ay, az, aw = Quaternion.to_elements(
+                hand.render_check_rotation:unbox())
+            local bx, by, bz, bw = Quaternion.to_elements(
+                Unit.world_rotation(hand.unit, node))
+            local dot = math.min(1, math.abs(ax * bx + ay * by + az * bz + aw * bw))
+            print(string.format(
+                "DARKTIDEVR_IK rigid_hand_prerender side=%s position_drift_m=%.6f rotation_drift_deg=%.4f",
+                side, drift, 2 * math.acos(dot) * 180 / math.pi))
+            hand.render_check_position = nil
+            hand.render_check_rotation = nil
+        end
+    end
 end
 
 function BodyProxy.place_rigid_hands(

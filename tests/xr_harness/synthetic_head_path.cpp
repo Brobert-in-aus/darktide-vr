@@ -35,7 +35,10 @@ SyntheticHeadPathSample synthetic_head_path_sample(
 
 math::Pose synthetic_body_inspection_pose(math::Vec3 preserved_translation) {
   constexpr float pi = 3.14159265358979323846F;
-  constexpr float pitch = -70.0F * pi / 180.0F;
+  // Keep both controller-owned hands and their cuffs comfortably in view.
+  // Seventy degrees was useful as a clipped-geometry negative control, but is
+  // too steep for worn visual inspection.
+  constexpr float pitch = -55.0F * pi / 180.0F;
   return {math::from_axis_angle({1.0F, 0.0F, 0.0F}, pitch),
           preserved_translation};
 }

@@ -63,11 +63,13 @@ int main() {
   const auto body_inspection = synthetic_body_inspection_pose(translation);
   const auto inspection_forward =
       rotate(body_inspection.orientation, {0.0F, 0.0F, -1.0F});
-  expect(inspection_forward.y < -0.9F &&
+  expect(inspection_forward.y < -0.8F && inspection_forward.y > -0.85F &&
+             inspection_forward.z < -0.55F &&
+             inspection_forward.z > -0.6F &&
              body_inspection.position.x == translation.x &&
              body_inspection.position.y == translation.y &&
              body_inspection.position.z == translation.z,
-         "Body-inspection pose must look steeply down without translating");
+         "Body-inspection pose must look 55 degrees down without translating");
 
   const auto pivot = synthetic_neck_pivot_path_sample(90, translation);
   expect(std::abs(rotate(pivot.orientation, {0.0F, 0.0F, -1.0F}).y) >

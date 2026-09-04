@@ -3083,23 +3083,26 @@ local function apply_head_tracking(clean_position, clean_rotation)
                     1000000000 / qpc_frequency - controller_timestamp_ns
         end
         controller_observation.right_aim_age_ms = controller_age_ns / 1000000
+        -- These are bridge flags, not raw XrSpaceLocationFlags: bits 0/1
+        -- mean orientation/position valid. Mask 5 instead requires tracked
+        -- orientation and accidentally omits position validity.
         controller_observation.right_aim_usable =
-            bit.band(right_aim_flags, 5) == 5 and
+            bit.band(right_aim_flags, 3) == 3 and
             controller_age_ns >= -5000000 and
             controller_age_ns <= 100000000 and
             controller_sequence ~= controller_observation.epoch_block_sequence
         controller_observation.left_aim_usable =
-            bit.band(left_aim_flags, 5) == 5 and
+            bit.band(left_aim_flags, 3) == 3 and
             controller_age_ns >= -5000000 and
             controller_age_ns <= 100000000 and
             controller_sequence ~= controller_observation.epoch_block_sequence
         controller_observation.right_grip_tracking_live =
-            bit.band(right_grip_flags, 5) == 5 and
+            bit.band(right_grip_flags, 3) == 3 and
             controller_age_ns >= -5000000 and
             controller_age_ns <= 100000000 and
             controller_sequence ~= controller_observation.epoch_block_sequence
         controller_observation.left_grip_tracking_live =
-            bit.band(left_grip_flags, 5) == 5 and
+            bit.band(left_grip_flags, 3) == 3 and
             controller_age_ns >= -5000000 and
             controller_age_ns <= 100000000 and
             controller_sequence ~= controller_observation.epoch_block_sequence
@@ -4168,6 +4171,31 @@ local function runtime_recentered_eye(frustum, target_aspect_ratio)
     }
 end
 
+function presentation.binocular_visibility_scale(left, right)
+    -- Light admission must cover the union of the rendered eye cones. A fixed
+    -- 20% tangent margin is smaller than their relative optical-axis yaw.
+    -- Transform all opposite-eye corner rays into each camera and find the
+    -- common expansion required by both horizontal and vertical bounds.
+    local scale = 1
+    for _, pair in ipairs({{left, right}, {right, left}}) do
+        local own, other = pair[1], pair[2]
+        local inverse = presentation.inverse_quaternion(own.rotation)
+        for _, x in ipairs({-1, 1}) do
+            for _, z in ipairs({-1, 1}) do
+                local ray = Quaternion.rotate(inverse, Quaternion.rotate(
+                    other.rotation, Vector3(x * math.tan(other.horizontal_half),
+                        1, z * math.tan(other.vertical_fov * 0.5))))
+                if ray.y > 0 then
+                    scale = math.max(scale,
+                        math.abs(ray.x / ray.y) / math.tan(own.horizontal_half),
+                        math.abs(ray.z / ray.y) / math.tan(own.vertical_fov * 0.5))
+                end
+            end
+        end
+    end
+    return scale
+end
+
 local function apply_runtime_recentered_projection(primary, right)
     if not head_render_frusta then
         return false
@@ -4180,10 +4208,13 @@ local function apply_runtime_recentered_projection(primary, right)
     local right_eye = runtime_recentered_eye(
         head_render_frusta[2], target_aspect_ratio
     )
-    local visibility_scale =
-        (presentation.cluster_light_visibility_fix_active or
-            presentation.eye_transform_probe_mode == "visibility_padding") and
-            1.2 or 1
+    local visibility_scale = 1
+    if presentation.cluster_light_visibility_fix_active then
+        visibility_scale = presentation.binocular_visibility_scale(left, right_eye)
+    elseif presentation.eye_transform_probe_mode == "visibility_padding" then
+        visibility_scale = 1.2
+    end
+    presentation.render_visibility_scale = visibility_scale
     local post_projection = Matrix4x4.from_elements(
         visibility_scale, 0, 0,
         0, visibility_scale, 0,
@@ -4201,6 +4232,8 @@ local function apply_runtime_recentered_projection(primary, right)
             math.tan(right_eye.vertical_fov * 0.5) * visibility_scale))
     presentation.render_projection_vertical_fov = left.vertical_fov
     if not runtime_recentered_projection_logged then
+        mod:info("DARKTIDEVR_STEREO binocular_light_visibility_scale=%.6f",
+            visibility_scale)
         mod:info(
             "DARKTIDEVR_STEREO runtime_recentered_projection left=%.6f,%.6f,%.6f right=%.6f,%.6f,%.6f",
             left.vertical_fov,
@@ -8512,13 +8545,6 @@ function presentation.sync_equipment_hands_to_proxy(
 end
 
 function presentation.apply_tracked_arms(unit, sequence, world, anchor_unit)
-    local arm_length_ok, _, arm_length_reason =
-        presentation.apply_calibrated_arm_length(world, unit)
-    if not arm_length_ok then
-        controller_observation.body_ik_presentation_block_reason =
-            "arm_length_" .. tostring(arm_length_reason)
-        return
-    end
     presentation.refresh_body_anchor_from_avatar(anchor_unit or unit)
     local left_target, left_rotation =
         presentation.body_ik_controller_grip_target(unit, "left")
@@ -8526,10 +8552,19 @@ function presentation.apply_tracked_arms(unit, sequence, world, anchor_unit)
         presentation.body_ik_controller_grip_target(unit, "right")
     if presentation.body_proxy and
             presentation.body_proxy.rigid_hands_active() then
+        -- Rigid glove roots still target the anatomical wrist, not the grip
+        -- origin embedded inside the Touch controller. Preserve the accepted
+        -- body-frame correction used by the earlier articulated-hand path.
+        local rigid_left_target = left_target and
+            presentation.body_ik_calibrated_wrist_target(
+                "left", left_target, left_rotation)
+        local rigid_right_target = right_target and
+            presentation.body_ik_calibrated_wrist_target(
+                "right", right_target, right_rotation)
         local left_unit, right_unit, rigid_written =
             presentation.body_proxy.place_rigid_hands(
-                world, left_target, left_rotation,
-                right_target, right_rotation)
+                world, rigid_left_target, left_rotation,
+                rigid_right_target, right_rotation)
         if rigid_written then
             if left_target and left_unit then
                 presentation.sync_equipment_hand_to_proxy(
@@ -8544,6 +8579,16 @@ function presentation.apply_tracked_arms(unit, sequence, world, anchor_unit)
                 controller_observation.body_ik_presentation_writes + 1
             controller_observation.body_ik_presentation_block_reason = nil
         end
+        return
+    end
+    -- Rigid hands use authored joint-to-root transforms. The generic proxy
+    -- handle above is the left root, so applying arm-length retargeting before
+    -- that branch deforms only the left glove's skinning skeleton.
+    local arm_length_ok, _, arm_length_reason =
+        presentation.apply_calibrated_arm_length(world, unit)
+    if not arm_length_ok then
+        controller_observation.body_ik_presentation_block_reason =
+            "arm_length_" .. tostring(arm_length_reason)
         return
     end
     local wrote = false
@@ -10736,6 +10781,10 @@ mod:hook(
                 "DARKTIDEVR_WORLD_MENU preserve_world view=%s",
                 tostring(view_name))
         end
+        -- A Back edge generated before this view opened belongs to the old
+        -- screen. Baseline it here so it cannot immediately dismiss a newly
+        -- opened training/options view on its first update.
+        presentation.consume_menu_back(presentation.read_menu_pointer())
         local result = func(self, view_name, ...)
         presentation.on_view_open(self, view_name)
         return result
@@ -12244,6 +12293,32 @@ mod:hook(UIRenderer, "draw_triangle", function(func, self, position, size,
     return func(self, position, size, style, retained_id)
 end)
 
+function presentation.world_marker_screen_position(camera, world_position)
+    local screen, distance = Camera.world_to_screen(camera, world_position)
+    local scale = presentation.render_visibility_scale or 1
+    if scale ~= 1 then
+        -- Visibility FOV widening is canceled by a render post-projection
+        -- transform. CPU marker projection must use that same final mapping.
+        -- Camera.world_to_screen defaults to the window backbuffer extent.
+        local width, height = Application.back_buffer_size()
+        screen = Vector3(
+            width * 0.5 + (screen.x - width * 0.5) * scale,
+            height * 0.5 + (screen.y - height * 0.5) * scale,
+            screen.z)
+    end
+    return screen, distance
+end
+
+mod:hook("HudElementWorldMarkers", "_convert_world_to_screen_position",
+    function(func, self, camera, world_position)
+        if not active or not stereo_world_markers_requested or not camera then
+            return func(self, camera, world_position)
+        end
+        local screen, distance = presentation.world_marker_screen_position(
+            camera, world_position)
+        return screen.x, screen.y, distance
+    end)
+
 local function tangent_projection(value, lower, upper)
     return (value - lower) / (upper - lower)
 end
@@ -12254,16 +12329,16 @@ local function prepare_binocular_clamped_offsets(instance, inverse_scale)
         return offsets
     end
 
-    -- Native capture's accepted logical-eye mapping submits the primary
-    -- Darktide camera to OpenXR view 1 and the replay camera to view 0. Keep
-    -- that resource identity here: assigning the runtime frusta by camera
-    -- names reverses which physical eye must be inset at an overlap edge.
-    local primary_frustum = head_render_frusta[2]
-    local replay_frustum = head_render_frusta[1]
-    local left_min = math.tan(primary_frustum.left)
-    local left_max = math.tan(primary_frustum.right)
-    local right_min = math.tan(replay_frustum.left)
-    local right_max = math.tan(replay_frustum.right)
+    -- Match apply_runtime_recentered_projection: these are rotated symmetric
+    -- cameras, not raw asymmetric runtime projections. Clamp in shared head
+    -- angles, then project relative to each camera's optical centre.
+    local aspect = ui_eye_target_width / ui_eye_target_height
+    local primary = runtime_recentered_eye(head_render_frusta[1], aspect)
+    local replay = runtime_recentered_eye(head_render_frusta[2], aspect)
+    local left_min = primary.horizontal_center - primary.horizontal_half
+    local left_max = primary.horizontal_center + primary.horizontal_half
+    local right_min = replay.horizontal_center - replay.horizontal_half
+    local right_max = replay.horizontal_center + replay.horizontal_half
     local overlap_min = math.max(left_min, right_min)
     local overlap_max = math.min(left_max, right_max)
     if overlap_min >= overlap_max then
@@ -12275,7 +12350,8 @@ local function prepare_binocular_clamped_offsets(instance, inverse_scale)
         "screen"
     )
     local root_width = root_size[1] * RESOLUTION_LOOKUP.scale
-    if root_width <= 0 then
+    local root_height = root_size[2] * RESOLUTION_LOOKUP.scale
+    if root_width <= 0 or root_height <= 0 then
         return offsets
     end
 
@@ -12292,11 +12368,23 @@ local function prepare_binocular_clamped_offsets(instance, inverse_scale)
                     (math.abs(angle) < 0.001 or
                         math.abs(math.abs(angle) - math.pi) < 0.001)
                 local overlap_width = overlap_max - overlap_min
-                local projected_tangent = left_min +
-                    pixel_x / root_width * (left_max - left_min)
+                local projected_tangent = primary.horizontal_center + math.atan(
+                    (2 * pixel_x / root_width - 1) *
+                        math.tan(primary.horizontal_half))
                 local pair_clamped_left = projected_tangent < overlap_min
                 local pair_clamped_right = projected_tangent > overlap_max
-                if stock_horizontal_clamp or pair_clamped_left or
+                local allow_clamp = marker.template.screen_clamp and
+                    not marker.block_screen_clamp
+                if not allow_clamp and
+                        (pair_clamped_left or pair_clamped_right) then
+                    -- Preserve the template's offscreen policy. Previously
+                    -- non-clamping markers piled up at the primary eye's
+                    -- wider edge, but stock culling removed them on the other
+                    -- side before this draw hook could run. Cull at the shared
+                    -- boundary for both eyes; normal calculation refreshes
+                    -- marker.draw next frame.
+                    marker.draw = false
+                elseif stock_horizontal_clamp or pair_clamped_left or
                         pair_clamped_right then
                     local clamped_left = stock_horizontal_clamp and
                         pixel_x < root_width * 0.5 or pair_clamped_left
@@ -12323,22 +12411,33 @@ local function prepare_binocular_clamped_offsets(instance, inverse_scale)
                             overlap_min + overlap_inset or
                             overlap_max - overlap_inset
                     end
-                    local left_x = tangent_projection(
-                        shared_tangent,
-                        left_min,
-                        left_max
-                    ) * root_width * inverse_scale
-                    local right_x = tangent_projection(
-                        shared_tangent,
-                        right_min,
-                        right_max
-                    ) * root_width * inverse_scale
+                    local left_x = (0.5 + 0.5 * math.tan(
+                        shared_tangent - primary.horizontal_center) /
+                        math.tan(primary.horizontal_half)) *
+                        root_width * inverse_scale
+                    -- A pinned marker represents one direction. Reproject
+                    -- that full ray between optical frames: copying Y while
+                    -- correcting only horizontal angles diverges under pitch
+                    -- and increasingly oblique viewing directions.
+                    local primary_ray = Vector3(
+                        (2 * left_x / (root_width * inverse_scale) - 1) *
+                            math.tan(primary.horizontal_half),
+                        1,
+                        (2 * original_y / (root_height * inverse_scale) - 1) *
+                            math.tan(primary.vertical_fov * 0.5))
+                    local replay_ray = Quaternion.rotate(
+                        presentation.inverse_quaternion(replay.rotation),
+                        Quaternion.rotate(primary.rotation, primary_ray))
+                    local right_x = (0.5 + 0.5 * replay_ray.x / replay_ray.y /
+                        math.tan(replay.horizontal_half)) * root_width * inverse_scale
+                    local right_y = (0.5 + 0.5 * replay_ray.z / replay_ray.y /
+                        math.tan(replay.vertical_fov * 0.5)) * root_height * inverse_scale
                     offsets[marker] = {
                         original_x = original_x,
                         original_y = original_y,
                         left_x = left_x,
                         right_x = right_x,
-                        y = original_y
+                        y = right_y
                     }
                     -- The first draw must also use the shared angular clamp.
                     -- A numerically identical texture coordinate in both
@@ -12504,11 +12603,11 @@ local function enqueue_world_markers_for_camera(camera)
                     offset[1] = binocular.right_x
                     offset[2] = binocular.y
                 else
-                    local left_screen = Camera.world_to_screen(
+                    local left_screen = presentation.world_marker_screen_position(
                         original_camera,
                         world_position
                     )
-                    local right_screen = Camera.world_to_screen(
+                    local right_screen = presentation.world_marker_screen_position(
                         camera,
                         world_position
                     )
@@ -12802,6 +12901,9 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
 
     if world == active_world and active and ui_native_capture_active and
             ui_native_capture then
+        if presentation.body_proxy then
+            presentation.body_proxy.check_rigid_hands_before_render()
+        end
         presentation.update_performance_pass_trace()
         local primary = ScriptWorld.viewport(world, primary_viewport_name)
         local right = ScriptWorld.viewport(world, right_viewport_name)
@@ -13377,9 +13479,9 @@ end, function()
     end
     local fresh = age_ns >= -5000000 and age_ns <= 100000000
     controller_observation.left_grip_tracking_live = fresh and
-        bit.band(tonumber(controller_observation.tracking_flags[1]), 5) == 5
+        bit.band(tonumber(controller_observation.tracking_flags[1]), 3) == 3
     controller_observation.right_grip_tracking_live = fresh and
-        bit.band(tonumber(controller_observation.tracking_flags[3]), 5) == 5
+        bit.band(tonumber(controller_observation.tracking_flags[3]), 3) == 3
     controller_observation.left_grip_x =
         tonumber(controller_observation.values[7])
     controller_observation.left_grip_y =

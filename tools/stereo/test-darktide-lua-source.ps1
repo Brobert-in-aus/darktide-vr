@@ -247,7 +247,13 @@ if (-not $bodyProxySource.Contains(
         -not $bodyProxySource.Contains(
             'spawn_rigid_hand(world, source_unit, profile, "right")') -or
         -not $bodyProxySource.Contains(
-            'target_rotation, inverse_quaternion(relative_rotation)') -or
+            'local function anatomical_hand_rotation(') -or
+        -not $bodyProxySource.Contains(
+            'Quaternion.right(target_rotation) * -1') -or
+        -not $bodyProxySource.Contains(
+            'Quaternion.forward(target_rotation)') -or
+        -not $bodyProxySource.Contains(
+            'desired_hand_rotation, inverse_quaternion(relative_rotation)') -or
         -not $bodyProxySource.Contains(
             'root_position + target_position - Unit.world_position(unit, hand_node)') -or
         -not $bodyProxySource.Contains(
@@ -257,10 +263,14 @@ if (-not $bodyProxySource.Contains(
         -not $source.Contains(
             'presentation.body_proxy.place_rigid_hands(') -or
         -not $source.Contains(
+            '"left", left_target, left_rotation)') -or
+        -not $source.Contains(
+            '"right", right_target, right_rotation)') -or
+        -not $source.Contains(
             'anchor_unit, left_unit, "j_lefthand"') -or
         -not $source.Contains(
             'anchor_unit, right_unit, "j_righthand"')) {
-    throw 'Tracked hands must use two independently rooted one-sided glove profiles, align each authored hand joint to its controller, and keep gameplay equipment synchronized per side.'
+    throw 'Tracked hands must use two independently rooted one-sided glove profiles, map their measured anatomical axes and calibrated wrist positions to each controller, and keep gameplay equipment synchronized per side.'
 }
 if (-not $source.Contains('"/gear_hands/"') -or
         -not $source.Contains(
@@ -654,7 +664,9 @@ if (-not $source.Contains(
         -not $source.Contains(
             'dtvr_cluster_light_visibility_fix_active(void)') -or
         -not $source.Contains(
-            'presentation.cluster_light_visibility_fix_active or') -or
+            'if presentation.cluster_light_visibility_fix_active then') -or
+        -not $source.Contains(
+            'presentation.binocular_visibility_scale(left, right_eye)') -or
         -not $nativeCaptureSource.Contains(
             'constexpr std::uint64_t kClusterLightRasterVertexShader =') -or
         -not $nativeCaptureSource.Contains('0x5c6cd369626f261aULL') -or
