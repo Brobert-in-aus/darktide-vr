@@ -214,6 +214,59 @@ function Get-ExactLauncherProcess {
     return $null
 }
 
+function Get-StartedDarktideProcess {
+    Get-Process Darktide -ErrorAction SilentlyContinue |
+        Where-Object {
+            try {
+                $_.StartTime -ge $started -and $_.Path -ieq $gamePath
+            }
+            catch {
+                $false
+            }
+        } |
+        Select-Object -First 1
+}
+
+function Invoke-ConfirmedLauncherClick {
+    param(
+        [IntPtr] $Window,
+        [int] $X,
+        [int] $Y
+    )
+
+    # A manual Play press or a retained launcher request can start the game
+    # between our window check and foreground activation. In that case the
+    # disappearing launcher is a successful transition, not a launch failure.
+    $game = Get-StartedDarktideProcess
+    if ($game) {
+        return $game
+    }
+    try {
+        [DarktideVrLauncherInput]::ClickClient($Window, $X, $Y)
+    }
+    catch {
+        $clickError = $_
+        $transitionDeadline = (Get-Date).AddSeconds(5)
+        if ($transitionDeadline -gt $deadline) {
+            $transitionDeadline = $deadline
+        }
+        do {
+            $game = Get-StartedDarktideProcess
+            if ($game) {
+                return $game
+            }
+            if ((Get-Date) -ge $transitionDeadline) {
+                break
+            }
+            Start-Sleep -Milliseconds 100
+        } while ($true)
+        # Preserve the original failure when no new authenticated game exists.
+        # Never send an unverified click to whichever app acquired focus.
+        throw $clickError
+    }
+    return $null
+}
+
 $started = Get-Date
 $deadline = $started.AddSeconds($TimeoutSeconds)
 $launcher = $null
@@ -286,8 +339,12 @@ if ($width -lt 1000 -or $height -lt 600 -or
 $playX = [int] [Math]::Round($width * 0.818)
 $playY = [int] [Math]::Round($height * 0.870)
 $launchWindowHandle = $launcher.MainWindowHandle
-[DarktideVrLauncherInput]::ClickClient(
-    $launchWindowHandle, $playX, $playY)
+$transitionGame = Invoke-ConfirmedLauncherClick `
+    -Window $launchWindowHandle -X $playX -Y $playY
+if ($transitionGame) {
+    Write-Output "Authenticated Darktide process started during Play activation: PID $($transitionGame.Id)."
+    exit 0
+}
 Write-Output "Invoked Fatshark launcher Play at client ${playX},${playY} in ${width}x${height}."
 
 # Confirm the launch action rather than treating a successfully queued mouse
@@ -324,8 +381,12 @@ while ((Get-Date) -lt $deadline) {
         if ($retrySize[0] -ne $width -or $retrySize[1] -ne $height) {
             throw "Fatshark launcher Play window geometry changed from ${width}x${height} to $($retrySize[0])x$($retrySize[1])."
         }
-        [DarktideVrLauncherInput]::ClickClient(
-            $launchWindowHandle, $playX, $playY)
+        $transitionGame = Invoke-ConfirmedLauncherClick `
+            -Window $launchWindowHandle -X $playX -Y $playY
+        if ($transitionGame) {
+            Write-Output "Authenticated Darktide process started during Play retry: PID $($transitionGame.Id)."
+            exit 0
+        }
         $playRetries++
         Write-Output "Retried Fatshark launcher Play ($playRetries)."
         $nextPlayRetry = (Get-Date).AddSeconds(3)
