@@ -3806,6 +3806,10 @@ local function apply_runtime_recentered_projection(primary, right)
         visibility_scale = 1.2
     end
     presentation.render_visibility_scale = visibility_scale
+    presentation.lod_primary_camera = primary
+    presentation.lod_right_camera = right
+    presentation.lod_primary_fov = left.vertical_fov
+    presentation.lod_right_fov = right_eye.vertical_fov
     local post_projection = Matrix4x4.from_elements(
         visibility_scale, 0, 0,
         0, visibility_scale, 0,
@@ -4941,6 +4945,23 @@ local function update_stereo(manager)
     ScriptCamera.force_update(world, primary_camera)
     ScriptCamera.force_update(world, right_camera)
 end
+
+mod:hook(World, "update_lod_levels", function(func, world, camera)
+    local rendered_fov = camera == presentation.lod_primary_camera and
+        presentation.lod_primary_fov or
+        camera == presentation.lod_right_camera and presentation.lod_right_fov
+    if rendered_fov and (presentation.render_visibility_scale or 1) > 1 then
+        if presentation.lod_logged_camera ~= camera then
+            presentation.lod_logged_camera = camera
+            mod:info("DARKTIDEVR_LOD visible_fov=%.4f visibility_fov=%.4f scale=%.4f",
+                rendered_fov, Camera.vertical_fov(camera),
+                presentation.render_visibility_scale)
+        end
+        return presentation.projection_math.update_lod_levels(
+            func, world, camera, rendered_fov)
+    end
+    return func(world, camera)
+end)
 
 mod:hook(
     require("scripts/managers/ui/ui_manager"),
@@ -9062,16 +9083,15 @@ function presentation.apply_body_ik(unit, sequence, world, anchor_unit)
             not world and "world_unavailable" or "unit_unavailable"
         return
     end
-    -- The hands-only proxy has just inherited the authoritative gameplay
-    -- skeleton in BodyProxy.update. During a primary-slot melee windup or
-    -- sweep, preserve that stock pose instead of overwriting it with tracked
-    -- IK. The visible weapon remains attached to the hidden authoritative
-    -- source hand, so attack timing and item-local animation retain exactly
-    -- one owner. Tracking resumes automatically on the first non-melee frame.
-    if unit ~= anchor_unit and
-            controller_observation.stock_melee_animation_active then
+    -- Independent rigid hands do not inherit the stock skeleton on update.
+    -- During an attack, explicitly follow both animated wrists instead of
+    -- simply skipping IK and freezing them at their last tracked positions.
+    if controller_observation.stock_melee_animation_active then
         controller_observation.body_ik_presentation_block_reason =
             "stock_melee_animation"
+        if presentation.body_proxy and presentation.body_proxy.rigid_hands_active() then
+            presentation.body_proxy.follow_gameplay_hands(world)
+        end
         return
     end
     if not controller_observation.full_body_experimental_enabled then
@@ -9457,6 +9477,9 @@ function presentation.update_weapon_presentation_gate(fixed_frame)
 end
 
 function presentation.author_weapon_pose(self, fixed_frame, world)
+    if controller_observation.stock_melee_animation_active then
+        return
+    end
     if not fixed_frame or not Mods or not Mods.lua or not Mods.lua.io then
         return
     end

@@ -4,6 +4,13 @@ local MultiFireModes = require(
 local Health = require("scripts/utilities/health")
 local HitZone = require("scripts/utilities/attack/hit_zone")
 
+function controller_aim.is_reticle_surface(is_self, is_static, damageable, hit_zone)
+    -- Darktide's "afro" actor is the oversized suppression/near-miss volume.
+    -- HitScan processes suppression there and continues past it without impact.
+    return not is_self and hit_zone ~= "afro" and
+        (is_static or (damageable and hit_zone ~= nil))
+end
+
 local function active_mode()
     local manager = Managers and Managers.state and Managers.state.game_mode
     if not manager or type(manager.game_mode_name) ~= "function" then
@@ -144,6 +151,7 @@ function controller_aim.install(mod, presentation, state)
     controller_aim.reticle_failures = 0
     controller_aim.reticle_self_skips = 0
     controller_aim.reticle_non_surface_skips = 0
+    controller_aim.reticle_suppression_skips = 0
     controller_aim.last_reticle_log_sequence = 0
     controller_aim.reticle_world_point = nil
     controller_aim.reticle_point_sequence = 0
@@ -213,17 +221,19 @@ function controller_aim.install(mod, presentation, state)
             local is_static = candidate_actor and
                 Actor.is_static(candidate_actor)
             local is_damage_surface = false
+            local hit_zone = candidate_unit and
+                HitZone.get_name(candidate_unit, candidate_actor)
             if not is_static and candidate_unit then
                 local damageable = Health.is_damagable(candidate_unit)
-                local hit_zone = damageable and
-                    HitZone.get_name(candidate_unit, candidate_actor)
-                is_damage_surface = damageable and hit_zone ~= nil
+                is_damage_surface = controller_aim.is_reticle_surface(
+                    is_self, false, damageable, hit_zone)
             end
             -- HitScan processes past local equipment and broad dynamic
             -- movement/capsule actors. Match that behavior for the visual
             -- convergence point: stop at static world geometry or at an
             -- actual damage hit-zone actor, not a character's outer capsule.
-            if not is_self and (is_static or is_damage_surface) then
+            if controller_aim.is_reticle_surface(
+                    is_self, is_static, is_damage_surface, hit_zone) then
                 distance = candidate_distance or candidate_position and
                     Vector3.distance(position, candidate_position)
                 if distance then
@@ -237,6 +247,10 @@ function controller_aim.install(mod, presentation, state)
             else
                 controller_aim.reticle_non_surface_skips =
                     controller_aim.reticle_non_surface_skips + 1
+                if hit_zone == "afro" then
+                    controller_aim.reticle_suppression_skips =
+                        controller_aim.reticle_suppression_skips + 1
+                end
             end
         end
         distance = hit and distance or 50
@@ -267,7 +281,7 @@ function controller_aim.install(mod, presentation, state)
                 controller_aim.last_reticle_log_sequence + 600 then
             controller_aim.last_reticle_log_sequence = state.last_sequence
             mod:info(
-                "DARKTIDEVR_WEAPON_AIM reticle sequence=%d distance_m=%.3f hit=%s kind=%s publishes=%d hits=%d static_hits=%d damage_hits=%d misses=%d self_skips=%d non_surface_skips=%d failures=%d",
+                "DARKTIDEVR_WEAPON_AIM reticle sequence=%d distance_m=%.3f hit=%s kind=%s publishes=%d hits=%d static_hits=%d damage_hits=%d misses=%d self_skips=%d non_surface_skips=%d failures=%d suppression_skips=%d",
                 state.last_sequence,
                 distance,
                 tostring(hit == true),
@@ -279,7 +293,8 @@ function controller_aim.install(mod, presentation, state)
                 controller_aim.reticle_misses,
                 controller_aim.reticle_self_skips,
                 controller_aim.reticle_non_surface_skips,
-                controller_aim.reticle_failures)
+                controller_aim.reticle_failures,
+                controller_aim.reticle_suppression_skips)
         end
     end
 

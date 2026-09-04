@@ -50,12 +50,19 @@ ownership: runtime input must never reactivate the game in the background.
 September 5 live input validation exposed dead laser clicks and focus stealing,
 then delayed activation of a previously missed click. A candidate now preserves
 click arming across heartbeats, expires missed clicks after their UI frame and
-respects foreground ownership. Direct input acceptance is pending; use
+respects foreground ownership. The user accepted character-selection highlight
+and selection on the coordinate candidate. Use
 `-ManualStartup` with the launcher to disable title/character key automation.
 See the [September 5 session](handoffs/2026-09-05-development-session.md).
 
+Finger animation is accepted. Left-hand alignment remains unresolved. A new
+candidate restores stock wrist animation during melee attacks, excludes
+suppression volumes from reticle depth, separates LOD FOV from visibility
+overscan, and removes the loading-screen corner swatch. These changes still
+need worn acceptance; shield disappearance is not yet proven to be LOD.
+
 The September 4/5 candidate has outstanding worn checks for both unarmed and
-wielded palm placement, finger animation during weapon actions, pinned-marker
+wielded palm placement, pinned-marker
 alignment at every eye edge, and lighting parity in both hub and Psykhanium.
 The crosshair atlas-square fix was accepted; wrist joint-drift telemetry did not
 prove overall glove alignment. See the [checkpoint](handoffs/2026-09-04-development-session.md).

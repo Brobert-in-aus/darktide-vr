@@ -16,6 +16,9 @@ if(BUILD_TESTING)
   add_test(NAME menu_widgets COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-menu-widgets.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_menu_widgets.lua")
+  add_test(NAME reticle_surfaces COMMAND "${LUAJIT_VALIDATOR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-reticle-surfaces.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_aim.lua")
   add_test(NAME gpu_trace_analysis COMMAND "${Python3_EXECUTABLE}" -B
     "${PROJECT_SOURCE_DIR}/tools/stereo/test-analyze-gpu-batch-trace.py")
 endif()

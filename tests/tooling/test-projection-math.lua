@@ -28,3 +28,19 @@ assert(scale>1)
 assert(math.abs(scale-projection.binocular_visibility_scale(right,left))<1e-6)
 assert(math.abs(left.vertical_fov-1.6)<1e-6)
 print('projection_math=pass')
+Camera = {
+    vertical_fov = function(camera) return camera.fov end,
+    set_vertical_fov = function(camera, value) camera.fov = value end,
+}
+local camera = { fov = 2.2 }
+local world = {}
+assert(projection.update_lod_levels(function(w, c)
+    assert(w == world and c == camera and c.fov == 1.6,
+        "LOD used the expanded visibility FOV")
+    return 42
+end, world, camera, 1.6) == 42)
+assert(camera.fov == 2.2, "LOD changed the following render's visibility FOV")
+local ok = pcall(projection.update_lod_levels, function()
+    error("fixture failure")
+end, world, camera, 1.6)
+assert(not ok and camera.fov == 2.2, "failed LOD update leaked the temporary FOV")

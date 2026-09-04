@@ -125,3 +125,63 @@ passing sequential Ready preflight. Current output is
 `artifacts/unattended/menu-coordinate-live-20260905.log`; its preflight is
 `menu-coordinate-preflight-20260905.json`. Launch still uses `-ManualStartup`.
 Fresh initialization and direct input acceptance for this latest run are pending.
+
+## Accepted input and new gameplay findings
+
+The user confirmed character-selection highlight and selection worked on the
+coordinate candidate. Finger animation is also accepted. Left-hand alignment
+remains wrong. Do not ask repeated questions: the user is frequently typing
+feedback and explicitly requested that questions stop.
+
+New reported issues: melee swings need both hands to follow the stock attack
+animation with IK disabled until a proper melee system exists; a right-side
+enemy's shield disappears a few metres away and reappears closer; crosshair
+depth hits an invisible surface in empty space near enemies; loading screens
+show one white/teal pixel at bottom right.
+
+Retrieved and inspected the newest Quest screenshot,
+`VirtualDesktop.Android-20260905-090631.jpg`, saved only as ignored local
+`artifacts/unattended/quest-crosshair-20260905-090631.jpg`. It shows the reticle
+in the gap between enemies and the missing shield on the enemy at right.
+The screenshot alone does not establish the collision surface or LOD cause.
+
+Prepared/deployed candidate:
+
+- The existing melee owner recognized windup/sweep in live logs, but returning
+  before IK left independent rigid-hand roots frozen. Both proxy wrists now
+  copy authoritative gameplay hand position/rotation during that interval,
+  retaining finger animation. Optional tracked weapon posing also yields.
+- The reticle accepted every named damage zone, including `afro`. Stock
+  `scripts/utilities/attack/hit_scan.lua` treats that zone as suppression/near
+  miss and continues without impact. The reticle now excludes it while
+  retaining body, shield and static surfaces.
+- Camera visibility expansion is canceled by post projection in the visible
+  image. The World.update_lod_levels hook temporarily uses the unexpanded
+  rendered FOV, then restores the visibility FOV even on failure. This is a
+  candidate for the shield disappearance, not confirmation of its cause.
+- Window capture writes its cyan laser swatch only while a menu pointer is
+  active. Loading frames no longer expose it, and loading does not submit
+  pointer quads.
+
+Release viewer and capture-test builds passed with warnings as errors. LuaJIT
+compiled all 12 chunks. Targeted Lua source/invariant, projection math, reticle
+surface and capture recovery checks passed. The capture test's old assertion
+requiring the swatch during idle was updated to the new contract; an exact
+corner background-colour assertion was unsuitable for the resampled window
+edge, so the regression checks swatch absence while retaining the existing
+pointer-visible swatch assertion. Projection tests verify restored FOV on
+success/failure; surface tests retain body/shield/world while rejecting local
+body, broad capsules and suppression volumes.
+
+Current manual launch: `-EnterPsykhanium -ManualStartup`, with output in
+`artifacts/unattended/melee-visual-live-20260905.log`. Sequential Ready preflight
+passed in `melee-visual-preflight-20260905.json`. All new visual behavior is
+pending live acceptance. Extra suppression-skip/LOD diagnostic logging was
+added after this deployment and compiled successfully; it will take effect
+on the next sync. No left calibration change was made.
+
+This run reached fresh synchronized stereo at 23:19:09.980 UTC and rigid hands
+ready at 23:19:10.046; `shared_ready` exceeded 663 with zero reused frames and
+one startup pose mismatch. The late logging-only additions passed Lua source,
+invariant, projection and reticle-surface checks. New visual acceptance remains
+pending. Keep the live session available for the user's unsolicited feedback.

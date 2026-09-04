@@ -3203,7 +3203,7 @@ class OpenXrProbe {
           {XR_TYPE_COMPOSITION_LAYER_QUAD},
           {XR_TYPE_COMPOSITION_LAYER_QUAD},
       }};
-      if (submitted_flat_fallback_this_frame && controller_pointer_pose &&
+      if (menu_mode && submitted_flat_fallback_this_frame && controller_pointer_pose &&
           controller_pointer_hit) {
         const auto configure_pointer_quad =
             [&](XrCompositionLayerQuad& quad,
@@ -3321,7 +3321,7 @@ class OpenXrProbe {
           layers[layer_count++] =
               reinterpret_cast<const XrCompositionLayerBaseHeader*>(&quads[0]);
         }
-        if (submitted_flat_fallback_this_frame && controller_pointer_pose &&
+        if (menu_mode && submitted_flat_fallback_this_frame && controller_pointer_pose &&
             controller_pointer_hit) {
           for (const auto& pointer_quad : pointer_quads) {
             layers[layer_count++] =

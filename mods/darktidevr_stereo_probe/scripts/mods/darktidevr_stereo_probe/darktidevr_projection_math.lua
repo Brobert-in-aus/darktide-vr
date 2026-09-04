@@ -61,4 +61,15 @@ function Projection.binocular_visibility_scale(left, right)
     return scale
 end
 
+function Projection.update_lod_levels(update, world, camera, rendered_fov)
+    -- Visibility overscan is canceled by post projection in the rendered
+    -- image. LOD must use that visible FOV, not the wider admission cone.
+    local visibility_fov = Camera.vertical_fov(camera)
+    Camera.set_vertical_fov(camera, rendered_fov)
+    local ok, result = pcall(update, world, camera)
+    Camera.set_vertical_fov(camera, visibility_fov)
+    if not ok then error(result) end
+    return result
+end
+
 return Projection

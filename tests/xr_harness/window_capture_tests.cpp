@@ -72,11 +72,10 @@ int wmain() {
            "Visible fixture should capture at requested dimensions");
     const auto idle_overlay_swatch = initial.bgra_pixels +
         (static_cast<std::size_t>(89) * 160 + 159) * 4;
-    expect(idle_overlay_swatch[0] == std::byte{255} &&
+    expect(!(idle_overlay_swatch[0] == std::byte{255} &&
                idle_overlay_swatch[1] == std::byte{255} &&
-               idle_overlay_swatch[2] == std::byte{0} &&
-               idle_overlay_swatch[3] == std::byte{255},
-           "Capture did not publish its always-available XR overlay swatch");
+               idle_overlay_swatch[2] == std::byte{0}),
+           "Idle capture exposed the menu laser's colour swatch");
     const auto idle_gameplay_reticle_centre = initial.bgra_pixels +
         (static_cast<std::size_t>(69) * 160 + 138) * 4;
     const std::array idle_gameplay_reticle_pixel{
@@ -188,6 +187,14 @@ int wmain() {
                laser_swatch[3] == std::byte{255},
            "Pointer overlay did not preserve its OpenXR overlay swatch");
     capture.set_pointer_overlay(std::nullopt, 160, 90);
+
+    const auto loading_capture = capture.capture();
+    const auto loading_corner = loading_capture.bgra_pixels +
+        (static_cast<std::size_t>(89) * 160 + 159) * 4;
+    expect(!(loading_corner[0] == std::byte{255} &&
+               loading_corner[1] == std::byte{255} &&
+               loading_corner[2] == std::byte{0}),
+           "Loading capture retained the cyan laser atlas pixel");
 
     ShowWindow(window, SW_MINIMIZE);
     bool minimized_rejected{};

@@ -315,7 +315,8 @@ local function update_rigid_hand(hand, dt, t)
     return nil
 end
 
-local function place_rigid_hand(world, hand, target_position, target_rotation)
+local function place_rigid_hand(world, hand, target_position, target_rotation,
+        authored_rotation)
     local unit = hand.unit
     local hand_name = hand.side == "left" and "j_lefthand" or "j_righthand"
     if not hand.ready or not unit or not Unit.alive(unit) or
@@ -326,6 +327,9 @@ local function place_rigid_hand(world, hand, target_position, target_rotation)
     local hand_node = Unit.node(unit, hand_name)
     local desired_hand_rotation = anatomical_hand_rotation(
         unit, hand.side, target_rotation)
+    if authored_rotation then
+        desired_hand_rotation = target_rotation
+    end
     if not desired_hand_rotation then
         return false
     end
@@ -512,6 +516,24 @@ function BodyProxy.place_rigid_hands(
         world, rigid_hands.right, right_position, right_rotation)
     return rigid_hands.left.unit, rigid_hands.right.unit,
         left_written or right_written
+end
+
+function BodyProxy.follow_gameplay_hands(world)
+    local source = state.source_unit
+    if not BodyProxy.rigid_hands_active() or not source or not Unit.alive(source) then
+        return false
+    end
+    for side, hand in pairs(rigid_hands) do
+        local name = side == "left" and "j_lefthand" or "j_righthand"
+        if Unit.has_node(source, name) then
+            local node = Unit.node(source, name)
+            -- Copy the stock wrist pose, not an OpenXR grip pose. Finger
+            -- animation still comes from the same authoritative skeleton.
+            place_rigid_hand(world, hand, Unit.world_position(source, node),
+                Unit.world_rotation(source, node), true)
+        end
+    end
+    return true
 end
 
 function BodyProxy.hides_source_slot(slot_name)
