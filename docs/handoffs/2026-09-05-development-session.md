@@ -245,3 +245,41 @@ These settings have not been changed. Next equipment diagnostic: compare with
 streaming disabled at a normal restart, preserve the prior section for restoration,
 and measure fresh stereo throughput as well as worn shield/mace visibility.
 Keep the live staff/marker run available meanwhile; do not force input or focus.
+
+## Heading mismatch and streaming comparison
+
+The user accepted symmetric marker shrinking, then reported movement and melee
+facing approximately 90 degrees right of their visible facing direction.
+Live logs confirm independent headings (for example head_ypr yaw=-1.4764 and
+gameplay yaw=2.8820). observe_controller_aim seeded heading from stock spawn yaw
+and only integrated physical yaw changes, preserving that initial discrepancy.
+It also throttled orientation updates to every fifteenth call. Rendering now
+uses an immutable scene anchor, so the old feedback-avoidance rationale no longer
+applies: gameplay now consumes head_aim_yaw directly, normalized to [0,2pi),
+once per new sample. Modal cameras remain untouched until exit.
+
+The gameplay_heading regression executes the actual seam with mocked game
+services and checks initial 90-degree error, negative yaw, successive samples,
+owner replacement and modal entry/exit. Lua source/invariant, melee owner and
+heading CTests passed 4/4. Marker acceptance does not establish hand alignment.
+Staff stock windup/stab/heavy-stab ownership is present in logs but still needs
+the user's visual acceptance.
+
+Added tools/stereo/set-mesh-streaming-diagnostic.ps1 with Inspect/Disable/Restore.
+It refuses mutation while Darktide runs, saves the original override separately,
+and restores only that property so later calibration/settings changes survive.
+An isolated fixture passed inherited/false/true original values, repeated apply,
+and unrelated calibration edits across restoration. Fixture process checks were
+mocked; the real user settings remained untouched during fixture validation.
+The live staff/marker run was asked to close normally for the heading deployment
+and streaming comparison. Last throughput was 53.6 fresh pairs/sec, shared_ready
+19622, zero reused frames and five pose mismatches accumulated during startup.
+
+After the game closed, applied set-mesh-streaming-diagnostic.ps1 -Action Disable;
+Inspect confirmed user_disable=true. Its ignored state records the original
+inherited setting. Restore with the same tool's -Action Restore while the game
+is closed; do not restore a whole old user config over later calibration edits.
+Ready preflight passed in heading-streaming-preflight-20260905.json. The new
+manual-startup output is artifacts/unattended/heading-streaming-live-20260905.log.
+Streaming disable is a diagnostic, not yet a production default. Fresh stereo
+and worn direction/equipment acceptance remain pending for this run.

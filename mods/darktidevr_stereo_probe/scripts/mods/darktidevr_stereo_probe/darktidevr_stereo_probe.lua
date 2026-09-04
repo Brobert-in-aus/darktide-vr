@@ -5035,11 +5035,9 @@ mod:hook_safe("InputManager", "update", function(self)
     end
 end)
 
--- Until weapon-relative aiming is implemented, locomotion heading follows the
--- cyclopean HMD yaw delta. Apply only the change since the previous OpenXR
--- sample to Darktide's current orientation. Applying the complete tracked
--- rotation here feeds last frame's authored orientation back through
--- apply_head_tracking and compounds physical yaw on every update.
+-- Gameplay and rendering share the cyclopean heading built from the immutable
+-- scene anchor and tracked head. Integrating deltas from a separate stock spawn
+-- yaw preserves any initial disagreement forever, including across map entry.
 function presentation.observe_controller_aim(self, main_t, orientation_class)
     if main_t >= controller_observation.authoring_last_check_t + 1 then
         controller_observation.authoring_last_check_t = main_t
@@ -5075,12 +5073,6 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         controller_observation.authoring_pose_active = false
         return
     end
-    presentation.input_inventory_poll_updates =
-        (presentation.input_inventory_poll_updates or 0) + 1
-    if presentation.input_inventory_poll_updates < 15 then
-        return
-    end
-    presentation.input_inventory_poll_updates = 0
     if head_pose_last_sequence ==
             controller_observation.first_person_seam_last_sequence then
         return
@@ -5118,23 +5110,14 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         end
     end
     controller_observation.body_yaw_anchor = physical_yaw
-    local gameplay_yaw = controller_observation.gameplay_yaw
-    if gameplay_yaw == nil then
-        gameplay_yaw = game_yaw
-    end
-    gameplay_yaw = gameplay_yaw + yaw_delta
-    if gameplay_yaw > math.pi * 2 then
-        gameplay_yaw = gameplay_yaw - math.pi * 2
-    elseif gameplay_yaw < 0 then
-        gameplay_yaw = gameplay_yaw + math.pi * 2
-    end
+    local gameplay_yaw = controller_observation.head_aim_yaw % (math.pi * 2)
     controller_observation.gameplay_yaw = gameplay_yaw
 
     -- Native fullscreen shop views temporarily force Darktide's mutable
     -- first-person orientation to their own camera. The rendered XR eyes do
     -- not use that orientation, so adopting it here leaves locomotion and
     -- interaction facing rotated away from what the player sees after exit.
-    -- Keep the VR-owned heading advancing from physical HMD deltas while the
+    -- Keep the VR-owned heading following the rendered cyclopean pose while the
     -- shop is open, but do not feed the shop camera back into gameplay.
     local modal_orientation = (presentation.mode == 5 or
         presentation.mode == 6) and
@@ -5181,7 +5164,7 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
     end
     controller_observation.first_person_seam_last_log_t = main_t
     mod:info(
-        "DARKTIDEVR_AIM observation class=%s source=cyclopean_head_delta sequence=%d head_ypr=%.4f,%.4f,%.4f prior_game_ypr=%.4f,%.4f,%.4f yaw_delta=%.4f write=enabled",
+        "DARKTIDEVR_AIM observation class=%s source=cyclopean_head_absolute sequence=%d head_ypr=%.4f,%.4f,%.4f prior_game_ypr=%.4f,%.4f,%.4f yaw_delta=%.4f write=enabled",
         orientation_class,
         head_pose_last_sequence,
         controller_observation.head_aim_yaw,

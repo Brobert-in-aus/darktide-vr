@@ -420,7 +420,7 @@ if (-not $source.Contains(
 foreach ($pollGuard in @(
         'system_menu_test_poll_updates',
         'vendor_menu_test_poll_updates',
-        'input_inventory_poll_updates',
+        'authoring_last_check_t',
         'movement_inventory_last_check_frame',
         'hotspot_inventory_last_poll_t')) {
     if (-not $source.Contains($pollGuard)) {

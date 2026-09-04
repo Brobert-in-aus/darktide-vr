@@ -58,8 +58,10 @@ See the [September 5 session](handoffs/2026-09-05-development-session.md).
 Finger animation, reticle depth and sword swings are accepted. Left-hand
 alignment remains unresolved. Staff melee/push still failed; a follow-up now
 includes ranged-slot melee, pushes and their melee windups. Marker replay now
-reuses the first eye's eased size instead of advancing it twice. Both changes
-await worn acceptance, as does removal of the loading-screen corner swatch.
+reuses the first eye's eased size instead of advancing it twice; the user accepted
+symmetric shrinking. Staff animation and removal of the loading-screen corner
+swatch still await explicit worn acceptance. A new movement/melee heading offset
+is addressed by using the rendered cyclopean yaw directly; live verification is pending.
 Shield and nearby mace sections still disappear after separating LOD FOV from
 visibility overscan; the equipment visibility cause remains under investigation.
 
