@@ -1,3 +1,4 @@
+#include "../isolated_transports.h"
 #include "core/shared_generated_frame_state.h"
 
 #include <cstdint>
@@ -16,6 +17,7 @@ void expect(bool condition, const char* message) {
 
 int main() {
   try {
+    darktidevr::tests::isolate_transports();
     using darktidevr::core::SharedGeneratedFrameState;
     using darktidevr::core::SharedGeneratedFrameStateReader;
     using darktidevr::core::SharedGeneratedFrameStateWriter;

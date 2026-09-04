@@ -1,3 +1,5 @@
+> Historical research record. This is not the current operating policy or acceptance checklist. See [current status](../CURRENT-STATUS.md).
+
 # Phase 1 bug review - 25 August 2026
 
 ## Review scope

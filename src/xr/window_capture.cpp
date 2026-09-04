@@ -409,6 +409,9 @@ void WindowCapture::set_pointer_overlay(
   const auto normalized_crop_height =
       static_cast<std::uint32_t>((packed_crop >> 48U) & 0xffffULL);
   const auto normalize = [](std::uint32_t value, std::uint32_t extent) {
+    if (extent <= 1) {
+      return 32767;  // The only source pixel maps to the panel centre.
+    }
     return static_cast<int>((static_cast<std::uint64_t>(value) * 65535 +
                              (extent - 1) / 2) /
                             (extent - 1));

@@ -8,6 +8,8 @@ target_link_libraries(darktidevr_native_capture PRIVATE
 set_target_properties(darktidevr_native_capture PROPERTIES
   OUTPUT_NAME "darktidevr_native_capture")
 
+option(DARKTIDEVR_BUILD_LEGACY_WINMM "Build the retired winmm bootstrap experiment" OFF)
+if(DARKTIDEVR_BUILD_LEGACY_WINMM)
 add_library(darktidevr_winmm_bootstrap SHARED
   winmm_bootstrap.cpp
   winmm_bootstrap.def)
@@ -18,6 +20,8 @@ target_compile_definitions(darktidevr_winmm_bootstrap PRIVATE
 set_target_properties(darktidevr_winmm_bootstrap PROPERTIES
   OUTPUT_NAME "winmm"
   PREFIX "")
+
+endif()
 
 add_library(darktidevr_d3d12_bootstrap SHARED
   d3d12_bootstrap.cpp

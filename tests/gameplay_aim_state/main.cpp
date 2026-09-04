@@ -1,3 +1,4 @@
+#include "../isolated_transports.h"
 #include "core/shared_gameplay_aim_state.h"
 
 #include <chrono>
@@ -16,6 +17,7 @@ void expect(bool condition, const char* message) {
 
 int main() {
   try {
+    darktidevr::tests::isolate_transports();
     using namespace darktidevr::core;
     const auto now_ns = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(

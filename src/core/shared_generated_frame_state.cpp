@@ -1,3 +1,4 @@
+#include "core/shared_object_name.h"
 #include "core/shared_generated_frame_state.h"
 
 #include <Windows.h>
@@ -53,7 +54,7 @@ bool valid_generated_frame_state(const SharedGeneratedFrameState& state) {
 SharedGeneratedFrameStateWriter::SharedGeneratedFrameStateWriter() {
   mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
                                 0, sizeof(SharedLayout),
-                                kSharedGeneratedFrameStateName);
+                                shared_object_name(kSharedGeneratedFrameStateName).c_str());
   if (!mapping_) {
     throw std::runtime_error(
         "CreateFileMapping(shared generated frame state) failed");
@@ -122,7 +123,7 @@ bool SharedGeneratedFrameStateReader::ensure_open() {
     return true;
   }
   mapping_ = OpenFileMappingW(FILE_MAP_READ, FALSE,
-                              kSharedGeneratedFrameStateName);
+                              shared_object_name(kSharedGeneratedFrameStateName).c_str());
   if (!mapping_) {
     return false;
   }

@@ -204,26 +204,6 @@ if (-not $SkipDeploymentSync) {
 $psykhaniumFlag = $null
 $psykhaniumFlagOriginal = $null
 $psykhaniumFlagExisted = $false
-if ($EnterPsykhanium) {
-    if (Get-Process Darktide -ErrorAction SilentlyContinue) {
-        throw 'Psykhanium entry must be armed before Darktide starts; close the game and retry.'
-    }
-    $psykhaniumFlag = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_enter_psykhanium.flag'
-    $psykhaniumFlagExisted =
-        Test-Path -LiteralPath $psykhaniumFlag -PathType Leaf
-    if ($psykhaniumFlagExisted) {
-        $psykhaniumFlagOriginal = Get-Content -LiteralPath $psykhaniumFlag -Raw
-    }
-    Set-Content -LiteralPath $psykhaniumFlag -Value 'enter' -Encoding ascii
-    Write-Output 'Psykhanium entry armed before launcher startup.'
-
-    # The in-game one-shot state machine deliberately waits for an
-    # authenticated hub before opening the training-ground view.  Therefore
-    # Psykhanium entry also owns the guarded splash/operative advance; without
-    # it an unattended run can remain at character select until its timeout.
-    $AutoEnterHub = $true
-}
 
 if ($FreshPsoCache) {
     if (Get-Process -Name Darktide -ErrorAction SilentlyContinue) {
@@ -317,6 +297,27 @@ if ($CaptureBillboardPsoIdentities) {
 }
 $launchStarted = Get-Date
 try {
+if ($EnterPsykhanium) {
+    if (Get-Process Darktide -ErrorAction SilentlyContinue) {
+        throw 'Psykhanium entry must be armed before Darktide starts; close the game and retry.'
+    }
+    $psykhaniumFlag = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_enter_psykhanium.flag'
+    $psykhaniumFlagExisted =
+        Test-Path -LiteralPath $psykhaniumFlag -PathType Leaf
+    if ($psykhaniumFlagExisted) {
+        $psykhaniumFlagOriginal = Get-Content -LiteralPath $psykhaniumFlag -Raw
+    }
+    Set-Content -LiteralPath $psykhaniumFlag -Value 'enter' -Encoding ascii
+    Write-Output 'Psykhanium entry armed before launcher startup.'
+
+    # The in-game one-shot state machine deliberately waits for an
+    # authenticated hub before opening the training-ground view.  Therefore
+    # Psykhanium entry also owns the guarded splash/operative advance; without
+    # it an unattended run can remain at character select until its timeout.
+    $AutoEnterHub = $true
+}
+
 if ($StreamlineProbe -or $StreamlineCopyProbe -or
         $StreamlineTransportProbe -or $StreamlineInputSnapshotProbe -or
         $StreamlineTargetTokenProbe -or $StreamlineStereoSwapchainProbe -or

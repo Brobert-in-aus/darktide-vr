@@ -1,3 +1,4 @@
+#include "core/shared_object_name.h"
 #include "core/shared_controller_state.h"
 
 #include <Windows.h>
@@ -89,7 +90,7 @@ bool controller_state_is_fresh(const SharedControllerState& state,
 SharedControllerStateWriter::SharedControllerStateWriter() {
   mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
                                 0, sizeof(SharedLayout),
-                                kSharedControllerStateName);
+                                shared_object_name(kSharedControllerStateName).c_str());
   if (!mapping_) {
     throw std::runtime_error("CreateFileMapping(shared controllers) failed");
   }
@@ -139,7 +140,7 @@ bool SharedControllerStateReader::ensure_open() {
   if (view_) {
     return true;
   }
-  mapping_ = OpenFileMappingW(FILE_MAP_READ, FALSE, kSharedControllerStateName);
+  mapping_ = OpenFileMappingW(FILE_MAP_READ, FALSE, shared_object_name(kSharedControllerStateName).c_str());
   if (!mapping_) {
     return false;
   }

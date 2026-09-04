@@ -1,3 +1,4 @@
+#include "core/shared_object_name.h"
 #include "core/shared_gameplay_aim_state.h"
 
 #include <Windows.h>
@@ -54,7 +55,7 @@ bool gameplay_aim_state_is_fresh(const SharedGameplayAimState& state,
 SharedGameplayAimStateWriter::SharedGameplayAimStateWriter() {
   mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
                                 0, sizeof(SharedLayout),
-                                kSharedGameplayAimStateName);
+                                shared_object_name(kSharedGameplayAimStateName).c_str());
   if (!mapping_) {
     throw std::runtime_error("CreateFileMapping(shared gameplay aim) failed");
   }
@@ -98,7 +99,7 @@ bool SharedGameplayAimStateReader::ensure_open() {
     return true;
   }
   mapping_ =
-      OpenFileMappingW(FILE_MAP_READ, FALSE, kSharedGameplayAimStateName);
+      OpenFileMappingW(FILE_MAP_READ, FALSE, shared_object_name(kSharedGameplayAimStateName).c_str());
   if (!mapping_) {
     return false;
   }

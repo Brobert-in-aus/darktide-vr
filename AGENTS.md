@@ -1,67 +1,46 @@
 # Project working agreements
 
-## Ownership and isolation
+## Ownership and validation
 
-- Use one branch or worktree per agent task.
-- Do not allow two agents to modify the same working tree concurrently.
-- Commit or stash work before moving a task between the PC and Mac.
-- Treat the pull request as the authoritative cross-device handoff.
+- Use one branch or worktree per task that changes files. Read-only reviews may
+  use the existing checkout. Never let two agents edit one working tree concurrently.
+- Commit or stash before moving work between machines; use the pull request as
+  the cross-device handoff. See [infrastructure](docs/PROJECT-INFRASTRUCTURE.md)
+  for workstation responsibilities and access procedures.
+- This project builds and runs on Windows x64. Record validation commands,
+  results, and any required live checks in the handoff or pull request.
+- Keep credentials, generated output, and machine-specific agent state out of Git.
 
-## Platform responsibilities
+## Live XR readiness
 
-- Treat the PC and Mac as co-equal trusted administrative workstations.
-- Run general implementation, large tests, containers, and GPU work on the PC.
-- Run Xcode builds, Simulator tests, signing, and Apple-platform validation on
-  the Mac.
-- Use the N150 for Git coordination and lightweight automation only.
-- These responsibilities describe available capabilities, not authority or
-  trust.
+- Offline editing, documentation, builds, and isolated tests do not require a
+  headset. Before deployment, Darktide interaction, or unattended XR work, run
+  `tools/unattended/invoke-unattended-preflight.ps1` in its default Ready mode.
+- Readiness requires Virtual Desktop Streamer, VDXR, exactly one authorized
+  Quest, and a renderable OpenXR session. Do not commit device identifiers.
+- Apply `tools/quest/set-proximity-override.ps1 -Action Disable`, then `-Action
+  Status` at the start of a live development session. The preflight also applies
+  the override and checks power state. Restore automation when development ends.
+- Recheck readiness after a disconnect, runtime/streamer change, headset sleep,
+  or before a new unattended session. An unchanged live session need not repeat
+  the smoke test before every edit or sync.
+- VD suspension during Quest passthrough is recoverable: resume streaming and
+  retry. Do not restart VD solely because of suspension. Use `-Mode Inventory`
+  for observation during an existing session; it does not certify readiness.
 
-## Completion
+## Lua and visual acceptance
 
-- Record the commands used to validate the change.
-- Call out validation that can run only on another platform.
-- Do not commit credentials, signing material, generated build directories, or
-  machine-specific agent state such as `.codex` or `.claude`.
-
-## Manual visual checks
-
-- When the user is at the desk, prefer their direct headset checks for hand
-  alignment and other visual acceptance. Prepare a real-tracking session and
-  ask for a specific observation before running synthetic visual experiments.
-- Use automation for source checks, crashes, tracking state and rendering
-  correctness. Do not treat automated counters as worn visual acceptance.
-
-## Mandatory daily XR preflight
-
-- Before editing, building, synchronizing, launching Darktide, or starting an
-  unattended run, verify Virtual Desktop Streamer is running and VDXR is
-  available.
-- Verify exactly one authorized Quest is connected through a working ADB
-  client. Do not record its serial number or network address in Git.
-- Disable Quest proximity/wear automation with
-  `tools\quest\set-proximity-override.ps1 -Action Disable`, then run the same
-  helper with `-Action Status` so the headset cannot sleep during development.
-- Confirm the headset remains awake and Virtual Desktop can create a renderable
-  OpenXR session. Virtual Desktop suspension while Quest passthrough is active
-  is a normal recoverable state; do not fail closed or restart VD solely for
-  that suspension.
-
-## Darktide Lua safety
-
-- Treat `darktidevr_stereo_probe.lua` as a single LuaJIT chunk with a hard
-  200-local compiler ceiling. Do not add new file-scope locals; put new state
-  on an existing state table or split implementation into a required module.
-- Run `tools\stereo\test-darktide-lua-source.ps1` before deploying or launching
-  Darktide. The sync, launch, and unattended-preflight scripts must retain this
-  fail-closed check.
-- Keep state-table initialization below its `local ... = {}` declaration. A
-  mod-load error can leave OpenXR alive in flat fallback mode, so an XR session
-  existing is not evidence that stereo hooks loaded.
-- After each Lua change, verify a fresh console log contains the stereo mod's
-  initialization messages and that the XR harness reports nonzero
-  `shared_ready` before considering the launch valid.
-- For automated Psykhanium testing, use
-  `start-darktide-vr.ps1 -EnterPsykhanium` while Darktide is closed. Arming
-  after a populated public hub has loaded can hit the known base-game remote
-  husk `parent_unit_id` teardown race during the range transition.
+- Compile every Lua chunk with the pinned LuaJIT gate:
+  `tools/stereo/test-darktide-lua-source.ps1`. Build its validator first with
+  `tools/lua/build-luajit.ps1`. Sync, launch, and preflight must retain this gate.
+- LuaJIT permits at most 200 simultaneously active locals. Prefer modules and
+  existing state tables; compiler validation is authoritative, not indentation.
+- Initialize state tables before using their members. After deploying Lua changes,
+  verify fresh stereo initialization messages and nonzero harness `shared_ready`.
+  An OpenXR session alone can be flat fallback after a mod-load failure.
+- Prefer the user's worn, real-tracking check for hand alignment and visual
+  acceptance. Ask for a specific observation before synthetic visual experiments.
+  Automated tracking/rendering counters do not establish worn visual acceptance.
+- Arm automated Psykhanium entry with `start-darktide-vr.ps1 -EnterPsykhanium`
+  while Darktide is closed. Arming after a populated hub loads risks the known
+  base-game remote-husk teardown race.

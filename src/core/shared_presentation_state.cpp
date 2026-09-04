@@ -1,3 +1,4 @@
+#include "core/shared_object_name.h"
 #include "core/shared_presentation_state.h"
 
 #include <Windows.h>
@@ -138,7 +139,7 @@ bool presentation_state_fresh(const SharedPresentationState& state,
 SharedPresentationStateWriter::SharedPresentationStateWriter() {
   mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
                                 0, sizeof(SharedLayout),
-                                kSharedPresentationStateName);
+                                shared_object_name(kSharedPresentationStateName).c_str());
   if (!mapping_) {
     throw std::runtime_error(
         "CreateFileMapping(shared presentation state) failed");
@@ -215,7 +216,7 @@ bool SharedPresentationStateReader::ensure_open() {
     return true;
   }
   mapping_ = OpenFileMappingW(FILE_MAP_READ, FALSE,
-                              kSharedPresentationStateName);
+                              shared_object_name(kSharedPresentationStateName).c_str());
   if (!mapping_) {
     return false;
   }

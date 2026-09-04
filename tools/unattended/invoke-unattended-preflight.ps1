@@ -9,12 +9,19 @@ param(
 
     [switch] $RunXrSmoke,
 
+    [ValidateSet('Ready', 'Inventory')]
+    [string] $Mode = 'Ready',
+
+    [ValidateSet('Debug', 'Release')]
+    [string] $Configuration = 'Release',
+
     [ValidateRange(120, 2400)]
     [int] $XrFrames = 600
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $gameRootPath = (Resolve-Path -LiteralPath $GameRoot).Path
@@ -57,7 +64,7 @@ function Get-FileIdentity([string] $Label, [string] $Path) {
         exists = $exists
         relative_or_leaf = if ($Path.StartsWith($repoRoot,
                 [System.StringComparison]::OrdinalIgnoreCase)) {
-            [System.IO.Path]::GetRelativePath($repoRoot, $Path)
+            $Path.Substring($repoRoot.Length).TrimStart('\', '/')
         } else {
             Split-Path -Leaf $Path
         }
@@ -91,8 +98,9 @@ if ($LASTEXITCODE -ne 0 -or $questModel -notmatch '^Quest') {
     throw 'The sole authorized ADB target is not a Meta Quest'
 }
 
+if ($RunXrSmoke) { $Mode = 'Ready' }
 $proximityApplied = $false
-if (-not $SkipProximityApply) {
+if ($Mode -eq 'Ready' -and -not $SkipProximityApply) {
     $broadcast = @(& $adb -s $device shell am broadcast `
         -a com.oculus.vrpowermanager.prox_close)
     if ($LASTEXITCODE -ne 0 -or
@@ -110,11 +118,19 @@ $powerLines = @(
         ForEach-Object { $_.Line.Trim() }
 )
 
+$powerExitCode = $LASTEXITCODE
+
 $vdProcesses = @(Get-Process 'VirtualDesktop.Streamer' -ErrorAction SilentlyContinue)
-$activeRuntime = (Get-ItemProperty `
+$runtimeProperty = Get-ItemProperty `
     -Path 'HKLM:\SOFTWARE\Khronos\OpenXR\1' `
     -Name ActiveRuntime `
-    -ErrorAction SilentlyContinue).ActiveRuntime
+    -ErrorAction SilentlyContinue
+$activeRuntime = if ($runtimeProperty) { $runtimeProperty.ActiveRuntime } else { '' }
+. (Join-Path $PSScriptRoot 'xr-readiness.ps1')
+if ($Mode -eq 'Ready') {
+    Assert-XrReadiness -StreamerCount $vdProcesses.Count -Runtime $activeRuntime `
+        -PowerLines $powerLines -PowerExitCode $powerExitCode
+}
 
 $gameProcesses = @(Get-Process Darktide -ErrorAction SilentlyContinue)
 $launcherProcesses = @(Get-Process Launcher -ErrorAction SilentlyContinue |
@@ -134,8 +150,8 @@ $filePaths = @(
     @('installed_native_capture', (Join-Path $modRoot 'bin\darktidevr_native_capture.dll')),
     @('installed_d3d12_bootstrap', (Join-Path $gameRootPath 'binaries\d3d12.dll')),
     @('source_mod_lua', (Join-Path $repoRoot 'mods\darktidevr_stereo_probe\scripts\mods\darktidevr_stereo_probe\darktidevr_stereo_probe.lua')),
-    @('debug_native_capture', (Join-Path $repoRoot 'build\windows-vs2022\src\producer\Debug\darktidevr_native_capture.dll')),
-    @('debug_d3d12_bootstrap', (Join-Path $repoRoot 'build\windows-vs2022\src\producer\Debug\d3d12.dll'))
+    @('source_native_capture', (Join-Path $repoRoot "build\windows-vs2022\src\producer\$Configuration\darktidevr_native_capture.dll")),
+    @('source_d3d12_bootstrap', (Join-Path $repoRoot "build\windows-vs2022\src\producer\$Configuration\d3d12.dll"))
 )
 $files = @($filePaths | ForEach-Object { Get-FileIdentity $_[0] $_[1] })
 
@@ -150,16 +166,26 @@ finally {
 }
 
 $xrSmoke = $null
-if ($RunXrSmoke) {
+if ($Mode -eq 'Ready') {
+    if (Get-Process darktidevr-xr-harness -ErrorAction SilentlyContinue) {
+        throw 'Stop the existing XR viewer before running a new rendering preflight; use -Mode Inventory for a read-only report.'
+    }
     $harness = Join-Path $repoRoot `
-        'build\windows-vs2022\tests\xr_harness\Debug\darktidevr-xr-harness.exe'
+        "build\windows-vs2022\tests\xr_harness\$Configuration\darktidevr-xr-harness.exe"
     if (-not (Test-Path -LiteralPath $harness -PathType Leaf)) {
-        throw "Debug XR harness not found: $harness"
+        throw "$Configuration XR harness not found: $harness"
     }
 
-    $smokeOutput = @(& $harness --frames 30 --debug-layer --require-openxr `
-        --require-rendering --xr-frames $XrFrames 2>&1)
-    $smokeExitCode = $LASTEXITCODE
+    $priorErrorAction = $ErrorActionPreference
+    try {
+        # Loader API-version fallback may write to stderr before succeeding.
+        $ErrorActionPreference = 'Continue'
+        $smokeOutput = @(& $harness --frames 30 --debug-layer --require-openxr `
+            --require-rendering --xr-frames $XrFrames 2>&1 | ForEach-Object { [string] $_ })
+        $smokeExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $priorErrorAction
+    }
     $resultLine = $smokeOutput | Where-Object { $_ -match '^result=' } |
         Select-Object -Last 1
     $stateLines = @($smokeOutput | Where-Object {
@@ -171,12 +197,14 @@ if ($RunXrSmoke) {
         state = $stateLines
     }
     if ($smokeExitCode -ne 0 -or $xrSmoke.result -ne 'pass') {
-        throw "XR smoke failed with exit code $smokeExitCode and result '$($xrSmoke.result)'"
+        throw "XR rendering is unavailable (exit $smokeExitCode, result $($xrSmoke.result)). If Quest passthrough suspended VD, resume streaming and retry; no restart was attempted."
     }
 }
 
 $report = [ordered]@{
-    schema_version = 1
+    schema_version = 2
+    mode = $Mode
+    readiness_verified = ($Mode -eq 'Ready')
     captured_utc = (Get-Date).ToUniversalTime().ToString('o')
     git = [ordered]@{
         head = $gitHead

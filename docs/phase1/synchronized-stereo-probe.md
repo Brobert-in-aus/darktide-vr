@@ -1,3 +1,5 @@
+> Historical research record. This is not the current operating policy or acceptance checklist. See [current status](../CURRENT-STATUS.md).
+
 # Synchronized stereo probe
 
 The first engine-stereo experiment uses a facility already present in

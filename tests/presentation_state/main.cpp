@@ -1,3 +1,4 @@
+#include "../isolated_transports.h"
 #include "core/shared_presentation_state.h"
 
 #include <iostream>
@@ -15,6 +16,7 @@ void expect(bool condition, const char* message) {
 
 int main() {
   try {
+    darktidevr::tests::isolate_transports();
     using namespace darktidevr::core;
     expect(immersive_projection_active(
                SharedPresentationMode::stereo_world) &&

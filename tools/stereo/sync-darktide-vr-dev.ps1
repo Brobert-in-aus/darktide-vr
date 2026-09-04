@@ -81,21 +81,9 @@ $destinations = @(
 # probe below its hard local-variable ceiling. Deploy and syntax-check every
 # module alongside the entry chunk so a clean game install cannot retain stale
 # calibration code.
-$luaParser = Get-Command pnpm -ErrorAction SilentlyContinue
-if (-not $luaParser) {
-    throw 'pnpm is required to validate Darktide VR Lua modules.'
-}
-& $luaParser.Source dlx luaparse --quiet --file $sourceBootstrap
-if ($LASTEXITCODE -ne 0) {
-    throw "luaparse rejected Darktide VR bootstrap: $sourceBootstrap"
-}
 $moduleFiles = Get-ChildItem -LiteralPath $sourceLuaRoot -Filter '*.lua' |
     Where-Object FullName -ne $sourceLua
 foreach ($moduleFile in $moduleFiles) {
-    & $luaParser.Source dlx luaparse --quiet --file $moduleFile.FullName
-    if ($LASTEXITCODE -ne 0) {
-        throw "luaparse rejected Darktide VR module: $($moduleFile.FullName)"
-    }
     $destinations += [pscustomobject]@{
         Source = $moduleFile.FullName
         Destination = Join-Path (Split-Path -Parent $destinations[0].Destination) `

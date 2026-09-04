@@ -1,3 +1,4 @@
+#include "../isolated_transports.h"
 #include "core/shared_head_pose.h"
 
 #include <chrono>
@@ -43,6 +44,7 @@ int main(int argc, char** argv) {
       }
       throw std::runtime_error("Live shared head pose is unavailable");
     }
+    darktidevr::tests::isolate_transports();
     auto writer = std::make_unique<darktidevr::core::SharedHeadPoseWriter>();
     darktidevr::core::SharedHeadPoseReader reader;
     darktidevr::core::SharedHeadPoseSample sample{};

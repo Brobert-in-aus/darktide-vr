@@ -1,3 +1,6 @@
+#include "producer/buffer_registry.h"
+#include "producer/pipeline_identity.h"
+#include "core/shared_object_name.h"
 #include <Windows.h>
 #include <d3d12.h>
 #include <d3d12shader.h>
@@ -835,19 +838,7 @@ struct DescriptorHeapInfo {
   std::uint64_t gpu_start{};
 };
 
-struct BufferResourceInfo {
-  ID3D12Resource* resource{};
-  std::uint64_t gpu_start{};
-  std::uint64_t size{};
-  D3D12_HEAP_TYPE heap_type{D3D12_HEAP_TYPE_CUSTOM};
-  std::byte* mapped_base{};
-  UINT mapped_subresource{};
-  bool mapped{};
-  std::array<void*, 16> last_map_stack{};
-  USHORT last_map_stack_count{};
-  std::byte* staging_base{};
-  std::uint64_t staging_size{};
-};
+using darktidevr::producer::BufferResourceInfo;
 
 struct TableProvenance {
   std::array<DescriptorInfo, 2> descriptors{};
@@ -975,8 +966,10 @@ std::unordered_set<std::uintptr_t> logged_root_signatures;
 std::mutex descriptor_mutex;
 std::unordered_map<std::uintptr_t, DescriptorHeapInfo> descriptor_heaps;
 std::unordered_map<std::uint64_t, DescriptorInfo> descriptor_metadata;
-std::mutex buffer_resource_mutex;
-std::vector<BufferResourceInfo> buffer_resources;
+const auto buffer_registry = std::make_shared<darktidevr::producer::BufferRegistry>();
+auto& buffer_resource_mutex = buffer_registry->mutex;
+auto& buffer_resources = buffer_registry->resources;
+
 std::unordered_set<std::uint64_t> billboard_tested_cbvs;
 std::unordered_set<std::uint64_t> billboard_staging_tested_cbvs;
 std::mutex billboard_cbv_log_mutex;
@@ -1038,10 +1031,10 @@ std::unordered_map<std::uintptr_t, PsoMetadata> pso_metadata;
 std::mutex command_signature_mutex;
 std::unordered_map<std::uintptr_t, bool> command_signature_draws;
 // PSO metadata can be revisited by pipeline-library/cache paths after creation.
-// Keep successful target substitutions in a separate monotonic identity set so
+// Keep successful target substitutions on the COM object itself so
 // a later descriptive metadata refresh cannot erase the fact that this PSO is
 // executing the reconstructed target shader.
-std::unordered_set<std::uintptr_t> target_billboard_psos;
+
 std::unordered_set<std::uintptr_t> logged_billboard_bound_psos;
 
 struct PendingCapture {
@@ -1156,7 +1149,8 @@ HANDLE shared_projection_active_event() {
     return event;
   }
   const auto created = CreateEventW(
-      nullptr, TRUE, FALSE, L"Local\\DarktideVR-projection-active-v1");
+      nullptr, TRUE, FALSE, darktidevr::core::shared_object_name(
+          L"Local\\DarktideVR-projection-active-v1").c_str());
   if (!created) {
     return nullptr;
   }
@@ -4664,7 +4658,8 @@ HRESULT STDMETHODCALLTYPE create_pipeline_state_stream_hook(
     const auto key = reinterpret_cast<std::uintptr_t>(*output);
     pso_metadata[key] = metadata;
     if (metadata.substituted_vertex_shader == kBillboardTargetVertexShader) {
-      target_billboard_psos.insert(key);
+      (void)darktidevr::producer::mark_billboard_pipeline(
+          reinterpret_cast<ID3D12PipelineState*>(*output));
       write_billboard_pso_identity("target-create-stream", key, metadata);
     }
   }
@@ -4956,10 +4951,8 @@ HRESULT STDMETHODCALLTYPE create_committed_resource_hook(
     auto* resource = reinterpret_cast<ID3D12Resource*>(*output);
     const auto gpu_start = resource->GetGPUVirtualAddress();
     if (gpu_start != 0) {
-      std::scoped_lock lock(buffer_resource_mutex);
-      buffer_resources.push_back(BufferResourceInfo{
-          resource, gpu_start, description->Width,
-          properties ? properties->Type : D3D12_HEAP_TYPE_CUSTOM});
+      buffer_registry->track(resource, gpu_start, description->Width,
+          properties ? properties->Type : D3D12_HEAP_TYPE_CUSTOM);
     }
   }
   return result;
@@ -4986,10 +4979,8 @@ HRESULT STDMETHODCALLTYPE create_placed_resource_hook(
     auto* resource = reinterpret_cast<ID3D12Resource*>(*output);
     const auto gpu_start = resource->GetGPUVirtualAddress();
     if (gpu_start != 0) {
-      std::scoped_lock lock(buffer_resource_mutex);
-      buffer_resources.push_back(BufferResourceInfo{
-          resource, gpu_start, description->Width,
-          heap_description.Properties.Type});
+      buffer_registry->track(resource, gpu_start, description->Width,
+          heap_description.Properties.Type);
     }
   }
   return result;
@@ -5474,7 +5465,8 @@ HRESULT STDMETHODCALLTYPE create_graphics_pipeline_state_hook(
     const auto key = reinterpret_cast<std::uintptr_t>(*output);
     pso_metadata[key] = metadata;
     if (metadata.substituted_vertex_shader == kBillboardTargetVertexShader) {
-      target_billboard_psos.insert(key);
+      (void)darktidevr::producer::mark_billboard_pipeline(
+          reinterpret_cast<ID3D12PipelineState*>(*output));
       write_billboard_pso_identity("target-create-graphics", key, metadata);
     }
   }
@@ -5499,7 +5491,8 @@ HRESULT STDMETHODCALLTYPE create_compute_pipeline_state_hook(
     const auto key = reinterpret_cast<std::uintptr_t>(*output);
     pso_metadata[key] = metadata;
     if (metadata.substituted_vertex_shader == kBillboardTargetVertexShader) {
-      target_billboard_psos.insert(key);
+      (void)darktidevr::producer::mark_billboard_pipeline(
+          reinterpret_cast<ID3D12PipelineState*>(*output));
       write_billboard_pso_identity("target-load-graphics", key, metadata);
     }
   }
@@ -5630,7 +5623,8 @@ HRESULT STDMETHODCALLTYPE load_graphics_pipeline_hook(
     const auto key = reinterpret_cast<std::uintptr_t>(*output);
     pso_metadata[key] = metadata;
     if (metadata.substituted_vertex_shader == kBillboardTargetVertexShader) {
-      target_billboard_psos.insert(key);
+      (void)darktidevr::producer::mark_billboard_pipeline(
+          reinterpret_cast<ID3D12PipelineState*>(*output));
       write_billboard_pso_identity("target-load-stream", key, metadata);
     }
   }
@@ -5713,6 +5707,10 @@ HRESULT STDMETHODCALLTYPE load_pipeline_hook(
         reinterpret_cast<ID3D12PipelineState*>(*output), metadata);
     std::scoped_lock lock(pso_mutex);
     pso_metadata[reinterpret_cast<std::uintptr_t>(*output)] = metadata;
+    if (metadata.substituted_vertex_shader == kBillboardTargetVertexShader) {
+      (void)darktidevr::producer::mark_billboard_pipeline(
+          reinterpret_cast<ID3D12PipelineState*>(*output));
+    }
   }
   return result;
 }
@@ -6809,7 +6807,8 @@ BillboardBindingOverride apply_billboard_view_basis(
   UINT billboard_register = UINT_MAX;
   {
     std::scoped_lock lock(pso_mutex);
-    target_billboard_pso = target_billboard_psos.contains(pipeline);
+    target_billboard_pso = darktidevr::producer::is_billboard_pipeline(
+        reinterpret_cast<ID3D12PipelineState*>(pipeline));
     const auto found = pso_metadata.find(pipeline);
     if (found != pso_metadata.end()) {
       billboard_pso = target_billboard_pso || found->second.billboard_shader ||

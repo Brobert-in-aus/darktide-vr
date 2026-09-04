@@ -1,0 +1,65 @@
+# Current status and operation
+
+Updated 5 September 2026. This page supersedes historical feasibility documents
+for current defaults and operating instructions.
+
+## Supported development path
+
+Windows x64, Steam Darktide, Quest through Virtual Desktop/VDXR. Integration
+requires the exact guarded game executable accepted by the launcher scripts,
+DMF and the installed stereo mod directories. Development sync updates an
+existing installation; it is not a clean installer. General OpenXR runtime and
+character/weapon coverage remains experimental.
+
+The production path uses same-tick native shared eye textures, tracked head and
+controllers, rigid hand proxies, controller input/aim and a depth reticle.
+The runtime supplies eye dimensions (the current VDXR setup recommends
+2496x2688). Historical 1920x2160 and other dimensions are evidence, not defaults.
+Clustered-light visibility correction and billboard substitution are enabled
+by normal sync. Full-body and fixed HUD-panel presentation remain experimental.
+
+## Launch
+
+Build Release and the pinned LuaJIT validator as described in the root README.
+With no existing XR viewer, run:
+
+```powershell
+tools/quest/set-proximity-override.ps1 -Action Disable
+tools/quest/set-proximity-override.ps1 -Action Status
+tools/unattended/invoke-unattended-preflight.ps1
+tools/stereo/start-darktide-vr.ps1 -EnterPsykhanium
+```
+
+Ready preflight enforces Streamer/VDXR/awake-Quest checks and renders an XR smoke
+session. `-Mode Inventory` collects observations without claiming readiness or
+applying the proximity override. Resume VD after a passthrough suspension and
+retry; suspension alone does not require a restart.
+
+Start performs a Lua compiler gate and syncs Release files while Darktide is
+closed. It follows Steam and the normal Fatshark launcher. The XR runner checks
+the exact executable hash and rejects active EAC. Psykhanium entry must be armed
+before game startup. After deployment, check fresh stereo initialization and
+nonzero `shared_ready`; a working XR fallback alone is insufficient.
+
+## Acceptance still pending
+
+The September 4/5 candidate has outstanding worn checks for both unarmed and
+wielded palm placement, finger animation during weapon actions, pinned-marker
+alignment at every eye edge, and lighting parity in both hub and Psykhanium.
+The crosshair atlas-square fix was accepted; wrist joint-drift telemetry did not
+prove overall glove alignment. See the [checkpoint](handoffs/2026-09-04-development-session.md).
+
+Repository maintenance tests do not resolve these visual findings. A 60-minute
+worn stability/transition session is still required for the Phase 1 exit gate.
+
+## History and maintenance
+
+- [Implementation and validation record](maintenance-plan-2026-09-05.md)
+- [Phase 1 chronological history](phase1/development-history.md)
+- [Design brief](DARKTIDE-VR-DESIGN-BRIEF.md)
+- [Infrastructure](PROJECT-INFRASTRUCTURE.md)
+
+Phase 0 observation policy, test-only feasibility models, and historical shader
+probes document earlier experiments. They do not describe the current renderer
+or establish current launch authorization. Keep diagnostic switches explicit;
+do not turn old experiments into production defaults merely because they build.

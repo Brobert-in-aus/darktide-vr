@@ -1,3 +1,5 @@
+> Historical research record. This is not the current operating policy or acceptance checklist. See [current status](../CURRENT-STATUS.md).
+
 # Runtime observation protocol
 
 **State:** External ETW and semantic Lua camera observation completed; native

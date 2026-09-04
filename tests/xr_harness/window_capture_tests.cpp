@@ -159,6 +159,13 @@ int wmain() {
                fixture_centre[2] == std::byte{18},
            "Occluding window leaked into the captured client surface");
     DestroyWindow(occluder);
+    for (const auto crop : {std::pair{1U, 90U}, std::pair{160U, 1U},
+                            std::pair{1U, 1U}}) {
+      capture.set_source_crop(320, 180, 0, 0, crop.first, crop.second);
+      capture.set_pointer_overlay(std::pair{0U, 0U}, 320, 180);
+      expect(capture.capture().bgra_pixels != nullptr,
+             "A one-pixel crop must remain renderable with a pointer");
+    }
     capture.set_source_crop(320, 180, 0, 0, 160, 90);
     capture.set_pointer_overlay(std::pair{80U, 45U}, 320, 180);
     const auto with_pointer = capture.capture();

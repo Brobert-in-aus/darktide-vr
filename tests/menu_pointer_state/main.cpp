@@ -1,3 +1,4 @@
+#include "../isolated_transports.h"
 #include "core/shared_menu_pointer_state.h"
 
 #include <iostream>
@@ -15,6 +16,7 @@ void expect(bool condition, const char* message) {
 
 int main() {
   try {
+    darktidevr::tests::isolate_transports();
     using namespace darktidevr::core;
     SharedMenuPointerState sample{};
     sample.sequence = 7;

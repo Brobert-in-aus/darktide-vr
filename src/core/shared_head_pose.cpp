@@ -1,3 +1,4 @@
+#include "core/shared_object_name.h"
 #include "core/shared_head_pose.h"
 
 #include <Windows.h>
@@ -131,7 +132,7 @@ void close_mapping(void*& mapping, void*& view) {
 SharedHeadPoseWriter::SharedHeadPoseWriter() {
   mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
                                 0, sizeof(SharedLayout),
-                                kSharedHeadPoseName);
+                                shared_object_name(kSharedHeadPoseName).c_str());
   if (!mapping_) {
     throw std::runtime_error("CreateFileMapping(shared head pose) failed");
   }
@@ -284,7 +285,7 @@ bool SharedHeadPoseReader::ensure_open() {
     return true;
   }
   mapping_ = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE,
-                              kSharedHeadPoseName);
+                              shared_object_name(kSharedHeadPoseName).c_str());
   if (!mapping_) {
     return false;
   }

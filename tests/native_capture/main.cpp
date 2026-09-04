@@ -1,3 +1,7 @@
+#include "producer/buffer_registry.h"
+#include "producer/pipeline_identity.h"
+#include "producer/object_lifetime.h"
+#include "../isolated_transports.h"
 #include <Windows.h>
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -13,6 +17,7 @@ using Microsoft::WRL::ComPtr;
 
 int wmain(int argc, wchar_t** argv) {
   try {
+    darktidevr::tests::isolate_transports();
     if (argc != 2) {
       throw std::invalid_argument("Expected native capture DLL path");
     }
@@ -347,6 +352,28 @@ int wmain(int argc, wchar_t** argv) {
                                  IID_PPV_ARGS(&device)))) {
       throw std::runtime_error("Failed to create the map-tracking test device");
     }
+    // Private identity survives metadata refresh, but belongs only to its owner.
+    ComPtr<ID3D12Fence> identity_owner;
+    ComPtr<ID3D12Fence> unrelated_owner;
+    if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
+                                  IID_PPV_ARGS(&identity_owner))) ||
+        FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
+                                  IID_PPV_ARGS(&unrelated_owner)))) {
+      throw std::runtime_error("Could not create identity fixtures");
+    }
+    bool expired = false;
+    if (!darktidevr::producer::mark_billboard_pipeline(identity_owner.Get()) ||
+        !darktidevr::producer::is_billboard_pipeline(identity_owner.Get()) ||
+        darktidevr::producer::is_billboard_pipeline(unrelated_owner.Get()) ||
+        !darktidevr::producer::observe_lifetime(identity_owner.Get(),
+            __uuidof(ID3D12Fence), [&expired] { expired = true; })) {
+      throw std::runtime_error("Object identity must be private to its owner");
+    }
+    identity_owner.Reset();
+    if (!expired || darktidevr::producer::is_billboard_pipeline(unrelated_owner.Get())) {
+      throw std::runtime_error("Object release must retire its lifetime and identity");
+    }
+
     D3D12_HEAP_PROPERTIES upload_properties{};
     upload_properties.Type = D3D12_HEAP_TYPE_UPLOAD;
     D3D12_RESOURCE_DESC buffer_description{};
@@ -378,6 +405,18 @@ int wmain(int argc, wchar_t** argv) {
         billboard_resource_map_match_count() != matches_before + 1 ||
         billboard_resource_unmap_count() != unmaps_before + 1) {
       throw std::runtime_error("Mapped upload tracking did not observe Map/Unmap");
+    }
+    const auto registry = std::make_shared<darktidevr::producer::BufferRegistry>();
+    for (int refresh = 0; refresh < 2; ++refresh) {
+      registry->track(upload_buffer.Get(), upload_buffer->GetGPUVirtualAddress(),
+                      upload_buffer->GetDesc().Width, D3D12_HEAP_TYPE_UPLOAD);
+      if (registry->resources.size() != 1) {
+        throw std::runtime_error("Refreshing a buffer must replace its old registry record");
+      }
+    }
+    upload_buffer.Reset();
+    if (!registry->resources.empty()) {
+      throw std::runtime_error("Destroyed buffers must leave no registry records");
     }
     unsigned long long stage_values[6]{};
     if (take_gpu_stage_profile(-1, stage_values) != 1 ||

@@ -1,3 +1,4 @@
+#include "core/shared_object_name.h"
 #include "core/shared_menu_pointer_state.h"
 
 #include <Windows.h>
@@ -50,7 +51,7 @@ bool valid_menu_pointer_state(const SharedMenuPointerState& state) {
 SharedMenuPointerStateWriter::SharedMenuPointerStateWriter() {
   mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
                                 0, sizeof(SharedLayout),
-                                kSharedMenuPointerStateName);
+                                shared_object_name(kSharedMenuPointerStateName).c_str());
   if (!mapping_) {
     throw std::runtime_error("CreateFileMapping(shared menu pointer) failed");
   }
@@ -94,7 +95,7 @@ bool SharedMenuPointerStateReader::ensure_open() {
     return true;
   }
   mapping_ = OpenFileMappingW(FILE_MAP_READ, FALSE,
-                              kSharedMenuPointerStateName);
+                              shared_object_name(kSharedMenuPointerStateName).c_str());
   if (!mapping_) {
     return false;
   }
