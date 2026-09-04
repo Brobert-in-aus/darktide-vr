@@ -3309,6 +3309,11 @@ class OpenXrProbe {
           XR_TYPE_COMPOSITION_LAYER_QUAD};
       if (gameplay_reticle_pose) {
         constexpr std::int32_t gameplay_reticle_extent = 41;
+        // Leave transparent atlas texels outside the submitted rectangle so
+        // compositor filtering cannot sample the adjacent opaque capture.
+        constexpr std::int32_t gameplay_reticle_inset = 2;
+        constexpr auto gameplay_reticle_sample_extent =
+            gameplay_reticle_extent - 2 * gameplay_reticle_inset;
         gameplay_reticle_quad.layerFlags =
             XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
         gameplay_reticle_quad.space = local_space_;
@@ -3316,11 +3321,11 @@ class OpenXrProbe {
         gameplay_reticle_quad.subImage.swapchain = flat_swapchain;
         gameplay_reticle_quad.subImage.imageRect.offset = {
             static_cast<std::int32_t>(flat_capture_width) -
-                gameplay_reticle_extent - 1,
+                gameplay_reticle_extent - 1 + gameplay_reticle_inset,
             static_cast<std::int32_t>(flat_capture_height) -
-                gameplay_reticle_extent};
+                gameplay_reticle_extent + gameplay_reticle_inset};
         gameplay_reticle_quad.subImage.imageRect.extent = {
-            gameplay_reticle_extent, gameplay_reticle_extent};
+            gameplay_reticle_sample_extent, gameplay_reticle_sample_extent};
         gameplay_reticle_quad.pose.orientation = {
             gameplay_reticle_pose->orientation.x,
             gameplay_reticle_pose->orientation.y,
@@ -3331,7 +3336,9 @@ class OpenXrProbe {
             gameplay_reticle_pose->position.y,
             gameplay_reticle_pose->position.z};
         const auto angular_size_metres = std::clamp(
-            gameplay_reticle_distance_metres_ * 0.049F, 0.105F, 0.84F);
+            gameplay_reticle_distance_metres_ * 0.049F, 0.105F, 0.84F) *
+            (static_cast<float>(gameplay_reticle_sample_extent) /
+             static_cast<float>(gameplay_reticle_extent));
         gameplay_reticle_quad.size = {angular_size_metres,
                                       angular_size_metres};
       }

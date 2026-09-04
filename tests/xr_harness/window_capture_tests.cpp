@@ -107,6 +107,19 @@ int wmain() {
         (static_cast<std::size_t>(49) * 160 + 118) * 4;
     expect(gameplay_reticle_background[3] == std::byte{0},
            "Gameplay reticle atlas background was not transparent");
+    // The compositor samples an inset 37x37 rectangle. Its one-texel outer
+    // filter footprint must contain no color or alpha from the desktop.
+    for (std::size_t y = 50; y <= 88; ++y) {
+      for (std::size_t x = 119; x <= 157; ++x) {
+        if (x != 119 && x != 157 && y != 50 && y != 88) {
+          continue;
+        }
+        const auto* guard = gameplay.bgra_pixels + (y * 160 + x) * 4;
+        expect(guard[0] == std::byte{0} && guard[1] == std::byte{0} &&
+                   guard[2] == std::byte{0} && guard[3] == std::byte{0},
+               "Reticle filtering guard contains opaque capture pixels");
+      }
+    }
     capture.set_gameplay_reticle_atlas_enabled(false);
     const auto flat_again = capture.capture();
     const auto restored_gameplay_reticle_centre = flat_again.bgra_pixels +
