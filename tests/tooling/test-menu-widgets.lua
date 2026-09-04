@@ -3,6 +3,21 @@ RESOLUTION_LOOKUP = { scale = 1, width = 100, height = 100 }
 math.clamp = function(value, low, high) return math.max(low, math.min(high, value)) end
 local p = { mode = 5 }
 widgets.install({ info = function() end }, p)
+local edge = { primary_press_sequence = 5, primary_consumed_sequence = 4,
+    primary_pressed = true, x = 10, y = 20 }
+assert(p.claim_menu_pointer_sample(edge))
+assert(not p.claim_menu_pointer_sample(edge), "widget passes resampled a pending click")
+-- No widget accepted the press. Moving over a button next frame must not
+-- resurrect it (live regression: social/play activated a second after miss).
+p.begin_menu_pointer_frame(edge)
+edge.x = 90
+assert(edge.primary_consumed_sequence == 5 and not edge.primary_pressed,
+    "missed click survived into later hover")
+assert(p.claim_menu_pointer_sample(edge), "new UI frame did not sample")
+assert(not p.claim_menu_pointer_sample(edge))
+edge.primary_press_sequence = 6
+edge.primary_pressed = edge.primary_press_sequence ~= edge.primary_consumed_sequence
+assert(edge.primary_pressed, "fresh deliberate press was suppressed")
 local instance = { _ui_scenegraph = { row = { world_position = { 0, 0 }, size = { 100, 20 } } } }
 local hotspot = { force_hover = true, force_input_pressed = true }
 local widget = { scenegraph_id = "row", content = { hotspot = hotspot },
@@ -50,4 +65,22 @@ assert(not hit and geometry == nil, "invalid transport extent produced geometry"
 local left, top = p.aligned_pass_origin(10, 20, 100, 50,
     { size = { 20, 10 }, horizontal_alignment = "right", vertical_alignment = "center", offset = { 2, 3 } })
 assert(left == 92 and top == 43)
+-- Captured pixels must map into the actual character-select canvas.
+RESOLUTION_LOOKUP = { scale = 1, width = 1280, height = 768 }
+local menu = { _ui_scenegraph = { play = {
+    world_position = { 883, 564 }, size = { 327, 100 } } } }
+local play = { scenegraph_id = "play", content = {} }
+local captured = { active = true, x = 790, y = 465,
+    source_width = 1024, source_height = 614 }
+assert(p.widget_contains_menu_pointer(menu, play, captured),
+    "scaled capture missed visible Play button")
+captured.x = 400
+assert(not p.widget_contains_menu_pointer(menu, play, captured),
+    "empty capture space hit Play")
+-- An explicitly transformed shop pointer retains its portrait coordinate space.
+captured.x, captured.y = 950, 600
+captured.source_width, captured.source_height = 2496, 2688
+captured.layout_width, captured.layout_height = 2496, 2688
+assert(p.widget_contains_menu_pointer(menu, play, captured),
+    "vendor pointer was scaled twice")
 print("Menu widget visibility, cleanup, geometry, and drag contracts passed")

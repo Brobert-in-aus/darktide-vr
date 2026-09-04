@@ -27,7 +27,7 @@ With no existing XR viewer, run:
 tools/quest/set-proximity-override.ps1 -Action Disable
 tools/quest/set-proximity-override.ps1 -Action Status
 tools/unattended/invoke-unattended-preflight.ps1
-tools/stereo/start-darktide-vr.ps1 -EnterPsykhanium
+tools/stereo/start-darktide-vr.ps1 -EnterPsykhanium -ManualStartup
 ```
 
 Ready preflight enforces Streamer/VDXR/awake-Quest checks and renders an XR smoke
@@ -41,8 +41,18 @@ closed. It follows Steam and the normal Fatshark launcher. The XR runner checks
 the exact executable hash and rejects active EAC. Psykhanium entry must be armed
 before game startup. After deployment, check fresh stereo initialization and
 nonzero `shared_ready`; a working XR fallback alone is insufficient.
+`-ManualStartup` leaves title and character selection to the user while still
+arming Psykhanium entry before launch. During development, preserve Alt-Tab
+ownership: runtime input must never reactivate the game in the background.
 
 ## Acceptance still pending
+
+September 5 live input validation exposed dead laser clicks and focus stealing,
+then delayed activation of a previously missed click. A candidate now preserves
+click arming across heartbeats, expires missed clicks after their UI frame and
+respects foreground ownership. Direct input acceptance is pending; use
+`-ManualStartup` with the launcher to disable title/character key automation.
+See the [September 5 session](handoffs/2026-09-05-development-session.md).
 
 The September 4/5 candidate has outstanding worn checks for both unarmed and
 wielded palm placement, finger animation during weapon actions, pinned-marker

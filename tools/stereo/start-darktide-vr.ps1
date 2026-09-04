@@ -82,6 +82,10 @@ param(
 
     [switch] $AutoAdvanceSplash,
 
+    [switch] $ManualCharacterSelect,
+
+    [switch] $ManualStartup,
+
     [ValidateRange(-2.0, 2.0)]
     [double] $ProjectionTranslationScale = 1.0,
 
@@ -578,7 +582,7 @@ else {
     $xrLaunchOwnsGame = $true
 }
 
-if ($AutoEnterHub -or $AutoAdvanceSplash) {
+if (-not $ManualStartup -and ($AutoEnterHub -or $AutoAdvanceSplash)) {
     $advanceHelper = Join-Path $PSScriptRoot 'advance-darktide-to-hub.ps1'
     if (-not (Test-Path -LiteralPath $advanceHelper -PathType Leaf)) {
         throw "Darktide hub advance helper not found: $advanceHelper"
@@ -595,12 +599,12 @@ if ($AutoEnterHub -or $AutoAdvanceSplash) {
         '-GameExe',
         ('"' + $expectedGamePath + '"')
     )
-    if ($AutoAdvanceSplash -and -not $AutoEnterHub) {
+    if ($ManualCharacterSelect -or ($AutoAdvanceSplash -and -not $AutoEnterHub)) {
         $advanceArguments += '-StopAtCharacterSelect'
     }
     Start-Process -FilePath $powershell -WindowStyle Hidden `
         -ArgumentList $advanceArguments
-    if ($AutoEnterHub) {
+    if ($AutoEnterHub -and -not $ManualCharacterSelect) {
         Write-Output 'Armed state-gated Space/Enter automation through character select.'
     }
     else {

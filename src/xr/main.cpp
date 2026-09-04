@@ -946,13 +946,7 @@ class OpenXrProbe {
     std::uint32_t menu_back_press_sequence{};
     std::uint32_t menu_scroll_sequence{};
     int last_shared_menu_scroll_steps{};
-    bool last_shared_menu_primary_down{};
-    bool shared_menu_primary_armed{};
-    std::uint64_t shared_menu_primary_activation_sequence{};
-    std::optional<std::chrono::steady_clock::time_point>
-        shared_menu_primary_release_start;
-    std::optional<std::chrono::steady_clock::time_point>
-        shared_menu_primary_activation_start;
+    darktidevr::core::MenuPrimaryInputState menu_primary_state;
     std::unique_ptr<darktidevr::harness::MenuInputInjector>
         menu_input_injector;
     std::uint64_t menu_input_events{};
@@ -3018,45 +3012,16 @@ class OpenXrProbe {
         }
         shared_pointer.primary_down =
             shared_pointer.primary_down || shared_menu_primary_down;
-        // Opening a menu can overlap the trigger release that opened it, or a
-        // stale desktop/test button level. Adopt that level instead of turning
-        // it into a delayed synthetic click. Primary input becomes eligible
-        // only after every source has been released for a short settling
-        // interval in this menu activation.
-        const bool new_menu_activation = shared_pointer.active &&
-            presentation_sequence != shared_menu_primary_activation_sequence;
-        if (!shared_pointer.active) {
-          shared_menu_primary_armed = false;
-          shared_menu_primary_release_start.reset();
-          shared_menu_primary_activation_start.reset();
-          shared_menu_primary_activation_sequence = presentation_sequence;
-          last_shared_menu_primary_down = false;
-        } else if (new_menu_activation) {
-          shared_menu_primary_armed = false;
-          shared_menu_primary_release_start.reset();
-          shared_menu_primary_activation_start = frame_start;
-          shared_menu_primary_activation_sequence = presentation_sequence;
-          // Adopt every source's entry level. Controller bindings and tracking
-          // can disappear briefly while Darktide creates a shop view, then
-          // return as a false rising edge roughly one second later.
-          last_shared_menu_primary_down = shared_pointer.primary_down;
-        } else if (!shared_menu_primary_armed) {
-          if (shared_pointer.primary_down) {
-            shared_menu_primary_release_start.reset();
-          } else if (!shared_menu_primary_release_start) {
-            shared_menu_primary_release_start = frame_start;
-          } else if (shared_menu_primary_activation_start &&
-                     frame_start - *shared_menu_primary_activation_start >=
-                         std::chrono::milliseconds(1250) &&
-                     frame_start - *shared_menu_primary_release_start >=
-                         std::chrono::milliseconds(250)) {
-            shared_menu_primary_armed = true;
-            std::cout << "openxr.menu_primary=armed sequence="
-                      << presentation_sequence << '\n';
-          }
+        const bool was_primary_armed = menu_primary_state.armed();
+        const bool primary_pressed = menu_primary_state.update(
+            presentation_state, menu_mode && submitted_flat_fallback_this_frame,
+            shared_pointer.active, shared_pointer.primary_down,
+            std::chrono::duration<double>(frame_start - start).count());
+        if (!was_primary_armed && menu_primary_state.armed()) {
+          std::cout << "openxr.menu_primary=armed sequence="
+                    << presentation_sequence << '\n';
         }
-        if (shared_menu_primary_armed && shared_pointer.primary_down &&
-            !last_shared_menu_primary_down) {
+        if (primary_pressed) {
           ++menu_primary_press_sequence;
           std::cout << "openxr.menu_primary=pressed sequence="
                     << presentation_sequence << " trigger="
@@ -3082,8 +3047,6 @@ class OpenXrProbe {
             menu_primary_press_sequence;
         shared_pointer.back_press_sequence = menu_back_press_sequence;
         shared_pointer.scroll_sequence = menu_scroll_sequence;
-        last_shared_menu_primary_down =
-            shared_pointer.active && shared_pointer.primary_down;
         if (!menu_pointer_writer.publish(shared_pointer)) {
           throw std::runtime_error("Shared menu pointer rejected sample");
         }

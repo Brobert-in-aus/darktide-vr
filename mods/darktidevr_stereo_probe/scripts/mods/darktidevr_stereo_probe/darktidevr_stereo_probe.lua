@@ -2273,6 +2273,11 @@ end
 
 function presentation.read_menu_pointer()
     local pointer = presentation.menu_pointer
+    -- All widget passes in this UI frame resolve the same ray and edge.
+    -- Resampling after a miss could move that edge onto a different control.
+    if not presentation.claim_menu_pointer_sample(pointer) then
+        return pointer
+    end
     pointer.available = false
     pointer.active = false
     pointer.primary_pressed = false
@@ -2375,10 +2380,8 @@ function presentation.read_menu_pointer()
         pointer.back_down = back_down
         pointer.last_sequence = sequence
     end
-    -- A press sequence is created only while the harness has a valid panel
-    -- hit. Keep that semantic edge eligible for Lua's following UI tick even
-    -- if the current ray sample has already left the panel; the synchronized
-    -- native cursor still identifies the engine-owned hovered hotspot.
+    -- Keep an edge eligible only for this UI frame. The next update consumes
+    -- any unhandled primary sequence before sampling again.
     pointer.primary_pressed = pointer.available and
         pointer.primary_press_sequence ~= pointer.primary_consumed_sequence
     pointer.back_pressed = pointer.available and
@@ -4939,10 +4942,12 @@ local function update_stereo(manager)
     ScriptCamera.force_update(world, right_camera)
 end
 
-mod:hook_safe(
+mod:hook(
     require("scripts/managers/ui/ui_manager"),
     "update",
-    function(self, _, t)
+    function(func, self, dt, t, ...)
+    presentation.begin_menu_pointer_frame(presentation.menu_pointer)
+    local result = func(self, dt, t, ...)
     presentation.reconcile_fullscreen_views(self)
     presentation.update_system_menu_test(self)
     presentation.update_vendor_menu_test(self)
@@ -4959,6 +4964,7 @@ mod:hook_safe(
             tonumber(ui_native_capture.dtvr_billboard_pixel_shader_probe_result_count(2)),
             tonumber(ui_native_capture.dtvr_billboard_pixel_shader_probe_result_count(3)))
     end
+    return result
 end)
 
 -- Darktide's ordinary system/options views explicitly keep the game world
@@ -11290,6 +11296,8 @@ function presentation.vendor_eye_layout_pointer(pointer)
         y = pointer.y * ui_eye_target_height / pointer.source_height,
         source_width = ui_eye_target_width,
         source_height = ui_eye_target_height,
+        layout_width = ui_eye_target_width,
+        layout_height = ui_eye_target_height,
     }, { __index = pointer })
 end
 

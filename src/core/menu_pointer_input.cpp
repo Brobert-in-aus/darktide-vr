@@ -6,6 +6,38 @@
 
 namespace darktidevr::core {
 
+bool MenuPrimaryInputState::update(
+    const SharedPresentationState& presentation, bool menu_active,
+    bool pointer_hit, bool down, double time_seconds) {
+  if (!menu_active) {
+    active_ = armed_ = down_ = false;
+    release_time_.reset();
+    return false;
+  }
+  if (!active_ || mode_ != presentation.mode ||
+      generation_ != presentation.transport_generation) {
+    active_ = true;
+    armed_ = false;
+    down_ = down;
+    mode_ = presentation.mode;
+    generation_ = presentation.transport_generation;
+    activation_time_ = time_seconds;
+    release_time_.reset();
+  }
+  if (!armed_) {
+    if (down) {
+      release_time_.reset();
+    } else {
+      if (!release_time_) release_time_ = time_seconds;
+      armed_ = time_seconds - activation_time_ >= 1.25 &&
+               time_seconds - *release_time_ >= 0.25;
+    }
+  }
+  const bool pressed = armed_ && pointer_hit && down && !down_;
+  down_ = down;
+  return pressed;
+}
+
 std::vector<MenuPointerEvent> MenuPointerInputState::update(
     const MenuPointerInput& input) {
   if (!std::isfinite(input.trigger) || !std::isfinite(input.thumbstick_y) ||

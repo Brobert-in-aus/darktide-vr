@@ -2,6 +2,21 @@
 local widgets = {}
 
 function widgets.install(mod, presentation)
+function presentation.begin_menu_pointer_frame(pointer)
+    -- A click that missed all controls is spent, not queued for later hover.
+    pointer.primary_consumed_sequence = pointer.primary_press_sequence
+    pointer.primary_pressed = false
+    pointer.frame_sampled = false
+end
+
+function presentation.claim_menu_pointer_sample(pointer)
+    if pointer.frame_sampled then
+        return false
+    end
+    pointer.frame_sampled = true
+    return true
+end
+
 function presentation.aligned_pass_origin(base_left, base_top, base_width,
         base_height, pass_style)
     if not pass_style then
@@ -47,12 +62,11 @@ function presentation.widget_contains_menu_pointer(instance, widget, pointer,
         return false, nil
     end
     local scale = RESOLUTION_LOOKUP.scale or 1
-    local resolution_width = (presentation.mode == 5 or
-        presentation.mode == 6) and pointer.source_width or
-        RESOLUTION_LOOKUP.width
-    local resolution_height = (presentation.mode == 5 or
-        presentation.mode == 6) and pointer.source_height or
-        RESOLUTION_LOOKUP.height
+    -- Capture pixels can be smaller than the authored UI canvas (for example
+    -- 1024x614 desktop capture versus 1280x768 character-select layout).
+    -- Explicit vendor projection already names its portrait layout extent.
+    local resolution_width = pointer.layout_width or RESOLUTION_LOOKUP.width
+    local resolution_height = pointer.layout_height or RESOLUTION_LOOKUP.height
     if not pointer.source_width or pointer.source_width <= 0 or
             not pointer.source_height or pointer.source_height <= 0 or
             not resolution_width or not resolution_height then

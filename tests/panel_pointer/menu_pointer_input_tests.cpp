@@ -4,6 +4,47 @@
 
 void test_menu_pointer_input() {
   using namespace darktidevr::core;
+  MenuPrimaryInputState primary;
+  SharedPresentationState menu{};
+  menu.mode = SharedPresentationMode::flat_interactive;
+  menu.transport_generation = 1;
+  // Reproduce the live publisher heartbeat: sequence changes faster than
+  // the activation safety interval. It must not prevent a released trigger
+  // from arming, even if the ray briefly leaves the panel.
+  for (int tick = 0; tick <= 15; ++tick) {
+    menu.sequence++;
+    if (primary.update(menu, true, tick != 8, false, tick * 0.1)) {
+      throw std::runtime_error("Released heartbeat generated a primary edge");
+    }
+  }
+  if (!primary.armed() || !primary.update(menu, true, true, true, 1.6) ||
+      primary.update(menu, true, true, true, 1.7)) {
+    throw std::runtime_error("Heartbeat prevented exactly one trigger click");
+  }
+  primary.update(menu, true, false, false, 1.8);
+  if (primary.update(menu, true, false, true, 1.9) ||
+      primary.update(menu, true, true, true, 2.0)) {
+    throw std::runtime_error("Entering panel with held trigger generated click");
+  }
+  menu.transport_generation++;
+  if (primary.update(menu, true, true, true, 2.1) || primary.armed()) {
+    throw std::runtime_error("Restart failed to adopt held primary input");
+  }
+  primary.update(menu, true, true, false, 3.4);
+  primary.update(menu, true, true, false, 3.7);
+  if (!primary.update(menu, true, true, true, 3.8)) {
+    throw std::runtime_error("Released primary failed to rearm after restart");
+  }
+  menu.mode = SharedPresentationMode::world_anchored_menu;
+  if (primary.update(menu, true, true, true, 4.0) || primary.armed()) {
+    throw std::runtime_error("Mode transition retained an armed held click");
+  }
+  primary.update(menu, false, false, false, 4.1);
+  primary.update(menu, true, true, false, 4.2);
+  primary.update(menu, true, true, false, 5.5);
+  if (!primary.update(menu, true, true, true, 5.6)) {
+    throw std::runtime_error("Same-mode menu reentry never armed primary input");
+  }
   MenuPointerInputState state;
   auto events = state.update({true, {{10, 20}}, 1.0F, 0.0F, true, 1.0});
   if (events.size() != 1 || events[0].type != MenuPointerEventType::move) {

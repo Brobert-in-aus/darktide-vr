@@ -198,17 +198,6 @@ bool MenuInputInjector::dispatch(const core::MenuPointerEvent& event,
     }
     return false;
   }
-  if (GetForegroundWindow() != *target &&
-      (event.type == core::MenuPointerEventType::button_down ||
-       event.type == core::MenuPointerEventType::scroll ||
-       event.type == core::MenuPointerEventType::back)) {
-    // A VR user can open a menu while the desktop mirror is behind another
-    // application. Native Darktide UI input is foreground-only, so make the
-    // already verified unique game window authoritative when the user first
-    // performs an action, rather than silently dropping that action.
-    ShowWindow(*target, SW_RESTORE);
-    SetForegroundWindow(*target);
-  }
   if (GetForegroundWindow() != *target) {
     // Mouse-up is global state. If focus changes while our synthetic button is
     // held, release it immediately rather than leaving Windows stuck down.

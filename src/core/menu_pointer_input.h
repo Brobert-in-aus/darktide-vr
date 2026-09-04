@@ -1,10 +1,30 @@
 #pragma once
 
+#include "core/shared_presentation_state.h"
+
 #include <cstdint>
 #include <optional>
 #include <vector>
 
 namespace darktidevr::core {
+
+// Heartbeats and ray misses do not open a new menu. Adopt held input on a
+// genuine activation, then require a released interval before accepting edges.
+class MenuPrimaryInputState {
+ public:
+  bool update(const SharedPresentationState& presentation, bool menu_active,
+              bool pointer_hit, bool down, double time_seconds);
+  bool armed() const { return armed_; }
+
+ private:
+  bool active_{};
+  bool armed_{};
+  bool down_{};
+  SharedPresentationMode mode_{};
+  std::uint64_t generation_{};
+  double activation_time_{};
+  std::optional<double> release_time_;
+};
 
 enum class MenuPointerEventType {
   move,

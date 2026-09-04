@@ -20,6 +20,17 @@ if (-not (Test-Path -LiteralPath $GameExe -PathType Leaf)) {
 }
 $resolvedGameExe = (Resolve-Path -LiteralPath $GameExe).Path
 
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class DarktideStartupFocus {
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+}
+'@
+
 function Wait-DarktideLogMatch {
     param(
         [Parameter(Mandatory)]
@@ -77,11 +88,14 @@ function Send-DarktideKey {
         [string] $Keys
     )
 
+    # Alt-Tab belongs to the user. Retry state observation in the caller, but
+    # never activate the game or send keys to another foreground application.
+    $foregroundProcessId = [uint32] 0
+    [DarktideStartupFocus]::GetWindowThreadProcessId(
+        [DarktideStartupFocus]::GetForegroundWindow(),
+        [ref] $foregroundProcessId) | Out-Null
+    if ($foregroundProcessId -ne $Process.Id) { return }
     $shell = New-Object -ComObject WScript.Shell
-    if (-not $shell.AppActivate($Process.Id)) {
-        throw "Could not activate Darktide process $($Process.Id)"
-    }
-    Start-Sleep -Milliseconds 150
     $shell.SendKeys($Keys)
 }
 

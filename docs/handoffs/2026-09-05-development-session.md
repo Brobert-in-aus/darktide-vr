@@ -1,0 +1,127 @@
+# Development session — 2026-09-05
+
+Branch: `codex/live-validation-2026-09-05`, based on `a71a602`.
+The unrelated untracked image remains untouched.
+
+## Startup and user observations
+
+Applied Quest proximity Disable, then Status: awake with display held.
+Ready preflight passed with 120/120 rendered VDXR frames. Built Release with
+warnings as errors and deployed the maintained baseline through the normal
+Lua compiler gate. The initial real-tracking launch used `-EnterPsykhanium`.
+
+The user closed the game during hub loading. This was not an unexplained
+crash. The viewer exited cleanly with zero fresh shared pairs; it did not
+establish gameplay stereo acceptance. Local evidence is
+`artifacts/unattended/live-validation-20260905.log`.
+
+The user reported two blocking issues: laser hover worked but trigger
+selection did nothing, and the game repeatedly reclaimed desktop focus/cursor
+after Alt-Tab. They selected the character using the keyboard.
+
+## Input candidate
+
+The primary-click activation guard previously reset on presentation sequence
+changes, including the periodic unchanged-state heartbeats. It also cleared
+its activation timestamp on a ray miss without reliably starting it again.
+Extracted a tested primary-input state machine keyed by active menu, mode and
+writer generation. Heartbeats and ray misses no longer reset arming. Held
+entry input still requires release and settling, and moving onto a panel with
+an already held trigger does not click.
+
+Removed repeated foreground activation from startup key dispatch. Startup
+keys are sent only while the authenticated game process owns foreground.
+Removed foreground activation from native mouse-action injection; its existing
+foreground guard now rejects background movement/actions. The explicit
+one-time Fatshark launcher Play operation remains separate from runtime input.
+
+Added `-ManualCharacterSelect` to pause startup automation at character select
+while retaining `-EnterPsykhanium` pre-launch arming. This allows direct laser
+selection validation without automated Enter masking the result.
+
+## Validation
+
+Commands from the repository root (CMake/CTest used VS2022 bundled executables):
+
+```powershell
+tools/quest/set-proximity-override.ps1 -Action Disable
+tools/quest/set-proximity-override.ps1 -Action Status
+cmake --preset windows-vs2022 -DDARKTIDEVR_ENABLE_HEADSET_TESTS=OFF
+cmake --build build/windows-vs2022 --config Release -- /m /p:TreatWarningsAsErrors=true
+ctest --test-dir build/windows-vs2022 -C Release -j 4 --output-on-failure
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/launcher/validate-early-failure.ps1
+tools/unattended/invoke-unattended-preflight.ps1 -XrFrames 120 -OutputPath artifacts/unattended/input-fixes-preflight-20260905.json
+tools/stereo/start-darktide-vr.ps1 -EnterPsykhanium -ManualCharacterSelect
+git diff --check
+```
+
+Release build and all 46 CTests passed. Primary-input regression covers
+heartbeat arming, ray misses, one edge per pull, held-entry suppression,
+writer restart, mode transitions and same-mode reentry. Startup focus test
+stubs native/COM calls and verifies background input suppression, foreground
+dispatch and suspension after Alt-Tab without touching real desktop input.
+The launcher early-failure regression passed again after adding the manual
+character-selection option. LuaJIT compiled all 12 chunks/descriptors.
+The sequential Ready preflight passed after testing.
+
+Current candidate output: `artifacts/unattended/input-fixes-live-20260905.log`.
+Trigger selection, Alt-Tab behavior, fresh gameplay stereo initialization and
+nonzero `shared_ready` are pending live verification. Hands, weapon finger
+animation, marker edges and lighting still require the worn checks listed in
+CURRENT-STATUS. No synthetic controller movement was requested or enabled.
+Proximity automation remains disabled for the ongoing development session;
+restore it when development ends. No Mac-specific validation applies.
+
+## Second live finding: stale presses activated later hover
+
+The user rejected the first input candidate: hover initially failed, social
+strike-team selection opened unexpectedly, and hovering Play later selected
+the character without a new deliberate pull. Logs confirm a missed press was
+left unconsumed: primary sequence 5 missed at 23:00:58.355 UTC and activated
+`counts_background` at 23:00:58.605; sequence 6 missed at 23:01:13.268 and
+activated `play_button` at 23:01:14.301. This was a delayed semantic edge,
+not evidence of intentional selection. Earlier trigger telemetry is not user
+acceptance. Initial hover remains a separate live check.
+
+That run did reach the Psykhanium: fresh stereo initialization at 23:01:42.558,
+rigid hands ready at 23:01:42.807 and `shared_ready` above 8,000. It was closed
+for the next deployment, not accepted visually.
+
+The next candidate samples pointer/edge state once per UI frame and consumes
+unhandled primary edges before the following UI update. This prevents a
+missed press from following later hover onto a button. The executable Lua
+widget regression covers miss/next-frame expiry, stable sampling within a
+frame and availability of a fresh press. Lua compile/invariant, menu widget
+and launcher focus/transition tests passed (5/5 targeted CTests).
+
+Added `-ManualStartup` to suppress all title/character key automation while
+retaining pre-launch range arming. Current launch is:
+
+```powershell
+tools/stereo/start-darktide-vr.ps1 -EnterPsykhanium -ManualStartup
+```
+
+Evidence: `artifacts/unattended/manual-input-live-20260905.log` and the
+successful sequential `manual-input-preflight-20260905.json`. The user must
+advance the title manually. Verify immediate hover, one action per deliberate
+pull, no later activation after pressing empty space, and Alt-Tab behavior.
+
+The manual run reached fresh stereo and rigid-hands initialization at
+23:05:46.044 UTC, copied 20 finger joints per hand, and advanced `shared_ready`
+past 4,700. No startup key helper was running. The log records two desktop
+mouse presses missing semantic Play geometry; each was consumed by the next
+frame instead of persisting until later hover. This is diagnostic evidence,
+not worn input acceptance.
+
+The same trace exposes a second hover problem: source 1024x614 points around
+(790,465) were compared directly against a 1280x768 authored Play rectangle
+starting at (883,564). Correct mapping puts the source point inside Play.
+Prepared widget hit-test scaling to RESOLUTION_LOOKUP dimensions, retaining
+explicit portrait layout dimensions for vendor-transformed pointers so they
+are not scaled twice. Added regression cases using those observed dimensions
+and an empty-space miss. Lua gate and all three relevant CTests passed.
+The coordinate follow-up was deployed after closing the preceding run and
+passing sequential Ready preflight. Current output is
+`artifacts/unattended/menu-coordinate-live-20260905.log`; its preflight is
+`menu-coordinate-preflight-20260905.json`. Launch still uses `-ManualStartup`.
+Fresh initialization and direct input acceptance for this latest run are pending.
