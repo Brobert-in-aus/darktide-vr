@@ -97,3 +97,33 @@ ctest --test-dir build/windows-vs2022 -C Release -R '^(validate-xr-readiness|lua
 
 The buffer regression checks repeated registration and destruction without
 retaining GPU allocations. Source moves were recognized by Git as renames.
+
+
+## Continued offline review
+
+Extracted menu widget geometry, hotspot enumeration and slider drag state into
+`darktidevr_menu_widgets.lua`. Fixed hidden hotspots reappearing through fallback
+enumeration (including dropdown options), cleared stale force flags even after
+options become hidden, and rejected zero-sized pointer source extents before
+normalization. Added executable Lua regressions covering visibility callbacks,
+authored and fallback options, hidden-state cleanup, aligned geometry, slider
+step rounding, missing samples and explicit release.
+
+Reconfigured the Windows preset and ran the complete Release CTest suite:
+45/45 passed. The pinned compiler accepted all 12 mod chunks/descriptors and
+legacy source invariants passed. No native source changed in this continuation.
+
+Live readiness was attempted twice sequentially. VDXR created an instance but
+reported `openxr.system=hmd-unavailable`; no deployment or game launch followed.
+Preflight now preserves full smoke output in its JSON report and writes
+`readiness_verified: false` before returning a failure. The second attempt
+verified this failure-reporting path against the actual unavailable runtime.
+Evidence: ignored `artifacts/unattended/review-continuation-preflight.json` and
+`.log`. Normal proximity automation was restored after the attempts.
+
+The next actionable gate requires resuming the Quest Virtual Desktop connection,
+then rerunning Ready preflight, starting with `-EnterPsykhanium`, and checking
+fresh Lua initialization and nonzero `shared_ready`. Worn acceptance remains as
+listed in CURRENT-STATUS. Additional broad renderer rewrites are deferred until
+this maintained baseline has live validation; they are not prerequisites for
+these concrete fixes.

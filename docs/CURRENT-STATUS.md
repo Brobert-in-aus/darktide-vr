@@ -32,7 +32,8 @@ tools/stereo/start-darktide-vr.ps1 -EnterPsykhanium
 
 Ready preflight enforces Streamer/VDXR/awake-Quest checks and renders an XR smoke
 session. `-Mode Inventory` collects observations without claiming readiness or
-applying the proximity override. Resume VD after a passthrough suspension and
+applying the proximity override. Failed rendering checks save runtime diagnostics
+and mark the report as not ready. Resume VD after a passthrough suspension and
 retry; suspension alone does not require a restart.
 
 Start performs a Lua compiler gate and syncs Release files while Darktide is

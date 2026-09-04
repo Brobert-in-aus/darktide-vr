@@ -166,6 +166,7 @@ finally {
 }
 
 $xrSmoke = $null
+$smokeFailure = $null
 if ($Mode -eq 'Ready') {
     if (Get-Process darktidevr-xr-harness -ErrorAction SilentlyContinue) {
         throw 'Stop the existing XR viewer before running a new rendering preflight; use -Mode Inventory for a read-only report.'
@@ -195,16 +196,17 @@ if ($Mode -eq 'Ready') {
         exit_code = $smokeExitCode
         result = if ($resultLine) { $resultLine.Substring(7) } else { 'missing' }
         state = $stateLines
+        output = $smokeOutput
     }
     if ($smokeExitCode -ne 0 -or $xrSmoke.result -ne 'pass') {
-        throw "XR rendering is unavailable (exit $smokeExitCode, result $($xrSmoke.result)). If Quest passthrough suspended VD, resume streaming and retry; no restart was attempted."
+        $smokeFailure = "XR rendering is unavailable (exit $smokeExitCode, result $($xrSmoke.result)). See $outputFullPath for runtime diagnostics. If Quest passthrough suspended VD, resume streaming and retry; no restart was attempted."
     }
 }
 
 $report = [ordered]@{
     schema_version = 2
     mode = $Mode
-    readiness_verified = ($Mode -eq 'Ready')
+    readiness_verified = ($Mode -eq 'Ready' -and -not $smokeFailure)
     captured_utc = (Get-Date).ToUniversalTime().ToString('o')
     git = [ordered]@{
         head = $gitHead
@@ -236,3 +238,6 @@ $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $outputFullPath -En
 
 Write-Output "report=$outputFullPath"
 $report | ConvertTo-Json -Depth 8
+if ($smokeFailure) {
+    throw $smokeFailure
+}
