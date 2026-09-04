@@ -28,6 +28,19 @@ int main() {
     expect(!gameplay_aim_state_is_fresh(sample, now_ns + 100'000'001ULL,
                                         100'000'000ULL),
            "Expired aim state was treated as fresh");
+    const auto frame_start_ns = now_ns;
+    const auto post_wait_ns = frame_start_ns + 16'000'000ULL;
+    auto during_wait = sample;
+    during_wait.timestamp_ns = frame_start_ns + 8'000'000ULL;
+    expect(!gameplay_aim_state_is_fresh(during_wait, frame_start_ns,
+                                        100'000'000ULL) &&
+               gameplay_aim_state_is_fresh(during_wait, post_wait_ns,
+                                           100'000'000ULL),
+           "Aim published during a frame wait requires a post-read clock");
+    during_wait.timestamp_ns = post_wait_ns + 1;
+    expect(!gameplay_aim_state_is_fresh(during_wait, post_wait_ns,
+                                        100'000'000ULL),
+           "Actually future aim must still be rejected");
 
     SharedGameplayAimStateReader reader;
     SharedGameplayAimState read{};

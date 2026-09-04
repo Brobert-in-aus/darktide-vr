@@ -3195,7 +3195,10 @@ class OpenXrProbe {
             darktidevr::core::controller_position_valid;
         const auto gameplay_aim_now_ns = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
-                frame_start.time_since_epoch())
+                // The producer can publish while xrWaitFrame or the shared
+                // pair wait blocks. Sample time after the read; frame_start
+                // would misclassify that new aim as a future timestamp.
+                std::chrono::steady_clock::now().time_since_epoch())
                 .count());
         constexpr std::uint64_t maximum_gameplay_aim_age_ns = 100'000'000ULL;
         if (gameplay_aim_state.active &&
@@ -3218,6 +3221,12 @@ class OpenXrProbe {
                right.aim_pose.position.z +
                    direction.z * reticle_distance_metres}};
           ++gameplay_reticle_frames_;
+          const auto frame_start_ns = static_cast<std::uint64_t>(
+              std::chrono::duration_cast<std::chrono::nanoseconds>(
+                  frame_start.time_since_epoch()).count());
+          if (gameplay_aim_state.timestamp_ns > frame_start_ns) {
+            ++gameplay_reticle_post_start_frames_;
+          }
           if (gameplay_aim_state.hit) {
             ++gameplay_reticle_hit_frames_;
           } else {
@@ -3506,6 +3515,8 @@ class OpenXrProbe {
               << controller_pointer_x_ << ',' << controller_pointer_y_ << '\n'
               << "openxr.gameplay_reticle_frames="
               << gameplay_reticle_frames_ << '\n'
+              << "openxr.gameplay_reticle_post_start_frames="
+              << gameplay_reticle_post_start_frames_ << '\n'
               << "openxr.gameplay_reticle_hit_frames="
               << gameplay_reticle_hit_frames_ << '\n'
               << "openxr.gameplay_reticle_miss_frames="
@@ -4176,6 +4187,7 @@ class OpenXrProbe {
   std::array<std::uint64_t, 2> controller_thumbstick_changed_frames_{};
   std::uint64_t controller_pointer_rays_{};
   std::uint64_t gameplay_reticle_frames_{};
+  std::uint64_t gameplay_reticle_post_start_frames_{};
   std::uint64_t gameplay_reticle_hit_frames_{};
   std::uint64_t gameplay_reticle_miss_frames_{};
   std::uint64_t gameplay_reticle_transport_samples_{};
