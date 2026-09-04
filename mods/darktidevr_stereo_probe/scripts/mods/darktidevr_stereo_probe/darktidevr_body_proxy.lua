@@ -5,6 +5,25 @@ local MasterItems = require("scripts/backend/master_items")
 
 local BodyProxy = {}
 
+function BodyProxy.uses_stock_melee_animation(slot, kind, action, actions)
+    if kind == "sweep" or kind == "push" or kind == "melee_explosive" then
+        return true
+    end
+    if kind ~= "windup" then return false end
+    if slot == "slot_primary" then return true end
+    -- Staff special attacks have ranged-slot windups too. Follow their
+    -- declared action transitions instead of classifying every ranged charge
+    -- or relying on weapon-specific action names.
+    for _, chain in pairs(action and action.allowed_chain_actions or {}) do
+        local next_action = actions and actions[chain.action_name]
+        if next_action and (next_action.kind == "sweep" or
+                next_action.kind == "melee_explosive") then
+            return true
+        end
+    end
+    return false
+end
+
 local state = {
     world = nil,
     source_unit = nil,

@@ -336,12 +336,12 @@ if (-not $source.Contains(
 if (-not $source.Contains(
         'function presentation.update_stock_melee_animation_owner(self)') -or
         -not $source.Contains(
-            'kind == "windup" or kind == "sweep"') -or
+            'presentation.body_proxy.uses_stock_melee_animation(') -or
         -not $source.Contains(
             'controller_observation.stock_melee_animation_active') -or
         -not $source.Contains(
             'animation_owner=%s slot=%s action=%s kind=%s')) {
-    throw 'Primary-slot melee windup/sweep frames must temporarily preserve Darktide stock animation ownership.'
+    throw 'Melee action ownership must use the behavior-tested policy and retain transition diagnostics.'
 }
 foreach ($shopTestView in @(
         'credits_vendor_background_view',

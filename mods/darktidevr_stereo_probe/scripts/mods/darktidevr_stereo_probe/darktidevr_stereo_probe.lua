@@ -9326,13 +9326,9 @@ function presentation.update_stock_melee_animation_owner(self)
     local action = template and template.actions and
         template.actions[action_name]
     local kind = action and action.kind
-    -- Darktide reserves slot_primary for the operative's melee weapon. Windup
-    -- and sweep cover the authored charge and strike phases; melee_explosive
-    -- covers the Ogryn gauntlet's stock close attack without treating its
-    -- ranged actions as melee.
-    local active = slot_name == "slot_primary" and action_name ~= "none" and
-        (kind == "windup" or kind == "sweep" or
-            kind == "melee_explosive")
+    local active = action_name ~= "none" and
+        presentation.body_proxy.uses_stock_melee_animation(
+            slot_name, kind, action, template and template.actions)
     if active ~= controller_observation.stock_melee_animation_active or
             (active and action_name ~=
                 controller_observation.stock_melee_animation_action) then
@@ -11937,6 +11933,15 @@ mod:hook("HudElementWorldMarkers", "_convert_world_to_screen_position",
             camera, world_position)
         return screen.x, screen.y, distance
     end)
+
+-- Stock _apply_scale eases mutable sizes, offsets and pivots on each draw.
+-- Replay must reuse the first eye's result rather than advance it a second time.
+mod:hook("HudElementWorldMarkers", "_apply_scale", function(func, self, widget, scale)
+    if world_marker_reprojecting then
+        return
+    end
+    return func(self, widget, scale)
+end)
 
 local function prepare_binocular_clamped_offsets(instance, inverse_scale)
     local offsets = {}

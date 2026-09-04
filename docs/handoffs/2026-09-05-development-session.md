@@ -185,3 +185,63 @@ ready at 23:19:10.046; `shared_ready` exceeded 663 with zero reused frames and
 one startup pose mismatch. The late logging-only additions passed Lua source,
 invariant, projection and reticle-surface checks. New visual acceptance remains
 pending. Keep the live session available for the user's unsolicited feedback.
+
+## Staff and marker follow-up
+
+The user accepted reticle depth and sword swings. Staff melee/push on right
+grip still failed: animation ownership had been restricted to slot_primary.
+The shared policy now accepts sweep, push and melee_explosive in either slot,
+and ranged windups only when their allowed chain leads into a melee attack.
+Projectile charging remains tracked. The melee_animation_owner regression
+covers these cases, including staff windup and non-melee ranged charging.
+
+The user reported slight eye-to-eye asymmetry while world item markers shrink
+at the shared screen boundary. Stock _apply_scale interpolates mutable size,
+offset and pivot arrays during draw; right-eye replay repeated that interpolation.
+Replay now reuses the primary draw's scale state.
+
+The shield still disappears too close. Retrieved and inspected the latest Quest
+screenshot as ignored artifacts/unattended/quest-weapon-visibility-20260905-092223.jpg;
+it also shows missing shaft sections on a mace roughly 3m away by user estimate.
+The FOV adjustment has not resolved this. Stock minion weapon slots use their
+own LOD objects rather than the character clothing LOD group. No global
+high-detail override has been applied. Equipment visibility remains open.
+
+LuaJIT compiled all 12 chunks; targeted source/invariant, projection, reticle
+and melee checks passed 5/5. Ready preflight passed 120/120 frames in
+artifacts/unattended/staff-marker-preflight-20260905.json. The preceding game
+had closed normally. Launched the follow-up with -EnterPsykhanium -ManualStartup,
+output artifacts/unattended/staff-marker-live-20260905.log. This deployment also
+includes the previously pending LOD and suppression-skip telemetry. Fresh stereo
+initialization and worn acceptance for this run still need verification.
+
+Fresh synchronized initialization appeared at 23:32:21.278 UTC, followed by
+rigid hands ready at 23:32:21.341. shared_ready exceeded 1622. LOD telemetry
+confirms the scoped hook runs: visible FOV 1.7279 versus visibility FOV 2.2220,
+tangent scale 1.7248. This proves application of the candidate, not resolution
+of the missing equipment.
+
+### Mesh-streaming research requested by the user
+
+Fatshark's engine developer explains a known failure where the vertex-buffer
+budget makes models compete for higher-detail meshes, including nearby weapons:
+https://forums.fatsharkgames.com/t/models-looks-strange/100232
+The developer recommends disabling mesh streaming as a diagnostic, warning
+that keeping it disabled can cause stalls and increased mesh VRAM usage.
+
+In March 2025 the developer confirmed the override can live in user_settings.config:
+https://forums.fatsharkgames.com/t/mesh-streaming-not-working-correctly/83361
+Use mesh_streamer_settings = { disable = true }. Reports of incomplete nearby
+meshes persist into January 2026 in the acknowledged issue:
+https://forums.fatsharkgames.com/t/mesh-streaming-not-working-and-textures-getting-loaded-lod-error/63975
+
+The lodbgone author's March 2026 explanation says Lua LOD requests do not
+guarantee mesh residency and describes the mod as experimental:
+https://www.nexusmods.com/warhammer40kdarktide/mods/743?tab=posts
+
+Local settings_common.ini currently has mesh streaming enabled, limit=700;
+the user's mesh_streamer_settings section is empty and lod_object_multiplier=1.
+These settings have not been changed. Next equipment diagnostic: compare with
+streaming disabled at a normal restart, preserve the prior section for restoration,
+and measure fresh stereo throughput as well as worn shield/mace visibility.
+Keep the live staff/marker run available meanwhile; do not force input or focus.

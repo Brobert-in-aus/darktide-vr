@@ -55,11 +55,13 @@ and selection on the coordinate candidate. Use
 `-ManualStartup` with the launcher to disable title/character key automation.
 See the [September 5 session](handoffs/2026-09-05-development-session.md).
 
-Finger animation is accepted. Left-hand alignment remains unresolved. A new
-candidate restores stock wrist animation during melee attacks, excludes
-suppression volumes from reticle depth, separates LOD FOV from visibility
-overscan, and removes the loading-screen corner swatch. These changes still
-need worn acceptance; shield disappearance is not yet proven to be LOD.
+Finger animation, reticle depth and sword swings are accepted. Left-hand
+alignment remains unresolved. Staff melee/push still failed; a follow-up now
+includes ranged-slot melee, pushes and their melee windups. Marker replay now
+reuses the first eye's eased size instead of advancing it twice. Both changes
+await worn acceptance, as does removal of the loading-screen corner swatch.
+Shield and nearby mace sections still disappear after separating LOD FOV from
+visibility overscan; the equipment visibility cause remains under investigation.
 
 The September 4/5 candidate has outstanding worn checks for both unarmed and
 wielded palm placement, pinned-marker
