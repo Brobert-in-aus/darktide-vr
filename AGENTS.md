@@ -24,6 +24,14 @@
 - Do not commit credentials, signing material, generated build directories, or
   machine-specific agent state such as `.codex` or `.claude`.
 
+## Manual visual checks
+
+- When the user is at the desk, prefer their direct headset checks for hand
+  alignment and other visual acceptance. Prepare a real-tracking session and
+  ask for a specific observation before running synthetic visual experiments.
+- Use automation for source checks, crashes, tracking state and rendering
+  correctness. Do not treat automated counters as worn visual acceptance.
+
 ## Mandatory daily XR preflight
 
 - Before editing, building, synchronizing, launching Darktide, or starting an
