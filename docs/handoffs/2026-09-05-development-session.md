@@ -283,3 +283,28 @@ Ready preflight passed in heading-streaming-preflight-20260905.json. The new
 manual-startup output is artifacts/unattended/heading-streaming-live-20260905.log.
 Streaming disable is a diagnostic, not yet a production default. Fresh stereo
 and worn direction/equipment acceptance remain pending for this run.
+
+Fresh range stereo initialized at 23:40:34.361 UTC and rigid hands at
+23:40:34.428. shared_ready exceeded 5270, zero reused frames, two startup pose
+mismatches; recent throughput is 52.6-53.5 fresh pairs/sec. GPU memory usage
+sampled at 10375/24564 MiB. Absolute head yaw and gameplay yaw agree modulo
+2pi in the live trace (with the expected preceding-sample delta during turns).
+This is mechanism validation; the user's direction/equipment verdict is pending.
+The new heading regression rejects the prior cf537dc source as expected.
+
+The user accepted heading alignment. Disabling mesh streaming did not improve
+the issue. They observed terrain objects changing detail at the same roughly
+3m boundary while moving back and forth, confirming a distance-dependent LOD
+transition. The current config uses DLSS Quality (not Ultra Performance) and
+lod_object_multiplier=1. Next comparison restores streaming and changes only
+the LOD multiplier to 3, retaining the established stereo projection/lighting
+path. If the threshold moves correspondingly, this isolates the distance control.
+
+Streaming was restored successfully after normal game closure. Changed the one
+lod_object_multiplier assignment from 1 to 3, recording the original in ignored
+artifacts/unattended/lod-distance-diagnostic.json. Ready preflight passed in
+lod-distance-preflight-20260905.json; launch output is
+artifacts/unattended/lod-distance-live-20260905.log, again -ManualStartup with
+Psykhanium pre-armed. No new Lua/native behavior was changed for this comparison.
+At session end restore the LOD value if the diagnostic is rejected; preserve it
+only if accepted as a useful setting. Streaming's saved diagnostic state is inactive.

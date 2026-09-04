@@ -61,9 +61,11 @@ includes ranged-slot melee, pushes and their melee windups. Marker replay now
 reuses the first eye's eased size instead of advancing it twice; the user accepted
 symmetric shrinking. Staff animation and removal of the loading-screen corner
 swatch still await explicit worn acceptance. A new movement/melee heading offset
-is addressed by using the rendered cyclopean yaw directly; live verification is pending.
+is fixed by using the rendered cyclopean yaw directly; the user accepted it.
 Shield and nearby mace sections still disappear after separating LOD FOV from
-visibility overscan; the equipment visibility cause remains under investigation.
+visibility overscan. Disabling mesh streaming also made no visible difference;
+the user confirmed terrain LOD transitions repeatedly at roughly 3m. Distance
+selection remains under investigation.
 
 The September 4/5 candidate has outstanding worn checks for both unarmed and
 wielded palm placement, pinned-marker
