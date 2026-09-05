@@ -182,3 +182,29 @@ STEREO_SUBMISSION_PREPARE ready=1. This needs a new launch; current normal game
 was left untouched after the scheduler-fix restart. Live tag submission,
 continuous batch/fence retirement and generated stereo XR publication remain
 unfinished. Do not enable them based only on WARP test success.
+
+## Wide resample diagnostic launched with user authorization
+
+User approved the next check. Announced closure, used CloseMainWindow and waited
+for runner cleanup. Applied proximity Disable/Status and Ready preflight; report
+`artifacts/unattended/dlss-wide-resample-preflight-20260905.json`. Launched fdbbd31
+with `-EnableHudPanel -EnterPsykhanium -StreamlineTargetTokenProbe
+-StreamlineStereoSwapchainProbe`, without Present-stage copying. Live log:
+`artifacts/unattended/dlss-wide-resample-live-20260905.log`.
+
+Runtime results: STEREO_COLOR_RESAMPLE reports full_source_width=4992,
+eye_width=2496, height=2688, cropped=0. STEREO_SUBMISSION_PREPARE ready=1,
+with 2496-wide colour and 3328-wide depth/motion per eye. Both state queries at
+Present 8445 return result/status zero and retained fences, target value 8444,
+completed value 8443. Stereo flowing at approximately 40 fresh pairs/s,
+shared_ready=772, zero reported pair-pose mismatches at that sample.
+Archived `wide-resample-probe.tsv` and `wide-resample-report.txt` under
+`artifacts/diagnostics/dlss-live-20260905`; analyzer passes.
+
+This proves successful runtime preparation, not generated stereo output. The
+resampled packed surface is not submitted to Present or published into XR by
+this diagnostic. The user can check the existing VR scene for regressions from
+the wide configuration; that alone cannot establish visual acceptance of the
+unpublished packed surface. Game remains running. Live SL tagging/submission,
+matching frame history, output identification and continuous retirement remain
+the next integration work.
