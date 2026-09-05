@@ -7,6 +7,7 @@
 #include "producer/streamline_abi_2_7_30.h"
 #include "producer/streamline_eye_tags.h"
 #include "producer/streamline_stereo_tags.h"
+#include "producer/streamline_submission.h"
 
 namespace mirror = darktidevr::producer::streamline_2_7_30;
 static_assert(SL_VERSION_MAJOR == 2 && SL_VERSION_MINOR == 7 && SL_VERSION_PATCH == 30,
@@ -115,6 +116,9 @@ int main() {
   auto aliased = pair_inputs;
   aliased[1][1].native = aliased[0][0].native;
   if (pair.prepare(200, 200, {1, 2}, constants, aliased)) return 1;
+  auto wide_inputs = pair_inputs;
+  for (auto& eye_inputs : wide_inputs) eye_inputs[2].width = 400;
+  if (pair.prepare(200, 200, {1, 2}, constants, wide_inputs) || pair.eye(0)) return 1;
   constants[0].base.next = &constants[1].base;
   if (pair.prepare(200, 200, {1, 2}, constants, pair_inputs)) return 1;
   constants[0].base.next = nullptr;
@@ -123,5 +127,22 @@ int main() {
   constants[0].base.struct_version = 2;
   constants[0].base.struct_type.data1 = 0;
   if (pair.prepare(200, 200, {1, 2}, constants, pair_inputs)) return 1;
+  std::memcpy(&constants[0], &sdk_constants, sizeof(sdk_constants));
+  darktidevr::producer::StreamlineSubmission submission;
+  int frame{}, commands{};
+  if (!submission.prepare(1, &frame, 200, 200, {1, 2}, constants, pair_inputs)) return 1;
+  const auto check_viewport = +[](const void*, const void*, const void* handle) -> int {
+    const auto* value = static_cast<const mirror::ViewportHandle*>(handle);
+    const sl::ViewportHandle expected(value->value);
+    mirror::ViewportHandle copied_viewport{};
+    std::memcpy(&copied_viewport, &expected, sizeof(expected));
+    return value->base.next == nullptr && value->base.struct_version == 1 &&
+        std::memcmp(&value->base.struct_type, &copied_viewport.base.struct_type,
+                    sizeof(sl::StructType)) == 0 ? 0 : 1;
+  };
+  const auto accept_tags = +[](const void*, const void*, const void*,
+                              std::uint32_t, void*) -> int { return 0; };
+  if (!submission.stage({check_viewport, accept_tags}, &commands) ||
+      !submission.clear_tags(&commands) || !submission.retire()) return 1;
   std::cout << "streamline_abi_reference=pass\n";
 }

@@ -198,3 +198,12 @@ Release builds with warnings as errors and all three targeted CTests pass:
 native submission, restoring appropriate resource states, handling partial SL
 call failures/tag clearing, retaining fence references, and validating generated
 output identity before publication. Nothing was deployed with VD closed.
+
+The [continued submission work](handoffs/2026-09-05-dlss-offline.md) now includes
+an API adapter with legacy/frame-based tagging, partial-failure cleanup and
+native preparation diagnostics. Four tests and the native Release DLL pass.
+Prior capture evidence exposes a colour-only crop from 4992-wide sources to
+2496-wide eye regions; corresponding depth/motion/projection mapping is not
+established. Native preparation rejects this mismatch. Current runtime capture
+is needed before enabling calls; continuous generation and XR publication are
+still unfinished, not claimed complete.

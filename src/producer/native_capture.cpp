@@ -24,6 +24,7 @@
 #include "core/streamline_stereo_inputs.h"
 #include "core/two_bone_ik.h"
 #include "streamline_abi_2_7_30.h"
+#include "producer/streamline_submission.h"
 
 #include <algorithm>
 #include <array>
@@ -156,6 +157,8 @@ struct StreamlineConstantsObservation {
 };
 
 struct StreamlineInputSnapshotState {
+  darktidevr::producer::StreamlineSubmission submission;
+  bool submission_prepared{};
   int next_eye{};
   bool pending{};
   bool complete{};
@@ -9096,6 +9099,50 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
     }
     state.stereo_backbuffer_pending = false;
     state.stereo_backbuffer_complete = true;
+    // Prepare against the actual captured textures, never the requested eye
+    // dimensions alone. The legacy packing probe may crop wide color inputs;
+    // that does not establish matching depth/motion or camera projections.
+    darktidevr::producer::StreamlineStereoTags::Inputs submission_inputs{};
+    bool supported_submission_layout = description.Width <= UINT_MAX &&
+        description.Width % 2 == 0;
+    for (std::size_t sample_eye = 0; sample_eye < 2; ++sample_eye) {
+      for (std::size_t type = 0; type < 3; ++type) {
+        const auto& resource = state.snapshots[sample_eye][type];
+        if (!resource) { supported_submission_layout = false; continue; }
+        const auto input_description = resource->GetDesc();
+        if (input_description.Width > UINT_MAX ||
+            input_description.SampleDesc.Count != 1 ||
+            input_description.DepthOrArraySize != 1 ||
+            input_description.MipLevels != 1) {
+          supported_submission_layout = false;
+          continue;
+        }
+        submission_inputs[sample_eye][type] = {
+            resource.Get(), static_cast<std::uint32_t>(input_description.Width),
+            input_description.Height, D3D12_RESOURCE_STATE_COPY_DEST,
+            static_cast<std::uint32_t>(input_description.Format)};
+      }
+    }
+    if (supported_submission_layout && state.constants[0].valid &&
+        state.constants[1].valid && state.target_token_allocated) {
+      state.submission_prepared = state.submission.prepare(
+          1, state.target_frame_token,
+          static_cast<std::uint32_t>(description.Width / 2), description.Height,
+          {state.constants[0].viewport, state.constants[1].viewport},
+          {state.constants[0].constants, state.constants[1].constants},
+          submission_inputs);
+    }
+    write_streamline_probe_log(
+        "STEREO_SUBMISSION_PREPARE\tready=%u\tlayout_supported=%u"
+        "\teye_width=%llu\teye_height=%u\tcolor_widths=%u,%u"
+        "\tdepth_widths=%u,%u\tmotion_widths=%u,%u"
+        "\ttags_staged=0\tgeneration_present_submitted=0\r\n",
+        state.submission_prepared ? 1U : 0U,
+        supported_submission_layout ? 1U : 0U,
+        static_cast<unsigned long long>(description.Width / 2), description.Height,
+        submission_inputs[0][2].width, submission_inputs[1][2].width,
+        submission_inputs[0][0].width, submission_inputs[1][0].width,
+        submission_inputs[0][1].width, submission_inputs[1][1].width);
     write_streamline_probe_log(
         "STEREO_BACKBUFFER\tphase=complete\tpresent_frame=%llu"
         "\tpose=%llu\tsource_frame_indices=%u,%u"
