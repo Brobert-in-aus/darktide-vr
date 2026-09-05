@@ -1322,3 +1322,18 @@ canvas rejection and valid full-size menu admission. No deployment/relaunch yet.
 User requested future mod-menu sliders documented in REMAINING-DEVELOPMENT:
 uniform HUD panel size, distance in metres, and internal UI object scale.
 These are separate controls; preserve saved Custom HUD layout overrides.
+
+## Deployment of queued fixes
+
+On user's "Keep going", default Ready preflight passed with proximity override
+applied and a renderable XR session. Evidence:
+`artifacts/unattended/hud-distance-menu-preflight-20260905.json`.
+Launched `tools/stereo/start-darktide-vr.ps1 -EnterPsykhanium -EnableHudPanel
+-DurationSeconds 1800`; log is
+`artifacts/unattended/hud-distance-menu-live-20260905.log`.
+Commit 26603f4's Lua and native DLL synchronized; fresh stereo initialization,
+HUD enabled message, shared_ready 366 and approximately 60 fresh pairs/s
+confirmed. No Lua or marker-reprojection errors observed during startup.
+This supersedes the undeployed status above. The game remains running for user
+checks of HUD distance/size, both-eye pickup prompts, and View Operative.
+Startup counters do not establish visual acceptance or crash resolution.
