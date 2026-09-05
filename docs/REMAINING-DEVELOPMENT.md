@@ -133,10 +133,10 @@ Retained update/visibility operations now route to their capture renderer.
 Smart-tag popup stereo is user-confirmed; selection now uses the reticle hit
 directly after the user reported the assisted target was still inconsistent.
 Pickup targeting is user-confirmed, but popup edge-size asymmetry remains open.
-The layout editor should be exposed through VR mod options. Before release,
-check the original Custom HUD license/permission terms: determine whether we
-can reuse/bundle it, what attribution is required, or make Custom HUD an optional
-dependency for editing. Do not assume attribution alone grants permission.
+The layout editor is exposed through VR mod options using Custom HUD as a
+separately installed optional dependency. The inspected distribution has no
+explicit redistribution license; no source is bundled or copied into the VR mod.
+See [editor integration and dependency policy](HUD-EDITOR-INTEGRATION.md).
 HUD sliders are implemented in Mod Options > Darktide VR: panel size (50–150%,
 default 100%), distance (0.75–4 m, default 2 m), and text/icon size (50–150%,
 default 100%). Defaults retain panel scale 0.63 and internal scale 2.08.
@@ -153,9 +153,8 @@ sensible. Review gameplay, weapon specials, movement, interactions and menu
 contexts together, including hold/toggle behavior and conflicting actions.
 Implement remapping and matching controller prompts with the revised defaults.
 This is backlog work; no bindings changed in response to this feedback.
-Entering desktop layout editing must display a clear message inside VR:
-"Use the desktop view to edit your HUD layout." Keep that instruction visible
-while editing and restore the normal VR HUD when the editor closes.
+Desktop layout editing now draws "Use the desktop view to edit your HUD layout."
+into the shared HUD texture while the editor is open. It is removed on close.
 An XR freeze occurred with synchronized producer frames continuing; the harness
 now logs cached-pair gating reasons to diagnose recurrence. The prototype stays disabled by
 default while loading, menus and transitions receive dedicated checks.

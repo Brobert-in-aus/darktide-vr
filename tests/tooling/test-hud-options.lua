@@ -65,13 +65,57 @@ local data=dofile(arg[2])
 local text=dofile(arg[3])
 local options=data.options.widgets[1]
 assert(options.setting_id=='hud_options' and options.type=='group')
-assert(#options.sub_widgets==3)
+assert(#options.sub_widgets==4)
 for _,widget in ipairs(options.sub_widgets) do
+    if widget.type == 'numeric' then
     assert(widget.type=='numeric' and widget.default_value>=widget.range[1] and
         widget.default_value<=widget.range[2])
     assert(text[widget.setting_id].en and text[widget.setting_id..'_description'].en)
     assert(pcall(string.format,text[widget.setting_id].en))
     assert(pcall(string.format,text[widget.setting_id..'_description'].en))
+    end
 end
 assert(string.format(text.hud_size.en)=='HUD size (%)')
+assert(options.sub_widgets[1].type=='button' and
+    options.sub_widgets[1].function_name=='toggle_vr_hud_editor')
+local custom, toggles, blocked = nil, 0, true
+get_mod=function(name) return name=='custom_hud' and custom or nil end
+assert(not panel.request_editor())
+custom={is_customizing=false,is_enabled=function() return true end,
+    toggle_hud_customization=function(self) toggles=toggles+1; self.is_customizing=not self.is_customizing end}
+state.display_ready=false
+assert(not panel.request_editor())
+state.display_ready=true
+Managers={ui={_view_handler={using_input=function() return blocked end}}}
+assert(panel.request_editor())
+panel.update_editor_request()
+assert(toggles==0 and state.editor_requested)
+assert(panel.request_editor()) -- Cancel before closing menus.
+blocked=false
+panel.update_editor_request()
+assert(toggles==0)
+assert(panel.request_editor())
+panel.update_editor_request(); panel.update_editor_request()
+assert(toggles==1 and panel.editing() and not state.editor_requested)
+local drawn, rects = {}, 0
+Vector3=function(x,y,z) return {x,y,z} end
+Color=function(...) return {...} end
+local api=package.loaded["scripts/managers/ui/ui_renderer"]
+api.draw_rect=function(self) assert(self.scale==1); rects=rects+1 end
+api.draw_text=function(self, value, size, font, position, dimensions)
+    assert(self.scale==1 and self.gui==resource.gui)
+    drawn[#drawn+1]={text=value,size=size,position=position,dimensions=dimensions}
+end
+state.target_width,state.target_height=2496,1404
+resource.gui={}
+panel.draw_editor_notice(resource); panel.draw_editor_notice(resource)
+assert(#drawn==2 and rects==2 and drawn[1].text=='hud_editor_notice')
+assert(resource.scale==nil and resource.render_settings==nil,'notice mutated renderer pass state')
+custom.is_customizing=false
+panel.draw_editor_notice(resource)
+assert(#drawn==2,'editor instruction persisted after close')
+assert(panel.request_editor())
+custom.is_enabled=function() return false end
+panel.update_editor_request()
+assert(not state.editor_requested and toggles==1)
 print('hud_options=pass defaults=accepted angular_distance=preserved fixed_refresh=once')

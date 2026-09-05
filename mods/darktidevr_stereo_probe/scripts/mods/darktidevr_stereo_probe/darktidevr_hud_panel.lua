@@ -223,6 +223,50 @@ function HudPanel.editing()
     return state.enabled and custom and custom.is_customizing == true
 end
 
+function HudPanel.request_editor()
+    local custom = custom_hud()
+    if not custom or type(custom.toggle_hud_customization) ~= "function" or
+            (custom.is_enabled and not custom:is_enabled()) then
+        return false, "hud_editor_dependency"
+    end
+    if not state.enabled or not state.owner or not state.display_ready then
+        return false, "hud_editor_gameplay"
+    end
+    state.editor_requested = not state.editor_requested
+    return true, state.editor_requested and "hud_editor_close_menu" or "hud_editor_cancelled"
+end
+
+function HudPanel.update_editor_request()
+    if not state.editor_requested then return end
+    local custom = custom_hud()
+    if not state.enabled or not custom or type(custom.toggle_hud_customization) ~= "function" or
+            (custom.is_enabled and not custom:is_enabled()) then
+        state.editor_requested = nil
+        return
+    end
+    local ui = Managers and Managers.ui
+    local handler = ui and ui._view_handler
+    if not handler or handler:using_input() then return end
+    state.editor_requested = nil
+    custom:toggle_hud_customization()
+end
+
+function HudPanel.draw_editor_notice(renderer)
+    if not HudPanel.editing() then return end
+    local width, height = state.target_width, state.target_height
+    if not width or not height then return end
+    -- Author into the shared HUD texture so both eyes receive identical text.
+    -- A separate renderer facade preserves the stock pass's cleared scale state.
+    local notice_renderer = setmetatable({scale=1,render_settings=false},{__index=renderer})
+    local size, margin = width / 1920 * 34, width * 0.035
+    UIRenderer.draw_rect(notice_renderer,Vector3(margin,height*.88,19000),
+        Vector3(width-2*margin,size*2,0),Color(235,12,16,20))
+    UIRenderer.draw_text(notice_renderer,state.mod:localize("hud_editor_notice"),
+        size,"proxima_nova_bold",Vector3(margin,height*.88,19001),
+        Vector3(width-2*margin,size*2,0),Color(255,230,245,240),
+        {horizontal_alignment="center",vertical_alignment="center"})
+end
+
 function HudPanel.editor_rect(width, height, capture_width, capture_height, panel_aspect, mirror_width, mirror_height)
     local inset = math.min(width,height)*0.025
     local aspect = panel_aspect or capture_width/capture_height
@@ -410,6 +454,7 @@ local function route_fixed_updates(owner)
 end
 
 local function destroy_resources()
+    state.editor_requested = nil
     state.editor_material = nil
     state.follow_pose = nil
     for _, record in pairs(state.layout_nodes) do
@@ -689,6 +734,10 @@ end
 
 function HudPanel.install(mod)
     state.mod = mod
+    mod.toggle_vr_hud_editor = function()
+        local _, message = HudPanel.request_editor()
+        mod:notify(mod:localize(message))
+    end
     HudPanel.read_settings(mod)
     local previous_setting_changed = mod.on_setting_changed
     mod.on_setting_changed = function(setting_id)
@@ -698,6 +747,7 @@ function HudPanel.install(mod)
     end
     mod:hook("UIHud", "update", function(func, self, dt, t, input_service)
         update_enabled_flag(mod, t or 0)
+        HudPanel.update_editor_request()
         local editor = self._elements and self._elements.HudElementCustomizer
         if state.enabled and editor and not editor._setup_complete then
             HudPanel.layout_status(self)
@@ -816,6 +866,7 @@ function HudPanel.install(mod)
                 self._elements_array = fixed
                 self._ui_renderer = resource_renderer
                 func(self, dt, t, input_service)
+                HudPanel.draw_editor_notice(resource_renderer)
                 self._ui_renderer = source_renderer
                 if state.diagnostic then
                     Gui2.rect(state.queue_renderer.gui,Vector3(50,50,1),Vector3(400,200,0),

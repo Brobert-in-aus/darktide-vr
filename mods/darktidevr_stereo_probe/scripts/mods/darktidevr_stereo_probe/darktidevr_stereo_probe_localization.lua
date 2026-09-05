@@ -1,4 +1,12 @@
 return {
+    hud_editor = {en = "HUD layout editor"},
+    hud_editor_button = {en = "Toggle editor"},
+    hud_editor_description = {en = "Requires the separate Custom HUD mod. Select this, then close the menus to edit in the desktop view. Select again before closing to cancel."},
+    hud_editor_dependency = {en = "Install and enable Custom HUD to edit the HUD layout."},
+    hud_editor_gameplay = {en = "Enter gameplay with the VR HUD enabled before opening its layout editor."},
+    hud_editor_close_menu = {en = "Close the menus to toggle HUD layout editing in the desktop view."},
+    hud_editor_cancelled = {en = "HUD layout editor request cancelled."},
+    hud_editor_notice = {en = "Use the desktop view to edit your HUD layout."},
     hud_options = {en = "HUD"},
     hud_size = {en = "HUD size (%%)"},
     hud_size_description = {

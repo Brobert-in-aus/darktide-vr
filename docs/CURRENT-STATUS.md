@@ -26,6 +26,9 @@ retain approximately the same apparent size; internal scaling leaves saved
 Custom HUD positions intact. These controls apply while the HUD panel is active
 and do not enable the experimental panel themselves. See the
 [HUD options validation](handoffs/2026-09-06-hud-options.md).
+The same section provides a Toggle editor button for the separately installed
+Custom HUD dependency. Close menus after selecting it to enter or leave desktop
+layout editing. See [editor integration](HUD-EDITOR-INTEGRATION.md).
 
 Build Release and the pinned LuaJIT validator as described in the root README.
 With no existing XR viewer, run:

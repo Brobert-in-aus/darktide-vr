@@ -11,6 +11,13 @@ return {
                 type = "group",
                 sub_widgets = {
                     {
+                        setting_id = "hud_editor",
+                        type = "button",
+                        button_text = "hud_editor_button",
+                        button_trigger = "pressed",
+                        function_name = "toggle_vr_hud_editor",
+                    },
+                    {
                         setting_id = "hud_size",
                         type = "numeric",
                         default_value = 100,
