@@ -527,22 +527,26 @@ function HudPanel.draw(world, position, rotation, overlap_width)
             Gui.rect_3d(state.world_gui,tm,Vector2(edge[1],edge[2]),999,
                 Vector2(edge[3],edge[4]),Color(255,0,180,190))
         end
-        -- A shipped HUD icon tests bitmap geometry independently of the target
-        -- texture. It is loaded by the player's stock weapon HUD.
+        -- A fixed symbol tests bitmap geometry independently of the target.
+        -- The weapon_icon_container placeholder is replaced by stock set_icon
+        -- and is not a valid independent texture control.
         Gui2.bitmap_3d(state.world_gui,
-            "content/ui/materials/hud/icons/weapon_icon_container",nil,tm,1001,
+            "content/ui/materials/symbols/infinite",nil,tm,1001,
             {color=Color(255,255,255,255),
              position_offset=Vector3(-0.15,0.2,0),size=Vector3(0.3,0.3,0),
              uv00=Vector2(0,0),uv11=Vector2(1,1),snap_pixel_positions=false})
         Gui.bitmap_3d(state.world_gui,
-            "content/ui/materials/hud/icons/weapon_icon_container",tm,
-            Vector2(-0.15,-0.2),1001,Vector2(0.3,0.3),Color(255,255,255,255))
+            "content/ui/materials/symbols/infinite",tm,
+            Vector3(-0.15,-0.2,0),1001,Vector2(0.3,0.3),Color(255,255,255,255))
+        Gui.rect_3d(state.world_gui,tm,Vector2(0.2,-0.2),1001,
+            Vector2(0.3,0.3),Color(255,255,255,255),
+            "content/ui/materials/symbols/infinite")
     end
     Gui.bitmap_3d(
         state.world_gui,
         state.world_material,
         tm,
-        Vector2(-width * 0.5, -height * 0.5),
+        Vector3(-width * 0.5, -height * 0.5, 0),
         1000,
         Vector2(width, height),
         Color(255, 255, 255, 255))

@@ -1005,3 +1005,10 @@ absent even without opaque backing. User requested another uniform reduction to
 80% of this size; applied after the binocular fit, retaining the same distance.
 Expected current headset dimensions approximately 1.181 x 0.810 m. HUD fixture
 checks the 80% scale and shortened height; Lua compiler and HUD fixture passed.
+
+80% scale verified live in both eye captures (hud-scaled-20260905); logged
+1.181 x 0.810 m at 1 m. Correction to bitmap diagnostics: weapon_icon_container
+is a placeholder replaced by HudElementPlayerWeapon.set_icon, so its absence
+does not establish a broken bitmap path. Replaced it with the fixed infinite
+symbol used directly by stock HUD, plus a rect_3d material sample. Legacy
+bitmap offsets now explicitly use Vector3 as documented by the engine API.
