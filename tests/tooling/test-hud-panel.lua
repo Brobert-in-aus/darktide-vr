@@ -245,3 +245,30 @@ local sixty,one_twenty = initial,initial
 for i=1,60 do sixty=panel.follow_pose(sixty,pose(.1,0),i/60) end
 for i=1,120 do one_twenty=panel.follow_pose(one_twenty,pose(.1,0),i/120) end
 assert(math.abs(sixty.x-one_twenty.x) < 1e-9, "follow depends on frame rate")
+local placements = 0
+package.loaded["scripts/utilities/ui/hud"] = {hud_scale=function() return 1.3 end}
+package.loaded["scripts/managers/ui/ui_scenegraph"] = {update_scenegraph=function() end}
+local function layout_element(id,width,height)
+    local node = {position={20,30,1},size={width,height},horizontal_alignment="right",vertical_alignment="bottom"}
+    return {_ui_scenegraph={[id]=node},set_dirty=function() end,
+        set_scenegraph_position=function(self,key,x,y,_,horizontal,vertical)
+            placements=placements+1
+            local n=self._ui_scenegraph[key]
+            n.position[1],n.position[2]=x,y
+            n.horizontal_alignment,n.vertical_alignment=horizontal,vertical
+        end}
+end
+local buffs,ability=layout_element("background",1125,80),layout_element("slot_combat_ability",92,80)
+local layout_owner={_elements={HudElementPlayerBuffs=buffs,HudElementPlayerAbilityHandler=ability,
+    HudElementTeamPanelHandler={_player_panels_array={{scenegraph_id="local_player",
+        panel={_ui_scenegraph={bar={world_position={100,700,0},size={300,10}}}}}}}}}
+panel.layout_status(layout_owner)
+assert(buffs._ui_scenegraph.background.position[1] == 100)
+assert(ability._ui_scenegraph.slot_combat_ability.position[1]+92 == 400)
+assert(buffs._ui_scenegraph.background.position[2]+80 == 672)
+panel.layout_status(layout_owner)
+assert(placements == 2, "stable layout must not dirty widgets every frame")
+panel.set_enabled(false)
+assert(buffs._ui_scenegraph.background.position[1] == 20 and
+    ability._ui_scenegraph.slot_combat_ability.horizontal_alignment == "right",
+    "disabling panel must restore stock placement")

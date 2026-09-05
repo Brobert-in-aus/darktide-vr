@@ -73,6 +73,7 @@ local state = {
     update_routes = {},
     updating_owner = nil,
     follow_pose = nil,
+    layout_nodes = {},
 }
 
 -- Scene-depth, projected-world and eye-edge elements remain on the stock
@@ -173,6 +174,52 @@ local function target_extent()
         math.max(1, math.floor(1080 * scale + 0.5))
 end
 
+local function place_status_node(element, id, x, y, scale)
+    local node = element._ui_scenegraph and rawget(element._ui_scenegraph,id)
+    if not node then return end
+    local p = node.position
+    if p[1] == x and p[2] == y and node.horizontal_alignment == "left" and
+            node.vertical_alignment == "top" then return end
+    if not state.layout_nodes[node] then
+        state.layout_nodes[node] = {element=element,id=id,x=p[1],y=p[2],
+            horizontal=node.horizontal_alignment,vertical=node.vertical_alignment}
+    end
+    element:set_scenegraph_position(id,x,y,nil,"left","top")
+    local function refresh(instance)
+        require("scripts/managers/ui/ui_scenegraph").update_scenegraph(instance._ui_scenegraph,scale)
+        instance:set_dirty()
+    end
+    refresh(element)
+    -- AbilityHandler forwards placement to its current cooldown instances.
+    for _, data in pairs(element._instance_data_tables or {}) do
+        if data.scenegraph_id == id then refresh(data.instance) end
+    end
+end
+
+function HudPanel.layout_status(owner)
+    local elements = owner._elements or {}
+    local team = elements.HudElementTeamPanelHandler
+    local panel
+    for _, data in ipairs(team and team._player_panels_array or {}) do
+        if data.scenegraph_id == "local_player" then panel = data.panel; break end
+    end
+    local bar = panel and panel._ui_scenegraph and rawget(panel._ui_scenegraph,"bar")
+    if not bar or not bar.world_position or not bar.size then return end
+    local x,y = bar.world_position[1],bar.world_position[2]
+    local scale = require("scripts/utilities/ui/hud").hud_scale() * HudPanel.object_scale
+    local buffs = elements.HudElementPlayerBuffs
+    local ability = elements.HudElementPlayerAbilityHandler
+    local buff_node = buffs and buffs._ui_scenegraph and rawget(buffs._ui_scenegraph,"background")
+    local ability_node = ability and ability._ui_scenegraph and rawget(ability._ui_scenegraph,"slot_combat_ability")
+    -- Leave room for the toughness strip/name above HP. Both groups share
+    -- a baseline, with their outer edges tied to the actual live health bar.
+    if buff_node then place_status_node(buffs,"background",x,y-28-buff_node.size[2],scale) end
+    if ability_node then
+        place_status_node(ability,"slot_combat_ability",
+            x+bar.size[1]-ability_node.size[1],y-28-ability_node.size[2],scale)
+    end
+end
+
 -- Stock UIHud.update passes its screen renderer to visibility and widget
 -- refresh callbacks. Retained records now belong to the capture renderer.
 -- Route these callbacks without running game/HUD updates a second time.
@@ -218,6 +265,11 @@ end
 
 local function destroy_resources()
     state.follow_pose = nil
+    for _, record in pairs(state.layout_nodes) do
+        record.element:set_scenegraph_position(record.id,record.x,record.y,nil,
+            record.horizontal,record.vertical)
+    end
+    state.layout_nodes = {}
     for _, record in ipairs(state.update_routes) do
         if record.element[record.name] == record.wrapper then
             record.element[record.name] = record.own
@@ -514,6 +566,7 @@ function HudPanel.install(mod)
         if not resource_renderer then
             return func(self, dt, t, input_service)
         end
+        HudPanel.layout_status(self)
         local spatial, fixed = partition_elements(self._elements_array)
         log_partition(mod, spatial, fixed)
         local source_elements = self._elements_array

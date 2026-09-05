@@ -1092,3 +1092,14 @@ on world/resource changes, teleport or a long time gap. It advances only once
 per main-clock frame. Offline fixture covers jitter attenuation, equivalent
 quaternion signs, same-frame reuse, teleport reset and 60/120 Hz consistency.
 LuaJIT 25-chunk gate and HUD fixture pass. Worn stabilization acceptance pending.
+
+User supplied _downloads/custom_hud as a customization reference. Its
+compare-before-set scenegraph repinning and strict-table rawget checks informed
+status placement. Buff background anchors above the actual local player's bar
+left edge; combat ability slot anchors above its right edge, with 28 logical
+units reserved above HP. The handler forwards placement to cooldown instances.
+Original positions/alignment restore on disable; stable frames do not dirty
+widgets. Fixture covers both edges, vertical gap, stable reuse and restoration.
+LuaJIT gate and HUD fixture passed. Live layout validation pending.
+The e976896 follow run entered stereo after a longer server/loading delay;
+shared_ready exceeded 2,300 at about 60 fresh pairs/s without pose mismatch.

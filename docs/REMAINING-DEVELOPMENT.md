@@ -69,8 +69,11 @@ requested these reductions; both-eye readback confirms the outline fits, while
 worn comfort still needs acceptance. World GUI draws now expire each frame,
 fixing the user's observed accumulation at old head poses. The visible texture
 initially arrived vertically inverted and retained old pixels. Both corrections
-now pass shared-eye visual checks. At the user's request, fixed HUD objects use
-2x effective scale inside the same panel; larger objects are visible in readback.
+now pass shared-eye visual checks. The user confirmed larger HUD objects, then
+requested 80% of the doubled size to avoid overlap: effective object scale is
+now 1.6x inside the same panel. Panel position and rotation follow the headset
+with gentle temporal smoothing and bounded rotational lag; worn acceptance is
+pending. Frame-rate independence and pose-reset behavior have offline coverage.
 Retained update/visibility operations now route to their capture renderer.
 Smart-tag popups have a candidate hand-target selection and per-eye marker-relative
 draw path; worn acceptance remains pending. The prototype stays disabled by
