@@ -15,15 +15,18 @@ block.is_blocking=function(unit)
 end
 block.attempt_block_break=block.is_blocking
 require=function(path)
- if path:find('player_unit_data_extension',1,true) then return data_class end
+ if path:find('player_unit_data_extension',1,true) then error('unit data cannot load during mod boot') end
  return block
 end
 Managers={player={local_player=function() return {player_unit=player} end}}
-local mod={hook=function(_,target,name,callback)
+local deferred
+local mod={hook_require=function(_,_,callback) deferred=callback end,hook=function(_,target,name,callback)
  local original=target[name]
  target[name]=function(...) return callback(original,...) end
 end,info=function() end}
 module.install(mod,{target=function(side) assert(side=='left'); return {},left end})
+assert(deferred, 'missing deferred unit-data registration')
+deferred(data_class)
 for _,name in ipairs({'is_blocking','attempt_block_break'}) do
  local a,b,c=block[name](player)
  assert(a and b==nil and c==17,'left block heading/returns lost')

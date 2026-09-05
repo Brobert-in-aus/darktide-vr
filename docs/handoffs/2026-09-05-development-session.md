@@ -452,3 +452,12 @@ run is artifacts/unattended/combat-direction-live-20260905.log. This includes th
 14th Lua module for block direction. Worn melee direction, block orientation,
 first-person animation-source appearance and left-hand alignment remain pending.
 The accepted pool/worker/LOD configuration is retained.
+
+The d982fb5 live run failed mod initialization at 00:34:40.260. New combat
+module eagerly required PlayerUnitDataExtension, which loaded network lookup
+before ArchetypeTalents existed (pairs(nil) at network_lookup.lua:109). The game
+process subsequently exited; this run is not accepted and supplied no fresh
+stereo validation. Corrected to DMF hook_require so the callback attaches after
+the game's normal class load. The regression now throws if that dependency is
+required during mod boot, then explicitly supplies the deferred class and checks
+block behavior. Updated test and 14-chunk compiler gate pass.

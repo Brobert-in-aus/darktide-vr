@@ -21,8 +21,11 @@ function CombatDirection.install(mod, aim)
     -- Both eligibility and block cost read first_person through unit data.
     -- Substitute only that read during the local player's block calculation;
     -- never modify the movement/camera component or other players' headings.
-    mod:hook(require("scripts/extension_systems/unit_data/player_unit_data_extension"),
-        "read_component", function(func, self, name)
+    -- This class pulls in network lookup tables that are unavailable during
+    -- mod boot. Attach after the game requires it in its normal startup order.
+    mod:hook_require("scripts/extension_systems/unit_data/player_unit_data_extension",
+        function(data_class)
+        mod:hook(data_class, "read_component", function(func, self, name)
             local component = func(self, name)
             if scope and self._unit == scope.unit and name == "first_person" then
                 writes = writes + 1
@@ -33,6 +36,7 @@ function CombatDirection.install(mod, aim)
             end
             return component
         end)
+    end)
     local block = require("scripts/utilities/attack/block")
     mod:hook(block, "is_blocking", with_left_block)
     mod:hook(block, "attempt_block_break", with_left_block)
