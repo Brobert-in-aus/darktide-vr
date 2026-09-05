@@ -409,3 +409,26 @@ Active config verifies worker=13, LOD=9, screen_mode=window and pool=1024. This
 restoration is operational, not a new user visual acceptance claim. No new
 headset experiment is running. Generated stereo submission/publication remain
 unfinished and disabled.
+
+## User-authorized corrected eye-target headset check
+
+User approved the next headset check. Prior game had already exited. Applied
+proximity Disable/Status and passed Ready preflight at
+artifacts/unattended/eye-target-typed-preflight-20260905.json. Launched cb0f455
+with -EnableHudPanel -EnterPsykhanium -StreamlineEyeTargetProbe
+-StreamlineTargetTokenProbe, no wide buffer or generated submission. Live runner:
+artifacts/unattended/eye-target-typed-live-20260905.log.
+
+Both named gameplay targets initialize at 2496x2688, including recreation during
+the transition into Psykhanium. Captures report correct eye identities, exact
+extents and cropped=0. XR transport attaches successfully and reaches
+shared_ready=717 at approximately 53.5 fresh pairs/s, zero pair mismatches in the
+sample. The prior typeless-format rejection is absent. Archive and analyzer:
+artifacts/diagnostics/dlss-live-20260905/eye-target-typed-probe.tsv and
+ eye-target-typed-report.txt. Analyzer passes, explicitly retaining visual
+acceptance=unverified and stereo_retirement_verified=0.
+
+User config remains worker=13, LOD=9 and windowed mode. Game left running for the
+worn check of live scene, HUD, hands and markers. This is successful transport
+validation, not worn acceptance or completed DLSS frame generation. No wider
+presentation or generated-frame experiment may be inferred from this result.
