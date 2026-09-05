@@ -321,3 +321,91 @@ syntax-checked but not yet exercised by another launch; the current normal run
 is left open. No claim that initial-launch appearance has been accepted by user.
 All 26 Lua chunks and visual-settings runtime tests pass. LOD 9 is verified in
 the active configuration. Current runner log is window-policy-live-20260905.log.
+
+## Gameplay eye-target isolation (next continuation)
+
+Implemented an opt-in engine-native render-target route, instead of adding a
+DXGI swapchain proxy. CameraManager creates the primary gameplay viewport through
+ScriptWorld.create_viewport; the latter already accepts output_target/back_buffer
+mappings. The existing stereo UI path uses separate named resources for these
+roles. The new module applies that contract to player1 and its paired VR right
+viewport, preserving camera, shading, layer and shadow-cull arguments. Menus and
+caller-supplied mappings pass through. Both eyes use the same captured XR extent.
+Resources are owned per world/viewport and released after viewport destruction
+or world release. Failed allocation/viewport creation unwinds partial resources.
+This is diagnostic-only and is not hot-toggleable on existing viewports.
+
+Native capture under this flag requires the correct named eye-final resource and
+exact configured width/height. It captures the entire image, even for landscape
+eye textures, rather than applying the legacy aspect-based central crop. It logs
+ISOLATED_EYE_CAPTURE and fails closed on wrong-eye, anonymous or enlarged inputs.
+The analyzer requires latest valid uncropped samples for both eyes and explicitly
+reports visual acceptance unverified. The launcher exposes
+-StreamlineEyeTargetProbe independently; wide experiments now also enable it.
+Normal launches remain unchanged.
+
+Offline validation: native Release warnings-as-errors build passes; all five
+Streamline/resample CTests pass. Pinned LuaJIT validates all 27 chunks. Runtime
+Lua harness tests/tooling/test-eye-targets.lua passes ownership, dimensions,
+pass-through, camera/shading argument preservation, allocation failures, viewport
+failure, duplicate ownership rejection and world cleanup. Analyzer fixture checks
+accept two correctly named eyes and reject a subsequent wrong-eye sample (fixture
+reports in artifacts/diagnostics/dlss-live-20260905; these are simulated records,
+not live evidence). PowerShell launcher syntax passes.
+
+After announcing the limited test, found the previous game already closed and
+waited for runner cleanup. Applied proximity Disable/Status and passed Ready
+preflight, artifacts/unattended/eye-target-preflight-20260905.json. Launched
+-EnableHudPanel -EnterPsykhanium -StreamlineEyeTargetProbe
+-StreamlineTargetTokenProbe. No wide allocation, Present staging or generated
+submission. Log: artifacts/unattended/eye-target-live-20260905.log. Live evidence
+and worn acceptance pending; normal geometry must pass before any wide test.
+
+### First live checks and typed shared-eye correction
+
+The first eye-target run failed closed: no named captures, shared_ready=0. The
+new module had incorrectly required a non-nil camera_unit, although ScriptWorld
+supports creating that camera itself. Removed that restriction and added the
+nil-camera case to the Lua harness. First evidence archived as
+artifacts/diagnostics/dlss-live-20260905/eye-target-first-probe.tsv and
+ eye-target-first-resize.log. User saw the final loading frame in VR.
+
+Second normal-width test (eye-target-camera-live-20260905.log; matching Ready
+preflight) creates both targets at 2496x2688 and logs correctly named, full-size
+uncropped captures for both eyes. Transport nevertheless cannot attach:
+actual shared-eye format=27 (RGBA8 typeless), negotiated format=28 (RGBA8 UNORM).
+The user reports both VR and desktop stalled with audio continuing. This is not
+a visual pass. Archives: eye-target-camera-probe.tsv / eye-target-camera-resize.log.
+Normal rendering restored rather than leaving the diagnostic stalled.
+
+Offline correction reuses canonical_shared_copy_format in ensure_eye_surfaces,
+including its matching-resource checks and allocations. Engine source textures
+remain typeless; the shared eye and desktop mirror textures use typed UNORM.
+Actual D3D12 WARP validation now uploads distinct pixels into typeless inputs,
+copies them into typed shared textures, opens those textures from a second
+device, verifies typed descriptors, then resamples and reads back expected pixels.
+It passes, as do the other four Streamline tests and native Release /WX build.
+This corrected DLL has NOT been deployed; it awaits another normal-width eye-
+target check. Only after worn acceptance should wider presentation be revisited.
+
+### User-requested config rollback
+
+User asked to revert config experiments except LOD 9 on the next launch. Saved
+trial metadata and pre-change backup establish worker_original=13 and texture
+pool_original=1024. While closed, restored top-level max_worker_threads=13 and
+settings_common.ini feedback_streamer_settings.max_texture_pool_size=1024,
+retaining lod_object_multiplier=9. Other streaming values were unchanged by the
+original trial. Kept VR window/blur/DoF/lens behavior. Pre-rollback backups are in
+artifacts/unattended/user-settings-before-config-rollback.config and
+settings-common-before-config-rollback.ini. Launcher worker tuning is now opt-in
+with -TuneWorkerThreads, preventing the default launch from resetting 13 to 7.
+The eventual release physical-core policy is still a separate optimization task.
+
+Normal launch uses only -EnableHudPanel -EnterPsykhanium; Ready report
+artifacts/unattended/config-rollback-preflight-20260905.json, live log
+config-rollback-live-20260905.log. Fresh stereo initializes, shared_ready=1227,
+about 56 fresh pairs/s in the sampled interval and two startup pose mismatches.
+Active config verifies worker=13, LOD=9, screen_mode=window and pool=1024. This
+restoration is operational, not a new user visual acceptance claim. No new
+headset experiment is running. Generated stereo submission/publication remain
+unfinished and disabled.

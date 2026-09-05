@@ -201,6 +201,13 @@ int main() {
            "the staging source and Present destination must be distinct");
 
     const auto normal = darktidevr::core::streamline_render_extent(2496, 2688, false);
+    using darktidevr::core::streamline_isolated_eye_matches;
+    expect(streamline_isolated_eye_matches(0, 0, 3000, 2000, 3000, 2000) &&
+               !streamline_isolated_eye_matches(0, 1, 3000, 2000, 3000, 2000) &&
+               !streamline_isolated_eye_matches(1, -1, 3000, 2000, 3000, 2000) &&
+               !streamline_isolated_eye_matches(1, 1, 6000, 2000, 3000, 2000) &&
+               !streamline_isolated_eye_matches(2, 2, 3000, 2000, 3000, 2000),
+           "isolated capture requires exact eye identity and dimensions, even for landscape eyes");
     const auto packed = darktidevr::core::streamline_render_extent(2496, 2688, true);
     expect(normal.eye_width == packed.eye_width && normal.height == packed.height &&
                normal.present_width == 2496 && packed.present_width == 4992,

@@ -1,4 +1,5 @@
 #include "producer/stereo_color_resample.h"
+#include "core/shared_surface_policy.h"
 #include <dxgi1_6.h>
 #include <iostream>
 #include <stdexcept>
@@ -18,7 +19,7 @@ int main() {
   D3D12_HEAP_PROPERTIES heap{}; heap.Type=D3D12_HEAP_TYPE_DEFAULT;
   D3D12_RESOURCE_DESC texture{}; texture.Dimension=D3D12_RESOURCE_DIMENSION_TEXTURE2D;
   texture.Width=4; texture.Height=1; texture.DepthOrArraySize=1; texture.MipLevels=1;
-  texture.Format=DXGI_FORMAT_R8G8B8A8_UNORM; texture.SampleDesc.Count=1;
+  texture.Format=DXGI_FORMAT_R8G8B8A8_TYPELESS; texture.SampleDesc.Count=1;
   std::array<ComPtr<ID3D12Resource>,2> inputs;
   for (auto& input:inputs) ok(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,
       &texture,D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&input)));
@@ -40,9 +41,35 @@ int main() {
     dst.pResource=inputs[i].Get(); dst.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
     commands->CopyTextureRegion(&dst,0,0,0,&src,nullptr);
   }
+  // The engine's offscreen targets are typeless. Cross-process eye textures
+  // must expose the negotiated UNORM format, with a bit-preserving copy.
+  auto shared_texture = texture;
+  shared_texture.Format = static_cast<DXGI_FORMAT>(
+      darktidevr::core::canonical_shared_copy_format(texture.Format));
+  check(shared_texture.Format == DXGI_FORMAT_R8G8B8A8_UNORM);
+  heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+  std::array<ComPtr<ID3D12Resource>,2> shared_inputs;
+  for (UINT i=0;i<2;++i) {
+    ok(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_SHARED,&shared_texture,
+        D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&shared_inputs[i])));
+    D3D12_RESOURCE_BARRIER copy_barrier{};
+    copy_barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    copy_barrier.Transition={inputs[i].Get(),D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+        D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_COPY_SOURCE};
+    commands->ResourceBarrier(1,&copy_barrier);
+    commands->CopyResource(shared_inputs[i].Get(),inputs[i].Get());
+    HANDLE shared_handle{};
+    ok(device->CreateSharedHandle(shared_inputs[i].Get(),nullptr,GENERIC_ALL,nullptr,&shared_handle));
+    ComPtr<ID3D12Device> consumer;
+    ok(D3D12CreateDevice(warp.Get(),D3D_FEATURE_LEVEL_11_0,IID_PPV_ARGS(&consumer)));
+    ComPtr<ID3D12Resource> opened;
+    const auto open_result=consumer->OpenSharedHandle(shared_handle,IID_PPV_ARGS(&opened));
+    CloseHandle(shared_handle); ok(open_result);
+    check(opened->GetDesc().Format==DXGI_FORMAT_R8G8B8A8_UNORM);
+  }
   darktidevr::producer::StereoColorResample resample;
   check(FAILED(resample.record(device.Get(),commands.Get(),inputs[0].Get(),inputs[1].Get(),0,1)));
-  ok(resample.record(device.Get(),commands.Get(),inputs[0].Get(),inputs[1].Get(),2,1));
+  ok(resample.record(device.Get(),commands.Get(),shared_inputs[0].Get(),shared_inputs[1].Get(),2,1));
   check(FAILED(resample.record(device.Get(),commands.Get(),inputs[0].Get(),inputs[1].Get(),2,1)));
   check(resample.output(0)->GetDesc().Width==2 && resample.output(1)->GetDesc().Width==2);
   heap.Type=D3D12_HEAP_TYPE_READBACK; ComPtr<ID3D12Resource> readback;
@@ -55,7 +82,7 @@ int main() {
   D3D12_TEXTURE_COPY_LOCATION src{},dst{}; src.pResource=resample.output(2);
   src.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; dst.pResource=readback.Get();
   dst.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-  dst.PlacedFootprint={0,{texture.Format,4,1,1,256}};
+  dst.PlacedFootprint={0,{shared_texture.Format,4,1,1,256}};
   commands->CopyTextureRegion(&dst,0,0,0,&src,nullptr);
   ok(commands->Close()); ID3D12CommandList* lists[]{commands.Get()};
   queue->ExecuteCommandLists(1,lists);

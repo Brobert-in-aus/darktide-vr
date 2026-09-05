@@ -13131,6 +13131,24 @@ presentation.visual_settings = mod:io_dofile(
 )
 presentation.visual_settings.install(mod)
 
+do
+    local flag = Mods.lua.io.open(
+        "./../mods/darktidevr_stereo_probe/darktidevr_streamline_eye_target_probe.flag", "r")
+    if flag then
+        local enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
+        flag:close()
+        if enabled then
+            mod:io_dofile(
+                "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_eye_targets"
+            ).install(mod, ScriptWorld, function()
+                assert(ensure_ui_native_hooks() and refresh_xr_render_extent(),
+                    "isolated gameplay targets require a current XR render extent")
+                return ui_eye_target_width, ui_eye_target_height
+            end)
+        end
+    end
+end
+
 mod.on_disabled = function()
     requested = false
     ui_stereo_requested = false

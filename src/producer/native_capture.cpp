@@ -97,6 +97,7 @@ std::atomic<bool> streamline_transport_probe_requested{};
 std::atomic<bool> streamline_input_snapshot_probe_requested{};
 std::atomic<bool> streamline_target_token_probe_requested{};
 std::atomic<bool> streamline_stereo_swapchain_probe_requested{};
+std::atomic<bool> streamline_eye_target_probe_requested{};
 std::atomic<bool> streamline_stereo_stage_probe_requested{};
 std::atomic<DWORD> streamline_outer_present_thread{};
 std::atomic<std::uint64_t> streamline_outer_present_active_frame{};
@@ -2627,6 +2628,14 @@ void initialize_streamline_probe(void* present_target,
                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (streamline_probe_log == INVALID_HANDLE_VALUE) {
     return;
+  }
+  const auto eye_target_flag_path =
+      flag_directory + L"..\\darktidevr_streamline_eye_target_probe.flag";
+  streamline_eye_target_probe_requested.store(
+      GetFileAttributesW(eye_target_flag_path.c_str()) != INVALID_FILE_ATTRIBUTES,
+      std::memory_order_release);
+  if (streamline_eye_target_probe_requested.load(std::memory_order_acquire)) {
+    write_streamline_probe_log("ISOLATED_EYE_POLICY\tenabled=1\r\n");
   }
   const auto copy_flag_path =
       flag_directory + L"..\\darktidevr_streamline_copy_probe.flag";
@@ -13107,14 +13116,17 @@ int ensure_eye_surfaces(ID3D12Device* device,
   if (eye_height == 0) {
     eye_height = source_description.Height;
   }
+  const auto shared_format = static_cast<DXGI_FORMAT>(
+      darktidevr::core::canonical_shared_copy_format(
+          static_cast<std::uint32_t>(source_description.Format)));
   const bool matching_surfaces = eye_surfaces[0] && eye_surfaces[1] &&
       eye_handles[0] && eye_handles[1] &&
       eye_surfaces[0]->GetDesc().Width == eye_width &&
       eye_surfaces[0]->GetDesc().Height == eye_height &&
-      eye_surfaces[0]->GetDesc().Format == source_description.Format &&
+      eye_surfaces[0]->GetDesc().Format == shared_format &&
       eye_surfaces[1]->GetDesc().Width == eye_width &&
       eye_surfaces[1]->GetDesc().Height == eye_height &&
-      eye_surfaces[1]->GetDesc().Format == source_description.Format;
+      eye_surfaces[1]->GetDesc().Format == shared_format;
   const bool shared_fences_healthy =
       ready_fence && consumed_fence && ready_fence_handle &&
       consumed_fence_handle &&
@@ -13140,6 +13152,7 @@ int ensure_eye_surfaces(ID3D12Device* device,
   D3D12_HEAP_PROPERTIES heap{};
   heap.Type = D3D12_HEAP_TYPE_DEFAULT;
   auto eye_description = source_description;
+  eye_description.Format = shared_format;
   eye_description.Width = eye_width;
   eye_description.Height = eye_height;
   eye_description.Flags = D3D12_RESOURCE_FLAG_NONE;
@@ -13231,13 +13244,34 @@ int capture_eye_from_resource(int eye, ID3D12CommandQueue* supplied_queue,
     return 32;
   }
   const auto source_description = back_buffer->GetDesc();
+  const bool isolated_eye = streamline_eye_target_probe_requested.load(
+      std::memory_order_acquire);
+  if (isolated_eye) {
+    const auto expected_width = camera_input_width.load(std::memory_order_relaxed);
+    const auto expected_height = camera_input_height.load(std::memory_order_relaxed);
+    const auto named_eye = named_eye_final_index(back_buffer.Get());
+    const bool valid = darktidevr::core::streamline_isolated_eye_matches(
+        eye, named_eye, source_description.Width, source_description.Height,
+        expected_width, expected_height);
+    static std::array<std::atomic<std::uint64_t>, 2> checks{};
+    const auto check = checks[static_cast<std::size_t>(eye)].fetch_add(
+        1, std::memory_order_relaxed);
+    if (check < 8 || check % 120 == 0) {
+      write_streamline_probe_log(
+          "ISOLATED_EYE_CAPTURE\teye=%d\tnamed_eye=%d\tsource=%llux%u"
+          "\texpected=%ux%u\tvalid=%u\tcropped=0\r\n",
+          eye, named_eye, static_cast<unsigned long long>(source_description.Width),
+          source_description.Height, expected_width, expected_height, valid ? 1U : 0U);
+    }
+    if (!valid) return 39;
+  }
   // The feasibility path historically rendered each full-origin eye into a
   // 3840x2160 intermediate and retained its central 1920x2160 region. A
   // portrait/square eye-sized intermediate has no unused side regions, so
   // preserve its complete width. This lets the game render only pixels that
   // are transported to OpenXR while leaving the known-good 4K path unchanged.
   const bool source_is_eye_sized =
-      source_description.Width <= source_description.Height;
+      isolated_eye || source_description.Width <= source_description.Height;
   const auto captured_width = static_cast<UINT64>(
       source_is_eye_sized ? source_description.Width
                           : source_description.Width / 2);

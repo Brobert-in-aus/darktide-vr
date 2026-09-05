@@ -11,6 +11,8 @@ param(
 
     [switch] $FreshPsoCache,
 
+    [switch] $TuneWorkerThreads,
+
     [switch] $CaptureBillboardPsoIdentities,
 
     [ValidatePattern('^[0-9a-fA-F]{16}$')]
@@ -29,6 +31,8 @@ param(
     [switch] $StreamlineTargetTokenProbe,
 
     [switch] $StreamlineStereoSwapchainProbe,
+
+    [switch] $StreamlineEyeTargetProbe,
 
     [switch] $StreamlineStereoStageProbe,
 
@@ -182,6 +186,10 @@ $streamlineInputSnapshotProbeFlagExisted = $false
 $streamlineTargetTokenProbeFlagPath = $null
 $streamlineTargetTokenProbeFlagOriginal = $null
 $streamlineTargetTokenProbeFlagExisted = $false
+if ($StreamlineStereoSwapchainProbe) { $StreamlineEyeTargetProbe = $true }
+$streamlineEyeTargetProbeFlagPath = $null
+$streamlineEyeTargetProbeFlagOriginal = $null
+$streamlineEyeTargetProbeFlagExisted = $false
 $streamlineStereoSwapchainProbeFlagPath = $null
 $streamlineStereoSwapchainProbeFlagOriginal = $null
 $streamlineStereoSwapchainProbeFlagExisted = $false
@@ -189,7 +197,7 @@ $streamlineStereoStageProbeFlagPath = $null
 $streamlineStereoStageProbeFlagOriginal = $null
 $streamlineStereoStageProbeFlagExisted = $false
 
-if (-not (Get-Process Darktide -ErrorAction SilentlyContinue)) {
+if ($TuneWorkerThreads -and -not (Get-Process Darktide -ErrorAction SilentlyContinue)) {
     & (Join-Path $PSScriptRoot 'set-vr-worker-threads.ps1') -Action Apply
 }
 
@@ -328,7 +336,7 @@ if ($EnterPsykhanium) {
 
 if ($StreamlineProbe -or $StreamlineCopyProbe -or
         $StreamlineTransportProbe -or $StreamlineInputSnapshotProbe -or
-        $StreamlineTargetTokenProbe -or $StreamlineStereoSwapchainProbe -or
+        $StreamlineTargetTokenProbe -or $StreamlineEyeTargetProbe -or $StreamlineStereoSwapchainProbe -or
         $StreamlineStereoStageProbe) {
     $streamlineProbeFlagPath = Join-Path $GameRoot `
         'mods\darktidevr_stereo_probe\darktidevr_streamline_probe.flag'
@@ -395,6 +403,19 @@ if ($StreamlineTargetTokenProbe) {
     Set-Content -LiteralPath $streamlineTargetTokenProbeFlagPath `
         -Value 'enabled' -Encoding ascii
     Write-Output 'One-shot Streamline stereo target-token probe enabled.'
+}
+if ($StreamlineEyeTargetProbe) {
+    $streamlineEyeTargetProbeFlagPath = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_streamline_eye_target_probe.flag'
+    $streamlineEyeTargetProbeFlagExisted = Test-Path -LiteralPath `
+        $streamlineEyeTargetProbeFlagPath -PathType Leaf
+    if ($streamlineEyeTargetProbeFlagExisted) {
+        $streamlineEyeTargetProbeFlagOriginal = Get-Content -LiteralPath `
+            $streamlineEyeTargetProbeFlagPath -Raw
+    }
+    Set-Content -LiteralPath $streamlineEyeTargetProbeFlagPath `
+        -Value 'enabled' -Encoding ascii
+    Write-Output 'Isolated gameplay eye targets enabled for this diagnostic.'
 }
 if ($StreamlineStereoSwapchainProbe) {
     $streamlineStereoSwapchainProbeFlagPath = Join-Path $GameRoot `
@@ -823,6 +844,19 @@ finally {
                 -Force
         }
         Write-Output 'Restored the prior Streamline target-token flag.'
+    }
+    if ($streamlineEyeTargetProbeFlagPath) {
+        if ($streamlineEyeTargetProbeFlagExisted) {
+            Set-Content -LiteralPath $streamlineEyeTargetProbeFlagPath `
+                -Value $streamlineEyeTargetProbeFlagOriginal.Trim() `
+                -Encoding ascii
+        }
+        elseif (Test-Path -LiteralPath $streamlineEyeTargetProbeFlagPath `
+                -PathType Leaf) {
+            Remove-Item -LiteralPath $streamlineEyeTargetProbeFlagPath `
+                -Force
+        }
+        Write-Output 'Restored the prior Streamline eye-target flag.'
     }
     if ($streamlineStereoSwapchainProbeFlagPath) {
         if ($streamlineStereoSwapchainProbeFlagExisted) {

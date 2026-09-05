@@ -4,6 +4,14 @@
 
 namespace darktidevr::core {
 
+inline bool streamline_isolated_eye_matches(
+    int requested_eye, int named_eye, std::uint64_t width, std::uint32_t height,
+    std::uint32_t expected_width, std::uint32_t expected_height) noexcept {
+  return requested_eye >= 0 && requested_eye < 2 && named_eye == requested_eye &&
+      expected_width > 0 && expected_height > 0 &&
+      width == expected_width && height == expected_height;
+}
+
 struct StreamlineRenderExtent {
   std::uint32_t eye_width{};
   std::uint32_t height{};

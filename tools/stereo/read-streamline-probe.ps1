@@ -911,4 +911,18 @@ if ($inputCompletions.Count -gt 0) {
     # Observed game inputs are not our prepared-but-unsubmitted stereo batch.
     Write-Output 'input_completion.stereo_retirement_verified=0'
 }
+$isolatedPolicy = @($records | Where-Object event -eq 'ISOLATED_EYE_POLICY')
+if ($isolatedPolicy.Count -gt 0) {
+    $captures = @($records | Where-Object event -eq 'ISOLATED_EYE_CAPTURE')
+    foreach ($eye in @('0', '1')) {
+        $latest = @($captures | Where-Object eye -eq $eye | Select-Object -Last 1)
+        if ($latest.Count -ne 1 -or $latest[0].valid -ne '1' -or
+                $latest[0].named_eye -ne $eye -or $latest[0].cropped -ne '0' -or
+                $latest[0].source -ne $latest[0].expected) {
+            throw "Isolated eye $eye has no current valid, uncropped named capture."
+        }
+    }
+    Write-Output 'isolated_eye_capture.identity_and_extent=pass'
+    Write-Output 'isolated_eye_capture.visual_acceptance=unverified'
+}
 Write-Output 'result=pass'

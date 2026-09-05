@@ -261,3 +261,16 @@ Current machine LOD tuning is now `lod_object_multiplier = 9`, requested by the
 user because 3 still showed obvious transitions. Keep post-release LOD tuning
 open; 9 is not established as the release default. Fullscreen launch enforcement
 now runs both before launcher startup and at the game's settings-apply boundary.
+
+DLSS continuation now has an opt-in gameplay eye-target module using the engine's
+existing output_target/back_buffer mapping. Runtime confirms separate named
+2496x2688 eye finals, but exposed typeless shared textures that the XR transport
+rejects. The format correction is built and GPU-tested, not yet deployed. Next
+worn gate is normal-sized isolated eye targets, before any further wide-output
+experiment. Normal rendering is currently restored.
+
+At the user's request, the texture-pool/worker trials have been rolled back to
+1024 and 13 respectively using recorded pre-change values; LOD stays 9. Default
+launches preserve that worker setting. Physical-core tuning is explicitly opt-in
+via -TuneWorkerThreads during development. Release auto-configuration remains
+future work, not an excuse to reapply this reverted experiment automatically.
