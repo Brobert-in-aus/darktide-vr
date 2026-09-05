@@ -1382,3 +1382,11 @@ LuaJIT 25-chunk gate, hud_panel/presentation_policy CTests and Release harness
 build passed. Ready preflight passed at
 artifacts/unattended/hud-menu-resume-preflight-20260905.json after announced
 normal shutdown. Existing policy tests do not prove the full game transition.
+
+Deployed 756d671 and relaunched with EnterPsykhanium/EnableHudPanel. Log:
+artifacts/unattended/hud-menu-resume-live-20260905.log. Fresh HUD initialization
+reports 2.000 m distance, 1.897 m width, 1.276 m height. Startup reached
+shared_ready 1791 and 60 fresh pairs/s without Lua or marker-replay errors.
+The transient pre-game 640x768 shared-resource mismatch cleared once gameplay
+published its full-size eye textures. Run is open; menu transition acceptance
+is still pending and must not be inferred from normal startup.
