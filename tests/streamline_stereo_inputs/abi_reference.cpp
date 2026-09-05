@@ -66,6 +66,19 @@ FIELD(DlssGState, last_present_inputs_processing_completion_fence_value, DLSSGSt
 static_assert(mirror::kFeatureDlssG == sl::kFeatureDLSS_G);
 
 int main() {
+  const auto request = mirror::make_dlssg_state();
+  const sl::DLSSGState expected_request{};
+  if (request.base.next || request.base.struct_version != expected_request.structVersion ||
+      std::memcmp(&request.base.struct_type, &sl::DLSSGState::s_structType,
+                  sizeof(sl::StructType)) != 0 || request.inputs_processing_completion_fence)
+    return 1;
+  const auto prepared_viewport = mirror::make_viewport(42);
+  const sl::ViewportHandle expected_viewport(42);
+  mirror::ViewportHandle compared_viewport{};
+  std::memcpy(&compared_viewport, &expected_viewport, sizeof(expected_viewport));
+  if (prepared_viewport.value != compared_viewport.value ||
+      std::memcmp(&prepared_viewport.base.struct_type, &compared_viewport.base.struct_type,
+                  sizeof(sl::StructType)) != 0) return 1;
   // The SDK keeps the viewport value private. Compare a real constructed
   // object's bytes instead of bypassing C++ access controls.
   const sl::ViewportHandle viewport(0x12345678U);

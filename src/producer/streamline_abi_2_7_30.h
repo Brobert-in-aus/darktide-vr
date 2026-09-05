@@ -169,6 +169,17 @@ struct DlssGState {
 
 constexpr std::uint32_t kFeatureDlssG = 1000;
 
+inline ViewportHandle make_viewport(std::uint32_t value) noexcept {
+  return {{nullptr, {0x171b6435, 0x9b3c, 0x4fc8,
+      {0x99, 0x94, 0xfb, 0xe5, 0x25, 0x69, 0xaa, 0xa4}}, 1}, value};
+}
+inline DlssGState make_dlssg_state() noexcept {
+  DlssGState state{};
+  state.base = {nullptr, {0xcc8ac8e1, 0xa179, 0x44f5,
+      {0x97, 0xfa, 0xe7, 0x41, 0x12, 0xf9, 0xbc, 0x61}}, 3};
+  return state;
+}
+
 static_assert(sizeof(StructType) == 16);
 static_assert(sizeof(BaseStructure) == 32);
 static_assert(offsetof(ViewportHandle, value) == 32);

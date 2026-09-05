@@ -77,6 +77,9 @@ SlSetConstantsFn original_sl_set_constants{};
 SlSetTagFn original_sl_set_tag{};
 SlSetTagForFrameFn original_sl_set_tag_for_frame{};
 std::atomic<SlDlssGGetStateFn> original_sl_dlssg_get_state{};
+// DLSS-G feature calls are not thread-safe. Coordinate the game's calls and
+// the bounded Present-thread completion observation through one lock.
+std::mutex streamline_feature_api_mutex;
 std::atomic<SlDlssGSetOptionsFn> original_sl_dlssg_set_options{};
 void* streamline_feature_resolver_target{};
 void* streamline_get_new_frame_token_target{};
@@ -159,6 +162,9 @@ struct StreamlineConstantsObservation {
 struct StreamlineInputSnapshotState {
   darktidevr::producer::StreamlineSubmission submission;
   bool submission_prepared{};
+  bool completion_observation_started{};
+  std::array<ComPtr<ID3D12Fence>, 2> input_completion_fences;
+  std::array<std::uint64_t, 2> input_completion_values{};
   int next_eye{};
   bool pending{};
   bool complete{};
@@ -2443,7 +2449,11 @@ int sl_dlssg_get_state_hook(const void* viewport, void* state,
   if (!original) {
     return 36;
   }
-  const auto result = original(viewport, state, options);
+  int result{};
+  {
+    std::scoped_lock api_lock(streamline_feature_api_mutex);
+    result = original(viewport, state, options);
+  }
   const auto call = streamline_dlssg_state_count.fetch_add(
                         1, std::memory_order_relaxed) +
                     1;
@@ -2503,7 +2513,11 @@ int sl_dlssg_set_options_hook(const void* viewport, const void* options) {
       darktidevr::producer::streamline_2_7_30::ViewportHandle*>(viewport);
   const auto* dlssg_options = static_cast<const
       darktidevr::producer::streamline_2_7_30::DlssGOptions*>(options);
-  const auto result = original(viewport, options);
+  int result{};
+  {
+    std::scoped_lock api_lock(streamline_feature_api_mutex);
+    result = original(viewport, options);
+  }
   const auto call = streamline_dlssg_options_count.fetch_add(
                         1, std::memory_order_relaxed) +
                     1;
@@ -11829,6 +11843,57 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                                               std::memory_order_release);
   const auto result = original_present(swapchain, interval, flags);
   streamline_outer_present_active_frame.store(0, std::memory_order_release);
+  if (SUCCEEDED(result) && streamline_input_snapshot_probe_requested.load(
+          std::memory_order_acquire)) {
+    const auto get_state = original_sl_dlssg_get_state.load(std::memory_order_acquire);
+    std::array<std::uint32_t, 2> completion_viewports{};
+    bool observe_completion = false;
+    if (get_state) {
+      std::scoped_lock snapshot_lock(streamline_input_snapshot_mutex);
+      auto& snapshot = streamline_input_snapshot_state;
+      if (snapshot.stereo_backbuffer_complete && !snapshot.failed &&
+          !snapshot.completion_observation_started) {
+        snapshot.completion_observation_started = true;
+        completion_viewports = {snapshot.constants[0].viewport, snapshot.constants[1].viewport};
+        observe_completion = true;
+      }
+    }
+    if (observe_completion) {
+      for (std::size_t eye = 0; eye < 2; ++eye) {
+        using namespace darktidevr::producer::streamline_2_7_30;
+        const auto viewport = make_viewport(completion_viewports[eye]);
+        auto observed = make_dlssg_state();
+        int state_result{};
+        {
+          std::scoped_lock api_lock(streamline_feature_api_mutex);
+          state_result = get_state(&viewport, &observed, nullptr);
+        }
+        ComPtr<ID3D12Fence> retained_fence;
+        if (state_result == 0 && observed.base.struct_version >= 3 &&
+            observed.inputs_processing_completion_fence) {
+          static_cast<IUnknown*>(observed.inputs_processing_completion_fence)
+              ->QueryInterface(IID_PPV_ARGS(&retained_fence));
+        }
+        const auto completed = retained_fence ? retained_fence->GetCompletedValue() : 0;
+        {
+          std::scoped_lock snapshot_lock(streamline_input_snapshot_mutex);
+          streamline_input_snapshot_state.input_completion_fences[eye] = retained_fence;
+          streamline_input_snapshot_state.input_completion_values[eye] =
+              observed.last_present_inputs_processing_completion_fence_value;
+        }
+        write_streamline_probe_log(
+            "STEREO_INPUT_COMPLETION\tpresent_frame=%llu\tthread=%lu\teye=%zu"
+            "\tviewport=%u\tresult=%d\tstatus=%u\tframes_presented=%u"
+            "\tfence_retained=%u\tfence_value=%llu\tcompleted_value=%llu"
+            "\tstereo_submission=0\r\n",
+            static_cast<unsigned long long>(present), GetCurrentThreadId(), eye,
+            completion_viewports[eye], state_result, observed.status,
+            observed.num_frames_actually_presented, retained_fence ? 1U : 0U,
+            static_cast<unsigned long long>(observed.last_present_inputs_processing_completion_fence_value),
+            static_cast<unsigned long long>(completed));
+      }
+    }
+  }
   if (sample_streamline) {
     LARGE_INTEGER streamline_end{};
     QueryPerformanceCounter(&streamline_end);

@@ -103,3 +103,35 @@ expected here because this run deliberately does not allocate a target token;
 it is not evidence of a layout failure. Layout shape and per-eye divergence are
 established, not visual correctness of every pixel or temporal history. No
 generated-frame submission or publication has occurred.
+
+## After the complete menu registry pass
+
+Menu source fixes are committed at fe98e37: 72 registered views covered, popup
+and direct View-service input covered, mode-6 aspect rule unified. All four
+targeted menu tests, Lua compilation and harness build pass. User requested
+return to DLSS until the next headset-dependent check. Current run is unchanged.
+
+Branch `codex/dlss-live-integration-2026-09-05` adds a bounded two-viewport
+completion observation immediately after Present, once snapshot packing is
+complete. It uses SDK-checked version-3 DLSSGState and viewport constructors,
+serializes feature API calls with the game's calls, and retains returned D3D12
+fence COM references. No resource is released based on this observation and no
+stereo input is submitted. `STEREO_INPUT_COMPLETION` explicitly logs
+`stereo_submission=0`. Fence values from the game's current frame must not be
+attributed to our unsubmitted snapshots.
+
+Fresh capture had only one DLSSG_STATE query, at startup/frame zero. That query
+cannot validate subsequent input retirement. The new observation consumes
+presentation counters only in this explicitly requested, one-shot snapshot
+probe; it does not add continuous independent GetState polling. The two
+viewport counters must not be interpreted as separate generated-eye counts.
+
+Validation: native Release DLL and ABI-reference target build with warnings as
+errors; all four Streamline CTests pass. Next headset check requires a relaunch
+to load this DLL and the queued menu changes. Reuse the standard Ready preflight
+and `-EnableHudPanel -EnterPsykhanium -StreamlineInputSnapshotProbe` launch.
+Check confirmation interaction and store proportions, and inspect both
+STEREO_INPUT_COMPLETION results/status/fence-retained/value fields on the
+Present thread. A null, poisoned or unsupported fence result needs investigation
+before live submission integration. DLSS remains incomplete; continuous frame
+submission, generated-output identity and XR publication are still pending.
