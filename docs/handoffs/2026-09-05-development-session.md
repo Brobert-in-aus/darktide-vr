@@ -990,3 +990,11 @@ Gui2.bitmap_3d was absent. This narrows the issue to bitmap presentation rather
 than demonstrating an empty target. Next candidate uses the stock Gui.bitmap_3d
 signature for the target and a second known-icon sample, retaining the Gui2 icon
 in diagnostic mode for comparison. Fixture checks the legacy argument contract.
+
+User requested 10% less panel height and width inside binocular overlap. Height
+is now 1.0125 m at the same 1 m distance. Width intersects both recentered eye
+frusta at all four panel corners, accounting for IPD and optical yaw/pitch, and
+adds a 4% inset. Offline independent corner-reprojection checks and HUD fixture
+passed; LuaJIT passed all 25 chunks. Legacy bitmap candidate c816276 still lacked
+both icons behind the cyan backing; changed diagnostic backing to an outline so
+depth ordering cannot hide the center bitmap samples in the next check.

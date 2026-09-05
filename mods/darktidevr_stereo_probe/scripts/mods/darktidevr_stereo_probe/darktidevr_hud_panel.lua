@@ -3,6 +3,8 @@ local UIWidget = require("scripts/managers/ui/ui_widget")
 local ScriptWorld = require("scripts/foundation/utilities/script_world")
 
 local HudPanel = {}
+HudPanel.height = 1.125 * 0.9
+HudPanel.distance = 1
 
 local function pack(...)
     return {n=select("#", ...), ...}
@@ -492,7 +494,7 @@ function HudPanel.observe_render(world)
     end
 end
 
-function HudPanel.draw(world, position, rotation)
+function HudPanel.draw(world, position, rotation, overlap_width)
     if not state.enabled then
         return
     end
@@ -510,14 +512,20 @@ function HudPanel.draw(world, position, rotation)
     Matrix4x4.set_forward(tm, forward)
     Matrix4x4.set_up(tm, Quaternion.up(rotation))
     Matrix4x4.set_translation(tm, position + forward)
-    local width = 2
-    local target_width, target_height = target_extent()
-    local height = width * target_height / target_width
+    local width = overlap_width or 1
+    local height = HudPanel.height
+    if width <= 0 then return end
     if state.diagnostic then
-        -- Independent geometry check: cyan backing, magenta target patch.
-        -- Only the explicit diagnostic command enables either marker.
-        Gui.rect_3d(state.world_gui,tm,Vector2(-width*.5,-height*.5),999,
-            Vector2(width,height),Color(255,0,80,90))
+        -- Outline leaves the bitmap test unobscured even if world-GUI depth
+        -- ordering differs from screen-GUI layer ordering.
+        for _, edge in ipairs({
+            {-width*.5,-height*.5,width,.006},
+            {-width*.5,height*.5-.006,width,.006},
+            {-width*.5,-height*.5,.006,height},
+            {width*.5-.006,-height*.5,.006,height}}) do
+            Gui.rect_3d(state.world_gui,tm,Vector2(edge[1],edge[2]),999,
+                Vector2(edge[3],edge[4]),Color(255,0,180,190))
+        end
         -- A shipped HUD icon tests bitmap geometry independently of the target
         -- texture. It is loaded by the player's stock weapon HUD.
         Gui2.bitmap_3d(state.world_gui,

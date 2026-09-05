@@ -61,6 +61,35 @@ function Projection.binocular_visibility_scale(left, right)
     return scale
 end
 
+function Projection.binocular_panel_width(left, right, half_ipd, distance, height, maximum)
+    -- Intersect both eye frusta on the head-facing panel plane. Check its top
+    -- and bottom as well as eye translation: angular overlap alone misses IPD
+    -- at close distances and camera pitch can change the edge at each height.
+    local lower, upper = -maximum * 0.5, maximum * 0.5
+    for index, eye in ipairs({left, right}) do
+        local inverse = inverse_quaternion(eye.rotation)
+        local x_axis = Quaternion.rotate(inverse, Vector3(1, 0, 0))
+        local eye_x = index == 1 and -half_ipd or half_ipd
+        local tangent = math.tan(eye.horizontal_half)
+        for _, z in ipairs({-height * 0.5, height * 0.5}) do
+            local origin = Quaternion.rotate(inverse, Vector3(-eye_x, distance, z))
+            for _, side in ipairs({-1, 1}) do
+                local coefficient = side * x_axis.x - tangent * x_axis.y
+                local bound = tangent * origin.y - side * origin.x
+                if math.abs(coefficient) < 1e-8 then
+                    if bound < 0 then return 0 end
+                elseif coefficient > 0 then
+                    upper = math.min(upper, bound / coefficient)
+                else
+                    lower = math.max(lower, bound / coefficient)
+                end
+            end
+        end
+    end
+    -- Keep the panel centered on the head and slightly inside the shared edge.
+    return math.max(0, math.min(-lower, upper) * 2 * 0.96)
+end
+
 function Projection.update_lod_levels(update, world, camera, rendered_fov)
     -- Visibility overscan is canceled by post projection in the rendered
     -- image. LOD must use that visible FOV, not the wider admission cone.

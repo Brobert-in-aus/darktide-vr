@@ -4950,7 +4950,16 @@ local function update_stereo(manager)
 
     presentation.draw_world_menu_surface(
         world, clean_position, clean_rotation)
-    presentation.hud_panel.draw(world, clean_position, clean_rotation)
+    local hud_width = 1
+    if presentation.hud_panel.enabled() and head_render_frusta then
+        local hud_aspect = ui_eye_target_width / ui_eye_target_height
+        hud_width = presentation.projection_math.binocular_panel_width(
+            runtime_recentered_eye(head_render_frusta[1], hud_aspect),
+            runtime_recentered_eye(head_render_frusta[2], hud_aspect),
+            effective_half_ipd, presentation.hud_panel.distance,
+            presentation.hud_panel.height, 2)
+    end
+    presentation.hud_panel.draw(world, clean_position, clean_rotation, hud_width)
 
     ScriptCamera.force_update(world, primary_camera)
     ScriptCamera.force_update(world, right_camera)
