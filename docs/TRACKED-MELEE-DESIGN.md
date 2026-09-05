@@ -312,3 +312,12 @@ query orientations. Equivalent quaternion signs do not produce a false full
 turn. The test follows a two-metre tip through 180 degrees and bounds consecutive
 tip travel. This interpolates collision samples; it does not delay visual hands
 or enable aim smoothing. Pose-history discontinuity rules still apply.
+
+`darktidevr_melee_diagnostics.lua` now connects fixed-step ownership, pose history,
+rotational planning and raw overlap/sweep queries in one non-damaging pass.
+History resets after tracking loss, a changed weapon/calibration/reference key,
+a long gap or query failure. A repeated/replayed tick cannot issue more queries.
+Box queries use both endpoint orientations, with centres computed from each
+actual endpoint pose; sphere segments use one query. Results remain raw and
+explicitly report saturation/unverified capacity. Current overlap is preserved
+when historical sweeping is unsafe. This driver remains unhooked and unimported.

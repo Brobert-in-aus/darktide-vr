@@ -4,6 +4,11 @@ Updated 5 September 2026. The user has reserved the headset for non-VD use;
 development is offline until they resume testing. No game launch, deployment or
 XR readiness probe is needed for the work below.
 
+The user requested completing one area before switching. Melee is now the sole
+active development area; HUD and DLSS are parked. Complete melee integration
+and offline validation, retaining live acceptance for when the user resumes
+headset testing rather than switching areas to fill that wait.
+
 ## Melee
 
 Hand-directed button attacks and left-hand placement are accepted. Implement

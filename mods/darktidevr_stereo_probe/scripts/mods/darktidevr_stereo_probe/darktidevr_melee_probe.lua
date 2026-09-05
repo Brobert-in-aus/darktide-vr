@@ -63,7 +63,7 @@ end
 -- subdivision; callers must sample both orientations and current overlap as
 -- appropriate. This function does not claim to cover an entire rotating blade.
 function Probe.sweep(world, volume, start_origin, end_origin, rotation,
-        filter, rewind_ms, max_hits)
+        filter, rewind_ms, max_hits, end_rotation, query_rotation)
     if world == nil or start_origin == nil or end_origin == nil or rotation == nil or
             type(volume) ~= "table" or not triple(volume.offset, false) or
             type(filter) ~= "string" or filter == "" or
@@ -78,14 +78,14 @@ function Probe.sweep(world, volume, start_origin, end_origin, rotation,
     else
         return nil, "unsupported_shape"
     end
-    local offset = Quaternion.rotate(rotation,
-        Vector3(volume.offset[1],volume.offset[2],volume.offset[3]))
-    local start_center, end_center = start_origin + offset, end_origin + offset
+    local local_offset = Vector3(volume.offset[1],volume.offset[2],volume.offset[3])
+    local start_center = start_origin + Quaternion.rotate(rotation, local_offset)
+    local end_center = end_origin + Quaternion.rotate(end_rotation or rotation, local_offset)
     local results
     if volume.shape == "oobb" then
         results = PhysicsWorld.linear_obb_sweep(world, start_center, end_center,
             Vector3(volume.half_extents[1],volume.half_extents[2],volume.half_extents[3]),
-            rotation, max_hits, "collision_filter", filter, "rewind_ms", rewind_ms,
+            query_rotation or rotation, max_hits, "collision_filter", filter, "rewind_ms", rewind_ms,
             "report_initial_overlap")
     else
         results = PhysicsWorld.linear_sphere_sweep(world, start_center, end_center,

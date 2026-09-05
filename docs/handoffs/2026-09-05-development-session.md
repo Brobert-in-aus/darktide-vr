@@ -830,3 +830,16 @@ queues requires the plugin input-processing fence/value obtained on the Present
 thread. Added that requirement to the prepared-tag contract and remaining work.
 GetState's presentation count is since the previous query, so future submission
 must coordinate with existing game queries. Documentation/comment change only.
+
+Connected the offline melee diagnostic pass: fixed-tick claim, scalar history,
+shortest-arc substeps, current overlap, and both box sweep orientations. Corrected
+the primitive to compute start/end centre offsets from their respective actual
+rotations while selecting the fixed query orientation independently. Tests cover
+tip-only turns, duplicate/resimulated ticks, tracking recovery, reference changes,
+long gaps and query exceptions. CTest diagnostics/probe/compiler/invariants
+passed 4/4 (24 Lua chunks). No damage or live hook was added.
+
+Latest user steering: stop switching between work areas; take one to completion.
+Melee is the sole active area from this point. HUD and DLSS are parked. The
+headset remains reserved for non-VD use, so live testing must wait for the user
+to resume it; continue melee implementation and offline validation meanwhile.

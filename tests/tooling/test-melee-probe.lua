@@ -3,7 +3,10 @@ local vector_mt = {__add=function(a,b)
     return setmetatable({a[1]+b[1],a[2]+b[2],a[3]+b[3]}, getmetatable(a))
 end}
 Vector3 = function(x,y,z) return setmetatable({x,y,z}, vector_mt) end
-Quaternion = {rotate=function(_, v) return Vector3(v[3],v[2],-v[1]) end}
+Quaternion = {rotate=function(q, v)
+    if q.identity then return v end
+    return Vector3(v[3],v[2],-v[1])
+end}
 local query, count, calls, actors = nil, 100, 0, {}
 for i=1,100 do actors[i] = {} end
 PhysicsWorld = {immediate_overlap=function(world,...)
@@ -44,10 +47,12 @@ assert(calls == before, "invalid geometry reached physics")
 box.half_extents[1] = .15
 local raw = {{actor={},position={x=1,y=2,z=3},normal={x=0,y=1,z=0},distance=.25}}
 local sweep_calls = 0
+local expected_end_x, expected_end_z, expected_rotation = 12.1, 30, rotation
 PhysicsWorld.linear_obb_sweep = function(w, start_center, end_center, size, rot, limit,...)
     sweep_calls = sweep_calls + 1
-    assert(w == world and rot == rotation and limit == 1)
-    assert(start_center[1] == 11.1 and end_center[1] == 12.1)
+    assert(w == world and rot == expected_rotation and limit == 1)
+    assert(start_center[1] == 11.1 and end_center[1] == expected_end_x)
+    assert(end_center[3] == expected_end_z)
     assert(size[3] == 1.1)
     local options = {...}
     assert(options[1] == "collision_filter" and options[2] == "melee_fixture")
@@ -60,6 +65,10 @@ local sweep = assert(Probe.sweep(world,box,origin,Vector3(11,20,30),rotation,
 assert(sweep.count == 1 and sweep.saturated and not sweep.capacity_verified)
 raw[1].position.x, raw[1].normal.y = 99, -1
 assert(sweep.contacts[1].position.x == 1 and sweep.contacts[1].normal.y == 1)
+local end_rotation = {identity=true}
+expected_end_x, expected_end_z, expected_rotation = 11, 31.1, end_rotation
+assert(Probe.sweep(world,box,origin,Vector3(11,20,30),rotation,
+    "melee_fixture",25,1,end_rotation,end_rotation))
 PhysicsWorld.linear_sphere_sweep = function(w,a,b,radius,limit,...)
     sweep_calls = sweep_calls + 1
     assert(w == world and a[1] == 10 and b[1] == 10 and radius == .3 and limit == 8)
@@ -68,5 +77,5 @@ end
 local empty = assert(Probe.sweep(world,sphere,origin,origin,rotation,"melee_fixture",0,8))
 assert(empty.count == 0 and not empty.saturated)
 assert(not Probe.sweep(world,box,origin,origin,rotation,"melee_fixture",0,0))
-assert(sweep_calls == 2)
+assert(sweep_calls == 3)
 print("raw overlap geometry, result copying and uncapped Lua candidate collection passed")
