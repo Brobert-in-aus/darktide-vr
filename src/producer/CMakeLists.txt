@@ -1,4 +1,4 @@
-add_library(darktidevr_native_capture SHARED native_capture.cpp)
+add_library(darktidevr_native_capture SHARED native_capture.cpp resource_handle_trace.cpp)
 target_compile_options(darktidevr_native_capture PRIVATE
   /W4 /WX /permissive-)
 target_compile_definitions(darktidevr_native_capture PRIVATE

@@ -594,3 +594,31 @@ immutability and invalid inputs); source compiler gate passes 17 chunks.
 The two Quest recordings requested around 11:10 Brisbane were copied locally
 for sharing only. The user explicitly said they are unrelated to current work;
 do not use them for implementation decisions or visual acceptance.
+
+The environment-blur run crashed at 01:20:27.795 UTC, again approximately
+16m28s after launch, but at a different frame count (93,505 recent presents
+versus 78,241 previously). This time handle 67108868/type 1 mismatched stored
+536870916/type 8 on worker wt_4. ProcDump matched E0000000 but clone collection
+failed after the target exited (0x800707D1); no full dump was retained. The
+watcher exited after its single attempt. Do not claim capture succeeded.
+
+Both mini dumps contain the 4,194,304-entry ObjectLUT and show early IDs replaced
+by type-8 records. Inspection of RenderResourceHandleAllocator::new_handle
+(RVA 0x5b7870) shows free-list reuse with generation advancement, or a fresh
+cursor masked to 22 bits. This supports investigating handle exhaustion/wrap;
+the fixed table capacity alone does not prove exhaustion or identify a leak.
+
+Added an opt-in native resource-handle trace module. Presence of
+darktidevr_resource_handle_trace.flag beside the installed mod's other flags
+registers exact-prologue-guarded allocate/release detours before hook enable.
+It preserves return values and allocator behavior, counts by type, and sparsely
+logs returned index/generation plus game caller RVAs (first 8, then every 65,536
+allocations/type). Output is TEMP/darktidevr-resource-handles-PID.log. Counts
+start at installation and are aggregate across allocator instances; owner
+pointers in samples allow distinguishing instances. No lifetime fix is claimed.
+The trace is absent from normal runs when the flag is absent.
+
+Validation: Release native_capture build with project warnings as errors passed
+after fixing a compile typo. CTest native_capture_hooks, melee_volume,
+lua_source_compile and lua_source_invariants passed 4/4. Live diagnostic
+deployment and actual trace samples remain the next check.

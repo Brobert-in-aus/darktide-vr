@@ -1,5 +1,6 @@
 #include "producer/buffer_registry.h"
 #include "producer/pipeline_identity.h"
+#include "producer/resource_handle_trace.h"
 #include "core/shared_object_name.h"
 #include <Windows.h>
 #include <d3d12.h>
@@ -12040,6 +12041,7 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
     }
   }
   if (MH_Initialize() != MH_OK ||
+      !darktidevr::producer::install_resource_handle_trace(native_capture_module) ||
       (streamline_feature_resolver_target &&
        MH_CreateHook(streamline_feature_resolver_target,
                      &sl_get_feature_function_hook,
