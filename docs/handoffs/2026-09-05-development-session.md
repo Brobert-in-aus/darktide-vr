@@ -550,3 +550,19 @@ environment-blur-live-20260905.log. Visual-settings initialization completed at
 loading. shared_ready reached 661 with approximately 60 fresh pairs/s, zero
 reused frames and one startup pose mismatch. No claim of crash resolution or
 worn blur/block/left-hand acceptance. Offline melee modules remain unimported.
+
+Follow-up launcher reporting now retains the exact game process handle before
+running the XR viewer, reports game.result separately, and fails on a nonzero
+game exit even when the XR viewer returns success. It never looks the old PID
+up after exit. Running/unavailable results are explicit; exit code 0 alone is
+not a stability verdict or proof that an engine did not exit after logging a
+crash. This follow-up applies to the next launcher invocation, not the already
+running environment-blur session.
+
+Validation uses hidden child processes with an input handshake: observes them
+while running, then verifies retained exit codes 0 and 17. CTest launcher exit,
+startup-focus and play-transition checks passed. The broader launcher check
+found that the early-failure fixture predated automatic worker configuration;
+it now accepts either missing setup prerequisite before one-shot arming, mocks
+physical cores and passes. The worker tool reports a specific missing-settings
+error. No real game settings or input are touched by these fixtures.

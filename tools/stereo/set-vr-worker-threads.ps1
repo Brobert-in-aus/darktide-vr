@@ -24,6 +24,9 @@ if (Get-Process Darktide -ErrorAction SilentlyContinue) {
     throw 'Darktide must be closed before changing worker threads.'
 }
 $fullPath = [IO.Path]::GetFullPath($SettingsPath)
+if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+    throw "Darktide settings file not found: $fullPath"
+}
 $content = [IO.File]::ReadAllText($fullPath)
 # Only the active top-level setting; leave detected_user_settings cache untouched.
 $pattern = '(?m)^(max_worker_threads[ \t]*=[ \t]*)(?<value>\d+)[ \t]*\r?$'

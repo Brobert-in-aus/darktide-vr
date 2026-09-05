@@ -9,13 +9,16 @@ try {
     $env:APPDATA = $fixture
     # Prevent this source-level scenario from observing an unrelated live game.
     function Get-Process { param($Name) return @() }
+    function Get-CimInstance { param($ClassName) return [pscustomobject]@{ NumberOfCores = 8 } }
     $failed = $false
     try {
         & (Join-Path $repo 'tools/stereo/start-darktide-vr.ps1') `
             -GameRoot $fixture -SkipDeploymentSync -EnterPsykhanium `
             -FreshPsoCache -DoNotOpenLauncher
     } catch {
-        if ($_.Exception.Message -notlike '*cache directory not found*') { throw }
+        # Worker auto-configuration now runs before PSO preservation. Either
+        # missing prerequisite must fail before arming the one-shot range flag.
+        if ($_.Exception.Message -notmatch '(cache directory|settings file) not found') { throw }
         $failed = $true
     }
     if (-not $failed -or (Test-Path (Join-Path $fixture 'mods/darktidevr_stereo_probe/darktidevr_enter_psykhanium.flag'))) {

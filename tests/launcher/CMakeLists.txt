@@ -1,4 +1,9 @@
 if(BUILD_TESTING)
+  add_test(NAME launcher_game_exit_result
+    COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+      "${CMAKE_CURRENT_SOURCE_DIR}/validate-game-exit-result.ps1")
+  set_tests_properties(launcher_game_exit_result PROPERTIES
+    LABELS "phase1;launcher" TIMEOUT 25)
   add_test(NAME launcher_startup_focus
     COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
       "${CMAKE_CURRENT_SOURCE_DIR}/validate-startup-focus.ps1")

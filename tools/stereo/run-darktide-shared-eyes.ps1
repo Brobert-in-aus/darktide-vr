@@ -47,6 +47,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
+. (Join-Path $PSScriptRoot 'darktide-process-result.ps1')
+$observedGameProcess = $null
 
 # The shared mapping has one producer sequence and no multi-writer arbitration.
 # Two harnesses therefore make pose/frame sequence numbers run backwards and
@@ -112,6 +114,10 @@ if ($game.Count -ne 1 -or -not $game[0].Responding) {
 if ($game[0].MainWindowTitle -ne 'Warhammer 40,000: Darktide') {
     throw 'The running Darktide process does not expose the expected capture window'
 }
+$observedGameProcess = $game[0]
+# Hold the exact process handle while it is alive so its exit code survives
+# termination. The viewer's result=pass describes only the XR session.
+$null = $observedGameProcess.Handle
 
 $harnessPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath(
     $Harness)
@@ -203,11 +209,19 @@ try {
 finally {
     $ErrorActionPreference = $priorErrorActionPreference
 }
+$gameResult = Get-DarktideProcessResult -Process $observedGameProcess
+Write-Output "game.result=$($gameResult.Status) exit_code=$($gameResult.ExitCode)"
 if ($harnessExitCode -ne 0) {
     throw "Darktide stereo harness failed with exit code $harnessExitCode"
 }
+if ($gameResult.Status -eq 'failed') {
+    throw "Darktide exited abnormally with code $($gameResult.ExitCode); XR viewer shutdown is not game stability."
+}
 }
 finally {
+    if ($observedGameProcess) {
+        $observedGameProcess.Dispose()
+    }
     if ($singleWriterAcquired) {
         $singleWriterMutex.ReleaseMutex()
     }
