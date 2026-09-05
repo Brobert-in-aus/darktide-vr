@@ -134,3 +134,5 @@ left-hand blocking still needs worn validation. See the
 The user ended the live session to use the headset outside Virtual Desktop.
 Continue offline work on the three major remaining areas: melee, HUD and DLSS.
 Do not restart the game or require the headset during this offline period.
+See [remaining development](REMAINING-DEVELOPMENT.md) for the current code seams
+and next integration work in each area.

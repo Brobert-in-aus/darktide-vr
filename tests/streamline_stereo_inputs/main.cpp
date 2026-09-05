@@ -105,6 +105,18 @@ int main() {
            "partially observed inputs must remain incomplete");
 
     auto transaction = ready_transaction();
+    darktidevr::core::begin_streamline_eye_frame(eye1, ~0U);
+    expect(!darktidevr::core::observe_streamline_eye_resource(
+               eye1, StreamlineStereoResource::depth, 200),
+           "unknown frame sentinel must not accept temporal resources");
+    expect(!darktidevr::core::streamline_eye_inputs_complete(eye1),
+           "unknown frame must remain incomplete");
+    expect(!darktidevr::core::streamline_source_values_coherent(~std::uint64_t{}, 0) &&
+               !darktidevr::core::streamline_source_values_coherent(0, ~std::uint64_t{}),
+           "counter wrap must not imply adjacent source timing");
+    expect(darktidevr::core::streamline_source_values_coherent(
+               ~std::uint64_t{}, ~std::uint64_t{} - 1),
+           "valid adjacent counters near their limit must remain coherent");
     expect(darktidevr::core::evaluate_streamline_stereo_presentation(transaction) ==
                StreamlineStereoPresentationStatus::ready_to_stage,
            "complete transaction must become ready to stage");

@@ -100,7 +100,9 @@ constexpr bool streamline_stereo_present_target_matches(
 
 constexpr bool streamline_source_values_coherent(std::uint64_t first,
                                                   std::uint64_t second) noexcept {
-  return first == second || first + 1 == second || second + 1 == first;
+  // Source counters are monotonic; wrapping must not pair the newest value
+  // with an uninitialized/old zero counter.
+  return first >= second ? first - second <= 1 : second - first <= 1;
 }
 
 constexpr StreamlineStereoPresentationStatus
@@ -162,7 +164,7 @@ constexpr void begin_streamline_eye_frame(StreamlineEyeInputSet& inputs,
                                            std::uint32_t frame_index) noexcept {
   inputs = {};
   inputs.frame_index = frame_index;
-  inputs.frame_identity_valid = true;
+  inputs.frame_identity_valid = frame_index != ~0U;
 }
 
 constexpr bool observe_streamline_eye_resource(

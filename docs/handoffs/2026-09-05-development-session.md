@@ -753,3 +753,11 @@ ticks cannot spend cooldowns again. Tracking loss consumes the tick but does
 not clear target history. CTest melee_simulation, lua_source_compile and
 lua_source_invariants passed 3/3 (21 Lua chunks), including the combined contact
 collector/cooldown fixture. No live import, damage adapter or network support.
+
+Offline DLSS review tightened unknown-frame and counter-wrap handling in
+streamline_stereo_inputs.h. Built darktidevr-streamline-stereo-inputs-tests and
+darktidevr_native_capture in Windows Release with TreatWarningsAsErrors=true;
+CTest streamline_input_readiness and streamline_stereo_inputs passed 2/2.
+The accepted live DLL has not been replaced. REMAINING-DEVELOPMENT.md maps the
+three requested bodies of work to their actual implementation seams, including
+the still-missing DLSS-G tag/constants submission stage and ABI version check.
