@@ -183,7 +183,82 @@ local function target_extent()
         math.max(1, math.floor(1080 * scale + 0.5))
 end
 
+-- Custom HUD remains an optional, separately installed mod. Its editor owns
+-- persistence and cursor lifetime; this adapter only supplies the VR canvas.
+local function custom_hud()
+    return get_mod and get_mod("custom_hud") or nil
+end
+
+function HudPanel.editing()
+    local custom = custom_hud()
+    return state.enabled and custom and custom.is_customizing == true
+end
+
+function HudPanel.editor_rect(width, height, capture_width, capture_height, panel_aspect)
+    local inset = math.min(width,height)*0.025
+    local aspect = panel_aspect or capture_width/capture_height
+    local preview_width = math.min(width-2*inset,(height-2*inset)*aspect)
+    local preview_height = preview_width/aspect
+    return {x=(width-preview_width)/2,y=(height-preview_height)/2,
+        width=preview_width,height=preview_height,
+        capture_width=capture_width,capture_height=capture_height}
+end
+
+function HudPanel.editor_cursor(rect, x, y, canvas_width, canvas_height)
+    return (x-rect.x)*(canvas_width or rect.capture_width)/rect.width,
+        (y-rect.y)*(canvas_height or rect.capture_height)/rect.height
+end
+
+local function editor_input(input_service)
+    if not HudPanel.editing() or not input_service or not state.target_width then return input_service end
+    local rect = HudPanel.editor_rect(RESOLUTION_LOOKUP.width,RESOLUTION_LOOKUP.height,
+        state.target_width,state.target_height,state.panel_aspect or (1.18/(HudPanel.height*HudPanel.scale)))
+    return setmetatable({get=function(_,key,...)
+        local value = input_service:get(key,...)
+        if key == "cursor" and value then
+            local x,y = HudPanel.editor_cursor(rect,value.x,value.y,RESOLUTION_LOOKUP.width,RESOLUTION_LOOKUP.height)
+            return Vector3(x,y,0)
+        end
+        return value
+    end},{__index=function(_,key)
+        local value = input_service[key]
+        if type(value) == "function" then return function(_,...) return value(input_service,...) end end
+        return value
+    end})
+end
+
+local function draw_flat_editor(source_renderer)
+    if not HudPanel.editing() or not state.display_ready then return end
+    local width,height = RESOLUTION_LOOKUP.width,RESOLUTION_LOOKUP.height
+    local rect = HudPanel.editor_rect(width,height,state.target_width,state.target_height,state.panel_aspect or (1.18/(HudPanel.height*HudPanel.scale)))
+    if not state.editor_material then
+        state.editor_material = Gui.create_material(source_renderer.gui,
+            "content/ui/materials/icons/items/containers/item_container_square")
+        Material.set_scalar(state.editor_material,"placeholder",0)
+        Material.set_scalar(state.editor_material,"use_render_target",1)
+        Material.set_scalar(state.editor_material,"rows",1)
+        Material.set_scalar(state.editor_material,"columns",1)
+        Material.set_scalar(state.editor_material,"grid_index",0)
+        Material.set_resource(state.editor_material,"render_target",state.display_target)
+    end
+    Gui2.rect(source_renderer.gui,Vector3(0,0,20000),Vector3(width,height,0),
+        {color=Color(255,12,16,20)})
+    -- The screen-space bitmap needs only the render-target V correction.
+    Gui2.bitmap(source_renderer.gui,state.editor_material,nil,
+        Vector3(rect.x,rect.y,20001),Vector3(rect.width,rect.height,0),
+        {uv00=Vector2(0,1),uv11=Vector2(1,0),color=Color(255,255,255,255)})
+    for _,edge in ipairs({{rect.x-3,rect.y-3,rect.width+6,3},
+        {rect.x-3,rect.y+rect.height,rect.width+6,3},
+        {rect.x-3,rect.y,3,rect.height},{rect.x+rect.width,rect.y,3,rect.height}}) do
+        Gui2.rect(source_renderer.gui,Vector3(edge[1],edge[2],20002),Vector3(edge[3],edge[4],0),
+            {color=Color(255,90,235,220)})
+    end
+end
+
 local function place_status_node(element, id, x, y, scale)
+    local custom = custom_hud()
+    local override = custom and custom._position_overrides and custom._position_overrides[element]
+    if override and override.nodes and override.nodes[id] then return end
     local node = element._ui_scenegraph and rawget(element._ui_scenegraph,id)
     if not node then return end
     local p = node.position
@@ -266,6 +341,15 @@ local function route_fixed_updates(owner)
                         local scale, inverse = settings.scale, settings.inverse_scale
                         settings.scale = (scale or 1) * HudPanel.object_scale
                         settings.inverse_scale = 1 / settings.scale
+                        if self.__class_name == "HudElementCustomizer" then
+                            -- Its first update returns immediately after setup. The first
+                            -- draw must not place the sidebar using the stock inverse.
+                            self._inverse_scale = settings.inverse_scale
+                            local pp = self._panel_position
+                            if pp and pp[1]*settings.scale >= RESOLUTION_LOOKUP.width then
+                                self._panel_position = nil
+                            end
+                        end
                         local result = pack(pcall(original, self, dt, t, renderer, settings, ...))
                         settings.scale, settings.inverse_scale = scale, inverse
                         if not result[1] then error(result[2], 0) end
@@ -280,6 +364,7 @@ local function route_fixed_updates(owner)
 end
 
 local function destroy_resources()
+    state.editor_material = nil
     state.follow_pose = nil
     for _, record in pairs(state.layout_nodes) do
         record.element:set_scenegraph_position(record.id,record.x,record.y,nil,
@@ -508,7 +593,7 @@ local function update_enabled_flag(mod, t)
     local request = flag:read("*all")
     flag:close()
     local command = request and request:match("^%s*(%a+)")
-    if command ~= "enable" and command ~= "disable" and command ~= "diagnostic" and command ~= "source" and command ~= "sameworld" and command ~= "symbol" then
+    if command ~= "edit" and command ~= "enable" and command ~= "disable" and command ~= "diagnostic" and command ~= "source" and command ~= "sameworld" and command ~= "symbol" then
         return
     end
     local consumed = Mods.lua.io.open(path, "w")
@@ -522,6 +607,10 @@ local function update_enabled_flag(mod, t)
     state.symbol_probe = command == "symbol"
     state.diagnostic = command == "diagnostic" or command == "source" or same_world or state.symbol_probe
     HudPanel.set_enabled(command ~= "disable")
+    if command == "edit" then
+        local custom = custom_hud()
+        if custom then custom.is_customizing = true end
+    end
     if state.world_material and state.resource_renderer then
         local target = command == "source" and (state.capture_target or state.resource_renderer.render_target) or state.display_target
         Material.set_resource(state.world_material,"render_target",target)
@@ -546,11 +635,25 @@ function HudPanel.install(mod)
     state.mod = mod
     mod:hook("UIHud", "update", function(func, self, dt, t, input_service)
         update_enabled_flag(mod, t or 0)
+        local editor = self._elements and self._elements.HudElementCustomizer
+        if state.enabled and editor and not editor._setup_complete then
+            HudPanel.layout_status(self)
+        end
         if state.owner ~= self or not state.resource_renderer then
             return func(self, dt, t, input_service)
         end
+        if HudPanel.editing() and editor and (not state.editor_report_t or t > state.editor_report_t+3) then
+            state.editor_report_t = t
+            local cursor = input_service and input_service:get("cursor")
+            local pp = editor._panel_position or {}
+            mod:info("DARKTIDEVR_HUD editor show_panel=%s panel=%s,%s inverse=%s cursor=%s,%s using=%s setup=%s",
+                tostring(editor._show_info_panel),tostring(pp[1]),tostring(pp[2]),tostring(editor._inverse_scale),
+                tostring(cursor and cursor.x),tostring(cursor and cursor.y),tostring(editor._using_cursor),
+                tostring(editor._setup_complete))
+        end
         local previous = state.updating_owner
         state.updating_owner = self
+        input_service = editor_input(input_service)
         local result = pack(pcall(func, self, dt, t, input_service))
         state.updating_owner = previous
         if not result[1] then error(result[2], 0) end
@@ -583,6 +686,7 @@ function HudPanel.install(mod)
             return func(self, dt, t, input_service)
         end
         HudPanel.layout_status(self)
+        input_service = editor_input(input_service)
         local spatial, fixed = partition_elements(self._elements_array)
         log_partition(mod, spatial, fixed)
         local source_elements = self._elements_array
@@ -658,6 +762,7 @@ function HudPanel.install(mod)
             self._elements_array = source_elements
             if not fallback_ok then error(fallback_error, 0) end
         end
+        draw_flat_editor(source_renderer)
         return unpack(result, 1, result.n)
     end)
 
@@ -714,6 +819,7 @@ function HudPanel.draw(world, position, rotation, overlap_width)
     Matrix4x4.set_translation(tm, position + forward * HudPanel.distance)
     local width = (overlap_width or 1) * HudPanel.scale
     local height = HudPanel.height * HudPanel.scale
+    state.panel_aspect = width / height
     if width <= 0 then return end
     if state.diagnostic then
         -- Outline leaves the bitmap test unobscured even if world-GUI depth

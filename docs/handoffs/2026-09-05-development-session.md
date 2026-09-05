@@ -1164,3 +1164,47 @@ passed. Fixture checks exact translation, suppressed angular jitter and the
 one-metre panel-centre offset. Earlier fresh shared-eye capture at
 artifacts/diagnostics/hud-deadband-20260905 confirmed status layout placement;
 latest distance/prompt adjustments still require worn acceptance.
+
+
+## Optional Custom HUD desktop editor integration (in progress)
+
+Installed the user's complete `_downloads/custom_hud` separately in the game;
+its source remains unchanged and is not bundled into Git. Added an explicit
+installer that compiles its Lua and bootstrap, preserves any existing install,
+and backs up the load order before inserting Custom HUD ahead of the VR mod.
+F3 is its existing editor toggle. The VR HUD adapter presents the completed HUD
+texture flat with a teal boundary while editing, and honors Custom HUD's saved
+node overrides instead of reapplying automatic status placement over them.
+
+The first live capture (artifacts/diagnostics/hud-editor-20260905/left.png) showed
+unlabeled boxes, matching the user's report; it was not accepted. Diagnosis:
+Custom HUD's first update returns after setup without initializing its inverse
+scale, so its sidebar was placed at x=1417 logical units before the VR scale
+became 2.704. That put the controls outside the capture. Initialize its inverse
+scale before setup/draw and recover offscreen sidebar placement. Mouse input
+must map to the full authored canvas, not the smaller render-target dimensions.
+The preview must use the physical panel aspect (~1.18/0.81), not the 16:9 texture.
+Removed an initial attempt to filter editor groups: the full original interface
+is wanted, and those tables share references with the game visibility groups.
+
+Validation: pinned LuaJIT gate passes 25 VR chunks; optional Custom HUD Lua and
+bootstrap compile; hud_panel fixture passes including editor corner/centre
+mapping, physical aspect, first-frame sidebar scale, and saved layout precedence.
+Ready preflight passed before each session. Current live validation pending in
+artifacts/unattended/hud-editor-canvas-live-20260905.log. Editing currently draws
+its flat view into the shared eye presentation as well as the desktop mirror;
+desktop-only editor routing and a persistent in-VR desktop-use notice remain
+part of the mod-options integration. No focus forcing or synthetic mouse input
+was added.
+
+User-requested options TODOs are in REMAINING-DEVELOPMENT.md: controller prompts,
+configurable bindings, proper VR mod options, licensing/attribution/dependency
+review for the editor, and a persistent VR instruction to edit on the desktop.
+
+
+Canvas correction run: fresh stereo pairs at about 55/s, with no Lua errors.
+Editor telemetry confirms its sidebar now initializes at x=681.46 logical units
+with inverse scale 0.369822 (previously x=1417.44). The fresh 16:27:13 capture in
+artifacts/diagnostics/hud-editor-canvas-20260905 shows normal gameplay because
+the editor had closed before readback. It verifies return to the regular HUD,
+not editor hover/drag acceptance. Leave the live run available; F3 reopens it.

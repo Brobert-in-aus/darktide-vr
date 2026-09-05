@@ -162,6 +162,13 @@ failure = "fixed_update"
 assert(not pcall(hooks.update, update_owner, owner, .01, 4, {}))
 assert(settings.scale == 1.3 and settings.inverse_scale == 1/1.3 and state.updating_owner == nil)
 failure = nil
+fixed.__class_name = "HudElementCustomizer"
+fixed._panel_position = {2000,10}
+RESOLUTION_LOOKUP = {width=1920}
+hooks.update(update_owner,owner,.01,4,{})
+assert(math.abs(fixed._inverse_scale-1/2.704)<1e-9 and fixed._panel_position == nil,
+    "first editor draw must use VR scale and recover an offscreen sidebar")
+fixed.__class_name = "HudElementPlayerHealth"
 assert(state.capture_target and state.resource_renderer.render_target == nil
     and state.resource_renderer.base_render_pass == nil,
     "direct viewport UI must not also redirect a named render pass")
@@ -278,3 +285,33 @@ panel.set_enabled(false)
 assert(buffs._ui_scenegraph.background.position[1] == 20 and
     ability._ui_scenegraph.slot_combat_ability.horizontal_alignment == "right",
     "disabling panel must restore stock placement")
+
+-- Desktop letterboxing must map to precisely the capture canvas at every size.
+for _,extent in ipairs({{2496,2688},{1920,1080},{1280,720}}) do
+    local rect=panel.editor_rect(extent[1],extent[2],2496,1404)
+    local x,y=panel.editor_cursor(rect,rect.x,rect.y)
+    assert(x == 0 and y == 0)
+    x,y=panel.editor_cursor(rect,rect.x+rect.width,rect.y+rect.height)
+    assert(math.abs(x-2496)<1e-9 and math.abs(y-1404)<1e-9)
+    assert(rect.x >= 0 and rect.y >= 0)
+end
+-- Saved user positions win over the automatic status defaults.
+get_mod=function() return {_position_overrides={[buffs]={nodes={background={123,456,0}}}}} end
+buffs._ui_scenegraph.background.position[1]=123
+buffs._ui_scenegraph.background.position[2]=456
+panel.layout_status(layout_owner)
+assert(buffs._ui_scenegraph.background.position[1] == 123 and
+    buffs._ui_scenegraph.background.position[2] == 456)
+get_mod=nil
+
+local editor_rect=panel.editor_rect(2496,2688,2496,1404)
+local ex,ey=panel.editor_cursor(editor_rect,editor_rect.x+editor_rect.width/2,
+    editor_rect.y+editor_rect.height/2,2496,2688)
+assert(ex == 1248 and ey == 1344, "editor input must map to authored canvas, not target pixels")
+
+local physical_rect=panel.editor_rect(2496,2688,2496,1404,1.18/.81)
+assert(math.abs(physical_rect.width/physical_rect.height-1.18/.81)<1e-9)
+local px,py=panel.editor_cursor(physical_rect,physical_rect.x+physical_rect.width,
+    physical_rect.y+physical_rect.height,2496,2688)
+assert(math.abs(px-2496)<1e-9 and math.abs(py-2688)<1e-9,
+    "physical panel proportions must preserve full-canvas mouse mapping")

@@ -84,6 +84,15 @@ Retained update/visibility operations now route to their capture renderer.
 Smart-tag popup stereo is user-confirmed; selection now uses the reticle hit
 directly after the user reported the assisted target was still inconsistent.
 Pickup targeting is user-confirmed, but popup edge-size asymmetry remains open.
+The layout editor should be exposed through VR mod options. Before release,
+check the original Custom HUD license/permission terms: determine whether we
+can reuse/bundle it, what attribution is required, or make Custom HUD an optional
+dependency for editing. Do not assume attribution alone grants permission.
+Also add proper VR mod-menu options, configurable action/key bindings, and
+controller button glyphs/prompts instead of the current mouse/keyboard prompts.
+Entering desktop layout editing must display a clear message inside VR:
+"Use the desktop view to edit your HUD layout." Keep that instruction visible
+while editing and restore the normal VR HUD when the editor closes.
 An XR freeze occurred with synchronized producer frames continuing; the harness
 now logs cached-pair gating reasons to diagnose recurrence. The prototype stays disabled by
 default while loading, menus and transitions receive dedicated checks.
