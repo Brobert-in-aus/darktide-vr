@@ -1096,6 +1096,7 @@ class OpenXrProbe {
     std::uint64_t projection_resume_gameplay_generation{};
     const auto start = std::chrono::steady_clock::now();
     auto last_live_report = start;
+    auto next_cached_pair_report = start;
     std::uint32_t last_live_submitted_frames{};
     std::uint64_t last_live_fresh_shared_pairs{};
     std::uint32_t last_live_fallback_frames{};
@@ -1961,6 +1962,17 @@ class OpenXrProbe {
                 use_shared_pair, cached_pair_valid, projection_active,
                 shared_pair_stale_milliseconds,
                 cached_pair_grace_milliseconds);
+        if (use_cached_pair && frame_start >= next_cached_pair_report) {
+          next_cached_pair_report = frame_start + std::chrono::seconds(2);
+          std::cout << "openxr.cached_pair_reason fresh=" << shared_pair_fresh
+                    << " pose_synced=" << shared_pair_pose_synced
+                    << " settled=" << projection_pair_settled
+                    << " ready=" << shared_ready_for_frame
+                    << " committed_generation=" << committed_gameplay_generation
+                    << " rendered_generation=" << rendered_pair_gameplay_generation
+                    << " resume_generation=" << projection_resume_gameplay_generation
+                    << '\n';
+        }
         submitted_shared_pair_this_frame =
             use_shared_pair || use_cached_pair;
         submitted_cached_pair_this_frame = use_cached_pair;

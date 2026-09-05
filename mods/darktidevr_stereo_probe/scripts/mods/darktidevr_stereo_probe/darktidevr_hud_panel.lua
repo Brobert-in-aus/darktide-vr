@@ -6,7 +6,7 @@ local HudPanel = {}
 HudPanel.height = 1.125 * 0.9
 HudPanel.distance = 1
 HudPanel.scale = 0.8
-HudPanel.object_scale = 1.6
+HudPanel.object_scale = 2.08
 
 -- Store scalar poses across frames: engine Vector3/Quaternion temporaries
 -- cannot safely survive the frame that allocated them.
@@ -17,23 +17,34 @@ function HudPanel.follow_pose(previous, target, t)
     local dx,dy,dz = target.x-previous.x,target.y-previous.y,target.z-previous.z
     if dx*dx+dy*dy+dz*dz > 0.25 then return target end
     local dt = t-previous.t
-    local position_alpha = 1-math.exp(-dt/0.08)
-    local rotation_alpha = 1-math.exp(-dt/0.12)
+    local result = {t=t}
+    local function spring(key, goal, smooth_time)
+        local omega = 2/smooth_time
+        local change = previous[key]-goal
+        local temp = ((previous["v"..key] or 0)+omega*change)*dt
+        local decay = math.exp(-omega*dt)
+        result[key] = goal+(change+temp)*decay
+        result["v"..key] = ((previous["v"..key] or 0)-omega*temp)*decay
+    end
+    for _, key in ipairs({"x","y","z"}) do spring(key,target[key],0.24) end
     local dot = previous.qx*target.qx+previous.qy*target.qy+
         previous.qz*target.qz+previous.qw*target.qw
     local sign = dot < 0 and -1 or 1
-    -- Keep rapid turns within the panel's binocular safety margin.
-    local angle = 2*math.acos(math.min(1,math.abs(dot)))
+    for _, key in ipairs({"qx","qy","qz","qw"}) do spring(key,target[key]*sign,0.32) end
+    local length = math.sqrt(result.qx^2+result.qy^2+result.qz^2+result.qw^2)
+    for _, key in ipairs({"qx","qy","qz","qw"}) do result[key] = result[key]/length end
+    local angle = 2*math.acos(math.min(1,math.abs(result.qx*target.qx+
+        result.qy*target.qy+result.qz*target.qz+result.qw*target.qw)))
     if angle > math.rad(6) then
-        rotation_alpha = math.max(rotation_alpha,1-math.rad(6)/angle)
+        local alpha = 1-math.rad(6)/angle
+        for _, key in ipairs({"qx","qy","qz","qw"}) do
+            result[key] = result[key]*(1-alpha)+target[key]*sign*alpha
+            result["v"..key] = 0
+        end
+        length = math.sqrt(result.qx^2+result.qy^2+result.qz^2+result.qw^2)
+        for _, key in ipairs({"qx","qy","qz","qw"}) do result[key] = result[key]/length end
     end
-    local a,b = 1-rotation_alpha,rotation_alpha*sign
-    local qx,qy,qz,qw = previous.qx*a+target.qx*b,previous.qy*a+target.qy*b,
-        previous.qz*a+target.qz*b,previous.qw*a+target.qw*b
-    local length = math.sqrt(qx*qx+qy*qy+qz*qz+qw*qw)
-    return {x=previous.x+dx*position_alpha,y=previous.y+dy*position_alpha,
-        z=previous.z+dz*position_alpha,qx=qx/length,qy=qy/length,
-        qz=qz/length,qw=qw/length,t=t}
+    return result
 end
 
 local function pack(...)
@@ -213,10 +224,10 @@ function HudPanel.layout_status(owner)
     local ability_node = ability and ability._ui_scenegraph and rawget(ability._ui_scenegraph,"slot_combat_ability")
     -- Leave room for the toughness strip/name above HP. Both groups share
     -- a baseline, with their outer edges tied to the actual live health bar.
-    if buff_node then place_status_node(buffs,"background",x,y-28-buff_node.size[2],scale) end
+    if buff_node then place_status_node(buffs,"background",x,y-80-buff_node.size[2],scale) end
     if ability_node then
         place_status_node(ability,"slot_combat_ability",
-            x+bar.size[1]-ability_node.size[1],y-28-ability_node.size[2],scale)
+            x+bar.size[1]-ability_node.size[1],y-80-ability_node.size[2],scale)
     end
 end
 

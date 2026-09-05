@@ -1108,3 +1108,21 @@ Shared-eye follow-run captures show the interaction popup in both eyes beside
 the concentration-stimm marker with per-eye displacement. This establishes
 stereo rendering for the near interaction prompt; it does not by itself prove
 far SmartTagging popup selection or worn smoothing comfort.
+
+User reports stereo tag prompt still chooses an unexpected target, pickup prompt
+follows reticle but has edge asymmetry, and panel follow is too aggressive.
+Tag raycast data now uses the reticle's accepted hit unit and hit point directly,
+including for tag actions; no independently weighted smart-target result.
+Panel follow now uses a critically damped spring (0.24 s position / 0.32 s
+rotation), starting with zero velocity, retaining the 6-degree catch-up bound.
+User then requested 30% larger objects and more clearance above HP: object_scale
+is 2.08 and the group baseline gap is 80 logical units (previously 28).
+Pickup prompt edge-size asymmetry remains open.
+
+User reported XR frozen while desktop continued. Producer ready/checked/tag
+values kept advancing together, with fresh display pairs at zero and no new
+pose mismatch. The requested readback did NOT refresh: the PNG saved under
+hud-status-layout is a stale prior-run image and is not layout evidence.
+Added throttled cached-pair gate diagnostics to XR harness; no speculative
+native policy change. Harness Release build passed; LuaJIT, HUD, reticle-surface
+and melee-aim fixtures passed. Restarting for recovery and fresh validation.

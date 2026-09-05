@@ -174,6 +174,7 @@ function controller_aim.install(mod, presentation, state)
     end
 
     function controller_aim.publish_reticle(extension)
+        controller_aim.reticle_hit_unit = nil
         local position, rotation = controller_aim.target("right")
         local physics_world = extension and extension._physics_world
         if not position or not rotation or not physics_world then
@@ -244,6 +245,7 @@ function controller_aim.install(mod, presentation, state)
                 if distance then
                     hit = true
                     hit_kind = is_damage_surface and "damage" or "static"
+                    controller_aim.reticle_hit_unit = candidate_unit
                     break
                 end
             elseif is_self then

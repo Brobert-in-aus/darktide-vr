@@ -135,7 +135,7 @@ Material.set_resource = function() end
 local routed_calls = 0
 local function fixed_update(_, _, _, target, settings)
     assert(target == state.resource_renderer, "fixed update used stock renderer")
-    assert(math.abs(settings.scale - 2.08) < 1e-6 and math.abs(settings.inverse_scale - 1/2.08) < 1e-6)
+    assert(math.abs(settings.scale - 2.704) < 1e-6 and math.abs(settings.inverse_scale - 1/2.704) < 1e-6)
     routed_calls = routed_calls + 1
     if failure == "fixed_update" then error("injected fixed update") end
     return "updated", nil, 3
@@ -265,7 +265,7 @@ local layout_owner={_elements={HudElementPlayerBuffs=buffs,HudElementPlayerAbili
 panel.layout_status(layout_owner)
 assert(buffs._ui_scenegraph.background.position[1] == 100)
 assert(ability._ui_scenegraph.slot_combat_ability.position[1]+92 == 400)
-assert(buffs._ui_scenegraph.background.position[2]+80 == 672)
+assert(buffs._ui_scenegraph.background.position[2]+80 == 620)
 panel.layout_status(layout_owner)
 assert(placements == 2, "stable layout must not dirty widgets every frame")
 panel.set_enabled(false)

@@ -12022,6 +12022,18 @@ mod:hook(
     end
 )
 
+mod:hook("HudElementSmartTagging", "_find_raycast_targets",
+    function(func, self, force_update_targets)
+        local aim = presentation.controller_aim
+        local position, rotation = aim.target("right")
+        if not position or not rotation then return func(self, force_update_targets) end
+        local unit = aim.reticle_hit_unit
+        local player_unit = self._parent:player_unit()
+        local extension = unit and Unit.alive(unit) and ScriptUnit.has_extension(unit,"smart_tag_system")
+        if not extension or not extension:can_tag(player_unit) then unit = nil end
+        return {unit=unit,static_hit_position=aim.reticle_world_point and Vector3Box(aim.reticle_world_point)}
+    end)
+
 mod:hook("HudElementSmartTagging", "_find_world_marker_target",
     function(func, self, ui_renderer, render_settings)
         local aim_position, aim_rotation = presentation.controller_aim.target("right")
