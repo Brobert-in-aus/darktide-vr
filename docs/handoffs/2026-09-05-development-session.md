@@ -810,3 +810,11 @@ rewind arguments. The fixture checks transformed centres, retained contacts
 after query reuse, saturated versus empty results and invalid limits. CTest
 melee_probe/compiler/invariants passed 3/3. Rotational orchestration and stock
 stationary hilt-to-tip contact resolution remain separate integration work.
+
+Added the offline stock hit-zone adapter: preserves dynamic shield priority and
+weapon-specific tables, excludes self/dead/unregistered targets and omits the
+stock head-facing rejection. Unknown hit zones remain unresolved for obstruction
+handling. The combined collector fixture covers raised/lowered shields, priority
+overrides, scenery and false/nil target-registration results. CTest hit-zone/
+compiler/invariants passed 3/3 (23 Lua chunks). A process check found no remaining
+Darktide or XR-harness process; no headset access was needed.

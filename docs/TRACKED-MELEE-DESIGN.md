@@ -295,3 +295,12 @@ is still a raw contact until liveness, shield/world blocking and stock hit-zone
 priority are resolved. The stock box pipeline also sweeps a thin cross-section
 from hilt to tip, which supplies contact data even without hilt movement; a
 zero-length linear query alone must not be assumed to replace that behavior.
+
+`darktidevr_melee_hit_zone.lua` resolves raw sweep contacts through stock
+HitZone.get, action/default priority tables and the stock dynamic shield-priority
+function. It excludes self/dead units and requires a caller-provided stable
+target-generation key. It has no head-view or cooldown rejection. Unresolved
+hit zones are returned separately: scenery still needs obstruction handling.
+Its fixture combines the adapter with contact selection for raised/lowered
+shields and action-specific priorities. The adapter remains unimported; it does
+not itself establish wall visibility, multiplayer authority or damage eligibility.
