@@ -445,3 +445,10 @@ cooldowns and unlimited cleave, rejecting the proposed global cadence/motion
 threshold/stock cleave restrictions. Heavy contacts use charge-time per-enemy
 cooldowns, initially unavailable. These requirements supersede earlier suggestions.
 No always-active physical damage implementation has been enabled yet.
+
+Deployed d982fb5 after successful Ready preflight (120 rendered frames):
+artifacts/unattended/combat-direction-preflight-20260905.json. Active manual-startup
+run is artifacts/unattended/combat-direction-live-20260905.log. This includes the
+14th Lua module for block direction. Worn melee direction, block orientation,
+first-person animation-source appearance and left-hand alignment remain pending.
+The accepted pool/worker/LOD configuration is retained.
