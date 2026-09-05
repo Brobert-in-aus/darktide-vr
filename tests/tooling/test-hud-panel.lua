@@ -201,17 +201,21 @@ panel.set_enabled(true)
 hooks.draw(stock, owner, .01, 9, {})
 assert(state.queue_renderer == renderer and state.borrowed_renderer)
 hooks.draw(stock, owner, .01, 10, {})
-local v3meta = {__add=function(a) return a end}
-Vector3 = function(x,y,z) return setmetatable({x,y,z,kind="v3"},v3meta) end
+local v3meta = {__add=function(a,b) return Vector3(a[1]+b[1],a[2]+b[2],a[3]+b[3]) end}
+Vector3 = setmetatable({up=function() return Vector3(0,0,1) end},
+    {__call=function(_,x,y,z) return setmetatable({x,y,z,kind="v3"},v3meta) end})
+v3meta.__mul=function(v,s) return Vector3(v[1]*s,v[2]*s,v[3]*s) end
 v3meta.__unm=function(v) return Vector3(-v[1],-v[2],-v[3]) end
 Vector2 = function(x,y) return {x,y,kind="v2"} end
-Quaternion = {forward=function() return Vector3(0,1,0) end,
+Quaternion = {look=function() return {} end,forward=function() return Vector3(0,1,0) end,
     right=function() return Vector3(1,0,0) end,up=function() return Vector3(0,0,1) end}
 Matrix4x4.set_right, Matrix4x4.set_forward, Matrix4x4.set_up, Matrix4x4.set_translation =
-    function(tm,v) tm.right=v end,function(tm,v) tm.forward=v end,function() end,function() end
+    function(tm,v) tm.right=v end,function(tm,v) tm.forward=v end,function() end,function(tm,v) tm.position=v end
 local bitmap_drawn = false
 Gui2 = {bitmap_3d = function(_,material,flags,tm,_,options)
     local offset,size=options.position_offset,options.size
+    assert(tm.position[1] == 3 and tm.position[2] == 5 and tm.position[3] == 5,
+        "panel centre must remain one metre from the current head")
     assert(material == state.world_material)
     assert(flags == nil and tm.right[1] == -1 and tm.forward[2] == -1,
         "textured HUD must face the viewer")
@@ -223,7 +227,7 @@ Gui2 = {bitmap_3d = function(_,material,flags,tm,_,options)
     assert(math.abs(size[1] - 0.8) < 1e-6 and math.abs(size[2] - 0.81) < 1e-6)
     bitmap_drawn = true
 end}
-panel.draw(renderer.world,Vector3(0,0,0),{})
+panel.draw(renderer.world,Vector3(3,4,5),{})
 assert(bitmap_drawn)
 panel.set_enabled(false)
 assert(released == 32, "borrowed gameplay renderer/world were destroyed")
@@ -233,9 +237,9 @@ local function pose(x,angle)
 end
 local initial = panel.follow_pose(nil,pose(0,0),0)
 local followed = panel.follow_pose(initial,pose(.1,math.rad(8)),1/60)
-assert(followed.x > 0 and followed.x < .1 and followed.qz > 0 and followed.qz < math.sin(math.rad(4)))
+assert(followed.x == .1 and followed.qz > 0 and followed.qz < math.sin(math.rad(4)))
 local jitter = panel.follow_pose(initial,pose(.01,math.rad(2)),1/60)
-assert(jitter.x == 0 and jitter.qz == 0, "small head movements must leave HUD still")
+assert(jitter.x == .01 and jitter.qz == 0, "translation must track exactly while angular jitter stays still")
 assert(panel.follow_pose(followed,pose(.2,0),1/60) == followed, "second eye advanced follow")
 local reset = panel.follow_pose(followed,pose(10,0),2/60)
 assert(reset.x == 10, "teleport must reset follow")

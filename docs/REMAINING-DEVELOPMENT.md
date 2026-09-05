@@ -74,7 +74,12 @@ now pass shared-eye visual checks. Current effective object scale is 2.08x
 ability sit above the health bar, aligned to its left/right edges; their baseline
 gap is now 80 logical units after the user reported overlap at 28. Panel following
 was accepted in principle but softened to a critically damped spring for slower
-acceleration. Frame-rate independence and pose-reset behavior have offline coverage.
+acceleration, then a 4-degree angular deadband with no hard catch-up clamp.
+The user accepted that follow feel. Translation now follows the current head
+exactly, keeping the panel centre one metre away; only horizontal/vertical
+angles follow smoothly, with roll removed. Weapon prompts now sit 220 logical
+units above the health bar. These latest changes await worn acceptance.
+Frame-rate independence and pose-reset behavior have offline coverage.
 Retained update/visibility operations now route to their capture renderer.
 Smart-tag popup stereo is user-confirmed; selection now uses the reticle hit
 directly after the user reported the assisted target was still inconsistent.

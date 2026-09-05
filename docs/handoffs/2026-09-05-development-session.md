@@ -1147,3 +1147,20 @@ Applied that pattern with provisional 4-degree / 25-mm deadbands and the existin
 critically damped motion; removed the hard 6-degree snap-back that bypassed
 smoothing. These values are our starting choices, not universal vendor defaults.
 Fixture checks that small head motion leaves the panel stationary.
+
+
+## Fixed-distance HUD follow and higher weapon prompts
+
+User accepted the deadband follow feel but requested fixed distance and angular
+follow only. Removed translation lag: the panel centre is always the current
+head position plus its smoothed viewing direction times the one-metre distance.
+Head roll is removed before/after orientation smoothing. Kept the accepted
+2.08 object scale, 4-degree deadband and 0.32-second orientation spring. Raised
+central WieldInfo from 140 to 220 logical units above the player health bar.
+
+Validation: tools/stereo/test-darktide-lua-source.ps1 passed all 25 chunks;
+ctest --test-dir build/windows-vs2022 -C Release --output-on-failure -R hud_panel
+passed. Fixture checks exact translation, suppressed angular jitter and the
+one-metre panel-centre offset. Earlier fresh shared-eye capture at
+artifacts/diagnostics/hud-deadband-20260905 confirmed status layout placement;
+latest distance/prompt adjustments still require worn acceptance.

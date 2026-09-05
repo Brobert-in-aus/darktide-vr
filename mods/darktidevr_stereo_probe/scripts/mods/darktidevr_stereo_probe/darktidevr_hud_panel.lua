@@ -17,12 +17,8 @@ function HudPanel.follow_pose(previous, target, t)
     local dx,dy,dz = target.x-previous.x,target.y-previous.y,target.z-previous.z
     if dx*dx+dy*dy+dz*dz > 0.25 then return target end
     local anchor = previous.goal or previous
-    local gx,gy,gz = target.x-anchor.x,target.y-anchor.y,target.z-anchor.z
-    local goal = {x=anchor.x,y=anchor.y,z=anchor.z,
+    local goal = {x=target.x,y=target.y,z=target.z,
         qx=anchor.qx,qy=anchor.qy,qz=anchor.qz,qw=anchor.qw}
-    if gx*gx+gy*gy+gz*gz > 0.025^2 then
-        goal.x,goal.y,goal.z = target.x,target.y,target.z
-    end
     local goal_dot = math.abs(anchor.qx*target.qx+anchor.qy*target.qy+
         anchor.qz*target.qz+anchor.qw*target.qw)
     if 2*math.acos(math.min(1,goal_dot)) > math.rad(4) then
@@ -30,7 +26,8 @@ function HudPanel.follow_pose(previous, target, t)
     end
     target = goal
     local dt = t-previous.t
-    local result = {t=t,goal=goal}
+    -- Translation tracks the current head exactly; only viewing angles lag.
+    local result = {t=t,goal=goal,x=target.x,y=target.y,z=target.z}
     local function spring(key, goal, smooth_time)
         local omega = 2/smooth_time
         local change = previous[key]-goal
@@ -39,7 +36,6 @@ function HudPanel.follow_pose(previous, target, t)
         result[key] = goal+(change+temp)*decay
         result["v"..key] = ((previous["v"..key] or 0)-omega*temp)*decay
     end
-    for _, key in ipairs({"x","y","z"}) do spring(key,target[key],0.24) end
     local dot = previous.qx*target.qx+previous.qy*target.qy+
         previous.qz*target.qz+previous.qw*target.qw
     local sign = dot < 0 and -1 or 1
@@ -236,7 +232,7 @@ function HudPanel.layout_status(owner)
     if wield_node then
         local screen_width = state.target_width or (RESOLUTION_LOOKUP and RESOLUTION_LOOKUP.width) or 1920
         place_status_node(wield,"bounding_box",(screen_width/scale-wield_node.size[1])*0.5,
-            y-140-wield_node.size[2],scale)
+            y-220-wield_node.size[2],scale)
     end
 end
 
@@ -697,15 +693,17 @@ function HudPanel.draw(world, position, rotation, overlap_width)
             not state.display_target or not state.display_ready then
         return
     end
+    -- Keep the panel level: head roll must not tilt its readable surface.
+    rotation = Quaternion.look(Quaternion.forward(rotation), Vector3.up())
     local now = Managers and Managers.time and Managers.time:time("main")
     if now then
         local qx,qy,qz,qw = Quaternion.to_elements(rotation)
         state.follow_pose = HudPanel.follow_pose(state.follow_pose,
             {x=position.x,y=position.y,z=position.z,qx=qx,qy=qy,qz=qz,qw=qw},now)
         local pose = state.follow_pose
-        position = Vector3(pose.x,pose.y,pose.z)
         rotation = Quaternion.from_elements(pose.qx,pose.qy,pose.qz,pose.qw)
     end
+    rotation = Quaternion.look(Quaternion.forward(rotation), Vector3.up())
     local forward = Quaternion.forward(rotation)
     local tm = Matrix4x4.identity()
     -- Textured world GUI culls the back face; colored rectangles do not.
@@ -713,7 +711,7 @@ function HudPanel.draw(world, position, rotation, overlap_width)
     Matrix4x4.set_right(tm, -Quaternion.right(rotation))
     Matrix4x4.set_forward(tm, -forward)
     Matrix4x4.set_up(tm, Quaternion.up(rotation))
-    Matrix4x4.set_translation(tm, position + forward)
+    Matrix4x4.set_translation(tm, position + forward * HudPanel.distance)
     local width = (overlap_width or 1) * HudPanel.scale
     local height = HudPanel.height * HudPanel.scale
     if width <= 0 then return end
