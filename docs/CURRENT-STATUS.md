@@ -65,21 +65,20 @@ is fixed by using the rendered cyclopean yaw directly; the user accepted it.
 Shield and nearby mace sections still disappear after separating LOD FOV from
 visibility overscan. Disabling mesh streaming also made no visible difference;
 the user confirmed terrain LOD transitions repeatedly at roughly 3m. Multiplier
-3 extends the distance and is accepted as sufficient for the initial release.
+3 extended the distance; the user subsequently raised this machine's setting
+to 9 because transitions remained obvious. A portable release default is unproven.
 Finer LOD tuning and selective smoke-cloud billboard suppression are tracked in
 [post-release work](POST-RELEASE.md).
 
 ## This machine's configuration and release requirements
 
 This workstation has a Ryzen 7 9800X3D: 8 physical cores, 16 logical processors.
-max_worker_threads=7 was applied on 5 September 2026 (top-level active setting).
-Seven is this machine's setting, not a portable mod default. The launcher now
-derives max(1, physical core count - 1) automatically, using physical
-cores rather than logical processors/hyperthreads. Preserve this distinction in
-installation and performance documentation.
-
-The user accepted texture pool 2048, seven workers and LOD 3 for now. The pool
-is machine-local; future release defaults still need comparison on other GPUs.
+The worker/texture-pool experiment was rolled back at the user's request:
+max_worker_threads=13 and max_texture_pool_size=1024 are the recorded original
+values; lod_object_multiplier=9 is retained. Default launches preserve them.
+Development tuning requires explicit -TuneWorkerThreads and derives
+max(1, physical core count - 1), never logical processors/hyperthreads. Eventual
+release auto-configuration remains to be implemented and validated.
 
 The user accepted hand-directed melee on the recovered combat-direction build.
 Movement remains head-relative. Left-hand block direction is implemented but
@@ -131,10 +130,38 @@ in the current build. Interim hand-directed stock attacks are accepted;
 left-hand blocking still needs worn validation. See the
 [motion smoothing investigation](MOTION-SMOOTHING.md) for aim and weapon policy.
 
-The user has reconnected Virtual Desktop and authorized unattended testing while
-away. Proximity override is disabled; Ready preflight passed 120/120 renderable
-frames on 5 September. The user will verify melee contact; HUD is now the sole
-active task and DLSS remains parked.
+The user owns physical melee contact verification. Menus and the HUD baseline
+have been accepted; DLSS is the current development task. Keep the configured
+proximity override for this continuing live session and restore automation when
+development ends.
 Automated results do not establish worn visual or physical acceptance.
 See [remaining development](REMAINING-DEVELOPMENT.md) for the current code seams
 and next integration work in each area.
+
+## Accepted packed-output checkpoint (5 September)
+
+User confirms VR world rendering, loading screens and desktop mirror all work
+on e8bcfe4. This fixes the oversized transparent-colour pass without changing
+HUD composition. Eye size comes from OpenXR; DLSS internal dimensions come from
+the engine's selected quality. No fixed headset resolution or quality ratio is
+used. Current observed sizes are 2496x2688 per eye and 1664x1792 internal.
+
+The AMD swapchain wrapper receives real eye-sized replacement buffers while
+Streamline keeps the 4992x2688 packed presentation target. Desktop/loading
+presentation blits fill the wide target from the appropriate monoscopic source.
+Both original input-size guards and the stricter upscaler colour checks pass.
+
+Reproduce this diagnostic checkpoint only after Ready preflight:
+
+```powershell
+tools/stereo/start-darktide-vr.ps1 -EnableHudPanel -EnterPsykhanium -StreamlineStereoSwapchainProbe -StreamlineTargetTokenProbe
+```
+
+This is **not completed DLSS frame generation**: no new stereo tags are staged
+and no generated stereo is published to XR. Next work is the one-shot packed
+Present copy, paired submission/retirement and generated-output identity.
+The diagnostic proxy retains at most 16 images until process exit; proper GPU
+retirement/recycling is required for release. Restart after runtime resolution
+changes; unequal per-eye recommendations are explicitly unsupported by the
+current shared ABI. Details and validation are in the
+[DLSS handoff](handoffs/2026-09-05-dlss-offline.md).

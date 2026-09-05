@@ -1,5 +1,19 @@
 # DLSS offline continuation
 
+## Current accepted checkpoint
+
+Branch: codex/dlss-live-integration-2026-09-05. Code checkpoint: e8bcfe4.
+The user explicitly confirms that VR, loading screens and desktop mirror all
+work on the engine-mirror-blit run. This completes packed-output render isolation,
+not frame generation. Game/VD remain running for development. No new stereo
+tags or generated XR output are enabled. Next: one-shot packed Present staging,
+then paired submission/retirement and generated-output identity/publication.
+Use [current status](../CURRENT-STATUS.md) and
+[remaining development](../REMAINING-DEVELOPMENT.md) for current instructions;
+the sections below preserve the experiment history, including failed attempts.
+
+## Earlier continuation history
+
 User explicitly switched interim work from queued menu acceptance to DLSS.
 Branch: `codex/dlss-submission-2026-09-05`, based on menu commit `322ac82`.
 VD remains closed. No deployment, launch or live test occurred.
@@ -661,3 +675,28 @@ the blit change. Launch engine-mirror-blit-live-20260905.log follows Ready at
 engine-mirror-blit-preflight-20260905.json, using the same diagnostic flags.
 Mirror/loading runtime acceptance pending; prior accepted run was closed
 intentionally for deployment.
+
+Final live result: the user confirms "VR is good, loading screen and desktop
+mirror both work." Fresh left/right stereo initialization is present;
+shared_ready=1739 at a sampled 75.2 fresh pairs/s, zero pair mismatches.
+engine-mirror-blit-probe.tsv and engine-mirror-blit-report.txt are archived under
+artifacts/diagnostics/dlss-live-20260905; the stricter analyzer passes. Early
+loading mirror diagnostics returned 102 before proxy/eye resources existed;
+the user confirms actual hub-to-Psykhanium loading now displays correctly.
+No new tags, extra generation Presents or generated XR output were submitted.
+
+Final relevant validation commands (Windows x64):
+- cmake --build build/windows-vs2022 --config Release --target
+  darktidevr_native_capture darktidevr-stereo-color-resample-tests
+- ctest --test-dir build/windows-vs2022 -C Release --output-on-failure
+  -R '^(stereo_color_resample|streamline_(submission|input_lifetime|stereo_inputs|abi_reference))$'
+- tools/stereo/test-darktide-lua-source.ps1 (27 chunks)
+- build/dependencies/luajit/src/luajit.exe tests/tooling/test-eye-targets.lua
+  mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_eye_targets.lua
+- tools/stereo/read-streamline-probe.ps1 -Path
+  artifacts/diagnostics/dlss-live-20260905/engine-mirror-blit-probe.tsv
+- git diff --check
+
+User requests documentation, commit and branch push after this work. Keep the
+diagnostic setup between future attempts; do not restore the old normal setup
+between tests unless needed to resolve a new regression.

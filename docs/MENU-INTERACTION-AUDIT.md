@@ -9,7 +9,7 @@ evidence of individual visual testing of every one of the 72 registered views.
 User confirmed Options cursor alignment, Operative highlight/selection and
 premium-store input on aa1d10c. The Change Operative confirmation dialog remained
 uninteractable and Commodore's Vestures was vertically compressed. Follow-up
-changes below are built/tested but not yet deployed into that running game.
+changes below were subsequently deployed and received the acceptance above.
 
 - Move shared adaptation from UIViewHandler to UIManager, covering constant
   elements such as confirmation popups as well as normal views. Popup identity
@@ -141,8 +141,8 @@ Those confirmations are baseline evidence only. A prior shutdown error in
   baseline Lua files reproduces it. It was not weakened to make this change pass.
 - `git diff --check` passed.
 
-Next gate: reconnect VD and run the required Ready preflight before any sync or
-launch, then execute the matrix above. Require fresh stereo initialization and
-nonzero `shared_ready`; neither those counters nor an OpenXR session substitute
-for real pointer/highlight and visual acceptance. Saved HUD layouts and the
-accepted HUD size/distance are unchanged.
+The follow-up launch received the user's "Menus seem good" acceptance. Preserve
+saved HUD layouts and size/distance. Future renderer or input changes still need
+targeted regression checks of the matrix; this does not claim every registered
+view has been visited. The later DLSS world/loading/mirror checkpoint is recorded
+in [current status](CURRENT-STATUS.md), separately from menu-interaction coverage.

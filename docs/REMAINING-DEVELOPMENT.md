@@ -1,24 +1,21 @@
 # Remaining development: melee, HUD and DLSS
 
-Updated 5 September 2026. VD was reconnected and aa1d10c tested. That run has
-since ended after the capture window closed; launcher cleanup terminated the
-remaining game process. No assistant shutdown command was issued. Menu follow-up
-and DLSS completion observation are queued for a fresh-preflight next launch.
-Worn acceptance remains separate.
+Updated 5 September 2026. User accepts the e8bcfe4 packed-output checkpoint:
+VR world rendering, loading screens and desktop mirror all work. VD/game remain
+running on that checkpoint. Actual stereo DLSS generation is still incomplete.
 
 The [menu audit and rework](MENU-INTERACTION-AUDIT.md) replaces native-menu
 rectangle reconstruction with stock UI input delivery and consistent DPI
 handling. User now confirms Options cursor alignment and Operative highlight/
-selection, plus premium-store input. Confirmation popup input and premium-store
-vertical compression were reported and corrected in the follow-up source pass;
-those corrections await the next launch and visual acceptance. The pass covers
+selection, plus premium-store input. After follow-up fixes for confirmation
+popups and premium-store vertical compression, the user said "Menus seem good."
+This is acceptance of tested routes, not every possible view. The source pass covers
 all 72 registered views and direct View-service consumers. Pickup marker edge
 asymmetry remains open.
 
 The user has taken ownership of melee contact verification and explicitly moved
-development to HUD. User subsequently requested DLSS work while HUD acceptance
-was queued, then this menu coverage follow-up. Complete the menu pass first,
-then continue DLSS until the next real headset check is required.
+development to HUD and then DLSS. Preserve accepted HUD/menu behavior and
+continue DLSS, completing one body of work before switching to the next.
 The melee query prototype remains non-damaging; user verification is not a claim
 that physical damage integration is complete.
 
@@ -140,151 +137,49 @@ default while loading, menus and transitions receive dedicated checks.
 
 ## DLSS
 
-The accepted graphics baseline uses DLSS Quality. Stereo frame generation is
-unfinished. Existing native code observes Streamline, snapshots per-eye inputs,
-packs stereo color, reserves transport and can stage a diagnostic backbuffer
-copy. `STEREO_PRESENT_STAGE` explicitly reports `tags_staged=0` and no additional
-Present submission. That is not a completed generated-stereo submission path.
+The packed-output rendering checkpoint e8bcfe4 is worn-accepted: world colour,
+HUD, loading screens and desktop mirror all work. Native preparation and the
+updated analyzer validate matching depth/motion/upscaler-input sizes and
+runtime-sized upscaler output, HUD-less colour and named final eye textures.
+See [current operation](CURRENT-STATUS.md) and the
+[chronological handoff](handoffs/2026-09-05-dlss-offline.md) for flags and evidence.
 
-The [current NVIDIA DLSS-G guide](https://github.com/NVIDIA-RTX/Streamline/blob/main/docs/ProgrammingGuideDLSS_G.md)
-requires independently tagged viewports sharing one backbuffer. It does not
-support a separate swapchain per eye. Tagged inputs must remain valid through
-Present and constants must correspond to the presented frame. This supports the
-existing packed-stereo direction, but does not prove compatibility with the
-game's installed integration. The current guide is version 2.12.0; our read-only
-ABI mirror targets 2.7.30. Do not construct new API structures from that minimal
-mirror without checking the exact installed version and matching headers.
+The accepted fix gives the AMD swapchain wrapper genuine eye-sized resources,
+while Streamline retains the real wide presentation buffer. Viewport mappings
+alone did not isolate transient HDR/upscaler allocations. The HUD remains on
+its separate path. Full-image desktop blits handle the wide destination;
+loading uses the current engine buffer instead of a stale stereo frame.
 
-The installed Streamline DLL file versions were checked offline: 2.7.30.0.
-The optional `darktidevr-streamline-abi-reference` target now compares the mirror
-against the official v2.7.30 headers (structure sizes and relevant member offsets,
-plus a constructed viewport value). It compiles with warnings as errors and its
-test passes. Supply `DARKTIDEVR_STREAMLINE_REFERENCE_INCLUDE_DIR` at configure
-time to enable it; no SDK download or external headers are required by ordinary
-builds. Reference headers remain outside Git. This validates layout, not runtime
-API success or correct temporal inputs.
+Final dimensions are the active OpenXR runtime recommendation. Internal colour,
+depth and motion dimensions come from the engine's actual DLSS quality-dependent
+resources. Do not hardcode a headset size or Quality-mode scaling fraction.
+Runtime changes currently require restart; unequal eye recommendations fail
+explicitly. Existing 640..7680 validation bounds (3840 eye width in packed mode)
+are supported-size limits, not clamped rendering targets.
 
-The [version-matched guide](https://github.com/NVIDIA-RTX/Streamline/blob/v2.7.30/docs/ProgrammingGuideDLSS_G.md)
-also supports backbuffer subrect tags without supplying a backbuffer resource
-pointer. It specifies input lifetime through Present and clearing tags when
-inputs become invalid. The pending submission adapter must include cleanup as
-well as successful per-eye tagging; a one-shot tag followed by target reuse is
-insufficient.
+Remaining work, in order:
 
-`src/producer/streamline_eye_tags.h` now prepares one eye's depth, motion and
-HUD-less tags plus its packed-backbuffer subrect, without calling Streamline.
-The owner cannot be copied/moved because tags reference its resource array.
-It rejects invalid dimensions, aliased input roles and stale state after failed
-preparation. Tests compare its type identifiers, versions and lifecycle values
-to the matching official SDK. Preparing both eyes independently does not prove
-cross-eye input isolation; the existing pair policy remains required. Submission,
-GPU lifetimes, per-frame constants and tag clearing are still integration work.
+1. Exercise the bounded packed Present staging copy on the accepted rendering
+   path, verifying desktop/VR output and no source-resource corruption.
+2. Wire paired constants/tags into the established Present route. Preserve
+   partial-call failure cleanup and per-eye input completion-fence ownership;
+   existing native preparation still stages zero new tags.
+3. Establish generated-output identity tied to the submitted stereo batch.
+   An asynchronous Present or nearby queue execution is only a candidate;
+   input-retirement fences do not prove generated output is ready.
+4. Publish only a complete, fence-ready generated stereo pair with coherent pose
+   and transport identity. Continuous generation and XR publication are not done.
+5. Replace the diagnostic engine-buffer owner's 16-image process-lifetime
+   retention with verified GPU retirement/recycling. Validate repeated resize,
+   menu/loading transitions, runtime resolution and DLSS quality changes before
+   promoting these explicit diagnostic flags to release defaults.
 
-The [v2.7.30 DLSS-G state contract](https://github.com/NVIDIA-RTX/Streamline/blob/v2.7.30/include/sl_dlss_g.h)
-requires waiting for the plugin's input-processing fence before modifying tagged
-inputs on a non-presenting queue (and always with its no-client-queue-blocking
-mode). Retrieve that fence/value on the Present thread. Returning from Present
-or clearing a tag alone is not the retirement condition for our input snapshots.
-The same state query reports presentations since the previous query; avoid
-uncoordinated extra polling that consumes the game's counters.
+Validation: native and XR Release builds pass, all 27 LuaJIT chunks compile,
+eye-target lifecycle/resolution fixtures pass, and five focused Streamline/GPU
+CTest cases pass. WARP verifies proxy identity/resize/RTV support and full-image
+mirror blitting. The user accepted the final live world/loading/mirror result;
+that acceptance does not extend to not-yet-enabled frame generation.
 
-Next: prepare version-matched per-eye tag/constants staging, validate backbuffer
-subrects and input lifetimes, then establish generated-output identity and GPU
-completion before publishing to the XR consumer. The desktop frame rate alone
-does not prove additional stereo frames reached the headset. Preserve the
-accepted reconstruction jitter; historical per-eye reset experiments worsened
-quality and throughput.
-
-Offline frame-identity checks now reject the unknown frame sentinel and prevent
-unsigned counter wrap from appearing as adjacent source timing. Native Release
-and the corresponding test target build with warnings as errors; both Streamline
-tests pass. These changes do not enable frame generation or replace its remaining
-integration and live acceptance work.
-
-Offline continuation on `codex/dlss-submission-2026-09-05` adds a paired
-descriptor/constants owner (`streamline_stereo_tags.h`). It preserves each
-eye's jitter and matrices, rejects unsupported constants versions/extension
-chains, duplicate viewports and cross-eye resource aliases across all roles.
-Failed preparation exposes no stale pair. The official 2.7.30 SDK fixture
-constructs constants and checks the resulting pair, including rejection paths.
-
-`streamline_input_lifetime.h` now models retirement separately from generated
-output readiness: both eye fence tickets must complete and installed tags must
-be cleared before a presented batch can release resources. It rejects stale
-submission identities, replacement fences, device-removal sentinel values and
-premature reuse. It supports shared fences with separate per-eye values and
-aborted, unpresented batches. The resource owner must retain actual COM
-references and coordinate GetState on the Present thread; this helper does not
-perform those operations or claim live integration.
-
-Release builds with warnings as errors and all three targeted CTests pass:
-`streamline_stereo_inputs`, `streamline_input_lifetime`, and
-`streamline_abi_reference`. Remaining work includes wiring these owners into
-native submission, restoring appropriate resource states, handling partial SL
-call failures/tag clearing, retaining fence references, and validating generated
-output identity before publication. Nothing was deployed with VD closed.
-
-The [continued submission work](handoffs/2026-09-05-dlss-offline.md) now includes
-an API adapter with legacy/frame-based tagging, partial-failure cleanup and
-native preparation diagnostics. Four tests and the native Release DLL pass.
-Prior capture evidence exposes a colour-only crop from 4992-wide sources to
-2496-wide eye regions; corresponding depth/motion/projection mapping is not
-established. Native preparation rejects this mismatch. Current runtime capture
-is needed before enabling calls; continuous generation and XR publication are
-still unfinished, not claimed complete.
-
-Latest live continuation fixed snapshot scheduling that incorrectly depended on
-a short logging burst. After an announced restart, both completion queries
-passed and retained fences; completion lagged the required value by two after
-Present. The next build replaces wide-path colour cropping with full-image GPU
-resampling and matching HUD-less eye outputs. Actual D3D12 WARP execution and
-the four existing Streamline tests pass. The next headset gate is a wide-output
-diagnostic launch to validate image/projection correspondence and prepared
-inputs. Generated stereo submission remains disabled; the current normal run
-was left open. See the DLSS handoff for logs, commands and remaining work.
-
-The subsequent wide-output test passed resource preparation but failed worn
-acceptance: HUD disappeared, right-hand controller was offset and world markers
-grew much larger. Normal rendering was restored by relaunching without diagnostic
-flags. Do not enable the current wide mode as a release path. Packed output must
-be isolated from normal engine eye/UI dimensions; do not mask these regressions
-with HUD, hand or marker calibration changes. DLSS remains incomplete.
-
-The user confirms normal restoration recovered VR. The next window/presentation
-extent separation preserved normal DLSS inputs but still failed visual testing:
-desktop output was half scene / half black and VR was broken. Normal mode has
-been restored again. Final engine render-target isolation is required before
-another wide-output experiment; successful input preparation alone is not an
-acceptance gate. See the DLSS handoff for exact runtime evidence.
-
-Current machine LOD tuning is now `lod_object_multiplier = 9`, requested by the
-user because 3 still showed obvious transitions. Keep post-release LOD tuning
-open; 9 is not established as the release default. Fullscreen launch enforcement
-now runs both before launcher startup and at the game's settings-apply boundary.
-
-DLSS continuation now has an opt-in gameplay eye-target module using the engine's
-existing output_target/back_buffer mapping. Runtime confirms separate named
-2496x2688 eye finals, but exposed typeless shared textures that the XR transport
-rejects. The format correction is built and GPU-tested, not yet deployed. Next
-worn gate is normal-sized isolated eye targets, before any further wide-output
-experiment. Normal rendering is currently restored.
-
-At the user's request, the texture-pool/worker trials have been rolled back to
-1024 and 13 respectively using recorded pre-change values; LOD stays 9. Default
-launches preserve that worker setting. Physical-core tuning is explicitly opt-in
-via -TuneWorkerThreads during development. Release auto-configuration remains
-future work, not an excuse to reapply this reverted experiment automatically.
-
-The first typed eye-target run failed worn acceptance with misaligned lighting.
-Renderer-contract review found that gameplay output_target is sized by the
-upscaler; overriding it with full-resolution UI-style targets was incorrect.
-The diagnostic now overrides only the final back_buffer and preserves internal
-resource sizing. Runtime captures/preparation pass at normal resolution; user
-visual acceptance remains pending. See the DLSS handoff for evidence.
-
-Normal private eye finals are now worn-accepted. The subsequent wide resource
-check retained correct final/depth/motion sizes but doubled HUD-less colour;
-preparation correctly rejected it. An explicit per-eye HUD-less target is now
-implemented and Lua-tested, awaiting live validation. Two Ready checks currently
-report zero rendered frames, so the game is closed and the new mapping has not
-been deployed. Resume a renderable VD session before the next packed-buffer test.
+The current machine retains LOD 9 and restored pool/workers 1024/13. Worker
+tuning is opt-in with -TuneWorkerThreads. Release auto-configuration must use
+physical cores, not logical processor count. Keep this separate from DLSS work.
