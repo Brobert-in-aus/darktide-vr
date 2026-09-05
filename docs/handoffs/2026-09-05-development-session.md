@@ -461,3 +461,16 @@ stereo validation. Corrected to DMF hook_require so the callback attaches after
 the game's normal class load. The regression now throws if that dependency is
 required during mod boot, then explicitly supplies the deferred class and checks
 block behavior. Updated test and 14-chunk compiler gate pass.
+
+Recovery deployment 6f4f2da passed Ready preflight (120 rendered frames) in
+artifacts/unattended/combat-loadorder-preflight-20260905.json and launched with
+manual startup in combat-loadorder-live-20260905.log. Fresh mod initialization
+completed through the visual-settings policy at 00:38:31.016 with no new mod
+errors; game remains responsive. This fixes the earlier eager-load failure.
+Fresh range stereo and worn melee/block checks are still pending at this point.
+
+Recovery run reached range stereo: deferred PlayerUnitDataExtension read hook
+attached at 00:40:04.848; rigid hands ready at 00:40:11.373. shared_ready >2850,
+recent fresh throughput about 59fps, zero reused frames and two startup pose
+mismatches. No new mod errors. Crash recovery is established; worn attack and
+block acceptance is still pending.
