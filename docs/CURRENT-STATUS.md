@@ -91,6 +91,11 @@ environment is applied. This covers camera/mood and menu paths that write
 environment values directly. Offline checks pass; this follow-up has not yet
 been deployed to the accepted hand-melee run.
 
+That run later hit an engine graphics-resource handle mismatch during world
+rendering (00:54:52 UTC). The cause is unresolved; hand-aim acceptance still
+stands, but the run does not establish stability. See the session handoff for
+the preserved crash findings.
+
 The September 4/5 candidate has outstanding worn checks for both unarmed and
 wielded palm placement, pinned-marker
 alignment at every eye edge, and lighting parity in both hub and Psykhanium.

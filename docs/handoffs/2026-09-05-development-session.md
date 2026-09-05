@@ -518,3 +518,26 @@ Queued for the next deployment, not applied to the user's ongoing accepted run.
 CTest visual_settings, lua_source_compile and lua_source_invariants passed 3/3;
 the regression simulates direct camera writes, repeat mood blends and two scene
 environments and verifies values at the original apply boundary.
+
+At 00:54:52.709 UTC the recovered combat-loadorder run crashed on the renderer
+thread after approximately 16 minutes. Assertion: engine ObjectLUT handle
+134217785 (type 2) did not match stored handle 536870969 (type 8), in
+d3d12_resource_manager.h:88. This is distinct from the earlier Lua boot failure.
+No recent melee/menu transition or Lua error preceded the crash; tracking input
+was idle while world rendering continued. The XR harness subsequently printed
+result=pass for its own shutdown, which does not establish game stability.
+
+Local dump/PE inspection (ignored artifacts/diagnostics scripts and dependencies)
+identifies D3D12Dispatcher::dispatch and the level_world render pass. Stack RVAs
+include 0x7c73fe, 0x7c797c, 0x7ab790, 0x769225 and 0x388f6b. The failing binding
+record contains the asserted handle; individual buffer/mesh ownership and the
+reason for the stale handle remain unresolved. Do not infer that no native
+hook appears in this stack means the mod cannot have caused an earlier lifetime
+problem. Do not silently roll back the accepted pool/worker/LOD settings on this
+evidence alone. No physical-melee foundation or scene-blur follow-up was deployed
+to this run, so those queued changes did not cause this crash.
+
+Fatshark documented this assertion class in an older Arbites character-creation
+issue, reportedly fixed in 1.8.1. Different trigger/build; supporting context,
+not a diagnosis of this incident:
+https://forums.fatsharkgames.com/t/known-issue-crash-in-arbites-character-creation/109333
