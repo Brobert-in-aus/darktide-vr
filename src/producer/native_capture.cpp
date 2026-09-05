@@ -10067,7 +10067,9 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
           completed_back_buffer.Get(),
           static_cast<unsigned>(completed_source_state), boundary_qpc.QuadPart);
     }
-    if (log_streamline_eye_boundary &&
+    // Snapshot progress must not depend on the short native-Present log burst.
+    // Slow startup or opening a menu can exhaust that burst before gameplay.
+    if (requested_eye >= 0 &&
         streamline_input_snapshot_probe_requested.load(
             std::memory_order_acquire)) {
       schedule_streamline_input_snapshot(
