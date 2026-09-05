@@ -85,6 +85,12 @@ The user accepted hand-directed melee on the recovered combat-direction build.
 Movement remains head-relative. Left-hand block direction is implemented but
 untested; left-hand alignment still needs a worn verdict.
 
+A follow-up blur guard is prepared for the next deployment: it zeroes scene
+depth-of-field and fullscreen-blur values immediately before the shading
+environment is applied. This covers camera/mood and menu paths that write
+environment values directly. Offline checks pass; this follow-up has not yet
+been deployed to the accepted hand-melee run.
+
 The September 4/5 candidate has outstanding worn checks for both unarmed and
 wielded palm placement, pinned-marker
 alignment at every eye edge, and lighting parity in both hub and Psykhanium.

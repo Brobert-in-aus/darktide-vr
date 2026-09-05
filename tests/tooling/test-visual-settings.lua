@@ -2,6 +2,17 @@ local module = dofile(arg[1])
 local hooks, settings, render = {}, {}, {}
 local ui = {update=function() return 'updated' end}
 require = function() return ui end
+local applied
+ShadingEnvironment = {
+    set_scalar = function(environment, key, value) environment[key] = value end,
+    apply = function(environment, marker)
+        -- Inspect at the original function boundary, not after application.
+        assert(environment.dof_enabled == 0 and environment.fullscreen_blur_enabled == 0)
+        assert(environment.fullscreen_blur_amount == 0)
+        applied = environment
+        return marker, nil, 'applied_environment'
+    end,
+}
 Application = {
     set_user_setting = function(location, key, value)
         settings[location] = settings[location] or {}
@@ -55,4 +66,18 @@ assert(render.unrelated == 'true')
 settings.render_settings.lens_quality_enabled = true
 assert(Application.apply_user_settings() == 'applied')
 assert(settings.render_settings.lens_quality_enabled == false)
-print('VR visual settings: startup, presets, direct writes and apply passed')
+local scene = {dof_enabled=1, fullscreen_blur_enabled=1, fullscreen_blur_amount=.8,
+    exposure_compensation=2, ui_bloom_enabled=1, grey_scale_enabled=1}
+local marker, middle, last = ShadingEnvironment.apply(scene, 'scene')
+assert(marker == 'scene' and middle == nil and last == 'applied_environment')
+assert(applied == scene and scene.exposure_compensation == 2 and scene.ui_bloom_enabled == 1)
+assert(scene.grey_scale_enabled == 1, 'unrelated environment effect was changed')
+-- Simulate a subsequent mood blend replacing scalar values without going
+-- through set_render_setting, followed by a camera's direct DOF write.
+scene.fullscreen_blur_enabled, scene.fullscreen_blur_amount = 1, .5
+ShadingEnvironment.set_scalar(scene, 'dof_enabled', 1)
+ShadingEnvironment.apply(scene)
+local second_scene = {dof_enabled=1, exposure_compensation=-1}
+ShadingEnvironment.apply(second_scene)
+assert(second_scene.exposure_compensation == -1, 'second viewport lighting changed')
+print('VR visual settings: startup, presets, direct writes, apply and environment bypasses passed')

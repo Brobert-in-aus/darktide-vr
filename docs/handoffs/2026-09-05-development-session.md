@@ -505,3 +505,16 @@ ctest --test-dir build/windows-vs2022 -C Release --output-on-failure -R
 passed 4/4. Lua compile gate includes 16 mod chunks. No deployment or headset
 test was run concurrently with the user's game, and no live acceptance is claimed
 for this offline foundation.
+
+Reviewed the remaining blur paths. CameraManager writes dof_enabled into the
+shading environment after mood blending; SystemView and several constant UI
+elements write fullscreen_blur_enabled/amount directly. Added a final clamp for
+these three scalars at ShadingEnvironment.apply in the visual-settings module.
+This leaves exposure, bloom and unrelated environment values intact and preserves
+the original apply arguments/returns. ScriptWorld applies the environment at
+the render boundary, so resource blends cannot undo this clamp before that call.
+
+Queued for the next deployment, not applied to the user's ongoing accepted run.
+CTest visual_settings, lua_source_compile and lua_source_invariants passed 3/3;
+the regression simulates direct camera writes, repeat mood blends and two scene
+environments and verifies values at the original apply boundary.

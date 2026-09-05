@@ -11,8 +11,22 @@ local disabled = {
     sun_flare_enabled = true,
 }
 local qualities = { dof_quality = true, lens_flare_quality = true }
+local environment_disabled = {
+    dof_enabled = true,
+    fullscreen_blur_enabled = true,
+    fullscreen_blur_amount = true,
+}
 
 function VisualSettings.install(mod)
+    -- Camera mood blends and several menus bypass render-settings writes.
+    -- Clamp at the final apply boundary, after those blends/direct writes,
+    -- rather than altering the shared mood resources or other lighting values.
+    mod:hook(ShadingEnvironment, "apply", function(func, environment, ...)
+        for key in pairs(environment_disabled) do
+            ShadingEnvironment.set_scalar(environment, key, 0)
+        end
+        return func(environment, ...)
+    end)
     local function enforce()
         for key in pairs(disabled) do
             Application.set_user_setting("render_settings", key, false)
