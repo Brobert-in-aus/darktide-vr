@@ -1,6 +1,6 @@
 # Current status and operation
 
-Updated 5 September 2026. This page supersedes historical feasibility documents
+Updated 6 September 2026. This page supersedes historical feasibility documents
 for current defaults and operating instructions.
 
 ## Supported development path
@@ -158,8 +158,11 @@ tools/stereo/start-darktide-vr.ps1 -EnableHudPanel -EnterPsykhanium -StreamlineS
 ```
 
 This is **not completed DLSS frame generation**: no new stereo tags are staged
-and no generated stereo is published to XR. Next work is the one-shot packed
-Present copy, paired submission/retirement and generated-output identity.
+and no generated stereo is published to XR. The one-shot packed Present copy
+passed unattended on 6 September with `-StreamlineStereoStageProbe`, including
+GPU fence completion and continued fresh XR pairs. Next is current-frame
+binding, paired submission/retirement and generated-output identity. See the
+[unattended continuation](handoffs/2026-09-06-dlss-unattended.md).
 The diagnostic proxy retains at most 16 images until process exit; proper GPU
 retirement/recycling is required for release. Restart after runtime resolution
 changes; unequal per-eye recommendations are explicitly unsupported by the

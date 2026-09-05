@@ -19,15 +19,15 @@ class StreamlineSubmission {
   enum class Phase { idle, prepared, staged, cleanup_required, awaiting_completion };
   enum class Tagging { frame_based, legacy };
 
-  bool prepare(std::uint64_t id, void* frame, std::uint32_t width,
+  bool prepare(std::uint64_t id, std::uint32_t width,
                std::uint32_t height, const std::array<std::uint32_t, 2>& viewports,
                const std::array<StreamlineStereoTags::Constants, 2>& constants,
                const StreamlineStereoTags::Inputs& inputs) noexcept {
-    if (phase_ != Phase::idle || !frame ||
+    if (phase_ != Phase::idle ||
         !pair_.prepare(width, height, viewports, constants, inputs) ||
         !lifetime_.begin(id)) return false;
     id_ = id;
-    frame_ = frame;
+    frame_ = nullptr;
     touched_ = {};
     for (std::uint32_t eye = 0; eye < 2; ++eye) {
       viewports_[eye] = {{nullptr, viewport_type_, 1}, viewports[eye]};
@@ -41,11 +41,15 @@ class StreamlineSubmission {
     return true;
   }
 
-  bool stage(StreamlineSubmissionApi api, void* commands,
+  // Snapshot preparation can precede Present by many frames. Bind the current
+  // game's token only at submission; a token retained during readback may have
+  // been recycled by Streamline. The caller must verify its Present ownership.
+  bool stage(StreamlineSubmissionApi api, void* frame, void* commands,
              Tagging tagging = Tagging::frame_based) noexcept {
-    if (phase_ != Phase::prepared || !api.constants || !commands ||
+    if (phase_ != Phase::prepared || !api.constants || !frame || !commands ||
         (tagging == Tagging::frame_based ? !api.tags : !api.legacy_tags))
       return false;
+    frame_ = frame;
     api_ = api;
     tagging_ = tagging;
     // A failing tag call may have partially installed tags. Track the attempt,

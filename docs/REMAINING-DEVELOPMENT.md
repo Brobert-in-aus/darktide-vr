@@ -1,6 +1,6 @@
 # Remaining development: melee, HUD and DLSS
 
-Updated 5 September 2026. User accepts the e8bcfe4 packed-output checkpoint:
+Updated 6 September 2026. User accepts the e8bcfe4 packed-output checkpoint:
 VR world rendering, loading screens and desktop mirror all work. VD/game remain
 running on that checkpoint. Actual stereo DLSS generation is still incomplete.
 
@@ -159,11 +159,15 @@ are supported-size limits, not clamped rendering targets.
 
 Remaining work, in order:
 
-1. Exercise the bounded packed Present staging copy on the accepted rendering
-   path, verifying desktop/VR output and no source-resource corruption.
+1. Bounded packed Present copy completed on 6 September with matching extents,
+   fence completion and continuing fresh XR pairs. Worn visual acceptance of
+   this additional step remains separate. See the
+   [unattended handoff](handoffs/2026-09-06-dlss-unattended.md).
 2. Wire paired constants/tags into the established Present route. Preserve
    partial-call failure cleanup and per-eye input completion-fence ownership;
-   existing native preparation still stages zero new tags.
+   existing native preparation still stages zero new tags. Bind the current
+   game's frame token at staging, not during delayed snapshot preparation, and
+   verify both viewport option states before enabling submission.
 3. Establish generated-output identity tied to the submitted stereo batch.
    An asynchronous Present or nearby queue execution is only a candidate;
    input-retirement fences do not prove generated output is ready.

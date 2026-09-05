@@ -164,9 +164,19 @@ struct StreamlineConstantsObservation {
   std::uint32_t viewport{};
 };
 
+struct StreamlineOptionsObservation {
+  std::uint32_t viewport{};
+  std::uint32_t mode{};
+  std::uint64_t present_frame{};
+  bool valid{};
+};
+// Guarded by streamline_input_snapshot_mutex; no borrowed API pointers.
+std::array<StreamlineOptionsObservation, 16> streamline_options_observations{};
+
 struct StreamlineInputSnapshotState {
   darktidevr::producer::StreamlineSubmission submission;
   bool submission_prepared{};
+  std::uint32_t submission_context_samples{};
   bool completion_observation_started{};
   std::array<ComPtr<ID3D12Fence>, 2> input_completion_fences;
   std::array<std::uint64_t, 2> input_completion_values{};
@@ -692,6 +702,7 @@ std::atomic<std::uint64_t> resize_diagnostic_burst_until_present{};
 HANDLE streamline_probe_log{INVALID_HANDLE_VALUE};
 std::mutex streamline_probe_log_mutex;
 std::atomic<std::uint64_t> streamline_probe_log_count{};
+std::atomic<std::uint64_t> streamline_probe_background_log_count{};
 std::atomic<unsigned int> streamline_loaded_module_mask{};
 HANDLE enhanced_barrier_log{INVALID_HANDLE_VALUE};
 std::atomic<std::uint64_t> enhanced_barrier_log_count{};
@@ -1989,6 +2000,15 @@ void write_menu_resource_log(const char* format, ...) {
 }
 
 void write_streamline_probe_log(const char* format, ...) {
+  // Startup can remain in character selection indefinitely. Reserve half the
+  // bounded log for the one-shot input/submission transaction so periodic
+  // Present telemetry cannot erase its eventual result.
+  const bool transaction_record =
+      std::strncmp(format, "STEREO_", 7) == 0 ||
+      std::strncmp(format, "INPUT_SNAPSHOT", 14) == 0;
+  if (!transaction_record &&
+      streamline_probe_background_log_count.fetch_add(
+          1, std::memory_order_relaxed) >= 8192) return;
   if (streamline_probe_log == INVALID_HANDLE_VALUE ||
       streamline_probe_log_count.fetch_add(1, std::memory_order_relaxed) >=
           16384) {
@@ -2536,6 +2556,22 @@ int sl_dlssg_set_options_hook(const void* viewport, const void* options) {
   const auto call = streamline_dlssg_options_count.fetch_add(
                         1, std::memory_order_relaxed) +
                     1;
+  if (result == 0 && viewport_state && dlssg_options &&
+      dlssg_options->base.struct_version >= 1) {
+    std::scoped_lock lock(streamline_input_snapshot_mutex);
+    auto* destination = static_cast<StreamlineOptionsObservation*>(nullptr);
+    for (auto& observation : streamline_options_observations) {
+      if (observation.valid && observation.viewport == viewport_state->value) {
+        destination = &observation;
+        break;
+      }
+      if (!destination && !observation.valid) destination = &observation;
+    }
+    if (destination) {
+      *destination = {viewport_state->value, dlssg_options->mode,
+                     present_count.load(std::memory_order_relaxed), true};
+    }
+  }
   if (call <= 100 || call % 120 == 0) {
     LARGE_INTEGER qpc{};
     QueryPerformanceCounter(&qpc);
@@ -9165,7 +9201,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
     if (supported_submission_layout && state.constants[0].valid &&
         state.constants[1].valid && state.target_token_allocated) {
       state.submission_prepared = state.submission.prepare(
-          1, state.target_frame_token,
+          1,
           static_cast<std::uint32_t>(description.Width / 2), description.Height,
           {state.constants[0].viewport, state.constants[1].viewport},
           {state.constants[0].constants, state.constants[1].constants},
@@ -11891,6 +11927,35 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
           std::memory_order_acquire)) {
     std::scoped_lock lock(streamline_input_snapshot_mutex);
     auto& snapshot = streamline_input_snapshot_state;
+    if (snapshot.submission_prepared && snapshot.submission_context_samples < 4 &&
+        (snapshot.submission_context_samples == 0 || present % 120 == 0)) {
+      ++snapshot.submission_context_samples;
+      for (std::size_t eye = 0; eye < 2; ++eye) {
+        const auto& current = streamline_constants_observations[eye];
+        const auto viewport = snapshot.constants[eye].viewport;
+        StreamlineOptionsObservation options{};
+        for (const auto& observation : streamline_options_observations) {
+          if (observation.valid && observation.viewport == viewport) {
+            options = observation;
+            break;
+          }
+        }
+        write_streamline_probe_log(
+            "STEREO_SUBMISSION_CONTEXT\tpresent_frame=%llu\teye=%zu"
+            "\tviewport=%u\tcurrent_viewport=%u\tconstants_valid=%u"
+            "\tconstants_present=%llu\tframe_index=%u\ttoken=%p"
+            "\ttoken_call=%llu\tpose=%llu\toptions_seen=%u\tmode=%u"
+            "\toptions_present=%llu\ttags_staged=0\r\n",
+            static_cast<unsigned long long>(present), eye, viewport,
+            current.viewport, current.valid ? 1U : 0U,
+            static_cast<unsigned long long>(current.present_frame),
+            current.frame_index, current.frame_token,
+            static_cast<unsigned long long>(current.frame_token_call),
+            static_cast<unsigned long long>(current.pose_sequence),
+            options.valid ? 1U : 0U, options.mode,
+            static_cast<unsigned long long>(options.present_frame));
+      }
+    }
     if (snapshot.present_stage_pending && snapshot.fence) {
       const auto completed = snapshot.fence->GetCompletedValue();
       if (completed == UINT64_MAX) {

@@ -143,7 +143,7 @@ int main() {
   std::memcpy(&constants[0], &sdk_constants, sizeof(sdk_constants));
   darktidevr::producer::StreamlineSubmission submission;
   int frame{}, commands{};
-  if (!submission.prepare(1, &frame, 200, 200, {1, 2}, constants, pair_inputs)) return 1;
+  if (!submission.prepare(1, 200, 200, {1, 2}, constants, pair_inputs)) return 1;
   const auto check_viewport = +[](const void*, const void*, const void* handle) -> int {
     const auto* value = static_cast<const mirror::ViewportHandle*>(handle);
     const sl::ViewportHandle expected(value->value);
@@ -155,7 +155,7 @@ int main() {
   };
   const auto accept_tags = +[](const void*, const void*, const void*,
                               std::uint32_t, void*) -> int { return 0; };
-  if (!submission.stage({check_viewport, accept_tags}, &commands) ||
+  if (!submission.stage({check_viewport, accept_tags}, &frame, &commands) ||
       !submission.clear_tags(&commands) || !submission.retire()) return 1;
   std::cout << "streamline_abi_reference=pass\n";
 }

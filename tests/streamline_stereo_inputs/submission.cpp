@@ -52,8 +52,8 @@ int main() {
   for (int failure = 1; failure <= 4; ++failure) {
     StreamlineSubmission batch;
     calls.clear(); attempt = 0; fail_at = failure;
-    check(batch.prepare(1, &frame, 200, 200, {1, 2}, values, inputs));
-    check(!batch.stage(api, &commands));
+    check(batch.prepare(1, 200, 200, {1, 2}, values, inputs));
+    check(!batch.stage(api, &frame, &commands));
     check(batch.last_result() == 7 && !batch.begin_present());
     check(!batch.retire());
     check(batch.clear_tags(&commands));
@@ -62,12 +62,14 @@ int main() {
   }
   StreamlineSubmission batch;
   calls.clear(); attempt = 0; fail_at = 0;
-  check(batch.prepare(1, &frame, 200, 200, {1, 2}, values, inputs));
-  check(!batch.stage({}, &commands));
-  check(!batch.stage(api, nullptr));
-  check(batch.stage(api, &commands));
+  check(batch.prepare(1, 200, 200, {1, 2}, values, inputs));
+  check(!batch.stage({}, &frame, &commands));
+  check(!batch.stage(api, &frame, nullptr));
+  check(!batch.stage(api, nullptr, &commands));
+  check(calls.empty());
+  check(batch.stage(api, &frame, &commands));
   check(calls == std::vector<int>({10, 11, 20, 21}));
-  check(!batch.stage(api, &commands));
+  check(!batch.stage(api, &frame, &commands));
   check(batch.begin_present());
   check(!batch.retire());
   clear_fail_eye = 2;
@@ -81,15 +83,18 @@ int main() {
   check(batch.clear_tags(&commands));
   check(calls == std::vector<int>({22}));
   check(batch.retire());
-  check(batch.prepare(2, &frame, 200, 200, {1, 2}, values, inputs));
+  check(batch.prepare(2, 200, 200, {1, 2}, values, inputs));
   check(batch.clear_tags(&commands));
-  check(!batch.stage(api, &commands) && !batch.begin_present());
+  check(!batch.stage(api, &frame, &commands) && !batch.begin_present());
   check(batch.retire());
-  check(batch.prepare(3, &frame, 200, 200, {1, 2}, values, inputs));
+  check(batch.prepare(3, 200, 200, {1, 2}, values, inputs));
+  // A later batch must use the token supplied at staging, including cleanup.
+  int next_frame{};
+  expected_frame = &next_frame;
   const StreamlineSubmissionApi legacy_api{constants, nullptr, legacy_tags};
-  check(!batch.stage(legacy_api, &commands)); // No silent API-mode fallback.
+  check(!batch.stage(legacy_api, &frame, &commands)); // No silent API-mode fallback.
   calls.clear();
-  check(batch.stage(legacy_api, &commands, StreamlineSubmission::Tagging::legacy));
+  check(batch.stage(legacy_api, &next_frame, &commands, StreamlineSubmission::Tagging::legacy));
   check(calls == std::vector<int>({10, 11, 20, 21}));
   check(batch.clear_tags(&commands));
   check(batch.retire());
