@@ -158,6 +158,23 @@ state.pending_world = renderer.world
 panel.set_enabled(true)
 hooks.draw(stock, owner, .01, 9, {})
 assert(state.queue_renderer == renderer and state.borrowed_renderer)
+hooks.draw(stock, owner, .01, 10, {})
+local v3meta = {__add=function(a) return a end}
+Vector3 = function(x,y,z) return setmetatable({x,y,z,kind="v3"},v3meta) end
+Vector2 = function(x,y) return {x,y,kind="v2"} end
+Quaternion = {forward=function() return Vector3(0,1,0) end,
+    right=function() return Vector3(1,0,0) end,up=function() return Vector3(0,0,1) end}
+Matrix4x4.set_right, Matrix4x4.set_forward, Matrix4x4.set_up, Matrix4x4.set_translation =
+    function() end,function() end,function() end,function() end
+local bitmap_drawn = false
+Gui2 = {bitmap_3d=function(_,material,flags,_,_,options)
+    assert(material == state.world_material and flags == nil)
+    assert(options.size.kind == "v3" and options.size[3] == 0)
+    assert(options.uv00.kind == "v2" and options.uv11.kind == "v2")
+    bitmap_drawn = true
+end}
+panel.draw(renderer.world,Vector3(0,0,0),{})
+assert(bitmap_drawn)
 panel.set_enabled(false)
 assert(released == 32, "borrowed gameplay renderer/world were destroyed")
 print("HUD error restoration, stereo authoring and idempotent resource cleanup passed")

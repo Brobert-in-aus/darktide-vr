@@ -955,3 +955,9 @@ Stock UIRenderer.script_draw_bitmap_3d passes material flags only for material
 names, not existing handles; corrected the HUD call to that contract. The target
 marker now uses Gui2.rect with explicit render_pass and a normal layer, matching
 stock rectangle authoring. Lua gate passed 25 chunks; visual result pending.
+
+71e7d4c still showed backing only (hud-material-20260905/left.png). Further stock
+API comparison showed Gui2.bitmap_3d receives a Vector3 size from UIResolution,
+while the prototype supplied Vector2. Corrected size to Vector3(width,height,0)
+and added a draw-call contract fixture for size/UV types and material-handle
+flags. HUD fixture passed; pinned Lua compiler passed 25 chunks. Visual pending.

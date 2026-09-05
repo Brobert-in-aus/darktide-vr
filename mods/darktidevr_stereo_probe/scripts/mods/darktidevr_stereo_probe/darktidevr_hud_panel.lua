@@ -525,7 +525,7 @@ function HudPanel.draw(world, position, rotation)
         {
             color = Color(255, 255, 255, 255),
             position_offset = Vector3(-width * 0.5, -height * 0.5, 0),
-            size = Vector2(width, height),
+            size = Vector3(width, height, 0),
             uv00 = Vector2(0, 0),
             uv11 = Vector2(1, 1),
         })
