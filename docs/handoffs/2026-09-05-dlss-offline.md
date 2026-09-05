@@ -517,3 +517,50 @@ attempt). No VD restart was performed and no game was launched without readiness
 Game is CLOSED. Latest per-eye HUD-less mapping is not deployed. Live work needs
 VD to resume a renderable XR session; the next launch remains the no-stage wide
 resource check. Generated stereo is still incomplete and disabled.
+
+### Runtime resolution and DLSS quality audit
+
+Final eye dimensions come from xrEnumerateViewConfigurationViews recommended
+image sizes, published through the shared pose transport. This is the active
+OpenXR runtime's recommendation (currently VDXR); no Quest-model lookup or VD
+pixel constant selects the eye targets. SteamVR OpenXR can supply the same
+contract, but has not been live validated. The shared ABI currently carries one
+common eye size: the harness now explicitly rejects unequal eye recommendations
+instead of silently using the first eye's dimensions for both.
+
+Closed startup fallback paths: native capture waits for a valid runtime extent;
+menu target creation and stereo setup require it. The Lua bootstrap dimensions
+remain for pre-initialization layout arithmetic only. Removed a 2496x2688 filter
+from the asynchronous DLSS presentation diagnostic; it now checks the configured
+presentation extent, including packed width when requested.
+
+Darktide retains ownership of output_target and dummy_upscaling, which derive
+internal resolution from its selected upscaler quality. Streamline tags use the
+actual depth/motion resource dimensions, never a hardcoded Quality fraction.
+Private final and HUD-less targets use the runtime eye size; packed presentation
+uses twice that width. Desktop mirror window dimensions and authored UI logical
+coordinates are separate from XR output resolution.
+
+Current supported extent bounds remain 640..7680 per dimension, with packed
+presentation limited to 3840 per-eye width (7680 total). These are conservative
+validation limits, not selected targets or clamps; larger sizes fail explicitly.
+Runtime resolution changes require restarting the game/harness so viewport-owned
+targets are recreated. Live resolution changes and asymmetric eye recommendations
+need a future resource/transport lifecycle extension, not a silent resize.
+
+Validation on Windows x64:
+- tools/stereo/test-darktide-lua-source.ps1: all 27 LuaJIT chunks pass.
+- build/dependencies/luajit/src/luajit.exe tests/tooling/test-eye-targets.lua
+  mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_eye_targets.lua:
+  passes, including multiple portrait/landscape runtime extents and missing extent.
+- cmake --build build/windows-vs2022 --config Release --target
+  darktidevr-xr-harness darktidevr_native_capture darktidevr-streamline-stereo-inputs-tests:
+  passes (run in two build invocations).
+- ctest --test-dir build/windows-vs2022 -C Release --output-on-failure
+  -R '^(stereo_color_resample|streamline_(submission|input_lifetime|stereo_inputs|abi_reference))$':
+  5/5 pass. Input tests vary internal resolution independently of final size.
+- git diff --check: passes.
+
+Offline only; changes not deployed. Still requires Ready preflight and live
+wide HUD-less resource verification, then worn acceptance. No generated stereo
+is enabled by this audit.

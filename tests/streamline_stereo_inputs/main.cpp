@@ -90,6 +90,21 @@ int main() {
     expect(!right_tags.prepare(2, 2496, 2688, tag_inputs) &&
                !right_tags.prepare(1, ~0U, 2688, tag_inputs),
            "invalid eye or overflowing packed width must fail");
+    // Actual engine buffer sizes, not a baked-in Quality-mode fraction, select
+    // depth/motion extents. Keep final colour at the runtime's recommended size.
+    for (const auto input_width : {1500U, 1764U, 2000U, 3000U}) {
+      auto varied_inputs = tag_inputs;
+      varied_inputs[0].width = varied_inputs[1].width = input_width;
+      varied_inputs[0].height = varied_inputs[1].height = input_width * 2 / 3;
+      varied_inputs[2].width = 3000;
+      varied_inputs[2].height = 2000;
+      expect(right_tags.prepare(1, 3000, 2000, varied_inputs) &&
+                 right_tags.data()[0].extent.width == input_width &&
+                 right_tags.data()[1].extent.height == input_width * 2 / 3 &&
+                 right_tags.data()[2].extent.width == 3000 &&
+                 right_tags.data()[3].extent.left == 3000,
+             "input quality changes must preserve runtime-sized final and eye offset");
+    }
     StreamlineEyeInputSet eye0{};
     StreamlineEyeInputSet eye1{};
     expect(darktidevr::core::evaluate_streamline_stereo_inputs(eye0, eye1)

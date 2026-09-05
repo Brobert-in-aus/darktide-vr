@@ -44,7 +44,10 @@ local mod = {
  info=function() end,
 }
 local extent_calls=0
-module.install(mod,world_api,function() extent_calls=extent_calls+1; return 2496,2688 end)
+local runtime_width, runtime_height = 2496, 2688
+module.install(mod,world_api,function()
+ extent_calls=extent_calls+1; return runtime_width,runtime_height
+end)
 local function create(world,name,template,camera,targets)
  return world_api.create_viewport(world,name,template or 'default',7,camera,
   'pos','rot',true,'shading','callback','mood',targets)
@@ -93,4 +96,24 @@ create(next_world,'darktidevr_right_eye')
 assert(count()==4)
 Application.release_world(next_world)
 assert(count()==0 and #stack==0)
+-- A new runtime/session may recommend any supported extent, including landscape.
+-- Neither a headset model nor a DLSS quality fraction selects these finals.
+for _,size in ipairs({{1800,1920},{3000,2000},{3200,3500}}) do
+ runtime_width,runtime_height=size[1],size[2]
+ local world={}
+ create(world,'player1')
+ create(world,'darktidevr_right_eye')
+ for i=#calls-1,#calls do
+  local targets=calls[i].targets
+  assert(targets.output_target==nil, 'DLSS internal target must remain engine-owned')
+  for _,name in ipairs({'back_buffer','hudless_color'}) do
+   assert(targets[name].w==size[1] and targets[name].h==size[2])
+  end
+ end
+ Application.release_world(world)
+ assert(count()==0)
+end
+runtime_width,runtime_height=0,0
+assert(not pcall(create,{},'player1') and count()==0,
+ 'missing runtime extent must not allocate fallback-sized targets')
 print('gameplay eye targets: isolation, pass-through, extent pairing and lifecycle passed')

@@ -67,6 +67,8 @@ local ui_compositor_package_failed = false
 -- The physical mirror is decoupled by swapchain-window WM_SIZE virtualization;
 -- the remaining projection work must use an asymmetric per-eye frustum rather
 -- than increasing this render extent for a symmetric overscan workaround.
+-- Bootstrap layout only. Capture and target allocation must first acquire the
+-- active OpenXR extent; these values must never select a render resolution.
 local ui_eye_target_width = 2112
 local ui_eye_target_height = 2304
 -- Screen-space views have a separate 16:9 design surface. Publishing the
@@ -2493,7 +2495,7 @@ local function refresh_xr_render_extent()
 
     if width ~= ui_eye_target_width or height ~= ui_eye_target_height then
         mod:info(
-            "DARKTIDEVR_STEREO runtime_extent %dx%d fallback=%dx%d",
+            "DARKTIDEVR_STEREO runtime_extent %dx%d previous=%dx%d",
             width, height, ui_eye_target_width, ui_eye_target_height
         )
         ui_eye_target_width = width
@@ -3012,11 +3014,15 @@ local function enable_ui_native_capture()
         return false
     end
 
+    if not refresh_xr_render_extent() then
+        ui_native_capture_active = false
+        return false
+    end
+
     ui_native_capture_active = true
     ui_native_capture_last_result = nil
     ui_native_sync_initialized = false
     ui_native_sync_last_result = nil
-    refresh_xr_render_extent()
 
     if ui_boundary_census_requested then
         local census_result = ui_native_capture.dtvr_enable_boundary_census()
@@ -4344,6 +4350,9 @@ local function setup_ui_stereo(spawner)
     if not world or not primary then
         return
     end
+
+    assert(ensure_ui_native_hooks() and refresh_xr_render_extent(),
+        "stereo menu setup requires the active OpenXR render extent")
 
     if ScriptWorld.has_viewport(world, ui_stereo_right_name) then
         ScriptWorld.destroy_viewport(world, ui_stereo_right_name)
@@ -12315,9 +12324,8 @@ mod:hook(
             viewport_name == "ui_main_menu_world_viewport"
 
         if target_main_menu then
-            if ensure_ui_native_hooks() then
-                refresh_xr_render_extent()
-            end
+            assert(ensure_ui_native_hooks() and refresh_xr_render_extent(),
+                "menu eye targets require the active OpenXR render extent")
             destroy_ui_offscreen_resources()
             ui_left_output_target = create_eye_render_target(
                 "darktidevr_left_eye_output",

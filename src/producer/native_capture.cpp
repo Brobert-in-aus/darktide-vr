@@ -11268,8 +11268,12 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
                   qpc_frequency.QuadPart
             : -1;
     ComPtr<ID3D12CommandQueue> observed_present_queue;
-    if (asynchronous && back_buffer_description.Width == 2496 &&
-        back_buffer_description.Height == 2688 &&
+    if (asynchronous &&
+        swapchain_render_extent_enabled.load(std::memory_order_acquire) &&
+        back_buffer_description.Width ==
+            swapchain_present_width.load(std::memory_order_relaxed) &&
+        back_buffer_description.Height ==
+            swapchain_render_height.load(std::memory_order_relaxed) &&
         back_buffer_description.Format == DXGI_FORMAT_R8G8B8A8_UNORM) {
       std::scoped_lock lock(state_mutex);
       observed_present_queue = swapchain_present_queue;

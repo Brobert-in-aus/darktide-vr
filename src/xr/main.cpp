@@ -231,6 +231,16 @@ class OpenXrProbe {
                  view_count, &view_count, views_.data()),
              "xrEnumerateViewConfigurationViews(list)");
     std::cout << "openxr.stereo_views=" << view_count << '\n';
+    // The shared pose ABI currently carries one common eye extent. Reject an
+    // unsupported asymmetric runtime rather than allocating the right eye from
+    // the left recommendation and silently stretching or clipping its image.
+    if (views_.size() != 2 ||
+        views_[0].recommendedImageRectWidth == 0 ||
+        views_[0].recommendedImageRectHeight == 0 ||
+        views_[0].recommendedImageRectWidth != views_[1].recommendedImageRectWidth ||
+        views_[0].recommendedImageRectHeight != views_[1].recommendedImageRectHeight) {
+      throw std::runtime_error("OpenXR requires two equal, nonzero recommended eye extents");
+    }
     if (!views_.empty()) {
       std::cout << "openxr.recommended_size="
                 << views_.front().recommendedImageRectWidth << 'x'
