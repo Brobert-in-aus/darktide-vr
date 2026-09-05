@@ -198,3 +198,12 @@ tests remain required against game physics. It keeps current overlap when histor
 is unsafe or exceeds the query budget and reports that loss instead of silently
 coarsening the sweep. Limits in the isolated test are fixtures, not calibrated
 release defaults. No cooldown state is owned or cleared by pose planning.
+
+`darktidevr_melee_volume.lua` resolves the chosen action's stock box override,
+width/height/range modifiers and axis convention into half-extents, local centre
+offset and origin-based corner radius. Matrix-authored and older spline actions
+use different length axes; treating both as the same would distort the hitbox.
+Sphere-sweep actions retain their explicit radius with no box centre offset.
+Missing/invalid geometry produces no volume rather than a guessed default.
+This module remains offline and unimported. A real tracked grip-to-sweep-origin
+transform still needs calibration before physics queries or visible overlays.

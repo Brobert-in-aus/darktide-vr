@@ -582,3 +582,15 @@ recorded target game PID when development ends; do not kill the watcher during
 capture. It normally exits with its target or after the one captured dump.
 No dump has been captured at setup, and attachment is not evidence of a fix.
 Documentation: https://learn.microsoft.com/en-us/sysinternals/downloads/procdump
+
+Continued offline physical-melee geometry: darktidevr_melee_volume.lua resolves
+normal attack box overrides and effective width/height/range modifiers, preserves
+matrix versus older spline axis conventions, and supplies the centre offset and
+maximum corner radius for sweep planning. Sphere actions retain their own radius.
+It has no live import or physics/damage/render side effects. Direct pinned-LuaJIT
+test passes (dimensions, override precedence, both axes, all-corner bound, sphere,
+immutability and invalid inputs); source compiler gate passes 17 chunks.
+
+The two Quest recordings requested around 11:10 Brisbane were copied locally
+for sharing only. The user explicitly said they are unrelated to current work;
+do not use them for implementation decisions or visual acceptance.
