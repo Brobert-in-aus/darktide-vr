@@ -1103,3 +1103,8 @@ widgets. Fixture covers both edges, vertical gap, stable reuse and restoration.
 LuaJIT gate and HUD fixture passed. Live layout validation pending.
 The e976896 follow run entered stereo after a longer server/loading delay;
 shared_ready exceeded 2,300 at about 60 fresh pairs/s without pose mismatch.
+
+Shared-eye follow-run captures show the interaction popup in both eyes beside
+the concentration-stimm marker with per-eye displacement. This establishes
+stereo rendering for the near interaction prompt; it does not by itself prove
+far SmartTagging popup selection or worn smoothing comfort.
