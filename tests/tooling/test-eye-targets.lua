@@ -30,8 +30,8 @@ local world_api = {
  destroy_viewport=function(world,name)
   -- The owning resources must still exist when the engine drops references.
   for _,c in ipairs(calls) do
-   if c.world==world and c.name==name and c.targets and c.targets.output_target then
-    assert(resources[c.targets.output_target] and resources[c.targets.back_buffer])
+   if c.world==world and c.name==name and c.targets and c.targets.back_buffer then
+    assert(resources[c.targets.back_buffer])
    end
   end
  end,
@@ -64,15 +64,15 @@ local left_call=calls[#calls]
 assert(left_call.camera==camera and left_call.layer==7 and left_call.shadow==true)
 assert(left_call.position=='pos' and left_call.rotation=='rot' and left_call.callback=='callback')
 assert(left_call.shading=='shading' and left_call.mood=='mood')
-assert(left_call.targets.output_target~=left_call.targets.back_buffer)
+assert(left_call.targets.output_target==nil, 'engine must own the upscaler-sized internal target')
 assert(left_call.targets.back_buffer.w==2496 and left_call.targets.back_buffer.h==2688)
 local right=create(w,'darktidevr_right_eye')
 local right_call=calls[#calls]
 assert(extent_calls==1, 'paired eye dimensions must share the same captured extent')
-assert(right_call.targets.back_buffer~=left_call.targets.back_buffer and count()==4)
-assert(not pcall(create,w,'player1','default',camera) and count()==4)
+assert(right_call.targets.back_buffer~=left_call.targets.back_buffer and count()==2)
+assert(not pcall(create,w,'player1','default',camera) and count()==2)
 world_api.destroy_viewport(w,'darktidevr_right_eye')
-assert(count()==2)
+assert(count()==1)
 Application.release_world(w)
 assert(released[w] and count()==0)
 Application.release_world(w)
@@ -80,15 +80,13 @@ assert(count()==0, 'world cleanup must be idempotent')
 -- Partial allocations and failed viewport creation unwind ownership and contexts.
 fail_allocation='darktidevr_left_eye_final'
 assert(not pcall(create,{},'player1','default',camera) and count()==0 and #stack==0)
-fail_allocation='darktidevr_left_eye_output'
-assert(not pcall(create,{},'player1','default',camera) and count()==0 and #stack==0)
 fail_allocation=nil; fail_viewport=true
 assert(not pcall(create,{},'player1','default',camera) and count()==0 and #stack==0)
 fail_viewport=false
 local next_world={}
 create(next_world,'player1','default',nil) -- Engine may spawn its own camera.
 create(next_world,'darktidevr_right_eye')
-assert(count()==4)
+assert(count()==2)
 Application.release_world(next_world)
 assert(count()==0 and #stack==0)
 print('gameplay eye targets: isolation, pass-through, extent pairing and lifecycle passed')

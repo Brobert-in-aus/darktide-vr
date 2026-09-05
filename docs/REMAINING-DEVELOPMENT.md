@@ -274,3 +274,10 @@ At the user's request, the texture-pool/worker trials have been rolled back to
 launches preserve that worker setting. Physical-core tuning is explicitly opt-in
 via -TuneWorkerThreads during development. Release auto-configuration remains
 future work, not an excuse to reapply this reverted experiment automatically.
+
+The first typed eye-target run failed worn acceptance with misaligned lighting.
+Renderer-contract review found that gameplay output_target is sized by the
+upscaler; overriding it with full-resolution UI-style targets was incorrect.
+The diagnostic now overrides only the final back_buffer and preserves internal
+resource sizing. Runtime captures/preparation pass at normal resolution; user
+visual acceptance remains pending. See the DLSS handoff for evidence.

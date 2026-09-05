@@ -432,3 +432,37 @@ User config remains worker=13, LOD=9 and windowed mode. Game left running for th
 worn check of live scene, HUD, hands and markers. This is successful transport
 validation, not worn acceptance or completed DLSS frame generation. No wider
 presentation or generated-frame experiment may be inferred from this result.
+
+## Correct internal versus final target dimensions
+
+User reports the typed-transport run is almost right but has a mis-sized
+transparent/light layer over a stereo shadowy view. This is a visual failure,
+not an accepted render. Read the previously extracted renderer contract at
+artifacts/phase1/renderer-config-extract/renderer.json. Gameplay `default` enables
+support_upscaling, and global output_target depends on dummy_upscaling when
+upscaling is enabled. Its internal extent drives depth_stencil_buffer and HDR
+resources; back_buffer is the final full-resolution output. By contrast, the UI
+`default_with_alpha` template does not enable that upscaling path. Reusing its
+two-full-size-target mapping for gameplay was incorrect.
+
+Changed the gameplay module to provide only a private named back_buffer. The
+engine retains ownership of output_target and all its upscaler-dependent sizes.
+No hardcoded Quality fraction, display resize, projection adjustment or UI
+calibration is used. The Lua lifecycle harness now explicitly checks that no
+output_target override is supplied; it and all 27 pinned-LuaJIT chunk checks pass.
+This fixes the identified contract violation; worn confirmation is still needed.
+
+Announced restart, closed the prior game and waited for runner cleanup. Ready
+preflight passes in artifacts/unattended/eye-final-only-preflight-20260905.json.
+Launched -EnableHudPanel -EnterPsykhanium -StreamlineEyeTargetProbe
+-StreamlineTargetTokenProbe. Log: artifacts/unattended/eye-final-only-live-20260905.log.
+No wide presentation or generated stereo submission. Config rollback and LOD9
+are preserved. Runtime and visual checks pending.
+
+Final-only runtime capture passes analyzer (eye-final-only-probe.tsv and
+ eye-final-only-report.txt in the DLSS diagnostics directory). Named uncropped
+captures are correct for both eyes. Preparation reports 2496-wide colour with
+1664-wide depth/motion, matching the accepted DLSS Quality relation. XR reaches
+shared_ready=374 at 58 fresh pairs/s and zero pair mismatches. Game left running
+for user verification that the transparent/light layer aligns. Worn acceptance
+is pending; generated stereo remains disabled.

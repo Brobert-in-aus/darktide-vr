@@ -1,14 +1,14 @@
 local EyeTargets = {}
 
--- Opt-in gameplay output isolation. The world graph and its final colour
--- texture have separate resources, matching the established UI viewport path.
+-- Opt-in gameplay final-output isolation. Keep the engine-owned internal
+-- output_target: with DLSS it depends on dummy_upscaling, not the eye extent.
+-- Overriding it with a full-size texture misaligns depth/lighting/history passes.
 function EyeTargets.install(mod, script_world, extent)
     local worlds = {}
     local names = { player1 = "left", darktidevr_right_eye = "right" }
 
     local function release(entry)
         Renderer.destroy_resource(entry.back_buffer)
-        Renderer.destroy_resource(entry.output_target)
     end
 
     local function create(name, width, height)
@@ -48,14 +48,8 @@ function EyeTargets.install(mod, script_world, extent)
             width == math.floor(width) and height == math.floor(height),
             "gameplay eye extent is unavailable or invalid")
         local entry = { width = width, height = height }
-        entry.output_target = create("darktidevr_" .. side .. "_eye_output", width, height)
-        local ok, final = pcall(create, "darktidevr_" .. side .. "_eye_final", width, height)
-        if not ok then
-            Renderer.destroy_resource(entry.output_target)
-            error(final, 0)
-        end
-        entry.back_buffer = final
-        local mapping = { output_target = entry.output_target, back_buffer = final }
+        entry.back_buffer = create("darktidevr_" .. side .. "_eye_final", width, height)
+        local mapping = { back_buffer = entry.back_buffer }
         local created, viewport = pcall(func, world, name, template, layer,
             camera_unit, position, rotation, shadow, shading, callback, mood, mapping)
         if not created or not viewport then
