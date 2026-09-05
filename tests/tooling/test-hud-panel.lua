@@ -232,8 +232,10 @@ local function pose(x,angle)
     return {x=x,y=0,z=0,qx=0,qy=0,qz=math.sin(angle/2),qw=math.cos(angle/2)}
 end
 local initial = panel.follow_pose(nil,pose(0,0),0)
-local followed = panel.follow_pose(initial,pose(.1,math.rad(4)),1/60)
-assert(followed.x > 0 and followed.x < .1 and followed.qz > 0 and followed.qz < math.sin(math.rad(2)))
+local followed = panel.follow_pose(initial,pose(.1,math.rad(8)),1/60)
+assert(followed.x > 0 and followed.x < .1 and followed.qz > 0 and followed.qz < math.sin(math.rad(4)))
+local jitter = panel.follow_pose(initial,pose(.01,math.rad(2)),1/60)
+assert(jitter.x == 0 and jitter.qz == 0, "small head movements must leave HUD still")
 assert(panel.follow_pose(followed,pose(.2,0),1/60) == followed, "second eye advanced follow")
 local reset = panel.follow_pose(followed,pose(10,0),2/60)
 assert(reset.x == 10, "teleport must reset follow")

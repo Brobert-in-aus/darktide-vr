@@ -262,7 +262,7 @@ function controller_aim.install(mod, presentation, state)
         end
         distance = hit and distance or 50
         distance = math.max(0.05, math.min(200, distance or 50))
-        controller_aim.reticle_world_point = position + direction * distance
+        controller_aim.reticle_world_point = Vector3Box(position + direction * distance)
         controller_aim.reticle_point_sequence = state.last_sequence
         if not presentation.publish_gameplay_aim_state(
                 true, hit == true, distance) then
@@ -310,7 +310,7 @@ function controller_aim.install(mod, presentation, state)
         if not origin or not right_position or not right_rotation then
             return right_rotation, false
         end
-        local point = controller_aim.reticle_world_point
+        local point = controller_aim.reticle_world_point and controller_aim.reticle_world_point:unbox()
         local fresh = point and state.last_sequence -
             controller_aim.reticle_point_sequence <= 60
         if not fresh then

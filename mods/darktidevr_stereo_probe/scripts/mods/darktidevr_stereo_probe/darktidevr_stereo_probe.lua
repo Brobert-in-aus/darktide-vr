@@ -12031,7 +12031,7 @@ mod:hook("HudElementSmartTagging", "_find_raycast_targets",
         local player_unit = self._parent:player_unit()
         local extension = unit and Unit.alive(unit) and ScriptUnit.has_extension(unit,"smart_tag_system")
         if not extension or not extension:can_tag(player_unit) then unit = nil end
-        return {unit=unit,static_hit_position=aim.reticle_world_point and Vector3Box(aim.reticle_world_point)}
+        return {unit=unit,static_hit_position=aim.reticle_world_point}
     end)
 
 mod:hook("HudElementSmartTagging", "_find_world_marker_target",

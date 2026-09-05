@@ -45,6 +45,7 @@ class GameplayInputMapper {
   bool right_trigger_down_{};
   bool left_squeeze_down_{};
   bool right_squeeze_down_{};
+  bool jump_dodge_armed_{};
 };
 
 }  // namespace darktidevr::core

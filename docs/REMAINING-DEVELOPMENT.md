@@ -69,14 +69,18 @@ requested these reductions; both-eye readback confirms the outline fits, while
 worn comfort still needs acceptance. World GUI draws now expire each frame,
 fixing the user's observed accumulation at old head poses. The visible texture
 initially arrived vertically inverted and retained old pixels. Both corrections
-now pass shared-eye visual checks. The user confirmed larger HUD objects, then
-requested 80% of the doubled size to avoid overlap: effective object scale is
-now 1.6x inside the same panel. Panel position and rotation follow the headset
-with gentle temporal smoothing and bounded rotational lag; worn acceptance is
-pending. Frame-rate independence and pose-reset behavior have offline coverage.
+now pass shared-eye visual checks. Current effective object scale is 2.08x
+(the user requested 80% of double, then another 30% increase). Buffs and combat
+ability sit above the health bar, aligned to its left/right edges; their baseline
+gap is now 80 logical units after the user reported overlap at 28. Panel following
+was accepted in principle but softened to a critically damped spring for slower
+acceleration. Frame-rate independence and pose-reset behavior have offline coverage.
 Retained update/visibility operations now route to their capture renderer.
-Smart-tag popups have a candidate hand-target selection and per-eye marker-relative
-draw path; worn acceptance remains pending. The prototype stays disabled by
+Smart-tag popup stereo is user-confirmed; selection now uses the reticle hit
+directly after the user reported the assisted target was still inconsistent.
+Pickup targeting is user-confirmed, but popup edge-size asymmetry remains open.
+An XR freeze occurred with synchronized producer frames continuing; the harness
+now logs cached-pair gating reasons to diagnose recurrence. The prototype stays disabled by
 default while loading, menus and transitions receive dedicated checks.
 
 ## DLSS

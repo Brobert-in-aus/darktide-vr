@@ -1126,3 +1126,24 @@ hud-status-layout is a stale prior-run image and is not layout evidence.
 Added throttled cached-pair gate diagnostics to XR harness; no speculative
 native policy change. Harness Release build passed; LuaJIT, HUD, reticle-surface
 and melee-aim fixtures passed. Restarting for recovery and fresh validation.
+
+The next exit was a real Lua crash (game exit -93224957): at 05:42:36 UTC,
+Vector3Box rejected the temporary reticle position retained from a prior frame.
+Reticle position is now boxed at publication, unboxed for convergence, and its
+existing box is passed to tagging. This also fixes the older convergence
+consumer's cross-frame temporary lifetime. No synthetic controller/movement/
+head frames were emitted. A possible spurious backward-dodge path was found:
+menu A confirmation carried into gameplay after reset. Jump/dodge now requires
+button release after gameplay activation; a regression checks held confirmation
+suppression and normal re-press. Native Release build and gameplay_input pass.
+
+User accepted GUI scale 2.08 and requested central weapon control prompts higher.
+WieldInfo bounding_box now centres in the capture extent and sits above HP by
+140 logical units. User requested follow best-practice research: Microsoft MRTK3
+Follow explicitly supports tag-along behavior that stays still until bounds are
+crossed, with separate smoothing. Source:
+https://learn.microsoft.com/en-us/windows/mixed-reality/mrtk-unity/mrtk3-spatialmanipulation/packages/spatialmanipulation/solvers/solver#follow
+Applied that pattern with provisional 4-degree / 25-mm deadbands and the existing
+critically damped motion; removed the hard 6-degree snap-back that bypassed
+smoothing. These values are our starting choices, not universal vendor defaults.
+Fixture checks that small head motion leaves the panel stationary.

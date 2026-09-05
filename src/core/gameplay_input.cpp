@@ -65,8 +65,14 @@ GameplayInputFrame GameplayInputMapper::update(
              (left.buttons & controller_primary) != 0);
   set_action(next, GameplayAction::quick_wield,
              (left.buttons & controller_secondary) != 0);
+  const bool jump_button_down = (right.buttons & controller_primary) != 0;
+  if (!jump_button_down) {
+    jump_dodge_armed_ = true;
+  }
+  // A is also menu confirmation. Require a release after entering gameplay
+  // so a held confirmation cannot become the stock backwards dodge.
   set_action(next, GameplayAction::jump_dodge,
-             (right.buttons & controller_primary) != 0);
+             jump_dodge_armed_ && jump_button_down);
   set_action(next, GameplayAction::crouch,
              (right.buttons & controller_secondary) != 0);
   set_action(next, GameplayAction::sprint,
@@ -94,6 +100,7 @@ GameplayInputFrame GameplayInputMapper::reset() {
   right_trigger_down_ = false;
   left_squeeze_down_ = false;
   right_squeeze_down_ = false;
+  jump_dodge_armed_ = false;
   return frame;
 }
 

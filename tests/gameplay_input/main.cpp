@@ -93,6 +93,14 @@ int main() {
     state.hands[1].trigger = 0.5F;
     frame = mapper.update(state, true);
     expect_edge(frame, GameplayAction::action_one, false, false, false);
+    expect_edge(frame, GameplayAction::jump_dodge, false, false, false);
+    frame = mapper.update(state, true);
+    expect_edge(frame, GameplayAction::jump_dodge, false, false, false);
+    state.hands[1].buttons = 0;
+    mapper.update(state, true);
+    state.hands[1].buttons = darktidevr::core::controller_primary;
+    frame = mapper.update(state, true);
+    expect_edge(frame, GameplayAction::jump_dodge, true, true, false);
 
     GameplayInputMapper restart_mapper;
     SharedControllerState restarted{};

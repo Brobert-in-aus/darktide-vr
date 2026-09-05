@@ -16,8 +16,21 @@ function HudPanel.follow_pose(previous, target, t)
     if t == previous.t then return previous end
     local dx,dy,dz = target.x-previous.x,target.y-previous.y,target.z-previous.z
     if dx*dx+dy*dy+dz*dz > 0.25 then return target end
+    local anchor = previous.goal or previous
+    local gx,gy,gz = target.x-anchor.x,target.y-anchor.y,target.z-anchor.z
+    local goal = {x=anchor.x,y=anchor.y,z=anchor.z,
+        qx=anchor.qx,qy=anchor.qy,qz=anchor.qz,qw=anchor.qw}
+    if gx*gx+gy*gy+gz*gz > 0.025^2 then
+        goal.x,goal.y,goal.z = target.x,target.y,target.z
+    end
+    local goal_dot = math.abs(anchor.qx*target.qx+anchor.qy*target.qy+
+        anchor.qz*target.qz+anchor.qw*target.qw)
+    if 2*math.acos(math.min(1,goal_dot)) > math.rad(4) then
+        goal.qx,goal.qy,goal.qz,goal.qw = target.qx,target.qy,target.qz,target.qw
+    end
+    target = goal
     local dt = t-previous.t
-    local result = {t=t}
+    local result = {t=t,goal=goal}
     local function spring(key, goal, smooth_time)
         local omega = 2/smooth_time
         local change = previous[key]-goal
@@ -33,17 +46,6 @@ function HudPanel.follow_pose(previous, target, t)
     for _, key in ipairs({"qx","qy","qz","qw"}) do spring(key,target[key]*sign,0.32) end
     local length = math.sqrt(result.qx^2+result.qy^2+result.qz^2+result.qw^2)
     for _, key in ipairs({"qx","qy","qz","qw"}) do result[key] = result[key]/length end
-    local angle = 2*math.acos(math.min(1,math.abs(result.qx*target.qx+
-        result.qy*target.qy+result.qz*target.qz+result.qw*target.qw)))
-    if angle > math.rad(6) then
-        local alpha = 1-math.rad(6)/angle
-        for _, key in ipairs({"qx","qy","qz","qw"}) do
-            result[key] = result[key]*(1-alpha)+target[key]*sign*alpha
-            result["v"..key] = 0
-        end
-        length = math.sqrt(result.qx^2+result.qy^2+result.qz^2+result.qw^2)
-        for _, key in ipairs({"qx","qy","qz","qw"}) do result[key] = result[key]/length end
-    end
     return result
 end
 
@@ -228,6 +230,13 @@ function HudPanel.layout_status(owner)
     if ability_node then
         place_status_node(ability,"slot_combat_ability",
             x+bar.size[1]-ability_node.size[1],y-80-ability_node.size[2],scale)
+    end
+    local wield = elements.HudElementWieldInfo
+    local wield_node = wield and wield._ui_scenegraph and rawget(wield._ui_scenegraph,"bounding_box")
+    if wield_node then
+        local screen_width = state.target_width or (RESOLUTION_LOOKUP and RESOLUTION_LOOKUP.width) or 1920
+        place_status_node(wield,"bounding_box",(screen_width/scale-wield_node.size[1])*0.5,
+            y-140-wield_node.size[2],scale)
     end
 end
 
