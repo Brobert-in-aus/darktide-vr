@@ -89,8 +89,18 @@ function Timing.from_windup(template, windup_name, scale_for, inverted_kinds, va
         {action=windup_name,input="heavy_attack",input_ready_after=hold.duration}},
         scale_for,inverted_kinds)
     if not charge then return nil, charge_reason end
+    -- Auto-completion is a separate input-parser deadline, not the minimum
+    -- heavy threshold or a continuously increasing melee damage multiplier.
+    -- This is a fresh-hold lower bound; fixed-step evaluation occurs after it.
+    local auto_complete_after
+    if release.auto_complete == true and finite(release.time_window) and
+            release.time_window >= 0 then
+        auto_complete_after = math.max(charge, hold.duration + release.time_window)
+    end
     return {light_action=light,heavy_action=heavy,next_light_action=next_light,
-        light_interval=interval,heavy_charge=charge}
+        light_interval=interval,heavy_charge=charge,
+        heavy_auto_complete_after=auto_complete_after,
+        heavy_damage_charge=actions[heavy].use_charge and "module" or "constant_one"}
 end
 
 return Timing

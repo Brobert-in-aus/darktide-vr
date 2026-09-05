@@ -36,6 +36,17 @@ local template = {actions=actions,action_inputs={heavy_attack={input_sequence={
 local cycle = assert(Timing.from_windup(template,"windup",scale(2),nil,function() return true end))
 assert(cycle.light_action == "light" and cycle.heavy_action == "heavy")
 assert(cycle.light_interval == .325 and cycle.heavy_charge == .35)
+assert(cycle.heavy_auto_complete_after == nil and cycle.heavy_damage_charge == "constant_one")
+local release = template.action_inputs.heavy_attack.input_sequence[2]
+release.auto_complete, release.time_window = true, 1
+cycle = assert(Timing.from_windup(template,"windup",scale(2),nil,function() return true end))
+assert(cycle.heavy_auto_complete_after == 1.35 and cycle.heavy_charge == .35)
+actions.heavy.use_charge = true
+cycle = assert(Timing.from_windup(template,"windup",scale(.25),nil,function() return true end))
+assert(cycle.heavy_auto_complete_after == 2 and cycle.heavy_damage_charge == "module")
+release.time_window = math.huge
+cycle = assert(Timing.from_windup(template,"windup",scale(1),nil,function() return true end))
+assert(cycle.heavy_auto_complete_after == nil)
 assert(not Timing.from_windup(template,"windup",scale(1),nil,function(a) return a ~= actions.heavy end))
 template.action_inputs.heavy_attack.input_sequence[1].input = "unknown_input"
 local missing, why = Timing.from_windup(template,"windup",scale(1),nil,function() return true end)
@@ -43,4 +54,23 @@ assert(not missing and why == "unsupported_heavy_input")
 template.action_inputs.heavy_attack.input_sequence[1].input = "action_one_hold"
 actions.light.allowed_chain_actions.start_attack = {{action_name="windup",chain_time=.55}}
 assert(not Timing.from_windup(template,"windup",scale(1),nil,function() return true end))
-print("melee_timing=pass")
+-- Chainsword p1 m1's ordinary light loop, from the inspected stock template.
+-- Keeping all four transitions catches accidental reuse of the opening timing.
+local combo = {actions={}, action_inputs={heavy_attack={input_sequence={
+    {input="action_one_hold",value=true,duration=.35},
+    {input="action_one_hold",value=false,auto_complete=true,time_window=1}}}}}
+local intervals, heavy_thresholds = {.55,.6,.45,.55}, {.5,.4,.5,.45}
+for i=1,4 do
+    combo.actions['w'..i] = {kind="windup",allowed_chain_actions={
+        light_attack={action_name='l'..i,chain_time=0},
+        heavy_attack={action_name='h'..i,chain_time=heavy_thresholds[i]}}}
+    combo.actions['l'..i] = {kind="sweep",allowed_chain_actions={
+        start_attack={action_name='w'..(i%4+1),chain_time=intervals[i]}}}
+    combo.actions['h'..i] = {kind="sweep"}
+end
+for i=1,4 do
+    local result = assert(Timing.from_windup(combo,'w'..i,scale(1),nil,function() return true end))
+    assert(result.light_interval==intervals[i] and result.heavy_charge==heavy_thresholds[i])
+    assert(result.heavy_auto_complete_after==1.35 and result.next_light_action=='l'..(i%4+1))
+end
+print("melee_timing=pass combo=variable heavy_minimum_distinct_from_auto_complete=true")

@@ -129,6 +129,11 @@ damage adapter must resolve proper hit-zone/contact data before using this path.
 
 ## Timing data
 
+The [6 September source audit](MELEE-TIMING-AUDIT.md) verifies a varying
+four-step light combo and separates minimum heavy readiness, automatic release,
+charge-module values and windup/fully-charged bonuses. Minimum-heavy cooldown
+must not automatically grant the stock fully-charged damage/proc state.
+
 Use seconds per normal attack, including effective weapon handling and attack-speed
 buffs. Full animation length is not the normal attack cycle: the inspected chainsword
 example has total_time 1.3, damage window 0.3-0.4, and an attack chain at 0.55 before

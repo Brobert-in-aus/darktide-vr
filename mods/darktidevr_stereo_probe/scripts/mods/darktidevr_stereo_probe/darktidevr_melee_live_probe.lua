@@ -61,10 +61,12 @@ function Live.install(mod, presentation, tracking, game_mode)
                 function(settings) return handler:_calculate_time_scale(settings) end,
                 handler._action_kinds_with_inverted_timescale,
                 function(settings) return handler:_validate_action(settings,params,t,0,nil) end)
-            mod:info("DARKTIDEVR_MELEE timing windup=%s result=%s light=%s heavy=%s light_interval=%.4f heavy_charge=%.4f damage=false",
+            mod:info("DARKTIDEVR_MELEE timing windup=%s result=%s light=%s heavy=%s light_interval=%.4f heavy_charge=%.4f heavy_auto_complete_after=%s heavy_damage_charge=%s damage=false",
                 name,timing and "resolved" or tostring(timing_reason),
                 timing and timing.light_action or "none",timing and timing.heavy_action or "none",
-                timing and timing.light_interval or 0,timing and timing.heavy_charge or 0)
+                timing and timing.light_interval or 0,timing and timing.heavy_charge or 0,
+                timing and tostring(timing.heavy_auto_complete_after) or "unknown",
+                timing and timing.heavy_damage_charge or "unknown")
         end
         -- Observe an action the engine actually selected. Do not guess an idle
         -- route from unordered action names or use block/push timing as light.

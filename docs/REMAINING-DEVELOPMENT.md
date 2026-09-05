@@ -56,10 +56,11 @@ origin is provisional, and no physical damage is applied.
 
 Next integration work:
 
-- Recheck the reported 0.35 s light / 0.45 s heavy timing assumptions against
-  weapon action data and actual chaining. Determine whether 0.45 s is only the
-  minimum heavy release time and whether holding longer increases damage (or
-  changes its profile), including the full-charge threshold.
+- [Timing audit completed](MELEE-TIMING-AUDIT.md): 0.35/0.45 s are not universal
+  attack cooldowns. Combo transitions vary, minimum heavy input and automatic
+  completion differ, and longer holds can grant windup/fully-charged bonuses.
+  The resolver now exposes the separate auto-completion threshold and charge
+  source. Carry these distinctions into the future damage/proc adapter.
 - Resolve light-attack intervals for every combo step: first swing versus
   repeated swings, per-step variation, earliest chain windows and attack-speed
   modifiers. Do not use the first attack's 0.35 s as a blanket combo cooldown.
