@@ -96,8 +96,11 @@ Two runs hit an engine graphics-resource handle mismatch after approximately
 world-marker capture: disabling reprojection stopped growth and re-enabling it
 restored growth in the same process. A candidate now reuses an immediate marker
 GUI and hides it between eyes, preserving the projection calculations. Offline
-lifecycle checks pass; live allocation/stability and worn marker checks are in
-progress. Hand-aim acceptance stands. See the session handoff for crash evidence.
+lifecycle checks pass. The candidate ran beyond 20 minutes without the prior
+crash, with over 70,000 shared-ready frames and an unchanged fresh allocator
+cursor of 85,363 across repeated snapshots. This removes the observed rapid
+growth; longer worn/transition checks and marker appearance remain pending.
+Hand-aim acceptance stands. See the session handoff for crash evidence.
 
 The September 4/5 candidate has outstanding worn checks for both unarmed and
 wielded palm placement, pinned-marker

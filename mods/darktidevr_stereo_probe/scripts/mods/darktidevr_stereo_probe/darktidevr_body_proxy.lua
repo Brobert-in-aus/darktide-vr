@@ -179,7 +179,11 @@ local function anatomical_hand_rotation(unit, side, target_rotation)
     -- Match the accepted articulated-hand solve instead of treating the
     -- authored hand joint's mirrored local axes as the OpenXR grip axes.
     -- Touch grip +Y runs down the handle: fingertips point along -grip-Y,
-    -- little-to-index follows grip-forward, and the palm normal is -grip-X.
+    -- little-to-index follows grip-forward. The cross(across, longitudinal)
+    -- normal maps to -grip-X on BOTH hands: outward on the right, inward on
+    -- the left. It is a signed anatomical basis, not always the palm normal.
+    -- OpenXR defines grip +X with opposite palm-relative signs by hand, so
+    -- adding another left-hand sign flip here would double-mirror the basis.
     local hand_node = Unit.node(unit, hand_name)
     local wrist = Unit.world_position(unit, hand_node)
     local inverse_hand = inverse_quaternion(Unit.world_rotation(unit, hand_node))

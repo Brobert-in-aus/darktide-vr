@@ -702,3 +702,20 @@ unload, in addition to renderer destruction. The test now covers multiple
 renderer owners and repeated cleanup. CTest marker_gui/compiler/invariants
 passed 3/3. This lifecycle-only follow-up is not yet deployed; the uninterrupted
 soak still runs a0fa2eb so its existing elapsed time is preserved.
+
+At 02:12:07 UTC the immediate-GUI run had exceeded 20 minutes from process start
+(01:51:31), passing the prior ~16.5-minute crash window. shared_ready exceeded
+70,000 with continuing ~60 fresh stereo pairs/second. The allocator fresh cursor
+remained exactly 85,363 across all read-only snapshots through this checkpoint;
+free-list count was 1,923. The trace checkpoint is ignored under diagnostics.
+This supports fixing the observed rapid retained-marker handle accumulation;
+it does not establish 60-minute worn stability, transitions or visual acceptance.
+The game remains running; the cleanup follow-up remains queued for next sync.
+
+Hand-basis review checked the OpenXR standard grip axes:
+https://registry.khronos.org/OpenXR/specs/1.0-khr/html/xrspec.html#semantic-path-standard-pose-identifiers
+Grip +X points outward from the left palm and inward on the right. The current
+cross(across,longitudinal) source basis also changes palm-relative sign between
+hands, so its shared -grip-X target is intentional. Clarified the misleading
+comment; no rotation or positional calibration changed. This does not resolve
+the pending worn left-wrist placement verdict.
