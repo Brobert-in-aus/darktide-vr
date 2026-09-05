@@ -4,6 +4,10 @@ local ScriptWorld = require("scripts/foundation/utilities/script_world")
 
 local HudPanel = {}
 
+local function pack(...)
+    return {n=select("#", ...), ...}
+end
+
 local state = {
     enabled = false,
     mod = nil,
@@ -343,52 +347,57 @@ function HudPanel.install(mod)
         local source_elements = self._elements_array
         local source_renderer = self._ui_renderer
 
-        self._elements_array = spatial
-        local result = func(self, dt, t, input_service)
+        -- Every temporary mutation must unwind even if stock drawing, queue
+        -- construction or the dependency sample throws. Restore before rethrow.
+        local ok, result = pcall(function()
+            self._elements_array = spatial
+            local spatial_result = pack(func(self, dt, t, input_service))
 
-        if state.last_authored_t ~= t then
-            -- Gui.render_pass is a frame queue, not persistent renderer state.
-            -- Darktide's own resource-backed UI elements clear and rebuild this
-            -- queue immediately before authoring every target frame.
-            UIRenderer.clear_render_pass_queue(state.queue_renderer)
-            UIRenderer.add_render_pass(state.queue_renderer, 0,
-                resource_renderer.base_render_pass, true,
-                resource_renderer.render_target)
-            -- Match Darktide's tactical-overlay resource renderer exactly:
-            -- its offscreen pass is followed by a terminal screen pass which
-            -- samples the target. Without that dependency the dedicated UI
-            -- world can prune the entire target branch, leaving even an
-            -- immediate opaque diagnostic rectangle black. Draw the terminal
-            -- sample just outside the viewport so it schedules the target
-            -- without contaminating the one-eye desktop mirror.
-            UIRenderer.add_render_pass(state.queue_renderer, 1,
-                "to_screen", false)
-            self._elements_array = fixed
-            self._ui_renderer = resource_renderer
-            local ok, fixed_result = pcall(func, self, dt, t, input_service)
-            self._ui_renderer = source_renderer
-            if not ok then
-                self._elements_array = source_elements
-                error(fixed_result)
+            if state.last_authored_t ~= t then
+                -- Gui.render_pass is a frame queue, not persistent renderer state.
+                -- Darktide's own resource-backed UI elements clear and rebuild this
+                -- queue immediately before authoring every target frame.
+                UIRenderer.clear_render_pass_queue(state.queue_renderer)
+                UIRenderer.add_render_pass(state.queue_renderer, 0,
+                    resource_renderer.base_render_pass, true,
+                    resource_renderer.render_target)
+                -- Match Darktide's tactical-overlay resource renderer exactly:
+                -- its offscreen pass is followed by a terminal screen pass which
+                -- samples the target. Without that dependency the dedicated UI
+                -- world can prune the entire target branch, leaving even an
+                -- immediate opaque diagnostic rectangle black. Draw the terminal
+                -- sample just outside the viewport so it schedules the target
+                -- without contaminating the one-eye desktop mirror.
+                UIRenderer.add_render_pass(state.queue_renderer, 1,
+                    "to_screen", false)
+                self._elements_array = fixed
+                self._ui_renderer = resource_renderer
+                func(self, dt, t, input_service)
+                self._ui_renderer = source_renderer
+                -- Keep the dependency sample outside the visible viewport. The
+                -- earlier full-target diagnostic was useful for proving that this
+                -- dedicated UI world is not composited, but it must never leak
+                -- into the production one-eye mirror.
+                Gui.bitmap(
+                    state.queue_renderer.gui,
+                    resource_renderer.render_target_material,
+                    "render_pass", "to_screen",
+                    Vector3(-2, -2, 20000),
+                    Vector2(1, 1),
+                    Color(255, 255, 255, 255))
+                pcall(Renderer.copy_render_target_rect,
+                    resource_renderer.render_target,
+                    0, 0, 1, 1, state.display_target, 0, 0, 1, 1)
+                state.last_authored_t = t
             end
-            -- Keep the dependency sample outside the visible viewport. The
-            -- earlier full-target diagnostic was useful for proving that this
-            -- dedicated UI world is not composited, but it must never leak
-            -- into the production one-eye mirror.
-            Gui.bitmap(
-                state.queue_renderer.gui,
-                resource_renderer.render_target_material,
-                "render_pass", "to_screen",
-                Vector3(-2, -2, 20000),
-                Vector2(1, 1),
-                Color(255, 255, 255, 255))
-            pcall(Renderer.copy_render_target_rect,
-                resource_renderer.render_target,
-                0, 0, 1, 1, state.display_target, 0, 0, 1, 1)
-            state.last_authored_t = t
-        end
+            return spatial_result
+        end)
+        self._ui_renderer = source_renderer
         self._elements_array = source_elements
-        return result
+        if not ok then
+            error(result, 0)
+        end
+        return unpack(result, 1, result.n)
     end)
 
     mod:hook("UIHud", "destroy", function(func, self, ...)

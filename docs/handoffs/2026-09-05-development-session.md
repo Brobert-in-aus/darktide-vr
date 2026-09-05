@@ -737,3 +737,12 @@ adaptive aim stabilization, minimal melee/block lag, once-per-sample stereo
 ownership, explicit pose-time semantics, and reset on discontinuities. No filter
 or live behavior was changed. Documentation review only; existing offline Lua
 checks remain the latest code validation.
+
+Offline HUD follow-up: its draw hook now restores the original renderer and
+element list after failures anywhere in spatial drawing, queue construction,
+fixed drawing or the dependency sample. Previously only the fixed draw error
+path restored both fields. Preserve all stock return values, including nils.
+The new hud_panel fixture injects each failure and checks recovery, then checks
+one fixed-HUD authoring pass across two eyes. Windows CMake configured with
+DARKTIDEVR_ENABLE_HEADSET_TESTS=OFF; CTest hud_panel, lua_source_compile and
+lua_source_invariants passed 3/3. No deployment or visual acceptance claimed.
