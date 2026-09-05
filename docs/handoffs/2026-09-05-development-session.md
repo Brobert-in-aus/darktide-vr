@@ -1026,3 +1026,9 @@ Applied viewer-facing basis to the panel and reversed U coordinates to preserve
 text reading direction. Removed redundant symbol diagnostics. HUD fixture now
 checks front-facing basis, U reversal and final scale. HUD test and 25-chunk
 LuaJIT gate passed. Actual target contents still require next live readback.
+
+1254f90 front-facing panel still lacks target content in both display-copy and
+source binding captures (hud-front-20260905). Added symbol flag to test the exact
+Gui2/UV-reversed presentation path using the known fixed symbol, and enlarged the
+explicit diagnostic terminal sample to 320x180 for sameworld target inspection.
+Normal mode keeps its transparent one-pixel dependency. Lua/HUD checks passed.

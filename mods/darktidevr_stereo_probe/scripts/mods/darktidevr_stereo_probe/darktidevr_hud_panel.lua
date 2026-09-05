@@ -14,6 +14,7 @@ end
 local state = {
     enabled = false,
     diagnostic = false,
+    symbol_probe = false,
     same_world_probe = false,
     borrowed_renderer = false,
     render_submissions = 0,
@@ -329,7 +330,7 @@ local function update_enabled_flag(mod, t)
     local request = flag:read("*all")
     flag:close()
     local command = request and request:match("^%s*(%a+)")
-    if command ~= "enable" and command ~= "disable" and command ~= "diagnostic" and command ~= "source" and command ~= "sameworld" then
+    if command ~= "enable" and command ~= "disable" and command ~= "diagnostic" and command ~= "source" and command ~= "sameworld" and command ~= "symbol" then
         return
     end
     local consumed = Mods.lua.io.open(path, "w")
@@ -340,7 +341,8 @@ local function update_enabled_flag(mod, t)
     local same_world = command == "sameworld"
     if same_world ~= state.same_world_probe then destroy_resources() end
     state.same_world_probe = same_world
-    state.diagnostic = command == "diagnostic" or command == "source" or same_world
+    state.symbol_probe = command == "symbol"
+    state.diagnostic = command == "diagnostic" or command == "source" or same_world or state.symbol_probe
     HudPanel.set_enabled(command ~= "disable")
     if state.world_material and state.resource_renderer then
         local target = command == "source" and state.resource_renderer.render_target or state.display_target
@@ -451,7 +453,7 @@ function HudPanel.install(mod)
                     resource_renderer.render_target_material,
                     "render_pass", "to_screen",
                     Vector3(0, 0, 1),
-                    Vector2(1, 1),
+                    Vector3(state.diagnostic and 320 or 1, state.diagnostic and 180 or 1, 0),
                     Color(state.diagnostic and 255 or 0, 255, 255, 255))
                 state.last_authored_t = t
             end
@@ -532,7 +534,7 @@ function HudPanel.draw(world, position, rotation, overlap_width)
     end
     Gui2.bitmap_3d(
         state.world_gui,
-        state.world_material,
+        state.symbol_probe and "content/ui/materials/symbols/infinite" or state.world_material,
         nil,
         tm,
         1000,
