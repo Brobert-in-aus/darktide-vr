@@ -1,4 +1,5 @@
 #include "core/streamline_stereo_inputs.h"
+#include "producer/streamline_eye_tags.h"
 
 #include <cstdint>
 #include <iostream>
@@ -58,6 +59,36 @@ StreamlineStereoPresentTarget matching_present_target() {
 
 int main() {
   try {
+    int depth{}, motion{}, color{};
+    std::array<darktidevr::producer::StreamlineTagInput, 3> tag_inputs{{
+        {&depth, 1664, 1792, 64, 41}, {&motion, 1664, 1792, 64, 34},
+        {&color, 2496, 2688, 64, 28}}};
+    darktidevr::producer::StreamlineEyeTags left_tags, right_tags;
+    expect(left_tags.data() == nullptr && left_tags.count() == 0,
+           "unprepared tags must not be exposed");
+    expect(left_tags.prepare(0, 2496, 2688, tag_inputs) &&
+               right_tags.prepare(1, 2496, 2688, tag_inputs),
+           "valid individual eye tag preparation failed");
+    expect(left_tags.data()[3].extent.left == 0 &&
+               right_tags.data()[3].extent.left == 2496 &&
+               right_tags.data()[3].resource == nullptr,
+           "packed backbuffer subrects must preserve eye identity");
+    expect(right_tags.data()[2].extent.left == 0 &&
+               right_tags.data()[2].resource->native == &color &&
+               right_tags.data()[2].lifecycle == 1,
+           "per-eye color input must retain its own extent and lifetime");
+    tag_inputs[1].native = &depth;
+    expect(!right_tags.prepare(1, 2496, 2688, tag_inputs) &&
+               right_tags.data() == nullptr && right_tags.count() == 0,
+           "failed prepare must invalidate previously ready tags");
+    tag_inputs[1].native = &motion;
+    tag_inputs[2].width = 4992;
+    expect(!right_tags.prepare(1, 2496, 2688, tag_inputs),
+           "packed color cannot masquerade as an individual-eye input");
+    tag_inputs[2].width = 2496;
+    expect(!right_tags.prepare(2, 2496, 2688, tag_inputs) &&
+               !right_tags.prepare(1, ~0U, 2688, tag_inputs),
+           "invalid eye or overflowing packed width must fail");
     StreamlineEyeInputSet eye0{};
     StreamlineEyeInputSet eye1{};
     expect(darktidevr::core::evaluate_streamline_stereo_inputs(eye0, eye1)

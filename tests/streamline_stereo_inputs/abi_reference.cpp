@@ -5,6 +5,7 @@
 #include <iostream>
 #include <sl_dlss_g.h>
 #include "producer/streamline_abi_2_7_30.h"
+#include "producer/streamline_eye_tags.h"
 
 namespace mirror = darktidevr::producer::streamline_2_7_30;
 static_assert(SL_VERSION_MAJOR == 2 && SL_VERSION_MINOR == 7 && SL_VERSION_PATCH == 30,
@@ -69,5 +70,26 @@ int main() {
   mirror::ViewportHandle copied{};
   std::memcpy(&copied, &viewport, sizeof(copied));
   if (copied.value != 0x12345678U) return 1;
+  int depth{}, motion{}, color{};
+  const std::array<darktidevr::producer::StreamlineTagInput, 3> inputs{{
+      {&depth, 100, 100, 64, 41}, {&motion, 100, 100, 64, 34},
+      {&color, 200, 200, 64, 28}}};
+  darktidevr::producer::StreamlineEyeTags prepared;
+  if (!prepared.prepare(1, 200, 200, inputs)) return 1;
+  for (std::uint32_t i = 0; i < prepared.count(); ++i) {
+    const auto& tag = prepared.data()[i];
+    if (std::memcmp(&tag.base.struct_type, &sl::ResourceTag::s_structType,
+                    sizeof(sl::StructType)) != 0 ||
+        tag.base.struct_version != sl::kStructVersion1) return 1;
+    if (tag.resource &&
+        (std::memcmp(&tag.resource->base.struct_type, &sl::Resource::s_structType,
+                     sizeof(sl::StructType)) != 0 ||
+         tag.resource->base.struct_version != sl::kStructVersion1 ||
+         tag.lifecycle != sl::ResourceLifecycle::eValidUntilPresent)) return 1;
+  }
+  if (prepared.data()[0].type != sl::kBufferTypeDepth ||
+      prepared.data()[1].type != sl::kBufferTypeMotionVectors ||
+      prepared.data()[2].type != sl::kBufferTypeHUDLessColor ||
+      prepared.data()[3].type != sl::kBufferTypeBackbuffer) return 1;
   std::cout << "streamline_abi_reference=pass\n";
 }

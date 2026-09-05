@@ -793,3 +793,12 @@ comparison. Structure sizes/member offsets and the viewport value now pass,
 with an explicit SDK version assertion. Windows Release /W4 /WX build passes;
 CTest streamline_abi_reference passes. No external SDK files were added to Git
 and no Streamline DLL was loaded or replaced for this validation.
+
+Prepared offline StreamlineEyeTags for immutable depth/motion/HUD-less inputs
+and separate left/right packed backbuffer extents. No API calls or GPU ownership
+were added. The nonmovable owner keeps internal resource references stable;
+failed preparation invalidates prior data. Tests cover subrects, input aliases,
+dimensions and overflow, while the SDK-reference fixture compares GUIDs,
+structure versions, buffer types and lifecycle values. Both Windows Release
+test targets built with warnings as errors and CTest passed 2/2. The native live
+path does not yet consume or submit these prepared tags.

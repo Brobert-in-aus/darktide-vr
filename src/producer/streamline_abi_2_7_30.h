@@ -3,8 +3,9 @@
 // Minimal read-only ABI mirror for NVIDIA Streamline v2.7.30. The upstream
 // headers are MIT-licensed. Keep this deliberately limited to structures that
 // Darktide itself passes through the observed constants, resource-tag,
-// slDLSSGGetState and slDLSSGSetOptions calls; the mod does not construct
-// Streamline inputs or call the feature API independently.
+// slDLSSGGetState and slDLSSGSetOptions calls. Offline tag preparation is checked
+// against the matching SDK; the live mod does not submit those prepared inputs
+// or call the feature API independently.
 
 #include <cstddef>
 #include <cstdint>

@@ -85,6 +85,15 @@ inputs become invalid. The pending submission adapter must include cleanup as
 well as successful per-eye tagging; a one-shot tag followed by target reuse is
 insufficient.
 
+`src/producer/streamline_eye_tags.h` now prepares one eye's depth, motion and
+HUD-less tags plus its packed-backbuffer subrect, without calling Streamline.
+The owner cannot be copied/moved because tags reference its resource array.
+It rejects invalid dimensions, aliased input roles and stale state after failed
+preparation. Tests compare its type identifiers, versions and lifecycle values
+to the matching official SDK. Preparing both eyes independently does not prove
+cross-eye input isolation; the existing pair policy remains required. Submission,
+GPU lifetimes, per-frame constants and tag clearing are still integration work.
+
 Next: prepare version-matched per-eye tag/constants staging, validate backbuffer
 subrects and input lifetimes, then establish generated-output identity and GPU
 completion before publishing to the XR consumer. The desktop frame rate alone
