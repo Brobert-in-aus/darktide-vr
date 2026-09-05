@@ -777,3 +777,9 @@ no contact normals, damage eligibility or proven engine capacity are inferred.
 The mocked fixture checks 100 candidates, query reuse, invalid geometry and an
 incomplete result list. Windows CTest melee_probe/compiler/invariants passed
 3/3 (22 Lua chunks). No headset use, deployment or live collision validation.
+
+HUD targets now rebuild when the UI extent or HUD owner changes, migrating
+retained records through the existing cleanup path. Stable frames reuse the same
+targets. The fixture covers extent doubling, owner replacement, restoration and
+release counts. CTest hud_panel/compiler/invariants passed 3/3. GPU completion
+and visual transition acceptance remain untested; no deployment was performed.

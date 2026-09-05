@@ -42,7 +42,11 @@ partitioned draw failure. Its offline fixture covers error recovery and once-per
 frame fixed authoring across two eye draws. This establishes CPU state recovery,
 not GPU copy ordering or worn legibility.
 
-Next: audit render-target completion, resizing and resource lifecycle; then make
+The panel now rebuilds on UI resolution or HUD-owner changes, reusing its targets
+through stable frames. Offline tests cover these transitions and partial setup
+cleanup. GPU target completion still needs live evidence.
+
+Next: audit render-target completion; then make
 the fixed status layout configurable without moving world/depth markers onto
 the panel. The current one-metre, two-metre-wide panel remains an experimental
 layout and needs worn acceptance. Loading, menus and transitions need dedicated

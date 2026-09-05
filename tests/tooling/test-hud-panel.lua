@@ -29,6 +29,8 @@ local spatial = {__class_name="HudElementWorldMarkers"}
 local fixed = {__class_name="HudElementPlayerHealth"}
 local elements, renderer = {spatial, fixed}, {}
 local owner = {_elements_array=elements, _ui_renderer=renderer}
+state.owner, state.source_renderer = owner, renderer
+state.target_width, state.target_height = 1920, 1080
 state.enabled, state.layout_logged = true, true
 state.resource_renderer = {render_target={}, render_target_material={}}
 state.queue_renderer = {gui={}}
@@ -113,4 +115,25 @@ assert(fallback and state.creation_failed and state.resource_renderer == nil)
 assert(released == 7, "partial target creation leaked owned resources")
 panel.set_enabled(false)
 assert(released == 7, "cleanup retried already released resources")
+-- Reuse one allocation during stable rendering; rebuild for actual extent or
+-- owner changes. This must not regress into per-eye/per-frame target churn.
+Material.set_resource = function() end
+state.pending_world = renderer.world
+panel.set_enabled(true)
+hooks.draw(stock, owner, .01, 4, {})
+local first_target = state.display_target
+assert(state.target_width == 1920 and state.target_height == 1080)
+hooks.draw(stock, owner, .01, 5, {})
+assert(state.display_target == first_target and released == 7)
+RESOLUTION_LOOKUP = {scale=2}
+hooks.draw(stock, owner, .01, 6, {})
+assert(state.display_target ~= first_target and released == 14)
+assert(state.target_width == 3840 and state.target_height == 2160)
+local second_target = state.display_target
+local next_owner = {_elements_array=elements, _ui_renderer=renderer}
+hooks.draw(stock, next_owner, .01, 7, {})
+assert(state.owner == next_owner and state.display_target ~= second_target and released == 21)
+assert(next_owner._elements_array == elements and next_owner._ui_renderer == renderer)
+panel.set_enabled(false)
+assert(released == 28)
 print("HUD error restoration, stereo authoring and idempotent resource cleanup passed")

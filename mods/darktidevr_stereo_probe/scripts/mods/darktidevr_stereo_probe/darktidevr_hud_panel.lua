@@ -19,6 +19,8 @@ local state = {
     render_viewport = nil,
     render_viewport_name = nil,
     display_target = nil,
+    target_width = nil,
+    target_height = nil,
     world = nil,
     world_gui = nil,
     world_material = nil,
@@ -167,6 +169,8 @@ local function destroy_resources()
     state.render_viewport = nil
     state.render_viewport_name = nil
     state.display_target = nil
+    state.target_width = nil
+    state.target_height = nil
     state.world = nil
     state.world_gui = nil
     state.world_material = nil
@@ -280,6 +284,7 @@ local function create_resources(mod, owner, source_renderer, world)
     end
     state.owner = owner
     state.source_renderer = source_renderer
+    state.target_width, state.target_height = width, height
     state.pending_world = world
     transfer_fixed_records(owner, source_renderer, resource_renderer, mod)
     mod:info(
@@ -339,6 +344,16 @@ function HudPanel.install(mod)
         if not state.enabled or not self._ui_renderer or
                 type(self._elements_array) ~= "table" then
             return func(self, dt, t, input_service)
+        end
+        if state.resource_renderer then
+            local width, height = target_extent()
+            if state.owner ~= self or state.source_renderer ~= self._ui_renderer or
+                    state.target_width ~= width or state.target_height ~= height then
+                -- A new HUD owner or resolution cannot reuse the previous
+                -- owner's render target and retained records.
+                destroy_resources()
+                state.pending_world = self._ui_renderer.world
+            end
         end
         local resource_renderer = state.resource_renderer
         if not resource_renderer and not state.creation_failed and
