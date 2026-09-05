@@ -180,6 +180,11 @@ std::array<StreamlineOptionsObservation, 16> streamline_options_observations{};
 
 struct StreamlineInputSnapshotState {
   darktidevr::producer::StreamlineSubmission submission;
+  darktidevr::producer::StreamlineStereoTags::Inputs submission_inputs{};
+  std::uint64_t submission_id{1};
+  std::uint64_t submission_stage_fence{5};
+  std::uint64_t submission_cleanup_fence{6};
+  std::uint32_t submission_limit{1};
   bool submission_prepared{};
   std::uint32_t submission_context_samples{};
   bool submission_attempted{};
@@ -2776,8 +2781,13 @@ void initialize_streamline_probe(void* present_target,
   streamline_stereo_submit_probe_requested.store(
       GetFileAttributesW(stereo_submit_flag_path.c_str()) != INVALID_FILE_ATTRIBUTES,
       std::memory_order_release);
-  write_streamline_probe_log("STEREO_SUBMISSION_PROBE\tenabled=%u\r\n",
-      streamline_stereo_submit_probe_requested.load(std::memory_order_relaxed) ? 1U : 0U);
+  const auto submission_limit = GetPrivateProfileIntW(
+      L"probe", L"frames", 1, stereo_submit_flag_path.c_str());
+  streamline_input_snapshot_state.submission_limit =
+      submission_limit >= 1 && submission_limit <= 8 ? submission_limit : 1;
+  write_streamline_probe_log("STEREO_SUBMISSION_PROBE\tenabled=%u\tframes=%u\r\n",
+      streamline_stereo_submit_probe_requested.load(std::memory_order_relaxed) ? 1U : 0U,
+      streamline_input_snapshot_state.submission_limit);
   streamline_feature_resolver_target =
       interposer ? GetProcAddress(interposer, "slGetFeatureFunction") : nullptr;
   streamline_get_new_frame_token_target =
@@ -9174,10 +9184,11 @@ void refresh_streamline_submission_inputs(int eye, std::uint64_t present_frame,
   state.submission_refresh_mask |= 1U << eye;
   write_streamline_probe_log(
       "STEREO_REFRESH\tphase=scheduled\teye=%d\tpresent_frame=%llu\tpose=%llu"
-      "\tframe_index=%u\ttoken_call=%llu\tfence_value=1\r\n",
+      "\tframe_index=%u\ttoken_call=%llu\tfence_value=1\tbatch=%llu\r\n",
       eye, static_cast<unsigned long long>(present_frame),
       static_cast<unsigned long long>(pose_sequence), constants.frame_index,
-      static_cast<unsigned long long>(constants.frame_token_call));
+      static_cast<unsigned long long>(constants.frame_token_call),
+      static_cast<unsigned long long>(state.submission_id));
 }
 
 void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
@@ -9351,11 +9362,12 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
       auto submission_constants = std::array{state.constants[0].constants,
                                              state.constants[1].constants};
       state.submission_prepared = state.submission.prepare(
-          1,
+          state.submission_id,
           static_cast<std::uint32_t>(description.Width / 2), description.Height,
           {state.constants[0].viewport, state.constants[1].viewport},
           submission_constants,
           submission_inputs);
+      state.submission_inputs = submission_inputs;
     }
     write_streamline_probe_log(
         "STEREO_SUBMISSION_PREPARE\tready=%u\tlayout_supported=%u"
@@ -12159,14 +12171,15 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
         write_streamline_probe_log(
             "STEREO_PRESENT_STAGE\tphase=failed"
             "\treason=poisoned_fence\r\n");
-      } else if (completed >= 5) {
+      } else if (completed >= snapshot.submission_stage_fence) {
         snapshot.present_stage_pending = false;
         snapshot.present_stage_complete = true;
         write_streamline_probe_log(
             "STEREO_PRESENT_STAGE\tphase=complete"
-            "\tfence_value=5\tcopy_staged=1\ttags_staged=%u"
+            "\tfence_value=%llu\tcopy_staged=1\ttags_staged=%u"
             "\tadditional_present_submitted=0"
             "\tmetadata_published=0\tready_signaled=0\r\n",
+            static_cast<unsigned long long>(snapshot.submission_stage_fence),
             snapshot.submission_presented ? 1U : 0U);
       }
     }
@@ -12343,11 +12356,11 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
               write_streamline_probe_log(
                   "STEREO_SUBMISSION\tphase=stage\tpresent_frame=%llu"
                   "\tframe_index=%u\ttoken_call=%llu\tresult=%d\tsuccess=%u"
-                  "\ttags_staged=%u\thistory_reset=0\tcurrent_inputs=1\ttagging_modes=%u\r\n",
+                  "\ttags_staged=%u\thistory_reset=0\tcurrent_inputs=1\ttagging_modes=%u\tbatch=%llu\r\n",
                   static_cast<unsigned long long>(present), bindings[0].frame_index,
                   static_cast<unsigned long long>(bindings[0].token_call),
                   snapshot.submission.last_result(), staged ? 1U : 0U, staged ? 1U : 0U,
-                  tagging_modes);
+                  tagging_modes, static_cast<unsigned long long>(snapshot.submission_id));
               if (!staged) {
                 const bool cleared = snapshot.submission.clear_tags(
                     snapshot.present_stage_commands.Get());
@@ -12367,7 +12380,7 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
             } else {
               ID3D12CommandList* lists[]{snapshot.present_stage_commands.Get()};
               original_execute_command_lists(present_queue.Get(), 1, lists);
-              if (FAILED(present_queue->Signal(snapshot.fence.Get(), 5))) {
+              if (FAILED(present_queue->Signal(snapshot.fence.Get(), snapshot.submission_stage_fence))) {
                 snapshot.failed = true;
                 write_streamline_probe_log(
                     "STEREO_PRESENT_STAGE\tphase=failed"
@@ -12378,12 +12391,13 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                     "STEREO_PRESENT_STAGE\tphase=scheduled"
                     "\tpresent_frame=%llu\tswapchain=%p"
                     "\tbackbuffer_index=%u\tsource=%p\tdestination=%p"
-                    "\tfence_value=5\tcopy_staged=1\ttags_staged=%u"
+                    "\tfence_value=%llu\tcopy_staged=1\ttags_staged=%u"
                     "\tadditional_present_submitted=0"
                     "\tmetadata_published=0\tready_signaled=0\r\n",
                     static_cast<unsigned long long>(present), swapchain,
                     backbuffer_index, snapshot.stereo_backbuffer.Get(),
                     present_backbuffer.Get(),
+                    static_cast<unsigned long long>(snapshot.submission_stage_fence),
                     snapshot.submission.phase() == darktidevr::producer::StreamlineSubmission::Phase::staged ? 1U : 0U);
               }
             }
@@ -12403,8 +12417,9 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
       snapshot.completion_observation_started = false;
       write_streamline_probe_log(
           "STEREO_SUBMISSION\tphase=present\tpresent_frame=%llu"
-          "\tadditional_present_submitted=0\tmetadata_published=0\r\n",
-          static_cast<unsigned long long>(present));
+          "\tadditional_present_submitted=0\tmetadata_published=0\tbatch=%llu\r\n",
+          static_cast<unsigned long long>(present),
+          static_cast<unsigned long long>(snapshot.submission_id));
     }
   }
   streamline_outer_present_active_frame.store(present,
@@ -12450,7 +12465,8 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
           streamline_input_snapshot_state.input_completion_values[eye] =
               observed.last_present_inputs_processing_completion_fence_value;
           if (streamline_input_snapshot_state.submission_presented && retained_fence) {
-            streamline_input_snapshot_state.submission.record_ticket(1,
+            streamline_input_snapshot_state.submission.record_ticket(
+                streamline_input_snapshot_state.submission_id,
                 static_cast<std::uint32_t>(eye),
                 reinterpret_cast<std::uintptr_t>(retained_fence.Get()),
                 observed.last_present_inputs_processing_completion_fence_value);
@@ -12491,33 +12507,79 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
       if (SUCCEEDED(cleanup_result)) {
         ID3D12CommandList* lists[]{snapshot.submission_cleanup_commands.Get()};
         original_execute_command_lists(present_queue.Get(), 1, lists);
-        cleanup_result = present_queue->Signal(snapshot.fence.Get(), 6);
+        cleanup_result = present_queue->Signal(snapshot.fence.Get(), snapshot.submission_cleanup_fence);
       }
       snapshot.submission_cleanup_pending = cleared && SUCCEEDED(cleanup_result);
       if (!snapshot.submission_cleanup_pending) snapshot.failed = true;
       write_streamline_probe_log(
           "STEREO_SUBMISSION\tphase=cleanup\ttags_cleared=%u"
-          "\thresult=0x%08x\tfence_value=6\tpending=%u\r\n",
+          "\thresult=0x%08x\tfence_value=%llu\tpending=%u\tbatch=%llu\r\n",
           cleared ? 1U : 0U, static_cast<unsigned>(cleanup_result),
-          snapshot.submission_cleanup_pending ? 1U : 0U);
+          static_cast<unsigned long long>(snapshot.submission_cleanup_fence),
+          snapshot.submission_cleanup_pending ? 1U : 0U,
+          static_cast<unsigned long long>(snapshot.submission_id));
     }
     if (snapshot.submission_cleanup_pending && !snapshot.failed && !snapshot.submission_retired) {
       const auto completed = snapshot.fence->GetCompletedValue();
       if (completed == UINT64_MAX) {
         snapshot.failed = true;
         write_streamline_probe_log("STEREO_SUBMISSION\tphase=failed\treason=cleanup_device_removed\r\n");
-      } else if (completed >= 6) {
+      } else if (completed >= snapshot.submission_cleanup_fence) {
         for (std::uint32_t eye = 0; eye < 2; ++eye) {
           const auto& fence = snapshot.input_completion_fences[eye];
-          if (fence) snapshot.submission.observe_completion(1, eye,
+          if (fence) snapshot.submission.observe_completion(snapshot.submission_id, eye,
               reinterpret_cast<std::uintptr_t>(fence.Get()), fence->GetCompletedValue());
         }
-        if (snapshot.submission.retire()) {
+        if (snapshot.present_stage_complete && snapshot.submission.retire()) {
           snapshot.submission_retired = true;
           snapshot.submission_cleanup_pending = false;
           write_streamline_probe_log(
               "STEREO_SUBMISSION\tphase=retired\tinput_tickets_complete=1"
-              "\tcleanup_fence_complete=1\tmetadata_published=0\r\n");
+              "\tcleanup_fence_complete=1\tmetadata_published=0\tbatch=%llu\r\n",
+              static_cast<unsigned long long>(snapshot.submission_id));
+          if (snapshot.submission_id < snapshot.submission_limit) {
+            // Both SL input tickets and our cleanup queue have completed. Only
+            // now may the bounded diagnostic reuse textures and release command
+            // owners. Keep the root fence monotonic across all batches.
+            ++snapshot.submission_id;
+            snapshot.submission_stage_fence += 2;
+            snapshot.submission_cleanup_fence += 2;
+            snapshot.present_stage_commands.Reset();
+            snapshot.present_stage_allocator.Reset();
+            snapshot.submission_cleanup_commands.Reset();
+            snapshot.submission_cleanup_allocator.Reset();
+            for (std::size_t eye = 0; eye < 2; ++eye) {
+              snapshot.submission_refresh_commands[eye].Reset();
+              snapshot.submission_refresh_allocators[eye].Reset();
+              snapshot.submission_refresh_fences[eye].Reset();
+              snapshot.input_completion_fences[eye].Reset();
+            }
+            snapshot.submission_refresh_constants = {};
+            snapshot.input_completion_values = {};
+            snapshot.submission_refresh_mask = 0;
+            snapshot.submission_refresh_armed = false;
+            snapshot.submission_attempted = false;
+            snapshot.submission_presented = false;
+            snapshot.submission_cleanup_attempted = false;
+            snapshot.submission_retired = false;
+            snapshot.completion_observation_started = false;
+            snapshot.present_target_observed = false;
+            snapshot.present_stage_pending = false;
+            snapshot.present_stage_complete = false;
+            const auto description = snapshot.stereo_backbuffer->GetDesc();
+            snapshot.submission_prepared = snapshot.submission.prepare(
+                snapshot.submission_id,
+                static_cast<std::uint32_t>(description.Width / 2), description.Height,
+                {snapshot.constants[0].viewport, snapshot.constants[1].viewport},
+                {snapshot.constants[0].constants, snapshot.constants[1].constants},
+                snapshot.submission_inputs);
+            snapshot.failed = !snapshot.submission_prepared;
+            write_streamline_probe_log(
+                "STEREO_SEQUENCE\tphase=rearm\tbatch=%llu\tready=%u\tpresent_frame=%llu\r\n",
+                static_cast<unsigned long long>(snapshot.submission_id),
+                snapshot.submission_prepared ? 1U : 0U,
+                static_cast<unsigned long long>(present));
+          }
         }
       }
     }

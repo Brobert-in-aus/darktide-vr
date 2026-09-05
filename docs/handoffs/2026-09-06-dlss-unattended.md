@@ -132,3 +132,32 @@ extent all fail the analyzer. The original copy-only log still passes.
 Next: sustain successive stereo submissions with coherent input history and
 GPU-safe resource reuse, then identify and fence the actual generated output
 before publishing any generated pair to OpenXR.
+
+## Bounded reuse sequence
+
+`-StreamlineStereoSubmitProbe -StreamlineStereoSubmitFrames 4` now runs four
+fresh batches using one texture owner. The default remains one batch, and the
+explicit diagnostic accepts 1..8. A batch is rearmed only after both retained
+SL input tickets and the cleanup GPU fence complete. Stage/cleanup fence values
+advance monotonically (5/6 through 11/12); completed command owners are released
+before the next refresh. No CPU fence wait or additional Present was added.
+
+Ready preflight passed (`stereo-sequence-preflight-20260906.json`). Native Release
+build, five focused CTest cases and the 27-chunk launcher Lua gate passed. An
+added eight-cycle submission test rejects old batch tickets and premature owner
+reuse while one eye remains incomplete. Its initial pending-fence assertion was
+corrected to match the API's false-until-complete contract, then passed.
+
+Live evidence: `four-batch-probe.tsv` / `four-batch-report.txt`. All four fresh
+pairs staged, presented, cleared and retired. Presents were 4181, 4184, 4187,
+4190, with two intervening ordinary Presents each. Queries reported 1/1 then
+2/2 for each later batch; the pinned header defines this as frames since the
+last state query, so it does not identify our generated stereo output. XR
+continued with fresh pairs and nonzero shared readiness. Worn acceptance remains
+unverified. The analyzer reports four batches, `consecutive=False`, retirement
+verified, publication unverified, and pass.
+
+Analyzer regression checks accept both earlier one-shot and copy-only evidence;
+mutations removing batch 3 retirement, making batch 2 refresh stale, or reusing
+batch 1's cleanup fence for batch 4 are rejected. No generated XR publication
+has been enabled. Next remains continuous history and exact output association.

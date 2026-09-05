@@ -162,8 +162,13 @@ stereo tags and no generated stereo is published to XR. The one-shot packed Pres
 passed unattended on 6 September with `-StreamlineStereoStageProbe`, including
 GPU fence completion and continued fresh XR pairs. An additional explicit
 `-StreamlineStereoSubmitProbe` now completes a fresh-pair API submission,
-cleanup and input retirement; the native-target report also passes.
-Next is successive-frame history and generated-output identity. See the
+cleanup and input retirement; the native-target report also passes. Adding
+`-StreamlineStereoSubmitFrames 4` passed four fresh batches with monotonic GPU
+fences and safe input reuse. Two ordinary Presents intervened between batches;
+this is not continuous stereo generation. Later state queries reported two
+frames per eye, but that counter covers the interval since the previous query,
+not an identified generated stereo output. Next is successive-frame history
+and generated-output identity. See the
 [unattended continuation](handoffs/2026-09-06-dlss-unattended.md).
 The diagnostic proxy retains at most 16 images until process exit; proper GPU
 retirement/recycling is required for release. Restart after runtime resolution

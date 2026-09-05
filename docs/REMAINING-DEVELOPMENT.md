@@ -1,8 +1,9 @@
 # Remaining development: melee, HUD and DLSS
 
 Updated 6 September 2026. User accepts the e8bcfe4 packed-output checkpoint:
-VR world rendering, loading screens and desktop mirror all work. VD/game remain
-running on that checkpoint. Actual stereo DLSS generation is still incomplete.
+VR world rendering, loading screens and desktop mirror all work. Subsequent
+opt-in submission diagnostics preserve that rendering path. Actual stereo DLSS
+generation and generated-pair XR publication are still incomplete.
 
 The [menu audit and rework](MENU-INTERACTION-AUDIT.md) replaces native-menu
 rectangle reconstruction with stock UI input delivery and consistent DPI
@@ -173,9 +174,11 @@ Remaining work, in order:
    partial-call failure cleanup and per-eye input completion-fence ownership;
    the opt-in one-shot submit probe now completes fresh-pair staging, Present,
    tag cleanup and input retirement. It uses the game's existing constants and
-   observed tagging API. The native-target report also passes. Extend this
-   to successive frames with coherent history; one presented frame does not
-   prove an additional generated frame. Default launches do not stage new tags.
+   observed tagging API. The native-target report also passes. The four-batch
+   follow-up verifies fresh inputs and GPU-safe owner reuse; it has two ordinary
+   Presents between batches. Later queries report two frames per eye since the
+   previous query, not a proven generated stereo output. Extend this to
+   successive frames with coherent history. Default launches do not stage new tags.
 3. Establish generated-output identity tied to the submitted stereo batch.
    An asynchronous Present or nearby queue execution is only a candidate;
    input-retirement fences do not prove generated output is ready.

@@ -88,6 +88,11 @@ $stereoPresentStages = @($records |
 $inputCompletions = @($records | Where-Object event -eq 'STEREO_INPUT_COMPLETION')
 $submissionProbe = @($records | Where-Object event -eq 'STEREO_SUBMISSION_PROBE')
 $stereoSubmitProbe = if ($submissionProbe.Count -eq 1) { $submissionProbe[0].enabled } else { '0' }
+$submissionCount = 1
+if ($stereoSubmitProbe -eq '1' -and ($submissionProbe[0].PSObject.Properties.Name -contains 'frames')) {
+    $submissionCount = [int]$submissionProbe[0].frames
+    if ($submissionCount -lt 1 -or $submissionCount -gt 8) { throw 'Invalid stereo submission count.' }
+}
 $stereoSubmissions = @($records | Where-Object event -eq 'STEREO_SUBMISSION')
 $nativeSubmissionTargets = @($records | Where-Object event -eq 'STEREO_NATIVE_TARGET')
 $generatedBackbufferExtents = @()
@@ -889,7 +894,7 @@ if ($stereoStageProbe -eq '1') {
         Where-Object phase -eq 'scheduled')
     $completedStages = @($stereoPresentStages |
         Where-Object phase -eq 'complete')
-    if ($scheduledStages.Count -ne 1 -or $completedStages.Count -ne 1 -or
+    if ($scheduledStages.Count -ne $submissionCount -or $completedStages.Count -ne $submissionCount -or
             @($stereoPresentStages | Where-Object phase -eq 'failed').Count -ne 0 -or
             $scheduledStages[0].copy_staged -ne '1' -or
             $scheduledStages[0].tags_staged -ne $stereoSubmitProbe -or
@@ -903,10 +908,21 @@ if ($stereoStageProbe -eq '1') {
             $completedStages[0].ready_signaled -ne '0') {
         throw 'The one-shot Present staging copy did not complete safely.'
     }
+    foreach ($stage in @($scheduledStages) + @($completedStages)) {
+        if ($stage.copy_staged -ne '1' -or $stage.tags_staged -ne $stereoSubmitProbe -or
+                $stage.additional_present_submitted -ne '0' -or $stage.metadata_published -ne '0' -or
+                $stage.ready_signaled -ne '0') { throw 'Unsafe stereo staging event.' }
+    }
+    for ($i = 0; $i -lt $submissionCount; $i++) {
+        if ([uint64]$scheduledStages[$i].fence_value -ne 5 + 2 * $i -or
+                $completedStages[$i].fence_value -ne $scheduledStages[$i].fence_value) {
+            throw 'Stereo staging fences did not advance monotonically.'
+        }
+    }
 }
 Write-Output "input_completion.samples=$($inputCompletions.Count)"
 if ($inputCompletions.Count -gt 0) {
-    if ($inputCompletions.Count -ne 2 -or
+    if ($inputCompletions.Count -ne 2 * $submissionCount -or
             @($inputCompletions.eye | Sort-Object -Unique).Count -ne 2 -or
             @($inputCompletions.viewport | Sort-Object -Unique).Count -ne 2) {
         throw 'Input completion observation did not cover exactly two viewports.'
@@ -930,12 +946,33 @@ if ($inputCompletions.Count -gt 0) {
     }
 }
 if ($stereoSubmitProbe -eq '1') {
+    $allSubmissions = $stereoSubmissions
+    $allCompletions = $inputCompletions
+    $allRefresh = @($records | Where-Object event -eq 'STEREO_REFRESH')
+    if (@($allSubmissions | Where-Object phase -in @('failed', 'abort')).Count -ne 0 -or
+            @($allRefresh | Where-Object phase -eq 'failed').Count -ne 0) {
+        throw 'Stereo submission sequence contains a failure.'
+    }
+    $previousPresent = [uint64]0
+    $sequenceConsecutive = $true
+    for ($batch = 1; $batch -le $submissionCount; $batch++) {
+    $stereoSubmissions = @($allSubmissions | Where-Object {
+        (($_.PSObject.Properties.Name -contains 'batch') -and [int]$_.batch -eq $batch) -or
+        (-not ($_.PSObject.Properties.Name -contains 'batch') -and $submissionCount -eq 1)
+    })
     $refresh = @($records | Where-Object event -eq 'STEREO_REFRESH')
+    $refresh = @($refresh | Where-Object {
+        (($_.PSObject.Properties.Name -contains 'batch') -and [int]$_.batch -eq $batch) -or
+        (-not ($_.PSObject.Properties.Name -contains 'batch') -and $submissionCount -eq 1)
+    })
     $refreshScheduled = @($refresh | Where-Object phase -eq 'scheduled')
     $staged = @($stereoSubmissions | Where-Object phase -eq 'stage')
     $presented = @($stereoSubmissions | Where-Object phase -eq 'present')
     $cleared = @($stereoSubmissions | Where-Object phase -eq 'cleanup')
     $retired = @($stereoSubmissions | Where-Object phase -eq 'retired')
+    $inputCompletions = @($allCompletions | Where-Object {
+        $presented.Count -eq 1 -and $_.present_frame -eq $presented[0].present_frame
+    })
     if ($staged.Count -ne 1 -or $presented.Count -ne 1 -or
             $cleared.Count -ne 1 -or $retired.Count -ne 1 -or
             @($stereoSubmissions | Where-Object phase -in @('failed', 'abort')).Count -ne 0 -or
@@ -956,6 +993,20 @@ if ($stereoSubmitProbe -eq '1') {
             $retired[0].metadata_published -ne '0') {
         throw 'Stereo submission did not complete staging, Present, cleanup and input retirement.'
     }
+    if (@($inputCompletions.eye | Sort-Object -Unique).Count -ne 2 -or
+            @($inputCompletions.viewport | Sort-Object -Unique).Count -ne 2 -or
+            [uint64]$cleared[0].fence_value -ne 6 + 2 * ($batch - 1)) {
+        throw 'Stereo batch is missing an eye or its cleanup fence.'
+    }
+    $currentPresent = [uint64]$presented[0].present_frame
+    if ($previousPresent -gt 0) {
+        if ($currentPresent -le $previousPresent) { throw 'Stereo batch Present order is invalid.' }
+        $gap = $currentPresent - $previousPresent - 1
+        Write-Output "stereo_sequence.batch$batch.intervening_presents=$gap"
+        if ($gap -ne 0) { $sequenceConsecutive = $false }
+    }
+    $previousPresent = $currentPresent
+    Write-Output "stereo_sequence.batch$batch.frames_presented=$($inputCompletions.frames_presented -join ',')"
     foreach ($eye in $refreshScheduled) {
         if ([uint64]$eye.present_frame + 1 -ne [uint64]$staged[0].present_frame -or
                 $eye.frame_index -ne $staged[0].frame_index -or
@@ -970,6 +1021,15 @@ if ($stereoSubmitProbe -eq '1') {
     }).Count -eq 0) {
         throw 'The submitted batch has no matching native Present target observation.'
     }
+    }
+    if (@($allSubmissions | Where-Object phase -eq 'stage').Count -ne $submissionCount -or
+            @($allRefresh | Where-Object phase -eq 'scheduled').Count -ne 2 * $submissionCount) {
+        throw 'Unexpected stereo sequence batches.'
+    }
+    $stereoSubmissions = $allSubmissions
+    $inputCompletions = $allCompletions
+    Write-Output "stereo_sequence.batches=$submissionCount"
+    Write-Output "stereo_sequence.consecutive=$sequenceConsecutive"
     Write-Output 'input_completion.stereo_retirement_verified=1'
     Write-Output 'generated_stereo.publication_verified=0'
 }

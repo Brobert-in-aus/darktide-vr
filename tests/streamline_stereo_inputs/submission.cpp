@@ -144,5 +144,28 @@ int main() {
     check(calls == (failure == 1 ? std::vector<int>{11, 12}
                                 : std::vector<int>{11, 21, 12, 22}));
   }
+  // Reuse one owner through real Present/cleanup cycles. A previous batch's
+  // ticket must never retire the next batch, even with the same fence object.
+  StreamlineSubmission sequence;
+  fail_at = 0;
+  for (std::uint64_t id = 1; id <= 8; ++id) {
+    check(sequence.prepare(id, 200, 200, {1, 2}, values, inputs));
+    check(sequence.stage({nullptr, nullptr, legacy_tags}, &next_frame, &commands,
+        StreamlineSubmission::Tagging::legacy,
+        StreamlineSubmission::ConstantsMode::already_supplied));
+    check(sequence.begin_present());
+    check(!sequence.prepare(id + 1, 200, 200, {1, 2}, values, inputs));
+    check(sequence.clear_tags(&commands));
+    check(!sequence.record_ticket(id - 1, 0, 100, id));
+    check(sequence.record_ticket(id, 0, 100, id));
+    check(sequence.record_ticket(id, 1, 200, id));
+    check(sequence.observe_completion(id, 0, 100, id));
+    check(!sequence.retire());
+    check(!sequence.observe_completion(id, 1, 200, id - 1));
+    check(!sequence.retire());
+    check(sequence.observe_completion(id, 1, 200, id));
+    check(sequence.retire());
+    check(!sequence.prepare(id, 200, 200, {1, 2}, values, inputs));
+  }
   std::cout << "streamline_submission=pass\n";
 }

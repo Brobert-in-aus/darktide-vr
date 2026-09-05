@@ -37,6 +37,7 @@ param(
     [switch] $StreamlineStereoStageProbe,
 
     [switch] $StreamlineStereoSubmitProbe,
+    [ValidateRange(1, 8)] [int] $StreamlineStereoSubmitFrames = 1,
 
     [switch] $ClusterLightTrace,
 
@@ -461,8 +462,8 @@ if ($StreamlineStereoSubmitProbe) {
             $streamlineStereoSubmitProbeFlagPath -Raw
     }
     Set-Content -LiteralPath $streamlineStereoSubmitProbeFlagPath `
-        -Value 'enabled' -Encoding ascii
-    Write-Output 'One-shot stereo tag submission enabled; generated XR publication remains disabled.'
+        -Value "[probe]`nframes=$StreamlineStereoSubmitFrames" -Encoding ascii
+    Write-Output "Stereo tag submission enabled for $StreamlineStereoSubmitFrames batches; generated XR publication remains disabled."
 }
 if ($SyntheticRuntimeFrusta) {
     $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
