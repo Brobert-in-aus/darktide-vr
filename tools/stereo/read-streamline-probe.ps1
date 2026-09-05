@@ -85,6 +85,7 @@ $stereoPresentTargets = @($records |
     Where-Object event -eq 'STEREO_PRESENT_TARGET')
 $stereoPresentStages = @($records |
     Where-Object event -eq 'STEREO_PRESENT_STAGE')
+$inputCompletions = @($records | Where-Object event -eq 'STEREO_INPUT_COMPLETION')
 $generatedBackbufferExtents = @()
 $generatedBackbufferFormats = @()
 
@@ -886,5 +887,28 @@ if ($stereoStageProbe -eq '1') {
             $completedStages[0].ready_signaled -ne '0') {
         throw 'The one-shot Present staging copy did not complete safely.'
     }
+}
+Write-Output "input_completion.samples=$($inputCompletions.Count)"
+if ($inputCompletions.Count -gt 0) {
+    if ($inputCompletions.Count -ne 2 -or
+            @($inputCompletions.eye | Sort-Object -Unique).Count -ne 2 -or
+            @($inputCompletions.viewport | Sort-Object -Unique).Count -ne 2) {
+        throw 'Input completion observation did not cover exactly two viewports.'
+    }
+    foreach ($sample in $inputCompletions) {
+        if ($sample.eye -notin @('0','1') -or $sample.result -ne '0' -or
+                $sample.status -ne '0' -or $sample.fence_retained -ne '1' -or
+                $sample.stereo_submission -ne '0' -or
+                $sample.thread -notin $threads -or
+                [uint64]$sample.completed_value -eq [uint64]::MaxValue -or
+                [uint64]$sample.fence_value -eq [uint64]::MaxValue) {
+            throw 'Input completion observation has an invalid API/fence/thread result.'
+        }
+        $pending = [uint64]$sample.completed_value -lt [uint64]$sample.fence_value
+        Write-Output "input_completion.eye$($sample.eye).pending_at_observation=$pending"
+        Write-Output "input_completion.eye$($sample.eye).fence_value=$($sample.fence_value)"
+    }
+    # Observed game inputs are not our prepared-but-unsubmitted stereo batch.
+    Write-Output 'input_completion.stereo_retirement_verified=0'
 }
 Write-Output 'result=pass'

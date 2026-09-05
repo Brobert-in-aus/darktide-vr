@@ -25,6 +25,7 @@
 #include "core/two_bone_ik.h"
 #include "streamline_abi_2_7_30.h"
 #include "producer/streamline_submission.h"
+#include "producer/stereo_color_resample.h"
 
 #include <algorithm>
 #include <array>
@@ -162,6 +163,8 @@ struct StreamlineConstantsObservation {
 struct StreamlineInputSnapshotState {
   darktidevr::producer::StreamlineSubmission submission;
   bool submission_prepared{};
+  darktidevr::producer::StereoColorResample color_resample;
+  bool colors_resampled{};
   bool completion_observation_started{};
   std::array<ComPtr<ID3D12Fence>, 2> input_completion_fences;
   std::array<std::uint64_t, 2> input_completion_values{};
@@ -2681,10 +2684,11 @@ void initialize_streamline_probe(void* present_target,
   const auto owner_path = module_path(owner);
   write_streamline_probe_log(
       "PROBE\tmode=observe_only\tsdk_abi=2.7.30"
-      "\tdlssg_state_query=wrap_existing_calls"
-      "\tindependent_state_calls=0\tcopy_probe=%u\ttransport_probe=%u"
+      "\tdlssg_state_query=existing_calls_plus_bounded_present_probe"
+      "\tindependent_state_call_budget=%u\tcopy_probe=%u\ttransport_probe=%u"
       "\tinput_snapshot_probe=%u\ttarget_token_probe=%u"
       "\tstereo_swapchain_probe=%u\tstereo_stage_probe=%u\r\n",
+      streamline_input_snapshot_probe_requested.load(std::memory_order_relaxed) ? 2U : 0U,
       streamline_copy_probe_requested.load(std::memory_order_relaxed) ? 1U
                                                                      : 0U,
       streamline_transport_probe_requested.load(std::memory_order_relaxed)
@@ -9133,7 +9137,9 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
         }
         submission_inputs[sample_eye][type] = {
             resource.Get(), static_cast<std::uint32_t>(input_description.Width),
-            input_description.Height, D3D12_RESOURCE_STATE_COPY_DEST,
+            input_description.Height,
+            static_cast<std::uint32_t>(state.colors_resampled && type == 2
+                ? D3D12_RESOURCE_STATE_COPY_SOURCE : D3D12_RESOURCE_STATE_COPY_DEST),
             static_cast<std::uint32_t>(input_description.Format)};
       }
     }
@@ -9197,14 +9203,14 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
     auto stereo_description = left_description;
     const auto requested_eye_width =
         camera_input_width.load(std::memory_order_relaxed);
-    const auto crop_wide_eye =
+    const auto resample_wide_eye =
         streamline_stereo_swapchain_probe_requested.load(
             std::memory_order_acquire) &&
         requested_eye_width > 0 &&
         left_description.Width ==
             static_cast<std::uint64_t>(requested_eye_width) * 2;
     const auto stereo_eye_width =
-        crop_wide_eye ? static_cast<std::uint64_t>(requested_eye_width)
+        resample_wide_eye ? static_cast<std::uint64_t>(requested_eye_width)
                       : left_description.Width;
     stereo_description.Width = stereo_eye_width * 2;
     stereo_description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -9226,6 +9232,25 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
           "STEREO_BACKBUFFER\tphase=failed\treason=create_resources\r\n");
       return;
     }
+    if (resample_wide_eye) {
+      const auto resample_result = state.color_resample.record(device.Get(),
+          state.stereo_backbuffer_commands.Get(), state.snapshots[0][2].Get(),
+          state.snapshots[1][2].Get(), static_cast<UINT>(stereo_eye_width),
+          left_description.Height);
+      if (FAILED(resample_result)) {
+        state.failed = true;
+        write_streamline_probe_log("STEREO_BACKBUFFER\tphase=failed\treason=resample\thresult=0x%08x\r\n",
+            static_cast<unsigned>(resample_result));
+        return;
+      }
+      state.colors_resampled = true;
+      state.stereo_backbuffer = state.color_resample.output(2);
+      state.snapshots[0][2] = state.color_resample.output(0);
+      state.snapshots[1][2] = state.color_resample.output(1);
+      write_streamline_probe_log("STEREO_COLOR_RESAMPLE\tfull_source_width=%llu\teye_width=%llu\theight=%u\tcropped=0\r\n",
+          static_cast<unsigned long long>(left_description.Width),
+          static_cast<unsigned long long>(stereo_eye_width), left_description.Height);
+    } else {
     for (std::size_t source_eye = 0; source_eye < 2; ++source_eye) {
       const auto& source_resource = state.snapshots[source_eye][2];
       D3D12_RESOURCE_BARRIER barrier{};
@@ -9241,13 +9266,10 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
       D3D12_TEXTURE_COPY_LOCATION source{};
       source.pResource = source_resource.Get();
       source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-      const D3D12_BOX source_box{
-          0, 0, 0, static_cast<UINT>(stereo_eye_width),
-          left_description.Height, 1};
       state.stereo_backbuffer_commands->CopyTextureRegion(
           &destination,
           static_cast<UINT>(source_eye * stereo_eye_width), 0, 0, &source,
-          crop_wide_eye ? &source_box : nullptr);
+          nullptr);
       std::swap(barrier.Transition.StateBefore,
                 barrier.Transition.StateAfter);
       state.stereo_backbuffer_commands->ResourceBarrier(1, &barrier);
@@ -9260,6 +9282,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
     ready_barrier.Transition.Subresource =
         D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     state.stereo_backbuffer_commands->ResourceBarrier(1, &ready_barrier);
+    }
     const auto close_result = state.stereo_backbuffer_commands->Close();
     if (FAILED(close_result)) {
       state.failed = true;

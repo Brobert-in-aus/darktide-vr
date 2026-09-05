@@ -232,3 +232,13 @@ Prior capture evidence exposes a colour-only crop from 4992-wide sources to
 established. Native preparation rejects this mismatch. Current runtime capture
 is needed before enabling calls; continuous generation and XR publication are
 still unfinished, not claimed complete.
+
+Latest live continuation fixed snapshot scheduling that incorrectly depended on
+a short logging burst. After an announced restart, both completion queries
+passed and retained fences; completion lagged the required value by two after
+Present. The next build replaces wide-path colour cropping with full-image GPU
+resampling and matching HUD-less eye outputs. Actual D3D12 WARP execution and
+the four existing Streamline tests pass. The next headset gate is a wide-output
+diagnostic launch to validate image/projection correspondence and prepared
+inputs. Generated stereo submission remains disabled; the current normal run
+was left open. See the DLSS handoff for logs, commands and remaining work.

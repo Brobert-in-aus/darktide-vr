@@ -140,3 +140,45 @@ End-of-turn process check: the run has ended. Log reports
 `openxr.capture_window=closed session_exit=clean`, elapsed 788963 ms, then
 `XR owner exited; terminated the orphaned flat Darktide process.` No assistant
 shutdown command was issued in this pass. Darktide is no longer running.
+
+## Capture scheduling fixed; live completion evidence obtained
+
+User requested continued DLSS work. Found that snapshot scheduling depended on
+the short native-Present logging burst, so a slower startup could prevent it
+entirely. 6ba4fe6 separates scheduling from log verbosity. Announced restart,
+closed Darktide via CloseMainWindow, waited for runner cleanup, ran fresh Ready
+preflight and relaunched with the same HUD/Psykhanium/input-snapshot flags.
+Current runner session log: `artifacts/unattended/dlss-scheduler-live-20260905.log`.
+
+Capture completed: ten unique snapshot resources, matching source frame 2978,
+all five sampled input roles divergent between eyes. At Present 2983 both eye
+state queries returned result/status zero, retained fences and value 2982 with
+completed value 2980. Thus the inputs were still pending after Present returned.
+Saved `artifacts/diagnostics/dlss-live-20260905/completion-probe.tsv` and analyzer
+`completion-report.txt`. Analyzer now validates both completion records and
+explicitly reports stereo_retirement_verified=0, because our stereo batch is
+not submitted. Current game remains open; these are accepted probe results,
+not proof of generated stereo output.
+
+Next source build replaces the wide diagnostic path's colour crop with a
+full-image compute resample. It emits separate matching HUD-less eye textures
+plus packed colour, retains all source/descriptors/PSO resources and publishes
+their actual COPY_SOURCE states in prepared tags. Normal-width packing remains
+unchanged. Supported source formats are linear RGBA8 and RGBA8 typeless viewed
+as UNORM; unsupported resources are rejected. Projection constants and normalized
+motion-vector scaling are preserved. Runtime correspondence still needs checking.
+
+Native Release build passed. `stereo_color_resample` executes the actual compute
+shader on D3D12 WARP, checks both halves of both eyes survive 4-to-2 downsampling,
+checks packed eye order and rejects a second recording into the one-shot owner.
+It passes. This is GPU execution evidence, not a headset visual acceptance claim.
+The other four Streamline tests also pass. New diagnostic header reports the
+bounded independent state-call budget rather than falsely reporting zero.
+
+Next headset gate: launch the wide-swapchain/target-token diagnostic with the new
+resampler (without Present-stage copying initially), check full image/projection
+correspondence and require STEREO_COLOR_RESAMPLE cropped=0 plus
+STEREO_SUBMISSION_PREPARE ready=1. This needs a new launch; current normal game
+was left untouched after the scheduler-fix restart. Live tag submission,
+continuous batch/fence retirement and generated stereo XR publication remain
+unfinished. Do not enable them based only on WARP test success.

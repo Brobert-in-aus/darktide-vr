@@ -22,6 +22,13 @@ target_link_libraries(darktidevr-streamline-submission-tests PRIVATE darktidevr_
 add_test(NAME streamline_submission COMMAND darktidevr-streamline-submission-tests)
 set_tests_properties(streamline_submission PROPERTIES LABELS "phase1;streamline")
 
+add_executable(darktidevr-stereo-color-resample-tests resample.cpp)
+target_compile_options(darktidevr-stereo-color-resample-tests PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-stereo-color-resample-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(darktidevr-stereo-color-resample-tests PRIVATE darktidevr_core d3d12 dxgi dxguid d3dcompiler)
+add_test(NAME stereo_color_resample COMMAND darktidevr-stereo-color-resample-tests)
+set_tests_properties(stereo_color_resample PROPERTIES LABELS "phase1;streamline;gpu")
+
 set(DARKTIDEVR_STREAMLINE_REFERENCE_INCLUDE_DIR "" CACHE PATH
   "Optional official Streamline v2.7.30 include directory for ABI validation")
 if(DARKTIDEVR_STREAMLINE_REFERENCE_INCLUDE_DIR)
