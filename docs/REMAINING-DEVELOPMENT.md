@@ -242,3 +242,10 @@ the four existing Streamline tests pass. The next headset gate is a wide-output
 diagnostic launch to validate image/projection correspondence and prepared
 inputs. Generated stereo submission remains disabled; the current normal run
 was left open. See the DLSS handoff for logs, commands and remaining work.
+
+The subsequent wide-output test passed resource preparation but failed worn
+acceptance: HUD disappeared, right-hand controller was offset and world markers
+grew much larger. Normal rendering was restored by relaunching without diagnostic
+flags. Do not enable the current wide mode as a release path. Packed output must
+be isolated from normal engine eye/UI dimensions; do not mask these regressions
+with HUD, hand or marker calibration changes. DLSS remains incomplete.

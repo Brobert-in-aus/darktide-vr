@@ -208,3 +208,23 @@ the wide configuration; that alone cannot establish visual acceptance of the
 unpublished packed surface. Game remains running. Live SL tagging/submission,
 matching frame history, output identification and continuous retirement remain
 the next integration work.
+
+## Wide configuration fails worn acceptance
+
+User reports HUD missing, right-hand controller offset and much larger world
+markers in the wide diagnostic. This invalidates visual acceptance despite
+successful resampling/preparation counters. The current wide mode doubles the
+engine-facing render extent, so it is not isolated to final presentation.
+Do not compensate by changing accepted HUD scale, hand alignment or markers.
+The next design must separate packed presentation dimensions from the engine's
+normal eye/UI coordinate system, or otherwise prove those coordinate contracts
+remain unchanged before repeating worn tests.
+
+Announced and performed normal shutdown, waited for runner cleanup and ran Ready
+preflight. Relaunched with only `-EnableHudPanel -EnterPsykhanium`; all Streamline
+probe flags are absent. Restoration log:
+`artifacts/unattended/normal-restore-live-20260905.log`, preflight:
+`artifacts/unattended/normal-restore-preflight-20260905.json`.
+Wide regression capture archived as `wide-regressions-probe.tsv` in the DLSS
+diagnostic directory. Restoring the normal configuration is not itself user
+acceptance that all three symptoms have recovered.
