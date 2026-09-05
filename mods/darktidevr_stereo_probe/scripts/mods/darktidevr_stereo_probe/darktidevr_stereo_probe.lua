@@ -10353,7 +10353,8 @@ mod:hook_safe(
     function(self, _, interactee_unit)
         local ui_interaction = self:_ui_interaction(interactee_unit)
         local manager = Managers and Managers.ui
-        local active_ok, view_active = manager and
+        if not manager then return end
+        local active_ok, view_active =
             pcall(manager.view_active, manager, ui_interaction)
         if not active_ok or not view_active then
             return

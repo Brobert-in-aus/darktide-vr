@@ -78,6 +78,9 @@ derives max(1, physical core count - 1) automatically, using physical
 cores rather than logical processors/hyperthreads. Preserve this distinction in
 installation and performance documentation.
 
+The user accepted texture pool 2048, seven workers and LOD 3 for now. The pool
+is machine-local; future release defaults still need comparison on other GPUs.
+
 Melee aiming must follow the right-hand aim while movement remains head-relative;
 that follow-up and left-hand alignment are still under development.
 

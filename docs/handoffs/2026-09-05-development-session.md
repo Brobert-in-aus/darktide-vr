@@ -395,3 +395,26 @@ hand/head direction vectors are added to melee diagnostics. Worn side-aimed
 swing and hit verification remains required, including possible interaction
 between stock animation constraints and proxy rotation. Next startup also logs
 engine-reported texture pool and worker settings when available.
+
+Deployed 1accaae after normal game closure and successful Ready preflight:
+artifacts/unattended/wrist-animation-preflight-20260905.json (120 rendered frames).
+Manual-startup run: artifacts/unattended/wrist-animation-live-20260905.log.
+Launcher automatic physical-core calculation ran and retained seven workers.
+This deployment contains left-grip-space correction, UI startup policy callback
+fix and the animation rotation return-value fix. Verify new startup policy log,
+engine pool/worker report, fresh stereo and real hand/attack behavior. Do not
+reuse the prior run's acceptance/counters for these new changes.
+
+Fresh startup now confirms DARKTIDEVR_VISUAL_SETTINGS blur_dof_lens=forced_off
+at 00:22:45.150. No duplicate-hook warning. Application.settings() does not expose
+feedback pool/worker values on this build (reported unavailable), so the effective
+pool limit is not independently established by that API. Installed config remains
+2048; do not mislabel the readback as verification. Fresh range rigid hands ready
+at 00:23:40.364, shared_ready >1949, recent fresh throughput about 60fps with zero
+reused frames and one startup pose mismatch. Worn direction/alignment pending.
+
+Review of the same Lua return-value pattern found ViewInteraction's vendor-panel
+callback also discarded pcall's second value. Fixed with an explicit manager
+nil guard; the existing active-view check now receives the actual boolean.
+LuaJIT 13-chunk gate passes. This small shop follow-up is staged locally and does
+not change the current live run.
