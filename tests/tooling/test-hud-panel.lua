@@ -16,7 +16,7 @@ Vector3, Vector2, Color = function() end, function() end, function() end
 local panel = dofile(arg[1])
 local hooks = {}
 panel.install({hook=function(_, _, method, callback) hooks[method] = callback end,
-    info=function() end})
+    info=function() end, error=function() end})
 -- Inject already-created resources to isolate the real draw hook from engine
 -- allocation. This test exercises restoration, not GPU target correctness.
 local state
@@ -58,4 +58,59 @@ assert(result.n == 4 and result[1] == "stock" and result[2] == nil and result[3]
 hooks.draw(stock, owner, .01, 2, {}) -- Same frame, second eye.
 assert(calls.spatial == 2 and calls.fixed == 1 and calls.copy == 1)
 assert(owner._elements_array == elements and owner._ui_renderer == renderer)
-print("HUD draw restoration across failures, return values and once-per-frame authoring passed")
+-- Explicit disable/unload uses this same public entry point. A shared queue GUI
+-- belongs to the queue renderer, so destroy the resource renderer before it.
+local destroyed = {}
+renderer_api.destroy = function(resource)
+    assert(not destroyed[resource], "duplicate renderer destruction")
+    destroyed[resource] = true
+    if resource == state.queue_renderer then
+        assert(destroyed[state.resource_renderer], "queue destroyed before target")
+    end
+end
+Renderer.destroy_resource = function(resource)
+    assert(not destroyed[resource], "duplicate target destruction")
+    destroyed[resource] = true
+end
+local target_renderer, queue_renderer, display = state.resource_renderer,
+    state.queue_renderer, state.display_target
+panel.set_enabled(false)
+panel.set_enabled(false)
+assert(not panel.enabled() and destroyed[target_renderer] and
+    destroyed[queue_renderer] and destroyed[display])
+assert(state.resource_renderer == nil and state.display_target == nil)
+-- Failure after all target objects exist must release them and draw the stock
+-- HUD. It must not leave a half-bound panel eligible for the next frame.
+local released = 0
+Managers = {ui={create_world=function() return {} end,
+    create_viewport=function() return {} end,
+    destroy_world=function() released = released + 1 end}}
+package.loaded["scripts/foundation/utilities/script_world"].destroy_viewport =
+    function() released = released + 1 end
+renderer_api.create_viewport_renderer = function() return {gui={},gui_retained={}} end
+renderer_api.create_resource_renderer = function(_, gui)
+    return {gui=gui, render_target_material={}, render_target={}}
+end
+renderer_api.destroy = function() released = released + 1 end
+Renderer.create_resource = function() return {} end
+Renderer.destroy_resource = function() released = released + 1 end
+World = {create_world_gui=function() return {} end,
+    destroy_gui=function() released = released + 1 end}
+Gui.create_material = function() return {} end
+Gui.destroy_material = function() released = released + 1 end
+Material = {set_resource=function() error("binding failure") end}
+Matrix4x4 = {identity=function() return {} end}
+GuiMaterialFlag = {GUI_RENDER_PASS_LAYER=1}
+renderer.world = {}
+state.pending_world = renderer.world
+panel.set_enabled(true)
+local fallback = false
+hooks.draw(function(self)
+    fallback = true
+    assert(self._elements_array == elements and self._ui_renderer == renderer)
+end, owner, .01, 3, {})
+assert(fallback and state.creation_failed and state.resource_renderer == nil)
+assert(released == 7, "partial target creation leaked owned resources")
+panel.set_enabled(false)
+assert(released == 7, "cleanup retried already released resources")
+print("HUD error restoration, stereo authoring and idempotent resource cleanup passed")

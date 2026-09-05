@@ -761,3 +761,11 @@ CTest streamline_input_readiness and streamline_stereo_inputs passed 2/2.
 The accepted live DLL has not been replaced. REMAINING-DEVELOPMENT.md maps the
 three requested bodies of work to their actual implementation seams, including
 the still-missing DLSS-G tag/constants submission stage and ABI version check.
+
+HUD lifecycle follow-up now releases its panel on mod disable/unload before
+world teardown. Failed final material binding cleans up partial resources and
+falls back to stock HUD drawing. The fixture verifies idempotent cleanup and
+injects a binding failure after target creation. The source invariant initially
+failed because it required the former direct binding-call spelling; updated it
+to the protected call while retaining the completed-copy target requirement.
+CTest hud_panel/compiler/invariants then passed 3/3. Still offline and undeployed.

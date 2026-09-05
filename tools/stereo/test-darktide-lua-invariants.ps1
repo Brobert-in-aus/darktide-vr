@@ -540,7 +540,7 @@ if (-not $hudPanelSource.Contains(
         -not $hudPanelSource.Contains(
             'Renderer.copy_render_target_rect,') -or
         -not $hudPanelSource.Contains(
-            'Material.set_resource(material, "source", display_target)') -or
+            'Material.set_resource, material, "source", display_target)') -or
         -not $hudPanelSource.Contains(
             'Gui2.bitmap_3d(') -or
         -not $hudPanelSource.Contains(

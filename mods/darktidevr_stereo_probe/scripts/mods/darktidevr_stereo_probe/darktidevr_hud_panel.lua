@@ -269,7 +269,15 @@ local function create_resources(mod, owner, source_renderer, world)
     -- binocular world render into this panel after HUD startup. Present only
     -- the separate completed-copy resource; a one-frame-old HUD is safe,
     -- whereas an in-flight render target is not.
-    Material.set_resource(material, "source", display_target)
+    local binding_ok, binding_error = pcall(
+        Material.set_resource, material, "source", display_target)
+    if not binding_ok then
+        mod:error("DARKTIDEVR_HUD material_binding_failed error=%s",
+            tostring(binding_error))
+        destroy_resources()
+        state.creation_failed = true
+        return nil
+    end
     state.owner = owner
     state.source_renderer = source_renderer
     state.pending_world = world
