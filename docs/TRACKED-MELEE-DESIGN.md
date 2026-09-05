@@ -227,3 +227,13 @@ Sphere-sweep actions retain their explicit radius with no box centre offset.
 Missing/invalid geometry produces no volume rather than a guessed default.
 This module remains offline and unimported. A real tracked grip-to-sweep-origin
 transform still needs calibration before physics queries or visible overlays.
+
+`darktidevr_melee_contacts.lua` accumulates one selected contact per target
+across a complete simulation update, using adapter-supplied stock hit-zone/shield
+priorities. It copies position/normal scalars before another physics query can
+reuse the source result, preserves the first contact on equal priority, and has
+no finite target count. It requires already validated unobstructed contacts;
+it does not implement wall/shield physics, actor liveness or authority itself.
+Batch reset is independent of the cooldown ledger. Its integration fixture uses
+100 targets, several hurtboxes/substeps, and repeated stationary contact with
+the existing per-target policy. This module is also offline and unimported.

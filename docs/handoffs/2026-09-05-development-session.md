@@ -676,3 +676,11 @@ ongoing diagnostic session.
 Additional stock melee review documented dynamic shield/hit-zone priority,
 stateful action hit/proc ownership and the need to copy reusable physics results
 across subdivision queries. Physical contact damage remains disabled.
+
+Added the offline melee contact collector: snapshot reusable query values,
+resolve one best-priority contact per target across substeps, and leave cooldown
+state separate. Its test combines 100 targets and repeated substeps with the
+existing cooldown policy, proving no 20-result truncation or reset bypass in
+this layer. Physics/obstruction, liveness, stock priority calculation and damage
+remain adapter responsibilities; no live import or deployment. CTest collector,
+Lua source compiler and source invariants passed 3/3 (19 Lua chunks).
