@@ -818,3 +818,9 @@ handling. The combined collector fixture covers raised/lowered shields, priority
 overrides, scenery and false/nil target-registration results. CTest hit-zone/
 compiler/invariants passed 3/3 (23 Lua chunks). A process check found no remaining
 Darktide or XR-harness process; no headset access was needed.
+
+Extended the offline sweep planner with scalar pose snapshots and normalized,
+shortest-arc spherical interpolation. Tests cover engine-input reuse, opposite
+quaternion signs, invalid rotations, and a two-metre tip moving through a
+180-degree arc with bounded substep travel. CTest melee_sweep_plan/compiler/
+invariants passed 3/3. This is collision interpolation, not live hand smoothing.

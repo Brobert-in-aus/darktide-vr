@@ -304,3 +304,11 @@ hit zones are returned separately: scenery still needs obstruction handling.
 Its fixture combines the adapter with contact selection for raised/lowered
 shields and action-specific priorities. The adapter remains unimported; it does
 not itself establish wall visibility, multiplayer authority or damage eligibility.
+
+The sweep planner also snapshots scalar poses and builds a shortest-arc spherical
+rotation trajectory with normalized quaternions. Equal fractional samples follow
+equal angular steps, allowing its radius/arc spacing bound to govern actual
+query orientations. Equivalent quaternion signs do not produce a false full
+turn. The test follows a two-metre tip through 180 degrees and bounds consecutive
+tip travel. This interpolates collision samples; it does not delay visual hands
+or enable aim smoothing. Pose-history discontinuity rules still apply.
