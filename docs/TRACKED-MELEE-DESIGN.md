@@ -98,6 +98,15 @@ pagination or exclusion option exists without checking the engine API. Actor
 deduplication and target deduplication are separate: several shield/body actors
 can consume raw capacity before reaching many distinct enemies.
 
+For stationary contact, `PhysicsWorld.immediate_overlap` is already used with
+`shape="oobb"`, position, rotation and size in `MinionAttack._melee_with_oobb`.
+It returns an actor list and count without an explicit Lua-side result maximum.
+Other stock overlaps use the melee collision filter; push attacks also pass
+`rewind_ms`. This is a concrete candidate for the non-damaging overlap probe,
+not proof of unlimited engine capacity or of box-query rewind support. Overlaps
+provide actors, whereas sweeps provide contact positions/normals as well; the
+damage adapter must resolve proper hit-zone/contact data before using this path.
+
 ## Timing data
 
 Use seconds per normal attack, including effective weapon handling and attack-speed
@@ -105,6 +114,15 @@ buffs. Full animation length is not the normal attack cycle: the inspected chain
 example has total_time 1.3, damage window 0.3-0.4, and an attack chain at 0.55 before
 speed scaling. Use the stock action/chain timing resolver rather than copying a
 single display stat. Some action kinds invert time-scale handling.
+
+Specifically, `_calculate_time_scale` combines weapon handling, the action's
+listed stat buffs and gameplay/network clamps. `_validate_single_chain_action`
+divides chain time by this scale, except designated inverted action kinds below
+scale 1, where it multiplies. Select the ordinary attack-chain transition, not
+the earliest arbitrary allowed chain: the example permits blocking/special at
+0.45 but another attack at 0.55. Follow any intermediate windup before calling
+that value a complete attack interval. Reusing the live handler's calculation
+avoids incorrectly reading a single attack-speed buff or current idle action.
 
 The relevant heavy threshold is the windup-to-heavy transition. In this example
 it is 0.5, whereas windup total_time is 3. The user's selected heavy cooldown is
@@ -152,6 +170,9 @@ is not redistributed by this document.
   sweep box (42), heavy threshold (193), light timing (212), chain (284).
 - scripts/settings/equipment/action_sweep_settings.lua: sweep modifiers and
   shield/hit-zone priority functions.
+- scripts/utilities/minion_attack.lua: _melee_with_oobb (1322), immediate oriented
+  box overlap returning actors/count; scripts/utilities/attack/push_attack.lua
+  (36), immediate overlap with lag-compensation rewind.
 
 ## Offline foundation now available
 
