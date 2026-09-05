@@ -474,3 +474,13 @@ attached at 00:40:04.848; rigid hands ready at 00:40:11.373. shared_ready >2850,
 recent fresh throughput about 59fps, zero reused frames and two startup pose
 mismatches. No new mod errors. Crash recovery is established; worn attack and
 block acceptance is still pending.
+
+Offline foundation added: darktidevr_melee_contact_policy.lua implements only
+continuous per-target cooldown eligibility. It is not imported by the live mod
+and has no physics/damage connection. Different targets have independent gates;
+light/heavy share each target's deadline, heavy starts unavailable, stationary
+contact requalifies after expiry, and no global cadence/motion/cleave limit exists.
+The test covers repeated/duplicate contacts, multiple enemies, initial heavy,
+mode changes, new targets, recharge preserving history and no banked burst.
+Direct LuaJIT test passes; compiler gate now covers 15 chunks. Collision geometry,
+stock damage adapter, authority and visual acceptance remain future integration.

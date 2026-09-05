@@ -46,4 +46,7 @@ if(BUILD_TESTING)
   add_test(NAME melee_animation_source COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-melee-animation-source.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_body_proxy.lua")
+  add_test(NAME melee_contact_policy COMMAND "${LUAJIT_VALIDATOR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-melee-contact-policy.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_contact_policy.lua")
 endif()

@@ -142,3 +142,13 @@ is not redistributed by this document.
   sweep box (42), heavy threshold (193), light timing (212), chain (284).
 - scripts/settings/equipment/action_sweep_settings.lua: sweep modifiers and
   shield/hit-zone priority functions.
+
+## Offline foundation now available
+
+`darktidevr_melee_contact_policy.lua` implements the per-target eligibility ledger,
+with shared light/heavy target deadlines and initial heavy readiness. It is not
+imported by the active mod and cannot cause damage. Its isolated test exercises
+continuous contact, several independent targets, duplicate contacts, initial
+heavy delay, mode changes and no banked burst. Future physics integration must
+supply validated simulation contacts, effective intervals and stable target
+generation keys, and retain stock obstruction separately from damage eligibility.
