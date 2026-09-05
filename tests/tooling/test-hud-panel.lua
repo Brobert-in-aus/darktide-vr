@@ -99,7 +99,10 @@ end
 renderer_api.destroy = function() released = released + 1 end
 Renderer.create_resource = function() return {} end
 Renderer.destroy_resource = function() released = released + 1 end
-World = {create_world_gui=function() return {} end,
+World = {create_world_gui=function(_, _, _, _, lifetime)
+    assert(lifetime == "immediate", "per-frame HUD draws must not retain old head poses")
+    return {}
+end,
     destroy_gui=function() released = released + 1 end}
 Gui.create_material = function() return {} end
 Gui.destroy_material = function() released = released + 1 end

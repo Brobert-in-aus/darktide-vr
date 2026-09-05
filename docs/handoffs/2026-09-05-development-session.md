@@ -961,3 +961,14 @@ API comparison showed Gui2.bitmap_3d receives a Vector3 size from UIResolution,
 while the prototype supplied Vector2. Corrected size to Vector3(width,height,0)
 and added a draw-call contract fixture for size/UV types and material-handle
 flags. HUD fixture passed; pinned Lua compiler passed 25 chunks. Visual pending.
+
+HUD size candidate d2314a3 still showed cyan backing without target contents.
+User moved the headset and observed old rectangles remaining at earlier poses,
+eventually covering the view. Confirmed the HUD world GUI was retained despite
+per-frame bitmap/backing creation. Changed it to immediate mode so the engine
+expires previous frame geometry. Added a lifetime assertion to the HUD fixture;
+HUD test passed and LuaJIT compiled all 25 chunks. The accumulated backing means
+previous captures do not independently prove the target texture was empty: old
+opaque geometry could occlude later panels. Recheck after the lifetime fix.
+Official engine API documents immediate mode for World.create_world_gui:
+https://help.autodesk.com/cloudhelp/2019/ENU/Max-Interactive-Help/lua_ref/obj_stingray_World.html

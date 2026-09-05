@@ -261,7 +261,9 @@ local function create_resources(mod, owner, source_renderer, world)
     state.display_target = display_target
     local gui_ok, world_gui = pcall(
         World.create_world_gui,
-        world, Matrix4x4.identity(), 1, 1)
+        -- Both the bitmap and diagnostic backing are authored every frame.
+        -- Retained mode leaves every old head pose alive until GUI destruction.
+        world, Matrix4x4.identity(), 1, 1, "immediate")
     if not gui_ok or not world_gui then
         mod:error("DARKTIDEVR_HUD world_gui_failed error=%s",
             tostring(world_gui))
