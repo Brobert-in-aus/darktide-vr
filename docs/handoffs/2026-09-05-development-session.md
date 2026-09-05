@@ -622,3 +622,21 @@ Validation: Release native_capture build with project warnings as errors passed
 after fixing a compile typo. CTest native_capture_hooks, melee_volume,
 lua_source_compile and lua_source_invariants passed 4/4. Live diagnostic
 deployment and actual trace samples remain the next check.
+
+The native trace armed successfully in the next live run, with fresh stereo and
+nonzero shared_ready. By 277.766 seconds it recorded 1,245,184 type-8 allocations
+and 46,006 releases on the sampled allocator. Its index increased to 1,236,474.
+Sustained samples point to 0x5b8154 <- 0x3eb846 <- 0x3ebea4 <- 0x383a87,
+within RenderGui command processing from RenderWorld::update_state. This is
+actual accumulating GUI resource-handle evidence, not just LUT capacity.
+Switching the existing full-second-eye flag at 01:43:01 UTC did not arrest growth:
+subsequent 65,536-allocation intervals released only about 90 handles each.
+
+Added a temporary marker-reprojection opt-out, polled alongside the existing
+second-eye diagnostic flag every 120 renders. The installed mod-root file
+`darktidevr_marker_reprojection_disabled.flag` containing `enabled` disables
+retained left-eye capture and right-eye replay; removing it restores reprojection.
+Captured-command cleanup remains unconditional within the existing marker path.
+Normal configuration is unchanged. This is a causal diagnostic, not an accepted
+visual configuration or a lifetime fix. LuaJIT 17-chunk gate and CTest source
+invariants pass. Next deployment compares allocation growth with markers off/on.

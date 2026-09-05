@@ -3537,6 +3537,19 @@ local function render_eye_from_prepared_frame(world, prepared, target)
                 "DARKTIDEVR_RENDER second_eye_path=%s source=test_flag",
                 enabled and "full_wrapper" or "prepared_frame")
         end
+        local marker_flag = Mods.lua.io.open(
+            "./../mods/darktidevr_stereo_probe/darktidevr_marker_reprojection_disabled.flag",
+            "r")
+        local markers_disabled = false
+        if marker_flag then
+            markers_disabled = marker_flag:read("*all"):match("^%s*enabled%s*$") ~= nil
+            marker_flag:close()
+        end
+        if markers_disabled ~= (presentation.marker_reprojection_probe_disabled == true) then
+            presentation.marker_reprojection_probe_disabled = markers_disabled
+            mod:info("DARKTIDEVR_RENDER marker_reprojection=%s source=test_flag",
+                markers_disabled and "disabled" or "enabled")
+        end
     end
     if presentation.full_second_eye_probe_requested then
         return false
@@ -12078,6 +12091,7 @@ mod:hook(
     "_draw_markers",
     function(func, self, dt, t, input_service, ui_renderer, render_settings)
         local capture = active and stereo_world_markers_requested and
+            not presentation.marker_reprojection_probe_disabled and
             not world_marker_reprojecting
         local inverse_scale = ui_renderer.inverse_scale or
             render_settings.inverse_scale or 1
@@ -12128,6 +12142,7 @@ mod:hook(
     "_draw_widgets",
     function(func, self, dt, t, input_service, ui_renderer, render_settings)
         local capture = active and stereo_world_markers_requested and
+            not presentation.marker_reprojection_probe_disabled and
             not world_marker_reprojecting
         if capture then
             local presentation = self._active_presentation_data
@@ -12574,9 +12589,11 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
             local marker_ok, marker_result = pcall(
                 function()
                     remove_left_world_marker_commands()
-                    enqueue_world_markers_for_camera(
-                        ScriptViewport.camera(second)
-                    )
+                    if not presentation.marker_reprojection_probe_disabled then
+                        enqueue_world_markers_for_camera(
+                            ScriptViewport.camera(second)
+                        )
+                    end
                 end
             )
             if not marker_ok then
