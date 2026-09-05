@@ -44,6 +44,12 @@ function MarkerGui.destroy(renderer)
     end
 end
 
+function MarkerGui.destroy_all()
+    for renderer in pairs(entries) do
+        MarkerGui.destroy(renderer)
+    end
+end
+
 function MarkerGui.install(mod, renderer_class)
     mod:hook(renderer_class, "destroy", function(func, renderer, ...)
         MarkerGui.destroy(renderer)

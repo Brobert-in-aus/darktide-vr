@@ -12981,6 +12981,7 @@ presentation.visual_settings.install(mod)
 mod.on_disabled = function()
     requested = false
     ui_stereo_requested = false
+    pcall(presentation.marker_gui.destroy_all)
     pcall(teardown)
     pcall(teardown_ui_stereo)
     pcall(destroy_ui_offscreen_resources)
@@ -12990,6 +12991,7 @@ end
 mod.on_unload = function()
     requested = false
     ui_stereo_requested = false
+    pcall(presentation.marker_gui.destroy_all)
     pcall(teardown)
     pcall(teardown_ui_stereo)
     pcall(destroy_ui_offscreen_resources)

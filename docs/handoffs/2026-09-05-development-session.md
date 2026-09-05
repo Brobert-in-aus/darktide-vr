@@ -696,3 +696,9 @@ Read-only snapshots of the live traced allocator at 01:58:55, 02:00:02 and
 1,923-1,941. These observations use only the traced allocator's known fields,
 with exact target-executable/PID verification, without modifying the game.
 The replacement is past ten minutes; the prior crash window was ~16.5 minutes.
+
+Follow-up ownership review added explicit marker GUI cleanup on mod disable and
+unload, in addition to renderer destruction. The test now covers multiple
+renderer owners and repeated cleanup. CTest marker_gui/compiler/invariants
+passed 3/3. This lifecycle-only follow-up is not yet deployed; the uninterrupted
+soak still runs a0fa2eb so its existing elapsed time is preserved.
