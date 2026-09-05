@@ -713,6 +713,25 @@ function controller_aim.install(mod, presentation, state)
 
     local PlayerUnitSmartTargetingExtension = require(
         "scripts/extension_systems/smart_targeting/player_unit_smart_targeting_extension")
+    mod:hook(PlayerUnitSmartTargetingExtension, "force_update_smart_tag_targets",
+        function(func, self, ...)
+            local position, rotation = controller_aim.target("right")
+            if not is_local_unit(self._unit) or not position or not rotation then
+                return func(self, ...)
+            end
+            return with_first_person_pose(self, position, rotation, func, ...)
+        end)
+    local InteractorExtension = require("scripts/extension_systems/interaction/interactor_extension")
+    for _, method in ipairs({"_find_interaction_object", "_find_interaction_object_3p",
+            "_check_valid_ongoing_interaction"}) do
+        mod:hook(InteractorExtension, method, function(func, self, ...)
+            local position, rotation = controller_aim.target("right")
+            if not is_local_unit(self._unit) or not position or not rotation then
+                return func(self, ...)
+            end
+            return with_first_person_pose(self, position, rotation, func, ...)
+        end)
+    end
     mod:hook(
         PlayerUnitSmartTargetingExtension,
         "fixed_update",

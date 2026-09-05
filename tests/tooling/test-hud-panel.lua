@@ -132,12 +132,36 @@ assert(released == 7, "cleanup retried already released resources")
 -- Reuse one allocation during stable rendering; rebuild for actual extent or
 -- owner changes. This must not regress into per-eye/per-frame target churn.
 Material.set_resource = function() end
+local routed_calls = 0
+local function fixed_update(_, _, _, target, settings)
+    assert(target == state.resource_renderer, "fixed update used stock renderer")
+    assert(settings.scale == 2.6 and math.abs(settings.inverse_scale - 1/2.6) < 1e-6)
+    routed_calls = routed_calls + 1
+    if failure == "fixed_update" then error("injected fixed update") end
+    return "updated", nil, 3
+end
+fixed.update = fixed_update
+fixed.set_visible = function(_, _, target)
+    assert(target == state.resource_renderer, "fixed visibility used stock renderer")
+end
 state.pending_world = renderer.world
 panel.set_enabled(true)
 hooks.draw(stock, owner, .01, 4, {})
 assert(calls.capture_clear == 1, "owned capture must clear before each new frame")
 hooks.draw(stock, owner, .01, 4, {})
 assert(calls.capture_clear == 1, "second eye must not clear the same frame again")
+local settings = {scale=1.3,inverse_scale=1/1.3}
+local function update_owner(self)
+    self._elements_array[2]:set_visible(false, self._ui_renderer)
+    return self._elements_array[2]:update(.01, 4, self._ui_renderer, settings)
+end
+local update_result = pack(hooks.update(update_owner, owner, .01, 4, {}))
+assert(update_result.n == 3 and update_result[1] == "updated" and update_result[3] == 3)
+assert(routed_calls == 1 and settings.scale == 1.3 and state.updating_owner == nil)
+failure = "fixed_update"
+assert(not pcall(hooks.update, update_owner, owner, .01, 4, {}))
+assert(settings.scale == 1.3 and settings.inverse_scale == 1/1.3 and state.updating_owner == nil)
+failure = nil
 assert(state.capture_target and state.resource_renderer.render_target == nil
     and state.resource_renderer.base_render_pass == nil,
     "direct viewport UI must not also redirect a named render pass")
@@ -166,6 +190,7 @@ assert(fallback_fixed == 1 and not panel.enabled() and not state.display_ready)
 assert(next_owner._elements_array == elements and next_owner._ui_renderer == renderer)
 panel.set_enabled(false)
 assert(released == 28)
+assert(fixed.update == fixed_update, "cleanup must restore original callbacks")
 -- The same-world diagnostic borrows the game's renderer/world. It owns only
 -- its target renderer/material, display target and world GUI.
 failure = nil

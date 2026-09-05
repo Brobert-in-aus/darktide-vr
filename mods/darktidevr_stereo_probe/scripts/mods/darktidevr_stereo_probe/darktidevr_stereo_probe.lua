@@ -12022,6 +12022,52 @@ mod:hook(
     end
 )
 
+mod:hook("HudElementSmartTagging", "_find_world_marker_target",
+    function(func, self, ui_renderer, render_settings)
+        local aim_position, aim_rotation = presentation.controller_aim.target("right")
+        if not aim_position or not aim_rotation then
+            return func(self, ui_renderer, render_settings)
+        end
+        -- The stock screen-centre hover test overrides the controller ray.
+        -- Use the same smart-targeting result as the actual tag action.
+        local data = self:_find_raycast_targets(false)
+        local marker = data and data.unit and self:_find_marker_by_unit(data.unit)
+        local distance = marker and marker.widget and marker.widget.content.distance
+        if marker and distance and self:_is_marker_valid_for_tagging(
+                self._parent:player_unit(), marker, distance) then
+            return marker, distance
+        end
+        return nil, math.huge
+    end)
+
+function presentation.draw_tag_prompt(self, dt, t, input_service, ui_renderer, render_settings)
+    local data = self._active_interaction_data
+    local marker = data and data.marker
+    if not marker or not marker.widget or marker.deleted then return end
+    local widget = self._interaction_line_widget
+    local offset = widget.offset
+    local x, y = offset[1], offset[2]
+    offset[1], offset[2] = marker.widget.offset[1] + 50, marker.widget.offset[2] + 50
+    local ok, err = pcall(require("scripts/managers/ui/ui_widget").draw, widget, ui_renderer)
+    offset[1], offset[2] = x, y
+    if not ok then error(err, 0) end
+end
+
+mod:hook("HudElementSmartTagging", "_draw_active_interaction_line",
+    function(func, self, dt, t, input_service, ui_renderer, render_settings)
+        if not active or not stereo_world_markers_requested or
+                presentation.marker_reprojection_probe_disabled then
+            return func(self, dt, t, input_service, ui_renderer, render_settings)
+        end
+        if world_marker_reprojecting then
+            return presentation.draw_tag_prompt(self, dt, t, input_service, ui_renderer, render_settings)
+        end
+        presentation.tag_hud_context = {instance=self,t=t,input_service=input_service,
+            ui_renderer=ui_renderer,render_settings=render_settings}
+        return presentation.marker_gui.draw(ui_renderer, presentation.draw_tag_prompt,
+            self, dt, t, input_service, ui_renderer, render_settings)
+    end)
+
 local function enqueue_world_markers_for_camera(camera)
     local context = world_markers_context
     if not context or not camera then
@@ -12130,6 +12176,17 @@ local function enqueue_world_markers_for_camera(camera)
             world_marker_reprojecting = false
             UIRenderer.end_pass(interaction_context.ui_renderer)
         end
+    end
+    local tag_context = presentation.tag_hud_context
+    if tag_context and tag_context.t == context.t then
+        local tag = tag_context.instance
+        UIRenderer.begin_pass(tag_context.ui_renderer, tag._ui_scenegraph,
+            tag_context.input_service, 0, tag_context.render_settings)
+        world_marker_reprojecting = true
+        tag:_draw_active_interaction_line(0, tag_context.t, tag_context.input_service,
+            tag_context.ui_renderer, tag_context.render_settings)
+        world_marker_reprojecting = false
+        UIRenderer.end_pass(tag_context.ui_renderer)
     end
     instance._player_camera = original_camera
 

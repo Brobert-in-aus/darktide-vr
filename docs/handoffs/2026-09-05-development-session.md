@@ -1069,3 +1069,17 @@ Next revision reverses V UVs and clears the owned viewport to_screen pass before
 new HUD authoring, once per frame. Panel dimensions stay at the accepted 80%.
 Pinned LuaJIT gate (25 chunks) and hud_panel CTest passed, including upright UV
 and once-per-frame clear assertions. Live visual verification pending.
+
+e09af9c live readback confirms upright HUD in both eyes. A diagnostic-to-normal
+transition reduced magenta pixels from 14,622 to zero without reallocating the
+capture target: per-frame clearing is working. Live shared_ready exceeded 35k.
+User requests 2x object sizing while preserving panel geometry. Fixed element
+update/draw callbacks now use 2x effective scale, unwind settings on errors, and
+restore original callbacks/scenegraphs on cleanup. Visibility/update callbacks
+also route retained widget operations to their actual capture renderer.
+Tag prompt investigation found stock centre-screen marker selection overriding
+hand ray results, plus SmartTagging's interaction line missing from stereo
+replay. Candidate selects from hand smart-targeting data and redraws the prompt
+beside its marker for each eye. Forced tag scans and interaction checks receive
+scoped local hand poses; other players and shared camera components stay intact.
+LuaJIT gate, HUD, marker GUI and melee-aim fixtures passed. Live check pending.

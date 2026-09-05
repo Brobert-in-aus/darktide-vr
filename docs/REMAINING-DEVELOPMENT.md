@@ -51,16 +51,18 @@ not GPU copy ordering or worn legibility.
 
 The panel now rebuilds on UI resolution or HUD-owner changes, reusing its targets
 through stable frames. Offline tests cover these transitions and partial setup
-cleanup. GPU target completion still needs live evidence.
+cleanup. Binding the capture target as the viewport backbuffer now produces
+visible HUD contents, confirmed by shared-eye readback and the user.
 
-Next: audit render-target completion; then make
+Next: verify upright presentation and per-frame target clearing; then make
 the fixed status layout configurable without moving world/depth markers onto
 the panel. The panel remains one metre away; its height is now 0.81 m and its
 width is 80% of a binocular-frustum fit (about 1.18 m on this headset). The user
 requested these reductions; both-eye readback confirms the outline fits, while
 worn comfort still needs acceptance. World GUI draws now expire each frame,
-fixing the user's observed accumulation at old head poses. The texture contents
-remain unresolved, so the prototype stays disabled by default.
+fixing the user's observed accumulation at old head poses. The visible texture
+initially arrived vertically inverted and retained old pixels. Both corrections
+are under live verification, so the prototype stays disabled by default.
 Loading, menus and transitions need dedicated
 checks when the headset is available again.
 

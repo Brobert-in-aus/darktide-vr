@@ -6,6 +6,7 @@ local HudPanel = {}
 HudPanel.height = 1.125 * 0.9
 HudPanel.distance = 1
 HudPanel.scale = 0.8
+HudPanel.object_scale = 2
 
 local function pack(...)
     return {n=select("#", ...), ...}
@@ -41,6 +42,8 @@ local state = {
     logged = false,
     layout_logged = false,
     flag_last_poll_t = -math.huge,
+    update_routes = {},
+    updating_owner = nil,
 }
 
 -- Scene-depth, projected-world and eye-edge elements remain on the stock
@@ -141,7 +144,62 @@ local function target_extent()
         math.max(1, math.floor(1080 * scale + 0.5))
 end
 
+-- Stock UIHud.update passes its screen renderer to visibility and widget
+-- refresh callbacks. Retained records now belong to the capture renderer.
+-- Route these callbacks without running game/HUD updates a second time.
+local function route_fixed_updates(owner)
+    local _, fixed = partition_elements(owner._elements_array)
+    for _, element in ipairs(fixed) do
+        if element.on_resolution_modified then element:on_resolution_modified() end
+        for _, name in ipairs({"begin_update", "update", "end_update", "draw", "set_visible"}) do
+            local original = element[name]
+            if type(original) == "function" then
+                local record = {element=element,name=name,own=rawget(element,name)}
+                local function route(renderer)
+                    if state.updating_owner == owner and renderer == state.source_renderer then
+                        return state.resource_renderer
+                    end
+                    return renderer
+                end
+                if name == "set_visible" then
+                    record.wrapper = function(self, visible, renderer, ...)
+                        return original(self, visible, route(renderer), ...)
+                    end
+                else
+                    record.wrapper = function(self, dt, t, renderer, settings, ...)
+                        renderer = route(renderer)
+                        if renderer ~= state.resource_renderer or not settings then
+                            return original(self, dt, t, renderer, settings, ...)
+                        end
+                        local scale, inverse = settings.scale, settings.inverse_scale
+                        settings.scale = (scale or 1) * HudPanel.object_scale
+                        settings.inverse_scale = 1 / settings.scale
+                        local result = pack(pcall(original, self, dt, t, renderer, settings, ...))
+                        settings.scale, settings.inverse_scale = scale, inverse
+                        if not result[1] then error(result[2], 0) end
+                        return unpack(result, 2, result.n)
+                    end
+                end
+                element[name] = record.wrapper
+                state.update_routes[#state.update_routes+1] = record
+            end
+        end
+    end
+end
+
 local function destroy_resources()
+    for _, record in ipairs(state.update_routes) do
+        if record.element[record.name] == record.wrapper then
+            record.element[record.name] = record.own
+        end
+    end
+    state.update_routes = {}
+    if state.owner then
+        local _, fixed = partition_elements(state.owner._elements_array or {})
+        for _, element in ipairs(fixed) do
+            if element.on_resolution_modified then element:on_resolution_modified() end
+        end
+    end
     if state.resource_renderer and state.source_renderer then
         transfer_fixed_records(state.owner, state.resource_renderer,
             state.source_renderer, nil)
@@ -329,6 +387,7 @@ local function create_resources(mod, owner, source_renderer, world)
     state.target_width, state.target_height = width, height
     state.pending_world = world
     transfer_fixed_records(owner, source_renderer, resource_renderer, mod)
+    route_fixed_updates(owner)
     mod:info(
         "DARKTIDEVR_HUD target_created width=%d height=%d generation=%d pass=%s source=display_copy",
         width, height, state.generation,
@@ -389,7 +448,15 @@ function HudPanel.install(mod)
     state.mod = mod
     mod:hook("UIHud", "update", function(func, self, dt, t, input_service)
         update_enabled_flag(mod, t or 0)
-        return func(self, dt, t, input_service)
+        if state.owner ~= self or not state.resource_renderer then
+            return func(self, dt, t, input_service)
+        end
+        local previous = state.updating_owner
+        state.updating_owner = self
+        local result = pack(pcall(func, self, dt, t, input_service))
+        state.updating_owner = previous
+        if not result[1] then error(result[2], 0) end
+        return unpack(result, 2, result.n)
     end)
 
     mod:hook("UIHud", "draw", function(func, self, dt, t, input_service)
