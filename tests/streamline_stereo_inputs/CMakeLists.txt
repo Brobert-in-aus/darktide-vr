@@ -10,6 +10,12 @@ add_test(
 set_tests_properties(streamline_stereo_inputs PROPERTIES
   LABELS "phase1;streamline")
 
+add_executable(darktidevr-streamline-input-lifetime-tests lifetime.cpp)
+target_compile_options(darktidevr-streamline-input-lifetime-tests PRIVATE /W4 /WX /permissive-)
+target_link_libraries(darktidevr-streamline-input-lifetime-tests PRIVATE darktidevr_core)
+add_test(NAME streamline_input_lifetime COMMAND darktidevr-streamline-input-lifetime-tests)
+set_tests_properties(streamline_input_lifetime PROPERTIES LABELS "phase1;streamline")
+
 set(DARKTIDEVR_STREAMLINE_REFERENCE_INCLUDE_DIR "" CACHE PATH
   "Optional official Streamline v2.7.30 include directory for ABI validation")
 if(DARKTIDEVR_STREAMLINE_REFERENCE_INCLUDE_DIR)

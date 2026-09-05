@@ -175,3 +175,26 @@ unsigned counter wrap from appearing as adjacent source timing. Native Release
 and the corresponding test target build with warnings as errors; both Streamline
 tests pass. These changes do not enable frame generation or replace its remaining
 integration and live acceptance work.
+
+Offline continuation on `codex/dlss-submission-2026-09-05` adds a paired
+descriptor/constants owner (`streamline_stereo_tags.h`). It preserves each
+eye's jitter and matrices, rejects unsupported constants versions/extension
+chains, duplicate viewports and cross-eye resource aliases across all roles.
+Failed preparation exposes no stale pair. The official 2.7.30 SDK fixture
+constructs constants and checks the resulting pair, including rejection paths.
+
+`streamline_input_lifetime.h` now models retirement separately from generated
+output readiness: both eye fence tickets must complete and installed tags must
+be cleared before a presented batch can release resources. It rejects stale
+submission identities, replacement fences, device-removal sentinel values and
+premature reuse. It supports shared fences with separate per-eye values and
+aborted, unpresented batches. The resource owner must retain actual COM
+references and coordinate GetState on the Present thread; this helper does not
+perform those operations or claim live integration.
+
+Release builds with warnings as errors and all three targeted CTests pass:
+`streamline_stereo_inputs`, `streamline_input_lifetime`, and
+`streamline_abi_reference`. Remaining work includes wiring these owners into
+native submission, restoring appropriate resource states, handling partial SL
+call failures/tag clearing, retaining fence references, and validating generated
+output identity before publication. Nothing was deployed with VD closed.

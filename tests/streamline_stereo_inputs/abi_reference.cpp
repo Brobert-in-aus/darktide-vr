@@ -6,6 +6,7 @@
 #include <sl_dlss_g.h>
 #include "producer/streamline_abi_2_7_30.h"
 #include "producer/streamline_eye_tags.h"
+#include "producer/streamline_stereo_tags.h"
 
 namespace mirror = darktidevr::producer::streamline_2_7_30;
 static_assert(SL_VERSION_MAJOR == 2 && SL_VERSION_MINOR == 7 && SL_VERSION_PATCH == 30,
@@ -91,5 +92,36 @@ int main() {
       prepared.data()[1].type != sl::kBufferTypeMotionVectors ||
       prepared.data()[2].type != sl::kBufferTypeHUDLessColor ||
       prepared.data()[3].type != sl::kBufferTypeBackbuffer) return 1;
+  sl::Constants sdk_constants;
+  sdk_constants.jitterOffset = {0.25f, -0.125f};
+  std::array<mirror::Constants, 2> constants{};
+  std::memcpy(&constants[0], &sdk_constants, sizeof(sdk_constants));
+  constants[1] = constants[0];
+  constants[1].jitter_offset.x = -0.25f;
+  int right_depth{}, right_motion{}, right_color{};
+  darktidevr::producer::StreamlineStereoTags::Inputs pair_inputs{{inputs, {{
+      {&right_depth, 100, 100, 64, 41}, {&right_motion, 100, 100, 64, 34},
+      {&right_color, 200, 200, 64, 28}}}}};
+  darktidevr::producer::StreamlineStereoTags pair;
+  if (!pair.prepare(200, 200, {1, 2}, constants, pair_inputs) ||
+      pair.viewport(1) != 2 || pair.eye(2) || pair.constants(2) ||
+      pair.eye(1)->data()[3].extent.left != 200 ||
+      pair.constants(0)->jitter_offset.x != 0.25f ||
+      pair.constants(1)->jitter_offset.x != -0.25f) return 1;
+  constants[0].jitter_offset.x = 0.5f;
+  if (pair.constants(0)->jitter_offset.x != 0.25f) return 1;
+  // Failed preparation must not expose a previously valid pair.
+  if (pair.prepare(200, 200, {1, 1}, constants, pair_inputs) || pair.eye(0)) return 1;
+  auto aliased = pair_inputs;
+  aliased[1][1].native = aliased[0][0].native;
+  if (pair.prepare(200, 200, {1, 2}, constants, aliased)) return 1;
+  constants[0].base.next = &constants[1].base;
+  if (pair.prepare(200, 200, {1, 2}, constants, pair_inputs)) return 1;
+  constants[0].base.next = nullptr;
+  constants[0].base.struct_version = 1;
+  if (pair.prepare(200, 200, {1, 2}, constants, pair_inputs)) return 1;
+  constants[0].base.struct_version = 2;
+  constants[0].base.struct_type.data1 = 0;
+  if (pair.prepare(200, 200, {1, 2}, constants, pair_inputs)) return 1;
   std::cout << "streamline_abi_reference=pass\n";
 }
