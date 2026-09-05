@@ -1,8 +1,15 @@
 # Remaining development: melee, HUD and DLSS
 
-Updated 5 September 2026. The user has reconnected VD and authorized unattended
-headset testing while away. Proximity override is disabled and Ready preflight
-passed with 120/120 renderable frames. Worn acceptance remains separate.
+Updated 5 September 2026. VD is now closed at the user's request. Continue
+offline work only; a fresh Ready preflight is required before the next deployment
+or live session. Worn acceptance remains separate.
+
+The [menu audit and rework](MENU-INTERACTION-AUDIT.md) replaces native-menu
+rectangle reconstruction with stock UI input delivery and consistent DPI
+handling. Offline build and targeted tests pass; it is not deployed. Operative
+clicks, Options pointer alignment and the full transition matrix need live
+validation. Reticule recovery was user-confirmed before this rework. Pickup
+marker edge asymmetry remains open.
 
 The user has taken ownership of melee contact verification and explicitly moved
 development to HUD. HUD is now the sole active area; melee and DLSS are parked.

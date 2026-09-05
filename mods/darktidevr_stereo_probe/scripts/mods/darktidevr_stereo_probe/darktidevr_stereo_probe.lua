@@ -1426,6 +1426,9 @@ function presentation.classify_active_view(manager, view_name)
     if presentation.flat_loading_views[view_name] then
         return 2, "loading_or_cinematic"
     end
+    if presentation.native_menu_view and presentation.native_menu_view(view_name) then
+        return 5, "native_menu_family"
+    end
     if presentation.direct_menu_surface_views[view_name] then
         return 4, "direct_menu_surface_probe"
     end
@@ -2475,6 +2478,7 @@ function presentation.is_top_menu_view(instance)
 end
 
 mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_menu_widgets").install(mod, presentation)
+mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_menu_input").install(mod, presentation)
 
 local function refresh_xr_render_extent()
     if not ui_native_capture or not head_pose_values or not head_pose_sequence then
@@ -10712,11 +10716,11 @@ end)
 -- engine's top view is authoritative: OptionsView, for example, first closes
 -- an expanded setting or moves back a navigation column before closing the
 -- view itself. Only the topmost instance may consume a shared button edge.
-mod:hook(
+presentation.hook_legacy_menu(
     "BaseView",
     "update",
     function(func, self, dt, t, input_service, ...)
-        local pointer = presentation.read_menu_pointer()
+        local pointer = presentation.read_legacy_menu_pointer()
         if pointer.available and pointer.back_pressed and
                 presentation.is_top_menu_view(self) then
             local callback = self.cb_on_back_pressed or
@@ -10738,11 +10742,11 @@ mod:hook(
 -- widget rectangles before their hotspot pass runs, then use the same
 -- force_input_pressed seam as BaseView.trigger_widget_pressed. Subclasses with
 -- custom dynamic grids (including SystemView below) retain dedicated hooks.
-mod:hook(
+presentation.hook_legacy_menu(
     "BaseView",
     "_draw_widgets",
     function(func, self, dt, t, input_service, ui_renderer, ...)
-        local pointer = presentation.read_menu_pointer()
+        local pointer = presentation.read_legacy_menu_pointer()
         -- Mode 6 presents native landscape pixels, but premium-store widgets
         -- remain authored in Darktide's portrait eye-layout coordinates.
         -- Keep the visible laser/cursor in source pixels and transform only
@@ -10901,12 +10905,12 @@ mod:hook(
 
 -- InventoryView owns a private grid; the full-grid catcher in BaseView must
 -- not consume the button edge intended for these item hotspots.
-mod:hook("InventoryView", "_draw_grid",
+presentation.hook_legacy_menu("InventoryView", "_draw_grid",
     function(func, self, dt, t, input_service, ui_renderer)
         if presentation.mode ~= 5 then
             return func(self, dt, t, input_service, ui_renderer)
         end
-        local pointer = presentation.read_menu_pointer()
+        local pointer = presentation.read_legacy_menu_pointer()
         local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)
         local interaction = self._widgets_by_name.grid_interaction.content.hotspot
         local previous_hover = interaction.is_hover
@@ -10937,7 +10941,7 @@ mod:hook("InventoryView", "_draw_grid",
 -- UIWidgetGrid passes before BaseView draws its static chrome. Arm the exact
 -- visible grid widget before that pass, and consume the edge only after a hit
 -- so stacked views cannot steal it merely by reading the shared sample.
-mod:hook(
+presentation.hook_legacy_menu(
     "OptionsView",
     "_draw_grid",
     function(func, self, grid, widgets, interaction_widget, dt, t,
@@ -10946,7 +10950,7 @@ mod:hook(
                 ui_native_capture.dtvr_arm_options_menu_capture then
             ui_native_capture.dtvr_arm_options_menu_capture()
         end
-        local pointer = presentation.read_menu_pointer()
+        local pointer = presentation.read_legacy_menu_pointer()
         local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)
         presentation.update_slider_drag(self, hit_pointer)
         local source_widget = nil
@@ -11105,6 +11109,7 @@ mod:hook(
 -- edge. XR supplies the option pressed edge directly, so close focus only
 -- after the following blueprint update has applied the selected value.
 mod:hook_safe("OptionsView", "update", function(self)
+    if presentation.using_native_menu_input() then return end
     local open_pending = presentation.dropdown_open_pending
     if open_pending and open_pending.instance == self then
         open_pending.frames = open_pending.frames - 1
@@ -11199,7 +11204,9 @@ mod:hook(
     end
     presentation.fullscreen_empty_updates = 0
     presentation.destroy_menu_resource()
-    presentation.publish_mode(1, "SystemView.on_exit:complete")
+    -- A child view may still be open when SystemView exits. Let the full
+    -- remaining stack choose its mode instead of briefly forcing gameplay.
+    presentation.reconcile_fullscreen_views(Managers.ui)
     return result
 end)
 
@@ -11241,13 +11248,13 @@ mod:hook_safe(
 -- SystemView owns a dynamic grid outside BaseView._widgets. Resolve the XR
 -- source pixel before its hotspot pass and arm only the matching callback on
 -- the same atomic pointer/button sample.
-mod:hook(
+presentation.hook_legacy_menu(
     "SystemView",
     "_draw_widgets",
     function(func, self, dt, t, input_service, ui_renderer, ...)
         presentation.system_view_hovered_widget = nil
         presentation.system_view_source_widget = nil
-        local pointer = presentation.read_menu_pointer()
+        local pointer = presentation.read_legacy_menu_pointer()
         -- SystemView is captured through a landscape client panel, but its
         -- retained grid remains authored in the portrait eye canvas just like
         -- StoreView. Keep the laser visible in panel pixels and transform only
@@ -11389,7 +11396,7 @@ function presentation.draw_vendor_landing_widgets(
         return func(
             self, dt, t, input_service, ui_renderer, render_settings, ...)
     end
-    local pointer = presentation.read_menu_pointer()
+    local pointer = presentation.read_legacy_menu_pointer()
     local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)
     local widgets = self._button_widgets or {}
     presentation.vendor_landing_hook_logged =
@@ -11434,7 +11441,7 @@ function presentation.draw_vendor_landing_widgets(
         self, dt, t, draw_input, ui_renderer, render_settings, ...)
 end
 
-mod:hook(
+presentation.hook_legacy_menu(
     require("scripts/ui/views/contracts_background_view/contracts_background_view"),
     "_draw_widgets",
     function(func, self, dt, t, input_service, ui_renderer, render_settings, ...)
@@ -11442,7 +11449,7 @@ mod:hook(
             func, self, dt, t, input_service, ui_renderer, render_settings, ...)
     end)
 
-mod:hook(
+presentation.hook_legacy_menu(
     require("scripts/ui/views/credits_vendor_background_view/credits_vendor_background_view"),
     "_draw_widgets",
     function(func, self, dt, t, input_service, ui_renderer, render_settings, ...)
@@ -11450,7 +11457,7 @@ mod:hook(
             func, self, dt, t, input_service, ui_renderer, render_settings, ...)
     end)
 
-mod:hook(
+presentation.hook_legacy_menu(
     require("scripts/ui/views/cosmetics_vendor_background_view/cosmetics_vendor_background_view"),
     "_draw_widgets",
     function(func, self, dt, t, input_service, ui_renderer, render_settings, ...)
@@ -11458,7 +11465,7 @@ mod:hook(
             func, self, dt, t, input_service, ui_renderer, render_settings, ...)
     end)
 
-mod:hook(
+presentation.hook_legacy_menu(
     require("scripts/ui/views/barber_vendor_background_view/barber_vendor_background_view"),
     "_draw_widgets",
     function(func, self, dt, t, input_service, ui_renderer, render_settings, ...)
@@ -11466,7 +11473,7 @@ mod:hook(
             func, self, dt, t, input_service, ui_renderer, render_settings, ...)
     end)
 
-mod:hook(
+presentation.hook_legacy_menu(
     require("scripts/ui/views/crafting_view/crafting_view"),
     "_draw_widgets",
     function(func, self, dt, t, input_service, ui_renderer, render_settings)
@@ -11478,7 +11485,7 @@ mod:hook(
         if presentation.mode ~= 5 and presentation.mode ~= 6 then
             return func(self, dt, t, input_service, ui_renderer, render_settings)
         end
-        local pointer = presentation.read_menu_pointer()
+        local pointer = presentation.read_legacy_menu_pointer()
         local widgets = self._button_widgets or {}
         if not presentation.vendor_widget_hook_logged then
             presentation.vendor_widget_hook_logged = true
@@ -11598,7 +11605,7 @@ mod:hook(
         return result
     end)
 
-mod:hook(
+presentation.hook_legacy_menu(
     require("scripts/ui/view_elements/view_element_grid/view_element_grid"),
     "_draw_grid",
     function(func, self, dt, t, ui_renderer, input_service, render_settings)
@@ -11608,7 +11615,7 @@ mod:hook(
         if presentation.mode ~= 5 and presentation.mode ~= 6 then
             return func(self, dt, t, ui_renderer, input_service, render_settings)
         end
-        local pointer = presentation.read_menu_pointer()
+        local pointer = presentation.read_legacy_menu_pointer()
         local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)
         local widgets = self._grid_widgets or {}
         local source_widget = nil
@@ -11715,14 +11722,14 @@ end)
 -- Premium StoreView owns a private card grid and draws it before BaseView's
 -- conventional widget list. The generic hook can only see the full-grid input
 -- catcher, so resolve and arm the actual item hotspot at this class seam.
-mod:hook(
+presentation.hook_legacy_menu(
     require("scripts/ui/views/store_view/store_view"),
     "_draw_grid",
     function(func, self, dt, t, input_service)
         if presentation.mode ~= 6 then
             return func(self, dt, t, input_service)
         end
-        local pointer = presentation.read_menu_pointer()
+        local pointer = presentation.read_legacy_menu_pointer()
         -- The published panel/laser remain native landscape, but live Store
         -- card rectangles are retained in the portrait eye scenegraph.
         local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)

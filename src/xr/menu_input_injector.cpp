@@ -1,4 +1,5 @@
 #include "menu_input_injector.h"
+#include "windows_dpi_scope.h"
 
 #include <algorithm>
 #include <cwctype>
@@ -154,6 +155,7 @@ MenuInputInjector::~MenuInputInjector() { release(); }
 
 std::optional<DesktopPointerSample> MenuInputInjector::read_desktop_pointer(
     std::uint32_t source_width, std::uint32_t source_height) const {
+  const ThreadDpiAwarenessScope dpi_awareness;
   const auto target = unique_window(title_substring_);
   if (!target || GetForegroundWindow() != *target) {
     return std::nullopt;
@@ -191,6 +193,7 @@ bool MenuInputInjector::send_mouse_flags(DWORD flags, DWORD data) {
 bool MenuInputInjector::dispatch(const core::MenuPointerEvent& event,
                                  std::uint32_t source_width,
                                  std::uint32_t source_height) {
+  const ThreadDpiAwarenessScope dpi_awareness;
   const auto target = unique_window(title_substring_);
   if (!target) {
     if (button_down_) {

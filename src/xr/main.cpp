@@ -2964,15 +2964,9 @@ class OpenXrProbe {
             shared_menu_back_pressed = true;
             std::cout << "openxr.menu_input_event=back\n";
           }
-          // Keep Windows' real cursor at the same source pixel as the XR ray,
-          // even in semantic-input mode. Darktide otherwise evaluates the
-          // stationary desktop cursor as a second hover owner. Only movement is
-          // mirrored by default; button, wheel and Escape injection remain
-          // behind the explicit legacy switch so a single trigger edge cannot
-          // be consumed twice.
-          const bool synchronize_cursor =
-              event.type == darktidevr::core::MenuPointerEventType::move;
-          if ((enable_menu_input || synchronize_cursor) &&
+          // The game input adapter owns the XR cursor. Only the explicit
+          // legacy injection mode may move Windows' cursor or send buttons.
+          if (enable_menu_input &&
               menu_input_injector->dispatch(
                   event, menu_input_source_width,
                   menu_input_source_height)) {

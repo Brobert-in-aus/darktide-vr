@@ -1,4 +1,5 @@
 #include "window_capture.h"
+#include "windows_dpi_scope.h"
 
 #include <algorithm>
 #include <cwctype>
@@ -21,25 +22,6 @@ std::wstring lowercase(std::wstring value) {
 struct SearchContext {
   std::wstring needle;
   std::vector<HWND> matches;
-};
-
-class ThreadDpiAwarenessScope {
- public:
-  ThreadDpiAwarenessScope()
-      : previous_(SetThreadDpiAwarenessContext(
-            DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {}
-
-  ~ThreadDpiAwarenessScope() {
-    if (previous_) {
-      SetThreadDpiAwarenessContext(previous_);
-    }
-  }
-
-  ThreadDpiAwarenessScope(const ThreadDpiAwarenessScope&) = delete;
-  ThreadDpiAwarenessScope& operator=(const ThreadDpiAwarenessScope&) = delete;
-
- private:
-  DPI_AWARENESS_CONTEXT previous_{};
 };
 
 BOOL CALLBACK find_window(HWND window, LPARAM parameter) {
@@ -152,6 +134,7 @@ bool WindowCapture::source_window_alive() const noexcept {
 
 std::optional<std::pair<std::uint32_t, std::uint32_t>>
 WindowCapture::source_extent() const noexcept {
+  const ThreadDpiAwarenessScope dpi_awareness;
   RECT client{};
   if (!window_ || !IsWindow(window_) || !GetClientRect(window_, &client)) {
     return std::nullopt;

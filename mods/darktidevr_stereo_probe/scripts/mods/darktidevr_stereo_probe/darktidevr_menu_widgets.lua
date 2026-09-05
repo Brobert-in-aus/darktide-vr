@@ -3,6 +3,7 @@ local widgets = {}
 
 function widgets.install(mod, presentation)
 function presentation.begin_menu_pointer_frame(pointer)
+    pointer.frame_id = (pointer.frame_id or 0) + 1
     -- A click that missed all controls is spent, not queued for later hover.
     pointer.primary_consumed_sequence = pointer.primary_press_sequence
     pointer.primary_pressed = false

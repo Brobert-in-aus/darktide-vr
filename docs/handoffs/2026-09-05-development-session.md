@@ -1428,3 +1428,26 @@ artifacts/unattended/menu-input-reticle-live-20260905.log: fresh HUD surface,
 shared_ready 847, approximately 59 fresh pairs/s, no startup Lua or marker
 replay errors. Running for menu/item/reticule acceptance; marker edge scaling
 is unchanged and remains the next HUD issue after these menu checks.
+
+## Comprehensive offline menu rework
+
+User confirmed reticule recovery, but Operative clicks still fail and Options
+cursor/highlight positions disagree. User requested a comprehensive pass rather
+than further isolated patches, then closed VD and authorized offline rework.
+No game process remains; do not reuse the earlier Ready result for deployment.
+
+See [the audit](../MENU-INTERACTION-AUDIT.md) for findings, architecture,
+validation commands and the full outstanding live matrix. Native menu modes
+now adapt XR into UIViewHandler input, letting stock passes own geometry,
+clipping and control behavior. Legacy per-view input hooks are bypassed there.
+Related inventory/settings child views share the native route. System menu
+exit reconciles the remaining stack. DPI scopes are consistent across capture
+and pointer reads, and normal VR operation no longer moves the OS cursor.
+
+Release harness and menu injector test builds pass. All 26 Lua chunks compile;
+nine targeted CTests pass, including new input lifecycle/adapter fixtures.
+The broader source invariant check fails on a pre-existing obsolete unboxed
+reticule assertion at line 519; reproduced against unchanged c3768e7 Lua.
+No deployment or live acceptance of this rework has occurred. Preserve saved
+Custom HUD layout, accepted HUD dimensions and parked melee/DLSS work. Next
+step requires VD and the Ready preflight, followed by the audit's live matrix.
