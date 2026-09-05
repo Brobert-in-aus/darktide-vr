@@ -357,3 +357,24 @@ hardcoded-machine-value risk from the launcher; packaged setup must retain it.
 Window inspection confirmed the new run is at the ordinary 'Press SPACE to
 continue' title screen. No startup input was sent; manual startup is intentional.
 Fresh stereo validation remains pending entry into the game.
+
+Live run reached fresh stereo at 00:12:45 UTC, rigid hands ready at
+00:12:45.698, shared_ready > 5479, recent fresh throughput about 58-60fps,
+zero reused frames and two startup pose mismatches. GPU memory sampled at
+9168/24564 MiB. Right-hand melee hook exercised at 00:14:25.999 onwards.
+These observations establish code-path execution, not worn acceptance.
+
+The live log revealed DMF rejected the separate visual-policy UI update hook
+because this mod already owns that method. Candidate now invokes the policy
+from the existing callback. The regression runs the real UI callback and rejects
+duplicate registration; startup/preset/write/apply cases pass. This correction
+is staged for the next restart, not yet installed in the current live run.
+
+Left-wrist candidate removes the body-fixed portion of the correction for the
+left hand only. The complete offset now rotates in grip space; at aligned grip
+and body axes it matches the prior correction. Right-hand mapping is unchanged.
+Quarter-turn and upside-down covariance checks pass on the new code and fail
+on the preceding commit, as expected. LuaJIT 13 chunks and source invariants
+pass. Exact left palm placement remains a worn acceptance question, not a test
+assertion. Candidate staged while the user resumed gameplay; do not interrupt
+that observation just to deploy these follow-ups.

@@ -4968,6 +4968,9 @@ mod:hook(
     "update",
     function(func, self, dt, t, ...)
     presentation.begin_menu_pointer_frame(presentation.menu_pointer)
+    if presentation.visual_settings then
+        presentation.visual_settings.update()
+    end
     local result = func(self, dt, t, ...)
     presentation.reconcile_fullscreen_views(self)
     presentation.update_system_menu_test(self)
@@ -7387,6 +7390,14 @@ end
 
 function presentation.body_ik_calibrated_wrist_target(
         side, target_position, target_rotation)
+    if side == "left" then
+        -- A held controller-to-wrist offset must rotate with the controller.
+        -- Preserve the existing neutral-pose correction, but keep every part
+        -- in grip space so wrist roll cannot slide the glove across the palm.
+        return target_position - Quaternion.right(target_rotation) * 0.03 -
+            Quaternion.forward(target_rotation) * 0.04 +
+            Quaternion.up(target_rotation) * 0.04
+    end
     -- OpenXR locates the grip pose inside the Touch controller while the model
     -- target is the anatomical wrist. The original 5 cm grip-up correction
     -- placed the controller inside the palm but left the rendered hand inward,
@@ -13125,9 +13136,10 @@ presentation.controller_aim = mod:io_dofile(
 presentation.controller_aim.install(
     mod, presentation, controller_observation)
 
-mod:io_dofile(
+presentation.visual_settings = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_visual_settings"
-).install(mod)
+)
+presentation.visual_settings.install(mod)
 
 mod.on_disabled = function()
     requested = false

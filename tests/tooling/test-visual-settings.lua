@@ -1,6 +1,6 @@
 local module = dofile(arg[1])
-local hooks, safe, settings, render = {}, {}, {}, {}
-local ui = {}
+local hooks, settings, render = {}, {}, {}
+local ui = {update=function() return 'updated' end}
 require = function() return ui end
 Application = {
     set_user_setting = function(location, key, value)
@@ -11,16 +11,35 @@ Application = {
     set_render_setting = function(key, value) render[key] = value end,
     apply_user_settings = function() return 'applied' end,
 }
-local mod = {
+mod = {
     hook = function(self, target, name, fn)
         local original = target[name]
+        hooks[target] = hooks[target] or {}
+        assert(not hooks[target][name], 'DMF rejects duplicate hooks from one mod')
+        hooks[target][name] = true
         target[name] = function(...) return fn(original, ...) end
     end,
-    hook_safe = function(self, target, name, fn) safe[name] = fn end,
+    hook_safe = function() error('Register startup through the existing UI update hook') end,
     info = function() end,
 }
 module.install(mod)
-safe.update()
+if arg[2] then
+    local file = assert(io.open(arg[2], 'r'))
+    local source = file:read('*all')
+    file:close()
+    local first = assert(source:find('mod:hook(\n    require("scripts/managers/ui/ui_manager"),\n    "update",', 1, true))
+    local last = assert(source:find('\n-- Darktide', first, true))
+    local noop = function() end
+    presentation = {
+        visual_settings=module, begin_menu_pointer_frame=noop,
+        reconcile_fullscreen_views=noop, update_system_menu_test=noop,
+        update_vendor_menu_test=noop, update_psykhanium=noop,
+    }
+    assert(loadstring(source:sub(first,last-1)))()
+    assert(ui.update({}, .01, 1) == 'updated')
+else
+    module.update()
+end
 assert(render.dof_enabled == 'false')
 local preset = { dof_enabled = true, motion_blur_enabled = true, unrelated = 7 }
 Application.set_user_setting('render_settings', preset)

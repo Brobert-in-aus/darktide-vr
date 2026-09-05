@@ -49,13 +49,13 @@ function VisualSettings.install(mod)
         return func(...)
     end)
     local pending = true
-    mod:hook_safe(require("scripts/managers/ui/ui_manager"), "update", function()
+    function VisualSettings.update()
         if pending then
             pending = false
             enforce()
             mod:info("DARKTIDEVR_VISUAL_SETTINGS blur_dof_lens=forced_off")
         end
-    end)
+    end
 end
 
 return VisualSettings
