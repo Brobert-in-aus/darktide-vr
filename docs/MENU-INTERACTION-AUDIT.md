@@ -146,3 +146,30 @@ saved HUD layouts and size/distance. Future renderer or input changes still need
 targeted regression checks of the matrix; this does not claim every registered
 view has been visited. The later DLSS world/loading/mirror checkpoint is recorded
 in [current status](CURRENT-STATUS.md), separately from menu-interaction coverage.
+
+## Character-select startup delay, 6 September
+
+User reports hover working while clicks are initially ignored for about a
+second. The source handler disables input throughout its transition, with
+`TRANSITION_SPEED=0.3` for each fade direction. MainMenuView also disables Start
+while character synchronization or an archetype entitlement promise is pending;
+profile synchronization and server migration can block the whole view.
+
+A passive startup trace now distinguishes the stock null service, profile sync,
+character sync, disabled view and Start readiness. It logs state changes only,
+at most 16 records in the first ten seconds of a view instance. A live launch
+measured `stock_null_service` at elapsed 0.000 and full list/Start readiness at
+0.572 seconds. This is consistent with the report, but no controller press was
+reproduced during that interval. No extra one-second VR timer was found.
+
+The adapter also records why an observed XR press is rejected (view ownership
+change, required release, outside surface, unavailable sample). It retains
+same-frame expiration and never replays a missed click. Backend and transition
+gates remain intact; this is a diagnosed startup interval, not a claimed input
+latency fix. A later ignored click with the view ready remains an open bug and
+can be distinguished with these records.
+
+Validation: 27 LuaJIT chunks pass; the 72-view menu fixture passes, including
+separate list/Start gates and bounded diagnostics. Live evidence:
+`artifacts/diagnostics/dlss-live-20260906/character-select-readiness.txt` and
+`artifacts/unattended/character-select-readiness-20260906.log`.

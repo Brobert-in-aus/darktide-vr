@@ -87,13 +87,18 @@ for _,extent in ipairs({{1536,864},{1920,1080},{2496,2688}}) do
     end
 end
 -- Exercise the real adapter seam, including the engine's null input service.
-local hook,legacy_hook,direct_hook
+local hook,legacy_hook,direct_hook,readiness_hook
+local readiness_logs=0
 local consumed={primary=0,back=0,scroll=0}
 local presentation={mode=5,read_menu_pointer=function() return p end,
     consume_menu_primary=function(q) consumed.primary=consumed.primary+1; q.primary_pressed=false end,
     consume_menu_back=function(q) consumed.back=consumed.back+1; q.back_pressed=false end,
     consume_menu_scroll=function(q) consumed.scroll=consumed.scroll+1; q.scroll_steps=0 end}
-menu.install({hook=function(_,class,name,fn)
+menu.install({hook_safe=function(_,class,name,fn)
+    assert(class=='MainMenuView' and name=='update'); readiness_hook=fn
+end, info=function(_,format)
+    if format:find('DARKTIDEVR_MENU_READINESS',1,true) then readiness_logs=readiness_logs+1 end
+end, hook=function(_,class,name,fn)
     if class=='UIManager' then assert(name=='input_service'); hook=fn
     elseif class=='InputManager' then direct_hook=fn
     else legacy_hook=fn end
@@ -144,3 +149,32 @@ assert(a==1 and b==nil and c==3,'native bypass changed the stock return contract
 presentation.mode=1
 assert(hook(function() return source,null,false end,handler)==source)
 print('menu_input: coordinate mapping, button lifecycle, modal handoff, tracking loss, filters and null services passed')
+local view = {_widgets_by_name={play_button={content={visible=true,hotspot={disabled=false}}}}}
+local list_ready,start_ready,reason=menu.character_select_readiness(view,false)
+assert(list_ready and start_ready and reason=='ready')
+list_ready,start_ready,reason=menu.character_select_readiness(view,true)
+assert(not list_ready and not start_ready and reason=='stock_null_service')
+view._waiting_on_character=true
+view._widgets_by_name.play_button.content.hotspot.disabled=true
+list_ready,start_ready,reason=menu.character_select_readiness(view,false)
+assert(list_ready and not start_ready and reason=='character_sync')
+view._profiles_wait_overlay_active=true
+list_ready,start_ready,reason=menu.character_select_readiness(view,false)
+assert(not list_ready and not start_ready and reason=='profiles_sync')
+print('character_select_readiness: stock input and Start gates remain separate')
+null.null_service=function(self) return self end
+readiness_hook(view,0.01,0,null)
+readiness_hook(view,0.01,0.01,null)
+assert(readiness_logs==1,'repeated readiness state spammed logs')
+view._profiles_wait_overlay_active=false
+for i=1,30 do
+    view._waiting_on_character=i%2==0
+    readiness_hook(view,0.01,i/10,source)
+end
+assert(readiness_logs==16,'readiness log budget was not enforced')
+local late_view={}
+readiness_hook(late_view,0.01,0,source)
+local count=readiness_logs
+late_view._profiles_wait_overlay_active=true
+readiness_hook(late_view,0.01,11,source)
+assert(readiness_logs==count,'late readiness updates escaped the startup window')

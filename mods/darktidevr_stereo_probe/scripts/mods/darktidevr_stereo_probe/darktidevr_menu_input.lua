@@ -44,6 +44,11 @@ function MenuInput.sample(state, pointer, frame, owner, width, height)
         pointer.source_height and pointer.source_height > 0 and width > 0 and height > 0
     local inside = valid and pointer.active
     local pressed = inside and not changed and state.armed and pointer.primary_pressed == true
+    local rejection
+    if pointer.primary_pressed and not pressed then
+        rejection = not valid and "unavailable" or not inside and "outside" or
+            changed and "owner_changed" or "release_required"
+    end
     if pressed then state.held = true end
     local released = was_held and (not valid or not pointer.primary_down)
     if released then state.held = false end
@@ -65,6 +70,7 @@ function MenuInput.sample(state, pointer, frame, owner, width, height)
         y = (inside or retain_position) and state.y or -10000,
         pressed = pressed == true, released = released,
         held = state.held == true,
+        rejection = rejection,
         dx = dx, dy = dy,
         back = valid and not changed and pointer.back_pressed == true,
         scroll = inside and not changed and (pointer.scroll_steps or 0) or 0,
@@ -73,6 +79,23 @@ function MenuInput.sample(state, pointer, frame, owner, width, height)
     state.generation, state.sample = pointer.transport_generation, sample
     state.inside = inside
     return sample
+end
+
+function MenuInput.character_select_readiness(view, input_blocked)
+    local buttons = view._widgets_by_name
+    local play = buttons and buttons.play_button and buttons.play_button.content
+    local blocked = input_blocked or view._input_disabled or
+        view._profiles_wait_overlay_active or view._server_migration_element
+    local reason = input_blocked and "stock_null_service" or
+        view._input_disabled and "view_disabled" or
+        view._profiles_wait_overlay_active and "profiles_sync" or
+        view._server_migration_element and "server_migration" or "ready"
+    local start_ready = not blocked and play and play.visible and
+        play.hotspot and not play.hotspot.disabled
+    if not blocked and not start_ready then
+        reason = view._waiting_on_character and "character_sync" or "start_not_ready"
+    end
+    return not not (not blocked), not not start_ready, reason
 end
 
 function MenuInput.proxy(source, null_service, sample, vector)
@@ -118,6 +141,21 @@ function MenuInput.install(mod, presentation)
     presentation.native_menu_input_enabled = true
     presentation.native_menu_view = MenuInput.native_view
     presentation.native_menu_mode = MenuInput.view_mode
+    -- Observe stock gates; never bypass backend readiness or replay a press.
+    -- Bound logs per view lifetime and to the first ten seconds after update.
+    local readiness = setmetatable({}, {__mode="k"})
+    mod:hook_safe("MainMenuView", "update", function(self, dt, t, input)
+        local current = readiness[self]
+        if not current then current = {start=t, samples=0}; readiness[self] = current end
+        if current.samples >= 16 or t - current.start > 10 then return end
+        local null = not input or (input.null_service and input == input:null_service())
+        local list_ready, start_ready, reason = MenuInput.character_select_readiness(self, null)
+        local signature = reason .. tostring(list_ready) .. tostring(start_ready)
+        if current.signature == signature then return end
+        current.signature, current.samples = signature, current.samples + 1
+        mod:info("DARKTIDEVR_MENU_READINESS view=main_menu elapsed=%.3f list_input=%s start_ready=%s reason=%s",
+            t - current.start, tostring(list_ready), tostring(start_ready), reason)
+    end)
     function presentation.using_native_menu_input()
         return presentation.native_menu_input_enabled and
             (presentation.mode == 5 or presentation.mode == 6)
@@ -156,6 +194,10 @@ function MenuInput.install(mod, presentation)
             (data and data.instance) or owner
         local sample = MenuInput.sample(state, pointer, pointer.frame_id or 0, owner,
             RESOLUTION_LOOKUP.width, RESOLUTION_LOOKUP.height)
+        if pointer.primary_pressed and sample.rejection then
+            mod:info("DARKTIDEVR_MENU_INPUT rejected frame=%d reason=%s",
+                pointer.frame_id or 0, sample.rejection)
+        end
         -- The immutable frame sample serves every stock update/draw query.
         -- Drain transport counters now so scroll/back cannot repeat next frame
         -- merely because the per-view legacy handlers no longer consume them.

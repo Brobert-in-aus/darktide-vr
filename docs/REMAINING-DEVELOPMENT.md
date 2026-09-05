@@ -82,8 +82,12 @@ light aim stabilization, one shared sample policy for presentation and attacks.
 Menu follow-up (6 September): immediately after character selection loads,
 highlighting works but clicks appear unconsumed for about one second. Investigate
 view enter/input-readiness gating and pointer click delivery against that precise
-transition. Do not queue the missed click for later replay. User observation is
-unverified in code; retain this as backlog while completing DLSS.
+transition. Do not queue the missed click for later replay. A passive live trace
+now measures 0.572 seconds of the stock transition null service before list and
+Start readiness. No additional one-second VR gate was found; see the
+[diagnosis and bounded logging](MENU-INTERACTION-AUDIT.md). A controller click
+during this interval was not reproduced, and any ignored click after readiness
+remains open.
 
 The fixed-panel prototype is in `darktidevr_hud_panel.lua`, disabled by default.
 It separates spatial elements from fixed status elements and uses a dedicated
