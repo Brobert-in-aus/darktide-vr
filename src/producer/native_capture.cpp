@@ -23,6 +23,7 @@
 #include "core/shared_surface_policy.h"
 #include "core/streamline_stereo_inputs.h"
 #include "core/streamline_render_extent.h"
+#include "core/streamline_present_binding.h"
 #include "core/two_bone_ik.h"
 #include "streamline_abi_2_7_30.h"
 #include "producer/streamline_submission.h"
@@ -102,12 +103,16 @@ std::atomic<bool> streamline_target_token_probe_requested{};
 std::atomic<bool> streamline_stereo_swapchain_probe_requested{};
 std::atomic<bool> streamline_eye_target_probe_requested{};
 std::atomic<bool> streamline_stereo_stage_probe_requested{};
+std::atomic<bool> streamline_stereo_submit_probe_requested{};
 std::atomic<DWORD> streamline_outer_present_thread{};
 std::atomic<std::uint64_t> streamline_outer_present_active_frame{};
+std::atomic<std::uint64_t> streamline_stereo_submission_present{};
 std::atomic<std::uint64_t> streamline_native_burst_until_call{};
 std::atomic<std::uint64_t> streamline_frame_token_call_count{};
 std::atomic<std::uint64_t> streamline_set_constants_call_count{};
 std::atomic<std::uint64_t> streamline_set_tag_call_count{};
+std::atomic<std::uint32_t> streamline_tagging_api_modes{};
+std::recursive_mutex streamline_tagging_api_mutex;
 std::atomic<void*> streamline_latest_frame_token{};
 std::atomic<std::uint64_t> streamline_latest_frame_token_call{};
 std::atomic<std::uint32_t> streamline_latest_frame_index{UINT_MAX};
@@ -177,6 +182,17 @@ struct StreamlineInputSnapshotState {
   darktidevr::producer::StreamlineSubmission submission;
   bool submission_prepared{};
   std::uint32_t submission_context_samples{};
+  bool submission_attempted{};
+  bool submission_presented{};
+  bool submission_cleanup_pending{};
+  bool submission_cleanup_attempted{};
+  bool submission_retired{};
+  bool submission_refresh_armed{};
+  std::uint32_t submission_refresh_mask{};
+  std::array<StreamlineConstantsObservation, 2> submission_refresh_constants;
+  std::array<ComPtr<ID3D12CommandAllocator>, 2> submission_refresh_allocators;
+  std::array<ComPtr<ID3D12GraphicsCommandList>, 2> submission_refresh_commands;
+  std::array<ComPtr<ID3D12Fence>, 2> submission_refresh_fences;
   bool completion_observation_started{};
   std::array<ComPtr<ID3D12Fence>, 2> input_completion_fences;
   std::array<std::uint64_t, 2> input_completion_values{};
@@ -220,6 +236,8 @@ struct StreamlineInputSnapshotState {
   ComPtr<ID3D12Fence> fence;
   ComPtr<ID3D12CommandAllocator> present_stage_allocator;
   ComPtr<ID3D12GraphicsCommandList> present_stage_commands;
+  ComPtr<ID3D12CommandAllocator> submission_cleanup_allocator;
+  ComPtr<ID3D12GraphicsCommandList> submission_cleanup_commands;
 };
 
 std::mutex streamline_input_snapshot_mutex;
@@ -228,6 +246,28 @@ std::array<std::array<StreamlineTaggedInput, kStreamlineInputCount>, 2>
 std::array<StreamlineConstantsObservation, 2>
     streamline_constants_observations;
 StreamlineInputSnapshotState streamline_input_snapshot_state;
+
+// Caller holds streamline_input_snapshot_mutex.
+std::array<darktidevr::core::StreamlinePresentEyeBinding, 2>
+streamline_present_bindings() {
+  std::array<darktidevr::core::StreamlinePresentEyeBinding, 2> result{};
+  for (std::size_t eye = 0; eye < 2; ++eye) {
+    const auto& current = streamline_constants_observations[eye];
+    auto& binding = result[eye];
+    binding = {current.valid, reinterpret_cast<std::uintptr_t>(current.frame_token),
+               current.frame_token_call, current.frame_index,
+               current.present_frame, current.pose_sequence, current.viewport};
+    for (const auto& options : streamline_options_observations) {
+      if (options.valid && options.viewport == current.viewport) {
+        binding.options_valid = true;
+        binding.mode = options.mode;
+        binding.options_present = options.present_frame;
+        break;
+      }
+    }
+  }
+  return result;
+}
 
 struct StreamlineExecuteSnapshot {
   std::atomic<std::uint64_t> call{};
@@ -2005,7 +2045,8 @@ void write_streamline_probe_log(const char* format, ...) {
   // Present telemetry cannot erase its eventual result.
   const bool transaction_record =
       std::strncmp(format, "STEREO_", 7) == 0 ||
-      std::strncmp(format, "INPUT_SNAPSHOT", 14) == 0;
+      std::strncmp(format, "INPUT_SNAPSHOT", 14) == 0 ||
+      std::strncmp(format, "ISOLATED_EYE_CAPTURE", sizeof("ISOLATED_EYE_CAPTURE") - 1) == 0;
   if (!transaction_record &&
       streamline_probe_background_log_count.fetch_add(
           1, std::memory_order_relaxed) >= 8192) return;
@@ -2367,16 +2408,21 @@ void log_streamline_resource_tags(
 
 int sl_set_tag_hook(const void* viewport, const void* tags,
                     std::uint32_t count, void* command_buffer) {
-  const auto result = original_sl_set_tag
+  int result{};
+  {
+    std::scoped_lock lock(streamline_tagging_api_mutex);
+    result = original_sl_set_tag
                           ? original_sl_set_tag(viewport, tags, count,
                                                 command_buffer)
                           : 36;
+  }
+  if (result == 0) streamline_tagging_api_modes.fetch_or(1, std::memory_order_relaxed);
   const auto call = streamline_set_tag_call_count.fetch_add(
                         1, std::memory_order_relaxed) +
                     1;
   const auto burst_until =
       streamline_native_burst_until_call.load(std::memory_order_acquire);
-  if (call <= 50 ||
+  if (streamline_input_snapshot_probe_requested.load(std::memory_order_acquire) || call <= 50 ||
       (burst_until != 0 &&
        streamline_native_present_count.load(std::memory_order_relaxed) <=
            burst_until)) {
@@ -2389,16 +2435,21 @@ int sl_set_tag_hook(const void* viewport, const void* tags,
 int sl_set_tag_for_frame_hook(const void* frame, const void* viewport,
                               const void* tags, std::uint32_t count,
                               void* command_buffer) {
-  const auto result = original_sl_set_tag_for_frame
+  int result{};
+  {
+    std::scoped_lock lock(streamline_tagging_api_mutex);
+    result = original_sl_set_tag_for_frame
                           ? original_sl_set_tag_for_frame(
                                 frame, viewport, tags, count, command_buffer)
                           : 36;
+  }
+  if (result == 0) streamline_tagging_api_modes.fetch_or(2, std::memory_order_relaxed);
   const auto call = streamline_set_tag_call_count.fetch_add(
                         1, std::memory_order_relaxed) +
                     1;
   const auto burst_until =
       streamline_native_burst_until_call.load(std::memory_order_acquire);
-  if (call <= 50 ||
+  if (streamline_input_snapshot_probe_requested.load(std::memory_order_acquire) || call <= 50 ||
       (burst_until != 0 &&
        streamline_native_present_count.load(std::memory_order_relaxed) <=
            burst_until)) {
@@ -2720,6 +2771,13 @@ void initialize_streamline_probe(void* present_target,
           INVALID_FILE_ATTRIBUTES,
       std::memory_order_release);
   const auto interposer = GetModuleHandleW(L"sl.interposer.dll");
+  const auto stereo_submit_flag_path =
+      flag_directory + L"..\\darktidevr_streamline_stereo_submit_probe.flag";
+  streamline_stereo_submit_probe_requested.store(
+      GetFileAttributesW(stereo_submit_flag_path.c_str()) != INVALID_FILE_ATTRIBUTES,
+      std::memory_order_release);
+  write_streamline_probe_log("STEREO_SUBMISSION_PROBE\tenabled=%u\r\n",
+      streamline_stereo_submit_probe_requested.load(std::memory_order_relaxed) ? 1U : 0U);
   streamline_feature_resolver_target =
       interposer ? GetProcAddress(interposer, "slGetFeatureFunction") : nullptr;
   streamline_get_new_frame_token_target =
@@ -2739,11 +2797,13 @@ void initialize_streamline_probe(void* present_target,
   }
   const auto owner_path = module_path(owner);
   write_streamline_probe_log(
-      "PROBE\tmode=observe_only\tsdk_abi=2.7.30"
+      "PROBE\tmode=%s\tsdk_abi=2.7.30"
       "\tdlssg_state_query=existing_calls_plus_bounded_present_probe"
       "\tindependent_state_call_budget=%u\tcopy_probe=%u\ttransport_probe=%u"
       "\tinput_snapshot_probe=%u\ttarget_token_probe=%u"
       "\tstereo_swapchain_probe=%u\tstereo_stage_probe=%u\r\n",
+      streamline_stereo_submit_probe_requested.load(std::memory_order_relaxed)
+          ? "one_shot_submit" : "observe_only",
       streamline_input_snapshot_probe_requested.load(std::memory_order_relaxed) ? 2U : 0U,
       streamline_copy_probe_requested.load(std::memory_order_relaxed) ? 1U
                                                                      : 0U,
@@ -9036,6 +9096,90 @@ void STDMETHODCALLTYPE enhanced_barrier_hook(
   original_enhanced_barrier(commands, group_count, groups);
 }
 
+// Refresh the already allocated inputs at each eye's final render boundary.
+// The initial readback/packing fence has completed before arming this path.
+// Separate eye fences avoid assuming both render boundaries use one queue.
+// Caller holds streamline_input_snapshot_mutex.
+void refresh_streamline_submission_inputs(int eye, std::uint64_t present_frame,
+                                         std::uint64_t pose_sequence,
+                                         ID3D12CommandQueue* queue) {
+  auto& state = streamline_input_snapshot_state;
+  const auto index = static_cast<std::size_t>(eye);
+  if (state.submission_refresh_mask & (1U << eye)) return;
+  if (eye == 1 && state.submission_refresh_mask != 1) return;
+  const auto& constants = streamline_constants_observations[index];
+  const auto& inputs = streamline_tagged_inputs[index];
+  if (!constants.valid || constants.present_frame != present_frame ||
+      constants.pose_sequence != pose_sequence ||
+      constants.viewport != state.constants[index].viewport) return;
+  if (eye == 1 && (state.submission_refresh_constants[0].present_frame != present_frame ||
+      state.submission_refresh_constants[0].pose_sequence != pose_sequence)) {
+    state.failed = true;
+    write_streamline_probe_log("STEREO_REFRESH\tphase=failed\treason=pair_identity\r\n");
+    return;
+  }
+  for (std::size_t type = 0; type < 3; ++type) {
+    const auto& input = inputs[type];
+    if (!input.resource || input.present_frame != present_frame ||
+        input.pose_sequence != pose_sequence ||
+        input.state == static_cast<D3D12_RESOURCE_STATES>(UINT_MAX)) return;
+    const auto source = input.resource->GetDesc();
+    const auto destination = state.snapshots[index][type]->GetDesc();
+    if (source.Width != destination.Width || source.Height != destination.Height ||
+        source.Format != destination.Format || source.MipLevels != 1 ||
+        source.DepthOrArraySize != 1 || source.SampleDesc.Count != 1) {
+      state.failed = true;
+      write_streamline_probe_log("STEREO_REFRESH\tphase=failed\treason=extent_changed\r\n");
+      return;
+    }
+  }
+  ComPtr<ID3D12Device> device;
+  HRESULT result = queue->GetDevice(IID_PPV_ARGS(&device));
+  if (SUCCEEDED(result)) result = device->CreateCommandAllocator(
+      D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&state.submission_refresh_allocators[index]));
+  if (SUCCEEDED(result)) result = device->CreateCommandList(
+      0, D3D12_COMMAND_LIST_TYPE_DIRECT, state.submission_refresh_allocators[index].Get(),
+      nullptr, IID_PPV_ARGS(&state.submission_refresh_commands[index]));
+  if (SUCCEEDED(result)) result = device->CreateFence(
+      0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&state.submission_refresh_fences[index]));
+  if (SUCCEEDED(result)) {
+    auto* commands = state.submission_refresh_commands[index].Get();
+    for (std::size_t type = 0; type < 3; ++type) {
+      D3D12_RESOURCE_BARRIER barrier{};
+      barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+      barrier.Transition = {inputs[type].resource.Get(), D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                            inputs[type].state, D3D12_RESOURCE_STATE_COPY_SOURCE};
+      if (barrier.Transition.StateBefore != barrier.Transition.StateAfter)
+        commands->ResourceBarrier(1, &barrier);
+      commands->CopyResource(state.snapshots[index][type].Get(), inputs[type].resource.Get());
+      std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+      if (barrier.Transition.StateBefore != barrier.Transition.StateAfter)
+        commands->ResourceBarrier(1, &barrier);
+      state.sources[index][type] = inputs[type].resource;
+    }
+    result = commands->Close();
+    if (SUCCEEDED(result)) {
+      ID3D12CommandList* lists[]{commands};
+      original_execute_command_lists(queue, 1, lists);
+      result = queue->Signal(state.submission_refresh_fences[index].Get(), 1);
+    }
+  }
+  if (FAILED(result)) {
+    state.failed = true;
+    write_streamline_probe_log("STEREO_REFRESH\tphase=failed\treason=gpu_setup\thresult=0x%08x\r\n",
+        static_cast<unsigned>(result));
+    return;
+  }
+  state.submission_refresh_constants[index] = constants;
+  state.submission_refresh_mask |= 1U << eye;
+  write_streamline_probe_log(
+      "STEREO_REFRESH\tphase=scheduled\teye=%d\tpresent_frame=%llu\tpose=%llu"
+      "\tframe_index=%u\ttoken_call=%llu\tfence_value=1\r\n",
+      eye, static_cast<unsigned long long>(present_frame),
+      static_cast<unsigned long long>(pose_sequence), constants.frame_index,
+      static_cast<unsigned long long>(constants.frame_token_call));
+}
+
 void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
                                         std::uint64_t pose_sequence,
                                         ID3D12CommandQueue* queue) {
@@ -9044,6 +9188,10 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
   }
   std::scoped_lock lock(streamline_input_snapshot_mutex);
   auto& state = streamline_input_snapshot_state;
+  if (!state.failed && state.submission_refresh_armed && !state.submission_attempted) {
+    refresh_streamline_submission_inputs(eye, present_frame, pose_sequence, queue);
+    return;
+  }
   if (state.failed || state.stereo_backbuffer_complete) {
     return;
   }
@@ -9200,11 +9348,13 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
     }
     if (supported_submission_layout && state.constants[0].valid &&
         state.constants[1].valid && state.target_token_allocated) {
+      auto submission_constants = std::array{state.constants[0].constants,
+                                             state.constants[1].constants};
       state.submission_prepared = state.submission.prepare(
           1,
           static_cast<std::uint32_t>(description.Width / 2), description.Height,
           {state.constants[0].viewport, state.constants[1].viewport},
-          {state.constants[0].constants, state.constants[1].constants},
+          submission_constants,
           submission_inputs);
     }
     write_streamline_probe_log(
@@ -9698,6 +9848,27 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
   if (!constants.valid || constants.present_frame != present_frame ||
       constants.pose_sequence != pose_sequence) {
     return;
+  }
+  if (eye == 0 && streamline_stereo_submit_probe_requested.load(std::memory_order_acquire)) {
+    // Loading transitions expose eye boundaries before the engine's upscaler
+    // targets have switched to runtime size. Do not consume the one-shot on
+    // those transitional buffers. Later size checks remain authoritative.
+    const auto extent = darktidevr::core::streamline_render_extent(
+        camera_input_width.load(std::memory_order_relaxed),
+        camera_input_height.load(std::memory_order_relaxed), true);
+    const auto depth = tagged_inputs[0].resource->GetDesc();
+    const auto motion = tagged_inputs[1].resource->GetDesc();
+    const auto hudless = tagged_inputs[2].resource->GetDesc();
+    const auto input = tagged_inputs[3].resource->GetDesc();
+    const auto output = tagged_inputs[4].resource->GetDesc();
+    bool enabled = false;
+    for (const auto& options : streamline_options_observations)
+      enabled = enabled || (options.valid && options.viewport == constants.viewport &&
+          options.mode == 1 && options.present_frame == present_frame);
+    if (!enabled || !extent.accepts_eye(hudless.Width, hudless.Height) ||
+        !extent.accepts_eye(output.Width, output.Height) ||
+        depth.Width != motion.Width || depth.Height != motion.Height ||
+        depth.Width != input.Width || depth.Height != input.Height) return;
   }
   if (eye == 0) {
     state.present_frame = present_frame;
@@ -11437,7 +11608,11 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
   }
   const auto burst_until =
       streamline_native_burst_until_call.load(std::memory_order_acquire);
-  const bool sample = call <= 100 || call % 120 == 0 ||
+  const auto submission_present = streamline_stereo_submission_present.load(std::memory_order_acquire);
+  const auto current_outer = present_count.load(std::memory_order_relaxed);
+  const bool submission_sample = submission_present != 0 && current_outer >= submission_present &&
+      current_outer - submission_present < 8;
+  const bool sample = submission_sample || call <= 100 || call % 120 == 0 ||
                       (burst_until != 0 && call <= burst_until);
   const auto active_outer_frame =
       streamline_outer_present_active_frame.load(std::memory_order_acquire);
@@ -11506,6 +11681,19 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
       schedule_streamline_transport_probe(
           observed_present_queue.Get(), back_buffer.Get(), call,
           latest_frame_index);
+    }
+    if (submission_sample) {
+      write_streamline_probe_log(
+          "STEREO_NATIVE_TARGET\tsubmission_present=%llu\tnative_call=%llu"
+          "\touter_frame=%llu\tactive_outer_frame=%llu\tthread=%lu"
+          "\tbackbuffer=%p\twidth=%llu\theight=%u\tformat=%u"
+          "\tgenerated_candidate=%u\r\n",
+          static_cast<unsigned long long>(submission_present),
+          static_cast<unsigned long long>(call), static_cast<unsigned long long>(current_outer),
+          static_cast<unsigned long long>(active_outer_frame), GetCurrentThreadId(),
+          back_buffer.Get(), static_cast<unsigned long long>(back_buffer_description.Width),
+          back_buffer_description.Height, static_cast<unsigned>(back_buffer_description.Format),
+          generated_candidate ? 1U : 0U);
     }
     write_streamline_probe_log(
         "NATIVE_PRESENT_BEGIN\tcall=%llu\touter_frame=%llu\tthread=%lu"
@@ -11615,7 +11803,14 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
 }
 
 HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
-                                        UINT interval, UINT flags) {
+                                       UINT interval, UINT flags) {
+  // Legacy resource tags are global. During this explicit one-shot test, keep
+  // the game's next tag calls outside our stage/Present/null-tag transaction.
+  // Recursive only for same-thread API re-entry; ordinary runs do not hold it.
+  std::unique_lock<std::recursive_mutex> tagging_lock(streamline_tagging_api_mutex,
+                                                     std::defer_lock);
+  if (streamline_stereo_submit_probe_requested.load(std::memory_order_acquire))
+    tagging_lock.lock();
   streamline_outer_present_thread.store(GetCurrentThreadId(),
                                         std::memory_order_release);
   if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed)) {
@@ -11927,7 +12122,7 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
           std::memory_order_acquire)) {
     std::scoped_lock lock(streamline_input_snapshot_mutex);
     auto& snapshot = streamline_input_snapshot_state;
-    if (snapshot.submission_prepared && snapshot.submission_context_samples < 4 &&
+    if (snapshot.submission_prepared && !snapshot.submission_attempted && snapshot.submission_context_samples < 4 &&
         (snapshot.submission_context_samples == 0 || present % 120 == 0)) {
       ++snapshot.submission_context_samples;
       for (std::size_t eye = 0; eye < 2; ++eye) {
@@ -11969,12 +12164,13 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
         snapshot.present_stage_complete = true;
         write_streamline_probe_log(
             "STEREO_PRESENT_STAGE\tphase=complete"
-            "\tfence_value=5\tcopy_staged=1\ttags_staged=0"
+            "\tfence_value=5\tcopy_staged=1\ttags_staged=%u"
             "\tadditional_present_submitted=0"
-            "\tmetadata_published=0\tready_signaled=0\r\n");
+            "\tmetadata_published=0\tready_signaled=0\r\n",
+            snapshot.submission_presented ? 1U : 0U);
       }
     }
-    if (snapshot.stereo_backbuffer_complete &&
+    if (!snapshot.failed && snapshot.stereo_backbuffer_complete &&
         snapshot.target_token_allocated && !snapshot.present_target_observed) {
       ComPtr<ID3D12Resource> present_backbuffer;
       const auto backbuffer_index = candidate->GetCurrentBackBufferIndex();
@@ -11999,7 +12195,35 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
         target.present_state = D3D12_RESOURCE_STATE_PRESENT;
         const auto compatible =
             darktidevr::core::streamline_stereo_present_target_matches(target);
-        snapshot.present_target_observed = true;
+        const bool submit_requested = streamline_stereo_submit_probe_requested.load(
+            std::memory_order_acquire);
+        const auto bindings = streamline_present_bindings();
+        const auto tagging_modes = streamline_tagging_api_modes.load(std::memory_order_relaxed);
+        bool binding_valid = darktidevr::core::streamline_present_binding_matches(
+            present, {snapshot.constants[0].viewport, snapshot.constants[1].viewport},
+            bindings);
+        if (submit_requested) {
+          binding_valid = binding_valid && (tagging_modes == 1 || tagging_modes == 2);
+          if (!snapshot.submission_refresh_armed) {
+            snapshot.submission_refresh_armed = true;
+            write_streamline_probe_log("STEREO_REFRESH\tphase=armed\r\n");
+          }
+          binding_valid = binding_valid && snapshot.submission_refresh_mask == 3;
+          for (std::size_t eye = 0; eye < 2; ++eye) {
+            const auto& refreshed = snapshot.submission_refresh_constants[eye];
+            binding_valid = binding_valid && refreshed.valid &&
+                refreshed.present_frame == bindings[eye].constants_present &&
+                refreshed.frame_index == bindings[eye].frame_index &&
+                refreshed.frame_token_call == bindings[eye].token_call &&
+                reinterpret_cast<std::uintptr_t>(refreshed.frame_token) == bindings[eye].token &&
+                refreshed.pose_sequence == bindings[eye].pose;
+          }
+          if (snapshot.submission_refresh_mask == 3 && !binding_valid) {
+            snapshot.failed = true;
+            write_streamline_probe_log("STEREO_REFRESH\tphase=failed\treason=stale_present_binding\r\n");
+          }
+        }
+        snapshot.present_target_observed = !submit_requested || binding_valid;
         write_streamline_probe_log(
             "STEREO_PRESENT_TARGET\tphase=observed\tpresent_frame=%llu"
             "\tswapchain=%p\tbackbuffer_index=%u"
@@ -12022,7 +12246,7 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
             static_cast<unsigned>(D3D12_RESOURCE_STATE_PRESENT),
             static_cast<unsigned>(D3D12_RESOURCE_STATE_PRESENT),
             compatible ? 1U : 0U);
-        if (compatible &&
+        if (compatible && (!submit_requested || binding_valid) &&
             streamline_stereo_stage_probe_requested.load(
                 std::memory_order_acquire) &&
             present_queue && !snapshot.present_stage_pending &&
@@ -12041,6 +12265,44 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                 "STEREO_PRESENT_STAGE\tphase=failed"
                 "\treason=create_commands\r\n");
           } else {
+            if (submit_requested) {
+              for (std::size_t eye = 0; eye < 2; ++eye) {
+                const auto wait_result = present_queue->Wait(
+                    snapshot.submission_refresh_fences[eye].Get(), 1);
+                if (FAILED(wait_result)) {
+                  snapshot.failed = true;
+                  write_streamline_probe_log("STEREO_REFRESH\tphase=failed\treason=queue_wait\r\n");
+                }
+              }
+              // Refresh the packed color from the same pair as depth/motion.
+              auto* commands = snapshot.present_stage_commands.Get();
+              D3D12_RESOURCE_BARRIER packed{};
+              packed.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+              packed.Transition = {snapshot.stereo_backbuffer.Get(),
+                  D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, D3D12_RESOURCE_STATE_PRESENT,
+                  D3D12_RESOURCE_STATE_COPY_DEST};
+              commands->ResourceBarrier(1, &packed);
+              for (std::size_t eye = 0; eye < 2; ++eye) {
+                auto* source = snapshot.snapshots[eye][2].Get();
+                D3D12_RESOURCE_BARRIER color{};
+                color.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+                color.Transition = {source, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                    D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE};
+                commands->ResourceBarrier(1, &color);
+                D3D12_TEXTURE_COPY_LOCATION destination{};
+                destination.pResource = snapshot.stereo_backbuffer.Get();
+                destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+                D3D12_TEXTURE_COPY_LOCATION from{};
+                from.pResource = source;
+                from.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+                commands->CopyTextureRegion(&destination,
+                    static_cast<UINT>(eye * source->GetDesc().Width), 0, 0, &from, nullptr);
+                std::swap(color.Transition.StateBefore, color.Transition.StateAfter);
+                commands->ResourceBarrier(1, &color);
+              }
+              std::swap(packed.Transition.StateBefore, packed.Transition.StateAfter);
+              commands->ResourceBarrier(1, &packed);
+            }
             std::array<D3D12_RESOURCE_BARRIER, 2> barriers{};
             barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             barriers[0].Transition.pResource =
@@ -12066,8 +12328,37 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
             }
             snapshot.present_stage_commands->ResourceBarrier(
                 static_cast<UINT>(barriers.size()), barriers.data());
+            if (submit_requested && !snapshot.failed && snapshot.submission_prepared) {
+              snapshot.submission_attempted = true;
+              const darktidevr::producer::StreamlineSubmissionApi api{
+                  original_sl_set_constants, original_sl_set_tag_for_frame,
+                  original_sl_set_tag};
+              const bool staged = snapshot.submission.stage(api,
+                  reinterpret_cast<void*>(bindings[0].token),
+                  snapshot.present_stage_commands.Get(),
+                  tagging_modes == 1
+                      ? darktidevr::producer::StreamlineSubmission::Tagging::legacy
+                      : darktidevr::producer::StreamlineSubmission::Tagging::frame_based,
+                  darktidevr::producer::StreamlineSubmission::ConstantsMode::already_supplied);
+              write_streamline_probe_log(
+                  "STEREO_SUBMISSION\tphase=stage\tpresent_frame=%llu"
+                  "\tframe_index=%u\ttoken_call=%llu\tresult=%d\tsuccess=%u"
+                  "\ttags_staged=%u\thistory_reset=0\tcurrent_inputs=1\ttagging_modes=%u\r\n",
+                  static_cast<unsigned long long>(present), bindings[0].frame_index,
+                  static_cast<unsigned long long>(bindings[0].token_call),
+                  snapshot.submission.last_result(), staged ? 1U : 0U, staged ? 1U : 0U,
+                  tagging_modes);
+              if (!staged) {
+                const bool cleared = snapshot.submission.clear_tags(
+                    snapshot.present_stage_commands.Get());
+                snapshot.failed = true; // Keep diagnostic owners on any failure.
+                write_streamline_probe_log(
+                    "STEREO_SUBMISSION\tphase=abort\ttags_cleared=%u\tretained=1\r\n",
+                    cleared ? 1U : 0U);
+              }
+            }
             const auto close_result = snapshot.present_stage_commands->Close();
-            if (FAILED(close_result)) {
+            if (FAILED(close_result) || snapshot.failed) {
               snapshot.failed = true;
               write_streamline_probe_log(
                   "STEREO_PRESENT_STAGE\tphase=failed\treason=close"
@@ -12087,17 +12378,33 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                     "STEREO_PRESENT_STAGE\tphase=scheduled"
                     "\tpresent_frame=%llu\tswapchain=%p"
                     "\tbackbuffer_index=%u\tsource=%p\tdestination=%p"
-                    "\tfence_value=5\tcopy_staged=1\ttags_staged=0"
+                    "\tfence_value=5\tcopy_staged=1\ttags_staged=%u"
                     "\tadditional_present_submitted=0"
                     "\tmetadata_published=0\tready_signaled=0\r\n",
                     static_cast<unsigned long long>(present), swapchain,
                     backbuffer_index, snapshot.stereo_backbuffer.Get(),
-                    present_backbuffer.Get());
+                    present_backbuffer.Get(),
+                    snapshot.submission.phase() == darktidevr::producer::StreamlineSubmission::Phase::staged ? 1U : 0U);
               }
             }
           }
         }
       }
+    }
+  }
+  if (streamline_stereo_submit_probe_requested.load(std::memory_order_acquire)) {
+    std::scoped_lock lock(streamline_input_snapshot_mutex);
+    auto& snapshot = streamline_input_snapshot_state;
+    if (snapshot.submission_attempted && !snapshot.submission_presented &&
+        snapshot.submission.begin_present()) {
+      snapshot.submission_presented = true;
+      streamline_stereo_submission_present.store(present, std::memory_order_release);
+      // The previous read-only observation must never supply this batch's tickets.
+      snapshot.completion_observation_started = false;
+      write_streamline_probe_log(
+          "STEREO_SUBMISSION\tphase=present\tpresent_frame=%llu"
+          "\tadditional_present_submitted=0\tmetadata_published=0\r\n",
+          static_cast<unsigned long long>(present));
     }
   }
   streamline_outer_present_active_frame.store(present,
@@ -12112,7 +12419,8 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
     if (get_state) {
       std::scoped_lock snapshot_lock(streamline_input_snapshot_mutex);
       auto& snapshot = streamline_input_snapshot_state;
-      if (snapshot.stereo_backbuffer_complete && !snapshot.failed &&
+      if (snapshot.stereo_backbuffer_complete && (!snapshot.failed || snapshot.submission_presented) &&
+          (!streamline_stereo_submit_probe_requested.load(std::memory_order_acquire) || snapshot.submission_presented) &&
           !snapshot.completion_observation_started) {
         snapshot.completion_observation_started = true;
         completion_viewports = {snapshot.constants[0].viewport, snapshot.constants[1].viewport};
@@ -12141,17 +12449,76 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
           streamline_input_snapshot_state.input_completion_fences[eye] = retained_fence;
           streamline_input_snapshot_state.input_completion_values[eye] =
               observed.last_present_inputs_processing_completion_fence_value;
+          if (streamline_input_snapshot_state.submission_presented && retained_fence) {
+            streamline_input_snapshot_state.submission.record_ticket(1,
+                static_cast<std::uint32_t>(eye),
+                reinterpret_cast<std::uintptr_t>(retained_fence.Get()),
+                observed.last_present_inputs_processing_completion_fence_value);
+          }
         }
         write_streamline_probe_log(
             "STEREO_INPUT_COMPLETION\tpresent_frame=%llu\tthread=%lu\teye=%zu"
             "\tviewport=%u\tresult=%d\tstatus=%u\tframes_presented=%u"
             "\tfence_retained=%u\tfence_value=%llu\tcompleted_value=%llu"
-            "\tstereo_submission=0\r\n",
+            "\tstereo_submission=%u\r\n",
             static_cast<unsigned long long>(present), GetCurrentThreadId(), eye,
             completion_viewports[eye], state_result, observed.status,
             observed.num_frames_actually_presented, retained_fence ? 1U : 0U,
             static_cast<unsigned long long>(observed.last_present_inputs_processing_completion_fence_value),
-            static_cast<unsigned long long>(completed));
+            static_cast<unsigned long long>(completed),
+            streamline_stereo_submit_probe_requested.load(std::memory_order_relaxed) ? 1U : 0U);
+      }
+    }
+  }
+  if (streamline_stereo_submit_probe_requested.load(std::memory_order_acquire) &&
+      present_queue) {
+    std::scoped_lock lock(streamline_input_snapshot_mutex);
+    auto& snapshot = streamline_input_snapshot_state;
+    if (snapshot.submission_presented && !snapshot.submission_cleanup_attempted) {
+      snapshot.submission_cleanup_attempted = true;
+      ComPtr<ID3D12Device> device;
+      bool cleared = false;
+      HRESULT cleanup_result = snapshot.stereo_backbuffer->GetDevice(IID_PPV_ARGS(&device));
+      if (SUCCEEDED(cleanup_result)) cleanup_result = device->CreateCommandAllocator(
+          D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&snapshot.submission_cleanup_allocator));
+      if (SUCCEEDED(cleanup_result)) cleanup_result = device->CreateCommandList(
+          0, D3D12_COMMAND_LIST_TYPE_DIRECT, snapshot.submission_cleanup_allocator.Get(),
+          nullptr, IID_PPV_ARGS(&snapshot.submission_cleanup_commands));
+      if (SUCCEEDED(cleanup_result)) {
+        cleared = snapshot.submission.clear_tags(snapshot.submission_cleanup_commands.Get());
+        cleanup_result = snapshot.submission_cleanup_commands->Close();
+      }
+      if (SUCCEEDED(cleanup_result)) {
+        ID3D12CommandList* lists[]{snapshot.submission_cleanup_commands.Get()};
+        original_execute_command_lists(present_queue.Get(), 1, lists);
+        cleanup_result = present_queue->Signal(snapshot.fence.Get(), 6);
+      }
+      snapshot.submission_cleanup_pending = cleared && SUCCEEDED(cleanup_result);
+      if (!snapshot.submission_cleanup_pending) snapshot.failed = true;
+      write_streamline_probe_log(
+          "STEREO_SUBMISSION\tphase=cleanup\ttags_cleared=%u"
+          "\thresult=0x%08x\tfence_value=6\tpending=%u\r\n",
+          cleared ? 1U : 0U, static_cast<unsigned>(cleanup_result),
+          snapshot.submission_cleanup_pending ? 1U : 0U);
+    }
+    if (snapshot.submission_cleanup_pending && !snapshot.failed && !snapshot.submission_retired) {
+      const auto completed = snapshot.fence->GetCompletedValue();
+      if (completed == UINT64_MAX) {
+        snapshot.failed = true;
+        write_streamline_probe_log("STEREO_SUBMISSION\tphase=failed\treason=cleanup_device_removed\r\n");
+      } else if (completed >= 6) {
+        for (std::uint32_t eye = 0; eye < 2; ++eye) {
+          const auto& fence = snapshot.input_completion_fences[eye];
+          if (fence) snapshot.submission.observe_completion(1, eye,
+              reinterpret_cast<std::uintptr_t>(fence.Get()), fence->GetCompletedValue());
+        }
+        if (snapshot.submission.retire()) {
+          snapshot.submission_retired = true;
+          snapshot.submission_cleanup_pending = false;
+          write_streamline_probe_log(
+              "STEREO_SUBMISSION\tphase=retired\tinput_tickets_complete=1"
+              "\tcleanup_fence_complete=1\tmetadata_published=0\r\n");
+        }
       }
     }
   }

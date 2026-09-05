@@ -36,6 +36,8 @@ param(
 
     [switch] $StreamlineStereoStageProbe,
 
+    [switch] $StreamlineStereoSubmitProbe,
+
     [switch] $ClusterLightTrace,
 
     [bool] $ClusterLightVisibilityFix = $true,
@@ -136,6 +138,9 @@ if ($OfflineDualViewBenchmark) {
     # submissions, so enabling it here changes the workload being measured.
     $AutoEnterHub = $true
 }
+if ($StreamlineStereoSubmitProbe) {
+    $StreamlineStereoStageProbe = $true
+}
 if ($StreamlineStereoStageProbe) {
     $StreamlineTargetTokenProbe = $true
     $StreamlineStereoSwapchainProbe = $true
@@ -196,6 +201,9 @@ $streamlineStereoSwapchainProbeFlagExisted = $false
 $streamlineStereoStageProbeFlagPath = $null
 $streamlineStereoStageProbeFlagOriginal = $null
 $streamlineStereoStageProbeFlagExisted = $false
+$streamlineStereoSubmitProbeFlagPath = $null
+$streamlineStereoSubmitProbeFlagOriginal = $null
+$streamlineStereoSubmitProbeFlagExisted = $false
 
 if ($TuneWorkerThreads -and -not (Get-Process Darktide -ErrorAction SilentlyContinue)) {
     & (Join-Path $PSScriptRoot 'set-vr-worker-threads.ps1') -Action Apply
@@ -442,6 +450,19 @@ if ($StreamlineStereoStageProbe) {
     Set-Content -LiteralPath $streamlineStereoStageProbeFlagPath `
         -Value 'enabled' -Encoding ascii
     Write-Output 'One-shot stereo Present staging probe enabled.'
+}
+if ($StreamlineStereoSubmitProbe) {
+    $streamlineStereoSubmitProbeFlagPath = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_streamline_stereo_submit_probe.flag'
+    $streamlineStereoSubmitProbeFlagExisted = Test-Path -LiteralPath `
+        $streamlineStereoSubmitProbeFlagPath -PathType Leaf
+    if ($streamlineStereoSubmitProbeFlagExisted) {
+        $streamlineStereoSubmitProbeFlagOriginal = Get-Content -LiteralPath `
+            $streamlineStereoSubmitProbeFlagPath -Raw
+    }
+    Set-Content -LiteralPath $streamlineStereoSubmitProbeFlagPath `
+        -Value 'enabled' -Encoding ascii
+    Write-Output 'One-shot stereo tag submission enabled; generated XR publication remains disabled.'
 }
 if ($SyntheticRuntimeFrusta) {
     $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -785,6 +806,15 @@ else {
 }
 }
 finally {
+    if ($streamlineStereoSubmitProbeFlagPath) {
+        if ($streamlineStereoSubmitProbeFlagExisted) {
+            Set-Content -LiteralPath $streamlineStereoSubmitProbeFlagPath `
+                -Value $streamlineStereoSubmitProbeFlagOriginal.Trim() -Encoding ascii
+        }
+        elseif (Test-Path -LiteralPath $streamlineStereoSubmitProbeFlagPath -PathType Leaf) {
+            Remove-Item -LiteralPath $streamlineStereoSubmitProbeFlagPath -Force
+        }
+    }
     if ($streamlineProbeFlagPath) {
         if ($streamlineProbeFlagExisted) {
             Set-Content -LiteralPath $streamlineProbeFlagPath `

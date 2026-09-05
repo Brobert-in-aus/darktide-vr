@@ -18,6 +18,7 @@ class StreamlineSubmission {
  public:
   enum class Phase { idle, prepared, staged, cleanup_required, awaiting_completion };
   enum class Tagging { frame_based, legacy };
+  enum class ConstantsMode { submit, already_supplied };
 
   bool prepare(std::uint64_t id, std::uint32_t width,
                std::uint32_t height, const std::array<std::uint32_t, 2>& viewports,
@@ -45,8 +46,10 @@ class StreamlineSubmission {
   // game's token only at submission; a token retained during readback may have
   // been recycled by Streamline. The caller must verify its Present ownership.
   bool stage(StreamlineSubmissionApi api, void* frame, void* commands,
-             Tagging tagging = Tagging::frame_based) noexcept {
-    if (phase_ != Phase::prepared || !api.constants || !frame || !commands ||
+             Tagging tagging = Tagging::frame_based,
+             ConstantsMode constants_mode = ConstantsMode::submit) noexcept {
+    if (phase_ != Phase::prepared ||
+        (constants_mode == ConstantsMode::submit && !api.constants) || !frame || !commands ||
         (tagging == Tagging::frame_based ? !api.tags : !api.legacy_tags))
       return false;
     frame_ = frame;
@@ -55,10 +58,14 @@ class StreamlineSubmission {
     // A failing tag call may have partially installed tags. Track the attempt,
     // not only success, and clear both touched viewports on any failure.
     for (std::uint32_t eye = 0; eye < 2; ++eye) {
-      last_result_ = api.constants(pair_.constants(eye), frame_, &viewports_[eye]);
-      if (last_result_ != 0) {
-        phase_ = Phase::cleanup_required;
-        return false;
+      // already_supplied is only valid for inputs captured from the exact game
+      // frame whose constants were observed; the native binding gate proves it.
+      if (constants_mode == ConstantsMode::submit) {
+        last_result_ = api.constants(pair_.constants(eye), frame_, &viewports_[eye]);
+        if (last_result_ != 0) {
+          phase_ = Phase::cleanup_required;
+          return false;
+        }
       }
       touched_[eye] = true;
       last_result_ = set_tags(eye, pair_.eye(eye)->data(), commands);

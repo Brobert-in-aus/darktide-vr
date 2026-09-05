@@ -157,11 +157,13 @@ Reproduce this diagnostic checkpoint only after Ready preflight:
 tools/stereo/start-darktide-vr.ps1 -EnableHudPanel -EnterPsykhanium -StreamlineStereoSwapchainProbe -StreamlineTargetTokenProbe
 ```
 
-This is **not completed DLSS frame generation**: no new stereo tags are staged
-and no generated stereo is published to XR. The one-shot packed Present copy
+This is **not completed DLSS frame generation**: default launches stage no new
+stereo tags and no generated stereo is published to XR. The one-shot packed Present copy
 passed unattended on 6 September with `-StreamlineStereoStageProbe`, including
-GPU fence completion and continued fresh XR pairs. Next is current-frame
-binding, paired submission/retirement and generated-output identity. See the
+GPU fence completion and continued fresh XR pairs. An additional explicit
+`-StreamlineStereoSubmitProbe` now completes a fresh-pair API submission,
+cleanup and input retirement; the native-target report also passes.
+Next is successive-frame history and generated-output identity. See the
 [unattended continuation](handoffs/2026-09-06-dlss-unattended.md).
 The diagnostic proxy retains at most 16 images until process exit; proper GPU
 retirement/recycling is required for release. Restart after runtime resolution

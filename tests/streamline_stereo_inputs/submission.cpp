@@ -1,4 +1,5 @@
 #include "producer/streamline_submission.h"
+#include "core/streamline_present_binding.h"
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -36,6 +37,30 @@ int legacy_tags(const void* viewport, const void* data,
 }
 }
 int main() {
+  using namespace darktidevr::core;
+  const std::array<StreamlinePresentEyeBinding, 2> valid_binding{{
+      {true, 100, 51, 49, 49, 200, 1, true, 1, 49},
+      {true, 100, 51, 49, 49, 200, 2, true, 1, 49}}};
+  check(streamline_present_binding_matches(50, {1, 2}, valid_binding));
+  check(!streamline_present_binding_matches(51, {1, 2}, valid_binding));
+  check(!streamline_present_binding_matches(0, {1, 2}, valid_binding));
+  check(!streamline_present_binding_matches(50, {2, 1}, valid_binding));
+  for (int mutation = 0; mutation < 9; ++mutation) {
+    auto invalid = valid_binding;
+    auto& eye = invalid[1];
+    switch (mutation) {
+      case 0: eye.token_call++; break; // Same pointer, recycled token.
+      case 1: eye.frame_index++; break;
+      case 2: eye.pose++; break;
+      case 3: eye.token++; break;
+      case 4: eye.mode = 0; break;
+      case 5: eye.options_present--; break;
+      case 6: eye.options_valid = false; break;
+      case 7: eye.constants_valid = false; break;
+      case 8: eye.constants_present--; break;
+    }
+    check(!streamline_present_binding_matches(50, {1, 2}, invalid));
+  }
   int resources[6]{}, frame{}, commands{};
   expected_frame = &frame;
   StreamlineStereoTags::Inputs inputs{};
@@ -98,5 +123,26 @@ int main() {
   check(calls == std::vector<int>({10, 11, 20, 21}));
   check(batch.clear_tags(&commands));
   check(batch.retire());
+  check(batch.prepare(4, 200, 200, {1, 2}, values, inputs));
+  calls.clear();
+  check(batch.stage({nullptr, tags}, &next_frame, &commands,
+      StreamlineSubmission::Tagging::frame_based,
+      StreamlineSubmission::ConstantsMode::already_supplied));
+  check(calls == std::vector<int>({11, 21}));
+  check(batch.clear_tags(&commands));
+  check(batch.retire());
+  for (int failure = 1; failure <= 2; ++failure) {
+    StreamlineSubmission failed_tags;
+    calls.clear(); attempt = 0; fail_at = failure;
+    check(failed_tags.prepare(1, 200, 200, {1, 2}, values, inputs));
+    check(!failed_tags.stage({nullptr, tags}, &next_frame, &commands,
+        StreamlineSubmission::Tagging::frame_based,
+        StreamlineSubmission::ConstantsMode::already_supplied));
+    check(!failed_tags.begin_present() && !failed_tags.retire());
+    check(failed_tags.clear_tags(&commands));
+    check(failed_tags.retire());
+    check(calls == (failure == 1 ? std::vector<int>{11, 12}
+                                : std::vector<int>{11, 21, 12, 22}));
+  }
   std::cout << "streamline_submission=pass\n";
 }

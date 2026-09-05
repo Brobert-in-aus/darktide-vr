@@ -67,6 +67,12 @@ light aim stabilization, one shared sample policy for presentation and attacks.
 
 ## HUD
 
+Menu follow-up (6 September): immediately after character selection loads,
+highlighting works but clicks appear unconsumed for about one second. Investigate
+view enter/input-readiness gating and pointer click delivery against that precise
+transition. Do not queue the missed click for later replay. User observation is
+unverified in code; retain this as backlog while completing DLSS.
+
 The fixed-panel prototype is in `darktidevr_hud_panel.lua`, disabled by default.
 It separates spatial elements from fixed status elements and uses a dedicated
 offscreen target plus a completed-copy resource for world presentation. World
@@ -165,9 +171,11 @@ Remaining work, in order:
    [unattended handoff](handoffs/2026-09-06-dlss-unattended.md).
 2. Wire paired constants/tags into the established Present route. Preserve
    partial-call failure cleanup and per-eye input completion-fence ownership;
-   existing native preparation still stages zero new tags. Bind the current
-   game's frame token at staging, not during delayed snapshot preparation, and
-   verify both viewport option states before enabling submission.
+   the opt-in one-shot submit probe now completes fresh-pair staging, Present,
+   tag cleanup and input retirement. It uses the game's existing constants and
+   observed tagging API. The native-target report also passes. Extend this
+   to successive frames with coherent history; one presented frame does not
+   prove an additional generated frame. Default launches do not stage new tags.
 3. Establish generated-output identity tied to the submitted stereo batch.
    An asynchronous Present or nearby queue execution is only a candidate;
    input-retirement fences do not prove generated output is ready.

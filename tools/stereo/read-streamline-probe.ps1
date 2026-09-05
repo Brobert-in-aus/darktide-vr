@@ -86,6 +86,10 @@ $stereoPresentTargets = @($records |
 $stereoPresentStages = @($records |
     Where-Object event -eq 'STEREO_PRESENT_STAGE')
 $inputCompletions = @($records | Where-Object event -eq 'STEREO_INPUT_COMPLETION')
+$submissionProbe = @($records | Where-Object event -eq 'STEREO_SUBMISSION_PROBE')
+$stereoSubmitProbe = if ($submissionProbe.Count -eq 1) { $submissionProbe[0].enabled } else { '0' }
+$stereoSubmissions = @($records | Where-Object event -eq 'STEREO_SUBMISSION')
+$nativeSubmissionTargets = @($records | Where-Object event -eq 'STEREO_NATIVE_TARGET')
 $generatedBackbufferExtents = @()
 $generatedBackbufferFormats = @()
 
@@ -620,6 +624,14 @@ if ($stereoTargetTokens.Count -eq 1) {
     Write-Output "input_snapshot.target_metadata_published=$($stereoTargetTokens[0].metadata_published)"
     Write-Output "input_snapshot.target_ready_signaled=$($stereoTargetTokens[0].ready_signaled)"
 }
+$observedPresentExtents = $generatedBackbufferExtents
+$observedPresentFormats = $generatedBackbufferFormats
+if ($stereoSubmitProbe -eq '1') {
+    $observedPresentExtents = @($nativeSubmissionTargets | ForEach-Object {
+        "$($_.width)x$($_.height)"
+    } | Sort-Object -Unique)
+    $observedPresentFormats = @($nativeSubmissionTargets | ForEach-Object { $_.format } | Sort-Object -Unique)
+}
 if ($stereoBackbuffers.Count -gt 0) {
     foreach ($phase in @($stereoBackbuffers.phase | Sort-Object -Unique)) {
         Write-Output "input_snapshot.stereo_backbuffer_${phase}.samples=$(@($stereoBackbuffers |
@@ -629,9 +641,9 @@ if ($stereoBackbuffers.Count -gt 0) {
         Where-Object phase -eq 'complete' | Select-Object -Last 1)
     if ($stereoBackbufferComplete.Count -eq 1) {
         $stereoPresentCompatible =
-            $generatedBackbufferExtents -contains
+            $observedPresentExtents -contains
                 "$($stereoBackbufferComplete[0].width)x$($stereoBackbufferComplete[0].height)" -and
-            $generatedBackbufferFormats -contains
+            $observedPresentFormats -contains
                 $stereoBackbufferComplete[0].format
         Write-Output "input_snapshot.stereo_backbuffer_extent=$($stereoBackbufferComplete[0].width)x$($stereoBackbufferComplete[0].height)"
         Write-Output "input_snapshot.stereo_backbuffer_eye_width=$($stereoBackbufferComplete[0].eye_width)"
@@ -850,15 +862,19 @@ if ($targetTokenProbe -eq '1') {
         throw 'The requested stereo target token was not allocated safely.'
     }
 }
+$expectedPackedExtent = if ($stereoBackbufferComplete.Count -eq 1) {
+    "$($stereoBackbufferComplete[0].width)x$($stereoBackbufferComplete[0].height)"
+} else { '' }
 if ($stereoSwapchainProbe -eq '1' -and
-        ($generatedBackbufferExtents.Count -ne 1 -or
-            $generatedBackbufferExtents[0] -ne '4992x2688' -or
-            $generatedBackbufferFormats.Count -ne 1 -or
-            $generatedBackbufferFormats[0] -ne '28')) {
+        ($observedPresentExtents.Count -ne 1 -or
+            $observedPresentExtents[0] -ne $expectedPackedExtent -or
+            $observedPresentFormats.Count -ne 1 -or
+            $observedPresentFormats[0] -ne '28')) {
     throw 'The wide stereo swapchain did not reach the Streamline present path.'
 }
 if ($targetTokenProbe -eq '1' -and $stereoSwapchainProbe -eq '1' -and
-        ($stereoPresentTargets.Count -ne 1 -or
+        ($stereoPresentTargets.Count -lt 1 -or
+            ($stereoSubmitProbe -ne '1' -and $stereoPresentTargets.Count -ne 1) -or
             $stereoPresentTargets[0].phase -ne 'observed' -or
             $stereoPresentTargets[0].compatible -ne '1' -or
             $stereoPresentTargets[0].copy_staged -ne '0' -or
@@ -876,12 +892,12 @@ if ($stereoStageProbe -eq '1') {
     if ($scheduledStages.Count -ne 1 -or $completedStages.Count -ne 1 -or
             @($stereoPresentStages | Where-Object phase -eq 'failed').Count -ne 0 -or
             $scheduledStages[0].copy_staged -ne '1' -or
-            $scheduledStages[0].tags_staged -ne '0' -or
+            $scheduledStages[0].tags_staged -ne $stereoSubmitProbe -or
             $scheduledStages[0].additional_present_submitted -ne '0' -or
             $scheduledStages[0].metadata_published -ne '0' -or
             $scheduledStages[0].ready_signaled -ne '0' -or
             $completedStages[0].copy_staged -ne '1' -or
-            $completedStages[0].tags_staged -ne '0' -or
+            $completedStages[0].tags_staged -ne $stereoSubmitProbe -or
             $completedStages[0].additional_present_submitted -ne '0' -or
             $completedStages[0].metadata_published -ne '0' -or
             $completedStages[0].ready_signaled -ne '0') {
@@ -898,7 +914,7 @@ if ($inputCompletions.Count -gt 0) {
     foreach ($sample in $inputCompletions) {
         if ($sample.eye -notin @('0','1') -or $sample.result -ne '0' -or
                 $sample.status -ne '0' -or $sample.fence_retained -ne '1' -or
-                $sample.stereo_submission -ne '0' -or
+                $sample.stereo_submission -ne $stereoSubmitProbe -or
                 $sample.thread -notin $threads -or
                 [uint64]$sample.completed_value -eq [uint64]::MaxValue -or
                 [uint64]$sample.fence_value -eq [uint64]::MaxValue) {
@@ -908,8 +924,54 @@ if ($inputCompletions.Count -gt 0) {
         Write-Output "input_completion.eye$($sample.eye).pending_at_observation=$pending"
         Write-Output "input_completion.eye$($sample.eye).fence_value=$($sample.fence_value)"
     }
-    # Observed game inputs are not our prepared-but-unsubmitted stereo batch.
-    Write-Output 'input_completion.stereo_retirement_verified=0'
+    if ($stereoSubmitProbe -ne '1') {
+        # Observed game inputs are not our prepared-but-unsubmitted stereo batch.
+        Write-Output 'input_completion.stereo_retirement_verified=0'
+    }
+}
+if ($stereoSubmitProbe -eq '1') {
+    $refresh = @($records | Where-Object event -eq 'STEREO_REFRESH')
+    $refreshScheduled = @($refresh | Where-Object phase -eq 'scheduled')
+    $staged = @($stereoSubmissions | Where-Object phase -eq 'stage')
+    $presented = @($stereoSubmissions | Where-Object phase -eq 'present')
+    $cleared = @($stereoSubmissions | Where-Object phase -eq 'cleanup')
+    $retired = @($stereoSubmissions | Where-Object phase -eq 'retired')
+    if ($staged.Count -ne 1 -or $presented.Count -ne 1 -or
+            $cleared.Count -ne 1 -or $retired.Count -ne 1 -or
+            @($stereoSubmissions | Where-Object phase -in @('failed', 'abort')).Count -ne 0 -or
+            $inputCompletions.Count -ne 2 -or
+            $staged[0].success -ne '1' -or $staged[0].result -ne '0' -or
+            $staged[0].tags_staged -ne '1' -or $staged[0].history_reset -ne '0' -or
+            $staged[0].current_inputs -ne '1' -or
+            $refreshScheduled.Count -ne 2 -or
+            @($refreshScheduled.eye | Sort-Object -Unique).Count -ne 2 -or
+            @($refresh | Where-Object phase -eq 'failed').Count -ne 0 -or
+            $staged[0].present_frame -ne $presented[0].present_frame -or
+            $presented[0].additional_present_submitted -ne '0' -or
+            $presented[0].metadata_published -ne '0' -or
+            $cleared[0].tags_cleared -ne '1' -or $cleared[0].hresult -ne '0x00000000' -or
+            $cleared[0].pending -ne '1' -or
+            $retired[0].input_tickets_complete -ne '1' -or
+            $retired[0].cleanup_fence_complete -ne '1' -or
+            $retired[0].metadata_published -ne '0') {
+        throw 'Stereo submission did not complete staging, Present, cleanup and input retirement.'
+    }
+    foreach ($eye in $refreshScheduled) {
+        if ([uint64]$eye.present_frame + 1 -ne [uint64]$staged[0].present_frame -or
+                $eye.frame_index -ne $staged[0].frame_index -or
+                $eye.token_call -ne $staged[0].token_call -or
+                $eye.pose -ne $refreshScheduled[0].pose) {
+            throw 'Stereo submission used inputs from a different frame or pose.'
+        }
+    }
+    if (@($nativeSubmissionTargets | Where-Object {
+        $_.submission_present -eq $presented[0].present_frame -and
+        $_.outer_frame -eq $presented[0].present_frame
+    }).Count -eq 0) {
+        throw 'The submitted batch has no matching native Present target observation.'
+    }
+    Write-Output 'input_completion.stereo_retirement_verified=1'
+    Write-Output 'generated_stereo.publication_verified=0'
 }
 $isolatedPolicy = @($records | Where-Object event -eq 'ISOLATED_EYE_POLICY')
 if ($isolatedPolicy.Count -gt 0) {

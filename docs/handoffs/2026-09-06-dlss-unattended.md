@@ -2,6 +2,8 @@
 
 Branch: `codex/dlss-live-integration-2026-09-05`.
 User authorized unattended headset setup and development while away.
+Current result: the one-shot fresh stereo submission and native-target report
+pass. Continuous generated output and XR publication remain unfinished.
 Proximity override Disable/Status and default Ready preflight passed. VD/VDXR
 remained connected. Character selection required an observed desktop Start
 click; Psykhanium entry was armed while the game was closed.
@@ -30,8 +32,9 @@ and `stage-copy-report.txt` (`result=pass`). The exhausted log is preserved too.
 `StreamlineSubmission::prepare` no longer retains a frame token. `stage` requires
 the caller to provide it at the actual submission point and retains it through
 cleanup. Tests cover a null token, a different token on a later batch, partial
-API failures, cleanup retry and both completion tickets. Native code still does
-not call `stage`; this change does not certify a token's Present ownership.
+API failures, cleanup retry and both completion tickets. At this initial
+preparation checkpoint native code did not call `stage`; later integration is
+recorded below. Preparation alone does not certify Present ownership.
 
 The next live diagnostic records current per-eye constants/token identity and
 successful game DLSS-G options at the prepared Present boundary. It makes no
@@ -51,6 +54,81 @@ reference builds passed. `ctest --test-dir build/windows-vs2022 -C Release
 passed all five tests. Launch retained the LuaJIT gate. No Lua source changed.
 `git diff --check` passed.
 
-Next: inspect the current-frame/options diagnostic, then integrate paired SL
-submission, cleanup and retirement before attempting generated XR publication.
+Next at this initial checkpoint was the current-frame/options diagnostic and
+paired submission integration, completed in the continuation below.
 Keep accepted HUD, menu, resolution and LOD configuration intact.
+
+## Current-frame submission integration
+
+Four Present-context observations found both game viewports enabled, with the
+same token call, frame index and pose, and constants/options recorded in the
+immediately preceding Present interval. Added a binding guard rejecting stale
+intervals, mismatched identities, disabled options and recycled token pointers.
+
+The first `-StreamlineStereoSubmitProbe` attempt failed with result 27
+(`eErrorDuplicatedConstants`): constants for that frame already existed. It
+cleared tags without submitting a stereo generation Present; XR kept running.
+The revised path refreshes depth/motion/HUD-less copies at both current eye
+boundaries, waits on separate copy fences, rebuilds packed colour from those
+copies and uses the exact frame's already-supplied constants. It never resets
+history or substitutes delayed snapshot constants for a current game frame.
+
+A second attempt proved fresh-pair identity but returned 19
+(`eErrorInvalidIntegration`) from frame-based tagging. The observed game uses
+`slSetTag`; the frame-based API requires an initialization preference the game
+does not use. The pending retry selects only the API mode observed succeeding
+in game calls, with no failure-triggered fallback. A mutex holds subsequent game
+tag calls outside the one-shot stage/Present/cleanup interval.
+
+The native submitter retains input and command resources on failure. Success
+requires tag clearing, cleanup GPU fence completion and both post-Present input
+completion tickets before bookkeeping retirement. Generated XR publication
+remains disabled. The analyzer now requires those records for a submit probe,
+and derives expected packed size from captured dimensions instead of a fixed
+4992x2688 check. Original copy-only evidence still passes the revised analyzer.
+
+Failed attempt logs are ignored local evidence: `duplicate-constants-probe.tsv`
+and `frame-tag-mode-rejected.tsv` under the session diagnostic directory.
+The menu backlog also records the user's roughly one-second click suppression
+after character selection loads, with immediate highlighting.
+
+The legacy-mode retry exposed a startup race in the diagnostic trigger: it
+captured loading-transition upscaler buffers at 1280x720/1920x1080 while the eye
+targets were already 2496x2688. The existing size guard rejected the transaction.
+The submit probe now waits for that viewport's active game options and matching
+runtime-sized final/HUD-less output before consuming its initial sample. It
+retains subsequent mismatch rejection and current-frame refresh requirements.
+
+## Successful one-shot API transaction
+
+The ready-gated legacy run accepted both eyes' tags (result 0), submitted its
+normal outer Present at 3381 for input frame 3380, cleared both viewports' tags,
+completed cleanup fence 6 and retired both input tickets. Fresh XR pairs
+continued. Both state queries returned status 0, one presented frame and fence
+value 0; no additional generated frame was demonstrated. Zero-valued valid
+input tickets are supported, but are not evidence of generated output.
+
+Evidence: `fresh-legacy-submit-probe.tsv`. The full report initially failed
+because normal telemetry had stopped before the native wide Present samples.
+Added an eight-outer-frame native target observation window tied to the exact
+submission. It uses reserved diagnostic capacity and records actual native
+backbuffer extent/identity.
+
+The verification retry passes the full analyzer: input frame 12130 was refreshed
+for both eyes and submitted at outer Present 12131. The native call at that
+same outer Present observed a 4992x2688 format-28 backbuffer. Later asynchronous
+native calls also retained that extent, but their timing classifications remain
+candidates, not proof that they contain our generated stereo pair. Cleanup and
+input retirement passed; the state reported one frame and zero-valued valid
+completion tickets again. XR continued with fresh pairs and no reported pose
+mismatches. No worn visual acceptance is claimed for this new probe.
+
+Evidence: `verified-submit-probe.tsv` and `verified-submit-report.txt`, ending
+with `input_completion.stereo_retirement_verified=1`,
+`generated_stereo.publication_verified=0`, and `result=pass`. Negative copies of
+this log with missing retirement, invalid freshness or a mismatched native
+extent all fail the analyzer. The original copy-only log still passes.
+
+Next: sustain successive stereo submissions with coherent input history and
+GPU-safe resource reuse, then identify and fence the actual generated output
+before publishing any generated pair to OpenXR.
