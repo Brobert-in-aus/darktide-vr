@@ -81,8 +81,9 @@ installation and performance documentation.
 The user accepted texture pool 2048, seven workers and LOD 3 for now. The pool
 is machine-local; future release defaults still need comparison on other GPUs.
 
-Melee aiming must follow the right-hand aim while movement remains head-relative;
-that follow-up and left-hand alignment are still under development.
+The user accepted hand-directed melee on the recovered combat-direction build.
+Movement remains head-relative. Left-hand block direction is implemented but
+untested; left-hand alignment still needs a worn verdict.
 
 The September 4/5 candidate has outstanding worn checks for both unarmed and
 wielded palm placement, pinned-marker

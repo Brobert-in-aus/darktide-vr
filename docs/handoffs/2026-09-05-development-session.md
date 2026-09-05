@@ -484,3 +484,9 @@ The test covers repeated/duplicate contacts, multiple enemies, initial heavy,
 mode changes, new targets, recharge preserving history and no banked burst.
 Direct LuaJIT test passes; compiler gate now covers 15 chunks. Collision geometry,
 stock damage adapter, authority and visual acceptance remain future integration.
+
+The user accepted hand-directed melee on the recovered combat-direction run:
+attacks now go where the hand aims rather than where they look. Preserve this
+working path. Blocking cannot yet be tested, so its direction remains unverified.
+Do not count the melee acceptance as acceptance of left-hand alignment, block
+cost/orientation, or the not-yet-integrated continuous physical melee system.
