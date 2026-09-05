@@ -972,3 +972,15 @@ previous captures do not independently prove the target texture was empty: old
 opaque geometry could occlude later panels. Recheck after the lifetime fix.
 Official engine API documents immediate mode for World.create_world_gui:
 https://help.autodesk.com/cloudhelp/2019/ENU/Max-Interactive-Help/lua_ref/obj_stingray_World.html
+
+278a53b live check: fresh HUD target/init and nonzero shared_ready (~60 fps).
+Both eyes showed one backing panel. Switching diagnostic to normal enable keeps
+the same GUI/targets alive but stops drawing the backing; subsequent eye readback
+showed it completely gone. This verifies frame expiration without relying on GUI
+destruction. Captures: artifacts/diagnostics/hud-lifetime-20260905/{left,right,
+left-cleared}.png. No synthetic headset motion used. HUD texture remains absent.
+Next candidate removes GUI_RENDER_PASS_LAYER from the world presentation material;
+stock UIRenderer adds that flag only for a named render pass. Target authoring
+retains its existing flag. Diagnostic mode additionally draws a stock weapon HUD
+icon to distinguish bitmap geometry from target sampling. Lua gate and HUD test
+passed; live result pending.

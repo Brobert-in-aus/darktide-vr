@@ -274,8 +274,9 @@ local function create_resources(mod, owner, source_renderer, world)
     state.world_gui = world_gui
     local material_ok, material = pcall(
         Gui.create_material, world_gui,
-        "content/ui/materials/render_target_masks/ui_render_target_straight_blur",
-        GuiMaterialFlag.GUI_RENDER_PASS_LAYER)
+        -- This surface is in the gameplay world, outside the named UI target
+        -- pass. Only the resource renderer's material uses the pass-layer flag.
+        "content/ui/materials/render_target_masks/ui_render_target_straight_blur")
     if not material_ok or not material then
         mod:error("DARKTIDEVR_HUD world_material_failed error=%s",
             tostring(material))
@@ -517,6 +518,13 @@ function HudPanel.draw(world, position, rotation)
         -- Only the explicit diagnostic command enables either marker.
         Gui.rect_3d(state.world_gui,tm,Vector2(-width*.5,-height*.5),999,
             Vector2(width,height),Color(255,0,80,90))
+        -- A shipped HUD icon tests bitmap geometry independently of the target
+        -- texture. It is loaded by the player's stock weapon HUD.
+        Gui2.bitmap_3d(state.world_gui,
+            "content/ui/materials/hud/icons/weapon_icon_container",nil,tm,1001,
+            {color=Color(255,255,255,255),
+             position_offset=Vector3(-0.15,0.2,0),size=Vector3(0.3,0.3,0),
+             uv00=Vector2(0,0),uv11=Vector2(1,1),snap_pixel_positions=false})
     end
     Gui2.bitmap_3d(
         state.world_gui,
