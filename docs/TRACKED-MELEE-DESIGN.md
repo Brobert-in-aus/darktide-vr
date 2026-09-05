@@ -2,7 +2,7 @@
 
 Status: design based on the local Darktide source snapshot, 5 September 2026.
 Not enabled in the current live build. Button-driven stock melee remains the
-interim system while its direction bugs are repaired.
+interim system; the user accepted its hand-directed aim on 5 September.
 
 ## User-selected rules
 
@@ -88,6 +88,16 @@ must not let an unavailable shield contact turn into a hit through the shield.
 Likewise unlimited cleave is not permission to hit through scenery. Separate
 blocking/occlusion results from damage-eligible target filtering.
 
+The inspected stock box sweeps request at most 5, 20 and 20 raw results, and
+the sphere variant requests 20. Removing hit mass alone therefore cannot
+establish unlimited target collection. A saturated result buffer is incomplete
+evidence, not an empty remainder. The contact adapter needs a verified engine
+strategy for collecting the full local set (for example, supported larger-query
+retries or spatial partitioning), with saturation telemetry. Do not assume a
+pagination or exclusion option exists without checking the engine API. Actor
+deduplication and target deduplication are separate: several shield/body actors
+can consume raw capacity before reaching many distinct enemies.
+
 ## Timing data
 
 Use seconds per normal attack, including effective weapon handling and attack-speed
@@ -152,3 +162,18 @@ continuous contact, several independent targets, duplicate contacts, initial
 heavy delay, mode changes and no banked burst. Future physics integration must
 supply validated simulation contacts, effective intervals and stable target
 generation keys, and retain stock obstruction separately from damage eligibility.
+
+`darktidevr_melee_sweep_plan.lua` separately plans rotational subdivision and
+current-pose overlap, with explicit gap/discontinuity and query-budget outcomes.
+It also is not imported by the live mod. Its inputs are validated hilt displacement,
+shortest-arc rotation, simulation interval and the collision volume's maximum
+corner radius about the hilt. Do not substitute the box half-length for this
+radius: the centre offset makes the far corner roughly a full box length away.
+The adapter must derive that radius from the actual volume and grip transform.
+
+The planner bounds rotational travel per substep; it does not claim that sampled
+linear boxes exactly cover a rotating box's swept volume. Thin-target and tip-arc
+tests remain required against game physics. It keeps current overlap when history
+is unsafe or exceeds the query budget and reports that loss instead of silently
+coarsening the sweep. Limits in the isolated test are fixtures, not calibrated
+release defaults. No cooldown state is owned or cleared by pose planning.

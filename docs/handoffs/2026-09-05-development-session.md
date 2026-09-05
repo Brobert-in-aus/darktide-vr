@@ -490,3 +490,18 @@ attacks now go where the hand aims rather than where they look. Preserve this
 working path. Blocking cannot yet be tested, so its direction remains unverified.
 Do not count the melee acceptance as acceptance of left-hand alignment, block
 cost/orientation, or the not-yet-integrated continuous physical melee system.
+
+Added offline rotational sweep planning while the accepted build remains live.
+It retains stationary overlap, subdivides rotation by maximum corner travel,
+and reports invalid history, tracking resets and budget overflow without making
+an artificial long sweep. It does not call game physics or alter cooldowns.
+Documented stock raw-query result caps (5/20/20 boxes, 20 sphere): collection
+saturation must be addressed separately from removing finite cleave. Exact arc
+coverage, collision collection and damage integration remain unimplemented.
+
+Validation: configured windows-vs2022 with DARKTIDEVR_ENABLE_HEADSET_TESTS=OFF;
+ctest --test-dir build/windows-vs2022 -C Release --output-on-failure -R
+'^(melee_contact_policy|melee_sweep_plan|lua_source_compile|lua_source_invariants)$'
+passed 4/4. Lua compile gate includes 16 mod chunks. No deployment or headset
+test was run concurrently with the user's game, and no live acceptance is claimed
+for this offline foundation.
