@@ -168,7 +168,11 @@ fences and safe input reuse. Two ordinary Presents intervened between batches;
 this is not continuous stereo generation. Later state queries reported two
 frames per eye, but that counter covers the interval since the previous query,
 not an identified generated stereo output. Next is successive-frame history
-and generated-output identity. See the
+and generated-output identity. Publication is blocked on a compatible output
+observation boundary: the installed NGX evaluator validates its caller, so a
+normal trampoline detour is unsuitable. No such hook was installed. Per the
+user's instruction, development moves to the ranged aiming backlog after this
+documented checkpoint. See the
 [unattended continuation](handoffs/2026-09-06-dlss-unattended.md).
 The diagnostic proxy retains at most 16 images until process exit; proper GPU
 retirement/recycling is required for release. Restart after runtime resolution

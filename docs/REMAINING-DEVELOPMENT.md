@@ -16,7 +16,12 @@ asymmetry remains open.
 
 The user has taken ownership of melee contact verification and explicitly moved
 development to HUD and then DLSS. Preserve accepted HUD/menu behavior and
-continue DLSS, completing one body of work before switching to the next.
+continue DLSS, completing one body of work before switching to the next. The
+latest instruction permits switching on a documented DLSS blocker: output
+association is now blocked at the installed NGX caller-validation boundary.
+The four-batch diagnostic passes, but generated XR publication remains disabled.
+See the [blocker and resume plan](handoffs/2026-09-06-dlss-unattended.md).
+The next active body is the all-family ranged aiming audit below.
 The melee query prototype remains non-damaging; user verification is not a claim
 that physical damage integration is complete.
 

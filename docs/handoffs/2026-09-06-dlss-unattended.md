@@ -161,3 +161,34 @@ Analyzer regression checks accept both earlier one-shot and copy-only evidence;
 mutations removing batch 3 retirement, making batch 2 refresh stale, or reusing
 batch 1's cleanup fence for batch 4 are rejected. No generated XR publication
 has been enabled. Next remains continuous history and exact output association.
+
+## Publication blocker and next investigation
+
+The user requested a documented commit and a switch to the todo list on a DLSS
+blocker. Generated-pair publication is blocked on exact output/source association:
+the present hook exposes a swapchain image and timing, not a generation token.
+SL 2.7.30's completion fence covers input consumption, not generated-output
+identity. Its frame count is an interval counter. Neither authorizes publishing
+an image as a particular stereo pose.
+
+The official NGX helper names a distinct interpolated output alongside depth,
+motion and HUDless inputs, offering a possible future association point:
+[NVIDIA helper](https://github.com/NVIDIA/DLSS/blob/main/include/nvsdk_ngx_helpers_dlssg.h).
+However, static inspection of this machine's `nvngx_dlssg.dll` 310.2.1.0 shows
+the exported D3D12 evaluation entry at RVA 0x21380 validating its return-address
+module before evaluation. Its failure strings include "Not called from NGX
+runtime" and "Unable to determine calling module". A normal C++ detour calling
+the trampoline changes that caller and is not a compatible observation route.
+No hook or binary patch was installed. These RVAs are evidence for this binary,
+not portable offsets for a future implementation.
+
+Resume by establishing a compatible, read-only NGX/runtime observation boundary
+and validating its parameter ABI against the installed version. Associate both
+eyes' exact input resources with output resources and originating command lists;
+then establish queue completion and pose/frame ownership before any XR transport.
+Separately replace gap-filled single-owner reuse with bounded consecutive-frame
+ownership. Do not turn native timing candidates into generated-pair metadata.
+
+DLSS is not complete. The four-batch diagnostic is committed and remains opt-in;
+the accepted rendered-eye path continues. Development moves to the all-family
+ranged aiming source audit while this output-boundary issue is documented.
