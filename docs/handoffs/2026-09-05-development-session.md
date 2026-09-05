@@ -1265,3 +1265,14 @@ state to distinguish a visibility failure from an empty/offscreen saved layout.
 LuaJIT compilation and hud_panel/marker_gui tests pass; repeated live open/close
 acceptance is pending. Treat this as a restoration fix under verification, not
 a proven diagnosis of the user's disappearing-HUD report.
+
+
+Correction from user: the disappearing HUD was caused by accidentally pressing
+F4, which hides the HUD. It was not established as an F3 lifecycle failure or
+controller-sleep dependency. Drop the controller-sleep diagnosis; no speculative
+tracking-dependent HUD change is needed. The transition refresh is deployed,
+but must not be credited with resolving the reported disappearance. Preserve
+intentional hide controls and the user's saved layout. The tag popup remains a
+separate open issue: code inspection shows both tag-target hooks fall back to
+stock look-based targeting when right-hand aim is unavailable; no change to that
+behavior has been deployed in this follow-up.
