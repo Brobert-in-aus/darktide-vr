@@ -898,3 +898,19 @@ now disable the experimental panel and restore fixed status on the stock rendere
 without drawing spatial elements twice. Fixture covers first-frame readiness,
 once-per-frame copy, and failure fallback. CTest hud_panel/compiler/invariants
 passed 3/3 (25 Lua chunks). GPU output validation follows in a dedicated HUD run.
+
+HUD live a937f84: target creation/retained transfer succeeded (5 moved, 0 failed),
+2496x1404 target and 1 m world surface logged, but shared-eye capture showed no
+fixed status. Disable restored stock health/weapon/status correctly. Captures:
+artifacts/diagnostics/hud-copy-20260905/{left,right,left-disabled}.png.
+Next candidate keeps the terminal dependency sample inside the viewport with
+zero alpha, testing whether offscreen culling pruned the target pass. No visible
+corner pixel is intended. CTest HUD/compiler/invariants passed 3/3; live pending.
+
+User reported fullscreen launches. Active root user_settings.config had
+fullscreen=true/screen_mode=fullscreen, while the pre-worker backup had false/
+window. Launch command and mod/scripts do not request fullscreen; trigger remains
+unknown. Closed the game, backed up current config locally, restored only those
+two root fields to false/window, preserving the VR resolution and graphics.
+Verify persistence during the next launch. Backup is ignored machine-specific
+artifacts/unattended/user-settings-before-window-restore-20260905.config.

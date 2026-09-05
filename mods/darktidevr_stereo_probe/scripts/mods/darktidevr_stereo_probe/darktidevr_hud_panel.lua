@@ -406,25 +406,22 @@ function HudPanel.install(mod)
                 -- samples the target. Without that dependency the dedicated UI
                 -- world can prune the entire target branch, leaving even an
                 -- immediate opaque diagnostic rectangle black. Draw the terminal
-                -- sample just outside the viewport so it schedules the target
-                -- without contaminating the one-eye desktop mirror.
+                -- sample inside the viewport with zero alpha. An offscreen
+                -- sample may be culled before its dependency is scheduled.
                 UIRenderer.add_render_pass(state.queue_renderer, 1,
                     "to_screen", false)
                 self._elements_array = fixed
                 self._ui_renderer = resource_renderer
                 func(self, dt, t, input_service)
                 self._ui_renderer = source_renderer
-                -- Keep the dependency sample outside the visible viewport. The
-                -- earlier full-target diagnostic was useful for proving that this
-                -- dedicated UI world is not composited, but it must never leak
-                -- into the production one-eye mirror.
+                -- This is a render dependency, not a visible corner pixel.
                 Gui.bitmap(
                     state.queue_renderer.gui,
                     resource_renderer.render_target_material,
                     "render_pass", "to_screen",
-                    Vector3(-2, -2, 20000),
+                    Vector3(0, 0, 20000),
                     Vector2(1, 1),
-                    Color(255, 255, 255, 255))
+                    Color(0, 255, 255, 255))
                 state.last_authored_t = t
             end
             return spatial_result
