@@ -1422,3 +1422,9 @@ Announced normal shutdown, but old game exited abnormally (-93159421): console
 07:30:36 UTC reports flow_callbacks.lua:485 Vector3/Vector4 expected userdata.
 Record as a separate shutdown Lua failure, not clean-exit validation. New Ready
 preflight passes (artifacts/unattended/menu-input-reticle-preflight-20260905.json).
+
+Deployed d9f18ed and relaunched EnterPsykhanium/EnableHudPanel. Evidence log
+artifacts/unattended/menu-input-reticle-live-20260905.log: fresh HUD surface,
+shared_ready 847, approximately 59 fresh pairs/s, no startup Lua or marker
+replay errors. Running for menu/item/reticule acceptance; marker edge scaling
+is unchanged and remains the next HUD issue after these menu checks.
