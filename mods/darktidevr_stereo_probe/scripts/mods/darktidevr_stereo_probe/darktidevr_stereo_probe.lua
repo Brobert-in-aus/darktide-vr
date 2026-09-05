@@ -9608,9 +9608,12 @@ end
 mod:hook_safe(
     "PlayerUnitWeaponExtension",
     "fixed_update",
-    function(self, _, _, _, fixed_frame)
+    function(self, _, _, t, fixed_frame)
         presentation.scan_weapon_inventory(self, fixed_frame)
         presentation.trace_weapon_pose(self, fixed_frame)
+        if presentation.melee_live_probe then
+            presentation.melee_live_probe.fixed_update(self, t, fixed_frame)
+        end
         if not controller_observation.primary_action_cache_observed then
             return
         end
@@ -12952,6 +12955,10 @@ presentation.projection_math = mod:io_dofile(
 presentation.body_proxy = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_body_proxy"
 )
+
+presentation.melee_live_probe = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_live_probe"
+).install(mod, presentation, controller_observation, active_game_mode_name)
 
 presentation.hud_panel = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_hud_panel"

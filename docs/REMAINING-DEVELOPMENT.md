@@ -1,12 +1,12 @@
 # Remaining development: melee, HUD and DLSS
 
-Updated 5 September 2026. The user has reserved the headset for non-VD use;
-development is offline until they resume testing. No game launch, deployment or
-XR readiness probe is needed for the work below.
+Updated 5 September 2026. The user has reconnected VD and authorized unattended
+headset testing while away. Proximity override is disabled and Ready preflight
+passed with 120/120 renderable frames. Worn acceptance remains separate.
 
 The user requested completing one area before switching. Melee is now the sole
 active development area; HUD and DLSS are parked. Complete melee integration
-and offline validation, retaining live acceptance for when the user resumes
+and validation, retaining worn acceptance for when the user resumes
 headset testing rather than switching areas to fill that wait.
 
 ## Melee
@@ -16,7 +16,9 @@ physical contact according to [the selected rules](TRACKED-MELEE-DESIGN.md).
 The offline foundations cover volume dimensions, rotational query planning,
 contact deduplication, effective timing, per-target cooldowns and simulation
 ownership. A non-damaging overlap adapter now has offline geometry/result tests;
-it is not yet hooked into engine simulation and no physical damage is applied.
+an opt-in private-range adapter now connects it to fixed simulation. It observes
+an actual selected sweep action and retains its volume while idle. The grip
+origin is provisional, and no physical damage is applied.
 
 Next integration work:
 

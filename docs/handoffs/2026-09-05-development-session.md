@@ -843,3 +843,19 @@ Latest user steering: stop switching between work areas; take one to completion.
 Melee is the sole active area from this point. HUD and DLSS are parked. The
 headset remains reserved for non-VD use, so live testing must wait for the user
 to resume it; continue melee implementation and offline validation meanwhile.
+
+VD resumed at the user's request; unattended testing is authorized while they
+are away. Applied proximity Disable then Status. Ready preflight at 02:58:50 UTC
+passed 120/120 renderable frames (VDXR 1.0.10), with Darktide closed. Report:
+artifacts/unattended/melee-resumed-preflight-20260905.json (ignored, device-local).
+
+Added an opt-in fixed-simulation melee query diagnostic. It only runs for the
+local player in shooting_range/training_grounds, observes an actual selected
+sweep action, and keeps that volume active while idle. Weapon changes clear the
+volume, tracking/resimulation flags enter the simulation gate, and adapter
+exceptions latch until the flag is toggled off/on. Origin remains provisional
+controller grip; no damage, cooldown consumption or visual acceptance is claimed.
+Enable with installed darktidevr_melee_probe.flag containing enabled.
+CTest melee_live_probe/melee_diagnostics/lua_source_compile/lua_source_invariants
+passed 4/4; pinned compiler passed 25 chunks. Native Release built with warnings
+as errors. Live engine query and calibration evidence remain pending.

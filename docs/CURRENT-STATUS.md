@@ -131,8 +131,9 @@ in the current build. Interim hand-directed stock attacks are accepted;
 left-hand blocking still needs worn validation. See the
 [motion smoothing investigation](MOTION-SMOOTHING.md) for aim and weapon policy.
 
-The user ended the live session to use the headset outside Virtual Desktop.
-Continue offline work on the three major remaining areas: melee, HUD and DLSS.
-Do not restart the game or require the headset during this offline period.
+The user has reconnected Virtual Desktop and authorized unattended testing while
+away. Proximity override is disabled; Ready preflight passed 120/120 renderable
+frames on 5 September. Melee is the sole active task; HUD and DLSS are parked.
+Automated results do not establish worn visual or physical acceptance.
 See [remaining development](REMAINING-DEVELOPMENT.md) for the current code seams
 and next integration work in each area.

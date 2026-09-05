@@ -1,0 +1,111 @@
+-- Opt-in, private-range diagnostics only. Grip origin is provisional: this
+-- checks engine queries, not visual calibration or physical damage acceptance.
+local Live = {}
+
+function Live.install(mod, presentation, tracking, game_mode)
+    local prefix = "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/"
+    local function load(name) return mod:io_dofile(prefix .. "darktidevr_melee_" .. name) end
+    local Simulation, Planner, Probe = load("simulation"), load("sweep_plan"), load("probe")
+    local Diagnostics, Volume = load("diagnostics"), load("volume")
+    local defaults = require("scripts/settings/equipment/action_sweep_settings")
+    local states = setmetatable({}, {__mode="k"})
+    local enabled, last_check, failed = false, nil, false
+
+    local function update(extension, t, frame)
+        local player = Managers and Managers.player and Managers.player:local_player(1)
+        if not player or player.player_unit ~= extension._unit then return end
+        if not last_check or t < last_check or t-last_check >= 1 then
+            last_check = t
+            local flag = Mods and Mods.lua and Mods.lua.io and Mods.lua.io.open(
+                "./../mods/darktidevr_stereo_probe/darktidevr_melee_probe.flag", "r")
+            local next_enabled = false
+            if flag then
+                next_enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
+                flag:close()
+            end
+            if not next_enabled then failed = false end
+            if enabled ~= next_enabled then
+                enabled = next_enabled
+                states = setmetatable({}, {__mode="k"})
+                mod:info("DARKTIDEVR_MELEE probe=%s damage=false origin=provisional_grip", tostring(enabled))
+            end
+        end
+        if not enabled or failed then return end
+        local mode = game_mode()
+        if mode ~= "shooting_range" and mode ~= "training_grounds" then
+            states[extension] = nil
+            return
+        end
+        local state = states[extension]
+        if not state then
+            state = {diagnostics=Diagnostics.new(Simulation, Planner, Probe), last_log=-math.huge}
+            states[extension] = state
+        end
+        local slot = extension._inventory_component.wielded_slot
+        local weapon = extension._weapons[slot]
+        if weapon ~= state.weapon then
+            state.weapon, state.volume, state.action_name = weapon, nil, nil
+            state.history_key = {}
+        end
+        local template = weapon and weapon.weapon_template
+        local name = extension._weapon_action_component.current_action_name
+        local action = template and template.actions and template.actions[name]
+        local instance = weapon and weapon.actions and weapon.actions[name]
+        -- Observe an action the engine actually selected. Do not guess an idle
+        -- route from unordered action names or use block/push timing as light.
+        if action and action.kind == "sweep" and instance then
+            local volume, reason = Volume.resolve(template, action, defaults, instance._uses_matrix_data)
+            if volume and state.action_name ~= name then
+                state.volume, state.action_name, state.history_key = volume, name, {}
+                mod:info("DARKTIDEVR_MELEE context template=%s action=%s shape=%s radius=%.4f origin=provisional_grip damage=false",
+                    tostring(template.name), name, volume.shape, volume.corner_radius)
+            elseif not volume then
+                state.volume = nil
+                state.reason = reason
+            end
+        end
+        if not state.volume then
+            if t-state.last_log >= 5 then
+                state.last_log = t
+                mod:info("DARKTIDEVR_MELEE waiting=%s slot=%s", state.reason or "observed_sweep_action", tostring(slot))
+            end
+            return
+        end
+        local valid = tracking.right_grip_usable == true and tracking.body_anchor_qw ~= nil
+        local position, rotation
+        if valid then position, rotation = presentation.controller_grip_target() end
+        valid = valid and position ~= nil and rotation ~= nil
+        local pose
+        if valid then
+            local x,y,z,w = Quaternion.to_elements(rotation)
+            pose = {position={Vector3.x(position),Vector3.y(position),Vector3.z(position)}, rotation={x,y,z,w}}
+        end
+        local report, reason, detail = Diagnostics.sample(state.diagnostics, {
+            history_key=state.history_key, pose=pose,
+            step={frame=frame,time=t,tracking_valid=valid,
+                resimulating=extension._unit_data_extension.is_resimulating == true},
+            world=extension._physics_world,volume=state.volume,
+            filter="filter_player_character_melee_sweep",rewind_ms=0,max_hits=128,
+            limits={max_gap=.1,max_translation=1,arc_step=.05,max_segments=32}})
+        if t-state.last_log >= 5 then
+            state.last_log = t
+            mod:info("DARKTIDEVR_MELEE sample frame=%s result=%s actors=%d contacts=%d queries=%d saturated=%s capacity_verified=false damage=false detail=%s",
+                tostring(frame), report and report.plan.reason or tostring(reason),
+                report and report.overlap.actor_count or 0, report and #report.contacts or 0,
+                report and report.query_count or 0, tostring(report and report.saturated or false), tostring(detail))
+        end
+    end
+    function Live.fixed_update(extension, t, frame)
+        local ok, failure = pcall(update, extension, t, frame)
+        if not ok then
+            -- Stop querying this extension after an adapter failure; no repeated
+            -- per-frame exception storm. Toggle the flag to retry after a fix.
+            failed = true
+            states = setmetatable({}, {__mode="k"})
+            mod:warning("DARKTIDEVR_MELEE probe_error=%s damage=false", tostring(failure))
+        end
+    end
+    return Live
+end
+
+return Live
