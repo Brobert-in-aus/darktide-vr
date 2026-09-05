@@ -1390,3 +1390,35 @@ shared_ready 1791 and 60 fresh pairs/s without Lua or marker-replay errors.
 The transient pre-game 640x768 shared-resource mismatch cleared once gameplay
 published its full-size eye textures. Run is open; menu transition acceptance
 is still pending and must not be inferred from normal startup.
+
+## Operative grid, nested menus and reticule atlas
+
+User confirms Escape opens/closes safely and pickup markers appear in both
+eyes. Pickup edge-scale asymmetry remains open. Operative UI is visible but
+not interactive; closing it replaces reticule with a dark rectangle. Latest
+Quest screenshot pulled to artifacts/diagnostics/menu-recursion-20260905/quest.jpg
+shows the scene repeated in a smaller panel. Its 17:22:35 local timestamp
+corresponds to options_view, still classified as direct mode 4. Removed the
+three Options/settings direct-menu overrides so they take the native-window
+mode-5 route of Escape.
+
+Input log shows inventory grid_interaction consuming edges. Exclude that
+catcher from generic BaseView activation and hook InventoryView's private item
+grid, using the existing eye-layout pointer conversion, real item hotspot
+forces, edge consumption only on hits, and null stock cursor input while the
+XR pointer is active. Restore temporary interaction hover even on draw errors.
+This still requires user interaction acceptance, including nested inventory tabs.
+
+Reticule root cause: flat swapchain images were updated only during flat/menu
+capture, then sampled for the gameplay reticule without repainting after menu
+exit. Repaint the 41x41 sprite synchronously into each acquired gameplay image,
+copying only that atlas rectangle. Reset consumed capture after editing upload
+pixels so the next menu always restores its complete window image. Added
+portable reticule painter and regression checking transparent gutters, centre,
+alpha and untouched surrounding pixels. Release harness and presentation-policy
+test builds pass; presentation_policy and 25-chunk LuaJIT gate pass.
+
+Announced normal shutdown, but old game exited abnormally (-93159421): console
+07:30:36 UTC reports flow_callbacks.lua:485 Vector3/Vector4 expected userdata.
+Record as a separate shutdown Lua failure, not clean-exit validation. New Ready
+preflight passes (artifacts/unattended/menu-input-reticle-preflight-20260905.json).

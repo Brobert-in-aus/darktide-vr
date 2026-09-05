@@ -622,11 +622,7 @@ local presentation = {
     },
     -- Bounded lifecycle probe for the complete native menu surface. Keep the
     -- view family together while nested settings views overlap SystemView.
-    direct_menu_surface_views = {
-        options_view = true,
-        player_character_options_view = true,
-        custom_settings_view = true,
-    },
+    direct_menu_surface_views = {},
     flat_loading_views = {
         splash_view = true,
         title_view = true,
@@ -10788,6 +10784,7 @@ mod:hook(
                     widget.name == "category_grid_interaction" or
                     (widget.name == "grid_interaction" and
                         (presentation.mode == 6 or
+                            self.view_name == "inventory_view" or
                             self.view_name == "options_view" or
                             self.view_name ==
                                 "player_character_options_view")))
@@ -10900,6 +10897,40 @@ mod:hook(
             end
         end
         return func(self, dt, t, input_service, ui_renderer, ...)
+    end)
+
+-- InventoryView owns a private grid; the full-grid catcher in BaseView must
+-- not consume the button edge intended for these item hotspots.
+mod:hook("InventoryView", "_draw_grid",
+    function(func, self, dt, t, input_service, ui_renderer)
+        if presentation.mode ~= 5 then
+            return func(self, dt, t, input_service, ui_renderer)
+        end
+        local pointer = presentation.read_menu_pointer()
+        local hit_pointer = presentation.vendor_eye_layout_pointer(pointer)
+        local interaction = self._widgets_by_name.grid_interaction.content.hotspot
+        local previous_hover = interaction.is_hover
+        if pointer.active then interaction.is_hover = true end
+        for _, widget in ipairs(self._grid_widgets or {}) do
+            if pointer.available then presentation.clear_widget_hotspot_forces(widget) end
+            if pointer.active and self._grid and self._grid:is_widget_visible(widget) then
+                local entry = presentation.widget_hotspot_at_pointer(self, widget, hit_pointer)
+                if entry and not entry.hotspot.disabled then
+                    entry.hotspot.force_hover = true
+                    if pointer.primary_pressed then
+                        entry.hotspot.force_input_pressed = true
+                        presentation.consume_menu_primary(pointer)
+                        mod:info("DARKTIDEVR_MENU_INPUT inventory_item_activate widget=%s",
+                            tostring(widget.name))
+                    end
+                end
+            end
+        end
+        local draw_input = pointer.active and input_service:null_service() or input_service
+        local ok, result = pcall(func, self, dt, t, draw_input, ui_renderer)
+        interaction.is_hover = previous_hover
+        if not ok then error(result, 0) end
+        return result
     end)
 
 -- OptionsView draws its category and settings widgets through two custom

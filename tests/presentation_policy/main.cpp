@@ -1,4 +1,6 @@
 #include "core/presentation_policy.h"
+#include "core/reticle_atlas.h"
+#include <array>
 
 #include <iostream>
 #include <cmath>
@@ -17,6 +19,16 @@ void expect(bool condition, const char* message) {
 int main() {
   try {
     using namespace darktidevr::core;
+    // Returning from a menu must replace opaque capture pixels with the
+    // sprite on every acquired image, without touching neighboring texels.
+    std::array<std::byte, 48 * 4 * 43> atlas;
+    atlas.fill(std::byte{99});
+    paint_reticle_atlas(atlas.data() + 48 * 4 + 4, 48 * 4);
+    expect(atlas[48 * 4 + 4 + 3] == std::byte{0}, "Atlas gutter must be transparent");
+    expect(atlas[21 * 48 * 4 + 21 * 4] == std::byte{255}, "Reticle centre must be white");
+    expect(atlas[21 * 48 * 4 + 21 * 4 + 3] == std::byte{171}, "Reticle alpha must be restored");
+    expect(atlas[0] == std::byte{99} && atlas.back() == std::byte{99},
+           "Atlas repaint must preserve neighboring capture pixels");
     auto decision = choose_presentation_mode(
         false, true, GamePresentationState::gameplay, PoseReadState::fresh);
     expect(decision.mode == PresentationMode::mono_projection &&

@@ -19,6 +19,7 @@
 #include "core/menu_pointer_input.h"
 #include "core/panel_pointer.h"
 #include "core/presentation_policy.h"
+#include "core/reticle_atlas.h"
 #include "core/shared_controller_state.h"
 #include "core/shared_gameplay_aim_state.h"
 #include "core/shared_head_pose.h"
@@ -2090,7 +2091,9 @@ class OpenXrProbe {
               static_cast<UINT>(cached_eye_barriers.size()),
               cached_eye_barriers.data());
         }
-        if (use_flat_capture) {
+        const bool update_reticle_atlas = enable_gameplay_reticle && window_capture &&
+            presentation_state.mode == darktidevr::core::SharedPresentationMode::stereo_world;
+        if (use_flat_capture || update_reticle_atlas) {
           D3D12_RESOURCE_BARRIER flat_barrier{};
           flat_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
           flat_barrier.Transition.pResource = flat_resource;
@@ -2146,7 +2149,7 @@ class OpenXrProbe {
           } else {
             const auto newest =
                 latest_capture.load(std::memory_order_acquire);
-            if (newest && newest != consumed_capture) {
+            if (!update_reticle_atlas && newest && newest != consumed_capture) {
               for (std::uint32_t y = 0; y < flat_capture_height; ++y) {
                 const auto* source = newest->data() +
                                      static_cast<std::size_t>(y) *
@@ -2170,8 +2173,24 @@ class OpenXrProbe {
             destination.pResource = flat_resource;
             destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
             destination.SubresourceIndex = 0;
-            command_list->CopyTextureRegion(&destination, 0, 0, 0, &source,
-                                            nullptr);
+            if (update_reticle_atlas) {
+              // Each acquired swapchain image may still contain menu pixels.
+              // Repaint synchronously rather than waiting for a window capture
+              // that gameplay does not otherwise upload. Copy just the sprite.
+              const UINT left = flat_capture_width - 42;
+              const UINT top = flat_capture_height - 41;
+              darktidevr::core::paint_reticle_atlas(
+                  upload_pixels + upload_footprint.Offset +
+                      static_cast<std::size_t>(top) * upload_footprint.Footprint.RowPitch + left * 4,
+                  upload_footprint.Footprint.RowPitch);
+              const D3D12_BOX sprite{left, top, 0, left + 41, top + 41, 1};
+              command_list->CopyTextureRegion(&destination, left, top, 0, &source, &sprite);
+              // The atlas modified the upload buffer; a subsequent menu must
+              // restore even the same last-captured window image.
+              consumed_capture.reset();
+            } else {
+              command_list->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+            }
           }
           std::swap(flat_barrier.Transition.StateBefore,
                     flat_barrier.Transition.StateAfter);
