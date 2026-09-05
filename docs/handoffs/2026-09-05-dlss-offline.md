@@ -466,3 +466,54 @@ captures are correct for both eyes. Preparation reports 2496-wide colour with
 shared_ready=374 at 58 fresh pairs/s and zero pair mismatches. Game left running
 for user verification that the transparent/light layer aligns. Worn acceptance
 is pending; generated stereo remains disabled.
+
+## Normal eye finals visually accepted; packed extent check authorized
+
+User reports the final-only eye-target run looks good overall. This is worn
+acceptance of normal-resolution private eye finals, with the engine-owned
+internal upscaler targets preserved. User then authorized the next packed-
+presentation check. Announced shutdown, closed and waited for runner cleanup,
+applied proximity Disable/Status and passed Ready preflight at
+artifacts/unattended/packed-final-preflight-20260905.json.
+
+Launched with -EnableHudPanel -EnterPsykhanium -StreamlineTargetTokenProbe
+-StreamlineStereoSwapchainProbe (which also enables private eye finals), without
+Present-stage copying. Log: artifacts/unattended/packed-final-live-20260905.log.
+This gate must check that the wider actual Present buffer does not change the
+accepted internal depth/motion or private eye dimensions. Final-eye acceptance
+does not automatically establish that global upscaler dependencies remain
+normal-sized in wide mode. No new tags or generated stereo are submitted.
+Runtime evidence and worn acceptance pending.
+
+### Packed final test exposes a HUD-less colour allocation dependency
+
+Private final captures stay 2496x2688. Contrary to an early broader hypothesis,
+depth/motion also remain at the accepted 1664x1792. The HUD-less colour snapshot
+alone is 4992x2688; the native guard rejects preparation as engine_extent_changed.
+Archive: artifacts/diagnostics/dlss-live-20260905/packed-final-probe.tsv and
+packed-final-resize.log. XR was still updating (~42 pairs/s, shared_ready=1078,
+zero pair mismatches), but resource acceptance failed. No packed copy or new SL
+tags were submitted. Restored the accepted normal eye-target run after Ready
+preflight (packed-final-restore-preflight-20260905.json / packed-final-restore-live-
+20260905.log); it reached shared_ready=1690 at 58.5 pairs/s with zero mismatches.
+
+Restoration exposed a launcher bookkeeping issue: Get-Process Launcher returned
+an entry with HasExited=true and no window even after process termination.
+Launcher checks in both start-darktide-vr.ps1 and invoke-darktide-launcher-play.ps1
+now exclude exited processes. Both scripts pass PowerShell syntax validation.
+
+Prepared the narrow resource fix offline: explicit per-eye hudless_color mapping
+at the normal final extent, alongside back_buffer. output_target remains absent
+and engine-owned. Resource allocation failure unwinds the first target; viewport
+and world teardown release both only after engine references are relinquished.
+Updated lifecycle tests pass, including partial HUD-less allocation failure and
+full-size independent colour targets. All 27 pinned LuaJIT chunks compile. This
+mapping still needs live evidence that the engine uses it for SL's colour tag.
+
+Announced next test and closed the normal run, but Ready preflight failed twice:
+packed-hudless-preflight-20260905.json and packed-hudless-retry-preflight-20260905.json.
+The session runs but submits zero rendered frames (600 not-rendered frames per
+attempt). No VD restart was performed and no game was launched without readiness.
+Game is CLOSED. Latest per-eye HUD-less mapping is not deployed. Live work needs
+VD to resume a renderable XR session; the next launch remains the no-stage wide
+resource check. Generated stereo is still incomplete and disabled.

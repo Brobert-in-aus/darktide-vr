@@ -281,3 +281,10 @@ upscaler; overriding it with full-resolution UI-style targets was incorrect.
 The diagnostic now overrides only the final back_buffer and preserves internal
 resource sizing. Runtime captures/preparation pass at normal resolution; user
 visual acceptance remains pending. See the DLSS handoff for evidence.
+
+Normal private eye finals are now worn-accepted. The subsequent wide resource
+check retained correct final/depth/motion sizes but doubled HUD-less colour;
+preparation correctly rejected it. An explicit per-eye HUD-less target is now
+implemented and Lua-tested, awaiting live validation. Two Ready checks currently
+report zero rendered frames, so the game is closed and the new mapping has not
+been deployed. Resume a renderable VD session before the next packed-buffer test.

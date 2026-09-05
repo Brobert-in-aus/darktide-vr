@@ -9,6 +9,7 @@ function EyeTargets.install(mod, script_world, extent)
 
     local function release(entry)
         Renderer.destroy_resource(entry.back_buffer)
+        Renderer.destroy_resource(entry.hudless_color)
     end
 
     local function create(name, width, height)
@@ -49,7 +50,16 @@ function EyeTargets.install(mod, script_world, extent)
             "gameplay eye extent is unavailable or invalid")
         local entry = { width = width, height = height }
         entry.back_buffer = create("darktidevr_" .. side .. "_eye_final", width, height)
-        local mapping = { back_buffer = entry.back_buffer }
+        -- The frame-generation colour allocation otherwise follows the real
+        -- wide swapchain even when this viewport has a private final image.
+        local ok, hudless = pcall(create,
+            "darktidevr_" .. side .. "_eye_hudless", width, height)
+        if not ok then
+            Renderer.destroy_resource(entry.back_buffer)
+            error(hudless, 0)
+        end
+        entry.hudless_color = hudless
+        local mapping = { back_buffer = entry.back_buffer, hudless_color = hudless }
         local created, viewport = pcall(func, world, name, template, layer,
             camera_unit, position, rotation, shadow, shading, callback, mood, mapping)
         if not created or not viewport then

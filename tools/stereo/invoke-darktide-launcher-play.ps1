@@ -199,7 +199,7 @@ function Get-ExactLauncherProcess {
     $matches = @(Get-Process Launcher -ErrorAction SilentlyContinue |
         Where-Object {
             try {
-                $_.Path -eq $launcherPath
+                -not $_.HasExited -and $_.Path -eq $launcherPath
             }
             catch {
                 $false

@@ -578,7 +578,7 @@ if (-not $DoNotOpenLauncher) {
             -ErrorAction SilentlyContinue |
         Where-Object {
             try {
-                $_.Path -eq $expectedLauncherPath
+                -not $_.HasExited -and $_.Path -eq $expectedLauncherPath
             }
             catch {
                 $false
