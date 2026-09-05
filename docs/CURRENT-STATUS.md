@@ -85,13 +85,13 @@ The user accepted hand-directed melee on the recovered combat-direction build.
 Movement remains head-relative. Left-hand block direction is implemented but
 untested; left-hand alignment still needs a worn verdict.
 
-A follow-up blur guard is prepared for the next deployment: it zeroes scene
+A follow-up blur guard now zeroes scene
 depth-of-field and fullscreen-blur values immediately before the shading
 environment is applied. This covers camera/mood and menu paths that write
-environment values directly. Offline checks pass; this follow-up has not yet
-been deployed to the accepted hand-melee run.
+environment values directly. Offline checks pass; the follow-up initialized
+successfully in the next run at 01:04:06 UTC and reached fresh stereo rendering.
 
-That run later hit an engine graphics-resource handle mismatch during world
+The earlier accepted hand-melee run hit an engine graphics-resource handle mismatch during world
 rendering (00:54:52 UTC). The cause is unresolved; hand-aim acceptance still
 stands, but the run does not establish stability. See the session handoff for
 the preserved crash findings.

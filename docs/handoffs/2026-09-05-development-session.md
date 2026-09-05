@@ -541,3 +541,12 @@ Fatshark documented this assertion class in an older Arbites character-creation
 issue, reportedly fixed in 1.8.1. Different trigger/build; supporting context,
 not a diagnosis of this incident:
 https://forums.fatsharkgames.com/t/known-issue-crash-in-arbites-character-creation/109333
+
+Ready preflight passed 120/120 frames for the next run:
+artifacts/unattended/environment-blur-preflight-20260905.json. Deployed a02521a
+with manual startup and pre-armed Psykhanium entry; active log is
+environment-blur-live-20260905.log. Visual-settings initialization completed at
+01:04:06.836 and synchronized stereo at 01:04:52.942, then 01:04:58.721 after
+loading. shared_ready reached 661 with approximately 60 fresh pairs/s, zero
+reused frames and one startup pose mismatch. No claim of crash resolution or
+worn blur/block/left-hand acceptance. Offline melee modules remain unimported.
