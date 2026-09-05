@@ -106,7 +106,7 @@ end,
     destroy_gui=function() released = released + 1 end}
 Gui.create_material = function() return {} end
 Gui.destroy_material = function() released = released + 1 end
-Material = {set_resource=function() error("binding failure") end}
+Material = {set_scalar=function() end,set_resource=function() error("binding failure") end}
 Matrix4x4 = {identity=function() return {} end}
 GuiMaterialFlag = {GUI_RENDER_PASS_LAYER=1}
 renderer.world = {}

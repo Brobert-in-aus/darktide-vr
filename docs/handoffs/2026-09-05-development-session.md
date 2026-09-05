@@ -1044,3 +1044,11 @@ assumption before the backface issue was known. Lua/HUD tests passed.
 uses overlay_offscreen for its UI-to-world capture world (and no visible terminal
 sample). Changed dedicated HUD viewport from overlay to overlay_offscreen to
 match that offscreen use case. LuaJIT gate passed; runtime result pending.
+
+25c6143 overlay_offscreen still showed outline without contents. Stock tactical
+mask draws at matching screen positions, whereas item atlas materials expose
+local rows/columns/grid_index UV selection. Next candidate uses the stock
+item_container_square world material with use_render_target=1, placeholder=0,
+one row/column, index 0, binding the completed copy to render_target. This keeps
+authoring unchanged and tests local-UV sampling instead of screen-space masking.
+Pinned compiler and HUD fixture passed.

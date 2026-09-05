@@ -278,10 +278,9 @@ local function create_resources(mod, owner, source_renderer, world)
     state.world_gui = world_gui
     local material_ok, material = pcall(
         Gui.create_material, world_gui,
-        -- Match stock render-target sampling materials, including their
-        -- render-pass texture layer variant, even on the world surface.
-        "content/ui/materials/render_target_masks/ui_render_target_straight_blur",
-        GuiMaterialFlag.GUI_RENDER_PASS_LAYER)
+        -- Item atlas materials sample local UVs instead of masking a matching
+        -- screen-space region of a render target.
+        "content/ui/materials/icons/items/containers/item_container_square")
     if not material_ok or not material then
         mod:error("DARKTIDEVR_HUD world_material_failed error=%s",
             tostring(material))
@@ -295,8 +294,14 @@ local function create_resources(mod, owner, source_renderer, world)
     -- binocular world render into this panel after HUD startup. Present only
     -- the separate completed-copy resource; a one-frame-old HUD is safe,
     -- whereas an in-flight render target is not.
-    local binding_ok, binding_error = pcall(
-        Material.set_resource, material, "source", display_target)
+    local binding_ok, binding_error = pcall(function()
+        Material.set_scalar(material, "use_placeholder_texture", 0)
+        Material.set_scalar(material, "use_render_target", 1)
+        Material.set_scalar(material, "rows", 1)
+        Material.set_scalar(material, "columns", 1)
+        Material.set_scalar(material, "grid_index", 0)
+        Material.set_resource(material, "render_target", display_target)
+    end)
     if not binding_ok then
         mod:error("DARKTIDEVR_HUD material_binding_failed error=%s",
             tostring(binding_error))
@@ -347,7 +352,7 @@ local function update_enabled_flag(mod, t)
     HudPanel.set_enabled(command ~= "disable")
     if state.world_material and state.resource_renderer then
         local target = command == "source" and state.resource_renderer.render_target or state.display_target
-        Material.set_resource(state.world_material,"source",target)
+        Material.set_resource(state.world_material,"render_target",target)
         mod:info("DARKTIDEVR_HUD diagnostic_binding=%s",command == "source" and "source_target" or "display_copy")
     end
     mod:info("DARKTIDEVR_HUD enabled=%s source=flag",
