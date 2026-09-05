@@ -173,6 +173,7 @@ local bitmap_drawn = false
 Gui.bitmap_3d = function(_,material,_,offset,_,size)
     assert(material == state.world_material)
     assert(offset.kind == "v2" and size.kind == "v2")
+    assert(math.abs(size[1] - 0.8) < 1e-6 and math.abs(size[2] - 0.81) < 1e-6)
     bitmap_drawn = true
 end
 panel.draw(renderer.world,Vector3(0,0,0),{})

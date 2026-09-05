@@ -5,6 +5,7 @@ local ScriptWorld = require("scripts/foundation/utilities/script_world")
 local HudPanel = {}
 HudPanel.height = 1.125 * 0.9
 HudPanel.distance = 1
+HudPanel.scale = 0.8
 
 local function pack(...)
     return {n=select("#", ...), ...}
@@ -512,8 +513,8 @@ function HudPanel.draw(world, position, rotation, overlap_width)
     Matrix4x4.set_forward(tm, forward)
     Matrix4x4.set_up(tm, Quaternion.up(rotation))
     Matrix4x4.set_translation(tm, position + forward)
-    local width = overlap_width or 1
-    local height = HudPanel.height
+    local width = (overlap_width or 1) * HudPanel.scale
+    local height = HudPanel.height * HudPanel.scale
     if width <= 0 then return end
     if state.diagnostic then
         -- Outline leaves the bitmap test unobscured even if world-GUI depth

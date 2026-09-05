@@ -998,3 +998,10 @@ adds a 4% inset. Offline independent corner-reprojection checks and HUD fixture
 passed; LuaJIT passed all 25 chunks. Legacy bitmap candidate c816276 still lacked
 both icons behind the cyan backing; changed diagnostic backing to an outline so
 depth ordering cannot hide the center bitmap samples in the next check.
+
+d42e8a7 live readback showed all four outline edges inside both eye images at
+1.476 m wide, 1.0125 m high, 1 m distance. Both bitmap API icon samples remained
+absent even without opaque backing. User requested another uniform reduction to
+80% of this size; applied after the binocular fit, retaining the same distance.
+Expected current headset dimensions approximately 1.181 x 0.810 m. HUD fixture
+checks the 80% scale and shortened height; Lua compiler and HUD fixture passed.
