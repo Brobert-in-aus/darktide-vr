@@ -783,3 +783,13 @@ retained records through the existing cleanup path. Stable frames reuse the same
 targets. The fixture covers extent doubling, owner replacement, restoration and
 release counts. CTest hud_panel/compiler/invariants passed 3/3. GPU completion
 and visual transition acceptance remain untested; no deployment was performed.
+
+Read installed sl*.dll file versions offline: all inspected Streamline modules
+report 2.7.30.0. Downloaded official v2.7.30 include files into ignored diagnostics
+and added an optional ABI-reference target, enabled only by an explicit external
+include directory. The first compile correctly rejected access to the SDK's
+private viewport field; replaced that check with a constructed-object byte-copy
+comparison. Structure sizes/member offsets and the viewport value now pass,
+with an explicit SDK version assertion. Windows Release /W4 /WX build passes;
+CTest streamline_abi_reference passes. No external SDK files were added to Git
+and no Streamline DLL was loaded or replaced for this validation.

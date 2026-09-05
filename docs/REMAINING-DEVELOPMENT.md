@@ -69,6 +69,22 @@ game's installed integration. The current guide is version 2.12.0; our read-only
 ABI mirror targets 2.7.30. Do not construct new API structures from that minimal
 mirror without checking the exact installed version and matching headers.
 
+The installed Streamline DLL file versions were checked offline: 2.7.30.0.
+The optional `darktidevr-streamline-abi-reference` target now compares the mirror
+against the official v2.7.30 headers (structure sizes and relevant member offsets,
+plus a constructed viewport value). It compiles with warnings as errors and its
+test passes. Supply `DARKTIDEVR_STREAMLINE_REFERENCE_INCLUDE_DIR` at configure
+time to enable it; no SDK download or external headers are required by ordinary
+builds. Reference headers remain outside Git. This validates layout, not runtime
+API success or correct temporal inputs.
+
+The [version-matched guide](https://github.com/NVIDIA-RTX/Streamline/blob/v2.7.30/docs/ProgrammingGuideDLSS_G.md)
+also supports backbuffer subrect tags without supplying a backbuffer resource
+pointer. It specifies input lifetime through Present and clearing tags when
+inputs become invalid. The pending submission adapter must include cleanup as
+well as successful per-eye tagging; a one-shot tag followed by target reuse is
+insufficient.
+
 Next: prepare version-matched per-eye tag/constants staging, validate backbuffer
 subrects and input lifetimes, then establish generated-output identity and GPU
 completion before publishing to the XR consumer. The desktop frame rate alone
