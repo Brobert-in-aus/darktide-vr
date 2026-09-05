@@ -67,6 +67,26 @@ head-facing view. Physical melee must be based on validated weapon contact,
 regardless of head gaze. Interim button-driven hand aim instead uses the attacking
 hand's frame for that eligibility test; do not globally remove it for other actions.
 
+The stock selector also uses action-specific hit-zone priorities and a dynamic
+shield priority based on whether the shield is blocking and the attacker's
+position relative to its blocking arc. A plain first-actor overlap result would
+lose this behavior. Collect all hurtboxes for a target before selecting its
+contact, including across rotational substeps. Do not spend its cooldown on an
+arbitrary arm result before a shield or higher-priority hit zone is considered.
+
+`_process_hit` is not a stateless damage helper: it writes the action's hit set,
+mass, target index, enemy/kill counters and weakspot state, invokes weapon specials,
+may extend the current action and may initiate chain lightning. Its resimulation
+guard covers damage/effects but not all of those mutations. Calling it every
+eligible physical contact on an idle action would therefore be incorrect.
+The dedicated adapter must own valid attack context and proc lifetimes, and
+execute damage only once for an authoritative/predicted simulation event.
+
+Physics sweep tables are reused. Stock deferred sweep processing boxes actor,
+position and normal values before a later query can overwrite them. The VR
+collector must likewise copy contact data before the next subdivision query;
+keeping a reference to a reusable result table is unsafe even within one frame.
+
 ## Continuous collision sampling
 
 Sample in simulation time, with swept boxes between valid poses and overlap at

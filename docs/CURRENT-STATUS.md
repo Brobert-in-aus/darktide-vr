@@ -91,10 +91,13 @@ environment is applied. This covers camera/mood and menu paths that write
 environment values directly. Offline checks pass; the follow-up initialized
 successfully in the next run at 01:04:06 UTC and reached fresh stereo rendering.
 
-The earlier accepted hand-melee run hit an engine graphics-resource handle mismatch during world
-rendering (00:54:52 UTC). The cause is unresolved; hand-aim acceptance still
-stands, but the run does not establish stability. See the session handoff for
-the preserved crash findings.
+Two runs hit an engine graphics-resource handle mismatch after approximately
+16.5 minutes. Allocation tracing isolated rapid handle accumulation to retained
+world-marker capture: disabling reprojection stopped growth and re-enabling it
+restored growth in the same process. A candidate now reuses an immediate marker
+GUI and hides it between eyes, preserving the projection calculations. Offline
+lifecycle checks pass; live allocation/stability and worn marker checks are in
+progress. Hand-aim acceptance stands. See the session handoff for crash evidence.
 
 The September 4/5 candidate has outstanding worn checks for both unarmed and
 wielded palm placement, pinned-marker

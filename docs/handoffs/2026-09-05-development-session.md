@@ -662,3 +662,17 @@ Offline validation: CTest marker_gui, lua_source_compile and lua_source_invarian
 return values including nil, draw-error restoration and idempotent destruction.
 Live allocation stability and worn marker appearance remain unverified for this
 candidate until the next deployment.
+
+The immediate-GUI candidate reached fresh Psykhanium stereo and exceeded 9,000
+shared-ready frames by 01:55 UTC. Type-8 tracing still had only its startup
+65,536-allocation sample at 56.203 seconds; the old retained path added another
+65,536 about every eight seconds. This establishes that the rapid allocation
+path is absent over the initial several-minute observation, not that total
+allocations are exactly flat or that long-session/worn acceptance is complete.
+Marker reprojection disable flag is absent; production prepared-second-eye path
+is restored by normal sync. Resource tracing remains opt-in and enabled for this
+ongoing diagnostic session.
+
+Additional stock melee review documented dynamic shield/hit-zone priority,
+stateful action hit/proc ownership and the need to copy reusable physics results
+across subdivision queries. Physical contact damage remains disabled.
