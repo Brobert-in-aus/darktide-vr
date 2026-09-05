@@ -55,4 +55,7 @@ if(BUILD_TESTING)
   add_test(NAME melee_volume COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-melee-volume.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_volume.lua")
+  add_test(NAME marker_gui COMMAND "${LUAJIT_VALIDATOR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-marker-gui.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_marker_gui.lua")
 endif()

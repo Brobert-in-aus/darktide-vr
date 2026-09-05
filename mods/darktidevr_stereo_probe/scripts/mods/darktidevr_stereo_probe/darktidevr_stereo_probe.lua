@@ -30,10 +30,7 @@ local game_rotation_mode = "fixed"
 local stereo_world_markers_requested = true
 local world_markers_context = nil
 local interaction_hud_context = nil
-local world_marker_command_capture = false
 local world_marker_reprojecting = false
-local world_marker_left_commands = {}
-local world_marker_capture_logged = false
 local observed_ui_viewports = {}
 local ui_stereo_spawner = nil
 local ui_stereo_world = nil
@@ -11756,173 +11753,6 @@ mod:hook_safe("CameraManager", "_update_camera", function(self, _, _, viewport_n
     end
 end)
 
-local function retain_world_marker_command(destroy, owner, id)
-    if world_marker_command_capture and id then
-        world_marker_left_commands[#world_marker_left_commands + 1] = {
-            destroy = destroy,
-            owner = owner,
-            id = id
-        }
-    end
-end
-
-local function retain_world_marker_commands(destroy, owner, ids)
-    if type(ids) == "table" then
-        for i = 1, #ids do
-            retain_world_marker_command(destroy, owner, ids[i])
-        end
-    else
-        retain_world_marker_command(destroy, owner, ids)
-    end
-end
-
-local function destroy_marker_bitmap(renderer, id)
-    UIRenderer.destroy_bitmap(renderer, id)
-end
-
-local function destroy_marker_text(renderer, id)
-    UIRenderer.destroy_text(renderer, id)
-end
-
-local function destroy_marker_slug_icon(renderer, id)
-    UIRenderer.destroy_slug_icon(renderer, id)
-end
-
-local function destroy_marker_slug_picture(renderer, id)
-    UIRenderer.destroy_slug_picture(renderer, id)
-end
-
-local function destroy_marker_rect(renderer, id)
-    Gui.destroy_rect(renderer.gui_retained, id)
-end
-
-local function destroy_marker_triangle(renderer, id)
-    Gui.destroy_triangle(renderer.gui_retained, id)
-end
-
--- UIRenderer caches its native Gui functions into locals when loaded, so the
--- renderer entry points are the narrow reliable interception seam. During the
--- original marker draw only, force otherwise-immediate primitives into the
--- retained GUI to obtain their IDs; callers still observe the normal nil
--- return. The IDs are destroyed after the left submission.
-mod:hook(UIRenderer, "script_draw_bitmap", function(func, self, material,
-        position, size, color, retained_id)
-    if world_marker_command_capture and not retained_id then
-        local id = func(self, material, position, size, color, true)
-        retain_world_marker_command(destroy_marker_bitmap, self, id)
-        return nil
-    end
-    return func(self, material, position, size, color, retained_id)
-end)
-
-mod:hook(UIRenderer, "script_draw_bitmap_uv", function(func, self, material,
-        position, size, uvs, color, retained_id)
-    if world_marker_command_capture and not retained_id then
-        local id = func(self, material, position, size, uvs, color, true)
-        retain_world_marker_command(destroy_marker_bitmap, self, id)
-        return nil
-    end
-    return func(self, material, position, size, uvs, color, retained_id)
-end)
-
-mod:hook(UIRenderer, "script_draw_bitmap_3d", function(func, self, material,
-        tm, position, layer, size, color, uvs, retained_id)
-    if world_marker_command_capture and not retained_id then
-        local id = func(
-            self, material, tm, position, layer, size, color, uvs, true)
-        retain_world_marker_command(destroy_marker_bitmap, self, id)
-        return nil
-    end
-    return func(
-        self, material, tm, position, layer, size, color, uvs, retained_id)
-end)
-
-mod:hook(UIRenderer, "script_draw_text", function(func, self, value,
-        font_size, font_type, position, size, color, options, retained_id)
-    if world_marker_command_capture and not retained_id then
-        local id = func(
-            self, value, font_size, font_type, position, size, color,
-            options, true)
-        retain_world_marker_command(destroy_marker_text, self, id)
-        return nil
-    end
-    return func(
-        self, value, font_size, font_type, position, size, color,
-        options, retained_id)
-end)
-
-mod:hook(UIRenderer, "draw_slug_icon", function(func, self, resource, index,
-        position, size, color, material, flags, retained_id)
-    if world_marker_command_capture and not retained_id then
-        local id = func(
-            self, resource, index, position, size, color, material, flags, true)
-        retain_world_marker_command(destroy_marker_slug_icon, self, id)
-        return nil
-    end
-    return func(
-        self, resource, index, position, size, color, material, flags,
-        retained_id)
-end)
-
-mod:hook(UIRenderer, "draw_slug_icon_rotated", function(func, self, resource,
-        index, size, position, angle, pivot, color, material, retained_id)
-    if world_marker_command_capture and not retained_id then
-        local id = func(
-            self, resource, index, size, position, angle, pivot, color,
-            material, true)
-        retain_world_marker_command(destroy_marker_slug_icon, self, id)
-        return nil
-    end
-    return func(
-        self, resource, index, size, position, angle, pivot, color, material,
-        retained_id)
-end)
-
-mod:hook(UIRenderer, "draw_slug_picture", function(func, self, resource,
-        position, size, color, material, retained_id)
-    if world_marker_command_capture and not retained_id then
-        local id = func(self, resource, position, size, color, material, true)
-        retain_world_marker_command(destroy_marker_slug_picture, self, id)
-        return nil
-    end
-    return func(self, resource, position, size, color, material, retained_id)
-end)
-
-mod:hook(UIRenderer, "draw_slug_multi_icon", function(func, self, resource,
-        index, position, size, color, axis, spacing, direction, count,
-        material, retained_ids)
-    if world_marker_command_capture and not retained_ids then
-        local ids = func(
-            self, resource, index, position, size, color, axis, spacing,
-            direction, count, material, true)
-        retain_world_marker_commands(destroy_marker_slug_icon, self, ids)
-        return nil
-    end
-    return func(
-        self, resource, index, position, size, color, axis, spacing,
-        direction, count, material, retained_ids)
-end)
-
-mod:hook(UIRenderer, "draw_rect", function(func, self, position, size, color,
-        retained_id)
-    if world_marker_command_capture and not retained_id then
-        local id = func(self, position, size, color, true)
-        retain_world_marker_command(destroy_marker_rect, self, id)
-        return nil
-    end
-    return func(self, position, size, color, retained_id)
-end)
-
-mod:hook(UIRenderer, "draw_triangle", function(func, self, position, size,
-        style, retained_id)
-    if world_marker_command_capture and not retained_id then
-        local id = func(self, position, size, style, true)
-        retain_world_marker_command(destroy_marker_triangle, self, id)
-        return nil
-    end
-    return func(self, position, size, style, retained_id)
-end)
-
 function presentation.world_marker_screen_position(camera, world_position)
     local screen, distance = Camera.world_to_screen(camera, world_position)
     local scale = presentation.render_visibility_scale or 1
@@ -12101,20 +11931,17 @@ mod:hook(
                 self,
                 inverse_scale
             )
-            world_marker_command_capture = true
         end
 
-        local result = func(
-            self,
-            dt,
-            t,
-            input_service,
-            ui_renderer,
-            render_settings
-        )
+        local result
+        if capture then
+            result = presentation.marker_gui.draw(ui_renderer, func,
+                self, dt, t, input_service, ui_renderer, render_settings)
+        else
+            result = func(self, dt, t, input_service, ui_renderer, render_settings)
+        end
 
         if capture then
-            world_marker_command_capture = false
             world_markers_context = {
                 instance = self,
                 dt = dt,
@@ -12159,21 +11986,16 @@ mod:hook(
                 )
             end
         end
+
+        local result
         if capture then
-            world_marker_command_capture = true
+            result = presentation.marker_gui.draw(ui_renderer, func,
+                self, dt, t, input_service, ui_renderer, render_settings)
+        else
+            result = func(self, dt, t, input_service, ui_renderer, render_settings)
         end
 
-        local result = func(
-            self,
-            dt,
-            t,
-            input_service,
-            ui_renderer,
-            render_settings
-        )
-
         if capture then
-            world_marker_command_capture = false
             interaction_hud_context = {
                 instance = self,
                 dt = dt,
@@ -12187,22 +12009,6 @@ mod:hook(
         return result
     end
 )
-
-local function remove_left_world_marker_commands()
-    local command_count = #world_marker_left_commands
-    if not world_marker_capture_logged and command_count > 0 then
-        mod:info(
-            "DARKTIDEVR_STEREO marker_commands retained=%d",
-            command_count
-        )
-        world_marker_capture_logged = true
-    end
-    for i = 1, #world_marker_left_commands do
-        local command = world_marker_left_commands[i]
-        command.destroy(command.owner, command.id)
-    end
-    table.clear(world_marker_left_commands)
-end
 
 local function enqueue_world_markers_for_camera(camera)
     local context = world_markers_context
@@ -12588,7 +12394,7 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
         if stereo_world_markers_requested then
             local marker_ok, marker_result = pcall(
                 function()
-                    remove_left_world_marker_commands()
+                    presentation.marker_gui.hide()
                     if not presentation.marker_reprojection_probe_disabled then
                         enqueue_world_markers_for_camera(
                             ScriptViewport.camera(second)
@@ -13161,6 +12967,11 @@ presentation.controller_aim.install(
 mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_combat_direction"
 ).install(mod, presentation.controller_aim)
+
+presentation.marker_gui = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_marker_gui"
+)
+presentation.marker_gui.install(mod, UIRenderer)
 
 presentation.visual_settings = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_visual_settings"

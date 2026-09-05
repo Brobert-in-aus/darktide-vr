@@ -640,3 +640,25 @@ Captured-command cleanup remains unconditional within the existing marker path.
 Normal configuration is unchanged. This is a causal diagnostic, not an accepted
 visual configuration or a lifetime fix. LuaJIT 17-chunk gate and CTest source
 invariants pass. Next deployment compares allocation growth with markers off/on.
+
+The same-process marker comparison isolated the accumulating path: disabled at
+01:46:41.400 UTC, enabled again around 01:48:03, then disabled again. Type-8
+allocation sampling stopped during the disabled intervals and resumed rapidly
+when enabled (65,536 new allocations per ~8.4 seconds, only ~50 releases).
+The run retained normal stereo submission throughout. This implicates retained
+marker capture/recreation, not the accepted texture pool or LOD settings.
+
+Replaced the per-frame retained primitive capture/destroy hooks with a dedicated
+immediate screen GUI per source renderer. Marker and interaction left-eye draws
+route through it within a scope that restores the renderer even on errors. The
+GUI is hidden between eyes, allowing the existing right-eye reprojection to draw
+normally; subsequent frames reuse the same GUI. Source renderer destruction
+releases it before stock teardown. Projection, symmetric shrink and interaction
+pivot calculations are unchanged. The temporary reprojection switch remains for
+comparison, defaulting on when its disable flag is absent.
+
+Offline validation: CTest marker_gui, lua_source_compile and lua_source_invariants
+3/3 pass. Lifecycle test covers 1,000 eye pairs with one GUI allocation, visibility,
+return values including nil, draw-error restoration and idempotent destruction.
+Live allocation stability and worn marker appearance remain unverified for this
+candidate until the next deployment.
