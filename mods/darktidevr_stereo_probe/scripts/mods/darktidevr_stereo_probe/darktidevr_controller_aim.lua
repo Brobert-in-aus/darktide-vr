@@ -99,6 +99,10 @@ local function is_force_staff(action)
     return template and has_keyword(template.keywords, "force_staff")
 end
 
+local function packed(...)
+    return {n = select("#", ...), ...}
+end
+
 local function with_first_person_pose(action, position, rotation, func, ...)
     local component = action and action._first_person_component
     if not component or not position or not rotation then
@@ -117,12 +121,12 @@ local function with_first_person_pose(action, position, rotation, func, ...)
         end,
     })
     action._first_person_component = proxy
-    local ok, result = pcall(func, action, ...)
+    local results = packed(pcall(func, action, ...))
     action._first_person_component = component
-    if not ok then
-        error(result, 0)
+    if not results[1] then
+        error(results[2], 0)
     end
-    return result
+    return unpack(results, 2, results.n)
 end
 
 function controller_aim.install(mod, presentation, state)
@@ -143,6 +147,7 @@ function controller_aim.install(mod, presentation, state)
     controller_aim.staff_secondary_writes = 0
     controller_aim.staff_tip_fallbacks = 0
     controller_aim.lightning_pose_writes = 0
+    controller_aim.melee_pose_writes = 0
     controller_aim.reticle_publishes = 0
     controller_aim.reticle_hits = 0
     controller_aim.reticle_static_hits = 0
@@ -593,6 +598,38 @@ function controller_aim.install(mod, presentation, state)
             end
             return with_first_person_pose(self, position, rotation, func, ...)
         end)
+
+    function controller_aim.with_melee_aim(action, func, ...)
+        if not is_local_unit(action._player_unit) then
+            return func(action, ...)
+        end
+        local _, rotation = controller_aim.target("right")
+        local component = action._first_person_component
+        if not rotation or not component then
+            return func(action, ...)
+        end
+        -- Keep the authored sweep's origin/reach and animation timing. Only
+        -- its orientation follows the hand; movement's shared component is
+        -- never changed by this action-local read proxy.
+        controller_aim.melee_pose_writes = controller_aim.melee_pose_writes + 1
+        if controller_aim.melee_pose_writes <= 4 then
+            mod:info("DARKTIDEVR_MELEE aim=right_hand stock_origin=true count=%d",
+                controller_aim.melee_pose_writes)
+        end
+        return with_first_person_pose(action, component.position, rotation, func, ...)
+    end
+
+    for _, entry in ipairs({
+        {"action_sweep", "start"},
+        {"action_sweep", "_update_sweep"},
+        {"action_push", "_push"},
+        {"action_melee_explosive", "_find_explosion_position_and_direction"},
+    }) do
+        mod:hook(require("scripts/extension_systems/weapon/actions/" .. entry[1]),
+            entry[2], function(func, self, ...)
+                return controller_aim.with_melee_aim(self, func, ...)
+            end)
+    end
 
     function controller_aim.with_right_aim(action, func, ...)
         if not is_local_unit(action._player_unit) then

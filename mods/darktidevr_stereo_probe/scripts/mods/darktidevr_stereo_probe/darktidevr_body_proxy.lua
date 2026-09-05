@@ -537,10 +537,16 @@ function BodyProxy.place_rigid_hands(
         left_written or right_written
 end
 
-function BodyProxy.follow_gameplay_hands(world)
+function BodyProxy.follow_gameplay_hands(world, aim_rotation)
     local source = state.source_unit
     if not BodyProxy.rigid_hands_active() or not source or not Unit.alive(source) then
         return false
+    end
+    local pivot, delta
+    if aim_rotation and Unit.has_node(source, "j_head") then
+        pivot = Unit.world_position(source, Unit.node(source, "j_head"))
+        delta = Quaternion.multiply(aim_rotation,
+            inverse_quaternion(Unit.world_rotation(source, 1)))
     end
     for side, hand in pairs(rigid_hands) do
         local name = side == "left" and "j_lefthand" or "j_righthand"
@@ -548,11 +554,16 @@ function BodyProxy.follow_gameplay_hands(world)
             local node = Unit.node(source, name)
             -- Copy the stock wrist pose, not an OpenXR grip pose. Finger
             -- animation still comes from the same authoritative skeleton.
-            place_rigid_hand(world, hand, Unit.world_position(source, node),
-                Unit.world_rotation(source, node), true)
+            local position = Unit.world_position(source, node)
+            local rotation = Unit.world_rotation(source, node)
+            if delta then
+                position = pivot + Quaternion.rotate(delta, position - pivot)
+                rotation = Quaternion.multiply(delta, rotation)
+            end
+            place_rigid_hand(world, hand, position, rotation, true)
         end
     end
-    return true
+    return true, rigid_hands.left.unit, rigid_hands.right.unit
 end
 
 function BodyProxy.hides_source_slot(slot_name)

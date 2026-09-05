@@ -4998,11 +4998,7 @@ mod:hook(
     require("scripts/managers/ui/ui_manager"),
     "use_fullscreen_blur",
     function(func, self, ...)
-        local apply_blur, blur_amount = func(self, ...)
-        if presentation.world_menu_active() then
-            return false, 0
-        end
-        return apply_blur, blur_amount
+        return false, 0
     end)
 
 mod:hook_safe("InputManager", "update", function(self)
@@ -9073,7 +9069,14 @@ function presentation.apply_body_ik(unit, sequence, world, anchor_unit)
         controller_observation.body_ik_presentation_block_reason =
             "stock_melee_animation"
         if presentation.body_proxy and presentation.body_proxy.rigid_hands_active() then
-            presentation.body_proxy.follow_gameplay_hands(world)
+            local _, aim_rotation = presentation.controller_aim.target("right")
+            local followed, left_hand, right_hand =
+                presentation.body_proxy.follow_gameplay_hands(world, aim_rotation)
+            if followed and aim_rotation and anchor_unit then
+                presentation.sync_equipment_hand_to_proxy(anchor_unit, left_hand, "j_lefthand")
+                presentation.sync_equipment_hand_to_proxy(anchor_unit, right_hand, "j_righthand")
+                World.update_unit_and_children(world, anchor_unit)
+            end
         end
         return
     end
@@ -9856,8 +9859,8 @@ mod:hook(
 -- That shared component is also owned by hub aim/orientation and can retain a
 -- stale heading across UI or controller-tracking transitions. Convert only the
 -- local VR player's hub movement through the persistent gameplay heading. It
--- is initialized in Darktide's own orientation coordinate system and advanced
--- by physical HMD yaw, so shop cameras cannot rotate it and it remains the
+-- comes from the rendered cyclopean pose in Darktide's orientation coordinate
+-- system, so shop cameras cannot rotate it and it remains the
 -- same frame consumed by interaction-facing checks. The server remains
 -- authoritative for acceleration, collision, animation and replication.
 function presentation.flat_movement_rotation(yaw)
@@ -13121,6 +13124,10 @@ presentation.controller_aim = mod:io_dofile(
 )
 presentation.controller_aim.install(
     mod, presentation, controller_observation)
+
+mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_visual_settings"
+).install(mod)
 
 mod.on_disabled = function()
     requested = false

@@ -308,3 +308,40 @@ artifacts/unattended/lod-distance-live-20260905.log, again -ManualStartup with
 Psykhanium pre-armed. No new Lua/native behavior was changed for this comparison.
 At session end restore the LOD value if the diagnostic is rejected; preserve it
 only if accepted as a useful setting. Streaming's saved diagnostic state is inactive.
+
+## Accepted LOD baseline and next candidate
+
+User accepted lod_object_multiplier=3 as sufficient for initial release; finer
+LOD tuning and selective smoke-cloud suppression are recorded in POST-RELEASE.md.
+Smoke-only removal is deferred because the shader is shared with other particles
+and SmokeFogSystem only identifies a subset of cloud effects.
+
+The new melee candidate scopes first-person aim to the right controller for
+stock sweep initialization/update, pushes and melee explosions, preserving
+stock attack origin, reach and timing. Scoped component replacement restores on
+errors and preserves multiple return values. Animated hands rotate about the
+stock head pivot toward that aim and weapon attachment nodes follow the proxy.
+This remains a worn acceptance candidate; left-hand alignment is unresolved.
+
+VR visual policy forces DOF, motion blur, lens quality, colour fringe, distortion,
+lens flares and sun flare off at startup, direct setting writes and settings
+application. Fullscreen UI blur always returns disabled. The shared preset table
+is copied when clamping values; unrelated settings remain intact.
+
+Validation: LuaJIT source gate passed all 13 chunks, source invariants passed,
+and CTest --test-dir build/windows-vs2022 -C Release --output-on-failure passed
+51/51. New tests cover melee aim restoration/return values and visual policy
+startup/preset/direct-write/apply behavior. No native source changed.
+
+Applied active top-level max_worker_threads=7 for the 8-physical-core/16-logical
+Ryzen 7 9800X3D. The nested detected_user_settings cache remains unchanged.
+Release setup must derive physical cores minus one automatically, not hardcode7
+or subtract from logical processors. Also trialled active feedback streamer
+max_texture_pool_size 1024 -> 2048 on RTX4090; other streaming values unchanged.
+Backups and trial metadata are ignored in artifacts/unattended. Both worker and
+pool changes share this restart, so this is not a clean pool-only performance A/B.
+
+Ready preflight passed 120 rendered frames in
+artifacts/unattended/melee-effects-pool-preflight-20260905.json. Started with
+-EnterPsykhanium -ManualStartup, log melee-effects-pool-live-20260905.log.
+Fresh stereo and worn behavior still require confirmation for this candidate.

@@ -64,8 +64,22 @@ swatch still await explicit worn acceptance. A new movement/melee heading offset
 is fixed by using the rendered cyclopean yaw directly; the user accepted it.
 Shield and nearby mace sections still disappear after separating LOD FOV from
 visibility overscan. Disabling mesh streaming also made no visible difference;
-the user confirmed terrain LOD transitions repeatedly at roughly 3m. Distance
-selection remains under investigation.
+the user confirmed terrain LOD transitions repeatedly at roughly 3m. Multiplier
+3 extends the distance and is accepted as sufficient for the initial release.
+Finer LOD tuning and selective smoke-cloud billboard suppression are tracked in
+[post-release work](POST-RELEASE.md).
+
+## This machine's configuration and release requirements
+
+This workstation has a Ryzen 7 9800X3D: 8 physical cores, 16 logical processors.
+max_worker_threads=7 was applied on 5 September 2026 (top-level active setting).
+Seven is this machine's setting, not a portable mod default. Before release,
+setup must derive max(1, physical core count - 1) automatically, using physical
+cores rather than logical processors/hyperthreads. Preserve this distinction in
+installation and performance documentation.
+
+Melee aiming must follow the right-hand aim while movement remains head-relative;
+that follow-up and left-hand alignment are still under development.
 
 The September 4/5 candidate has outstanding worn checks for both unarmed and
 wielded palm placement, pinned-marker
