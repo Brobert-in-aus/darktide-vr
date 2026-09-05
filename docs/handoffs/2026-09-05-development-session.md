@@ -1241,3 +1241,13 @@ artifacts/unattended/hud-editor-window-live-20260905.log. Worn/editor acceptance
 remains pending; earlier controls-visible capture is
 artifacts/diagnostics/hud-editor-canvas-20260905/latest.png, which still had the
 pre-compensation desktop aspect.
+
+
+Fresh 16:39:54 shared-eye capture:
+artifacts/diagnostics/hud-editor-window-20260905/left.png. The full Custom HUD
+sidebar is visible with a selected entry, and the stray left-edge marker is no
+longer present in editing mode. Pixel measurement of the teal boundary, after
+the current 16:9 desktop stretch, gives aspect 1.45844 versus expected 1.45679
+(the difference includes border thickness). Stereo runs around 60 fresh pairs/s.
+This verifies rendered geometry; the user's cursor/normal marker acceptance is
+still separate. Saved entries loaded after restart and were not reset.
