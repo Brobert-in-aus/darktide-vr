@@ -11,6 +11,10 @@ package.loaded["scripts/managers/ui/ui_renderer"] = renderer_api
 package.loaded["scripts/managers/ui/ui_widget"] = {}
 package.loaded["scripts/foundation/utilities/script_world"] = {}
 Gui = {bitmap=function() stage("bitmap") end}
+Gui.render_pass = function(_, _, name, clear)
+    assert(name == "to_screen" and clear == true)
+    stage("capture_clear")
+end
 Renderer = {copy_render_target_rect=function() stage("copy") end}
 Vector3, Vector2, Color = function() end, function() end, function() end
 local panel = dofile(arg[1])
@@ -131,6 +135,9 @@ Material.set_resource = function() end
 state.pending_world = renderer.world
 panel.set_enabled(true)
 hooks.draw(stock, owner, .01, 4, {})
+assert(calls.capture_clear == 1, "owned capture must clear before each new frame")
+hooks.draw(stock, owner, .01, 4, {})
+assert(calls.capture_clear == 1, "second eye must not clear the same frame again")
 assert(state.capture_target and state.resource_renderer.render_target == nil
     and state.resource_renderer.base_render_pass == nil,
     "direct viewport UI must not also redirect a named render pass")
@@ -185,6 +192,8 @@ Gui2 = {bitmap_3d = function(_,material,flags,tm,_,options)
         "textured HUD must face the viewer")
     assert(options.uv00[1] == 1 and options.uv11[1] == 0,
         "viewer-facing HUD must undo horizontal mirroring")
+    assert(options.uv00[2] == 1 and options.uv11[2] == 0,
+        "captured HUD must read upright on the world panel")
     assert(offset.kind == "v3" and offset[3] == 0 and size.kind == "v3")
     assert(math.abs(size[1] - 0.8) < 1e-6 and math.abs(size[2] - 0.81) < 1e-6)
     bitmap_drawn = true

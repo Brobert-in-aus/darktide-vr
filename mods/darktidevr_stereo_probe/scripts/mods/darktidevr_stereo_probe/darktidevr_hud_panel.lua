@@ -445,7 +445,11 @@ function HudPanel.install(mod)
                     state.display_ready = true
                 end
                 -- Retain the named-pass path only for same-world diagnostics.
-                if not state.capture_target then
+                if state.capture_target then
+                    -- Overlay viewports preserve their backbuffer by default.
+                    -- Clear our owned target before authoring this frame's HUD.
+                    Gui.render_pass(state.queue_renderer.gui, 0, "to_screen", true)
+                else
                     UIRenderer.clear_render_pass_queue(state.queue_renderer)
                     UIRenderer.add_render_pass(state.queue_renderer, 0,
                         resource_renderer.base_render_pass, true,
@@ -554,7 +558,7 @@ function HudPanel.draw(world, position, rotation, overlap_width)
         1000,
         {position_offset=Vector3(-width*.5,-height*.5,0),
          size=Vector3(width,height,0),color=Color(255,255,255,255),
-         uv00=Vector2(1,0),uv11=Vector2(0,1),snap_pixel_positions=false})
+         uv00=Vector2(1,1),uv11=Vector2(0,0),snap_pixel_positions=false})
     if not state.logged then
         state.logged = true
         state.mod:info(

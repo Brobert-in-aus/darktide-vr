@@ -1061,3 +1061,11 @@ The source target remains owned by the resource renderer; its destruction
 metadata is restored for cleanup. Sameworld retains the older path only as a
 diagnostic comparison. Fixture asserts viewport binding, absence of nested pass
 redirection, and existing lifecycle/fallback checks. LuaJIT and HUD tests passed.
+
+f3b1373 finally displays actual HUD contents; user confirmed visibility but
+vertical inversion. Shared-eye readback after disabling diagnostics also retains
+the magenta test patch, proving the viewport target needs an explicit frame clear.
+Next revision reverses V UVs and clears the owned viewport to_screen pass before
+new HUD authoring, once per frame. Panel dimensions stay at the accepted 80%.
+Pinned LuaJIT gate (25 chunks) and hud_panel CTest passed, including upright UV
+and once-per-frame clear assertions. Live visual verification pending.
