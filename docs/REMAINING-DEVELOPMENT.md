@@ -1,8 +1,10 @@
 # Remaining development: melee, HUD and DLSS
 
-Updated 5 September 2026. VD is reconnected; the aa1d10c game run is open for
-user testing. Fresh Ready preflight passed before launch. Do not interrupt this
-run without announcing it. Worn acceptance remains separate.
+Updated 5 September 2026. VD was reconnected and aa1d10c tested. That run has
+since ended after the capture window closed; launcher cleanup terminated the
+remaining game process. No assistant shutdown command was issued. Menu follow-up
+and DLSS completion observation are queued for a fresh-preflight next launch.
+Worn acceptance remains separate.
 
 The [menu audit and rework](MENU-INTERACTION-AUDIT.md) replaces native-menu
 rectangle reconstruction with stock UI input delivery and consistent DPI

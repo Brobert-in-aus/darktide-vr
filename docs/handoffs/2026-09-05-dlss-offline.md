@@ -135,3 +135,8 @@ STEREO_INPUT_COMPLETION results/status/fence-retained/value fields on the
 Present thread. A null, poisoned or unsupported fence result needs investigation
 before live submission integration. DLSS remains incomplete; continuous frame
 submission, generated-output identity and XR publication are still pending.
+
+End-of-turn process check: the run has ended. Log reports
+`openxr.capture_window=closed session_exit=clean`, elapsed 788963 ms, then
+`XR owner exited; terminated the orphaned flat Darktide process.` No assistant
+shutdown command was issued in this pass. Darktide is no longer running.
