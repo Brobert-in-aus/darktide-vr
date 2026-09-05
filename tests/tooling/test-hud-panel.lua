@@ -58,7 +58,10 @@ local function pack(...) return {n=select("#", ...), ...} end
 local result = pack(hooks.draw(stock, owner, .01, 2, {}))
 assert(result.n == 4 and result[1] == "stock" and result[2] == nil and result[3] == 7)
 hooks.draw(stock, owner, .01, 2, {}) -- Same frame, second eye.
-assert(calls.spatial == 2 and calls.fixed == 1 and calls.copy == 1)
+assert(calls.spatial == 2 and calls.fixed == 1 and calls.copy == nil)
+assert(not state.display_ready)
+hooks.draw(stock, owner, .01, 2.1, {})
+assert(calls.copy == 1 and state.display_ready)
 assert(owner._elements_array == elements and owner._ui_renderer == renderer)
 -- Explicit disable/unload uses this same public entry point. A shared queue GUI
 -- belongs to the queue renderer, so destroy the resource renderer before it.
@@ -133,6 +136,16 @@ local second_target = state.display_target
 local next_owner = {_elements_array=elements, _ui_renderer=renderer}
 hooks.draw(stock, next_owner, .01, 7, {})
 assert(state.owner == next_owner and state.display_target ~= second_target and released == 21)
+assert(next_owner._elements_array == elements and next_owner._ui_renderer == renderer)
+-- A failed copy must not hide fixed status or leave the experimental panel
+-- active with a stale texture. Spatial elements are not redrawn in fallback.
+failure = "copy"
+local fallback_fixed = 0
+hooks.draw(function(self)
+    assert(self._ui_renderer == renderer)
+    if self._elements_array[1] == fixed then fallback_fixed = fallback_fixed + 1 end
+end, next_owner, .01, 8, {})
+assert(fallback_fixed == 1 and not panel.enabled() and not state.display_ready)
 assert(next_owner._elements_array == elements and next_owner._ui_renderer == renderer)
 panel.set_enabled(false)
 assert(released == 28)

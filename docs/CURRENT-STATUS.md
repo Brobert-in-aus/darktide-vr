@@ -133,7 +133,8 @@ left-hand blocking still needs worn validation. See the
 
 The user has reconnected Virtual Desktop and authorized unattended testing while
 away. Proximity override is disabled; Ready preflight passed 120/120 renderable
-frames on 5 September. Melee is the sole active task; HUD and DLSS are parked.
+frames on 5 September. The user will verify melee contact; HUD is now the sole
+active task and DLSS remains parked.
 Automated results do not establish worn visual or physical acceptance.
 See [remaining development](REMAINING-DEVELOPMENT.md) for the current code seams
 and next integration work in each area.

@@ -882,3 +882,19 @@ light -> start_attack -> next windup -> light, using the stock action handler's
 effective scale and availability checks. Heavy charge includes the unscaled
 hold-input threshold. Conditional/unknown routes reject with a diagnostic reason.
 CTest timing/live_probe/compiler/invariants passed 4/4 (25 Lua chunks).
+
+User redirected development to HUD and will perform melee contact verification.
+Stopped the synthetic melee session and disabled the installed melee probe flag.
+Second run confirmed four queries per sampled tick (including stationary contact
+scan), no query errors, and live force-sword timing light=.35 s/heavy=.45 s.
+Reached 9,113 shared-ready frames with ~55.7 fresh pairs/s and no interval fallback.
+No enemy contacts or physical damage were verified. Unfinished synthetic target
+query code was saved in a path-limited Git stash, not deployed.
+HUD work continues on codex/hud-completion-2026-09-05.
+
+HUD copy ordering: copy the previously authored frame before queuing new target
+writes, and hide the world panel until a copy has been accepted. Copy exceptions
+now disable the experimental panel and restore fixed status on the stock renderer
+without drawing spatial elements twice. Fixture covers first-frame readiness,
+once-per-frame copy, and failure fallback. CTest hud_panel/compiler/invariants
+passed 3/3 (25 Lua chunks). GPU output validation follows in a dedicated HUD run.

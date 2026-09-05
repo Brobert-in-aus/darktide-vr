@@ -4,10 +4,10 @@ Updated 5 September 2026. The user has reconnected VD and authorized unattended
 headset testing while away. Proximity override is disabled and Ready preflight
 passed with 120/120 renderable frames. Worn acceptance remains separate.
 
-The user requested completing one area before switching. Melee is now the sole
-active development area; HUD and DLSS are parked. Complete melee integration
-and validation, retaining worn acceptance for when the user resumes
-headset testing rather than switching areas to fill that wait.
+The user has taken ownership of melee contact verification and explicitly moved
+development to HUD. HUD is now the sole active area; melee and DLSS are parked.
+The melee query prototype remains non-damaging; user verification is not a claim
+that physical damage integration is complete.
 
 ## Melee
 

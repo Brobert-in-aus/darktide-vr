@@ -19,6 +19,7 @@ local state = {
     render_viewport = nil,
     render_viewport_name = nil,
     display_target = nil,
+    display_ready = false,
     target_width = nil,
     target_height = nil,
     world = nil,
@@ -169,6 +170,7 @@ local function destroy_resources()
     state.render_viewport = nil
     state.render_viewport_name = nil
     state.display_target = nil
+    state.display_ready = false
     state.target_width = nil
     state.target_height = nil
     state.world = nil
@@ -369,6 +371,7 @@ function HudPanel.install(mod)
         log_partition(mod, spatial, fixed)
         local source_elements = self._elements_array
         local source_renderer = self._ui_renderer
+        local copy_failure
 
         -- Every temporary mutation must unwind even if stock drawing, queue
         -- construction or the dependency sample throws. Restore before rethrow.
@@ -377,6 +380,20 @@ function HudPanel.install(mod)
             local spatial_result = pack(func(self, dt, t, input_service))
 
             if state.last_authored_t ~= t then
+                -- The preceding frame's UI pass has been submitted. Copy it
+                -- before queuing this frame's writes; the engine owns GPU
+                -- synchronization for this same resource-copy API used by its
+                -- atlas generator. Never expose an uninitialized first frame.
+                if state.last_authored_t ~= nil then
+                    local copied, detail = pcall(Renderer.copy_render_target_rect,
+                        resource_renderer.render_target,
+                        0, 0, 1, 1, state.display_target, 0, 0, 1, 1)
+                    if not copied then
+                        copy_failure = tostring(detail)
+                        return spatial_result
+                    end
+                    state.display_ready = true
+                end
                 -- Gui.render_pass is a frame queue, not persistent renderer state.
                 -- Darktide's own resource-backed UI elements clear and rebuild this
                 -- queue immediately before authoring every target frame.
@@ -408,9 +425,6 @@ function HudPanel.install(mod)
                     Vector3(-2, -2, 20000),
                     Vector2(1, 1),
                     Color(255, 255, 255, 255))
-                pcall(Renderer.copy_render_target_rect,
-                    resource_renderer.render_target,
-                    0, 0, 1, 1, state.display_target, 0, 0, 1, 1)
                 state.last_authored_t = t
             end
             return spatial_result
@@ -419,6 +433,16 @@ function HudPanel.install(mod)
         self._elements_array = source_elements
         if not ok then
             error(result, 0)
+        end
+        if copy_failure then
+            mod:error("DARKTIDEVR_HUD copy_failed fallback=stock error=%s", copy_failure)
+            HudPanel.set_enabled(false)
+            -- Spatial elements already drew. Restore only fixed status on the
+            -- stock renderer, with the same unwind guarantee as normal drawing.
+            self._elements_array = fixed
+            local fallback_ok, fallback_error = pcall(func, self, dt, t, input_service)
+            self._elements_array = source_elements
+            if not fallback_ok then error(fallback_error, 0) end
         end
         return unpack(result, 1, result.n)
     end)
@@ -440,7 +464,7 @@ function HudPanel.draw(world, position, rotation)
     end
     state.pending_world = world
     if not state.world_gui or not state.world_material or
-            not state.display_target then
+            not state.display_target or not state.display_ready then
         return
     end
     local forward = Quaternion.forward(rotation)
