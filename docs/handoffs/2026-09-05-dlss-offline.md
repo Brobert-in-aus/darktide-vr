@@ -75,3 +75,31 @@ unfinished. Do not label DLSS complete from these isolated tests.
 Reference reviewed: NVIDIA Streamline v2.7.30 DLSS-G guide, sections 5 and 7
 (independent viewport tags sharing one backbuffer, null-tag cleanup and matching
 per-frame constants). No GPU output was generated or accepted during this pass.
+
+## VD reconnected: menu test and fresh input capture
+
+User authorized launch for menu acceptance and DLSS capture. Proximity Disable
+then Status applied; Ready preflight passed 600/600 frames, report
+`artifacts/unattended/menu-dlss-preflight-20260905.json`. Deployed aa1d10c through
+the standard launcher (26-chunk LuaJIT gate passed), using `-EnableHudPanel
+-EnterPsykhanium -StreamlineInputSnapshotProbe`. No wide-swapchain, target-token,
+Present-stage, synthetic-controller or legacy menu injection switches enabled.
+Live runner log: `artifacts/unattended/menu-dlss-live-20260905.log`.
+
+Fresh stereo initialization at 08:38:17 UTC; shared_ready reached 1287 and
+approximately 55 fresh pairs/s with zero pair-pose mismatches. Game remains
+running for the user's menu acceptance. The harness startup label still says
+`semantic-with-cursor-sync`; that string is stale, while actual default
+OS-cursor movement was removed in 322ac82. Correct the label in a later build.
+
+Saved capture: `artifacts/diagnostics/dlss-live-20260905/current-probe.tsv` and
+`report.txt`; the probe analyzer passes. Pair source frame 3186 uses one token,
+two distinct viewports, version-2 constants and identical jitter. All ten
+resource samples read back; divergent_mask=31 across the five input roles.
+Current colour is 2496x2688 per eye and depth/motion 1664x1792, unlike the old
+wide diagnostic capture. Packed output is 4992x2688. Thus the old crop mismatch
+does not apply to this normal launch. `STEREO_SUBMISSION_PREPARE ready=0` is
+expected here because this run deliberately does not allocate a target token;
+it is not evidence of a layout failure. Layout shape and per-eye divergence are
+established, not visual correctness of every pixel or temporal history. No
+generated-frame submission or publication has occurred.
