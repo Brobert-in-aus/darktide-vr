@@ -346,17 +346,6 @@ end
 
 function HudPanel.install(mod)
     state.mod = mod
-    mod:hook(ScriptWorld,"render",function(func,world,...)
-        if world ~= state.render_world then return func(world,...) end
-        local result = pack(func(world,...))
-        state.render_submissions = state.render_submissions + 1
-        if state.diagnostic and state.render_submissions % 300 == 0 then
-            local queue = World.get_data(world,"render_queue")
-            mod:info("DARKTIDEVR_HUD render_submissions=%d viewports=%d authored=%s display_ready=%s",
-                state.render_submissions,queue and #queue or 0,tostring(state.last_authored_t),tostring(state.display_ready))
-        end
-        return unpack(result,1,result.n)
-    end)
     mod:hook("UIHud", "update", function(func, self, dt, t, input_service)
         update_enabled_flag(mod, t or 0)
         return func(self, dt, t, input_service)
@@ -474,6 +463,18 @@ function HudPanel.install(mod)
         end
         return func(self, ...)
     end)
+end
+
+-- Called by the existing stereo render hook. DMF rejects registering another
+-- hook for the same function within this mod, so instrumentation must share it.
+function HudPanel.observe_render(world)
+    if world ~= state.render_world then return end
+    state.render_submissions = state.render_submissions + 1
+    if state.render_submissions == 1 or (state.diagnostic and state.render_submissions % 300 == 0) then
+        local queue = World.get_data(world,"render_queue")
+        state.mod:info("DARKTIDEVR_HUD render_submissions=%d viewports=%d authored=%s display_ready=%s",
+            state.render_submissions,queue and #queue or 0,tostring(state.last_authored_t),tostring(state.display_ready))
+    end
 end
 
 function HudPanel.draw(world, position, rotation)

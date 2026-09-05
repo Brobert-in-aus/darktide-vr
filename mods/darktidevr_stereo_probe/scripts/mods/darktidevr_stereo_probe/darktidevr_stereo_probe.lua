@@ -12327,6 +12327,7 @@ end
 -- the final primary pose at the last reliable boundary before the world is
 -- submitted, so the duplicate cannot lag or remain at its creation pose.
 mod:hook(ScriptWorld, "render", function(func, world, ...)
+    if presentation.hud_panel then presentation.hud_panel.observe_render(world) end
     if world == ui_stereo_world and ui_stereo_spawner then
         update_ui_alternating_full()
         update_ui_full_origin_ab()

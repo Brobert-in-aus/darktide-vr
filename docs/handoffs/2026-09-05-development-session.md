@@ -931,3 +931,11 @@ Next diagnostic adds dedicated-world render submission counts and an explicit
 source flag command to compare original target versus display copy. Source is
 only a temporary diagnostic binding; normal enable restores display_copy.
 CTest HUD/compiler/invariants passed 3/3. Closed the diagnostic run for sync.
+
+Direct source-target diagnostic b9bcc02 also showed only the cyan backing, no
+magenta marker (artifacts/diagnostics/hud-source-20260905/left.png). Restored stock
+HUD afterward; fresh-pair rate recovered from ~26.6/s during source binding to
+~60/s after disable. Direct source binding remains diagnostic-only.
+The attempted separate ScriptWorld.render counter hook was rejected by DMF as an
+active rehook, so its absent logs were not evidence of a missing world submission.
+Moved observation into the existing stereo render hook. Lua gate passed 25 chunks.
