@@ -260,3 +260,13 @@ guessing. This is not automatic weapon route selection or a replacement for the
 live handler's condition validation; it remains offline and unimported. Tests
 cover the .55 attack chain versus .45 block chain, intermediate windup, speed
 scaling, inverted kinds and the heavy input floor.
+
+`darktidevr_melee_simulation.lua` claims each advancing fixed simulation step
+once, before queries or effects. It rejects resimulation, repeated frames and
+nonadvancing time, and claims tracking-loss ticks without authorizing queries.
+Its owner persists across weapon/pose changes; reset only with a genuinely new
+player simulation lifetime. Controller sequence changes are intentionally not
+required: a stationary pose must still overlap on subsequent simulation ticks.
+The integration fixture combines this owner, contact collection and cooldowns.
+This remains offline; network prediction reconciliation and the engine physics/
+damage adapter are not implemented by this guard.

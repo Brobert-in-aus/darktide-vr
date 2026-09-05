@@ -746,3 +746,10 @@ The new hud_panel fixture injects each failure and checks recovery, then checks
 one fixed-HUD authoring pass across two eyes. Windows CMake configured with
 DARKTIDEVR_ENABLE_HEADSET_TESTS=OFF; CTest hud_panel, lua_source_compile and
 lua_source_invariants passed 3/3. No deployment or visual acceptance claimed.
+
+Added offline melee simulation ownership: an advancing fixed tick may query
+even with an unchanged stationary controller pose, while duplicate/replayed
+ticks cannot spend cooldowns again. Tracking loss consumes the tick but does
+not clear target history. CTest melee_simulation, lua_source_compile and
+lua_source_invariants passed 3/3 (21 Lua chunks), including the combined contact
+collector/cooldown fixture. No live import, damage adapter or network support.
