@@ -170,12 +170,11 @@ Quaternion = {forward=function() return Vector3(0,1,0) end,
 Matrix4x4.set_right, Matrix4x4.set_forward, Matrix4x4.set_up, Matrix4x4.set_translation =
     function() end,function() end,function() end,function() end
 local bitmap_drawn = false
-Gui2 = {bitmap_3d=function(_,material,flags,_,_,options)
-    assert(material == state.world_material and flags == nil)
-    assert(options.size.kind == "v3" and options.size[3] == 0)
-    assert(options.uv00.kind == "v2" and options.uv11.kind == "v2")
+Gui.bitmap_3d = function(_,material,_,offset,_,size)
+    assert(material == state.world_material)
+    assert(offset.kind == "v2" and size.kind == "v2")
     bitmap_drawn = true
-end}
+end
 panel.draw(renderer.world,Vector3(0,0,0),{})
 assert(bitmap_drawn)
 panel.set_enabled(false)

@@ -984,3 +984,9 @@ stock UIRenderer adds that flag only for a named render pass. Target authoring
 retains its existing flag. Diagnostic mode additionally draws a stock weapon HUD
 icon to distinguish bitmap geometry from target sampling. Lua gate and HUD test
 passed; live result pending.
+
+World-material candidate e4fabfc still showed cyan only; even the stock icon via
+Gui2.bitmap_3d was absent. This narrows the issue to bitmap presentation rather
+than demonstrating an empty target. Next candidate uses the stock Gui.bitmap_3d
+signature for the target and a second known-icon sample, retaining the Gui2 icon
+in diagnostic mode for comparison. Fixture checks the legacy argument contract.

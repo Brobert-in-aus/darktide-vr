@@ -525,20 +525,18 @@ function HudPanel.draw(world, position, rotation)
             {color=Color(255,255,255,255),
              position_offset=Vector3(-0.15,0.2,0),size=Vector3(0.3,0.3,0),
              uv00=Vector2(0,0),uv11=Vector2(1,1),snap_pixel_positions=false})
+        Gui.bitmap_3d(state.world_gui,
+            "content/ui/materials/hud/icons/weapon_icon_container",tm,
+            Vector2(-0.15,-0.2),1001,Vector2(0.3,0.3),Color(255,255,255,255))
     end
-    Gui2.bitmap_3d(
+    Gui.bitmap_3d(
         state.world_gui,
         state.world_material,
-        nil, -- Existing material handle: stock Gui2 calls only flag material names.
         tm,
+        Vector2(-width * 0.5, -height * 0.5),
         1000,
-        {
-            color = Color(255, 255, 255, 255),
-            position_offset = Vector3(-width * 0.5, -height * 0.5, 0),
-            size = Vector3(width, height, 0),
-            uv00 = Vector2(0, 0),
-            uv11 = Vector2(1, 1),
-        })
+        Vector2(width, height),
+        Color(255, 255, 255, 255))
     if not state.logged then
         state.logged = true
         state.mod:info(
