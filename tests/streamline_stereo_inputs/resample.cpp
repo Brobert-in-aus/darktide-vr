@@ -1,4 +1,6 @@
 #include "producer/stereo_color_resample.h"
+#include "producer/engine_eye_backbuffers.h"
+#include "producer/desktop_mirror_blit.h"
 #include "core/shared_surface_policy.h"
 #include <dxgi1_6.h>
 #include <iostream>
@@ -10,6 +12,32 @@ int main() {
   ComPtr<IDXGIFactory4> factory; ok(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
   ComPtr<IDXGIAdapter> warp; ok(factory->EnumWarpAdapter(IID_PPV_ARGS(&warp)));
   ComPtr<ID3D12Device> device; ok(D3D12CreateDevice(warp.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device)));
+  {
+    darktidevr::producer::EngineEyeBackbuffers proxies;
+    D3D12_RESOURCE_DESC description{};
+    description.Dimension=D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    description.Width=128; description.Height=48; description.DepthOrArraySize=1;
+    description.MipLevels=1; description.SampleDesc.Count=1;
+    description.Format=DXGI_FORMAT_R8G8B8A8_UNORM;
+    description.Flags=D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+    ComPtr<ID3D12Resource> first, repeated, second, resized;
+    ok(proxies.acquire(device.Get(),1,1,0,description,64,48,IID_PPV_ARGS(&first)));
+    ok(proxies.acquire(device.Get(),1,1,0,description,64,48,IID_PPV_ARGS(&repeated)));
+    ok(proxies.acquire(device.Get(),1,1,1,description,64,48,IID_PPV_ARGS(&second)));
+    check(first.Get()==repeated.Get() && first.Get()!=second.Get());
+    check(first->GetDesc().Width==64 && first->GetDesc().Height==48);
+    description.Width=160; description.Height=96;
+    ok(proxies.acquire(device.Get(),1,2,0,description,80,96,IID_PPV_ARGS(&resized)));
+    check(resized.Get()!=first.Get() && resized->GetDesc().Width==80);
+    check(first->GetDesc().Width==64); // Prior GPU generation remains alive.
+    ComPtr<ID3D12Resource> invalid;
+    check(FAILED(proxies.acquire(device.Get(),1,2,0,description,79,96,IID_PPV_ARGS(&invalid))));
+    D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc{};
+    rtv_heap_desc.Type=D3D12_DESCRIPTOR_HEAP_TYPE_RTV; rtv_heap_desc.NumDescriptors=1;
+    ComPtr<ID3D12DescriptorHeap> rtv_heap;
+    ok(device->CreateDescriptorHeap(&rtv_heap_desc,IID_PPV_ARGS(&rtv_heap)));
+    device->CreateRenderTargetView(first.Get(),nullptr,rtv_heap->GetCPUDescriptorHandleForHeapStart());
+  }
   ComPtr<ID3D12CommandQueue> queue; D3D12_COMMAND_QUEUE_DESC queue_desc{};
   ok(device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(&queue)));
   ComPtr<ID3D12CommandAllocator> allocator;
@@ -84,6 +112,25 @@ int main() {
   dst.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
   dst.PlacedFootprint={0,{shared_texture.Format,4,1,1,256}};
   commands->CopyTextureRegion(&dst,0,0,0,&src,nullptr);
+  // A monoscopic eye must fill a wider presentation target, including its
+  // right edge; leaving a retained/black half is not a successful mirror.
+  auto mirror_description=shared_texture;
+  mirror_description.Width=8; mirror_description.Height=2;
+  mirror_description.Flags=D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+  heap.Type=D3D12_HEAP_TYPE_DEFAULT;
+  ComPtr<ID3D12Resource> mirror;
+  ok(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&mirror_description,
+      D3D12_RESOURCE_STATE_PRESENT,nullptr,IID_PPV_ARGS(&mirror)));
+  barrier.Transition={shared_inputs[0].Get(),D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+      D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_COMMON};
+  commands->ResourceBarrier(1,&barrier);
+  darktidevr::producer::DesktopMirrorBlit mirror_blit;
+  ok(mirror_blit.record(device.Get(),commands.Get(),shared_inputs[0].Get(),mirror.Get()));
+  barrier.Transition={mirror.Get(),D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+      D3D12_RESOURCE_STATE_PRESENT,D3D12_RESOURCE_STATE_COPY_SOURCE};
+  commands->ResourceBarrier(1,&barrier);
+  src.pResource=mirror.Get(); dst.PlacedFootprint={512,{shared_texture.Format,8,2,1,256}};
+  commands->CopyTextureRegion(&dst,0,0,0,&src,nullptr);
   ok(commands->Close()); ID3D12CommandList* lists[]{commands.Get()};
   queue->ExecuteCommandLists(1,lists);
   ComPtr<ID3D12Fence> fence; ok(device->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&fence)));
@@ -91,8 +138,14 @@ int main() {
   HANDLE event=CreateEventW(nullptr,FALSE,FALSE,nullptr); check(event!=nullptr);
   ok(fence->SetEventOnCompletion(1,event)); const auto waited=WaitForSingleObject(event,10000);
   CloseHandle(event); check(waited==WAIT_OBJECT_0 && fence->GetCompletedValue()!=UINT64_MAX);
-  D3D12_RANGE range{0,16}; ok(readback->Map(0,&range,&mapped));
+  D3D12_RANGE range{0,1024}; ok(readback->Map(0,&range,&mapped));
   const std::array<UINT,4> expected{left[0],left[2],right[0],right[2]};
-  check(std::memcmp(mapped,expected.data(),16)==0); readback->Unmap(0,&no_read);
+  check(std::memcmp(mapped,expected.data(),16)==0);
+  for (UINT row=0;row<2;++row) {
+    const auto* pixels=reinterpret_cast<const UINT*>(static_cast<const char*>(mapped)+512+row*256);
+    check(pixels[0]==left[0] && pixels[7]==left[2]);
+    check((pixels[3]&0xff)!=0 && (pixels[3]&0xff00)!=0);
+  }
+  readback->Unmap(0,&no_read);
   std::cout<<"stereo_color_resample=pass full-image halves preserved on WARP\n";
 }

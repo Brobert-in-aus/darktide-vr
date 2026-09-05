@@ -921,6 +921,23 @@ if ($isolatedPolicy.Count -gt 0) {
                 $latest[0].source -ne $latest[0].expected) {
             throw "Isolated eye $eye has no current valid, uncropped named capture."
         }
+        if ($inputSnapshotResources.Count -gt 0) {
+            $sizes = @{}
+            foreach ($kind in @('0', '1', '2', '3', '4')) {
+                $resource = @($inputSnapshotResources | Where-Object {
+                    $_.eye -eq $eye -and $_.type -eq $kind
+                } | Select-Object -Last 1)
+                if ($resource.Count -ne 1) {
+                    throw "Isolated eye $eye is missing snapshot resource $kind."
+                }
+                $sizes[$kind] = "$($resource[0].width)x$($resource[0].height)"
+            }
+            if ($sizes['0'] -ne $sizes['1'] -or $sizes['0'] -ne $sizes['3'] -or
+                    $sizes['2'] -ne $latest[0].expected -or
+                    $sizes['4'] -ne $latest[0].expected) {
+                throw "Isolated eye $eye upscaler extent mismatch: depth=$($sizes['0']) input=$($sizes['3']) output=$($sizes['4']) expected=$($latest[0].expected)."
+            }
+        }
     }
     Write-Output 'isolated_eye_capture.identity_and_extent=pass'
     Write-Output 'isolated_eye_capture.visual_acceptance=unverified'

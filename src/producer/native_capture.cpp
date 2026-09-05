@@ -26,6 +26,9 @@
 #include "core/two_bone_ik.h"
 #include "streamline_abi_2_7_30.h"
 #include "producer/streamline_submission.h"
+#include "producer/engine_eye_backbuffers.h"
+#include "producer/desktop_mirror_blit.h"
+#include <memory>
 
 #include <algorithm>
 #include <array>
@@ -316,6 +319,9 @@ BOOL CALLBACK initialize_dxc_reflection(PINIT_ONCE, PVOID, PVOID*) {
 using ExecuteCommandListsFn = void(STDMETHODCALLTYPE*)(
     ID3D12CommandQueue*, UINT, ID3D12CommandList* const*);
 using PresentFn = HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain*, UINT, UINT);
+using SwapchainGetBufferFn = HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain*, UINT, REFIID, void**);
+using SwapchainGetDescFn = HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain*, DXGI_SWAP_CHAIN_DESC*);
+using SwapchainGetDesc1Fn = HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain1*, DXGI_SWAP_CHAIN_DESC1*);
 using GetClientRectFn = BOOL(WINAPI*)(HWND, LPRECT);
 using DispatchMessageWFn = LRESULT(WINAPI*)(const MSG*);
 using ResizeBuffersFn = HRESULT(STDMETHODCALLTYPE*)(
@@ -458,6 +464,10 @@ using EnhancedBarrierFn = void(STDMETHODCALLTYPE*)(
 
 ExecuteCommandListsFn original_execute_command_lists{};
 PresentFn original_present{};
+SwapchainGetBufferFn original_swapchain_get_buffer{};
+SwapchainGetDescFn original_swapchain_get_desc{};
+SwapchainGetDesc1Fn original_swapchain_get_desc1{};
+darktidevr::producer::EngineEyeBackbuffers engine_eye_backbuffers;
 PresentFn original_streamline_native_present{};
 GetClientRectFn original_get_client_rect{};
 DispatchMessageWFn original_dispatch_message_w{};
@@ -1053,6 +1063,7 @@ struct PendingCapture {
   ComPtr<ID3D12CommandAllocator> allocator;
   ComPtr<ID3D12GraphicsCommandList> commands;
   std::uint64_t fence_value{};
+  std::shared_ptr<darktidevr::producer::DesktopMirrorBlit> mirror_blit;
 };
 
 std::deque<PendingCapture> pending_captures;
@@ -1895,7 +1906,7 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
 void end_stock_menu_draw_redirect(ID3D12GraphicsCommandList* commands,
                                   const MenuDrawRedirect& redirect);
 int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
-                               ID3D12CommandQueue* queue);
+                               ID3D12CommandQueue* queue, bool engine_source = false);
 
 void write_marker_log(const char* format, ...) {
   if (marker_log == INVALID_HANDLE_VALUE ||
@@ -9223,6 +9234,26 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
           static_cast<unsigned long long>(left_description.Width), left_description.Height);
       return;
     }
+    for (std::size_t sample_eye = 0; sample_eye < 2; ++sample_eye) {
+      const auto depth = state.snapshots[sample_eye][0]->GetDesc();
+      const auto motion = state.snapshots[sample_eye][1]->GetDesc();
+      const auto input = state.snapshots[sample_eye][3]->GetDesc();
+      const auto output = state.snapshots[sample_eye][4]->GetDesc();
+      if (input.Width != depth.Width || input.Height != depth.Height ||
+          motion.Width != depth.Width || motion.Height != depth.Height ||
+          !extent.accepts_eye(output.Width, output.Height)) {
+        state.failed = true;
+        write_streamline_probe_log(
+            "STEREO_BACKBUFFER\tphase=failed\treason=upscaler_extent_mismatch"
+            "\teye=%zu\tdepth=%llux%u\tinput=%llux%u\toutput=%llux%u"
+            "\texpected_output=%ux%u\r\n", sample_eye,
+            static_cast<unsigned long long>(depth.Width), depth.Height,
+            static_cast<unsigned long long>(input.Width), input.Height,
+            static_cast<unsigned long long>(output.Width), output.Height,
+            extent.eye_width, extent.height);
+        return;
+      }
+    }
     const auto stereo_eye_width = left_description.Width;
     stereo_description.Width = stereo_eye_width * 2;
     stereo_description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -10175,6 +10206,127 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
   }
 }
 
+// Bounded evidence of the original allocation before caller-specific routing.
+void log_swapchain_extent_query(const char* api, const void* caller,
+                               IDXGISwapChain* swapchain, UINT index,
+                               std::uint64_t width, UINT height) {
+  if (!streamline_stereo_swapchain_probe_requested.load(std::memory_order_acquire)) return;
+  static std::mutex query_mutex;
+  static std::map<std::pair<const void*, std::uint64_t>, unsigned> samples;
+  {
+    std::scoped_lock lock(query_mutex);
+    const auto key = std::make_pair(caller, width);
+    auto found = samples.find(key);
+    if (found == samples.end()) {
+      if (samples.size() >= 64) return;
+      found = samples.emplace(key, 0).first;
+    }
+    if (found->second++ >= 2) return;
+  }
+  HMODULE module{};
+  wchar_t path[MAX_PATH]{};
+  GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+      GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+      reinterpret_cast<LPCWSTR>(caller), &module);
+  if (module) GetModuleFileNameW(module, path, MAX_PATH);
+  const auto* leaf = wcsrchr(path, L'\\');
+  write_streamline_probe_log(
+      "SWAPCHAIN_EXTENT_QUERY\tapi=%s\tcaller=%p\tmodule=%ls\tswapchain=%p"
+      "\tindex=%u\textent=%llux%u\tbefore_routing=1\r\n", api, caller,
+      leaf ? leaf + 1 : path, swapchain, index,
+      static_cast<unsigned long long>(width), height);
+}
+
+bool engine_eye_backbuffer_caller(const void* caller) {
+  if (!streamline_stereo_swapchain_probe_requested.load(std::memory_order_acquire) ||
+      !swapchain_render_extent_enabled.load(std::memory_order_acquire)) return false;
+  HMODULE module{};
+  wchar_t path[MAX_PATH]{};
+  if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+          GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+          reinterpret_cast<LPCWSTR>(caller), &module) ||
+      !GetModuleFileNameW(module, path, MAX_PATH)) return false;
+  const auto* leaf = wcsrchr(path, L'\\');
+  return _wcsicmp(leaf ? leaf + 1 : path,
+      L"amd_fidelityfx_framegeneration_dx12.dll") == 0;
+}
+
+bool engine_eye_backbuffer_extent(UINT width, UINT height) {
+  return width == swapchain_present_width.load(std::memory_order_relaxed) &&
+      height == swapchain_render_height.load(std::memory_order_relaxed) &&
+      std::uint64_t(width) == 2ULL * camera_input_width.load(std::memory_order_relaxed);
+}
+
+HRESULT STDMETHODCALLTYPE swapchain_get_buffer_hook(IDXGISwapChain* swapchain,
+                                                    UINT index, REFIID iid, void** object) {
+  const auto result = original_swapchain_get_buffer(swapchain, index, iid, object);
+  if (SUCCEEDED(result) && object && *object &&
+      streamline_stereo_swapchain_probe_requested.load(std::memory_order_acquire)) {
+    ComPtr<ID3D12Resource> resource;
+    if (SUCCEEDED(static_cast<IUnknown*>(*object)->QueryInterface(IID_PPV_ARGS(&resource)))) {
+      const auto description = resource->GetDesc();
+      log_swapchain_extent_query("GetBuffer", _ReturnAddress(), swapchain,
+                                index, description.Width, description.Height);
+      if (description.Width <= UINT_MAX && engine_eye_backbuffer_caller(_ReturnAddress()) &&
+          engine_eye_backbuffer_extent(static_cast<UINT>(description.Width), description.Height)) {
+        ComPtr<ID3D12Device> device;
+        void* replacement{};
+        auto hr = resource->GetDevice(IID_PPV_ARGS(&device));
+        if (SUCCEEDED(hr)) hr = engine_eye_backbuffers.acquire(device.Get(),
+            reinterpret_cast<std::uintptr_t>(swapchain),
+            resize_diagnostic_generation.load(std::memory_order_relaxed), index, description,
+            camera_input_width.load(std::memory_order_relaxed),
+            camera_input_height.load(std::memory_order_relaxed), iid, &replacement);
+        static_cast<IUnknown*>(*object)->Release();
+        *object = replacement;
+        if (SUCCEEDED(hr)) {
+          ComPtr<ID3D12Resource> eye_resource;
+          if (SUCCEEDED(static_cast<IUnknown*>(replacement)->QueryInterface(IID_PPV_ARGS(&eye_resource)))) {
+            std::scoped_lock lock(boundary_capture_mutex);
+            swapchain_back_buffers.insert(eye_resource.Get());
+          }
+        }
+        static std::atomic<unsigned> reported{};
+        if (reported.fetch_add(1, std::memory_order_relaxed) < 16) {
+          write_streamline_probe_log(
+              "ENGINE_EYE_BACKBUFFER\tindex=%u\tresult=%ld\tresource=%p"
+              "\twidth=%u\theight=%u\tpacked_present_unchanged=1\r\n",
+              index, hr, replacement, camera_input_width.load(std::memory_order_relaxed),
+              camera_input_height.load(std::memory_order_relaxed));
+        }
+        return hr;
+      }
+    }
+  }
+  return result;
+}
+
+HRESULT STDMETHODCALLTYPE swapchain_get_desc_hook(IDXGISwapChain* swapchain,
+                                                  DXGI_SWAP_CHAIN_DESC* description) {
+  const auto result = original_swapchain_get_desc(swapchain, description);
+  if (SUCCEEDED(result) && description) {
+    log_swapchain_extent_query("GetDesc", _ReturnAddress(), swapchain, UINT_MAX,
+                              description->BufferDesc.Width, description->BufferDesc.Height);
+    if (engine_eye_backbuffer_caller(_ReturnAddress()) &&
+        engine_eye_backbuffer_extent(description->BufferDesc.Width, description->BufferDesc.Height)) {
+      description->BufferDesc.Width = camera_input_width.load(std::memory_order_relaxed);
+      description->BufferDesc.Height = camera_input_height.load(std::memory_order_relaxed);
+    }
+  }
+  return result;
+}
+
+HRESULT STDMETHODCALLTYPE swapchain_get_desc1_hook(IDXGISwapChain1* swapchain,
+                                                   DXGI_SWAP_CHAIN_DESC1* description) {
+  const auto result = original_swapchain_get_desc1(swapchain, description);
+  if (SUCCEEDED(result) && description && engine_eye_backbuffer_caller(_ReturnAddress()) &&
+      engine_eye_backbuffer_extent(description->Width, description->Height)) {
+    description->Width = camera_input_width.load(std::memory_order_relaxed);
+    description->Height = camera_input_height.load(std::memory_order_relaxed);
+  }
+  return result;
+}
+
 HRESULT STDMETHODCALLTYPE resize_buffers_hook(IDXGISwapChain* swapchain,
                                                UINT buffer_count, UINT width,
                                                UINT height, DXGI_FORMAT format,
@@ -10584,9 +10736,9 @@ void poll_focused_trace_request() {
 }
 
 int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
-                               ID3D12CommandQueue* queue) {
+                               ID3D12CommandQueue* queue, bool engine_source) {
   if (!swapchain || !queue ||
-      !desktop_mirror_ready.load(std::memory_order_acquire)) {
+      (!engine_source && !desktop_mirror_ready.load(std::memory_order_acquire))) {
     return 100;
   }
   ComPtr<ID3D12Resource> back_buffer;
@@ -10603,13 +10755,22 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
   ComPtr<ID3D12Fence> capture_fence;
   std::uint64_t capture_ready_value{};
   std::uint64_t signal_value{};
+  if (engine_source) {
+    mirror = engine_eye_backbuffers.find(reinterpret_cast<std::uintptr_t>(swapchain),
+        resize_diagnostic_generation.load(std::memory_order_relaxed),
+        swapchain->GetCurrentBackBufferIndex());
+    if (!mirror) return 102;
+  }
   {
     std::unique_lock lock(state_mutex);
-    mirror = desktop_mirror_surface;
+    if (!engine_source) mirror = desktop_mirror_surface;
+    if (engine_source && !desktop_mirror_fence &&
+        FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
+            IID_PPV_ARGS(&desktop_mirror_fence)))) return 102;
     fence = desktop_mirror_fence;
     capture_fence = ready_fence;
     capture_ready_value = ready_value;
-    if (!mirror || !fence || !capture_fence || capture_ready_value == 0) {
+    if (!mirror || !fence || (!engine_source && (!capture_fence || capture_ready_value == 0))) {
       return 102;
     }
     auto reclaim_completed = [&] {
@@ -10626,7 +10787,7 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
       }
       return true;
     };
-    if (capture_fence->GetCompletedValue() == UINT64_MAX ||
+    if ((!engine_source && capture_fence->GetCompletedValue() == UINT64_MAX) ||
         !reclaim_completed()) {
       return 110;
     }
@@ -10669,8 +10830,12 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
 
   const auto source_description = mirror->GetDesc();
   const auto destination_description = back_buffer->GetDesc();
+  const bool stretch_mirror =
+      streamline_stereo_swapchain_probe_requested.load(std::memory_order_acquire) &&
+      destination_description.Width == source_description.Width * 2 &&
+      destination_description.Height == source_description.Height;
   if (source_description.Format != destination_description.Format ||
-      source_description.Width != destination_description.Width ||
+      (!stretch_mirror && source_description.Width != destination_description.Width) ||
       source_description.Height != destination_description.Height) {
     return 104;
   }
@@ -10688,6 +10853,12 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
     return 105;
   }
 
+  if (stretch_mirror) {
+    if (!pending.mirror_blit) pending.mirror_blit =
+        std::make_shared<darktidevr::producer::DesktopMirrorBlit>();
+    if (FAILED(pending.mirror_blit->record(device.Get(), pending.commands.Get(),
+                                         mirror.Get(), back_buffer.Get()))) return 104;
+  } else {
   std::array<D3D12_RESOURCE_BARRIER, 2> barriers{};
   barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
   barriers[0].Transition.pResource = mirror.Get();
@@ -10708,6 +10879,7 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
   }
   pending.commands->ResourceBarrier(static_cast<UINT>(barriers.size()),
                                     barriers.data());
+  }
   if (FAILED(pending.commands->Close())) {
     return 106;
   }
@@ -10718,9 +10890,9 @@ int present_desktop_eye_mirror(IDXGISwapChain3* swapchain,
   // being written and expose a previous or partially updated frame. The XR
   // consumer already waits on this same value; give the desktop mirror the
   // identical completed-pair contract.
-  if (capture_fence->GetCompletedValue() == UINT64_MAX ||
-      fence->GetCompletedValue() == UINT64_MAX ||
-      FAILED(queue->Wait(capture_fence.Get(), capture_ready_value))) {
+  if (fence->GetCompletedValue() == UINT64_MAX ||
+      (!engine_source && (capture_fence->GetCompletedValue() == UINT64_MAX ||
+      FAILED(queue->Wait(capture_fence.Get(), capture_ready_value))))) {
     return 109;
   }
   ID3D12CommandList* lists[]{pending.commands.Get()};
@@ -11691,13 +11863,16 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
   // Flat loading/cinematic frames are already drawn authoritatively by the
   // game window. Re-injecting the last completed eye there makes the desktop
   // alternate between the loading view and the preceding stereo scene.
-  if (presentation_mode !=
+  const bool engine_loading_mirror =
+      streamline_stereo_swapchain_probe_requested.load(std::memory_order_acquire) &&
+      presentation_mode == darktidevr::core::SharedPresentationMode::flat_loading_or_cinematic;
+  if ((engine_loading_mirror || (presentation_mode !=
           darktidevr::core::SharedPresentationMode::flat_loading_or_cinematic &&
-      !darktidevr::core::flat_interactive_active(presentation_mode) &&
+      !darktidevr::core::flat_interactive_active(presentation_mode))) &&
       candidate && present_queue &&
-      desktop_mirror_ready.load(std::memory_order_acquire)) {
+      (engine_loading_mirror || desktop_mirror_ready.load(std::memory_order_acquire))) {
     const auto mirror_result =
-        present_desktop_eye_mirror(candidate.Get(), present_queue.Get());
+        present_desktop_eye_mirror(candidate.Get(), present_queue.Get(), engine_loading_mirror);
     if (mirror_result != 0) {
       const auto error = desktop_mirror_error_count.fetch_add(
                              1, std::memory_order_relaxed) +
@@ -12481,6 +12656,13 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
                          &original_streamline_native_present)) != MH_OK) ||
       MH_CreateHook(swapchain_vtable[8], &present_hook,
                      reinterpret_cast<void**>(&original_present)) != MH_OK ||
+      (streamline_stereo_swapchain_probe_requested.load(std::memory_order_acquire) &&
+       (MH_CreateHook(swapchain_vtable[9], &swapchain_get_buffer_hook,
+           reinterpret_cast<void**>(&original_swapchain_get_buffer)) != MH_OK ||
+        MH_CreateHook(swapchain_vtable[12], &swapchain_get_desc_hook,
+           reinterpret_cast<void**>(&original_swapchain_get_desc)) != MH_OK ||
+        MH_CreateHook(swapchain_vtable[18], &swapchain_get_desc1_hook,
+           reinterpret_cast<void**>(&original_swapchain_get_desc1)) != MH_OK)) ||
       MH_CreateHook(swapchain_vtable[13], &resize_buffers_hook,
                     reinterpret_cast<void**>(&original_resize_buffers)) !=
           MH_OK ||

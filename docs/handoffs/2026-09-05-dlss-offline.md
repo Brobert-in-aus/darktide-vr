@@ -564,3 +564,100 @@ Validation on Windows x64:
 Offline only; changes not deployed. Still requires Ready preflight and live
 wide HUD-less resource verification, then worn acceptance. No generated stereo
 is enabled by this audit.
+
+### Packed HUD-less mapping: resource check was incomplete, worn result failed
+
+Ready resumed with 600/600 rendered frames:
+artifacts/unattended/runtime-extent-hudless-preflight-20260905.json. Launched
+-EnableHudPanel -EnterPsykhanium -StreamlineStereoSwapchainProbe
+-StreamlineTargetTokenProbe; live log runtime-extent-hudless-live-20260905.log.
+Both private finals and HUD-less colour are 2496x2688, and the packed 4992x2688
+resource matches Present. Stereo initialized, shared_ready exceeded 3331 with
+zero pair mismatches. The original analyzer passed, but the user explicitly
+rejected the worn result: shadowed stereo with transparent colour on the left.
+Desktop mirror remained at the loading screen. This run is NOT visually accepted.
+
+The missed inputs explain the next investigation: scaling_input_color is
+3328x1792 against depth/motion 1664x1792; scaling_output_color is 4992x2688.
+Evidence: artifacts/diagnostics/dlss-live-20260905/packed-hudless-probe.tsv.
+The upscale layer in the extracted renderer config sizes its transient output
+from real_back_buffer, separately from back_buffer. Prepared a mapping of both
+references to the private final target. This is an experiment, not a proven fix.
+output_target remains engine-owned; no quality fraction is introduced.
+
+Native packing and the analyzer now also reject mismatched upscaler input versus
+depth/motion and mismatched upscaler output versus the runtime eye extent. The
+archived failed run is rejected by the updated analyzer; the accepted normal
+eye-final-only-probe.tsv still passes. LuaJIT 27-chunk gate, eye-target lifecycle
+test, and native Release build pass. The first build caught a shadowed loop
+variable under warnings-as-errors; renamed it and rebuilt successfully.
+
+User authorized retaining the diagnostic configuration between attempts; do not
+spend launches restoring the known-good normal setup. Closed the failed game
+explicitly (runner exit -1 is intentional shutdown, not spontaneous crash).
+Ready passed again at real-backbuffer-preflight-20260905.json. Next attempt
+uses the same flags and logs to real-backbuffer-live-20260905.log.
+
+Desktop mirror has a separate known size gate: present_desktop_eye_mirror returns
+104 when private eye source and wide Present destination differ. A monoscopic
+mirror blit that handles this extent difference remains needed; packed buffer
+compatibility and headset counters cannot establish desktop-mirror correctness.
+
+The real_back_buffer mapping experiment did not change either oversized colour
+buffer. Native now rejects it as upscaler_extent_mismatch; archive
+real-backbuffer-probe.tsv. Removed the ineffective mapping from source. User
+also confirms the excluded HUD remains correct; preserve that independent path.
+
+Added bounded GetBuffer/GetDesc tracing and ran extent-query-live-20260905.log
+after Ready. Archive extent-query-probe.tsv shows sl.interposer.dll and
+amd_fidelityfx_framegeneration_dx12.dll querying the wide buffer. The direct
+game caller is hidden behind the AMD wrapper at this hook boundary.
+
+AMD's current reference source explains the relevant mechanism:
+https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK/blob/main/Kits/FidelityFX/framegeneration/fsr3/dx12/FrameInterpolationSwapchainDX12.cpp
+verifyBackbufferDuplicateResources derives replacement textures from the real
+GetBuffer descriptor; GetBuffer returns those replacements to the application.
+This source is architectural evidence, not proof of the game's exact DLL build.
+Reference downloaded only to ignored artifacts/diagnostics.
+
+Implemented a bounded engine-eye-buffer experiment beneath that wrapper. Only
+the opt-in wide probe routes calls originating in the AMD DLL to real committed
+eye-sized textures; Streamline/native callers retain the wide real resources.
+GetDesc/GetDesc1 agree for that caller. The resource owner caches by swapchain,
+resize generation and index, preserves identity, retains old proxy generations
+until process exit (unknown external queue retirement), and caps allocation at
+16 proxies. It holds no original DXGI buffers across calls, so it does not block
+ResizeBuffers. This is diagnostic lifetime management, not release-ready pooling.
+
+Windows Release builds and all five focused CTests pass. WARP coverage verifies
+stable per-index identity, separate indexes, new resize generation, old resource
+lifetime, unsupported dimensions, and RTV creation against the actual smaller
+resource. The helper never reports smaller dimensions on a physically wide image.
+
+Launched engine-eye-buffer-live-20260905.log after Ready at
+engine-eye-buffer-preflight-20260905.json with the existing wide/target-token
+flags. No new stereo tags or generated-frame submissions. Runtime outcome pending.
+
+Engine-eye-buffer outcome: both eyes now report depth/motion/scaling input at
+1664x1792 and scaling output/HUD-less/final at 2496x2688. Packed Present stays
+4992x2688. Updated analyzer passes engine-eye-buffer-probe.tsv, report archived
+alongside it. User explicitly accepts the in-headset world image in this run.
+They report hub-to-Psykhanium loading and desktop mirror black. This is the
+accepted wide *world* resource route, not acceptance of loading/desktop output.
+
+Prepared the missing presentation blit: DesktopMirrorBlit draws a full-source
+monoscopic image into the actual wider RTV. Native mirror retains its existing
+capture-fence dependency and reuses blit descriptors only in retired allocator
+slots. DXGI owns the destination; the helper must not retain real backbuffers in
+idle slots and block ResizeBuffers. For flat loading, use the current engine
+proxy instead of the old stereo eye. Register proxy resources for existing
+Present-transition queue tracking; loading copies run on that Present queue.
+This does not change HUD composition or stage stereo SL tags.
+
+WARP validates the blit by reading both rows of a wider output: full left/right
+source endpoints and interpolated centre are populated. Native Release build
+and stereo_color_resample CTest pass. The broader five-test suite passed before
+the blit change. Launch engine-mirror-blit-live-20260905.log follows Ready at
+engine-mirror-blit-preflight-20260905.json, using the same diagnostic flags.
+Mirror/loading runtime acceptance pending; prior accepted run was closed
+intentionally for deployment.
