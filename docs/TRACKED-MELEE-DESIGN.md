@@ -196,6 +196,10 @@ is not redistributed by this document.
 
 ## Offline foundation now available
 
+The [motion smoothing investigation](MOTION-SMOOTHING.md) recommends light,
+optional aim stabilization and minimal added filtering for physical swings and
+blocking, with shared visual/contact pose ownership. No filter is enabled yet.
+
 `darktidevr_melee_contact_policy.lua` implements the per-target eligibility ledger,
 with shared light/heavy target deadlines and initial heavy readiness. It is not
 imported by the active mod and cannot cause damage. Its isolated test exercises

@@ -55,8 +55,8 @@ and selection on the coordinate candidate. Use
 `-ManualStartup` with the launcher to disable title/character key automation.
 See the [September 5 session](handoffs/2026-09-05-development-session.md).
 
-Finger animation, reticle depth and sword swings are accepted. Left-hand
-alignment remains unresolved. Staff melee/push still failed; a follow-up now
+Finger animation, reticle depth, sword swings and left-hand alignment are accepted.
+Staff melee/push still failed; a follow-up now
 includes ranged-slot melee, pushes and their melee windups. Marker replay now
 reuses the first eye's eased size instead of advancing it twice; the user accepted
 symmetric shrinking. Staff animation and removal of the loading-screen corner
@@ -83,7 +83,7 @@ is machine-local; future release defaults still need comparison on other GPUs.
 
 The user accepted hand-directed melee on the recovered combat-direction build.
 Movement remains head-relative. Left-hand block direction is implemented but
-untested; left-hand alignment still needs a worn verdict.
+untested. The user has now accepted left-hand alignment.
 
 A follow-up blur guard now zeroes scene
 depth-of-field and fullscreen-blur values immediately before the shading
@@ -99,12 +99,13 @@ GUI and hides it between eyes, preserving the projection calculations. Offline
 lifecycle checks pass. The candidate ran beyond 20 minutes without the prior
 crash, with over 70,000 shared-ready frames and an unchanged fresh allocator
 cursor of 85,363 across repeated snapshots. This removes the observed rapid
-growth; longer worn/transition checks and marker appearance remain pending.
+growth; longer worn/transition checks remain pending. The user accepted the
+marker baseline, with very slight asymmetry at extreme edges deferred to
+[post-release work](POST-RELEASE.md).
 Hand-aim acceptance stands. See the session handoff for crash evidence.
 
-The September 4/5 candidate has outstanding worn checks for both unarmed and
-wielded palm placement, pinned-marker
-alignment at every eye edge, and lighting parity in both hub and Psykhanium.
+Lighting parity in both hub and Psykhanium remains an outstanding worn check.
+Left-hand placement is accepted; subtle extreme-edge marker polish is deferred.
 The crosshair atlas-square fix was accepted; wrist joint-drift telemetry did not
 prove overall glove alignment. See the [checkpoint](handoffs/2026-09-04-development-session.md).
 
@@ -126,5 +127,10 @@ do not turn old experiments into production defaults merely because they build.
 Tracked physical melee has a separate [design and source investigation](TRACKED-MELEE-DESIGN.md):
 always-active standard combat volume, per-enemy cooldowns and intentionally
 unlimited cleave, with heavy readiness initially on cooldown. It is not enabled
-in the current build. Interim stock attacks and left-hand blocking remain under
-worn validation.
+in the current build. Interim hand-directed stock attacks are accepted;
+left-hand blocking still needs worn validation. See the
+[motion smoothing investigation](MOTION-SMOOTHING.md) for aim and weapon policy.
+
+The user ended the live session to use the headset outside Virtual Desktop.
+Continue offline work on the three major remaining areas: melee, HUD and DLSS.
+Do not restart the game or require the headset during this offline period.

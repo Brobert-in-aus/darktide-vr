@@ -719,3 +719,21 @@ cross(across,longitudinal) source basis also changes palm-relative sign between
 hands, so its shared -grip-X target is intentional. Clarified the misleading
 comment; no rotation or positional calibration changed. This does not resolve
 the pending worn left-wrist placement verdict.
+
+Subsequent user feedback accepted left-hand alignment. The marker baseline is
+also accepted for initial release; very slight asymmetry at extreme screen edges
+is explicitly deferred to POST-RELEASE.md. Left-hand blocking remains untested.
+
+The user requested the headset for non-VD use and offline development on melee,
+HUD and DLSS. Requested normal game window closure, verified the game processes
+exited, and restored Quest proximity automation with Enable followed by Status.
+The device does not expose a durable query for that broadcast override. Do not
+restart the game or run XR preflight during this offline period. The recorded
+20-minute stability checkpoint stands; this ended session is not a completed
+60-minute worn/transition acceptance run.
+
+Added MOTION-SMOOTHING.md with primary-source research and an integration policy:
+adaptive aim stabilization, minimal melee/block lag, once-per-sample stereo
+ownership, explicit pose-time semantics, and reset on discontinuities. No filter
+or live behavior was changed. Documentation review only; existing offline Lua
+checks remain the latest code validation.

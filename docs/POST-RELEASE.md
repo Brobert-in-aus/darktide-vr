@@ -9,6 +9,14 @@ streaming did not improve it and was reverted. Keep the accepted baseline;
 after initial release, investigate projection/FOV-dependent LOD selection and
 find a better quality/performance policy across equipment and terrain.
 
+## Extreme-edge marker symmetry
+
+On 5 September 2026 the user accepted the current marker presentation for the
+initial release. Very slight asymmetry remains at the extreme screen edges and
+requires close inspection to notice. Defer this polish; preserve the accepted
+shared easing and immediate-GUI resource lifecycle while investigating edge
+clamping/projection in a future worn comparison.
+
 ## Selective smoke-cloud billboard suppression
 
 Identify smoke-cloud effects/materials before adding a selective suppression
