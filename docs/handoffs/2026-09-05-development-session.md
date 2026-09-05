@@ -345,3 +345,15 @@ Ready preflight passed 120 rendered frames in
 artifacts/unattended/melee-effects-pool-preflight-20260905.json. Started with
 -EnterPsykhanium -ManualStartup, log melee-effects-pool-live-20260905.log.
 Fresh stereo and worn behavior still require confirmation for this candidate.
+
+Worker automation follow-up: set-vr-worker-threads.ps1 reads Win32_Processor
+NumberOfCores (summed across packages), calculates max(1, cores-1), and edits
+only the active top-level assignment while closed. start-darktide-vr.ps1 calls
+it before a fresh launch. Inspect on this host returned physical=8, workers=7.
+Isolated settings fixtures with mocked 8/16 and 1/2 processors passed, including
+preservation of the detected cache and unrelated values. This removes the
+hardcoded-machine-value risk from the launcher; packaged setup must retain it.
+
+Window inspection confirmed the new run is at the ordinary 'Press SPACE to
+continue' title screen. No startup input was sent; manual startup is intentional.
+Fresh stereo validation remains pending entry into the game.

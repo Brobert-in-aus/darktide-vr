@@ -189,6 +189,10 @@ $streamlineStereoStageProbeFlagPath = $null
 $streamlineStereoStageProbeFlagOriginal = $null
 $streamlineStereoStageProbeFlagExisted = $false
 
+if (-not (Get-Process Darktide -ErrorAction SilentlyContinue)) {
+    & (Join-Path $PSScriptRoot 'set-vr-worker-threads.ps1') -Action Apply
+}
+
 if (-not $SkipDeploymentSync) {
     $sync = Join-Path $PSScriptRoot 'sync-darktide-vr-dev.ps1'
     if (-not (Test-Path -LiteralPath $sync -PathType Leaf)) {

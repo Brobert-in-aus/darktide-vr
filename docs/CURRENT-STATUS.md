@@ -73,8 +73,8 @@ Finer LOD tuning and selective smoke-cloud billboard suppression are tracked in
 
 This workstation has a Ryzen 7 9800X3D: 8 physical cores, 16 logical processors.
 max_worker_threads=7 was applied on 5 September 2026 (top-level active setting).
-Seven is this machine's setting, not a portable mod default. Before release,
-setup must derive max(1, physical core count - 1) automatically, using physical
+Seven is this machine's setting, not a portable mod default. The launcher now
+derives max(1, physical core count - 1) automatically, using physical
 cores rather than logical processors/hyperthreads. Preserve this distinction in
 installation and performance documentation.
 
