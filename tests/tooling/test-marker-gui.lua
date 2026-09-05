@@ -16,6 +16,19 @@ Gui = { set_visible = function(gui, visible)
     gui.visible = visible
 end }
 local markers = dofile(arg[1])
+-- Later fixed HUD/editor passes reuse and overwrite the original table.
+-- Pickup replay must retain its own scale, visibility and immediate mode.
+local settings = {scale=1.3,inverse_scale=1/1.3,alpha_multiplier=1,
+    force_retained_mode=false,start_layer=371}
+local pickup_settings = markers.snapshot_settings(settings)
+settings.scale,settings.inverse_scale = 2.704,1/2.704
+settings.alpha_multiplier,settings.force_retained_mode = 0,true
+settings.start_layer = 999
+assert(pickup_settings.scale == 1.3 and pickup_settings.inverse_scale == 1/1.3)
+assert(pickup_settings.alpha_multiplier == 1 and pickup_settings.force_retained_mode == false)
+assert(pickup_settings.start_layer == 371)
+pickup_settings.start_layer = 100
+assert(settings.start_layer == 999, "replay must not mutate the next primary HUD draw")
 local stock_gui, retained = {}, {}
 local renderer = {world = {}, gui = stock_gui, gui_retained = retained}
 local marker_gui

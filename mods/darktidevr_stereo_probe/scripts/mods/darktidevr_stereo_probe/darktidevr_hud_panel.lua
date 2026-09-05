@@ -3,8 +3,8 @@ local UIWidget = require("scripts/managers/ui/ui_widget")
 local ScriptWorld = require("scripts/foundation/utilities/script_world")
 
 local HudPanel = {}
-HudPanel.height = 1.125 * 0.9
-HudPanel.distance = 1
+HudPanel.height = 1.125 * 0.9 * 2
+HudPanel.distance = 2
 HudPanel.scale = 0.8
 HudPanel.object_scale = 2.08
 
@@ -222,7 +222,7 @@ local function editor_input(input_service)
         end
     end
     local rect = HudPanel.editor_rect(RESOLUTION_LOOKUP.width,RESOLUTION_LOOKUP.height,
-        state.target_width,state.target_height,state.panel_aspect or (1.18/(HudPanel.height*HudPanel.scale)),
+        state.target_width,state.target_height,state.panel_aspect or (1.18/0.81),
         HudPanel.mirror_width,HudPanel.mirror_height)
     return setmetatable({get=function(_,key,...)
         local value = input_service:get(key,...)
@@ -246,7 +246,7 @@ end
 local function draw_flat_editor(source_renderer)
     if not HudPanel.editing() or not state.display_ready then return end
     local width,height = RESOLUTION_LOOKUP.width,RESOLUTION_LOOKUP.height
-    local rect = HudPanel.editor_rect(width,height,state.target_width,state.target_height,state.panel_aspect or (1.18/(HudPanel.height*HudPanel.scale)),
+    local rect = HudPanel.editor_rect(width,height,state.target_width,state.target_height,state.panel_aspect or (1.18/0.81),
         HudPanel.mirror_width,HudPanel.mirror_height)
     if not state.editor_material then
         state.editor_material = Gui.create_material(source_renderer.gui,
@@ -856,7 +856,7 @@ function HudPanel.draw(world, position, rotation, overlap_width)
     Matrix4x4.set_forward(tm, -forward)
     Matrix4x4.set_up(tm, Quaternion.up(rotation))
     Matrix4x4.set_translation(tm, position + forward * HudPanel.distance)
-    local width = (overlap_width or 1) * HudPanel.scale
+    local width = (overlap_width or HudPanel.distance) * HudPanel.scale
     local height = HudPanel.height * HudPanel.scale
     state.panel_aspect = width / height
     if width <= 0 then return end

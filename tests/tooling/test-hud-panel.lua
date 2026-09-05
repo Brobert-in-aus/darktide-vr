@@ -221,8 +221,8 @@ Matrix4x4.set_right, Matrix4x4.set_forward, Matrix4x4.set_up, Matrix4x4.set_tran
 local bitmap_drawn = false
 Gui2 = {bitmap_3d = function(_,material,flags,tm,_,options)
     local offset,size=options.position_offset,options.size
-    assert(tm.position[1] == 3 and tm.position[2] == 5 and tm.position[3] == 5,
-        "panel centre must remain one metre from the current head")
+    assert(tm.position[1] == 3 and tm.position[2] == 6 and tm.position[3] == 5,
+        "panel centre must remain two metres from the current head")
     assert(material == state.world_material)
     assert(flags == nil and tm.right[1] == -1 and tm.forward[2] == -1,
         "textured HUD must face the viewer")
@@ -231,7 +231,8 @@ Gui2 = {bitmap_3d = function(_,material,flags,tm,_,options)
     assert(options.uv00[2] == 1 and options.uv11[2] == 0,
         "captured HUD must read upright on the world panel")
     assert(offset.kind == "v3" and offset[3] == 0 and size.kind == "v3")
-    assert(math.abs(size[1] - 0.8) < 1e-6 and math.abs(size[2] - 0.81) < 1e-6)
+    assert(math.abs(size[1] - 1.6) < 1e-6 and math.abs(size[2] - 1.62) < 1e-6,
+        "doubling distance must preserve angular size by doubling panel dimensions")
     bitmap_drawn = true
 end}
 panel.draw(renderer.world,Vector3(3,4,5),{})

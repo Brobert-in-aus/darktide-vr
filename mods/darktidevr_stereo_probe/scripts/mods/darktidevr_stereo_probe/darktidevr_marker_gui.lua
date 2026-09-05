@@ -4,6 +4,15 @@ local function pack(...)
     return { n = select("#", ...), ... }
 end
 
+-- UIHud reuses this table for every element, changing scale, alpha and
+-- retained mode. A second-eye pass must retain the settings of its own draw,
+-- not those left behind by the last fixed HUD element or layout editor.
+function MarkerGui.snapshot_settings(settings)
+    local snapshot = {}
+    for key, value in pairs(settings) do snapshot[key] = value end
+    return snapshot
+end
+
 -- Immediate drawings reuse the GUI's buffers. Creating/destroying retained
 -- primitives every eye pair grows RenderGui resource handles in this engine.
 function MarkerGui.draw(renderer, draw, ...)

@@ -4952,14 +4952,14 @@ local function update_stereo(manager)
 
     presentation.draw_world_menu_surface(
         world, clean_position, clean_rotation)
-    local hud_width = 1
+    local hud_width = presentation.hud_panel.distance
     if presentation.hud_panel.enabled() and head_render_frusta then
         local hud_aspect = ui_eye_target_width / ui_eye_target_height
         hud_width = presentation.projection_math.binocular_panel_width(
             runtime_recentered_eye(head_render_frusta[1], hud_aspect),
             runtime_recentered_eye(head_render_frusta[2], hud_aspect),
             effective_half_ipd, presentation.hud_panel.distance,
-            presentation.hud_panel.height, 2)
+            presentation.hud_panel.height, 2 * presentation.hud_panel.distance)
     end
     presentation.hud_panel.draw(world, clean_position, clean_rotation, hud_width)
 
@@ -11968,6 +11968,8 @@ mod:hook(
                 inverse_scale = inverse_scale,
                 binocular_offsets = binocular_offsets
             }
+            world_markers_context.render_settings =
+                presentation.marker_gui.snapshot_settings(render_settings)
         end
 
         return result
@@ -12018,6 +12020,8 @@ mod:hook(
                 ui_renderer = ui_renderer,
                 render_settings = render_settings
             }
+            interaction_hud_context.render_settings =
+                presentation.marker_gui.snapshot_settings(render_settings)
         end
 
         return result
@@ -12079,7 +12083,8 @@ mod:hook("HudElementSmartTagging", "_draw_active_interaction_line",
             return presentation.draw_tag_prompt(self, dt, t, input_service, ui_renderer, render_settings)
         end
         presentation.tag_hud_context = {instance=self,t=t,input_service=input_service,
-            ui_renderer=ui_renderer,render_settings=render_settings}
+            ui_renderer=ui_renderer,
+            render_settings=presentation.marker_gui.snapshot_settings(render_settings)}
         return presentation.marker_gui.draw(ui_renderer, presentation.draw_tag_prompt,
             self, dt, t, input_service, ui_renderer, render_settings)
     end)
@@ -12166,6 +12171,10 @@ local function enqueue_world_markers_for_camera(camera)
     UIRenderer.end_pass(context.ui_renderer)
 
     local interaction_context = interaction_hud_context
+    if interaction_context and (interaction_context.t ~= context.t or
+            interaction_context.instance._parent ~= instance._parent) then
+        interaction_context = nil
+    end
     if interaction_context then
         local interaction = interaction_context.instance
         local presentation = interaction._active_presentation_data

@@ -76,6 +76,13 @@ int main(int argc, char** argv) {
           "Shared render target identity must canonicalize typed/typeless "
           "backing resources to the typed RTV format");
     }
+    if (!darktidevr::core::menu_capture_extent_matches(2496, 2688, 2496, 2688) ||
+        darktidevr::core::menu_capture_extent_matches(2496, 1404, 2496, 2688) ||
+        darktidevr::core::menu_capture_extent_matches(1920, 1080, 2496, 2688) ||
+        darktidevr::core::menu_capture_extent_matches(0, 0, 0, 0)) {
+      throw std::runtime_error(
+          "Menu capture must reject HUD and mismatched canvases before alias routing");
+    }
     ComPtr<ID3D12Device> device;
     check(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_0,
                             IID_PPV_ARGS(&device)),

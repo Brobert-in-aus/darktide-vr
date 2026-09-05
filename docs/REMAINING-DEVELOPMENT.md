@@ -63,8 +63,10 @@ visible HUD contents, confirmed by shared-eye readback and the user.
 
 Next: verify hand-selected stereo tag prompts and transitions; then make
 the fixed status layout configurable without moving world/depth markers onto
-the panel. The panel remains one metre away; its height is now 0.81 m and its
-width is 80% of a binocular-frustum fit (about 1.18 m on this headset). The user
+the panel. Queued for the next launch: the panel is two metres away, with
+height 1.62 m and twice the width budget of the previous one-metre panel
+(approximately 2.36 m wide, fitted to binocular overlap). This preserves
+approximately the accepted angular size and keeps object scale/layout intact. The user
 requested these reductions; both-eye readback confirms the outline fits, while
 worn comfort still needs acceptance. World GUI draws now expire each frame,
 fixing the user's observed accumulation at old head poses. The visible texture
@@ -76,7 +78,7 @@ gap is now 80 logical units after the user reported overlap at 28. Panel followi
 was accepted in principle but softened to a critically damped spring for slower
 acceleration, then a 4-degree angular deadband with no hard catch-up clamp.
 The user accepted that follow feel. Translation now follows the current head
-exactly, keeping the panel centre one metre away; only horizontal/vertical
+exactly, keeping the panel centre at its configured distance; only horizontal/vertical
 angles follow smoothly, with roll removed. Weapon prompts now sit 220 logical
 units above the health bar. These latest changes await worn acceptance.
 Frame-rate independence and pose-reset behavior have offline coverage.
@@ -89,6 +91,11 @@ check the original Custom HUD license/permission terms: determine whether we
 can reuse/bundle it, what attribution is required, or make Custom HUD an optional
 dependency for editing. Do not assume attribution alone grants permission.
 Also add proper VR mod-menu options, configurable action/key bindings, and
+three separate HUD sliders: panel size (uniform width/height scale), distance
+from the player (metres), and internal UI scale (size of objects inside the
+panel). Preserve saved layouts and make the distinction clear in option labels.
+Changing distance alone changes angular size; users can adjust panel size to
+compensate, as in the current doubled-distance/doubled-size setup. Also add
 controller button glyphs/prompts instead of the current mouse/keyboard prompts.
 Entering desktop layout editing must display a clear message inside VR:
 "Use the desktop view to edit your HUD layout." Keep that instruction visible

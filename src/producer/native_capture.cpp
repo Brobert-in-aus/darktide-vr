@@ -12665,6 +12665,14 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
         diagnostic_redirect_count.fetch_add(1, std::memory_order_relaxed) + 1;
     const auto trace_redirect = diagnostic_id <= 2;
     const auto source_description = original_resource->GetDesc();
+    // Reject the offscreen HUD canvas before it can seed an alias stream or
+    // recreate the shared menu surface. The HUD uses the same UI shaders.
+    if (!darktidevr::core::menu_capture_extent_matches(
+            source_description.Width, source_description.Height,
+            current_presentation_source_width.load(std::memory_order_relaxed),
+            current_presentation_source_height.load(std::memory_order_relaxed))) {
+      return {};
+    }
     static std::atomic<std::uint64_t> candidate_log_count{};
     const auto candidate_id =
         candidate_log_count.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -12747,15 +12755,6 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
           static_cast<unsigned long long>(metadata.pixel_shader), vertex_count,
           instance_count, metadata.blend_enabled ? 1U : 0U,
           alias_stream ? "alias" : "after_alias");
-    }
-    const auto presentation_sized_draw =
-        scoped_menu_draw || is_vendor_menu_widget_shader_pair(metadata);
-    if (presentation_sized_draw &&
-        (source_description.Width !=
-             current_presentation_source_width.load(std::memory_order_relaxed) ||
-         source_description.Height != current_presentation_source_height.load(
-                                          std::memory_order_relaxed))) {
-      return {};
     }
     if (ensure_menu_surface(device.Get(), source_description,
                             metadata.render_target_format) != 0 ||

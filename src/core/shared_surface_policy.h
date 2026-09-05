@@ -4,6 +4,16 @@
 
 namespace darktidevr::core {
 
+// Offscreen HUD layers use the same widget shaders and typeless RTV aliases
+// as menus. Only the declared presentation canvas may feed direct menu capture.
+constexpr bool menu_capture_extent_matches(
+    std::uint64_t width, std::uint32_t height,
+    std::uint32_t presentation_width,
+    std::uint32_t presentation_height) noexcept {
+  return presentation_width != 0 && presentation_height != 0 &&
+         width == presentation_width && height == presentation_height;
+}
+
 // Shared D3D12 textures are a one-slot mailbox. The producer may reuse the
 // slot only after the consumer has acknowledged the last published value.
 // UINT64_MAX is D3D12's device-removed sentinel, never a valid acknowledgement.

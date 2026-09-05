@@ -1276,3 +1276,49 @@ intentional hide controls and the user's saved layout. The tag popup remains a
 separate open issue: code inspection shows both tag-target hooks fall back to
 stock look-based targeting when right-hand aim is unavailable; no change to that
 behavior has been deployed in this follow-up.
+
+## Queued distance and pickup replay changes
+
+User requested next-launch HUD distance doubled with similar angular size.
+Distance is now 2 m, height 1.62 m after scale, and the binocular width cap and
+fallback both double. Eye separation remains physical, so binocular-fit width
+can vary slightly from exactly double. Editor fallback aspect and object scale
+2.08 stay unchanged, as do saved layouts. No deployment or restart performed.
+
+User also reports pickup markers appear only in the left eye. Inspection found
+the replay contexts retained UIHud's shared mutable render-settings table;
+subsequent HUD/editor passes overwrite scale, alpha and retained mode. Snapshot
+each world-marker, interaction and tag pass's settings, and reject stale
+interaction contexts. This is a candidate fix awaiting next-launch both-eye
+pickup verification, not a visually confirmed resolution.
+
+Validation: tools/stereo/test-darktide-lua-source.ps1 passed all 25 chunks.
+Release CTest projection_math, marker_gui and hud_panel passed (3/3).
+Regression coverage checks two-metre geometry and replay settings surviving
+subsequent fixed-HUD mutations.
+
+## View Operative crash report
+
+While the above edits were still undeployed, user pressed E at View Operative
+in Psykhanium, saw a brief black square, then crashed. Console evidence at
+06:59:05 UTC shows inventory_background_view opening in world-space-menu mode,
+then ui_inventory viewport creation and DXGI_ERROR_DEVICE_HUNG. DRED/Aftermath
+reports a GPU page fault on a 2496x2688 RGBA8 render target, not destroyed.
+No Lua exception identifies a cause. Investigate menu capture/transition;
+do not attribute this to the queued HUD distance or marker changes.
+
+Native menu-resource log narrows the failure: frame 55205 admitted the HUD's
+2496x1404 typeless target as an Options alias, replaced the shared 2496x2688
+menu surface with it, then replaced it again with 2496x2688 in the same frame
+(generations 4 and 5). The direct-menu extent check previously covered only
+scoped/vendor draws. It now applies before alias classification to all direct
+menu draws, preventing a smaller offscreen HUD canvas from seeding the menu
+stream or resizing the mailbox. This addresses the observed routing error;
+View Operative still requires live confirmation before calling the crash fixed.
+Release builds of darktidevr_native_capture and darktidevr-shared-eye-surfaces-tests
+passed. The shared_eye_surfaces CTest passed, including mismatched HUD/desktop
+canvas rejection and valid full-size menu admission. No deployment/relaunch yet.
+
+User requested future mod-menu sliders documented in REMAINING-DEVELOPMENT:
+uniform HUD panel size, distance in metres, and internal UI object scale.
+These are separate controls; preserve saved Custom HUD layout overrides.
