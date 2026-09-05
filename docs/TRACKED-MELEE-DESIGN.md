@@ -270,3 +270,18 @@ required: a stationary pose must still overlap on subsequent simulation ticks.
 The integration fixture combines this owner, contact collection and cooldowns.
 This remains offline; network prediction reconciliation and the engine physics/
 damage adapter are not implemented by this guard.
+
+`darktidevr_melee_probe.lua` is the first non-damaging engine overlap adapter.
+It consumes the resolved volume and an already validated stock-origin pose,
+rotates/applies the centre offset once, passes explicit filter/rewind arguments
+and copies every returned actor before query-list reuse. Box and sphere argument
+forms follow inspected stock immediate_overlap calls. It requests both static
+and dynamic candidates so the caller can retain obstruction processing.
+
+The adapter is not imported or called by the live mod. Its mocked engine fixture
+checks a rotated box offset, sphere radius, 100 copied candidates, missing result
+entries and rejection before physics for invalid geometry. It cannot establish
+the engine's result capacity: capacity_verified remains false. Overlap returns
+actors, not contact points/normals; do not fabricate a manifold or pass these raw
+candidates directly to damage. Actual hit-zone/contact resolution, wall/shield
+occlusion, calibrated origin and worn diagnostic visualization remain next.

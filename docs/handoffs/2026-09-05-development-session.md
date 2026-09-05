@@ -769,3 +769,11 @@ injects a binding failure after target creation. The source invariant initially
 failed because it required the former direct binding-call spelling; updated it
 to the protected call while retaining the completed-copy target requirement.
 CTest hud_panel/compiler/invariants then passed 3/3. Still offline and undeployed.
+
+Added the unimported, non-damaging melee overlap adapter using stock
+PhysicsWorld.immediate_overlap box/sphere forms, explicit filter/rewind inputs
+and a once-applied rotated volume offset. It snapshots all raw actor candidates;
+no contact normals, damage eligibility or proven engine capacity are inferred.
+The mocked fixture checks 100 candidates, query reuse, invalid geometry and an
+incomplete result list. Windows CTest melee_probe/compiler/invariants passed
+3/3 (22 Lua chunks). No headset use, deployment or live collision validation.

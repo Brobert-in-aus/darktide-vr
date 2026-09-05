@@ -10,14 +10,15 @@ Hand-directed button attacks and left-hand placement are accepted. Implement
 physical contact according to [the selected rules](TRACKED-MELEE-DESIGN.md).
 The offline foundations cover volume dimensions, rotational query planning,
 contact deduplication, effective timing, per-target cooldowns and simulation
-ownership. They do not yet query engine physics or apply damage.
+ownership. A non-damaging overlap adapter now has offline geometry/result tests;
+it is not yet hooked into engine simulation and no physical damage is applied.
 
 Next integration work:
 
 - Resolve the wielded weapon's explicit normal/heavy action routes and effective
   timing through its live action context; reject unsupported routes visibly in
   diagnostics rather than substituting guessed damage or timing.
-- Build the non-damaging overlap/sweep adapter, preserving shield/world blocking
+- Integrate the non-damaging overlap adapter and add sweeps, preserving shield/world blocking
   and reporting saturated queries. Calibrate the grip-to-volume transform with
   a visible overlay when worn testing resumes.
 - Introduce a dedicated stock damage context with explicit proc lifetimes and
