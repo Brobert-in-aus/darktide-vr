@@ -802,3 +802,11 @@ dimensions and overflow, while the SDK-reference fixture compares GUIDs,
 structure versions, buffer types and lifecycle values. Both Windows Release
 test targets built with warnings as errors and CTest passed 2/2. The native live
 path does not yet consume or submit these prepared tags.
+
+Extended the offline melee probe with fixed-orientation box/sphere sweeps,
+explicit capacity/rewind, immediate contact-scalar copying and saturation
+reporting. Stock ActionSweep provides the box form; HitScan demonstrates sphere
+rewind arguments. The fixture checks transformed centres, retained contacts
+after query reuse, saturated versus empty results and invalid limits. CTest
+melee_probe/compiler/invariants passed 3/3. Rotational orchestration and stock
+stationary hilt-to-tip contact resolution remain separate integration work.

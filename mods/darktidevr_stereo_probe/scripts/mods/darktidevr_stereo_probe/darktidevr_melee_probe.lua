@@ -59,4 +59,57 @@ function Probe.overlap(world, volume, origin, rotation, filter, rewind_ms)
     return {actors=candidates, actor_count=count, capacity_verified=false}
 end
 
+-- One linear query at a supplied orientation. The rotational planner owns
+-- subdivision; callers must sample both orientations and current overlap as
+-- appropriate. This function does not claim to cover an entire rotating blade.
+function Probe.sweep(world, volume, start_origin, end_origin, rotation,
+        filter, rewind_ms, max_hits)
+    if world == nil or start_origin == nil or end_origin == nil or rotation == nil or
+            type(volume) ~= "table" or not triple(volume.offset, false) or
+            type(filter) ~= "string" or filter == "" or
+            not finite(rewind_ms) or rewind_ms < 0 or not finite(max_hits) or
+            max_hits < 1 or max_hits ~= math.floor(max_hits) or max_hits > 2147483647 then
+        return nil, "invalid_context"
+    end
+    if volume.shape == "oobb" then
+        if not triple(volume.half_extents, true) then return nil, "invalid_volume" end
+    elseif volume.shape == "sphere" then
+        if not finite(volume.radius) or volume.radius <= 0 then return nil, "invalid_volume" end
+    else
+        return nil, "unsupported_shape"
+    end
+    local offset = Quaternion.rotate(rotation,
+        Vector3(volume.offset[1],volume.offset[2],volume.offset[3]))
+    local start_center, end_center = start_origin + offset, end_origin + offset
+    local results
+    if volume.shape == "oobb" then
+        results = PhysicsWorld.linear_obb_sweep(world, start_center, end_center,
+            Vector3(volume.half_extents[1],volume.half_extents[2],volume.half_extents[3]),
+            rotation, max_hits, "collision_filter", filter, "rewind_ms", rewind_ms,
+            "report_initial_overlap")
+    else
+        results = PhysicsWorld.linear_sphere_sweep(world, start_center, end_center,
+            volume.radius, max_hits, "collision_filter", filter, "rewind_ms", rewind_ms,
+            "report_initial_overlap")
+    end
+    if results ~= nil and type(results) ~= "table" then return nil, "invalid_query_result" end
+    local count = results and #results or 0
+    local contacts = {}
+    for i=1,count do
+        local hit = results[i]
+        local position, normal = hit and hit.position, hit and hit.normal
+        if not hit or hit.actor == nil or not position or not normal or
+                not finite(position.x) or not finite(position.y) or not finite(position.z) or
+                not finite(normal.x) or not finite(normal.y) or not finite(normal.z) or
+                not finite(hit.distance) then
+            return nil, "invalid_query_result"
+        end
+        contacts[i] = {actor=hit.actor, distance=hit.distance,
+            position={x=position.x,y=position.y,z=position.z},
+            normal={x=normal.x,y=normal.y,z=normal.z}}
+    end
+    return {contacts=contacts, count=count, requested_limit=max_hits,
+        saturated=count >= max_hits, capacity_verified=false}
+end
+
 return Probe

@@ -285,3 +285,13 @@ the engine's result capacity: capacity_verified remains false. Overlap returns
 actors, not contact points/normals; do not fabricate a manifold or pass these raw
 candidates directly to damage. Actual hit-zone/contact resolution, wall/shield
 occlusion, calibrated origin and worn diagnostic visualization remain next.
+
+The same probe now supports a single fixed-orientation box/sphere linear sweep
+with explicit result capacity and rewind time. It copies position, normal and
+distance scalars immediately, flags a full result buffer as saturated and keeps
+capacity_verified false. It does not perform rotational subdivision itself;
+integrate it with the planner and preserve current overlap. A full sweep result
+is still a raw contact until liveness, shield/world blocking and stock hit-zone
+priority are resolved. The stock box pipeline also sweeps a thin cross-section
+from hilt to tip, which supplies contact data even without hilt movement; a
+zero-length linear query alone must not be assumed to replace that behavior.
