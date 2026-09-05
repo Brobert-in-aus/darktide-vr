@@ -1039,3 +1039,8 @@ sample produces a visible magenta diagnostic in the top-left while the world
 panel is blank. Restored the world render-target material's stock
 GUI_RENDER_PASS_LAYER variant: removing it earlier was based on an unproven
 assumption before the backface issue was known. Lua/HUD tests passed.
+
+1439946 sampling variant still has no panel contents. Stock ScannerDisplayView
+uses overlay_offscreen for its UI-to-world capture world (and no visible terminal
+sample). Changed dedicated HUD viewport from overlay to overlay_offscreen to
+match that offscreen use case. LuaJIT gate passed; runtime result pending.

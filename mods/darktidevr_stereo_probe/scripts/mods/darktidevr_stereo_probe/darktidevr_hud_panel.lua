@@ -214,7 +214,7 @@ local function create_resources(mod, owner, source_renderer, world)
         state.render_viewport_name = name .. "_viewport"
         local viewport_ok, viewport = pcall(
             Managers.ui.create_viewport, Managers.ui, render_world,
-            state.render_viewport_name, "overlay", 1)
+            state.render_viewport_name, "overlay_offscreen", 1)
         if not viewport_ok or not viewport then
             mod:error("DARKTIDEVR_HUD render_viewport_failed error=%s", tostring(viewport))
             destroy_resources()
