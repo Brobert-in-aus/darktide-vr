@@ -6,7 +6,35 @@ local HudPanel = {}
 HudPanel.height = 1.125 * 0.9
 HudPanel.distance = 1
 HudPanel.scale = 0.8
-HudPanel.object_scale = 2
+HudPanel.object_scale = 1.6
+
+-- Store scalar poses across frames: engine Vector3/Quaternion temporaries
+-- cannot safely survive the frame that allocated them.
+function HudPanel.follow_pose(previous, target, t)
+    target.t = t
+    if not previous or t - previous.t > 0.5 or t < previous.t then return target end
+    if t == previous.t then return previous end
+    local dx,dy,dz = target.x-previous.x,target.y-previous.y,target.z-previous.z
+    if dx*dx+dy*dy+dz*dz > 0.25 then return target end
+    local dt = t-previous.t
+    local position_alpha = 1-math.exp(-dt/0.08)
+    local rotation_alpha = 1-math.exp(-dt/0.12)
+    local dot = previous.qx*target.qx+previous.qy*target.qy+
+        previous.qz*target.qz+previous.qw*target.qw
+    local sign = dot < 0 and -1 or 1
+    -- Keep rapid turns within the panel's binocular safety margin.
+    local angle = 2*math.acos(math.min(1,math.abs(dot)))
+    if angle > math.rad(6) then
+        rotation_alpha = math.max(rotation_alpha,1-math.rad(6)/angle)
+    end
+    local a,b = 1-rotation_alpha,rotation_alpha*sign
+    local qx,qy,qz,qw = previous.qx*a+target.qx*b,previous.qy*a+target.qy*b,
+        previous.qz*a+target.qz*b,previous.qw*a+target.qw*b
+    local length = math.sqrt(qx*qx+qy*qy+qz*qz+qw*qw)
+    return {x=previous.x+dx*position_alpha,y=previous.y+dy*position_alpha,
+        z=previous.z+dz*position_alpha,qx=qx/length,qy=qy/length,
+        qz=qz/length,qw=qw/length,t=t}
+end
 
 local function pack(...)
     return {n=select("#", ...), ...}
@@ -44,6 +72,7 @@ local state = {
     flag_last_poll_t = -math.huge,
     update_routes = {},
     updating_owner = nil,
+    follow_pose = nil,
 }
 
 -- Scene-depth, projected-world and eye-edge elements remain on the stock
@@ -188,6 +217,7 @@ local function route_fixed_updates(owner)
 end
 
 local function destroy_resources()
+    state.follow_pose = nil
     for _, record in ipairs(state.update_routes) do
         if record.element[record.name] == record.wrapper then
             record.element[record.name] = record.own
@@ -593,6 +623,15 @@ function HudPanel.draw(world, position, rotation, overlap_width)
     if not state.world_gui or not state.world_material or
             not state.display_target or not state.display_ready then
         return
+    end
+    local now = Managers and Managers.time and Managers.time:time("main")
+    if now then
+        local qx,qy,qz,qw = Quaternion.to_elements(rotation)
+        state.follow_pose = HudPanel.follow_pose(state.follow_pose,
+            {x=position.x,y=position.y,z=position.z,qx=qx,qy=qy,qz=qz,qw=qw},now)
+        local pose = state.follow_pose
+        position = Vector3(pose.x,pose.y,pose.z)
+        rotation = Quaternion.from_elements(pose.qx,pose.qy,pose.qz,pose.qw)
     end
     local forward = Quaternion.forward(rotation)
     local tm = Matrix4x4.identity()

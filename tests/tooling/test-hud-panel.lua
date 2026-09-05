@@ -135,7 +135,7 @@ Material.set_resource = function() end
 local routed_calls = 0
 local function fixed_update(_, _, _, target, settings)
     assert(target == state.resource_renderer, "fixed update used stock renderer")
-    assert(settings.scale == 2.6 and math.abs(settings.inverse_scale - 1/2.6) < 1e-6)
+    assert(math.abs(settings.scale - 2.08) < 1e-6 and math.abs(settings.inverse_scale - 1/2.08) < 1e-6)
     routed_calls = routed_calls + 1
     if failure == "fixed_update" then error("injected fixed update") end
     return "updated", nil, 3
@@ -228,3 +228,20 @@ assert(bitmap_drawn)
 panel.set_enabled(false)
 assert(released == 32, "borrowed gameplay renderer/world were destroyed")
 print("HUD error restoration, stereo authoring and idempotent resource cleanup passed")
+local function pose(x,angle)
+    return {x=x,y=0,z=0,qx=0,qy=0,qz=math.sin(angle/2),qw=math.cos(angle/2)}
+end
+local initial = panel.follow_pose(nil,pose(0,0),0)
+local followed = panel.follow_pose(initial,pose(.1,math.rad(4)),1/60)
+assert(followed.x > 0 and followed.x < .1 and followed.qz > 0 and followed.qz < math.sin(math.rad(2)))
+assert(panel.follow_pose(followed,pose(.2,0),1/60) == followed, "second eye advanced follow")
+local reset = panel.follow_pose(followed,pose(10,0),2/60)
+assert(reset.x == 10, "teleport must reset follow")
+local same_rotation = pose(0,0)
+same_rotation.qw = -1
+assert(math.abs(panel.follow_pose(initial,same_rotation,1/60).qw) == 1,
+    "equivalent quaternion signs must not rotate the panel")
+local sixty,one_twenty = initial,initial
+for i=1,60 do sixty=panel.follow_pose(sixty,pose(.1,0),i/60) end
+for i=1,120 do one_twenty=panel.follow_pose(one_twenty,pose(.1,0),i/120) end
+assert(math.abs(sixty.x-one_twenty.x) < 1e-9, "follow depends on frame rate")

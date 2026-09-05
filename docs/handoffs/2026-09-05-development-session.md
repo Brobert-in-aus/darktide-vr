@@ -1083,3 +1083,12 @@ replay. Candidate selects from hand smart-targeting data and redraws the prompt
 beside its marker for each eye. Forced tag scans and interaction checks receive
 scoped local hand poses; other players and shared camera components stay intact.
 LuaJIT gate, HUD, marker GUI and melee-aim fixtures passed. Live check pending.
+
+User accepted the larger HUD direction but requested 80% of the doubled object
+size because left/right groups overlap: object_scale is now 1.6, panel geometry
+unchanged. Added temporal panel following (80 ms position, 120 ms orientation),
+with 6-degree rotational catch-up bound, scalar cross-frame storage, and reset
+on world/resource changes, teleport or a long time gap. It advances only once
+per main-clock frame. Offline fixture covers jitter attenuation, equivalent
+quaternion signs, same-frame reuse, teleport reset and 60/120 Hz consistency.
+LuaJIT 25-chunk gate and HUD fixture pass. Worn stabilization acceptance pending.

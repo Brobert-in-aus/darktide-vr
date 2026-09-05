@@ -61,7 +61,7 @@ through stable frames. Offline tests cover these transitions and partial setup
 cleanup. Binding the capture target as the viewport backbuffer now produces
 visible HUD contents, confirmed by shared-eye readback and the user.
 
-Next: verify upright presentation and per-frame target clearing; then make
+Next: verify hand-selected stereo tag prompts and transitions; then make
 the fixed status layout configurable without moving world/depth markers onto
 the panel. The panel remains one metre away; its height is now 0.81 m and its
 width is 80% of a binocular-frustum fit (about 1.18 m on this headset). The user
@@ -69,9 +69,12 @@ requested these reductions; both-eye readback confirms the outline fits, while
 worn comfort still needs acceptance. World GUI draws now expire each frame,
 fixing the user's observed accumulation at old head poses. The visible texture
 initially arrived vertically inverted and retained old pixels. Both corrections
-are under live verification, so the prototype stays disabled by default.
-Loading, menus and transitions need dedicated
-checks when the headset is available again.
+now pass shared-eye visual checks. At the user's request, fixed HUD objects use
+2x effective scale inside the same panel; larger objects are visible in readback.
+Retained update/visibility operations now route to their capture renderer.
+Smart-tag popups have a candidate hand-target selection and per-eye marker-relative
+draw path; worn acceptance remains pending. The prototype stays disabled by
+default while loading, menus and transitions receive dedicated checks.
 
 ## DLSS
 
