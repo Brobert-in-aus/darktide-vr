@@ -47,6 +47,13 @@ ownership: runtime input must never reactivate the game in the background.
 
 ## Acceptance still pending
 
+The 6 September [ranged aiming candidate](RANGED-WEAPON-AUDIT.md) hooks the
+concrete hitscan, pellet, projectile and flame action classes before stock shot
+preparation, preserving recoil/spread and simultaneous grouping. Flame damage
+and suppression queries also use hand pose. Offline regressions and fresh live
+initialization pass; actual hand-versus-head firing alignment awaits worn checks.
+It retains private-range authoring and does not enable mission-wide combat.
+
 September 5 live input validation exposed dead laser clicks and focus stealing,
 then delayed activation of a previously missed click. A candidate now preserves
 click arming across heartbeats, expires missed clicks after their UI frame and

@@ -27,6 +27,12 @@ that physical damage integration is complete.
 
 ## Ranged weapon aiming backlog
 
+The [source audit and candidate](RANGED-WEAPON-AUDIT.md) identifies copied-class
+hook bypass, post-increment simultaneous grouping and independent flame query
+routes. The candidate directly hooks the five shooting classes before stock
+preparation and passes offline regressions. Live firing acceptance is pending;
+throwing specials and non-staff grenade abilities require separate coverage.
+
 User reports that ranged weapons other than the force staff do not fire along
 the intended aim. Perform a pass across every class and ranged weapon family,
 including every firing mode: hip fire, aimed fire, charged/released attacks,

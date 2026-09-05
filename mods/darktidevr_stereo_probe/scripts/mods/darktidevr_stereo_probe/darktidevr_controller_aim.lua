@@ -69,19 +69,6 @@ local function is_local_visual_unit(extension, unit)
     return false
 end
 
-local function inverse(rotation)
-    local x, y, z, w = Quaternion.to_elements(rotation)
-    local length_squared = x * x + y * y + z * z + w * w
-    if length_squared <= 0.0000001 then
-        return Quaternion.identity()
-    end
-    return Quaternion.from_elements(
-        -x / length_squared,
-        -y / length_squared,
-        -z / length_squared,
-        w / length_squared)
-end
-
 local function has_keyword(keywords, wanted)
     if type(keywords) ~= "table" then
         return false
@@ -405,11 +392,8 @@ function controller_aim.install(mod, presentation, state)
         local source_name
         local fx = action._action_settings and action._action_settings.fx
         if fx and fx.alternate_muzzle_flashes then
-            -- _prepare_shooting increments num_shots_fired before this safe
-            -- hook runs. Reconstruct the source selected for the shot that was
-            -- just prepared instead of accidentally choosing the next barrel.
-            local prepared_index = math.max(
-                0, action_component.num_shots_fired - 1)
+            -- Called before stock preparation advances the shot counter.
+            local prepared_index = math.max(0, action_component.num_shots_fired)
             source_name = prepared_index % 2 == 0 and
                 action._muzzle_fx_source_name or
                 action._muzzle_fx_source_secondary_name
@@ -471,82 +455,75 @@ function controller_aim.install(mod, presentation, state)
                 controller_aim.network_writes + 1
         end)
 
-    local ActionShoot = require(
-        "scripts/extension_systems/weapon/actions/action_shoot")
-    mod:hook_safe(
-        ActionShoot,
-        "_prepare_shooting",
-        function(self)
-            if not is_local_unit(self._player_unit) then
-                return
-            end
-            local aim_position, aim_rotation = controller_aim.target()
-            local component = self._first_person_component
-            local action = self._action_component
-            if not aim_rotation or not component or not action or
-                    not component.rotation or not action.shooting_rotation then
-                return
-            end
+    function controller_aim.with_ranged_pose(action, func, ...)
+        if not is_local_unit(action._player_unit) then
+            return func(action, ...)
+        end
+        local position, rotation = controller_aim.target("right")
+        if not position or not rotation or not action._first_person_component then
+            return func(action, ...)
+        end
+        local muzzle = controller_aim.third_person_muzzle(action)
+        if muzzle then
+            rotation = controller_aim.converged_rotation(muzzle, position, rotation)
+            position = muzzle
+            controller_aim.muzzle_origin_writes = controller_aim.muzzle_origin_writes + 1
+        else
+            controller_aim.muzzle_origin_fallbacks = controller_aim.muzzle_origin_fallbacks + 1
+        end
+        return with_first_person_pose(action, position, rotation, func, ...)
+    end
 
-            -- ActionShoot only authors shooting_position/rotation for the
-            -- first projectile in a simultaneous group. Later calls reuse the
-            -- already prepared pair. Rebasing those calls again would treat
-            -- our controller-authored rotation as a stock camera offset and
-            -- compound the controller transform across the group.
-            local configurations = self._base_fire_configurations
-            local first_projectile = self._multi_fire_mode ~=
-                    MultiFireModes.simultaneous or
+    function controller_aim.prepare_ranged_shot(func, action, ...)
+        local component = action._action_component
+        local before = component and component.num_shots_fired
+        -- Supply the hand pose before stock recoil/sway/assist/spread and muzzle
+        -- FX run. Stock code owns simultaneous grouping and writes the prepared
+        -- pair once; never rebase that pair after its shot counter advances.
+        local results = packed(controller_aim.with_ranged_pose(action, func, ...))
+        if is_local_unit(action._player_unit) and controller_aim.target("right") and
+                component and type(before) == "number" then
+            local configurations = action._base_fire_configurations
+            local first = action._multi_fire_mode ~= MultiFireModes.simultaneous or
                 configurations and #configurations > 0 and
-                (action.num_shots_fired + 1) % #configurations == 1
-            if not first_projectile then
-                controller_aim.reused_simultaneous_shots =
-                    controller_aim.reused_simultaneous_shots + 1
-                return
-            end
-
-            -- Darktide has already applied recoil, sway, aim assist and spread
-            -- to the stock camera rotation. Preserve that complete local
-            -- offset, then move its base from the HMD to the controller aim.
-            local authored_offset = Quaternion.multiply(
-                inverse(component.rotation), action.shooting_rotation)
-            local stock_position = action.shooting_position
-            local muzzle_position = controller_aim.third_person_muzzle(self)
-            if muzzle_position then
-                action.shooting_position = muzzle_position
-                aim_rotation = controller_aim.converged_rotation(
-                    muzzle_position, aim_position, aim_rotation)
-                controller_aim.muzzle_origin_writes =
-                    controller_aim.muzzle_origin_writes + 1
+                (before + 1) % #configurations == 1
+            if first then
+                controller_aim.authored_shots = controller_aim.authored_shots + 1
             else
-                controller_aim.muzzle_origin_fallbacks =
-                    controller_aim.muzzle_origin_fallbacks + 1
+                controller_aim.reused_simultaneous_shots = controller_aim.reused_simultaneous_shots + 1
             end
-            action.shooting_rotation = Quaternion.multiply(
-                aim_rotation, authored_offset)
-            if aim_position and stock_position then
-                controller_aim.last_origin_offset = Vector3.distance(
-                    aim_position, stock_position)
-            end
-            controller_aim.authored_shots =
-                controller_aim.authored_shots + 1
-            if state.last_sequence >=
-                    controller_aim.last_log_sequence + 120 then
-                local direction = Quaternion.forward(action.shooting_rotation)
+            if controller_aim.authored_shots <= 4 or
+                    state.last_sequence >= controller_aim.last_log_sequence + 120 then
                 controller_aim.last_log_sequence = state.last_sequence
-                mod:info(
-                    "DARKTIDEVR_WEAPON_AIM authored sequence=%d shots=%d reused=%d network_writes=%d muzzle_writes=%d muzzle_fallbacks=%d stock_origin_offset_m=%.4f direction=%.4f,%.4f,%.4f",
-                    state.last_sequence,
-                    controller_aim.authored_shots,
-                    controller_aim.reused_simultaneous_shots,
-                    controller_aim.network_writes,
-                    controller_aim.muzzle_origin_writes,
-                    controller_aim.muzzle_origin_fallbacks,
-                    controller_aim.last_origin_offset,
-                    Vector3.x(direction),
-                    Vector3.y(direction),
-                    Vector3.z(direction))
+                mod:info("DARKTIDEVR_WEAPON_AIM ranged class=%s sequence=%d shots=%d reused=%d",
+                    tostring(action.__class_name), state.last_sequence,
+                    controller_aim.authored_shots, controller_aim.reused_simultaneous_shots)
             end
-        end)
+        end
+        return unpack(results, 1, results.n)
+    end
+
+    -- Stingray class() copies base members. Hook each concrete shooting class:
+    -- replacing ActionShoot after derived classes exist cannot update their
+    -- copied _prepare_shooting members. Load all classes before installing hooks.
+    local ranged_classes = {}
+    for _, name in ipairs({"action_shoot_hit_scan", "action_shoot_pellets",
+            "action_shoot_projectile", "action_flamer_gas", "action_flamer_gas_burst"}) do
+        ranged_classes[#ranged_classes + 1] = require(
+            "scripts/extension_systems/weapon/actions/" .. name)
+    end
+    for _, class in ipairs(ranged_classes) do
+        mod:hook(class, "_prepare_shooting", controller_aim.prepare_ranged_shot)
+    end
+    for index = 4, 5 do
+        -- Flame damage and suppression query the camera directly, independently
+        -- of the prepared shot. Both must consume the same hand-authored pose.
+        for _, method in ipairs({"_acquire_targets", "_acquire_suppressed_units"}) do
+            mod:hook(ranged_classes[index], method, function(func, self, ...)
+                return controller_aim.with_ranged_pose(self, func, ...)
+            end)
+        end
+    end
 
     local ActionSpawnProjectile = require(
         "scripts/extension_systems/weapon/actions/action_spawn_projectile")
