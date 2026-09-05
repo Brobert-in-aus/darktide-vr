@@ -8,6 +8,26 @@ void test_menu_pointer_input() {
   SharedPresentationState menu{};
   menu.mode = SharedPresentationMode::flat_interactive;
   menu.transport_generation = 1;
+  MenuPrimaryInputState quick_primary;
+  quick_primary.update(menu,true,true,false,0.0);
+  quick_primary.update(menu,true,true,false,0.249);
+  if (quick_primary.armed()) throw std::runtime_error("Release did not settle before arming");
+  quick_primary.update(menu,true,true,false,0.25);
+  if (!quick_primary.update(menu,true,true,true,0.26)) {
+    throw std::runtime_error("Fixed menu-age gate discarded a fresh settled click");
+  }
+  MenuPrimaryInputState inherited_primary;
+  inherited_primary.update(menu,true,true,true,0.0);
+  if (inherited_primary.update(menu,true,true,true,2.0) || inherited_primary.armed()) {
+    throw std::runtime_error("Held entry click armed without release");
+  }
+  inherited_primary.update(menu,true,true,false,2.1);
+  inherited_primary.update(menu,true,true,true,2.2); // Transient release is insufficient.
+  inherited_primary.update(menu,true,true,false,2.3);
+  inherited_primary.update(menu,true,true,false,2.56);
+  if (!inherited_primary.update(menu,true,true,true,2.57)) {
+    throw std::runtime_error("Fresh release failed to rearm an inherited hold");
+  }
   // Reproduce the live publisher heartbeat: sequence changes faster than
   // the activation safety interval. It must not prevent a released trigger
   // from arming, even if the ray briefly leaves the panel.

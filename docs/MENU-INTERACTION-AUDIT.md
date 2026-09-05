@@ -183,17 +183,27 @@ A passive startup trace now distinguishes the stock null service, profile sync,
 character sync, disabled view and Start readiness. It logs state changes only,
 at most 16 records in the first ten seconds of a view instance. A live launch
 measured `stock_null_service` at elapsed 0.000 and full list/Start readiness at
-0.572 seconds. This is consistent with the report, but no controller press was
-reproduced during that interval. No extra one-second VR timer was found.
+0.572 seconds. No controller press was reproduced during that interval.
+The initial conclusion that no extra VR timer existed was incomplete: the
+subsequent native-input audit found a separate 1.25 s minimum menu age in
+`MenuPrimaryInputState`, in addition to its 0.25 s released-input interval.
+The fixed age requirement is now removed. A settled release still arms the
+next fresh press, including after mode changes/reconnects, while an inherited
+held trigger never clicks merely because the menu appeared.
 
 The adapter also records why an observed XR press is rejected (view ownership
 change, required release, outside surface, unavailable sample). It retains
 same-frame expiration and never replays a missed click. Backend and transition
-gates remain intact; this is a diagnosed startup interval, not a claimed input
-latency fix. A later ignored click with the view ready remains an open bug and
-can be distinguished with these records.
+gates remain intact. This removes the native 1.25 s lockout; it does not remove
+stock synchronization or transition waits. Worn early-click acceptance remains
+pending and can be distinguished with these records.
 
 Validation: 27 LuaJIT chunks pass; the 72-view menu fixture passes, including
 separate list/Start gates and bounded diagnostics. Live evidence:
 `artifacts/diagnostics/dlss-live-20260906/character-select-readiness.txt` and
 `artifacts/unattended/character-select-readiness-20260906.log`.
+The follow-up native Release build and `panel_pointer`, `gameplay_input`,
+`presentation_policy`, and `menu_input` tests pass. New regression cases accept
+a fresh click at 0.26 s while rejecting inherited holds and brief release
+transients. The first full build encountered the running harness's file lock;
+after stopping the live processes, the rebuild completed successfully.

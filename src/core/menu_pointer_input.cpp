@@ -21,7 +21,6 @@ bool MenuPrimaryInputState::update(
     down_ = down;
     mode_ = presentation.mode;
     generation_ = presentation.transport_generation;
-    activation_time_ = time_seconds;
     release_time_.reset();
   }
   if (!armed_) {
@@ -29,8 +28,9 @@ bool MenuPrimaryInputState::update(
       release_time_.reset();
     } else {
       if (!release_time_) release_time_ = time_seconds;
-      armed_ = time_seconds - activation_time_ >= 1.25 &&
-               time_seconds - *release_time_ >= 0.25;
+      // A settled release prevents inherited trigger/A holds from clicking.
+      // A separate menu-age delay only discards deliberate fresh presses.
+      armed_ = time_seconds - *release_time_ >= 0.25;
     }
   }
   const bool pressed = armed_ && pointer_hit && down && !down_;

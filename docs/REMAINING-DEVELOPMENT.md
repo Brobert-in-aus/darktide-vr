@@ -85,7 +85,8 @@ highlighting works but clicks appear unconsumed for about one second. Investigat
 view enter/input-readiness gating and pointer click delivery against that precise
 transition. Do not queue the missed click for later replay. A passive live trace
 now measures 0.572 seconds of the stock transition null service before list and
-Start readiness. No additional one-second VR gate was found; see the
+Start readiness. A later native audit found and removed a separate 1.25-second
+menu-age lockout while retaining release arming; see the
 [diagnosis and bounded logging](MENU-INTERACTION-AUDIT.md). A controller click
 during this interval was not reproduced, and any ignored click after readiness
 remains open.
@@ -146,10 +147,11 @@ Custom HUD item positions or world markers. Live desktop input and menu reopen
 were checked; worn acceptance of non-default values remains pending.
 Add configurable action/key bindings and controller button glyphs/prompts
 instead of the current mouse/keyboard prompts.
-Review the complete VR input layout before finalizing those bindings. User
-reports that the right thumbstick and its click (R3) are unused; audit actual
-action usage and use the available controls to make the full layout more
-sensible. Review gameplay, weapon specials, movement, interactions and menu
+The [input revision audit](INPUT-REVISION-AUDIT.md) maps current controls: right
+stick scrolls menus but has no gameplay route; R3 produces a native tag bit
+which the Lua adapter does not forward. Complete these missing routes and use
+the available controls to make the full layout more sensible. Review gameplay,
+weapon specials, movement, interactions and menu
 contexts together, including hold/toggle behavior and conflicting actions.
 Implement remapping and matching controller prompts with the revised defaults.
 This is backlog work; no bindings changed in response to this feedback.

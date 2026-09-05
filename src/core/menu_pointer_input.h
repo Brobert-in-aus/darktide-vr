@@ -22,7 +22,6 @@ class MenuPrimaryInputState {
   bool down_{};
   SharedPresentationMode mode_{};
   std::uint64_t generation_{};
-  double activation_time_{};
   std::optional<double> release_time_;
 };
 
