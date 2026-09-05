@@ -149,4 +149,15 @@ assert(fallback_fixed == 1 and not panel.enabled() and not state.display_ready)
 assert(next_owner._elements_array == elements and next_owner._ui_renderer == renderer)
 panel.set_enabled(false)
 assert(released == 28)
+-- The same-world diagnostic borrows the game's renderer/world. It owns only
+-- its target renderer/material, display target and world GUI.
+failure = nil
+state.same_world_probe = true
+renderer.gui, renderer.gui_retained = {}, {}
+state.pending_world = renderer.world
+panel.set_enabled(true)
+hooks.draw(stock, owner, .01, 9, {})
+assert(state.queue_renderer == renderer and state.borrowed_renderer)
+panel.set_enabled(false)
+assert(released == 32, "borrowed gameplay renderer/world were destroyed")
 print("HUD error restoration, stereo authoring and idempotent resource cleanup passed")

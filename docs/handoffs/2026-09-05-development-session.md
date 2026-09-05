@@ -939,3 +939,11 @@ HUD afterward; fresh-pair rate recovered from ~26.6/s during source binding to
 The attempted separate ScriptWorld.render counter hook was rejected by DMF as an
 active rehook, so its absent logs were not evidence of a missing world submission.
 Moved observation into the existing stereo render hook. Lua gate passed 25 chunks.
+
+Existing-hook observation 8228f83 confirmed dedicated HUD-world submission with
+one active viewport and authored target state. Added sameworld diagnostic mode to
+compare authoring through the existing gameplay UI renderer/GUI. Borrowed world
+and renderer are never destroyed; targets/material/world GUI remain owned. The
+ownership fixture initially lacked a borrowed GUI mock, corrected to represent
+the live renderer; HUD test then passed. Lua compiler/invariants also passed.
+Normal enable retains the dedicated-world path until this A/B is evaluated.

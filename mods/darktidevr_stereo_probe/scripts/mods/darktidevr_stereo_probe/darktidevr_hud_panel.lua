@@ -11,6 +11,8 @@ end
 local state = {
     enabled = false,
     diagnostic = false,
+    same_world_probe = false,
+    borrowed_renderer = false,
     render_submissions = 0,
     mod = nil,
     owner = nil,
@@ -151,14 +153,14 @@ local function destroy_resources()
         pcall(UIRenderer.destroy, state.resource_renderer,
             state.render_world)
     end
-    if state.queue_renderer then
+    if state.queue_renderer and not state.borrowed_renderer then
         pcall(UIRenderer.destroy, state.queue_renderer, state.render_world)
     end
     if state.render_world and state.render_viewport_name then
         pcall(ScriptWorld.destroy_viewport, state.render_world,
             state.render_viewport_name)
     end
-    if state.render_world then
+    if state.render_world and not state.borrowed_renderer then
         pcall(Managers.ui.destroy_world, Managers.ui, state.render_world)
     end
     if state.display_target then
@@ -167,6 +169,7 @@ local function destroy_resources()
     state.owner = nil
     state.source_renderer = nil
     state.queue_renderer = nil
+    state.borrowed_renderer = false
     state.resource_renderer = nil
     state.render_world = nil
     state.render_viewport = nil
@@ -190,9 +193,12 @@ local function create_resources(mod, owner, source_renderer, world)
     local width, height = target_extent()
     state.generation = state.generation + 1
     local name = "darktidevr_hud_" .. tostring(state.generation)
-    local render_world_ok, render_world = pcall(
-        Managers.ui.create_world, Managers.ui,
-        name .. "_world", 199, "ui")
+    state.borrowed_renderer = state.same_world_probe
+    local render_world_ok, render_world = true, world
+    if not state.borrowed_renderer then
+        render_world_ok, render_world = pcall(Managers.ui.create_world, Managers.ui,
+            name .. "_world", 199, "ui")
+    end
     if not render_world_ok or not render_world then
         state.creation_failed = true
         mod:error("DARKTIDEVR_HUD render_world_failed error=%s",
@@ -200,21 +206,24 @@ local function create_resources(mod, owner, source_renderer, world)
         return nil
     end
     state.render_world = render_world
-    state.render_viewport_name = name .. "_viewport"
-    local viewport_ok, viewport = pcall(
-        Managers.ui.create_viewport, Managers.ui, render_world,
-        state.render_viewport_name, "overlay", 1)
-    if not viewport_ok or not viewport then
-        mod:error("DARKTIDEVR_HUD render_viewport_failed error=%s",
-            tostring(viewport))
-        destroy_resources()
-        state.creation_failed = true
-        return nil
+    if not state.borrowed_renderer then
+        state.render_viewport_name = name .. "_viewport"
+        local viewport_ok, viewport = pcall(
+            Managers.ui.create_viewport, Managers.ui, render_world,
+            state.render_viewport_name, "overlay", 1)
+        if not viewport_ok or not viewport then
+            mod:error("DARKTIDEVR_HUD render_viewport_failed error=%s", tostring(viewport))
+            destroy_resources()
+            state.creation_failed = true
+            return nil
+        end
+        state.render_viewport = viewport
     end
-    state.render_viewport = viewport
-    local queue_ok, queue_renderer = pcall(
-        UIRenderer.create_viewport_renderer,
-        render_world, name .. "_queue", "custom_size", width, height)
+    local queue_ok, queue_renderer = true, source_renderer
+    if not state.borrowed_renderer then
+        queue_ok, queue_renderer = pcall(UIRenderer.create_viewport_renderer,
+            render_world, name .. "_queue", "custom_size", width, height)
+    end
     if not queue_ok or not queue_renderer then
         mod:error("DARKTIDEVR_HUD queue_create_failed error=%s",
             tostring(queue_renderer))
@@ -314,7 +323,7 @@ local function update_enabled_flag(mod, t)
     local request = flag:read("*all")
     flag:close()
     local command = request and request:match("^%s*(%a+)")
-    if command ~= "enable" and command ~= "disable" and command ~= "diagnostic" and command ~= "source" then
+    if command ~= "enable" and command ~= "disable" and command ~= "diagnostic" and command ~= "source" and command ~= "sameworld" then
         return
     end
     local consumed = Mods.lua.io.open(path, "w")
@@ -322,7 +331,10 @@ local function update_enabled_flag(mod, t)
         consumed:write("consumed\n")
         consumed:close()
     end
-    state.diagnostic = command == "diagnostic" or command == "source"
+    local same_world = command == "sameworld"
+    if same_world ~= state.same_world_probe then destroy_resources() end
+    state.same_world_probe = same_world
+    state.diagnostic = command == "diagnostic" or command == "source" or same_world
     HudPanel.set_enabled(command ~= "disable")
     if state.world_material and state.resource_renderer then
         local target = command == "source" and state.resource_renderer.render_target or state.display_target
