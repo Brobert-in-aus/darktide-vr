@@ -30,4 +30,17 @@ assert(not Timing.resolve(actions,normal,scale(1)))
 actions.light.allowed_chain_actions.start_attack.chain_until = nil
 assert(not Timing.resolve(actions,normal,scale(0)))
 assert(not Timing.resolve(actions,normal,scale(0/0)))
+actions.heavy.kind = "sweep"
+local template = {actions=actions,action_inputs={heavy_attack={input_sequence={
+    {input="action_one_hold",value=true,duration=.35},{input="action_one_hold",value=false}}}}}
+local cycle = assert(Timing.from_windup(template,"windup",scale(2),nil,function() return true end))
+assert(cycle.light_action == "light" and cycle.heavy_action == "heavy")
+assert(cycle.light_interval == .325 and cycle.heavy_charge == .35)
+assert(not Timing.from_windup(template,"windup",scale(1),nil,function(a) return a ~= actions.heavy end))
+template.action_inputs.heavy_attack.input_sequence[1].input = "unknown_input"
+local missing, why = Timing.from_windup(template,"windup",scale(1),nil,function() return true end)
+assert(not missing and why == "unsupported_heavy_input")
+template.action_inputs.heavy_attack.input_sequence[1].input = "action_one_hold"
+actions.light.allowed_chain_actions.start_attack = {{action_name="windup",chain_time=.55}}
+assert(not Timing.from_windup(template,"windup",scale(1),nil,function() return true end))
 print("melee_timing=pass")

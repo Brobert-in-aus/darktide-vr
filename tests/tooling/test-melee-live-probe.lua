@@ -9,7 +9,7 @@ package.preload["scripts/settings/equipment/action_sweep_settings"] = function()
 Vector3 = {x=function(p) return p[1] end,y=function(p) return p[2] end,z=function(p) return p[3] end}
 Quaternion = {to_elements=function(q) return unpack(q) end}
 local volume = {shape="oobb",corner_radius=1}
-local modules = {simulation={},sweep_plan={},probe={},volume={resolve=function() return volume end},
+local modules = {simulation={},sweep_plan={},probe={},timing={},volume={resolve=function() return volume end},
     diagnostics={new=function() return {} end,sample=function(_,request)
         calls[#calls+1] = request
         if crash then error("fixture failure") end

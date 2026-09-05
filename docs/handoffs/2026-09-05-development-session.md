@@ -865,3 +865,20 @@ Added a stationary contact-manifold scan using the stock thin OBB cross-section
 sweep. The diagnostic pass now includes it on fresh and stationary poses without
 requiring movement. Geometry/copying and orchestration tests passed with compiler
 and invariants (4/4). This change is queued after the first live diagnostic run.
+
+First unattended diagnostic run deployed 0692567 and reached tg_shooting_range.
+The browser initially retained focus; one bounded activation allowed the existing
+foreground-only startup helper to continue. No focus loop was introduced.
+At 03:13:12 UTC the adapter observed forcesword_p1_m3/action_left_heavy,
+resolved the stock OBB (corner radius 3.0075 m), and completed continuous engine
+queries (3 per sampled tick), no adapter errors. No targets were in the blade
+volume, so this is query/API evidence, not enemy damage or occlusion acceptance.
+XR reached 8,112 shared_ready/checked_ready/rendered_tag_ready, with ~59 fresh
+pairs/s, zero interval fallback and one cumulative pose mismatch during startup.
+Closed normally to deploy stationary manifold and timing diagnostics.
+
+Added explicit windup-to-light/heavy timing resolution. Normal cadence follows
+light -> start_attack -> next windup -> light, using the stock action handler's
+effective scale and availability checks. Heavy charge includes the unscaled
+hold-input threshold. Conditional/unknown routes reject with a diagnostic reason.
+CTest timing/live_probe/compiler/invariants passed 4/4 (25 Lua chunks).

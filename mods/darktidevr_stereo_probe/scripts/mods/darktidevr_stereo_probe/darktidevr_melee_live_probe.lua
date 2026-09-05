@@ -7,6 +7,7 @@ function Live.install(mod, presentation, tracking, game_mode)
     local function load(name) return mod:io_dofile(prefix .. "darktidevr_melee_" .. name) end
     local Simulation, Planner, Probe = load("simulation"), load("sweep_plan"), load("probe")
     local Diagnostics, Volume = load("diagnostics"), load("volume")
+    local Timing = load("timing")
     local defaults = require("scripts/settings/equipment/action_sweep_settings")
     local states = setmetatable({}, {__mode="k"})
     local enabled, last_check, failed = false, nil, false
@@ -45,12 +46,26 @@ function Live.install(mod, presentation, tracking, game_mode)
         local weapon = extension._weapons[slot]
         if weapon ~= state.weapon then
             state.weapon, state.volume, state.action_name = weapon, nil, nil
+            state.windup_name = nil
             state.history_key = {}
         end
         local template = weapon and weapon.weapon_template
         local name = extension._weapon_action_component.current_action_name
         local action = template and template.actions and template.actions[name]
         local instance = weapon and weapon.actions and weapon.actions[name]
+        if action and action.kind == "windup" and state.windup_name ~= name then
+            state.windup_name = name
+            local handler = extension._action_handler
+            local params = extension:condition_func_params(slot)
+            local timing, timing_reason = Timing.from_windup(template,name,
+                function(settings) return handler:_calculate_time_scale(settings) end,
+                handler._action_kinds_with_inverted_timescale,
+                function(settings) return handler:_validate_action(settings,params,t,0,nil) end)
+            mod:info("DARKTIDEVR_MELEE timing windup=%s result=%s light=%s heavy=%s light_interval=%.4f heavy_charge=%.4f damage=false",
+                name,timing and "resolved" or tostring(timing_reason),
+                timing and timing.light_action or "none",timing and timing.heavy_action or "none",
+                timing and timing.light_interval or 0,timing and timing.heavy_charge or 0)
+        end
         -- Observe an action the engine actually selected. Do not guess an idle
         -- route from unordered action names or use block/push timing as light.
         if action and action.kind == "sweep" and instance then
