@@ -88,7 +88,11 @@ assert(state.resource_renderer == nil and state.display_target == nil)
 -- HUD. It must not leave a half-bound panel eligible for the next frame.
 local released = 0
 Managers = {ui={create_world=function() return {} end,
-    create_viewport=function() return {} end,
+    create_viewport=function(_,_,_,kind,_,_,_,targets)
+        assert(kind == "overlay" and targets.back_buffer == state.capture_target,
+            "HUD viewport must render into its owned capture target")
+        return {}
+    end,
     destroy_world=function() released = released + 1 end}}
 package.loaded["scripts/foundation/utilities/script_world"].destroy_viewport =
     function() released = released + 1 end
@@ -127,6 +131,9 @@ Material.set_resource = function() end
 state.pending_world = renderer.world
 panel.set_enabled(true)
 hooks.draw(stock, owner, .01, 4, {})
+assert(state.capture_target and state.resource_renderer.render_target == nil
+    and state.resource_renderer.base_render_pass == nil,
+    "direct viewport UI must not also redirect a named render pass")
 local first_target = state.display_target
 assert(state.target_width == 1920 and state.target_height == 1080)
 hooks.draw(stock, owner, .01, 5, {})

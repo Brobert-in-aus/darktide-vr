@@ -1052,3 +1052,12 @@ item_container_square world material with use_render_target=1, placeholder=0,
 one row/column, index 0, binding the completed copy to render_target. This keeps
 authoring unchanged and tests local-UV sampling instead of screen-space masking.
 Pinned compiler and HUD fixture passed.
+
+680e643 atlas material remains blank for copy and direct source. Reworked the
+normal capture path to bind the owned render target as the dedicated overlay
+viewport's back_buffer (stock RenderTargetIconGeneratorBase contract). Fixed UI
+now draws normally into that viewport, without a named pass or terminal sample.
+The source target remains owned by the resource renderer; its destruction
+metadata is restored for cleanup. Sameworld retains the older path only as a
+diagnostic comparison. Fixture asserts viewport binding, absence of nested pass
+redirection, and existing lifecycle/fallback checks. LuaJIT and HUD tests passed.

@@ -27,6 +27,7 @@ local state = {
     render_viewport = nil,
     render_viewport_name = nil,
     display_target = nil,
+    capture_target = nil,
     display_ready = false,
     target_width = nil,
     target_height = nil,
@@ -149,6 +150,11 @@ local function destroy_resources()
         pcall(World.destroy_gui, state.world, state.world_gui)
     end
     if state.resource_renderer then
+        if state.capture_target then
+            -- Restore ownership metadata before stock destruction. During
+            -- drawing this renderer behaves as ordinary viewport UI.
+            state.resource_renderer.render_target = state.capture_target
+        end
         if state.resource_renderer.render_target_material and
                 state.resource_renderer.gui then
             pcall(Gui.destroy_material, state.resource_renderer.gui,
@@ -179,6 +185,7 @@ local function destroy_resources()
     state.render_viewport = nil
     state.render_viewport_name = nil
     state.display_target = nil
+    state.capture_target = nil
     state.display_ready = false
     state.target_width = nil
     state.target_height = nil
@@ -210,19 +217,6 @@ local function create_resources(mod, owner, source_renderer, world)
         return nil
     end
     state.render_world = render_world
-    if not state.borrowed_renderer then
-        state.render_viewport_name = name .. "_viewport"
-        local viewport_ok, viewport = pcall(
-            Managers.ui.create_viewport, Managers.ui, render_world,
-            state.render_viewport_name, "overlay_offscreen", 1)
-        if not viewport_ok or not viewport then
-            mod:error("DARKTIDEVR_HUD render_viewport_failed error=%s", tostring(viewport))
-            destroy_resources()
-            state.creation_failed = true
-            return nil
-        end
-        state.render_viewport = viewport
-    end
     local queue_ok, queue_renderer = true, source_renderer
     if not state.borrowed_renderer then
         queue_ok, queue_renderer = pcall(UIRenderer.create_viewport_renderer,
@@ -251,6 +245,27 @@ local function create_resources(mod, owner, source_renderer, world)
         return nil
     end
     state.resource_renderer = resource_renderer
+    if not state.borrowed_renderer then
+        state.capture_target = resource_renderer.render_target
+        state.render_viewport_name = name .. "_viewport"
+        local viewport_ok, viewport = pcall(
+            Managers.ui.create_viewport, Managers.ui, render_world,
+            state.render_viewport_name, "overlay", 1, nil, nil,
+            {back_buffer=state.capture_target})
+        if not viewport_ok or not viewport then
+            mod:error("DARKTIDEVR_HUD render_viewport_failed error=%s", tostring(viewport))
+            destroy_resources()
+            state.creation_failed = true
+            return nil
+        end
+        state.render_viewport = viewport
+        -- The viewport owns the output binding, like the stock icon generator.
+        -- Author normal UI, without a second named offscreen pass or terminal
+        -- screen sample. Resource ownership is restored during destruction.
+        resource_renderer.render_target = nil
+        resource_renderer.base_render_pass = nil
+        resource_renderer.render_pass_flag = nil
+    end
     local display_ok, display_target = pcall(
         Renderer.create_resource,
         "render_target", "R8G8B8A8", nil,
@@ -351,7 +366,7 @@ local function update_enabled_flag(mod, t)
     state.diagnostic = command == "diagnostic" or command == "source" or same_world or state.symbol_probe
     HudPanel.set_enabled(command ~= "disable")
     if state.world_material and state.resource_renderer then
-        local target = command == "source" and state.resource_renderer.render_target or state.display_target
+        local target = command == "source" and (state.capture_target or state.resource_renderer.render_target) or state.display_target
         Material.set_resource(state.world_material,"render_target",target)
         mod:info("DARKTIDEVR_HUD diagnostic_binding=%s",command == "source" and "source_target" or "display_copy")
     end
@@ -421,7 +436,7 @@ function HudPanel.install(mod)
                 -- atlas generator. Never expose an uninitialized first frame.
                 if state.last_authored_t ~= nil then
                     local copied, detail = pcall(Renderer.copy_render_target_rect,
-                        resource_renderer.render_target,
+                        state.capture_target or resource_renderer.render_target,
                         0, 0, 1, 1, state.display_target, 0, 0, 1, 1)
                     if not copied then
                         copy_failure = tostring(detail)
@@ -429,22 +444,15 @@ function HudPanel.install(mod)
                     end
                     state.display_ready = true
                 end
-                -- Gui.render_pass is a frame queue, not persistent renderer state.
-                -- Darktide's own resource-backed UI elements clear and rebuild this
-                -- queue immediately before authoring every target frame.
-                UIRenderer.clear_render_pass_queue(state.queue_renderer)
-                UIRenderer.add_render_pass(state.queue_renderer, 0,
-                    resource_renderer.base_render_pass, true,
-                    resource_renderer.render_target)
-                -- Match Darktide's tactical-overlay resource renderer exactly:
-                -- its offscreen pass is followed by a terminal screen pass which
-                -- samples the target. Without that dependency the dedicated UI
-                -- world can prune the entire target branch, leaving even an
-                -- immediate opaque diagnostic rectangle black. Draw the terminal
-                -- sample inside the viewport with zero alpha. An offscreen
-                -- sample may be culled before its dependency is scheduled.
-                UIRenderer.add_render_pass(state.queue_renderer, 1,
-                    "to_screen", false)
+                -- Retain the named-pass path only for same-world diagnostics.
+                if not state.capture_target then
+                    UIRenderer.clear_render_pass_queue(state.queue_renderer)
+                    UIRenderer.add_render_pass(state.queue_renderer, 0,
+                        resource_renderer.base_render_pass, true,
+                        resource_renderer.render_target)
+                    UIRenderer.add_render_pass(state.queue_renderer, 1,
+                        "to_screen", false)
+                end
                 self._elements_array = fixed
                 self._ui_renderer = resource_renderer
                 func(self, dt, t, input_service)
@@ -454,13 +462,13 @@ function HudPanel.install(mod)
                         {render_pass=resource_renderer.base_render_pass,color=Color(255,255,0,255)})
                 end
                 -- This is a render dependency, not a visible corner pixel.
-                Gui.bitmap(
+                if not state.capture_target then Gui.bitmap(
                     state.queue_renderer.gui,
                     resource_renderer.render_target_material,
                     "render_pass", "to_screen",
                     Vector3(0, 0, 1),
                     Vector3(state.diagnostic and 320 or 1, state.diagnostic and 180 or 1, 0),
-                    Color(state.diagnostic and 255 or 0, 255, 255, 255))
+                    Color(state.diagnostic and 255 or 0, 255, 255, 255)) end
                 state.last_authored_t = t
             end
             return spatial_result
