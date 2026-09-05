@@ -55,8 +55,13 @@ cleanup. GPU target completion still needs live evidence.
 
 Next: audit render-target completion; then make
 the fixed status layout configurable without moving world/depth markers onto
-the panel. The current one-metre, two-metre-wide panel remains an experimental
-layout and needs worn acceptance. Loading, menus and transitions need dedicated
+the panel. The panel remains one metre away; its height is now 0.81 m and its
+width is 80% of a binocular-frustum fit (about 1.18 m on this headset). The user
+requested these reductions; both-eye readback confirms the outline fits, while
+worn comfort still needs acceptance. World GUI draws now expire each frame,
+fixing the user's observed accumulation at old head poses. The texture contents
+remain unresolved, so the prototype stays disabled by default.
+Loading, menus and transitions need dedicated
 checks when the headset is available again.
 
 ## DLSS
