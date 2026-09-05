@@ -85,6 +85,35 @@ local state = {
     layout_nodes = {},
 }
 
+local function bounded_setting(value, fallback, minimum, maximum)
+    if type(value) ~= "number" or value ~= value or math.abs(value) == math.huge then
+        return fallback
+    end
+    return math.max(minimum, math.min(maximum, value))
+end
+
+function HudPanel.apply_settings(size_percent, distance, object_percent)
+    size_percent = bounded_setting(size_percent, 100, 50, 150)
+    distance = bounded_setting(distance, 2, 0.75, 4)
+    object_percent = bounded_setting(object_percent, 100, 50, 150)
+    local scale, object_scale = 0.63 * size_percent / 100, 2.08 * object_percent / 100
+    if HudPanel.scale == scale and HudPanel.distance == distance and
+            HudPanel.object_scale == object_scale then return false end
+    state.settings_dirty = state.settings_dirty or HudPanel.object_scale ~= object_scale
+    HudPanel.scale, HudPanel.distance, HudPanel.object_scale = scale, distance, object_scale
+    -- Width is recomputed from the runtime binocular overlap at this distance.
+    -- Scale height with distance too, preserving the accepted vertical angle.
+    HudPanel.height = 1.125 * 0.9 * distance
+    state.logged = false
+    return true
+end
+
+function HudPanel.read_settings(mod)
+    local function value(name) return mod.get and mod:get(name) end
+    return HudPanel.apply_settings(value("hud_size"), value("hud_distance"),
+        value("hud_internal_scale"))
+end
+
 -- Scene-depth, projected-world and eye-edge elements remain on the stock
 -- per-eye renderer. Fixed status elements are authored once into a dedicated
 -- 16:9 screen-GUI target and the completed target is presented in 3D.
@@ -660,6 +689,13 @@ end
 
 function HudPanel.install(mod)
     state.mod = mod
+    HudPanel.read_settings(mod)
+    local previous_setting_changed = mod.on_setting_changed
+    mod.on_setting_changed = function(setting_id)
+        if previous_setting_changed then previous_setting_changed(setting_id) end
+        if setting_id == "hud_size" or setting_id == "hud_distance" or
+                setting_id == "hud_internal_scale" then HudPanel.read_settings(mod) end
+    end
     mod:hook("UIHud", "update", function(func, self, dt, t, input_service)
         update_enabled_flag(mod, t or 0)
         local editor = self._elements and self._elements.HudElementCustomizer
@@ -668,6 +704,17 @@ function HudPanel.install(mod)
         end
         if state.owner ~= self or not state.resource_renderer then
             return func(self, dt, t, input_service)
+        end
+        if state.settings_dirty then
+            -- Refresh retained fixed widgets on their next normal update. Keep
+            -- world markers, GPU targets and saved Custom HUD positions intact.
+            local _, fixed = partition_elements(self._elements_array)
+            for _, element in ipairs(fixed) do
+                if element.on_resolution_modified then element:on_resolution_modified() end
+                if element.set_dirty then element:set_dirty() end
+            end
+            state.settings_dirty = false
+            state.last_authored_t = nil
         end
         if HudPanel.editing() and editor and (not state.editor_report_t or t > state.editor_report_t+3) then
             state.editor_report_t = t

@@ -20,6 +20,13 @@ by normal sync. Full-body and fixed HUD-panel presentation remain experimental.
 
 ## Launch
 
+Mod Options > Darktide VR exposes HUD size, distance, and text/icon size sliders.
+Defaults (100%, 2 m, 100%) preserve the accepted HUD layout. Distance changes
+retain approximately the same apparent size; internal scaling leaves saved
+Custom HUD positions intact. These controls apply while the HUD panel is active
+and do not enable the experimental panel themselves. See the
+[HUD options validation](handoffs/2026-09-06-hud-options.md).
+
 Build Release and the pinned LuaJIT validator as described in the root README.
 With no existing XR viewer, run:
 

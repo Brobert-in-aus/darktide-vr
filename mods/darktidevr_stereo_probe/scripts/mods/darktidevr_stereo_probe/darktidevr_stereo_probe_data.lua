@@ -7,6 +7,36 @@ return {
     options = {
         widgets = {
             {
+                setting_id = "hud_options",
+                type = "group",
+                sub_widgets = {
+                    {
+                        setting_id = "hud_size",
+                        type = "numeric",
+                        default_value = 100,
+                        range = {50, 150},
+                        decimals_number = 0,
+                        step_size_value = 5,
+                    },
+                    {
+                        setting_id = "hud_distance",
+                        type = "numeric",
+                        default_value = 2,
+                        range = {0.75, 4},
+                        decimals_number = 2,
+                        step_size_value = 0.25,
+                    },
+                    {
+                        setting_id = "hud_internal_scale",
+                        type = "numeric",
+                        default_value = 100,
+                        range = {50, 150},
+                        decimals_number = 0,
+                        step_size_value = 5,
+                    },
+                },
+            },
+            {
                 setting_id = "movement_reference",
                 type = "dropdown",
                 default_value = "head",

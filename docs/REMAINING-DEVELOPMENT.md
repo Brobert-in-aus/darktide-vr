@@ -136,13 +136,15 @@ The layout editor should be exposed through VR mod options. Before release,
 check the original Custom HUD license/permission terms: determine whether we
 can reuse/bundle it, what attribution is required, or make Custom HUD an optional
 dependency for editing. Do not assume attribution alone grants permission.
-Also add proper VR mod-menu options, configurable action/key bindings, and
-three separate HUD sliders: panel size (uniform width/height scale), distance
-from the player (metres), and internal UI scale (size of objects inside the
-panel). Preserve saved layouts and make the distinction clear in option labels.
-Changing distance alone changes angular size; users can adjust panel size to
-compensate, as in the current doubled-distance/doubled-size setup. Also add
-controller button glyphs/prompts instead of the current mouse/keyboard prompts.
+HUD sliders are implemented in Mod Options > Darktide VR: panel size (50–150%,
+default 100%), distance (0.75–4 m, default 2 m), and text/icon size (50–150%,
+default 100%). Defaults retain panel scale 0.63 and internal scale 2.08.
+Distance scales the physical panel to preserve approximately the same angular
+size. Internal scaling refreshes fixed HUD elements without changing saved
+Custom HUD item positions or world markers. Live desktop input and menu reopen
+were checked; worn acceptance of non-default values remains pending.
+Add configurable action/key bindings and controller button glyphs/prompts
+instead of the current mouse/keyboard prompts.
 Review the complete VR input layout before finalizing those bindings. User
 reports that the right thumbstick and its click (R3) are unused; audit actual
 action usage and use the available controls to make the full layout more
