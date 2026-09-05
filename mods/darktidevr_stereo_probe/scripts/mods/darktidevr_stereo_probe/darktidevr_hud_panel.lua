@@ -884,8 +884,8 @@ function HudPanel.draw(world, position, rotation, overlap_width)
     if not state.logged then
         state.logged = true
         state.mod:info(
-            "DARKTIDEVR_HUD world_surface distance_m=1.000 width_m=%.3f height_m=%.3f",
-            width, height)
+            "DARKTIDEVR_HUD world_surface distance_m=%.3f width_m=%.3f height_m=%.3f",
+            HudPanel.distance, width, height)
     end
 end
 
