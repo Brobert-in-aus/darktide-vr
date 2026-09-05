@@ -7,7 +7,8 @@
 namespace darktidevr::producer {
 
 // Offline preparation only: no SL calls or GPU resource ownership. The eventual
-// submitter must retain immutable inputs through Present, then clear their tags.
+// submitter must retain immutable inputs through Present and the required SL
+// input-completion fence before reuse, and clear tags when their lifetime ends.
 // GUIDs/type numbers/lifetimes follow the official Streamline v2.7.30 headers.
 struct StreamlineTagInput {
   void* native{};

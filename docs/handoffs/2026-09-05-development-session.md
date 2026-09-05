@@ -824,3 +824,9 @@ shortest-arc spherical interpolation. Tests cover engine-input reuse, opposite
 quaternion signs, invalid rotations, and a two-metre tip moving through a
 180-degree arc with bounded substep travel. CTest melee_sweep_plan/compiler/
 invariants passed 3/3. This is collision interpolation, not live hand smoothing.
+
+Version-matched DLSS review also confirmed that input reuse on non-presenting
+queues requires the plugin input-processing fence/value obtained on the Present
+thread. Added that requirement to the prepared-tag contract and remaining work.
+GetState's presentation count is since the previous query, so future submission
+must coordinate with existing game queries. Documentation/comment change only.

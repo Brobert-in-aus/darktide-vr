@@ -94,6 +94,14 @@ to the matching official SDK. Preparing both eyes independently does not prove
 cross-eye input isolation; the existing pair policy remains required. Submission,
 GPU lifetimes, per-frame constants and tag clearing are still integration work.
 
+The [v2.7.30 DLSS-G state contract](https://github.com/NVIDIA-RTX/Streamline/blob/v2.7.30/include/sl_dlss_g.h)
+requires waiting for the plugin's input-processing fence before modifying tagged
+inputs on a non-presenting queue (and always with its no-client-queue-blocking
+mode). Retrieve that fence/value on the Present thread. Returning from Present
+or clearing a tag alone is not the retirement condition for our input snapshots.
+The same state query reports presentations since the previous query; avoid
+uncoordinated extra polling that consumes the game's counters.
+
 Next: prepare version-matched per-eye tag/constants staging, validate backbuffer
 subrects and input lifetimes, then establish generated-output identity and GPU
 completion before publishing to the XR consumer. The desktop frame rate alone
