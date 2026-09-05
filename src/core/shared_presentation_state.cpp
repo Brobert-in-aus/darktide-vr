@@ -56,7 +56,7 @@ bool flat_interactive_active(SharedPresentationMode mode) {
 
 bool flat_interactive_uses_eye_aspect(SharedPresentationMode mode,
                                       bool shared_eyes_open) {
-  return mode == SharedPresentationMode::flat_interactive && shared_eyes_open;
+  return flat_interactive_active(mode) && shared_eyes_open;
 }
 
 bool same_flat_panel_anchor_identity(const SharedPresentationState& left,

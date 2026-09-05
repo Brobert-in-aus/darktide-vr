@@ -1,4 +1,19 @@
 local menu = assert(loadfile(arg[1]))()
+if arg[2] then
+    local count,interactive,loading,spatial=0,0,0,0
+    for name in io.lines(arg[2]) do
+        name=name:gsub("%s+$", "")
+        local mode=menu.view_mode(name)
+        count=count+1
+        if name=='blank_view' or name=='scanner_display_view' then
+            assert(mode==nil); spatial=spatial+1
+        elseif mode==2 then loading=loading+1
+        else assert(mode==5 or mode==6,'uncovered registered view: '..name)
+            interactive=interactive+1 end
+    end
+    assert(count==72 and interactive==63 and loading==7 and spatial==2)
+    print('menu_registry: 72 views covered (63 interactive, 7 loading, 2 spatial/blank)')
+end
 for _,name in ipairs({'inventory_view','inventory_weapons_view','inventory_weapon_details_view',
         'inventory_cosmetics_view','options_view','talent_builder_view','mastery_view'}) do
     assert(menu.native_view(name),'native menu child escaped its family: '..name)
@@ -72,20 +87,21 @@ for _,extent in ipairs({{1536,864},{1920,1080},{2496,2688}}) do
     end
 end
 -- Exercise the real adapter seam, including the engine's null input service.
-local hook,legacy_hook
+local hook,legacy_hook,direct_hook
 local consumed={primary=0,back=0,scroll=0}
 local presentation={mode=5,read_menu_pointer=function() return p end,
     consume_menu_primary=function(q) consumed.primary=consumed.primary+1; q.primary_pressed=false end,
     consume_menu_back=function(q) consumed.back=consumed.back+1; q.back_pressed=false end,
     consume_menu_scroll=function(q) consumed.scroll=consumed.scroll+1; q.scroll_steps=0 end}
 menu.install({hook=function(_,class,name,fn)
-    if class=='UIViewHandler' then assert(name=='_get_input'); hook=fn
+    if class=='UIManager' then assert(name=='input_service'); hook=fn
+    elseif class=='InputManager' then direct_hook=fn
     else legacy_hook=fn end
 end},presentation)
 Vector3=vector
 RESOLUTION_LOOKUP={width=2496,height=2688}
 p.frame_id,p.primary_down,p.primary_pressed=20,false,false
-local handler={_active_views_array={'inventory','options'},_num_active_views=2}
+local handler={_view_handler={_active_views_array={'inventory','options'},_num_active_views=2}}
 local service,blocked,gamepad=hook(function() return source,null,true end,handler)
 assert(service~=source and blocked==null and gamepad==false)
 assert(service:null_service():get('left_pressed')==false)
@@ -101,6 +117,27 @@ assert(frame_service:get('scroll_axis')[2]==1 and consumed.scroll==2)
 p.frame_id=22
 frame_service=hook(function() return source,null,false end,handler)
 assert(frame_service:get('scroll_axis')[2]==0 and not frame_service:get('back'))
+-- Constant-element dialogs share the manager service, but opening one drains
+-- the triggering press. Closing it cannot click through into the underlying view.
+handler._active_popups={{id='confirm'}}
+p.frame_id,p.primary_down,p.primary_pressed=23,true,true
+frame_service=hook(function() return source,null,false end,handler)
+assert(not frame_service:get('left_pressed'))
+Managers={ui=handler}
+source.null_service=function() return null end
+local direct=direct_hook(function() return source end,{},'View')
+assert(direct~=source)
+assert(hook(function() return direct,null,false end,handler)==direct,
+    'manager wrapped an already adapted direct View service twice')
+assert(direct_hook(function() return source end,{},'Ingame')==source)
+p.frame_id,p.primary_down,p.primary_pressed=24,false,false
+hook(function() return source,null,false end,handler)
+p.frame_id,p.primary_down,p.primary_pressed=25,true,true
+frame_service=hook(function() return source,null,false end,handler)
+assert(frame_service:get('left_pressed'))
+handler._active_popups={}
+frame_service=hook(function() return source,null,false end,handler)
+assert(not frame_service:get('left_pressed'))
 presentation.hook_legacy_menu('FakeView','draw',function() error('legacy handler ran') end)
 local a,b,c=legacy_hook(function() return 1,nil,3 end)
 assert(a==1 and b==nil and c==3,'native bypass changed the stock return contract')

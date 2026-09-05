@@ -1,5 +1,56 @@
 # Menu interaction audit and offline rework
 
+## Follow-up coverage pass after live feedback
+
+User confirmed Options cursor alignment, Operative highlight/selection and
+premium-store input on aa1d10c. The Change Operative confirmation dialog remained
+uninteractable and Commodore's Vestures was vertically compressed. Follow-up
+changes below are built/tested but not yet deployed into that running game.
+
+- Move shared adaptation from UIViewHandler to UIManager, covering constant
+  elements such as confirmation popups as well as normal views. Popup identity
+  owns the input sample while open, draining the opening/closing trigger edge.
+- Also adapt direct `InputManager:get_input_service("View")` consumers. Source
+  search found these in mission-board definitions, live-event templates,
+  onboarding templates, expedition continuation and mission buffs. Already
+  adapted services are not wrapped twice. Ingame, chat and ImGui services remain
+  separate; stock UIManager null-service suppression still applies.
+- Route every interactive view registered in stock `scripts/ui/views/views.lua`,
+  including all 27 separately declared views. The checked-in
+  [72-view inventory](../tests/tooling/menu-view-inventory.txt) is exercised by
+  the input test: 63 interactive, seven loading/cinematic, two spatial/blank.
+  Future game/mod-added views must be audited separately; this inventory is not
+  a claim to cover unknown future content.
+- Premium-store mode 6 now uses the same attached-eye aspect rule as mode 5.
+  Both retain landscape presentation before shared eyes are attached. Native
+  presentation tests cover both modes with and without shared eyes. This fixes
+  the identified inconsistent rule; worn visual acceptance remains required.
+
+| Registered menu family | Covered surfaces |
+| --- | --- |
+| System/Options | Escape, player options, custom settings, confirmation constant element |
+| Operative | Inventory background, equipment, weapons/details, cosmetics/inspection, marks, mastery, talent and stimms |
+| Armoury/Melk/cosmetics/barber | Credits and goods, marks and goods, contracts, cosmetics vendor and backgrounds, character appearance |
+| Hadron | Crafting main, modify, barter, upgrade item/expertise, replace trait/perk |
+| Premium store | Store, item details, premium currency purchase; external platform checkout is outside the game's UI service |
+| Activities | Mission board/voting, lobby, training grounds/options, penance, Havoc background/play/reward, Horde, expedition |
+| Social | Social menu/roster, group finder, report player |
+| Other interactive | News, class/main selection/background, end/end-player, credits, live events/progress, DLC purchase, survey |
+| Loading/cinematics | Splash/title/loading/mission intro/video/splash video/cutscene: flat loading route |
+| Spatial/blank | Scanner keeps its Ingame input and spatial presentation; blank view remains a transition |
+
+All normal view update/draw paths and persistent UI input routes were inspected.
+Store receipt/checkout windows owned by Steam/platform software and text entry
+are not converted into VR keyboards by this pass. Existing desktop handling
+applies. No purchases, character changes, reports or inventory mutations were
+performed for this code audit.
+
+Validation: 26 Lua chunks compile; menu_input (including registry, direct-service,
+popup ownership and click-through fixtures), menu_widgets,
+presentation_state_transport and lua_source_compile pass. Release presentation
+tests and XR harness build. Full live visual checking of every family is still
+pending; code coverage must not be reported as visual acceptance.
+
 5 September 2026. Baseline: `c3768e7`. This pass follows the reports that
 Operative clicks fail and the Options cursor does not match highlighting.
 VD is closed at the user's request. The rework below is built and tested

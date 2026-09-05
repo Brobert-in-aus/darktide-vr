@@ -41,9 +41,11 @@ int main() {
                SharedPresentationMode::flat_interactive, true) &&
                !flat_interactive_uses_eye_aspect(
                    SharedPresentationMode::flat_interactive, false) &&
-               !flat_interactive_uses_eye_aspect(
+               flat_interactive_uses_eye_aspect(
                    SharedPresentationMode::flat_interactive_native_aspect,
-                   true),
+                   true) &&
+               !flat_interactive_uses_eye_aspect(
+                   SharedPresentationMode::flat_interactive_native_aspect, false),
            "Only an attached eye-encoded panel may use portrait eye aspect");
     SharedPresentationState loading_anchor{
         1, SharedPresentationMode::flat_loading_or_cinematic, 1920, 1080,

@@ -510,17 +510,12 @@ local presentation = {
         training_grounds_view = true,
         training_grounds_options_view = true,
     },
-    -- Premium-store views already author a native landscape client. Treating
-    -- their capture as a portrait eye-encoded shop made the panel geometry
-    -- disagree with its laser/cursor coordinates. Mode 6 retains the proven
-    -- mode-5 input/lifecycle behavior while fitting the actual client aspect.
+    -- Mode 6 retains premium-store lifecycle identity. Its visual aspect now
+    -- follows the same attached-eye canvas rule as other native menus.
     native_aspect_shop_panel_views = {
         store_view = true,
         store_item_detail_view = true,
-        -- Opened directly by both premium-store stages when the wallet lacks
-        -- Aquilas. Its authored canvas is also 1920x1080, so changing to the
-        -- portrait shop transform here would move the laser/cursor during the
-        -- purchase transition.
+        -- Keep the currency child on the same panel throughout navigation.
         premium_currency_purchase_view = true,
     },
     world_menu_gui = nil,
@@ -1426,8 +1421,9 @@ function presentation.classify_active_view(manager, view_name)
     if presentation.flat_loading_views[view_name] then
         return 2, "loading_or_cinematic"
     end
-    if presentation.native_menu_view and presentation.native_menu_view(view_name) then
-        return 5, "native_menu_family"
+    local native_mode = presentation.native_menu_mode and presentation.native_menu_mode(view_name)
+    if native_mode then
+        return native_mode, "registered_menu_family"
     end
     if presentation.direct_menu_surface_views[view_name] then
         return 4, "direct_menu_surface_probe"

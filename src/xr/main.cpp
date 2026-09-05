@@ -965,7 +965,7 @@ class OpenXrProbe {
     if (enable_menu_input) {
       std::cout << "openxr.menu_input=enabled\n";
     } else {
-      std::cout << "openxr.menu_input=semantic-with-cursor-sync\n";
+      std::cout << "openxr.menu_input=native-ui-service\n";
     }
     if (enable_menu_test_controls) {
       menu_test_primary_event =
@@ -2729,6 +2729,8 @@ class OpenXrProbe {
           flat_interactive_mode && window_capture
               ? window_capture->source_extent()
               : std::nullopt;
+      // In-game menus (including the mode-6 premium store) retain the eye
+      // canvas while their pixels are fitted into the native desktop window.
       // A gameplay shop is mode 5 while the live per-eye shared surfaces remain
       // attached; its portrait eye image is squeezed into the landscape native
       // window.  Character select is also mode 5, but has no shared eye

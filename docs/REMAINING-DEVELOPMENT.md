@@ -1,22 +1,38 @@
 # Remaining development: melee, HUD and DLSS
 
-Updated 5 September 2026. VD is now closed at the user's request. Continue
-offline work only; a fresh Ready preflight is required before the next deployment
-or live session. Worn acceptance remains separate.
+Updated 5 September 2026. VD is reconnected; the aa1d10c game run is open for
+user testing. Fresh Ready preflight passed before launch. Do not interrupt this
+run without announcing it. Worn acceptance remains separate.
 
 The [menu audit and rework](MENU-INTERACTION-AUDIT.md) replaces native-menu
 rectangle reconstruction with stock UI input delivery and consistent DPI
-handling. Offline build and targeted tests pass; it is not deployed. Operative
-clicks, Options pointer alignment and the full transition matrix need live
-validation. Reticule recovery was user-confirmed before this rework. Pickup
-marker edge asymmetry remains open.
+handling. User now confirms Options cursor alignment and Operative highlight/
+selection, plus premium-store input. Confirmation popup input and premium-store
+vertical compression were reported and corrected in the follow-up source pass;
+those corrections await the next launch and visual acceptance. The pass covers
+all 72 registered views and direct View-service consumers. Pickup marker edge
+asymmetry remains open.
 
 The user has taken ownership of melee contact verification and explicitly moved
-development to HUD. HUD is now the sole active area; melee and DLSS are parked.
+development to HUD. User subsequently requested DLSS work while HUD acceptance
+was queued, then this menu coverage follow-up. Complete the menu pass first,
+then continue DLSS until the next real headset check is required.
 The melee query prototype remains non-damaging; user verification is not a claim
 that physical damage integration is complete.
 
-## Melee
+## Ranged weapon aiming backlog
+
+User reports that ranged weapons other than the force staff do not fire along
+the intended aim. Perform a pass across every class and ranged weapon family,
+including every firing mode: hip fire, aimed fire, charged/released attacks,
+burst/automatic fire, alternate/special attacks, hitscan and projectile weapons.
+Check the reticule, muzzle origin, projectile/raycast direction and actual hit
+location against hand aim while the head faces elsewhere. Include force staff
+as a regression control; do not assume one shared firing hook covers all actions.
+This is a newly reported functional bug, not a completed fix. Prior user
+acceptance of hand-directed melee does not establish ranged aiming correctness.
+
+## Melee implementation
 
 Hand-directed button attacks and left-hand placement are accepted. Implement
 physical contact according to [the selected rules](TRACKED-MELEE-DESIGN.md).
