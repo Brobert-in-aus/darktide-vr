@@ -566,3 +566,19 @@ found that the early-failure fixture predated automatic worker configuration;
 it now accepts either missing setup prerequisite before one-shot arming, mocks
 physical cores and passes. The worker tool reports a specific missing-settings
 error. No real game settings or input are touched by these fixtures.
+
+The engine's crash dump is only about 1.3 MB and lacks the broader resource
+ownership data. Downloaded Microsoft's signed ProcDump 12.01 into ignored
+artifacts/diagnostics/procdump and attached a one-shot diagnostic to the current
+exact game process: -ma -r 1 -a -e 1 -f E0000000 -n 1. It monitors the custom
+engine exception seen in this crash, uses a clone for collection, writes locally
+under artifacts/diagnostics/full-crashes, and does not queue reports to WER or
+kill the game after collection. No system-wide debugger registration was made.
+The current process/monitor identities are in ignored procdump-watch.json;
+the watch log is UTF-16LE (read with -Encoding Unicode).
+
+Cancel an active watcher gracefully with procdump64.exe -cancel followed by the
+recorded target game PID when development ends; do not kill the watcher during
+capture. It normally exits with its target or after the one captured dump.
+No dump has been captured at setup, and attachment is not evidence of a fix.
+Documentation: https://learn.microsoft.com/en-us/sysinternals/downloads/procdump
