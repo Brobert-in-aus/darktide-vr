@@ -436,15 +436,15 @@ function HudPanel.install(mod)
                 func(self, dt, t, input_service)
                 self._ui_renderer = source_renderer
                 if state.diagnostic then
-                    Gui.rect(state.queue_renderer.gui,"render_pass",resource_renderer.base_render_pass,
-                        Vector3(50,50,20001),Vector2(400,200),Color(255,255,0,255))
+                    Gui2.rect(state.queue_renderer.gui,Vector3(50,50,1),Vector3(400,200,0),
+                        {render_pass=resource_renderer.base_render_pass,color=Color(255,255,0,255)})
                 end
                 -- This is a render dependency, not a visible corner pixel.
                 Gui.bitmap(
                     state.queue_renderer.gui,
                     resource_renderer.render_target_material,
                     "render_pass", "to_screen",
-                    Vector3(0, 0, 20000),
+                    Vector3(0, 0, 1),
                     Vector2(1, 1),
                     Color(state.diagnostic and 255 or 0, 255, 255, 255))
                 state.last_authored_t = t
@@ -519,7 +519,7 @@ function HudPanel.draw(world, position, rotation)
     Gui2.bitmap_3d(
         state.world_gui,
         state.world_material,
-        GuiMaterialFlag.GUI_RENDER_PASS_LAYER,
+        nil, -- Existing material handle: stock Gui2 calls only flag material names.
         tm,
         1000,
         {

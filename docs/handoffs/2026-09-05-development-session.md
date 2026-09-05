@@ -947,3 +947,11 @@ and renderer are never destroyed; targets/material/world GUI remain owned. The
 ownership fixture initially lacked a borrowed GUI mock, corrected to represent
 the live renderer; HUD test then passed. Lua compiler/invariants also passed.
 Normal enable retains the dedicated-world path until this A/B is evaluated.
+
+Sameworld A/B a5dceb7 still displayed only backing geometry. Borrowed gameplay
+world logged continuing render submissions with two viewports. Screenshot:
+artifacts/diagnostics/hud-sameworld-20260905/left.png. Returned to stock HUD.
+Stock UIRenderer.script_draw_bitmap_3d passes material flags only for material
+names, not existing handles; corrected the HUD call to that contract. The target
+marker now uses Gui2.rect with explicit render_pass and a normal layer, matching
+stock rectangle authoring. Lua gate passed 25 chunks; visual result pending.
