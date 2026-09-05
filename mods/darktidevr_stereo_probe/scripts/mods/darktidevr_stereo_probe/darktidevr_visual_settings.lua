@@ -54,6 +54,16 @@ function VisualSettings.install(mod)
             pending = false
             enforce()
             mod:info("DARKTIDEVR_VISUAL_SETTINGS blur_dof_lens=forced_off")
+            if Application.settings then
+                local ok, settings = pcall(Application.settings)
+                if ok and type(settings) == "table" then
+                    local streamer = settings.feedback_streamer_settings
+                    mod:info("DARKTIDEVR_STREAMING texture_pool_limit=%s workers=%s",
+                        tostring(type(streamer) == "table" and
+                            streamer.max_texture_pool_size or "unavailable"),
+                        tostring(settings.max_worker_threads or "unavailable"))
+                end
+            end
         end
     end
 end

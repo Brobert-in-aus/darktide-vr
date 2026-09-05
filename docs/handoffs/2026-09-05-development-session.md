@@ -378,3 +378,20 @@ on the preceding commit, as expected. LuaJIT 13 chunks and source invariants
 pass. Exact left palm placement remains a worn acceptance question, not a test
 assertion. Candidate staged while the user resumed gameplay; do not interrupt
 that observation just to deploy these follow-ups.
+
+User accepted the current performance configuration (possibly a little better):
+keep feedback texture pool 2048, worker count 7 and LOD multiplier 3 for now.
+This is acceptance of the combination, not proof of an isolated pool benefit.
+
+User rejected melee direction: enemy at the right, reticle aimed at it, looking
+forward and attacking still presents a forward swing. Do not mark hand-directed
+melee fixed merely from the hook counter. Found another real defect in the
+third-person animation aim callback: `local _, rotation = module and module.target()`
+discards the second return through Lua's logical expression and always uses head
+fallback. Candidate uses an explicit guard and direct two-value assignment.
+The actual callback regression (hand right/head forward) fails the old code and
+passes the candidate, including invalid-controller fallback. Periodic actual
+hand/head direction vectors are added to melee diagnostics. Worn side-aimed
+swing and hit verification remains required, including possible interaction
+between stock animation constraints and proxy rotation. Next startup also logs
+engine-reported texture pool and worker settings when available.

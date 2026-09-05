@@ -616,6 +616,13 @@ function controller_aim.install(mod, presentation, state)
             mod:info("DARKTIDEVR_MELEE aim=right_hand stock_origin=true count=%d",
                 controller_aim.melee_pose_writes)
         end
+        if controller_aim.melee_pose_writes % 120 == 1 and Quaternion then
+            local hand_forward = Quaternion.forward(rotation)
+            local head_forward = Quaternion.forward(component.rotation)
+            mod:info("DARKTIDEVR_MELEE direction hand=%.3f,%.3f,%.3f head=%.3f,%.3f,%.3f",
+                Vector3.x(hand_forward), Vector3.y(hand_forward), Vector3.z(hand_forward),
+                Vector3.x(head_forward), Vector3.y(head_forward), Vector3.z(head_forward))
+        end
         return with_first_person_pose(action, component.position, rotation, func, ...)
     end
 

@@ -10207,8 +10207,12 @@ mod:hook_safe(
             extrapolated_character_height()
         local root_position = Unit.local_position(unit, 1) +
             height * Vector3.up()
-        local _, controller_rotation = presentation.controller_aim and
-            presentation.controller_aim.target()
+        local controller_rotation
+        if presentation.controller_aim then
+            -- A logical expression keeps only one return value in Lua.
+            local _, rotation = presentation.controller_aim.target("right")
+            controller_rotation = rotation
+        end
         local target_rotation = controller_rotation or Quaternion.axis_angle(
             Vector3.up(), controller_observation.body_head_yaw)
         local neutral_target = root_position +
