@@ -124,6 +124,13 @@ panel). Preserve saved layouts and make the distinction clear in option labels.
 Changing distance alone changes angular size; users can adjust panel size to
 compensate, as in the current doubled-distance/doubled-size setup. Also add
 controller button glyphs/prompts instead of the current mouse/keyboard prompts.
+Review the complete VR input layout before finalizing those bindings. User
+reports that the right thumbstick and its click (R3) are unused; audit actual
+action usage and use the available controls to make the full layout more
+sensible. Review gameplay, weapon specials, movement, interactions and menu
+contexts together, including hold/toggle behavior and conflicting actions.
+Implement remapping and matching controller prompts with the revised defaults.
+This is backlog work; no bindings changed in response to this feedback.
 Entering desktop layout editing must display a clear message inside VR:
 "Use the desktop view to edit your HUD layout." Keep that instruction visible
 while editing and restore the normal VR HUD when the editor closes.

@@ -2,6 +2,10 @@
 
 ## Follow-up coverage pass after live feedback
 
+Latest acceptance: after the follow-up build was launched, the user reported
+"Menus seem good." Record the tested menu behavior as accepted; this is not
+evidence of individual visual testing of every one of the 72 registered views.
+
 User confirmed Options cursor alignment, Operative highlight/selection and
 premium-store input on aa1d10c. The Change Operative confirmation dialog remained
 uninteractable and Commodore's Vestures was vertically compressed. Follow-up
