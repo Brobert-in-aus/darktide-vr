@@ -104,3 +104,9 @@ Phase 0 observation policy, test-only feasibility models, and historical shader
 probes document earlier experiments. They do not describe the current renderer
 or establish current launch authorization. Keep diagnostic switches explicit;
 do not turn old experiments into production defaults merely because they build.
+
+Tracked physical melee has a separate [design and source investigation](TRACKED-MELEE-DESIGN.md):
+always-active standard combat volume, per-enemy cooldowns and intentionally
+unlimited cleave, with heavy readiness initially on cooldown. It is not enabled
+in the current build. Interim stock attacks and left-hand blocking remain under
+worn validation.

@@ -623,7 +623,30 @@ function controller_aim.install(mod, presentation, state)
                 Vector3.x(hand_forward), Vector3.y(hand_forward), Vector3.z(hand_forward),
                 Vector3.x(head_forward), Vector3.y(head_forward), Vector3.z(head_forward))
         end
-        return with_first_person_pose(action, component.position, rotation, func, ...)
+        local extension = action._first_person_extension
+        if extension and extension.is_within_default_view then
+            local view = setmetatable({
+                _first_person_component = setmetatable({
+                    position = component.position, rotation = rotation,
+                }, {__index = component}),
+            }, {__index = extension})
+            action._first_person_extension = setmetatable({
+                is_within_default_view = function(_, position)
+                    return extension.is_within_default_view(view, position)
+                end,
+            }, {__index = function(_, key)
+                local value = extension[key]
+                if type(value) == "function" then
+                    return function(_, ...) return value(extension, ...) end
+                end
+                return value
+            end})
+        end
+        local results = packed(pcall(with_first_person_pose,
+            action, component.position, rotation, func, ...))
+        action._first_person_extension = extension
+        if not results[1] then error(results[2], 0) end
+        return unpack(results, 2, results.n)
     end
 
     for _, entry in ipairs({

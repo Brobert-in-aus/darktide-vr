@@ -542,9 +542,19 @@ function BodyProxy.follow_gameplay_hands(world, aim_rotation)
     if not BodyProxy.rigid_hands_active() or not source or not Unit.alive(source) then
         return false
     end
+    -- The third-person hand nodes also receive the VR equipment attachment
+    -- writes. Read the untouched first-person animation rig instead, otherwise
+    -- the previous VR pose becomes the next frame's supposedly authored input.
+    local first_person = ScriptUnit.has_extension(source, "first_person_system")
+    local animation_source = first_person and first_person._first_person_unit
+    local use_first_person = animation_source and Unit.alive(animation_source) and
+        Unit.has_node(animation_source, "j_lefthand") and
+        Unit.has_node(animation_source, "j_righthand")
+    if use_first_person then source = animation_source end
     local pivot, delta
-    if aim_rotation and Unit.has_node(source, "j_head") then
-        pivot = Unit.world_position(source, Unit.node(source, "j_head"))
+    if aim_rotation and (use_first_person or Unit.has_node(source, "j_head")) then
+        pivot = Unit.world_position(source,
+            use_first_person and 1 or Unit.node(source, "j_head"))
         delta = Quaternion.multiply(aim_rotation,
             inverse_quaternion(Unit.world_rotation(source, 1)))
     end

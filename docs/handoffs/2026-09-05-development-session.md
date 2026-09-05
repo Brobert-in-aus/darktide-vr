@@ -418,3 +418,30 @@ callback also discarded pcall's second value. Fixed with an explicit manager
 nil guard; the existing active-view check now receives the actual boolean.
 LuaJIT 13-chunk gate passes. This small shop follow-up is staged locally and does
 not change the current live run.
+
+The user again rejected hand-directed melee and requested left-hand blocking.
+Source investigation identified the stock hit filter's separate head-facing
+is_within_default_view check. Candidate scopes that check to right-hand aim through
+an action-local first-person-extension proxy; unrelated extension methods remain
+bound to the original instance, and errors restore both action references.
+
+Melee hand animation now reads the untouched first-person rig, with its root as
+the rotation pivot, instead of reading the same third-person hand nodes that
+receive the VR attachment writes. This avoids feedback from the previous VR
+pose. This is a new candidate, not accepted visual behavior.
+
+Left-hand block module scopes first_person reads during Block.is_blocking and
+Block.attempt_block_break only, for the local player with valid controller aim.
+It preserves stock block types, angles and stamina costs; the stock outer melee
+arc may cover a full circle, with a cheaper inner arc. No shared component is
+written. Tests cover both calls, remote isolation, error cleanup and missing pose.
+Melee tests now include the actual extension-view delegation/restoration; a new
+animation-source test distinguishes the untouched first-person rig from modified
+third-person nodes. LuaJIT gate passed 14 chunks and source invariants passed.
+
+Physical melee investigation: see ../TRACKED-MELEE-DESIGN.md. User explicitly
+selected an always-active standard-sized combat volume, per-enemy attack-rate
+cooldowns and unlimited cleave, rejecting the proposed global cadence/motion
+threshold/stock cleave restrictions. Heavy contacts use charge-time per-enemy
+cooldowns, initially unavailable. These requirements supersede earlier suggestions.
+No always-active physical damage implementation has been enabled yet.
