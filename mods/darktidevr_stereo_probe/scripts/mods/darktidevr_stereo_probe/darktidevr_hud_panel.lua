@@ -648,6 +648,16 @@ function HudPanel.enabled()
     return state.enabled
 end
 
+-- Visibility is cached by group name. Editor transitions must refresh both
+-- that cache and retained child widgets in the renderer which now owns them.
+function HudPanel.refresh_visibility(owner)
+    owner._current_group_name = nil
+    for _,element in ipairs(owner._elements_array or {}) do
+        if element.on_resolution_modified then element:on_resolution_modified() end
+        if element.set_dirty then element:set_dirty() end
+    end
+end
+
 function HudPanel.install(mod)
     state.mod = mod
     mod:hook("UIHud", "update", function(func, self, dt, t, input_service)
@@ -668,12 +678,24 @@ function HudPanel.install(mod)
                 tostring(cursor and cursor.x),tostring(cursor and cursor.y),tostring(editor._using_cursor),
                 tostring(editor._setup_complete))
         end
+        local editing = HudPanel.editing() == true
+        local editor_changed = state.editor_was_open ~= editing
+        if editor_changed then
+            HudPanel.refresh_visibility(self)
+            state.editor_was_open = editing
+        end
         local previous = state.updating_owner
         state.updating_owner = self
         input_service = editor_input(input_service)
         local result = pack(pcall(func, self, dt, t, input_service))
         state.updating_owner = previous
         if not result[1] then error(result[2], 0) end
+        if editor_changed then
+            local visible = 0
+            for _,value in pairs(self._currently_visible_elements or {}) do if value then visible = visible+1 end end
+            mod:info("DARKTIDEVR_HUD editor_transition open=%s group=%s visible=%d display_ready=%s",
+                tostring(editing),tostring(self._current_group_name),visible,tostring(state.display_ready))
+        end
         return unpack(result, 2, result.n)
     end)
 

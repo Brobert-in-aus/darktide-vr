@@ -331,3 +331,18 @@ for _,desktop in ipairs({{1920,1080},{2496,2688},{1536,864},{1536,1654}}) do
     assert(math.abs((r.width*desktop[1]/2496)/(r.height*desktop[2]/2688)-1.18/.81)<1e-9,
         "fullscreen/windowed changes must preserve the desktop panel aspect")
 end
+
+-- Repeat editor open/close invalidation without changing user layout values.
+local refresh_count,dirty_count=0,0
+local layout_position={321,654}
+local transition_owner={_current_group_name="custom_hud",_elements_array={{
+    position=layout_position,
+    on_resolution_modified=function() refresh_count=refresh_count+1 end,
+    set_dirty=function() dirty_count=dirty_count+1 end}}}
+for i=1,8 do
+    transition_owner._current_group_name=i%2 == 0 and "custom_hud" or "alive"
+    panel.refresh_visibility(transition_owner)
+    assert(transition_owner._current_group_name == nil)
+    assert(layout_position[1] == 321 and layout_position[2] == 654)
+end
+assert(refresh_count == 8 and dirty_count == 8)

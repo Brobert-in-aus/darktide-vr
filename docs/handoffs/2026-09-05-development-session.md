@@ -1251,3 +1251,17 @@ the current 16:9 desktop stretch, gives aspect 1.45844 versus expected 1.45679
 (the difference includes border thickness). Stereo runs around 60 fresh pairs/s.
 This verifies rendered geometry; the user's cursor/normal marker acceptance is
 still separate. Saved entries loaded after restart and were not reset.
+
+
+## Repeated F3 restoration check
+
+User reported the in-game HUD disappeared after repeatedly opening and closing
+the editor. No Lua error accompanied the report. Added an explicit visibility
+cache invalidation plus element/child dirty refresh on each editor state change,
+with the update still routed through the capture renderer. This does not reset
+saved layout positions or user hide choices. Added transition logs containing
+open state, selected visibility group, visible element count and texture-ready
+state to distinguish a visibility failure from an empty/offscreen saved layout.
+LuaJIT compilation and hud_panel/marker_gui tests pass; repeated live open/close
+acceptance is pending. Treat this as a restoration fix under verification, not
+a proven diagnosis of the user's disappearing-HUD report.
