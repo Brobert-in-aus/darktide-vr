@@ -859,3 +859,9 @@ Enable with installed darktidevr_melee_probe.flag containing enabled.
 CTest melee_live_probe/melee_diagnostics/lua_source_compile/lua_source_invariants
 passed 4/4; pinned compiler passed 25 chunks. Native Release built with warnings
 as errors. Live engine query and calibration evidence remain pending.
+
+Added a stationary contact-manifold scan using the stock thin OBB cross-section
+(local Z, half-length endpoints); spheres retain their stock initial-overlap
+sweep. The diagnostic pass now includes it on fresh and stationary poses without
+requiring movement. Geometry/copying and orchestration tests passed with compiler
+and invariants (4/4). This change is queued after the first live diagnostic run.

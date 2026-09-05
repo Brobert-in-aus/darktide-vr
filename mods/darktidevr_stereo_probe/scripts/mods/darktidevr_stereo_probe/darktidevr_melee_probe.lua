@@ -112,4 +112,24 @@ function Probe.sweep(world, volume, start_origin, end_origin, rotation,
         saturated=count >= max_hits, capacity_verified=false}
 end
 
+-- The stock box query includes a thin cross-section swept along local Z. It
+-- produces a contact manifold even when the weapon origin has not moved.
+-- Preserve that construction (including legacy volume offsets), rather than
+-- fabricating hit normals from the actor-only immediate overlap.
+function Probe.contact_scan(world, volume, origin, rotation, filter, rewind_ms, max_hits)
+    if type(volume) ~= "table" or not triple(volume.offset, false) or
+            origin == nil or rotation == nil then return nil, "invalid_context" end
+    if volume.shape == "sphere" then
+        return Probe.sweep(world,volume,origin,origin,rotation,filter,rewind_ms,max_hits)
+    end
+    if volume.shape ~= "oobb" or not triple(volume.half_extents, true) then
+        return nil, "invalid_volume"
+    end
+    local offset, half = volume.offset, volume.half_extents
+    local first = origin + Quaternion.rotate(rotation,Vector3(offset[1],offset[2],offset[3]-half[3]))
+    local last = origin + Quaternion.rotate(rotation,Vector3(offset[1],offset[2],offset[3]+half[3]))
+    return Probe.sweep(world,{shape="oobb",offset={0,0,0},
+        half_extents={half[1],half[2],.0001}},first,last,rotation,filter,rewind_ms,max_hits)
+end
+
 return Probe

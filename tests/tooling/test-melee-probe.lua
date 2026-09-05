@@ -78,4 +78,14 @@ local empty = assert(Probe.sweep(world,sphere,origin,origin,rotation,"melee_fixt
 assert(empty.count == 0 and not empty.saturated)
 assert(not Probe.sweep(world,box,origin,origin,rotation,"melee_fixture",0,0))
 assert(sweep_calls == 3)
+PhysicsWorld.linear_obb_sweep = function(w,a,b,size,rot,limit)
+    assert(w == world and rot == rotation and limit == 128)
+    assert(a[1] == 10 and math.abs(b[1]-12.2) < 1e-12)
+    assert(a[3] == 30 and b[3] == 30)
+    assert(size[1] == .15 and size[2] == .15 and size[3] == .0001)
+    return raw
+end
+local stationary = assert(Probe.contact_scan(world,box,origin,rotation,"melee_fixture",0,128))
+assert(stationary.count == 1 and not stationary.saturated)
+assert(Probe.contact_scan(world,sphere,origin,rotation,"melee_fixture",0,8).count == 0)
 print("raw overlap geometry, result copying and uncapped Lua candidate collection passed")

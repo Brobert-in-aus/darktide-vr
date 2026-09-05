@@ -47,6 +47,14 @@ function Diagnostics.sample(state, request)
         if not overlap then return nil, overlap_reason end
         local result = {overlap=overlap, contacts={}, plan=plan,
             query_count=1, saturated=false, capacity_verified=false}
+        local current_contacts, contact_reason = state.probe.contact_scan(request.world,
+            request.volume, position, rotation, request.filter, request.rewind_ms, request.max_hits)
+        if not current_contacts then return nil, contact_reason end
+        result.query_count = result.query_count + 1
+        result.saturated = current_contacts.saturated
+        for _, contact in ipairs(current_contacts.contacts) do
+            result.contacts[#result.contacts+1] = contact
+        end
         for segment=1,plan.segments do
             local first = planner.pose_at(trajectory,(segment-1)/plan.segments)
             local last = planner.pose_at(trajectory,segment/plan.segments)

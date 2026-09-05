@@ -6,6 +6,9 @@ local probe = {overlap=function()
     calls = calls + 1
     if fail then error("injected physics failure") end
     return {actors={},actor_count=0,capacity_verified=false}
+end, contact_scan=function()
+    calls = calls + 1
+    return {contacts={{actor="stationary_contact"}},saturated=false}
 end, sweep=function(_,_,a,b,rotation)
     calls = calls + 1
     assert(a[1] == 0 and b[1] == 0) -- Tip-only turn, stationary hilt.
@@ -25,18 +28,19 @@ local function sample(frame,time,angle,tracking,resimulating)
     return Diagnostics.sample(state,request)
 end
 local first = assert(sample(0,0,0,true,false))
-assert(first.query_count == 1 and first.plan.reason == "fresh_pose")
+assert(first.query_count == 2 and first.plan.reason == "fresh_pose")
+assert(first.contacts[1].actor == "stationary_contact")
 local turn = assert(sample(1,.02,math.pi/2,true,false))
-assert(turn.plan.segments > 1 and turn.query_count == 1+2*turn.plan.segments)
-assert(#turn.contacts == 2*turn.plan.segments and turn.saturated)
+assert(turn.plan.segments > 1 and turn.query_count == 2+2*turn.plan.segments)
+assert(#turn.contacts == 1+2*turn.plan.segments and turn.saturated)
 local before = calls
 assert(not sample(1,.02,math.pi/2,true,false) and calls == before)
 assert(not sample(2,.04,math.pi/2,true,true) and calls == before)
 assert(not sample(2,.04,math.pi/2,false,false) and calls == before)
 local recovered = assert(sample(3,.06,math.pi/2,true,false))
-assert(recovered.query_count == 1)
+assert(recovered.query_count == 2)
 request.history_key = {}
-assert(sample(4,.08,math.pi/2,true,false).query_count == 1)
+assert(sample(4,.08,math.pi/2,true,false).query_count == 2)
 assert(sample(5,1,math.pi/2,true,false).plan.reason == "discontinuity")
 fail = true
 local failed, reason = sample(6,1.02,math.pi/2,true,false)
@@ -44,5 +48,5 @@ assert(not failed and reason == "query_error" and state.previous == nil)
 before = calls
 assert(not sample(6,1.02,math.pi/2,true,false) and calls == before)
 fail = false
-assert(sample(7,1.04,math.pi/2,true,false).query_count == 1)
+assert(sample(7,1.04,math.pi/2,true,false).query_count == 2)
 print("non-damaging melee query orchestration, arc sampling and history recovery passed")
