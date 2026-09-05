@@ -12030,6 +12030,8 @@ mod:hook("HudElementSmartTagging", "_find_world_marker_target",
         end
         -- The stock screen-centre hover test overrides the controller ray.
         -- Use the same smart-targeting result as the actual tag action.
+        Managers.event:trigger("request_world_markers_list",
+            callback(self, "_cb_world_markers_list_request"))
         local data = self:_find_raycast_targets(false)
         local marker = data and data.unit and self:_find_marker_by_unit(data.unit)
         local distance = marker and marker.widget and marker.widget.content.distance
