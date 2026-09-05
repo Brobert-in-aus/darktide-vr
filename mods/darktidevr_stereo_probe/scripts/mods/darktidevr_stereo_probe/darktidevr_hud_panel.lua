@@ -538,9 +538,16 @@ function HudPanel.draw(world, position, rotation, overlap_width)
         Gui.bitmap_3d(state.world_gui,
             "content/ui/materials/symbols/infinite",tm,
             Vector3(-0.15,-0.2,0),1001,Vector2(0.3,0.3),Color(255,255,255,255))
-        Gui.rect_3d(state.world_gui,tm,Vector2(0.2,-0.2),1001,
-            Vector2(0.3,0.3),Color(255,255,255,255),
-            "content/ui/materials/symbols/infinite")
+        -- Compare the opposite face: colored rectangles may be two-sided
+        -- even when the textured material culls a back-facing surface.
+        local facing_tm = Matrix4x4.identity()
+        Matrix4x4.set_right(facing_tm, -Quaternion.right(rotation))
+        Matrix4x4.set_forward(facing_tm, -forward)
+        Matrix4x4.set_up(facing_tm, Quaternion.up(rotation))
+        Matrix4x4.set_translation(facing_tm, position + forward)
+        Gui.bitmap_3d(state.world_gui,
+            "content/ui/materials/symbols/infinite",facing_tm,
+            Vector3(-0.15,-0.2,0),1001,Vector2(0.3,0.3),Color(255,255,255,255))
     end
     Gui.bitmap_3d(
         state.world_gui,

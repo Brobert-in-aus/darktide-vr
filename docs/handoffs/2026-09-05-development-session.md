@@ -1012,3 +1012,9 @@ is a placeholder replaced by HudElementPlayerWeapon.set_icon, so its absence
 does not establish a broken bitmap path. Replaced it with the fixed infinite
 symbol used directly by stock HUD, plus a rect_3d material sample. Legacy
 bitmap offsets now explicitly use Vector3 as documented by the engine API.
+
+Fixed-symbol check 7ceebb6 still showed neither bitmap symbol. The rect_3d
+optional-material sample produced a solid white square, not the symbol, so this
+does not prove texture sampling. Next diagnostic reverses the plane normal for
+one symbol to distinguish textured backface culling from two-sided colored
+rectangles; panel size remains unchanged. LuaJIT passed all 25 chunks.
