@@ -1018,3 +1018,11 @@ optional-material sample produced a solid white square, not the symbol, so this
 does not prove texture sampling. Next diagnostic reverses the plane normal for
 one symbol to distinguish textured backface culling from two-sided colored
 rectangles; panel size remains unchanged. LuaJIT passed all 25 chunks.
+
+Breakthrough: 7e078a7 opposite-face symbol is visibly rendered in shared-eye
+capture hud-facing-20260905/left.png, while the original-facing copies remain
+absent. The texture surface was back-facing; colored rectangles hid that fact.
+Applied viewer-facing basis to the panel and reversed U coordinates to preserve
+text reading direction. Removed redundant symbol diagnostics. HUD fixture now
+checks front-facing basis, U reversal and final scale. HUD test and 25-chunk
+LuaJIT gate passed. Actual target contents still require next live readback.

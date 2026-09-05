@@ -164,18 +164,24 @@ assert(state.queue_renderer == renderer and state.borrowed_renderer)
 hooks.draw(stock, owner, .01, 10, {})
 local v3meta = {__add=function(a) return a end}
 Vector3 = function(x,y,z) return setmetatable({x,y,z,kind="v3"},v3meta) end
+v3meta.__unm=function(v) return Vector3(-v[1],-v[2],-v[3]) end
 Vector2 = function(x,y) return {x,y,kind="v2"} end
 Quaternion = {forward=function() return Vector3(0,1,0) end,
     right=function() return Vector3(1,0,0) end,up=function() return Vector3(0,0,1) end}
 Matrix4x4.set_right, Matrix4x4.set_forward, Matrix4x4.set_up, Matrix4x4.set_translation =
-    function() end,function() end,function() end,function() end
+    function(tm,v) tm.right=v end,function(tm,v) tm.forward=v end,function() end,function() end
 local bitmap_drawn = false
-Gui.bitmap_3d = function(_,material,_,offset,_,size)
+Gui2 = {bitmap_3d = function(_,material,flags,tm,_,options)
+    local offset,size=options.position_offset,options.size
     assert(material == state.world_material)
-    assert(offset.kind == "v3" and offset[3] == 0 and size.kind == "v2")
+    assert(flags == nil and tm.right[1] == -1 and tm.forward[2] == -1,
+        "textured HUD must face the viewer")
+    assert(options.uv00[1] == 1 and options.uv11[1] == 0,
+        "viewer-facing HUD must undo horizontal mirroring")
+    assert(offset.kind == "v3" and offset[3] == 0 and size.kind == "v3")
     assert(math.abs(size[1] - 0.8) < 1e-6 and math.abs(size[2] - 0.81) < 1e-6)
     bitmap_drawn = true
-end
+end}
 panel.draw(renderer.world,Vector3(0,0,0),{})
 assert(bitmap_drawn)
 panel.set_enabled(false)

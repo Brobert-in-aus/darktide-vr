@@ -509,8 +509,10 @@ function HudPanel.draw(world, position, rotation, overlap_width)
     end
     local forward = Quaternion.forward(rotation)
     local tm = Matrix4x4.identity()
-    Matrix4x4.set_right(tm, Quaternion.right(rotation))
-    Matrix4x4.set_forward(tm, forward)
+    -- Textured world GUI culls the back face; colored rectangles do not.
+    -- Face the viewer, then reverse U below to preserve left-to-right text.
+    Matrix4x4.set_right(tm, -Quaternion.right(rotation))
+    Matrix4x4.set_forward(tm, -forward)
     Matrix4x4.set_up(tm, Quaternion.up(rotation))
     Matrix4x4.set_translation(tm, position + forward)
     local width = (overlap_width or 1) * HudPanel.scale
@@ -527,36 +529,16 @@ function HudPanel.draw(world, position, rotation, overlap_width)
             Gui.rect_3d(state.world_gui,tm,Vector2(edge[1],edge[2]),999,
                 Vector2(edge[3],edge[4]),Color(255,0,180,190))
         end
-        -- A fixed symbol tests bitmap geometry independently of the target.
-        -- The weapon_icon_container placeholder is replaced by stock set_icon
-        -- and is not a valid independent texture control.
-        Gui2.bitmap_3d(state.world_gui,
-            "content/ui/materials/symbols/infinite",nil,tm,1001,
-            {color=Color(255,255,255,255),
-             position_offset=Vector3(-0.15,0.2,0),size=Vector3(0.3,0.3,0),
-             uv00=Vector2(0,0),uv11=Vector2(1,1),snap_pixel_positions=false})
-        Gui.bitmap_3d(state.world_gui,
-            "content/ui/materials/symbols/infinite",tm,
-            Vector3(-0.15,-0.2,0),1001,Vector2(0.3,0.3),Color(255,255,255,255))
-        -- Compare the opposite face: colored rectangles may be two-sided
-        -- even when the textured material culls a back-facing surface.
-        local facing_tm = Matrix4x4.identity()
-        Matrix4x4.set_right(facing_tm, -Quaternion.right(rotation))
-        Matrix4x4.set_forward(facing_tm, -forward)
-        Matrix4x4.set_up(facing_tm, Quaternion.up(rotation))
-        Matrix4x4.set_translation(facing_tm, position + forward)
-        Gui.bitmap_3d(state.world_gui,
-            "content/ui/materials/symbols/infinite",facing_tm,
-            Vector3(-0.15,-0.2,0),1001,Vector2(0.3,0.3),Color(255,255,255,255))
     end
-    Gui.bitmap_3d(
+    Gui2.bitmap_3d(
         state.world_gui,
         state.world_material,
+        nil,
         tm,
-        Vector3(-width * 0.5, -height * 0.5, 0),
         1000,
-        Vector2(width, height),
-        Color(255, 255, 255, 255))
+        {position_offset=Vector3(-width*.5,-height*.5,0),
+         size=Vector3(width,height,0),color=Color(255,255,255,255),
+         uv00=Vector2(1,0),uv11=Vector2(0,1),snap_pixel_positions=false})
     if not state.logged then
         state.logged = true
         state.mod:info(
