@@ -1350,3 +1350,11 @@ check the offset rectangle against both optical frusta. Fresh capture before
 the change is artifacts/diagnostics/hud-centering-20260905/eyes.png.
 Announced normal game closure for deployment. Worn comfort/edge-fit remains
 the user's acceptance check; readback alone does not establish lens visibility.
+
+Deployed 7dbff0b after normal shutdown and passing Ready preflight
+(`artifacts/unattended/hud-centered-preflight-20260905.json`). Relaunched with
+EnterPsykhanium/EnableHudPanel. Live log
+`artifacts/unattended/hud-centered-live-20260905.log` confirms fresh HUD resource
+initialization, distance 2.000 m, width 2.108 m, height 1.417 m, shared_ready 819
+and 60 fresh pairs/s without Lua or marker replay errors at startup. Run remains
+open for worn edge-fit acceptance.
