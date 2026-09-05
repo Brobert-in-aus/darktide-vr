@@ -684,3 +684,15 @@ existing cooldown policy, proving no 20-result truncation or reset bypass in
 this layer. Physics/obstruction, liveness, stock priority calculation and damage
 remain adapter responsibilities; no live import or deployment. CTest collector,
 Lua source compiler and source invariants passed 3/3 (19 Lua chunks).
+
+Offline timing helper now resolves explicitly selected stock action chains using
+adapter-supplied effective scales and input-ready offsets. Source inspection
+found that heavy hold input timing is separate from scaled chain timing; this
+is documented with already-held input caveats. CTest timing, Lua source compiler
+and invariants passed 3/3 (20 chunks). No live import or changed cooldown behavior.
+
+Read-only snapshots of the live traced allocator at 01:58:55, 02:00:02 and
+02:02:46 UTC all show fresh_cursor=85,363; free-list count fluctuates around
+1,923-1,941. These observations use only the traced allocator's known fields,
+with exact target-executable/PID verification, without modifying the game.
+The replacement is past ten minutes; the prior crash window was ~16.5 minutes.

@@ -237,3 +237,22 @@ it does not implement wall/shield physics, actor liveness or authority itself.
 Batch reset is independent of the cooldown ledger. Its integration fixture uses
 100 targets, several hurtboxes/substeps, and repeated stationary contact with
 the existing per-target policy. This module is also offline and unimported.
+
+Input readiness is a separate timing constraint: the inspected mid-speed melee
+input setup requires a 0.35-second heavy hold, while the windup chain threshold
+is 0.5 seconds before scaling. ActionInputParser compares its hold duration to
+simulation time directly; it does not divide that duration by the action's time
+scale. At scale 2, a newly started hold therefore cannot become heavy-ready at
+0.25 seconds solely because the chain threshold has elapsed. Account for input
+already held/queued before the action entry, rather than blindly adding a fresh
+hold duration to every chained attack.
+
+`darktidevr_melee_timing.lua` resolves an explicitly selected sequence of stock
+chain transitions, with effective scales supplied by the adapter and optional
+input-ready offsets relative to each action entry. It sums intermediate waits,
+uses the engine's inverted-kind rule and takes the later of chain/input readiness.
+It rejects disconnected routes and conditional early-window timing instead of
+guessing. This is not automatic weapon route selection or a replacement for the
+live handler's condition validation; it remains offline and unimported. Tests
+cover the .55 attack chain versus .45 block chain, intermediate windup, speed
+scaling, inverted kinds and the heavy input floor.
