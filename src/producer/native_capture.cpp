@@ -12103,19 +12103,19 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
         capture_present_halves(candidate.Get(), queue.Get()),
         std::memory_order_relaxed);
   }
-  // Flat loading/cinematic frames are already drawn authoritatively by the
-  // game window. Re-injecting the last completed eye there makes the desktop
-  // alternate between the loading view and the preceding stereo scene.
-  const bool engine_loading_mirror =
-      streamline_stereo_swapchain_probe_requested.load(std::memory_order_acquire) &&
-      presentation_mode == darktidevr::core::SharedPresentationMode::flat_loading_or_cinematic;
-  if ((engine_loading_mirror || (presentation_mode !=
+  // Packed rendering gives the engine a private backbuffer. Flat menus and
+  // loading screens must reach DXGI from that current buffer too; otherwise
+  // skipping the eye mirror leaves the last world image on the desktop.
+  const bool engine_flat_mirror = darktidevr::producer::engine_flat_mirror_required(
+      streamline_stereo_swapchain_probe_requested.load(std::memory_order_acquire),
+      presentation_mode);
+  if ((engine_flat_mirror || (presentation_mode !=
           darktidevr::core::SharedPresentationMode::flat_loading_or_cinematic &&
       !darktidevr::core::flat_interactive_active(presentation_mode))) &&
       candidate && present_queue &&
-      (engine_loading_mirror || desktop_mirror_ready.load(std::memory_order_acquire))) {
+      (engine_flat_mirror || desktop_mirror_ready.load(std::memory_order_acquire))) {
     const auto mirror_result =
-        present_desktop_eye_mirror(candidate.Get(), present_queue.Get(), engine_loading_mirror);
+        present_desktop_eye_mirror(candidate.Get(), present_queue.Get(), engine_flat_mirror);
     if (mirror_result != 0) {
       const auto error = desktop_mirror_error_count.fetch_add(
                              1, std::memory_order_relaxed) +

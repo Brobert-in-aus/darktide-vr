@@ -1,5 +1,29 @@
 # Menu interaction audit and offline rework
 
+## Packed-render desktop mirror follow-up — 6 September
+
+The editor integration check found that Esc in the private range selected
+native menu mode 5 while the desktop retained its previous world image. The
+packed path gives the engine a private backbuffer; its Present mirror selection
+copied that buffer for loading mode 2 but skipped native interactive modes 5/6.
+The candidate fix includes all three flat modes in the engine-buffer copy rule,
+while immersive modes continue using the completed eye mirror. The non-packed
+path keeps its existing behavior. This changes desktop presentation, not menu
+input, layout or shared-eye ownership.
+
+Release build and CTest `stereo_color_resample`, `presentation_policy`,
+`menu_input`, `hud_options`, and the pinned LuaJIT gate passed. The GPU test
+includes the mode-selection regression and existing resample/resource-lifetime
+checks. Live desktop validation in
+`artifacts/unattended/menu-mirror-live-20260906.log` restored Esc rendering,
+correct Mod Options clicks and the new editor button. Closing menus opened
+the full Custom HUD editor; F3 closed it and restored all 26 alive HUD elements.
+Afterward the harness reached `shared_ready=12442`, about 43 fresh pairs/s,
+zero pose mismatches and zero interval fallback frames. No mod errors appeared.
+The desktop retains the established eye-aspect encoding for gameplay menus;
+the XR panel's existing aspect correction is unchanged. Worn acceptance of
+this follow-up and individual shop visits remain pending.
+
 ## Follow-up coverage pass after live feedback
 
 Latest acceptance: after the follow-up build was launched, the user reported

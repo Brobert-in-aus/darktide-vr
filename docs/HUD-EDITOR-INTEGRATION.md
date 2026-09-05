@@ -46,6 +46,15 @@ The initial live check reached the private range with fresh shared eyes and
 the accepted HUD dimensions. Opening Esc then left the desktop showing the
 world while the harness switched to native menu presentation mode 5. This
 blocks the new button/notice acceptance until the menu rendering path is fixed;
-the editor itself had not been activated when it occurred. Evidence is in
+the editor itself had not been activated when it occurred. Initial evidence is in
 `artifacts/unattended/hud-editor-live-20260906.log` (ignored). The implementation
-is an offline-validated candidate, not a completed live acceptance checkpoint.
+was checkpointed before repairing that separate rendering issue.
+
+The follow-up menu mirror fix unblocked the check. The new options button
+responded at its displayed position, closing menus opened the full Custom HUD
+editor with its border and element list, and the desktop instruction rendered
+in the shared HUD texture. F3 closed the editor, removed the instruction, and
+restored the alive HUD group (26 elements). Fresh eye pairs continued without
+pose mismatches. No saved item positions were edited during this check.
+See `artifacts/unattended/menu-mirror-live-20260906.log` and the
+[menu follow-up](MENU-INTERACTION-AUDIT.md). Worn readability remains pending.

@@ -9,6 +9,16 @@ using Microsoft::WRL::ComPtr;
 void ok(HRESULT result) { if (FAILED(result)) throw std::runtime_error("GPU operation failed"); }
 void check(bool value) { if (!value) throw std::runtime_error("resample mismatch"); }
 int main() {
+  using Mode = darktidevr::core::SharedPresentationMode;
+  for (const auto mode : {Mode::flat_loading_or_cinematic, Mode::flat_interactive,
+                          Mode::flat_interactive_native_aspect}) {
+    check(darktidevr::producer::engine_flat_mirror_required(true, mode));
+    check(!darktidevr::producer::engine_flat_mirror_required(false, mode));
+  }
+  // Returning to immersive rendering must resume the completed-eye mirror.
+  check(!darktidevr::producer::engine_flat_mirror_required(true, Mode::stereo_world));
+  check(!darktidevr::producer::engine_flat_mirror_required(true, Mode::world_anchored_menu));
+  check(!darktidevr::producer::engine_flat_mirror_required(true, Mode::flat_menu));
   ComPtr<IDXGIFactory4> factory; ok(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
   ComPtr<IDXGIAdapter> warp; ok(factory->EnumWarpAdapter(IID_PPV_ARGS(&warp)));
   ComPtr<ID3D12Device> device; ok(D3D12CreateDevice(warp.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device)));

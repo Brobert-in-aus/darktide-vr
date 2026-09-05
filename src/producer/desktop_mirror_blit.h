@@ -1,4 +1,5 @@
 #pragma once
+#include "core/shared_presentation_state.h"
 #include <d3d12.h>
 #include <d3dcompiler.h>
 #include <wrl/client.h>
@@ -6,6 +7,14 @@
 #include <utility>
 
 namespace darktidevr::producer {
+inline constexpr bool engine_flat_mirror_required(
+    bool private_engine_backbuffer, core::SharedPresentationMode mode) {
+  return private_engine_backbuffer &&
+      (mode == core::SharedPresentationMode::flat_loading_or_cinematic ||
+       mode == core::SharedPresentationMode::flat_interactive ||
+       mode == core::SharedPresentationMode::flat_interactive_native_aspect);
+}
+
 // One instance per fence-retired command-list slot. Descriptors and references
 // may only be updated after that slot's previous submission has completed.
 class DesktopMirrorBlit {
