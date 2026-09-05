@@ -5,7 +5,7 @@ local ScriptWorld = require("scripts/foundation/utilities/script_world")
 local HudPanel = {}
 HudPanel.height = 1.125 * 0.9 * 2
 HudPanel.distance = 2
-HudPanel.scale = 0.7
+HudPanel.scale = 0.63
 HudPanel.object_scale = 2.08
 
 -- Store scalar poses across frames: engine Vector3/Quaternion temporaries

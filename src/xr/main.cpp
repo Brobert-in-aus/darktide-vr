@@ -1311,11 +1311,17 @@ class OpenXrProbe {
                 if (!was_projection_active && will_be_projection_active) {
                   projection_resume_started = frame_start;
                   projection_resume_ready_value = shared_last_ready_value;
-                  projection_resume_gameplay_generation =
-                      head_pose_writer
-                          ? head_pose_writer->read_gameplay_generation()
-                          : 0;
                 } else if (!will_be_projection_active) {
+                  // Capture the outgoing generation when entering the menu.
+                  // On exit Lua may already have committed its restored pose
+                  // before we observe the mode change; sampling it there would
+                  // wait forever for a second commit that is not required.
+                  if (was_projection_active) {
+                    projection_resume_gameplay_generation =
+                        head_pose_writer
+                            ? head_pose_writer->read_gameplay_generation()
+                            : 0;
+                  }
                   projection_resume_started.reset();
                 }
               }

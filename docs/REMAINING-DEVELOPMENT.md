@@ -65,9 +65,10 @@ Next: verify hand-selected stereo tag prompts and transitions; then make
 the fixed status layout configurable without moving world/depth markers onto
 the panel. The panel is two metres away. After the user reported opposite
 inner-edge clipping in the two eyes, centre it on the binocular intersection
-and reduce uniform panel scale from 0.8 to 0.7 (12.5% smaller). Height is now
-1.4175 m, width approximately 2.1 m depending on the shared frusta. Internal
-object scale and saved layout remain intact. Worn edge-fit acceptance is pending. The user
+and reduce uniform panel scale from 0.8 to 0.7 (12.5% smaller). User accepted
+edge fit and requested a further 10% reduction for next launch: scale 0.63,
+height 1.27575 m, width approximately 1.90 m. Internal
+object scale and saved layout remain intact. The user
 requested these reductions; both-eye readback confirms the outline fits, while
 worn comfort still needs acceptance. World GUI draws now expire each frame,
 fixing the user's observed accumulation at old head poses. The visible texture

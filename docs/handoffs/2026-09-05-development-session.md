@@ -1358,3 +1358,27 @@ EnterPsykhanium/EnableHudPanel. Live log
 initialization, distance 2.000 m, width 2.108 m, height 1.417 m, shared_ready 819
 and 60 fresh pairs/s without Lua or marker replay errors at startup. Run remains
 open for worn edge-fit acceptance.
+
+## Menu return freeze and operative fallback
+
+User accepted edge fit; requested another 10% size reduction on next start.
+Uniform scale now 0.63, height 1.27575 m; distance and internal scale unchanged.
+
+User reported View Operative showed text without images/input and disturbed
+lighting, and Escape close froze the XR world while desktop/reticle stayed live.
+Harness evidence: fresh=1, pose_synced=1, settled=0, with committed/rendered/resume
+generations all zero indefinitely. Lua only suspended/restored modal orientation
+in hub game mode, whereas the harness gated modal exits in all game modes.
+Extend suspension/restoration to mode 5/6 in Psykhanium and missions too.
+Also snapshot the outgoing gameplay generation when entering a modal, rather
+than on exit: Lua may already commit the restored generation before the harness
+observes the exit, causing the old logic to wait for a nonexistent second commit.
+
+Inventory background/main views now explicitly use native-window mode 5, which
+captures the full menu including image/3D passes and uses the existing pointer
+route. This replaces their incomplete direct-widget world-menu path. Lighting,
+images, interaction and return-to-world behavior still need live acceptance.
+LuaJIT 25-chunk gate, hud_panel/presentation_policy CTests and Release harness
+build passed. Ready preflight passed at
+artifacts/unattended/hud-menu-resume-preflight-20260905.json after announced
+normal shutdown. Existing policy tests do not prove the full game transition.

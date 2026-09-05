@@ -486,6 +486,10 @@ local presentation = {
     -- the transition. Keep this explicit: `disable_game_world` also covers
     -- unrelated cinematics and fullscreen flows that need separate policy.
     shop_panel_views = {
+        -- Operative UI includes a separate 3D preview world and image passes.
+        -- Capture the complete native window with its matching pointer route.
+        inventory_background_view = true,
+        inventory_view = true,
         barber_vendor_background_view = true,
         character_appearance_view = true,
         contracts_background_view = true,
@@ -5140,9 +5144,10 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
     -- interaction facing rotated away from what the player sees after exit.
     -- Keep the VR-owned heading following the rendered cyclopean pose while the
     -- shop is open, but do not feed the shop camera back into gameplay.
-    local modal_orientation = (presentation.mode == 5 or
-        presentation.mode == 6) and
-        presentation.current_game_mode_name() == "hub"
+    -- Escape and inventory use the same compositor resume gate in missions
+    -- and Psykhanium as vendors do in the hub. Always publish a restored
+    -- gameplay generation when returning from these modal views.
+    local modal_orientation = presentation.mode == 5 or presentation.mode == 6
     if modal_orientation then
         if not controller_observation.gameplay_orientation_suspended then
             controller_observation.gameplay_pitch = game_pitch
