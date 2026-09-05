@@ -28,6 +28,11 @@ function VisualSettings.install(mod)
         return func(environment, ...)
     end)
     local function enforce()
+        -- Startup reconciliation can replace the launcher's windowed setting.
+        -- Keep the VR mirror in window mode at the engine apply boundary too.
+        Application.set_user_setting("fullscreen", false)
+        Application.set_user_setting("borderless_fullscreen", false)
+        Application.set_user_setting("screen_mode", "window")
         for key in pairs(disabled) do
             Application.set_user_setting("render_settings", key, false)
             Application.set_render_setting(key, "false")
@@ -42,6 +47,14 @@ function VisualSettings.install(mod)
         return func(key, value, ...)
     end)
     mod:hook(Application, "set_user_setting", function(func, location, key, ...)
+        if location == "fullscreen" or location == "borderless_fullscreen" then
+            if key == true then
+                mod:info("DARKTIDEVR_DISPLAY rejected %s=true", location)
+            end
+            return func(location, false)
+        elseif location == "screen_mode" then
+            return func(location, "window")
+        end
         local policy = location == "render_settings" and disabled or
             (location == "master_render_settings" and qualities)
         if policy then
@@ -67,6 +80,9 @@ function VisualSettings.install(mod)
         if pending then
             pending = false
             enforce()
+            Application.apply_user_settings()
+            mod:info("DARKTIDEVR_DISPLAY windowed=forced fullscreen=%s",
+                tostring(Application.is_fullscreen and Application.is_fullscreen()))
             mod:info("DARKTIDEVR_VISUAL_SETTINGS blur_dof_lens=forced_off")
             if Application.settings then
                 local ok, settings = pcall(Application.settings)

@@ -228,3 +228,96 @@ probe flags are absent. Restoration log:
 Wide regression capture archived as `wide-regressions-probe.tsv` in the DLSS
 diagnostic directory. Restoring the normal configuration is not itself user
 acceptance that all three symptoms have recovered.
+
+## Normal restore accepted; window/presentation extent separation
+
+User confirms all three wide-mode regressions recovered on the normal relaunch.
+The next change keeps `swapchain_render_width` at the per-eye width for window
+messages, GetClientRect, client sizing and GPU profiling. A separate presentation
+width is used only by ResizeBuffers/ResizeBuffers1. Invalid packed extents are
+rejected before mutating configuration. This removes the known window-coordinate
+coupling; it does not prove the engine never derives dimensions from GetBuffer
+or GetDesc. The snapshot path now rejects changed eye dimensions explicitly as
+`engine_extent_changed`, rather than resampling them and accepting preparation.
+The GPU resampler remains an isolated tested helper, unused by native capture.
+
+Validation: native Windows Release build (`cmake --build build/windows-vs2022
+--config Release --target darktidevr_native_capture`) passes warnings-as-errors.
+CTest regex `^(stereo_color_resample|streamline_(submission|input_lifetime|stereo_inputs|abi_reference))$`
+passes all five tests. Added extent-contract checks cover unchanged eye layout,
+packed allocation, invalid size/overflow and rejection of enlarged eye captures.
+
+Announced shutdown, waited for normal runner cleanup, applied proximity override
+Disable/Status and passed Ready preflight. Diagnostic launched with
+`-EnableHudPanel -EnterPsykhanium -StreamlineTargetTokenProbe
+-StreamlineStereoSwapchainProbe`; no Present-stage copying or generated submission.
+Evidence paths: `artifacts/unattended/dlss-isolated-preflight-20260905.json` and
+`artifacts/unattended/dlss-isolated-live-20260905.log`. Runtime and worn acceptance
+are pending; this is not completed DLSS frame generation.
+
+### Isolated window extent runtime result: preparation passes, visual fails
+
+Capture `artifacts/diagnostics/dlss-live-20260905/isolated-probe.tsv` reports
+engine=2496x2688 and present=4992x2688. Prepared colour stays 2496-wide and
+depth/motion stay 1664-wide (normal DLSS Quality sizes). Prepared packed output
+matches the actual Present backbuffer; both completion queries pass and retain
+fences with values 2874 / completed 2872. Analyzer report `isolated-report.txt`
+passes. Fresh stereo initialization and shared_ready=711 were observed.
+
+User nevertheless reports badly broken VR. Their desktop screenshot shows the
+scene occupying the left half and black filling the right half. They suspect
+this entire image reaches both eyes; that precise route is not yet proven.
+No packed copy or new stereo SL tags were submitted. Therefore normal-sized
+DLSS input captures do not establish correct final engine compositing or XR
+capture. This experiment is FAILED visually. Do not proceed to Present-stage
+copying on this basis. The next design must isolate the game's final render
+resource as well as window dimensions, with normal resource descriptors, RTVs,
+viewport/scissor contracts and correctly routed captures. Simply doubling the
+real game backbuffer is not sufficient. A proxy render target must be tested
+offline for GetBuffer/RTV identity, resize ownership, transitions and final-copy
+routing before another worn experiment. A second swapchain is not automatically
+a DLSS solution: NVIDIA's guide describes selecting a single managed swapchain.
+Reference: https://github.com/NVIDIA-RTX/Streamline/blob/main/docs/ProgrammingGuideDLSS_G.md
+(version-specific compatibility still requires checking against game 2.7.30).
+
+Announced and completed normal restoration. User confirms the rest of the revert
+worked, but fullscreen persisted. A pre-launch settings rewrite was verified;
+the Fatshark launcher log also records fullscreen=false and screen_mode=window.
+The game later rewrites these to fullscreen. Exact initiating caller remains
+unidentified. Added enforcement at the existing Application settings/apply
+boundary, with rejected true-write diagnostics, plus one startup apply. This
+avoids OS cursor/focus automation. The standalone launch helper backs up only
+when needed and preserves unrelated settings and resolutions.
+
+User requests LOD 9 instead of 3. While closed, backed up user_settings.config to
+artifacts/phase1/render-settings/user_settings.pre-lod9-20260905.config and changed
+only lod_object_multiplier=3 to 9. This is the current local tuning value, not a
+proven release default; post-release LOD optimization remains open. All other
+accepted graphics/texture/thread settings remain intact.
+
+Validation: all 26 Lua chunks compile with pinned LuaJIT. The visual-settings
+runtime harness passes, including rejection of a startup fullscreen write and
+preservation of existing graphics clamps. Ready preflight passes at
+artifacts/unattended/window-policy-preflight-20260905.json. Relaunch uses only
+-EnableHudPanel -EnterPsykhanium, log artifacts/unattended/window-policy-live-20260905.log.
+Window-policy live acceptance pending. No generated stereo is published.
+
+### Window-policy runtime result and remaining startup size correction
+
+Fresh console reports DARKTIDEVR_DISPLAY windowed=forced fullscreen=false.
+Active user_settings.config retains fullscreen=false, screen_mode=window and
+lod_object_multiplier=9. Live stereo reaches shared_ready=7047 at about 74 fresh
+pairs/s; two pose mismatches occurred during startup. User still described the
+launch as fullscreen, so read actual native window/monitor state instead of
+relying only on the saved setting. Window is not maximized, has overlapped-window
+style 14CF0000 and occupies about half the monitor (1536x864 client versus
+3072x1728 monitor in the same DPI-virtualized readback coordinates). Startup had
+used a much larger 3840x2135 window before the native mirror nudge resized it.
+
+The launch helper now also resets screen_resolution and last_windowed_resolution
+to 1920x1080 before Steam/launcher start. The native mod continues configuring the
+independent headset eye size after load. This latest startup-size change is
+syntax-checked but not yet exercised by another launch; the current normal run
+is left open. No claim that initial-launch appearance has been accepted by user.
+All 26 Lua chunks and visual-settings runtime tests pass. LOD 9 is verified in
+the active configuration. Current runner log is window-policy-live-20260905.log.

@@ -249,3 +249,15 @@ grew much larger. Normal rendering was restored by relaunching without diagnosti
 flags. Do not enable the current wide mode as a release path. Packed output must
 be isolated from normal engine eye/UI dimensions; do not mask these regressions
 with HUD, hand or marker calibration changes. DLSS remains incomplete.
+
+The user confirms normal restoration recovered VR. The next window/presentation
+extent separation preserved normal DLSS inputs but still failed visual testing:
+desktop output was half scene / half black and VR was broken. Normal mode has
+been restored again. Final engine render-target isolation is required before
+another wide-output experiment; successful input preparation alone is not an
+acceptance gate. See the DLSS handoff for exact runtime evidence.
+
+Current machine LOD tuning is now `lod_object_multiplier = 9`, requested by the
+user because 3 still showed obvious transitions. Keep post-release LOD tuning
+open; 9 is not established as the release default. Fullscreen launch enforcement
+now runs both before launcher startup and at the game's settings-apply boundary.

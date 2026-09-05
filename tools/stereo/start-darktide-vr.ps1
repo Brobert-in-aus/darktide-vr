@@ -569,6 +569,7 @@ if (-not $DoNotOpenLauncher) {
     # Preserve the supported Steam -> Fatshark launcher path. The launcher has
     # no autoplay command-line switch, so the guarded helper invokes its normal
     # Play control after verifying process identity and window geometry.
+    & (Join-Path $PSScriptRoot 'set-darktide-windowed.ps1')
     $xrLaunchOwnsGame = $true
     Start-Process 'steam://rungameid/1361210'
     if (-not $ManualLauncherPlay) {

@@ -15,6 +15,10 @@ ShadingEnvironment = {
 }
 Application = {
     set_user_setting = function(location, key, value)
+        if value == nil and type(key) ~= 'table' then
+            settings[location] = key
+            return
+        end
         settings[location] = settings[location] or {}
         if type(key) == 'table' then settings[location] = key
         else settings[location][key] = value end
@@ -52,6 +56,11 @@ else
     module.update()
 end
 assert(render.dof_enabled == 'false')
+assert(settings.fullscreen == false and settings.borderless_fullscreen == false)
+assert(settings.screen_mode == 'window')
+Application.set_user_setting('fullscreen', true)
+Application.set_user_setting('screen_mode', 'fullscreen')
+assert(settings.fullscreen == false and settings.screen_mode == 'window')
 local preset = { dof_enabled = true, motion_blur_enabled = true, unrelated = 7 }
 Application.set_user_setting('render_settings', preset)
 assert(preset.dof_enabled == true, 'do not mutate the shared preset')

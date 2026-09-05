@@ -1,4 +1,5 @@
 #include "core/streamline_stereo_inputs.h"
+#include "core/streamline_render_extent.h"
 #include "producer/streamline_eye_tags.h"
 
 #include <cstdint>
@@ -198,6 +199,20 @@ int main() {
     expect(!darktidevr::core::streamline_stereo_present_target_matches(
                present_target),
            "the staging source and Present destination must be distinct");
+
+    const auto normal = darktidevr::core::streamline_render_extent(2496, 2688, false);
+    const auto packed = darktidevr::core::streamline_render_extent(2496, 2688, true);
+    expect(normal.eye_width == packed.eye_width && normal.height == packed.height &&
+               normal.present_width == 2496 && packed.present_width == 4992,
+           "packing must only change presentation dimensions");
+    expect(packed.accepts_eye(2496, 2688) && !packed.accepts_eye(4992, 2688) &&
+               !packed.accepts_eye(2496, 1344),
+           "changed engine dimensions must fail instead of being resampled");
+    expect(!darktidevr::core::streamline_render_extent(3841, 2688, true).eye_width &&
+               !darktidevr::core::streamline_render_extent(UINT64_MAX, 2688, true).eye_width &&
+               !darktidevr::core::streamline_render_extent(2496, 0, false).eye_width &&
+               darktidevr::core::streamline_render_extent(3840, 2688, true).present_width == 7680,
+           "invalid or overflowing presentation sizes must be rejected");
 
     std::cout << "streamline_stereo_inputs=pass\n";
     return 0;

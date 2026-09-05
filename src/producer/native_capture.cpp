@@ -22,10 +22,10 @@
 #include "core/shared_presentation_state.h"
 #include "core/shared_surface_policy.h"
 #include "core/streamline_stereo_inputs.h"
+#include "core/streamline_render_extent.h"
 #include "core/two_bone_ik.h"
 #include "streamline_abi_2_7_30.h"
 #include "producer/streamline_submission.h"
-#include "producer/stereo_color_resample.h"
 
 #include <algorithm>
 #include <array>
@@ -163,8 +163,6 @@ struct StreamlineConstantsObservation {
 struct StreamlineInputSnapshotState {
   darktidevr::producer::StreamlineSubmission submission;
   bool submission_prepared{};
-  darktidevr::producer::StereoColorResample color_resample;
-  bool colors_resampled{};
   bool completion_observation_started{};
   std::array<ComPtr<ID3D12Fence>, 2> input_completion_fences;
   std::array<std::uint64_t, 2> input_completion_values{};
@@ -1118,6 +1116,8 @@ DXGI_FORMAT camera_output_format{DXGI_FORMAT_UNKNOWN};
 std::atomic<UINT> camera_input_width{1920};
 std::atomic<UINT> camera_input_height{2160};
 std::atomic<bool> swapchain_render_extent_enabled{};
+// Engine-facing extent stays per-eye; only DXGI allocation uses packed width.
+std::atomic<UINT> swapchain_present_width{1920};
 std::atomic<UINT> swapchain_render_width{1920};
 std::atomic<UINT> swapchain_render_height{2160};
 std::atomic<bool> swapchain_resize_nudge_pending{};
@@ -9138,8 +9138,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
         submission_inputs[sample_eye][type] = {
             resource.Get(), static_cast<std::uint32_t>(input_description.Width),
             input_description.Height,
-            static_cast<std::uint32_t>(state.colors_resampled && type == 2
-                ? D3D12_RESOURCE_STATE_COPY_SOURCE : D3D12_RESOURCE_STATE_COPY_DEST),
+            static_cast<std::uint32_t>(D3D12_RESOURCE_STATE_COPY_DEST),
             static_cast<std::uint32_t>(input_description.Format)};
       }
     }
@@ -9203,15 +9202,19 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
     auto stereo_description = left_description;
     const auto requested_eye_width =
         camera_input_width.load(std::memory_order_relaxed);
-    const auto resample_wide_eye =
-        streamline_stereo_swapchain_probe_requested.load(
-            std::memory_order_acquire) &&
-        requested_eye_width > 0 &&
-        left_description.Width ==
-            static_cast<std::uint64_t>(requested_eye_width) * 2;
-    const auto stereo_eye_width =
-        resample_wide_eye ? static_cast<std::uint64_t>(requested_eye_width)
-                      : left_description.Width;
+    const auto extent = darktidevr::core::streamline_render_extent(
+        requested_eye_width, camera_input_height.load(std::memory_order_relaxed),
+        streamline_stereo_swapchain_probe_requested.load(std::memory_order_acquire));
+    if (!extent.accepts_eye(left_description.Width, left_description.Height)) {
+      state.failed = true;
+      write_streamline_probe_log(
+          "STEREO_BACKBUFFER\tphase=failed\treason=engine_extent_changed"
+          "\texpected=%ux%u\tobserved=%llux%u\r\n",
+          extent.eye_width, extent.height,
+          static_cast<unsigned long long>(left_description.Width), left_description.Height);
+      return;
+    }
+    const auto stereo_eye_width = left_description.Width;
     stereo_description.Width = stereo_eye_width * 2;
     stereo_description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     D3D12_HEAP_PROPERTIES heap{};
@@ -9232,25 +9235,6 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
           "STEREO_BACKBUFFER\tphase=failed\treason=create_resources\r\n");
       return;
     }
-    if (resample_wide_eye) {
-      const auto resample_result = state.color_resample.record(device.Get(),
-          state.stereo_backbuffer_commands.Get(), state.snapshots[0][2].Get(),
-          state.snapshots[1][2].Get(), static_cast<UINT>(stereo_eye_width),
-          left_description.Height);
-      if (FAILED(resample_result)) {
-        state.failed = true;
-        write_streamline_probe_log("STEREO_BACKBUFFER\tphase=failed\treason=resample\thresult=0x%08x\r\n",
-            static_cast<unsigned>(resample_result));
-        return;
-      }
-      state.colors_resampled = true;
-      state.stereo_backbuffer = state.color_resample.output(2);
-      state.snapshots[0][2] = state.color_resample.output(0);
-      state.snapshots[1][2] = state.color_resample.output(1);
-      write_streamline_probe_log("STEREO_COLOR_RESAMPLE\tfull_source_width=%llu\teye_width=%llu\theight=%u\tcropped=0\r\n",
-          static_cast<unsigned long long>(left_description.Width),
-          static_cast<unsigned long long>(stereo_eye_width), left_description.Height);
-    } else {
     for (std::size_t source_eye = 0; source_eye < 2; ++source_eye) {
       const auto& source_resource = state.snapshots[source_eye][2];
       D3D12_RESOURCE_BARRIER barrier{};
@@ -9282,7 +9266,6 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
     ready_barrier.Transition.Subresource =
         D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     state.stereo_backbuffer_commands->ResourceBarrier(1, &ready_barrier);
-    }
     const auto close_result = state.stereo_backbuffer_commands->Close();
     if (FAILED(close_result)) {
       state.failed = true;
@@ -10190,7 +10173,7 @@ HRESULT STDMETHODCALLTYPE resize_buffers_hook(IDXGISwapChain* swapchain,
   const auto requested_width = width;
   const auto requested_height = height;
   if (swapchain_render_extent_enabled.load(std::memory_order_acquire)) {
-    width = swapchain_render_width.load(std::memory_order_relaxed);
+    width = swapchain_present_width.load(std::memory_order_relaxed);
     height = swapchain_render_height.load(std::memory_order_relaxed);
   }
   const auto frame = present_count.load(std::memory_order_relaxed);
@@ -10247,7 +10230,7 @@ HRESULT STDMETHODCALLTYPE resize_buffers1_hook(
   const auto requested_width = width;
   const auto requested_height = height;
   if (swapchain_render_extent_enabled.load(std::memory_order_acquire)) {
-    width = swapchain_render_width.load(std::memory_order_relaxed);
+    width = swapchain_present_width.load(std::memory_order_relaxed);
     height = swapchain_render_height.load(std::memory_order_relaxed);
   }
   const auto frame = present_count.load(std::memory_order_relaxed);
@@ -14747,19 +14730,12 @@ extern "C" __declspec(dllexport) int dtvr_set_swapchain_render_extent(
     swapchain_render_extent_enabled.store(false, std::memory_order_release);
     return 0;
   }
-  if (width < 640 || height < 640 || width > 7680 || height > 7680) {
-    return 1;
-  }
-  camera_input_width.store(static_cast<UINT>(width),
-                           std::memory_order_relaxed);
-  camera_input_height.store(height, std::memory_order_relaxed);
-  if (streamline_stereo_swapchain_probe_requested.load(
-          std::memory_order_acquire)) {
-    if (width > 3840) {
-      return 1;
-    }
-    width *= 2;
-  }
+  const auto extent = darktidevr::core::streamline_render_extent(width, height,
+      streamline_stereo_swapchain_probe_requested.load(std::memory_order_acquire));
+  if (!extent.eye_width) return 1;
+  camera_input_width.store(extent.eye_width, std::memory_order_relaxed);
+  camera_input_height.store(extent.height, std::memory_order_relaxed);
+  swapchain_present_width.store(extent.present_width, std::memory_order_relaxed);
   {
     std::scoped_lock lock(boundary_census_log_mutex);
     if (boundary_census_log != INVALID_HANDLE_VALUE) {
@@ -14790,7 +14766,11 @@ extern "C" __declspec(dllexport) int dtvr_set_swapchain_render_extent(
   swapchain_render_height.store(height, std::memory_order_relaxed);
   swapchain_render_extent_enabled.store(true, std::memory_order_release);
   swapchain_resize_nudge_pending.store(true, std::memory_order_release);
-  write_boundary_census_log("CONFIG\trequested=%llux%u\r\n", width, height);
+  write_boundary_census_log("CONFIG\trequested=%llux%u\tpresent=%ux%u\r\n",
+      width, height, extent.present_width, extent.height);
+  write_streamline_probe_log(
+      "STEREO_RENDER_EXTENT\tengine=%ux%u\tpresent=%ux%u\tisolated_window_extent=1\r\n",
+      extent.eye_width, extent.height, extent.present_width, extent.height);
   return 0;
 }
 extern "C" __declspec(dllexport) int dtvr_enable_boundary_census() {
