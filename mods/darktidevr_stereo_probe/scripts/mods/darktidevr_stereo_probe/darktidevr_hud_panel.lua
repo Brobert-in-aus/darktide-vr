@@ -278,9 +278,10 @@ local function create_resources(mod, owner, source_renderer, world)
     state.world_gui = world_gui
     local material_ok, material = pcall(
         Gui.create_material, world_gui,
-        -- This surface is in the gameplay world, outside the named UI target
-        -- pass. Only the resource renderer's material uses the pass-layer flag.
-        "content/ui/materials/render_target_masks/ui_render_target_straight_blur")
+        -- Match stock render-target sampling materials, including their
+        -- render-pass texture layer variant, even on the world surface.
+        "content/ui/materials/render_target_masks/ui_render_target_straight_blur",
+        GuiMaterialFlag.GUI_RENDER_PASS_LAYER)
     if not material_ok or not material then
         mod:error("DARKTIDEVR_HUD world_material_failed error=%s",
             tostring(material))

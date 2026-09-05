@@ -1032,3 +1032,10 @@ source binding captures (hud-front-20260905). Added symbol flag to test the exac
 Gui2/UV-reversed presentation path using the known fixed symbol, and enlarged the
 explicit diagnostic terminal sample to 320x180 for sameworld target inspection.
 Normal mode keeps its transparent one-pixel dependency. Lua/HUD checks passed.
+
+a182a8f symbol command shows the fixed symbol across the exact Gui2 panel,
+confirming the front-facing/UV presentation path. Sameworld with enlarged screen
+sample produces a visible magenta diagnostic in the top-left while the world
+panel is blank. Restored the world render-target material's stock
+GUI_RENDER_PASS_LAYER variant: removing it earlier was based on an unproven
+assumption before the backface issue was known. Lua/HUD tests passed.
