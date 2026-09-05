@@ -922,3 +922,12 @@ HUD and requested normal closure. Added explicit diagnostic flag command: cyan
 world backing plus magenta offscreen-target patch and opaque terminal sample,
 only for separating geometry/content/pass-scheduling failures. Normal enable
 keeps the dependency transparent. Pinned Lua compilation passed 25 chunks.
+
+Geometry diagnostic 508b916 produced the cyan backing plane in shared-eye output,
+but not the magenta texture marker. Thus the 3D surface renders; missing content
+is upstream in target rendering/binding/copy. Capture:
+artifacts/diagnostics/hud-diagnostic-20260905/left.png (right also saved).
+Next diagnostic adds dedicated-world render submission counts and an explicit
+source flag command to compare original target versus display copy. Source is
+only a temporary diagnostic binding; normal enable restores display_copy.
+CTest HUD/compiler/invariants passed 3/3. Closed the diagnostic run for sync.

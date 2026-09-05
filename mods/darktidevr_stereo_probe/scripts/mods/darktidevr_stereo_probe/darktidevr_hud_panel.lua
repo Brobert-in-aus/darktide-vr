@@ -11,6 +11,7 @@ end
 local state = {
     enabled = false,
     diagnostic = false,
+    render_submissions = 0,
     mod = nil,
     owner = nil,
     source_renderer = nil,
@@ -180,6 +181,7 @@ local function destroy_resources()
     state.pending_world = nil
     state.creation_failed = false
     state.last_authored_t = nil
+    state.render_submissions = 0
     state.logged = false
     state.layout_logged = false
 end
@@ -312,7 +314,7 @@ local function update_enabled_flag(mod, t)
     local request = flag:read("*all")
     flag:close()
     local command = request and request:match("^%s*(%a+)")
-    if command ~= "enable" and command ~= "disable" and command ~= "diagnostic" then
+    if command ~= "enable" and command ~= "disable" and command ~= "diagnostic" and command ~= "source" then
         return
     end
     local consumed = Mods.lua.io.open(path, "w")
@@ -320,8 +322,13 @@ local function update_enabled_flag(mod, t)
         consumed:write("consumed\n")
         consumed:close()
     end
-    state.diagnostic = command == "diagnostic"
+    state.diagnostic = command == "diagnostic" or command == "source"
     HudPanel.set_enabled(command ~= "disable")
+    if state.world_material and state.resource_renderer then
+        local target = command == "source" and state.resource_renderer.render_target or state.display_target
+        Material.set_resource(state.world_material,"source",target)
+        mod:info("DARKTIDEVR_HUD diagnostic_binding=%s",command == "source" and "source_target" or "display_copy")
+    end
     mod:info("DARKTIDEVR_HUD enabled=%s source=flag",
         tostring(state.enabled))
 end
@@ -339,6 +346,17 @@ end
 
 function HudPanel.install(mod)
     state.mod = mod
+    mod:hook(ScriptWorld,"render",function(func,world,...)
+        if world ~= state.render_world then return func(world,...) end
+        local result = pack(func(world,...))
+        state.render_submissions = state.render_submissions + 1
+        if state.diagnostic and state.render_submissions % 300 == 0 then
+            local queue = World.get_data(world,"render_queue")
+            mod:info("DARKTIDEVR_HUD render_submissions=%d viewports=%d authored=%s display_ready=%s",
+                state.render_submissions,queue and #queue or 0,tostring(state.last_authored_t),tostring(state.display_ready))
+        end
+        return unpack(result,1,result.n)
+    end)
     mod:hook("UIHud", "update", function(func, self, dt, t, input_service)
         update_enabled_flag(mod, t or 0)
         return func(self, dt, t, input_service)
