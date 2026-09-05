@@ -231,8 +231,8 @@ Gui2 = {bitmap_3d = function(_,material,flags,tm,_,options)
     assert(options.uv00[2] == 1 and options.uv11[2] == 0,
         "captured HUD must read upright on the world panel")
     assert(offset.kind == "v3" and offset[3] == 0 and size.kind == "v3")
-    assert(math.abs(size[1] - 1.6) < 1e-6 and math.abs(size[2] - 1.62) < 1e-6,
-        "doubling distance must preserve angular size by doubling panel dimensions")
+    assert(math.abs(size[1] - 1.4) < 1e-6 and math.abs(size[2] - 1.4175) < 1e-6,
+        "panel must retain its two-metre distance with the reduced uniform scale")
     bitmap_drawn = true
 end}
 panel.draw(renderer.world,Vector3(3,4,5),{})

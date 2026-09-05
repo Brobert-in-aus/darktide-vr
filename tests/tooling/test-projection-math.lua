@@ -32,7 +32,7 @@ local symmetric_width = projection.binocular_panel_width(symmetric,symmetric,.03
 assert(math.abs(symmetric_width - 2*(math.tan(.8)-.032)*.96)<1e-6)
 local panel_left=projection.recentered_eye({left=-.94,right=.70,down=-.7,up=.9},1)
 local panel_right=projection.recentered_eye({left=-.70,right=.94,down=-.85,up=.75},1)
-local panel_width=projection.binocular_panel_width(panel_left,panel_right,.032,1,panel_height,2)
+local panel_width,panel_center=projection.binocular_panel_width(panel_left,panel_right,.032,1,panel_height,2)
 assert(panel_width>0 and panel_width<symmetric_width)
 -- Reproject every panel corner independently into each pitched, offset eye.
 -- No corner may pass either horizontal edge of either rendered frustum.
@@ -40,7 +40,7 @@ for index,e in ipairs({panel_left,panel_right}) do
     local q=e.rotation
     local inverse=Quaternion.from_elements(-q.x,-q.y,-q.z,q.w)
     local eye_x=index==1 and -.032 or .032
-    for _,x in ipairs({-panel_width/2,panel_width/2}) do
+    for _,x in ipairs({panel_center-panel_width/2,panel_center+panel_width/2}) do
         for _,z in ipairs({-panel_height/2,panel_height/2}) do
             local ray=Quaternion.rotate(inverse,Vector3(x-eye_x,1,z))
             assert(ray.y>0 and math.abs(ray.x/ray.y)<math.tan(e.horizontal_half))

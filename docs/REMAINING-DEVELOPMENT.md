@@ -63,10 +63,11 @@ visible HUD contents, confirmed by shared-eye readback and the user.
 
 Next: verify hand-selected stereo tag prompts and transitions; then make
 the fixed status layout configurable without moving world/depth markers onto
-the panel. Queued for the next launch: the panel is two metres away, with
-height 1.62 m and twice the width budget of the previous one-metre panel
-(approximately 2.36 m wide, fitted to binocular overlap). This preserves
-approximately the accepted angular size and keeps object scale/layout intact. The user
+the panel. The panel is two metres away. After the user reported opposite
+inner-edge clipping in the two eyes, centre it on the binocular intersection
+and reduce uniform panel scale from 0.8 to 0.7 (12.5% smaller). Height is now
+1.4175 m, width approximately 2.1 m depending on the shared frusta. Internal
+object scale and saved layout remain intact. Worn edge-fit acceptance is pending. The user
 requested these reductions; both-eye readback confirms the outline fits, while
 worn comfort still needs acceptance. World GUI draws now expire each frame,
 fixing the user's observed accumulation at old head poses. The visible texture

@@ -86,8 +86,10 @@ function Projection.binocular_panel_width(left, right, half_ipd, distance, heigh
             end
         end
     end
-    -- Keep the panel centered on the head and slightly inside the shared edge.
-    return math.max(0, math.min(-lower, upper) * 2 * 0.96)
+    -- Center on the intersection, rather than assuming the shared optical
+    -- view is symmetric about head-forward (pitched/asymmetric frusta aren't).
+    if upper <= lower then return 0, 0 end
+    return (upper - lower) * 0.96, (lower + upper) * 0.5
 end
 
 function Projection.update_lod_levels(update, world, camera, rendered_fov)

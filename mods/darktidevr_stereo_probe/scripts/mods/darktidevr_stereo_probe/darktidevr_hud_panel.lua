@@ -5,7 +5,7 @@ local ScriptWorld = require("scripts/foundation/utilities/script_world")
 local HudPanel = {}
 HudPanel.height = 1.125 * 0.9 * 2
 HudPanel.distance = 2
-HudPanel.scale = 0.8
+HudPanel.scale = 0.7
 HudPanel.object_scale = 2.08
 
 -- Store scalar poses across frames: engine Vector3/Quaternion temporaries
@@ -825,7 +825,7 @@ function HudPanel.observe_render(world)
     end
 end
 
-function HudPanel.draw(world, position, rotation, overlap_width)
+function HudPanel.draw(world, position, rotation, overlap_width, overlap_center)
     if not state.enabled then
         return
     end
@@ -855,7 +855,8 @@ function HudPanel.draw(world, position, rotation, overlap_width)
     Matrix4x4.set_right(tm, -Quaternion.right(rotation))
     Matrix4x4.set_forward(tm, -forward)
     Matrix4x4.set_up(tm, Quaternion.up(rotation))
-    Matrix4x4.set_translation(tm, position + forward * HudPanel.distance)
+    Matrix4x4.set_translation(tm, position + forward * HudPanel.distance +
+        Quaternion.right(rotation) * (overlap_center or 0))
     local width = (overlap_width or HudPanel.distance) * HudPanel.scale
     local height = HudPanel.height * HudPanel.scale
     state.panel_aspect = width / height

@@ -1337,3 +1337,16 @@ confirmed. No Lua or marker-reprojection errors observed during startup.
 This supersedes the undeployed status above. The game remains running for user
 checks of HUD distance/size, both-eye pickup prompts, and View Operative.
 Startup counters do not establish visual acceptance or crash resolution.
+
+## Binocular HUD centring follow-up
+
+User reported opposite inner-edge clipping after the distance change. Fit now
+returns the midpoint of the common horizontal frustum intersection, applied
+as one shared world-panel offset; it no longer assumes head-forward is that
+midpoint. Uniform scale reduced 0.8 to 0.7 (12.5%), with 2 m forward distance,
+1.4175 m height and unchanged internal scale 2.08/saved node positions.
+LuaJIT 25-chunk gate and projection_math/hud_panel tests pass. Corner tests
+check the offset rectangle against both optical frusta. Fresh capture before
+the change is artifacts/diagnostics/hud-centering-20260905/eyes.png.
+Announced normal game closure for deployment. Worn comfort/edge-fit remains
+the user's acceptance check; readback alone does not establish lens visibility.
