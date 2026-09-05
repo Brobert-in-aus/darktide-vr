@@ -10,6 +10,7 @@ end
 
 local state = {
     enabled = false,
+    diagnostic = false,
     mod = nil,
     owner = nil,
     source_renderer = nil,
@@ -311,7 +312,7 @@ local function update_enabled_flag(mod, t)
     local request = flag:read("*all")
     flag:close()
     local command = request and request:match("^%s*(%a+)")
-    if command ~= "enable" and command ~= "disable" then
+    if command ~= "enable" and command ~= "disable" and command ~= "diagnostic" then
         return
     end
     local consumed = Mods.lua.io.open(path, "w")
@@ -319,7 +320,8 @@ local function update_enabled_flag(mod, t)
         consumed:write("consumed\n")
         consumed:close()
     end
-    HudPanel.set_enabled(command == "enable")
+    state.diagnostic = command == "diagnostic"
+    HudPanel.set_enabled(command ~= "disable")
     mod:info("DARKTIDEVR_HUD enabled=%s source=flag",
         tostring(state.enabled))
 end
@@ -414,6 +416,10 @@ function HudPanel.install(mod)
                 self._ui_renderer = resource_renderer
                 func(self, dt, t, input_service)
                 self._ui_renderer = source_renderer
+                if state.diagnostic then
+                    Gui.rect(state.queue_renderer.gui,"render_pass",resource_renderer.base_render_pass,
+                        Vector3(50,50,20001),Vector2(400,200),Color(255,255,0,255))
+                end
                 -- This is a render dependency, not a visible corner pixel.
                 Gui.bitmap(
                     state.queue_renderer.gui,
@@ -421,7 +427,7 @@ function HudPanel.install(mod)
                     "render_pass", "to_screen",
                     Vector3(0, 0, 20000),
                     Vector2(1, 1),
-                    Color(0, 255, 255, 255))
+                    Color(state.diagnostic and 255 or 0, 255, 255, 255))
                 state.last_authored_t = t
             end
             return spatial_result
@@ -473,6 +479,12 @@ function HudPanel.draw(world, position, rotation)
     local width = 2
     local target_width, target_height = target_extent()
     local height = width * target_height / target_width
+    if state.diagnostic then
+        -- Independent geometry check: cyan backing, magenta target patch.
+        -- Only the explicit diagnostic command enables either marker.
+        Gui.rect_3d(state.world_gui,tm,Vector2(-width*.5,-height*.5),999,
+            Vector2(width,height),Color(255,0,80,90))
+    end
     Gui2.bitmap_3d(
         state.world_gui,
         state.world_material,

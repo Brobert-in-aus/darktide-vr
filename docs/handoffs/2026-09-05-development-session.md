@@ -914,3 +914,11 @@ unknown. Closed the game, backed up current config locally, restored only those
 two root fields to false/window, preserving the VR resolution and graphics.
 Verify persistence during the next launch. Backup is ignored machine-specific
 artifacts/unattended/user-settings-before-window-restore-20260905.config.
+
+Transparent terminal dependency candidate bcda7c0 still showed no fixed HUD in
+shared-eye captures (artifacts/diagnostics/hud-transparent-20260905). Windowed
+root settings remained false/window through startup and range entry. Disabled
+HUD and requested normal closure. Added explicit diagnostic flag command: cyan
+world backing plus magenta offscreen-target patch and opaque terminal sample,
+only for separating geometry/content/pass-scheduling failures. Normal enable
+keeps the dependency transparent. Pinned Lua compilation passed 25 chunks.
