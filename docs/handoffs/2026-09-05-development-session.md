@@ -1208,3 +1208,36 @@ with inverse scale 0.369822 (previously x=1417.44). The fresh 16:27:13 capture i
 artifacts/diagnostics/hud-editor-canvas-20260905 shows normal gameplay because
 the editor had closed before readback. It verifies return to the regular HUD,
 not editor hover/drag acceptance. Leave the live run available; F3 reopens it.
+
+
+## Desktop stretch, resize-safe pointer, and marker visibility regression
+
+The user reported the border still too wide and cursor offset, and found a double
+Alt+Enter partly repaired it. The mirror stretches the full 2496x2688 eye image
+into its current desktop client. Correcting aspect only in the eye image was
+insufficient. The editor now compensates for both axes of that stretch and maps
+the native window cursor through exactly the same transform. Added read-only
+`dtvr_read_mirror_cursor`: real client bounds (bypassing Stingray's virtual XR
+extent), ScreenToClient cursor, and foreground state from one process/DPI context.
+It handles window/fullscreen changes and suppresses editor mouse interaction
+while unfocused; it never sets focus or moves the cursor.
+
+Custom HUD hides world markers while editing. The old stereo code replayed the
+last primary marker context regardless of HUD visibility or frame ownership.
+Added `MarkerGui.can_replay` requiring a current-frame primary draw, the current
+HUD owner, and visible world markers. Discard stale marker/interaction/tag
+contexts instead of projecting their old coordinates again. Source confirms
+UIManager render receives the same main-clock time used by this check.
+
+After shutdown, checked user_settings.config: 11 Custom HUD saved entries are on
+disk, including buffs, weapon pivots/slots and player panels. Do not reset or
+replace them during testing. Custom HUD's module remains unchanged.
+
+Validation: Windows Release `darktidevr_native_capture` build passed; pinned
+LuaJIT gate passed all 25 VR chunks; ctest hud_panel, marker_gui and
+reticle_surfaces passed (3/3). Tests cover window/fullscreen aspect changes,
+mouse mapping and stale/hidden/old-owner replay rejection. Current new live run:
+artifacts/unattended/hud-editor-window-live-20260905.log. Worn/editor acceptance
+remains pending; earlier controls-visible capture is
+artifacts/diagnostics/hud-editor-canvas-20260905/latest.png, which still had the
+pre-compensation desktop aspect.

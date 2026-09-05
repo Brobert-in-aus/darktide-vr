@@ -692,6 +692,7 @@ local function ensure_ui_native_hooks()
         int dtvr_set_swapchain_render_extent(unsigned long long width, unsigned int height);
         int dtvr_enable_boundary_census(void);
         int dtvr_set_mirror_client_extent(unsigned int width, unsigned int height);
+        int dtvr_read_mirror_cursor(int* values, unsigned int count);
         int dtvr_set_virtual_client_extent(int enabled);
         int dtvr_set_virtual_size_message(int enabled);
         int dtvr_lock_swapchain_client_extent(int enabled);
@@ -950,6 +951,7 @@ local function ensure_ui_native_hooks()
         "DARKTIDEVR_STEREO cluster_light_visibility_fix active=%s",
         tostring(presentation.cluster_light_visibility_fix_active))
     ui_native_capture.dtvr_set_projection_active(0)
+    presentation.hud_mirror_values = ffi.new("int[5]")
     head_pose_values = ffi.new("float[25]")
     head_pose_sequence = ffi.new("unsigned long long[1]")
     presentation.head_pose_transport_generation =
@@ -12084,6 +12086,13 @@ mod:hook("HudElementSmartTagging", "_draw_active_interaction_line",
 
 local function enqueue_world_markers_for_camera(camera)
     local context = world_markers_context
+    if not presentation.marker_gui.can_replay(context, Managers.ui._hud,
+            Managers.time:time("main")) then
+        world_markers_context = nil
+        interaction_hud_context = nil
+        presentation.tag_hud_context = nil
+        return false
+    end
     if not context or not camera then
         return false
     end
@@ -13044,6 +13053,13 @@ presentation.melee_live_probe = mod:io_dofile(
 presentation.hud_panel = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_hud_panel"
 )
+presentation.hud_panel.mirror_width = ui_mirror_client_width
+presentation.hud_panel.mirror_height = ui_mirror_client_height
+presentation.hud_panel.read_mirror = function()
+    local values = presentation.hud_mirror_values
+    if not ui_native_capture or not values or ui_native_capture.dtvr_read_mirror_cursor(values,5) ~= 0 then return end
+    return tonumber(values[0]),tonumber(values[1]),tonumber(values[2]),tonumber(values[3]),values[4] ~= 0
+end
 presentation.hud_panel.install(mod)
 
 presentation.controller_aim = mod:io_dofile(

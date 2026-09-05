@@ -27,6 +27,14 @@ function MarkerGui.draw(renderer, draw, ...)
     return unpack(result, 2, result.n)
 end
 
+-- Hidden HUDs do not author a primary marker pass. Never replay its old
+-- coordinates against a new camera or after an editor/menu changes ownership.
+function MarkerGui.can_replay(context, owner, t)
+    local visible = owner and owner._currently_visible_elements
+    return context ~= nil and context.t == t and context.instance._parent == owner and
+        visible ~= nil and visible.HudElementWorldMarkers == true
+end
+
 function MarkerGui.hide()
     for _, entry in pairs(entries) do
         if entry.visible then

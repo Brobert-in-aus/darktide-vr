@@ -315,3 +315,19 @@ local px,py=panel.editor_cursor(physical_rect,physical_rect.x+physical_rect.widt
     physical_rect.y+physical_rect.height,2496,2688)
 assert(math.abs(px-2496)<1e-9 and math.abs(py-2688)<1e-9,
     "physical panel proportions must preserve full-canvas mouse mapping")
+
+local mirror_rect=panel.editor_rect(2496,2688,2496,1404,1.18/.81,1920,1080)
+local desktop_width=mirror_rect.width*1920/2496
+local desktop_height=mirror_rect.height*1080/2688
+assert(math.abs(desktop_width/desktop_height-1.18/.81)<1e-9,
+    "border must have physical panel proportions after desktop mirror stretch")
+local desktop_x=(mirror_rect.x+mirror_rect.width*.25)*1920/2496
+local desktop_y=(mirror_rect.y+mirror_rect.height*.75)*1080/2688
+local mx,my=panel.editor_cursor(mirror_rect,desktop_x*2496/1920,desktop_y*2688/1080,2496,2688)
+assert(math.abs(mx-624)<1e-9 and math.abs(my-2016)<1e-9)
+
+for _,desktop in ipairs({{1920,1080},{2496,2688},{1536,864},{1536,1654}}) do
+    local r=panel.editor_rect(2496,2688,2496,1404,1.18/.81,desktop[1],desktop[2])
+    assert(math.abs((r.width*desktop[1]/2496)/(r.height*desktop[2]/2688)-1.18/.81)<1e-9,
+        "fullscreen/windowed changes must preserve the desktop panel aspect")
+end

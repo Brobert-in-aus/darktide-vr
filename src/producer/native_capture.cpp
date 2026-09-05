@@ -14661,6 +14661,31 @@ extern "C" __declspec(dllexport) int dtvr_enable_boundary_census() {
   boundary_census_requested.store(true, std::memory_order_relaxed);
   return 0;
 }
+extern "C" __declspec(dllexport) int dtvr_read_mirror_cursor(int* values,
+                                                          unsigned int count) {
+  if (!values || count < 5) {
+    return 1;
+  }
+  const auto window = game_output_window.load(std::memory_order_acquire);
+  RECT client{};
+  POINT cursor{};
+  // Read physical window coordinates, bypassing the extent we advertise to
+  // Stingray for XR rendering. These remain paired across DPI/fullscreen changes.
+  const auto got_client = window && (original_get_client_rect
+      ? original_get_client_rect(window, &client)
+      : GetClientRect(window, &client));
+  if (!got_client || client.right <= client.left || client.bottom <= client.top ||
+      !GetCursorPos(&cursor) || !ScreenToClient(window, &cursor)) {
+    return 2;
+  }
+  values[0] = cursor.x;
+  values[1] = cursor.y;
+  values[2] = client.right - client.left;
+  values[3] = client.bottom - client.top;
+  values[4] = GetForegroundWindow() == window ? 1 : 0;
+  return 0;
+}
+
 extern "C" __declspec(dllexport) int dtvr_set_mirror_client_extent(
     unsigned int width, unsigned int height) {
   if ((width == 0) != (height == 0) || width > 3840 || height > 3840) {

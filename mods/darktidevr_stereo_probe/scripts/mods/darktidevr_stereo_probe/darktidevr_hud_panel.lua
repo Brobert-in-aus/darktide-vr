@@ -194,9 +194,12 @@ function HudPanel.editing()
     return state.enabled and custom and custom.is_customizing == true
 end
 
-function HudPanel.editor_rect(width, height, capture_width, capture_height, panel_aspect)
+function HudPanel.editor_rect(width, height, capture_width, capture_height, panel_aspect, mirror_width, mirror_height)
     local inset = math.min(width,height)*0.025
     local aspect = panel_aspect or capture_width/capture_height
+    if mirror_width and mirror_height then
+        aspect = aspect * (width/height) / (mirror_width/mirror_height)
+    end
     local preview_width = math.min(width-2*inset,(height-2*inset)*aspect)
     local preview_height = preview_width/aspect
     return {x=(width-preview_width)/2,y=(height-preview_height)/2,
@@ -211,12 +214,25 @@ end
 
 local function editor_input(input_service)
     if not HudPanel.editing() or not input_service or not state.target_width then return input_service end
+    local cursor_x,cursor_y,mirror_width,mirror_height,focused
+    if HudPanel.read_mirror then
+        cursor_x,cursor_y,mirror_width,mirror_height,focused = HudPanel.read_mirror()
+        if mirror_width and mirror_height then
+            HudPanel.mirror_width,HudPanel.mirror_height = mirror_width,mirror_height
+        end
+    end
     local rect = HudPanel.editor_rect(RESOLUTION_LOOKUP.width,RESOLUTION_LOOKUP.height,
-        state.target_width,state.target_height,state.panel_aspect or (1.18/(HudPanel.height*HudPanel.scale)))
+        state.target_width,state.target_height,state.panel_aspect or (1.18/(HudPanel.height*HudPanel.scale)),
+        HudPanel.mirror_width,HudPanel.mirror_height)
     return setmetatable({get=function(_,key,...)
         local value = input_service:get(key,...)
-        if key == "cursor" and value then
-            local x,y = HudPanel.editor_cursor(rect,value.x,value.y,RESOLUTION_LOOKUP.width,RESOLUTION_LOOKUP.height)
+        if focused == false and (key == "left_pressed" or key == "left_hold" or
+                key == "right_pressed" or key == "right_hold") then return false end
+        if key == "cursor" and (cursor_x or value) then
+            if focused == false then return Vector3(-100000,-100000,0) end
+            local raw_x = (cursor_x or value.x) * RESOLUTION_LOOKUP.width / (HudPanel.mirror_width or RESOLUTION_LOOKUP.width)
+            local raw_y = (cursor_y or value.y) * RESOLUTION_LOOKUP.height / (HudPanel.mirror_height or RESOLUTION_LOOKUP.height)
+            local x,y = HudPanel.editor_cursor(rect,raw_x,raw_y,RESOLUTION_LOOKUP.width,RESOLUTION_LOOKUP.height)
             return Vector3(x,y,0)
         end
         return value
@@ -230,7 +246,8 @@ end
 local function draw_flat_editor(source_renderer)
     if not HudPanel.editing() or not state.display_ready then return end
     local width,height = RESOLUTION_LOOKUP.width,RESOLUTION_LOOKUP.height
-    local rect = HudPanel.editor_rect(width,height,state.target_width,state.target_height,state.panel_aspect or (1.18/(HudPanel.height*HudPanel.scale)))
+    local rect = HudPanel.editor_rect(width,height,state.target_width,state.target_height,state.panel_aspect or (1.18/(HudPanel.height*HudPanel.scale)),
+        HudPanel.mirror_width,HudPanel.mirror_height)
     if not state.editor_material then
         state.editor_material = Gui.create_material(source_renderer.gui,
             "content/ui/materials/icons/items/containers/item_container_square")

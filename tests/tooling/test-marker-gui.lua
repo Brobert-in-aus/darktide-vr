@@ -61,3 +61,13 @@ markers.destroy(renderer)
 markers.destroy(second)
 assert(destroyed == 3)
 print("marker_gui=pass")
+
+local hud={_currently_visible_elements={HudElementWorldMarkers=true}}
+local context={t=10,instance={_parent=hud}}
+assert(markers.can_replay(context,hud,10))
+assert(not markers.can_replay(context,hud,11), "old-frame markers must not replay")
+hud._currently_visible_elements.HudElementWorldMarkers=false
+assert(not markers.can_replay(context,hud,10), "editor-hidden markers must not replay")
+hud._currently_visible_elements.HudElementWorldMarkers=true
+assert(not markers.can_replay(context,{_currently_visible_elements={HudElementWorldMarkers=true}},10),
+    "destroyed HUD owner must not replay")
