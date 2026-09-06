@@ -7605,7 +7605,16 @@ WorldUiDrawRedirect begin_world_ui_draw(ID3D12GraphicsCommandList* commands,
         static_cast<unsigned>(blend.DestBlendAlpha), static_cast<unsigned>(blend.BlendOpAlpha),
         static_cast<unsigned>(blend.RenderTargetWriteMask), metadata.alpha_to_coverage ? 1U : 0U);
   }
-  if (!is_stock_menu_shader_pair(metadata)) return redirect;
+  // Two additional depth-free, full-eye source-over pairs were observed in the
+  // gameplay census. Include them ONLY in this opt-in diagnostic readback to
+  // identify the missing panel. This surface is not submitted as a DLSS UI tag;
+  // composition and coverage checks must establish their role first.
+  const bool panel_candidate =
+      (metadata.vertex_shader == 1783408747736039755ULL &&
+       metadata.pixel_shader == 5406379487767707323ULL) ||
+      (metadata.vertex_shader == 634962454189541227ULL &&
+       metadata.pixel_shader == 4439945837785333492ULL);
+  if (!is_stock_menu_shader_pair(metadata) && !panel_candidate) return redirect;
   ++world_ui_capture_stages[6];
   auto& capture = world_ui_capture_eyes[eye];
   if (capture.texture && (capture.texture->GetDesc().Width != width ||

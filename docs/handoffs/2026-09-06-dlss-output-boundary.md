@@ -946,3 +946,19 @@ checker tests passed. git diff --check passed. Live replay and complete UI cover
 remain unverified; no claim of corrected generated-frame HUD appearance yet.
 Local evidence: artifacts/diagnostics/hud-alpha-capture-20260906/third-run-crash.tsv
 and third-run-crash-console.log (excluded from Git).
+
+### First successful paired alpha readback (2026-09-06)
+
+The ClearRTV correction survived thousands of eligible GUI draws in the next live
+run. Both eyes exported scene, final and transparent UI at runtime 2496x2688.
+The replay captured the world markers with valid premultiplied alpha, but omitted
+the main HUD panel: 73,209 left / 70,818 right changed pixels were uncovered.
+Composition residual was about 78% of relevant pixels. This is a failed coverage
+check, not acceptance of UI isolation. The residual image localizes the omission
+to the HUD panel. No experimental UI buffer is fed to DLSS yet.
+
+The next opt-in diagnostic includes the two additional depth-free, full-eye
+source-over shader pairs from that run's bounded census to identify the panel.
+These are experimental readback candidates, not approved production GUI routes.
+Native Release build and diff check passed. Live comparison remains pending.
+Evidence: artifacts/diagnostics/hud-alpha-capture-20260906/fourth-run-comparison.
