@@ -66,4 +66,16 @@ for _, method in ipairs({"_find_interaction_object", "_find_interaction_object_3
 end
 hand_rotation = nil
 aim.with_melee_aim(action, function(self) assert(self._first_person_component == component) end)
+-- Online-rules proving mode uses the simulated component as-is. Even a valid
+-- live hand must not install a temporary action/view proxy over stock history.
+hand_rotation = {}
+presentation.is_controller_aim_mode = function() return false end
+for _, method in ipairs({"start", "_update_sweep", "_push", "_find_explosion_position_and_direction"}) do
+    local result, missing, tail = hooks[method](function(self)
+        assert(self._first_person_component == component)
+        assert(self._first_person_extension == extension)
+        return 'stock', nil, 12
+    end, action)
+    assert(result == 'stock' and missing == nil and tail == 12)
+end
 print("melee_aim=pass")

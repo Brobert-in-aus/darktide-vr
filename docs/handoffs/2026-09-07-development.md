@@ -614,3 +614,25 @@ This removes avoidable logging work; no measured FPS gain or deployment claim.
 Full-suite baseline remains 107/107 at `9f68b2b`, with the intervening equipment
 regression increasing registration to 108. Continue the todo list while the user
 is away; live swapchain creation remains blocked and normal proximity restored.
+
+## Continuous todo work: stock melee proving contract
+
+Branch `codex/online-rules-melee-contract-2026-09-07` extends the optional real-
+source online fixture through actual ActionSweep orchestration. Reset/update,
+authored damage-window edges/final segment, individual/all abort masks and
+time scaling retain the stock simulated references after VR cache authoring.
+The fixture rejects rendered hand-node reads. Geometry, overlaps, damage and
+exit procs remain isolated substitutes; no physical contact acceptance.
+
+The optional command documented in PSYKHANIUM-ONLINE-RULES passes all pose,
+camera, shot, movement, forced-orientation and new sweep cases. The ordinary
+`melee_aim` test now verifies online-mode bypass across all four common melee
+hooks: valid live tracking must not replace the stock action or view component.
+Focused `melee_aim` and `online_rules` CTests pass **2/2**. No runtime code change,
+new live attempt or deployment in this task. Continue the todo list.
+
+Integrated checkpoint: the full Release preset build passes, including the
+recompiled continuous-recovery executable. Full offline Release CTest then
+passes **108/108**, with headset tests disabled at configuration. Evidence:
+`artifacts/unattended/continuous-todo-full-ctest-20260907.log`. This supersedes
+the preceding 107-test full-suite baseline. LuaJIT still compiles 36 mod chunks.

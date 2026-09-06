@@ -179,6 +179,86 @@ ActionShoot._prepare_shooting(shot,.02,1.04)
 assert(table.concat(operations,',')=='recoil,sway,assist,spread,add_sway,add_spread,add_recoil')
 assert(shot._shooting_status_component.num_shots==2)
 gamepad=false
+-- Stock sweeps use successive simulation references and their authored damage
+-- window. No visible weapon/hand node is sampled by these orchestration methods.
+do
+    local saved_aim,saved_cache=aim,h._input_cache
+    local saved_world_position,saved_world_rotation=Unit.world_position,Unit.world_rotation
+    local sweep_source=source('extension_systems/weapon/actions/action_sweep')
+    ActionSweep={}
+    local function method(name,next_name)
+        local first=assert(sweep_source:find('ActionSweep.'..name..' =',1,true))
+        local last=assert(sweep_source:find('\nActionSweep.'..next_name..' =',first,true))
+        assert(loadstring(sweep_source:sub(first,last-1)))()
+    end
+    method('_reset_sweep_component','_calculate_max_hit_mass')
+    method('_update_sweep','_any_sweep_aborted')
+    method('_any_sweep_aborted','_abort_sweep') -- Includes all/individual masks.
+    method('_is_within_damage_window','_exit_damage_window')
+    bit=require('bit')
+    Vector3.zero=function() return Vector3(0,0,0) end
+    Log={debug=function() end}
+    local samples,overlaps,exits,procs,frame={},{},0,0,100
+    local sweep=setmetatable({_first_person_component=component,
+        _weapon_action_component={time_scale=1},_action_sweep_component={},
+        _all_sweeps_aborted_mask=3,_num_hit_enemies=0,
+        _sweep_splines={},_is_currently_sticky=function() return false end,
+        _exit_damage_window=function() exits=exits+1 end,
+        _handle_exit_procs=function() procs=procs+1 end}, {__index=ActionSweep})
+    for index=1,2 do
+        sweep._sweep_splines[index]={position_and_rotation=function(_,fraction,position,rotation)
+            samples[#samples+1]={index=index,fraction=fraction,position=position,rotation=rotation}
+            return position,rotation
+        end}
+    end
+    sweep._do_overlap=function(_,t,p0,r0,p1,r1,final,settings,index)
+        overlaps[#overlaps+1]={p0=p0,r0=r0,p1=p1,r1=r1,final=final,index=index}
+    end
+    Unit.world_position=function() error('sweep read rendered hand position') end
+    Unit.world_rotation=function() error('sweep read rendered hand rotation') end
+    sweep:_reset_sweep_component()
+    local settings={damage_window_start=.2,damage_window_end=.5}
+    local previous_position,previous_rotation=component.position,component.rotation
+    local function tick(time,dt,yaw)
+        aim=Quaternion.from_yaw_pitch_roll(yaw,.2,0)
+        h._input_cache={{0},{0},{0},{0},{view.yaw},{view.pitch},{0}}
+        frame=frame+1
+        rules.capture(h,frame)
+        fp._locomotion_component.position=Vector3(10+time,20,0)
+        PlayerUnitFirstPersonExtension.fixed_update(fp,'local',dt,10+time,1)
+        local before=#overlaps
+        sweep:_update_sweep(dt,10+time,time,settings)
+        for i=before+1,#overlaps do
+            local overlap=overlaps[i]
+            assert(overlap.p0==previous_position and overlap.r0==previous_rotation)
+            assert(overlap.p1==component.position and overlap.r1==component.rotation)
+            assert(overlap.p1[3]==1.7 and math.abs(overlap.r1.yaw-(yaw+.01))<1e-12)
+        end
+        previous_position,previous_rotation=component.position,component.rotation
+        assert(sweep._action_sweep_component.reference_position==component.position)
+        return #overlaps-before
+    end
+    assert(tick(.1,.1,.4)==0 and #samples==0)
+    assert(tick(.2,.1,.5)==2 and samples[1].fraction==0 and samples[2].fraction==0)
+    assert(tick(.35,.15,.6)==2 and math.abs(samples[6].fraction-.5)<1e-12)
+    assert(tick(.5,.15,.7)==2 and samples[10].fraction==1)
+    assert(tick(.6,.1,.8)==2 and overlaps[#overlaps].final and samples[#samples].fraction==1)
+    assert(exits==1 and procs==1 and sweep._action_sweep_component.sweep_state=='after_damage_window')
+    assert(tick(.7,.1,.9)==0 and exits==1)
+    -- An aborted spline stays excluded without suppressing the remaining one.
+    sweep:_reset_sweep_component()
+    sweep._action_sweep_component.sweep_aborted_bit_array=1
+    assert(tick(.3,.01,1)==1 and overlaps[#overlaps].index==2)
+    sweep._action_sweep_component.sweep_aborted_bit_array=3
+    assert(tick(.31,.01,1.1)==0)
+    -- Stock time scale/offset policy and no-window fallback are retained.
+    local inside,fraction,before,total=sweep:_is_within_damage_window(.125,
+        {damage_window_start=.2,damage_window_end=.5,action_time_offset=.1},2)
+    assert(inside and math.abs(fraction-.5)<1e-12 and not before and math.abs(total-.15)<1e-12)
+    assert(not sweep:_is_within_damage_window(1,{},1))
+    aim,h._input_cache=saved_aim,saved_cache
+    Unit.world_position,Unit.world_rotation=saved_world_position,saved_world_rotation
+end
 -- With zero recoil, the actual walking method reconstructs the intended head-
 -- relative direction from the transformed input. Its own backward penalty stays.
 local constants={acceleration=1000,deceleration=1000,backward_move_scale=.5,
@@ -236,4 +316,5 @@ print('PASS: actual stock pose keeps body origin/recoil; actual walking preserve
 print('PASS: actual stock orientation selector retains forced look, weapon locks, sticky melee, ledges, wheels and death')
 print('PASS: actual stock local rendering and camera root retain independent view orientation')
 print('PASS: actual stock shot preparation retains body origin, charge, recoil/sway/assist/spread order and grouped-shot sample')
+print('PASS: actual stock sweeps retain simulation references, damage-window edges/final drain, abort masks and time scaling')
 print('LIMIT: isolated engine math, no real quantization, live network or worn acceptance')

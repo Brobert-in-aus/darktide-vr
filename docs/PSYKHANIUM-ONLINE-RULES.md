@@ -160,6 +160,17 @@ their order and data ownership are tested, not spread distributions or live
 damage. Changing the component rotation between grouped bullets does not replace
 the already prepared shot sample.
 
+The same optional fixture now executes actual `ActionSweep` reset, sweep update,
+damage-window and abort-mask methods against stock first-person poses produced
+from the real VR adapter. Two tagged splines receive successive simulated
+body-origin/hand-angle references, including the exact start/end, final segment
+after the window closes, single/all-spline aborts and stock time-scale/offset
+rules. Rendered hand-node access is rejected in this fixture. Spline geometry,
+overlap queries, damage and exit procs are substitutes; this proves orchestration
+and reference ownership, not actual contact/cleave or live damage. The common
+melee-hook test also verifies that online-mode admission leaves both the action
+component and view extension untouched even with valid live hand tracking.
+
 An optional stock grenade check passes:
 
 ```powershell
