@@ -39,10 +39,18 @@ s=sample(2); assert(s.pressed and s.held)
 local proxy=menu.proxy(source,null,s,vector)
 assert(proxy:get('left_pressed') and proxy:get('left_hold'))
 assert(proxy:get('cursor')[1]==1248 and proxy:get('cursor')[2]==1344)
-assert(not proxy:get('right_pressed') and proxy:get('hotkey_system'))
+assert(proxy:get('right_pressed') and proxy:get('hotkey_system'))
 assert(proxy:null_service()==null and proxy:identity()==source)
 assert(not proxy:get_with_filters('left_pressed',{mouse_left=true}))
 assert(proxy:get_with_filters('left_pressed',{}))
+local desktop_values={left_pressed=true,left_released=true,left_hold=true,
+    right_pressed=true,middle_hold=true,confirm_pressed=true,scroll_axis=vector(2,3,0)}
+local desktop_source={get=function(_,key) return desktop_values[key] end}
+local combined=menu.proxy(desktop_source,null,{override=true,scroll=2},vector)
+for _,key in ipairs({'left_pressed','left_released','left_hold','right_pressed',
+        'middle_hold','confirm_pressed'}) do assert(combined:get(key),key..' suppressed') end
+assert(combined:get('scroll_axis')[1]==2 and combined:get('scroll_axis')[2]==5,
+    'mouse wheel must combine with VR scrolling')
 assert(sample(2)==s, 'update/draw/eye passes must share an immutable input frame')
 p.primary_pressed=false
 p.x=800
@@ -148,6 +156,21 @@ local a,b,c=legacy_hook(function() return 1,nil,3 end)
 assert(a==1 and b==nil and c==3,'native bypass changed the stock return contract')
 presentation.mode=1
 assert(hook(function() return source,null,false end,handler)==source)
+-- Desktop editor output shares mode 5, but must retain native mouse buttons
+-- and wheel through both service entry points. Actual menus still use XR.
+presentation.mode=5
+presentation.hud_panel={editing=function() return true end}
+handler._view_handler._num_active_views=0
+assert(hook(function() return source,null,true end,handler)==source)
+assert(direct_hook(function() return source end,{},'View')==source)
+assert(hook(function() return null,null,false end,handler)==null)
+handler._active_popups={{id='editor_modal'}}
+assert(hook(function() return source,null,false end,handler)~=source)
+handler._active_popups={}
+handler._view_handler._num_active_views=2
+assert(hook(function() return source,null,false end,handler)~=source)
+presentation.hud_panel=nil
+presentation.mode=1
 print('menu_input: coordinate mapping, button lifecycle, modal handoff, tracking loss, filters and null services passed')
 local view = {_widgets_by_name={play_button={content={visible=true,hotspot={disabled=false}}}}}
 local list_ready,start_ready,reason=menu.character_select_readiness(view,false)

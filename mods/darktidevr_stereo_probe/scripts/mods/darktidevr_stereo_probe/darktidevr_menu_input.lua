@@ -103,16 +103,23 @@ function MenuInput.proxy(source, null_service, sample, vector)
     local proxy = {}
     function proxy:get(action)
         if action == "cursor" then return vector(sample.x, sample.y, 0) end
-        if action == "left_pressed" then return sample.pressed end
-        if action == "left_released" then return sample.released end
-        if action == "left_hold" then return sample.held end
-        if action == "scroll_axis" then return vector(0, sample.scroll, 0) end
-        if action == "mouse_move" then return vector(sample.dx, sample.dy, 0) end
+        if action == "left_pressed" then return sample.pressed or source:get(action) end
+        if action == "left_released" then return sample.released or source:get(action) end
+        if action == "left_hold" then return sample.held or source:get(action) end
+        if action == "scroll_axis" then
+            local mouse = source:get(action)
+            if not mouse then return vector(0, sample.scroll, 0) end
+            return vector(mouse.x or mouse[1], (mouse.y or mouse[2]) + sample.scroll,
+                mouse.z or mouse[3])
+        end
+        if action == "mouse_move" then
+            local mouse = source:get(action)
+            if mouse then return mouse end
+            return vector(sample.dx, sample.dy, 0)
+        end
         if action == "back" then return sample.back or source:get(action) end
-        -- One pointer owner: a stationary OS cursor or confirm button must not
-        -- activate a different control behind the tracked ray.
-        if action:match("^right_") or action:match("^middle_") or
-                action:match("^confirm_") then return false end
+        -- XR adds controls to the stock service; mouse buttons and keyboard
+        -- confirmation remain available alongside the tracked pointer.
         return source:get(action)
     end
     function proxy:null_service() return null_service end
@@ -221,8 +228,15 @@ function MenuInput.install(mod, presentation)
     -- obtain input here. The view handler alone does not cover modal dialogs.
     local function route_service(func, self, ...)
         local source, null_service, gamepad = func(self, ...)
+        -- The editor uses mode 5 for desktop rendering, but its controls need
+        -- the complete mouse service. Real menus/popups retain the XR route.
+        local hud = presentation.hud_panel
+        local handler = self._view_handler
+        local desktop_editor = hud and hud.editing() and
+            not (self._active_popups and self._active_popups[1]) and
+            not (handler and (handler._num_active_views or 0) > 0)
         if not presentation.native_menu_input_enabled or
-                (presentation.mode ~= 5 and presentation.mode ~= 6) then
+                (presentation.mode ~= 5 and presentation.mode ~= 6) or desktop_editor then
             state = {}
             return source, null_service, gamepad
         end

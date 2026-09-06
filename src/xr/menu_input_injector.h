@@ -33,6 +33,7 @@ struct DesktopPointerSample {
   std::uint32_t source_x{};
   std::uint32_t source_y{};
   bool primary_down{};
+  bool auxiliary_down{};
 };
 
 std::optional<AbsolutePointerPosition> map_source_to_absolute_pointer(

@@ -3350,7 +3350,8 @@ class OpenXrProbe {
         // desktop position without making a live controller operate the stale
         // desktop cursor.
         if (desktop_pointer &&
-            (!menu_pointer_position || desktop_pointer->primary_down)) {
+            (!menu_pointer_position || desktop_pointer->primary_down ||
+             desktop_pointer->auxiliary_down)) {
           menu_pointer_position =
               std::pair{desktop_pointer->source_x, desktop_pointer->source_y};
           desktop_pointer_active = true;

@@ -715,3 +715,21 @@ Latest run artifacts/unattended/dlss-editor-overlay-live-20260906.log (session68
 The logging-only addition after launch is built for the next run. No claim of
 saved layout dragging/persistence or worn readability acceptance. Return to the
 remaining original-render performance regression after committing this fix.
+
+### 2026-09-06: preserve desktop input alongside VR
+
+User requirement: keyboard and mouse must remain available alongside VR controls.
+The DLSS editor's mode-5 output had unintentionally enabled the menu pointer
+proxy, suppressing right/middle/confirm actions and replacing mouse wheel input.
+The adapter now retains stock mouse buttons and confirmation actions, combines
+wheel input with XR scrolling, and preserves stock mouse movement. Desktop-only
+Custom HUD editing bypasses that proxy; actual views and modal dialogs still
+receive the combined menu route. Right/middle mouse holds also select the desktop
+pointer position in the harness, as left mouse already did.
+
+Validation: Release harness and menu-input tests built; ctest menu_input,
+menu_input_injector, hud_panel, hud_options and lua_source_compile all passed.
+The Lua gate compiled 31 chunks. Live editor right-click/wheel acceptance remains
+pending. Two Ready preflights created a VDXR session but submitted zero of 600
+frames. Game was closed for the planned update; no deployment/relaunch followed
+the failed readiness checks. Do not mark the editor regression visually accepted.

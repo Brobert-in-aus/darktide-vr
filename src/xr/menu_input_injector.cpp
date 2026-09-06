@@ -179,7 +179,8 @@ std::optional<DesktopPointerSample> MenuInputInjector::read_desktop_pointer(
   }
   return DesktopPointerSample{
       source->first, source->second,
-      (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0};
+      (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0,
+      ((GetAsyncKeyState(VK_RBUTTON) | GetAsyncKeyState(VK_MBUTTON)) & 0x8000) != 0};
 }
 
 bool MenuInputInjector::send_mouse_flags(DWORD flags, DWORD data) {
