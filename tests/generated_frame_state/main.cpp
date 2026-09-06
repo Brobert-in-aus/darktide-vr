@@ -2,6 +2,7 @@
 #include "core/shared_generated_frame_state.h"
 #include "core/generated_frame_cadence.h"
 #include "core/present_focus_window.h"
+#include "core/continuous_frame_trace.h"
 
 #include <cstdint>
 #include <iostream>
@@ -20,6 +21,17 @@ void expect(bool condition, const char* message) {
 int main() {
   try {
     darktidevr::tests::isolate_transports();
+    using darktidevr::core::trace_continuous_frame;
+    expect(!trace_continuous_frame(true, 0), "An unstarted frame is not a trace sample");
+    unsigned sampled = 0;
+    for (std::uint64_t frame = 1; frame <= 1200; ++frame) {
+      expect(trace_continuous_frame(false, frame), "Bounded probes must retain every frame");
+      if (trace_continuous_frame(true, frame)) ++sampled;
+    }
+    expect(sampled == 18 && trace_continuous_frame(true, 8) &&
+           !trace_continuous_frame(true, 9) && !trace_continuous_frame(true, 119) &&
+           trace_continuous_frame(true, 120) && !trace_continuous_frame(true, 121),
+           "Persistent tracing must preserve startup and periodic frame evidence");
     darktidevr::core::PresentFocusWindow focus;
     focus.observe(true); focus.observe(true);
     expect(focus.changes == 0, "Initial foreground samples are not transitions");

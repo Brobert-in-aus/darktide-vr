@@ -19,6 +19,9 @@ $presents = @($records | Where-Object phase -EQ 'present')
 $tickets = @($records | Where-Object phase -EQ 'ticket')
 $states = @($records | Where-Object phase -EQ 'state')
 if ($ready.Count -ne 1 -or $stop.Count -ne 1) { throw 'Incomplete or duplicate continuous lifecycle.' }
+if ($ready[0].ContainsKey('frame_trace') -and $ready[0].frame_trace -ne 'complete') {
+    throw 'Sampled continuous-play logs cannot certify a consecutive bounded probe.'
+}
 $count = [uint32]$ready[0].frames
 if ($count -lt 2 -or $count -gt 8 -or [uint32]$ready[0].eye_width -eq 0 -or
     [uint32]$ready[0].eye_height -eq 0 -or $presents.Count -ne $count -or

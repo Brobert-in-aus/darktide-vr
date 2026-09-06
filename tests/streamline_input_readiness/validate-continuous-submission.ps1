@@ -23,6 +23,10 @@ try {
     } }
     Set-Content -LiteralPath $path -Value $withStates
     if (-not (& $reader -Path $path).StateStatusVerified) { throw 'State status was not verified.' }
+    $explicitComplete = @($withStates)
+    $explicitComplete[0] += "`tframe_trace=complete"
+    Set-Content -LiteralPath $path -Value $explicitComplete
+    if (-not (& $reader -Path $path).StateStatusVerified) { throw 'Explicit complete trace was rejected.' }
     foreach ($badState in @('status=2', 'result=1', 'version=2')) {
         $candidate = @($withStates)
         $key = ($badState -split '=')[0]
@@ -32,7 +36,7 @@ try {
         try { & $reader -Path $path | Out-Null } catch { $rejected = $true }
         if (-not $rejected) { throw "Invalid state $badState was accepted." }
     }
-    foreach ($scenario in 1..6) {
+    foreach ($scenario in 1..8) {
         $candidate = @($valid)
         switch ($scenario) {
             1 { $candidate[4] = $candidate[4].Replace('present_frame=11', 'present_frame=12') }
@@ -41,6 +45,8 @@ try {
             4 { $candidate[7] = $candidate[7].Replace('tags_cleared=1', 'tags_cleared=0') }
             5 { $candidate += "STEREO_CONTINUOUS`tphase=failed`treason=foreground_lost" }
             6 { $candidate[6] = $candidate[6].Replace('value=1', 'value=18446744073709551615') }
+            7 { $candidate[0] += "`tframe_trace=startup8_then120" }
+            8 { $candidate[0] += "`tframe_trace=unknown" }
         }
         Set-Content -LiteralPath $path -Value $candidate
         $rejected = $false

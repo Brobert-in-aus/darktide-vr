@@ -594,3 +594,23 @@ run Release CTest with `-R 'equipment_hand_sync|wrist_transform|weapon_hand_role
 No deployment or worn acceptance. HANDEDNESS-AUDIT now details separate initial
 1P sound, camera-selected weapon VFX and breed-hand effect ownership; relocation
 must cover these before any left-handed option is exposed. Continue todo work.
+
+## Continuous todo work: reduce persistent success logging
+
+Branch `codex/continuous-trace-sampling-2026-09-07` samples the five successful
+continuous-submission records per frame: first eight frames then every 120th.
+The existing log writer takes a lock and writes synchronously on the Present
+path, until its shared record cap. Bounded probes retain every frame; failure,
+lifecycle, timing, health and all rendering/ownership checks remain in place.
+Ready records label the policy, and the bounded-proof reader rejects sampled or
+unknown policies rather than certifying them as complete consecutive evidence.
+
+Release builds pass for `darktidevr_native_capture` and
+`darktidevr-generated-frame-state-tests`. Release CTest with
+`-R 'generated_frame_state|streamline_continuous_observation|generated_health_analysis'`
+passes **3/3**. The policy test covers startup/periodic boundaries and 1,200 frames;
+reader checks accept legacy/explicit complete and reject sampled/unknown logs.
+This removes avoidable logging work; no measured FPS gain or deployment claim.
+Full-suite baseline remains 107/107 at `9f68b2b`, with the intervening equipment
+regression increasing registration to 108. Continue the todo list while the user
+is away; live swapchain creation remains blocked and normal proximity restored.

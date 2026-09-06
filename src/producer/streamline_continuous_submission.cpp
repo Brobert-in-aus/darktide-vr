@@ -2,6 +2,7 @@
 #include "producer/generated_stereo.h"
 #include "producer/stereo_ui_readback.h"
 #include "producer/ngx_output_copy_probe.h"
+#include "core/continuous_frame_trace.h"
 
 namespace darktidevr::producer {
 namespace sl = streamline_2_7_30;
@@ -97,7 +98,8 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
     }
   }
   initialized_ = true;
-  log_("STEREO_CONTINUOUS\tphase=ready\tframes=%u\teye_width=%u\teye_height=%u\tpublication=0\tui_alpha=%u\r\n", count_, width_, height_, ui_enabled_ ? 1U : 0U);
+  log_("STEREO_CONTINUOUS\tphase=ready\tframes=%u\teye_width=%u\teye_height=%u\tpublication=0\tui_alpha=%u\tframe_trace=%s\r\n", count_, width_, height_, ui_enabled_ ? 1U : 0U,
+       persistent_ ? "startup8_then120" : "complete");
   return true;
 }
 
@@ -363,8 +365,9 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
   frame.present = present;
   frame.submission_id = current_ + 1;
   staged_ = true;
-  log_("STEREO_CONTINUOUS\tphase=present\tframe=%u\tpresent_frame=%llu\tpose=%llu\tpublication=0\r\n",
-       current_ + 1, present, frame.pose);
+  if (core::trace_continuous_frame(persistent_, current_ + 1ULL))
+    log_("STEREO_CONTINUOUS\tphase=present\tframe=%u\tpresent_frame=%llu\tpose=%llu\tpublication=0\r\n",
+         current_ + 1, present, frame.pose);
 }
 
 void StreamlineContinuousSubmission::after_present(ID3D12CommandQueue* queue,
@@ -378,8 +381,10 @@ void StreamlineContinuousSubmission::after_present(ID3D12CommandQueue* queue,
     const auto viewport = sl::make_viewport(viewports_[eye]);
     auto state = sl::make_dlssg_state();
     const auto result = get_state(&viewport, &state, nullptr);
-    log_("STEREO_CONTINUOUS\tphase=state\tframe=%u\teye=%u\tresult=%u\tstatus=%u\tversion=%u\r\n",
-         current_ + 1, eye, result, state.status, state.base.struct_version);
+    if (core::trace_continuous_frame(persistent_, current_ + 1ULL) ||
+        result != 0 || state.status != 0 || state.base.struct_version < 3)
+      log_("STEREO_CONTINUOUS\tphase=state\tframe=%u\teye=%u\tresult=%u\tstatus=%u\tversion=%u\r\n",
+           current_ + 1, eye, result, state.status, state.base.struct_version);
     if (result != 0 || state.status != 0 || state.base.struct_version < 3 || !state.inputs_processing_completion_fence ||
         FAILED(static_cast<IUnknown*>(state.inputs_processing_completion_fence)->QueryInterface(
             IID_PPV_ARGS(&frame.input_fences[eye])))) {
@@ -390,9 +395,10 @@ void StreamlineContinuousSubmission::after_present(ID3D12CommandQueue* queue,
         state.last_present_inputs_processing_completion_fence_value)) {
       fail("rejected_input_ticket"); break;
     }
-    log_("STEREO_CONTINUOUS\tphase=ticket\tframe=%u\teye=%u\tframes_presented=%u\tvalue=%llu\r\n",
-        current_ + 1, eye, state.num_frames_actually_presented,
-        state.last_present_inputs_processing_completion_fence_value);
+    if (core::trace_continuous_frame(persistent_, current_ + 1ULL))
+      log_("STEREO_CONTINUOUS\tphase=ticket\tframe=%u\teye=%u\tframes_presented=%u\tvalue=%llu\r\n",
+          current_ + 1, eye, state.num_frames_actually_presented,
+          state.last_present_inputs_processing_completion_fence_value);
   }
   frame.presented = true;
   if (FAILED(queue->Signal(frame.stage_done.Get(), frame.reuse_value))) fail("stage_fence");

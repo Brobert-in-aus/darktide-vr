@@ -62,3 +62,26 @@ checks repeated stable samples, two transitions and reset across windows. Releas
 native-capture and generated-frame-state test builds pass; the two focused CTests
 pass. The new logging is undeployed pending Ready; saved logs cannot be upgraded
 to per-Present focus evidence retroactively.
+
+## Continuous-frame trace cost
+
+The Present path previously requested five detailed success records per frame:
+one Present identity, two state reads and two completion tickets. The shared
+writer formats accepted records and performs a mutex-protected synchronous
+`WriteFile`; its total budget also means dense success traffic consumes evidence
+capacity early. This establishes avoidable work, not a measured FPS cost.
+
+The offline candidate samples those successful records for persistent delivery:
+all first eight frames, then every 120th frame. A 1,200-frame interval requests
+90 such records instead of 6,000, before the shared log budget is applied.
+Short bounded probes retain complete records. State errors, failure reports,
+pause/resume/binding rejection, GPU timing and health reporting retain their
+existing paths. No fence, state query, completion validation or rendering work
+is skipped by the trace policy.
+
+The ready record declares `frame_trace=complete` or `startup8_then120`. The
+bounded-probe reader rejects sampled or unknown policies even if a short prefix
+looks consecutive; legacy complete logs remain accepted. Release native-capture
+and generated-frame-state builds pass. Three focused CTests pass: generated
+frame state, continuous observation and health analysis. Actual performance
+effect needs a controlled live comparison after Ready succeeds.
