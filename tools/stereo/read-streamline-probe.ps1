@@ -584,6 +584,28 @@ if ($eyeOutputBoundaries.Count -gt 0) {
     }
 }
 Write-Output "input_snapshot.samples=$($inputSnapshots.Count)"
+foreach ($submission in @($stereoSubmissions | Where-Object phase -eq 'present')) {
+    $frame = [uint64]$submission.present_frame
+    $captures = @($eyeOutputBoundaries | Where-Object {
+        $_.phase -eq 'capture_complete' -and
+        $_.PSObject.Properties.Name -contains 'presentation_mode' -and
+        [uint64]$_.present_frame -ge $frame - 1 -and
+        [uint64]$_.present_frame -le $frame + 2
+    })
+    $prefix = "submission_images.batch$($submission.batch)"
+    Write-Output "${prefix}.captures=$($captures.Count)"
+    Write-Output "${prefix}.visual_acceptance=unverified"
+    if ($captures.Count -eq 0) { continue }
+    $stageDestinations = @($stereoPresentStages | Where-Object {
+        $_.phase -eq 'scheduled' -and [uint64]$_.present_frame -eq $frame
+    } | ForEach-Object destination)
+    $packedAliases = @($captures | Where-Object { $_.resource -in $stageDestinations })
+    Write-Output "${prefix}.packed_destination_aliases=$($packedAliases.Count)"
+    foreach ($field in @('eye','width','height','fov','aspect','presentation_mode','gameplay_generation','result')) {
+        $values = @($captures | ForEach-Object { $_.$field } | Sort-Object -Unique)
+        Write-Output "${prefix}.${field}=$($values -join ',')"
+    }
+}
 Write-Output "input_snapshot.resource_samples=$($inputSnapshotResources.Count)"
 if ($inputSnapshots.Count -gt 0) {
     foreach ($phase in @($inputSnapshots.phase | Sort-Object -Unique)) {

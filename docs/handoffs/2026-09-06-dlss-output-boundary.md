@@ -228,4 +228,16 @@ generation. The window includes refresh before the staged Present and expires
 after the final batch; normal launches do not arm it. Rendering, publication and
 resource lifetimes are unchanged. Validation: Windows x64 Release
 `cmake --build build/windows-vs2022 --config Release --target
-darktidevr_native_capture` passes. Live correlation is still required.
+darktidevr_native_capture` passes.
+
+The image-trace run completed four batches at Presents 2988/2991/2994/2997.
+Each four-Present neighborhood has eight successful captures covering both
+eyes: 2496x2688, vertical FOV 1.72787595, aspect 0.928571403, world mode 1 and
+gameplay generation 112 throughout. No captured resource aliases that batch's
+packed destination. This rules out those sampled source-identity, extent and
+metadata changes; it does not establish pixel contents, actual shader camera
+constants or worn visual acceptance. The reader reports these values per batch
+without certifying the image. Historical logs explicitly report no available
+image-trace captures. The input readiness, NGX observation and submission CTest
+cases pass. Ignored evidence: `image-trace-streamline.tsv` and
+`image-trace-report.txt` in the same evidence directory. The game remains open.
