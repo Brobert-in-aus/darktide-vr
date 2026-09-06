@@ -44,6 +44,14 @@ struct ActiveEvaluationState {
   ID3D12Resource* output{};
   NgxOutputState observation;
   bool single_subresource{};
+  struct Barrier {
+    unsigned type{}, flags{}, subresource{}, before{}, after{};
+    void* alias_before{};
+    void* alias_after{};
+  };
+  std::array<Barrier, 32> barriers{};
+  unsigned barrier_count{};
+  bool truncated{};
 };
 thread_local ActiveEvaluationState* active_evaluation{};
 std::mutex log_mutex;
@@ -114,6 +122,38 @@ void record_slow_call(const char* operation, std::uint32_t kind,
     WriteFile(timing_file, line.data(), static_cast<DWORD>(length), &written, nullptr);
 }
 
+void record_output_barriers(std::uint64_t call, const ActiveEvaluationState& state) {
+  // Buffer inside the callback and write after Evaluate returns. This trace
+  // establishes exact split/alias transitions without changing resource state.
+  std::scoped_lock lock(log_mutex);
+  static HANDLE state_file = INVALID_HANDLE_VALUE;
+  if (state_file == INVALID_HANDLE_VALUE) {
+    std::array<wchar_t, MAX_PATH> directory{};
+    const auto length = GetTempPathW(static_cast<DWORD>(directory.size()), directory.data());
+    if (!length || length >= directory.size()) return;
+    const auto path = std::wstring(directory.data(), length) + L"darktidevr-ngx-state-" +
+        std::to_wstring(GetCurrentProcessId()) + L".log";
+    state_file = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                             CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  }
+  if (state_file == INVALID_HANDLE_VALUE) return;
+  char line[512]{};
+  DWORD written{};
+  auto length = std::snprintf(line, sizeof(line),
+      "NGX_STATE call=%llu commands=%p output=%p barriers=%u truncated=%u single_subresource=%u\n",
+      call, state.commands, state.output, state.barrier_count,
+      state.truncated ? 1U : 0U, state.single_subresource ? 1U : 0U);
+  if (length > 0 && length < sizeof(line)) WriteFile(state_file, line, length, &written, nullptr);
+  for (unsigned i = 0; i < state.barrier_count; ++i) {
+    const auto& barrier = state.barriers[i];
+    length = std::snprintf(line, sizeof(line),
+        "NGX_BARRIER call=%llu index=%u type=%u flags=%u subresource=%u before=%u after=%u alias_before=%p alias_after=%p\n",
+        call, i, barrier.type, barrier.flags, barrier.subresource, barrier.before,
+        barrier.after, barrier.alias_before, barrier.alias_after);
+    if (length > 0 && length < sizeof(line)) WriteFile(state_file, line, length, &written, nullptr);
+  }
+}
+
 std::uint32_t create_hook(void* commands, std::uint32_t kind,
                            const void* parameters, void** handle) {
   const auto began = GetTickCount64();
@@ -180,6 +220,7 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   const auto began = GetTickCount64();
   const auto result = original(commands, feature, parameters, callback);
   active_evaluation = previous_evaluation;
+  if (captured) record_output_barriers(call, output_state);
   record_slow_call("evaluate", identity.kind, began);
   if (captured && result == ngx::kSuccess) {
     std::scoped_lock lock(command_mutex);
@@ -244,12 +285,23 @@ void observe_ngx_output_barriers(void* commands, unsigned count,
     const auto& barrier = barriers[i];
     if (barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION &&
         barrier.Transition.pResource == active->output) {
+      if (active->barrier_count < active->barriers.size()) {
+        active->barriers[active->barrier_count++] = {
+            static_cast<unsigned>(barrier.Type), static_cast<unsigned>(barrier.Flags),
+            barrier.Transition.Subresource, static_cast<unsigned>(barrier.Transition.StateBefore),
+            static_cast<unsigned>(barrier.Transition.StateAfter)};
+      } else active->truncated = true;
       active->observation.transition(barrier.Flags, barrier.Transition.Subresource,
                                      barrier.Transition.StateAfter, active->single_subresource);
     } else if (barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_ALIASING &&
                (!barrier.Aliasing.pResourceBefore || !barrier.Aliasing.pResourceAfter ||
                 barrier.Aliasing.pResourceBefore == active->output ||
                 barrier.Aliasing.pResourceAfter == active->output)) {
+      if (active->barrier_count < active->barriers.size()) {
+        active->barriers[active->barrier_count++] = {
+            static_cast<unsigned>(barrier.Type), static_cast<unsigned>(barrier.Flags), 0, 0, 0,
+            barrier.Aliasing.pResourceBefore, barrier.Aliasing.pResourceAfter};
+      } else active->truncated = true;
       active->observation.alias();
     }
   }

@@ -15944,7 +15944,12 @@ int read_head_pose(float* values, unsigned long long* sequence,
   darktidevr::core::SharedHeadPoseSample sample{};
   darktidevr::core::SharedHeadPoseReadDiagnostics diagnostic{};
   if (!shared_head_pose_reader().read(sample, &diagnostic)) {
-    if (trace_streamline_submission_images()) {
+    // Startup failures can precede the bounded DLSS submission window. Keep
+    // failure evidence independently bounded so a one-frame regression is not
+    // silently omitted while ordinary successful reads stay window-scoped.
+    static std::atomic<unsigned> startup_pose_failures{};
+    if (trace_streamline_submission_images() ||
+        startup_pose_failures.fetch_add(1, std::memory_order_relaxed) < 256) {
       write_streamline_probe_log("HEAD_POSE_READ\tpresent_frame=%llu\tresult=2\treason=%s\ttick_ms=%llu\tpublished_ms=%llu\tsequence=%llu\tepoch_before=%llu\tepoch_after=%llu\tattempts=%u\r\n",
           static_cast<unsigned long long>(present_count.load(std::memory_order_relaxed)),
           diagnostic.reason, diagnostic.now_ms, diagnostic.published_ms,

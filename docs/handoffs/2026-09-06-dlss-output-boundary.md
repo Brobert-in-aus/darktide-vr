@@ -512,3 +512,12 @@ startup.character_select.callback_observed=True. No Enter/click was supplied by
 the desktop tooling. Desktop control was reset immediately after observation.
 Evidence: artifacts/unattended/auto-start-callback-live-20260906.log and the
 corresponding character-select/console logs. Generated XR acceptance is separate.
+
+Follow-up diagnostic records up to 32 exact output barriers per captured NGX
+callback in a separate ngx-state-PID log, including flags, before/after state,
+subresource and alias resources. It buffers during the callback and writes after
+Evaluate returns. State acceptance and generated publication are unchanged.
+Pose failures are now logged outside the DLSS transaction window too (bounded
+256 failures), because the user's single startup flash may precede that window.
+Native Release and four focused transport/NGX CTests pass. Live trace pending.
+The second eight-frame consecutive pass is archived as auto-start-pass-*.
