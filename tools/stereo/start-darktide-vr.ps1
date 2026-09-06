@@ -112,6 +112,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 $runner = Join-Path $PSScriptRoot 'run-darktide-shared-eyes.ps1'
 if (-not (Test-Path -LiteralPath $runner -PathType Leaf)) {
