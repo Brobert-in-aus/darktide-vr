@@ -101,6 +101,29 @@ assert(component.position[1]==10 and component.position[2]==20 and component.pos
 assert(math.abs(component.rotation.yaw-(aim.yaw+.01))<1e-12)
 assert(math.abs(component.rotation.pitch-(aim.pitch+.02))<1e-12)
 assert(component.previous_rotation==view and view.yaw==0 and view.pitch==.1)
+-- Stock local rendering and camera root use the original orientation owner,
+-- independently of the hand-directed fixed simulation component.
+assert(loadstring(extract('PlayerUnitFirstPersonExtension._update_rotation =',
+    '\nPlayerUnitFirstPersonExtension.spectated_aim_rotation =')))()
+local rendered_rotation
+Unit.set_local_rotation=function(unit,node,rotation)
+    assert(unit=='first_person' and node==1); rendered_rotation=rotation
+end
+fp._is_local_unit=true
+fp._first_person_unit='first_person'
+fp._player={get_orientation=function() return view end}
+PlayerUnitFirstPersonExtension._update_rotation(fp,'local',.02,10)
+assert(math.abs(rendered_rotation.yaw-.01)<1e-12 and math.abs(rendered_rotation.pitch-.12)<1e-12)
+assert(math.abs(component.rotation.yaw-(math.pi/2+.01))<1e-12)
+CameraHandler={}; CameraModes={observer='observer'}
+local camera_source=source('managers/player/player_game_states/camera_handler')
+local camera_first=assert(camera_source:find('CameraHandler._camera_root_orientation =',1,true))
+local camera_last=assert(camera_source:find('\nCameraHandler._switch_follow_target =',camera_first,true))
+assert(loadstring(camera_source:sub(camera_first,camera_last-1)))()
+local camera_yaw,camera_pitch=CameraHandler._camera_root_orientation({_mode='first_person'},
+    {orientation=function() return view.yaw,view.pitch,view.roll end,
+     orientation_offset=function() return .01,.02,0 end})
+assert(camera_yaw==rendered_rotation.yaw and camera_pitch==rendered_rotation.pitch)
 -- With zero recoil, the actual walking method reconstructs the intended head-
 -- relative direction from the transformed input. Its own backward penalty stays.
 local constants={acceleration=1000,deceleration=1000,backward_move_scale=.5,
@@ -140,4 +163,5 @@ for i,select_case in ipairs(selected_cases) do
 end
 print('PASS: actual stock pose keeps body origin/recoil; actual walking preserves direction and backward penalty')
 print('PASS: actual stock orientation selector retains forced look, weapon locks, sticky melee, ledges, wheels and death')
+print('PASS: actual stock local rendering and camera root retain independent view orientation')
 print('LIMIT: isolated engine math, no real quantization, live network or worn acceptance')

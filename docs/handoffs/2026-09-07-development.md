@@ -415,3 +415,11 @@ the optional source test now executes the real selector for forced look, ledges,
 both weapon-lock forms, force-look weapons, sticky melee, communication/emote
 wheels and death. No native change, deployment or new live readiness attempt.
 The prior full-suite result remains 105/105 at `e3647d0`.
+
+Further source test: actual local first-person rendering and camera-root methods
+retain the original head/view owner while the combat component uses hand aim.
+The optional stock test passes. Direct-bone review found no configured
+`spawn_node` assignments in equipment settings; existing optional action branches
+remain a future-template boundary. Sweep hit-stop bone reads feed animation;
+the inspected sticky damage path uses the first-person component/target actor.
+No additional production changes or live acceptance from this review.

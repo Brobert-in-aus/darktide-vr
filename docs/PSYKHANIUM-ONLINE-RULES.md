@@ -93,6 +93,17 @@ and backward penalty. It also executes the actual stock orientation selector
 across forced look, both weapon-lock forms, force-look weapons, melee stickiness,
 ledge hangs, communication/emote wheels and death. Engine math and transport are isolated substitutes, so
 these do not establish executable wire precision or live server acceptance.
+The actual stock local `_update_rotation` and camera-root orientation methods
+also pass with distinct head/hand angles: local rendering reads the original
+view owner while the fixed combat component keeps hand aim.
+
+The direct-bone audit found optional `spawn_node` branches in stock grenade and
+spawn-projectile actions, but no `spawn_node` assignments in the inspected
+equipment settings. Those branches remain a future template-coverage boundary;
+do not assume a newly added node-authored attack has stock-server origin parity.
+The inspected sweep bone reads used for hit-stop deltas write animation variables;
+sticky damage reads the first-person component and the target actor. Charged
+and sticky attacks still need live loadout checks.
 
 Fresh live diagnostics should include `DARKTIDEVR_ONLINE_RULES` with the range
 policy and first authored input frame. Ready preflight, fresh Lua/stereo
