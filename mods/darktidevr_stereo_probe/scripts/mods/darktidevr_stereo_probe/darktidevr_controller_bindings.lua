@@ -120,11 +120,23 @@ function Bindings.install(mod)
         -- The eleven native channels occupy bits 0..10. Directional channels
         -- exist only here, so native input cannot impersonate a virtual shortcut.
         physical = bit.band(physical or 0,2047)
-        if generation ~= stick_generation then stick_active=false end
+        if generation ~= stick_generation then
+            -- A new publisher cancels the previous semantic hold. Do not emit
+            -- an attack release from disappearance of its physical channels.
+            stick_active=false; active=false; api.held=0
+        end
         stick_generation = generation
         local axes_valid = enabled == true and stick_usable == true and
             type(stick_x)=="number" and type(stick_y)=="number" and
             stick_x>=-1 and stick_x<=1 and stick_y>=-1 and stick_y<=1
+        local cancelled_axes=0
+        if stick_active and not axes_valid then
+            for _,control in ipairs(Bindings.controls) do
+                if control.axis and bit.band(stick_held,control.bit)~=0 then
+                    cancelled_axes=bit.bor(cancelled_axes,resolved[control.id] or 0)
+                end
+            end
+        end
         local next_stick = 0
         if axes_valid then
             for _,control in ipairs(Bindings.controls) do
@@ -141,6 +153,9 @@ function Bindings.install(mod)
         stick_held, stick_active = next_stick, axes_valid
         physical = bit.bor(physical,next_stick)
         if dirty then
+            -- Remap cancellation is not a physical release; emitting one can
+            -- finish the old charged attack as the setting is changed.
+            api.held=0
             for _,control in ipairs(Bindings.controls) do
                 resolved[control.id] = selection(control)
             end
@@ -160,7 +175,9 @@ function Bindings.install(mod)
             end
         end
         local pressed = bit.band(next_held,bit.bnot(api.held))
-        local released = bit.band(api.held,bit.bnot(next_held))
+        -- Losing the stick's tracking/validity cancels its contribution. Keep
+        -- semantic history for healthy button aliases so they do not retrigger.
+        local released = bit.band(api.held,bit.bnot(next_held),bit.bnot(cancelled_axes))
         api.held = next_held
         return pressed,next_held,released
     end

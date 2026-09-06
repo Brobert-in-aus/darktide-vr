@@ -20,13 +20,13 @@ sample(true,0,0,0,0)
 sample(true,256+1024,1280,1280,0)
 sample(true,0,0,0,1280)
 
--- A live remap releases the old action, suppresses its replacement and leaves
+-- A live remap cancels the old action, suppresses its replacement and leaves
 -- keyboard/UI callbacks intact. Each held physical control rearms separately.
 sample(true,1,1,1,0)
 settings.vr_bind_right_trigger='combat_ability'
 mod.on_setting_changed('vr_bind_right_trigger')
 assert(callbacks==1)
-sample(true,1,0,0,1)
+sample(true,1,0,0,0)
 sample(true,1+4,4,4,0)
 sample(true,4,0,4,0)
 sample(true,1+4,2048,2052,0)
@@ -116,7 +116,7 @@ context('hub',0,0,0,0)
 context('hub',8,8,8,0)
 profile_settings.vr_hub_bind_x='inventory'
 profile_mod.on_setting_changed('vr_hub_bind_x')
-context('hub',8,0,0,8)
+context('hub',8,0,0,0)
 context('hub',0,0,0,0)
 context('hub',8,32768,32768,0)
 context('mission',8,0,0,0)
@@ -142,30 +142,30 @@ stick(true,.8,.8,true,1,2048+4096,2048+4096,0) -- Diagonal shortcuts coexist.
 stick(true,-.8,0,true,1,0,4096,2048) -- Alias across directions does not retrigger.
 stick(true,0,0,true,1,0,0,4096)
 stick(true,0,-.8,true,1,16384,16384,0)
-stick(false,0,-.8,true,1,0,0,16384)
+stick(false,0,-.8,true,1,0,0,0)
 stick(true,0,-.8,true,1,0,0,0)
 stick(true,0,0,true,1,0,0,0)
 stick(true,0,1,true,1,2048,2048,0)
-stick(true,0,1,false,1,0,0,2048)
+stick(true,0,1,false,1,0,0,0)
 stick(true,0,1,true,1,0,0,0) -- Tracking reacquisition requires neutral.
 stick(true,0,0,true,1,0,0,0)
 stick(true,0,1,true,1,2048,2048,0)
-stick(true,0,1,true,2,0,0,2048) -- Writer restart also requires neutral.
+stick(true,0,1,true,2,0,0,0) -- Writer restart cancels without a release.
 stick(true,0,0,true,2,0,0,0)
 stick(true,0,1,true,2,2048,2048,0)
 directional_settings.vr_bind_right_stick_up='special'
 directional_mod.on_setting_changed('vr_bind_right_stick_up')
-stick(true,0,1,true,2,0,0,2048)
+stick(true,0,1,true,2,0,0,0)
 stick(true,0,0,true,2,0,0,0)
 stick(true,0,1,true,2,4,4,0)
-stick(true,0/0,1,true,2,0,0,4)
+stick(true,0/0,1,true,2,0,0,0)
 stick(true,0,1,true,2,0,0,0) -- Invalid axes invalidate the old latch.
 stick(true,0,0,true,2,0,0,0,2048) -- Unknown native bits cannot impersonate directions.
 local default_mapper=Bindings.install({get=function() end})
 default_mapper.sample(true,0,0,0,true,1)
 local p,h,r=default_mapper.sample(true,0,1,1,true,1)
 assert(p==0 and h==0 and r==0,'new direction defaults were not unbound')
-print('controller_bindings=pass defaults aliases remap_release context_handoff directional_hysteresis tracking generation stock_names options')
+print('controller_bindings=pass defaults aliases remap_cancel context_handoff directional_hysteresis tracking generation stock_names options')
 -- Mission slots use ordinary stock wield edges. Held bindings and a second
 -- alias cannot repeat slot changes; an inactive transition requires release.
 for id,expected in pairs({pocketable='wield_3',stim='wield_4',device='wield_5',
@@ -200,7 +200,22 @@ stick(true,1,1,true,2,2048,2048,0)
 assert(#directional.controls_for_action('reload')==1) -- X default, no RS directions.
 directional_settings.vr_turn_mode='off'
 directional_mod.on_setting_changed('vr_turn_mode')
-stick(true,1,0,true,2,0,0,2048)
+stick(true,1,0,true,2,0,0,0)
 stick(true,1,0,true,2,0,0,0)
 stick(true,0,0,true,2,0,0,0)
 stick(true,1,0,true,2,4096,4096,0)
+-- Losing an axis must neither release nor retrigger a healthy button alias.
+local aliases=Bindings.install({get=function(_,key)
+    if key=='vr_bind_right_trigger' or key=='vr_bind_right_stick_up' then return 'combat_ability' end
+end})
+aliases.sample(true,0,0,0,true,1)
+local ap,ah,ar=aliases.sample(true,1,0,1,true,1)
+assert(ap==2048 and ah==2048 and ar==0)
+ap,ah,ar=aliases.sample(true,1,0,1,false,1)
+assert(ap==0 and ah==2048 and ar==0,'Lost axis retriggered or released a healthy button alias')
+ap,ah,ar=aliases.sample(true,0,0,1,false,1)
+assert(ap==0 and ah==0 and ar==2048,'Healthy button release was swallowed after axis loss')
+aliases.sample(true,0,0,0,true,1)
+assert(aliases.sample(true,0,0,1,true,1)==2048)
+ap,ah,ar=aliases.sample(true,0,0,1,false,1)
+assert(ap==0 and ah==0 and ar==0,'Axis-only cancellation emitted a charged release')

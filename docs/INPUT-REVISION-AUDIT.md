@@ -11,6 +11,18 @@ chunks pass. This covers unavailable/stale native reads (native return code 2)
 and defensive nonzero errors; it does not claim all per-hand tracking-loss or
 worn charge-cancellation behavior has been validated. Candidate is undeployed.
 
+Follow-up: remaps and observed controller-publisher generation changes now clear
+the mapper's old semantic hold before deriving edges, while retaining neutral
+rearming. Invalid/untracked stick axes cancel only their semantic contribution;
+a healthy button alias stays held without a repeat press, and its later physical
+release still works. Real-adapter tests reproduce the old remap release and cover
+observed restart cancellation. Mapper cases cover invalid axes and shared aliases.
+Five focused CTests and 36 LuaJIT chunks pass. The pose-observation generation
+and native button read are separate samples; their ordering still needs review
+before claiming an unobserved between-read restart is fully covered. Stock action
+behavior when held input disappears remains stock; only synthetic release-edge
+injection is suppressed. No deployment or worn acceptance.
+
 This records the routing audit and subsequent candidates. The raw OpenXR actions
 already include both sticks and both stick clicks. The current gameplay mapper
 is in `src/core/gameplay_input.cpp`; its game-side delivery table is

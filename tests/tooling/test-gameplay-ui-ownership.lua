@@ -4,7 +4,8 @@ local file=assert(io.open(arg[1],'r'))
 local source=file:read('*all'); file:close()
 local first=assert(source:find('function presentation.inject_ephemeral_action_names',1,true))
 local last=assert(source:find('\nmod:hook_safe(',first,true))
-mod={get=function() end,info=function() end}
+local settings={}
+mod={get=function(_,key) return settings[key] end,info=function() end}
 presentation={mode=1,gameplay_context=dofile(arg[2]),
     is_first_person_body_mode=function(mode) return mode=='hub' end,
     apply_controller_turning=function() end}
@@ -68,6 +69,21 @@ for _,failure in ipairs({1,-1,2}) do
     assert(sample(0)[2], 'Normal release after recovery was lost')
   end
 end
+-- Remapping and an observed publisher generation change are cancellation,
+-- even if the current native read succeeded. They must not finish a charge.
+sample(0)
+assert(sample(1)[1])
+mod.on_setting_changed('vr_bind_right_trigger')
+local remapped=sample(1)
+assert(not remapped[1] and not remapped[2], 'Remap injected a charged-release edge')
+sample(0)
+assert(sample(1)[1])
+controller_observation.last_transport_generation=2
+local restarted=sample(1)
+assert(not restarted[1] and not restarted[2], 'Observed publisher restart injected a charged-release edge')
+assert(not sample(1)[1], 'Publisher restart must require a neutral sample before rearming')
+sample(0)
+assert(sample(1)[1] and sample(0)[2])
 for _,ui in ipairs({{}, {using_input=function() error('retiring') end},
         {using_input=function() return {} end}, {using_input=function() return nil end},
         17,true,setmetatable({}, {__index=function() error('retired proxy lookup') end})}) do

@@ -664,3 +664,20 @@ invariants, online rules, gameplay UI input, controller bindings, UI ownership),
 and all 36 LuaJIT chunks compile. Full-suite baseline is 108/108 at `dd1ec4e`.
 No deployment; per-hand tracking flags and worn cancellation remain separate
 acceptance limits. Continue the todo list until the user instructs a stop.
+
+## Continuous todo work: binding discontinuity cancellation
+
+Branch `codex/binding-discontinuity-cancel-2026-09-07` extends cancellation to
+remaps, observed publisher-generation changes and invalid stick axes. Remaps/
+generations clear the old semantic hold and quarantine inherited controls.
+Axis loss suppresses only cancelled action releases without clearing healthy
+button-alias history, avoiding either a false release or repeated press.
+
+The actual Lua adapter reproduced the remap release before the fix. Updated
+mapper expectations now distinguish cancellation from ordinary physical release;
+shared-alias, neutral rearming, invalid axes and observed restart checks pass.
+Five focused CTests (bindings, real UI ownership seam, prompts, UI routing,
+source invariants) and 36 LuaJIT chunks pass. No deployment. Full-suite baseline
+remains 108/108 at `dd1ec4e`. Next investigate the separate pose-generation versus
+native-button sampling order: this change covers an observed generation, not
+yet a restart detected by the native reader before Lua observes its generation.
