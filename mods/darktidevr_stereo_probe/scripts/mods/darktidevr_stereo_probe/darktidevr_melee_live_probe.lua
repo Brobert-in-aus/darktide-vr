@@ -107,9 +107,14 @@ function Live.install(mod, presentation, tracking, game_mode)
             end
             return
         end
-        local valid = tracking.right_grip_usable == true and tracking.body_anchor_qw ~= nil
+        local hand = presentation.weapon_hand_roles and
+            presentation.weapon_hand_roles.physical("dominant") or "right"
+        local valid = tracking[hand.."_grip_usable"] == true and tracking.body_anchor_qw ~= nil
         local position, rotation
-        if valid then position, rotation = presentation.controller_grip_target() end
+        if valid then
+            if presentation.weapon_grip_target then position, rotation = presentation.weapon_grip_target("dominant")
+            else position, rotation = presentation.controller_grip_target() end
+        end
         valid = valid and position ~= nil and rotation ~= nil
         local pose
         if valid then

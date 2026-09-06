@@ -19,7 +19,7 @@ local mod={hook=function(_,class,name,hook)
 end}
 local available=true
 local target={target=function(side)
-    assert(side=="right")
+    assert(side=="dominant")
     if available then return 100,200 end
 end}
 Managers={player={local_player=function() return {player_unit="local"} end}}

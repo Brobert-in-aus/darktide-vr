@@ -4,12 +4,12 @@ local function packed(...) return {n=select("#", ...), ...} end
 function CombatDirection.install(mod, aim)
     local scope
     local writes = 0
-    local function with_left_block(func, target_unit, ...)
+    local function with_support_block(func, target_unit, ...)
         local player = Managers.player and Managers.player:local_player(1)
         if not player or target_unit ~= player.player_unit then
             return func(target_unit, ...)
         end
-        local _, rotation = aim.target("left")
+        local _, rotation = aim.target("support")
         if not rotation then return func(target_unit, ...) end
         local previous = scope
         scope = {unit=target_unit, rotation=rotation}
@@ -30,7 +30,7 @@ function CombatDirection.install(mod, aim)
             if scope and self._unit == scope.unit and name == "first_person" then
                 writes = writes + 1
                 if writes == 1 then
-                    mod:info("DARKTIDEVR_BLOCK direction=left_hand stock_angles_and_cost=true")
+                    mod:info("DARKTIDEVR_BLOCK direction=support_hand stock_angles_and_cost=true")
                 end
                 return setmetatable({rotation=scope.rotation}, {__index=component})
             end
@@ -38,8 +38,8 @@ function CombatDirection.install(mod, aim)
         end)
     end)
     local block = require("scripts/utilities/attack/block")
-    mod:hook(block, "is_blocking", with_left_block)
-    mod:hook(block, "attempt_block_break", with_left_block)
+    mod:hook(block, "is_blocking", with_support_block)
+    mod:hook(block, "attempt_block_break", with_support_block)
 end
 
 return CombatDirection

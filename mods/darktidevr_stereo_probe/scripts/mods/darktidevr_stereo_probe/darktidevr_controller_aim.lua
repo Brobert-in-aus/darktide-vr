@@ -151,6 +151,12 @@ function controller_aim.install(mod, presentation, state)
     controller_aim.convergence_fallbacks = 0
 
     function controller_aim.target(side)
+        side = side or "dominant"
+        if presentation.weapon_hand_roles then
+            side = presentation.weapon_hand_roles.physical(side)
+        elseif side == "dominant" then side = "right"
+        elseif side == "support" then side = "left" end
+        if side ~= "left" and side ~= "right" then return nil, nil end
         if not state.authoring_enabled then return nil, nil end
         local mode_allowed = presentation.is_controller_aim_mode and
             presentation.is_controller_aim_mode() or
@@ -167,7 +173,7 @@ function controller_aim.install(mod, presentation, state)
     function controller_aim.publish_reticle(extension, stock_position, stock_rotation)
         controller_aim.reticle_hit_unit = nil
         local position, rotation = stock_position, stock_rotation
-        if not position or not rotation then position, rotation = controller_aim.target("right") end
+        if not position or not rotation then position, rotation = controller_aim.target("dominant") end
         local physics_world = extension and extension._physics_world
         if not position or not rotation or not physics_world then
             controller_aim.reticle_world_point = nil
@@ -364,14 +370,14 @@ function controller_aim.install(mod, presentation, state)
              (name == "psyker_throwing_knives" and knife_settings.track_towards_target and
               knife_settings.target_finder_module_class_name == "smart_target_targeting"))
         if knife then
-            local position, rotation = controller_aim.target("right")
-            return position, rotation, "knife_right_aim"
+            local position, rotation = controller_aim.target("dominant")
+            return position, rotation, "knife_dominant_aim"
         end
         if not is_force_staff(action) then
             return nil, nil, nil
         end
         local right_position, right_rotation =
-            controller_aim.target("right")
+            controller_aim.target("dominant")
         if not right_rotation then
             return nil, nil, nil
         end
@@ -386,12 +392,12 @@ function controller_aim.install(mod, presentation, state)
             controller_aim.staff_tip_fallbacks =
                 controller_aim.staff_tip_fallbacks + 1
             return right_position, right_rotation,
-                "staff_tip_fallback_right"
+                "staff_tip_fallback_dominant"
         end
-        local left_position = controller_aim.target("left")
+        local left_position = controller_aim.target("support")
         local rotation = controller_aim.converged_rotation(
             left_position, right_position, right_rotation)
-        return left_position, rotation, "left_origin_converged_aim"
+        return left_position, rotation, "support_origin_converged_aim"
     end
 
     function controller_aim.third_person_muzzle(action)
@@ -478,7 +484,7 @@ function controller_aim.install(mod, presentation, state)
         if not is_local_unit(action._player_unit) then
             return func(action, ...)
         end
-        local position, rotation = controller_aim.target("right")
+        local position, rotation = controller_aim.target("dominant")
         if not position or not rotation or not action._first_person_component then
             return func(action, ...)
         end
@@ -500,7 +506,7 @@ function controller_aim.install(mod, presentation, state)
         -- FX run. Stock code owns simultaneous grouping and writes the prepared
         -- pair once; never rebase that pair after its shot counter advances.
         local results = packed(controller_aim.with_ranged_pose(action, func, ...))
-        if is_local_unit(action._player_unit) and controller_aim.target("right") and
+        if is_local_unit(action._player_unit) and controller_aim.target("dominant") and
                 component and type(before) == "number" then
             local configurations = action._base_fire_configurations
             local first = action._multi_fire_mode ~= MultiFireModes.simultaneous or
@@ -558,17 +564,17 @@ function controller_aim.install(mod, presentation, state)
             if not position or not rotation then
                 return func(self, ...)
             end
-            if owner == "knife_right_aim" then
+            if owner == "knife_dominant_aim" then
                 return with_first_person_pose(self, position, rotation, func, ...)
             end
-            if owner == "left_origin_converged_aim" then
+            if owner == "support_origin_converged_aim" then
                 controller_aim.staff_primary_writes =
                     controller_aim.staff_primary_writes + 1
             else
                 controller_aim.staff_secondary_writes =
                     controller_aim.staff_secondary_writes + 1
             end
-            local source_count = owner == "left_origin_converged_aim" and
+            local source_count = owner == "support_origin_converged_aim" and
                 controller_aim.staff_primary_writes or
                 controller_aim.staff_secondary_writes
             if source_count <= 4 then
@@ -611,7 +617,7 @@ function controller_aim.install(mod, presentation, state)
                 not template or not has_keyword(template.keywords,"dual_shivs") then
             return func(action,...)
         end
-        local position,rotation = controller_aim.target("right")
+        local position,rotation = controller_aim.target("dominant")
         return with_first_person_pose(action,position,rotation,func,...)
     end
     local ActionWeaponThrow = require(
@@ -628,7 +634,7 @@ function controller_aim.install(mod, presentation, state)
         if not is_local_unit(action._player_unit) then
             return func(action, ...)
         end
-        local _, rotation = controller_aim.target("right")
+        local _, rotation = controller_aim.target("dominant")
         local component = action._first_person_component
         if not rotation or not component then
             return func(action, ...)
@@ -686,11 +692,11 @@ function controller_aim.install(mod, presentation, state)
             end)
     end
 
-    function controller_aim.with_right_aim(action, func, ...)
+    function controller_aim.with_dominant_aim(action, func, ...)
         if not is_local_unit(action._player_unit) then
             return func(action, ...)
         end
-        local position, rotation = controller_aim.target("right")
+        local position, rotation = controller_aim.target("dominant")
         if not position or not rotation then
             return func(action, ...)
         end
@@ -699,7 +705,7 @@ function controller_aim.install(mod, presentation, state)
         if controller_aim.lightning_pose_writes <= 4 then
             local direction = Quaternion.forward(rotation)
             mod:info(
-                "DARKTIDEVR_WEAPON_AIM lightning right_aim count=%d origin=%.4f,%.4f,%.4f direction=%.4f,%.4f,%.4f",
+                "DARKTIDEVR_WEAPON_AIM lightning dominant_aim count=%d origin=%.4f,%.4f,%.4f direction=%.4f,%.4f,%.4f",
                 controller_aim.lightning_pose_writes,
                 Vector3.x(position),
                 Vector3.y(position),
@@ -717,7 +723,7 @@ function controller_aim.install(mod, presentation, state)
         ChainLightningTargetingActionModule,
         "fixed_update",
         function(func, self, ...)
-            return controller_aim.with_right_aim(self, func, ...)
+            return controller_aim.with_dominant_aim(self, func, ...)
         end)
     local PsykerChainLightningSingleTargetingActionModule = require(
         "scripts/extension_systems/weapon/actions/modules/psyker_chain_lightning_single_targeting_action_module")
@@ -725,7 +731,7 @@ function controller_aim.install(mod, presentation, state)
         PsykerChainLightningSingleTargetingActionModule,
         "fixed_update",
         function(func, self, ...)
-            return controller_aim.with_right_aim(self, func, ...)
+            return controller_aim.with_dominant_aim(self, func, ...)
         end)
     local ActionChainLightning = require(
         "scripts/extension_systems/weapon/actions/action_chain_lightning")
@@ -733,14 +739,14 @@ function controller_aim.install(mod, presentation, state)
         ActionChainLightning,
         "_deal_damage",
         function(func, self, ...)
-            return controller_aim.with_right_aim(self, func, ...)
+            return controller_aim.with_dominant_aim(self, func, ...)
         end)
 
     local PlayerUnitSmartTargetingExtension = require(
         "scripts/extension_systems/smart_targeting/player_unit_smart_targeting_extension")
     mod:hook(PlayerUnitSmartTargetingExtension, "force_update_smart_tag_targets",
         function(func, self, ...)
-            local position, rotation = controller_aim.target("right")
+            local position, rotation = controller_aim.target("dominant")
             if not is_local_unit(self._unit) or not position or not rotation then
                 return func(self, ...)
             end
@@ -750,7 +756,7 @@ function controller_aim.install(mod, presentation, state)
     for _, method in ipairs({"_find_interaction_object", "_find_interaction_object_3p",
             "_check_valid_ongoing_interaction"}) do
         mod:hook(InteractorExtension, method, function(func, self, ...)
-            local position, rotation = controller_aim.target("right")
+            local position, rotation = controller_aim.target("dominant")
             if not is_local_unit(self._unit) or not position or not rotation then
                 return func(self, ...)
             end
@@ -774,7 +780,7 @@ function controller_aim.install(mod, presentation, state)
                 end
                 return result
             end
-            local position, rotation = controller_aim.target("right")
+            local position, rotation = controller_aim.target("dominant")
             if not position or not rotation then
                 presentation.publish_gameplay_aim_state(false, false, 0)
                 return func(self, ...)

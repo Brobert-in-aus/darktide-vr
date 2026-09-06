@@ -555,3 +555,23 @@ marker target, online rules, ranged aim, Lua compiler and invariants. The suite
 now registers 106 tests, but no full-suite result is claimed on this head.
 No live attempt or deployment. User's continuous-work instruction remains active;
 continue through independent todo items instead of ending at a status checkpoint.
+
+## Continuous todo work: weapon-role foundation
+
+Branch `codex/weapon-role-foundation-2026-09-07` adds fixed dominant/support role
+resolution while retaining physical tracking/wrist identity. Attack, reticle,
+staff support origin, throws, block, tagging, online frame aim and the diagnostic
+contact probe now request weapon roles. The latter also selects the corresponding
+physical grip-validity field. Runtime is fixed right-dominant until attachment/
+effect presentation, held-input rearming, presets and menu pointer are completed;
+no incomplete left-hand option is exposed.
+
+Validation: 36 LuaJIT chunks; full Windows x64 offline CTest **107/107 pass** with
+headset tests disabled at configuration. Evidence:
+`artifacts/unattended/weapon-roles-full-ctest-20260907.log` and matching configure
+log. Role fixtures cover both choices, invalid roles and tracking loss. Concrete
+ranged hooks pass left-role input and stock fallback without an opposite-hand
+substitution. Optional stock grenade and online pose/shot contracts pass too.
+The source invariant's staff-origin diagnostic literal was updated to support
+terminology without removing its behavior guard. No native change since the
+focus-window build and no deployment. Continue attachment ownership work next.

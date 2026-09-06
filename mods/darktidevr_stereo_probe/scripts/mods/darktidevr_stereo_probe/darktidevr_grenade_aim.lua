@@ -32,7 +32,7 @@ function Grenade.install(mod,aim,simulation_preview_pose)
                 not Grenade.supported(self._weapon_template,self._action_settings) then
             return func(self,...)
         end
-        local position,rotation=aim.target("right")
+        local position,rotation=aim.target("dominant")
         local previous=self._first_person_component
         if not previous or not position or not rotation then return func(self,...) end
         self._first_person_component=setmetatable({position=position,rotation=rotation},
@@ -60,7 +60,7 @@ function Grenade.install(mod,aim,simulation_preview_pose)
             -- visual arc needs the simulated pose independently of hand proxies.
             local position,rotation
             if simulation_preview_pose then position,rotation=simulation_preview_pose(self) end
-            if not position or not rotation then position,rotation=aim.target("right") end
+            if not position or not rotation then position,rotation=aim.target("dominant") end
             if not position or not rotation then return func(self,settings,...) end
             local trajectory={}
             for key,value in pairs(settings) do trajectory[key]=value end

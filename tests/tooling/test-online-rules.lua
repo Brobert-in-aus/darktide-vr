@@ -33,7 +33,8 @@ package.preload['scripts/settings/player_character/player_orientation_settings']
 end
 local state={authoring_enabled=true,gameplay_input_active=true}
 local presentation={mode=1,gameplay_context=context,flat_movement_rotation=function(yaw) return yaw end,
-    controller_aim_target=function() return 'unused_hand_origin',hand end}
+    controller_aim_target=function() error('Online input bypassed dominant role') end,
+    weapon_aim_target=function(role) assert(role=='dominant'); return 'unused_hand_origin',hand end}
 local rules=Rules.install(mod,presentation,state,function() return mode end)
 local names={'move_right','move_left','move_forward','move_backward'}
 local function handler()

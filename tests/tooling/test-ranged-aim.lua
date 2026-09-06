@@ -265,3 +265,28 @@ assert(reticles==1,'Online reticle did not use the stock simulated origin')
 smart.fixed_update({_is_local_unit=false,_first_person_component=shared})
 assert(reticles==1,'Changed remote reticle')
 print('online_range_ranged=pass stock_origins stock_preparation simulated_reticle remote_unchanged')
+-- Exercise role routing through concrete attack hooks without swapping raw
+-- physical readers or the local player's anatomical skeleton.
+local Roles=dofile(arg[1]:gsub('darktidevr_controller_aim.lua$', 'darktidevr_weapon_hand_roles.lua'))
+aim.presentation.is_controller_aim_mode=function() return true end
+aim.presentation.weapon_hand_roles=Roles.new('left')
+local left_available=true
+aim.presentation.left_controller_aim_target=function()
+    if left_available then return 30,200 end
+end
+assert(aim.target('dominant')==30 and aim.target('support')==20)
+assert(aim.target('right')==20 and aim.target('left')==30 and aim.target('unknown')==nil)
+for _,name in ipairs(paths) do
+    local left_action=action(modules[action_root..name])
+    left_action:_prepare_shooting(42)
+    assert(left_action._action_component.shooting_position==30 and
+        left_action._action_component.shooting_rotation==207)
+    assert(left_action._first_person_component==shared)
+end
+left_available=false
+assert(aim.target('dominant')==nil and aim.target('support')==20)
+local lost=action(modules[action_root..paths[1]])
+lost:_prepare_shooting(42)
+assert(lost._action_component.shooting_position==shared.position and
+    lost._action_component.shooting_rotation==shared.rotation+7,'Tracking loss fell back to the other hand')
+print('weapon_roles_ranged=pass dominant_input physical_identity tracking_loss stock_fallback')

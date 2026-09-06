@@ -24,7 +24,7 @@ local mod={hook_require=function(_,_,callback) deferred=callback end,hook=functi
  local original=target[name]
  target[name]=function(...) return callback(original,...) end
 end,info=function() end}
-module.install(mod,{target=function(side) assert(side=='left'); return {},left end})
+module.install(mod,{target=function(side) assert(side=='support'); return {},left end})
 assert(deferred, 'missing deferred unit-data registration')
 deferred(data_class)
 for _,name in ipairs({'is_blocking','attempt_block_break'}) do

@@ -1,10 +1,33 @@
 # Handedness implementation audit
 
-6 September 2026. Source audit only; left-handed gameplay is not implemented or
-visually accepted. User accepted the right-wrist correction in hub build 2477d82.
-Development is stopped for the night; game/XR are closed. See the
-[end-of-day handover](handoffs/2026-09-06-end-of-day.md). The user's later follow-up
-reactivates DLSS image-quality work with blur first; it does not change this audit.
+6 September source audit, followed by implementation work on 7 September.
+Left-handed gameplay is not yet available or visually accepted. The user accepted
+the right-wrist correction in hub build 2477d82. Current continuous work is tracked
+in the [development handoff](handoffs/2026-09-07-development.md).
+
+## Implemented role foundation, 7 September
+
+`darktidevr_weapon_hand_roles.lua` constructs a fixed dominant/support policy.
+Physical left/right identities remain unchanged; invalid policy input defaults
+to right dominance and unknown role names produce no target. Gameplay attack,
+reticle, staff support origin, throw, block and targeting consumers now request
+roles explicitly. The online fixed-frame adapter requests dominant aim. The
+non-damaging contact probe reads the selected physical grip's validity and pose.
+No opposite-hand fallback occurs when the selected hand loses tracking.
+
+The runtime constructs the accepted right-dominant policy. No left-handed setting
+or binding preset is exposed yet: attachments, weapon effects, held-input rearming
+and independent menu-pointer selection remain unfinished. This fixed constructor
+does not provide an in-session handedness mutation API. Raw tracking, anatomical
+wrists/calibration, movement selection and native controls remain physical.
+
+The role/physical helper fixture passes both choices, invalid input and tracking
+loss. Concrete ranged hooks also pass a left-dominant test policy with distinct
+physical poses and stock fallback when that hand becomes unavailable. Existing
+grenade, melee, block, animation, online-input and contact-probe checks pass.
+LuaJIT compiles 36 chunks; the full Windows x64 offline CTest suite passes
+**107/107**. Source invariants retain the same staff convergence guard under its
+new support-role diagnostic name. No deployment or attachment/visual acceptance.
 
 ## Decision
 

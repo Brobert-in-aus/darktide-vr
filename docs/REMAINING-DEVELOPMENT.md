@@ -75,7 +75,10 @@ for the smaller set needed before a first end-to-end mission attempt.
 7. **Implement handedness.** Follow HANDEDNESS-AUDIT: dominant/support roles,
    anatomical hands, weapon attachments/models, block/cast/throw/contact origins,
    effects, two-hand poses and accurate controls. Do not globally mirror the
-   skeleton or swap raw tracking as a shortcut. Source audit is done; feature is not.
+   skeleton or swap raw tracking as a shortcut. A shared role foundation now
+   routes combat consumers and passes the 107-test offline suite, with runtime
+   still fixed to the accepted right-dominant policy. Attachment/effect mapping,
+   input rearming, presets and pointer choice remain before exposing the feature.
 8. **Test SoloPlay for in-mission functionality, after Psykhanium acceptance.**
    The user supplied `_downloads/SoloPlay` (Nexus mod 176). Keep this fairly late:
    first get the planned VR functionality working properly in Psykhanium, then

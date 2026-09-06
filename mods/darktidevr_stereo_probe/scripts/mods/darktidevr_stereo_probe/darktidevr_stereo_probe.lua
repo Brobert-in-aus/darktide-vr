@@ -5281,6 +5281,10 @@ end
 
 presentation.gameplay_context = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gameplay_context")
+-- Foundation only: keep the accepted right-dominant presentation until weapon
+-- attachments/effects and input rearming support a complete handedness option.
+presentation.weapon_hand_roles = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_weapon_hand_roles").new("right")
 presentation.online_rules = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_online_rules"
 ).install(mod, presentation, controller_observation, active_game_mode_name)
@@ -7455,6 +7459,18 @@ function presentation.left_controller_aim_target()
         Quaternion.multiply(anchor_rotation, aim_rotation)
 end
 
+function presentation.weapon_aim_target(role)
+    local side = presentation.weapon_hand_roles.physical(role)
+    if side == "left" then return presentation.left_controller_aim_target() end
+    if side == "right" then return presentation.controller_aim_target() end
+end
+
+function presentation.weapon_grip_target(role)
+    local side = presentation.weapon_hand_roles.physical(role)
+    if side == "left" then return presentation.left_controller_grip_target() end
+    if side == "right" then return presentation.controller_grip_target() end
+end
+
 function presentation.publish_gameplay_aim_state(active, hit, distance)
     if not ui_native_capture or
             not ui_native_capture.dtvr_set_gameplay_aim_state then
@@ -9146,7 +9162,7 @@ function presentation.apply_body_ik(unit, sequence, world, anchor_unit)
         controller_observation.body_ik_presentation_block_reason =
             "stock_melee_animation"
         if presentation.body_proxy and presentation.body_proxy.rigid_hands_active() then
-            local _, aim_rotation = presentation.controller_aim.target("right")
+            local _, aim_rotation = presentation.controller_aim.target("dominant")
             local followed, left_hand, right_hand =
                 presentation.body_proxy.follow_gameplay_hands(world, aim_rotation)
             if followed and aim_rotation and anchor_unit then
@@ -10290,7 +10306,7 @@ mod:hook_safe(
         local controller_rotation
         if presentation.controller_aim then
             -- A logical expression keeps only one return value in Lua.
-            local _, rotation = presentation.controller_aim.target("right")
+            local _, rotation = presentation.controller_aim.target("dominant")
             controller_rotation = rotation
         end
         local target_rotation = controller_rotation or Quaternion.axis_angle(
@@ -12125,7 +12141,7 @@ mod:hook(
 mod:hook("HudElementSmartTagging", "_find_raycast_targets",
     function(func, self, force_update_targets)
         local aim = presentation.controller_aim
-        local position, rotation = aim.target("right")
+        local position, rotation = aim.target("dominant")
         if not position or not rotation then return func(self, force_update_targets) end
         local unit = aim.reticle_hit_unit
         local player_unit = self._parent:player_unit()
@@ -12136,7 +12152,7 @@ mod:hook("HudElementSmartTagging", "_find_raycast_targets",
 
 mod:hook("HudElementSmartTagging", "_find_world_marker_target",
     function(func, self, ui_renderer, render_settings)
-        local aim_position, aim_rotation = presentation.controller_aim.target("right")
+        local aim_position, aim_rotation = presentation.controller_aim.target("dominant")
         local simulation_aim = presentation.online_rules.simulation_aim_active(self._parent:player_unit())
         if not simulation_aim and (not aim_position or not aim_rotation) then
             return func(self, ui_renderer, render_settings)

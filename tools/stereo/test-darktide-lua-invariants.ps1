@@ -505,7 +505,7 @@ if (-not $source.Contains(
         -not $controllerAimSource.Contains(
             'return position, rotation, "staff_tip_converged_aim"') -or
         -not $controllerAimSource.Contains(
-            'return left_position, rotation, "left_origin_converged_aim"') -or
+            'return left_position, rotation, "support_origin_converged_aim"') -or
         -not $controllerAimSource.Contains(
             'controller_aim.reticle_world_point = Vector3Box(position + direction * distance)') -or
         -not $controllerAimSource.Contains(
@@ -518,7 +518,7 @@ if (-not $source.Contains(
             'chain_lightning_targeting_action_module') -or
         -not $controllerAimSource.Contains(
             'player_unit_smart_targeting_extension')) {
-    throw 'Psyker ranged coverage must retain both controller poses, a shared right-hand world aim point, converged left/staff-tip/muzzle origins and controller-scoped lightning targeting.'
+    throw 'Psyker ranged coverage must retain both controller poses, a shared dominant-hand world aim point, converged support/staff-tip/muzzle origins and controller-scoped lightning targeting.'
 }
 $hudPanelSource = Get-Content -LiteralPath (
     Join-Path (Split-Path -Parent $resolvedSource) `
