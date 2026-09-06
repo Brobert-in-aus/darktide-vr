@@ -1,6 +1,9 @@
 # Mission input and attack ownership
 
 7 September 2026. Source audit and offline candidate; no mission was launched.
+The follow-up [online requirements audit](ONLINE-MISSION-REQUIREMENTS.md)
+traces the stock angle stream and defines a possible client-only compatibility
+mode separately from exact tracked origins and physical-contact melee.
 The user is at work and cannot provide worn acceptance today. SoloPlay remains
 the later test stage after Psykhanium functionality is accepted.
 

@@ -1,5 +1,10 @@
 # First end-to-end mission test
 
+7 September online follow-up: [online mission requirements](ONLINE-MISSION-REQUIREMENTS.md)
+now separates a potential stock-server compatibility mode from the local-server
+candidate below. The stock input stream can represent aim angles; it does not
+provide independent tracked hand origins or physical melee contacts.
+
 6 September follow-up planning. No game launch or gameplay change in this update.
 The user asks what is needed to try a full mission; that is a smaller milestone
 than completing every mod/release feature.

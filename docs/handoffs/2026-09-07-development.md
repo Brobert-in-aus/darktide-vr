@@ -349,3 +349,22 @@ CTests pass for context, actual gameplay adapter, scanner movement seam, ranged
 aim and source invariants. New cases cover invalid owners and throwing lookup
 proxies. Logs: `artifacts/unattended/ownership-recovery-ctest-20260907.log` and
 the matching compiler/configuration logs. Runtime candidates remain undeployed.
+
+## Online mission investigation
+
+Branch `codex/online-mission-audit-2026-09-07` records the requested dedicated
+server investigation in [online requirements](../ONLINE-MISSION-REQUIREMENTS.md).
+Stock frame-indexed aim angles provide a plausible client-only path, with
+stock origins and combat rules. Independent physical origins/contact melee
+need server support. Movement, room-scale body translation, prediction/replay,
+camera independence and target selection need explicit treatment.
+
+The optional `test-online-input-stock-contract.lua` executes stock input cache,
+send/receive and lookup methods with an in-memory transport. PASS on pinned
+LuaJIT: action/angle pairing, resend, duplicate/old packets, wraparound, gaps and
+missing-frame fallback. No engine serialization or server acceptance claimed.
+Documentation and tooling only; no deployment or online session.
+
+Latest user steering: make Psykhanium operate on online-compatible rules where
+possible and improve that path first. Proceed with a range proving mode while
+keeping actual mission-server validation and worn acceptance separate.
