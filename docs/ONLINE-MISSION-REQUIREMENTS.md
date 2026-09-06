@@ -122,10 +122,14 @@ engine/network serialization are stubs; this does not establish wire precision,
 server acceptance, damage, locomotion correctness or visual acceptance. The
 optional source snapshot is not required by the normal portable test suite.
 
-Next offline checks: execute the stock first-person/movement methods against
-the proposed frame policy; exercise camera independence and rollback with
-distinct head/hand directions; inventory every temporary pose/locomotion hook
-that must be excluded online. Only then build a disabled-by-default candidate.
+Completed offline follow-up: the range-only adapter now has stock first-person,
+movement, camera and shot-preparation checks. Passing its two module paths after
+the source-root argument in the input-history test also exercises the actual
+adapter through stock send/receive and `HumanUnitInput` frame lookup. Eight
+representative action/movement/angle columns retain their paired history,
+including UI/tracking fallbacks, later changed live aim, resends and ring wrap.
+This does not execute the engine's component rollback/resimulation or establish
+wire precision. Real corrections and remote admission remain later checks.
 
 Follow-up user direction: configure Psykhanium to use the same combat/input
 rules as online where possible, and improve that path there first. This changes

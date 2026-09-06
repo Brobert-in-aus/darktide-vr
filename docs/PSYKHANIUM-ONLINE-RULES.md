@@ -110,10 +110,20 @@ Two optional checks execute methods from the inspected game source snapshot:
 
 ```powershell
 build/dependencies/luajit/src/luajit.exe tests/tooling/test-online-input-stock-contract.lua _downloads/Darktide-Source-Code
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-online-input-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_online_rules.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gameplay_context.lua
 build/dependencies/luajit/src/luajit.exe tests/tooling/test-online-rules-stock-contract.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_online_rules.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gameplay_context.lua _downloads/Darktide-Source-Code
 ```
 
-Both pass. The first covers stock buffering/send/receive/history behavior. The
+Both fixtures pass. The first covers stock buffering/send/receive/history behavior.
+Its optional adapter arguments pass the actual VR cache authoring through those
+methods and both actual `HumanUnitInput` readers. All eight representative
+columns (attack, four movement axes and three angles) retain their paired frame
+through resend, old/duplicate packets, ring wrap and a send-window gap. Mixed
+UI-owned and unavailable-tracking frames retain stock inputs; changing live aim
+before replay does not resample it. This is an in-memory transport fixture with
+a range-authority stub, not production remote admission or an engine correction
+test. Engine packing remains substituted.
+The
 second applies the actual VR adapter before stock first-person and walking
 methods, verifying body-height origin, stock recoil, intended movement direction
 and backward penalty. It also executes the actual stock orientation selector

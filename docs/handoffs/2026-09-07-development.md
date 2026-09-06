@@ -478,3 +478,18 @@ passes body-origin, charge, recoil/sway/assist/spread ordering and grouped-shot
 sample retention checks. The engine weapon operations are tagged substitutes;
 their math, bullet collisions and damage are not covered. No production change,
 deployment or broader suite rerun was needed for this fixture extension.
+
+## Heartbeat: stock transport with actual VR input authoring
+
+Branch `codex/online-rules-stock-replay-2026-09-07` extends the optional input
+source test with trailing paths to the online-rules and gameplay-context modules.
+It runs the real adapter through actual stock caching, send/receive and both
+`HumanUnitInput` per-frame readers. Eight action/movement/angle columns agree
+through resend, old/duplicate packets, ring wrap and skipped send windows.
+UI-owned and tracking-unavailable frames retain stock samples; changing live
+aim before history reads does not resample it. Both plain and adapter-enabled
+invocations pass. Source parsing, engine packing/serialization and actual
+component correction remain outside this in-memory fixture.
+
+No production change or live attempt. Quest remains under normal proximity
+automation; no new evidence justified repeating the failed rendering recovery.
