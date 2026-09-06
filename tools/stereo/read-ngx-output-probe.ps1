@@ -11,13 +11,16 @@ $featureHeader = $windowHeader.Replace('schema=2','schema=3')
 $featureGatedHeader = $gatedHeader.Replace('schema=2','schema=3')
 $regionHeader = $featureHeader.Replace('schema=3','schema=4')
 $regionGatedHeader = $featureGatedHeader.Replace('schema=3','schema=4')
-if ($lines.Count -eq 0 -or $lines[0] -cnotin @($expectedHeader,$windowHeader,$gatedHeader,$featureHeader,$featureGatedHeader,$regionHeader,$regionGatedHeader)) {
+$legacyHeader = $regionHeader.Replace('schema=4','schema=5')
+$legacyGatedHeader = $regionGatedHeader.Replace('schema=4','schema=5')
+if ($lines.Count -eq 0 -or $lines[0] -cnotin @($expectedHeader,$windowHeader,$gatedHeader,$featureHeader,$featureGatedHeader,$regionHeader,$regionGatedHeader,$legacyHeader,$legacyGatedHeader)) {
     throw 'Missing or unsupported NGX observation header.'
 }
 $windowSchema = $lines[0] -cne $expectedHeader
-$regionSchema = $lines[0] -cin @($regionHeader,$regionGatedHeader)
+$legacySchema = $lines[0] -cin @($legacyHeader,$legacyGatedHeader)
+$regionSchema = $legacySchema -or $lines[0] -cin @($regionHeader,$regionGatedHeader)
 $featureSchema = $regionSchema -or $lines[0] -cin @($featureHeader,$featureGatedHeader)
-$gated = $lines[0] -cin @($gatedHeader,$featureGatedHeader,$regionGatedHeader)
+$gated = $lines[0] -cin @($gatedHeader,$featureGatedHeader,$regionGatedHeader,$legacyGatedHeader)
 $captureWindow = $null
 $seen = @{}
 $observed = @()
@@ -81,6 +84,15 @@ foreach ($line in $lines | Select-Object -Skip 1) {
     }
     $results = @($fields.get_results.Split(',') | ForEach-Object { [Convert]::ToUInt32($_,16) })
     $regionAvailable = $false
+    $legacyAvailable = $false
+    if ($legacySchema) {
+        foreach ($field in @('legacy_x','legacy_y','legacy_width','legacy_height')) {
+            if (-not $fields.ContainsKey($field) -or $fields[$field] -notmatch '^\d+$') { throw "Missing or invalid legacy-region field: $field" }
+            $fields[$field] = [uint32]::Parse($fields[$field])
+        }
+        if ($fields.legacy_results -notmatch '^[0-9a-fA-F]+(?:,[0-9a-fA-F]+){3}$') { throw 'Malformed legacy-region results.' }
+        $legacyResults = @($fields.legacy_results.Split(',') | ForEach-Object { [Convert]::ToUInt32($_,16) })
+    }
     if ($regionSchema) {
         foreach ($field in @('output_width','output_height','output_format','region_x','region_y','region_width','region_height')) {
             if (-not $fields.ContainsKey($field) -or $fields[$field] -notmatch '^\d+$') {
@@ -95,6 +107,12 @@ foreach ($line in $lines | Select-Object -Skip 1) {
             $fields.region_width -gt 0 -and $fields.region_height -gt 0 -and
             $fields.region_x + $fields.region_width -le $fields.output_width -and
             $fields.region_y + $fields.region_height -le $fields.output_height
+        if ($legacySchema) {
+            $legacyAvailable = @($legacyResults | Where-Object { $_ -ne 1 }).Count -eq 0 -and
+                $fields.legacy_width -gt 0 -and $fields.legacy_height -gt 0 -and
+                [uint64]$fields.legacy_x + $fields.legacy_width -le $fields.output_width -and
+                [uint64]$fields.legacy_y + $fields.legacy_height -le $fields.output_height
+        }
     }
     $records++
     if ($fields.captured -eq '0') { continue }
@@ -145,12 +163,15 @@ foreach ($line in $lines | Select-Object -Skip 1) {
             RegionAvailable=$regionAvailable
             Region=if ($regionSchema) { @($fields.region_x,$fields.region_y,$fields.region_width,$fields.region_height) } else { $null }
             RegionResults=if ($regionSchema) { $regionResults } else { $null }
+            LegacyRegionAvailable=$legacyAvailable
+            LegacyRegion=if ($legacySchema) { @($fields.legacy_x,$fields.legacy_y,$fields.legacy_width,$fields.legacy_height) } else { $null }
+            LegacyResults=if ($legacySchema) { $legacyResults } else { $null }
         }
     }
 }
 if (($observed.Count + $rejected.Count) -gt 256) { throw 'NGX capture budget exceeded.' }
 [pscustomobject]@{
-    SchemaVersion=if ($regionSchema) { 4 } elseif ($featureSchema) { 3 } elseif ($windowSchema) { 2 } else { 1 }
+    SchemaVersion=if ($legacySchema) { 5 } elseif ($regionSchema) { 4 } elseif ($featureSchema) { 3 } elseif ($windowSchema) { 2 } else { 1 }
     WaitForStereoSubmission=$gated; CaptureWindow=$captureWindow
     Records=$records; CompleteObservations=$observed.Count
     Observations=@($observed | Sort-Object Call); Rejected=$rejected

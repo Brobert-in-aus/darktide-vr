@@ -96,7 +96,19 @@ try {
         if ($report.Observations[0].RegionAvailable) { throw 'Unsupported or out-of-bounds region accepted.' }
         Require-NoPublication $report
     }
-    Write-Output 'ngx_observation=pass complete failure missing alias duplicate malformed bounded_window feature_identity output_region no_publication'
+    $legacyHeader=$regionHeader.Replace('schema=4','schema=5')
+    $legacyRecord=$regionRecord.Replace('region_results=1,1,1,1','region_results=bad00010,bad00010,bad00010,bad00010') + ' legacy_x=2048 legacy_y=0 legacy_width=2048 legacy_height=2048 legacy_results=1,1,1,1'
+    $report=Read-Fixture @($legacyHeader,$legacyRecord)
+    if (-not $report.Observations[0].LegacyRegionAvailable -or $report.Observations[0].RegionAvailable) { throw 'Legacy and explicit output regions were conflated.' }
+    Require-NoPublication $report
+    foreach ($badRecord in @($legacyRecord.Replace('legacy_x=2048','legacy_x=2049'),
+            $legacyRecord.Replace('legacy_width=2048','legacy_width=0'),
+            $legacyRecord.Replace('legacy_results=1,1,1,1','legacy_results=1,1,bad00010,1'))) {
+        $report=Read-Fixture @($legacyHeader,$badRecord)
+        if ($report.Observations[0].LegacyRegionAvailable) { throw 'Invalid legacy rectangle accepted.' }
+        Require-NoPublication $report
+    }
+    Write-Output 'ngx_observation=pass complete failure missing alias duplicate malformed bounded_window feature_identity output_region legacy_region no_publication'
 } finally {
     if (Test-Path -LiteralPath $fixture) { Remove-Item -LiteralPath $fixture }
 }

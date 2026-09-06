@@ -265,3 +265,11 @@ input and output backbuffers; checking that older parameter family is the next
 compatibility step. Saved ignored evidence: `region-live-ngx.log`,
 `region-live-streamline.tsv`, `region-live-report.json` and
 `region-live-streamline-report.txt`. No generated XR publication is enabled.
+
+Schema 5 additionally queries the four legacy BackbufferSubrect parameters,
+preserving both parameter families and their individual results. The reader
+reports legacy availability separately and checks nonzero dimensions and output
+bounds. It does not infer a legacy rectangle when a getter fails or certify an
+eye association from a valid rectangle. Release build and the observation and
+ABI tests pass, including supported legacy data with unsupported newer data,
+out-of-bounds/empty legacy rectangles and failed queries. Live check underway.

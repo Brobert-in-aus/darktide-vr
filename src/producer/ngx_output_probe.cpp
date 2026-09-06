@@ -88,6 +88,8 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   D3D12_RESOURCE_DESC output_description{};
   std::array<unsigned int, 4> region{};
   std::array<std::uint32_t, 4> region_results{};
+  std::array<unsigned int, 4> legacy_region{};
+  std::array<std::uint32_t, 4> legacy_results{};
   bool captured = false;
   bool abi_verified = false;
   if (identity.kind == 11 && identity.lifetime != 0 && window.eligible &&
@@ -109,6 +111,11 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
           "DLSSG.OutputInterpolatedSubrectWidth", "DLSSG.OutputInterpolatedSubrectHeight"};
       for (std::size_t i = 0; i < region_names.size(); ++i)
         region_results[i] = ngx::read_unsigned(parameters, region_names[i], &region[i]);
+      constexpr std::array<const char*, 4> legacy_names{
+          "DLSSG.BackbufferSubrectBaseX", "DLSSG.BackbufferSubrectBaseY",
+          "DLSSG.BackbufferSubrectWidth", "DLSSG.BackbufferSubrectHeight"};
+      for (std::size_t i = 0; i < legacy_names.size(); ++i)
+        legacy_results[i] = ngx::read_unsigned(parameters, legacy_names[i], &legacy_region[i]);
       captured = true;
     }
   }
@@ -125,6 +132,7 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
         "get_results=%x,%x,%x,%x,%x window_batch=%llu window_present=%llu window_first_call=%llu "
         "output_width=%llu output_height=%u output_format=%u "
         "region_x=%u region_y=%u region_width=%u region_height=%u region_results=%x,%x,%x,%x "
+        "legacy_x=%u legacy_y=%u legacy_width=%u legacy_height=%u legacy_results=%x,%x,%x,%x "
         "output_complete=0 publication=0\n",
         static_cast<unsigned long long>(call), GetTickCount64(), GetCurrentThreadId(),
         commands, feature, parameters, result, captured ? 1U : 0U, abi_verified ? 1U : 0U,
@@ -136,7 +144,9 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
         static_cast<unsigned long long>(window.first_call),
         static_cast<unsigned long long>(output_description.Width), output_description.Height,
         static_cast<unsigned>(output_description.Format), region[0], region[1], region[2], region[3],
-        region_results[0], region_results[1], region_results[2], region_results[3]);
+        region_results[0], region_results[1], region_results[2], region_results[3],
+        legacy_region[0], legacy_region[1], legacy_region[2], legacy_region[3],
+        legacy_results[0], legacy_results[1], legacy_results[2], legacy_results[3]);
     if (length > 0 && static_cast<std::size_t>(length) < line.size())
       write_line(line.data(), static_cast<std::size_t>(length));
   }
@@ -210,7 +220,7 @@ bool install_ngx_output_probe(HMODULE capture_module) {
   if (log_file == INVALID_HANDLE_VALUE) return false;
   char header[256]{};
   const auto header_length = std::snprintf(header, sizeof(header),
-      "ngx_output_probe=armed schema=4 runtime=32.0.16.1088 "
+      "ngx_output_probe=armed schema=5 runtime=32.0.16.1088 "
       "resource_get_slot=9 call_limit=32768 sample_limit=256 wait_for_stereo=%u publication=0\n",
       wait_for_stereo ? 1U : 0U);
   if (header_length > 0) write_line(header, static_cast<std::size_t>(header_length));
