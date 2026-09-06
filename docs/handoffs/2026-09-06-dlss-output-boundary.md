@@ -254,3 +254,14 @@ size. Even a valid region does not certify queue completion or output ownership.
 Release native build and NGX observation/official-header ABI tests pass, covering
 a second-eye rectangle, overflow of the texture bounds, zero size and failed
 queries. Live output-region compatibility is the next check.
+
+The schema-4 live run completed all four batches and resumed fresh stereo. Six
+complete FG observations report output textures 4992x2688, matching twice the
+observed eye width and one eye height. All four newer output-subrect queries
+return 0xBAD00010, so every region remains unavailable. Do not substitute the
+full texture or assume half-width output placement. The official header also
+defines deprecated `DLSSG.BackbufferSubrect*` parameters applying jointly to the
+input and output backbuffers; checking that older parameter family is the next
+compatibility step. Saved ignored evidence: `region-live-ngx.log`,
+`region-live-streamline.tsv`, `region-live-report.json` and
+`region-live-streamline-report.txt`. No generated XR publication is enabled.
