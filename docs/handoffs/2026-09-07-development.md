@@ -537,3 +537,21 @@ aliases/device selection. The shared prompt module adds binding-revision refresh
 while preserving stock decisions and leaving stable frames alone. Five focused
 CTests pass (prompts, bindings, menu prompts, Lua compile/invariants); regression
 failed before the fix. No live test or deployment and no talent-specific patch.
+
+## Continuous todo work: online smart-tag marker selection
+
+While inspecting hand-dependent consumers before handedness work, found another
+online proving-mode reference mismatch: the stock HUD marker scan used screen
+centre and could select a different unit from the stock simulated aim target.
+Branch `codex/online-rules-tag-target-2026-09-07` admits the existing target-to-marker
+path for active local online-rules simulation. Stock raycast/forced refresh stays
+in charge, and the marker still passes its stock validity check. Unknown/remote/
+retiring authority and inactive VR fall back. Handedness implementation remains
+pending; no role/presentation change was made during this discovery.
+
+The actual-hook regression fails against the pre-fix source and passes afterward.
+After configuring with headset tests off, five focused CTests pass: smart-tag
+marker target, online rules, ranged aim, Lua compiler and invariants. The suite
+now registers 106 tests, but no full-suite result is claimed on this head.
+No live attempt or deployment. User's continuous-work instruction remains active;
+continue through independent todo items instead of ending at a status checkpoint.

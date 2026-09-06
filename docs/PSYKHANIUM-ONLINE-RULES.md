@@ -40,6 +40,15 @@ physics. Foreign, stale and retiring first-person owners cannot supply a pose;
 native accessors are restored after success or error. This mismatch was reproduced
 in the scoped fixture before the fix.
 
+Smart-tag marker selection follows the stock simulated targeting result in this
+mode. Previously, disabling hand-origin proxies restored a screen-centre marker
+scan, allowing an unrelated marker under the head view to win over the aimed
+unit. The HUD now resolves and validates the marker belonging to the actual
+stock target. Stock forced target refresh and its position result remain intact.
+The exception is admitted only for the live local player in active VR simulation;
+unknown/remote/retiring authority and inactive presentation retain stock behavior.
+The actual-hook regression reproduces the old wrong marker and passes with the fix.
+
 Controller and keyboard movement already combined in the head basis is
 transformed into the transmitted hand-aim basis, then passed through stock
 movement packing before simulation. Stock acceleration, backward speed scaling,

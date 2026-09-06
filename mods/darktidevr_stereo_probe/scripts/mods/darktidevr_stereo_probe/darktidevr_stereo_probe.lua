@@ -12137,7 +12137,8 @@ mod:hook("HudElementSmartTagging", "_find_raycast_targets",
 mod:hook("HudElementSmartTagging", "_find_world_marker_target",
     function(func, self, ui_renderer, render_settings)
         local aim_position, aim_rotation = presentation.controller_aim.target("right")
-        if not aim_position or not aim_rotation then
+        local simulation_aim = presentation.online_rules.simulation_aim_active(self._parent:player_unit())
+        if not simulation_aim and (not aim_position or not aim_rotation) then
             return func(self, ui_renderer, render_settings)
         end
         -- The stock screen-centre hover test overrides the controller ray.

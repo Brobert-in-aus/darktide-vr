@@ -80,6 +80,15 @@ companion event or network call is added. The stock player-inspect view remains
 read-only, and companion ownership, target validity and idle conditions remain
 stock decisions. Live target selection and hint appearance remain pending.
 
+Online-rules follow-up: stock interaction searches and the inspected ability
+targeting modules already read the simulated first-person component. Smart-tag
+HUD marker selection had a separate screen-centre scan, however. The candidate
+now selects the marker for the stock simulated target during the range proving
+mode, preserving stock force-refresh and marker validity. A head-centred unrelated
+marker no longer overrides that target. Five focused tests pass, including the
+actual HUD hook with local/remote/retiring ownership and empty/invalid targets.
+No live tag, revive, rescue or mission completion is claimed.
+
 Validation: 34 LuaJIT chunks and four focused CTests pass. Fixtures cover the
 stock edge name, held aliases/rearming, hub/combat hint changes and separation
 from ordinary interaction and weapon inspection.

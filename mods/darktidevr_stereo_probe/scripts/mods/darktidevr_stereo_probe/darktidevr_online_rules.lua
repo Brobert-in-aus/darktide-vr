@@ -52,6 +52,16 @@ function Rules.install(mod, presentation, state, mode_name)
     end
     instance.enabled = enabled
 
+    local function simulation_aim_active(unit)
+        if not enabled() or presentation.mode ~= 1 or not state.authoring_enabled then return false end
+        local player = Managers.player and Managers.player:local_player(1)
+        return player and unit ~= nil and unit == player.player_unit and Unit.alive(unit)
+    end
+    function instance.simulation_aim_active(unit)
+        local ok, active = pcall(simulation_aim_active, unit)
+        return ok and active == true
+    end
+
     local function preview_pose(effect)
         if not enabled() or presentation.mode ~= 1 or not effect or
                 not effect._is_local_unit then return end
