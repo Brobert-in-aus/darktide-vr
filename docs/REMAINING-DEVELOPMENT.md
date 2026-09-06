@@ -53,6 +53,11 @@ that physical damage integration is complete.
   and teardown. A candidate now releases all fixed-widget material caches before
   their capture GUI is destroyed; its regression passes. Live transition
   acceptance remains pending. See the [crash handoff](handoffs/2026-09-06-hud-material-transition.md).
+- The subsequent transition reached gameplay on desktop but froze VR. Fresh
+  pairs were rejected by an unchanged gameplay-generation resume gate. A pending
+  commit now survives orientation-owner creation during loading and retries in
+  gameplay after restoring heading. See the [resume fix](handoffs/2026-09-06-loading-generation-resume.md);
+  worn transition acceptance remains pending.
 
 ## Ranged weapon aiming backlog
 

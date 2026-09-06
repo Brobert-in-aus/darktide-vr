@@ -5121,14 +5121,10 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         controller_observation.gameplay_roll = game_roll
         controller_observation.gameplay_orientation_suspended = false
         controller_observation.body_yaw_anchor = physical_yaw
-        if presentation.mode == 1 then
-            local generation_result = tonumber(
-                ui_native_capture.dtvr_commit_gameplay_generation(
-                    presentation.sequence))
-            mod:info(
-                "DARKTIDEVR_AIM gameplay_generation=%d result=%d reason=orientation_owner",
-                presentation.sequence, generation_result)
-        end
+        -- A new map's orientation owner may appear while the loading panel is
+        -- still active. Keep the commit pending until gameplay authoring below
+        -- is complete; a one-shot mode check here loses that transition.
+        controller_observation.gameplay_generation_pending = "orientation_owner"
     end
     local prior_physical_yaw = controller_observation.body_yaw_anchor
     local yaw_delta = 0
@@ -5154,6 +5150,10 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
     -- and Psykhanium as vendors do in the hub. Always publish a restored
     -- gameplay generation when returning from these modal views.
     local modal_orientation = presentation.mode == 5 or presentation.mode == 6
+    if presentation.mode ~= 1 then
+        controller_observation.gameplay_generation_pending =
+            controller_observation.gameplay_generation_pending or "presentation_resume"
+    end
     if modal_orientation then
         if not controller_observation.gameplay_orientation_suspended then
             controller_observation.gameplay_pitch = game_pitch
@@ -5173,16 +5173,14 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         self._orientation.roll = controller_observation.gameplay_roll or
             game_roll
         controller_observation.gameplay_orientation_suspended = false
-        local generation_result = tonumber(
-            ui_native_capture.dtvr_commit_gameplay_generation(
-                presentation.sequence))
+        controller_observation.gameplay_generation_pending = "modal_restore"
         mod:info(
-            "DARKTIDEVR_AIM modal_restore yaw=%.4f pitch=%.4f roll=%.4f replaced=%.4f,%.4f,%.4f generation=%d result=%d",
+            "DARKTIDEVR_AIM modal_restore yaw=%.4f pitch=%.4f roll=%.4f replaced=%.4f,%.4f,%.4f generation_pending=%d",
             self._orientation.yaw,
             self._orientation.pitch,
             self._orientation.roll,
             game_yaw, game_pitch, game_roll,
-            presentation.sequence, generation_result)
+            presentation.sequence)
     else
         self._orientation.yaw = gameplay_yaw
         controller_observation.gameplay_pitch = game_pitch
@@ -5191,6 +5189,20 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
     controller_observation.authoring_writes =
         controller_observation.authoring_writes + 1
     controller_observation.authoring_pose_active = true
+    if presentation.mode == 1 and controller_observation.gameplay_generation_pending then
+        local generation_result = tonumber(
+            ui_native_capture.dtvr_commit_gameplay_generation(presentation.sequence))
+        if generation_result == 0 or not controller_observation.gameplay_generation_last_log_t or
+                main_t >= controller_observation.gameplay_generation_last_log_t + 2 then
+            controller_observation.gameplay_generation_last_log_t = main_t
+            mod:info("DARKTIDEVR_AIM gameplay_generation=%d result=%s reason=%s",
+                presentation.sequence, tostring(generation_result),
+                controller_observation.gameplay_generation_pending)
+        end
+        if generation_result == 0 then
+            controller_observation.gameplay_generation_pending = nil
+        end
+    end
     if main_t < controller_observation.first_person_seam_last_log_t + 2 then
         return
     end

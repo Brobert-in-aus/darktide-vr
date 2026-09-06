@@ -11,11 +11,19 @@ controller_observation = {
     first_person_seam_last_sequence = -1, authoring_writes = 0,
     first_person_seam_last_log_t = 0
 }
-ui_native_capture = {dtvr_commit_gameplay_generation = function() return 0 end}
+local commits,commit_result = {},0
+local owner
+ui_native_capture = {dtvr_commit_gameplay_generation = function(generation)
+    assert(presentation.mode == 1, "committed gameplay while loading/menu camera owns presentation")
+    assert(math.abs(owner._orientation.yaw-controller_observation.head_aim_yaw%(2*math.pi))<1e-6,
+        "generation committed before authoritative heading was restored")
+    commits[#commits+1] = generation
+    return commit_result
+end}
 mod = {info = function() end}
 head_pose_last_sequence = 1
 assert(loadstring(source:sub(first, last - 1)))()
-local owner = {_orientation = {yaw = math.pi / 2, pitch = 0, roll = 0}}
+owner = {_orientation = {yaw = math.pi / 2, pitch = 0, roll = 0}}
 local function observe(yaw)
     controller_observation.head_aim_yaw = yaw
     head_pose_last_sequence = head_pose_last_sequence + 1
@@ -41,4 +49,28 @@ near(controller_observation.gameplay_yaw, 0.8)
 presentation.mode = 1
 observe(0.9)
 near(owner._orientation.yaw, 0.9) -- Modal exit follows the XR scene anchor.
+local before_loading = #commits
+presentation.mode,presentation.sequence = 2,40
+owner = {_orientation={yaw=2.1,pitch=.2,roll=0}}
+observe(.4)
+observe(.5)
+assert(#commits==before_loading and controller_observation.gameplay_generation_pending,
+    "owner created during loading lost the deferred gameplay generation")
+presentation.mode,presentation.sequence = 1,45
+observe(.6)
+assert(#commits==before_loading+1 and commits[#commits]==45 and
+    not controller_observation.gameplay_generation_pending)
+observe(.7)
+assert(#commits==before_loading+1,"ordinary gameplay repeatedly committed generations")
+-- Same-owner loading paths also need a resume generation. A transient native
+-- failure must retain the pending commit, with no arbitrary timeout bypass.
+presentation.mode,presentation.sequence = 2,50
+observe(.8)
+presentation.mode,presentation.sequence = 1,55
+commit_result=-1
+observe(.9)
+assert(controller_observation.gameplay_generation_pending)
+commit_result=0
+observe(1)
+assert(commits[#commits]==55 and not controller_observation.gameplay_generation_pending)
 print("gameplay_heading=pass")
