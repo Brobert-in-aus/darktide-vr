@@ -2,6 +2,7 @@
 #include "producer/ngx_parameter_reader.h"
 #include "producer/ngx_capture_window.h"
 #include "producer/ngx_feature_registry.h"
+#include "producer/ngx_command_observations.h"
 #include <MinHook.h>
 #include <d3d12.h>
 #include <array>
@@ -24,6 +25,10 @@ Release original_release{};
 NgxFeatureRegistry feature_registry;
 HMODULE runtime{};
 HANDLE log_file = INVALID_HANDLE_VALUE;
+HANDLE queue_log = INVALID_HANDLE_VALUE;
+std::mutex command_mutex;
+NgxCommandObservations command_observations;
+std::atomic<unsigned> pending_commands{};
 std::mutex log_mutex;
 std::atomic<std::uint64_t> calls{};
 std::atomic<std::uint32_t> samples{};
@@ -122,6 +127,11 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   // The trampoline resumes INSIDE _nvngx.dll. Its internal feature call keeps
   // its real NVIDIA return address; no spoofed return or feature patch is used.
   const auto result = original(commands, feature, parameters, callback);
+  if (captured && result == ngx::kSuccess) {
+    std::scoped_lock lock(command_mutex);
+    if (command_observations.add(reinterpret_cast<std::uintptr_t>(commands), call))
+      pending_commands.fetch_add(1, std::memory_order_release);
+  }
   if (captured || call <= 4 || (window.eligible &&
       (call-window.first_call <= 4 || call-window.first_call == kCallLimit))) {
     std::array<char, 1536> line{};
@@ -168,6 +178,40 @@ bool verified_runtime(const std::wstring& path) {
       version->dwFileVersionLS == MAKELONG(1088, 16);
 }
 }  // namespace
+
+void observe_ngx_command_reset(void* commands) {
+  if (!probe_installed.load(std::memory_order_acquire) ||
+      !pending_commands.load(std::memory_order_acquire)) return;
+  std::scoped_lock lock(command_mutex);
+  command_observations.consume(reinterpret_cast<std::uintptr_t>(commands), [&](std::uint64_t call) {
+    pending_commands.fetch_sub(1, std::memory_order_relaxed);
+    char line[160]{};
+    const auto length = std::snprintf(line, sizeof(line),
+        "NGX_RESET call=%llu commands=%p submitted=0\n",
+        static_cast<unsigned long long>(call), commands);
+    DWORD written{};
+    if (length > 0 && length < sizeof(line)) WriteFile(queue_log, line, length, &written, nullptr);
+  });
+}
+
+void observe_ngx_queue_submit(ID3D12CommandQueue* queue, unsigned count,
+                              ID3D12CommandList* const* commands) {
+  if (!probe_installed.load(std::memory_order_acquire) ||
+      !pending_commands.load(std::memory_order_acquire)) return;
+  std::scoped_lock lock(command_mutex);
+  for (unsigned i = 0; i < count; ++i) {
+    command_observations.consume(reinterpret_cast<std::uintptr_t>(commands[i]), [&](std::uint64_t call) {
+      pending_commands.fetch_sub(1, std::memory_order_relaxed);
+      char line[256]{};
+      const auto length = std::snprintf(line, sizeof(line),
+          "NGX_SUBMIT call=%llu commands=%p queue=%p queue_type=%u tick_ms=%llu thread=%lu gpu_complete=0\n",
+          static_cast<unsigned long long>(call), commands[i], queue,
+          static_cast<unsigned>(queue->GetDesc().Type), GetTickCount64(), GetCurrentThreadId());
+      DWORD written{};
+      if (length > 0 && length < sizeof(line)) WriteFile(queue_log, line, length, &written, nullptr);
+    });
+  }
+}
 
 void arm_ngx_output_probe(std::uint64_t batch, std::uint64_t present) {
   if (!probe_installed.load(std::memory_order_acquire)) return;
@@ -218,6 +262,15 @@ bool install_ngx_output_probe(HMODULE capture_module) {
   log_file = CreateFileW(output.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
                          CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (log_file == INVALID_HANDLE_VALUE) return false;
+  const auto queue_output = std::wstring(path.data(), length) + L"darktidevr-ngx-queue-" +
+      std::to_wstring(GetCurrentProcessId()) + L".log";
+  queue_log = CreateFileW(queue_output.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                          CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (queue_log == INVALID_HANDLE_VALUE) {
+    CloseHandle(log_file);
+    log_file = INVALID_HANDLE_VALUE;
+    return false;
+  }
   char header[256]{};
   const auto header_length = std::snprintf(header, sizeof(header),
       "ngx_output_probe=armed schema=5 runtime=32.0.16.1088 "
@@ -231,6 +284,8 @@ bool install_ngx_output_probe(HMODULE capture_module) {
       MH_CreateHook(reinterpret_cast<void*>(release_target), &release_hook,
                     reinterpret_cast<void**>(&original_release)) != MH_OK) {
     CloseHandle(log_file);
+    CloseHandle(queue_log);
+    queue_log = INVALID_HANDLE_VALUE;
     log_file = INVALID_HANDLE_VALUE;
     return false;
   }

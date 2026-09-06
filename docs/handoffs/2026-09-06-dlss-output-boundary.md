@@ -285,3 +285,17 @@ was reset immediately afterward. No manual gameplay input was sent.
 Ignored evidence: `legacy-live-ngx.log`, `legacy-live-streamline.tsv` and
 `legacy-live-report.json`. Next trace evaluation command-list submission and
 recording lifetime before attempting any generated-output copy.
+
+## Queue observation candidate
+
+Successful captured FG calls now register their command-list address and call
+identity in a bounded 256-entry observer. The existing ExecuteCommandLists hook
+consumes matching records into a separate `darktidevr-ngx-queue-<pid>.log`;
+successful Reset consumes unmatched old records as `NGX_RESET`, never submission.
+Multiple eyes on one list are preserved. An atomic empty check avoids scanning
+or locking once the capture budget drains. No COM objects are retained and no
+commands/fences are inserted. Queue-hook entry proves only observed submission,
+not GPU execution completion; evaluations internally submitted before returning
+may be missed and must not be guessed. Release native build and three tests pass
+(command observations, output observations, official ABI), including reset/reuse,
+duplicate/unknown identities, paired calls, bounded capacity and no double consume.

@@ -1,10 +1,15 @@
 #pragma once
 #include <Windows.h>
 #include <cstdint>
+struct ID3D12CommandList;
+struct ID3D12CommandQueue;
 
 namespace darktidevr::producer {
 // Optional next-launch diagnostic, registered between MH_Initialize/EnableHook.
 // Observes the NGX runtime export, never the caller-validated feature export.
 bool install_ngx_output_probe(HMODULE capture_module);
 void arm_ngx_output_probe(std::uint64_t batch, std::uint64_t present);
+void observe_ngx_command_reset(void* commands);
+void observe_ngx_queue_submit(ID3D12CommandQueue* queue, unsigned count,
+                              ID3D12CommandList* const* commands);
 }

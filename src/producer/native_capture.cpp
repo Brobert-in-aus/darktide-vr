@@ -5998,6 +5998,7 @@ HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
   }
   const auto focused =
       focused_trace_phase.load(std::memory_order_relaxed) != 0;
+  darktidevr::producer::observe_ngx_command_reset(commands);
   const auto recording_generation =
       focused ? command_recording_generation.fetch_add(
                     1, std::memory_order_relaxed) + 1
@@ -10055,6 +10056,7 @@ bool trace_streamline_submission_images() {
 
 void STDMETHODCALLTYPE execute_command_lists_hook(
     ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists) {
+  darktidevr::producer::observe_ngx_queue_submit(queue, count, lists);
   StreamlineExecuteSnapshot* streamline_snapshot{};
   std::uint64_t streamline_execute_call{};
   const auto known_game_queue =
