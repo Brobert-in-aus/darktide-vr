@@ -26,6 +26,8 @@
 #include "core/shared_head_pose.h"
 #include "core/shared_menu_pointer_state.h"
 #include "core/shared_presentation_state.h"
+#include "core/shared_generated_frame_state.h"
+#include "core/generated_frame_cadence.h"
 
 #include <algorithm>
 #include <atomic>
@@ -1090,6 +1092,26 @@ class OpenXrProbe {
     std::deque<std::pair<std::uint64_t, std::array<XrPosef, 2>>>
         head_pose_history;
     std::array<XrPosef, 2> rendered_pair_view_poses{};
+    std::array<XrPosef, 2> generated_view_poses{};
+    darktidevr::core::SharedGeneratedFrameStateReader generated_reader;
+    darktidevr::core::SharedGeneratedFrameStateReader original_reader{L"Local\\DarktideVR-original-frame-state-v1"};
+    darktidevr::core::SharedGeneratedFrameState original_state{};
+    std::optional<darktidevr::bridge::OpenedGeneratedSurfaces> original_surfaces;
+    std::optional<darktidevr::bridge::OpenedGeneratedSurfaces> generated_surfaces;
+    darktidevr::core::SharedGeneratedFrameState generated_state{};
+    std::uint64_t generated_last_consumed{}, generated_submitted{}, last_original_ready{}, last_original_pose{};
+    std::uint64_t generated_displayed_before_original{};
+    darktidevr::core::GeneratedFrameCadence generated_cadence;
+    struct PendingOriginal {
+      std::array<ComPtr<ID3D12Resource>,2> eyes;
+      std::array<XrPosef,2> poses{};
+      std::uint64_t ready{},pose{},generation{},tick{};
+    };
+    std::array<PendingOriginal,3> pending_originals;
+    std::uint64_t ingested_original_ready{};
+    std::array<XrPosef,2> submitted_original_view_poses{};
+    std::uint64_t rendered_pair_pose_sequence{};
+    auto next_generated_open = std::chrono::steady_clock::now();
     std::array<XrPosef, 2> cached_pair_view_poses{};
     bool cached_pair_valid{};
     std::uint64_t rendered_pair_pose_ready_value{};
@@ -1128,6 +1150,7 @@ class OpenXrProbe {
     auto next_cached_pair_report = start;
     std::uint32_t last_live_submitted_frames{};
     std::uint64_t last_live_fresh_shared_pairs{};
+    std::uint64_t cached_original_submissions{}, last_live_cached_original_submissions{}, last_live_generated_submissions{};
     std::uint32_t last_live_fallback_frames{};
     std::uint32_t processed_frames{};
     std::uint64_t synthetic_head_frames{};
@@ -1187,6 +1210,8 @@ class OpenXrProbe {
                     << " ready=" << ready << " consumed=" << consumed
                     << '\n';
           opened_eyes.reset();
+          original_surfaces.reset();
+          generated_surfaces.reset();
           shared_eye_readbacks = {};
           shared_eye_readback_footprint = {};
           shared_eye_readback_total_bytes = 0;
@@ -1197,6 +1222,9 @@ class OpenXrProbe {
           rendered_pair_pose_ready_value = 0;
           rendered_pair_gameplay_generation = 0;
           last_submitted_shared_value = 0;
+          ingested_original_ready=last_original_ready=last_original_pose=generated_displayed_before_original=0;
+          generated_cadence={};
+          for(auto& original:pending_originals) original.ready=0;
           next_shared_open_attempt = now;
         };
     auto detach_shared_menu =
@@ -1809,9 +1837,32 @@ class OpenXrProbe {
             now - shared_last_advance < shared_stale_after
                 ? shared_last_advance + shared_stale_after
                 : now + std::chrono::milliseconds(33);
-        while (opened_eyes->ready_fence->GetCompletedValue() <=
-                   last_pair_pose_checked_ready_value &&
-               std::chrono::steady_clock::now() < deadline) {
+        const auto distinct_frame_available=[&] {
+          if(!original_surfaces)
+            return opened_eyes->ready_fence->GetCompletedValue()>last_pair_pose_checked_ready_value;
+          if(presentation_state.mode!=darktidevr::core::SharedPresentationMode::stereo_world) return true;
+          if(generated_displayed_before_original>last_original_ready) {
+            const auto elapsed=std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now()-last_tracking_prediction_at).count();
+            // Ask the runtime for the next display prediction shortly before
+            // the scheduled original. Tracking is serviced throughout this wait.
+            return generated_cadence.original_ready(last_tracking_prediction+elapsed+tracking_period/2);
+          }
+          const auto original_available=original_surfaces->ready_fence->GetCompletedValue();
+          if(original_available==UINT64_MAX) return true;
+          if(generated_surfaces && generated_reader.read(generated_state)) {
+            const auto& newest=generated_state.slots[darktidevr::core::generated_frame_slot(generated_state.latest_sequence)];
+            const auto tick=GetTickCount64();
+            if(newest.tick_ms<=tick && tick-newest.tick_ms<250) {
+              const auto ready=generated_surfaces->ready_fence->GetCompletedValue();
+              return ready==UINT64_MAX || (ready>generated_last_consumed &&
+                  original_available>=newest.rendered_ready);
+            }
+          }
+          for(const auto& original:pending_originals) if(original.ready>last_original_ready) return true;
+          return original_available>ingested_original_ready;
+        };
+        while (!distinct_frame_available() && std::chrono::steady_clock::now() < deadline) {
           const auto tracking_now = std::chrono::steady_clock::now();
           // Image submission remains pair-driven for runtime reprojection, but
           // tracking must not depend on the game completing its next image.
@@ -1835,8 +1886,7 @@ class OpenXrProbe {
           }
           std::this_thread::sleep_for(std::chrono::microseconds(500));
         }
-        if (opened_eyes->ready_fence->GetCompletedValue() <=
-            last_pair_pose_checked_ready_value) {
+        if (!distinct_frame_available()) {
           ++pair_driven_timeouts;
         }
       }
@@ -1861,6 +1911,7 @@ class OpenXrProbe {
           frame_state.shouldRender == XR_TRUE, current_head, current_head_valid);
       bool submitted_shared_pair_this_frame{};
       bool submitted_cached_pair_this_frame{};
+      bool submitted_generated_this_frame{};
       bool submitted_flat_fallback_this_frame{};
       bool menu_readback_copied_this_frame{};
       shared_eye_readback_copied_this_frame = false;
@@ -1952,6 +2003,7 @@ class OpenXrProbe {
                   entry->first ==
                       static_cast<std::uint64_t>(target_sequence_signed)) {
                 rendered_pair_view_poses = entry->second;
+                rendered_pair_pose_sequence = tagged_sequence;
                 rendered_pair_pose_ready_value = shared_ready_for_frame;
                 rendered_pair_gameplay_generation =
                     rendered_pair.gameplay_generation;
@@ -2016,11 +2068,199 @@ class OpenXrProbe {
                  projection_resume_gameplay_generation &&
              rendered_pair_gameplay_generation ==
                  committed_gameplay_generation);
-        const bool use_shared_pair =
+        if (!original_surfaces && std::chrono::steady_clock::now() >= next_generated_open) {
+          next_generated_open = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+          if (original_reader.read(original_state) &&
+              original_state.width==shared_eye_width*2 && original_state.height==shared_eye_height) {
+            try {
+              darktidevr::bridge::SharedGeneratedSurfaceNames original_names{{
+                  L"Local\\DarktideVR-original-stereo-0",L"Local\\DarktideVR-original-stereo-1",
+                  L"Local\\DarktideVR-original-stereo-2"},L"Local\\DarktideVR-original-stereo-ready",
+                  L"Local\\DarktideVR-original-stereo-consumed"};
+              original_surfaces=darktidevr::bridge::open_shared_generated_surfaces(device,original_names,
+                  {{original_state.width,original_state.height},static_cast<DXGI_FORMAT>(original_state.format)});
+              ingested_original_ready=last_original_ready=last_original_pose=generated_displayed_before_original=0;
+              generated_cadence={};
+              D3D12_HEAP_PROPERTIES heap{}; heap.Type=D3D12_HEAP_TYPE_DEFAULT;
+              const auto description=cached_eye_resources[0]->GetDesc();
+              for(auto& original:pending_originals) for(auto& eye:original.eyes)
+                check(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&description,
+                    D3D12_RESOURCE_STATE_COMMON,nullptr,IID_PPV_ARGS(&eye)),"Create queued original");
+              std::cout << "openxr.original_stereo=attached\n";
+            } catch (const std::exception& error) {
+              generated_surfaces.reset();
+              original_surfaces.reset();
+              std::cout << "openxr.generated_stereo=waiting reason=" << error.what() << '\n';
+            }
+          }
+        }
+        if(original_surfaces && !generated_surfaces && generated_reader.read(generated_state) &&
+            generated_state.width==shared_eye_width*2 && generated_state.height==shared_eye_height) {
+          try {
+            darktidevr::bridge::SharedGeneratedSurfaceNames names{{
+                L"Local\\DarktideVR-generated-stereo-0",L"Local\\DarktideVR-generated-stereo-1",
+                L"Local\\DarktideVR-generated-stereo-2"},L"Local\\DarktideVR-generated-stereo-ready",
+                L"Local\\DarktideVR-generated-stereo-consumed"};
+            generated_surfaces=darktidevr::bridge::open_shared_generated_surfaces(device,names,
+                {{generated_state.width,generated_state.height},static_cast<DXGI_FORMAT>(generated_state.format)});
+            std::cout << "openxr.generated_stereo=attached\n";
+          } catch(const std::exception&) { /* Original delivery remains live. */ }
+        }
+        std::uint64_t generated_sequence_for_frame{};
+        const bool generated_world = projection_active &&
+            presentation_state.mode == darktidevr::core::SharedPresentationMode::stereo_world;
+        bool ingested_original_this_frame{};
+        std::uint64_t original_ring_sequence_for_frame{};
+        PendingOriginal* selected_original{};
+        const std::array<XrPosef,2>* original_ring_poses{};
+        darktidevr::core::SharedGeneratedFrameSlot original_metadata{};
+        if(original_surfaces && original_reader.read(original_state)) {
+          const auto completed=original_surfaces->ready_fence->GetCompletedValue();
+          if(completed!=UINT64_MAX) {
+            auto available=std::min(completed,original_state.latest_sequence);
+            // Prefer the exact original needed by the newest completed
+            // generated image; a newer original can already occupy another slot.
+            if(generated_surfaces && generated_reader.read(generated_state)) {
+              const auto generated_ready=generated_surfaces->ready_fence->GetCompletedValue();
+              const auto candidate=std::min(generated_ready,generated_state.latest_sequence);
+              const auto& generated=generated_state.slots[darktidevr::core::generated_frame_slot(candidate)];
+              const auto wanted=generated.rendered_ready;
+              if(generated_ready!=UINT64_MAX && generated.sequence==candidate && candidate>generated_last_consumed &&
+                  wanted>ingested_original_ready && wanted<=available &&
+                  original_state.slots[darktidevr::core::generated_frame_slot(wanted)].sequence==wanted)
+                available=wanted;
+            }
+            const auto& metadata=original_state.slots[darktidevr::core::generated_frame_slot(available)];
+            const auto original_now=GetTickCount64();
+            const bool expired=metadata.tick_ms>original_now || original_now-metadata.tick_ms>=250;
+            if(available>ingested_original_ready && metadata.sequence==available && generated_world && !expired &&
+                metadata.gameplay_generation==committed_gameplay_generation) {
+              for(const auto& history:head_pose_history) if(history.first==metadata.current_pose) original_ring_poses=&history.second;
+              if(original_ring_poses) original_metadata=metadata;
+            } else if(available>ingested_original_ready && metadata.sequence==available &&
+                (!generated_world || expired || metadata.gameplay_generation!=committed_gameplay_generation)) {
+              check(original_surfaces->consumed_fence->Signal(available),"Discard outgoing original ring image");
+              ingested_original_ready=available;
+            }
+          }
+        }
+        if(original_surfaces && generated_world && original_ring_poses && projection_pair_settled) {
+          PendingOriginal* destination{};
+          for(auto& original:pending_originals)
+            if((!original.ready || original.ready!=generated_displayed_before_original) &&
+                (!destination || original.ready<destination->ready)) destination=&original;
+          if(destination && destination->eyes[0] && destination->eyes[1]) {
+            auto* packed_original=original_surfaces->textures[darktidevr::core::generated_frame_slot(original_metadata.sequence)].Get();
+            for(unsigned eye=0;eye<2;++eye) {
+              std::array<D3D12_RESOURCE_BARRIER,2> barriers{};
+              for(auto& barrier:barriers) barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+              barriers[0].Transition={packed_original,D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                  D3D12_RESOURCE_STATE_COMMON,D3D12_RESOURCE_STATE_COPY_SOURCE};
+              barriers[1].Transition={destination->eyes[eye].Get(),D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                  D3D12_RESOURCE_STATE_COMMON,D3D12_RESOURCE_STATE_COPY_DEST};
+              command_list->ResourceBarrier(2,barriers.data());
+              D3D12_TEXTURE_COPY_LOCATION source{}; source.pResource=packed_original;
+              source.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+              D3D12_TEXTURE_COPY_LOCATION target{}; target.pResource=destination->eyes[eye].Get();
+              target.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+              const D3D12_BOX box{eye*shared_eye_width,0,0,(eye+1)*shared_eye_width,shared_eye_height,1};
+              command_list->CopyTextureRegion(&target,0,0,0,&source,&box);
+              for(auto& barrier:barriers) std::swap(barrier.Transition.StateBefore,barrier.Transition.StateAfter);
+              command_list->ResourceBarrier(2,barriers.data());
+            }
+            destination->ready=original_metadata.sequence; destination->pose=original_metadata.current_pose;
+            destination->poses=*original_ring_poses; destination->generation=original_metadata.gameplay_generation;
+            destination->tick=GetTickCount64();
+            generated_cadence.observe_source(frame_state.predictedDisplayTime);
+            ingested_original_ready=original_metadata.sequence;
+            original_ring_sequence_for_frame=original_metadata.sequence;
+            ingested_original_this_frame=true;
+          }
+        }
+        for(auto& original:pending_originals) {
+          if(!generated_world || original.generation!=committed_gameplay_generation || original.ready<=last_original_ready)
+            original.ready=0;
+          if(original.ready && original.ready==generated_displayed_before_original) selected_original=&original;
+        }
+        if (generated_surfaces && !selected_original) {
+          // Poll once. Waiting here stalls the entire OpenXR submission loop.
+          do {
+            if (!generated_reader.read(generated_state)) break;
+            const auto available = generated_surfaces->ready_fence->GetCompletedValue();
+            if (available == UINT64_MAX) break;
+            const auto latest = std::min(available,generated_state.latest_sequence);
+            if (latest > generated_last_consumed) {
+              const auto& generated = generated_state.slots[darktidevr::core::generated_frame_slot(latest)];
+              const auto now_ms = GetTickCount64();
+              PendingOriginal* matching{};
+              for(auto& original:pending_originals)
+                if(original.ready && original.ready==generated.rendered_ready && original.pose==generated.current_pose)
+                  matching=&original;
+              if (generated.sequence == latest && generated_world &&
+                  matching &&
+                  generated.rendered_ready > last_original_ready &&
+                  // A slower consumer can skip source frames. Their midpoint
+                  // remains temporally valid when both endpoints follow the
+                  // last displayed original; equality would discard it forever.
+                  generated.previous_pose >= last_original_pose && last_original_pose != 0 &&
+                  generated.gameplay_generation == committed_gameplay_generation &&
+                  generated.tick_ms <= now_ms && now_ms-generated.tick_ms < 250 &&
+                  generated_state.width == shared_eye_width*2 && generated_state.height == shared_eye_height) {
+                const std::array<XrPosef,2>* previous{};
+                const std::array<XrPosef,2>* current{};
+                for (const auto& entry : head_pose_history) {
+                  if (entry.first == generated.previous_pose) previous=&entry.second;
+                  if (entry.first == generated.current_pose) current=&entry.second;
+                }
+                if (previous && current) {
+                  for (unsigned eye=0;eye<2;++eye) {
+                    const auto& a=(*previous)[eye]; const auto& b=(*current)[eye];
+                    auto& middle=generated_view_poses[eye];
+                    middle.position={(a.position.x+b.position.x)*0.5F,(a.position.y+b.position.y)*0.5F,(a.position.z+b.position.z)*0.5F};
+                    const auto dot=a.orientation.x*b.orientation.x+a.orientation.y*b.orientation.y+
+                        a.orientation.z*b.orientation.z+a.orientation.w*b.orientation.w;
+                    const float sign=dot<0 ? -1.0F : 1.0F;
+                    auto& q=middle.orientation;
+                    q={a.orientation.x+sign*b.orientation.x,a.orientation.y+sign*b.orientation.y,
+                       a.orientation.z+sign*b.orientation.z,a.orientation.w+sign*b.orientation.w};
+                    const auto norm=std::sqrt(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w);
+                    q.x/=norm; q.y/=norm; q.z/=norm; q.w/=norm;
+                  }
+                  generated_sequence_for_frame=latest;
+                  selected_original=matching;
+                  break;
+                }
+              }
+              if (generated.sequence == latest && (!generated_world ||
+                  generated.rendered_ready <= last_original_ready ||
+                  generated.gameplay_generation != committed_gameplay_generation ||
+                  generated.tick_ms > now_ms || now_ms-generated.tick_ms >= 250)) {
+                generated_surfaces->consumed_fence->Signal(latest);
+                generated_last_consumed=latest;
+              }
+            }
+          } while (false);
+        }
+        const bool use_generated_pair = generated_sequence_for_frame != 0;
+        const auto generated_tick=generated_state.slots[
+            darktidevr::core::generated_frame_slot(generated_state.latest_sequence)].tick_ms;
+        const auto now_tick=GetTickCount64();
+        const bool generation_recent=generated_tick && generated_tick<=now_tick && now_tick-generated_tick<250;
+        if(original_surfaces && generated_world && !selected_original) for(auto& original:pending_originals) {
+          if(original.ready && (!generation_recent || now_tick-original.tick>=25) &&
+              (!selected_original || original.ready<selected_original->ready)) selected_original=&original;
+        }
+        const bool use_queued_original=selected_original && !use_generated_pair &&
+            (selected_original->ready!=generated_displayed_before_original ||
+             generated_cadence.original_ready(frame_state.predictedDisplayTime));
+        const auto original_ready_for_frame=use_queued_original ? selected_original->ready : shared_ready_for_frame;
+        const auto original_pose_for_frame=use_queued_original ? selected_original->pose : rendered_pair_pose_sequence;
+        submitted_original_view_poses=use_queued_original ? selected_original->poses : rendered_pair_view_poses;
+        const bool use_shared_pair = !use_generated_pair && (use_queued_original || (!original_surfaces &&
             projection_active && opened_eyes && shared_ready_for_frame != 0 &&
             (!window_capture ||
              (shared_pair_fresh && shared_pair_pose_synced &&
-              projection_pair_settled));
+              projection_pair_settled))));
         if (projection_active && opened_eyes && !use_shared_pair &&
             shared_ready_for_frame != 0 && shared_pair_fresh &&
             shared_pair_pose_synced && !projection_pair_settled) {
@@ -2043,7 +2283,7 @@ class OpenXrProbe {
                     .count());
         const bool use_cached_pair =
             darktidevr::core::cached_stereo_pair_allowed(
-                use_shared_pair, cached_pair_valid, projection_active,
+                use_shared_pair || use_generated_pair, cached_pair_valid, projection_active,
                 shared_pair_stale_milliseconds,
                 cached_pair_grace_milliseconds);
         if (use_cached_pair && frame_start >= next_cached_pair_report) {
@@ -2058,7 +2298,8 @@ class OpenXrProbe {
                     << '\n';
         }
         submitted_shared_pair_this_frame =
-            use_shared_pair || use_cached_pair;
+            use_shared_pair || use_cached_pair || use_generated_pair;
+        submitted_generated_this_frame = use_generated_pair;
         submitted_cached_pair_this_frame = use_cached_pair;
         const bool spatial_menu_overlay =
             presentation_sequence != 0 &&
@@ -2080,7 +2321,7 @@ class OpenXrProbe {
         const bool use_window_flat_capture =
             window_capture &&
             !spatial_menu_overlay && !fullscreen_menu_overlay &&
-            !use_shared_pair && !use_cached_pair;
+            !use_shared_pair && !use_cached_pair && !use_generated_pair;
         const bool use_flat_capture =
             use_shared_menu || use_window_flat_capture;
         submitted_flat_fallback_this_frame = use_flat_capture;
@@ -2142,7 +2383,7 @@ class OpenXrProbe {
           // pose rejection, and flat-only menu frames we draw the diagnostic
           // fallback into this image with ClearRenderTargetView instead.
           barrier.Transition.StateAfter =
-              (use_shared_pair || use_cached_pair)
+              (use_shared_pair || use_cached_pair || use_generated_pair)
                   ? D3D12_RESOURCE_STATE_COPY_DEST
                   : D3D12_RESOURCE_STATE_RENDER_TARGET;
           barrier.Transition.Subresource =
@@ -2152,14 +2393,14 @@ class OpenXrProbe {
             static_cast<UINT>(destination_barriers.size()),
             destination_barriers.data());
         std::array<D3D12_RESOURCE_BARRIER, 2> cached_eye_barriers{};
-        if (use_shared_pair || use_cached_pair) {
+        if (use_shared_pair || use_cached_pair || use_generated_pair) {
           for (std::size_t eye = 0; eye < cached_eye_resources.size(); ++eye) {
             auto& barrier = cached_eye_barriers[eye];
             barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
             barrier.Transition.pResource = cached_eye_resources[eye].Get();
             barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
             barrier.Transition.StateAfter =
-                use_shared_pair ? D3D12_RESOURCE_STATE_COPY_DEST
+                (use_shared_pair || use_generated_pair) ? D3D12_RESOURCE_STATE_COPY_DEST
                                 : D3D12_RESOURCE_STATE_COPY_SOURCE;
             barrier.Transition.Subresource =
                 D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
@@ -2273,7 +2514,36 @@ class OpenXrProbe {
                     flat_barrier.Transition.StateAfter);
           command_list->ResourceBarrier(1, &flat_barrier);
         }
-        if (use_shared_pair) {
+        if (use_generated_pair) {
+          auto* texture=generated_surfaces->textures[
+              darktidevr::core::generated_frame_slot(generated_sequence_for_frame)].Get();
+          D3D12_RESOURCE_BARRIER barrier{};
+          barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+          barrier.Transition={texture,D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+              D3D12_RESOURCE_STATE_COMMON,D3D12_RESOURCE_STATE_COPY_SOURCE};
+          command_list->ResourceBarrier(1,&barrier);
+          D3D12_TEXTURE_COPY_LOCATION source{}; source.pResource=texture;
+          source.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+          for(unsigned eye=0;eye<2;++eye) {
+            D3D12_TEXTURE_COPY_LOCATION destination{};
+            destination.pResource=resources[separate_shared_eye_swapchains ? eye : 0];
+            destination.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            const D3D12_BOX box{eye*shared_eye_width,0,0,(eye+1)*shared_eye_width,shared_eye_height,1};
+            command_list->CopyTextureRegion(&destination,0,separate_shared_eye_swapchains ? 0 : eye*shared_eye_height,
+                0,&source,&box);
+            destination.pResource=cached_eye_resources[eye].Get();
+            command_list->CopyTextureRegion(&destination,0,0,0,&source,&box);
+          }
+          std::swap(barrier.Transition.StateBefore,barrier.Transition.StateAfter);
+          command_list->ResourceBarrier(1,&barrier);
+          for(auto& cached_barrier:cached_eye_barriers)
+            std::swap(cached_barrier.Transition.StateBefore,cached_barrier.Transition.StateAfter);
+          command_list->ResourceBarrier(static_cast<UINT>(cached_eye_barriers.size()),cached_eye_barriers.data());
+          // Repeated display slots must retain the interpolated image and its
+          // pose; reverting to the earlier original would reverse time.
+          cached_pair_view_poses=generated_view_poses;
+          cached_pair_valid=true;
+        } else if (use_shared_pair) {
           if (projection_resume_started) {
             const auto resume_latency =
                 std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -2286,16 +2556,17 @@ class OpenXrProbe {
                       << rendered_pair_gameplay_generation << '\n';
             projection_resume_started.reset();
           }
-          if (shared_ready_for_frame != last_submitted_shared_value) {
-            last_submitted_shared_value = shared_ready_for_frame;
+          if (original_ready_for_frame != last_submitted_shared_value) {
+            last_submitted_shared_value = original_ready_for_frame;
             ++fresh_shared_pairs;
           } else {
             ++reused_shared_frames;
           }
-          for (std::size_t eye = 0; eye < opened_eyes->eyes.size(); ++eye) {
+          const auto& original_eyes=use_queued_original ? selected_original->eyes : opened_eyes->eyes;
+          for (std::size_t eye = 0; eye < original_eyes.size(); ++eye) {
             D3D12_RESOURCE_BARRIER eye_barrier{};
             eye_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            eye_barrier.Transition.pResource = opened_eyes->eyes[eye].Get();
+            eye_barrier.Transition.pResource = original_eyes[eye].Get();
             eye_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
             eye_barrier.Transition.StateAfter =
                 D3D12_RESOURCE_STATE_COPY_SOURCE;
@@ -2307,7 +2578,7 @@ class OpenXrProbe {
                 resources[separate_shared_eye_swapchains ? eye : 0U];
             destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
             D3D12_TEXTURE_COPY_LOCATION source{};
-            source.pResource = opened_eyes->eyes[eye].Get();
+            source.pResource = original_eyes[eye].Get();
             source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
             command_list->CopyTextureRegion(
                 &destination, 0,
@@ -2345,9 +2616,10 @@ class OpenXrProbe {
           command_list->ResourceBarrier(
               static_cast<UINT>(cached_eye_barriers.size()),
               cached_eye_barriers.data());
-          cached_pair_view_poses = rendered_pair_view_poses;
+          cached_pair_view_poses = submitted_original_view_poses;
           cached_pair_valid = true;
         } else if (use_cached_pair) {
+          ++cached_original_submissions;
           for (std::size_t eye = 0; eye < cached_eye_resources.size(); ++eye) {
             D3D12_TEXTURE_COPY_LOCATION destination{};
             destination.pResource =
@@ -2411,8 +2683,8 @@ class OpenXrProbe {
           command_list->ResourceBarrier(
               static_cast<UINT>(destination_barriers.size()),
               destination_barriers.data());
-          const auto& cuff_view_poses = use_shared_pair
-                                            ? rendered_pair_view_poses
+          const auto& cuff_view_poses = use_generated_pair ? generated_view_poses : use_shared_pair
+                                            ? submitted_original_view_poses
                                             : cached_pair_view_poses;
           const std::array<darktidevr::core::ControllerHandState, 2>
               cuff_hands{{latest_controller_sample_->hands[0],
@@ -2490,7 +2762,14 @@ class OpenXrProbe {
         check(command_list->Close(),
               "ID3D12GraphicsCommandList::Close(theatre)");
         ID3D12CommandList* lists[]{command_list.Get()};
-        if (use_shared_pair) {
+        if (use_generated_pair) {
+          check(queue->Wait(generated_surfaces->ready_fence.Get(),generated_sequence_for_frame),
+              "Wait(generated stereo ready)");
+        }
+        if (ingested_original_this_frame) {
+          check(queue->Wait(original_surfaces->ready_fence.Get(),original_ring_sequence_for_frame),"Wait original ring ready");
+        }
+        if (use_shared_pair && !use_queued_original) {
           check(queue->Wait(opened_eyes->ready_fence.Get(),
                             shared_ready_for_frame),
                 "ID3D12CommandQueue::Wait(shared eyes)");
@@ -2501,7 +2780,28 @@ class OpenXrProbe {
                 "ID3D12CommandQueue::Wait(shared menu)");
         }
         queue->ExecuteCommandLists(1, lists);
+        if (use_generated_pair) {
+          check(queue->Signal(generated_surfaces->consumed_fence.Get(),generated_sequence_for_frame),
+              "Signal(generated stereo consumed)");
+          generated_last_consumed=generated_sequence_for_frame;
+          generated_displayed_before_original=selected_original->ready;
+          generated_cadence.generated(frame_state.predictedDisplayTime,frame_state.predictedDisplayPeriod);
+          if (++generated_submitted <= 16 || generated_submitted%120==0)
+            std::cout << "openxr.generated_stereo=submitted count=" << generated_submitted
+                << " sequence=" << generated_sequence_for_frame << " before_original=" << selected_original->ready << '\n';
+        }
         if (use_shared_pair) {
+          last_original_ready=original_ready_for_frame;
+          last_original_pose=original_pose_for_frame;
+          if(use_queued_original) selected_original->ready=0;
+        }
+        if (ingested_original_this_frame)
+          check(queue->Signal(original_surfaces->consumed_fence.Get(),original_ring_sequence_for_frame),"Signal original ring consumed");
+        if (original_surfaces && shared_ready_for_frame) {
+          // The legacy mailbox still supplies transition metadata. It no
+          // longer owns the originals used for generated-stereo delivery.
+          check(opened_eyes->consumed_fence->Signal(shared_ready_for_frame),"Discard legacy original mailbox");
+        } else if (use_shared_pair && !use_queued_original) {
           check(queue->Signal(opened_eyes->consumed_fence.Get(),
                               shared_ready_for_frame),
                 "ID3D12CommandQueue::Signal(shared eyes consumed)");
@@ -3213,11 +3513,11 @@ class OpenXrProbe {
           auto& projection_view = projection_views[eye];
           projection_view = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
           const auto base_pose =
-              submitted_cached_pair_this_frame
+              submitted_generated_this_frame ? generated_view_poses[eye] : submitted_cached_pair_this_frame
                   ? cached_pair_view_poses[eye]
                   : submitted_shared_pair_this_frame &&
                       rendered_pair_pose_ready_value != 0
-                  ? rendered_pair_view_poses[eye]
+                  ? submitted_original_view_poses[eye]
                   : (recentered_view_poses_valid
                          ? recentered_view_poses[eye]
                          : located_views[eye].pose);
@@ -3498,6 +3798,7 @@ class OpenXrProbe {
             submitted_frames - last_live_submitted_frames;
         const auto interval_fresh_pairs =
             fresh_shared_pairs - last_live_fresh_shared_pairs;
+        const auto interval_generated_pairs=generated_submitted-last_live_generated_submissions;
         const auto interval_fallback_frames =
             flat_fallback_frames - last_live_fallback_frames;
         std::cout << "openxr.live.submission_fps="
@@ -3507,6 +3808,10 @@ class OpenXrProbe {
                   << interval_submissions / interval_seconds
                   << " interval_fresh_pair_fps="
                   << interval_fresh_pairs / interval_seconds
+                  << " interval_generated_pair_fps=" << interval_generated_pairs/interval_seconds
+                  << " interval_distinct_pair_fps=" << (interval_fresh_pairs+interval_generated_pairs)/interval_seconds
+                  << " interval_cached_pair_fps=" << (cached_original_submissions-last_live_cached_original_submissions)/interval_seconds
+                  << " source_period_ms=" << generated_cadence.source_period/1.0e6
                   << " interval_fallback_fps="
                   << interval_fallback_frames / interval_seconds
                   << " reused_frames=" << reused_shared_frames
@@ -3530,6 +3835,8 @@ class OpenXrProbe {
         last_live_report = report_time;
         last_live_submitted_frames = submitted_frames;
         last_live_fresh_shared_pairs = fresh_shared_pairs;
+        last_live_generated_submissions=generated_submitted;
+        last_live_cached_original_submissions=cached_original_submissions;
         last_live_fallback_frames = flat_fallback_frames;
       }
     }

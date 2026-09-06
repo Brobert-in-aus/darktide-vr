@@ -13,6 +13,8 @@ struct SharedSlotLayout {
   volatile LONG64 sequence{};
   volatile LONG64 native_call{};
   volatile LONG frame_index{};
+  volatile LONG64 previous_pose{}, current_pose{}, gameplay_generation{}, tick_ms{};
+  volatile LONG64 rendered_ready{};
 };
 
 struct SharedLayout {
@@ -51,10 +53,10 @@ bool valid_generated_frame_state(const SharedGeneratedFrameState& state) {
   return latest.sequence == state.latest_sequence && latest.native_call != 0;
 }
 
-SharedGeneratedFrameStateWriter::SharedGeneratedFrameStateWriter() {
+SharedGeneratedFrameStateWriter::SharedGeneratedFrameStateWriter(const wchar_t* name) {
   mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
                                 0, sizeof(SharedLayout),
-                                shared_object_name(kSharedGeneratedFrameStateName).c_str());
+                                shared_object_name(name).c_str());
   if (!mapping_) {
     throw std::runtime_error(
         "CreateFileMapping(shared generated frame state) failed");
@@ -77,6 +79,8 @@ SharedGeneratedFrameStateWriter::SharedGeneratedFrameStateWriter() {
     slot.sequence = 0;
     slot.native_call = 0;
     slot.frame_index = 0;
+    slot.previous_pose = slot.current_pose = slot.gameplay_generation = slot.tick_ms = 0;
+    slot.rendered_ready = 0;
   }
   MemoryBarrier();
   InterlockedExchange64(&data.epoch, 2);
@@ -89,7 +93,8 @@ SharedGeneratedFrameStateWriter::~SharedGeneratedFrameStateWriter() {
 bool SharedGeneratedFrameStateWriter::publish(
     std::uint64_t sequence, std::uint64_t native_call,
     std::uint32_t frame_index, std::uint32_t width, std::uint32_t height,
-    std::uint32_t format) {
+    std::uint32_t format, std::uint64_t previous_pose, std::uint64_t current_pose,
+    std::uint64_t gameplay_generation, std::uint64_t tick_ms, std::uint64_t rendered_ready) {
   if (sequence == 0 ||
       sequence > static_cast<std::uint64_t>(
                      (std::numeric_limits<LONG64>::max)()) ||
@@ -106,6 +111,11 @@ bool SharedGeneratedFrameStateWriter::publish(
   InterlockedExchange64(&slot.native_call,
                         static_cast<LONG64>(native_call));
   slot.frame_index = static_cast<LONG>(frame_index);
+  slot.previous_pose = static_cast<LONG64>(previous_pose);
+  slot.current_pose = static_cast<LONG64>(current_pose);
+  slot.gameplay_generation = static_cast<LONG64>(gameplay_generation);
+  slot.tick_ms = static_cast<LONG64>(tick_ms);
+  slot.rendered_ready = static_cast<LONG64>(rendered_ready);
   InterlockedExchange64(&slot.sequence, static_cast<LONG64>(sequence));
   InterlockedExchange64(&data.latest_sequence,
                         static_cast<LONG64>(sequence));
@@ -123,7 +133,7 @@ bool SharedGeneratedFrameStateReader::ensure_open() {
     return true;
   }
   mapping_ = OpenFileMappingW(FILE_MAP_READ, FALSE,
-                              shared_object_name(kSharedGeneratedFrameStateName).c_str());
+                              shared_object_name(name_.c_str()).c_str());
   if (!mapping_) {
     return false;
   }
@@ -160,7 +170,12 @@ bool SharedGeneratedFrameStateReader::read(
       candidate.slots[index] = {
           static_cast<std::uint64_t>(data.slots[index].sequence),
           static_cast<std::uint64_t>(data.slots[index].native_call),
-          static_cast<std::uint32_t>(data.slots[index].frame_index)};
+          static_cast<std::uint32_t>(data.slots[index].frame_index),
+          static_cast<std::uint64_t>(data.slots[index].previous_pose),
+          static_cast<std::uint64_t>(data.slots[index].current_pose),
+          static_cast<std::uint64_t>(data.slots[index].gameplay_generation),
+          static_cast<std::uint64_t>(data.slots[index].tick_ms),
+          static_cast<std::uint64_t>(data.slots[index].rendered_ready)};
     }
     MemoryBarrier();
     const auto after = data.epoch;

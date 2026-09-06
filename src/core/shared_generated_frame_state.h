@@ -3,17 +3,20 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedGeneratedFrameStateName[] =
-    L"Local\\DarktideVR-generated-frame-state-v1";
+    L"Local\\DarktideVR-generated-frame-state-v2";
 inline constexpr std::size_t kSharedGeneratedFrameSlotCount = 3;
 
 struct SharedGeneratedFrameSlot {
   std::uint64_t sequence{};
   std::uint64_t native_call{};
   std::uint32_t frame_index{};
+  std::uint64_t previous_pose{}, current_pose{}, gameplay_generation{}, tick_ms{};
+  std::uint64_t rendered_ready{};
 };
 
 struct SharedGeneratedFrameState {
@@ -36,7 +39,7 @@ bool valid_generated_frame_state(const SharedGeneratedFrameState& state);
 
 class SharedGeneratedFrameStateWriter {
  public:
-  SharedGeneratedFrameStateWriter();
+  explicit SharedGeneratedFrameStateWriter(const wchar_t* name = kSharedGeneratedFrameStateName);
   ~SharedGeneratedFrameStateWriter();
 
   SharedGeneratedFrameStateWriter(const SharedGeneratedFrameStateWriter&) =
@@ -46,7 +49,10 @@ class SharedGeneratedFrameStateWriter {
 
   bool publish(std::uint64_t sequence, std::uint64_t native_call,
                std::uint32_t frame_index, std::uint32_t width,
-               std::uint32_t height, std::uint32_t format);
+               std::uint32_t height, std::uint32_t format,
+               std::uint64_t previous_pose = 0, std::uint64_t current_pose = 0,
+               std::uint64_t gameplay_generation = 0, std::uint64_t tick_ms = 0,
+               std::uint64_t rendered_ready = 0);
 
  private:
   void* mapping_{};
@@ -55,7 +61,7 @@ class SharedGeneratedFrameStateWriter {
 
 class SharedGeneratedFrameStateReader {
  public:
-  SharedGeneratedFrameStateReader() = default;
+  explicit SharedGeneratedFrameStateReader(const wchar_t* name = kSharedGeneratedFrameStateName) : name_(name) {}
   ~SharedGeneratedFrameStateReader();
 
   SharedGeneratedFrameStateReader(const SharedGeneratedFrameStateReader&) =
@@ -67,6 +73,7 @@ class SharedGeneratedFrameStateReader {
 
  private:
   bool ensure_open();
+  std::wstring name_;
 
   void* mapping_{};
   void* view_{};

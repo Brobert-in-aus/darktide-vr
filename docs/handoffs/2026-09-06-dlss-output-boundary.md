@@ -590,3 +590,100 @@ header/size. Negative checks reject empty eye counts, aliased owner, wrong call
 and failed HRESULT. Single-output copy ownership is now demonstrated. Continuous
 input/output reuse, source-frame/pose association and OpenXR scheduling/publication
 remain unfinished; no generated frames have been submitted to the headset.
+
+## Continuous generated stereo delivery
+
+The -DlssGeneratedStereo opt-in now has an end-to-end path: eight reusable input
+owners, three fence-owned generated textures, exact six-input-resource identities
+associated with source poses, and three XR-owned original-image slots. The game
+mailbox is acknowledged after copying the original into XR ownership, independently
+of when it is displayed. Generated images precede their corresponding original
+and use midpoint poses. Dimensions come from actual runtime/engine resources.
+
+Pair detection accepts either eye order. Only successive frame-generation calls
+on the recording thread advance pairing order; unrelated SR evaluations on other
+threads no longer clear a valid pair. Constants/resource observations take the
+short boundary lock instead of silently dropping updates when it is busy. Exact
+publication pose must match before output inherits an original mailbox ID.
+
+Live evidence in ignored artifacts/diagnostics/dlss-output-boundary-20260906:
+- generated-delivery-streamline.tsv: first sustained generated output.
+- generated-crop-streamline.tsv: native DXGI source crop avoids the packed desktop
+  mirror without GPU writes into NVIDIA-owned buffers. The earlier native buffer
+  copy caused DEVICE_REMOVED/ACCESS_DENIED entering Psykhanium and was removed.
+  Loading/menu crops restore full extent.
+- generated-final-color-streamline.tsv: user confirms HUD flicker fixed. Pack
+  completed final eye colour including UI while tagging HUDless scene separately.
+  Packing HUDless colour into both removed the HUD from generated images.
+- generated-queued-streamline.tsv and the generated-stereo-queued-live-20260906.log
+  under artifacts/unattended: over 2,640 generated pairs delivered. Active samples
+  have zero recorded pose mismatches, roughly 29-31 originals/s plus generated
+  images, despite about 119 compositor submissions/s. User still reports low
+  perceived framerate. This is NOT performance acceptance.
+
+The next built candidate schedules the original half a measured source interval
+later than its generated image, rounded to the nearest runtime display slot. It
+caches the generated image and midpoint poses through intervening refreshes rather
+than reverting to the older original. Telemetry separates original, generated,
+distinct and cached rates and reports source period. Loading gaps reset cadence.
+This change has NOT received live or worn acceptance: the Ready preflight returned
+no usable HMD on 6 September, so no launch followed that failure.
+
+Validation: Windows x64 Release native and XR builds pass. Five focused CTests
+pass: generated_frame_state, streamline_input_lifetime, streamline_submission,
+ngx_command_observations, startup_advance. Cadence checks cover 30/60-ish source
+rates on a 120-ish display and a runtime-period change after a loading gap. Pair
+checks cover reversed eye order and SR interleaving. The last live launch passed
+all 31 Lua chunks; no Lua source changed here.
+
+Next: repeat Ready preflight when streaming resumes, then launch with
+-AutoEnterHub -EnableHudPanel -EnterPsykhanium -DlssGeneratedStereo. Compare actual
+distinct-image cadence and worn smoothness. Still required before promotion:
+performance/pacing, repeated menu/loading recovery, resolution/quality changes,
+source-generation resets and resource lifecycle review. Default launch remains
+unchanged; DLSS frame generation is not complete.
+
+Follow-up: spacing alone did not satisfy worn smoothness. User reports about
+70 FPS before the FG work. New once-per-second native health telemetry separated
+engine Presents from legacy mailbox delivery: engine about 48/s, original mailbox
+only 28-35/s. Generated partners were also rejected whenever their original had
+been dropped by that mailbox. The new original ring captures the exact final
+packed input before Present, in three separately fence-owned textures with its
+own metadata channel. XR ingests these independently and associates generation
+with that ring ID. Original delivery can start and continue without generation;
+the old mailbox is still consumed for baseline/transition metadata.
+
+The original-ring run delivered about 48 originals plus 48 generated pairs/s,
+versus about 60 total distinct pairs/s before the transport correction. Over
+6,000 generated pairs completed. When foreground was lost, NVIDIA evaluations
+stopped while input submission continued; originals then reached XR at about
+65/s. The application must not steal focus to hide this behavior. Actual GPU
+utilization with generation was sampled at 94 percent; the remaining 70-to-48
+render-rate loss still requires investigation, not a claim of success.
+
+Native/XR Release builds and the five focused tests pass. A new isolated WARP
+original_stereo_ring test additionally checks full-ring backpressure, acknowledged
+slot reuse, independent original metadata and retained pixels in an unconsumed
+slot. It passes after isolating every explicit GPU object name as well as the
+metadata mappings. No live output objects are used by that test.
+
+The user also flagged compositor reporting 120 while distinct delivery is about
+96. The generated path had bypassed the baseline pair-driven wait, deliberately
+submitting cached copies on intervening refreshes. The next candidate restores
+new-image readiness waiting for both image classes, retaining tracking updates
+while waiting, and leaves intervening reprojection to the runtime. It preserves
+the xrWaitFrame/xrBeginFrame/xrEndFrame sequence and runtime display predictions:
+https://registry.khronos.org/OpenXR/specs/1.1/man/html/xrWaitFrame.html
+This frame-loop follow-up has not yet received live acceptance.
+
+Distinct-image wait live result: generated-stereo-distinct-live-20260906.log
+records 99.5-102.4 application submissions/s and exactly the same distinct-image
+rate in the latest intervals, zero cached submissions. About 50-51 originals/s
+reach XR, matching native engine and original-ring rates. This resolves the
+measured 120-versus-96 reporting mismatch; user confirmation of the compositor
+overlay and worn smoothness is still pending. One cumulative legacy-mailbox pose
+mismatch was recorded; generated/original association uses its own exact poses.
+The native health stream confirms steady evaluations and input association.
+Six focused CTests including original_stereo_ring pass. Native/XR Release builds
+pass; all 31 Lua chunks passed at launch. Remaining original render throughput
+regression is not resolved and DLSS is not marked complete.

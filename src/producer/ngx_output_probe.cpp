@@ -6,6 +6,7 @@
 #include "producer/ngx_output_state.h"
 #include "producer/ngx_output_pair_state.h"
 #include "producer/ngx_output_copy_probe.h"
+#include "producer/generated_stereo.h"
 #include <MinHook.h>
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -59,6 +60,7 @@ struct ActiveEvaluationState {
   bool truncated{};
   std::uint64_t seed_call{};
   NgxOutputState pair_observation;
+  std::array<void*,3> left_inputs{};
 };
 thread_local ActiveEvaluationState* active_evaluation{};
 std::mutex log_mutex;
@@ -188,6 +190,10 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   const auto call = calls.fetch_add(1, std::memory_order_relaxed) + 1;
   const auto window = capture_window.snapshot(call, kCallLimit);
   const auto identity = feature_registry.lookup(feature);
+  // SR work on other threads can interleave between the two FG evaluations.
+  // It must neither invalidate their pair nor count as another eye evaluation.
+  static thread_local std::uint64_t fg_evaluation_order{};
+  const auto evaluation_order=identity.kind==11 ? ++fg_evaluation_order : 0;
   std::array<ID3D12Resource*, 5> resources{};
   std::array<std::uint32_t, 5> results{};
   D3D12_RESOURCE_DESC output_description{};
@@ -196,15 +202,17 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   std::array<unsigned int, 4> legacy_region{};
   std::array<std::uint32_t, 4> legacy_results{};
   bool captured = false;
+  bool diagnostic_sample = false;
   bool abi_verified = false;
-  if (identity.kind == 11 && identity.lifetime != 0 && window.eligible &&
-      samples.load(std::memory_order_relaxed) < kSampleLimit &&
+  const bool sustained = generated_stereo_enabled();
+  if (identity.kind == 11 && identity.lifetime != 0 &&
+      (sustained || (window.eligible && samples.load(std::memory_order_relaxed) < kSampleLimit)) &&
       verified_parameters(parameters, ngx::kGetD3D12ResourceSlot) &&
       verified_parameters(parameters, ngx::kGetUnsignedSlot)) {
     abi_verified = true;
     results[0] = ngx::read_resource(parameters, "DLSSG.OutputInterpolated", &resources[0]);
-    if (results[0] == ngx::kSuccess && resources[0] &&
-        samples.fetch_add(1, std::memory_order_relaxed) < kSampleLimit) {
+    if (results[0] == ngx::kSuccess && resources[0]) {
+      diagnostic_sample = samples.fetch_add(1, std::memory_order_relaxed) < kSampleLimit;
       constexpr std::array<const char*, 4> names{
           "DLSSG.Backbuffer", "DLSSG.Depth", "DLSSG.MVecs", "DLSSG.HUDLess"};
       for (std::size_t i = 0; i < names.size(); ++i)
@@ -233,19 +241,24 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   const auto complete = captured && output_state.single_subresource &&
       output_description.Width == legacy_region[2] * 2ULL &&
       output_description.Height == legacy_region[3] && legacy_region[1] == 0 &&
+      (legacy_region[0] == 0 || legacy_region[0] == legacy_region[2]) &&
       legacy_region[2] && legacy_region[3] &&
       std::all_of(results.begin(), results.end(), [](auto value) { return value == ngx::kSuccess; }) &&
       std::all_of(resources.begin(), resources.end(), [](auto value) { return value != nullptr; }) &&
       std::all_of(legacy_results.begin(), legacy_results.end(), [](auto value) { return value == ngx::kSuccess; });
   const NgxOutputPairState::Key pair_key{call, identity.lifetime, window.batch, window.present,
       reinterpret_cast<std::uintptr_t>(commands), reinterpret_cast<std::uintptr_t>(resources[0]),
-      GetCurrentThreadId(), legacy_region[2], legacy_region[3]};
-  {
+      GetCurrentThreadId(), legacy_region[2], legacy_region[3],
+      reinterpret_cast<std::uintptr_t>(resources[2]),reinterpret_cast<std::uintptr_t>(resources[3]),
+      reinterpret_cast<std::uintptr_t>(resources[4]),legacy_region[0],evaluation_order};
+  if(identity.kind==11) {
     std::scoped_lock lock(command_mutex);
-    if (complete && legacy_region[0] == legacy_region[2]) {
+    if (complete) {
       if (const auto seed = output_pair_state.right(pair_key)) {
         output_state.seed_call = seed->key.call;
         output_state.pair_observation = seed->state;
+        output_state.left_inputs={reinterpret_cast<void*>(seed->key.depth),
+            reinterpret_cast<void*>(seed->key.motion),reinterpret_cast<void*>(seed->key.hudless)};
       }
     } else output_pair_state.clear();
     pending_output_pair.store(false, std::memory_order_release);
@@ -255,25 +268,32 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   const auto began = GetTickCount64();
   const auto result = original(commands, feature, parameters, callback);
   active_evaluation = previous_evaluation;
+  if(identity.kind==11)
+    generated_stereo_evaluation(complete,output_state.seed_call!=0);
   if (complete && result == ngx::kSuccess && output_state.seed_call &&
       output_state.pair_observation.known && !output_state.pair_observation.ambiguous &&
       output_state.pair_observation.state == D3D12_RESOURCE_STATE_UNORDERED_ACCESS &&
       std::none_of(resources.begin() + 1, resources.end(), [&](auto resource) { return resource == resources[0]; })) {
     stage_ngx_output_copy(static_cast<ID3D12GraphicsCommandList*>(commands), resources[0],
                           output_state.seed_call, call);
+    const auto& first = output_state.left_inputs;
+    const std::array<void*,6> inputs = legacy_region[0] == 0
+        ? std::array<void*,6>{resources[2],resources[3],resources[4],first[0],first[1],first[2]}
+        : std::array<void*,6>{first[0],first[1],first[2],resources[2],resources[3],resources[4]};
+    stage_generated_stereo(static_cast<ID3D12GraphicsCommandList*>(commands), resources[0], call,inputs);
   }
-  if (captured) record_output_barriers(call, output_state);
+  if (captured && diagnostic_sample) record_output_barriers(call, output_state);
   record_slow_call("evaluate", identity.kind, began);
   if (captured && result == ngx::kSuccess) {
     std::scoped_lock lock(command_mutex);
-    if (command_observations.add(reinterpret_cast<std::uintptr_t>(commands), call))
+    if (diagnostic_sample && command_observations.add(reinterpret_cast<std::uintptr_t>(commands), call))
       pending_commands.fetch_add(1, std::memory_order_release);
-    if (complete && legacy_region[0] == 0) {
+    if (complete && !output_state.seed_call) {
       output_pair_state.left(pair_key, output_state.observation);
       pending_output_pair.store(output_state.observation.known, std::memory_order_release);
     }
   }
-  if (captured || call <= 4 || (window.eligible &&
+  if ((captured && diagnostic_sample) || call <= 4 || (window.eligible &&
       (call-window.first_call <= 4 || call-window.first_call == kCallLimit))) {
     std::array<char, 1536> line{};
     const auto length = std::snprintf(line.data(), line.size(),
@@ -304,8 +324,7 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
     if (length > 0 && static_cast<std::size_t>(length) < line.size())
       write_line(line.data(), static_cast<std::size_t>(length));
   }
-  // Descriptions and parameter values are evidence only. No retained resource,
-  // inserted commands, queue waits or generated publication.
+  // Diagnostic samples are bounded independently of sustained output delivery.
   return result;
 }
 
@@ -373,7 +392,7 @@ void observe_ngx_output_barriers(void* commands, unsigned count,
 
 void observe_ngx_command_reset(void* commands) {
   if (!probe_installed.load(std::memory_order_acquire) ||
-      !pending_commands.load(std::memory_order_acquire)) return;
+      (!pending_commands.load(std::memory_order_acquire) && !pending_output_pair.load(std::memory_order_acquire))) return;
   std::scoped_lock lock(command_mutex);
   output_pair_state.invalidate(reinterpret_cast<std::uintptr_t>(commands));
   command_observations.consume(reinterpret_cast<std::uintptr_t>(commands), [&](std::uint64_t call) {
@@ -390,7 +409,7 @@ void observe_ngx_command_reset(void* commands) {
 std::uint64_t observe_ngx_queue_submit(ID3D12CommandQueue* queue, unsigned count,
                               ID3D12CommandList* const* commands) {
   if (!probe_installed.load(std::memory_order_acquire) ||
-      !pending_commands.load(std::memory_order_acquire)) return 0;
+      (!pending_commands.load(std::memory_order_acquire) && !pending_output_pair.load(std::memory_order_acquire))) return 0;
   std::scoped_lock lock(command_mutex);
   std::uint64_t ticket{};
   for (unsigned i = 0; i < count; ++i) {
@@ -479,6 +498,8 @@ bool install_ngx_output_probe(HMODULE capture_module) {
   const bool wait_for_stereo = GetPrivateProfileIntW(L"probe", L"wait_for_stereo", 0, flag.c_str()) != 0;
   configure_ngx_output_copy(wait_for_stereo &&
       GetPrivateProfileIntW(L"probe", L"copy_output", 0, flag.c_str()) != 0);
+  configure_generated_stereo(wait_for_stereo &&
+      GetPrivateProfileIntW(L"probe", L"generated_stereo", 0, flag.c_str()) != 0);
   capture_window.configure(wait_for_stereo);
   runtime = GetModuleHandleW(L"_nvngx.dll");
   if (!runtime) return false;

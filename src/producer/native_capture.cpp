@@ -29,6 +29,7 @@
 #include "streamline_abi_2_7_30.h"
 #include "producer/streamline_submission.h"
 #include "producer/streamline_continuous_submission.h"
+#include "producer/generated_stereo.h"
 #include "producer/engine_eye_backbuffers.h"
 #include "producer/desktop_mirror_blit.h"
 #include <memory>
@@ -255,6 +256,7 @@ std::array<StreamlineConstantsObservation, 2>
     streamline_constants_observations;
 StreamlineInputSnapshotState streamline_input_snapshot_state;
 std::atomic<bool> streamline_continuous_requested{};
+std::atomic<bool> streamline_persistent_requested{};
 darktidevr::producer::StreamlineContinuousSubmission streamline_continuous;
 
 bool game_process_foreground() {
@@ -1223,6 +1225,7 @@ std::atomic<std::uint64_t> boundary_arm_count{};
 std::atomic<std::uint64_t> boundary_transition_count{};
 std::array<std::atomic<std::uint64_t>, 2> boundary_eye_capture_counts{};
 std::array<std::atomic<std::uint64_t>, 2> boundary_eye_pose_sequences{};
+std::atomic<std::uint64_t> boundary_published_pair_pose{};
 std::atomic<std::uint64_t> boundary_tag_reset_count{};
 std::atomic<std::uint64_t> boundary_staged_eye0_pose_sequence{};
 std::atomic<float> boundary_staged_eye0_vertical_fov{};
@@ -2072,9 +2075,12 @@ void write_streamline_probe_log(const char* format, ...) {
   if (!transaction_record &&
       streamline_probe_background_log_count.fetch_add(
           1, std::memory_order_relaxed) >= 8192) return;
+  const bool terminal_submission_record=std::strncmp(format,"STEREO_CONTINUOUS",17)==0 &&
+      (std::strstr(format,"phase=failed") || std::strstr(format,"phase=stopped") ||
+       std::strstr(format,"phase=binding_rejection"));
   if (streamline_probe_log == INVALID_HANDLE_VALUE ||
-      streamline_probe_log_count.fetch_add(1, std::memory_order_relaxed) >=
-          16384) {
+      (!terminal_submission_record && streamline_probe_log_count.fetch_add(1, std::memory_order_relaxed) >=
+          16384)) {
     return;
   }
   char line[1600]{};
@@ -2188,8 +2194,10 @@ int sl_set_constants_hook(const void* constants, const void* frame,
     std::uint64_t armed_pose{};
     std::size_t armed_count{};
     {
-      std::unique_lock lock(boundary_capture_mutex, std::try_to_lock);
-      if (lock.owns_lock()) {
+      // These observations now own live FG inputs. Contention must not silently
+      // drop the eye/pose association as it could for diagnostic-only logging.
+      std::scoped_lock lock(boundary_capture_mutex);
+      {
         armed_count = armed_eye_captures.size();
         if (!armed_eye_captures.empty()) {
           armed_eye = armed_eye_captures.front().eye;
@@ -2352,8 +2360,8 @@ void log_streamline_resource_tags(
   std::uint64_t armed_pose{};
   std::size_t armed_count{};
   {
-    std::unique_lock lock(boundary_capture_mutex, std::try_to_lock);
-    if (lock.owns_lock()) {
+    std::scoped_lock lock(boundary_capture_mutex);
+    {
       armed_count = armed_eye_captures.size();
       if (!armed_eye_captures.empty()) {
         armed_eye = armed_eye_captures.front().eye;
@@ -2807,6 +2815,8 @@ void initialize_streamline_probe(void* present_target,
       submission_limit >= 2 && submission_limit <= 8 &&
       streamline_stereo_submit_probe_requested.load(std::memory_order_relaxed),
       std::memory_order_release);
+  streamline_persistent_requested.store(
+      GetPrivateProfileIntW(L"probe",L"persistent",0,stereo_submit_flag_path.c_str()) == 1);
   write_streamline_probe_log("STEREO_SUBMISSION_PROBE\tenabled=%u\tframes=%u\r\n",
       streamline_stereo_submit_probe_requested.load(std::memory_order_relaxed) ? 1U : 0U,
       streamline_input_snapshot_state.submission_limit);
@@ -6019,6 +6029,7 @@ HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
   const auto focused =
       focused_trace_phase.load(std::memory_order_relaxed) != 0;
   darktidevr::producer::observe_ngx_command_reset(commands);
+  darktidevr::producer::reset_generated_stereo(commands);
   const auto recording_generation =
       focused ? command_recording_generation.fetch_add(
                     1, std::memory_order_relaxed) + 1
@@ -9217,7 +9228,8 @@ void refresh_streamline_submission_inputs(int eye, std::uint64_t present_frame,
 
 void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
                                         std::uint64_t pose_sequence,
-                                        ID3D12CommandQueue* queue) {
+                                        ID3D12CommandQueue* queue,
+                                        ID3D12Resource* final_color, D3D12_RESOURCE_STATES final_state) {
   if (eye < 0 || eye > 1 || !queue || !original_execute_command_lists) {
     return;
   }
@@ -9236,21 +9248,25 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
           descriptions[captured_eye][role] = state.snapshots[captured_eye][role]->GetDesc();
       if (!streamline_continuous.initialize(device.Get(), state.submission_limit,
           {state.constants[0].viewport, state.constants[1].viewport}, descriptions,
-          write_streamline_probe_log)) return;
+          write_streamline_probe_log, streamline_persistent_requested.load())) return;
       streamline_submission_trace_start.store(present_frame, std::memory_order_relaxed);
     }
     const auto index = static_cast<std::size_t>(eye);
     const auto& constants = streamline_constants_observations[index];
     if (!constants.valid || constants.present_frame != present_frame ||
         constants.pose_sequence != pose_sequence || constants.viewport != state.constants[index].viewport) return;
-    std::array<darktidevr::producer::StreamlineTagInput, 3> inputs{};
-    for (std::size_t role = 0; role < inputs.size(); ++role) {
+    if(!final_color) return;
+    std::array<darktidevr::producer::StreamlineTagInput, 4> inputs{};
+    for (std::size_t role = 0; role < 3; ++role) {
       const auto& source = streamline_tagged_inputs[index][role];
       if (!source.resource || source.present_frame != present_frame || source.pose_sequence != pose_sequence) return;
       const auto description = source.resource->GetDesc();
       inputs[role] = {source.resource.Get(), static_cast<unsigned>(description.Width),
           description.Height, static_cast<unsigned>(source.state), static_cast<unsigned>(description.Format)};
     }
+    const auto final_description=final_color->GetDesc();
+    inputs[3]={final_color,static_cast<unsigned>(final_description.Width),final_description.Height,
+        static_cast<unsigned>(final_state),static_cast<unsigned>(final_description.Format)};
     streamline_continuous.capture(static_cast<unsigned>(eye), present_frame, pose_sequence,
         constants.constants, inputs, queue, original_execute_command_lists);
     return;
@@ -10384,6 +10400,7 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
     }
     original_execute_command_lists(queue, count, lists);
     darktidevr::producer::signal_ngx_queue_completion(queue, ngx_completion_ticket);
+    darktidevr::producer::submit_generated_stereo(queue, count, lists);
     if (log_streamline_eye_boundary) {
       LARGE_INTEGER boundary_qpc{};
       QueryPerformanceCounter(&boundary_qpc);
@@ -10406,7 +10423,7 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
             std::memory_order_acquire)) {
       schedule_streamline_input_snapshot(
           requested_eye, present_count.load(std::memory_order_relaxed),
-          requested_pose_sequence, queue);
+          requested_pose_sequence, queue,completed_back_buffer.Get(),completed_source_state);
     }
     if (gpu_trace_lock.owns_lock()) {
       end_gpu_pass_trace_batch_locked(queue, gpu_trace_token);
@@ -10481,6 +10498,7 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
           ready_after = ready_value;
         }
         if (ready_after > ready_before) {
+          boundary_published_pair_pose.store(requested_pose_sequence);
           (void)shared_head_pose_reader().publish_rendered_pair(
               {ready_after,
                current_gameplay_generation.load(std::memory_order_acquire),
@@ -11864,6 +11882,28 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
           delta_microseconds);
     }
   }
+  if (streamline_persistent_requested.load()) {
+    ComPtr<IDXGISwapChain3> mirror_swapchain;
+    if (SUCCEEDED(swapchain->QueryInterface(IID_PPV_ARGS(&mirror_swapchain)))) {
+      DXGI_SWAP_CHAIN_DESC1 description{};
+      if (SUCCEEDED(mirror_swapchain->GetDesc1(&description))) {
+        const bool packed_world=current_presentation_mode.load()==1 &&
+            description.Width==swapchain_present_width.load() &&
+            description.Width==camera_input_width.load()*2 &&
+            description.Height==camera_input_height.load();
+        const UINT source_width=packed_world ? description.Width/2 : description.Width;
+        UINT previous_width{},previous_height{};
+        if (SUCCEEDED(mirror_swapchain->GetSourceSize(&previous_width,&previous_height)) &&
+            (previous_width!=source_width || previous_height!=description.Height)) {
+          // DXGI selects the desktop region without a GPU write to NVIDIA's
+          // private swapchain or changing the packed textures used by FG/XR.
+          const auto crop_result=mirror_swapchain->SetSourceSize(source_width,description.Height);
+          write_streamline_probe_log("STEREO_DESKTOP_CROP\twidth=%u\theight=%u\tresult=%ld\r\n",
+              source_width,description.Height,crop_result);
+        }
+      }
+    }
+  }
   const auto result =
       original_streamline_native_present(swapchain, interval, flags);
   if (sample) {
@@ -12188,6 +12228,7 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
           darktidevr::core::SharedPresentationMode::flat_loading_or_cinematic &&
       !darktidevr::core::flat_interactive_active(presentation_mode))) &&
       candidate && present_queue &&
+      !(streamline_persistent_requested.load() && presentation_mode==darktidevr::core::SharedPresentationMode::stereo_world) &&
       (engine_flat_mirror || desktop_mirror_ready.load(std::memory_order_acquire))) {
     const auto mirror_result =
         present_desktop_eye_mirror(candidate.Get(), present_queue.Get(), engine_flat_mirror);
@@ -12209,15 +12250,20 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
     if (tagging_modes == 1 || tagging_modes == 2) {
       const darktidevr::producer::StreamlineSubmissionApi api{
           original_sl_set_constants, original_sl_set_tag_for_frame, original_sl_set_tag};
-      if (streamline_continuous.initialized() && !game_process_foreground())
+      if (streamline_continuous.initialized() && !streamline_persistent_requested.load() && !game_process_foreground())
         streamline_continuous.cancel("foreground_lost");
       streamline_continuous.before_present(candidate.Get(), present_queue.Get(), present,
           streamline_present_bindings(), api,
           tagging_modes == 1 ? darktidevr::producer::StreamlineSubmission::Tagging::legacy
                              : darktidevr::producer::StreamlineSubmission::Tagging::frame_based,
-          original_execute_command_lists);
-      if (streamline_continuous.staged())
+          original_execute_command_lists,current_gameplay_generation.load());
+      if (streamline_continuous.staged()) {
         darktidevr::producer::arm_ngx_output_probe(1, present);
+        darktidevr::producer::generated_stereo_context(streamline_continuous.previous_pose(),
+            streamline_continuous.pose(),current_gameplay_generation.load(),
+            streamline_continuous.original_ready(),
+            streamline_continuous.inputs());
+      }
     }
   }
   if (candidate && !streamline_continuous_requested.load(std::memory_order_acquire) &&
@@ -12520,6 +12566,12 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                                               std::memory_order_release);
   const auto present_began_ms = GetTickCount64();
   const auto result = original_present(swapchain, interval, flags);
+  if(streamline_persistent_requested.load()) {
+    const auto elapsed=GetTickCount64()-present_began_ms;
+    std::uint64_t published{};
+    { std::scoped_lock lock(state_mutex); published=ready_value; }
+    darktidevr::producer::generated_stereo_health(present,published,game_process_foreground(),elapsed);
+  }
   if (trace_streamline_submission_images()) {
     write_streamline_probe_log("STEREO_PRESENT_TIMING\tpresent_frame=%llu\tbegin_ms=%llu\tend_ms=%llu\r\n",
         present, present_began_ms, GetTickCount64());
@@ -14334,6 +14386,7 @@ int capture_armed_eye_from_swapchain(int eye) {
       ready_after = ready_value;
     }
     if (ready_after > ready_before) {
+      boundary_published_pair_pose.store(requested.pose_sequence);
       (void)shared_head_pose_reader().publish_rendered_pair(
           {ready_after,
            current_gameplay_generation.load(std::memory_order_acquire),

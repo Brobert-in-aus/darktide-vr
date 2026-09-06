@@ -34,11 +34,22 @@ int main() {
   Pair pairs;
   Pair::Key left{1, 10, 2, 100, 20, 30, 40, 50, 60};
   auto right = left;
-  right.call = 2; right.lifetime = 11;
+  right.call = 2; right.lifetime = 11; right.region_x=right.width;
   state = {}; state.transition(0, ~std::uint32_t{}, 8);
   pairs.left(left, state);
   if (!pairs.right(right) || pairs.right(right)) return 18;
-  for (unsigned mismatch = 0; mismatch < 10; ++mismatch) {
+  auto interleaved_left=left; interleaved_left.evaluation_order=1;
+  auto interleaved_right=right; interleaved_right.evaluation_order=2; interleaved_right.call=7;
+  pairs.left(interleaved_left,state);
+  if(!pairs.right(interleaved_right)) return 25;
+  interleaved_right.evaluation_order=3;
+  pairs.left(interleaved_left,state);
+  if(pairs.right(interleaved_right)) return 26;
+  auto first_right=right; first_right.call=1;
+  auto second_left=left; second_left.call=2;
+  pairs.left(first_right,state);
+  if(!pairs.right(second_left)) return 24;
+  for (unsigned mismatch = 0; mismatch < 11; ++mismatch) {
     pairs.left(left, state);
     auto other = right;
     switch (mismatch) {
@@ -52,6 +63,7 @@ int main() {
       case 7: ++other.width; break;
       case 8: ++other.height; break;
       case 9: other.lifetime = 0; break;
+      case 10: other.region_x = left.region_x; break;
     }
     if (pairs.right(other) || pairs.right(right)) return 19;
   }

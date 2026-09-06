@@ -42,6 +42,8 @@ param(
 
     [switch] $NgxOutputCopyProbe,
 
+    [switch] $DlssGeneratedStereo,
+
     [switch] $StreamlineStereoSubmitProbe,
     [switch] $StreamlineContinuousSubmitProbe,
     [ValidateRange(1, 8)] [int] $StreamlineStereoSubmitFrames = 1,
@@ -148,6 +150,11 @@ if ($OfflineDualViewBenchmark) {
     # requested: the native GPU profiler injects additional command lists and
     # submissions, so enabling it here changes the workload being measured.
     $AutoEnterHub = $true
+}
+if ($DlssGeneratedStereo) {
+    $NgxOutputProbeAtStereoSubmit = $true
+    $StreamlineContinuousSubmitProbe = $true
+    $StreamlineStereoSubmitFrames = 8
 }
 if ($NgxOutputCopyProbe) {
     $NgxOutputProbeAtStereoSubmit = $true
@@ -492,8 +499,9 @@ if ($NgxOutputProbe) {
     $ngxWaitForStereo = if ($NgxOutputProbeAtStereoSubmit) { 1 } else { 0 }
     $ngxCopyOutput = if ($NgxOutputCopyProbe) { 1 } else { 0 }
     Set-Content -LiteralPath $ngxOutputProbeFlagPath `
-        -Value "[probe]`nwait_for_stereo=$ngxWaitForStereo`ncopy_output=$ngxCopyOutput" -Encoding ascii
-    Write-Output 'Bounded NGX output identity observation enabled; no generated XR publication.'
+        -Value "[probe]`nwait_for_stereo=$ngxWaitForStereo`ncopy_output=$ngxCopyOutput`ngenerated_stereo=$([int]$DlssGeneratedStereo.IsPresent)" -Encoding ascii
+    if ($DlssGeneratedStereo) { Write-Output 'Experimental sustained generated stereo publication enabled.' }
+    else { Write-Output 'Bounded NGX output identity observation enabled; no generated XR publication.' }
     if ($NgxOutputCopyProbe) { Write-Output 'One private generated stereo output copy/readback armed.' }
 }
 if ($StreamlineStereoSubmitProbe) {
@@ -506,8 +514,9 @@ if ($StreamlineStereoSubmitProbe) {
             $streamlineStereoSubmitProbeFlagPath -Raw
     }
     Set-Content -LiteralPath $streamlineStereoSubmitProbeFlagPath `
-        -Value "[probe]`nframes=$StreamlineStereoSubmitFrames`ncontinuous=$([int]$StreamlineContinuousSubmitProbe.IsPresent)" -Encoding ascii
-    Write-Output "Stereo tag submission enabled for $StreamlineStereoSubmitFrames batches; generated XR publication remains disabled."
+        -Value "[probe]`nframes=$StreamlineStereoSubmitFrames`ncontinuous=$([int]$StreamlineContinuousSubmitProbe.IsPresent)`npersistent=$([int]$DlssGeneratedStereo.IsPresent)" -Encoding ascii
+    if ($DlssGeneratedStereo) { Write-Output 'Sustained stereo tags enabled with eight reusable input owners.' }
+    else { Write-Output "Stereo tag submission enabled for $StreamlineStereoSubmitFrames batches; generated XR publication remains disabled." }
 }
 if ($SyntheticRuntimeFrusta) {
     $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)

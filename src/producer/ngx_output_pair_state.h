@@ -4,7 +4,7 @@
 #include <optional>
 
 namespace darktidevr::producer {
-// One pending left evaluation, not a persistent resource-state cache. Caller
+// One pending first-eye evaluation, not a persistent resource-state cache. Caller
 // serializes access and observes every intervening barrier/reset/submission.
 class NgxOutputPairState {
  public:
@@ -12,6 +12,9 @@ class NgxOutputPairState {
     std::uint64_t call{}, lifetime{}, batch{}, present{};
     std::uintptr_t commands{}, output{};
     std::uint32_t thread{}, width{}, height{};
+    std::uintptr_t depth{}, motion{}, hudless{};
+    std::uint32_t region_x{};
+    std::uint64_t evaluation_order{};
   };
   struct Seed { Key key; NgxOutputState state; };
   void left(Key key, NgxOutputState state) {
@@ -25,10 +28,13 @@ class NgxOutputPairState {
     pending_.reset();
     if (!pending) return {};
     const auto& prior = pending->key;
-    if (key.call != prior.call + 1 || !key.lifetime || key.lifetime == prior.lifetime ||
+    const auto order=key.evaluation_order ? key.evaluation_order : key.call;
+    const auto prior_order=prior.evaluation_order ? prior.evaluation_order : prior.call;
+    if (key.call <= prior.call || order != prior_order + 1 || !key.lifetime || key.lifetime == prior.lifetime ||
         key.batch != prior.batch || key.present != prior.present ||
         key.commands != prior.commands || key.output != prior.output ||
         key.thread != prior.thread || key.width != prior.width || key.height != prior.height ||
+        key.region_x == prior.region_x ||
         !pending->state.known || pending->state.ambiguous) return {};
     return pending;
   }

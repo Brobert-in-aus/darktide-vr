@@ -44,7 +44,27 @@ and never steals focus. Per-launch logs are under ignored `artifacts/unattended`
 
 The bounded consecutive DLSS experiment passes eight stereo frames with 14
 reported generated-eye Presents and 14 complete NGX evaluations completing on
-the GPU. One private generated-output copy/readback now passes exact pair/state/fence checks and offline pixel inspection. Continuous ownership, source-frame/pose association and XR publication remain open. A single
+the GPU. The `-DlssGeneratedStereo` development candidate now continuously
+publishes generated stereo to XR using eight reusable input owners, three
+generated-output slots and three queued originals with exact resource/pose
+association. The queued run delivered over 2,640 generated pairs. The user
+confirms HUD flicker is fixed by supplying final eye colour alongside separate
+HUDless tags, but perceived framerate remains low. Active intervals delivered
+roughly 29–31 originals/s plus generated images despite about 119 compositor
+submissions/s; compositor submissions are not a distinct-image performance pass.
+Spacing alone did not resolve perceived smoothness. Throughput measurement found
+about 48 rendered pairs/s but only 28–35 original mailbox deliveries/s. The new
+three-slot original transport bypasses that loss: live XR now receives about
+48 originals plus 48 generated images/s, and 65 originals/s when NVIDIA stops
+generation after foreground loss. The HUD fix remains accepted; overall
+smoothness and the remaining reduction from the user's roughly 70 FPS baseline
+remain open. The new frame loop waits for distinct images while tracking stays
+independent: latest live intervals deliver 100–102 distinct pairs/s with zero
+cached-image submissions, including about 50–51 originals/s. Runtime-reported
+rate and worn smoothness still require user confirmation. Six focused tests,
+including an isolated WARP original-ring ownership/pixel check, pass.
+See the [continuous delivery handoff](handoffs/2026-09-06-dlss-output-boundary.md#continuous-generated-stereo-delivery).
+A single
 startup side-by-side frame is still reported by the user; investigate separately
 from the previously corrected stale-pose wait dependency.
 

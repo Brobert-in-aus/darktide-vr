@@ -1,0 +1,8 @@
+add_executable(darktidevr-original-stereo-ring-tests main.cpp ../../src/producer/generated_stereo.cpp)
+target_compile_options(darktidevr-original-stereo-ring-tests PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-original-stereo-ring-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+target_link_libraries(darktidevr-original-stereo-ring-tests PRIVATE darktidevr_core darktidevr_bridge d3d12 dxgi)
+if(BUILD_TESTING)
+  add_test(NAME original_stereo_ring COMMAND darktidevr-original-stereo-ring-tests)
+  set_tests_properties(original_stereo_ring PROPERTIES LABELS "d3d12;transport;streamline")
+endif()

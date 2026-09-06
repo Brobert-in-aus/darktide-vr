@@ -1,5 +1,6 @@
 #include "../isolated_transports.h"
 #include "core/shared_generated_frame_state.h"
+#include "core/generated_frame_cadence.h"
 
 #include <cstdint>
 #include <iostream>
@@ -18,6 +19,21 @@ void expect(bool condition, const char* message) {
 int main() {
   try {
     darktidevr::tests::isolate_transports();
+    darktidevr::core::GeneratedFrameCadence cadence;
+    cadence.observe_source(100'000'000);
+    cadence.observe_source(132'000'000);
+    cadence.generated(140'000'000,8'000'000);
+    expect(!cadence.original_ready(148'000'000) && cadence.original_ready(156'000'000),
+           "30-ish Hz source at 120-ish Hz display must space distinct images two slots apart");
+    cadence = {};
+    cadence.observe_source(100'000'000);
+    cadence.observe_source(116'000'000);
+    cadence.generated(124'000'000,8'000'000);
+    expect(cadence.original_ready(132'000'000), "60-ish Hz source should use adjacent display slots");
+    cadence.observe_source(1'000'000'000);
+    cadence.generated(1'008'000'000,11'111'111);
+    expect(cadence.source_period == 0 && cadence.original_ready(1'019'111'111),
+           "A loading gap must reset cadence and use the current runtime period");
     using darktidevr::core::SharedGeneratedFrameState;
     using darktidevr::core::SharedGeneratedFrameStateReader;
     using darktidevr::core::SharedGeneratedFrameStateWriter;
@@ -43,7 +59,7 @@ int main() {
       const auto native_call = sequence + 4000;
       const auto frame_index = static_cast<std::uint32_t>(sequence + 9000);
       expect(writer.publish(sequence, native_call, frame_index, 2496, 2688,
-                            28),
+                            28,sequence+100,sequence+101,4,sequence+200,sequence+300),
              "Valid generated frame publication failed");
       SharedGeneratedFrameState read{};
       expect(reader.read(read), "Generated frame reader failed");
@@ -53,11 +69,19 @@ int main() {
                  read.height == 2688 && read.format == 28 &&
                  slot.sequence == sequence &&
                  slot.native_call == native_call &&
-                 slot.frame_index == frame_index,
+                 slot.frame_index == frame_index && slot.previous_pose == sequence+100 &&
+                 slot.current_pose == sequence+101 && slot.gameplay_generation == 4 &&
+                 slot.tick_ms == sequence+200 && slot.rendered_ready == sequence+300,
              "Generated frame metadata did not round-trip");
     }
 
     SharedGeneratedFrameStateWriter restarted_writer;
+    SharedGeneratedFrameStateWriter original_writer{L"Local\\DarktideVR-test-original-frame-state"};
+    SharedGeneratedFrameStateReader original_reader{L"Local\\DarktideVR-test-original-frame-state"};
+    expect(original_writer.publish(1,99,0,2496,2688,28,0,111,4,222,1),"Original channel publish failed");
+    SharedGeneratedFrameState original_channel{};
+    expect(original_reader.read(original_channel) && original_channel.slots[0].native_call==99,
+           "Original metadata must use its own mapping");
     expect(restarted_writer.publish(1, 1, 1, 2496, 2688, 28),
            "Restarted writer publication failed");
     SharedGeneratedFrameState restarted{};

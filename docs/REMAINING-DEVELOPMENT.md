@@ -2,8 +2,9 @@
 
 Updated 6 September 2026. User accepts the e8bcfe4 packed-output checkpoint:
 VR world rendering, loading screens and desktop mirror all work. Subsequent
-opt-in submission diagnostics preserve that rendering path. Actual stereo DLSS
-generation and generated-pair XR publication are still incomplete.
+opt-in development now delivers generated stereo to XR continuously. The user
+confirms the generated-frame HUD flicker is fixed, but perceived performance
+remains low; frame generation is not release-complete.
 
 The [menu audit and rework](MENU-INTERACTION-AUDIT.md) replaces native-menu
 rectangle reconstruction with stock UI input delivery and consistent DPI
@@ -23,10 +24,13 @@ controller pointer ownership; the cause is not established. See the
 The user has taken ownership of melee contact verification and explicitly moved
 development to HUD and then DLSS. Preserve accepted HUD/menu behavior and
 continue DLSS, completing one body of work before switching to the next. The
-latest instruction permits switching on a documented DLSS blocker: output
-association is now blocked at the installed NGX caller-validation boundary.
-The four-batch diagnostic passes, but generated XR publication remains disabled.
-See the [blocker and resume plan](handoffs/2026-09-06-dlss-unattended.md).
+latest instruction permits switching on a documented DLSS blocker. The former
+output-association blocker is resolved: the opt-in generated-stereo path has
+delivered thousands of generated pairs. Pacing/performance is the current task;
+the original-ring and distinct-image wait now deliver about 100–102 distinct
+pairs/s in live intervals, with no cached submissions. Worn acceptance and the
+remaining roughly 70-to-50 original render-rate regression remain open.
+See the [continuous delivery handoff](handoffs/2026-09-06-dlss-output-boundary.md#continuous-generated-stereo-delivery).
 The ranged aiming candidate is awaiting worn validation. Unattended follow-up
 has progressed through HUD options/editor integration and input revision below.
 The melee query prototype remains non-damaging; user verification is not a claim
@@ -250,7 +254,7 @@ Runtime changes currently require restart; unequal eye recommendations fail
 explicitly. Existing 640..7680 validation bounds (3840 eye width in packed mode)
 are supported-size limits, not clamped rendering targets.
 
-Remaining work, in order:
+Historical integration steps (superseded by continuous delivery below):
 
 1. Bounded packed Present copy completed on 6 September with matching extents,
    fence completion and continuing fresh XR pairs. Worn visual acceptance of
@@ -280,6 +284,13 @@ eye-target lifecycle/resolution fixtures pass, and five focused Streamline/GPU
 CTest cases pass. WARP verifies proxy identity/resize/RTV support and full-image
 mirror blitting. The user accepted the final live world/loading/mirror result;
 that acceptance does not extend to not-yet-enabled frame generation.
+
+Current remaining work: validate the measured-cadence scheduler and distinct
+image rates, improve low source throughput, then exercise repeated menu/loading
+transitions and resolution/quality changes. The eight input owners and three
+generated slots now recycle with completion fences; broader lifecycle and engine
+buffer retirement still require review. Default launches retain the accepted
+baseline. See the continuous delivery handoff for current commands and evidence.
 
 The current machine retains LOD 9 and restored pool/workers 1024/13. Worker
 tuning is opt-in with -TuneWorkerThreads. Release auto-configuration must use

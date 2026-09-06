@@ -1,4 +1,5 @@
 #include "producer/streamline_continuous_submission.h"
+#include "producer/generated_stereo.h"
 
 namespace darktidevr::producer {
 namespace sl = streamline_2_7_30;
@@ -18,7 +19,7 @@ bool StreamlineContinuousSubmission::make_commands(ID3D12Device* device,
 
 bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned frames,
     const std::array<std::uint32_t, 2>& viewports,
-    const std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2>& descriptions, Log log) {
+    const std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2>& descriptions, Log log, bool persistent) {
   if (initialized_ || stopped_) return false;
   log_ = log;
   if (!device || frames < 2 || frames > frames_.size() || !viewports[0] ||
@@ -30,13 +31,14 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
       descriptions[1][2].Height != height_) { fail("eye_extent"); return false; }
   viewports_ = viewports;
   count_ = frames;
+  persistent_ = persistent;
   D3D12_HEAP_PROPERTIES heap{};
   heap.Type = D3D12_HEAP_TYPE_DEFAULT;
   for (unsigned i = 0; i < count_; ++i) {
     auto& frame = frames_[i];
     for (unsigned eye = 0; eye < 2; ++eye) {
-      for (unsigned role = 0; role < 3; ++role) {
-        const auto& description = descriptions[eye][role];
+      for (unsigned role = 0; role < 4; ++role) {
+        const auto& description = descriptions[eye][role==3 ? 2 : role];
         if (description.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
             description.MipLevels != 1 || description.DepthOrArraySize != 1 ||
             description.SampleDesc.Count != 1 ||
@@ -53,7 +55,8 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
       }
     }
     if (!make_commands(device, frame.stage_allocator, frame.stage_commands) ||
-        !make_commands(device, frame.cleanup_allocator, frame.cleanup_commands)) {
+        !make_commands(device, frame.cleanup_allocator, frame.cleanup_commands) ||
+        FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&frame.stage_done)))) {
       fail("present_allocation"); return false;
     }
   }
@@ -62,27 +65,54 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
   return true;
 }
 
+bool StreamlineContinuousSubmission::recycle(Frame& frame) {
+  if (!frame.presented) return true;
+  const auto stage_done = frame.stage_done->GetCompletedValue();
+  if (stage_done == UINT64_MAX || stage_done < frame.reuse_value) return false;
+  for (unsigned eye = 0; eye < 2; ++eye) {
+    if (!frame.input_fences[eye] ||
+        !frame.submission.observe_completion(frame.submission_id, eye,
+            reinterpret_cast<std::uintptr_t>(frame.input_fences[eye].Get()),
+            frame.input_fences[eye]->GetCompletedValue())) return false;
+  }
+  if (!frame.submission.retire()) return false;
+  for (unsigned eye = 0; eye < 2; ++eye) {
+    const auto captured = frame.capture_fences[eye]->GetCompletedValue();
+    if (captured == UINT64_MAX || captured < frame.reuse_value ||
+        FAILED(frame.capture_allocators[eye]->Reset()) ||
+        FAILED(frame.capture_commands[eye]->Reset(frame.capture_allocators[eye].Get(), nullptr))) return false;
+    frame.input_fences[eye].Reset();
+  }
+  if (FAILED(frame.stage_allocator->Reset()) ||
+      FAILED(frame.stage_commands->Reset(frame.stage_allocator.Get(), nullptr))) return false;
+  ++frame.reuse_value;
+  frame.captured = 0; frame.presented = false;
+  return true;
+}
+
 void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present,
     std::uint64_t pose, const sl::Constants& constants,
-    const std::array<StreamlineTagInput, 3>& inputs,
+    const std::array<StreamlineTagInput, 4>& inputs,
     ID3D12CommandQueue* queue, Execute execute) {
   if (!initialized_ || stopped_ || staged_ || eye > 1 || !queue || !execute) return;
-  auto& frame = frames_[current_];
+  auto& frame = frames_[current_ % count_];
+  if (eye == 0 && !recycle(frame)) { fail("ring_completion"); return; }
   if (frame.captured & (1U << eye)) return;
   if (eye == 1 && frame.captured != 1) return;
   if (!pose || (eye == 1 && (frame.source_present != present || frame.pose != pose))) {
     fail("pair_identity"); return;
   }
-  for (unsigned role = 0; role < 3; ++role) {
+  for (unsigned role = 0; role < 4; ++role) {
     const auto& input = inputs[role];
     const auto target = frame.textures[eye][role]->GetDesc();
     if (!input.native || input.state == UINT_MAX || input.width != target.Width ||
-        input.height != target.Height || input.format != static_cast<unsigned>(target.Format)) {
+        input.height != target.Height || (input.format != static_cast<unsigned>(target.Format) &&
+        !(role==3 && target.Format==DXGI_FORMAT_R8G8B8A8_TYPELESS && input.format==DXGI_FORMAT_R8G8B8A8_UNORM))) {
       fail("capture_extent"); return;
     }
   }
   auto* commands = frame.capture_commands[eye].Get();
-  for (unsigned role = 0; role < 3; ++role) {
+  for (unsigned role = 0; role < 4; ++role) {
     const auto& input = inputs[role];
     auto* source = static_cast<ID3D12Resource*>(input.native);
     frame.sources[eye][role] = source;
@@ -98,7 +128,7 @@ void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present
   if (FAILED(commands->Close())) { fail("capture_close"); return; }
   ID3D12CommandList* lists[]{commands};
   execute(queue, 1, lists);
-  if (FAILED(queue->Signal(frame.capture_fences[eye].Get(), 1))) { fail("capture_signal"); return; }
+  if (FAILED(queue->Signal(frame.capture_fences[eye].Get(), frame.reuse_value))) { fail("capture_signal"); return; }
   frame.constants[eye] = constants;
   frame.source_present = present;
   frame.pose = pose;
@@ -108,15 +138,18 @@ void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present
 void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
     ID3D12CommandQueue* queue, std::uint64_t present,
     const std::array<core::StreamlinePresentEyeBinding, 2>& bindings,
-    StreamlineSubmissionApi api, StreamlineSubmission::Tagging tagging, Execute execute) {
+    StreamlineSubmissionApi api, StreamlineSubmission::Tagging tagging, Execute execute, std::uint64_t generation) {
   if (!initialized_ || stopped_ || staged_) return;
-  auto& frame = frames_[current_];
+  auto& frame = frames_[current_ % count_];
   if (!frame.captured) return;
   if (!swapchain || !queue || !execute || frame.captured != 3 ||
       frame.source_present + 1 != present ||
       !core::streamline_present_binding_matches(present, viewports_, bindings) ||
       bindings[0].pose != frame.pose ||
-      (current_ && frames_[current_ - 1].present + 1 != present)) {
+      (current_ && frames_[(current_ - 1) % count_].present + 1 != present)) {
+    log_("STEREO_CONTINUOUS\tphase=binding_rejection\tcaptured=%u\tsource_present=%llu\tpresent=%llu\tprevious_present=%llu\tpose=%llu\tbound_pose=%llu\tbindings_match=%u\r\n",
+        frame.captured,frame.source_present,present,current_ ? frames_[(current_-1)%count_].present : 0,
+        frame.pose,bindings[0].pose,core::streamline_present_binding_matches(present,viewports_,bindings) ? 1U : 0U);
     fail("present_binding_or_gap"); return;
   }
   ComPtr<ID3D12Resource> backbuffer;
@@ -138,7 +171,7 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
   StreamlineStereoTags::Inputs inputs{};
   auto* commands = frame.stage_commands.Get();
   for (unsigned eye = 0; eye < 2; ++eye) {
-    if (FAILED(queue->Wait(frame.capture_fences[eye].Get(), 1))) { fail("capture_wait"); return; }
+    if (FAILED(queue->Wait(frame.capture_fences[eye].Get(), frame.reuse_value))) { fail("capture_wait"); return; }
     for (unsigned role = 0; role < 3; ++role) {
       const auto source = frame.textures[eye][role]->GetDesc();
       inputs[eye][role] = {frame.textures[eye][role].Get(), static_cast<unsigned>(source.Width),
@@ -153,11 +186,11 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
   for (unsigned eye = 0; eye < 2; ++eye) {
     D3D12_RESOURCE_BARRIER source{};
     source.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    source.Transition = {frame.textures[eye][2].Get(), D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+    source.Transition = {frame.textures[eye][3].Get(), D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
                          D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE};
     commands->ResourceBarrier(1, &source);
     D3D12_TEXTURE_COPY_LOCATION from{}, to{};
-    from.pResource = frame.textures[eye][2].Get();
+    from.pResource = frame.textures[eye][3].Get();
     from.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
     to.pResource = backbuffer.Get();
     to.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
@@ -167,19 +200,22 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
   }
   std::swap(destination.Transition.StateBefore, destination.Transition.StateAfter);
   commands->ResourceBarrier(1, &destination);
+  original_ready_=persistent_ ? stage_original_stereo(commands,backbuffer.Get(),present,frame.pose,generation) : 0;
   if (!frame.submission.prepare(current_ + 1, width_, height_, viewports_, frame.constants, inputs) ||
       !frame.submission.stage(api, reinterpret_cast<void*>(bindings[0].token), commands,
           tagging, StreamlineSubmission::ConstantsMode::already_supplied)) {
     fail("tag_stage"); return;
   }
-  if (current_ && !frames_[current_ - 1].submission.replace_tags_with(frame.submission)) {
+  if (current_ && !frames_[(current_ - 1) % count_].submission.replace_tags_with(frame.submission)) {
     fail("tag_replacement"); return;
   }
   if (FAILED(commands->Close())) { fail("stage_close"); return; }
   ID3D12CommandList* lists[]{commands};
   execute(queue, 1, lists);
+  if(original_ready_ && !submit_original_stereo(queue,original_ready_)) { fail("original_publish"); return; }
   if (!frame.submission.begin_present()) { fail("begin_present"); return; }
   frame.present = present;
+  frame.submission_id = current_ + 1;
   staged_ = true;
   log_("STEREO_CONTINUOUS\tphase=present\tframe=%u\tpresent_frame=%llu\tpose=%llu\tpublication=0\r\n",
        current_ + 1, present, frame.pose);
@@ -191,7 +227,7 @@ void StreamlineContinuousSubmission::after_present(ID3D12CommandQueue* queue,
   if (stopped_ && !staged_) { clear_bindings(queue, execute); return; }
   if (!staged_) return;
   if (!get_state) { fail("missing_state_api"); clear_bindings(queue, execute); return; }
-  auto& frame = frames_[current_];
+  auto& frame = frames_[current_ % count_];
   for (unsigned eye = 0; eye < 2; ++eye) {
     const auto viewport = sl::make_viewport(viewports_[eye]);
     auto state = sl::make_dlssg_state();
@@ -213,8 +249,10 @@ void StreamlineContinuousSubmission::after_present(ID3D12CommandQueue* queue,
         state.last_present_inputs_processing_completion_fence_value);
   }
   frame.presented = true;
+  if (FAILED(queue->Signal(frame.stage_done.Get(), frame.reuse_value))) fail("stage_fence");
+  previous_pose_ = frame.pose;
   staged_ = false;
-  if (stopped_ || current_ + 1 == count_) {
+  if (stopped_ || (!persistent_ && current_ + 1 == count_)) {
     clear_bindings(queue, execute);
     stopped_ = true;
   } else ++current_;
@@ -223,9 +261,9 @@ void StreamlineContinuousSubmission::after_present(ID3D12CommandQueue* queue,
 void StreamlineContinuousSubmission::clear_bindings(ID3D12CommandQueue* queue, Execute execute) {
   if (cleanup_submitted_ || !initialized_) return;
   cleanup_submitted_ = true;
-  auto& frame = frames_[current_];
+  auto& frame = frames_[current_ % count_];
   bool cleared = true;
-  for (unsigned i = 0; i <= current_; ++i) {
+  for (unsigned i = 0; i < count_; ++i) {
     auto& submission = frames_[i].submission;
     if (submission.phase() != StreamlineSubmission::Phase::idle)
       cleared = submission.clear_tags(frame.cleanup_commands.Get()) && cleared;
