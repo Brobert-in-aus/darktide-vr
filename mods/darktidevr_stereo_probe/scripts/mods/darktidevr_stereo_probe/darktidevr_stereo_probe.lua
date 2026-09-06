@@ -20,9 +20,9 @@ local failed = false
 local active_manager = nil
 local active_world = nil
 local active_base_rotation = nil
--- `fixed` gives physical head tracking exclusive orientation ownership.
--- Future snap/smooth thumbstick turning can select `yaw_only`; that path
--- deliberately accepts only game yaw and continues rejecting pitch and roll.
+-- Physical head tracking and explicit stick yaw own orientation. Keep stock
+-- animation/mouse-camera rotation out of the scene anchor; stick turning edits
+-- that anchor directly and never enables the legacy game-yaw feedback path.
 local game_rotation_mode = "fixed"
 -- World markers are authored as one screen-GUI pass from the cached player
 -- camera. Reproject and enqueue them between the sequential eye submissions so
@@ -4889,9 +4889,8 @@ local function update_stereo(manager)
     -- The temporary gameplay aim policy authors Darktide's first-person
     -- orientation from the cyclopean HMD pose, so locomotion and the implicit
     -- screen-centre reticle do not follow either hand. Body heading comes from
-    -- the same immutable scene heading plus physical HMD yaw; a future
-    -- thumbstick-turn accumulator belongs between those two, while eventual
-    -- weapon-relative aim must remain independent of the locomotion frame.
+    -- the shared scene heading (including stick turns) plus physical HMD yaw.
+    -- Weapon-relative aim remains independent of the locomotion frame.
     controller_observation.body_head_yaw =
         Quaternion.yaw(active_base_rotation:unbox()) +
         (controller_observation.physical_head_yaw or 0)
@@ -5354,6 +5353,23 @@ presentation.controller_bindings = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings"
 ).install(mod)
 presentation.gameplay_input_bindings = presentation.controller_bindings.bindings
+presentation.turning = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_turning"
+).install(mod)
+
+function presentation.apply_controller_turning(main_t)
+    local delta = presentation.turning.sample(
+        controller_observation.gameplay_input_active and active and active_base_rotation ~= nil,
+        controller_observation.right_stick_x, controller_observation.right_aim_usable,
+        controller_observation.last_transport_generation,
+        controller_observation.head_recenter_generation, active_world, main_t)
+    if delta ~= 0 and active_base_rotation then
+        -- One shared world-up rotation: head, both hands, body-follow translation
+        -- and gameplay heading all read this anchor. Never inject mouse motion.
+        active_base_rotation:store(Quaternion.multiply(
+            Quaternion.axis_angle(Vector3.up(), delta), active_base_rotation:unbox()))
+    end
+end
 mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_prompts"
 ).install(mod,presentation.controller_bindings,function()
@@ -5419,6 +5435,7 @@ function presentation.inject_gameplay_input(self, main_t)
         controller_observation.gameplay_sequence,
         controller_observation.gameplay_movement)
     controller_observation.gameplay_input_active = active and result == 0
+    presentation.apply_controller_turning(main_t)
     local pressed, held, released = presentation.controller_bindings.sample(
         controller_observation.gameplay_input_active,
         tonumber(controller_observation.gameplay_held[0]),

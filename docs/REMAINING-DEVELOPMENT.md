@@ -324,3 +324,10 @@ and blur around HUD/world markers separately; both remain unresolved. Latest
 combined capture showed stationary current-coordinate UI and stable timing only,
 not worn motion acceptance. The separate-layer route stays inactive. Next active
 backlog item is right-stick turning: smooth default, 45/90-degree snap options.
+
+### Right-stick turning implementation checkpoint
+
+The requested smooth default and 45/90-degree snap options are implemented, with
+configurable smooth speed and a turning-Off mode for horizontal shortcuts.
+Offline input/heading/options/aim regressions and 32-chunk LuaJIT validation pass.
+Live initialization and worn checks remain; do not mark comfort/pivot accepted.

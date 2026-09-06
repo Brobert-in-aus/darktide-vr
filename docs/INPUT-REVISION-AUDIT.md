@@ -189,3 +189,41 @@ shortcut regression. Inspect desktop wheel/held-pointer ownership in the native
 menu proxy before changing routing. This launch remained in flat menu mode 5
 with `shared_ready=0`; it does not establish fresh gameplay stereo acceptance.
 The five targeted CTest cases above passed again at final handoff.
+
+## Right-stick turning candidate (6 September)
+
+Smooth turning is now the default, with 45-degree and 90-degree snap modes and an
+Off option. Smooth speed is configurable from 30 to 180 degrees/s, default 90.
+The right horizontal axis edits the shared scene heading; physical head tracking,
+hand/world transforms and locomotion continue using their existing common basis.
+The legacy live-game-camera yaw feedback route stays disabled. No mouse movement
+is synthesized and keyboard/mouse or menu input routes are not replaced.
+
+Smooth input uses a 0.25 deadzone and proportional deflection. Snap requires 0.65
+deflection and a return inside 0.25 before another turn, including opposite turns.
+Menus, lost tracking, transport/recenter/world changes, settings changes and long
+clock gaps require neutral before resuming. Repeated callbacks at one timestamp
+cannot integrate twice. Clock gaps above 100 ms never accumulate deferred yaw.
+
+When turning is enabled, saved horizontal shortcuts are inactive and omitted from
+prompt lookup. Turning Off restores those mappings after release; vertical stick
+shortcuts and native button mappings remain available. Options explain the policy.
+
+Validation: pinned LuaJIT passes 32 chunks. Nine focused CTests pass: turning,
+controller_bindings, controller_prompts, gameplay_heading, gameplay_ui_input,
+hud_options, wrist_transform, melee_aim and ranged_aim. Tests cover frame-rate
+independence at 30/60/120 Hz, snap thresholds and reversal, tracking/context/clock
+changes, option refresh, shortcut conflicts, and preservation of prior aim seams.
+Worn direction, comfort, hand alignment, room-scale turning pivot and hub/range
+transitions remain to be checked. This is implementation, not visual acceptance.
+
+Live initialization: the turning build reached the private range with fresh
+synchronized stereo initialization, shared_ready=359 and about 51.6 original +
+51.6 generated pairs/s, zero interval fallback and zero pose mismatches. Deployed
+turning-module hash matches source; no matching Lua error was found. F3 editor
+uses presentation mode 5, so the gameplay-only turning gate also excludes it.
+No physical stick deflections were synthesized; direction/comfort/pivot remain
+for a worn check. Evidence: artifacts/unattended/right-stick-turning-live-20260906.log.
+Experimental HUD-alpha capture/submission flags were removed for this gameplay
+run; no graphics settings were changed. Headset proximity override remains off
+for the continuing development session. No desktop-control session is held.

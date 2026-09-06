@@ -68,7 +68,7 @@ function Bindings.install(mod)
     local previous = mod.on_setting_changed
     mod.on_setting_changed = function(id)
         if previous then previous(id) end
-        if type(id)=="string" and id:sub(1,8)=="vr_bind_" then
+        if type(id)=="string" and (id:sub(1,8)=="vr_bind_" or id=="vr_turn_mode") then
             dirty=true
             api.revision=api.revision+1
         end
@@ -78,7 +78,8 @@ function Bindings.install(mod)
         if not wanted or wanted==0 then return controls end
         for _,control in ipairs(Bindings.controls) do
             local selected = masks[mod:get("vr_bind_"..control.id)] or masks[control.default]
-            if bit.band(selected,wanted)==wanted then controls[#controls+1]=control.id end
+            if (control.axis~="x" or mod:get("vr_turn_mode")=="off") and
+                bit.band(selected,wanted)==wanted then controls[#controls+1]=control.id end
         end
         return controls
     end
@@ -94,7 +95,7 @@ function Bindings.install(mod)
         local next_stick = 0
         if axes_valid then
             for _,control in ipairs(Bindings.controls) do
-                if control.axis then
+                if control.axis and (control.axis~="x" or mod:get("vr_turn_mode")=="off") then
                     local value = (control.axis=="x" and stick_x or stick_y)*control.sign
                     local was_held = bit.band(stick_held,control.bit)~=0
                     if value >= (was_held and 0.45 or 0.65) then

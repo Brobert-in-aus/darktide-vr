@@ -61,10 +61,14 @@ panel.apply_settings(0/0,math.huge,'bad')
 assert(panel.scale==0.63 and panel.distance==2 and panel.object_scale==2.08)
 assert(not panel.apply_settings(100,2,100),'default settings are not idempotent')
 get_mod=function() return mod end
-mod.io_dofile=function() return dofile(arg[4]) end
+mod.io_dofile=function(_,path)
+    return dofile((arg[4]:gsub("darktidevr_controller_bindings.lua$",path:match("[^/]+$")..".lua")))
+end
 local data=dofile(arg[2])
 local text=dofile(arg[3])
 local options=data.options.widgets[1]
+assert(data.options.widgets[2].setting_id=='vr_turning')
+assert(data.options.widgets[3].setting_id=='controller_bindings')
 assert(options.setting_id=='hud_options' and options.type=='group')
 assert(#options.sub_widgets==4)
 for _,widget in ipairs(options.sub_widgets) do

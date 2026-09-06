@@ -88,7 +88,7 @@ for _,widget in ipairs(widgets.sub_widgets) do
     end
     assert(found)
 end
-local directional_settings={vr_bind_right_stick_up='combat_ability',vr_bind_right_stick_down='inspect',
+local directional_settings={vr_turn_mode='off',vr_bind_right_stick_up='combat_ability',vr_bind_right_stick_down='inspect',
     vr_bind_right_stick_left='reload',vr_bind_right_stick_right='reload'}
 local directional_mod={get=function(_,key) return directional_settings[key] end}
 local directional=Bindings.install(directional_mod)
@@ -131,3 +131,17 @@ default_mapper.sample(true,0,0,0,true,1)
 local p,h,r=default_mapper.sample(true,0,1,1,true,1)
 assert(p==0 and h==0 and r==0,'new direction defaults were not unbound')
 print('controller_bindings=pass defaults aliases remap_release context_handoff directional_hysteresis tracking generation stock_names options')
+-- Turning owns horizontal axes, while vertical shortcuts and native buttons
+-- continue. Switching it off while deflected must not trigger the old shortcut.
+directional_settings.vr_turn_mode='smooth'
+directional_settings.vr_bind_right_stick_up='combat_ability'
+directional_mod.on_setting_changed('vr_turn_mode')
+stick(true,0,0,true,2,0,0,0)
+stick(true,1,1,true,2,2048,2048,0)
+assert(#directional.controls_for_action('reload')==1) -- X default, no RS directions.
+directional_settings.vr_turn_mode='off'
+directional_mod.on_setting_changed('vr_turn_mode')
+stick(true,1,0,true,2,0,0,2048)
+stick(true,1,0,true,2,0,0,0)
+stick(true,0,0,true,2,0,0,0)
+stick(true,1,0,true,2,4096,4096,0)

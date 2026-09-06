@@ -503,3 +503,18 @@ The separate UI-layer foundation remains inactive; the unfinished motion-trigger
 experiment was removed. Full native/harness builds and focused checks passed.
 See the DLSS output-boundary handoff for evidence and validation limits.
 Development moves to right-stick smooth/snap turning.
+
+### Right-stick turning implemented; live acceptance pending
+
+Smooth default (90 degrees/s, adjustable 30-180), snap45, snap90 and Off are now
+in Mod Options. Horizontal right-stick shortcuts are reserved while turning is
+on; saved mappings remain available with turning Off. Neutral is required after
+snap/menu/tracking/context/settings interruptions. Shared scene heading carries
+the yaw for rendering, hands and locomotion; no mouse input is generated.
+The 32-chunk LuaJIT gate and nine focused CTests pass. Worn turning direction,
+comfort, pivot and hand/weapon alignment still need checking. See INPUT-REVISION-AUDIT.
+
+Turning live initialization passed in the range: fresh shared stereo (ready 359),
+about 51.6 real + 51.6 generated pairs/s, no fallback/pose mismatches or matching
+Lua error. Deployed module matches source. Worn controls remain unverified;
+no synthetic stick inputs were used. Keyboard/mouse routes remain unchanged.
