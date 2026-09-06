@@ -362,3 +362,15 @@ the reserved transaction budget during the 16-Present capture window; the total
 16384-line bound remains. `state-first-ngx.log` and
 `state-first-streamline.tsv` preserve the incomplete first evidence. Next launch
 repeats the pose-read correlation with that logging gap closed.
+
+The reserved pose trace captures seven failed reads around the batches. Frames
+2853, 2854, 2857 and 2862 have failed reads and fixed base-eye headings 83/97;
+surrounding successful tracking has changing user-facing headings. Other failed
+reads share a Present interval with a later tracked frame, so call order matters.
+The fixed-direction fallthrough is now corroborated; holding the last applied
+tracked camera on a missed read is the next fix, without relaxing native
+freshness checks. The reader now reports pose sample/failure counts and per-eye
+headings around each batch. `pose-live-streamline.tsv`, `pose-live-report.txt`,
+`pose-live-ngx.log`, `pose-live-queue.log` preserve this evidence. Output state
+remains ambiguous after the single-subresource refinement; inspect precise
+barrier flags/subresource coverage before copying, rather than assuming UAV.

@@ -595,6 +595,23 @@ foreach ($submission in @($stereoSubmissions | Where-Object phase -eq 'present')
     $prefix = "submission_images.batch$($submission.batch)"
     Write-Output "${prefix}.captures=$($captures.Count)"
     Write-Output "${prefix}.visual_acceptance=unverified"
+    $poseReads = @($records | Where-Object {
+        $_.event -eq 'HEAD_POSE_READ' -and
+        [uint64]$_.present_frame -ge $frame - 1 -and
+        [uint64]$_.present_frame -le $frame + 2
+    })
+    Write-Output "${prefix}.pose_reads=$($poseReads.Count)"
+    Write-Output "${prefix}.pose_read_failures=$(@($poseReads | Where-Object result -ne '0').Count)"
+    foreach ($eye in @('0','1')) {
+        $headings = @($setConstants | Where-Object {
+            $_.armed_eye -eq $eye -and [uint64]$_.present_frame -ge $frame - 1 -and
+            [uint64]$_.present_frame -le $frame + 2
+        } | ForEach-Object {
+            $direction = ConvertFrom-ProbeVector3 $_.camera_fwd
+            [Math]::Round([Math]::Atan2($direction[0],$direction[1]) * 180.0 / [Math]::PI, 2)
+        } | Sort-Object -Unique)
+        Write-Output "${prefix}.eye${eye}_headings=$($headings -join ',')"
+    }
     if ($captures.Count -eq 0) { continue }
     $stageDestinations = @($stereoPresentStages | Where-Object {
         $_.phase -eq 'scheduled' -and [uint64]$_.present_frame -eq $frame
