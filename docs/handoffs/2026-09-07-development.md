@@ -81,3 +81,60 @@ hub/combat remap persistence, held-input transitions, notification appearance an
 accepted hand/turning regressions pending user verification. Do not install
 SoloPlay before the later Psykhanium acceptance stage. Preserve the worker/pool
 rollback and the blur-first DLSS priority.
+
+## Shared secondary-click candidate
+
+Branch `codex/shared-menu-secondary-2026-09-07` adds a general LT secondary click
+at the existing right-hand pointer. Shared `right_pressed`, `right_hold` and
+`right_released` delivery covers native menus; no talent-specific handler or
+tooltip was patched. The common hint formatter can now show Point + LT for
+these actions when the V3 native export exists. Older native exports retain the
+keyboard hint and their original eleven-value ABI. The new export checks a
+thirteen-value capacity; the shared-memory mapping is versioned to v5 so mixed
+native binaries cannot reinterpret a changed layout.
+
+Secondary uses the existing native menu-entry/release state machine independently
+of primary. Lua cancels holds on modal/owner and transport changes, handles
+tracking loss once, retains off-panel release coordinates and consumes missed
+edges before a later UI frame. Keyboard/mouse and left-click routes coexist.
+This candidate has not been deployed or visually accepted.
+
+Completed the earlier hub initialization run after shared_ready 5116, with no
+fallback or pose mismatch in the final sampled interval. Closed Darktide and
+restored proximity automation using Enable then Status (asleep). Current live
+state supersedes the running checkpoint above: game/XR are closed. Re-run Ready
+preflight before deploying the native/Lua candidate together.
+
+Validation:
+
+```powershell
+tools/lua/build-luajit.ps1
+tools/stereo/test-darktide-lua-source.ps1
+# PASS: rebuilt pinned compiler; 33 chunks compile
+cmake --preset windows-vs2022 -DDARKTIDEVR_ENABLE_HEADSET_TESTS=OFF
+cmake --build --preset windows-vs2022-release
+# PASS: Windows x64 Release
+ctest --test-dir build/windows-vs2022 -C Release --output-on-failure
+# Initial result: 95/98. See failures and resolution below.
+```
+
+Menu transport, independent button lifecycles, shared hint fallback, missed-edge
+expiry and V1/V2/V3 export bounds pass. Native capture's pre-existing fixture
+expected reconnect with RT already held to fire immediately, contradicting the
+current release quarantine. Corrected the fixture to require release, then a
+fresh press, retaining the stale-frame release check; native_capture_hooks now
+passes. Seven affected compiler/menu/native CTests pass after that correction.
+
+Remaining full-suite failures to resolve as a separate validation task:
+
+- `lua_source_invariants`: obsolete weapon assertions expect post-preparation
+  `action.shooting_position` writes and the old shot-counter location. The
+  current ranged behavior test passes; the implementation scopes the first-person
+  pose before stock preparation and owns the counter through the action component.
+- `window_capture_recovery`: expected client extent is read in the test's default
+  DPI context while production capture returns physical pixels. The test reports
+  an aspect mismatch on this scaled display. Investigate the fixture's units.
+
+Logs: `artifacts/unattended/secondary-build-20260907.log`,
+`secondary-validation-build-20260907.log`, `secondary-ctest-20260907.log`, and
+`secondary-native-fixture-build-20260907.log` in the same ignored directory.

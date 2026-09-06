@@ -56,6 +56,21 @@ function MenuInput.sample(state, pointer, frame, owner, width, height)
     -- Lost tracking cancels a held press once. Reacquisition while held must
     -- not start a second drag or activate a different control.
     if not valid then state.armed = false end
+    -- Keep the secondary lifecycle independent, with the same ownership and
+    -- tracking quarantine as primary. A new modal never inherits either hold.
+    local secondary_was_held = state.secondary_held == true
+    if changed then
+        state.secondary_held = false
+        state.secondary_armed = not pointer.secondary_down
+        secondary_was_held = false
+    end
+    local secondary_pressed = inside and not changed and state.secondary_armed and
+        pointer.secondary_pressed == true
+    if secondary_pressed then state.secondary_held = true end
+    local secondary_released = secondary_was_held and (not valid or not pointer.secondary_down)
+    if secondary_released then state.secondary_held = false end
+    if not pointer.secondary_down then state.secondary_armed = true end
+    if not valid then state.secondary_armed = false end
     local dx, dy = 0, 0
     if inside then
         local x = pointer.x * width / pointer.source_width
@@ -63,13 +78,16 @@ function MenuInput.sample(state, pointer, frame, owner, width, height)
         if not changed and state.inside then dx, dy = x-state.x, y-state.y end
         state.x, state.y = x, y
     end
-    local retain_position = state.held or released
+    local retain_position = state.held or released or state.secondary_held or secondary_released
     local sample = {
-        override = valid or released,
+        override = valid or released or secondary_released,
         x = (inside or retain_position) and state.x or -10000,
         y = (inside or retain_position) and state.y or -10000,
         pressed = pressed == true, released = released,
         held = state.held == true,
+        secondary_pressed = secondary_pressed == true,
+        secondary_released = secondary_released,
+        secondary_held = state.secondary_held == true,
         rejection = rejection,
         dx = dx, dy = dy,
         back = valid and not changed and pointer.back_pressed == true,
@@ -106,6 +124,9 @@ function MenuInput.proxy(source, null_service, sample, vector)
         if action == "left_pressed" then return sample.pressed or source:get(action) end
         if action == "left_released" then return sample.released or source:get(action) end
         if action == "left_hold" then return sample.held or source:get(action) end
+        if action == "right_pressed" then return sample.secondary_pressed or source:get(action) end
+        if action == "right_released" then return sample.secondary_released or source:get(action) end
+        if action == "right_hold" then return sample.secondary_held or source:get(action) end
         if action == "scroll_axis" then
             local mouse = source:get(action)
             if not mouse then return vector(0, sample.scroll, 0) end
@@ -265,6 +286,7 @@ function MenuInput.install(mod, presentation)
         -- Drain transport counters now so scroll/back cannot repeat next frame
         -- merely because the per-view legacy handlers no longer consume them.
         if pointer.primary_pressed then presentation.consume_menu_primary(pointer) end
+        if pointer.secondary_pressed then presentation.consume_menu_secondary(pointer) end
         if pointer.back_pressed then presentation.consume_menu_back(pointer) end
         if (pointer.scroll_steps or 0) ~= 0 then presentation.consume_menu_scroll(pointer) end
         local proxy = MenuInput.proxy(source, null_service, sample, Vector3)

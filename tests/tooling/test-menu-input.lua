@@ -97,9 +97,10 @@ end
 -- Exercise the real adapter seam, including the engine's null input service.
 local hook,legacy_hook,direct_hook,readiness_hook
 local readiness_logs=0
-local consumed={primary=0,back=0,scroll=0}
+local consumed={primary=0,secondary=0,back=0,scroll=0}
 local presentation={mode=5,read_menu_pointer=function() return p end,
     consume_menu_primary=function(q) consumed.primary=consumed.primary+1; q.primary_pressed=false end,
+    consume_menu_secondary=function(q) consumed.secondary=consumed.secondary+1; q.secondary_pressed=false end,
     consume_menu_back=function(q) consumed.back=consumed.back+1; q.back_pressed=false end,
     consume_menu_scroll=function(q) consumed.scroll=consumed.scroll+1; q.scroll_steps=0 end}
 menu.install({hook_safe=function(_,class,name,fn)
@@ -238,3 +239,56 @@ assert(not menu.advance_startup(replaced,ready_view,false,0))
 assert(not menu.advance_startup(replaced,{},false,2))
 assert(replaced.done and starts==1)
 print('startup_start: explicit arm, stock gates, settling, once-only and view ownership passed')
+
+-- Secondary supports a pointed right click in any native menu. It is
+-- independent of primary and cannot survive ownership or transport changes.
+local secondary_state={}
+local secondary_pointer={available=true,active=true,x=100,y=200,
+    source_width=1000,source_height=1000,transport_generation=1,secondary_down=false}
+local function secondary_sample(frame,owner)
+    return menu.sample(secondary_state,secondary_pointer,frame,owner or 'menu',1000,1000)
+end
+secondary_sample(1)
+secondary_pointer.secondary_down,secondary_pointer.secondary_pressed=true,true
+local secondary_hit=secondary_sample(2)
+assert(secondary_hit.secondary_pressed and secondary_hit.secondary_held and not secondary_hit.pressed)
+local right_proxy=menu.proxy({get=function() return false end},null,secondary_hit,vector)
+assert(right_proxy:get('right_pressed') and right_proxy:get('right_hold') and not right_proxy:get('left_pressed'))
+secondary_pointer.secondary_pressed=false
+secondary_pointer.active=false
+secondary_hit=secondary_sample(3)
+assert(secondary_hit.secondary_held and secondary_hit.x==100 and secondary_hit.y==200)
+secondary_pointer.secondary_down=false
+secondary_hit=secondary_sample(4)
+assert(secondary_hit.secondary_released and not secondary_hit.secondary_held)
+assert(not secondary_sample(5).secondary_released)
+secondary_pointer.active=true
+secondary_pointer.secondary_down,secondary_pointer.secondary_pressed=true,true
+assert(not secondary_sample(6,'popup').secondary_pressed)
+assert(not secondary_sample(7,'popup').secondary_held)
+secondary_pointer.secondary_down,secondary_pointer.secondary_pressed=false,false
+secondary_sample(8,'popup')
+secondary_pointer.secondary_down,secondary_pointer.secondary_pressed=true,true
+assert(secondary_sample(9,'popup').secondary_pressed)
+secondary_pointer.available=false
+secondary_hit=secondary_sample(10,'popup')
+assert(secondary_hit.secondary_released and secondary_hit.override)
+assert(not secondary_sample(11,'popup').override)
+secondary_pointer.available=true
+assert(not secondary_sample(12,'popup').secondary_pressed)
+secondary_pointer.transport_generation=2
+assert(not secondary_sample(13,'popup').secondary_pressed)
+secondary_pointer.secondary_down,secondary_pointer.secondary_pressed=false,false
+secondary_sample(14,'popup')
+secondary_pointer.secondary_down,secondary_pointer.secondary_pressed=true,true
+assert(secondary_sample(15,'popup').secondary_pressed)
+-- The actual service owner consumes the secondary sequence once per frame.
+presentation.mode=5
+p.frame_id,p.secondary_down,p.secondary_pressed=100,false,false
+hook(function() return desktop_source,null,false end,handler)
+p.frame_id,p.secondary_down,p.secondary_pressed=101,true,true
+local secondary_service=hook(function() return desktop_source,null,false end,handler)
+assert(secondary_service:get('right_hold') and consumed.secondary==1)
+local again=hook(function() return desktop_source,null,false end,handler)
+assert(again:get('right_hold') and consumed.secondary==1)
+print('menu_secondary: shared route, independent holds, tracking, modal/restart quarantine and edge consumption passed')

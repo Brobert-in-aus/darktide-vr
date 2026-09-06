@@ -84,3 +84,9 @@ captured.layout_width, captured.layout_height = 2496, 2688
 assert(p.widget_contains_menu_pointer(menu, play, captured),
     "vendor pointer was scaled twice")
 print("Menu widget visibility, cleanup, geometry, and drag contracts passed")
+local missed={primary_pressed=true,primary_press_sequence=4,
+    secondary_pressed=true,secondary_press_sequence=9}
+p.begin_menu_pointer_frame(missed)
+assert(not missed.primary_pressed and missed.primary_consumed_sequence==4)
+assert(not missed.secondary_pressed and missed.secondary_consumed_sequence==9,
+    "unhandled secondary click was queued into a later UI frame")

@@ -7,7 +7,8 @@ package.loaded["scripts/managers/input/input_utils"]=InputUtils
 Color={ui_input_color=function() return {} end}
 local mod={localize=function(_,key) return assert(localized[key]).en end,
     hook=function(_,class,name,fn) hooks[class]=hooks[class] or {}; hooks[class][name]=fn end}
-local menu=Prompts.install(mod,function() return active end)
+local secondary=false
+local menu=Prompts.install(mod,function() return active end,function() return secondary end)
 local function stock_input(service,alias) return "keyboard:"..tostring(alias),nil,service end
 local function input(service,alias,tint)
     return menu.input_text(service,alias,tint) or stock_input(service,alias,tint)
@@ -27,6 +28,13 @@ assert(hint("back","View",true)=="<tint>[B / Menu] Action")
 assert(hint("confirm_pressed")=="keyboard:confirm_pressed Action")
 assert(hint("gamepad_confirm_pressed")=="keyboard:gamepad_confirm_pressed Action")
 assert(hint("right_pressed")=="keyboard:right_pressed Action")
+secondary=true
+for _,action in ipairs({"right_pressed","right_released","right_hold"}) do
+    assert(hint(action)=="[Point + LT] Action")
+end
+assert(hint("right_pressed","Ingame")=="keyboard:right_pressed Action")
+secondary=false
+assert(hint("right_pressed")=="keyboard:right_pressed Action","old transport advertised secondary")
 assert(hint("back_released")=="keyboard:back_released Action")
 assert(hint("back","Ingame")=="keyboard:back Action")
 assert(input("View","back")=="keyboard:back","label leaked outside a known action")

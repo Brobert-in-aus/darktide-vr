@@ -7,6 +7,9 @@ for current defaults and operating instructions.
 headset today. Continue automated/offline work and record worn checks as pending.
 Ready preflight passed and the saved controller/onboarding candidate is now
 deployed in the hub with fresh stereo initialization and nonzero shared_ready.
+That initialization run is now closed and normal proximity behavior restored.
+A shared LT secondary-click candidate is built and tested offline, not deployed;
+two unrelated full-suite validation failures are under investigation.
 See the [current handoff](handoffs/2026-09-07-development.md) for evidence and
 the expanded shared hint audit. A 20-minute task heartbeat is active.
 

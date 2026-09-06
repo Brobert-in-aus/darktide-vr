@@ -963,10 +963,12 @@ class OpenXrProbe {
     darktidevr::core::SharedMenuPointerStateWriter menu_pointer_writer;
     std::uint64_t menu_pointer_sequence{};
     std::uint32_t menu_primary_press_sequence{};
+    std::uint32_t menu_secondary_press_sequence{};
     std::uint32_t menu_back_press_sequence{};
     std::uint32_t menu_scroll_sequence{};
     int last_shared_menu_scroll_steps{};
     darktidevr::core::MenuPrimaryInputState menu_primary_state;
+    darktidevr::core::MenuPrimaryInputState menu_secondary_state;
     std::unique_ptr<darktidevr::harness::MenuInputInjector>
         menu_input_injector;
     std::uint64_t menu_input_events{};
@@ -3458,6 +3460,7 @@ class OpenXrProbe {
           shared_pointer.primary_down =
               right.trigger >= 0.55F ||
               (right.buttons & darktidevr::core::controller_primary) != 0;
+          shared_pointer.secondary_down = left.trigger >= 0.55F;
           shared_pointer.back_down =
               (right.buttons & darktidevr::core::controller_secondary) != 0 ||
               (left.buttons & darktidevr::core::controller_menu) != 0;
@@ -3471,6 +3474,14 @@ class OpenXrProbe {
         shared_pointer.primary_down =
             shared_pointer.primary_down || shared_menu_primary_down;
         const bool was_primary_armed = menu_primary_state.armed();
+        // Secondary uses the same release/activation guard, independently of
+        // primary. Both clicks target the existing right-hand menu ray.
+        if (menu_secondary_state.update(
+                presentation_state, menu_mode && submitted_flat_fallback_this_frame,
+                shared_pointer.active, shared_pointer.secondary_down,
+                std::chrono::duration<double>(frame_start - start).count())) {
+          ++menu_secondary_press_sequence;
+        }
         const bool primary_pressed = menu_primary_state.update(
             presentation_state, menu_mode && submitted_flat_fallback_this_frame,
             shared_pointer.active, shared_pointer.primary_down,
@@ -3503,6 +3514,7 @@ class OpenXrProbe {
         shared_pointer.scroll_steps = last_shared_menu_scroll_steps;
         shared_pointer.primary_press_sequence =
             menu_primary_press_sequence;
+        shared_pointer.secondary_press_sequence = menu_secondary_press_sequence;
         shared_pointer.back_press_sequence = menu_back_press_sequence;
         shared_pointer.scroll_sequence = menu_scroll_sequence;
         if (!menu_pointer_writer.publish(shared_pointer)) {

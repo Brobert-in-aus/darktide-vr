@@ -7,6 +7,7 @@
 #include <wrl/client.h>
 
 #include "core/shared_controller_state.h"
+#include "core/shared_menu_pointer_state.h"
 
 #include <chrono>
 #include <cmath>
@@ -92,6 +93,10 @@ int wmain(int argc, wchar_t** argv) {
         int, unsigned long long*, unsigned long long*, unsigned long long*,
         unsigned long long*, float*)>(
         GetProcAddress(module, "dtvr_read_gameplay_input"));
+    const auto read_menu_pointer_state_v3 = reinterpret_cast<int (*)(
+        unsigned int*, unsigned int, unsigned long long*, unsigned long long*,
+        unsigned long long*)>(
+        GetProcAddress(module, "dtvr_read_menu_pointer_state_v3"));
     const auto qpc_ticks = reinterpret_cast<unsigned long long (*)()>(
         GetProcAddress(module, "dtvr_qpc_ticks"));
     const auto qpc_frequency = reinterpret_cast<unsigned long long (*)()>(
@@ -129,7 +134,7 @@ int wmain(int argc, wchar_t** argv) {
         !enable_marker_log || !read_head_pose || !read_head_pose_v2 ||
         !read_controller_state ||
         !read_controller_state_v2 ||
-        !read_menu_pointer_state || !read_menu_pointer_state_v2 ||
+        !read_menu_pointer_state || !read_menu_pointer_state_v2 || !read_menu_pointer_state_v3 ||
         !read_gameplay_input ||
         !qpc_ticks || !qpc_frequency || !arm_options_menu_capture ||
         !set_billboard_view_basis || !set_billboard_staging_view_basis ||
@@ -239,6 +244,34 @@ int wmain(int argc, wchar_t** argv) {
       throw std::runtime_error(
           "Menu-pointer-state export must reject null output");
     }
+    darktidevr::core::SharedMenuPointerState menu_sample{};
+    menu_sample.sequence = 8;
+    menu_sample.timestamp_ns = 456789;
+    menu_sample.active = true;
+    menu_sample.source_width = menu_sample.source_height = 100;
+    menu_sample.secondary_down = true;
+    menu_sample.secondary_press_sequence = 23;
+    darktidevr::core::SharedMenuPointerStateWriter menu_writer;
+    unsigned int menu_values[14]{};
+    menu_values[11] = menu_values[12] = menu_values[13] = 0xabcdefU;
+    unsigned long long menu_sequence{}, menu_timestamp{}, menu_generation{};
+    if (!menu_writer.publish(menu_sample) ||
+        read_menu_pointer_state(menu_values, &menu_sequence, &menu_timestamp) != 0 ||
+        read_menu_pointer_state_v2(menu_values, &menu_sequence, &menu_timestamp, &menu_generation) != 0 ||
+        menu_values[11] != 0xabcdefU || menu_values[12] != 0xabcdefU || menu_values[13] != 0xabcdefU) {
+      throw std::runtime_error("Legacy menu exports wrote beyond their eleven-value ABI");
+    }
+    if (read_menu_pointer_state_v3(menu_values, 12, &menu_sequence, &menu_timestamp, &menu_generation) != 1 ||
+        read_menu_pointer_state_v3(menu_values, 13, &menu_sequence, &menu_timestamp, nullptr) != 1 ||
+        read_menu_pointer_state_v3(nullptr, 13, &menu_sequence, &menu_timestamp, &menu_generation) != 1 ||
+        menu_values[11] != 0xabcdefU) {
+      throw std::runtime_error("Secondary menu export accepted invalid output capacity/pointers");
+    }
+    if (read_menu_pointer_state_v3(menu_values, 13, &menu_sequence, &menu_timestamp, &menu_generation) != 0 ||
+        menu_values[11] != 1 || menu_values[12] != 23 || menu_values[13] != 0xabcdefU ||
+        menu_sequence != 8 || menu_timestamp != 456789 || menu_generation == 0) {
+      throw std::runtime_error("Secondary menu export changed the Lua-facing transport layout");
+    }
     if (read_menu_pointer_state_v2(nullptr, nullptr, nullptr, nullptr) != 1) {
       throw std::runtime_error(
           "Versioned menu-pointer export must reject null output");
@@ -273,11 +306,26 @@ int wmain(int argc, wchar_t** argv) {
         read_gameplay_input(
             1, &gameplay_pressed, &gameplay_held, &gameplay_released,
             &gameplay_sequence, gameplay_movement) != 0 ||
-        (gameplay_held & 1ULL) == 0 || gameplay_sequence != 43) {
+        gameplay_pressed != 0 || gameplay_held != 0 || gameplay_sequence != 43) {
       throw std::runtime_error(
-          "Fresh controller transport did not drive gameplay input");
+          "Fresh reconnect inherited held gameplay input without release");
     }
     controller_sample.sequence = 44;
+    controller_sample.hands[1].trigger = 0.0F;
+    if (!controller_writer.publish(controller_sample) ||
+        read_gameplay_input(1, &gameplay_pressed, &gameplay_held, &gameplay_released,
+                            &gameplay_sequence, gameplay_movement) != 0 || gameplay_held != 0) {
+      throw std::runtime_error("Released reconnect failed to rearm gameplay input");
+    }
+    controller_sample.sequence = 45;
+    controller_sample.hands[1].trigger = 1.0F;
+    if (!controller_writer.publish(controller_sample) ||
+        read_gameplay_input(1, &gameplay_pressed, &gameplay_held, &gameplay_released,
+                            &gameplay_sequence, gameplay_movement) != 0 ||
+        (gameplay_pressed & 1ULL) == 0 || (gameplay_held & 1ULL) == 0) {
+      throw std::runtime_error("Fresh press after reconnect release did not drive gameplay input");
+    }
+    controller_sample.sequence = 46;
     controller_sample.timestamp_ns -= 200'000'000ULL;
     if (!controller_writer.publish(controller_sample) ||
         read_gameplay_input(

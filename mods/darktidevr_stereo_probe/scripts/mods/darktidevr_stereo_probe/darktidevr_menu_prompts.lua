@@ -5,7 +5,7 @@ local direct = {back="vr_menu_back",left_pressed="vr_menu_point_select",
     left_released="vr_menu_point_select",left_hold="vr_menu_point_select"}
 local function pack(...) return {n=select("#",...),...} end
 
-function Prompts.install(mod, enabled)
+function Prompts.install(mod, enabled, secondary_enabled)
     local Text=require("scripts/utilities/ui/text")
     local InputUtils=require("scripts/managers/input/input_utils")
     local label, clickable
@@ -22,7 +22,10 @@ function Prompts.install(mod, enabled)
     mod:hook(Text,"localize_with_button_hint",function(func,action,name,context,service,...)
         local previous=label
         label=(service==nil or service=="View") and enabled() and
-            (direct[action] or (clickable and "vr_menu_point_select")) or nil
+            (direct[action] or
+             ((action=="right_pressed" or action=="right_released" or action=="right_hold") and
+              secondary_enabled and secondary_enabled() and "vr_menu_point_secondary") or
+             (clickable and "vr_menu_point_select")) or nil
         local result=pack(pcall(func,action,name,context,service,...))
         label=previous
         if not result[1] then error(result[2],0) end
@@ -37,7 +40,8 @@ function Prompts.install(mod, enabled)
         return unpack(result,2,result.n)
     end)
     mod:hook("ViewElementInputLegend","update",function(func,self,...)
-        local available=enabled()==true
+        local available=(enabled() and 1 or 0) +
+            (secondary_enabled and secondary_enabled() and 2 or 0)
         if revisions[self]~=available then
             revisions[self]=available
             for _,entry in ipairs(self._entries or {}) do self:_update_widget_text(entry) end

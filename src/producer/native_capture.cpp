@@ -16482,7 +16482,8 @@ extern "C" __declspec(dllexport) int dtvr_read_controller_state_v2(
 int read_menu_pointer_state(unsigned int* values,
                             unsigned long long* sequence,
                             unsigned long long* timestamp_ns,
-                            unsigned long long* transport_generation) {
+                            unsigned long long* transport_generation,
+                            bool include_secondary = false) {
   if (!values || !sequence || !timestamp_ns) {
     return 1;
   }
@@ -16501,6 +16502,10 @@ int read_menu_pointer_state(unsigned int* values,
   values[8] = sample.primary_press_sequence;
   values[9] = sample.back_press_sequence;
   values[10] = sample.scroll_sequence;
+  if (include_secondary) {
+    values[11] = sample.secondary_down ? 1U : 0U;
+    values[12] = sample.secondary_press_sequence;
+  }
   *sequence = sample.sequence;
   *timestamp_ns = sample.timestamp_ns;
   if (transport_generation) {
@@ -16522,6 +16527,17 @@ extern "C" __declspec(dllexport) int dtvr_read_menu_pointer_state_v2(
   }
   return read_menu_pointer_state(values, sequence, timestamp_ns,
                                  transport_generation);
+}
+// V1/V2 retain their eleven-value ABI; only V3 writes the two new fields.
+extern "C" __declspec(dllexport) int dtvr_read_menu_pointer_state_v3(
+    unsigned int* values, unsigned int value_count,
+    unsigned long long* sequence, unsigned long long* timestamp_ns,
+    unsigned long long* transport_generation) {
+  if (value_count < 13 || !transport_generation) {
+    return 1;
+  }
+  return read_menu_pointer_state(values, sequence, timestamp_ns,
+                                 transport_generation, true);
 }
 extern "C" __declspec(dllexport) int dtvr_read_gameplay_input(
     int gameplay_active, unsigned long long* pressed,

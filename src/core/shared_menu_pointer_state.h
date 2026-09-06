@@ -5,7 +5,7 @@
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedMenuPointerStateName[] =
-    L"Local\\DarktideVR-menu-pointer-state-v4";
+    L"Local\\DarktideVR-menu-pointer-state-v5";
 
 struct SharedMenuPointerState {
   std::uint64_t sequence{};
@@ -16,9 +16,11 @@ struct SharedMenuPointerState {
   std::uint32_t source_height{};
   bool active{};
   bool primary_down{};
+  bool secondary_down{};
   bool back_down{};
   std::int32_t scroll_steps{};
   std::uint32_t primary_press_sequence{};
+  std::uint32_t secondary_press_sequence{};
   std::uint32_t back_press_sequence{};
   std::uint32_t scroll_sequence{};
   std::uint64_t transport_generation{};

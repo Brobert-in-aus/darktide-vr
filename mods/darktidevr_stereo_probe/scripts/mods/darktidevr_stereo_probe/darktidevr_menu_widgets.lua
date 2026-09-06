@@ -7,6 +7,8 @@ function presentation.begin_menu_pointer_frame(pointer)
     -- A click that missed all controls is spent, not queued for later hover.
     pointer.primary_consumed_sequence = pointer.primary_press_sequence
     pointer.primary_pressed = false
+    pointer.secondary_consumed_sequence = pointer.secondary_press_sequence
+    pointer.secondary_pressed = false
     pointer.frame_sampled = false
 end
 

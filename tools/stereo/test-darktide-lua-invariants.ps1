@@ -987,7 +987,10 @@ if (-not $source.Contains(
     throw 'Configurable VR locomotion must preserve headset-relative default, use the flattened live left-hand basis without an Euler round-trip, reject near-vertical rays and rotate only controller movement into the selected frame.'
 }
 if (-not $source.Contains(
-        'presentation.menu_pointer.values = ffi.new("unsigned int[11]")') -or
+        'presentation.menu_pointer.values = ffi.new("unsigned int[13]")') -or
+        -not $source.Contains('dtvr_read_menu_pointer_state_v3(') -or
+        -not $source.Contains(
+            'pointer.secondary_consumed_sequence = secondary_press_sequence') -or
         -not $source.Contains('dtvr_read_menu_pointer_state_v2(') -or
         -not $source.Contains(
             'menu_pointer_v2 or library.dtvr_read_menu_pointer_state') -or

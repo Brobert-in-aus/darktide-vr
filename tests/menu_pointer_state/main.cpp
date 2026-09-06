@@ -27,6 +27,8 @@ int main() {
     sample.source_height = 2160;
     sample.active = true;
     sample.primary_down = true;
+    sample.secondary_down = true;
+    sample.secondary_press_sequence = 14;
     sample.scroll_steps = -2;
     sample.primary_press_sequence = 11;
     sample.back_press_sequence = 12;
@@ -48,6 +50,7 @@ int main() {
                read.source_width == sample.source_width &&
                read.source_height == sample.source_height &&
                read.primary_down && !read.back_down &&
+               read.secondary_down && read.secondary_press_sequence == 14 &&
                read.scroll_steps == -2 &&
                read.primary_press_sequence == 11 &&
                read.back_press_sequence == 12 &&
@@ -56,6 +59,8 @@ int main() {
 
     sample.sequence = 1;
     sample.primary_press_sequence = 0;
+    sample.secondary_down = false;
+    sample.secondary_press_sequence = 0;
     sample.back_press_sequence = 0;
     sample.scroll_sequence = 0;
     {
@@ -65,6 +70,7 @@ int main() {
       expect(reader.read(read), "Restarted pointer read failed");
     }
     expect(read.sequence == 1 &&
+               !read.secondary_down && read.secondary_press_sequence == 0 &&
                read.transport_generation > first_generation,
            "Pointer writer restart did not advance its transport generation");
 

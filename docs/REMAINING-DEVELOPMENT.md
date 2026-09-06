@@ -17,6 +17,9 @@ for the smaller set needed before a first end-to-end mission attempt.
    Use the talent-points [I] reminder and talent deactivation right-click as
    acceptance cases. The shared onboarding fix is prepared; talent deactivation
    must remain untouched as an isolated patch, per the user's instruction.
+   7 September: saved profiles deployed and initialized in hub; worn checks
+   pending while the user is at work. Shared LT secondary-click transport/input
+   and common hints are now an offline candidate, with no talent-specific patch.
 2. **Enable mission gameplay and verify transition stability.** Extend the explicit
    hub/range-only VR input/body and range-only hand-aim gates with appropriate
    mission ownership/replication handling; removing guards alone is insufficient.
@@ -78,8 +81,8 @@ Completed/accepted: smooth and snap turning; tested menu changes; left and right
 hand alignment; hand-directed button melee; the hub launch stale-request fix.
 Candidate 04b6053 (hub/combat bindings, stock inventory hotkey delivery, shared
 onboarding/tutorial hints) was deployed on 7 September after Ready preflight.
-Hub launch and stereo initialization passed; game/XR are running at that
-checkpoint. Worn controller/hint acceptance remains pending. See the current
+Hub launch and stereo initialization passed; that run is now closed and normal
+proximity behavior restored. Worn controller/hint acceptance remains pending. See the current
 handoff for exact tests and evidence.
 
 ## Historical subsystem detail and evidence

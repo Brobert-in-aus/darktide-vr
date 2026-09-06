@@ -558,6 +558,7 @@ local presentation = {
         transport_generation_value = nil,
         read_state = nil,
         read_state_v2 = false,
+        read_state_v3 = false,
         last_sequence = 0,
         available = false,
         active = false,
@@ -567,6 +568,10 @@ local presentation = {
         source_height = 0,
         primary_down = false,
         primary_pressed = false,
+        secondary_down = false,
+        secondary_pressed = false,
+        secondary_press_sequence = 0,
+        secondary_consumed_sequence = 0,
         back_down = false,
         back_pressed = false,
         scroll_steps = 0,
@@ -847,6 +852,10 @@ local function ensure_ui_native_hooks()
             unsigned long long *sequence,
             unsigned long long *timestamp_ns,
             unsigned long long *transport_generation);
+        int dtvr_read_menu_pointer_state_v3(unsigned int *values,
+            unsigned int value_count, unsigned long long *sequence,
+            unsigned long long *timestamp_ns,
+            unsigned long long *transport_generation);
         int dtvr_read_gameplay_input(int gameplay_active,
             unsigned long long *pressed, unsigned long long *held,
             unsigned long long *released, unsigned long long *sequence,
@@ -981,7 +990,7 @@ local function ensure_ui_native_hooks()
         mod:warning(
             "DARKTIDEVR_CONTROLLER transport_generation_unavailable fallback=v1")
     end
-    presentation.menu_pointer.values = ffi.new("unsigned int[11]")
+    presentation.menu_pointer.values = ffi.new("unsigned int[13]")
     presentation.menu_pointer.sequence =
         ffi.new("unsigned long long[1]")
     presentation.menu_pointer.timestamp_ns =
@@ -995,6 +1004,11 @@ local function ensure_ui_native_hooks()
     presentation.menu_pointer.read_state_v2 = menu_pointer_v2_ok
     presentation.menu_pointer.read_state = menu_pointer_v2_ok and
         menu_pointer_v2 or library.dtvr_read_menu_pointer_state
+    local menu_pointer_v3_ok, menu_pointer_v3 = pcall(function()
+        return library.dtvr_read_menu_pointer_state_v3
+    end)
+    presentation.menu_pointer.read_state_v3 = menu_pointer_v3_ok
+    if menu_pointer_v3_ok then presentation.menu_pointer.read_state = menu_pointer_v3 end
     if not menu_pointer_v2_ok then
         presentation.menu_pointer.transport_generation_value[0] = 1
         mod:warning(
@@ -2289,13 +2303,17 @@ function presentation.read_menu_pointer()
     pointer.active = false
     pointer.primary_pressed = false
     pointer.back_pressed = false
+    pointer.secondary_pressed = false
     pointer.scroll_steps = 0
     if not ui_native_capture or not pointer.values or
             not pointer.read_state then
         return presentation.apply_menu_pointer_probe(pointer)
     end
     local read_result = nil
-    if pointer.read_state_v2 then
+    if pointer.read_state_v3 then
+        read_result = pointer.read_state(pointer.values, 13, pointer.sequence,
+            pointer.timestamp_ns, pointer.transport_generation_value)
+    elseif pointer.read_state_v2 then
         read_result = pointer.read_state(
             pointer.values,
             pointer.sequence,
@@ -2340,6 +2358,7 @@ function presentation.read_menu_pointer()
             scroll_steps = scroll_steps - 4294967296
         end
         local primary_press_sequence = tonumber(pointer.values[8])
+        local secondary_press_sequence = tonumber(pointer.values[12])
         local back_press_sequence = tonumber(pointer.values[9])
         local scroll_sequence = tonumber(pointer.values[10])
         if generation_changed then
@@ -2348,6 +2367,7 @@ function presentation.read_menu_pointer()
             -- old consumed counters synthesizes a click/back/scroll event.
             pointer.event_sequences_initialized = true
             pointer.primary_consumed_sequence = primary_press_sequence
+            pointer.secondary_consumed_sequence = secondary_press_sequence
             pointer.back_consumed_sequence = back_press_sequence
             pointer.scroll_consumed_sequence = scroll_sequence
             mod:info(
@@ -2380,6 +2400,8 @@ function presentation.read_menu_pointer()
                 pointer.primary_consumed_sequence)
         end
         pointer.primary_press_sequence = primary_press_sequence
+        pointer.secondary_press_sequence = secondary_press_sequence
+        pointer.secondary_down = pointer.read_state_v3 and tonumber(pointer.values[11]) ~= 0
         pointer.back_press_sequence = back_press_sequence
         pointer.scroll_sequence = scroll_sequence
         pointer.transport_generation = transport_generation
@@ -2391,6 +2413,8 @@ function presentation.read_menu_pointer()
     -- any unhandled primary sequence before sampling again.
     pointer.primary_pressed = pointer.available and
         pointer.primary_press_sequence ~= pointer.primary_consumed_sequence
+    pointer.secondary_pressed = pointer.available and pointer.read_state_v3 and
+        pointer.secondary_press_sequence ~= pointer.secondary_consumed_sequence
     pointer.back_pressed = pointer.available and
         pointer.back_press_sequence ~= pointer.back_consumed_sequence
     if pointer.available and
@@ -2402,6 +2426,11 @@ function presentation.read_menu_pointer()
         pointer.scroll_steps = scroll_steps
     end
     return presentation.apply_menu_pointer_probe(pointer)
+end
+
+function presentation.consume_menu_secondary(pointer)
+    pointer.secondary_consumed_sequence = pointer.secondary_press_sequence
+    pointer.secondary_pressed = false
 end
 
 function presentation.consume_menu_primary(pointer)
@@ -5374,6 +5403,8 @@ presentation.menu_prompts = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_menu_prompts"
 ).install(mod,function()
     return ui_native_capture_active == true
+end,function()
+    return presentation.menu_pointer.read_state_v3 == true
 end)
 mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_prompts"
