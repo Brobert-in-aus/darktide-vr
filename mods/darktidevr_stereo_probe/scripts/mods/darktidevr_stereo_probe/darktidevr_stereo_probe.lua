@@ -5335,6 +5335,12 @@ presentation.controller_bindings = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings"
 ).install(mod)
 presentation.gameplay_input_bindings = presentation.controller_bindings.bindings
+mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_prompts"
+).install(mod,presentation.controller_bindings,function()
+    return controller_observation.gameplay_input_enabled == true
+end)
+
 function presentation.inject_ephemeral_action_names(
         actions, cache, names, delivered, missing)
     for name_index = 1, #names do

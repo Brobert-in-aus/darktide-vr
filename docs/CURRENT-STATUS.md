@@ -27,7 +27,9 @@ pending. See the [input revision audit](INPUT-REVISION-AUDIT.md).
 The Gameplay controller bindings section now remaps the eleven existing
 button/trigger/grip controls, including combat ability and separate jump/dodge
 or interact/reload choices. Original defaults remain. Menu pointer controls and
-aim hands are unchanged; controller prompts and right-stick gameplay are pending.
+aim hands are unchanged. Weapon, ability, interaction and tag HUD hints now use
+compact VR binding labels. Dedicated glyph artwork, remaining tutorial hints
+and right-stick gameplay are pending; worn readability acceptance remains open.
 
 Mod Options > Darktide VR exposes HUD size, distance, and text/icon size sliders.
 Defaults (100%, 2 m, 100%) preserve the accepted HUD layout. Distance changes

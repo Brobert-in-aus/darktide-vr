@@ -122,3 +122,35 @@ errors were found. The installed DMF saves changes on game-state transitions,
 so a menu reopen alone is not proof of a disk save.
 Normal Quit Game and its confirmation worked; after shutdown the settings file
 confirmed the original right-trigger `primary` value was restored.
+
+## Controller prompt text
+
+The next candidate scopes the stock input-text helper to weapon, ability,
+interaction, tag and WieldInfo HUD text construction. It displays compact VR
+control labels from the same resolved binding catalog, including combined/split
+aliases. Each hint shows the first assigned control in catalog order; additional
+aliases remain usable and appear in Mod Options. Known actions without a VR assignment
+show Unbound. Unknown aliases retain stock text; View-service menus and calls
+outside those HUD scopes are unchanged. It does not force gamepad mode.
+
+Stock Text utilities retain localized hold/release wording. Weapon-slot HUD
+hints label quick wield as `Y switch` with original defaults, rather than claiming
+Y directly selects either numbered slot. Cached weapon/ability/WieldInfo labels
+refresh when mappings or VR availability change. The scope restores on stock
+errors and preserves nil return values. These are text labels, not new icon art;
+tutorial, spectator, onboarding and other unreviewed hints remain separate work.
+Ability badge labels use the stock font-width fitter within their existing
+60-unit text box, avoiding wrapping longer labels such as Unbound. Measurements
+are cached by text, renderer scale and box width; leaving VR restores stock size.
+
+Offline validation: `controller_prompts`, `controller_bindings`,
+`gameplay_ui_input`, `hud_options`, `hud_panel` and pinned LuaJIT compilation
+pass (30 chunks). Live desktop shows `[R Grip] Charge Sword` and `[RT] Eviscerate`.
+Temporarily remapping right grip to reload changed the former to
+`[Unbound] Charge Sword` after closing menus, without a weapon switch/restart.
+Ability text remains on one line with the width fitter. Harness `shared_ready`
+reached 861 at 44.4 fresh pairs/s with no interval fallback, pose mismatch or
+matching mod error. This establishes desktop rendering and dynamic refresh;
+worn readability, pickup/tag visual coverage and icon artwork remain pending.
+Right grip was restored to Weapon special in Mod Options; the saved settings
+still contain `vr_bind_right_grip = "special"` and right trigger `primary`.

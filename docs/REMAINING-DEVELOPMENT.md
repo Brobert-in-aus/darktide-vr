@@ -149,8 +149,9 @@ were checked; worn acceptance of non-default values remains pending.
 Gameplay bindings now expose the eleven existing button/trigger/grip channels
 in Mod Options, retaining original defaults and adding combat ability plus
 separate jump/dodge and interact/reload. Changing a held binding releases its old
-action and requires release before the replacement can activate. Add matching
-controller button glyphs/prompts instead of current mouse/keyboard prompts.
+action and requires release before the replacement can activate. Weapon,
+ability, interaction and tag HUD prompts now display compact binding labels;
+dedicated controller glyphs and tutorial/spectator/onboarding coverage remain.
 The [input revision audit](INPUT-REVISION-AUDIT.md) maps current controls: right
 stick scrolls menus but has no gameplay route. R3 tag and the left menu button
 now reach stock HUD/UI handlers; live module initialization passes, with worn
@@ -159,7 +160,7 @@ release on activation/reconnect. Use
 the available controls to make the full layout more sensible. Review gameplay,
 weapon specials, movement, interactions and menu
 contexts together, including hold/toggle behavior and conflicting actions.
-Matching controller prompts, right-stick gameplay and revised ergonomic defaults
+Remaining controller prompts, right-stick gameplay and revised ergonomic defaults
 remain backlog work. The configurable mapping candidate needs worn validation.
 Desktop layout editing now draws "Use the desktop view to edit your HUD layout."
 into the shared HUD texture while the editor is open. It is removed on close.

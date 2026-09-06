@@ -1,0 +1,95 @@
+local Prompts = {}
+local aliases = {
+    action_one="primary",action_two="alternate",weapon_extra="special",
+    interact="interact",weapon_reload="reload",quick_wield="quick_wield",
+    jump="jump",dodge="dodge",crouch="crouch",sprint="sprint",
+    smart_tag="tag",grenade_ability="blitz",combat_ability="combat_ability",
+    weapon_inspect="inspect",menu="menu",
+    wield_1=false,wield_2=false,wield_3=false,wield_3_gamepad=false,wield_4=false,
+    wield_5=false,interact_inspect=false,com_wheel=false,
+}
+local scopes = {
+    {"HudElementPlayerWeapon","_update_input",true},
+    {"HudElementPlayerAbility","_update_input"},
+    {"HudElementPlayerSlotItemAbility","_update_input"},
+    {"HudElementWieldInfo","_create_entry"},
+    {"HudElementInteraction","_update_tag_input_information"},
+    {"HudElementInteraction","_update_interaction_input_text"},
+    {"HudElementInteraction","_setup_interaction_information"},
+    {"HudElementSmartTagging","_update_tag_interaction_information"},
+}
+local function pack(...) return {n=select("#",...),...} end
+
+function Prompts.install(mod, bindings, enabled)
+    local InputUtils = require("scripts/managers/input/input_utils")
+    local UIRenderer = require("scripts/managers/ui/ui_renderer")
+    local depth, weapon_switch = 0, false
+    local revisions = setmetatable({}, {__mode="k"})
+    local fitted = setmetatable({}, {__mode="k"})
+    local function fit_ability_label(self,renderer)
+        local widget=self._widgets_by_name and self._widgets_by_name.ability
+        local style=widget and widget.style.input_text
+        if not style or not style.size or not renderer or not renderer.scale then return end
+        local text=widget.content.input_text or ""
+        local previous=fitted[style]
+        if not previous then
+            previous={font=style.font_size}; fitted[style]=previous
+        end
+        local available=enabled()
+        local width=style.size[1]
+        if previous.text==text and previous.scale==renderer.scale and
+                previous.width==width and previous.available==available then return end
+        style.font_size=available and UIRenderer.scaled_font_size_by_width(
+            renderer,text,style.font_type,previous.font,width) or previous.font
+        previous.text,previous.scale,previous.width,previous.available=text,renderer.scale,width,available
+        widget.dirty=true
+    end
+    mod:hook(InputUtils,"input_text_for_current_input_device",
+        function(func,service,alias,tint)
+            local action = aliases[alias]
+            if depth==0 or not enabled() or service~="Ingame" or action==nil then
+                return func(service,alias,tint)
+            end
+            local switch = weapon_switch and (alias=="wield_1" or alias=="wield_2")
+            if switch then action="quick_wield" end
+            local controls = bindings.controls_for_action(action)
+            local labels = {}
+            -- One valid binding keeps compact HUD badges readable. All aliases
+            -- remain usable and are listed individually in the options.
+            if controls[1] then labels[1]=mod:localize("vr_prompt_"..controls[1]) end
+            local text = #labels>0 and table.concat(labels," / ") or mod:localize("vr_action_unbound")
+            if switch and #labels>0 then text=text.." "..mod:localize("vr_prompt_switch") end
+            text="["..text.."]"
+            if tint then text=InputUtils.apply_color_to_input_text(text,Color.ui_input_color(255,true)) end
+            return text
+        end)
+    for _,scope in ipairs(scopes) do
+        local switching=scope[3] or false
+        mod:hook(scope[1],scope[2],function(func,...)
+            local previous_switch=weapon_switch
+            depth=depth+1; weapon_switch=switching
+            local result=pack(pcall(func,...))
+            depth=depth-1; weapon_switch=previous_switch
+            if not result[1] then error(result[2],0) end
+            return unpack(result,2,result.n)
+        end)
+    end
+    -- These elements cache text across frames. Refresh just their input text
+    -- when mappings or VR availability change, without forcing global input mode.
+    for _,class in ipairs({"HudElementPlayerWeapon","HudElementPlayerAbility",
+            "HudElementPlayerSlotItemAbility","HudElementWieldInfo"}) do
+        local wield=class=="HudElementWieldInfo"
+        mod:hook(class,"update",function(func,self,dt,t,renderer,...)
+            local current=bindings.revision*2+(enabled() and 1 or 0)
+            if revisions[self]~=current then
+                revisions[self]=current
+                if wield then self:_reset_current_info() else self:_update_input() end
+            end
+            local result=pack(func(self,dt,t,renderer,...))
+            fit_ability_label(self,renderer)
+            return unpack(result,1,result.n)
+        end)
+    end
+end
+
+return Prompts

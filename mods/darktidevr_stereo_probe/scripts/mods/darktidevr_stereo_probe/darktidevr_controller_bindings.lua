@@ -49,7 +49,7 @@ function Bindings.widgets()
 end
 
 function Bindings.install(mod)
-    local api = {held=0,bindings={}}
+    local api = {held=0,bindings={},revision=0}
     local masks, resolved = {}, {}
     local dirty, blocked, active = true, 0, false
     for _,action in ipairs(Bindings.actions) do
@@ -62,7 +62,19 @@ function Bindings.install(mod)
     local previous = mod.on_setting_changed
     mod.on_setting_changed = function(id)
         if previous then previous(id) end
-        if type(id)=="string" and id:sub(1,8)=="vr_bind_" then dirty=true end
+        if type(id)=="string" and id:sub(1,8)=="vr_bind_" then
+            dirty=true
+            api.revision=api.revision+1
+        end
+    end
+    function api.controls_for_action(id)
+        local wanted, controls = masks[id], {}
+        if not wanted or wanted==0 then return controls end
+        for _,control in ipairs(Bindings.controls) do
+            local selected = masks[mod:get("vr_bind_"..control.id)] or masks[control.default]
+            if bit.band(selected,wanted)==wanted then controls[#controls+1]=control.id end
+        end
+        return controls
     end
     function api.sample(enabled, physical)
         physical = physical or 0
