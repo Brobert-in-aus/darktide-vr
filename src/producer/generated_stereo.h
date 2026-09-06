@@ -18,6 +18,7 @@ void stage_generated_stereo(ID3D12GraphicsCommandList* commands, ID3D12Resource*
 void submit_generated_stereo(ID3D12CommandQueue* queue, unsigned count, ID3D12CommandList* const* lists);
 void reset_generated_stereo(void* commands);
 std::uint64_t stage_original_stereo(ID3D12GraphicsCommandList* commands, ID3D12Resource* packed_final,
-    std::uint64_t present, std::uint64_t pose, std::uint64_t generation);
+    std::uint64_t present, std::uint64_t pose, std::uint64_t generation,
+    const std::array<ID3D12Resource*, 2>* separate_ui = nullptr);
 bool submit_original_stereo(ID3D12CommandQueue* queue, std::uint64_t sequence);
 }

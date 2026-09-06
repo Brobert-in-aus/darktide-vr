@@ -4,6 +4,7 @@ target_compile_definitions(darktidevr-original-stereo-ring-tests PRIVATE NOMINMA
 target_link_libraries(darktidevr-original-stereo-ring-tests PRIVATE darktidevr_core darktidevr_bridge d3d12 dxgi)
 if(BUILD_TESTING)
   add_test(NAME original_stereo_ring COMMAND darktidevr-original-stereo-ring-tests)
+  add_test(NAME original_stereo_ui_ring COMMAND darktidevr-original-stereo-ring-tests ui)
   set_tests_properties(original_stereo_ring PROPERTIES LABELS "d3d12;transport;streamline")
 endif()
 

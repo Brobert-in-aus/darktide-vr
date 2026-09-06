@@ -1035,3 +1035,31 @@ checks. Worn blur acceptance remains failed until new evidence says otherwise.
 Baseline NGX samples reported DLSSG.UI=null. Later baseline zero-generated-frame
 intervals occurred with foreground=0, no additional NGX evaluations and original
 frames continuing, so those focus-related periods are not evidence of UI rejection.
+
+### Ninth combined run and separate UI-layer foundation (2026-09-06)
+
+The combined run supplies distinct NGX DLSSG.UI resources for both eyes, format 28,
+runtime extent 2496x2688 at offset 0,0. Exact fenced-owner readback passed in both
+eyes (zero missing/invalid/residual pixels; max error 1.933 / 1.455). Capture-only
+alpha normalization eliminated the observed GUI rejections; generated stereo held
+about 50+50 FPS beyond the previous 30-second failure window. Focus=0 periods are
+reported separately. Worn blur acceptance is still pending/previously failed.
+Local evidence: ninth-run-combined.tsv, ninth-run-ngx-ui.log, ninth-run-health.log,
+and ninth-run-owned-comparison beneath the HUD-alpha diagnostics directory.
+
+The consumer associates generated world images with an interpolated midpoint
+pose. Excluded UI may instead retain endpoint coordinates; this is an active
+hypothesis, not a proven new root cause. Building explicit UI separation avoids
+requiring one image to share two source poses and guarantees UI stays outside FG.
+
+Foundation now implemented but NOT connected to the live view: a premultiplied
+OpenXR UI projection layer using runtime dimensions and explicit source poses;
+optional paired original/UI shared textures protected by the same ring fences.
+Original transport frame_index=1 indicates separated UI content; generated frame
+indices retain their existing meaning. The WARP UI-ring test verifies both eye
+colours/alpha, wrong-extent rejection, independent slot contents and ring reuse.
+Native target, UI-layer library and original-ring tests built. Both normal and UI
+ring tests passed. Full harness relink was deferred because the live harness exe
+is running; no deployment of this foundation yet.
+Remaining: consumer pairing/copy/layer integration, clean-world FG inputs, preserve
+desktop mirror/menu behaviour, combined live stability and worn motion acceptance.

@@ -48,6 +48,11 @@ target_link_libraries(darktidevr-tracked-cuff-renderer PUBLIC
   OpenXR::openxr_loader darktidevr-tracked-cuff darktidevr_core
   d3d12 d3dcompiler dxgi)
 
+add_library(darktidevr-ui-projection STATIC ui_projection_layer.cpp)
+target_compile_options(darktidevr-ui-projection PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-ui-projection PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(darktidevr-ui-projection PUBLIC OpenXR::openxr_loader d3d12)
+
 add_executable(darktidevr-xr-harness main.cpp synthetic_scene.cpp)
 target_compile_options(darktidevr-xr-harness PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-xr-harness PRIVATE
@@ -55,7 +60,7 @@ target_compile_definitions(darktidevr-xr-harness PRIVATE
 target_link_libraries(darktidevr-xr-harness PRIVATE
   OpenXR::openxr_loader darktidevr_core darktidevr_bridge darktidevr-window-capture
   darktidevr-menu-input darktidevr-synthetic-controller
-  darktidevr-synthetic-head darktidevr-tracked-cuff-renderer
+  darktidevr-synthetic-head darktidevr-tracked-cuff-renderer darktidevr-ui-projection
   d3d12 d3dcompiler dxgi dxguid)
 
 add_custom_command(TARGET darktidevr-xr-harness POST_BUILD

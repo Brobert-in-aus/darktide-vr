@@ -9,12 +9,14 @@
 #include <wrl/client.h>
 #include <iostream>
 #include <stdexcept>
+#include <string_view>
 
 using Microsoft::WRL::ComPtr;
 void check(HRESULT hr) { if(FAILED(hr)) throw std::runtime_error("D3D12 operation failed"); }
 void expect(bool value) { if(!value) throw std::runtime_error("Original ring invariant failed"); }
-int main() {
+int main(int argc, char** argv) {
   try {
+    const bool with_ui = argc == 2 && std::string_view(argv[1]) == "ui";
     darktidevr::tests::isolate_transports();
     ComPtr<IDXGIFactory4> factory; check(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
     ComPtr<IDXGIAdapter> warp; check(factory->EnumWarpAdapter(IID_PPV_ARGS(&warp)));
@@ -32,9 +34,22 @@ int main() {
     description.Flags=D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
     ComPtr<ID3D12Resource> source;
     check(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&description,D3D12_RESOURCE_STATE_COMMON,nullptr,IID_PPV_ARGS(&source)));
-    D3D12_DESCRIPTOR_HEAP_DESC rtv_desc{}; rtv_desc.Type=D3D12_DESCRIPTOR_HEAP_TYPE_RTV; rtv_desc.NumDescriptors=1;
+    D3D12_DESCRIPTOR_HEAP_DESC rtv_desc{}; rtv_desc.Type=D3D12_DESCRIPTOR_HEAP_TYPE_RTV; rtv_desc.NumDescriptors=with_ui ? 3 : 1;
     ComPtr<ID3D12DescriptorHeap> rtv; check(device->CreateDescriptorHeap(&rtv_desc,IID_PPV_ARGS(&rtv)));
     device->CreateRenderTargetView(source.Get(),nullptr,rtv->GetCPUDescriptorHandleForHeapStart());
+    std::array<ComPtr<ID3D12Resource>, 2> ui_sources;
+    std::array<ID3D12Resource*, 2> ui_inputs{};
+    std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 2> ui_rtvs{};
+    if (with_ui) for (unsigned eye = 0; eye < 2; ++eye) {
+      auto desc = description; desc.Width /= 2;
+      check(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
+          D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&ui_sources[eye])));
+      ui_inputs[eye] = ui_sources[eye].Get();
+      ui_rtvs[eye] = rtv->GetCPUDescriptorHandleForHeapStart();
+      ui_rtvs[eye].ptr += (eye + 1) * device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+      device->CreateRenderTargetView(ui_inputs[eye], nullptr, ui_rtvs[eye]);
+    }
+    const auto* ui = with_ui ? &ui_inputs : nullptr;
     ComPtr<ID3D12Fence> done; check(device->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&done)));
     const auto event=CreateEventW(nullptr,FALSE,FALSE,nullptr); expect(event!=nullptr);
     std::uint64_t fence_value{};
@@ -55,19 +70,31 @@ int main() {
       const float colour[]{static_cast<float>(frame)/255.0F,0,1,1};
       commands->ClearRenderTargetView(rtv->GetCPUDescriptorHandleForHeapStart(),colour,0,nullptr);
       barrier(source.Get(),D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_COMMON);
-      expect(darktidevr::producer::stage_original_stereo(commands.Get(),source.Get(),frame,100+frame,9)==frame);
+      if (with_ui) {
+        for (unsigned eye = 0; eye < 2; ++eye) {
+          barrier(ui_inputs[eye], D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
+          const float alpha = static_cast<float>((eye + 1) * 64) / 255.0F;
+          const float pixel[]{static_cast<float>(frame) / 255.0F, alpha, 0, alpha};
+          commands->ClearRenderTargetView(ui_rtvs[eye], pixel, 0, nullptr);
+          barrier(ui_inputs[eye], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
+        }
+        const std::array<ID3D12Resource*, 2> invalid{source.Get(), ui_inputs[1]};
+        expect(darktidevr::producer::stage_original_stereo(commands.Get(), source.Get(), frame, 100+frame, 9, &invalid)==0);
+      }
+      expect(darktidevr::producer::stage_original_stereo(commands.Get(),source.Get(),frame,100+frame,9,ui)==frame);
       execute(); expect(darktidevr::producer::submit_original_stereo(queue.Get(),frame));
     }
     darktidevr::core::SharedGeneratedFrameStateReader reader{L"Local\\DarktideVR-original-frame-state-v1"};
     darktidevr::core::SharedGeneratedFrameState state; expect(reader.read(state)); expect(state.latest_sequence==3);
+    expect(state.slots[1].frame_index == (with_ui ? darktidevr::core::kOriginalFrameSeparateUi : 0));
     darktidevr::bridge::SharedGeneratedSurfaceNames names{{L"Local\\DarktideVR-original-stereo-0",L"Local\\DarktideVR-original-stereo-1",L"Local\\DarktideVR-original-stereo-2"},L"Local\\DarktideVR-original-stereo-ready",L"Local\\DarktideVR-original-stereo-consumed"};
     for(auto& name:names.textures) name=darktidevr::core::shared_object_name(name.c_str());
     names.ready_fence=darktidevr::core::shared_object_name(names.ready_fence.c_str());
     names.consumed_fence=darktidevr::core::shared_object_name(names.consumed_fence.c_str());
     auto opened=darktidevr::bridge::open_shared_generated_surfaces(device.Get(),names,{{8,4},DXGI_FORMAT_R8G8B8A8_UNORM});
-    reset(); expect(darktidevr::producer::stage_original_stereo(commands.Get(),source.Get(),4,104,9)==0);
+    reset(); expect(darktidevr::producer::stage_original_stereo(commands.Get(),source.Get(),4,104,9,ui)==0);
     check(opened.consumed_fence->Signal(1));
-    expect(darktidevr::producer::stage_original_stereo(commands.Get(),source.Get(),4,104,9)==4);
+    expect(darktidevr::producer::stage_original_stereo(commands.Get(),source.Get(),4,104,9,ui)==4);
     execute(); expect(darktidevr::producer::submit_original_stereo(queue.Get(),4));
     expect(reader.read(state) && state.latest_sequence==4 && state.slots[0].current_pose==104);
     // Read the untouched second slot: recycling slot zero must not overwrite
@@ -85,7 +112,26 @@ int main() {
     barrier(opened.textures[1].Get(),D3D12_RESOURCE_STATE_COPY_SOURCE,D3D12_RESOURCE_STATE_COMMON); execute();
     void* pixels{}; const D3D12_RANGE range{0,static_cast<SIZE_T>(bytes)}; check(readback->Map(0,&range,&pixels));
     const auto* rgba=static_cast<const unsigned char*>(pixels); expect(rgba[0]==2 && rgba[2]==255 && rgba[3]==255);
-    readback->Unmap(0,nullptr); CloseHandle(event);
+    readback->Unmap(0,nullptr);
+    if (with_ui) {
+      for (unsigned i = 0; i < 3; ++i)
+        names.textures[i] = darktidevr::core::shared_object_name((L"Local\\DarktideVR-original-ui-" + std::to_wstring(i)).c_str());
+      auto opened_ui = darktidevr::bridge::open_shared_generated_surfaces(device.Get(), names,
+          {{8,4},DXGI_FORMAT_R8G8B8A8_UNORM});
+      reset(); barrier(opened_ui.textures[1].Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE);
+      from.pResource = opened_ui.textures[1].Get();
+      commands->CopyTextureRegion(&to,0,0,0,&from,nullptr);
+      barrier(opened_ui.textures[1].Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON);
+      execute(); check(readback->Map(0,&range,&pixels));
+      const auto* data = static_cast<const unsigned char*>(pixels);
+      for (unsigned y = 0; y < 4; ++y) for (unsigned x = 0; x < 8; ++x) {
+        const auto* pixel = data + footprint.Offset + y * footprint.Footprint.RowPitch + x * 4;
+        const auto expected = x < 4 ? 64 : 128;
+        expect(pixel[0] == 2 && pixel[1] == expected && pixel[2] == 0 && pixel[3] == expected);
+      }
+      readback->Unmap(0,nullptr);
+    }
+    CloseHandle(event);
     std::cout << "original_stereo_ring=pass\n"; return 0;
   } catch(const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

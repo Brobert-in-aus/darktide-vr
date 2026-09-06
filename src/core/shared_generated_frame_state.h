@@ -10,6 +10,10 @@ namespace darktidevr::core {
 inline constexpr wchar_t kSharedGeneratedFrameStateName[] =
     L"Local\\DarktideVR-generated-frame-state-v2";
 inline constexpr std::size_t kSharedGeneratedFrameSlotCount = 3;
+// Only on the original-frame transport, frame_index is a content discriminator
+// (it is otherwise unused there). A separated frame pairs clean world colour
+// with transparent UI textures under the same sequence and completion fences.
+inline constexpr std::uint32_t kOriginalFrameSeparateUi = 1;
 
 struct SharedGeneratedFrameSlot {
   std::uint64_t sequence{};

@@ -37,7 +37,9 @@ unsigned width{}, height{};
 HANDLE status_log{INVALID_HANDLE_VALUE};
 struct OriginalRing {
   std::array<ComPtr<ID3D12Resource>,3> textures;
+  std::array<ComPtr<ID3D12Resource>,3> ui_textures;
   std::array<HANDLE,3> handles{};
+  std::array<HANDLE,3> ui_handles{};
   ComPtr<ID3D12Fence> ready,consumed;
   HANDLE ready_handle{},consumed_handle{};
   std::unique_ptr<core::SharedGeneratedFrameStateWriter> writer;
@@ -45,6 +47,7 @@ struct OriginalRing {
   std::uint64_t sequence{};
   unsigned width{},height{};
   bool failed{};
+  bool separate_ui{};
 } originals;
 void status(const char* format, ...) {
   if(status_log==INVALID_HANDLE_VALUE) return;
@@ -95,11 +98,19 @@ void configure_generated_stereo(bool value) {
 }
 bool generated_stereo_enabled() { return enabled.load(); }
 std::uint64_t stage_original_stereo(ID3D12GraphicsCommandList* commands, ID3D12Resource* packed_final,
-    std::uint64_t present, std::uint64_t pose, std::uint64_t generation) {
+    std::uint64_t present, std::uint64_t pose, std::uint64_t generation,
+    const std::array<ID3D12Resource*, 2>* separate_ui) {
   if(!enabled.load() || !commands || !packed_final || !pose || !generation || originals.failed) return 0;
   // Called only by the serialized input submission path, before its queue
   // execution. The packed final image has just been restored to PRESENT.
   auto description=packed_final->GetDesc();
+  if (separate_ui) for (auto* ui : *separate_ui) {
+    if (!ui) return 0;
+    const auto d = ui->GetDesc();
+    if (d.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D || d.Width * 2 != description.Width ||
+        d.Height != description.Height || d.Format != DXGI_FORMAT_R8G8B8A8_UNORM ||
+        d.DepthOrArraySize != 1 || d.MipLevels != 1 || d.SampleDesc.Count != 1) return 0;
+  }
   if(!originals.writer) {
     ComPtr<ID3D12Device> device;
     if(FAILED(packed_final->GetDevice(IID_PPV_ARGS(&device)))) { originals.failed=true; return 0; }
@@ -111,6 +122,15 @@ std::uint64_t stage_original_stereo(ID3D12GraphicsCommandList* commands, ID3D12R
           D3D12_RESOURCE_STATE_COMMON,nullptr,IID_PPV_ARGS(&originals.textures[i]))) ||
           FAILED(device->CreateSharedHandle(originals.textures[i].Get(),nullptr,GENERIC_ALL,name.c_str(),&originals.handles[i]))) {
         originals.failed=true; return 0;
+      }
+      if (separate_ui) {
+        const auto ui_name = core::shared_object_name((L"Local\\DarktideVR-original-ui-" + std::to_wstring(i)).c_str());
+        if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_SHARED, &description,
+            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&originals.ui_textures[i]))) ||
+            FAILED(device->CreateSharedHandle(originals.ui_textures[i].Get(), nullptr, GENERIC_ALL,
+                ui_name.c_str(), &originals.ui_handles[i]))) {
+          originals.failed = true; return 0;
+        }
       }
     }
     if(FAILED(device->CreateFence(0,D3D12_FENCE_FLAG_SHARED,IID_PPV_ARGS(&originals.ready))) ||
@@ -124,7 +144,9 @@ std::uint64_t stage_original_stereo(ID3D12GraphicsCommandList* commands, ID3D12R
     try { originals.writer=std::make_unique<core::SharedGeneratedFrameStateWriter>(L"Local\\DarktideVR-original-frame-state-v1"); }
     catch(...) { originals.failed=true; return 0; }
     originals.width=static_cast<unsigned>(description.Width); originals.height=description.Height;
+    originals.separate_ui = separate_ui != nullptr;
   }
+  if (originals.separate_ui != (separate_ui != nullptr)) return 0;
   if(description.Width!=originals.width || description.Height!=originals.height) return 0;
   const auto next=originals.sequence+1;
   const auto completed=originals.consumed->GetCompletedValue();
@@ -138,16 +160,40 @@ std::uint64_t stage_original_stereo(ID3D12GraphicsCommandList* commands, ID3D12R
   commands->CopyResource(destination,packed_final);
   for(auto& b:barriers) std::swap(b.Transition.StateBefore,b.Transition.StateAfter);
   commands->ResourceBarrier(2,barriers.data());
+  if (separate_ui) {
+    auto* packed_ui = originals.ui_textures[core::generated_frame_slot(next)].Get();
+    D3D12_RESOURCE_BARRIER target{};
+    target.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    target.Transition = {packed_ui, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+        D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST};
+    commands->ResourceBarrier(1, &target);
+    for (unsigned eye = 0; eye < 2; ++eye) {
+      D3D12_RESOURCE_BARRIER source{};
+      source.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+      source.Transition = {(*separate_ui)[eye], D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+          D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE};
+      commands->ResourceBarrier(1, &source);
+      D3D12_TEXTURE_COPY_LOCATION from{}, to{};
+      from.pResource = (*separate_ui)[eye]; from.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+      to.pResource = packed_ui; to.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+      commands->CopyTextureRegion(&to, eye * (originals.width / 2), 0, 0, &from, nullptr);
+      std::swap(source.Transition.StateBefore, source.Transition.StateAfter);
+      commands->ResourceBarrier(1, &source);
+    }
+    std::swap(target.Transition.StateBefore, target.Transition.StateAfter);
+    commands->ResourceBarrier(1, &target);
+  }
   originals.pending={};
   originals.pending.sequence=next; originals.pending.native_call=present;
   originals.pending.current_pose=pose; originals.pending.gameplay_generation=generation;
+  originals.pending.frame_index = separate_ui ? core::kOriginalFrameSeparateUi : 0;
   originals.pending.tick_ms=GetTickCount64(); originals.sequence=next;
   return next;
 }
 bool submit_original_stereo(ID3D12CommandQueue* queue,std::uint64_t original_sequence) {
   if(!original_sequence || originals.pending.sequence!=original_sequence || !originals.writer) return false;
   const auto& p=originals.pending;
-  return originals.writer->publish(original_sequence,p.native_call,0,originals.width,originals.height,
+  return originals.writer->publish(original_sequence,p.native_call,p.frame_index,originals.width,originals.height,
       static_cast<unsigned>(originals.textures[0]->GetDesc().Format),0,p.current_pose,p.gameplay_generation,p.tick_ms,original_sequence) &&
       SUCCEEDED(queue->Signal(originals.ready.Get(),original_sequence));
 }
