@@ -219,8 +219,11 @@ bounded output-record analyzer. `-NgxOutputProbeAtStereoSubmit` reserves its
 capture window for the first prepared stereo submission. The outer runtime and
 feature-lifetime hooks now pass live compatibility: six complete observations
 are identified as frame generation and match the per-eye input snapshot
-addresses. This does not establish output extent, GPU completion, source-frame
-ownership or continuous feature history. The four-batch diagnostic still causes
+addresses. Subsequent diagnostics establish the runtime-derived packed output
+extent, correct left/right legacy backbuffer rectangles, and completion fences
+on the actual NVIDIA compute queue for all six complete evaluations. Output pixel
+ownership, source-frame association and continuous feature history remain open.
+The four-batch diagnostic still causes
 user-observed stereo/side-by-side flicker; visual acceptance is rejected.
 The observer remains opt-in and does not publish generated XR output. See the
 [current boundary candidate](handoffs/2026-09-06-dlss-output-boundary.md) and

@@ -322,3 +322,11 @@ call/ticket/fence/queue identities and successful signal evidence; device remova
 never becomes completion. `EvaluationCommandsCompleted` is deliberately separate
 from output ownership and generated publication. Native Release and four NGX
 tests pass, including missing/mismatched/duplicate/device-removed evidence.
+
+The live compute-completion run passes: all six complete, feature-qualified
+evaluations match submissions and successful fence completion on the observed
+compute queue. `EvaluationCommandsCompleted=True`; output ownership and generated
+publication remain false. Evidence: `completion-live-ngx.log`,
+`completion-live-queue.log`, `completion-live-streamline.tsv` and
+`completion-live-report.json`. Next establish the output resource state within
+the evaluation command recording, then preserve pixels before future reuse.
