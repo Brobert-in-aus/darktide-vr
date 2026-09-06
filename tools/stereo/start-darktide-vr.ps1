@@ -36,6 +36,8 @@ param(
 
     [switch] $StreamlineStereoStageProbe,
 
+    [switch] $NgxOutputProbe,
+
     [switch] $StreamlineStereoSubmitProbe,
     [ValidateRange(1, 8)] [int] $StreamlineStereoSubmitFrames = 1,
 
@@ -207,6 +209,8 @@ $streamlineStereoStageProbeFlagExisted = $false
 $streamlineStereoSubmitProbeFlagPath = $null
 $streamlineStereoSubmitProbeFlagOriginal = $null
 $streamlineStereoSubmitProbeFlagExisted = $false
+$ngxOutputProbeFlagPath = $null
+$ngxOutputProbeFlagOriginal = $null
 
 if ($TuneWorkerThreads -and -not (Get-Process Darktide -ErrorAction SilentlyContinue)) {
     & (Join-Path $PSScriptRoot 'set-vr-worker-threads.ps1') -Action Apply
@@ -453,6 +457,15 @@ if ($StreamlineStereoStageProbe) {
     Set-Content -LiteralPath $streamlineStereoStageProbeFlagPath `
         -Value 'enabled' -Encoding ascii
     Write-Output 'One-shot stereo Present staging probe enabled.'
+}
+if ($NgxOutputProbe) {
+    $ngxOutputProbeFlagPath = Join-Path $GameRoot `
+        'mods\darktidevr_stereo_probe\darktidevr_ngx_output_probe.flag'
+    if (Test-Path -LiteralPath $ngxOutputProbeFlagPath -PathType Leaf) {
+        $ngxOutputProbeFlagOriginal = [IO.File]::ReadAllBytes($ngxOutputProbeFlagPath)
+    }
+    Set-Content -LiteralPath $ngxOutputProbeFlagPath -Value 'enabled' -Encoding ascii
+    Write-Output 'Bounded NGX output identity observation enabled; no generated XR publication.'
 }
 if ($StreamlineStereoSubmitProbe) {
     $streamlineStereoSubmitProbeFlagPath = Join-Path $GameRoot `
@@ -812,6 +825,14 @@ else {
 }
 }
 finally {
+    if ($ngxOutputProbeFlagPath) {
+        if ($null -ne $ngxOutputProbeFlagOriginal) {
+            [IO.File]::WriteAllBytes($ngxOutputProbeFlagPath, $ngxOutputProbeFlagOriginal)
+        }
+        elseif (Test-Path -LiteralPath $ngxOutputProbeFlagPath -PathType Leaf) {
+            Remove-Item -LiteralPath $ngxOutputProbeFlagPath -Force
+        }
+    }
     if ($streamlineStereoSubmitProbeFlagPath) {
         if ($streamlineStereoSubmitProbeFlagExisted) {
             Set-Content -LiteralPath $streamlineStereoSubmitProbeFlagPath `

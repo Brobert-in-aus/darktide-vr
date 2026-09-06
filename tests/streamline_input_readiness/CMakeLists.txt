@@ -7,3 +7,9 @@ add_test(
     "${PROJECT_SOURCE_DIR}/tools/stereo/get-streamline-stereo-input-readiness.ps1")
 
 set_tests_properties(streamline_input_readiness PROPERTIES LABELS "phase1;streamline")
+
+add_test(NAME ngx_output_observation
+  COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/validate-ngx-observation.ps1"
+    -Reader "${PROJECT_SOURCE_DIR}/tools/stereo/read-ngx-output-probe.ps1")
+set_tests_properties(ngx_output_observation PROPERTIES LABELS "phase1;streamline")

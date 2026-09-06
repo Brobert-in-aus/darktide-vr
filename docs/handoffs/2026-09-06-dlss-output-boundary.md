@@ -82,3 +82,21 @@ with `DARKTIDEVR_NGX_REFERENCE_INCLUDE_DIR` to reproduce the ABI test.
 
 Live caller compatibility and resource association are still unverified. This
 checkpoint prepares the next experiment without disturbing the user's hub test.
+
+## Observation tooling follow-up
+
+`-NgxOutputProbe` now arms the observer for one launcher session and restores
+the previous flag bytes on exit. `tools/stereo/read-ngx-output-probe.ps1 -Path
+<log>` reports complete identity observations separately from rejected records.
+It rejects malformed/repeated identities, unsupported headers and claims of GPU
+completion/publication. Failed evaluations, missing resources, getter failures
+and output/input aliases cannot become complete observations. Even complete
+records always report stereo association, GPU completion and publication as
+unverified. Optional absent HUDless input is incomplete for this stereo-input
+association report, not proof that NVIDIA's evaluation itself is invalid.
+
+The parser's positive/negative fixtures, NGX ABI reference, launcher focus and
+early-failure checks pass (four CTest cases). A later user report of frozen VR
+after manual Psykhanium entry interrupts live NGX testing; this observer remains
+disabled in that run. Its logs show fresh pose-matched pairs rejected by an
+unchanged gameplay-generation resume gate, which is being handled separately.
