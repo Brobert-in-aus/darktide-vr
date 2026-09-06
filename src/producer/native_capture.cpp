@@ -3,6 +3,8 @@
 #include "producer/resource_handle_trace.h"
 #include "producer/ngx_output_probe.h"
 #include "producer/ngx_gpu_timing.h"
+#include "producer/ui_capture_blend.h"
+#include "producer/stereo_ui_readback.h"
 #include "core/shared_object_name.h"
 #include <Windows.h>
 #include <d3d12.h>
@@ -964,6 +966,7 @@ struct PassCounts {
 constexpr std::size_t kRootSlotCount = 32;
 
 struct CommandTrace {
+  bool render_pass_active{};
   std::uint64_t recording_generation{};
   std::uint64_t draw_count{};
   std::uint64_t indexed_draw_count{};
@@ -1092,7 +1095,11 @@ struct PsoMetadata {
   DXGI_FORMAT depth_format{DXGI_FORMAT_UNKNOWN};
   bool blend_enabled{};
   bool depth_enabled{};
+  bool stencil_enabled{};
+  bool alpha_to_coverage{};
+  D3D12_RENDER_TARGET_BLEND_DESC ui_blend{};
 };
+bool world_ui_capture_requested();
 
 constexpr std::uint64_t kBillboardTargetVertexShader =
     0x42e436fb1ef1b392ULL;
@@ -2067,6 +2074,7 @@ void write_streamline_probe_log(const char* format, ...) {
   // bounded log for the one-shot input/submission transaction so periodic
   // Present telemetry cannot erase its eventual result.
   const bool transaction_record =
+      std::strncmp(format, "UI_ALPHA_", 9) == 0 ||
       std::strncmp(format, "STEREO_", 7) == 0 ||
       std::strncmp(format, "INPUT_SNAPSHOT", 14) == 0 ||
       std::strncmp(format, "HEAD_POSE_READ", 14) == 0 ||
@@ -2077,10 +2085,11 @@ void write_streamline_probe_log(const char* format, ...) {
   if (!transaction_record &&
       streamline_probe_background_log_count.fetch_add(
           1, std::memory_order_relaxed) >= 8192) return;
-  const bool terminal_submission_record=std::strncmp(format,"STEREO_CONTINUOUS",17)==0 &&
+  const bool terminal_submission_record=std::strncmp(format,"UI_ALPHA_",9)==0 ||
+      (std::strncmp(format,"STEREO_CONTINUOUS",17)==0 &&
       (std::strstr(format,"phase=failed") || std::strstr(format,"phase=stopped") ||
        std::strstr(format,"phase=paused") || std::strstr(format,"phase=resumed") ||
-       std::strstr(format,"phase=binding_rejection") || std::strstr(format,"phase=timing"));
+       std::strstr(format,"phase=binding_rejection") || std::strstr(format,"phase=timing")));
   if (streamline_probe_log == INVALID_HANDLE_VALUE ||
       (!terminal_submission_record && streamline_probe_log_count.fetch_add(1, std::memory_order_relaxed) >=
           16384)) {
@@ -4671,6 +4680,10 @@ PsoMetadata inspect_pipeline_stream(
         read = read_stream_subobject(stream, description.SizeInBytes, offset,
                                      value);
         metadata.blend_enabled = read && value.RenderTarget[0].BlendEnable;
+        if (read) {
+          metadata.ui_blend = value.RenderTarget[0];
+          metadata.alpha_to_coverage = value.AlphaToCoverageEnable;
+        }
         break;
       }
       case D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL: {
@@ -4678,6 +4691,7 @@ PsoMetadata inspect_pipeline_stream(
         read = read_stream_subobject(stream, description.SizeInBytes, offset,
                                      value);
         metadata.depth_enabled = read && value.DepthEnable;
+        metadata.stencil_enabled = read && value.StencilEnable;
         break;
       }
       case D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL1: {
@@ -4685,6 +4699,7 @@ PsoMetadata inspect_pipeline_stream(
         read = read_stream_subobject(stream, description.SizeInBytes, offset,
                                      value);
         metadata.depth_enabled = read && value.DepthEnable;
+        metadata.stencil_enabled = read && value.StencilEnable;
         break;
       }
       case D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE: {
@@ -5640,6 +5655,9 @@ HRESULT STDMETHODCALLTYPE create_graphics_pipeline_state_hook(
     metadata.blend_enabled = description->NumRenderTargets > 0 &&
                              description->BlendState.RenderTarget[0].BlendEnable;
     metadata.depth_enabled = description->DepthStencilState.DepthEnable;
+    metadata.stencil_enabled = description->DepthStencilState.StencilEnable;
+    metadata.alpha_to_coverage = description->BlendState.AlphaToCoverageEnable;
+    metadata.ui_blend = description->BlendState.RenderTarget[0];
     preserve_billboard_substitution(metadata, hash_bytecode(description->VS),
                                     substituted);
     record_pso_shader_mapping_if_requested(
@@ -5798,6 +5816,9 @@ HRESULT STDMETHODCALLTYPE load_graphics_pipeline_hook(
     metadata.blend_enabled = description->NumRenderTargets > 0 &&
                              description->BlendState.RenderTarget[0].BlendEnable;
     metadata.depth_enabled = description->DepthStencilState.DepthEnable;
+    metadata.stencil_enabled = description->DepthStencilState.StencilEnable;
+    metadata.alpha_to_coverage = description->BlendState.AlphaToCoverageEnable;
+    metadata.ui_blend = description->BlendState.RenderTarget[0];
     preserve_billboard_substitution(metadata, hash_bytecode(description->VS),
                                     substituted);
     record_pso_shader_mapping_if_requested(
@@ -6037,7 +6058,7 @@ HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
       focused ? command_recording_generation.fetch_add(
                     1, std::memory_order_relaxed) + 1
               : 0;
-  if (marker_log != INVALID_HANDLE_VALUE ||
+  if (world_ui_capture_requested() || marker_log != INVALID_HANDLE_VALUE ||
       menu_direct_capture_enabled.load(std::memory_order_relaxed) ||
       billboard_horizon_lock_enabled.load(std::memory_order_relaxed) ||
       cluster_light_visibility_fix_requested.load(std::memory_order_relaxed) ||
@@ -6117,11 +6138,12 @@ void STDMETHODCALLTYPE begin_render_pass_hook(
     const D3D12_RENDER_PASS_RENDER_TARGET_DESC* render_targets,
     const D3D12_RENDER_PASS_DEPTH_STENCIL_DESC* depth_stencil,
     D3D12_RENDER_PASS_FLAGS flags) {
-  if (marker_log != INVALID_HANDLE_VALUE ||
+  if (world_ui_capture_requested() || marker_log != INVALID_HANDLE_VALUE ||
       menu_direct_capture_enabled.load(std::memory_order_relaxed) ||
       focused_trace_phase.load(std::memory_order_relaxed) != 0) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
+    trace.render_pass_active = true;
     if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
       trace.render_pass_count++;
     }
@@ -6149,11 +6171,12 @@ void STDMETHODCALLTYPE begin_render_pass_hook(
 
 void STDMETHODCALLTYPE end_render_pass_hook(ID3D12GraphicsCommandList4* commands) {
   original_end_render_pass(commands);
-  if (marker_log != INVALID_HANDLE_VALUE ||
+  if (world_ui_capture_requested() || marker_log != INVALID_HANDLE_VALUE ||
       menu_direct_capture_enabled.load(std::memory_order_relaxed) ||
       focused_trace_phase.load(std::memory_order_relaxed) != 0) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
+    trace.render_pass_active = false;
     if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
       write_focused_log(
           "phase=%d\tframe=%llu\tCL=%p\tEND_RENDER_PASS\t"
@@ -7489,6 +7512,152 @@ void log_cluster_predecessor_ring(ID3D12GraphicsCommandList* commands) {
   }
 }
 
+// Experimental transparent replay is opt-in until paired readbacks establish
+// coverage of both the panel and world markers. Never infer GUI from blending
+// alone: lighting and particle passes also use source-over.
+struct WorldUiCaptureEye {
+  ComPtr<ID3D12Resource> texture;
+  ComPtr<ID3D12DescriptorHeap> rtv;
+  std::uint64_t pose{};
+  unsigned draws{}, rejected{};
+};
+std::mutex world_ui_capture_mutex;
+std::array<WorldUiCaptureEye, 2> world_ui_capture_eyes;
+std::array<std::atomic<std::uint64_t>, 8> world_ui_capture_stages{};
+// A resolution change must not release a texture still referenced by a GPU
+// command list. This bounded experiment retains its earlier allocations.
+std::vector<WorldUiCaptureEye> world_ui_capture_retired;
+bool world_ui_capture_requested() {
+  static const bool enabled = [] {
+    wchar_t value[2]{};
+    if (GetEnvironmentVariableW(L"DARKTIDEVR_CAPTURE_UI_ALPHA", value, 2) == 1 && value[0] == L'1') return true;
+    wchar_t directory[MAX_PATH]{};
+    const auto length = GetTempPathW(MAX_PATH, directory);
+    return length && length < MAX_PATH && GetFileAttributesW(
+        (std::wstring(directory) + L"darktidevr-ui-alpha-capture.enabled").c_str()) != INVALID_FILE_ATTRIBUTES;
+  }();
+  return enabled && !darktidevr::producer::stereo_ui_overlay_readback_staged();
+}
+struct WorldUiDrawRedirect {
+  std::unique_lock<std::mutex> lock;
+  D3D12_CPU_DESCRIPTOR_HANDLE original{};
+  bool active{};
+};
+WorldUiDrawRedirect begin_world_ui_draw(ID3D12GraphicsCommandList* commands,
+                                       const PsoMetadata& metadata) {
+  WorldUiDrawRedirect redirect;
+  if (!world_ui_capture_requested() || current_presentation_mode.load() != 1) return redirect;
+  ++world_ui_capture_stages[0];
+  if (!metadata.blend_enabled || metadata.render_target_count != 1 ||
+      metadata.render_target_format != DXGI_FORMAT_R8G8B8A8_UNORM)
+    return redirect;
+  ++world_ui_capture_stages[1];
+  CommandTrace trace{};
+  {
+    std::scoped_lock lock(trace_mutex);
+    const auto found = command_traces.find(commands);
+    if (found == command_traces.end()) return redirect;
+    trace = found->second;
+  }
+  if (!trace.render_target || trace.render_target_count != 1 || trace.render_pass_active) return redirect;
+  ++world_ui_capture_stages[2];
+  const auto width = camera_input_width.load();
+  const auto height = camera_input_height.load();
+  if (!width || !height || trace.render_pass_active || trace.render_target_count != 1 || !trace.render_target ||
+      trace.viewport_x || trace.viewport_y || trace.viewport_width != width ||
+      trace.viewport_height != height) return redirect;
+  ++world_ui_capture_stages[3];
+  const auto target = descriptor_snapshot(trace.render_target);
+  if (target.width != width || target.height != height ||
+      target.format != DXGI_FORMAT_R8G8B8A8_UNORM || !target.resource) return redirect;
+  const auto source_description = reinterpret_cast<ID3D12Resource*>(target.resource)->GetDesc();
+  if (source_description.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
+      source_description.SampleDesc.Count != 1 || source_description.DepthOrArraySize != 1 ||
+      source_description.MipLevels != 1) return redirect;
+  ++world_ui_capture_stages[4];
+  int eye = -1;
+  std::uint64_t pose{};
+  {
+    std::scoped_lock lock(state_mutex);
+    if (!armed_eye_captures.empty()) {
+      eye = armed_eye_captures.front().eye;
+      pose = armed_eye_captures.front().pose_sequence;
+    }
+  }
+  if (eye < 0 || eye > 1 || !pose) return redirect;
+  ++world_ui_capture_stages[5];
+  redirect.lock = std::unique_lock(world_ui_capture_mutex);
+  static std::unordered_set<std::uint64_t> candidates;
+  const auto identity = mix_u64(metadata.vertex_shader, metadata.pixel_shader);
+  if (candidates.size() < 96 && candidates.insert(identity).second) {
+    const auto& blend = metadata.ui_blend;
+    write_streamline_probe_log(
+        "UI_ALPHA_CANDIDATE\tvs=%llu\tps=%llu\tknown_gui=%u\tdepth=%u\tstencil=%u"
+        "\tcolour_blend=%u,%u,%u\talpha_blend=%u,%u,%u\twrite_mask=%u\talpha_to_coverage=%u\r\n",
+        static_cast<unsigned long long>(metadata.vertex_shader),
+        static_cast<unsigned long long>(metadata.pixel_shader),
+        is_stock_menu_shader_pair(metadata) ? 1U : 0U,
+        metadata.depth_enabled ? 1U : 0U, metadata.stencil_enabled ? 1U : 0U,
+        static_cast<unsigned>(blend.SrcBlend), static_cast<unsigned>(blend.DestBlend),
+        static_cast<unsigned>(blend.BlendOp), static_cast<unsigned>(blend.SrcBlendAlpha),
+        static_cast<unsigned>(blend.DestBlendAlpha), static_cast<unsigned>(blend.BlendOpAlpha),
+        static_cast<unsigned>(blend.RenderTargetWriteMask), metadata.alpha_to_coverage ? 1U : 0U);
+  }
+  if (!is_stock_menu_shader_pair(metadata)) return redirect;
+  ++world_ui_capture_stages[6];
+  auto& capture = world_ui_capture_eyes[eye];
+  if (capture.texture && (capture.texture->GetDesc().Width != width ||
+                          capture.texture->GetDesc().Height != height)) {
+    if (world_ui_capture_retired.size() >= 8) return redirect;
+    world_ui_capture_retired.push_back(std::move(capture));
+    capture = {};
+  }
+  if (!capture.texture) {
+    ComPtr<ID3D12Device> device;
+    if (FAILED(commands->GetDevice(IID_PPV_ARGS(&device)))) return redirect;
+    D3D12_RESOURCE_DESC description{};
+    description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    description.Width = width; description.Height = height;
+    description.DepthOrArraySize = description.MipLevels = 1;
+    description.SampleDesc.Count = 1;
+    description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    description.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+    D3D12_HEAP_PROPERTIES heap{}; heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    D3D12_DESCRIPTOR_HEAP_DESC rtv{};
+    rtv.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV; rtv.NumDescriptors = 1;
+    if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
+        &description, D3D12_RESOURCE_STATE_RENDER_TARGET, nullptr,
+        IID_PPV_ARGS(&capture.texture))) ||
+        FAILED(device->CreateDescriptorHeap(&rtv, IID_PPV_ARGS(&capture.rtv)))) {
+      capture.texture.Reset(); return redirect;
+    }
+    device->CreateRenderTargetView(capture.texture.Get(), nullptr,
+                                   capture.rtv->GetCPUDescriptorHandleForHeapStart());
+  }
+  if (capture.pose != pose) {
+    capture.pose = pose; capture.draws = capture.rejected = 0;
+    const float transparent[4]{};
+    original_clear_render_target_view(commands,
+        capture.rtv->GetCPUDescriptorHandleForHeapStart(), transparent, 0, nullptr);
+  }
+  if (metadata.depth_enabled || metadata.stencil_enabled || trace.depth_target ||
+      !darktidevr::producer::ui_capture_blend_supported(metadata.ui_blend, metadata.alpha_to_coverage)) {
+    ++capture.rejected;
+    return redirect;
+  }
+  redirect.original = {trace.render_target};
+  const auto output = capture.rtv->GetCPUDescriptorHandleForHeapStart();
+  original_om_set_render_targets(commands, 1, &output, FALSE, nullptr);
+  ++capture.draws;
+  ++world_ui_capture_stages[7];
+  redirect.active = true;
+  return redirect;
+}
+void end_world_ui_draw(ID3D12GraphicsCommandList* commands, WorldUiDrawRedirect& redirect) {
+  if (redirect.active)
+    original_om_set_render_targets(commands, 1, &redirect.original, FALSE, nullptr);
+}
+
 void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
                                            UINT vertex_count,
                                            UINT instance_count,
@@ -7558,7 +7727,7 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
   PsoMetadata draw_metadata{};
   const auto direct_menu_capture =
       menu_direct_capture_enabled.load(std::memory_order_relaxed);
-  if (direct_menu_capture) {
+  if (direct_menu_capture || world_ui_capture_requested()) {
     std::uintptr_t pipeline{};
     {
       std::scoped_lock lock(trace_mutex);
@@ -7688,6 +7857,12 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
   }
   end_billboard_binding_override(commands, billboard_override);
   end_stock_menu_draw_redirect(commands, menu_redirect);
+  {
+    auto ui = begin_world_ui_draw(commands, draw_metadata);
+    if (ui.active)
+      original_draw_instanced(commands, vertex_count, instance_count, start_vertex, start_instance);
+    end_world_ui_draw(commands, ui);
+  }
   if (menu_redirect.diagnostic_id != 0 &&
       menu_redirect.diagnostic_id <= 2) {
     write_menu_resource_log(
@@ -7734,6 +7909,21 @@ void STDMETHODCALLTYPE draw_indexed_instanced_hook(
                                   submitted_instance_count, start_index,
                                   base_vertex, start_instance);
   end_billboard_binding_override(commands, billboard_override);
+  if (world_ui_capture_requested()) {
+    std::uintptr_t pipeline{};
+    { std::scoped_lock lock(trace_mutex); pipeline = command_traces[commands].pso; }
+    PsoMetadata metadata{};
+    {
+      std::scoped_lock lock(pso_mutex);
+      const auto found = pso_metadata.find(pipeline);
+      if (found != pso_metadata.end()) metadata = found->second;
+    }
+    auto ui = begin_world_ui_draw(commands, metadata);
+    if (ui.active)
+      original_draw_indexed_instanced(commands, index_count, submitted_instance_count,
+                                      start_index, base_vertex, start_instance);
+    end_world_ui_draw(commands, ui);
+  }
 }
 
 void STDMETHODCALLTYPE execute_indirect_hook(
@@ -8029,7 +8219,7 @@ void STDMETHODCALLTYPE dispatch_hook(ID3D12GraphicsCommandList* commands,
 void STDMETHODCALLTYPE rs_set_viewports_hook(ID3D12GraphicsCommandList* commands,
                                              UINT count,
                                              const D3D12_VIEWPORT* viewports) {
-  if (marker_log != INVALID_HANDLE_VALUE && count > 0 && viewports) {
+  if ((world_ui_capture_requested() || marker_log != INVALID_HANDLE_VALUE) && count > 0 && viewports) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
     trace.eye = viewports[0].TopLeftX > 1.0F ? 1 : 0;
@@ -8191,7 +8381,7 @@ void STDMETHODCALLTYPE set_pipeline_state_hook(
   }
   const auto focused =
       focused_trace_phase.load(std::memory_order_relaxed) != 0;
-  if (marker_log != INVALID_HANDLE_VALUE ||
+  if (world_ui_capture_requested() || marker_log != INVALID_HANDLE_VALUE ||
       cluster_trace_log != INVALID_HANDLE_VALUE ||
       cluster_light_visibility_fix_active.load(std::memory_order_relaxed) ||
       kStockMenuSwapchainCaptureEnabled ||
@@ -8585,7 +8775,7 @@ void STDMETHODCALLTYPE om_set_render_targets_hook(
   }
   const auto focused =
       focused_trace_phase.load(std::memory_order_relaxed) != 0;
-  if (marker_log != INVALID_HANDLE_VALUE ||
+  if (world_ui_capture_requested() || marker_log != INVALID_HANDLE_VALUE ||
       menu_direct_capture_enabled.load(std::memory_order_relaxed) || focused) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
@@ -9235,6 +9425,35 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
                                         ID3D12Resource* final_color, D3D12_RESOURCE_STATES final_state) {
   if (eye < 0 || eye > 1 || !queue || !original_execute_command_lists) {
     return;
+  }
+  if (world_ui_capture_requested()) {
+    std::scoped_lock lock(world_ui_capture_mutex);
+    const auto& ui = world_ui_capture_eyes[eye];
+    static std::uint64_t next_report{};
+    static unsigned stage_reports{};
+    if (stage_reports < 32 && present_frame >= next_report) {
+      ++stage_reports;
+      next_report = present_frame + 60;
+      write_streamline_probe_log(
+          "UI_ALPHA_STAGES\tpresent=%llu\tdraws=%llu\tblended_rgba=%llu\trt_tracked=%llu"
+          "\tviewport_matches=%llu\ttarget_matches=%llu\tarmed=%llu\tknown_gui=%llu\treplayed=%llu\r\n",
+          static_cast<unsigned long long>(present_frame),
+          static_cast<unsigned long long>(world_ui_capture_stages[0].load()),
+          static_cast<unsigned long long>(world_ui_capture_stages[1].load()),
+          static_cast<unsigned long long>(world_ui_capture_stages[2].load()),
+          static_cast<unsigned long long>(world_ui_capture_stages[3].load()),
+          static_cast<unsigned long long>(world_ui_capture_stages[4].load()),
+          static_cast<unsigned long long>(world_ui_capture_stages[5].load()),
+          static_cast<unsigned long long>(world_ui_capture_stages[6].load()),
+          static_cast<unsigned long long>(world_ui_capture_stages[7].load()));
+    }
+    darktidevr::producer::observe_stereo_ui_readback_overlay(
+        static_cast<unsigned>(eye), pose_sequence, ui.pose == pose_sequence ? ui.texture.Get() : nullptr);
+    static unsigned reports{};
+    if (ui.pose == pose_sequence && reports++ < 64)
+      write_streamline_probe_log("UI_ALPHA_CAPTURE\teye=%d\tpose=%llu\tmatched=%u\tdraws=%u\trejected=%u\r\n",
+          eye, static_cast<unsigned long long>(pose_sequence), ui.pose == pose_sequence ? 1U : 0U,
+          ui.draws, ui.rejected);
   }
   std::scoped_lock lock(streamline_input_snapshot_mutex);
   auto& state = streamline_input_snapshot_state;
@@ -13178,7 +13397,7 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
                     &ia_set_primitive_topology_hook,
                     reinterpret_cast<void**>(
                         &original_ia_set_primitive_topology)) != MH_OK) ||
-      (kInstallDiagnosticRenderHooks &&
+      ((kInstallDiagnosticRenderHooks || world_ui_capture_requested()) &&
        MH_CreateHook(command_list_vtable[21], &rs_set_viewports_hook,
                      reinterpret_cast<void**>(&original_rs_set_viewports)) !=
            MH_OK) ||

@@ -380,3 +380,14 @@ shifted/duplicated beside its correct position in generated frames. Acceptance
 must include fast real head movement, not just stationary clarity. Prioritize a
 separate UI color/alpha or post-generation composition path while preserving
 background velocity; do not zero world motion under the HUD.
+
+### HUD frame-generation isolation work, 2026-09-06
+
+Per-eye UI colour/alpha submission and fenced capture ownership are implemented
+and tested (b267429). The native transparent GUI replay experiment and paired
+alpha readback checker are now implemented; they remain observation-only until
+same-frame recomposition proves complete panel/marker coverage. No generated-HUD
+visual fix is claimed yet. The desktop mirror live-FG-off fix (6f69762) is included
+in the current test build. First replay test identified a missing viewport-hook
+dependency; the corrected second run is being checked. Details and commands are
+in docs/handoffs/2026-09-06-dlss-output-boundary.md.

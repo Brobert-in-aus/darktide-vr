@@ -881,3 +881,50 @@ missing/unconfigured UI fails closed instead of retaining a stale layer. UI is
 currently restricted to full-eye RGBA8 UNORM. Existing native callers do not
 request this option yet. Release native/recovery builds and continuous_recovery
 passed, including 12 pause/discard/resume cycles with and without the UI plane.
+
+## 2026-09-06: transparent draw capture experiment
+
+Added opt-in native replay of known GUI shader pairs into full runtime-sized
+RGBA8 transparent targets, keyed to the armed eye/pose. Both direct and indexed
+draws replay with the original bindings and restore the original render target.
+Only source-over RGB plus correctly accumulated coverage is accepted; reject
+missing alpha writes, destination-dependent/additive blending, depth/stencil,
+MSAA alpha-to-coverage and active D3D12 render passes. Unknown shader pairs are
+counted in a bounded candidate census, not replayed. This is not evidence that
+the known menu GUI shader list covers the world HUD panel and every marker.
+
+Enable for one launch with the temp file darktidevr-ui-alpha-capture.enabled
+(or DARKTIDEVR_CAPTURE_UI_ALPHA=1). Native viewport tracking is an explicit
+capture dependency; it does not require the broad diagnostic hook mode.
+A same-pose paired readback adds -left-ui.bmp and -right-ui.bmp to the existing
+scene/final capture. Replay stops after those copies are staged. Textures are
+retained across a bounded number of size changes to avoid freeing queued work.
+No UI tag is installed by this experiment; production native callers still use
+the established HUDless route until transparent coverage is proven.
+
+New tools/stereo/check-dlss-ui-alpha.py preserves raw BMP alpha, recomposes
+UI.rgb + (1-UI.a)*scene, and reports missing coverage and residuals over the
+relevant pixels rather than letting a mostly unchanged background hide errors.
+Rejects fully opaque final images as UI evidence. Outputs alpha, UI, recomposed
+and error PNGs. Passing this check is not worn generated-frame acceptance.
+
+Validation: Release native/recovery/blend targets built; CTest ui_capture_blend,
+continuous_recovery, streamline_submission, streamline_stereo_inputs and
+streamline_abi_reference passed. Python test_ui_alpha_check.py passed 3 tests
+(composition/missing draw, opaque final rejection, raw BMP alpha/orientation).
+Ready preflight hud-alpha-capture-preflight-20260906.json passed; LuaJIT compiled
+31 chunks. First live PID 121840 reached Psykhanium with shared_ready nonzero and
+~50 originals plus ~50 generated per second. Four scene/final BMPs exported, but
+no UI images: the new route depended on viewport tracking previously gated by
+the broad diagnostic mode. Corrected explicit hook installation and tracking;
+second live verification pending. User FG was re-enabled for this capture run;
+pre-change settings are archived locally, not committed.
+
+Second live PID 143660 remained healthy (~50+50 pairs/sec), but capture still
+had no eligible targets. Audit found OMSetRenderTargets tracking also depended
+on menu_direct_capture_enabled, which is intentionally false during gameplay.
+The capture opt-in now independently activates Reset, pipeline, render-target,
+render-pass and viewport state tracking. Added bounded per-stage census to
+separate missing metadata, mismatched extents, unarmed recording and shader/
+blend rejection without treating all failures as missing HUD pixels. No normal
+renderer changes are made when the opt-in is absent.

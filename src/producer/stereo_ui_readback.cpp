@@ -7,6 +7,8 @@
 #include <thread>
 #include <vector>
 #include <cstdio>
+#include <mutex>
+#include <atomic>
 
 namespace darktidevr::producer {
 namespace {
@@ -17,7 +19,8 @@ struct Image {
   UINT64 bytes{};
 };
 struct Probe {
-  std::array<Image,4> images;
+  std::array<Image,6> images;
+  unsigned image_count{4};
   ComPtr<ID3D12Fence> done;
   std::wstring stem;
   ULONGLONG poll_after{};
@@ -25,6 +28,10 @@ struct Probe {
   std::jthread worker;
 };
 Probe probe;
+std::mutex overlays_mutex;
+std::array<ComPtr<ID3D12Resource>,2> overlays;
+std::array<std::uint64_t,2> overlay_poses{};
+std::atomic<bool> overlay_staged{};
 void log(const char* phase, HRESULT result) {
   FILE* file{};
   if(_wfopen_s(&file,(probe.stem+L".log").c_str(),L"a")!=0) return;
@@ -62,9 +69,17 @@ bool export_image(const Image& image, const wchar_t* suffix) {
   return ok;
 }
 }
+void observe_stereo_ui_readback_overlay(unsigned eye, std::uint64_t pose,
+    ID3D12Resource* resource) {
+  if (eye > 1) return;
+  std::scoped_lock lock(overlays_mutex);
+  overlays[eye] = resource;
+  overlay_poses[eye] = resource ? pose : 0;
+}
+bool stereo_ui_overlay_readback_staged() noexcept { return overlay_staged.load(); }
 void stage_stereo_ui_readback(ID3D12GraphicsCommandList* commands,
     ID3D12Resource* left_scene, ID3D12Resource* left_final,
-    ID3D12Resource* right_scene, ID3D12Resource* right_final) {
+    ID3D12Resource* right_scene, ID3D12Resource* right_final, std::uint64_t pose) {
   if(probe.attempted || !commands || GetTickCount64()<probe.poll_after) return;
   probe.poll_after=GetTickCount64()+1000;
   wchar_t directory[MAX_PATH]{};
@@ -77,8 +92,17 @@ void stage_stereo_ui_readback(ID3D12GraphicsCommandList* commands,
   probe.stem=std::wstring(directory)+L"darktidevr-ui-readback-"+std::to_wstring(GetCurrentProcessId());
   ComPtr<ID3D12Device> device;
   if(FAILED(commands->GetDevice(IID_PPV_ARGS(&device)))) {log("device_failed",E_FAIL);return;}
-  const std::array<ID3D12Resource*,4> sources{left_scene,left_final,right_scene,right_final};
-  for(unsigned i=0;i<sources.size();++i) {
+  std::array<ComPtr<ID3D12Resource>,2> overlay_sources;
+  {
+    std::scoped_lock lock(overlays_mutex);
+    if (pose && overlay_poses[0] == pose && overlay_poses[1] == pose && overlays[0] && overlays[1]) {
+      overlay_sources = overlays;
+      probe.image_count = 6;
+    }
+  }
+  const std::array<ID3D12Resource*,6> sources{left_scene,left_final,right_scene,right_final,
+      overlay_sources[0].Get(),overlay_sources[1].Get()};
+  for(unsigned i=0;i<probe.image_count;++i) {
     if(!sources[i]) {log("source_missing",E_INVALIDARG);return;}
     const auto desc=sources[i]->GetDesc();
     if(desc.Dimension!=D3D12_RESOURCE_DIMENSION_TEXTURE2D || desc.MipLevels!=1 ||
@@ -99,10 +123,11 @@ void stage_stereo_ui_readback(ID3D12GraphicsCommandList* commands,
   }
   auto hr=device->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&probe.done));
   if(FAILED(hr)) {log("fence_failed",hr);return;}
-  for(unsigned i=0;i<sources.size();++i) {
+  for(unsigned i=0;i<probe.image_count;++i) {
     D3D12_RESOURCE_BARRIER barrier{}; barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barrier.Transition={sources[i],D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-        D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_COPY_SOURCE};
+        i < 4 ? D3D12_RESOURCE_STATE_COPY_DEST : D3D12_RESOURCE_STATE_RENDER_TARGET,
+        D3D12_RESOURCE_STATE_COPY_SOURCE};
     commands->ResourceBarrier(1,&barrier);
     D3D12_TEXTURE_COPY_LOCATION from{},to{};
     from.pResource=sources[i]; from.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
@@ -113,6 +138,7 @@ void stage_stereo_ui_readback(ID3D12GraphicsCommandList* commands,
     commands->ResourceBarrier(1,&barrier);
   }
   probe.staged=true;
+  overlay_staged.store(probe.image_count == 6);
   log("staged",S_OK);
 }
 void finish_stereo_ui_readback(ID3D12CommandQueue* queue) {
@@ -128,9 +154,10 @@ void finish_stereo_ui_readback(ID3D12CommandQueue* queue) {
       std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     if(stop.stop_requested()) return;
-    const wchar_t* names[]{L"-left-scene",L"-left-final",L"-right-scene",L"-right-final"};
+    const wchar_t* names[]{L"-left-scene",L"-left-final",L"-right-scene",L"-right-final",
+                           L"-left-ui",L"-right-ui"};
     bool ok=true;
-    for(unsigned i=0;i<probe.images.size();++i) ok=export_image(probe.images[i],names[i]) && ok;
+    for(unsigned i=0;i<probe.image_count;++i) ok=export_image(probe.images[i],names[i]) && ok;
     log(ok ? "exported" : "export_failed",ok ? S_OK : E_FAIL);
   });
 }
