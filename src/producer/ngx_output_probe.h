@@ -10,6 +10,8 @@ namespace darktidevr::producer {
 bool install_ngx_output_probe(HMODULE capture_module);
 void arm_ngx_output_probe(std::uint64_t batch, std::uint64_t present);
 void observe_ngx_command_reset(void* commands);
-void observe_ngx_queue_submit(ID3D12CommandQueue* queue, unsigned count,
+std::uint64_t observe_ngx_queue_submit(ID3D12CommandQueue* queue, unsigned count,
                               ID3D12CommandList* const* commands);
+void signal_ngx_queue_completion(ID3D12CommandQueue* queue, std::uint64_t ticket);
+void poll_ngx_queue_completion();
 }

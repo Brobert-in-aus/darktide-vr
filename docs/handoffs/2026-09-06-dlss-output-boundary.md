@@ -311,3 +311,14 @@ mismatched-command fixtures pass. Evidence: `queue-live-ngx.log`,
 Next place completion evidence on the observed compute queue, not merely the
 game's direct/render queue. This still will not retain output pixels against
 future reuse; output copying and ownership remain separate required work.
+
+The next diagnostic allocates one bounded fence group per matched queue
+submission, signals after the original ExecuteCommandLists returns on that exact
+queue, and polls completion from Present without CPU waits. At most 256 groups
+can be created from the observation budget; completed fences are released and
+empty polls return without locking. This changes queue synchronization only by
+inserting signals, not waits or pixel copies. The reader requires matching
+call/ticket/fence/queue identities and successful signal evidence; device removal
+never becomes completion. `EvaluationCommandsCompleted` is deliberately separate
+from output ownership and generated publication. Native Release and four NGX
+tests pass, including missing/mismatched/duplicate/device-removed evidence.

@@ -10056,7 +10056,8 @@ bool trace_streamline_submission_images() {
 
 void STDMETHODCALLTYPE execute_command_lists_hook(
     ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists) {
-  darktidevr::producer::observe_ngx_queue_submit(queue, count, lists);
+  const auto ngx_completion_ticket =
+      darktidevr::producer::observe_ngx_queue_submit(queue, count, lists);
   StreamlineExecuteSnapshot* streamline_snapshot{};
   std::uint64_t streamline_execute_call{};
   const auto known_game_queue =
@@ -10329,6 +10330,7 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
           static_cast<unsigned>(completed_source_state), boundary_qpc.QuadPart);
     }
     original_execute_command_lists(queue, count, lists);
+    darktidevr::producer::signal_ngx_queue_completion(queue, ngx_completion_ticket);
     if (log_streamline_eye_boundary) {
       LARGE_INTEGER boundary_qpc{};
       QueryPerformanceCounter(&boundary_qpc);
@@ -11835,6 +11837,7 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
 
 HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                                        UINT interval, UINT flags) {
+  darktidevr::producer::poll_ngx_queue_completion();
   // Legacy resource tags are global. During this explicit one-shot test, keep
   // the game's next tag calls outside our stage/Present/null-tag transaction.
   // Recursive only for same-thread API re-entry; ordinary runs do not hold it.

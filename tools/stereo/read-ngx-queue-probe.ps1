@@ -7,15 +7,21 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $output = & (Join-Path $PSScriptRoot 'read-ngx-output-probe.ps1') -Path $OutputPath
 $identities = @{}
-foreach ($observation in $output.Observations) { $identities[[uint64]$observation.Call] = $observation }
+foreach ($observation in $output.Observations) {
+    if ($observation.FeatureKind -eq 11 -and $observation.FeatureLifetime -gt 0) {
+        $identities[[uint64]$observation.Call] = $observation
+    }
+}
 $seen = @{}
 $matchedSubmissions = @()
 $resetCalls = @()
 $otherCalls = 0
+$fenceRecords = @{}
+$completionRecords = @{}
 foreach ($line in Get-Content -LiteralPath $QueuePath) {
     if ([string]::IsNullOrWhiteSpace($line)) { continue }
     $parts = $line.Split(' ')
-    if ($parts[0] -cnotin @('NGX_SUBMIT','NGX_RESET')) { throw 'Unknown NGX queue event.' }
+    if ($parts[0] -cnotin @('NGX_SUBMIT','NGX_RESET','NGX_FENCE','NGX_COMPLETE')) { throw 'Unknown NGX queue event.' }
     $fields = @{}
     foreach ($part in $parts | Select-Object -Skip 1) {
         $pair = $part.Split('=',2)
@@ -24,6 +30,21 @@ foreach ($line in Get-Content -LiteralPath $QueuePath) {
     }
     if ($fields.call -notmatch '^\d+$') { throw 'Invalid NGX call identity.' }
     $call = [uint64]::Parse($fields.call)
+    if ($parts[0] -cin @('NGX_FENCE','NGX_COMPLETE')) {
+        if (-not $call -or $fields.ticket -notmatch '^[1-9]\d*$' -or
+            [uint64]$fields.ticket -gt 256 -or $fields.fence -notmatch '^[0-9a-fA-F]{1,16}$') { throw 'Invalid completion identity.' }
+        if ($parts[0] -ceq 'NGX_FENCE') {
+            if ($fenceRecords.ContainsKey($call) -or $fields.result -notmatch '^0x[0-9a-fA-F]{8}$' -or
+                $fields.queue -notmatch '^[0-9a-fA-F]{1,16}$' -or $fields.value -cne '1' -or
+                $fields.gpu_complete -cne '0') { throw 'Invalid fence signal record.' }
+            $fenceRecords[$call]=$fields
+        } else {
+            if ($completionRecords.ContainsKey($call) -or $fields.completed -notmatch '^\d+$' -or
+                $fields.gpu_complete -notmatch '^[01]$' -or $fields.publication -cne '0') { throw 'Invalid fence completion record.' }
+            $completionRecords[$call]=$fields
+        }
+        continue
+    }
     if (-not $call -or $seen.ContainsKey($call)) { throw 'Duplicate or zero NGX queue identity.' }
     $seen[$call] = $true
     if ($seen.Count -gt 256) { throw 'NGX queue budget exceeded.' }
@@ -49,9 +70,26 @@ foreach ($line in Get-Content -LiteralPath $QueuePath) {
         Region=$observation.LegacyRegion; RegionAvailable=$observation.LegacyRegionAvailable
     }
 }
+$completedCalls = @()
+foreach ($call in $completionRecords.Keys) {
+    if (-not $fenceRecords.ContainsKey($call) -or -not $seen.ContainsKey($call)) { throw 'Completion lacks an observed signal/submission.' }
+    $completion=$completionRecords[$call]
+    $signal=$fenceRecords[$call]
+    if ($signal.ticket -cne $completion.ticket -or $signal.fence -cne $completion.fence) { throw 'Fence completion identity mismatch.' }
+    $matched=@($matchedSubmissions | Where-Object Call -eq $call)
+    if ($matched.Count -eq 0) { continue }
+    if ($matched[0].Queue -cne $signal.queue.ToUpperInvariant()) { throw 'Signal queue differs from submission queue.' }
+    $completedValue=[uint64]::Parse($completion.completed)
+    if ($signal.result -ceq '0x00000000' -and [Convert]::ToUInt64($signal.fence,16) -ne 0 -and
+        $completedValue -ge 1 -and $completedValue -ne [uint64]::MaxValue -and $completion.gpu_complete -ceq '1') {
+        $completedCalls += $call
+    }
+}
 [pscustomobject]@{
     CompleteEvaluationCount=$output.CompleteObservations
     MatchedSubmissionCount=$matchedSubmissions.Count; Matches=$matchedSubmissions; ResetCalls=$resetCalls
     OtherEvaluationSubmissions=$otherCalls
+    CompletedEvaluationCount=$completedCalls.Count; CompletedCalls=$completedCalls
+    EvaluationCommandsCompleted=($output.CompleteObservations -gt 0 -and $completedCalls.Count -eq $output.CompleteObservations)
     GpuCompletionVerified=$false; GeneratedPublicationVerified=$false
 }

@@ -5,6 +5,7 @@
 #include "producer/ngx_command_observations.h"
 #include <MinHook.h>
 #include <d3d12.h>
+#include <wrl/client.h>
 #include <array>
 #include <atomic>
 #include <cstdio>
@@ -29,6 +30,14 @@ HANDLE queue_log = INVALID_HANDLE_VALUE;
 std::mutex command_mutex;
 NgxCommandObservations command_observations;
 std::atomic<unsigned> pending_commands{};
+struct CompletionGroup {
+  std::vector<std::uint64_t> calls;
+  Microsoft::WRL::ComPtr<ID3D12Fence> fence;
+  bool signaled{};
+};
+std::array<CompletionGroup, 256> completion_groups;
+std::size_t completion_group_count{};
+std::atomic<unsigned> pending_fences{};
 std::mutex log_mutex;
 std::atomic<std::uint64_t> calls{};
 std::atomic<std::uint32_t> samples{};
@@ -194,14 +203,18 @@ void observe_ngx_command_reset(void* commands) {
   });
 }
 
-void observe_ngx_queue_submit(ID3D12CommandQueue* queue, unsigned count,
+std::uint64_t observe_ngx_queue_submit(ID3D12CommandQueue* queue, unsigned count,
                               ID3D12CommandList* const* commands) {
   if (!probe_installed.load(std::memory_order_acquire) ||
-      !pending_commands.load(std::memory_order_acquire)) return;
+      !pending_commands.load(std::memory_order_acquire)) return 0;
   std::scoped_lock lock(command_mutex);
+  std::uint64_t ticket{};
   for (unsigned i = 0; i < count; ++i) {
     command_observations.consume(reinterpret_cast<std::uintptr_t>(commands[i]), [&](std::uint64_t call) {
       pending_commands.fetch_sub(1, std::memory_order_relaxed);
+      if (!ticket && completion_group_count < completion_groups.size())
+        ticket = ++completion_group_count;
+      if (ticket) completion_groups[ticket - 1].calls.push_back(call);
       char line[256]{};
       const auto length = std::snprintf(line, sizeof(line),
           "NGX_SUBMIT call=%llu commands=%p queue=%p queue_type=%u tick_ms=%llu thread=%lu gpu_complete=0\n",
@@ -210,6 +223,54 @@ void observe_ngx_queue_submit(ID3D12CommandQueue* queue, unsigned count,
       DWORD written{};
       if (length > 0 && length < sizeof(line)) WriteFile(queue_log, line, length, &written, nullptr);
     });
+  }
+  return ticket;
+}
+
+void signal_ngx_queue_completion(ID3D12CommandQueue* queue, std::uint64_t ticket) {
+  if (!ticket) return;
+  Microsoft::WRL::ComPtr<ID3D12Device> device;
+  Microsoft::WRL::ComPtr<ID3D12Fence> fence;
+  auto result = queue->GetDevice(IID_PPV_ARGS(&device));
+  if (SUCCEEDED(result)) result = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
+  if (SUCCEEDED(result)) result = queue->Signal(fence.Get(), 1);
+  std::scoped_lock lock(command_mutex);
+  auto& group = completion_groups[ticket - 1];
+  group.fence = fence;
+  group.signaled = SUCCEEDED(result);
+  if (group.signaled) pending_fences.fetch_add(1, std::memory_order_release);
+  for (const auto call : group.calls) {
+    char line[192]{};
+    const auto length = std::snprintf(line, sizeof(line),
+        "NGX_FENCE call=%llu ticket=%llu queue=%p fence=%p value=1 result=0x%08x gpu_complete=0\n",
+        static_cast<unsigned long long>(call), static_cast<unsigned long long>(ticket),
+        queue, fence.Get(), static_cast<unsigned>(result));
+    DWORD written{};
+    if (length > 0 && length < sizeof(line)) WriteFile(queue_log, line, length, &written, nullptr);
+  }
+}
+
+void poll_ngx_queue_completion() {
+  if (!probe_installed.load(std::memory_order_acquire) ||
+      !pending_fences.load(std::memory_order_acquire)) return;
+  std::scoped_lock lock(command_mutex);
+  for (std::size_t index = 0; index < completion_group_count; ++index) {
+    auto& group = completion_groups[index];
+    if (!group.signaled || !group.fence) continue;
+    const auto value = group.fence->GetCompletedValue();
+    if (value == 0) continue;
+    for (const auto call : group.calls) {
+      char line[192]{};
+      const auto length = std::snprintf(line, sizeof(line),
+          "NGX_COMPLETE call=%llu ticket=%llu fence=%p completed=%llu gpu_complete=%u publication=0\n",
+          static_cast<unsigned long long>(call), static_cast<unsigned long long>(index + 1),
+          group.fence.Get(), static_cast<unsigned long long>(value), value == UINT64_MAX ? 0U : 1U);
+      DWORD written{};
+      if (length > 0 && length < sizeof(line)) WriteFile(queue_log, line, length, &written, nullptr);
+    }
+    group.signaled = false;
+    pending_fences.fetch_sub(1, std::memory_order_relaxed);
+    group.fence.Reset();
   }
 }
 
