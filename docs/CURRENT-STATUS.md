@@ -425,3 +425,23 @@ Evidence: artifacts/diagnostics/hud-alpha-capture-20260906/sixth-run-comparison.
 This validates composition for the observed scene, not generated-frame visual
 acceptance across all gameplay. Next: connect to fenced per-eye UI tag 23 inputs.
 Release native build passed; live run remained stable with generated stereo.
+
+### Opt-in UI alpha connected to generated stereo (2026-09-06)
+
+DARKTIDEVR_STREAMLINE_UI_ALPHA=1 or the local temporary flag
+`darktidevr-streamline-ui-alpha.enabled` now enables sustained HUD replay plus
+UI tag 23. Each eye copies its matching-pose transparent source into its existing
+fenced continuous owner before tagging; UI dimensions come from runtime textures.
+Missing/rejected/stale captures skip the pair instead of reusing older UI.
+The opt-in keeps replay running after diagnostic export. Default runs are unchanged
+pending worn visual acceptance. No source-path flag or device ID is committed.
+
+The seventh live run reported ui_alpha=1, generated stereo about 50+50 FPS,
+nonzero shared_ready and no continuous-submission failure. Paired source readback
+again passed: zero missing/invalid/residual pixels above tolerance, max channel
+error 2.333 left / 1.471 right. User rapid-head-turn acceptance is pending.
+Future readbacks can now inspect exact fenced UI owner textures (COPY_DEST) rather
+than earlier replay sources; that small diagnostic change was built after this
+launch and is not yet deployed. Release native and recovery targets built; the
+five focused CTest cases passed. No Lua changes. Evidence: seventh-run-comparison
+and seventh-run-tagged.tsv beneath the existing local HUD-alpha diagnostics dir.

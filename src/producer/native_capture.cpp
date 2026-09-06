@@ -7527,6 +7527,19 @@ std::array<std::atomic<std::uint64_t>, 8> world_ui_capture_stages{};
 // A resolution change must not release a texture still referenced by a GPU
 // command list. This bounded experiment retains its earlier allocations.
 std::vector<WorldUiCaptureEye> world_ui_capture_retired;
+bool world_ui_submission_requested() {
+  // Separate opt-in from one-shot readback: submitting UI requires capture to
+  // continue after diagnostic images have been exported.
+  static const bool enabled = [] {
+    wchar_t value[2]{};
+    if (GetEnvironmentVariableW(L"DARKTIDEVR_STREAMLINE_UI_ALPHA", value, 2) == 1 && value[0] == L'1') return true;
+    wchar_t directory[MAX_PATH]{};
+    const auto length = GetTempPathW(MAX_PATH, directory);
+    return length && length < MAX_PATH && GetFileAttributesW(
+        (std::wstring(directory) + L"darktidevr-streamline-ui-alpha.enabled").c_str()) != INVALID_FILE_ATTRIBUTES;
+  }();
+  return enabled;
+}
 bool world_ui_capture_requested() {
   static const bool enabled = [] {
     wchar_t value[2]{};
@@ -7536,7 +7549,8 @@ bool world_ui_capture_requested() {
     return length && length < MAX_PATH && GetFileAttributesW(
         (std::wstring(directory) + L"darktidevr-ui-alpha-capture.enabled").c_str()) != INVALID_FILE_ATTRIBUTES;
   }();
-  return enabled && !darktidevr::producer::stereo_ui_overlay_readback_staged();
+  return world_ui_submission_requested() ||
+      (enabled && !darktidevr::producer::stereo_ui_overlay_readback_staged());
 }
 struct WorldUiDrawRedirect {
   std::unique_lock<std::mutex> lock;
@@ -7605,10 +7619,10 @@ WorldUiDrawRedirect begin_world_ui_draw(ID3D12GraphicsCommandList* commands,
         static_cast<unsigned>(blend.DestBlendAlpha), static_cast<unsigned>(blend.BlendOpAlpha),
         static_cast<unsigned>(blend.RenderTargetWriteMask), metadata.alpha_to_coverage ? 1U : 0U);
   }
-  // Additional depth-free, full-eye source-over pairs were observed in the
-  // gameplay census. Isolate one ONLY in this opt-in diagnostic readback to
-  // identify the missing panel. This surface is not submitted as a DLSS UI tag;
-  // composition and coverage checks must establish their role first.
+  // The world HUD's item-container material is separate from stock GUI draws.
+  // Paired readback verified this panel plus stock markers reproduce the final
+  // colour over HUDless input with valid transparent alpha in both eyes.
+  // Do not include the other full-eye census pair: it copies the opaque world.
   const bool panel_candidate =
       (metadata.vertex_shader == 634962454189541227ULL &&
        metadata.pixel_shader == 4439945837785333492ULL);
@@ -9438,9 +9452,20 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
   if (eye < 0 || eye > 1 || !queue || !original_execute_command_lists) {
     return;
   }
+  ComPtr<ID3D12Resource> ui_source;
+  std::array<D3D12_RESOURCE_DESC, 2> ui_descriptions{};
+  bool ui_pair_allocated = false;
   if (world_ui_capture_requested()) {
     std::scoped_lock lock(world_ui_capture_mutex);
     const auto& ui = world_ui_capture_eyes[eye];
+    if (world_ui_submission_requested()) {
+      if (ui.pose == pose_sequence && ui.draws && !ui.rejected)
+        ui_source = ui.texture;
+      ui_pair_allocated = world_ui_capture_eyes[0].texture && world_ui_capture_eyes[1].texture;
+      if (ui_pair_allocated)
+        for (unsigned i = 0; i < 2; ++i)
+          ui_descriptions[i] = world_ui_capture_eyes[i].texture->GetDesc();
+    }
     static std::uint64_t next_report{};
     static unsigned stage_reports{};
     if (stage_reports < 32 && present_frame >= next_report) {
@@ -9472,6 +9497,9 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
   if (!state.failed && state.stereo_backbuffer_complete &&
       streamline_continuous_requested.load(std::memory_order_acquire)) {
     if (current_presentation_mode.load() != 1) return;
+    // Never reuse a previous pose's UI or silently remove tag 23 from an active
+    // tag set. The existing incomplete-pair path skips generation for this eye.
+    if (world_ui_submission_requested() && (!ui_source || !ui_pair_allocated)) return;
     if (!streamline_continuous.initialized() && !streamline_continuous.finished()) {
       // Never consume an unattended test while the user is in another app.
       if (!game_process_foreground()) return;
@@ -9485,7 +9513,8 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
       if (!streamline_continuous.initialize(device.Get(), state.submission_limit,
           {state.constants[0].viewport, state.constants[1].viewport}, descriptions,
           write_streamline_probe_log, streamline_persistent_requested.load(),
-          gpu_profile_enabled.load())) return;
+          gpu_profile_enabled.load(),
+          world_ui_submission_requested() ? &ui_descriptions : nullptr)) return;
       streamline_submission_trace_start.store(present_frame, std::memory_order_relaxed);
     }
     const auto index = static_cast<std::size_t>(eye);
@@ -9504,8 +9533,15 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
     const auto final_description=final_color->GetDesc();
     inputs[3]={final_color,static_cast<unsigned>(final_description.Width),final_description.Height,
         static_cast<unsigned>(final_state),static_cast<unsigned>(final_description.Format)};
+    darktidevr::producer::StreamlineTagInput ui_input{};
+    if (ui_source) {
+      const auto description = ui_source->GetDesc();
+      ui_input = {ui_source.Get(), static_cast<unsigned>(description.Width), description.Height,
+          D3D12_RESOURCE_STATE_RENDER_TARGET, static_cast<unsigned>(description.Format)};
+    }
     streamline_continuous.capture(static_cast<unsigned>(eye), present_frame, pose_sequence,
-        constants.constants, inputs, queue, original_execute_command_lists);
+        constants.constants, inputs, queue, original_execute_command_lists,
+        ui_source ? &ui_input : nullptr);
     return;
   }
   if (!state.failed && state.submission_refresh_armed && !state.submission_attempted) {

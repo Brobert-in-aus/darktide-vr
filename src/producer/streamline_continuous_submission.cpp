@@ -96,7 +96,7 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
     }
   }
   initialized_ = true;
-  log_("STEREO_CONTINUOUS\tphase=ready\tframes=%u\teye_width=%u\teye_height=%u\tpublication=0\r\n", count_, width_, height_);
+  log_("STEREO_CONTINUOUS\tphase=ready\tframes=%u\teye_width=%u\teye_height=%u\tpublication=0\tui_alpha=%u\r\n", count_, width_, height_, ui_enabled_ ? 1U : 0U);
   return true;
 }
 
@@ -335,7 +335,9 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
   commands->ResourceBarrier(1, &destination);
   original_ready_=persistent_ ? stage_original_stereo(commands,backbuffer.Get(),present,frame.pose,generation) : 0;
   if(persistent_) stage_stereo_ui_readback(commands,frame.textures[0][2].Get(),frame.textures[0][3].Get(),
-      frame.textures[1][2].Get(),frame.textures[1][3].Get(),frame.pose);
+      frame.textures[1][2].Get(),frame.textures[1][3].Get(),frame.pose,
+      ui_enabled_ ? frame.textures[0][4].Get() : nullptr,
+      ui_enabled_ ? frame.textures[1][4].Get() : nullptr);
   if (!frame.submission.prepare(current_ + 1, width_, height_, viewports_, frame.constants, inputs,
                                  ui_enabled_ ? &ui : nullptr) ||
       !frame.submission.stage(api, reinterpret_cast<void*>(bindings[0].token), commands,

@@ -79,7 +79,8 @@ void observe_stereo_ui_readback_overlay(unsigned eye, std::uint64_t pose,
 bool stereo_ui_overlay_readback_staged() noexcept { return overlay_staged.load(); }
 void stage_stereo_ui_readback(ID3D12GraphicsCommandList* commands,
     ID3D12Resource* left_scene, ID3D12Resource* left_final,
-    ID3D12Resource* right_scene, ID3D12Resource* right_final, std::uint64_t pose) {
+    ID3D12Resource* right_scene, ID3D12Resource* right_final, std::uint64_t pose,
+    ID3D12Resource* left_ui, ID3D12Resource* right_ui) {
   if(probe.attempted || !commands || GetTickCount64()<probe.poll_after) return;
   probe.poll_after=GetTickCount64()+1000;
   wchar_t directory[MAX_PATH]{};
@@ -93,7 +94,11 @@ void stage_stereo_ui_readback(ID3D12GraphicsCommandList* commands,
   ComPtr<ID3D12Device> device;
   if(FAILED(commands->GetDevice(IID_PPV_ARGS(&device)))) {log("device_failed",E_FAIL);return;}
   std::array<ComPtr<ID3D12Resource>,2> overlay_sources;
-  {
+  const bool owned_ui = left_ui && right_ui;
+  if (owned_ui) {
+    overlay_sources = {left_ui, right_ui};
+    probe.image_count = 6;
+  } else {
     std::scoped_lock lock(overlays_mutex);
     if (pose && overlay_poses[0] == pose && overlay_poses[1] == pose && overlays[0] && overlays[1]) {
       overlay_sources = overlays;
@@ -126,7 +131,7 @@ void stage_stereo_ui_readback(ID3D12GraphicsCommandList* commands,
   for(unsigned i=0;i<probe.image_count;++i) {
     D3D12_RESOURCE_BARRIER barrier{}; barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barrier.Transition={sources[i],D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-        i < 4 ? D3D12_RESOURCE_STATE_COPY_DEST : D3D12_RESOURCE_STATE_RENDER_TARGET,
+        i < 4 || owned_ui ? D3D12_RESOURCE_STATE_COPY_DEST : D3D12_RESOURCE_STATE_RENDER_TARGET,
         D3D12_RESOURCE_STATE_COPY_SOURCE};
     commands->ResourceBarrier(1,&barrier);
     D3D12_TEXTURE_COPY_LOCATION from{},to{};

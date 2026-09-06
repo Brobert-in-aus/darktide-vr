@@ -15,6 +15,7 @@ bool stereo_ui_overlay_readback_staged() noexcept;
 void stage_stereo_ui_readback(ID3D12GraphicsCommandList* commands,
     ID3D12Resource* left_scene, ID3D12Resource* left_final,
     ID3D12Resource* right_scene, ID3D12Resource* right_final,
-    std::uint64_t pose = 0);
+    std::uint64_t pose = 0, ID3D12Resource* left_ui = nullptr,
+    ID3D12Resource* right_ui = nullptr);
 void finish_stereo_ui_readback(ID3D12CommandQueue* queue);
 }
