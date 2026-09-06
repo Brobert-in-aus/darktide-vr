@@ -569,3 +569,14 @@ state/owner-guarded dispatcher; it also verifies stale title readiness cannot
 inject into gameplay. No real desktop input is used by these tests. Retry log:
 artifacts/unattended/right-wrist-hub-retry-20260906.log. Worn wrist acceptance
 remains pending; automated readiness cannot establish alignment.
+
+### Additional worn acceptance and hint coverage (6 September)
+
+User confirms the unarmed right hand is fixed (2477d82). The retry reached
+hub_ship with automatic Psykhanium entry explicitly disabled and nonzero shared
+stereo readiness. The earlier menu acceptance covers tested routes, not every
+prompt: the hub unused-talent-points notification still says press [I].
+Add a broad binding-hint pass across menus, notifications, tutorials and
+contextual popups. Identify each action's actual controller route before changing
+its label; if no route exists, add/plan that route rather than displaying a
+nonfunctional button. Keyboard/mouse must remain available.

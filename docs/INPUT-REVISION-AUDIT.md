@@ -268,3 +268,14 @@ Menu footer appearance and readability remain pending user observation.
 Worn/menu acceptance: user confirms menu changes verified. Supported Back and
 pointed-click hints are accepted; keyboard-only actions remain intentionally
 accurate to their available routes. The deployed be43948 implementation is unchanged.
+
+### Additional worn acceptance and hint coverage (6 September)
+
+User confirms the unarmed right hand is fixed (2477d82). The retry reached
+hub_ship with automatic Psykhanium entry explicitly disabled and nonzero shared
+stereo readiness. The earlier menu acceptance covers tested routes, not every
+prompt: the hub unused-talent-points notification still says press [I].
+Add a broad binding-hint pass across menus, notifications, tutorials and
+contextual popups. Identify each action's actual controller route before changing
+its label; if no route exists, add/plan that route rather than displaying a
+nonfunctional button. Keyboard/mouse must remain available.

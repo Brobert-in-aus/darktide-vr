@@ -342,3 +342,14 @@ accepted left fix. Right now uses the mirrored rigid grip-space vector, retainin
 neutral calibration; shared IK/glove/reach callers use that one helper. Seven
 targeted regressions and the 33-chunk LuaJIT gate pass. Hub unarmed and subsequent
 weapon-equipped placement remain for worn validation; no visual pass is claimed.
+
+### Additional worn acceptance and hint coverage (6 September)
+
+User confirms the unarmed right hand is fixed (2477d82). The retry reached
+hub_ship with automatic Psykhanium entry explicitly disabled and nonzero shared
+stereo readiness. The earlier menu acceptance covers tested routes, not every
+prompt: the hub unused-talent-points notification still says press [I].
+Add a broad binding-hint pass across menus, notifications, tutorials and
+contextual popups. Identify each action's actual controller route before changing
+its label; if no route exists, add/plan that route rather than displaying a
+nonfunctional button. Keyboard/mouse must remain available.
