@@ -133,3 +133,36 @@ parameter ABI, Streamline submission/input lifetime, launcher focus and early
 failure. Cases include a million-call startup, exact budget boundaries, failed
 and repeated arming, integer wraparound, immutable window context and false
 publication claims. Live runtime compatibility remains the next check.
+
+## First live output observation
+
+The user authorized another diagnostic and re-enabled automatic Psykhanium
+entry. The in-progress manual launch was stopped and its launcher cleanup
+completed before restarting with `-EnableHudPanel -EnterPsykhanium
+-NgxOutputProbeAtStereoSubmit -StreamlineStereoSubmitFrames 4`. No synthetic
+gameplay attacks were issued. Psykhanium entry and fresh stereo presentation
+passed; the full stereo analyzer reports four retired batches, nonconsecutive
+submission, and generated publication unverified.
+
+The outer runtime hook receives successful evaluations. Its parameter-owner
+check and resource getter work in this installed runtime. Of 256 output-bearing
+records, 12 include all four input resources; the other 244 lack HUDless data.
+Depth/motion/HUDless tuples in the complete records match the captured per-eye
+snapshot addresses. Paired candidate calls share an interpolated-output address,
+consistent with packed output, but its dimensions/subrects and GPU completion
+have not been established.
+
+Crucially, the parameter object is shared across feature handles. Calls through
+the two recurring upscaler handles retain the preceding frame-generation
+resource values. A nonnull `DLSSG.OutputInterpolated` parameter therefore does
+not identify an evaluation as frame generation. The analyzer intentionally
+reports complete *parameter observations*, not verified generated evaluations.
+Next add explicit CreateFeature/ReleaseFeature lifetime tracking and classify
+evaluation handles using the official feature enum (FrameGeneration=11). Do not
+infer feature type from call thread, timing, a changing handle or retained keys.
+
+Local ignored evidence: `first-live-ngx.log`, `first-live-streamline.tsv`, and
+their reports under `artifacts/diagnostics/dlss-output-boundary-20260906`.
+The guarded outer call path has passed this first live compatibility check;
+continuous stereo history, feature-qualified source/output association and
+queue completion are still required before any generated XR publication.

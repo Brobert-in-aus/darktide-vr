@@ -4,6 +4,13 @@
 blocker. User reports every ranged weapon except the force staff firing away
 from hand aim. Source coverage is not live acceptance of every weapon.
 
+Subsequent worn testing rejects the non-staff candidate: reticle and gun are
+misaligned, a duplicate HUD crosshair appears despite Custom HUD hiding it,
+and shots only sometimes damage an enemy with the muzzle pushed into them.
+Investigate actual firing origins/directions and collision exclusions before
+expanding coverage. Gun self-collision is unconfirmed. The crosshair visibility
+regression also needs its own renderer/Custom HUD routing check.
+
 ## Findings and candidate
 
 The local source snapshot is `Darktide-Source-Code` revision `0f0cb45`.

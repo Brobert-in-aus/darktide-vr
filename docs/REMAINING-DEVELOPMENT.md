@@ -61,6 +61,15 @@ that physical damage integration is complete.
 
 ## Ranged weapon aiming backlog
 
+6 September worn feedback rejects the current non-staff candidates: gun and
+reticle directions do not align, a second crosshair remains on the HUD despite
+Custom HUD hiding it, and ordinary shots do not visibly hit. Pushing the muzzle
+into an enemy produces damage only on some shots. Inspect muzzle/hand transform
+conventions, projectile/raycast origin and direction, and collision exclusions;
+self-collision is a hypothesis, not an established cause. Audit the HUD crosshair
+visibility route separately. Do not describe the candidate as working across
+weapon families based on offline tests or initialization counters.
+
 The [source audit and candidate](RANGED-WEAPON-AUDIT.md) identifies copied-class
 hook bypass, post-increment simultaneous grouping and independent flame query
 routes. The candidate directly hooks the five shooting classes before stock
