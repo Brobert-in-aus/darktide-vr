@@ -1,5 +1,6 @@
 #include "producer/streamline_continuous_submission.h"
 #include "producer/generated_stereo.h"
+#include "producer/stereo_ui_readback.h"
 
 namespace darktidevr::producer {
 namespace sl = streamline_2_7_30;
@@ -256,6 +257,8 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
   std::swap(destination.Transition.StateBefore, destination.Transition.StateAfter);
   commands->ResourceBarrier(1, &destination);
   original_ready_=persistent_ ? stage_original_stereo(commands,backbuffer.Get(),present,frame.pose,generation) : 0;
+  if(persistent_) stage_stereo_ui_readback(commands,frame.textures[0][2].Get(),frame.textures[0][3].Get(),
+      frame.textures[1][2].Get(),frame.textures[1][3].Get());
   if (!frame.submission.prepare(current_ + 1, width_, height_, viewports_, frame.constants, inputs) ||
       !frame.submission.stage(api, reinterpret_cast<void*>(bindings[0].token), commands,
           tagging, StreamlineSubmission::ConstantsMode::already_supplied)) {
@@ -268,6 +271,7 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
   ID3D12CommandList* lists[]{commands};
   execute(queue, 1, lists);
   if(original_ready_ && !submit_original_stereo(queue,original_ready_)) { fail("original_publish"); return; }
+  finish_stereo_ui_readback(queue);
   if (!frame.submission.begin_present()) { fail("begin_present"); return; }
   frame.present = present;
   frame.submission_id = current_ + 1;

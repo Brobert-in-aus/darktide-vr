@@ -105,3 +105,30 @@ HUDless colour and the complete final colour, without a tagged UI colour/alpha
 buffer. Inspect explicit UI isolation before changing temporal quality settings;
 NVIDIA's v2.7.30 ProgrammingGuideDLSS_G recommends premultiplied UI colour/alpha
 for improved HUD/nameplate quality. Edge blur has not been declared fixed.
+
+### UI input capture, 6 September 2026
+
+A one-shot readback of exact owned input textures in live PID 138708 confirms
+HUD/nameplate/item-marker separation. Both eyes are 2496x2688; the scene input
+contains no visible HUD/markers. Final-minus-scene differs on 98,912 left pixels
+(1.474%) and 83,644 right pixels (1.247%), confined visually to the overlays.
+Both scene and final alpha channels are entirely 255, so a true UI transparency
+layer cannot be read from their alpha channels. This rules out the previous
+resolution mismatch and obvious UI contamination of HUDless input in this sample.
+It does not by itself identify the exact generated-frame blending artefact.
+
+Optional diagnostic: create %TEMP%/darktidevr-ui-readback.request after gameplay
+stabilizes. The native continuous submitter consumes it once per process, copies
+four exact owned COPY_DEST textures into readbacks on the existing stage list,
+restores states, and exports only after a dedicated queue fence completes.
+Each allocation is bounded at 128 MiB, with dimensions read from the texture.
+No output image is altered. Export runs off Present. Current live export passed.
+Use tools/stereo/compare-dlss-ui-inputs.py STEM --output DIRECTORY to generate
+per-eye statistics and scene/final/difference comparison. The difference is not
+claimed to be a recovered alpha mask. Generated files stay ignored under artifacts
+or temp. Evidence: artifacts/diagnostics/dlss-ui-quality-20260906/comparison.png
+and comparison.json; artifacts/unattended/dlss-ui-quality-live-20260906.log.
+
+Native Release build, continuous_recovery, hud_panel and pinned 31-chunk LuaJIT
+gate pass. The duplicate stock crosshair change is included in this live run;
+user visual acceptance is pending. F3 was not automatically pressed on this run.
