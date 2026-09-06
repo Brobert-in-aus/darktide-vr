@@ -178,3 +178,22 @@ local count=readiness_logs
 late_view._profiles_wait_overlay_active=true
 readiness_hook(late_view,0.01,11,source)
 assert(readiness_logs==count,'late readiness updates escaped the startup window')
+local starts=0
+local startup={armed=true}
+local ready_view={_widgets_by_name={play_button={content={visible=true,hotspot={
+    disabled=false,pressed_callback=function() starts=starts+1 end}}}}}
+assert(not menu.advance_startup(startup,ready_view,true,0))
+assert(not menu.advance_startup(startup,ready_view,false,1))
+ready_view._is_main_menu_open=true
+assert(not menu.advance_startup(startup,ready_view,false,2))
+ready_view._is_main_menu_open=false
+assert(not menu.advance_startup(startup,ready_view,false,3))
+assert(menu.advance_startup(startup,ready_view,false,4))
+assert(starts==1)
+assert(not menu.advance_startup(startup,ready_view,false,5))
+assert(not menu.advance_startup({},ready_view,false,6))
+local replaced={armed=true}
+assert(not menu.advance_startup(replaced,ready_view,false,0))
+assert(not menu.advance_startup(replaced,{},false,2))
+assert(replaced.done and starts==1)
+print('startup_start: explicit arm, stock gates, settling, once-only and view ownership passed')

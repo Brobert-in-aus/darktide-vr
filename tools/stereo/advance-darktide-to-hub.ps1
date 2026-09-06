@@ -179,44 +179,6 @@ function Wait-DarktideLeavesTitle {
     throw 'Timed out advancing Darktide from the title screen.'
 }
 
-function Wait-DarktideLeavesCharacterSelect {
-    param(
-        [Parameter(Mandatory)]
-        [System.Diagnostics.Process] $Process,
-
-        [Parameter(Mandatory)]
-        [datetime] $Deadline,
-
-        [Parameter(Mandatory)]
-        [datetime] $NotBefore
-    )
-
-    # Character-select can silently discard a correctly delivered Enter while
-    # its selected operative or foreground focus is settling.  A single input
-    # therefore is not a reliable unattended boundary.  Retry only Enter and
-    # stop as soon as the log proves that StateMainMenu has begun leaving; this
-    # avoids advancing any subsequent gameplay UI.
-    while ((Get-Date) -lt $Deadline) {
-        Send-DarktideKey -Process $Process -Keys '{ENTER}' -ExpectedState 'StateMainMenu'
-        $retryDeadline = (Get-Date).AddSeconds(2)
-        if ($retryDeadline -gt $Deadline) {
-            $retryDeadline = $Deadline
-        }
-        try {
-            Wait-DarktideLogMatch -Patterns @(
-                'Entering Game State StateMainMenu',
-                'Entering Game State StateLoading'
-            ) -Deadline $retryDeadline -NotBefore $NotBefore | Out-Null
-            return
-        }
-        catch {
-            # Retry until the overall launch deadline.  The state gate above
-            # ensures that repeated input cannot leak past character select.
-        }
-    }
-    throw 'Timed out advancing Darktide from character select.'
-}
-
 $started = Get-Date
 $deadline = $started.AddSeconds($TimeoutSeconds)
 $title = Wait-DarktideLogMatch -Patterns @(
@@ -237,9 +199,11 @@ if ($StopAtCharacterSelect) {
     Write-Output 'Darktide title advanced to character select without mouse input.'
     return
 }
-Start-Sleep -Seconds 1
-Wait-DarktideLeavesCharacterSelect -Process $characterSelect `
-    -Deadline $deadline -NotBefore $started
-
-Write-Output 'Darktide title and character select advanced without mouse input.'
-Write-Output "startup.character_select.enter_attempts=$($script:startupKeyAttempts.StateMainMenu)"
+Wait-DarktideLogMatch -Patterns @(
+    'Entering Game State StateMainMenu',
+    'Entering Game State StateLoading'
+) -Deadline $deadline -NotBefore $started | Out-Null
+$startupText = Get-Content -LiteralPath $script:ownedLogPath -Raw
+$callbackObserved = $startupText -match 'DARKTIDEVR_STARTUP character_select=start_requested source=one_shot'
+Write-Output "startup.character_select.callback_observed=$callbackObserved"
+Write-Output 'Darktide has left character select; startup helper finished.'

@@ -491,3 +491,17 @@ All 14 complete feature-qualified NGX evaluations have completed queue fences.
 Evidence is archived as continuous-pass-{streamline.tsv,report.json,ngx.log,
 queue.log,timing.log}. This establishes consecutive input history and GPU
 completion; output ownership and generated XR publication remain unverified.
+
+Automatic Start root cause corrected: the 88580 run emitted eight actual Enter
+attempts but the user observed no automatic selection. MenuInput.proxy deliberately
+suppresses confirm_* while the tracked pointer owns the menu, so reliable log
+readiness was insufficient. Preserve that normal input rule. Explicit AutoEnterHub
+launches now arm a one-shot mod request consumed at installation. The first
+MainMenuView waits one second of continuous stock readiness, refuses nested menu
+or popup activity, consumes its request before calling the stock Start hotspot,
+and never replays it on a later view. Manual startup/character-select launches
+disable the request. Launcher cleanup deletes the flag. The external helper sends
+only title Space and reports whether the callback was observed when loading begins.
+Offline menu input/startup tests and the pinned 31-chunk Lua gate pass. Live check
+pending. The user observed one side-by-side frame at startup in run 88580;
+worn startup-flicker acceptance remains open despite the prior stale-read fix.

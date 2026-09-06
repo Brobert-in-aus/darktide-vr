@@ -340,6 +340,7 @@ if ($CaptureBillboardPsoIdentities) {
 }
 $launchStarted = Get-Date
 $advanceProcess = $null
+$characterStartFlag = Join-Path $GameRoot 'mods\darktidevr_stereo_probe\darktidevr_start_character.flag'
 try {
 if ($EnterPsykhanium) {
     if (Get-Process Darktide -ErrorAction SilentlyContinue) {
@@ -361,6 +362,11 @@ if ($EnterPsykhanium) {
     # it an unattended run can remain at character select until its timeout.
     $AutoEnterHub = $true
 }
+
+# One-shot mod callback: the tracked menu pointer intentionally suppresses
+# keyboard confirm, so sending Enter cannot reliably select Start in VR.
+$characterStartRequest = if ($AutoEnterHub -and -not $ManualStartup -and -not $ManualCharacterSelect) { 'start' } else { 'disabled' }
+Set-Content -LiteralPath $characterStartFlag -Value $characterStartRequest -Encoding ascii
 
 if ($StreamlineProbe -or $StreamlineCopyProbe -or
         $StreamlineTransportProbe -or $StreamlineInputSnapshotProbe -or
@@ -692,7 +698,7 @@ if (-not $ManualStartup -and ($AutoEnterHub -or $AutoAdvanceSplash)) {
         -RedirectStandardOutput (Join-Path $advanceLogRoot "character-select-$advanceLogStamp.log") `
         -RedirectStandardError (Join-Path $advanceLogRoot "character-select-$advanceLogStamp.err.log")
     if ($AutoEnterHub -and -not $ManualCharacterSelect) {
-        Write-Output 'Armed state-gated Space/Enter automation through character select.'
+        Write-Output 'Armed title Space and one-shot stock Start callback through character select.'
     }
     else {
         Write-Output 'Armed state-gated Space automation to character select.'
@@ -849,6 +855,9 @@ else {
 }
 }
 finally {
+    if (Test-Path -LiteralPath $characterStartFlag -PathType Leaf) {
+        Remove-Item -LiteralPath $characterStartFlag -Force
+    }
     if ($advanceProcess) {
         $advanceProcess.Refresh()
         if (-not $advanceProcess.HasExited) { $advanceProcess.Kill() }

@@ -135,8 +135,49 @@ function MenuInput.proxy(source, null_service, sample, vector)
     end})
 end
 
+function MenuInput.advance_startup(request, view, blocked, t)
+    if not request.armed or request.done then return false end
+    if request.owner and request.owner ~= view then
+        request.done = true
+        return false
+    end
+    request.owner = view
+    local _, ready = MenuInput.character_select_readiness(view, blocked)
+    local ui = Managers and Managers.ui
+    if not ready or view._is_main_menu_open or
+            (ui and ui._active_popups and ui._active_popups[1]) then
+        request.ready_since = nil
+        return false
+    end
+    request.ready_since = request.ready_since or t
+    if t - request.ready_since < 1 then return false end
+    local callback = view._widgets_by_name.play_button.content.hotspot.pressed_callback
+    if type(callback) ~= "function" then return false end
+    -- Consume before invoking stock behavior: never replay after returning to
+    -- character select, a callback error, or a deferred state transition.
+    request.done = true
+    callback()
+    return true
+end
+
 function MenuInput.install(mod, presentation)
     local state = {}
+    local startup = {}
+    local files = Mods and Mods.lua and Mods.lua.io
+    if files then
+        local path = "./../mods/darktidevr_stereo_probe/darktidevr_start_character.flag"
+        local flag = files.open(path, "r")
+        if flag then
+            local value = flag:read("*all")
+            flag:close()
+            local consumed = files.open(path, "w")
+            if consumed then
+                consumed:write("consumed")
+                consumed:close()
+                startup.armed = value:match("^start%s*$") ~= nil
+            end
+        end
+    end
     local proxies = setmetatable({}, {__mode="k"})
     presentation.native_menu_input_enabled = true
     presentation.native_menu_view = MenuInput.native_view
@@ -145,10 +186,13 @@ function MenuInput.install(mod, presentation)
     -- Bound logs per view lifetime and to the first ten seconds after update.
     local readiness = setmetatable({}, {__mode="k"})
     mod:hook_safe("MainMenuView", "update", function(self, dt, t, input)
+        local null = not input or (input.null_service and input == input:null_service())
+        if MenuInput.advance_startup(startup, self, null, t) then
+            mod:info("DARKTIDEVR_STARTUP character_select=start_requested source=one_shot")
+        end
         local current = readiness[self]
         if not current then current = {start=t, samples=0}; readiness[self] = current end
         if current.samples >= 16 or t - current.start > 10 then return end
-        local null = not input or (input.null_service and input == input:null_service())
         local list_ready, start_ready, reason = MenuInput.character_select_readiness(self, null)
         local signature = reason .. tostring(list_ready) .. tostring(start_ready)
         if current.signature == signature then return end
