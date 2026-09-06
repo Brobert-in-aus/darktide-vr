@@ -241,3 +241,16 @@ without certifying the image. Historical logs explicitly report no available
 image-trace captures. The input readiness, NGX observation and submission CTest
 cases pass. Ignored evidence: `image-trace-streamline.tsv` and
 `image-trace-report.txt` in the same evidence directory. The game remains open.
+
+## Output-region observation candidate
+
+Schema 4 inspects the live, feature-qualified output resource description and
+the four `DLSSG.OutputInterpolatedSubrect*` unsigned parameters. Both getter
+vtable entries must belong to the guarded runtime. No resource is retained and
+no GPU work is inserted. Missing/unsupported parameters remain unavailable;
+zero size or a rectangle outside the observed output extent is not accepted as
+a region. The values are read from the runtime, not derived from a fixed headset
+size. Even a valid region does not certify queue completion or output ownership.
+Release native build and NGX observation/official-header ABI tests pass, covering
+a second-eye rectangle, overflow of the texture bounds, zero size and failed
+queries. Live output-region compatibility is the next check.

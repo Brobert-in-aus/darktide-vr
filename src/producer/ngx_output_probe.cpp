@@ -3,6 +3,7 @@
 #include "producer/ngx_capture_window.h"
 #include "producer/ngx_feature_registry.h"
 #include <MinHook.h>
+#include <d3d12.h>
 #include <array>
 #include <atomic>
 #include <cstdio>
@@ -46,11 +47,10 @@ bool readable(const void* address, std::size_t bytes) {
   return offset <= memory.RegionSize && bytes <= memory.RegionSize - offset;
 }
 
-bool verified_parameters(const void* parameters) {
+bool verified_parameters(const void* parameters, std::size_t slot) {
   if (!readable(parameters, sizeof(void*))) return false;
   const std::byte* table{};
   std::memcpy(&table, parameters, sizeof(table));
-  constexpr auto slot = ngx::kGetD3D12ResourceSlot;
   if (!readable(table, (slot + 1) * sizeof(void*))) return false;
   const void* getter{};
   std::memcpy(&getter, table + slot * sizeof(void*), sizeof(getter));
@@ -85,11 +85,15 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   const auto identity = feature_registry.lookup(feature);
   std::array<ID3D12Resource*, 5> resources{};
   std::array<std::uint32_t, 5> results{};
+  D3D12_RESOURCE_DESC output_description{};
+  std::array<unsigned int, 4> region{};
+  std::array<std::uint32_t, 4> region_results{};
   bool captured = false;
   bool abi_verified = false;
   if (identity.kind == 11 && identity.lifetime != 0 && window.eligible &&
       samples.load(std::memory_order_relaxed) < kSampleLimit &&
-      verified_parameters(parameters)) {
+      verified_parameters(parameters, ngx::kGetD3D12ResourceSlot) &&
+      verified_parameters(parameters, ngx::kGetUnsignedSlot)) {
     abi_verified = true;
     results[0] = ngx::read_resource(parameters, "DLSSG.OutputInterpolated", &resources[0]);
     if (results[0] == ngx::kSuccess && resources[0] &&
@@ -98,6 +102,13 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
           "DLSSG.Backbuffer", "DLSSG.Depth", "DLSSG.MVecs", "DLSSG.HUDLess"};
       for (std::size_t i = 0; i < names.size(); ++i)
         results[i + 1] = ngx::read_resource(parameters, names[i], &resources[i + 1]);
+      // Inspect only during the live callback; retain no resource or parameter.
+      output_description = resources[0]->GetDesc();
+      constexpr std::array<const char*, 4> region_names{
+          "DLSSG.OutputInterpolatedSubrectBaseX", "DLSSG.OutputInterpolatedSubrectBaseY",
+          "DLSSG.OutputInterpolatedSubrectWidth", "DLSSG.OutputInterpolatedSubrectHeight"};
+      for (std::size_t i = 0; i < region_names.size(); ++i)
+        region_results[i] = ngx::read_unsigned(parameters, region_names[i], &region[i]);
       captured = true;
     }
   }
@@ -106,12 +117,14 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   const auto result = original(commands, feature, parameters, callback);
   if (captured || call <= 4 || (window.eligible &&
       (call-window.first_call <= 4 || call-window.first_call == kCallLimit))) {
-    std::array<char, 1024> line{};
+    std::array<char, 1536> line{};
     const auto length = std::snprintf(line.data(), line.size(),
         "NGX_EVAL call=%llu tick_ms=%llu thread=%lu commands=%p feature=%p parameters=%p "
         "result=0x%08x captured=%u abi_verified=%u feature_kind=%u feature_lifetime=%llu "
         "output=%p backbuffer=%p depth=%p motion=%p hudless=%p "
         "get_results=%x,%x,%x,%x,%x window_batch=%llu window_present=%llu window_first_call=%llu "
+        "output_width=%llu output_height=%u output_format=%u "
+        "region_x=%u region_y=%u region_width=%u region_height=%u region_results=%x,%x,%x,%x "
         "output_complete=0 publication=0\n",
         static_cast<unsigned long long>(call), GetTickCount64(), GetCurrentThreadId(),
         commands, feature, parameters, result, captured ? 1U : 0U, abi_verified ? 1U : 0U,
@@ -120,12 +133,15 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
         static_cast<void*>(resources[2]), static_cast<void*>(resources[3]),
         static_cast<void*>(resources[4]), results[0], results[1], results[2], results[3], results[4],
         static_cast<unsigned long long>(window.batch), static_cast<unsigned long long>(window.present),
-        static_cast<unsigned long long>(window.first_call));
+        static_cast<unsigned long long>(window.first_call),
+        static_cast<unsigned long long>(output_description.Width), output_description.Height,
+        static_cast<unsigned>(output_description.Format), region[0], region[1], region[2], region[3],
+        region_results[0], region_results[1], region_results[2], region_results[3]);
     if (length > 0 && static_cast<std::size_t>(length) < line.size())
       write_line(line.data(), static_cast<std::size_t>(length));
   }
-  // Pointer values are evidence only. Never dereference or retain a resource,
-  // insert commands, wait on a queue, or publish generated metadata here.
+  // Descriptions and parameter values are evidence only. No retained resource,
+  // inserted commands, queue waits or generated publication.
   return result;
 }
 
@@ -194,7 +210,7 @@ bool install_ngx_output_probe(HMODULE capture_module) {
   if (log_file == INVALID_HANDLE_VALUE) return false;
   char header[256]{};
   const auto header_length = std::snprintf(header, sizeof(header),
-      "ngx_output_probe=armed schema=3 runtime=32.0.16.1088 "
+      "ngx_output_probe=armed schema=4 runtime=32.0.16.1088 "
       "resource_get_slot=9 call_limit=32768 sample_limit=256 wait_for_stereo=%u publication=0\n",
       wait_for_stereo ? 1U : 0U);
   if (header_length > 0) write_line(header, static_cast<std::size_t>(header_length));

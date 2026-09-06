@@ -9,12 +9,15 @@ $windowHeader = $expectedHeader.Replace('schema=1','schema=2').Replace(' publica
 $gatedHeader = $windowHeader.Replace('wait_for_stereo=0','wait_for_stereo=1')
 $featureHeader = $windowHeader.Replace('schema=2','schema=3')
 $featureGatedHeader = $gatedHeader.Replace('schema=2','schema=3')
-if ($lines.Count -eq 0 -or $lines[0] -cnotin @($expectedHeader,$windowHeader,$gatedHeader,$featureHeader,$featureGatedHeader)) {
+$regionHeader = $featureHeader.Replace('schema=3','schema=4')
+$regionGatedHeader = $featureGatedHeader.Replace('schema=3','schema=4')
+if ($lines.Count -eq 0 -or $lines[0] -cnotin @($expectedHeader,$windowHeader,$gatedHeader,$featureHeader,$featureGatedHeader,$regionHeader,$regionGatedHeader)) {
     throw 'Missing or unsupported NGX observation header.'
 }
 $windowSchema = $lines[0] -cne $expectedHeader
-$featureSchema = $lines[0] -cin @($featureHeader,$featureGatedHeader)
-$gated = $lines[0] -cin @($gatedHeader,$featureGatedHeader)
+$regionSchema = $lines[0] -cin @($regionHeader,$regionGatedHeader)
+$featureSchema = $regionSchema -or $lines[0] -cin @($featureHeader,$featureGatedHeader)
+$gated = $lines[0] -cin @($gatedHeader,$featureGatedHeader,$regionGatedHeader)
 $captureWindow = $null
 $seen = @{}
 $observed = @()
@@ -77,6 +80,22 @@ foreach ($line in $lines | Select-Object -Skip 1) {
         throw 'Malformed NGX result codes.'
     }
     $results = @($fields.get_results.Split(',') | ForEach-Object { [Convert]::ToUInt32($_,16) })
+    $regionAvailable = $false
+    if ($regionSchema) {
+        foreach ($field in @('output_width','output_height','output_format','region_x','region_y','region_width','region_height')) {
+            if (-not $fields.ContainsKey($field) -or $fields[$field] -notmatch '^\d+$') {
+                throw "Missing or invalid output-region field: $field"
+            }
+            $fields[$field] = [uint64]::Parse($fields[$field])
+            if ($fields[$field] -gt [uint32]::MaxValue) { throw 'Output-region value exceeds texture/parameter limits.' }
+        }
+        if ($fields.region_results -notmatch '^[0-9a-fA-F]+(?:,[0-9a-fA-F]+){3}$') { throw 'Malformed output-region query results.' }
+        $regionResults = @($fields.region_results.Split(',') | ForEach-Object { [Convert]::ToUInt32($_,16) })
+        $regionAvailable = @($regionResults | Where-Object { $_ -ne 1 }).Count -eq 0 -and
+            $fields.region_width -gt 0 -and $fields.region_height -gt 0 -and
+            $fields.region_x + $fields.region_width -le $fields.output_width -and
+            $fields.region_y + $fields.region_height -le $fields.output_height
+    }
     $records++
     if ($fields.captured -eq '0') { continue }
     if ($windowSchema) {
@@ -121,12 +140,17 @@ foreach ($line in $lines | Select-Object -Skip 1) {
             Hudless=('{0:X16}' -f $fields.hudless)
             FeatureKind=if ($featureSchema) { $fields.feature_kind } else { $null }
             FeatureLifetime=if ($featureSchema) { $fields.feature_lifetime } else { $null }
+            OutputWidth=if ($regionSchema) { $fields.output_width } else { $null }
+            OutputHeight=if ($regionSchema) { $fields.output_height } else { $null }
+            RegionAvailable=$regionAvailable
+            Region=if ($regionSchema) { @($fields.region_x,$fields.region_y,$fields.region_width,$fields.region_height) } else { $null }
+            RegionResults=if ($regionSchema) { $regionResults } else { $null }
         }
     }
 }
 if (($observed.Count + $rejected.Count) -gt 256) { throw 'NGX capture budget exceeded.' }
 [pscustomobject]@{
-    SchemaVersion=if ($featureSchema) { 3 } elseif ($windowSchema) { 2 } else { 1 }
+    SchemaVersion=if ($regionSchema) { 4 } elseif ($featureSchema) { 3 } elseif ($windowSchema) { 2 } else { 1 }
     WaitForStereoSubmission=$gated; CaptureWindow=$captureWindow
     Records=$records; CompleteObservations=$observed.Count
     Observations=@($observed | Sort-Object Call); Rejected=$rejected

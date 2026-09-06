@@ -84,7 +84,19 @@ try {
     }
     $report=Read-Fixture @($windowHeader,$windowRecord)
     if ($report.FeatureQualifiedObservations) { throw 'Legacy pointer evidence retroactively gained feature identity.' }
-    Write-Output 'ngx_observation=pass complete failure missing alias duplicate malformed bounded_window feature_identity no_publication'
+    $regionHeader=$featureHeader.Replace('schema=3','schema=4')
+    $regionRecord=$featureRecord + ' output_width=4096 output_height=2048 output_format=28 region_x=2048 region_y=0 region_width=2048 region_height=2048 region_results=1,1,1,1'
+    $report=Read-Fixture @($regionHeader,$regionRecord)
+    if (-not $report.Observations[0].RegionAvailable) { throw 'Valid second-eye region rejected.' }
+    Require-NoPublication $report
+    foreach ($badRecord in @($regionRecord.Replace('region_x=2048','region_x=2049'),
+            $regionRecord.Replace('region_width=2048','region_width=0'),
+            $regionRecord.Replace('region_results=1,1,1,1','region_results=1,1,bad,1'))) {
+        $report=Read-Fixture @($regionHeader,$badRecord)
+        if ($report.Observations[0].RegionAvailable) { throw 'Unsupported or out-of-bounds region accepted.' }
+        Require-NoPublication $report
+    }
+    Write-Output 'ngx_observation=pass complete failure missing alias duplicate malformed bounded_window feature_identity output_region no_publication'
 } finally {
     if (Test-Path -LiteralPath $fixture) { Remove-Item -LiteralPath $fixture }
 }
