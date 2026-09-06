@@ -7605,13 +7605,11 @@ WorldUiDrawRedirect begin_world_ui_draw(ID3D12GraphicsCommandList* commands,
         static_cast<unsigned>(blend.DestBlendAlpha), static_cast<unsigned>(blend.BlendOpAlpha),
         static_cast<unsigned>(blend.RenderTargetWriteMask), metadata.alpha_to_coverage ? 1U : 0U);
   }
-  // Two additional depth-free, full-eye source-over pairs were observed in the
-  // gameplay census. Include them ONLY in this opt-in diagnostic readback to
+  // Additional depth-free, full-eye source-over pairs were observed in the
+  // gameplay census. Isolate one ONLY in this opt-in diagnostic readback to
   // identify the missing panel. This surface is not submitted as a DLSS UI tag;
   // composition and coverage checks must establish their role first.
   const bool panel_candidate =
-      (metadata.vertex_shader == 1783408747736039755ULL &&
-       metadata.pixel_shader == 5406379487767707323ULL) ||
       (metadata.vertex_shader == 634962454189541227ULL &&
        metadata.pixel_shader == 4439945837785333492ULL);
   if (!is_stock_menu_shader_pair(metadata) && !panel_candidate) return redirect;
@@ -7868,7 +7866,6 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
         "MENU_REDIRECT_STAGE\tid=%llu\tstage=after_draw\r\n",
         static_cast<unsigned long long>(menu_redirect.diagnostic_id));
   }
-  end_billboard_binding_override(commands, billboard_override);
   end_stock_menu_draw_redirect(commands, menu_redirect);
   {
     auto ui = begin_world_ui_draw(commands, draw_metadata);
@@ -7876,6 +7873,8 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
       original_draw_instanced(commands, vertex_count, instance_count, start_vertex, start_instance);
     end_world_ui_draw(commands, ui);
   }
+  // Replay must use the same corrected eye/billboard bindings as the draw.
+  end_billboard_binding_override(commands, billboard_override);
   if (menu_redirect.diagnostic_id != 0 &&
       menu_redirect.diagnostic_id <= 2) {
     write_menu_resource_log(
@@ -7921,7 +7920,6 @@ void STDMETHODCALLTYPE draw_indexed_instanced_hook(
   original_draw_indexed_instanced(commands, index_count,
                                   submitted_instance_count, start_index,
                                   base_vertex, start_instance);
-  end_billboard_binding_override(commands, billboard_override);
   if (world_ui_capture_requested()) {
     std::uintptr_t pipeline{};
     { std::scoped_lock lock(trace_mutex); pipeline = command_traces[commands].pso; }
@@ -7937,6 +7935,7 @@ void STDMETHODCALLTYPE draw_indexed_instanced_hook(
                                       start_index, base_vertex, start_instance);
     end_world_ui_draw(commands, ui);
   }
+  end_billboard_binding_override(commands, billboard_override);
 }
 
 void STDMETHODCALLTYPE execute_indirect_hook(

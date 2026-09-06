@@ -962,3 +962,19 @@ source-over shader pairs from that run's bounded census to identify the panel.
 These are experimental readback candidates, not approved production GUI routes.
 Native Release build and diff check passed. Live comparison remains pending.
 Evidence: artifacts/diagnostics/hud-alpha-capture-20260906/fourth-run-comparison.
+
+### Transparent HUD composition verified in both eyes (2026-09-06)
+
+The combined candidate capture was correctly rejected as fully opaque despite
+zero RGB residual. Isolating VS 634962454189541227 / PS 4439945837785333492
+identified the HUD panel; the other candidate is excluded. Replay now retains
+the original draw's corrected billboard bindings until the duplicate completes.
+
+The sixth run passed both alpha checks at runtime 2496x2688: zero missed changed
+pixels, zero invalid premultiplied pixels, alpha range 0..255, zero residual pixels
+above tolerance 3. Maximum channel error was 1.922 left / 1.490 right (8-bit).
+The exported transparent image visibly contains the panel and world markers.
+Evidence: artifacts/diagnostics/hud-alpha-capture-20260906/sixth-run-comparison.
+This validates composition for the observed scene, not generated-frame visual
+acceptance across all gameplay. Next: connect to fenced per-eye UI tag 23 inputs.
+Release native build passed; live run remained stable with generated stereo.
