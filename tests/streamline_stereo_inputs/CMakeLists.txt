@@ -41,3 +41,21 @@ if(DARKTIDEVR_STREAMLINE_REFERENCE_INCLUDE_DIR)
   add_test(NAME streamline_abi_reference COMMAND darktidevr-streamline-abi-reference)
   set_tests_properties(streamline_abi_reference PROPERTIES LABELS "phase1;streamline")
 endif()
+
+set(DARKTIDEVR_NGX_REFERENCE_INCLUDE_DIR "" CACHE PATH
+  "Optional NGX headers from Streamline v2.7.30 for Windows x64 ABI validation")
+if(DARKTIDEVR_NGX_REFERENCE_INCLUDE_DIR)
+  file(SHA256 "${DARKTIDEVR_NGX_REFERENCE_INCLUDE_DIR}/nvsdk_ngx_params.h" ngx_params_hash)
+  file(SHA256 "${DARKTIDEVR_NGX_REFERENCE_INCLUDE_DIR}/nvsdk_ngx_defs.h" ngx_defs_hash)
+  if(NOT ngx_params_hash STREQUAL "dd9ef57ac264256ddd63b3c75b2894f519c72a1a9c9c23814fb433aa71478ada" OR
+     NOT ngx_defs_hash STREQUAL "0444c2ec3f07e6dfe6762657c072314419a6c9a4e670f6885d62b8713654e958")
+    message(FATAL_ERROR "NGX ABI reference requires unmodified Streamline v2.7.30 params/defs headers")
+  endif()
+  add_executable(darktidevr-ngx-abi-reference ngx_abi_reference.cpp)
+  target_include_directories(darktidevr-ngx-abi-reference PRIVATE "${PROJECT_SOURCE_DIR}/src")
+  target_include_directories(darktidevr-ngx-abi-reference SYSTEM PRIVATE
+    "${DARKTIDEVR_NGX_REFERENCE_INCLUDE_DIR}")
+  target_compile_options(darktidevr-ngx-abi-reference PRIVATE /W4 /WX /permissive-)
+  add_test(NAME ngx_abi_reference COMMAND darktidevr-ngx-abi-reference)
+  set_tests_properties(ngx_abi_reference PROPERTIES LABELS "phase1;streamline")
+endif()

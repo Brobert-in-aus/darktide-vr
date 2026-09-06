@@ -192,3 +192,8 @@ ownership. Do not turn native timing candidates into generated-pair metadata.
 DLSS is not complete. The four-batch diagnostic is committed and remains opt-in;
 the accepted rendered-eye path continues. Development moves to the all-family
 ranged aiming source audit while this output-boundary issue is documented.
+
+After the user's return, an outer NGX runtime observation candidate and pinned
+parameter-ABI check were prepared while the user tested in the hub. See the
+[follow-up boundary investigation](2026-09-06-dlss-output-boundary.md). The new
+candidate is built but not live-validated; output publication remains disabled.
