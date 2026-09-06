@@ -928,3 +928,21 @@ render-pass and viewport state tracking. Added bounded per-stage census to
 separate missing metadata, mismatched extents, unarmed recording and shader/
 blend rejection without treating all failures as missing HUD pixels. No normal
 renderer changes are made when the opt-in is absent.
+
+### HUD alpha diagnostic crash correction (2026-09-06)
+
+The third capture run crashed at its first eligible GUI replay. The engine reported
+an access violation executing address zero; source audit found the capture clear
+called original_clear_render_target_view, whose hook is installed only by broader
+render diagnostics. The opt-in alpha capture does not enable those diagnostics.
+The clear now uses the command-list COM method, as the existing menu capture does.
+Target redirection additionally refuses to run without its required trampoline.
+The temporary alpha-capture flag was removed after archiving the failed run.
+
+Validation: Windows x64 Release native target built; five focused CTest cases
+(ui_capture_blend, continuous_recovery, streamline_submission,
+streamline_stereo_inputs, streamline_abi_reference) and all three Python alpha
+checker tests passed. git diff --check passed. Live replay and complete UI coverage
+remain unverified; no claim of corrected generated-frame HUD appearance yet.
+Local evidence: artifacts/diagnostics/hud-alpha-capture-20260906/third-run-crash.tsv
+and third-run-crash-console.log (excluded from Git).

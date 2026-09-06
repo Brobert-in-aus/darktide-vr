@@ -7547,6 +7547,8 @@ WorldUiDrawRedirect begin_world_ui_draw(ID3D12GraphicsCommandList* commands,
                                        const PsoMetadata& metadata) {
   WorldUiDrawRedirect redirect;
   if (!world_ui_capture_requested() || current_presentation_mode.load() != 1) return redirect;
+  // Target redirection bypasses tracing, so it requires the installed hook.
+  if (!original_om_set_render_targets) return redirect;
   ++world_ui_capture_stages[0];
   if (!metadata.blend_enabled || metadata.render_target_count != 1 ||
       metadata.render_target_format != DXGI_FORMAT_R8G8B8A8_UNORM)
@@ -7637,7 +7639,9 @@ WorldUiDrawRedirect begin_world_ui_draw(ID3D12GraphicsCommandList* commands,
   if (capture.pose != pose) {
     capture.pose = pose; capture.draws = capture.rejected = 0;
     const float transparent[4]{};
-    original_clear_render_target_view(commands,
+    // ClearRTV interception is diagnostic-only. Call the COM method so capture
+    // also works when that hook (and its trampoline) was never installed.
+    commands->ClearRenderTargetView(
         capture.rtv->GetCPUDescriptorHandleForHeapStart(), transparent, 0, nullptr);
   }
   if (metadata.depth_enabled || metadata.stencil_enabled || trace.depth_target ||
