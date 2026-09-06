@@ -286,3 +286,14 @@ Validation: Windows x64 Release build passes; six focused CTests pass for native
 capture hooks, original stereo ring, continuous recovery, direct/compute NGX GPU
 timing and Lua invariants. Evidence: `artifacts/unattended/present-timing-build-20260907.log`
 and `present-timing-ctest-20260907.log`. New native binary remains undeployed.
+
+## Hub target interaction binding candidate
+
+Branch `codex/hub-target-interaction-2026-09-07` adds optional Inspect operative /
+pet companion through the stock `interact_inspect_pressed` action. It remains
+unbound by default and can be assigned only in the hub profile if desired.
+Shared hints distinguish it from regular interaction and weapon inspection.
+No direct UI/network/companion action bypasses stock conditions.
+
+Validation: 34 LuaJIT chunks and four focused CTests pass (bindings, prompts,
+UI ownership, source invariants). Still undeployed; no game/XR session was opened.

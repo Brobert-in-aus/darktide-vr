@@ -12,7 +12,7 @@ SoloPlay run and no worn acceptance. The local-authority admission policy in
 | Supply placement / push / give | `pocketables/settings_templates/pocketables_template_settings.lua` uses primary press, alternate press, and weapon-special hold respectively. | Existing RT, LT and combat R Grip routes. Targeting, placement and hand origin still unverified. |
 | Luggable aim / throw / cancel | `luggables/luggable.lua` uses primary hold then release; alternate cancels/pushes. | Existing controls supply the actions. The subsequent [trajectory candidate](RANGED-WEAPON-AUDIT.md#luggable-trajectory-candidate-7-september) couples hand aim and preview, preserving cached release and stock drops. Physical carry alignment and live throw origin remain unverified. |
 | Scanner minigame action / cancel / knob | `PlayerCharacterStateMinigame._update_input` reads primary/interact/jump holds, alternate press and `move`. | Existing RT/X/A, LT and left-stick routes. `ScannerDisplayView.is_using_input` returns false; it renders the device rather than owning those gameplay actions. Visual readability, axis behavior with left-hand movement reference, and lifecycle remain unverified. |
-| Inspect operative / companion | Interaction templates override the input to `interact_inspect_pressed`. | Separate from ordinary interaction and weapon inspection; still lacks a controller assignment. |
+| Inspect operative / companion | Interaction templates override the input to `interact_inspect_pressed`. | Newly assignable Inspect operative / pet companion action, separate from ordinary interaction and weapon inspection. Stock companion ownership/idle checks and operative-view validation remain in charge. |
 
 Source paths are under `_downloads/Darktide-Source-Code/scripts/`. Revive's
 `stop` method only applies success on the server; input delivery alone cannot
@@ -69,3 +69,17 @@ test covers a 90-degree hand offset, both device axes, changing hand orientation
 immediate entry/exit, missing tracking and retiring/missing state. Five focused
 CTests and the 34-chunk LuaJIT gate pass. Scanner readability, tactile controls
 and mission lifecycle remain live acceptance items.
+
+## Hub target interaction binding
+
+The binding catalog now exposes the stock `interact_inspect_pressed` edge for
+operative inspection and companion interaction. It remains unbound by default;
+the hub override can assign it without replacing the combat interaction mapping.
+Shared interaction hints read the same effective profile. No direct view-open,
+companion event or network call is added. The stock player-inspect view remains
+read-only, and companion ownership, target validity and idle conditions remain
+stock decisions. Live target selection and hint appearance remain pending.
+
+Validation: 34 LuaJIT chunks and four focused CTests pass. Fixtures cover the
+stock edge name, held aliases/rearming, hub/combat hint changes and separation
+from ordinary interaction and weapon inspection.

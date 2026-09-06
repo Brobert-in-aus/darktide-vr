@@ -169,7 +169,7 @@ print('controller_bindings=pass defaults aliases remap_release context_handoff d
 -- Mission slots use ordinary stock wield edges. Held bindings and a second
 -- alias cannot repeat slot changes; an inactive transition requires release.
 for id,expected in pairs({pocketable='wield_3',stim='wield_4',device='wield_5',
-        cycle_pocketables='wield_3_gamepad'}) do
+        cycle_pocketables='wield_3_gamepad',inspect_target='interact_inspect_pressed'}) do
     local slots=Bindings.install({get=function(_,key)
         if key=='vr_bind_x' or key=='vr_bind_y' then return id end
     end})

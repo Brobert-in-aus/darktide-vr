@@ -61,7 +61,7 @@ assert(text('smart_tag')=='keyboard:smart_tag')
 -- Direct slots keep distinct hints; cycling is never advertised as selecting
 -- a particular slot. Defaults remain unbound until the user assigns a control.
 for id,alias in pairs({pocketable='wield_3',stim='wield_4',device='wield_5',
-        cycle_pocketables='wield_3_gamepad'}) do
+        cycle_pocketables='wield_3_gamepad',inspect_target='interact_inspect'}) do
     settings.vr_bind_right_stick_up=id
     mod.on_setting_changed('vr_bind_right_stick_up')
     scope('HudElementWieldInfo','_create_entry',function()
@@ -73,6 +73,19 @@ for id,alias in pairs({pocketable='wield_3',stim='wield_4',device='wield_5',
 end
 settings.vr_bind_right_stick_up=nil
 mod.on_setting_changed('vr_bind_right_stick_up')
+settings.vr_hub_bind_x='inspect_target'
+mod.on_setting_changed('vr_hub_bind_x')
+bindings.sample(true,0,0,0,true,1,'hub')
+scope('HudElementInteraction','_update_interaction_input_text',function()
+    assert(text('interact_inspect')=='[X]' and text('interact')=='[Unbound]')
+    assert(text('weapon_inspect')=='[Unbound]','Target interaction pretended to inspect a weapon')
+end)
+bindings.sample(true,0,0,0,true,1,'shooting_range')
+scope('HudElementInteraction','_update_interaction_input_text',function()
+    assert(text('interact_inspect')=='[Unbound]' and text('interact')=='[X]')
+end)
+settings.vr_hub_bind_x=nil
+mod.on_setting_changed('vr_hub_bind_x')
 local ok,err=pcall(function()
     scope('HudElementInteraction','_setup_interaction_information',function() error('stock failure') end)
 end)

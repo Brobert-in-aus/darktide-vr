@@ -42,6 +42,7 @@ Bindings.actions = {
     {id="stim", mask=131072, pressed={"wield_4"}},
     {id="device", mask=262144, pressed={"wield_5"}},
     {id="cycle_pocketables", mask=524288, pressed={"wield_3_gamepad"}},
+    {id="inspect_target", mask=1048576, pressed={"interact_inspect_pressed"}},
 }
 
 function Bindings.widgets()
