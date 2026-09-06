@@ -21,6 +21,10 @@ Additional offline candidates provide assignable item/stim/device slot actions
 and correct gameplay UI ownership checks. See
 [mission interaction coverage](MISSION-INTERACTION-AUDIT.md). These remain
 undeployed and require later live controller/lifecycle checks.
+A subsequent native timing candidate replaces the coarse Present duration with
+a high-resolution steady-clock measurement and fractional-millisecond reporting.
+New health lines identify `present_clock=steady`; older zero durations remain
+coarse observations. This is measurement preparation, not a framerate gain.
 See the [current handoff](handoffs/2026-09-07-development.md) for evidence and
 the expanded shared hint audit. A 20-minute task heartbeat is active.
 

@@ -264,3 +264,25 @@ Validation: pinned LuaJIT 34 chunks; five focused CTests pass for scanner axes,
 gameplay heading, turning, UI ownership and source invariants. The actual movement
 seam is tested across differing hand/head orientation and immediate state changes.
 No deployment or live session; worn scanner/lifecycle acceptance remains pending.
+
+## High-resolution Present timing candidate
+
+Branch `codex/present-cpu-timing-2026-09-07` corrects a measurement limitation in
+the saved performance evidence. Present CPU duration formerly used whole
+`GetTickCount64` increments and accumulated integer milliseconds, so short calls
+could appear as zero. The candidate brackets the same `original_present` call
+with `steady_clock` and keeps fractional milliseconds through aggregation.
+High-resolution queries run only when health or detailed timing is requested.
+
+Health keeps its existing field names, emits four decimals and adds
+`present_clock=steady`. Detailed traces retain coarse begin/end ticks for log
+correlation and add the separately measured `cpu_ms` / `clock=steady`. Timing
+ends before logging and health locking; it is a CPU call duration, not an
+independent GPU timeline. Existing old logs are not reinterpreted as precise.
+No pacing, fences, resolution, quality or graphics settings change; no measured
+framerate improvement is claimed. Live evidence awaits successful Ready preflight.
+
+Validation: Windows x64 Release build passes; six focused CTests pass for native
+capture hooks, original stereo ring, continuous recovery, direct/compute NGX GPU
+timing and Lua invariants. Evidence: `artifacts/unattended/present-timing-build-20260907.log`
+and `present-timing-ctest-20260907.log`. New native binary remains undeployed.

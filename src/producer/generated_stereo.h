@@ -10,7 +10,7 @@ void configure_generated_stereo(bool enabled);
 bool generated_stereo_enabled();
 void generated_stereo_evaluation(bool complete, bool paired);
 void generated_stereo_health(std::uint64_t present, std::uint64_t original_ready,
-    bool foreground, std::uint64_t present_ms);
+    bool foreground, double present_ms);
 void generated_stereo_context(std::uint64_t previous_pose, std::uint64_t current_pose,
     std::uint64_t generation, std::uint64_t rendered_ready, const std::array<void*,6>& inputs);
 void stage_generated_stereo(ID3D12GraphicsCommandList* commands, ID3D12Resource* output,

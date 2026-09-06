@@ -56,6 +56,10 @@ for the smaller set needed before a first end-to-end mission attempt.
    unavoidable. Also perform a general CPU/GPU/frame-pacing pass in representative
    combat, including HUD/marker and stereo-render overhead. This is active work,
    no longer solely post-release profiling. Preserve the pool/worker rollback.
+   7 September: the offline native candidate now measures Present with a
+   high-resolution clock, preserving fractional milliseconds and labelling
+   the new clock in logs. Existing measurements cannot be retroactively refined;
+   controlled live SR/FG comparisons remain pending.
 6. **Complete physical melee.** User owns complex contact verification. Finish
    continuous contact/obstruction, per-target cooldowns using real combo timing,
    heavy-charge rules, and dedicated stock damage/proc/prediction ownership.

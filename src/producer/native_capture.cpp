@@ -40,6 +40,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdarg>
@@ -12923,17 +12924,24 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
   }
   streamline_outer_present_active_frame.store(present,
                                               std::memory_order_release);
-  const auto present_began_ms = GetTickCount64();
+  const bool report_present_health = streamline_persistent_requested.load();
+  const bool trace_present_timing = trace_streamline_submission_images();
+  const bool measure_present_cpu = report_present_health || trace_present_timing;
+  const auto present_began_ms = trace_present_timing ? GetTickCount64() : 0;
+  const auto present_cpu_began = measure_present_cpu
+      ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   const auto result = original_present(swapchain, interval, flags);
-  if(streamline_persistent_requested.load()) {
-    const auto elapsed=GetTickCount64()-present_began_ms;
+  const double present_cpu_ms = measure_present_cpu
+      ? std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - present_cpu_began).count() : 0.0;
+  if(report_present_health) {
     std::uint64_t published{};
     { std::scoped_lock lock(state_mutex); published=ready_value; }
-    darktidevr::producer::generated_stereo_health(present,published,game_process_foreground(),elapsed);
+    darktidevr::producer::generated_stereo_health(present,published,game_process_foreground(),present_cpu_ms);
   }
-  if (trace_streamline_submission_images()) {
-    write_streamline_probe_log("STEREO_PRESENT_TIMING\tpresent_frame=%llu\tbegin_ms=%llu\tend_ms=%llu\r\n",
-        present, present_began_ms, GetTickCount64());
+  if (trace_present_timing) {
+    write_streamline_probe_log("STEREO_PRESENT_TIMING\tpresent_frame=%llu\tbegin_ms=%llu\tend_ms=%llu\tcpu_ms=%.4f\tclock=steady\r\n",
+        present, present_began_ms, GetTickCount64(), present_cpu_ms);
   }
   streamline_outer_present_active_frame.store(0, std::memory_order_release);
   if (streamline_continuous_requested.load(std::memory_order_acquire) && present_queue) {
