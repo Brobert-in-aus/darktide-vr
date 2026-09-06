@@ -24,6 +24,15 @@ and windows with a reported original failure or no observed original output are
 counted separately. New native logs mark `present_clock=steady`; older logs are
 labelled `coarse_legacy` and never combined with precise durations.
 
+The new native candidate records `focus_changes` across every measured Present
+in each health window. A switch away and back can have identical foreground
+flags at both endpoints; those mixed windows now appear under
+`within_window_focus_transition` rather than stable foreground performance.
+New groups carry `focus_tracking=per_present`; old logs are labelled
+`endpoint_only` and are kept separate. Changes occurring entirely between sampled
+Presents remain unobservable. This is measurement hygiene, not a performance fix
+or a claim that earlier slow windows were caused by focus changes.
+
 ## Whole saved session: 7 September offline analysis
 
 The saved 140744 log contains 541 health rows. The report accounts for all rows:
@@ -47,3 +56,9 @@ limitations; this report adds no causal attribution or performance fix.
 Evidence: `artifacts/diagnostics/dlss-base-framerate-20260906/health-summary-20260907.json`.
 Five unit cases cover fractional timing, retained slow windows, focus/clock
 separation, delayed progress, counter resets, invalid rows and missing output.
+Two additional cases cover within-window away/back transitions, old/new focus
+evidence separation and invalid transition counts. The native window helper also
+checks repeated stable samples, two transitions and reset across windows. Release
+native-capture and generated-frame-state test builds pass; the two focused CTests
+pass. The new logging is undeployed pending Ready; saved logs cannot be upgraded
+to per-Present focus evidence retroactively.

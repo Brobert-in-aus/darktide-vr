@@ -1,6 +1,7 @@
 #include "../isolated_transports.h"
 #include "core/shared_generated_frame_state.h"
 #include "core/generated_frame_cadence.h"
+#include "core/present_focus_window.h"
 
 #include <cstdint>
 #include <iostream>
@@ -19,6 +20,16 @@ void expect(bool condition, const char* message) {
 int main() {
   try {
     darktidevr::tests::isolate_transports();
+    darktidevr::core::PresentFocusWindow focus;
+    focus.observe(true); focus.observe(true);
+    expect(focus.changes == 0, "Initial foreground samples are not transitions");
+    focus.observe(false); focus.observe(true);
+    expect(focus.changes == 2 && focus.last_foreground,
+           "Away-and-back within one health window must be observable");
+    focus.clear_window(); focus.observe(true);
+    expect(focus.changes == 0, "A settled following window must start clean");
+    focus.clear_window(); focus.observe(false);
+    expect(focus.changes == 1, "Window reset must retain the last observed focus");
     darktidevr::core::GeneratedFrameCadence cadence;
     cadence.observe_source(100'000'000);
     cadence.observe_source(132'000'000);

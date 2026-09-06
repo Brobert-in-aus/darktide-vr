@@ -53,6 +53,23 @@ class Health(unittest.TestCase):
         self.assertEqual(report["excluded_windows"]["no_observed_original_output"], 2)
         self.assertEqual(report["groups"], [])
 
+    def test_away_and_back_with_same_end_focus_is_not_a_stable_window(self):
+        report = health.summarize([row(0, focus_changes=0), row(1, focus_changes=2),
+                                   row(2, focus_changes=0)])
+        self.assertEqual(report["excluded_windows"]["within_window_focus_transition"], 1)
+        group, = report["groups"]
+        self.assertEqual(group["windows"], 1)
+        self.assertEqual(group["focus_tracking"], "per_present")
+
+    def test_legacy_focus_evidence_is_not_mixed_with_per_present_evidence(self):
+        report = health.summarize([row(0), row(1), row(2, focus_changes=0), row(3, focus_changes=0)])
+        self.assertEqual({group["focus_tracking"] for group in report["groups"]},
+                         {"endpoint_only", "per_present"})
+        self.assertEqual(sum(group["windows"] for group in report["groups"]), 2)
+        for value in (-1, "nan", "0.5"):
+            report = health.summarize([row(0), row(1, focus_changes=value)])
+            self.assertEqual(report["excluded_windows"]["invalid_health_row"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

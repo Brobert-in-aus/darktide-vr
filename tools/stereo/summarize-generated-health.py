@@ -22,6 +22,10 @@ def parse(line):
     row["foreground"] = int(fields["foreground"])
     row["original_failed"] = int(fields["original_failed"])
     row["clock"] = fields.get("present_clock", "coarse_legacy")
+    row["focus_changes"] = int(fields["focus_changes"]) if "focus_changes" in fields else None
+    row["focus_tracking"] = "per_present" if row["focus_changes"] is not None else "endpoint_only"
+    if row["focus_changes"] is not None and row["focus_changes"] < 0:
+        raise ValueError("Invalid within-window focus count")
     if any(not math.isfinite(row[key]) or row[key] < 0 for key in METRICS + COUNTERS):
         raise ValueError("Invalid metric or cumulative counter")
     if row["foreground"] not in (0, 1) or row["original_failed"] not in (0, 1):
@@ -57,8 +61,12 @@ def summarize(lines):
         if any(value < 0 for value in delta.values()):
             excluded["counter_reset"] += 1
             continue
-        if row["foreground"] != baseline["foreground"] or row["clock"] != baseline["clock"]:
+        if (row["foreground"] != baseline["foreground"] or row["clock"] != baseline["clock"] or
+                row["focus_tracking"] != baseline["focus_tracking"]):
             excluded["focus_or_clock_transition"] += 1
+            continue
+        if row["focus_changes"]:
+            excluded["within_window_focus_transition"] += 1
             continue
         if row["original_failed"]:
             excluded["original_failure"] += 1
@@ -74,17 +82,19 @@ def summarize(lines):
             progress = "no_evaluation_or_publication_progress"
         # Completion can occur after the last evaluation; publication progress
         # therefore takes precedence. Lack of progress does not mean FG disabled.
-        key = ("foreground" if row["foreground"] else "background", progress, row["clock"])
+        key = ("foreground" if row["foreground"] else "background", progress,
+               row["clock"], row["focus_tracking"])
         groups[key].append(row)
     result = {"comparison_status": "observational_only", "health_rows": total,
               "excluded_windows": dict(excluded), "groups": []}
-    for (focus, progress, clock), rows in sorted(groups.items()):
+    for (focus, progress, clock, focus_tracking), rows in sorted(groups.items()):
         metrics = {}
         for metric in METRICS:
             values = [row[metric] for row in rows]
             metrics[metric] = {"median_window_value": statistics.median(values),
                                "minimum_window_value": min(values), "maximum_window_value": max(values)}
         result["groups"].append({"focus": focus, "generation_progress": progress,
+                                 "focus_tracking": focus_tracking,
                                  "present_clock": clock, "windows": len(rows), "metrics": metrics})
     return result
 

@@ -1,6 +1,7 @@
 #include "producer/generated_stereo.h"
 #include "core/shared_generated_frame_state.h"
 #include "core/shared_object_name.h"
+#include "core/present_focus_window.h"
 #include <Windows.h>
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -209,19 +210,23 @@ void generated_stereo_health(std::uint64_t present, std::uint64_t original_ready
   std::scoped_lock lock(mutex);
   static std::uint64_t last_tick{}, last_present{}, last_ready{}, last_original{}, present_samples{};
   static double present_total_ms{};
+  static core::PresentFocusWindow focus_window;
+  focus_window.observe(foreground);
   present_total_ms+=present_ms; ++present_samples;
   const auto now=GetTickCount64();
   if(!last_tick) { last_tick=now; last_present=present; last_ready=original_ready; last_original=originals.sequence; return; }
   if(now-last_tick<1000) return;
   const double seconds=(now-last_tick)/1000.0;
-  status("health engine_fps=%.2f legacy_publish_fps=%.2f original_ring_fps=%.2f present_mean_ms=%.4f foreground=%u evaluations=%llu complete=%llu paired=%llu published=%llu context_misses=%llu output_busy=%llu contexts=%llu unmapped=%llu original_failed=%u present_clock=steady\n",
+  status("health engine_fps=%.2f legacy_publish_fps=%.2f original_ring_fps=%.2f present_mean_ms=%.4f foreground=%u evaluations=%llu complete=%llu paired=%llu published=%llu context_misses=%llu output_busy=%llu contexts=%llu unmapped=%llu original_failed=%u present_clock=steady focus_changes=%u\n",
       (present-last_present)/seconds,(original_ready-last_ready)/seconds,(originals.sequence-last_original)/seconds,
       static_cast<double>(present_total_ms)/present_samples,foreground ? 1U : 0U,
       evaluations.load(),complete_evaluations.load(),paired_evaluations.load(),sequence,
-      context_misses,output_busy,input_contexts,unmapped_contexts,originals.failed ? 1U : 0U);
+      context_misses,output_busy,input_contexts,unmapped_contexts,originals.failed ? 1U : 0U,
+      focus_window.changes);
   last_tick=now; last_present=present; last_ready=original_ready;
   last_original=originals.sequence;
   present_total_ms=0; present_samples=0;
+  focus_window.clear_window();
 }
 void generated_stereo_context(std::uint64_t previous, std::uint64_t current,
     std::uint64_t generation, std::uint64_t rendered_ready, const std::array<void*,6>& inputs) {

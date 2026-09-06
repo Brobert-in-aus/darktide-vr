@@ -511,3 +511,20 @@ including moved-pose reference agreement, cached release fields, strict delay,
 half-rewind timing, once-only spawning, charge and server ownership. Trajectory
 and physics are substitutes, so real impacts and worn arc alignment remain open.
 No live attempt or deployment; full-suite baseline remains `e3647d0`.
+
+## Continuous todo work: performance focus windows
+
+User reiterated continuous work throughout the day. Continued the interaction
+audit: inspected use/revive and ability-targeting consumers read simulated
+first-person components, so no throw-preview-style root correction was needed.
+Then found a diagnostics gap: foreground status only at each health endpoint
+misses an away-and-back change inside the interval.
+
+Branch `codex/performance-focus-windows-2026-09-07` counts focus changes at each
+measured Present, emits them in native health rows and excludes mixed windows
+from stable performance groups. Old endpoint-only logs stay separately labelled.
+The new parser regressions fail before the fix and pass after it. Release builds
+of `darktidevr_native_capture` and `darktidevr-generated-frame-state-tests` pass;
+focused `generated_frame_state` and `generated_health_analysis` CTests pass.
+No performance improvement, cause of earlier slow windows or live acceptance is
+claimed. No deployment; normal headset sleep and existing graphics settings remain.
