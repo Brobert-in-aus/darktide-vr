@@ -45,6 +45,17 @@ The stock walking integration also checks four input vectors at twelve headings.
 These are settled-input checks. Stock smoothing retains previous local axes, so
 rapid hand-aim changes while moving still need transient steering/comfort checks.
 
+An isolated abrupt-turn probe confirmed this distinction. With stock acceleration
+19/deceleration 6, a hypothetical 60 Hz update, settled forward input and an
+instantaneous 90-degree hand-aim change, the requested movement heading settled
+after four updates. Its error was approximately 65.1 degrees at 16.7 ms,
+30.1 at 33.3 ms, 3.0 at 50 ms and zero at 66.7 ms. These are the stock method's
+**desired movement** outputs, not measured body displacement, collision results
+or a worn observation. Ordinary gradual hand movement was not characterized by
+that abrupt-step probe. Input conversion cannot promise to eliminate stock
+stateful acceleration by rotating only the incoming axes. Evidence remains
+ignored in `artifacts/unattended/online-movement-transient-20260907.log`.
+
 Room-scale translation is not injected as extra mover velocity. Existing visual
 head/hand/body presentation remains within its current tracking envelope.
 Menus, unavailable tracking, foreign handlers and non-playing/forced states
@@ -66,6 +77,16 @@ scenario buff and replenishes pickup stations. The mode settings disable
 minion perception. These remain explicit limitations for incoming damage,
 enemy behavior and resource-exhaustion acceptance. No mission-equivalent
 survivability or AI behavior is claimed.
+
+Incoming-combat follow-up audit: changing only the perception mode flag is not
+sufficient. Minion construction reads that flag, while the range's
+`sr_unperceivable_loop` continually re-adds the player's unperceivable buff.
+The range also explicitly sets invulnerability at initialization. A future
+combat option must handle all three owners, preserve return/re-entry behavior,
+and establish a usable recovery path after downing/death. The stock target loop
+spawns enemies with an aggroed state; enabling everything together is not a
+controlled single-enemy test. The user has been asked whether incoming combat
+belongs in this proving mode; no training-aid changes were made during the audit.
 
 Always-active physical-contact melee with unlimited cleave remains separate
 local-authority research; it is not a compatible replacement for stock online

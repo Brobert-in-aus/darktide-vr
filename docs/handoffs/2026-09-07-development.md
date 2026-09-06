@@ -438,3 +438,14 @@ and the expanded optional stock-source check passes. The only explicit settings
 rotation constraint found in this snapshot belongs to Ogryn lunge; its lunging
 state already falls outside the hand-input allowlist. No new constraint hook
 was added. Rapid aim-change/transient movement and live acceptance remain open.
+
+A subsequent isolated 90-degree step probe characterized stock desired steering
+over four hypothetical 60 Hz updates (65.1/30.1/3.0/0 degrees of heading error).
+This is not root displacement or worn evidence. See the proving-mode document
+and ignored `online-movement-transient-20260907.log` for conditions/limits.
+
+Optional user question is pending: retain training aids or also enable enemy
+attacks/incoming damage. Source audit found three separate owners: minion-init
+perception flag, a recurring unperceivable-buff loop and player invulnerability.
+No training-aid changes were made. A combat option would also need controlled
+encounters and downing/death recovery; continue independent work meanwhile.
