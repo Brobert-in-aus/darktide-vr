@@ -127,8 +127,8 @@ Grenade/luggable routes need a coupled pass, not a camera-pose-only patch:
 - Zealot knives use another `spawn_projectile` route with `zealot` rather than
   `grenade` keywords. Psyker homing knives require target-module ownership too.
 
-The grenade candidate below addresses its coupled routes. Luggables and the
-other thrown abilities remain unmodified. Private-range acceptance does not
+The grenade and knife candidates below address their respective routes.
+Luggables remain unmodified. Private-range acceptance does not
 establish remote-server hand-pose transport for mission play.
 
 Dual-shiv live initialization: both concrete hooks installed; `shared_ready=2162`
@@ -173,3 +173,39 @@ zero pose mismatches. No matching mod error was found. Local evidence:
 `artifacts/unattended/grenade-aim-live-20260906.log`. The initial launch raced
 process shutdown and correctly refused deployment while Darktide was still
 visible; retry after exit performed the 31-chunk gate and sync successfully.
+
+## Zealot and Psyker knife candidate
+
+The two named templates `zealot_throwing_knives` and `psyker_throwing_knives`
+use `ActionSpawnProjectile` directly. Its old force-staff-only pose policy left
+their initial spawn and delayed launch head-relative. The candidate accepts
+these exact template names and `spawn_projectile` actions without a node origin
+or position-tracking module. Zealot remains non-homing; Psyker must retain the
+audited `smart_target_targeting` target module and target tracking. Other Psyker
+or Zealot abilities do not qualify merely through their class keyword.
+
+Both launch stages now use the right-hand pose through the existing scoped
+component proxy and local/tracked/private-range gates. Staff origin/convergence
+behavior and its counters remain unchanged. Authored offsets, spread, projectile
+speed/physics, charge consumption and release delays remain stock (Zealot fire
+time 0.1 s; the inspected Psyker knife attacks 0.25 s).
+
+Psyker target acquisition already flows through the hand-authored
+`PlayerUnitSmartTargetingExtension.fixed_update`: `_targeting_parameters` reads
+the scoped component before the stock precision query. `SmartTargetingActionModule`
+consumes that extension's targeting data, retains the stock range validation,
+sticky/soft-sticky behavior and previous-target preference, and stores
+`target_unit_1`. Spawn/launch consume that target independently of the reference
+pose. No replacement target-finder or homing algorithm was added.
+
+The expanded `ranged_aim` fixture passes both knife templates/stages, exact-name
+guards, owner/tracking/private-mode fallbacks, unsupported targeting/node/action
+variants and pose restoration. Grenade, melee and the 31-chunk LuaJIT gate also
+pass. Worn verification must include head-away free throws, primary and aimed
+Psyker throws, target changes/sticky lock and force-staff regression. This source
+audit and hook coverage do not establish physical or remote-mission acceptance.
+
+Live knife candidate initialization passes: the existing concrete spawn/launch
+hooks install without matching mod errors; `shared_ready=307`, 44.1 fresh pairs/s,
+zero interval fallback and zero pose mismatches in the private range. Evidence:
+`artifacts/unattended/knife-aim-live-20260906.log`. No knife was thrown unattended.

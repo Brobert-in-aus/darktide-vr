@@ -348,6 +348,20 @@ function controller_aim.install(mod, presentation, state)
     end
 
     function controller_aim.projectile_target(action)
+        local template = action and action._weapon_template
+        local knife_settings = action and action._action_settings
+        local name = template and template.name
+        -- Psyker targeting consumes the existing hand-authored smart-target
+        -- result; preserve sticky-target and homing rules at launch.
+        local knife = knife_settings and knife_settings.kind == "spawn_projectile" and
+            not knife_settings.spawn_node and not knife_settings.track_towards_position and
+            ((name == "zealot_throwing_knives" and not knife_settings.track_towards_target) or
+             (name == "psyker_throwing_knives" and knife_settings.track_towards_target and
+              knife_settings.target_finder_module_class_name == "smart_target_targeting"))
+        if knife then
+            local position, rotation = controller_aim.target("right")
+            return position, rotation, "knife_right_aim"
+        end
         if not is_force_staff(action) then
             return nil, nil, nil
         end
@@ -538,6 +552,9 @@ function controller_aim.install(mod, presentation, state)
                 controller_aim.projectile_target(self)
             if not position or not rotation then
                 return func(self, ...)
+            end
+            if owner == "knife_right_aim" then
+                return with_first_person_pose(self, position, rotation, func, ...)
             end
             if owner == "left_origin_converged_aim" then
                 controller_aim.staff_primary_writes =

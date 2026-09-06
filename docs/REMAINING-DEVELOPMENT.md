@@ -36,7 +36,9 @@ has its own guarded spawn/launch pose hooks with live initialization verified.
 Live firing acceptance is pending. Generated grenade overhand/underhand routes
 now couple action aim, delayed release and arc preview to the right hand;
 physical arc/impact acceptance and mission-server pose transport remain open.
-Other thrown abilities require the separate follow-up described in that audit.
+Zealot and Psyker knife spawn/launch now use explicit template guards; Psyker
+retains its existing hand-authored smart targeting and homing policy. Knife
+firing acceptance, luggable throws/drops and mission transport remain open.
 
 User reports that ranged weapons other than the force staff do not fire along
 the intended aim. Perform a pass across every class and ranged weapon family,

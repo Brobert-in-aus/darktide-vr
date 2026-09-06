@@ -12,7 +12,7 @@ existing installation; it is not a clean installer. General OpenXR runtime and
 character/weapon coverage remains experimental.
 
 The ranged coverage candidate includes concrete gun/flame preparation routes,
-dual-shiv throws and coupled grenade aim/release/arc preview. These remain
+dual-shiv/ability-knife throws and coupled grenade aim/release/arc preview. These remain
 private-range hand-pose candidates awaiting worn firing checks; mission-server
 transport and other thrown abilities are not complete. See the
 [weapon coverage audit](RANGED-WEAPON-AUDIT.md).

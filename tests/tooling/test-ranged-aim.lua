@@ -169,4 +169,28 @@ assert(not pcall(aim.with_weapon_throw_pose,throw,function(self)
     error('throw failure')
 end))
 assert(throw._first_person_component==shared and shared.rotation==10)
-print("ranged_aim=pass copied_classes=6 simultaneous_groups=pass throwing_guards=pass scope_recovery=pass")
+-- Ability knives share ActionSpawnProjectile, with an explicit template policy.
+local knife=action(modules[action_root.."action_spawn_projectile"])
+for _,name in ipairs({'zealot_throwing_knives','psyker_throwing_knives'}) do
+    knife._weapon_template={name=name,keywords={name=='psyker_throwing_knives' and 'psyker' or 'zealot'}}
+    knife._action_settings={kind='spawn_projectile',track_towards_target=name=='psyker_throwing_knives',
+        target_finder_module_class_name='smart_target_targeting'}
+    for _,method in ipairs({'_spawn_projectile_unit','_fire_projectile'}) do
+        local p,n,r,s=knife[method](knife,42)
+        assert(p==20 and n==nil and r==100 and s==65)
+        assert(knife._first_person_component==shared)
+    end
+end
+assert(knife.launches==4)
+for _,case in ipairs({'remote','untracked','not_private','node','position','other_template','other_module','other_action'}) do
+    knife._player_unit=case=='remote' and remote or player
+    enabled,private=case~='untracked',case~='not_private'
+    knife._weapon_template={name=case=='other_template' and 'psyker_other' or 'psyker_throwing_knives',keywords={'psyker'}}
+    knife._action_settings={kind=case=='other_action' and 'weapon_throw' or 'spawn_projectile',
+        spawn_node=case=='node' and 'hand' or nil,track_towards_position=case=='position',
+        track_towards_target=true,target_finder_module_class_name=case=='other_module' and 'other' or 'smart_target_targeting'}
+    local p,_,r=knife:_fire_projectile(42)
+    assert(p==1 and r==10,'changed unsupported knife: '..case)
+    assert(knife._first_person_component==shared)
+end
+print("ranged_aim=pass copied_classes=6 simultaneous_groups=pass throwing_guards=pass knife_routes=pass scope_recovery=pass")
