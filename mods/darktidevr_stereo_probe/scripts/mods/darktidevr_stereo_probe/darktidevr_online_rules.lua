@@ -39,6 +39,9 @@ function Rules.install(mod, presentation, state, mode_name)
         end
         if session ~= session_owner then
             session_owner = session
+            -- Readiness evidence belongs to this visit. A prior visit's first
+            -- success/failure must not suppress diagnostics for a new session.
+            instance.frames, instance.failures = 0, 0
             -- Latch on entering a session: switching rules during a charged
             -- attack would mix histories. The setting takes effect next visit.
             selected = mod:get("psykhanium_online_rules") ~= false

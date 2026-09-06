@@ -135,11 +135,14 @@ and sticky attacks still need live loadout checks.
 Fresh live diagnostics should include `DARKTIDEVR_ONLINE_RULES` with the range
 policy and first authored input frame. Ready preflight, fresh Lua/stereo
 initialization and nonzero `shared_ready` are required before a live test counts.
+Authored-frame and failure counters reset for each new range visit; the first
+success and first failure are reported again, with repeated frame errors bounded.
 Test actual loadouts, held/charged releases, throws, movement while hand aim
 differs from the head, menu cancellation, near cover, range exit/re-entry and
 camera independence. Worn aim, room movement and comfort remain pending while
-the user is at work. Current readiness is blocked by the observed Quest
-[tracking-loss prompt](QUEST-PASSTHROUGH-RECOVERY.md).
+the user is at work. ADB dismissed the Quest tracking-loss prompt, but current
+readiness fails at VDXR rendering-buffer creation; see
+[recovery evidence](QUEST-PASSTHROUGH-RECOVERY.md).
 
 Follow-up ownership fix: four focused CTests and the expanded stock-source
 check pass; the last full 105-test suite is the preceding candidate checkpoint.

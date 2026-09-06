@@ -119,6 +119,26 @@ mode='shooting_range'; assert(not rules.enabled())
 option=true; mode='coop_complete_objective'; assert(not rules.enabled())
 mode='training_grounds'; assert(not rules.enabled())
 mode='shooting_range'; assert(rules.enabled())
+assert(rules.frames==0 and rules.failures==0,'Range re-entry retained previous session diagnostics')
+local function log_count(pattern)
+    local count=0
+    for _,message in ipairs(logs) do if message:find(pattern,1,true) then count=count+1 end end
+    return count
+end
+local first_frames=log_count('input_frame=')
+fresh(24,0,1); rules.capture(h,24)
+fresh(25,0,1); rules.capture(h,25)
+assert(rules.frames==2 and log_count('input_frame=')==first_frames+1,
+    'Re-entry must emit exactly one fresh authored-frame diagnostic')
+-- A replacement range session can arrive without an observed hub call.
+Managers.state.game_session={is_server=function() return true end}
+assert(rules.enabled() and rules.frames==0 and rules.failures==0)
+Network.pack_unpack=function() error('new session packing unavailable') end
+fresh(26,0,1); rules.capture(h,26); stock(26)
+fresh(27,0,1); rules.capture(h,27); stock(27)
+assert(rules.failures==2 and log_count('input_fallback=')==2,
+    'Each visit must report its first failure without repeating every frame')
+Network.pack_unpack=original_pack
 Managers.state.game_session={is_server=function() return false end}
 assert(not rules.enabled())
 print('PASS: range rules, frame aim, movement basis/packing, pitch limits, stock fallbacks and session setting')

@@ -459,3 +459,13 @@ reproduce it. VDXR reports underlying texture-swapchain result -7000; cause is
 not established. PC Streamer unchanged, normal proximity automation restored,
 headset asleep, game closed and candidates undeployed. Exact observations and
 ignored evidence are in [Quest recovery](../QUEST-PASSTHROUGH-RECOVERY.md).
+
+## Per-visit online-rules diagnostics
+
+Branch `codex/online-rules-session-diagnostics-2026-09-07` fixes stale readiness
+evidence across range visits: counters reset when a new session is latched,
+so its first authored frame and first failure are reported again. The regression
+failed before the change and passes afterward, including session replacement
+without an observed hub and bounded repeated errors. Three focused CTests
+(compiler, invariants, online rules) and the optional stock-source contract pass.
+No native change or deployment. The full-suite baseline remains `e3647d0`.
