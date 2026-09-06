@@ -10,6 +10,10 @@ preflight, with fresh stereo messages and nonzero shared_ready. That run is
 closed. A later Ready preflight and retry returned HMD unavailable from VDXR;
 all subsequent runtime candidates remain undeployed. Game/XR are closed and
 normal proximity behavior is restored.
+A later connection inventory still found one authorized Quest and Streamer.
+After waking, Ready remained unavailable and the headset reported a Guardian
+dialog as a focused activity. No dialog interaction, app restart or deployment
+followed; normal proximity behavior was restored. Continue offline today.
 
 [Draft review #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2)
 collects the continuation: shared LT menu secondary clicks, optional

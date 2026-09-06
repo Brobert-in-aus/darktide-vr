@@ -319,3 +319,19 @@ CMake checks imports using its selected interpreter and provides an actionable
 installation command when they are unavailable. No packages were changed in
 this session. Configuration passes with the existing environment; all gameplay
 and runtime acceptance boundaries above remain unchanged.
+
+## Later readiness observation
+
+After the offline checkpoints, Inventory still found one authorized Quest,
+one Streamer process and no Darktide process. Applied Disable then Status and
+ran Ready again; rendering remained unavailable. A read-only activity query
+showed a Guardian dialog among focused headset activities. No dialog was
+operated, no VD restart/resume was attempted and no new deployment occurred.
+Restored Enable then Status. Continue offline; the user cannot resolve worn
+setup today. This is new observed context for the live blocker, not a claim
+about the dialog's unseen message or its cause.
+
+Evidence is ignored: `artifacts/unattended/continuation-inventory-20260907.json`,
+`continuation-ready-20260907.json`, associated logs and
+`continuation-proximity-restored-20260907.log`. No device identifier is recorded
+in Git. Current source checkpoint remains fully committed and on draft review #2.
