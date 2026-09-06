@@ -2,6 +2,7 @@
 #include "producer/pipeline_identity.h"
 #include "producer/resource_handle_trace.h"
 #include "producer/ngx_output_probe.h"
+#include "producer/ngx_gpu_timing.h"
 #include "core/shared_object_name.h"
 #include <Windows.h>
 #include <d3d12.h>
@@ -9248,6 +9249,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
       for (std::size_t captured_eye = 0; captured_eye < 2; ++captured_eye)
         for (std::size_t role = 0; role < 3; ++role)
           descriptions[captured_eye][role] = state.snapshots[captured_eye][role]->GetDesc();
+      darktidevr::producer::configure_ngx_gpu_timing(gpu_profile_enabled.load());
       if (!streamline_continuous.initialize(device.Get(), state.submission_limit,
           {state.constants[0].viewport, state.constants[1].viewport}, descriptions,
           write_streamline_probe_log, streamline_persistent_requested.load(),
@@ -10403,6 +10405,7 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
     }
     original_execute_command_lists(queue, count, lists);
     darktidevr::producer::signal_ngx_queue_completion(queue, ngx_completion_ticket);
+    darktidevr::producer::submit_ngx_gpu_timing(queue, count, lists);
     darktidevr::producer::submit_generated_stereo(queue, count, lists);
     if (log_streamline_eye_boundary) {
       LARGE_INTEGER boundary_qpc{};

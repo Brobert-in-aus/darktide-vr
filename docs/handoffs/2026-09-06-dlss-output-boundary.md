@@ -783,3 +783,45 @@ under UI rectangles: that destroys background motion and our stabilized HUD and
 world markers are not static screen-space overlays. Capture the actual separate
 UI alpha/color or compose after generation. Unreal plugin composition settings
 are not directly applicable to Darktide's engine. No blur fix claimed yet.
+
+### 2026-09-06: foreground comparison and NGX GPU timings
+
+The user disabled frame generation in the stock graphics menu. Same live process,
+resolution and Quality SR setting, foreground gameplay: 75 steady off windows
+median 70 fps versus 134 generation-active windows median 50 original fps.
+This removes focus as the off switch; scene/head motion were not frozen, so it
+remains an observational same-session comparison rather than a deterministic
+benchmark. Both original-frame output paths continued rendering normally.
+
+New opt-in NGX GPU profiler: 32 query/readback/fence owners, no waits, safe reset
+of unsubmitted samples, exact post-submit fence retirement before reuse. Handles
+both direct and compute lists; NVIDIA uses the compute queue here. Samples bracket
+Evaluate and the following output work on that command list. They do not claim
+independent-engine timelines outside that list. Default profiling remains off.
+
+Live PID 140744, artifacts/unattended/dlss-ngx-compute-profile-20260906.log.
+56 windows per eye: median GPU Evaluate 2.06335 ms left, 2.06055 ms right.
+Post-evaluate work 0.0740 ms left and 0.0001 ms right; this run evaluated right
+before left, and the stereo copy occurs after the second eye. Combined measured
+NGX spans plus prior input/copy publication approximately 4.7 ms versus the
+50-to-70-fps source-frame difference of 5.7 ms. No duplicate FG evaluations or
+oversized eye subrect found. The former 30-original-fps issue is absent. Most of
+the current base-rate reduction is explained by real two-eye generation work;
+remaining queue/contention/scene variability is post-release profiling work,
+not evidence of a particular fix to make now. No claim that every millisecond
+is unavoidable, and no image quality or ownership safety was reduced.
+
+Validation: Release native and GPU timing tests built; ngx_gpu_timing and
+ngx_gpu_timing_compute both pass capacity/reset/completion/readback and both-eye
+aggregation checks. original_stereo_ring, continuous_recovery and
+ngx_command_observations also passed before compute-specific extension.
+Evidence archived under artifacts/diagnostics/dlss-base-framerate-20260906/.
+Frame generation remains OFF in the user's live graphics setting after this test.
+Re-enable for the next deliberate generated-HUD validation, not as a silent
+background setting change.
+
+Next: user rapid-headshake evidence identifies an entire world-space HUD element
+shifted/duplicated beside its correct position in generated frames. Acceptance
+must include fast real head movement, not just stationary clarity. Prioritize a
+separate UI color/alpha or post-generation composition path while preserving
+background velocity; do not zero world motion under the HUD.

@@ -7,6 +7,7 @@
 #include "producer/ngx_output_pair_state.h"
 #include "producer/ngx_output_copy_probe.h"
 #include "producer/generated_stereo.h"
+#include "producer/ngx_gpu_timing.h"
 #include <MinHook.h>
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -265,8 +266,11 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   }
   const auto previous_evaluation = active_evaluation;
   if (captured) active_evaluation = &output_state;
+  const auto timing = complete ? begin_ngx_gpu_timing(
+      static_cast<ID3D12GraphicsCommandList*>(commands), legacy_region[0] ? 1U : 0U) : 0;
   const auto began = GetTickCount64();
   const auto result = original(commands, feature, parameters, callback);
+  mark_ngx_gpu_timing(timing, static_cast<ID3D12GraphicsCommandList*>(commands));
   active_evaluation = previous_evaluation;
   if(identity.kind==11)
     generated_stereo_evaluation(complete,output_state.seed_call!=0);
@@ -282,6 +286,7 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
         : std::array<void*,6>{first[0],first[1],first[2],resources[2],resources[3],resources[4]};
     stage_generated_stereo(static_cast<ID3D12GraphicsCommandList*>(commands), resources[0], call,inputs);
   }
+  end_ngx_gpu_timing(timing, static_cast<ID3D12GraphicsCommandList*>(commands), result == ngx::kSuccess);
   if (captured && diagnostic_sample) record_output_barriers(call, output_state);
   record_slow_call("evaluate", identity.kind, began);
   if (captured && result == ngx::kSuccess) {
@@ -391,6 +396,7 @@ void observe_ngx_output_barriers(void* commands, unsigned count,
 }
 
 void observe_ngx_command_reset(void* commands) {
+  reset_ngx_gpu_timing(commands);
   if (!probe_installed.load(std::memory_order_acquire) ||
       (!pending_commands.load(std::memory_order_acquire) && !pending_output_pair.load(std::memory_order_acquire))) return;
   std::scoped_lock lock(command_mutex);

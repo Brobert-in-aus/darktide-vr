@@ -7,6 +7,15 @@ if(BUILD_TESTING)
   set_tests_properties(original_stereo_ring PROPERTIES LABELS "d3d12;transport;streamline")
 endif()
 
+add_executable(darktidevr-ngx-gpu-timing-tests ngx_gpu_timing.cpp ../../src/producer/ngx_gpu_timing.cpp)
+target_compile_options(darktidevr-ngx-gpu-timing-tests PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-ngx-gpu-timing-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+target_link_libraries(darktidevr-ngx-gpu-timing-tests PRIVATE darktidevr_core d3d12 dxgi)
+if(BUILD_TESTING)
+  add_test(NAME ngx_gpu_timing COMMAND darktidevr-ngx-gpu-timing-tests)
+  add_test(NAME ngx_gpu_timing_compute COMMAND darktidevr-ngx-gpu-timing-tests compute)
+endif()
+
 add_executable(darktidevr-continuous-recovery-tests recovery.cpp
   ../../src/producer/streamline_continuous_submission.cpp ../../src/producer/generated_stereo.cpp
   ../../src/producer/stereo_ui_readback.cpp)
