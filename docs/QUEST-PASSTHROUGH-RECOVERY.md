@@ -76,3 +76,14 @@ Ignored evidence: `quest-continue-without-tracking-ready-20260907.json`,
 `quest-continue-proximity-restored-20260907.log` and the local dialog/after-click
 screenshots under `artifacts/unattended`. Device XML dumps remain in the Quest
 Download folder. None of those files belong in Git.
+
+## Follow-up: PC Streamer restart unavailable
+
+After further offline development, a controlled PC Streamer restart was attempted
+to test a different recovery boundary from the earlier Quest-app restart. One
+Streamer process and one authorized ADB device were present; Darktide and the XR
+harness were closed. Windows rejected stopping Streamer with `Access is denied`.
+The command stopped there, so no replacement instance was launched and no PC
+restart occurred. No privilege workaround, headset wake, proximity change or new
+Ready result followed. The rendering failure remains unresolved; continue useful
+offline work while the user is away.

@@ -636,3 +636,12 @@ recompiled continuous-recovery executable. Full offline Release CTest then
 passes **108/108**, with headset tests disabled at configuration. Evidence:
 `artifacts/unattended/continuous-todo-full-ctest-20260907.log`. This supersedes
 the preceding 107-test full-suite baseline. LuaJIT still compiles 36 mod chunks.
+
+## Live recovery follow-up: PC Streamer access
+
+A different recovery step from the earlier Quest-app restart was attempted:
+restart the sole PC Streamer process after persistent swapchain creation failure.
+Windows rejected Stop-Process with Access is denied. The guarded sequence did
+not launch another instance. No privilege workaround, headset wake/proximity
+change, deployment or new Ready attempt. Live rendering remains blocked; the
+user was informed and work returned to offline mission lifecycle checks.
