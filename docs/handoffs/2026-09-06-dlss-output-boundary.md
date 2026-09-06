@@ -551,3 +551,14 @@ trace remain evidence only; no output retention, copies or XR publication.
 Release native and focused paired-state/continuous-reader tests pass, including
 mismatched identities, unknown initial state, aliasing and reset invalidation.
 Live paired-state verification is next.
+
+Paired-state live PASS (19644): seven adjacent generated stereo pairs establish
+end state UAV(8) on their exact packed 4992 x 2688 output, with both calls complete
+on the same observed queue. Eight consecutive input frames pass and all sixteen
+GetState calls report status zero. No failed pose reads recorded. The new
+read-ngx-pair-state-probe.ps1 cross-checks state scopes, exact left/right regions,
+feature lifetimes, threads, resource identities, complete barrier counts and GPU
+fences. It rejects mutated unknown state, wrong output, call gap, truncated scope
+and duplicate pair evidence. Evidence: pair-state-* including report.json.
+Output pixels are still not retained/copied/published; next is a single bounded
+private output copy/readback at the verified right-eye callback boundary.
