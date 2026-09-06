@@ -309,3 +309,26 @@ the latter untouched as a check for the broader automated pass. Do not mark a
 hint pass from source inventory alone or rename a shortcut without a working
 controller route. Handedness source audit is recorded in HANDEDNESS-AUDIT.md;
 left-handed gameplay is not implemented by these binding profiles.
+
+### Automated broad hint inventory
+
+The source pass inventories the shared hint formatters and alias helpers across
+all stock scripts/ui Lua files. Run:
+python tools/stereo/audit-ui-binding-hints.py --source-root _downloads/Darktide-Source-Code --output artifacts/unattended/ui-binding-hint-audit-20260906.json
+
+Current result: 103 calls in 44 files; 94 have dynamic action expressions and
+require caller/route verification. The report retains source hashes, line numbers,
+full argument expressions and conditional action candidates. It is a review
+queue, not a claim of runtime or visual acceptance. Comments and strings are
+ignored and nested argument expressions retained; four parser/coverage tests pass.
+
+Both user cases are found automatically and remain explicitly unfixed acceptance
+cases: onboarding inventory calls at 336/874/1131, and talent removal right-click
+branches at 1680/1682. Missing either source case makes the audit fail coverage
+instead of claiming the bug resolved. No talent deactivation patch was made.
+
+Coverage follow-up includes shared button/checkbox/slider/stepper templates;
+BaseView helpers; tab/menu panels; profile presets; tutorial overlays; onboarding;
+prologue and spectator HUDs; talent/stimm tooltips; mission voting, board and end
+screens; social/group-finder and event/penance views. Dynamic menu actions need
+an actual input route or pointer callback before any label can become a VR hint.

@@ -1,0 +1,58 @@
+import importlib.util
+from pathlib import Path
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+spec = importlib.util.spec_from_file_location("audit", ROOT / "tools/stereo/audit-ui-binding-hints.py")
+audit = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(audit)
+
+
+class BindingInventory(unittest.TestCase):
+    def test_comments_strings_and_nested_arguments(self):
+        source = '''-- Text.localize_with_button_hint("fake", "fake")
+local ignored = [=[InputUtils.input_text_for_current_input_device("View", "fake")]=]
+--[==[ _get_view_input_text("fake") ]==]
+local text = Text.localize_with_button_hint(
+    cursor and "right_pressed" or "gamepad_confirm_pressed",
+    "loc_talent_menu_tooltip_button_hint_remove_level", nil, "View",
+    Localize("template", true, {value="comma, bracket)"}))
+local another = InputUtils.input_text_for_current_input_device("View", alias)
+'''
+        found = audit.scan(source, "fixture.lua")
+        self.assertEqual(len(found), 2)
+        self.assertEqual(found[0]["line"], 4)
+        self.assertEqual(found[0]["action_candidates"], ["right_pressed", "gamepad_confirm_pressed"])
+        self.assertEqual(len(found[0]["arguments"]), 5)
+        self.assertIsNone(found[0]["literal_action"])
+        self.assertEqual(found[1]["action_expression"], "alias")
+
+    def test_helper_declaration_is_not_a_call(self):
+        found = audit.scan('''local function _get_view_input_text(action)
+return InputUtils.input_text_for_current_input_device("View", action)
+end
+local text = _get_view_input_text("hotkey_inventory")
+''', "fixture.lua")
+        self.assertEqual(len(found), 2)
+        self.assertEqual(found[1]["literal_action"], "hotkey_inventory")
+
+    def test_missing_cases_are_not_reported_fixed(self):
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            ui = root / "scripts/ui"
+            ui.mkdir(parents=True)
+            (ui / "fixture.lua").write_text('Text.localize_with_button_hint("back", "Back")')
+            report = audit.inventory(root)
+            self.assertEqual(report["summary"]["calls"], 1)
+            self.assertTrue(all(not case["found"] for case in report["user_acceptance_cases"].values()))
+            self.assertEqual(report["calls"][0]["controller_status"], "route_and_live_check_required")
+
+    def test_empty_source_is_an_error(self):
+        with tempfile.TemporaryDirectory() as name:
+            with self.assertRaises(ValueError):
+                audit.inventory(Path(name))
+
+
+if __name__ == "__main__":
+    unittest.main()
