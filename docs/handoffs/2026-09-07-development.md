@@ -449,3 +449,13 @@ attacks/incoming damage. Source audit found three separate owners: minion-init
 perception flag, a recurring unperceivable-buff loop and player invulnerability.
 No training-aid changes were made. A combat option would also need controlled
 encounters and downing/death recovery; continue independent work meanwhile.
+
+## Guardian dialog recovery follow-up
+
+ADB successfully clicked the freshly inspected `Continue without tracking`
+button when Guardian gained window focus. Ready now creates an OpenXR session
+but fails creating swapchains; settled retry and one Quest VD app restart
+reproduce it. VDXR reports underlying texture-swapchain result -7000; cause is
+not established. PC Streamer unchanged, normal proximity automation restored,
+headset asleep, game closed and candidates undeployed. Exact observations and
+ignored evidence are in [Quest recovery](../QUEST-PASSTHROUGH-RECOVERY.md).
