@@ -574,3 +574,19 @@ counts/hashes, so file I/O is off Present. Allocation is capped at 512 MiB per
 resource as a safety bound, not a resolution target. No generated XR publication.
 Release native, launcher parsing and five focused NGX/startup CTests pass.
 Live pixel ownership/visual inspection is next.
+
+Private readback live PASS (114936): exact successful FG calls 260/261 copy one
+4992 x 2688 packed output into a distinct owned texture and readback buffer.
+The covering queue fence completes before export. Each 2496 x 2688 eye contains
+6,709,248 nonblack pixels and their RGB hashes differ. Inspection of the lossless
+PNG conversion shows two complete scene views without a black half or mis-sized
+colour overlay; HUD/reticle are excluded as intended. This is offline pixel
+inspection, not worn generated-frame acceptance. Source UAV state is restored.
+Evidence: readback-* plus readback.bmp/readback.png, all ignored artifacts.
+
+read-ngx-copy-probe.ps1 verifies the exact known-state, GPU-complete pair, distinct
+private resources, row footprint, one staged/exported lifecycle and complete BMP
+header/size. Negative checks reject empty eye counts, aliased owner, wrong call
+and failed HRESULT. Single-output copy ownership is now demonstrated. Continuous
+input/output reuse, source-frame/pose association and OpenXR scheduling/publication
+remain unfinished; no generated frames have been submitted to the headset.

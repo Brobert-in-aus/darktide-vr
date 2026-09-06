@@ -44,7 +44,7 @@ and never steals focus. Per-launch logs are under ignored `artifacts/unattended`
 
 The bounded consecutive DLSS experiment passes eight stereo frames with 14
 reported generated-eye Presents and 14 complete NGX evaluations completing on
-the GPU. Generated output ownership and XR publication remain open. A single
+the GPU. One private generated-output copy/readback now passes exact pair/state/fence checks and offline pixel inspection. Continuous ownership, source-frame/pose association and XR publication remain open. A single
 startup side-by-side frame is still reported by the user; investigate separately
 from the previously corrected stale-pose wait dependency.
 
