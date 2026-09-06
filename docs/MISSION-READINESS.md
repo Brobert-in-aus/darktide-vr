@@ -59,6 +59,9 @@ transport is needed; do not assume every action requires a new network protocol.
    scanner/minigame screens where present. These are unverified checks, not all
    known broken features. A keyboard fallback may help diagnose, but cannot be
    silently treated as completed controller support.
+   The [7 September source audit](MISSION-INTERACTION-AUDIT.md) identifies the
+   existing stock routes and adds assignable carried-item/stim/device selection.
+   These actions remain unbound by default and are not mission-accepted.
 4. Check the complete lifecycle: mission selection/matchmaking, loading into
    active stereo, menus during gameplay, death/spectating if encountered,
    extraction, results and return to hub. Track crashes, frozen XR/mirror output

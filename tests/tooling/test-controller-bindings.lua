@@ -166,6 +166,30 @@ default_mapper.sample(true,0,0,0,true,1)
 local p,h,r=default_mapper.sample(true,0,1,1,true,1)
 assert(p==0 and h==0 and r==0,'new direction defaults were not unbound')
 print('controller_bindings=pass defaults aliases remap_release context_handoff directional_hysteresis tracking generation stock_names options')
+-- Mission slots use ordinary stock wield edges. Held bindings and a second
+-- alias cannot repeat slot changes; an inactive transition requires release.
+for id,expected in pairs({pocketable='wield_3',stim='wield_4',device='wield_5',
+        cycle_pocketables='wield_3_gamepad'}) do
+    local slots=Bindings.install({get=function(_,key)
+        if key=='vr_bind_x' or key=='vr_bind_y' then return id end
+    end})
+    slots.sample(true,0)
+    local pressed,held=slots.sample(true,8)
+    local delivered={}
+    for _,binding in ipairs(slots.bindings) do
+        if bit.band(pressed,binding.mask)~=0 then
+            for _,name in ipairs(binding.pressed) do delivered[#delivered+1]=name end
+            assert(#binding.held==0 and #binding.released==0,'Slot must be edge-only')
+        end
+    end
+    assert(#delivered==1 and delivered[1]==expected,'Incorrect stock slot action')
+    assert(slots.sample(true,8+16)==0,'Second alias repeated wield')
+    assert(slots.sample(true,16)==0,'Releasing first alias repeated wield')
+    slots.sample(false,16)
+    assert(slots.sample(true,16)==0,'Held slot leaked across blocked input')
+    slots.sample(true,0)
+    assert(slots.sample(true,16)==pressed and held==pressed)
+end
 -- Turning owns horizontal axes, while vertical shortcuts and native buttons
 -- continue. Switching it off while deflected must not trigger the old shortcut.
 directional_settings.vr_turn_mode='smooth'

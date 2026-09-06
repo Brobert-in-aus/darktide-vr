@@ -38,6 +38,10 @@ Bindings.actions = {
     {id="inspect", mask=16384, held={"weapon_inspect_hold"}},
     {id="menu", mask=1024},
     {id="inventory", mask=32768},
+    {id="pocketable", mask=65536, pressed={"wield_3"}},
+    {id="stim", mask=131072, pressed={"wield_4"}},
+    {id="device", mask=262144, pressed={"wield_5"}},
+    {id="cycle_pocketables", mask=524288, pressed={"wield_3_gamepad"}},
 }
 
 function Bindings.widgets()

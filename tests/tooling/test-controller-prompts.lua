@@ -58,6 +58,21 @@ scope('HudElementWieldInfo','_create_entry',function()
     assert(text('wield_1')=='[Unbound]','nested scope context leaked')
 end)
 assert(text('smart_tag')=='keyboard:smart_tag')
+-- Direct slots keep distinct hints; cycling is never advertised as selecting
+-- a particular slot. Defaults remain unbound until the user assigns a control.
+for id,alias in pairs({pocketable='wield_3',stim='wield_4',device='wield_5',
+        cycle_pocketables='wield_3_gamepad'}) do
+    settings.vr_bind_right_stick_up=id
+    mod.on_setting_changed('vr_bind_right_stick_up')
+    scope('HudElementWieldInfo','_create_entry',function()
+        assert(text(alias)=='[RS Up]','Slot binding hint missing')
+        if id=='cycle_pocketables' then
+            assert(text('wield_3')=='[Unbound]' and text('wield_4')=='[Unbound]')
+        end
+    end)
+end
+settings.vr_bind_right_stick_up=nil
+mod.on_setting_changed('vr_bind_right_stick_up')
 local ok,err=pcall(function()
     scope('HudElementInteraction','_setup_interaction_information',function() error('stock failure') end)
 end)

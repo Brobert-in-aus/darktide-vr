@@ -200,3 +200,17 @@ CTests pass. Full Windows x64 Release CTest also passes **101/101** (headset tes
 disabled), logged in `artifacts/unattended/ui-detail-ctest-20260907.log`.
 No runtime code changed. The numerical smoothing fixture is an
 isolated test of the metric, not a synthetic headset or game experiment.
+
+## Mission slot bindings candidate
+
+Branch `codex/mission-slot-bindings-2026-09-07` adds four optional controller
+actions: carried item/supply crate, stim, scanner/device, and stock pocketable
+cycling. Each emits its own stock wield press through the existing adapter.
+Direct-slot hints remain distinct from cycling; defaults and saved assignments
+are unchanged. See [interaction coverage](../MISSION-INTERACTION-AUDIT.md) for
+the audited consumers and pending mission checks.
+
+Validation: pinned LuaJIT 34 chunks, four focused CTests pass (bindings, prompts,
+gameplay UI input and Lua invariants). No native rebuild is needed. Still
+undeployed; game/XR remain closed with proximity automation restored.
+Next: correct the UI ownership guard discovered during this source audit.

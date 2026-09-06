@@ -9,5 +9,6 @@ return {
         "action_two_release","weapon_extra_pressed","weapon_extra_release",
         "interact_pressed","weapon_reload_pressed","quick_wield","jump","dodge",
         "crouch","sprint","grenade_ability_pressed","grenade_ability_release",
-        "combat_ability_pressed","combat_ability_release"},
+        "combat_ability_pressed","combat_ability_release",
+        "wield_3","wield_3_gamepad","wield_4","wield_5"},
 }
