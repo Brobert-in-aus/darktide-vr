@@ -3,6 +3,7 @@
 #include "producer/ngx_capture_window.h"
 #include "producer/ngx_feature_registry.h"
 #include "producer/ngx_command_observations.h"
+#include "producer/ngx_output_state.h"
 #include <MinHook.h>
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -38,6 +39,12 @@ struct CompletionGroup {
 std::array<CompletionGroup, 256> completion_groups;
 std::size_t completion_group_count{};
 std::atomic<unsigned> pending_fences{};
+struct ActiveEvaluationState {
+  void* commands{};
+  ID3D12Resource* output{};
+  NgxOutputState observation;
+};
+thread_local ActiveEvaluationState* active_evaluation{};
 std::mutex log_mutex;
 std::atomic<std::uint64_t> calls{};
 std::atomic<std::uint32_t> samples{};
@@ -135,7 +142,11 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   }
   // The trampoline resumes INSIDE _nvngx.dll. Its internal feature call keeps
   // its real NVIDIA return address; no spoofed return or feature patch is used.
+  ActiveEvaluationState output_state{commands, resources[0], {}};
+  const auto previous_evaluation = active_evaluation;
+  if (captured) active_evaluation = &output_state;
   const auto result = original(commands, feature, parameters, callback);
+  active_evaluation = previous_evaluation;
   if (captured && result == ngx::kSuccess) {
     std::scoped_lock lock(command_mutex);
     if (command_observations.add(reinterpret_cast<std::uintptr_t>(commands), call))
@@ -152,6 +163,7 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
         "output_width=%llu output_height=%u output_format=%u "
         "region_x=%u region_y=%u region_width=%u region_height=%u region_results=%x,%x,%x,%x "
         "legacy_x=%u legacy_y=%u legacy_width=%u legacy_height=%u legacy_results=%x,%x,%x,%x "
+        "state_known=%u state_value=%u state_transitions=%u state_ambiguous=%u "
         "output_complete=0 publication=0\n",
         static_cast<unsigned long long>(call), GetTickCount64(), GetCurrentThreadId(),
         commands, feature, parameters, result, captured ? 1U : 0U, abi_verified ? 1U : 0U,
@@ -165,7 +177,9 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
         static_cast<unsigned>(output_description.Format), region[0], region[1], region[2], region[3],
         region_results[0], region_results[1], region_results[2], region_results[3],
         legacy_region[0], legacy_region[1], legacy_region[2], legacy_region[3],
-        legacy_results[0], legacy_results[1], legacy_results[2], legacy_results[3]);
+        legacy_results[0], legacy_results[1], legacy_results[2], legacy_results[3],
+        output_state.observation.known ? 1U : 0U, output_state.observation.state,
+        output_state.observation.transitions, output_state.observation.ambiguous ? 1U : 0U);
     if (length > 0 && static_cast<std::size_t>(length) < line.size())
       write_line(line.data(), static_cast<std::size_t>(length));
   }
@@ -187,6 +201,25 @@ bool verified_runtime(const std::wstring& path) {
       version->dwFileVersionLS == MAKELONG(1088, 16);
 }
 }  // namespace
+
+void observe_ngx_output_barriers(void* commands, unsigned count,
+                                 const D3D12_RESOURCE_BARRIER* barriers) {
+  const auto active = active_evaluation;
+  if (!active || active->commands != commands) return;
+  for (unsigned i = 0; i < count; ++i) {
+    const auto& barrier = barriers[i];
+    if (barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION &&
+        barrier.Transition.pResource == active->output) {
+      active->observation.transition(barrier.Flags, barrier.Transition.Subresource,
+                                     barrier.Transition.StateAfter);
+    } else if (barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_ALIASING &&
+               (!barrier.Aliasing.pResourceBefore || !barrier.Aliasing.pResourceAfter ||
+                barrier.Aliasing.pResourceBefore == active->output ||
+                barrier.Aliasing.pResourceAfter == active->output)) {
+      active->observation.alias();
+    }
+  }
+}
 
 void observe_ngx_command_reset(void* commands) {
   if (!probe_installed.load(std::memory_order_acquire) ||
@@ -334,7 +367,7 @@ bool install_ngx_output_probe(HMODULE capture_module) {
   }
   char header[256]{};
   const auto header_length = std::snprintf(header, sizeof(header),
-      "ngx_output_probe=armed schema=5 runtime=32.0.16.1088 "
+      "ngx_output_probe=armed schema=6 runtime=32.0.16.1088 "
       "resource_get_slot=9 call_limit=32768 sample_limit=256 wait_for_stereo=%u publication=0\n",
       wait_for_stereo ? 1U : 0U);
   if (header_length > 0) write_line(header, static_cast<std::size_t>(header_length));

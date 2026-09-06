@@ -13,14 +13,17 @@ $regionHeader = $featureHeader.Replace('schema=3','schema=4')
 $regionGatedHeader = $featureGatedHeader.Replace('schema=3','schema=4')
 $legacyHeader = $regionHeader.Replace('schema=4','schema=5')
 $legacyGatedHeader = $regionGatedHeader.Replace('schema=4','schema=5')
-if ($lines.Count -eq 0 -or $lines[0] -cnotin @($expectedHeader,$windowHeader,$gatedHeader,$featureHeader,$featureGatedHeader,$regionHeader,$regionGatedHeader,$legacyHeader,$legacyGatedHeader)) {
+$stateHeader = $legacyHeader.Replace('schema=5','schema=6')
+$stateGatedHeader = $legacyGatedHeader.Replace('schema=5','schema=6')
+if ($lines.Count -eq 0 -or $lines[0] -cnotin @($expectedHeader,$windowHeader,$gatedHeader,$featureHeader,$featureGatedHeader,$regionHeader,$regionGatedHeader,$legacyHeader,$legacyGatedHeader,$stateHeader,$stateGatedHeader)) {
     throw 'Missing or unsupported NGX observation header.'
 }
 $windowSchema = $lines[0] -cne $expectedHeader
-$legacySchema = $lines[0] -cin @($legacyHeader,$legacyGatedHeader)
+$stateSchema = $lines[0] -cin @($stateHeader,$stateGatedHeader)
+$legacySchema = $stateSchema -or $lines[0] -cin @($legacyHeader,$legacyGatedHeader)
 $regionSchema = $legacySchema -or $lines[0] -cin @($regionHeader,$regionGatedHeader)
 $featureSchema = $regionSchema -or $lines[0] -cin @($featureHeader,$featureGatedHeader)
-$gated = $lines[0] -cin @($gatedHeader,$featureGatedHeader,$regionGatedHeader,$legacyGatedHeader)
+$gated = $lines[0] -cin @($gatedHeader,$featureGatedHeader,$regionGatedHeader,$legacyGatedHeader,$stateGatedHeader)
 $captureWindow = $null
 $seen = @{}
 $observed = @()
@@ -85,6 +88,14 @@ foreach ($line in $lines | Select-Object -Skip 1) {
     $results = @($fields.get_results.Split(',') | ForEach-Object { [Convert]::ToUInt32($_,16) })
     $regionAvailable = $false
     $legacyAvailable = $false
+    if ($stateSchema) {
+        foreach ($field in @('state_known','state_value','state_transitions','state_ambiguous')) {
+            if (-not $fields.ContainsKey($field) -or $fields[$field] -notmatch '^\d+$') { throw "Invalid output state field: $field" }
+            $fields[$field]=[uint32]::Parse($fields[$field])
+        }
+        if ($fields.state_known -gt 1 -or $fields.state_ambiguous -gt 1 -or
+            ($fields.state_known -eq 1 -and ($fields.state_ambiguous -eq 1 -or $fields.state_transitions -eq 0))) { throw 'Contradictory output state evidence.' }
+    }
     if ($legacySchema) {
         foreach ($field in @('legacy_x','legacy_y','legacy_width','legacy_height')) {
             if (-not $fields.ContainsKey($field) -or $fields[$field] -notmatch '^\d+$') { throw "Missing or invalid legacy-region field: $field" }
@@ -166,12 +177,15 @@ foreach ($line in $lines | Select-Object -Skip 1) {
             LegacyRegionAvailable=$legacyAvailable
             LegacyRegion=if ($legacySchema) { @($fields.legacy_x,$fields.legacy_y,$fields.legacy_width,$fields.legacy_height) } else { $null }
             LegacyResults=if ($legacySchema) { $legacyResults } else { $null }
+            OutputStateKnown=($stateSchema -and $fields.state_known -eq 1)
+            OutputState=if ($stateSchema) { $fields.state_value } else { $null }
+            OutputStateTransitions=if ($stateSchema) { $fields.state_transitions } else { $null }
         }
     }
 }
 if (($observed.Count + $rejected.Count) -gt 256) { throw 'NGX capture budget exceeded.' }
 [pscustomobject]@{
-    SchemaVersion=if ($legacySchema) { 5 } elseif ($regionSchema) { 4 } elseif ($featureSchema) { 3 } elseif ($windowSchema) { 2 } else { 1 }
+    SchemaVersion=if ($stateSchema) { 6 } elseif ($legacySchema) { 5 } elseif ($regionSchema) { 4 } elseif ($featureSchema) { 3 } elseif ($windowSchema) { 2 } else { 1 }
     WaitForStereoSubmission=$gated; CaptureWindow=$captureWindow
     Records=$records; CompleteObservations=$observed.Count
     Observations=@($observed | Sort-Object Call); Rejected=$rejected

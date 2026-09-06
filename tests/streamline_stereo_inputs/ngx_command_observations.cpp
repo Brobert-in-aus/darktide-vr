@@ -1,7 +1,22 @@
 #include "producer/ngx_command_observations.h"
+#include "producer/ngx_output_state.h"
 #include <vector>
 using darktidevr::producer::NgxCommandObservations;
 int main() {
+  darktidevr::producer::NgxOutputState state;
+  if (state.known) return 9;
+  state.transition(0, ~std::uint32_t{}, 8);
+  if (!state.known || state.state != 8) return 10;
+  state.transition(0, 0, 0);
+  state.transition(0, ~std::uint32_t{}, 8);
+  if (state.known || !state.ambiguous) return 11;
+  state = {};
+  state.transition(1, ~std::uint32_t{}, 8);
+  if (state.known) return 12;
+  state = {};
+  state.transition(0, ~std::uint32_t{}, 8);
+  state.alias();
+  if (state.known) return 13;
   NgxCommandObservations observations;
   if (observations.add(0, 1) || observations.add(1, 0)) return 1;
   if (!observations.add(10, 1) || !observations.add(10, 2) ||

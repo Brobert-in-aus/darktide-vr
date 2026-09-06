@@ -330,3 +330,20 @@ publication remain false. Evidence: `completion-live-ngx.log`,
 `completion-live-queue.log`, `completion-live-streamline.tsv` and
 `completion-live-report.json`. Next establish the output resource state within
 the evaluation command recording, then preserve pixels before future reuse.
+
+Schema 6 observes output transitions during the live NGX evaluation through the
+existing ResourceBarrier hook, after forwarding the unchanged barrier call.
+Evidence is scoped to the evaluation thread/command list/output resource, never
+retained as a global resource-state guess. Split/partial transitions and aliasing
+make state ambiguous. No observed transition means unknown. Native Release and
+four NGX tests pass; this state probe still inserts no pixel copies.
+
+The user adds that the four visible side-by-side images seem to face different
+directions, perhaps about 90 degrees apart. Historical completion-run constants
+show a repeated large jump from headings -41.95/-27.43 to 83/97 degrees and back,
+not a confirmed sequence of quarter turns. Extent/FOV stability did not cover
+these actual direction vectors. `apply_head_tracking` returns the untracked
+base camera when native pose reading fails; the shared reader rejects data older
+than 250 ms. A bounded HEAD_POSE_READ trace around submission refresh is prepared
+to correlate read failures with camera direction changes. Do not relax pose
+freshness or claim this is the confirmed flicker cause before the correlation.

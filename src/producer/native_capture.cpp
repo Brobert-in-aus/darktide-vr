@@ -8983,6 +8983,7 @@ void STDMETHODCALLTYPE resource_barrier_hook(
     }
   }
   original_resource_barrier(commands, barrier_count, barriers);
+  darktidevr::producer::observe_ngx_output_barriers(commands, barrier_count, barriers);
 }
 
 void STDMETHODCALLTYPE enhanced_barrier_hook(
@@ -15861,7 +15862,16 @@ int read_head_pose(float* values, unsigned long long* sequence,
   }
   darktidevr::core::SharedHeadPoseSample sample{};
   if (!shared_head_pose_reader().read(sample)) {
+    if (trace_streamline_submission_images()) {
+      write_streamline_probe_log("HEAD_POSE_READ\tpresent_frame=%llu\tresult=2\r\n",
+          static_cast<unsigned long long>(present_count.load(std::memory_order_relaxed)));
+    }
     return 2;
+  }
+  if (trace_streamline_submission_images()) {
+    write_streamline_probe_log("HEAD_POSE_READ\tpresent_frame=%llu\tresult=0\tsequence=%llu\r\n",
+        static_cast<unsigned long long>(present_count.load(std::memory_order_relaxed)),
+        static_cast<unsigned long long>(sample.sequence));
   }
   values[0] = sample.pose.position.x;
   values[1] = sample.pose.position.y;

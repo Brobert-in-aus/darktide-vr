@@ -108,7 +108,17 @@ try {
         if ($report.Observations[0].LegacyRegionAvailable) { throw 'Invalid legacy rectangle accepted.' }
         Require-NoPublication $report
     }
-    Write-Output 'ngx_observation=pass complete failure missing alias duplicate malformed bounded_window feature_identity output_region legacy_region no_publication'
+    $stateHeader=$legacyHeader.Replace('schema=5','schema=6')
+    $stateRecord=$legacyRecord + ' state_known=1 state_value=8 state_transitions=2 state_ambiguous=0'
+    $report=Read-Fixture @($stateHeader,$stateRecord)
+    if (-not $report.Observations[0].OutputStateKnown) { throw 'Observed state was lost.' }
+    Require-NoPublication $report
+    foreach ($badRecord in @($stateRecord.Replace('state_transitions=2','state_transitions=0'),$stateRecord.Replace('state_ambiguous=0','state_ambiguous=1'))) {
+        $failed=$false
+        try { $null=Read-Fixture @($stateHeader,$badRecord) } catch { $failed=$true }
+        if (-not $failed) { throw 'Contradictory state evidence accepted.' }
+    }
+    Write-Output 'ngx_observation=pass complete failure missing alias duplicate malformed bounded_window feature_identity output_region legacy_region output_state no_publication'
 } finally {
     if (Test-Path -LiteralPath $fixture) { Remove-Item -LiteralPath $fixture }
 }
