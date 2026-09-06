@@ -141,4 +141,20 @@ assert(rules.failures==2 and log_count('input_fallback=')==2,
 Network.pack_unpack=original_pack
 Managers.state.game_session={is_server=function() return false end}
 assert(not rules.enabled())
+-- Preview is visual-only: read the local simulated component even when live
+-- hand tracking is unavailable, and reject foreign/stale/retiring roots.
+local simulated={position=300,rotation=400}
+local extension={_first_person_component=simulated,first_person_unit=function() return 'fp' end}
+local effects={_is_local_unit=true,_first_person_unit='fp'}
+ScriptUnit.has_extension=function(_,system) assert(system=='first_person_system'); return extension end
+assert(rules.preview_pose(effects)==nil,'Remote authority admitted a simulation preview')
+Managers.state.game_session={is_server=function() return true end}
+hand=nil
+local p,r=rules.preview_pose(effects); assert(p==300 and r==400)
+effects._first_person_unit='old'; assert(rules.preview_pose(effects)==nil)
+effects._first_person_unit='fp'; effects._is_local_unit=false; assert(rules.preview_pose(effects)==nil)
+effects._is_local_unit=true; presentation.mode=5; assert(rules.preview_pose(effects)==nil)
+presentation.mode=1
+extension=setmetatable({}, {__index=function() error('retiring preview owner') end})
+assert(rules.preview_pose(effects)==nil)
 print('PASS: range rules, frame aim, movement basis/packing, pitch limits, stock fallbacks and session setting')

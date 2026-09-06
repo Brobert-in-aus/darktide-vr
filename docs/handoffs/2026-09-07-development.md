@@ -493,3 +493,21 @@ component correction remain outside this in-memory fixture.
 
 No production change or live attempt. Quest remains under normal proximity
 automation; no new evidence justified repeating the failed rendering recovery.
+
+## Heartbeat: online throw preview correction
+
+Branch `codex/online-rules-throw-preview-2026-09-07` fixes a discovered visual
+reference mismatch: stock throw previews read the rendered first-person root,
+which stays head-driven while online-rules simulation uses hand aim. Add an
+optional preview-only simulated-pose provider to the existing grenade/luggable
+trajectory scope. The provider verifies the local live first-person owner and
+contains retiring-extension failures. Action components and stock physics remain
+untouched; cosmetic preview offsets are omitted as in the existing hand preview.
+
+The scoped regression failed before the fix. Five focused CTests pass (compiler,
+invariants, online rules, ranged aim, grenade aim). A new optional
+`test-grenade-stock-contract.lua` passes actual stock aim/preview/release methods,
+including moved-pose reference agreement, cached release fields, strict delay,
+half-rewind timing, once-only spawning, charge and server ownership. Trajectory
+and physics are substitutes, so real impacts and worn arc alignment remain open.
+No live attempt or deployment; full-suite baseline remains `e3647d0`.

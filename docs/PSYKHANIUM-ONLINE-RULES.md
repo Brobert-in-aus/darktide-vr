@@ -31,6 +31,15 @@ calculation remain stock. The reticle ray uses that simulated origin/direction.
 The visible tracked weapon can therefore diverge from the firing ray near cover;
 this candidate does not promise muzzle-origin collision agreement.
 
+Grenade and audited luggable previews also use the simulated first-person pose.
+The stock trajectory renderer otherwise reads the visual root, which continues
+following the head and can differ from simulation aim. The preview-only scope
+redirects that local root during trajectory calculation and removes cosmetic
+weapon-origin offsets. It does not proxy the action component or change throw
+physics. Foreign, stale and retiring first-person owners cannot supply a pose;
+native accessors are restored after success or error. This mismatch was reproduced
+in the scoped fixture before the fix.
+
 Controller and keyboard movement already combined in the head basis is
 transformed into the transmitted hand-aim basis, then passed through stock
 movement packing before simulation. Stock acceleration, backward speed scaling,
@@ -141,6 +150,19 @@ simultaneous bullet. Engine-dependent weapon operations are tagged substitutes:
 their order and data ownership are tested, not spread distributions or live
 damage. Changing the component rotation between grouped bullets does not replace
 the already prepared shot sample.
+
+An optional stock grenade check passes:
+
+```powershell
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-grenade-stock-contract.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_grenade_aim.lua _downloads/Darktide-Source-Code
+```
+
+It executes actual aim, trajectory-preview and delayed-release methods with
+distinct simulated and rendered roots. After the simulated pose changes, preview
+and release share fresh origin/direction and the stock cached rotation, speed
+and momentum. Stock strict release timing, half-rewind adjustment, once-only
+spawn, ability-charge use and server spawning ownership remain. Trajectory math,
+collision and integration are substituted; this is not physical impact evidence.
 
 The direct-bone audit found optional `spawn_node` branches in stock grenade and
 spawn-projectile actions, but no `spawn_node` assignments in the inspected

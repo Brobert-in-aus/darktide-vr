@@ -26,7 +26,10 @@ Managers={player={local_player=function() return {player_unit="local"} end}}
 Unit={world_position=function(unit,node) return "p:"..unit..":"..tostring(node) end,
     world_rotation=function(unit,node) return "r:"..unit..":"..tostring(node) end}
 local old_position,old_rotation=Unit.world_position,Unit.world_rotation
-local grenade=dofile(assert(arg[1])); grenade.install(mod,target)
+local simulated_preview=false
+local grenade=dofile(assert(arg[1])); grenade.install(mod,target,function()
+    if simulated_preview then return 300,400 end
+end)
 local aim_hook=hooks[classes[root.."action_aim_projectile"]].fixed_update
 local throw_hook=hooks[classes[root.."action_throw_grenade"]]._spawn_projectile
 local preview_hook=hooks[classes[effects_path]]._update_trajectory
@@ -123,4 +126,21 @@ expect(aim_hook,1,2); action._player_unit='local'
 available=false
 expect(aim_hook,1,2); luggable_preview_hook(fallback,effect,trajectory)
 available=true
+-- Online rules keep action simulation stock but the rendered root is still
+-- head-driven. Its preview must use the simulated pose instead of that root.
+simulated_preview=true; available=false
+expect(aim_hook,1,2)
+local function simulated_arc(self,passed)
+    assert(passed~=trajectory and passed.start_offset==nil and passed.arc_vfx_spawner_name==nil)
+    assert(Unit.world_position('fp',1)==300 and Unit.world_rotation('fp',1)==400,
+        'Online preview still reads the rendered head root')
+    assert(Unit.world_position('other',1)=='p:other:1')
+end
+preview_hook(simulated_arc,effect,trajectory)
+luggable_preview_hook(simulated_arc,effect,trajectory)
+assert(Unit.world_position==old_position and Unit.world_rotation==old_rotation)
+effect._is_local_unit=false; preview_hook(fallback,effect,trajectory); effect._is_local_unit=true
+ok,err=pcall(preview_hook,function() error('online preview error') end,effect,trajectory)
+assert(not ok and tostring(err):find('online preview error',1,true))
+assert(Unit.world_position==old_position and Unit.world_rotation==old_rotation)
 print("grenade aim/throw/preview ownership, fallback and restoration passed")

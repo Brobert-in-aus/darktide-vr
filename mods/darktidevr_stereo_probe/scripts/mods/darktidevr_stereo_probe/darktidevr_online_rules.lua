@@ -52,6 +52,25 @@ function Rules.install(mod, presentation, state, mode_name)
     end
     instance.enabled = enabled
 
+    local function preview_pose(effect)
+        if not enabled() or presentation.mode ~= 1 or not effect or
+                not effect._is_local_unit then return end
+        local player = Managers.player and Managers.player:local_player(1)
+        local unit = player and player.player_unit
+        if not unit or not Unit.alive(unit) then return end
+        local extension = ScriptUnit.has_extension(unit, "first_person_system")
+        if not extension or not effect._first_person_unit or
+                effect._first_person_unit ~= extension:first_person_unit() then return end
+        local component = extension._first_person_component
+        if component then return component.position, component.rotation end
+    end
+    function instance.preview_pose(effect)
+        -- Visual effects can outlive their owner during transitions. A retired
+        -- extension cannot authorize a root redirect for the next player unit.
+        local ok, position, rotation = pcall(preview_pose, effect)
+        if ok then return position, rotation end
+    end
+
     local function capture(handler, frame)
         if not enabled() or presentation.mode ~= 1 or
                 not state.authoring_enabled or not state.gameplay_input_active or

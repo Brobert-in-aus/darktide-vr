@@ -19,7 +19,7 @@ function Grenade.supported(template,settings)
     return false
 end
 
-function Grenade.install(mod,aim)
+function Grenade.install(mod,aim,simulation_preview_pose)
     -- Inherited methods are copied into concrete Stingray classes. Load both
     -- before hooking, then patch the concrete luggable preview as well.
     local effects={
@@ -55,7 +55,12 @@ function Grenade.install(mod,aim)
                     not Grenade.supported(self._weapon_template,action_settings) then
                 return func(self,settings,...)
             end
-            local position,rotation=aim.target("right")
+            -- Online-rules actions keep their stock simulation components.
+            -- Their rendered first-person root still follows the head, so the
+            -- visual arc needs the simulated pose independently of hand proxies.
+            local position,rotation
+            if simulation_preview_pose then position,rotation=simulation_preview_pose(self) end
+            if not position or not rotation then position,rotation=aim.target("right") end
             if not position or not rotation then return func(self,settings,...) end
             local trajectory={}
             for key,value in pairs(settings) do trajectory[key]=value end
