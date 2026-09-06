@@ -33,8 +33,10 @@ hook bypass, post-increment simultaneous grouping and independent flame query
 routes. The candidate directly hooks the five shooting classes before stock
 preparation and passes offline regressions. The dual-shiv throwing special now
 has its own guarded spawn/launch pose hooks with live initialization verified.
-Live firing acceptance is pending; grenade preview/aim/release and other thrown
-abilities require the coupled follow-up described in that audit.
+Live firing acceptance is pending. Generated grenade overhand/underhand routes
+now couple action aim, delayed release and arc preview to the right hand;
+physical arc/impact acceptance and mission-server pose transport remain open.
+Other thrown abilities require the separate follow-up described in that audit.
 
 User reports that ranged weapons other than the force staff do not fire along
 the intended aim. Perform a pass across every class and ranged weapon family,

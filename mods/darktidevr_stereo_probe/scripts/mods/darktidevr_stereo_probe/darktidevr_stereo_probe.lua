@@ -13089,6 +13089,10 @@ presentation.controller_aim.install(
     mod, presentation, controller_observation)
 
 mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_grenade_aim"
+).install(mod, presentation.controller_aim)
+
+mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_combat_direction"
 ).install(mod, presentation.controller_aim)
 

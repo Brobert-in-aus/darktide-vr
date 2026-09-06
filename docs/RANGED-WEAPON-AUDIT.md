@@ -127,12 +127,49 @@ Grenade/luggable routes need a coupled pass, not a camera-pose-only patch:
 - Zealot knives use another `spawn_projectile` route with `zealot` rather than
   `grenade` keywords. Psyker homing knives require target-module ownership too.
 
-These remain unmodified. The next pass must align simulation, release and visual
-preview while retaining charge-speed curves, collision-safe spawn checks, stock
-ability costs and remote-player behavior. Private-range acceptance does not
+The grenade candidate below addresses its coupled routes. Luggables and the
+other thrown abilities remain unmodified. Private-range acceptance does not
 establish remote-server hand-pose transport for mission play.
 
 Dual-shiv live initialization: both concrete hooks installed; `shared_ready=2162`
 with 42.9 fresh pairs/s, zero interval fallback and zero pose mismatches. No
 matching mod error was found. The weapon was not equipped or thrown unattended;
 physical hand-aim acceptance remains pending.
+
+## Coupled grenade candidate
+
+`darktidevr_grenade_aim.lua` redirects the local action's read-only first-person
+component during `ActionAimProjectile.fixed_update` and
+`ActionThrowGrenade._spawn_projectile`. The shared right-hand target retains
+existing tracking, authoring and private-range gates. Only `grenade` templates,
+`aim_projectile`/`throw_grenade` kinds and `throw`/`underhand_throw` routes qualify.
+Node-origin variants and mine placement retain stock behavior.
+
+The independent arc root read occurs inside `AimProjectileEffects._update_trajectory`
+(called from `update_unit_position`). During that synchronous call only, Unit
+position/rotation accessors redirect the local first-person root node. Other
+units/nodes delegate to the original functions, which are restored on both
+return and error. The copied trajectory settings omit cosmetic start offsets
+so the displayed arc begins on the simulated hand-based path. There is no
+permanent world-transform hook and the original settings remain intact.
+
+Stock collision sweeps, charge-speed/pitch curves, delayed release, ammo/ability
+costs, grenade splitting and physics remain in charge. In particular, stock
+release combines fresh direction with cached aim rotation/speed/momentum; this
+patch changes its reference pose without redefining those timing semantics.
+This is button-driven throwing, not a controller-velocity throwing system.
+
+Validation: CTest `grenade_aim`, `ranged_aim`, `melee_aim` and
+`lua_source_compile` pass (31 Lua chunks). The grenade fixture exercises local
+pose ownership, unsupported-route fallbacks, nil returns, error restoration,
+arc settings isolation, root-only redirection and nested scope restoration.
+Worn checks still need grenade arc versus actual impact, close wall clearance,
+overhand/underhand release and moving-hand release. No physical throw was
+simulated unattended; successful hook initialization is not aim acceptance.
+
+Live load: all three grenade hooks installed in the fresh console; the private
+range reached `shared_ready=713`, 42.0 fresh pairs/s, zero interval fallback and
+zero pose mismatches. No matching mod error was found. Local evidence:
+`artifacts/unattended/grenade-aim-live-20260906.log`. The initial launch raced
+process shutdown and correctly refused deployment while Darktide was still
+visible; retry after exit performed the 31-chunk gate and sync successfully.

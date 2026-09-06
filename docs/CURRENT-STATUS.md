@@ -11,6 +11,12 @@ DMF and the installed stereo mod directories. Development sync updates an
 existing installation; it is not a clean installer. General OpenXR runtime and
 character/weapon coverage remains experimental.
 
+The ranged coverage candidate includes concrete gun/flame preparation routes,
+dual-shiv throws and coupled grenade aim/release/arc preview. These remain
+private-range hand-pose candidates awaiting worn firing checks; mission-server
+transport and other thrown abilities are not complete. See the
+[weapon coverage audit](RANGED-WEAPON-AUDIT.md).
+
 The production path uses same-tick native shared eye textures, tracked head and
 controllers, rigid hand proxies, controller input/aim and a depth reticle.
 The runtime supplies eye dimensions (the current VDXR setup recommends
