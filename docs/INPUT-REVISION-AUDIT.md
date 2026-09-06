@@ -332,3 +332,19 @@ BaseView helpers; tab/menu panels; profile presets; tutorial overlays; onboardin
 prologue and spectator HUDs; talent/stimm tooltips; mission voting, board and end
 screens; social/group-finder and event/penance views. Dynamic menu actions need
 an actual input route or pointer callback before any label can become a VR hint.
+
+### Shared onboarding/tutorial hint coverage candidate
+
+The broad audit identified onboarding and prologue tutorial construction outside
+existing HUD scopes. Both now use the shared binding formatter. Hub inventory
+notifications use the effective hub inventory binding; an unassigned shortcut
+retains the keyboard hint. The same change covers all three stock onboarding
+inventory reminder calls, not just the reported talent message. Prologue action
+hints reuse existing gameplay aliases. Scopes restore on error and preserve the
+shared menu formatter. Talent deactivation remains untouched as requested.
+
+LuaJIT passes 33 chunks. All eight focused CTests pass after CMake regeneration:
+ui_binding_audit, menu_input, turning, menu_prompts, gameplay_ui_input,
+hud_options, controller_bindings and controller_prompts. Worn/live acceptance
+for hub profile and notification text remains pending. The source inventory
+continues to list user cases; it cannot prove deployment or visual correctness.

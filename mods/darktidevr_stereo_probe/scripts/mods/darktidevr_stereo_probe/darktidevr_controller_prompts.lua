@@ -17,6 +17,8 @@ local scopes = {
     {"HudElementInteraction","_update_interaction_input_text"},
     {"HudElementInteraction","_setup_interaction_information"},
     {"HudElementSmartTagging","_update_tag_interaction_information"},
+    {"ConstantElementOnboardingHandler","_sync_onboarding_settings"},
+    {"HudElementPrologueTutorialInfoBox","_get_input_description_text"},
 }
 local function pack(...) return {n=select("#",...),...} end
 
@@ -51,12 +53,17 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
                 if menu_text then return menu_text end
             end
             local action = aliases[alias]
-            if depth==0 or not enabled() or service~="Ingame" or action==nil then
+            local inventory=service=="View" and alias=="hotkey_inventory" and bindings.context=="hub"
+            if inventory then action="inventory" end
+            if depth==0 or not enabled() or (service~="Ingame" and not inventory) or action==nil then
                 return func(service,alias,tint)
             end
             local switch = weapon_switch and (alias=="wield_1" or alias=="wield_2")
             if switch then action="quick_wield" end
             local controls = bindings.controls_for_action(action)
+            -- A hub hotkey without a controller assignment remains an accurate
+            -- keyboard hint. Never advertise an unavailable inventory shortcut.
+            if inventory and not controls[1] then return func(service,alias,tint) end
             local labels = {}
             -- One valid binding keeps compact HUD badges readable. All aliases
             -- remain usable and are listed individually in the options.
