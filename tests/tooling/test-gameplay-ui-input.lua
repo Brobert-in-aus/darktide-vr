@@ -1,7 +1,9 @@
 bit = require("bit")
 local hook
+local hooks={}
 local mod={hook=function(_,class,method,fn)
-    assert(class=='HudElementSmartTagging' and method=='_handle_tagging'); hook=fn
+    hooks[class..'.'..method]=fn
+    if class=='HudElementSmartTagging' and method=='_handle_tagging' then hook=fn end
 end}
 local unit={}
 local api=dofile(arg[1]).install(mod,function() return unit end)
@@ -52,3 +54,43 @@ api.sample(true,256)
 local ok=pcall(hook,function() error('stock failure') end,hud,7,{}, {},source)
 assert(not ok and source:get('smart_tag')==false,'Stock error mutated original input')
 print('gameplay_ui_input=pass menu=semantic tag=stock_input inherited_edges=not_replayed')
+
+local inventory_hook=assert(hooks['UIManager._update_view_hotkeys'])
+assert(not hooks['UIManager.input_service'],'Duplicate menu input hook')
+local function service_hook(func,self,service,...)
+    return api.route_hotkey_input(func(self,service,...),self,service)
+end
+local ui={}
+local inventory_keyboard=false
+local inventory_source={get=function(_,name)
+    return name=='hotkey_inventory' and inventory_keyboard or false
+end,null_service=function() return null end}
+local function get_source() return inventory_source end
+local function stock_hotkeys(self)
+    local input=service_hook(get_source,self)
+    assert(input:null_service()==null)
+    return input:get('hotkey_inventory'),nil,23
+end
+api.sample(true,32768)
+local requested,empty,last=inventory_hook(stock_hotkeys,ui)
+assert(requested and empty==nil and last==23)
+assert(not inventory_hook(stock_hotkeys,ui),'Inventory request replayed')
+api.sample(true,32768)
+inventory_hook(function() end,ui) -- Stock modal/transition early return.
+assert(not inventory_hook(stock_hotkeys,ui),'Blocked inventory replayed')
+api.sample(true,32768)
+inventory_hook(function(self)
+    assert(service_hook(function() return null end,self)==null,'Null service bypassed')
+    assert(not service_hook(get_source,{},'View'):get('hotkey_inventory'),'Wrong manager')
+    assert(not service_hook(get_source,self,'Ingame'):get('hotkey_inventory'),'Wrong service')
+end,ui)
+api.sample(true,32768)
+assert(not pcall(inventory_hook,function() error('stock failure') end,ui))
+assert(not service_hook(get_source,ui):get('hotkey_inventory'),'Scope leaked after error')
+inventory_keyboard=true
+api.sample(false,0)
+assert(inventory_hook(stock_hotkeys,ui),'Keyboard inventory suppressed')
+inventory_keyboard=false
+api.sample(true,32768+1024)
+assert(not inventory_hook(stock_hotkeys,ui),'Inventory competed with menu')
+print('inventory_hotkey=pass stock_gates=preserved no_replay=true')

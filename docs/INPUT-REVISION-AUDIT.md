@@ -279,3 +279,33 @@ Add a broad binding-hint pass across menus, notifications, tutorials and
 contextual popups. Identify each action's actual controller route before changing
 its label; if no route exists, add/plan that route rather than displaying a
 nonfunctional button. Keyboard/mouse must remain available.
+
+## Hub/combat controller profiles candidate (6 September)
+
+Following the user's request to reuse the limited controls by context, hub now
+has per-control overrides with Same as combat inheritance. Existing vr_bind_*
+settings are preserved as combat bindings. Right grip defaults to inventory in
+hub and remains weapon special in combat; other hub controls inherit by default.
+Movement/turning and native-menu pointing/back/scroll routes are unchanged.
+Changing context cancels old semantic state without emitting charged-release
+edges, and quarantines held controls until release/neutral. Hints can query the
+same effective profile and revision rather than a second binding map.
+
+Inventory is delivered through the stock UIManager hotkey owner, retaining its
+mode whitelist, transition/modal/null-input gates and view validation. Requests
+expire on a blocked update and never replay. One shared input_service hook
+composes the existing menu pointer and the gameplay hotkey adapter; there is no
+keyboard injection or global template mutation. Keyboard/mouse remain usable.
+
+Pinned LuaJIT passes 33 chunks. Seven CTests pass: menu_input, turning,
+menu_prompts, gameplay_ui_input, hud_options, controller_bindings,
+controller_prompts. Tests cover hub/combat inheritance, held context switches,
+stock hotkey gates, shared hook coexistence, return values and keyboard input.
+Candidate is not yet deployed; current running hub stays on accepted 2477d82.
+
+Broad hint audit acceptance cases: unused-talent-points notification showing [I],
+and talent deactivation showing right-click. User explicitly requested leaving
+the latter untouched as a check for the broader automated pass. Do not mark a
+hint pass from source inventory alone or rename a shortcut without a working
+controller route. Handedness source audit is recorded in HANDEDNESS-AUDIT.md;
+left-handed gameplay is not implemented by these binding profiles.

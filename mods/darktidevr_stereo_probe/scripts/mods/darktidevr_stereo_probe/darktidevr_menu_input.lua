@@ -228,6 +228,11 @@ function MenuInput.install(mod, presentation)
     -- obtain input here. The view handler alone does not cover modal dialogs.
     local function route_service(func, self, ...)
         local source, null_service, gamepad = func(self, ...)
+        -- One shared input_service hook: DMF replaces duplicate hooks owned by
+        -- this mod. Gameplay hotkeys retain stock ownership and return values.
+        if source~=null_service and presentation.gameplay_ui then
+            source=presentation.gameplay_ui.route_hotkey_input(source,self,...)
+        end
         -- The editor uses mode 5 for desktop rendering, but its controls need
         -- the complete mouse service. Real menus/popups retain the XR route.
         local hud = presentation.hud_panel

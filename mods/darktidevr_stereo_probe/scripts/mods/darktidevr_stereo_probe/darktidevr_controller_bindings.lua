@@ -37,6 +37,7 @@ Bindings.actions = {
     {id="combat_ability", mask=2048, pressed={"combat_ability_pressed"}, held={"combat_ability_hold"}, released={"combat_ability_release"}},
     {id="inspect", mask=16384, held={"weapon_inspect_hold"}},
     {id="menu", mask=1024},
+    {id="inventory", mask=32768},
 }
 
 function Bindings.widgets()
@@ -49,11 +50,21 @@ function Bindings.widgets()
         widgets[#widgets+1] = {setting_id="vr_bind_"..control.id,type="dropdown",
             default_value=control.default,options=options}
     end
+    local hub = {}
+    for _,control in ipairs(Bindings.controls) do
+        local options = {{text="vr_action_inherit",value="inherit"}}
+        for _,action in ipairs(Bindings.actions) do
+            options[#options+1]={text="vr_action_"..action.id,value=action.id}
+        end
+        hub[#hub+1]={setting_id="vr_hub_bind_"..control.id,type="dropdown",
+            default_value=control.id=="right_grip" and "inventory" or "inherit",options=options}
+    end
+    widgets[#widgets+1]={setting_id="controller_hub_bindings",type="group",sub_widgets=hub}
     return {setting_id="controller_bindings",type="group",sub_widgets=widgets}
 end
 
 function Bindings.install(mod)
-    local api = {held=0,bindings={},revision=0}
+    local api = {held=0,bindings={},revision=0,context="combat"}
     local masks, resolved = {}, {}
     local dirty, blocked, active = true, 0, false
     local stick_held, stick_active = 0, false
@@ -68,22 +79,39 @@ function Bindings.install(mod)
     local previous = mod.on_setting_changed
     mod.on_setting_changed = function(id)
         if previous then previous(id) end
-        if type(id)=="string" and (id:sub(1,8)=="vr_bind_" or id=="vr_turn_mode") then
+        if type(id)=="string" and (id:sub(1,8)=="vr_bind_" or id:sub(1,12)=="vr_hub_bind_" or id=="vr_turn_mode") then
             dirty=true
             api.revision=api.revision+1
         end
+    end
+    local function selection(control)
+        local selected=masks[mod:get("vr_bind_"..control.id)] or masks[control.default]
+        if api.context=="hub" then
+            local override=mod:get("vr_hub_bind_"..control.id)
+            if override==nil then override=control.id=="right_grip" and "inventory" or "inherit" end
+            selected=masks[override] or selected
+        end
+        return selected
     end
     function api.controls_for_action(id)
         local wanted, controls = masks[id], {}
         if not wanted or wanted==0 then return controls end
         for _,control in ipairs(Bindings.controls) do
-            local selected = masks[mod:get("vr_bind_"..control.id)] or masks[control.default]
+            local selected = selection(control)
             if (control.axis~="x" or mod:get("vr_turn_mode")=="off") and
                 bit.band(selected,wanted)==wanted then controls[#controls+1]=control.id end
         end
         return controls
     end
-    function api.sample(enabled, physical, stick_x, stick_y, stick_usable, generation)
+    function api.sample(enabled, physical, stick_x, stick_y, stick_usable, generation, mode)
+        local context=mode=="hub" and "hub" or "combat"
+        if context~=api.context then
+            api.context=context; api.revision=api.revision+1
+            dirty=true; stick_active=false
+            -- Cancel old context state without synthesizing a charged-release
+            -- attack. Held physical inputs must return neutral before reuse.
+            api.held=0
+        end
         -- The eleven native channels occupy bits 0..10. Directional channels
         -- exist only here, so native input cannot impersonate a virtual shortcut.
         physical = bit.band(physical or 0,2047)
@@ -109,8 +137,7 @@ function Bindings.install(mod)
         physical = bit.bor(physical,next_stick)
         if dirty then
             for _,control in ipairs(Bindings.controls) do
-                local requested = mod:get("vr_bind_"..control.id)
-                resolved[control.id] = masks[requested] or masks[control.default]
+                resolved[control.id] = selection(control)
             end
             blocked = physical -- No remap can turn an existing hold into a new action.
             dirty = false

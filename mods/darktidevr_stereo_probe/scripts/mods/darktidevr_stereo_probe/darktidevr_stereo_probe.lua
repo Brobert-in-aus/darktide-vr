@@ -5446,7 +5446,7 @@ function presentation.inject_gameplay_input(self, main_t)
         tonumber(controller_observation.gameplay_held[0]),
         controller_observation.right_stick_x,controller_observation.right_stick_y,
         controller_observation.right_aim_usable,
-        controller_observation.last_transport_generation)
+        controller_observation.last_transport_generation, game_mode_name)
     if presentation.gameplay_ui then
         presentation.gameplay_ui.sample(controller_observation.gameplay_input_active, pressed)
     end

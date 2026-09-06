@@ -5,13 +5,40 @@ local Input = {}
 function Input.install(mod, local_player_unit)
     local state = {sample=0}
     local api = {}
+    local inventory_owner
     local tag_frames = setmetatable({}, {__mode="k"})
 
     function api.sample(active, pressed)
         state.sample = state.sample + 1
         state.active = active == true
         state.menu = state.active and bit.band(pressed or 0,1024) ~= 0
-        state.tag = state.active and not state.menu and bit.band(pressed or 0,256) ~= 0
+        state.inventory = state.active and not state.menu and bit.band(pressed or 0,32768) ~= 0
+        state.tag = state.active and not state.menu and not state.inventory and bit.band(pressed or 0,256) ~= 0
+    end
+
+    -- Feed the stock hotkey owner, preserving its mode whitelist, transitions,
+    -- modal gates and view validation. Expire even if stock never reads input.
+    mod:hook("UIManager","_update_view_hotkeys",function(func,self,...)
+        local previous=inventory_owner
+        inventory_owner=state.active and state.inventory and self or nil
+        state.inventory=false
+        local function pack(...) return {n=select("#",...),...} end
+        local result=pack(pcall(func,self,...))
+        inventory_owner=previous
+        if not result[1] then error(result[2],0) end
+        return unpack(result,2,result.n)
+    end)
+    function api.route_hotkey_input(source,self,service)
+        if inventory_owner~=self or (service and service~="View") or not source or
+                (source.null_service and source==source:null_service()) then return source end
+        return setmetatable({get=function(_,name,...)
+            local value=source:get(name,...)
+            return name=="hotkey_inventory" and true or value
+        end},{__index=function(_,name)
+            local value=source[name]
+            if type(value)=="function" then return function(_,...) return value(source,...) end end
+            return value
+        end})
     end
 
     function api.update_menu(manager)

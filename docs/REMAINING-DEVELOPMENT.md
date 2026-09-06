@@ -353,3 +353,5 @@ Add a broad binding-hint pass across menus, notifications, tutorials and
 contextual popups. Identify each action's actual controller route before changing
 its label; if no route exists, add/plan that route rather than displaying a
 nonfunctional button. Keyboard/mouse must remain available.
+
+Hub/combat profiles are prepared offline; see INPUT-REVISION-AUDIT. Preserve talent deactivation's right-click hint as the user's explicit check for the broader automated binding audit. Neither that hint nor the notification [I] has been relabelled in isolation.

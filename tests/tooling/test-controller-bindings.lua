@@ -76,11 +76,15 @@ for _,binding in ipairs(mapper.bindings) do
     end
 end
 local widgets=Bindings.widgets()
-assert(#widgets.sub_widgets==15)
+assert(#widgets.sub_widgets==16)
 local used={}
-for _,widget in ipairs(widgets.sub_widgets) do
+local function check_widget(widget)
     assert(not used[widget.setting_id]); used[widget.setting_id]=true
     assert(pcall(string.format,text[widget.setting_id].en))
+    if widget.sub_widgets then
+        for _,child in ipairs(widget.sub_widgets) do check_widget(child) end
+        return
+    end
     local found=false
     for _,option in ipairs(widget.options) do
         assert(pcall(string.format,text[option.text].en))
@@ -88,6 +92,37 @@ for _,widget in ipairs(widgets.sub_widgets) do
     end
     assert(found)
 end
+for _,widget in ipairs(widgets.sub_widgets) do check_widget(widget) end
+
+-- Hub overrides inherit saved combat controls; context changes cannot turn
+-- an old hold into an attack or a charged-release edge.
+local profile_settings={vr_bind_x='interact',vr_bind_right_grip='special'}
+local profile_mod={get=function(_,key) return profile_settings[key] end}
+local profiles=Bindings.install(profile_mod)
+local function context(mode,physical,p,h,r)
+    local ap,ah,ar=profiles.sample(true,physical,0,0,true,1,mode)
+    assert(ap==p and ah==h and ar==r,'Unexpected context edges')
+end
+context('hub',4,0,0,0)
+assert(profiles.controls_for_action('inventory')[1]=='right_grip')
+context('hub',0,0,0,0)
+context('hub',4,32768,32768,0)
+context('shooting_range',4,0,0,0)
+assert(#profiles.controls_for_action('inventory')==0)
+context('shooting_range',0,0,0,0)
+context('shooting_range',4,4,4,0)
+context('hub',4,0,0,0)
+context('hub',0,0,0,0)
+context('hub',8,8,8,0)
+profile_settings.vr_hub_bind_x='inventory'
+profile_mod.on_setting_changed('vr_hub_bind_x')
+context('hub',8,0,0,8)
+context('hub',0,0,0,0)
+context('hub',8,32768,32768,0)
+context('mission',8,0,0,0)
+context('mission',0,0,0,0)
+context('mission',8,8,8,0)
+assert(profile_settings.vr_bind_x=='interact','Hub override overwrote combat setting')
 local directional_settings={vr_turn_mode='off',vr_bind_right_stick_up='combat_ability',vr_bind_right_stick_down='inspect',
     vr_bind_right_stick_left='reload',vr_bind_right_stick_right='reload'}
 local directional_mod={get=function(_,key) return directional_settings[key] end}

@@ -171,6 +171,24 @@ handler._view_handler._num_active_views=2
 assert(hook(function() return source,null,false end,handler)~=source)
 presentation.hud_panel=nil
 presentation.mode=1
+-- The gameplay hotkey layer must share this exact service hook, retain all
+-- three return values and leave modal/null/keyboard semantics untouched.
+bit=require('bit')
+local gameplay_hooks={}
+presentation.gameplay_ui=dofile(arg[1]:gsub('darktidevr_menu_input.lua$',
+    'darktidevr_gameplay_ui_input.lua')).install({hook=function(_,class,name,fn)
+    assert(not (class=='UIManager' and name=='input_service'),'Duplicate shared service hook')
+    gameplay_hooks[class..'.'..name]=fn
+end},function() return {} end)
+local hotkey=gameplay_hooks['UIManager._update_view_hotkeys']
+presentation.gameplay_ui.sample(true,32768)
+hotkey(function(self)
+    local routed,empty,pad=hook(function() return source,null,true end,self)
+    assert(routed:get('hotkey_inventory') and empty==null and pad==true)
+    assert(hook(function() return null,null,true end,self)==null)
+end,handler)
+assert(hook(function() return source,null,true end,handler)==source,'Hotkey scope leaked')
+presentation.gameplay_ui=nil
 print('menu_input: coordinate mapping, button lifecycle, modal handoff, tracking loss, filters and null services passed')
 local view = {_widgets_by_name={play_button={content={visible=true,hotspot={disabled=false}}}}}
 local list_ready,start_ready,reason=menu.character_select_readiness(view,false)
