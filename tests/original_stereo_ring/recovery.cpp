@@ -37,7 +37,7 @@ int main() {
       expect(WaitForSingleObject(event,10000)==WAIT_OBJECT_0);
     };
     StreamlineContinuousSubmission submission;
-    expect(submission.initialize(device.Get(),2,{1,2},descriptions,log_message,true));
+    expect(submission.initialize(device.Get(),2,{1,2},descriptions,log_message,true,true));
     darktidevr::producer::streamline_2_7_30::Constants constants{};
     for(std::uint64_t frame=1;frame<=12;++frame) {
       submission.capture(0,frame,frame,constants,inputs,queue.Get(),execute);

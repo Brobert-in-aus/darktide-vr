@@ -733,3 +733,53 @@ The Lua gate compiled 31 chunks. Live editor right-click/wheel acceptance remain
 pending. Two Ready preflights created a VDXR session but submitted zero of 600
 frames. Game was closed for the planned update; no deployment/relaunch followed
 the failed readiness checks. Do not mark the editor regression visually accepted.
+
+### 2026-09-06: base-framerate cost investigation, first measurement
+
+Custom HUD right-click/scroll repair has user acceptance. Keyboard/mouse are
+supplemented by VR input, not intentionally suppressed by the menu adapter.
+
+New opt-in continuous-submission GPU timestamps use the existing performance
+profile switch. Each input owner owns six queries and a 48-byte readback buffer.
+The two eye captures and stereo packing/original publication are measured
+separately. Results are read only when normal owner completion has already
+retired; profiling introduces no fence waits. Default launches allocate none of
+these resources. Timings survive the finite verbose-log budget, one aggregate
+per 120 recycled owners. Missing profiling resources do not disable rendering.
+
+Live run: artifacts/unattended/dlss-base-profile-20260906.log, PID 131700.
+Archived evidence: artifacts/diagnostics/dlss-base-framerate-20260906/.
+52 timing windows: median sum of capture-left, capture-right and pack/publication
+GPU spans = 0.488 ms. Component medians 0.1384, 0.1407, 0.22325 ms (medians do not
+add to the median of sums). These are GPU execution spans, not CPU submission
+times, and do not include NVIDIA async generation or generated-output transport.
+69 steady foreground/generation-active health windows: median engine 50 fps.
+35 steady background/generation-inactive windows with original ring still live:
+median engine 72 fps. Existing coarse Present CPU median was 0.0 vs 0.44 ms;
+its timer granularity prevents interpreting 0.0 as zero cost. FG evaluates two
+eye regions per original pair, 2496x2688 each, in a 4992x2688 packed target;
+no extra evaluations or incorrectly doubled eye extent found in captured data.
+
+This is NOT a controlled foreground FG-on/off A/B: user motion/scene/focus and
+GPU scheduling can change. It narrows the cause: measured integration copies
+are much smaller than the approximately 6 ms source-frame delta. NVIDIA's
+Streamline 2.7.30 guide lists 2.77 ms at 4K on RTX 4090 for one 2x evaluation;
+two large eye evaluations plausibly account for much of the delta, but that is
+context, not measured attribution or proof that all overhead is unavoidable.
+Source: https://raw.githubusercontent.com/NVIDIA-RTX/Streamline/v2.7.30/docs/ProgrammingGuideDLSS_G.md
+Remain open: matched foreground A/B and precise GPU timeline of NVIDIA async
+work, generated-output copying and rendering contention. Do not optimize away
+ownership fences, alter required extents, or disable quality without evidence.
+
+Validation: Release native and continuous-recovery targets built; ctest
+continuous_recovery (profiling enabled across partial/complete captures and
+pause/resume), original_stereo_ring, streamline_submission and
+streamline_input_lifetime all passed. Live timing readback also verified.
+
+HUD blur follow-up from user research: check motion vectors and depth beneath
+HUD boundaries, not only HUDless color. Captured HUDless/final per-eye extents
+match; no UI color/alpha is currently provided. Do not zero the world's velocity
+under UI rectangles: that destroys background motion and our stabilized HUD and
+world markers are not static screen-space overlays. Capture the actual separate
+UI alpha/color or compose after generation. Unreal plugin composition settings
+are not directly applicable to Darktide's engine. No blur fix claimed yet.

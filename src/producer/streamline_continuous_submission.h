@@ -23,7 +23,7 @@ class StreamlineContinuousSubmission {
   bool initialize(ID3D12Device* device, unsigned frames,
                   const std::array<std::uint32_t, 2>& viewports,
                   const std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2>& descriptions,
-                  Log log, bool persistent = false);
+                  Log log, bool persistent = false, bool profile = false);
   void capture(unsigned eye, std::uint64_t present, std::uint64_t pose,
                const streamline_2_7_30::Constants& constants,
                const std::array<StreamlineTagInput, 4>& inputs,
@@ -61,6 +61,9 @@ class StreamlineContinuousSubmission {
     ComPtr<ID3D12CommandAllocator> stage_allocator, cleanup_allocator;
     ComPtr<ID3D12GraphicsCommandList> stage_commands, cleanup_commands;
     ComPtr<ID3D12Fence> stage_done;
+    ComPtr<ID3D12QueryHeap> timing_queries;
+    ComPtr<ID3D12Resource> timing_readback;
+    std::array<std::uint64_t, 3> timing_frequencies{};
     std::array<streamline_2_7_30::Constants, 2> constants;
     std::uint64_t source_present{}, pose{}, present{};
     std::uint64_t submission_id{}, reuse_value{1};
@@ -70,6 +73,7 @@ class StreamlineContinuousSubmission {
   void fail(const char* reason);
   void clear_bindings(ID3D12CommandQueue* queue, Execute execute);
   bool recycle(Frame& frame);
+  void harvest_timing(Frame& frame);
   bool resume_capture();
   bool make_commands(ID3D12Device* device, ComPtr<ID3D12CommandAllocator>& allocator,
                      ComPtr<ID3D12GraphicsCommandList>& commands);
@@ -79,6 +83,8 @@ class StreamlineContinuousSubmission {
   std::uint32_t width_{}, height_{};
   bool initialized_{}, stopped_{}, staged_{}, cleanup_submitted_{};
   bool persistent_{};
+  std::array<double, 3> timing_totals_{};
+  unsigned timing_samples_{};
   bool paused_{}, previous_tags_active_{};
   ComPtr<ID3D12CommandAllocator> pause_allocator_;
   ComPtr<ID3D12GraphicsCommandList> pause_commands_;

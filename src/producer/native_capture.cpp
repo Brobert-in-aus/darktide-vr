@@ -2078,7 +2078,7 @@ void write_streamline_probe_log(const char* format, ...) {
   const bool terminal_submission_record=std::strncmp(format,"STEREO_CONTINUOUS",17)==0 &&
       (std::strstr(format,"phase=failed") || std::strstr(format,"phase=stopped") ||
        std::strstr(format,"phase=paused") || std::strstr(format,"phase=resumed") ||
-       std::strstr(format,"phase=binding_rejection"));
+       std::strstr(format,"phase=binding_rejection") || std::strstr(format,"phase=timing"));
   if (streamline_probe_log == INVALID_HANDLE_VALUE ||
       (!terminal_submission_record && streamline_probe_log_count.fetch_add(1, std::memory_order_relaxed) >=
           16384)) {
@@ -9250,7 +9250,8 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
           descriptions[captured_eye][role] = state.snapshots[captured_eye][role]->GetDesc();
       if (!streamline_continuous.initialize(device.Get(), state.submission_limit,
           {state.constants[0].viewport, state.constants[1].viewport}, descriptions,
-          write_streamline_probe_log, streamline_persistent_requested.load())) return;
+          write_streamline_probe_log, streamline_persistent_requested.load(),
+          gpu_profile_enabled.load())) return;
       streamline_submission_trace_start.store(present_frame, std::memory_order_relaxed);
     }
     const auto index = static_cast<std::size_t>(eye);

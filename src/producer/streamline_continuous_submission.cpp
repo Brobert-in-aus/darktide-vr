@@ -20,7 +20,7 @@ bool StreamlineContinuousSubmission::make_commands(ID3D12Device* device,
 
 bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned frames,
     const std::array<std::uint32_t, 2>& viewports,
-    const std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2>& descriptions, Log log, bool persistent) {
+    const std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2>& descriptions, Log log, bool persistent, bool profile) {
   if (initialized_ || stopped_) return false;
   log_ = log;
   if (!device || frames < 2 || frames > frames_.size() || !viewports[0] ||
@@ -42,6 +42,27 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
   heap.Type = D3D12_HEAP_TYPE_DEFAULT;
   for (unsigned i = 0; i < count_; ++i) {
     auto& frame = frames_[i];
+    if (profile) {
+      D3D12_QUERY_HEAP_DESC queries{};
+      queries.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
+      queries.Count = 6;
+      D3D12_HEAP_PROPERTIES readback_heap{};
+      readback_heap.Type = D3D12_HEAP_TYPE_READBACK;
+      D3D12_RESOURCE_DESC buffer{};
+      buffer.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+      buffer.Width = 6 * sizeof(std::uint64_t);
+      buffer.Height = buffer.DepthOrArraySize = buffer.MipLevels = 1;
+      buffer.SampleDesc.Count = 1;
+      buffer.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+      // Profiling failure must not disable rendering. No timestamps are emitted
+      // unless both resources exist; completed input-owner fences govern reuse.
+      if (FAILED(device->CreateQueryHeap(&queries, IID_PPV_ARGS(&frame.timing_queries))) ||
+          FAILED(device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE,
+              &buffer, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+              IID_PPV_ARGS(&frame.timing_readback)))) {
+        frame.timing_queries.Reset(); frame.timing_readback.Reset();
+      }
+    }
     for (unsigned eye = 0; eye < 2; ++eye) {
       for (unsigned role = 0; role < 4; ++role) {
         const auto& description = descriptions[eye][role==3 ? 2 : role];
@@ -71,6 +92,32 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
   return true;
 }
 
+void StreamlineContinuousSubmission::harvest_timing(Frame& frame) {
+  if (!frame.timing_readback || !frame.timing_frequencies[0] ||
+      !frame.timing_frequencies[1] || !frame.timing_frequencies[2]) return;
+  // Called only after the existing owner completion checks. Never wait for
+  // profiling, and do not infer NVIDIA's async compute time from these spans.
+  D3D12_RANGE read{0, 6 * sizeof(std::uint64_t)};
+  std::uint64_t* ticks{};
+  if (FAILED(frame.timing_readback->Map(0, &read, reinterpret_cast<void**>(&ticks)))) return;
+  std::array<double, 3> milliseconds{};
+  bool valid = true;
+  for (unsigned i = 0; i < 3; ++i) {
+    valid = valid && ticks[i*2+1] >= ticks[i*2];
+    milliseconds[i] = double(ticks[i*2+1] - ticks[i*2]) * 1000.0 / frame.timing_frequencies[i];
+  }
+  D3D12_RANGE written{0, 0};
+  frame.timing_readback->Unmap(0, &written);
+  if (!valid) return;
+  for (unsigned i = 0; i < 3; ++i) timing_totals_[i] += milliseconds[i];
+  if (++timing_samples_ == 120) {
+    log_("STEREO_CONTINUOUS\tphase=timing\tsamples=%u\tcapture_left_gpu_ms=%.4f\tcapture_right_gpu_ms=%.4f\tpack_publish_gpu_ms=%.4f\r\n",
+        timing_samples_, timing_totals_[0]/timing_samples_, timing_totals_[1]/timing_samples_,
+        timing_totals_[2]/timing_samples_);
+    timing_totals_ = {}; timing_samples_ = 0;
+  }
+}
+
 bool StreamlineContinuousSubmission::recycle(Frame& frame) {
   if (!frame.presented) return true;
   const auto stage_done = frame.stage_done->GetCompletedValue();
@@ -82,6 +129,7 @@ bool StreamlineContinuousSubmission::recycle(Frame& frame) {
             frame.input_fences[eye]->GetCompletedValue())) return false;
   }
   if (!frame.submission.retire()) return false;
+  harvest_timing(frame);
   for (unsigned eye = 0; eye < 2; ++eye) {
     const auto captured = frame.capture_fences[eye]->GetCompletedValue();
     if (captured == UINT64_MAX || captured < frame.reuse_value ||
@@ -168,6 +216,9 @@ void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present
     }
   }
   auto* commands = frame.capture_commands[eye].Get();
+  frame.timing_frequencies[eye] = 0;
+  if (frame.timing_queries && SUCCEEDED(queue->GetTimestampFrequency(&frame.timing_frequencies[eye])))
+    commands->EndQuery(frame.timing_queries.Get(), D3D12_QUERY_TYPE_TIMESTAMP, eye * 2);
   for (unsigned role = 0; role < 4; ++role) {
     const auto& input = inputs[role];
     auto* source = static_cast<ID3D12Resource*>(input.native);
@@ -180,6 +231,11 @@ void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present
     commands->CopyResource(frame.textures[eye][role].Get(), source);
     std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
     if (barrier.Transition.StateBefore != barrier.Transition.StateAfter) commands->ResourceBarrier(1, &barrier);
+  }
+  if (frame.timing_queries && frame.timing_frequencies[eye]) {
+    commands->EndQuery(frame.timing_queries.Get(), D3D12_QUERY_TYPE_TIMESTAMP, eye * 2 + 1);
+    commands->ResolveQueryData(frame.timing_queries.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
+        eye * 2, 2, frame.timing_readback.Get(), eye * 2 * sizeof(std::uint64_t));
   }
   if (FAILED(commands->Close())) { fail("capture_close"); return; }
   ID3D12CommandList* lists[]{commands};
@@ -226,6 +282,9 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
   }
   StreamlineStereoTags::Inputs inputs{};
   auto* commands = frame.stage_commands.Get();
+  frame.timing_frequencies[2] = 0;
+  if (frame.timing_queries && SUCCEEDED(queue->GetTimestampFrequency(&frame.timing_frequencies[2])))
+    commands->EndQuery(frame.timing_queries.Get(), D3D12_QUERY_TYPE_TIMESTAMP, 4);
   for (unsigned eye = 0; eye < 2; ++eye) {
     if (FAILED(queue->Wait(frame.capture_fences[eye].Get(), frame.reuse_value))) { fail("capture_wait"); return; }
     for (unsigned role = 0; role < 3; ++role) {
@@ -266,6 +325,11 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
   }
   if (previous_tags_active_ && !frames_[(current_ - 1) % count_].submission.replace_tags_with(frame.submission)) {
     fail("tag_replacement"); return;
+  }
+  if (frame.timing_queries && frame.timing_frequencies[2]) {
+    commands->EndQuery(frame.timing_queries.Get(), D3D12_QUERY_TYPE_TIMESTAMP, 5);
+    commands->ResolveQueryData(frame.timing_queries.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
+        4, 2, frame.timing_readback.Get(), 4 * sizeof(std::uint64_t));
   }
   if (FAILED(commands->Close())) { fail("stage_close"); return; }
   ID3D12CommandList* lists[]{commands};
