@@ -32,6 +32,28 @@ has progressed through HUD options/editor integration and input revision below.
 The melee query prototype remains non-damaging; user verification is not a claim
 that physical damage integration is complete.
 
+## Feedback from the 6 September hub test
+
+- Right hand is medially offset while unarmed in the hub. Compare both hands'
+  grip-to-wrist transforms; the weapon-equipped pose may conceal the right-side
+  issue. The cause is a hypothesis until traced; prior left-hand acceptance stays.
+- Add right-thumbstick left/right turning: smooth by default, with selectable
+  45-degree and 90-degree snap modes. Reserve the default horizontal axes for
+  turning, resolve their interaction with optional shortcuts, and require neutral
+  return for snap repetition and input/context changes.
+- Add handedness support. Audit dominant/support-hand roles, aim, block, two-hand
+  poses, attachments, effects and prompts before deciding which weapon assets
+  need mirroring. A global negative scale is not an established implementation.
+- Menu footer/back hints still show keyboard bindings (for example Esc). Existing
+  VR label work covers scoped gameplay HUD hints; extend native-menu hints using
+  their actual select/back routes without forcing global gamepad UI mode.
+- Manual hub-to-Psykhanium entry crashed in mission-speaker popup material
+  destruction. This signature differs from the historical remote-husk
+  `parent_unit_id` race. Investigate GUI material ownership during HUD transfer
+  and teardown. A candidate now releases all fixed-widget material caches before
+  their capture GUI is destroyed; its regression passes. Live transition
+  acceptance remains pending. See the [crash handoff](handoffs/2026-09-06-hud-material-transition.md).
+
 ## Ranged weapon aiming backlog
 
 The [source audit and candidate](RANGED-WEAPON-AUDIT.md) identifies copied-class

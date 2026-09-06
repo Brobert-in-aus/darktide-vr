@@ -347,3 +347,49 @@ for i=1,8 do
     assert(layout_position[1] == 321 and layout_position[2] == 654)
 end
 assert(refresh_count == 8 and dirty_count == 8)
+
+-- A hub speaker popup uses immediate-mode passes, but those passes still own
+-- cached materials. Both retained/no-op visibility and immediate widgets must
+-- release them before the capture GUI dies, then tolerate stock HUD teardown.
+panel.set_enabled(false)
+local capture, screen = {gui={}}, {gui={}}
+local material = {owner=capture,alive=true}
+local retained_material = {owner=capture,alive=true}
+local spatial_material = {owner=screen,alive=true}
+local popup_widget = {material=material}
+local retained_widget = {material=retained_material}
+local spatial_widget = {material=spatial_material}
+local popup = {__class_name="HudElementMissionSpeakerPopup",_widgets={popup_widget}}
+local retained_element = {__class_name="HudElementPlayerHealth",_widgets={retained_widget},
+    set_visible=function() end}
+local spatial_element = {__class_name="HudElementWorldMarkers",_widgets={spatial_widget}}
+local transition = {_elements_array={popup,retained_element,spatial_element},
+    _elements_hud_retained_mode_lookup={HudElementPlayerHealth=true},
+    _currently_visible_elements={HudElementPlayerHealth=true},_ui_renderer=screen}
+package.loaded["scripts/managers/ui/ui_widget"].destroy = function(target,widget)
+    if widget.material then
+        assert(widget.material.alive and widget.material.owner==target,
+            "material destroyed after its GUI or through the wrong renderer")
+        widget.material.alive=false
+        widget.material=nil
+    end
+end
+renderer_api.destroy = function(target)
+    assert(target==capture)
+    assert(not material.alive and not retained_material.alive,
+        "capture GUI died with fixed widget material references")
+    assert(spatial_material.alive, "fixed cleanup touched a spatial widget")
+end
+state.owner,state.source_renderer,state.resource_renderer=transition,screen,capture
+state.enabled=true
+local destroyed_result=pack(hooks.destroy(function(self)
+    for _,element in ipairs(self._elements_array) do
+        for _,widget in ipairs(element._widgets) do
+            package.loaded["scripts/managers/ui/ui_widget"].destroy(screen,widget)
+        end
+    end
+    return "destroyed",nil,4
+end,transition))
+assert(destroyed_result.n==3 and destroyed_result[1]=="destroyed" and destroyed_result[3]==4)
+assert(popup_widget.dirty and retained_widget.dirty and not spatial_material.alive)
+assert(state.owner==nil and state.resource_renderer==nil)

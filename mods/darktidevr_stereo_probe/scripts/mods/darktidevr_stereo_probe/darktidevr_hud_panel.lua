@@ -172,31 +172,35 @@ local function transfer_fixed_records(
     for i = 1, #fixed do
         local element = fixed[i]
         local name = element.__class_name
-        if retained[name] then
-            local ok = true
+        local ok = true
+        if retained[name] and element.set_visible then
+            ok = pcall(element.set_visible, element, false, source_renderer, true)
+        end
+        -- Immediate-mode texture passes also cache GUI-owned materials.
+        -- Release every fixed widget through its current renderer before that
+        -- GUI dies or the widget moves. Base set_visible may be a no-op even
+        -- for an element marked retained; it is not a resource-release API.
+        local widgets = element._widgets or {}
+        for j = 1, #widgets do
+            local released = pcall(UIWidget.destroy, source_renderer, widgets[j])
+            ok = released and ok
+            widgets[j].dirty = true
+        end
+        if retained[name] and target_renderer and visible[name] then
+            local shown = true
             if element.set_visible then
-                ok = pcall(element.set_visible, element, false,
-                    source_renderer, true)
-                if ok and target_renderer and visible[name] then
-                    ok = pcall(element.set_visible, element, true,
-                        target_renderer, true)
-                end
-            else
-                local widgets = element._widgets or {}
+                shown = pcall(element.set_visible, element, true, target_renderer, true)
+            elseif UIWidget.set_visible then
                 for j = 1, #widgets do
-                    ok = pcall(UIWidget.destroy, source_renderer, widgets[j])
-                    widgets[j].dirty = true
-                    if target_renderer then
-                        pcall(UIWidget.set_visible, widgets[j],
-                            target_renderer, visible[name] == true)
-                    end
+                    shown = pcall(UIWidget.set_visible, widgets[j], target_renderer, true) and shown
                 end
             end
-            if ok then
-                moved = moved + 1
-            else
-                failed = failed + 1
-            end
+            ok = shown and ok
+        end
+        if ok then
+            moved = moved + 1
+        else
+            failed = failed + 1
         end
     end
     if mod then
