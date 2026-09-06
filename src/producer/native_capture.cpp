@@ -12413,6 +12413,7 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
     if (snapshot.submission_attempted && !snapshot.submission_presented &&
         snapshot.submission.begin_present()) {
       snapshot.submission_presented = true;
+      darktidevr::producer::arm_ngx_output_probe(snapshot.submission_id, present);
       streamline_stereo_submission_present.store(present, std::memory_order_release);
       // The previous read-only observation must never supply this batch's tickets.
       snapshot.completion_observation_started = false;

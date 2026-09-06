@@ -212,10 +212,13 @@ this is not continuous stereo generation. Later state queries reported two
 frames per eye, but that counter covers the interval since the previous query,
 not an identified generated stereo output. Next is successive-frame history
 and generated-output identity. Publication is blocked on a compatible output
-observation boundary: the installed NGX evaluator validates its caller, so a
-normal trampoline detour is unsuitable. No such hook was installed. Per the
-user's instruction, development moves to the ranged aiming backlog after this
-documented checkpoint. See the
+observation boundary: the installed feature-library evaluator validates its
+caller, so directly detouring that export is unsuitable. A guarded observer at
+the outer NGX runtime export is now built, with a pinned parameter-ABI test and
+bounded output-record analyzer. `-NgxOutputProbeAtStereoSubmit` reserves its
+capture window for the first prepared stereo submission. This observer remains
+opt-in and live-unverified; it does not publish generated XR output. See the
+[current boundary candidate](handoffs/2026-09-06-dlss-output-boundary.md) and
 [unattended continuation](handoffs/2026-09-06-dlss-unattended.md).
 The diagnostic proxy retains at most 16 images until process exit; proper GPU
 retirement/recycling is required for release. Restart after runtime resolution

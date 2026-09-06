@@ -5,9 +5,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $lines = @(Get-Content -LiteralPath $Path)
 $expectedHeader = 'ngx_output_probe=armed schema=1 runtime=32.0.16.1088 resource_get_slot=9 call_limit=32768 sample_limit=256 publication=0'
-if ($lines.Count -eq 0 -or $lines[0] -cne $expectedHeader) {
+$windowHeader = $expectedHeader.Replace('schema=1','schema=2').Replace(' publication=0',' wait_for_stereo=0 publication=0')
+$gatedHeader = $windowHeader.Replace('wait_for_stereo=0','wait_for_stereo=1')
+if ($lines.Count -eq 0 -or $lines[0] -cnotin @($expectedHeader,$windowHeader,$gatedHeader)) {
     throw 'Missing or unsupported NGX observation header.'
 }
+$windowSchema = $lines[0] -cne $expectedHeader
+$gated = $lines[0] -ceq $gatedHeader
+$captureWindow = $null
 $seen = @{}
 $observed = @()
 $rejected = @()
@@ -32,10 +37,18 @@ foreach ($line in $lines | Select-Object -Skip 1) {
         if ($fields[$numeric] -notmatch '^\d+$') { throw "Invalid NGX integer: $numeric" }
         $fields[$numeric] = [uint64]::Parse($fields[$numeric])
     }
-    if ($fields.call -eq 0 -or $fields.call -gt 32768 -or $seen.ContainsKey($fields.call)) {
+    if ($fields.call -eq 0 -or (-not $windowSchema -and $fields.call -gt 32768) -or $seen.ContainsKey($fields.call)) {
         throw 'Out-of-range or repeated NGX call identity.'
     }
     $seen[$fields.call] = $true
+    if ($windowSchema) {
+        foreach ($field in @('window_batch','window_present','window_first_call')) {
+            if (-not $fields.ContainsKey($field) -or $fields[$field] -notmatch '^\d+$') {
+                throw "Missing or invalid NGX window field: $field"
+            }
+            $fields[$field] = [uint64]::Parse($fields[$field])
+        }
+    }
     foreach ($boolean in @('captured','abi_verified','output_complete','publication')) {
         if ($fields[$boolean] -notmatch '^[01]$') { throw "Invalid NGX boolean: $boolean" }
     }
@@ -55,6 +68,23 @@ foreach ($line in $lines | Select-Object -Skip 1) {
     $results = @($fields.get_results.Split(',') | ForEach-Object { [Convert]::ToUInt32($_,16) })
     $records++
     if ($fields.captured -eq '0') { continue }
+    if ($windowSchema) {
+        if ($fields.call -le $fields.window_first_call -or
+                ($fields.call-$fields.window_first_call) -gt 32768) {
+            throw 'NGX capture lies outside its bounded observation window.'
+        }
+        if ($gated -and ($fields.window_batch -eq 0 -or $fields.window_present -eq 0)) {
+            throw 'Submission-gated capture has no window context.'
+        }
+        if (-not $gated -and ($fields.window_batch -ne 0 -or $fields.window_present -ne 0 -or $fields.window_first_call -ne 0)) {
+            throw 'Startup observation unexpectedly acquired a submission window.'
+        }
+        $key = '{0}/{1}/{2}' -f $fields.window_batch,$fields.window_present,$fields.window_first_call
+        if ($null -ne $captureWindow -and $captureWindow -cne $key) {
+            throw 'NGX records changed capture window or replenished their budget.'
+        }
+        $captureWindow = $key
+    }
     $reasons = @()
     if ($fields.abi_verified -ne '1') { $reasons += 'parameter_abi_unverified' }
     if ([Convert]::ToUInt32($fields.result.Substring(2),16) -ne 1) { $reasons += 'evaluation_failed' }
@@ -80,7 +110,9 @@ foreach ($line in $lines | Select-Object -Skip 1) {
 }
 if (($observed.Count + $rejected.Count) -gt 256) { throw 'NGX capture budget exceeded.' }
 [pscustomobject]@{
-    SchemaVersion=1; Records=$records; CompleteObservations=$observed.Count
+    SchemaVersion=if ($windowSchema) { 2 } else { 1 }
+    WaitForStereoSubmission=$gated; CaptureWindow=$captureWindow
+    Records=$records; CompleteObservations=$observed.Count
     Observations=@($observed | Sort-Object Call); Rejected=$rejected
     ObservationAvailable=($observed.Count -gt 0)
     StereoAssociationVerified=$false; GpuCompletionVerified=$false

@@ -38,6 +38,8 @@ param(
 
     [switch] $NgxOutputProbe,
 
+    [switch] $NgxOutputProbeAtStereoSubmit,
+
     [switch] $StreamlineStereoSubmitProbe,
     [ValidateRange(1, 8)] [int] $StreamlineStereoSubmitFrames = 1,
 
@@ -142,6 +144,10 @@ if ($OfflineDualViewBenchmark) {
     # requested: the native GPU profiler injects additional command lists and
     # submissions, so enabling it here changes the workload being measured.
     $AutoEnterHub = $true
+}
+if ($NgxOutputProbeAtStereoSubmit) {
+    $NgxOutputProbe = $true
+    $StreamlineStereoSubmitProbe = $true
 }
 if ($StreamlineStereoSubmitProbe) {
     $StreamlineStereoStageProbe = $true
@@ -464,7 +470,9 @@ if ($NgxOutputProbe) {
     if (Test-Path -LiteralPath $ngxOutputProbeFlagPath -PathType Leaf) {
         $ngxOutputProbeFlagOriginal = [IO.File]::ReadAllBytes($ngxOutputProbeFlagPath)
     }
-    Set-Content -LiteralPath $ngxOutputProbeFlagPath -Value 'enabled' -Encoding ascii
+    $ngxWaitForStereo = if ($NgxOutputProbeAtStereoSubmit) { 1 } else { 0 }
+    Set-Content -LiteralPath $ngxOutputProbeFlagPath `
+        -Value "[probe]`nwait_for_stereo=$ngxWaitForStereo" -Encoding ascii
     Write-Output 'Bounded NGX output identity observation enabled; no generated XR publication.'
 }
 if ($StreamlineStereoSubmitProbe) {

@@ -54,7 +54,23 @@ try {
         throw 'Out-of-order completion was not normalized by call identity.'
     }
     Require-NoPublication $report
-    Write-Output 'ngx_observation=pass complete failure missing alias duplicate malformed no_publication'
+    $windowHeader = $header.Replace('schema=1','schema=2').Replace(' publication=0',' wait_for_stereo=1 publication=0')
+    $windowRecord = $record.Replace('call=7','call=1000001') + ' window_batch=1 window_present=12131 window_first_call=1000000'
+    $report = Read-Fixture @($windowHeader,$windowRecord)
+    if (-not $report.ObservationAvailable -or $report.CaptureWindow -ne '1/12131/1000000') {
+        throw 'Long startup consumed the gated observation budget.'
+    }
+    Require-NoPublication $report
+    foreach ($lines in @(
+        @($windowHeader,$windowRecord.Replace('call=1000001','call=1000000')),
+        @($windowHeader,$windowRecord.Replace('call=1000001','call=1032769')),
+        @($windowHeader,$windowRecord.Replace('window_batch=1','window_batch=0')),
+        @($windowHeader,$windowRecord,$windowRecord.Replace('call=1000001','call=1000002').Replace('window_batch=1','window_batch=2')))) {
+        $failed=$false
+        try { $null=Read-Fixture $lines } catch { $failed=$true }
+        if (-not $failed) { throw 'Invalid or replenished capture window accepted.' }
+    }
+    Write-Output 'ngx_observation=pass complete failure missing alias duplicate malformed bounded_window no_publication'
 } finally {
     if (Test-Path -LiteralPath $fixture) { Remove-Item -LiteralPath $fixture }
 }

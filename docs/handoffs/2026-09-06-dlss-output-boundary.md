@@ -100,3 +100,36 @@ early-failure checks pass (four CTest cases). A later user report of frozen VR
 after manual Psykhanium entry interrupts live NGX testing; this observer remains
 disabled in that run. Its logs show fresh pose-matched pairs rejected by an
 unchanged gameplay-generation resume gate, which is being handled separately.
+
+## Submission-gated observation window
+
+The initial observer could spend its finite query/sample budget on menu frames
+before a useful stereo submission. `-NgxOutputProbeAtStereoSubmit` now enables
+the NGX observer and existing bounded stereo-submit diagnostic, opening the
+observation window immediately before the first prepared batch's Present.
+Startup callbacks still return through the original function and may emit the
+first four call summaries, but do not query resources or consume capture budget.
+
+The window permits 32,768 subsequent calls and at most 256 output observations.
+Later batches cannot reopen it, replenish the budget or relabel in-flight calls.
+Schema 2 adds `window_batch`, `window_present`, and `window_first_call` to each
+record. These describe temporal context only, not causal stereo/pose ownership.
+The report accepts older schema 1 evidence and rejects out-of-window captures,
+missing gated context and any changed/replenished capture window.
+
+`-NgxOutputProbe` alone remains available for initial runtime compatibility
+observation without staged stereo submission. Both modes remain opt-in and
+restore the flag after launcher exit. For a hub-capable later diagnostic run:
+
+```powershell
+tools/stereo/start-darktide-vr.ps1 -EnableHudPanel -AutoAdvanceSplash -ManualCharacterSelect -NgxOutputProbeAtStereoSubmit -StreamlineStereoSubmitFrames 4
+```
+
+Do not add automatic Psykhanium entry to the user's current manual-hub workflow.
+This command is prepared, not yet executed. The running game was not interrupted
+or updated during this work. Release native-capture and capture-window targets
+build; seven focused CTest cases pass: NGX capture window, output observation,
+parameter ABI, Streamline submission/input lifetime, launcher focus and early
+failure. Cases include a million-call startup, exact budget boundaries, failed
+and repeated arming, integer wraparound, immutable window context and false
+publication claims. Live runtime compatibility remains the next check.
