@@ -13,6 +13,11 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/test-projection-math.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_projection_math.lua")
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  execute_process(COMMAND "${Python3_EXECUTABLE}" -c "import numpy; import PIL"
+    RESULT_VARIABLE DARKTIDEVR_ANALYSIS_IMPORT_RESULT OUTPUT_QUIET ERROR_QUIET)
+  if(NOT DARKTIDEVR_ANALYSIS_IMPORT_RESULT EQUAL 0)
+    message(FATAL_ERROR "Offline image-analysis tests require NumPy and Pillow. Run \"${Python3_EXECUTABLE}\" -m pip install -r \"${PROJECT_SOURCE_DIR}/tools/stereo/requirements-analysis.txt\", then configure again.")
+  endif()
   add_test(NAME generated_health_analysis COMMAND "${Python3_EXECUTABLE}" -B
     "${CMAKE_CURRENT_SOURCE_DIR}/test-generated-health.py")
   add_test(NAME dlss_ui_detail COMMAND "${Python3_EXECUTABLE}" -B

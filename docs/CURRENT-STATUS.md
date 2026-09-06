@@ -5,28 +5,29 @@ for current defaults and operating instructions.
 
 **Development resumed 7 September:** the user is at work and cannot verify in
 headset today. Continue automated/offline work and record worn checks as pending.
-Ready preflight passed and the saved controller/onboarding candidate is now
-deployed in the hub with fresh stereo initialization and nonzero shared_ready.
-That initialization run is now closed and normal proximity behavior restored.
-A shared LT secondary-click candidate is built and tested offline, not deployed;
-the validation fixtures were refreshed and all 98 Release CTests now pass.
-A subsequent local-authority mission policy candidate now passes 99 tests and
-34 compiled Lua chunks; it remains undeployed. Remote-server missions remain
-gated pending the [attack ownership work](MISSION-AUTHORITY-AUDIT.md).
-The next Ready preflight and retry could not obtain an HMD from VDXR. New
-runtime candidates remain undeployed; game/XR are closed and proximity automation
-is restored. Offline [UI detail measurement](DLSS-UI-DETAIL.md) now quantifies
-opaque contrast in an older static capture; motion blur remains unresolved.
-Additional offline candidates provide assignable item/stim/device slot actions
-and correct gameplay UI ownership checks. See
-[mission interaction coverage](MISSION-INTERACTION-AUDIT.md). These remain
-undeployed and require later live controller/lifecycle checks.
-A subsequent native timing candidate replaces the coarse Present duration with
-a high-resolution steady-clock measurement and fractional-millisecond reporting.
-New health lines identify `present_clock=steady`; older zero durations remain
-coarse observations. This is measurement preparation, not a framerate gain.
-See the [current handoff](handoffs/2026-09-07-development.md) for evidence and
-the expanded shared hint audit. A 20-minute task heartbeat is active.
+The saved controller/onboarding candidate initialized in the hub after Ready
+preflight, with fresh stereo messages and nonzero shared_ready. That run is
+closed. A later Ready preflight and retry returned HMD unavailable from VDXR;
+all subsequent runtime candidates remain undeployed. Game/XR are closed and
+normal proximity behavior is restored.
+
+[Draft review #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2)
+collects the continuation: shared LT menu secondary clicks, optional
+item/stim/device and hub target bindings, corrected UI ownership guards,
+scanner stick reference and luggable hand trajectories. See
+[mission interaction coverage](MISSION-INTERACTION-AUDIT.md). Mission body/input
+and hand aim require local simulation authority; remote-server missions remain
+gated pending [attack ownership work](MISSION-AUTHORITY-AUDIT.md).
+
+Offline [UI detail measurement](DLSS-UI-DETAIL.md), precise Present timing and
+[health summaries](PERFORMANCE-HEALTH-ANALYSIS.md) improve the next image-quality
+and performance investigation. Motion blur remains unresolved; no framerate
+gain or worn acceptance is claimed. Existing old Present timings remain coarse.
+
+Windows x64 Release builds pass, pinned LuaJIT compiles 34 chunks, and the last
+full CTest checkpoint passed 102/102. Later changes pass their focused checks
+recorded in the [current handoff](handoffs/2026-09-07-development.md), including
+the source-snapshot luggable contract. A 20-minute task heartbeat is active.
 
 **Historical 6 September end-of-day checkpoint:** development was stopped; Darktide/XR were closed and
 normal Quest proximity behavior is restored. Start tomorrow with the

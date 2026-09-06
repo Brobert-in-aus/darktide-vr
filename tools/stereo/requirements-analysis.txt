@@ -1,0 +1,4 @@
+# Tested with Python 3.13.3 on Windows x64. Used by registered offline image
+# analysis tests and capture diagnostics; not loaded into Darktide or OpenXR.
+numpy==2.2.5
+Pillow==12.3.0

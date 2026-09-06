@@ -14,10 +14,12 @@ contains no anti-cheat bypass implementation.
 
 ## Build and test
 
-Install Visual Studio 2022 C++ tools, CMake 3.25+, Git, and Python 3. Build the
-pinned Lua compiler once, then build and test the project:
+Install Visual Studio 2022 C++ tools, CMake 3.25+, Git, and Python 3 (validated
+with 3.13.3). Install the pinned analysis packages in the Python environment
+selected by CMake, then build the pinned Lua compiler and project:
 
 ```powershell
+python -m pip install -r tools/stereo/requirements-analysis.txt
 tools/lua/build-luajit.ps1
 cmake --preset windows-vs2022 -DDARKTIDEVR_ENABLE_HEADSET_TESTS=OFF
 cmake --build --preset windows-vs2022-release

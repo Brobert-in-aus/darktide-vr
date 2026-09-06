@@ -308,3 +308,14 @@ infer FG settings or frame-time percentiles. Read
 saved-session result and why it cannot replace the earlier selected FG-off
 interval. Five unit cases pass. The actual archived log was summarized without
 running Darktide or changing graphics settings.
+
+## Reproducible checkpoint instructions
+
+Branch `codex/development-checkpoint-2026-09-07` consolidates the current-status
+opening and documents the analysis packages now required by registered image
+tests. `tools/stereo/requirements-analysis.txt` pins the already-tested NumPy
+2.2.5 and Pillow 12.3.0 versions, validated with Python 3.13.3 on Windows x64.
+CMake checks imports using its selected interpreter and provides an actionable
+installation command when they are unavailable. No packages were changed in
+this session. Configuration passes with the existing environment; all gameplay
+and runtime acceptance boundaries above remain unchanged.
