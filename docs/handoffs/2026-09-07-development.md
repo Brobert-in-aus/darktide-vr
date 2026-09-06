@@ -377,3 +377,26 @@ toggle and VD resume via ADB. Screenshot identified actual tracking-loss prompt
 Generic `PT is: ON` was not a reliable full-passthrough indicator. Ready still
 fails; normal proximity restored. No boundary/tracking setting disabled and no
 game/deployment performed. Continue Psykhanium online-rules implementation offline.
+
+## Psykhanium online-rules candidate
+
+Branch `codex/psykhanium-online-rules-2026-09-07` adds the requested proving mode,
+defaulting on for the next locally hosted `shooting_range` visit. Details and
+limitations: [Psykhanium online rules](../PSYKHANIUM-ONLINE-RULES.md).
+
+The actual cached stock input frame receives right-hand aim and movement
+converted/packed into the same basis. Stock simulation supplies origins,
+recoil, spread, button-melee sweeps and damage rules; common temporary combat
+pose proxies and room-scale extra mover velocity are excluded. The reticle
+uses simulated stock pose. UI/tracking/state/owner and packing failures retain
+stock input. Settings latch per visit. Tutorial training grounds and online
+mission admission are unchanged. Range invulnerability, inert targets and
+pickup replenishment remain explicit training limitations.
+
+Validation: pinned LuaJIT 35 mod chunks; **105/105** Windows x64 offline CTests
+pass. Optional stock-source checks pass for input history and for actual
+first-person/walking methods, including stock origin/recoil and backward speed
+penalty. Engine serialization, remote correction and worn camera/aim/comfort
+remain unverified. Logs: `artifacts/unattended/online-rules-ctest-20260907.log`
+and `online-rules-configure-20260907.log`. No deployment due to failed Ready
+after the requested ADB recovery. Normal Quest proximity behavior is restored.

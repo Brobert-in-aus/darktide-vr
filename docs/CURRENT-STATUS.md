@@ -13,7 +13,16 @@ normal proximity behavior is restored.
 A later connection inventory still found one authorized Quest and Streamer.
 After waking, Ready remained unavailable and the headset reported a Guardian
 dialog as a focused activity. No dialog interaction, app restart or deployment
-followed; normal proximity behavior was restored. Continue offline today.
+followed; normal proximity behavior was restored. The user later requested ADB
+recovery: passthrough toggle and VD resume worked, but a screenshot identified
+"Finding position in room" (tracking unavailable). Ready still failed; normal
+proximity restored again. See [Quest recovery](QUEST-PASSTHROUGH-RECOVERY.md).
+Continue offline today.
+
+Latest requested candidate: [Psykhanium online rules](PSYKHANIUM-ONLINE-RULES.md).
+It defaults on for the next range visit, uses stock input history and firing
+origins, and retains stock movement/combat rules. This source is not deployed;
+actual online mission support and worn acceptance remain pending.
 
 [Draft review #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2)
 collects the continuation: shared LT menu secondary clicks, optional

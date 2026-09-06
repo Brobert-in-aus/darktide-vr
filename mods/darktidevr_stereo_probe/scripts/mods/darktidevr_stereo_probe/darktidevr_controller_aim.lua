@@ -164,9 +164,10 @@ function controller_aim.install(mod, presentation, state)
         return presentation.controller_aim_target()
     end
 
-    function controller_aim.publish_reticle(extension)
+    function controller_aim.publish_reticle(extension, stock_position, stock_rotation)
         controller_aim.reticle_hit_unit = nil
-        local position, rotation = controller_aim.target("right")
+        local position, rotation = stock_position, stock_rotation
+        if not position or not rotation then position, rotation = controller_aim.target("right") end
         local physics_world = extension and extension._physics_world
         if not position or not rotation or not physics_world then
             controller_aim.reticle_world_point = nil
@@ -762,6 +763,16 @@ function controller_aim.install(mod, presentation, state)
         function(func, self, ...)
             if not self._is_local_unit then
                 return func(self, ...)
+            end
+            if presentation.online_rules and presentation.online_rules.enabled() then
+                local result = func(self, ...)
+                local component = self._first_person_component
+                if component then
+                    controller_aim.publish_reticle(self, component.position, component.rotation)
+                else
+                    presentation.publish_gameplay_aim_state(false, false, 0)
+                end
+                return result
             end
             local position, rotation = controller_aim.target("right")
             if not position or not rotation then

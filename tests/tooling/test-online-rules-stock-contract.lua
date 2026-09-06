@@ -1,0 +1,99 @@
+-- Optional source integration: execute stock first-person and walking methods
+-- after the real VR cache adapter. Engine math is isolated; no live XR/network.
+local vector_meta={}
+Vector3=setmetatable({}, {__call=function(_,x,y,z) return setmetatable({x,y,z},vector_meta) end})
+vector_meta.__add=function(a,b) return Vector3(a[1]+b[1],a[2]+b[2],a[3]+b[3]) end
+vector_meta.__unm=function(a) return Vector3(-a[1],-a[2],-a[3]) end
+vector_meta.__mul=function(a,b)
+    if type(a)=='number' then a,b=b,a end
+    return Vector3(a[1]*b,a[2]*b,a[3]*b)
+end
+Vector3.x=function(v) return v[1] end; Vector3.y=function(v) return v[2] end
+Vector3.to_elements=function(v) return unpack(v) end
+Vector3.dot=function(a,b) return a[1]*b[1]+a[2]*b[2]+a[3]*b[3] end
+Vector3.length_squared=function(v) return Vector3.dot(v,v) end
+Vector3.length=function(v) return math.sqrt(Vector3.length_squared(v)) end
+Vector3.normalize=function(v) local n=Vector3.length(v); return n>0 and v*(1/n) or Vector3(0,0,0) end
+Vector3.flat=function(v) return Vector3(v[1],v[2],0) end
+Vector3.up=function() return Vector3(0,0,1) end
+Quaternion={from_yaw_pitch_roll=function(y,p,r) return {yaw=y,pitch=p,roll=r} end,
+    yaw=function(q) return q.yaw end,pitch=function(q) return q.pitch end,
+    inverse=function(q) return {yaw=-q.yaw,pitch=0,roll=0} end,
+    forward=function(q) return Vector3(-math.sin(q.yaw),math.cos(q.yaw),0) end,
+    look=function(v) return {yaw=math.atan2(-v[1],v[2]),pitch=0,roll=0} end,
+    rotate=function(q,v) return Vector3(math.cos(q.yaw)*v[1]-math.sin(q.yaw)*v[2],
+        math.sin(q.yaw)*v[1]+math.cos(q.yaw)*v[2],v[3]) end}
+math.lerp=function(a,b,t) return a+(b-a)*t end
+local root=arg[3]..'/scripts/'
+local function source(path)
+    local f=assert(io.open(root..path..'.lua','r')); local s=f:read('*all'); f:close(); return s
+end
+local fp_source=source('extension_systems/first_person/player_unit_first_person_extension')
+local function extract(first,last)
+    local a=assert(fp_source:find(first,1,true)); local b=assert(fp_source:find(last,a,true))
+    return fp_source:sub(a,b-1)
+end
+-- Stock height interpolation is included; this fixture uses settled height.
+local height_source=extract('local function _calculate_base_player_height(',
+    '\nlocal half_pi ='):gsub('local function','function',1)
+assert(loadstring(height_source))()
+PlayerUnitFirstPersonExtension={}
+assert(loadstring(extract('PlayerUnitFirstPersonExtension.fixed_update =',
+    '\nPlayerUnitFirstPersonExtension.server_correction_occurred =')))()
+Recoil={first_person_offset=function() return .02,.01 end}
+GameSession={set_game_object_field=function() end}
+local walking=assert(loadstring(source('extension_systems/character_state_machine/character_states/utilities/accelerated_local_space_movement')))()
+local player={player_unit='local'}
+Managers={state={game_session={is_server=function() return true end}},
+    player={local_player=function() return player end},ui={using_input=function() return false end}}
+Unit={alive=function() return true end}
+ScriptUnit={has_extension=function() return {current_state_name=function() return 'walking' end} end}
+Network={pack_unpack=function(_,value) return value end} -- Engine quantization not covered here.
+package.preload['scripts/settings/player_character/player_orientation_settings']=function()
+    return {default={min_pitch=-math.pi*.45,max_pitch=math.pi*.45}}
+end
+local aim=Quaternion.from_yaw_pitch_roll(math.pi/2,.3,0)
+local view=Quaternion.from_yaw_pitch_roll(0,.1,0)
+local presentation={mode=1,gameplay_context=dofile(arg[2]),
+    flat_movement_rotation=function(y) return Quaternion.from_yaw_pitch_roll(y,0,0) end,
+    controller_aim_target=function() return Vector3(99,88,77),aim end}
+local rules=dofile(arg[1]).install({get=function() return true end,info=function() end,warning=function() end},
+    presentation,{authoring_enabled=true,gameplay_input_active=true},function() return 'shooting_range' end)
+local h={_player=player,_input_cache={{0},{0},{1},{0},{0},{0},{0}},
+    _action_lookup={move_right=1,move_left=2,move_forward=3,move_backward=4},
+    _pack_unpack_action_to_network_type_index={move_right=1,move_left=1,move_forward=1,move_backward=1},
+    _yaw_index=5,_pitch_index=6,_roll_index=7,_buffer_index=function() return 1 end}
+rules.capture(h,1); assert(rules.frames==1)
+local input={get_orientation=function() return h._input_cache[5][1],h._input_cache[6][1],h._input_cache[7][1] end,
+    get=function(_,name) assert(name=='move'); return Vector3(h._input_cache[1][1]-h._input_cache[2][1],
+        h._input_cache[3][1]-h._input_cache[4][1],0) end}
+local component={wanted_height=1.7,height_change_start_time=0,height_change_duration=0,rotation=view}
+local fp={_first_person_component=component,_locomotion_component={position=Vector3(10,20,0)},
+    _inair_state_component={on_ground=true},_input_extension=input,_is_server=true,
+    _weapon_extension={recoil_template=function() end,running_action_settings=function() return {} end},
+    _peeking_component={is_peeking=false},_update_first_person_forced_rotation=function() end}
+PlayerUnitFirstPersonExtension.fixed_update(fp,'local',.02,10,1)
+assert(component.position[1]==10 and component.position[2]==20 and component.position[3]==1.7,
+    'Stock body/height firing origin was replaced by hand origin')
+assert(math.abs(component.rotation.yaw-(aim.yaw+.01))<1e-12)
+assert(math.abs(component.rotation.pitch-(aim.pitch+.02))<1e-12)
+assert(component.previous_rotation==view and view.yaw==0 and view.pitch==.1)
+-- With zero recoil, the actual walking method reconstructs the intended head-
+-- relative direction from the transformed input. Its own backward penalty stays.
+local constants={acceleration=1000,deceleration=1000,backward_move_scale=.5,
+    move_speed=5,crouch_move_speed=2,slide_move_speed_threshold=2}
+local function move(yaw)
+    return walking.wanted_movement(constants,input,{local_move_x=0,local_move_y=0},
+        {player_speed_scale=1},{rotation=Quaternion.from_yaw_pitch_roll(yaw,0,0)},
+        false,Vector3(0,0,0),1)
+end
+local direction,speed=move(aim.yaw)
+assert(math.abs(direction[1])<1e-12 and math.abs(direction[2]-1)<1e-12 and speed==5)
+aim=Quaternion.from_yaw_pitch_roll(math.pi,0,0)
+h._input_cache={{0},{0},{1},{0},{0},{0},{0}}
+rules.capture(h,2)
+direction,speed=move(aim.yaw)
+assert(math.abs(direction[1])<1e-12 and math.abs(direction[2]-1)<1e-12)
+assert(math.abs(speed-2.5)<1e-12,'Stock backward penalty must remain')
+print('PASS: actual stock pose keeps body origin/recoil; actual walking preserves direction and backward penalty')
+print('LIMIT: isolated engine math, no real quantization, live network or worn acceptance')

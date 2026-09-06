@@ -10,6 +10,9 @@ Latest 7 September steering: investigate online-server missions alongside local
 missions. See [online requirements](ONLINE-MISSION-REQUIREMENTS.md) for the stock
 input route, authority limits and implementation/validation sequence. This is
 the active investigation; remote mission gameplay remains disabled.
+The user's next instruction is implemented as an undeployed
+[Psykhanium online-rules candidate](PSYKHANIUM-ONLINE-RULES.md): stock input-frame
+aim and origins, with explicit range-only training and live-validation limits.
 Updated after the user's follow-up: DLSS image quality is active again, blur
 first; performance investigation is active work. See [mission readiness](MISSION-READINESS.md)
 for the smaller set needed before a first end-to-end mission attempt.

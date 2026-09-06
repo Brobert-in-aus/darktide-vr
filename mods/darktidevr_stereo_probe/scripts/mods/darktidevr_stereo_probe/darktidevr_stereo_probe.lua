@@ -5281,6 +5281,9 @@ end
 
 presentation.gameplay_context = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gameplay_context")
+presentation.online_rules = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_online_rules"
+).install(mod, presentation, controller_observation, active_game_mode_name)
 
 function presentation.is_first_person_body_mode(mode)
     return presentation.gameplay_context.body_mode(mode,
@@ -5288,6 +5291,7 @@ function presentation.is_first_person_body_mode(mode)
 end
 
 function presentation.is_controller_aim_mode()
+    if presentation.online_rules.enabled() then return false end
     return presentation.gameplay_context.aim_mode(active_game_mode_name(),
         Managers and Managers.state and Managers.state.game_session)
 end
@@ -5675,6 +5679,9 @@ mod:hook_safe(
                 end
             end
         end
+        -- Finalize the same cached input columns consumed by local simulation
+        -- and the stock network sender, after the controller adapter above.
+        presentation.online_rules.capture(self, frame)
         if not controller_observation.primary_action_injected then
             return
         end
@@ -5987,7 +5994,7 @@ function presentation.refresh_body_follow_mode(t)
         end
     end
     local game_mode_name = active_game_mode_name()
-    if game_mode_name == "hub" or
+    if game_mode_name == "hub" or presentation.online_rules.enabled() or
             not presentation.is_first_person_body_mode(game_mode_name) then
         -- Hub room-scale motion is presentation-only. The HMD and planted-foot
         -- IK lean inside a 25 cm envelope, while the server-authoritative root
@@ -6014,6 +6021,7 @@ function presentation.apply_body_follow_translation(
         unit, dt, t, locomotion_component, steering_component,
         current_position)
     presentation.refresh_body_follow_mode(t)
+    if presentation.online_rules.enabled() then return nil end
     local mode = controller_observation.body_follow_mode
     if mode == "disabled" then
         return nil

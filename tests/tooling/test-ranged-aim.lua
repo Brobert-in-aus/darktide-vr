@@ -243,3 +243,25 @@ owns=false
 network_hook(extension,player)
 assert(writes==1,"remote unit/client/host-loss authored server aim")
 print("mission_aim_replication=pass local_server_only")
+-- The proving range deliberately declines every local hand-pose override.
+-- Prepared attacks use the simulation component already authored from input.
+aim.presentation.is_controller_aim_mode=function() return false end
+aim.presentation.online_rules={enabled=function() return true end}
+for _,name in ipairs(paths) do
+    local stock_action=action(modules[action_root..name])
+    stock_action:_prepare_shooting(42)
+    assert(stock_action._action_component.shooting_position==shared.position)
+    assert(stock_action._action_component.shooting_rotation==shared.rotation+7)
+    assert(stock_action._first_person_component==shared)
+end
+local reticles=0
+aim.publish_reticle=function(ext,position,rotation)
+    assert(position==shared.position and rotation==shared.rotation)
+    assert(ext._first_person_component==shared); reticles=reticles+1
+end
+local smart=modules['scripts/extension_systems/smart_targeting/player_unit_smart_targeting_extension']
+smart.fixed_update({_is_local_unit=true,_first_person_component=shared})
+assert(reticles==1,'Online reticle did not use the stock simulated origin')
+smart.fixed_update({_is_local_unit=false,_first_person_component=shared})
+assert(reticles==1,'Changed remote reticle')
+print('online_range_ranged=pass stock_origins stock_preparation simulated_reticle remote_unchanged')

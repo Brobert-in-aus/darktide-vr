@@ -130,6 +130,7 @@ that must be excluded online. Only then build a disabled-by-default candidate.
 Follow-up user direction: configure Psykhanium to use the same combat/input
 rules as online where possible, and improve that path there first. This changes
 the next implementation target to a range-only online-rules proving mode.
+The [initial candidate](PSYKHANIUM-ONLINE-RULES.md) is now implemented offline.
 Local server simulation still cannot reproduce real network latency or prove
 official-server compatibility; the later remote check remains necessary.
 

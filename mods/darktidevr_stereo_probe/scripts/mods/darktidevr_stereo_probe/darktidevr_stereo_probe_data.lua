@@ -46,6 +46,11 @@ return {
             mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_turning").widgets(),
             mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings").widgets(),
             {
+                setting_id = "psykhanium_online_rules",
+                type = "checkbox",
+                default_value = true,
+            },
+            {
                 setting_id = "movement_reference",
                 type = "dropdown",
                 default_value = "head",
