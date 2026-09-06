@@ -6,7 +6,7 @@ local last=assert(source:find('\nmod:hook(',first,true))
 local mode,state,hand='left_hand','walking',math.pi/2
 mod={get=function(_,key) assert(key=='movement_reference'); return mode end}
 controller_observation={gameplay_yaw=0,character_state_name='deliberately_stale'}
-presentation={left_hand_movement_rotation=function() return hand end,
+presentation={gameplay_context=dofile(arg[2]),left_hand_movement_rotation=function() return hand end,
     flat_movement_rotation=function(yaw) return yaw end}
 local player={player_unit='local'}
 Managers={player={local_player=function(_,index) assert(index==1); return player end}}
@@ -40,6 +40,8 @@ mode='left_hand'; hand=nil; expect(1,0,1,0)
 hand=math.pi/2
 extension=nil; expect(1,0,0,1)
 extension={current_state_name=function() error('retiring') end}; expect(1,0,0,1)
+extension=setmetatable({}, {__index=function() error('retired proxy lookup') end})
+expect(1,0,0,1)
 player=nil; expect(1,0,0,1)
 controller_observation.gameplay_yaw=nil; expect(1,0,1,0)
 print('scanner_stick_reference=pass real_seam direct_device_axes immediate_state_transitions locomotion_preserved fallbacks')

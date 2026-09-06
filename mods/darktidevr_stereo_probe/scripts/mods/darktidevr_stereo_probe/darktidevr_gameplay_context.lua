@@ -3,10 +3,16 @@
 local Context = {}
 local ranges = {shooting_range=true, training_grounds=true}
 local missions = {coop_complete_objective=true, survival=true, expedition=true, prologue=true}
+local function query_owner(owner, name)
+    -- Lookup belongs inside the protected call too: a retiring proxy may throw
+    -- from __index before its method is even obtained. Shared helper, no closure
+    -- allocation on each frame's authority/ownership query.
+    local method = owner[name]
+    if type(method) == "function" then return method(owner) end
+end
 
 function Context.local_authority(session)
-    if not session or type(session.is_server) ~= "function" then return false end
-    local ok, server = pcall(session.is_server, session)
+    local ok, server = pcall(query_owner, session, "is_server")
     return ok and server == true
 end
 
@@ -23,9 +29,13 @@ function Context.ui_blocks_gameplay(ui)
     -- inputs_in_use() is a key-filter table for stock keyboard input. Query
     -- the actual owner, including chat, HUD and views. A retiring manager
     -- cannot authorize fresh VR input. Scanner display explicitly owns none.
-    if not ui or type(ui.using_input) ~= "function" then return true end
-    local ok, using = pcall(ui.using_input, ui)
+    local ok, using = pcall(query_owner, ui, "using_input")
     return not ok or using ~= false
+end
+
+function Context.device_axes(state_machine)
+    local ok, name = pcall(query_owner, state_machine, "current_state_name")
+    return ok and name == "minigame"
 end
 
 return Context

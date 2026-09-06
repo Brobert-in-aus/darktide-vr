@@ -335,3 +335,17 @@ Evidence is ignored: `artifacts/unattended/continuation-inventory-20260907.json`
 `continuation-ready-20260907.json`, associated logs and
 `continuation-proximity-restored-20260907.log`. No device identifier is recorded
 in Git. Current source checkpoint remains fully committed and on draft review #2.
+
+## Ownership-query recovery review
+
+Branch `codex/ownership-query-recovery-2026-09-07` protects the method lookup as
+well as its invocation for mission authority, UI ownership and scanner-state
+queries. A retiring proxy can throw from `__index` before a method is obtained;
+malformed owners also no longer escape the guard. Valid inherited methods keep
+their receiver. One shared helper avoids allocating a closure for every query.
+
+Validation: pinned LuaJIT 34 chunks, successful configuration, five focused
+CTests pass for context, actual gameplay adapter, scanner movement seam, ranged
+aim and source invariants. New cases cover invalid owners and throwing lookup
+proxies. Logs: `artifacts/unattended/ownership-recovery-ctest-20260907.log` and
+the matching compiler/configuration logs. Runtime candidates remain undeployed.

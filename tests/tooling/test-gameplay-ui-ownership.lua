@@ -52,7 +52,8 @@ assert(sample(0)[2],'Ordinary gameplay release was lost')
 -- Scanner display reports no input ownership: stock gameplay controls survive.
 assert(native_active==1 and ui_active)
 for _,ui in ipairs({{}, {using_input=function() error('retiring') end},
-        {using_input=function() return {} end}, {using_input=function() return nil end}}) do
+        {using_input=function() return {} end}, {using_input=function() return nil end},
+        17,true,setmetatable({}, {__index=function() error('retired proxy lookup') end})}) do
     Managers.ui=ui
     assert(not sample(1)[1] and native_active==0 and not ui_active)
 end

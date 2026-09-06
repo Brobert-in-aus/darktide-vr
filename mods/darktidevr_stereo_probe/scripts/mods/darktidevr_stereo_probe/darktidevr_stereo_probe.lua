@@ -9994,9 +9994,7 @@ function presentation.controller_movement_is_device_axis()
     local unit = player and player.player_unit
     if not unit or not Unit.alive(unit) then return false end
     local extension = ScriptUnit.has_extension(unit, "character_state_machine_system")
-    if not extension or type(extension.current_state_name) ~= "function" then return false end
-    local ok, name = pcall(extension.current_state_name, extension)
-    return ok and name == "minigame"
+    return presentation.gameplay_context.device_axes(extension)
 end
 
 function presentation.rotate_controller_movement(x, y)

@@ -20,6 +20,17 @@ for _,session in ipairs({server,client,missing,broken,invalid}) do
 end
 assert(not context.aim_mode(nil,server) and not context.body_mode(nil,server))
 assert(not context.aim_mode("coop_complete_objective",nil))
+for _,owner in ipairs({true,17,'invalid',setmetatable({}, {
+        __index=function() error('retired proxy lookup') end})}) do
+    assert(not context.local_authority(owner),'Invalid owner authorized simulation')
+    assert(context.ui_blocks_gameplay(owner),'Invalid owner authorized UI input')
+    assert(not context.device_axes(owner),'Invalid owner selected device axes')
+end
+local proxy=setmetatable({}, {__index={is_server=function(self)
+    assert(getmetatable(self)); return true
+end,using_input=function(self) assert(getmetatable(self)); return false end}})
+assert(context.local_authority(proxy) and not context.ui_blocks_gameplay(proxy),
+    'Valid inherited owner methods lost their self receiver')
 -- Authority is checked on each call, never latched across host loss/loading.
 local owns=true
 local changing={is_server=function() return owns end}
