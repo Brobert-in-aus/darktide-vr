@@ -73,6 +73,16 @@ class SharedHeadPoseWriter {
   void* view_{};
 };
 
+struct SharedHeadPoseReadDiagnostics {
+  const char* reason{"unavailable"};
+  std::uint64_t now_ms{};
+  std::uint64_t published_ms{};
+  std::uint64_t sequence{};
+  std::uint64_t epoch_before{};
+  std::uint64_t epoch_after{};
+  unsigned attempts{};
+};
+
 class SharedHeadPoseReader {
  public:
   SharedHeadPoseReader() = default;
@@ -81,7 +91,8 @@ class SharedHeadPoseReader {
   SharedHeadPoseReader(const SharedHeadPoseReader&) = delete;
   SharedHeadPoseReader& operator=(const SharedHeadPoseReader&) = delete;
 
-  bool read(SharedHeadPoseSample& sample);
+  bool read(SharedHeadPoseSample& sample,
+            SharedHeadPoseReadDiagnostics* diagnostics = nullptr);
   bool publish_rendered_pair(const SharedRenderedEyePairPose& pair);
   bool publish_gameplay_generation(std::uint64_t generation);
   std::uint64_t advance_eye_surface_generation();

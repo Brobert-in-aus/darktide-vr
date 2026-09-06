@@ -1108,6 +1108,17 @@ class OpenXrProbe {
     double pair_pose_angle_lag_degrees_max{};
     std::uint64_t pair_driven_waits{};
     std::uint64_t pair_driven_timeouts{};
+    std::uint64_t last_pose_publish_tick{};
+    unsigned pose_timing_reports{};
+    auto report_pose_wait = [&](const char* stage, ULONGLONG began) {
+      const auto ended = GetTickCount64();
+      if (ended - began >= 100 && pose_timing_reports++ < 256) {
+        std::cout << "openxr.pose_wait stage=" << stage
+                  << " tick_ms=" << ended << " duration_ms=" << ended - began
+                  << " last_publish_ms=" << last_pose_publish_tick << '\n';
+      }
+    };
+
     std::optional<std::chrono::steady_clock::time_point>
         projection_resume_started;
     std::uint64_t projection_resume_ready_value{};
@@ -1203,6 +1214,231 @@ class OpenXrProbe {
           next_menu_open_attempt = now;
         };
 
+    XrTime last_tracking_prediction{};
+    XrDuration tracking_period{};
+    std::chrono::steady_clock::time_point last_tracking_prediction_at{};
+    auto next_wait_tracking_update = std::chrono::steady_clock::now();
+    auto update_tracking = [&](XrTime display_time, bool render_allowed,
+                               darktidevr::math::Pose& current_head,
+                               bool& current_head_valid) {
+      bool head_recenter_requested = reference_space_recenter_pending_;
+      reference_space_recenter_pending_ = false;
+      if (!synthetic_controller_path) {
+        sync_controller_actions(display_time);
+      }
+
+      bool submit_layer = render_allowed;
+      current_head = {};
+      current_head_valid = false;
+      if (stereo && submit_layer) {
+        XrViewState view_state{XR_TYPE_VIEW_STATE};
+        XrViewLocateInfo locate_info{XR_TYPE_VIEW_LOCATE_INFO};
+        locate_info.viewConfigurationType =
+            XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+        locate_info.displayTime = display_time;
+        locate_info.space = local_space_;
+        std::uint32_t located_count{};
+        check_xr(xrLocateViews(session_, &locate_info, &view_state,
+                               static_cast<std::uint32_t>(located_views.size()),
+                               &located_count, located_views.data()),
+                 "xrLocateViews(theatre stereo)");
+        const auto valid_flags = XR_VIEW_STATE_POSITION_VALID_BIT |
+                                 XR_VIEW_STATE_ORIENTATION_VALID_BIT;
+        submit_layer = located_count == located_views.size() &&
+                       (view_state.viewStateFlags & valid_flags) == valid_flags;
+        if (submit_layer) {
+          const float average_vertical_span =
+              ((located_views[0].fov.angleUp -
+                located_views[0].fov.angleDown) +
+               (located_views[1].fov.angleUp -
+                located_views[1].fov.angleDown)) *
+              0.5F;
+          rendered_symmetric_fov =
+              {0.0F, 0.0F, average_vertical_span * 0.5F,
+               average_vertical_span * -0.5F};
+          current_head.position = {
+              (located_views[0].pose.position.x +
+               located_views[1].pose.position.x) *
+                  0.5F,
+              (located_views[0].pose.position.y +
+               located_views[1].pose.position.y) *
+                  0.5F,
+              (located_views[0].pose.position.z +
+               located_views[1].pose.position.z) *
+                  0.5F};
+          current_head.orientation = {
+              located_views[0].pose.orientation.x,
+              located_views[0].pose.orientation.y,
+              located_views[0].pose.orientation.z,
+              located_views[0].pose.orientation.w};
+          current_head_valid = true;
+        }
+        if (submit_layer && head_pose_writer) {
+          if (head_recenter_requested) {
+            head_recenter_pose =
+                darktidevr::core::horizon_locked_recenter_pose(current_head);
+            synthetic_roomscale_origin = *head_recenter_pose;
+            controller_recenter_pose_ = *head_recenter_pose;
+            // Recentring changes the tracking-space reference, not the game
+            // character's already-applied world displacement. Keep the
+            // cumulative root target continuous so reset-view cannot teleport
+            // the collision capsule back toward its spawn point.
+            recentered_view_poses_valid = false;
+            rendered_pair_pose_ready_value = 0;
+            head_pose_history.clear();
+            // A flat panel is anchored independently in LOCAL space. Force the
+            // active presentation state to rebuild it from this same leveled
+            // centre-head pose, otherwise a recenter corrects the world while
+            // leaving a loading board at its old yaw.
+            flat_fallback_anchor_state.reset();
+            ++head_recenter_generation;
+            std::cout << "openxr.head_recenter=applied\n";
+          }
+          if (!head_recenter_pose) {
+            head_recenter_pose =
+                darktidevr::core::horizon_locked_recenter_pose(current_head);
+            synthetic_roomscale_origin = *head_recenter_pose;
+            controller_recenter_pose_ = *head_recenter_pose;
+            ++head_recenter_generation;
+          }
+          if (synthetic_roomscale_path) {
+            if (!synthetic_roomscale_origin) {
+              synthetic_roomscale_origin = *head_recenter_pose;
+            }
+            const auto synthetic_position =
+                darktidevr::harness::synthetic_roomscale_position(
+                    synthetic_roomscale_frames++);
+            current_head.position = {
+                synthetic_roomscale_origin->position.x + synthetic_position.x,
+                synthetic_roomscale_origin->position.y + synthetic_position.y,
+                synthetic_roomscale_origin->position.z + synthetic_position.z};
+          }
+          if (synthetic_crouch_path) {
+            if (!synthetic_roomscale_origin) {
+              synthetic_roomscale_origin = *head_recenter_pose;
+            }
+            const auto synthetic_position =
+                darktidevr::harness::synthetic_crouch_position(
+                    synthetic_crouch_frames++);
+            current_head.position = {
+                synthetic_roomscale_origin->position.x + synthetic_position.x,
+                synthetic_roomscale_origin->position.y + synthetic_position.y,
+                synthetic_roomscale_origin->position.z + synthetic_position.z};
+          }
+          const auto head_translation =
+              darktidevr::core::sliding_head_translation(
+                  *head_recenter_pose, current_head, {0.0F, 1.2F});
+          auto delta = head_translation.camera_delta;
+          body_follow_offset.x += head_translation.body_follow_delta.x;
+          body_follow_offset.y += head_translation.body_follow_delta.y;
+          body_follow_offset.z += head_translation.body_follow_delta.z;
+          latest_camera_translation = delta.position;
+          latest_body_follow_offset = body_follow_offset;
+          controller_recenter_pose_ = *head_recenter_pose;
+          if (synthetic_head_sweep) {
+            const auto synthetic =
+                darktidevr::harness::synthetic_head_path_sample(
+                    synthetic_head_frames++, delta.position);
+            delta = synthetic.delta;
+            ++synthetic_head_phase_frames[
+                static_cast<std::size_t>(synthetic.phase)];
+          }
+          if (synthetic_body_inspection) {
+            delta = darktidevr::harness::synthetic_body_inspection_pose(
+                delta.position);
+            ++synthetic_body_inspection_frames;
+          }
+          if (synthetic_neck_pivot_path) {
+            delta = darktidevr::harness::synthetic_neck_pivot_path_sample(
+                synthetic_head_frames++, delta.position);
+          }
+          darktidevr::core::SharedHeadPoseSample pose_sample{};
+          pose_sample.sequence = ++head_pose_sequence;
+          pose_sample.recenter_generation = head_recenter_generation;
+          pose_sample.pose = delta;
+          pose_sample.body_follow_offset = body_follow_offset;
+          pose_sample.render_vertical_fov_radians =
+              rendered_symmetric_fov.angleUp -
+              rendered_symmetric_fov.angleDown;
+          pose_sample.render_aspect_ratio = render_aspect_ratio;
+          pose_sample.render_width =
+              views_.front().recommendedImageRectWidth;
+          pose_sample.render_height =
+              views_.front().recommendedImageRectHeight;
+          const auto eye_dx = located_views[1].pose.position.x -
+                              located_views[0].pose.position.x;
+          const auto eye_dy = located_views[1].pose.position.y -
+                              located_views[0].pose.position.y;
+          const auto eye_dz = located_views[1].pose.position.z -
+                              located_views[0].pose.position.z;
+          pose_sample.ipd_metres =
+              std::sqrt(eye_dx * eye_dx + eye_dy * eye_dy + eye_dz * eye_dz);
+          if (stage_space_ != XR_NULL_HANDLE) {
+            XrSpaceLocation stage_head{XR_TYPE_SPACE_LOCATION};
+            check_xr(xrLocateSpace(view_space_, stage_space_,
+                                   display_time,
+                                   &stage_head),
+                     "xrLocateSpace(VIEW in STAGE)");
+            const auto floor_flags = XR_SPACE_LOCATION_POSITION_VALID_BIT |
+                                     XR_SPACE_LOCATION_POSITION_TRACKED_BIT;
+            if ((stage_head.locationFlags & floor_flags) == floor_flags) {
+              pose_sample.floor_eye_height_metres =
+                  stage_head.pose.position.y;
+            }
+          }
+          runtime_ipd_metres_ = pose_sample.ipd_metres;
+          const darktidevr::math::Pose submitted_head_delta{
+              delta.orientation,
+              {delta.position.x * projection_translation_scale,
+               delta.position.y * projection_translation_scale,
+               delta.position.z * projection_translation_scale}};
+          for (std::size_t eye = 0; eye < located_views.size(); ++eye) {
+            pose_sample.render_frusta[eye] = {
+                located_views[eye].fov.angleLeft,
+                located_views[eye].fov.angleRight,
+                located_views[eye].fov.angleDown,
+                located_views[eye].fov.angleUp};
+          }
+          if (last_pose_publish_tick) report_pose_wait("publication_gap", last_pose_publish_tick);
+          if (!head_pose_writer->publish(pose_sample)) {
+            throw std::runtime_error("Shared head-pose publication failed");
+          }
+          last_pose_publish_tick = GetTickCount64();
+          for (std::size_t eye = 0; eye < located_views.size(); ++eye) {
+            const darktidevr::math::Pose current_eye{
+                {located_views[eye].pose.orientation.x,
+                 located_views[eye].pose.orientation.y,
+                 located_views[eye].pose.orientation.z,
+                 located_views[eye].pose.orientation.w},
+                {located_views[eye].pose.position.x,
+                 located_views[eye].pose.position.y,
+                 located_views[eye].pose.position.z}};
+            // Projection layers are submitted in absolute LOCAL space. The
+            // game camera consumes a delta from the first tracked head pose,
+            // so anchor that same full 6DoF delta back onto the exact pose
+            // which established the baseline. The helper also preserves the
+            // runtime eye-from-head transform (including physical IPD).
+            const auto anchored_eye =
+                darktidevr::core::anchored_recentered_eye_pose(
+                    *head_recenter_pose, submitted_head_delta, current_head,
+                    current_eye);
+            recentered_view_poses[eye].orientation = {
+                anchored_eye.orientation.x, anchored_eye.orientation.y,
+                anchored_eye.orientation.z, anchored_eye.orientation.w};
+            recentered_view_poses[eye].position = {
+                anchored_eye.position.x, anchored_eye.position.y,
+                anchored_eye.position.z};
+          }
+          recentered_view_poses_valid = true;
+          head_pose_history.emplace_back(head_pose_sequence,
+                                         recentered_view_poses);
+          while (head_pose_history.size() > 512) {
+            head_pose_history.pop_front();
+          }
+        }
+      }
+      return submit_layer;
+    };
     for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
       if (duration && std::chrono::steady_clock::now() - start >= *duration) {
         break;
@@ -1557,6 +1793,7 @@ class OpenXrProbe {
                     << '\n';
         }
       }
+      const auto pair_wait_tick = GetTickCount64();
       // Interactive menus retain projection. They must also retain live
       // producer pairs: freezing the last pre-menu image prevents the world
       // from responding to head motion even though OpenXR keeps submitting.
@@ -1575,6 +1812,27 @@ class OpenXrProbe {
         while (opened_eyes->ready_fence->GetCompletedValue() <=
                    last_pair_pose_checked_ready_value &&
                std::chrono::steady_clock::now() < deadline) {
+          const auto tracking_now = std::chrono::steady_clock::now();
+          // Image submission remains pair-driven for runtime reprojection, but
+          // tracking must not depend on the game completing its next image.
+          // Advance the last runtime prediction by elapsed monotonic time;
+          // never republish an old located pose with a fresh timestamp.
+          if (last_tracking_prediction > 0 && tracking_period > 0 &&
+              tracking_now >= next_wait_tracking_update &&
+              !synthetic_head_sweep && !synthetic_body_inspection &&
+              !synthetic_roomscale_path && !synthetic_crouch_path &&
+              !synthetic_neck_pivot_path && !synthetic_controller_path) {
+            poll_session_events();
+            if (!session_running_) break;
+            const auto elapsed_ns = std::chrono::duration_cast<
+                std::chrono::nanoseconds>(tracking_now - last_tracking_prediction_at).count();
+            darktidevr::math::Pose wait_head{};
+            bool wait_head_valid{};
+            update_tracking(last_tracking_prediction + elapsed_ns, true,
+                            wait_head, wait_head_valid);
+            next_wait_tracking_update = tracking_now +
+                std::chrono::nanoseconds(tracking_period);
+          }
           std::this_thread::sleep_for(std::chrono::microseconds(500));
         }
         if (opened_eyes->ready_fence->GetCompletedValue() <=
@@ -1585,224 +1843,22 @@ class OpenXrProbe {
       poll_session_events();
       XrFrameWaitInfo wait_info{XR_TYPE_FRAME_WAIT_INFO};
       XrFrameState frame_state{XR_TYPE_FRAME_STATE};
+      report_pose_wait("pair_wait", pair_wait_tick);
+      const auto runtime_wait_tick = GetTickCount64();
       check_xr(xrWaitFrame(session_, &wait_info, &frame_state),
                "xrWaitFrame(theatre)");
+      report_pose_wait("xrWaitFrame", runtime_wait_tick);
       XrFrameBeginInfo frame_begin{XR_TYPE_FRAME_BEGIN_INFO};
       check_xr(xrBeginFrame(session_, &frame_begin), "xrBeginFrame(theatre)");
-      bool head_recenter_requested = reference_space_recenter_pending_;
-      reference_space_recenter_pending_ = false;
-      if (!synthetic_controller_path) {
-        sync_controller_actions(frame_state.predictedDisplayTime);
-      }
-
-      bool submit_layer = frame_state.shouldRender == XR_TRUE;
+      last_tracking_prediction = frame_state.predictedDisplayTime;
+      tracking_period = frame_state.predictedDisplayPeriod;
+      last_tracking_prediction_at = std::chrono::steady_clock::now();
+      next_wait_tracking_update = last_tracking_prediction_at +
+          std::chrono::nanoseconds(tracking_period);
       darktidevr::math::Pose current_head{};
       bool current_head_valid{};
-      if (stereo && submit_layer) {
-        XrViewState view_state{XR_TYPE_VIEW_STATE};
-        XrViewLocateInfo locate_info{XR_TYPE_VIEW_LOCATE_INFO};
-        locate_info.viewConfigurationType =
-            XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-        locate_info.displayTime = frame_state.predictedDisplayTime;
-        locate_info.space = local_space_;
-        std::uint32_t located_count{};
-        check_xr(xrLocateViews(session_, &locate_info, &view_state,
-                               static_cast<std::uint32_t>(located_views.size()),
-                               &located_count, located_views.data()),
-                 "xrLocateViews(theatre stereo)");
-        const auto valid_flags = XR_VIEW_STATE_POSITION_VALID_BIT |
-                                 XR_VIEW_STATE_ORIENTATION_VALID_BIT;
-        submit_layer = located_count == located_views.size() &&
-                       (view_state.viewStateFlags & valid_flags) == valid_flags;
-        if (submit_layer) {
-          const float average_vertical_span =
-              ((located_views[0].fov.angleUp -
-                located_views[0].fov.angleDown) +
-               (located_views[1].fov.angleUp -
-                located_views[1].fov.angleDown)) *
-              0.5F;
-          rendered_symmetric_fov =
-              {0.0F, 0.0F, average_vertical_span * 0.5F,
-               average_vertical_span * -0.5F};
-          current_head.position = {
-              (located_views[0].pose.position.x +
-               located_views[1].pose.position.x) *
-                  0.5F,
-              (located_views[0].pose.position.y +
-               located_views[1].pose.position.y) *
-                  0.5F,
-              (located_views[0].pose.position.z +
-               located_views[1].pose.position.z) *
-                  0.5F};
-          current_head.orientation = {
-              located_views[0].pose.orientation.x,
-              located_views[0].pose.orientation.y,
-              located_views[0].pose.orientation.z,
-              located_views[0].pose.orientation.w};
-          current_head_valid = true;
-        }
-        if (submit_layer && head_pose_writer) {
-          if (head_recenter_requested) {
-            head_recenter_pose =
-                darktidevr::core::horizon_locked_recenter_pose(current_head);
-            synthetic_roomscale_origin = *head_recenter_pose;
-            controller_recenter_pose_ = *head_recenter_pose;
-            // Recentring changes the tracking-space reference, not the game
-            // character's already-applied world displacement. Keep the
-            // cumulative root target continuous so reset-view cannot teleport
-            // the collision capsule back toward its spawn point.
-            recentered_view_poses_valid = false;
-            rendered_pair_pose_ready_value = 0;
-            head_pose_history.clear();
-            // A flat panel is anchored independently in LOCAL space. Force the
-            // active presentation state to rebuild it from this same leveled
-            // centre-head pose, otherwise a recenter corrects the world while
-            // leaving a loading board at its old yaw.
-            flat_fallback_anchor_state.reset();
-            ++head_recenter_generation;
-            std::cout << "openxr.head_recenter=applied\n";
-          }
-          if (!head_recenter_pose) {
-            head_recenter_pose =
-                darktidevr::core::horizon_locked_recenter_pose(current_head);
-            synthetic_roomscale_origin = *head_recenter_pose;
-            controller_recenter_pose_ = *head_recenter_pose;
-            ++head_recenter_generation;
-          }
-          if (synthetic_roomscale_path) {
-            if (!synthetic_roomscale_origin) {
-              synthetic_roomscale_origin = *head_recenter_pose;
-            }
-            const auto synthetic_position =
-                darktidevr::harness::synthetic_roomscale_position(
-                    synthetic_roomscale_frames++);
-            current_head.position = {
-                synthetic_roomscale_origin->position.x + synthetic_position.x,
-                synthetic_roomscale_origin->position.y + synthetic_position.y,
-                synthetic_roomscale_origin->position.z + synthetic_position.z};
-          }
-          if (synthetic_crouch_path) {
-            if (!synthetic_roomscale_origin) {
-              synthetic_roomscale_origin = *head_recenter_pose;
-            }
-            const auto synthetic_position =
-                darktidevr::harness::synthetic_crouch_position(
-                    synthetic_crouch_frames++);
-            current_head.position = {
-                synthetic_roomscale_origin->position.x + synthetic_position.x,
-                synthetic_roomscale_origin->position.y + synthetic_position.y,
-                synthetic_roomscale_origin->position.z + synthetic_position.z};
-          }
-          const auto head_translation =
-              darktidevr::core::sliding_head_translation(
-                  *head_recenter_pose, current_head, {0.0F, 1.2F});
-          auto delta = head_translation.camera_delta;
-          body_follow_offset.x += head_translation.body_follow_delta.x;
-          body_follow_offset.y += head_translation.body_follow_delta.y;
-          body_follow_offset.z += head_translation.body_follow_delta.z;
-          latest_camera_translation = delta.position;
-          latest_body_follow_offset = body_follow_offset;
-          controller_recenter_pose_ = *head_recenter_pose;
-          if (synthetic_head_sweep) {
-            const auto synthetic =
-                darktidevr::harness::synthetic_head_path_sample(
-                    synthetic_head_frames++, delta.position);
-            delta = synthetic.delta;
-            ++synthetic_head_phase_frames[
-                static_cast<std::size_t>(synthetic.phase)];
-          }
-          if (synthetic_body_inspection) {
-            delta = darktidevr::harness::synthetic_body_inspection_pose(
-                delta.position);
-            ++synthetic_body_inspection_frames;
-          }
-          if (synthetic_neck_pivot_path) {
-            delta = darktidevr::harness::synthetic_neck_pivot_path_sample(
-                synthetic_head_frames++, delta.position);
-          }
-          darktidevr::core::SharedHeadPoseSample pose_sample{};
-          pose_sample.sequence = ++head_pose_sequence;
-          pose_sample.recenter_generation = head_recenter_generation;
-          pose_sample.pose = delta;
-          pose_sample.body_follow_offset = body_follow_offset;
-          pose_sample.render_vertical_fov_radians =
-              rendered_symmetric_fov.angleUp -
-              rendered_symmetric_fov.angleDown;
-          pose_sample.render_aspect_ratio = render_aspect_ratio;
-          pose_sample.render_width =
-              views_.front().recommendedImageRectWidth;
-          pose_sample.render_height =
-              views_.front().recommendedImageRectHeight;
-          const auto eye_dx = located_views[1].pose.position.x -
-                              located_views[0].pose.position.x;
-          const auto eye_dy = located_views[1].pose.position.y -
-                              located_views[0].pose.position.y;
-          const auto eye_dz = located_views[1].pose.position.z -
-                              located_views[0].pose.position.z;
-          pose_sample.ipd_metres =
-              std::sqrt(eye_dx * eye_dx + eye_dy * eye_dy + eye_dz * eye_dz);
-          if (stage_space_ != XR_NULL_HANDLE) {
-            XrSpaceLocation stage_head{XR_TYPE_SPACE_LOCATION};
-            check_xr(xrLocateSpace(view_space_, stage_space_,
-                                   frame_state.predictedDisplayTime,
-                                   &stage_head),
-                     "xrLocateSpace(VIEW in STAGE)");
-            const auto floor_flags = XR_SPACE_LOCATION_POSITION_VALID_BIT |
-                                     XR_SPACE_LOCATION_POSITION_TRACKED_BIT;
-            if ((stage_head.locationFlags & floor_flags) == floor_flags) {
-              pose_sample.floor_eye_height_metres =
-                  stage_head.pose.position.y;
-            }
-          }
-          runtime_ipd_metres_ = pose_sample.ipd_metres;
-          const darktidevr::math::Pose submitted_head_delta{
-              delta.orientation,
-              {delta.position.x * projection_translation_scale,
-               delta.position.y * projection_translation_scale,
-               delta.position.z * projection_translation_scale}};
-          for (std::size_t eye = 0; eye < located_views.size(); ++eye) {
-            pose_sample.render_frusta[eye] = {
-                located_views[eye].fov.angleLeft,
-                located_views[eye].fov.angleRight,
-                located_views[eye].fov.angleDown,
-                located_views[eye].fov.angleUp};
-          }
-          if (!head_pose_writer->publish(pose_sample)) {
-            throw std::runtime_error("Shared head-pose publication failed");
-          }
-          for (std::size_t eye = 0; eye < located_views.size(); ++eye) {
-            const darktidevr::math::Pose current_eye{
-                {located_views[eye].pose.orientation.x,
-                 located_views[eye].pose.orientation.y,
-                 located_views[eye].pose.orientation.z,
-                 located_views[eye].pose.orientation.w},
-                {located_views[eye].pose.position.x,
-                 located_views[eye].pose.position.y,
-                 located_views[eye].pose.position.z}};
-            // Projection layers are submitted in absolute LOCAL space. The
-            // game camera consumes a delta from the first tracked head pose,
-            // so anchor that same full 6DoF delta back onto the exact pose
-            // which established the baseline. The helper also preserves the
-            // runtime eye-from-head transform (including physical IPD).
-            const auto anchored_eye =
-                darktidevr::core::anchored_recentered_eye_pose(
-                    *head_recenter_pose, submitted_head_delta, current_head,
-                    current_eye);
-            recentered_view_poses[eye].orientation = {
-                anchored_eye.orientation.x, anchored_eye.orientation.y,
-                anchored_eye.orientation.z, anchored_eye.orientation.w};
-            recentered_view_poses[eye].position = {
-                anchored_eye.position.x, anchored_eye.position.y,
-                anchored_eye.position.z};
-          }
-          recentered_view_poses_valid = true;
-          head_pose_history.emplace_back(head_pose_sequence,
-                                         recentered_view_poses);
-          while (head_pose_history.size() > 512) {
-            head_pose_history.pop_front();
-          }
-        }
-      }
+      bool submit_layer = update_tracking(frame_state.predictedDisplayTime,
+          frame_state.shouldRender == XR_TRUE, current_head, current_head_valid);
       bool submitted_shared_pair_this_frame{};
       bool submitted_cached_pair_this_frame{};
       bool submitted_flat_fallback_this_frame{};
@@ -1819,16 +1875,20 @@ class OpenXrProbe {
                                            &acquire_info,
                                            &image_indices[eye]),
                    "xrAcquireSwapchainImage(theatre)");
+          const auto swapchain_eye_tick = GetTickCount64();
           check_xr(xrWaitSwapchainImage(theatre_swapchains[eye], &image_wait),
                    "xrWaitSwapchainImage(theatre)");
+          report_pose_wait("swapchain_eye", swapchain_eye_tick);
           resources[eye] = theatre_images[eye][image_indices[eye]].texture;
         }
         if (flat_swapchain != XR_NULL_HANDLE) {
           check_xr(xrAcquireSwapchainImage(flat_swapchain, &acquire_info,
                                            &flat_image_index),
                    "xrAcquireSwapchainImage(flat capture)");
+          const auto swapchain_flat_tick = GetTickCount64();
           check_xr(xrWaitSwapchainImage(flat_swapchain, &image_wait),
                    "xrWaitSwapchainImage(flat capture)");
+          report_pose_wait("swapchain_flat", swapchain_flat_tick);
           flat_resource = flat_images[flat_image_index].texture;
         }
 
@@ -2461,8 +2521,10 @@ class OpenXrProbe {
         const auto signal_value = ++fence_value;
         check(queue->Signal(fence.Get(), signal_value),
               "ID3D12CommandQueue::Signal(theatre)");
+        const auto gpu_wait_tick = GetTickCount64();
         wait_for_fence(fence.Get(), signal_value, fence_event,
                        "ID3D12Fence::SetEventOnCompletion(theatre)");
+        report_pose_wait("gpu_fence", gpu_wait_tick);
         if (shared_eye_readback_copied_this_frame) {
           const auto eye_description = opened_eyes->eyes[0]->GetDesc();
           const std::array<const char*, 2> labels{"left", "right"};
@@ -3421,7 +3483,9 @@ class OpenXrProbe {
       frame_end.environmentBlendMode = environment_blend_mode_;
       frame_end.layerCount = layer_count;
       frame_end.layers = layer_count != 0 ? layers.data() : nullptr;
+      const auto xrEndFrame_tick = GetTickCount64();
       check_xr(xrEndFrame(session_, &frame_end), "xrEndFrame(theatre)");
+      report_pose_wait("xrEndFrame", xrEndFrame_tick);
       ++processed_frames;
       poll_session_events();
       if ((frame + 1) % 120 == 0) {

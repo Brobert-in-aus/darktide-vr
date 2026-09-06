@@ -12455,7 +12455,12 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
   }
   streamline_outer_present_active_frame.store(present,
                                               std::memory_order_release);
+  const auto present_began_ms = GetTickCount64();
   const auto result = original_present(swapchain, interval, flags);
+  if (trace_streamline_submission_images()) {
+    write_streamline_probe_log("STEREO_PRESENT_TIMING\tpresent_frame=%llu\tbegin_ms=%llu\tend_ms=%llu\r\n",
+        present, present_began_ms, GetTickCount64());
+  }
   streamline_outer_present_active_frame.store(0, std::memory_order_release);
   if (SUCCEEDED(result) && streamline_input_snapshot_probe_requested.load(
           std::memory_order_acquire)) {
@@ -15867,10 +15872,14 @@ int read_head_pose(float* values, unsigned long long* sequence,
     return 1;
   }
   darktidevr::core::SharedHeadPoseSample sample{};
-  if (!shared_head_pose_reader().read(sample)) {
+  darktidevr::core::SharedHeadPoseReadDiagnostics diagnostic{};
+  if (!shared_head_pose_reader().read(sample, &diagnostic)) {
     if (trace_streamline_submission_images()) {
-      write_streamline_probe_log("HEAD_POSE_READ\tpresent_frame=%llu\tresult=2\r\n",
-          static_cast<unsigned long long>(present_count.load(std::memory_order_relaxed)));
+      write_streamline_probe_log("HEAD_POSE_READ\tpresent_frame=%llu\tresult=2\treason=%s\ttick_ms=%llu\tpublished_ms=%llu\tsequence=%llu\tepoch_before=%llu\tepoch_after=%llu\tattempts=%u\r\n",
+          static_cast<unsigned long long>(present_count.load(std::memory_order_relaxed)),
+          diagnostic.reason, diagnostic.now_ms, diagnostic.published_ms,
+          diagnostic.sequence, diagnostic.epoch_before, diagnostic.epoch_after,
+          diagnostic.attempts);
     }
     return 2;
   }

@@ -45,6 +45,14 @@ int main(int argc, char** argv) {
       throw std::runtime_error("Live shared head pose is unavailable");
     }
     darktidevr::tests::isolate_transports();
+    darktidevr::core::SharedHeadPoseReadDiagnostics diagnostic{};
+    {
+      darktidevr::core::SharedHeadPoseReader absent_reader;
+      darktidevr::core::SharedHeadPoseSample absent_sample{};
+      expect(!absent_reader.read(absent_sample, &diagnostic) &&
+                 std::string(diagnostic.reason) == "mapping_unavailable",
+             "Missing transport must be distinguished from stale tracking");
+    }
     auto writer = std::make_unique<darktidevr::core::SharedHeadPoseWriter>();
     darktidevr::core::SharedHeadPoseReader reader;
     darktidevr::core::SharedHeadPoseSample sample{};
@@ -62,7 +70,12 @@ int main(int argc, char** argv) {
     sample.floor_eye_height_metres = 1.68F;
     expect(writer->publish(sample), "Valid shared pose was rejected");
     darktidevr::core::SharedHeadPoseSample received{};
-    expect(reader.read(received), "Published shared pose was unreadable");
+    expect(reader.read(received, &diagnostic), "Published shared pose was unreadable");
+    expect(std::string(diagnostic.reason) == "ok" &&
+               diagnostic.sequence == sample.sequence &&
+               diagnostic.epoch_before == diagnostic.epoch_after &&
+               diagnostic.now_ms >= diagnostic.published_ms,
+           "Successful read diagnostic did not describe the published packet");
     const auto first_transport_generation = received.transport_generation;
     expect(received.sequence == sample.sequence &&
                first_transport_generation != 0 &&
@@ -133,7 +146,11 @@ int main(int argc, char** argv) {
                    first_transport_generation + 1,
            "Head-pose writer generation must disambiguate an equal restart sequence");
     std::this_thread::sleep_for(std::chrono::milliseconds(275));
-    expect(!reader.read(received), "Stale shared pose remained readable");
+    expect(!reader.read(received, &diagnostic), "Stale shared pose remained readable");
+    expect(std::string(diagnostic.reason) == "stale" &&
+               diagnostic.now_ms - diagnostic.published_ms > 250 &&
+               diagnostic.sequence == sample.sequence && diagnostic.attempts == 4,
+           "Stale read must report its actual publication age without accepting it");
     sample.sequence = 8;
     sample.pose.position.x = std::numeric_limits<float>::infinity();
     expect(!writer->publish(sample), "Non-finite shared pose was accepted");

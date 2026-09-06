@@ -49,6 +49,7 @@ thread_local ActiveEvaluationState* active_evaluation{};
 std::mutex log_mutex;
 std::atomic<std::uint64_t> calls{};
 std::atomic<std::uint32_t> samples{};
+std::atomic<unsigned> timing_samples{};
 std::atomic<bool> probe_installed{};
 NgxCaptureWindow capture_window;
 constexpr std::uint64_t kCallLimit = 32768;
@@ -88,9 +89,36 @@ void write_line(const char* line, std::size_t length) {
   WriteFile(log_file, line, static_cast<DWORD>(length), &written, nullptr);
 }
 
+void record_slow_call(const char* operation, std::uint32_t kind,
+                      std::uint64_t began) {
+  const auto ended = GetTickCount64();
+  if (ended - began < 50 || timing_samples.fetch_add(1) >= 256) return;
+  std::scoped_lock lock(log_mutex);
+  static HANDLE timing_file = INVALID_HANDLE_VALUE;
+  if (timing_file == INVALID_HANDLE_VALUE) {
+    std::array<wchar_t, MAX_PATH> directory{};
+    const auto length = GetTempPathW(static_cast<DWORD>(directory.size()), directory.data());
+    if (!length || length >= directory.size()) return;
+    const auto path = std::wstring(directory.data(), length) + L"darktidevr-ngx-timing-" +
+        std::to_wstring(GetCurrentProcessId()) + L".log";
+    timing_file = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  }
+  if (timing_file == INVALID_HANDLE_VALUE) return;
+  std::array<char, 256> line{};
+  const auto length = std::snprintf(line.data(), line.size(),
+      "NGX_TIMING operation=%s feature_kind=%u begin_ms=%llu end_ms=%llu duration_ms=%llu\n",
+      operation, kind, began, ended, ended - began);
+  DWORD written{};
+  if (length > 0 && static_cast<std::size_t>(length) < line.size())
+    WriteFile(timing_file, line.data(), static_cast<DWORD>(length), &written, nullptr);
+}
+
 std::uint32_t create_hook(void* commands, std::uint32_t kind,
                            const void* parameters, void** handle) {
+  const auto began = GetTickCount64();
   const auto result = original_create(commands, kind, parameters, handle);
+  record_slow_call("create", kind, began);
   if (result == ngx::kSuccess && readable(handle, sizeof(void*)))
     feature_registry.created(*handle, kind, result);
   return result;
@@ -149,8 +177,10 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
       output_description.Format == DXGI_FORMAT_R8G8B8A8_UNORM;
   const auto previous_evaluation = active_evaluation;
   if (captured) active_evaluation = &output_state;
+  const auto began = GetTickCount64();
   const auto result = original(commands, feature, parameters, callback);
   active_evaluation = previous_evaluation;
+  record_slow_call("evaluate", identity.kind, began);
   if (captured && result == ngx::kSuccess) {
     std::scoped_lock lock(command_mutex);
     if (command_observations.add(reinterpret_cast<std::uintptr_t>(commands), call))

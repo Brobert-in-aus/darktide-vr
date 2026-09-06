@@ -298,15 +298,25 @@ bool SharedHeadPoseReader::ensure_open() {
   return true;
 }
 
-bool SharedHeadPoseReader::read(SharedHeadPoseSample& sample) {
+bool SharedHeadPoseReader::read(SharedHeadPoseSample& sample,
+                               SharedHeadPoseReadDiagnostics* diagnostics) {
+  SharedHeadPoseReadDiagnostics observation{};
+  auto finish = [&](const char* reason, bool success) {
+    observation.reason = reason;
+    if (diagnostics) *diagnostics = observation;
+    return success;
+  };
   if (!ensure_open()) {
-    return false;
+    return finish("mapping_unavailable", false);
   }
   const auto& data = *static_cast<const SharedLayout*>(view_);
   for (int attempt = 0; attempt < 4; ++attempt) {
     const auto before = data.epoch;
+    observation.attempts = attempt + 1;
+    observation.epoch_before = static_cast<std::uint64_t>(before);
     MemoryBarrier();
     if ((before & 1) != 0) {
+      observation.reason = "writer_busy";
       continue;
     }
     SharedHeadPoseSample candidate{};
@@ -336,15 +346,23 @@ bool SharedHeadPoseReader::read(SharedHeadPoseSample& sample) {
     MemoryBarrier();
     const auto after = data.epoch;
     const auto now_ms = GetTickCount64();
+    observation.now_ms = now_ms;
+    observation.published_ms = published_tick_ms;
+    observation.sequence = candidate.sequence;
+    observation.epoch_after = static_cast<std::uint64_t>(after);
     const auto fresh = now_ms >= published_tick_ms &&
                        now_ms - published_tick_ms <= 250;
     if (before == after && (after & 1) == 0 && fresh &&
         candidate.transport_generation != 0 && valid(candidate)) {
       sample = candidate;
-      return true;
+      return finish("ok", true);
     }
+    observation.reason = before != after || (after & 1) != 0
+        ? "read_collision" : now_ms < published_tick_ms ? "future_timestamp"
+        : !fresh ? "stale" : candidate.transport_generation == 0
+        ? "missing_generation" : "invalid_sample";
   }
-  return false;
+  return finish(observation.reason, false);
 }
 
 bool SharedHeadPoseReader::publish_rendered_pair(

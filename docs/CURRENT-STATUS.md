@@ -24,6 +24,14 @@ The runtime supplies eye dimensions (the current VDXR setup recommends
 Clustered-light visibility correction and billboard substitution are enabled
 by normal sync. Full-body and fixed HUD-panel presentation remain experimental.
 
+Head-pose starvation during bounded DLSS submissions is diagnosed and corrected:
+the pair-driven image wait now services fresh tracking independently. Before the
+change, seven reads rejected 343–469 ms-old poses; the same four-batch test now
+has zero failed reads. The delay comes from recreating two NVIDIA FG features
+on each diagnostic entry/exit (328–391 ms Presents). Image submission remains
+pair-driven, the 250 ms pose freshness gate is unchanged, and worn flicker
+acceptance remains pending. See the [output-boundary handoff](handoffs/2026-09-06-dlss-output-boundary.md#head-pose-starvation-investigation).
+
 ## Launch
 
 Optional menu-laser stabilization is available with `-MenuAimStabilization`.

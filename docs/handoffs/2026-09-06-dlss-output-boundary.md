@@ -367,10 +367,74 @@ The reserved pose trace captures seven failed reads around the batches. Frames
 2853, 2854, 2857 and 2862 have failed reads and fixed base-eye headings 83/97;
 surrounding successful tracking has changing user-facing headings. Other failed
 reads share a Present interval with a later tracked frame, so call order matters.
-The fixed-direction fallthrough is now corroborated; holding the last applied
-tracked camera on a missed read is the next fix, without relaxing native
-freshness checks. The reader now reports pose sample/failure counts and per-eye
+The fixed-direction fallthrough is now corroborated. A cached-camera fallback
+was proposed but rejected by the user before implementation: diagnose the
+failed reads instead. Native freshness checks and the camera fallback remain
+unchanged. The reader now reports pose sample/failure counts and per-eye
 headings around each batch. `pose-live-streamline.tsv`, `pose-live-report.txt`,
 `pose-live-ngx.log`, `pose-live-queue.log` preserve this evidence. Output state
 remains ambiguous after the single-subresource refinement; inspect precise
 barrier flags/subresource coverage before copying, rather than assuming UAV.
+
+
+## Head-pose starvation investigation
+
+The instrumented reproduction identifies all seven failed reads as stale,
+not seqlock collisions, invalid tracking, a missing mapping, or a writer restart.
+Publication ages are 343, 469, 422, 390, 469, 469 and 421 ms. Matching monotonic
+XR timings show the pair-driven wait blocking pose publication for 343–500 ms;
+there are no matching long xrWaitFrame, swapchain, or GPU-fence waits.
+Evidence: ignored `stall-before-streamline.tsv` and `stall-before-xr.log` in the
+same diagnostics archive. The 250 ms reader threshold is unchanged.
+
+This exposes an existing dependency from August 25: the XR loop waits for the
+game's next ready image before locating/publishing the next pose, while the game
+needs that pose to render. Four bounded DLSS submissions now make that wait long
+enough to reject tracking. Feature lifetimes already show recreation between
+batches; additional create/evaluate/Present timing separates the source of the
+long game frames from the demonstrated transport starvation.
+
+The candidate extracts the existing tracking/recenter/body-follow/pose-history
+path and also services it during the pair wait at the runtime's predicted display
+period. Each service calls xrLocateViews afresh at the previous predicted time
+advanced by elapsed monotonic nanoseconds. It preserves eye-pair submission
+cadence, pose-associated history, runtime extents and the 250 ms freshness gate.
+No cached pose receives a refreshed timestamp. Synthetic diagnostic paths retain
+their frame-count semantics and are excluded from intermediate updates.
+
+Do not change the default to continuous duplicate submissions: that path was
+previously rejected because it masks the game's actual frame rate from VDXR
+reprojection. OpenXR frame timing and prediction semantics are documented in the
+[Khronos xrWaitFrame reference](https://registry.khronos.org/OpenXR/specs/1.1/man/html/xrWaitFrame.html).
+
+Validation so far: native producer and XR harness Release builds pass; five
+focused CTests pass (`shared_head_pose`, `ngx_output_observation`,
+`ngx_queue_completion`, `ngx_command_observations`, `ngx_abi_reference`). The
+transport test checks fresh, missing, and stale diagnostic classification while
+retaining rejection of data older than 250 ms. Ready preflight and the launch's
+31-chunk Lua gate pass. Live candidate verification is in progress; this does
+not establish worn visual acceptance or complete DLSS output ownership.
+
+
+The tracking-service run passes the specific stale-read regression: all four
+batch windows have zero failed head-pose reads, with fresh sequences and stable
+per-eye camera headings. Long pair waits remain observable, but their most
+recent pose publication stays current. After startup, shared-ready advances
+and submission/fresh-pair rates match around 42–51 Hz without fallback, preserving
+pair-driven cadence. Five camera-labelled CTests also pass. Worn flicker
+acceptance remains open.
+
+Slow-call timing identifies the triggering work precisely: each diagnostic
+entry/exit recreates two NGX feature-kind-11 instances, about 140–171 ms each.
+The corresponding eight Present calls take 328–391 ms. The frame-generation
+creation churn, combined with the pre-existing pose publication dependency,
+explains why these diagnostic runs exposed failed reads. Intermediate tracking
+fixes that dependency; a continuous, correctly owned stereo submission history
+is still required to eliminate the feature churn itself.
+
+Evidence is archived as `stall-service-{streamline.tsv,ngx.log,queue.log,timing.log,xr.log,report.txt}`.
+This run does **not** reproduce the earlier six complete output observations:
+all captured FG evaluations lack HUDless input, so its output-completion count
+is zero. The output association reader correctly refuses success. Do not treat
+the pose regression pass as an NGX ownership pass. Next investigate when
+stereo tags reach FG relative to the batch cleanup/recreation lifecycle.
