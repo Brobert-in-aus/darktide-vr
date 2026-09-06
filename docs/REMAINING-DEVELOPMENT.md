@@ -21,7 +21,8 @@ latest instruction permits switching on a documented DLSS blocker: output
 association is now blocked at the installed NGX caller-validation boundary.
 The four-batch diagnostic passes, but generated XR publication remains disabled.
 See the [blocker and resume plan](handoffs/2026-09-06-dlss-unattended.md).
-The next active body is the all-family ranged aiming audit below.
+The ranged aiming candidate is awaiting worn validation. Unattended follow-up
+has progressed through HUD options/editor integration and input revision below.
 The melee query prototype remains non-damaging; user verification is not a claim
 that physical damage integration is complete.
 
@@ -145,8 +146,11 @@ Distance scales the physical panel to preserve approximately the same angular
 size. Internal scaling refreshes fixed HUD elements without changing saved
 Custom HUD item positions or world markers. Live desktop input and menu reopen
 were checked; worn acceptance of non-default values remains pending.
-Add configurable action/key bindings and controller button glyphs/prompts
-instead of the current mouse/keyboard prompts.
+Gameplay bindings now expose the eleven existing button/trigger/grip channels
+in Mod Options, retaining original defaults and adding combat ability plus
+separate jump/dodge and interact/reload. Changing a held binding releases its old
+action and requires release before the replacement can activate. Add matching
+controller button glyphs/prompts instead of current mouse/keyboard prompts.
 The [input revision audit](INPUT-REVISION-AUDIT.md) maps current controls: right
 stick scrolls menus but has no gameplay route. R3 tag and the left menu button
 now reach stock HUD/UI handlers; live module initialization passes, with worn
@@ -155,8 +159,8 @@ release on activation/reconnect. Use
 the available controls to make the full layout more sensible. Review gameplay,
 weapon specials, movement, interactions and menu
 contexts together, including hold/toggle behavior and conflicting actions.
-Implement remapping and matching controller prompts with the revised defaults.
-Configurable bindings and revised defaults remain backlog work.
+Matching controller prompts, right-stick gameplay and revised ergonomic defaults
+remain backlog work. The configurable mapping candidate needs worn validation.
 Desktop layout editing now draws "Use the desktop view to edit your HUD layout."
 into the shared HUD texture while the editor is open. It is removed on close.
 An XR freeze occurred with synchronized producer frames continuing; the harness

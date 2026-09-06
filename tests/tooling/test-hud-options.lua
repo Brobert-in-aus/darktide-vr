@@ -61,6 +61,7 @@ panel.apply_settings(0/0,math.huge,'bad')
 assert(panel.scale==0.63 and panel.distance==2 and panel.object_scale==2.08)
 assert(not panel.apply_settings(100,2,100),'default settings are not idempotent')
 get_mod=function() return mod end
+mod.io_dofile=function() return dofile(arg[4]) end
 local data=dofile(arg[2])
 local text=dofile(arg[3])
 local options=data.options.widgets[1]

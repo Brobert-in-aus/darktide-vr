@@ -5331,63 +5331,10 @@ function presentation.inject_primary_action(self, main_t)
     )
 end
 
-presentation.gameplay_input_bindings = {
-    {
-        mask = 1,
-        pressed = { "action_one_pressed" },
-        held = { "action_one_hold" },
-        released = { "action_one_release" }
-    },
-    {
-        mask = 2,
-        pressed = { "action_two_pressed" },
-        held = { "action_two_hold" },
-        released = { "action_two_release" }
-    },
-    {
-        mask = 4,
-        pressed = { "weapon_extra_pressed" },
-        held = { "weapon_extra_hold" },
-        released = { "weapon_extra_release" }
-    },
-    {
-        mask = 8,
-        pressed = { "interact_pressed", "weapon_reload_pressed" },
-        held = { "interact_hold", "weapon_reload_hold" },
-        released = {}
-    },
-    {
-        mask = 16,
-        pressed = { "quick_wield" },
-        held = {},
-        released = {}
-    },
-    {
-        mask = 32,
-        pressed = { "jump", "dodge" },
-        held = { "jump_held" },
-        released = {}
-    },
-    {
-        mask = 64,
-        pressed = { "crouch" },
-        held = { "crouching" },
-        released = {}
-    },
-    {
-        mask = 128,
-        pressed = { "sprint" },
-        held = { "sprinting" },
-        released = {}
-    },
-    {
-        mask = 512,
-        pressed = { "grenade_ability_pressed" },
-        held = { "grenade_ability_hold" },
-        released = { "grenade_ability_release" }
-    }
-}
-
+presentation.controller_bindings = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings"
+).install(mod)
+presentation.gameplay_input_bindings = presentation.controller_bindings.bindings
 function presentation.inject_ephemeral_action_names(
         actions, cache, names, delivered, missing)
     for name_index = 1, #names do
@@ -5447,12 +5394,12 @@ function presentation.inject_gameplay_input(self, main_t)
         controller_observation.gameplay_sequence,
         controller_observation.gameplay_movement)
     controller_observation.gameplay_input_active = active and result == 0
-    local pressed = tonumber(controller_observation.gameplay_pressed[0])
+    local pressed, held, released = presentation.controller_bindings.sample(
+        controller_observation.gameplay_input_active,
+        tonumber(controller_observation.gameplay_held[0]))
     if presentation.gameplay_ui then
         presentation.gameplay_ui.sample(controller_observation.gameplay_input_active, pressed)
     end
-    local held = tonumber(controller_observation.gameplay_held[0])
-    local released = tonumber(controller_observation.gameplay_released[0])
     controller_observation.gameplay_input_last_sequence =
         tonumber(controller_observation.gameplay_sequence[0])
     if result ~= 0 and pressed == 0 and held == 0 and released == 0 then
@@ -5514,7 +5461,7 @@ mod:hook_safe(
         presentation.scan_movement_inventory(self, frame)
         controller_observation.gameplay_stick_active = false
         local gameplay_held = controller_observation.gameplay_input_enabled and
-            tonumber(controller_observation.gameplay_held[0]) or 0
+            presentation.controller_bindings.held or 0
         if controller_observation.gameplay_input_active and
                 self._action_lookup and self._input_cache then
             local cache_index = self._buffer_index and self:_buffer_index(frame)

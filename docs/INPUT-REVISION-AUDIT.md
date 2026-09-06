@@ -87,3 +87,38 @@ Live validation: the newly deployed `_handle_tagging` hook installed after
 gameplay HUD creation. Harness `shared_ready=10621`, fresh-pair rate about 44 fps,
 zero interval fallback and zero pose mismatches. No physical controller action
 was simulated; this establishes load/render health, not worn input acceptance.
+
+## Configurable gameplay bindings
+
+Mod Options > Darktide VR > Gameplay controller bindings now exposes all eleven
+existing button/trigger/grip channels. The original choices remain the defaults.
+New choices include separate jump/dodge, separate interact/reload, combat
+ability, inspect weapon and unbound. Right-stick axes, menu pointer controls,
+aim handedness, communication wheel and push-to-talk are outside this change.
+
+The Lua catalog defines both options and game action delivery. Native bits stay
+physical channels; resolved held/pressed/released masks are game-side state.
+Combined and split actions aggregate before edge detection, so two controls
+bound to jump cannot retrigger it while either remains held. Duplicate mappings
+are intentional aliases, not conflicts. A changed mapping releases old actions
+and quarantines currently held physical controls until individually released.
+Invalid saved choices fall back to the corresponding original binding.
+Bindings do not overwrite mouse/keyboard input or globally select gamepad mode.
+
+Offline checks: `controller_bindings`, `gameplay_ui_input`, `hud_options`,
+`hud_panel` and pinned LuaJIT compilation pass (29 chunks). Tests include live
+remapping, aliases, combined/split overlap, inactive/reentry transitions,
+unbound/invalid values, unrelated setting callbacks, localization and the
+audited stock input-name contract. Physical combat-ability use and revised
+layout ergonomics still require a worn check. Matching controller prompts and
+right-stick gameplay use remain separate backlog items.
+
+Live desktop validation: dropdown labels/options render and accept selection.
+Right trigger was temporarily set to Unbound; entering gameplay persisted that
+value in `user_settings.config` and reopening Mod Options retained it. Primary
+fire was restored through the dropdown. After closing menus, `shared_ready=4587`,
+fresh-pair rate 44.4 fps, no interval fallback and no pose mismatches; no mod
+errors were found. The installed DMF saves changes on game-state transitions,
+so a menu reopen alone is not proof of a disk save.
+Normal Quit Game and its confirmation worked; after shutdown the settings file
+confirmed the original right-trigger `primary` value was restored.

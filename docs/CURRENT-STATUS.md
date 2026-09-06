@@ -24,6 +24,10 @@ R3 tagging and the left menu button now have game-side delivery through stock
 HUD/UI handlers. Inherited gameplay button holds require release after entering
 gameplay or reconnecting. Live initialization passes; worn button acceptance is
 pending. See the [input revision audit](INPUT-REVISION-AUDIT.md).
+The Gameplay controller bindings section now remaps the eleven existing
+button/trigger/grip controls, including combat ability and separate jump/dodge
+or interact/reload choices. Original defaults remain. Menu pointer controls and
+aim hands are unchanged; controller prompts and right-stick gameplay are pending.
 
 Mod Options > Darktide VR exposes HUD size, distance, and text/icon size sliders.
 Defaults (100%, 2 m, 100%) preserve the accepted HUD layout. Distance changes
