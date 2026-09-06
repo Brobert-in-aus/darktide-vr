@@ -48,6 +48,42 @@ local text = _get_view_input_text("hotkey_inventory")
             self.assertTrue(all(not case["found"] for case in report["user_acceptance_cases"].values()))
             self.assertEqual(report["calls"][0]["controller_status"], "route_and_live_check_required")
 
+    def test_shared_helpers_and_method_declarations(self):
+        found = audit.scan('''function ViewElementWithLongName:_get_input_text(action)
+return self:_localized_input_text(action)
+end
+local left = _get_input_text("navigate_primary_left_pressed")
+local tab = self:_get_input_text(input_action_left)
+local tutorial = self:_get_localized_input_text("interact")
+''', "fixture.lua")
+        self.assertEqual(len(found), 4)
+        self.assertEqual([r["line"] for r in found], [2, 4, 5, 6])
+        self.assertTrue(all(r["kind"] == "hint_helper" for r in found))
+        self.assertEqual(found[1]["literal_action"], "navigate_primary_left_pressed")
+        self.assertEqual(found[2]["resolution"], "dynamic_review_required")
+
+    def test_raw_key_data_is_not_a_gameplay_action(self):
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            ui = root / "scripts/ui"
+            ui.mkdir(parents=True)
+            (ui / "fixture.lua").write_text('''
+local preview = InputUtils.localized_string_from_key_info(value)
+local cancel = InputUtils.key_axis_locale("escape")
+local hint = self:_localized_input_text(action)
+''')
+            report = audit.inventory(root)
+            self.assertEqual(report["summary"]["calls"], 3)
+            self.assertEqual(report["summary"]["dynamic"], 1)
+            self.assertEqual(report["summary"]["by_kind"]["raw_key_formatter"], 2)
+            for record in report["calls"][:2]:
+                self.assertIsNone(record["action_expression"])
+                self.assertIsNone(record["literal_action"])
+                self.assertEqual(record["action_candidates"], [])
+                self.assertEqual(record["resolution"], "key_data_not_action")
+                self.assertEqual(record["controller_status"], "preserve_device_key_text_review")
+            self.assertEqual(report["calls"][1]["key_expression"], '"escape"')
+
     def test_empty_source_is_an_error(self):
         with tempfile.TemporaryDirectory() as name:
             with self.assertRaises(ValueError):

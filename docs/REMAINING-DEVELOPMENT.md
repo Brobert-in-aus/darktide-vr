@@ -3,8 +3,9 @@
 ## Current priority order: end of 6 September 2026
 
 This list supersedes task ordering and pending labels in the chronological
-details below. Development is stopped for the night. Resume from the
-[fresh-session handover](handoffs/2026-09-06-end-of-day.md).
+details below. Development resumed on 7 September; the user is at work all day
+and cannot provide worn verification. Continue automated/offline work from the
+[current handoff](handoffs/2026-09-07-development.md), recording worn checks as pending.
 Updated after the user's follow-up: DLSS image quality is active again, blur
 first; performance investigation is active work. See [mission readiness](MISSION-READINESS.md)
 for the smaller set needed before a first end-to-end mission attempt.
@@ -75,10 +76,11 @@ for the smaller set needed before a first end-to-end mission attempt.
 
 Completed/accepted: smooth and snap turning; tested menu changes; left and right
 hand alignment; hand-directed button melee; the hub launch stale-request fix.
-Latest not-yet-deployed candidate: 04b6053 (hub/combat bindings, stock inventory
-hotkey delivery, shared onboarding/tutorial hints). Game and XR are shut down;
-normal Quest proximity behavior is restored. See the handover for exact tests,
-evidence, commit chain and first-launch steps.
+Candidate 04b6053 (hub/combat bindings, stock inventory hotkey delivery, shared
+onboarding/tutorial hints) was deployed on 7 September after Ready preflight.
+Hub launch and stereo initialization passed; game/XR are running at that
+checkpoint. Worn controller/hint acceptance remains pending. See the current
+handoff for exact tests and evidence.
 
 ## Historical subsystem detail and evidence
 

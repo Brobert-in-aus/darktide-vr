@@ -1,9 +1,16 @@
 # Current status and operation
 
-Updated 6 September 2026. This page supersedes historical feasibility documents
+Updated 7 September 2026. This page supersedes historical feasibility documents
 for current defaults and operating instructions.
 
-**End-of-day checkpoint:** development is stopped; Darktide/XR are closed and
+**Development resumed 7 September:** the user is at work and cannot verify in
+headset today. Continue automated/offline work and record worn checks as pending.
+Ready preflight passed and the saved controller/onboarding candidate is now
+deployed in the hub with fresh stereo initialization and nonzero shared_ready.
+See the [current handoff](handoffs/2026-09-07-development.md) for evidence and
+the expanded shared hint audit. A 20-minute task heartbeat is active.
+
+**Historical 6 September end-of-day checkpoint:** development was stopped; Darktide/XR were closed and
 normal Quest proximity behavior is restored. Start tomorrow with the
 [6 September handover](handoffs/2026-09-06-end-of-day.md) and
 [current ordered todo list](REMAINING-DEVELOPMENT.md#current-priority-order-end-of-6-september-2026).
@@ -16,7 +23,7 @@ reactivates DLSS image-quality work: fix blur first, then duplicated/displaced
 elements, which may be separate. DLSS-related and general performance optimization
 are active tasks. See [first mission readiness](MISSION-READINESS.md) for the
 explicit mission-mode/input/aim restrictions and minimum end-to-end test scope.
-This checkpoint supersedes older same-day status notes below.
+The 7 September continuation above supersedes this shutdown/deployment state.
 
 ## Supported development path
 

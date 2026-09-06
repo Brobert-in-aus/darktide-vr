@@ -11,8 +11,12 @@ from collections import Counter
 from pathlib import Path
 
 
-CALL = re.compile(r"\b(input_text_for_current_input_device|localize_with_button_hint|"
-                  r"get_input_alias_key|_get_view_input_text|_get_ingame_input_text)\s*\(")
+RAW_KEY_APIS = {"localized_string_from_key_info", "key_axis_locale"}
+HELPER_APIS = {"_get_view_input_text", "_get_ingame_input_text", "_get_input_text",
+               "_localized_input_text", "_get_localized_input_text"}
+APIS = RAW_KEY_APIS | HELPER_APIS | {
+    "input_text_for_current_input_device", "localize_with_button_hint", "get_input_alias_key"}
+CALL = re.compile(r"\b(" + "|".join(sorted(APIS)) + r")\s*\(")
 LUA_TOKEN = re.compile(r"--\[(=*)\[.*?\]\1\]|--[^\n]*|"
                        r"\[(=*)\[.*?\]\2\]|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'",
                        re.DOTALL)
@@ -50,25 +54,35 @@ def scan(source, path):
     mask = masked(source)
     records = []
     for match in CALL.finditer(mask):
-        # The two local helpers are also declarations; report calls only.
-        prefix = mask[max(0, match.start()-12):match.start()]
-        if re.search(r"\bfunction\s+$", prefix):
+        # Local and qualified method declarations are not call sites.
+        prefix = mask[mask.rfind("\n", 0, match.start())+1:match.start()]
+        if re.search(r"\bfunction\s+[\w.:]*$", prefix):
             continue
         args, end = arguments(source, mask, match.end()-1)
         api = match.group(1)
+        raw_key = api in RAW_KEY_APIS
         index = 1 if api == "input_text_for_current_input_device" else 0
         expression = args[index] if len(args) > index else ""
         # Conditional mouse/gamepad expressions expose multiple candidates.
         # Listing them does not establish which device branch will be active.
         candidates = re.findall(r'''["']([A-Za-z0-9_]+)["']''', expression)
-        records.append({
+        record = {
             "path": path, "line": source.count("\n", 0, match.start())+1,
-            "api": api, "arguments": args, "action_expression": expression,
-            "literal_action": literal(expression), "action_candidates": candidates,
-            "resolution": "literal" if literal(expression) else "dynamic_review_required",
-            "controller_status": "route_and_live_check_required",
+            "api": api, "arguments": args,
+            "kind": "raw_key_formatter" if raw_key else
+                    "hint_helper" if api in HELPER_APIS else "hint_or_alias_api",
+            "action_expression": None if raw_key else expression,
+            "literal_action": None if raw_key else literal(expression),
+            "action_candidates": [] if raw_key else candidates,
+            "resolution": "key_data_not_action" if raw_key else
+                          "literal" if literal(expression) else "dynamic_review_required",
+            "controller_status": "preserve_device_key_text_review" if raw_key else
+                                 "route_and_live_check_required",
             "source_excerpt": source[match.start():end],
-        })
+        }
+        if raw_key:
+            record["key_expression"] = expression
+        records.append(record)
     return records
 
 
@@ -101,7 +115,8 @@ def inventory(root):
     return {"kind": "source_inventory_not_visual_acceptance", "files": files,
             "summary": {"files": len(files), "calls": len(records),
                         "by_api": dict(Counter(r["api"] for r in records)),
-                        "dynamic": sum(r["literal_action"] is None for r in records)},
+                        "by_kind": dict(Counter(r["kind"] for r in records)),
+                        "dynamic": sum(r["resolution"] == "dynamic_review_required" for r in records)},
             "user_acceptance_cases": checks, "calls": records}
 
 
