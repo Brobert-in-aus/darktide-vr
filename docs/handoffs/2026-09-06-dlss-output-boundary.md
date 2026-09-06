@@ -166,3 +166,30 @@ their reports under `artifacts/diagnostics/dlss-output-boundary-20260906`.
 The guarded outer call path has passed this first live compatibility check;
 continuous stereo history, feature-qualified source/output association and
 queue completion are still required before any generated XR publication.
+
+## Feature identity refinement
+
+Prepared explicit hooks for the inspected runtime's exported CreateFeature and
+ReleaseFeature, preserving the original arguments/results and internal NVIDIA
+dispatch. The bounded registry accepts successful observed creations, records
+their feature kind and a new lifetime identity, and invalidates at release entry.
+Unknown handles, failed creations, ambiguous duplicate creation without release,
+and registry saturation never become inferred frame-generation identities.
+Resource queries now require a known FrameGeneration (11) handle. The official
+header ABI gate also verifies that enum value.
+
+Schema 3 carries feature kind/lifetime. The reader retains schema 1/2 parameter
+observations as historical evidence, but only schema 3 can increment
+`FeatureQualifiedObservations`. That field still does not certify source-frame
+association, GPU completion or generated publication. Native Release and four
+focused tests pass (registry, window, reader, official ABI), including handle
+reuse across feature kinds and rejection of stale keys on an upscaler handle.
+These lifetime hooks have not yet been live-tested at this checkpoint.
+
+The user reports that initial gameplay switched between stereo and two
+side-by-side frames several times during the first live run. Record this as a
+visual regression, not a pass inferred from counters. Presentation logs show
+loading/menu mode changes followed by world mode, but do not identify the exact
+image seen at each reported switch. Packed-output fallback leaking into XR is a
+hypothesis to investigate. Later intervals are fresh stereo with zero fallback;
+that does not close startup visual acceptance.

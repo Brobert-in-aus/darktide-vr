@@ -52,6 +52,7 @@ struct Parameters final : NVSDK_NGX_Parameter {
 int main() {
   static_assert(sizeof(void*) == 8);
   static_assert(ngx::kSuccess == NVSDK_NGX_Result_Success);
+  static_assert(NVSDK_NGX_Feature_FrameGeneration == 11);
   Parameters parameters;
   // Address identity only: no fabricated COM object is dereferenced.
   std::byte identity{};

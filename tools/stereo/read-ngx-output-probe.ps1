@@ -7,11 +7,14 @@ $lines = @(Get-Content -LiteralPath $Path)
 $expectedHeader = 'ngx_output_probe=armed schema=1 runtime=32.0.16.1088 resource_get_slot=9 call_limit=32768 sample_limit=256 publication=0'
 $windowHeader = $expectedHeader.Replace('schema=1','schema=2').Replace(' publication=0',' wait_for_stereo=0 publication=0')
 $gatedHeader = $windowHeader.Replace('wait_for_stereo=0','wait_for_stereo=1')
-if ($lines.Count -eq 0 -or $lines[0] -cnotin @($expectedHeader,$windowHeader,$gatedHeader)) {
+$featureHeader = $windowHeader.Replace('schema=2','schema=3')
+$featureGatedHeader = $gatedHeader.Replace('schema=2','schema=3')
+if ($lines.Count -eq 0 -or $lines[0] -cnotin @($expectedHeader,$windowHeader,$gatedHeader,$featureHeader,$featureGatedHeader)) {
     throw 'Missing or unsupported NGX observation header.'
 }
 $windowSchema = $lines[0] -cne $expectedHeader
-$gated = $lines[0] -ceq $gatedHeader
+$featureSchema = $lines[0] -cin @($featureHeader,$featureGatedHeader)
+$gated = $lines[0] -cin @($gatedHeader,$featureGatedHeader)
 $captureWindow = $null
 $seen = @{}
 $observed = @()
@@ -41,6 +44,14 @@ foreach ($line in $lines | Select-Object -Skip 1) {
         throw 'Out-of-range or repeated NGX call identity.'
     }
     $seen[$fields.call] = $true
+    if ($featureSchema) {
+        foreach ($field in @('feature_kind','feature_lifetime')) {
+            if (-not $fields.ContainsKey($field) -or $fields[$field] -notmatch '^\d+$') {
+                throw "Missing or invalid NGX feature identity: $field"
+            }
+            $fields[$field] = [uint64]::Parse($fields[$field])
+        }
+    }
     if ($windowSchema) {
         foreach ($field in @('window_batch','window_present','window_first_call')) {
             if (-not $fields.ContainsKey($field) -or $fields[$field] -notmatch '^\d+$') {
@@ -86,6 +97,9 @@ foreach ($line in $lines | Select-Object -Skip 1) {
         $captureWindow = $key
     }
     $reasons = @()
+    if ($featureSchema -and ($fields.feature_kind -ne 11 -or $fields.feature_lifetime -eq 0)) {
+        $reasons += 'frame_generation_feature_unverified'
+    }
     if ($fields.abi_verified -ne '1') { $reasons += 'parameter_abi_unverified' }
     if ([Convert]::ToUInt32($fields.result.Substring(2),16) -ne 1) { $reasons += 'evaluation_failed' }
     if (@($results | Where-Object { $_ -ne 1 }).Count) { $reasons += 'incomplete_resource_queries' }
@@ -105,16 +119,19 @@ foreach ($line in $lines | Select-Object -Skip 1) {
             Output=('{0:X16}' -f $fields.output); Backbuffer=('{0:X16}' -f $fields.backbuffer)
             Depth=('{0:X16}' -f $fields.depth); Motion=('{0:X16}' -f $fields.motion)
             Hudless=('{0:X16}' -f $fields.hudless)
+            FeatureKind=if ($featureSchema) { $fields.feature_kind } else { $null }
+            FeatureLifetime=if ($featureSchema) { $fields.feature_lifetime } else { $null }
         }
     }
 }
 if (($observed.Count + $rejected.Count) -gt 256) { throw 'NGX capture budget exceeded.' }
 [pscustomobject]@{
-    SchemaVersion=if ($windowSchema) { 2 } else { 1 }
+    SchemaVersion=if ($featureSchema) { 3 } elseif ($windowSchema) { 2 } else { 1 }
     WaitForStereoSubmission=$gated; CaptureWindow=$captureWindow
     Records=$records; CompleteObservations=$observed.Count
     Observations=@($observed | Sort-Object Call); Rejected=$rejected
     ObservationAvailable=($observed.Count -gt 0)
+    FeatureQualifiedObservations=if ($featureSchema) { $observed.Count } else { 0 }
     StereoAssociationVerified=$false; GpuCompletionVerified=$false
     GeneratedPublicationVerified=$false
     NextStep=if ($observed.Count) { 'associate_exact_stereo_inputs_and_queue_completion' } else { 'inspect_missing_or_failed_runtime_observation' }

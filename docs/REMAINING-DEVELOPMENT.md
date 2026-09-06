@@ -58,6 +58,10 @@ that physical damage integration is complete.
   commit now survives orientation-owner creation during loading and retries in
   gameplay after restoring heading. See the [resume fix](handoffs/2026-09-06-loading-generation-resume.md);
   worn transition acceptance remains pending.
+- The first live NGX stereo-submit diagnostic intermittently displayed two
+  side-by-side frames in VR during initial gameplay before settling to stereo.
+  Inspect packed-output fallback and presentation transitions; successful API
+  transactions do not establish visual acceptance of this diagnostic.
 
 ## Ranged weapon aiming backlog
 

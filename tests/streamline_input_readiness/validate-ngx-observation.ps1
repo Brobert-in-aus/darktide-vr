@@ -70,7 +70,21 @@ try {
         try { $null=Read-Fixture $lines } catch { $failed=$true }
         if (-not $failed) { throw 'Invalid or replenished capture window accepted.' }
     }
-    Write-Output 'ngx_observation=pass complete failure missing alias duplicate malformed bounded_window no_publication'
+    $featureHeader=$windowHeader.Replace('schema=2','schema=3')
+    $featureRecord=$windowRecord + ' feature_kind=11 feature_lifetime=8'
+    $report=Read-Fixture @($featureHeader,$featureRecord)
+    if ($report.FeatureQualifiedObservations -ne 1) { throw 'Known frame generation identity missing.' }
+    Require-NoPublication $report
+    foreach ($badRecord in @($featureRecord.Replace('feature_kind=11','feature_kind=1'),
+            $featureRecord.Replace('feature_lifetime=8','feature_lifetime=0'))) {
+        $report=Read-Fixture @($featureHeader,$badRecord)
+        if ($report.ObservationAvailable -or $report.FeatureQualifiedObservations) {
+            throw 'Stale parameter keys on an unknown/upscaler handle were accepted.'
+        }
+    }
+    $report=Read-Fixture @($windowHeader,$windowRecord)
+    if ($report.FeatureQualifiedObservations) { throw 'Legacy pointer evidence retroactively gained feature identity.' }
+    Write-Output 'ngx_observation=pass complete failure missing alias duplicate malformed bounded_window feature_identity no_publication'
 } finally {
     if (Test-Path -LiteralPath $fixture) { Remove-Item -LiteralPath $fixture }
 }

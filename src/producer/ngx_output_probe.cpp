@@ -1,6 +1,7 @@
 #include "producer/ngx_output_probe.h"
 #include "producer/ngx_parameter_reader.h"
 #include "producer/ngx_capture_window.h"
+#include "producer/ngx_feature_registry.h"
 #include <MinHook.h>
 #include <array>
 #include <atomic>
@@ -15,6 +16,11 @@ namespace darktidevr::producer {
 namespace {
 using Evaluate = std::uint32_t (*)(void*, const void*, const void*, void*);
 Evaluate original{};
+using Create = std::uint32_t (*)(void*, std::uint32_t, const void*, void**);
+using Release = std::uint32_t (*)(const void*);
+Create original_create{};
+Release original_release{};
+NgxFeatureRegistry feature_registry;
 HMODULE runtime{};
 HANDLE log_file = INVALID_HANDLE_VALUE;
 std::mutex log_mutex;
@@ -60,15 +66,29 @@ void write_line(const char* line, std::size_t length) {
   WriteFile(log_file, line, static_cast<DWORD>(length), &written, nullptr);
 }
 
+std::uint32_t create_hook(void* commands, std::uint32_t kind,
+                           const void* parameters, void** handle) {
+  const auto result = original_create(commands, kind, parameters, handle);
+  if (result == ngx::kSuccess && readable(handle, sizeof(void*)))
+    feature_registry.created(*handle, kind, result);
+  return result;
+}
+std::uint32_t release_hook(const void* handle) {
+  feature_registry.releasing(handle);
+  return original_release(handle);
+}
+
 std::uint32_t evaluate_hook(void* commands, const void* feature,
                             const void* parameters, void* callback) {
   const auto call = calls.fetch_add(1, std::memory_order_relaxed) + 1;
   const auto window = capture_window.snapshot(call, kCallLimit);
+  const auto identity = feature_registry.lookup(feature);
   std::array<ID3D12Resource*, 5> resources{};
   std::array<std::uint32_t, 5> results{};
   bool captured = false;
   bool abi_verified = false;
-  if (window.eligible && samples.load(std::memory_order_relaxed) < kSampleLimit &&
+  if (identity.kind == 11 && identity.lifetime != 0 && window.eligible &&
+      samples.load(std::memory_order_relaxed) < kSampleLimit &&
       verified_parameters(parameters)) {
     abi_verified = true;
     results[0] = ngx::read_resource(parameters, "DLSSG.OutputInterpolated", &resources[0]);
@@ -89,11 +109,13 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
     std::array<char, 1024> line{};
     const auto length = std::snprintf(line.data(), line.size(),
         "NGX_EVAL call=%llu tick_ms=%llu thread=%lu commands=%p feature=%p parameters=%p "
-        "result=0x%08x captured=%u abi_verified=%u output=%p backbuffer=%p depth=%p motion=%p hudless=%p "
+        "result=0x%08x captured=%u abi_verified=%u feature_kind=%u feature_lifetime=%llu "
+        "output=%p backbuffer=%p depth=%p motion=%p hudless=%p "
         "get_results=%x,%x,%x,%x,%x window_batch=%llu window_present=%llu window_first_call=%llu "
         "output_complete=0 publication=0\n",
         static_cast<unsigned long long>(call), GetTickCount64(), GetCurrentThreadId(),
         commands, feature, parameters, result, captured ? 1U : 0U, abi_verified ? 1U : 0U,
+        identity.kind, static_cast<unsigned long long>(identity.lifetime),
         static_cast<void*>(resources[0]), static_cast<void*>(resources[1]),
         static_cast<void*>(resources[2]), static_cast<void*>(resources[3]),
         static_cast<void*>(resources[4]), results[0], results[1], results[2], results[3], results[4],
@@ -145,12 +167,23 @@ bool install_ngx_output_probe(HMODULE capture_module) {
   if (!length || length >= path.size() || !verified_runtime(std::wstring(path.data(), length)))
     return false;
   const auto target = GetProcAddress(runtime, "NVSDK_NGX_D3D12_EvaluateFeature");
+  const auto create_target = GetProcAddress(runtime, "NVSDK_NGX_D3D12_CreateFeature");
+  const auto release_target = GetProcAddress(runtime, "NVSDK_NGX_D3D12_ReleaseFeature");
   constexpr std::array<unsigned char, 24> prologue{
       0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x6c,0x24,0x10,
       0x48,0x89,0x74,0x24,0x18,0x57,0x41,0x56,0x41,0x57,
       0x48,0x83,0xec,0x30};
   if (!target || !readable(reinterpret_cast<const void*>(target), prologue.size()) ||
       std::memcmp(reinterpret_cast<const void*>(target), prologue.data(), prologue.size()))
+    return false;
+  constexpr std::array<unsigned char,14> create_prologue{
+      0x48,0x89,0x6c,0x24,0x20,0x57,0x41,0x56,0x41,0x57,0x48,0x83,0xec,0x40};
+  constexpr std::array<unsigned char,6> release_prologue{0x40,0x57,0x48,0x83,0xec,0x20};
+  if (!create_target || !release_target ||
+      !readable(reinterpret_cast<const void*>(create_target), create_prologue.size()) ||
+      !readable(reinterpret_cast<const void*>(release_target), release_prologue.size()) ||
+      std::memcmp(reinterpret_cast<const void*>(create_target), create_prologue.data(), create_prologue.size()) ||
+      std::memcmp(reinterpret_cast<const void*>(release_target), release_prologue.data(), release_prologue.size()))
     return false;
   length = GetTempPathW(static_cast<DWORD>(path.size()), path.data());
   if (!length || length >= path.size()) return false;
@@ -161,12 +194,16 @@ bool install_ngx_output_probe(HMODULE capture_module) {
   if (log_file == INVALID_HANDLE_VALUE) return false;
   char header[256]{};
   const auto header_length = std::snprintf(header, sizeof(header),
-      "ngx_output_probe=armed schema=2 runtime=32.0.16.1088 "
+      "ngx_output_probe=armed schema=3 runtime=32.0.16.1088 "
       "resource_get_slot=9 call_limit=32768 sample_limit=256 wait_for_stereo=%u publication=0\n",
       wait_for_stereo ? 1U : 0U);
   if (header_length > 0) write_line(header, static_cast<std::size_t>(header_length));
   if (MH_CreateHook(reinterpret_cast<void*>(target), &evaluate_hook,
-                    reinterpret_cast<void**>(&original)) != MH_OK) {
+                    reinterpret_cast<void**>(&original)) != MH_OK ||
+      MH_CreateHook(reinterpret_cast<void*>(create_target), &create_hook,
+                    reinterpret_cast<void**>(&original_create)) != MH_OK ||
+      MH_CreateHook(reinterpret_cast<void*>(release_target), &release_hook,
+                    reinterpret_cast<void**>(&original_release)) != MH_OK) {
     CloseHandle(log_file);
     log_file = INVALID_HANDLE_VALUE;
     return false;
