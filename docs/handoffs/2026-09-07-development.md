@@ -423,3 +423,18 @@ The optional stock test passes. Direct-bone review found no configured
 remain a future-template boundary. Sweep hit-stop bone reads feed animation;
 the inspected sticky damage path uses the first-person component/target actor.
 No additional production changes or live acceptance from this review.
+
+## Online movement direction fix
+
+Branch `codex/online-movement-direction-2026-09-07` fixes a reproduced input
+conversion error: a diagonal rotated outside the stock input square had its
+axes clipped independently, changing world direction. Scale both axes together
+before stock packing. The targeted regression failed before the fix and passed
+afterward. The actual stock-walking check covers four vectors at twelve aim
+headings, retaining direction and stock speed rules at settled input.
+
+Four focused CTests pass (Lua compiler/invariants, online rules and scanner)
+and the expanded optional stock-source check passes. The only explicit settings
+rotation constraint found in this snapshot belongs to Ogryn lunge; its lunging
+state already falls outside the hand-input allowlist. No new constraint hook
+was added. Rapid aim-change/transient movement and live acceptance remain open.

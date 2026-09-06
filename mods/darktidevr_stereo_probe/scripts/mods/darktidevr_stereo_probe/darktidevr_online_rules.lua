@@ -86,7 +86,11 @@ function Rules.install(mod, presentation, state, mode_name)
             presentation.flat_movement_rotation(yaw)), desired)
         local x, y = Vector3.x(relative), Vector3.y(relative)
         if not finite(x) or not finite(y) then return end
-        x, y = math.max(-1, math.min(1,x)), math.max(-1, math.min(1,y))
+        -- Keyboard diagonals and combined inputs can rotate outside the unit
+        -- square. Scale both axes together: independent clipping changes the
+        -- intended world direction. Stock speed/acceleration still apply.
+        local scale = math.max(1, math.abs(x), math.abs(y))
+        x, y = x/scale, y/scale
         values = {math.max(x,0), math.max(-x,0), math.max(y,0), math.max(-y,0)}
         for i, name in ipairs(movement_names) do
             local network_type = handler._pack_unpack_action_to_network_type_index[name]

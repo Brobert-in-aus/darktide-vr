@@ -70,6 +70,13 @@ fresh(2,0,1); rules.capture(h,2)
 assert(h._input_cache[4][2]==1 and h._input_cache[5][2]==math.pi)
 assert(h._input_cache[6][2]==math.pi*.45 and h._input_cache[7][2]==0)
 assert(h._input_cache[5][1]==math.pi/2,'Later tracking rewrote earlier frame')
+-- Diagonal keyboard/combined input can leave the square after rotation.
+-- Saturation must keep its direction instead of clipping axes independently.
+hand={yaw=math.pi/6,pitch=0}
+fresh(23,1,1); rules.capture(h,23)
+local c=h._input_cache
+local world=Quaternion.rotate(hand.yaw,Vector3(c[1][23]-c[2][23],c[3][23]-c[4][23],0))
+assert(math.abs(world[1]-world[2])<.0002,'Rotated diagonal changed intended movement direction')
 -- Menus, unavailable tracking, disabled states, foreign handlers and failure
 -- in movement packing must preserve the whole stock input sample.
 local gates={

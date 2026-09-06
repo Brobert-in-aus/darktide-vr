@@ -38,6 +38,12 @@ sliding, collision and recoil-related effects remain. The isolated stock-method
 test confirms a concrete consequence: looking/aiming behind while walking in
 the head's forward direction retains the server's backward-movement penalty.
 The mode does not implement a local speed compensation that the server lacks.
+Rotated diagonal inputs now use one shared saturation scale, preserving their
+world direction instead of clipping axes independently. This was a reproduced
+adapter bug; the regression check failed before the fix and passes afterward.
+The stock walking integration also checks four input vectors at twelve headings.
+These are settled-input checks. Stock smoothing retains previous local axes, so
+rapid hand-aim changes while moving still need transient steering/comfort checks.
 
 Room-scale translation is not injected as extra mover velocity. Existing visual
 head/hand/body presentation remains within its current tracking envelope.

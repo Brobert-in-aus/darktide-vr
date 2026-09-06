@@ -141,6 +141,22 @@ rules.capture(h,2)
 direction,speed=move(aim.yaw)
 assert(math.abs(direction[1])<1e-12 and math.abs(direction[2]-1)<1e-12)
 assert(math.abs(speed-2.5)<1e-12,'Stock backward penalty must remain')
+-- Verify through actual walking, including rotated diagonals that exceed the
+-- stock square. All headings keep the desired direction at settled input.
+for step=0,11 do
+    for _,wanted in ipairs({{1,1},{1,.5},{-1,1},{-.3,-.8}}) do
+        aim=Quaternion.from_yaw_pitch_roll(step*math.pi/6,0,0)
+        local x,y=wanted[1],wanted[2]
+        h._input_cache={{math.max(x,0)},{math.max(-x,0)},
+            {math.max(y,0)},{math.max(-y,0)},{0},{0},{0}}
+        rules.capture(h,step+3)
+        direction=move(aim.yaw)
+        local length=math.sqrt(x*x+y*y)
+        assert(math.abs(direction[1]-x/length)<1e-12 and
+            math.abs(direction[2]-y/length)<1e-12,'Stock walking direction changed after aim conversion')
+        for index=1,4 do assert(h._input_cache[index][1]>=0 and h._input_cache[index][1]<=1) end
+    end
+end
 -- Execute the actual stock selector for forced look, weapon lock, melee
 -- stickiness, ledge hanging, communication/emote wheels and dead ownership.
 local selected_cases={
