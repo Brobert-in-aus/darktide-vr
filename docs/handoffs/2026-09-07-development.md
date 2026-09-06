@@ -297,3 +297,14 @@ No direct UI/network/companion action bypasses stock conditions.
 
 Validation: 34 LuaJIT chunks and four focused CTests pass (bindings, prompts,
 UI ownership, source invariants). Still undeployed; no game/XR session was opened.
+
+## Reusable performance health analysis
+
+Branch `codex/generated-health-analysis-2026-09-07` adds a parser that separates
+focus, observed generation progress and timing-clock precision. It preserves
+slow windows and accounts for invalid/reset/no-output intervals; it does not
+infer FG settings or frame-time percentiles. Read
+[performance health analysis](../PERFORMANCE-HEALTH-ANALYSIS.md) for the whole
+saved-session result and why it cannot replace the earlier selected FG-off
+interval. Five unit cases pass. The actual archived log was summarized without
+running Darktide or changing graphics settings.
