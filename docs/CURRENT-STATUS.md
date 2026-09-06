@@ -26,6 +26,12 @@ by normal sync. Full-body and fixed HUD-panel presentation remain experimental.
 
 ## Launch
 
+Optional menu-laser stabilization is available with `-MenuAimStabilization`.
+Ordinary launches retain direct tracking. It shares one filtered ray between
+hover, clicks and laser presentation; gameplay weapons remain direct. The trial
+has offline reset/jitter/input checks but needs worn comfort/tuning acceptance.
+See [motion smoothing](MOTION-SMOOTHING.md).
+
 R3 tagging and the left menu button now have game-side delivery through stock
 HUD/UI handlers. Inherited gameplay button holds require release after entering
 gameplay or reconnecting. Live initialization passes; worn button acceptance is

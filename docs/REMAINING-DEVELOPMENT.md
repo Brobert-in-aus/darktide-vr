@@ -84,6 +84,8 @@ Next integration work:
 
 See [motion smoothing](MOTION-SMOOTHING.md): minimal physical-weapon lag, optional
 light aim stabilization, one shared sample policy for presentation and attacks.
+The reusable angular filter and opt-in menu-laser trial now pass offline tests;
+weapon/grip integration and worn tuning remain open. Physical melee stays direct.
 
 ## HUD
 

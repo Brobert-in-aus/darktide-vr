@@ -49,6 +49,8 @@ param(
 
     [switch] $SyntheticControllerPath,
 
+    [switch] $MenuAimStabilization,
+
     [switch] $SyntheticGameplayInput,
 
     [switch] $SyntheticWeaponAimMatrix,
@@ -675,6 +677,9 @@ if ($EnableMenuTestControls) {
 }
 if ($SyntheticControllerPath) {
     $runnerArguments.SyntheticControllerPath = $true
+}
+if ($MenuAimStabilization) {
+    $runnerArguments.MenuAimStabilization = $true
 }
 if ($SyntheticGameplayInput) {
     $candidateGameplayInputFlagPath = Join-Path $GameRoot `

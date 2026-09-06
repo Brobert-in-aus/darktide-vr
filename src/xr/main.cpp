@@ -17,6 +17,7 @@
 #include "bridge/shared_eye_surfaces.h"
 #include "core/head_tracking.h"
 #include "core/menu_pointer_input.h"
+#include "core/aim_stabilization.h"
 #include "core/panel_pointer.h"
 #include "core/presentation_policy.h"
 #include "core/reticle_atlas.h"
@@ -660,6 +661,7 @@ class OpenXrProbe {
                                bool separate_shared_eye_swapchains,
                                bool enable_menu_input,
                                bool enable_menu_test_controls,
+                               bool menu_aim_stabilization,
                                const std::wstring& menu_input_title,
                                bool synthetic_controller_path,
                                bool synthetic_body_path,
@@ -951,6 +953,11 @@ class OpenXrProbe {
     std::uint64_t gameplay_aim_sequence{};
     std::uint64_t gameplay_aim_transport_generation{};
     darktidevr::core::MenuPointerInputState menu_pointer_state;
+    darktidevr::core::AimStabilization menu_aim_filter;
+    std::uint64_t menu_filter_presentation_generation{};
+    std::uint64_t menu_filter_samples{};
+    std::uint64_t menu_filter_trace_samples{};
+    std::cout << "openxr.menu_aim_stabilization=" << menu_aim_stabilization << '\n';
     darktidevr::core::SharedMenuPointerStateWriter menu_pointer_writer;
     std::uint64_t menu_pointer_sequence{};
     std::uint32_t menu_primary_press_sequence{};
@@ -2880,21 +2887,52 @@ class OpenXrProbe {
       // pointer path, while this matrix stays completely inert until gameplay.
       const bool synthetic_weapon_pointer_suppressed =
           synthetic_weapon_aim_matrix && !gameplay_aim_state.active;
+      if (!submitted_flat_fallback_this_frame || !latest_controller_sample_ ||
+          synthetic_weapon_pointer_suppressed ||
+          menu_filter_presentation_generation != presentation_transport_generation) {
+        menu_aim_filter.reset();
+      }
+      menu_filter_presentation_generation = presentation_transport_generation;
       if (submitted_flat_fallback_this_frame && latest_controller_sample_ &&
           !synthetic_weapon_pointer_suppressed) {
         const auto& right = latest_controller_sample_->hands[1];
+        std::optional<darktidevr::math::Pose> pointer_pose = right.aim_pose;
+        if (menu_aim_stabilization && !synthetic_controller_path) {
+          const auto tracked = darktidevr::core::controller_orientation_tracked |
+                               darktidevr::core::controller_position_tracked;
+          const auto orientation = menu_aim_filter.update(
+              right.aim_pose.orientation, latest_controller_sample_->sequence,
+              frame_state.predictedDisplayTime, head_recenter_generation,
+              (right.aim_tracking_flags & tracked) == tracked);
+          if (orientation) {
+            pointer_pose->orientation = *orientation;
+            if (++menu_filter_samples % 6 == 0 && menu_filter_trace_samples < 200) {
+              ++menu_filter_trace_samples;
+              const auto raw = right.aim_pose.orientation;
+              std::cout << "openxr.menu_aim_filter_sample sequence="
+                        << latest_controller_sample_->sequence
+                        << " pose_time_ns=" << frame_state.predictedDisplayTime
+                        << " epoch=" << head_recenter_generation
+                        << " raw=" << raw.x << ',' << raw.y << ',' << raw.z << ',' << raw.w
+                        << " filtered=" << orientation->x << ',' << orientation->y
+                        << ',' << orientation->z << ',' << orientation->w << '\n';
+            }
+          } else {
+            pointer_pose.reset();
+          }
+        }
         const auto required =
             darktidevr::core::controller_orientation_valid |
             darktidevr::core::controller_position_valid;
-        if ((right.aim_tracking_flags & required) == required &&
+        if (pointer_pose && (right.aim_tracking_flags & required) == required &&
             current_head_valid &&
             darktidevr::core::pointer_origin_within_reach(
                 right.aim_pose.position, current_head.position, 1.5F)) {
           const auto direction = darktidevr::math::rotate(
-              right.aim_pose.orientation, {0.0F, 0.0F, -1.0F});
+              pointer_pose->orientation, {0.0F, 0.0F, -1.0F});
           ++controller_pointer_rays_;
           const auto pointer = darktidevr::core::map_pointer_to_panel(
-              {right.aim_pose.position, direction}, panel_pose,
+              {pointer_pose->position, direction}, panel_pose,
               panel_extent.width_metres, panel_extent.height_metres,
               menu_input_source_width, menu_input_source_height,
               flat_interactive_mode
@@ -2910,7 +2948,7 @@ class OpenXrProbe {
             ++controller_pointer_hits_;
             controller_pointer_x_ = pointer->source_x;
             controller_pointer_y_ = pointer->source_y;
-            controller_pointer_pose = right.aim_pose;
+            controller_pointer_pose = *pointer_pose;
             controller_pointer_hit = *pointer;
             menu_pointer_position =
                 std::pair{pointer->source_x, pointer->source_y};
@@ -4555,6 +4593,7 @@ void usage() {
                "[--stereo-sbs] [--stereo-tb] "
                 "[--capture-window-title TEXT] [--shared-eyes] "
                 "[--enable-menu-input [--menu-input-window-title TEXT]] "
+                "[--menu-aim-stabilization] "
                 "[--synthetic-controller-path] "
                 "[--synthetic-body-path] "
                 "[--synthetic-gameplay-input] "
@@ -4597,6 +4636,7 @@ int wmain(int argc, wchar_t** argv) {
     bool pair_driven_shared = true;
     bool enable_menu_input = false;
     bool enable_menu_test_controls = false;
+    bool menu_aim_stabilization = false;
     bool synthetic_controller_path = false;
     bool synthetic_body_path = false;
     bool synthetic_gameplay_input = false;
@@ -4654,6 +4694,8 @@ int wmain(int argc, wchar_t** argv) {
         enable_menu_input = true;
       } else if (argument == L"--enable-menu-test-controls") {
         enable_menu_test_controls = true;
+      } else if (argument == L"--menu-aim-stabilization") {
+        menu_aim_stabilization = true;
       } else if (argument == L"--synthetic-controller-path") {
         synthetic_controller_path = true;
       } else if (argument == L"--synthetic-body-path") {
@@ -4723,6 +4765,10 @@ int wmain(int argc, wchar_t** argv) {
     if (enable_menu_test_controls && !shared_eyes) {
       throw std::invalid_argument(
           "--enable-menu-test-controls requires --shared-eyes");
+    }
+    if (menu_aim_stabilization && !shared_eyes) {
+      throw std::invalid_argument(
+          "--menu-aim-stabilization requires --shared-eyes");
     }
     if (!std::isfinite(projection_translation_scale) ||
         projection_translation_scale < -2.0F ||
@@ -4822,6 +4868,7 @@ int wmain(int argc, wchar_t** argv) {
                                      pair_driven_shared,
                                      true, enable_menu_input,
                                      enable_menu_test_controls,
+                                     menu_aim_stabilization,
                                      menu_input_title,
                                      synthetic_controller_path,
                                      synthetic_body_path,

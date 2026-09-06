@@ -15,6 +15,8 @@ param(
 
     [switch] $SyntheticControllerPath,
 
+    [switch] $MenuAimStabilization,
+
     [switch] $SyntheticGameplayInput,
 
     [switch] $SyntheticWeaponAimMatrix,
@@ -162,6 +164,9 @@ if ($SyntheticMovementReferencePath) {
 }
 if ($EnableGameplayReticle) {
     $arguments += '--enable-gameplay-reticle'
+}
+if ($MenuAimStabilization) {
+    $arguments += '--menu-aim-stabilization'
 }
 if ($TrackedCuffOverlay) {
     $arguments += '--tracked-cuff-overlay'

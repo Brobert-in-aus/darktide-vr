@@ -1,4 +1,5 @@
 add_library(darktidevr_core STATIC
+  aim_stabilization.cpp
   fingerprint.cpp
   gameplay_input.cpp
   head_tracking.cpp

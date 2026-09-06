@@ -1,0 +1,6 @@
+add_executable(darktidevr-aim-stabilization-tests main.cpp)
+target_compile_options(darktidevr-aim-stabilization-tests PRIVATE /W4 /WX /permissive-)
+target_link_libraries(darktidevr-aim-stabilization-tests PRIVATE darktidevr_core)
+if(BUILD_TESTING)
+  add_test(NAME aim_stabilization COMMAND darktidevr-aim-stabilization-tests)
+endif()

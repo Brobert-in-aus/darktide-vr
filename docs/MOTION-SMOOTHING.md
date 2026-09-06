@@ -1,7 +1,7 @@
 # Aim and weapon motion smoothing
 
-Research and implementation recommendation, 5 September 2026. No live smoothing
-change is enabled by this document. This concerns controller pose stabilization;
+Research 5 September; optional menu trial added 6 September 2026. Default
+launches retain direct controller poses. This concerns controller pose stabilization;
 compositor frame generation/reprojection is a separate system.
 
 ## Recommended policy for this mod
@@ -109,3 +109,51 @@ Start with aim-only tuning while leaving physical melee direct. Stronger steady
 aim settings should remain optional. No universal cutoff, beta or millisecond
 budget is claimed here: select defaults from measured traces and worn feedback
 on this controller/runtime setup, then validate other hardware separately.
+
+## Optional menu trial — 6 September
+
+`start-darktide-vr.ps1 -MenuAimStabilization` forwards the opt-in trial to the
+shared-eye harness. It applies an adaptive angular low-pass filter to the menu
+laser in OpenXR LOCAL space before panel intersection. Hover coordinates, click
+delivery and the compositor ray use that one result. Position, shared controller
+records, grip/weapon rendering, gameplay aim, physical melee, head tracking and
+button timing remain direct. Synthetic controller diagnostics bypass the filter.
+Ordinary launches do not enable it.
+
+The reusable `AimStabilization` core consumes source sequence, requested pose
+time, orientation, tracking state and a reference epoch. It caches duplicate
+reads; uses normalized shortest-arc quaternion interpolation; and adjusts cutoff
+with smoothed angular speed in radians/second. Invalid/untracked input clears
+history. Reacquisition, recenter, backwards sequence/time, menu departure,
+presentation transport change or a gap over 0.1 s resets instead of blending
+old and new reference frames. The runtime's predicted display time is the pose
+time used here; publication time is not substituted or predicted again.
+
+Trial values: minimum cutoff 8 Hz, speed coefficient 1 Hz per radian/second,
+derivative cutoff 10 Hz. These deliberately explicit test values are not a
+universal best-practice recommendation or release weapon default. The enabled
+trial logs at most 200 `openxr.menu_aim_filter_sample` records, every sixth valid
+menu sample, with direct/filtered quaternions, source sequence, pose time and
+epoch. Use those bounded local traces with a worn stationary/slow/rapid-turn
+comparison before tuning or promoting defaults.
+
+Offline validation: native Release build passes; `aim_stabilization` checks
+duplicate ownership, resets, invalid data, quaternion signs/seam, adaptive fast
+motion, steady jitter reduction and 60/90/120 Hz slow tracking. Its pointer
+integration case retains an immediate button edge at the filtered hover point.
+Core math, gameplay input, panel pointer, menu-pointer transport, launcher tests
+and the 31-chunk LuaJIT gate pass. PowerShell entry points parse successfully.
+Worn jitter/latency and click comfort remain pending.
+
+Live startup with the flag confirms `openxr.menu_aim_stabilization=1`. Desktop
+character selection accepts Start and the private range reaches
+`shared_ready=287`, 44.0 fresh pairs/s, zero interval fallback and zero pose
+mismatches, with no matching mod error. No tracked-controller tuning trace was
+produced while the controllers were idle; this is launch/render validation,
+not proof of worn filtering quality. Local evidence is
+`artifacts/unattended/aim-stabilization-trace-live-20260906.log`.
+
+Gameplay stabilization is still open: choose and test one grip/aim relationship
+for weapon presentation and attack decisions before filtering either consumer.
+Do not independently delay the reticle while visible weapons or physical
+collision continue on unrelated samples. Keep physical melee direct initially.
