@@ -193,3 +193,30 @@ loading/menu mode changes followed by world mode, but do not identify the exact
 image seen at each reported switch. Packed-output fallback leaking into XR is a
 hypothesis to investigate. Later intervals are fresh stereo with zero fallback;
 that does not close startup visual acceptance.
+
+## Feature-qualified live result and repeated flicker
+
+The second run with the same four-batch flags passed runtime compatibility and
+automatic Psykhanium entry. Schema 3 identifies six complete observations as
+FrameGeneration (11), with explicit creation lifetimes. Calls 335/336, 347/348
+and 359/360 match the left/right depth, motion and HUDless snapshot addresses;
+each pair shares an output address. The other 250 captured observations lack
+HUDless input. Upscaler calls remain unqueried. Feature lifetimes change between
+these pairs (13/14, 17/18, 21/22): this is not persistent temporal history.
+
+The Streamline analyzer passes four retired batches at Presents 3539, 3542,
+3545 and 3548, with two intervening Presents each. Generated publication remains
+unverified. Saved ignored evidence is `feature-live-ngx.log`,
+`feature-live-streamline.tsv` and their reports alongside the first-run evidence.
+
+The user again reports stereo/side-by-side switching, approximately four times.
+That count matches the four staged packed-buffer submissions, but there is no
+timestamped visual observation proving their exact correspondence. The stage
+copy overwrites the ordinary desktop mirror before Present. The XR eye capture
+normally occurs earlier and has an isolated-eye extent guard, so the staged
+copy alone does not yet explain a headset image change. Existing eye-boundary
+logging expires during startup; extend it around the actual submission window
+to distinguish source selection/extent, camera projection and presentation-mode
+changes before changing rendering behavior. Do not count later fresh counters
+as a visual pass. Desktop input is left untouched while examining logs, per the
+user's request to release control when idle.

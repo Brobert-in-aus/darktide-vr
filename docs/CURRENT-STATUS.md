@@ -216,8 +216,13 @@ observation boundary: the installed feature-library evaluator validates its
 caller, so directly detouring that export is unsuitable. A guarded observer at
 the outer NGX runtime export is now built, with a pinned parameter-ABI test and
 bounded output-record analyzer. `-NgxOutputProbeAtStereoSubmit` reserves its
-capture window for the first prepared stereo submission. This observer remains
-opt-in and live-unverified; it does not publish generated XR output. See the
+capture window for the first prepared stereo submission. The outer runtime and
+feature-lifetime hooks now pass live compatibility: six complete observations
+are identified as frame generation and match the per-eye input snapshot
+addresses. This does not establish output extent, GPU completion, source-frame
+ownership or continuous feature history. The four-batch diagnostic still causes
+user-observed stereo/side-by-side flicker; visual acceptance is rejected.
+The observer remains opt-in and does not publish generated XR output. See the
 [current boundary candidate](handoffs/2026-09-06-dlss-output-boundary.md) and
 [unattended continuation](handoffs/2026-09-06-dlss-unattended.md).
 The diagnostic proxy retains at most 16 images until process exit; proper GPU
