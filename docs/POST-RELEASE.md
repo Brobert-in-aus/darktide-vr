@@ -1,6 +1,11 @@
 # Post-initial-release work
 
-## Residual frame-generation performance profiling
+## Performance work moved to the active backlog
+
+The user's follow-up explicitly requests both DLSS-related framerate-loss
+investigation and a general performance pass. These are now active work in
+REMAINING-DEVELOPMENT, not deferred solely until post-release. The measurements
+below are retained evidence, not a conclusion that no optimization is possible.
 
 The 6 September foreground comparison measured roughly 70 original fps with FG
 off and 50 with it on. GPU measurements account for about 4.7 ms of the 5.7 ms
@@ -8,7 +13,8 @@ frame-time difference, including approximately 2.06 ms Evaluate per eye. The
 former roughly 30-original-fps issue is absent. Remaining scene/queue/contention
 profiling belongs here; no claim is made that every millisecond is unavoidable.
 See CURRENT-STATUS's foreground/NGX timing evidence. This does not resolve HUD
-blur or duplicated/displaced elements, which remain a separate parked issue.
+blur or duplicated/displaced elements. Image-quality work is active again,
+prioritizing blur and allowing for separate causes.
 
 ## LOD distance and cost
 

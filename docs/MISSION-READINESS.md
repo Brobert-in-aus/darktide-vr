@@ -1,0 +1,75 @@
+# First end-to-end mission test
+
+6 September follow-up planning. No game launch or gameplay change in this update.
+The user asks what is needed to try a full mission; that is a smaller milestone
+than completing every mod/release feature.
+
+## Confirmed blocker
+
+`presentation.is_first_person_body_mode` in the main stereo Lua module accepts
+only `hub`, `shooting_range` and `training_grounds`. Gameplay input uses that
+predicate, as do body/IK paths. `darktidevr_controller_aim.lua` accepts hand-authored
+aim only in `shooting_range` or `training_grounds`. Thus accepted range behavior
+does not establish mission functionality. Extend these paths deliberately;
+simply deleting mode guards is not mission support.
+
+The mission server must receive/use the intended attack direction and origin
+through the game's supported prediction/authority path. Local reticle movement
+and range hits are insufficient evidence. Audit existing server-reconstructed
+attacks and client-owned actions before deciding whether or how additional pose
+transport is needed; do not assume every action requires a new network protocol.
+
+## Minimum before the first full attempt
+
+1. Enable supported mission VR input, tracking, hands, turning, movement and
+   hand-aim paths with correct ownership. Verify damage/impacts on the mission
+   server, not merely local weapon animation or reticle placement.
+2. Verify one chosen Psyker loadout: ranged fire/reload/aim, button-driven light
+   and heavy melee, block/push, dodge/sprint, blitz and combat ability. Test the
+   selected Psyker's quelling behavior where applicable. The user now owns ranged
+   guns, equipable through Operative; inspect the actual models before selecting
+   coverage. Full all-class weapon acceptance can follow the first limited test.
+3. Check mission-critical interaction coverage: use/hold interactions, revive
+   and rescue, pickups, carry/drop/place objectives, and mission devices or
+   scanner/minigame screens where present. These are unverified checks, not all
+   known broken features. A keyboard fallback may help diagnose, but cannot be
+   silently treated as completed controller support.
+4. Check the complete lifecycle: mission selection/matchmaking, loading into
+   active stereo, menus during gameplay, death/spectating if encountered,
+   extraction, results and return to hub. Track crashes, frozen XR/mirror output
+   and stale controller state across transitions. Existing hub/range transition
+   candidates still need their live regression checks.
+5. Establish usable performance over sustained combat, with readable objectives
+   and HUD and no severe frame-time collapse. Start with frame generation off
+   if needed; independently choose whether to retain DLSS super resolution.
+   The user has not requested changing graphics settings in this planning turn.
+
+These are prerequisites for a useful first attempt, not a promise that all
+mission events can be proven before running one. Use the first complete run as
+an instrumented acceptance test for the chosen character/loadout.
+
+## Not prerequisites for that limited attempt
+
+- Physical swing/contact melee: use the previously accepted button-driven melee
+  after verifying its mission authority path. Physical damage integration remains
+  unfinished and is not enabled by this plan.
+- Left-handed weapon support; all-class/all-weapon coverage; final controller
+  glyphs and cosmetic hint polish where essential actions are already accessible.
+- Perfect frame-generation image quality: use FG off for the initial run if it
+  remains problematic. Blur-first DLSS work is nevertheless active on the backlog.
+- Post-release LOD policy, slight extreme-edge marker asymmetry and selective
+  smoke removal, provided they do not prevent this particular test.
+
+## Updated research/testing directions
+
+DLSS image quality is reactivated: blur first, then duplicated/displaced elements,
+which may have a separate cause. Do not treat the earlier static matched capture
+as a blur or motion pass, or repeat the rejected pose hypothesis without evidence.
+
+Performance is now an active two-part task: isolate DLSS-related frame-rate loss
+and run a general performance pass. Compare SR off, SR on with FG off, and SR+FG
+under controlled scene/headset/output settings; report render/input sizes and
+quality so different workloads are not mistaken for overhead. Measure original
+frames, generated frames and compositor delivery separately, plus CPU/GPU times
+and frame-time spikes. Prior measurements (~2.06 ms Evaluate per eye) explain
+much of one run's FG cost but do not establish that all overhead is unavoidable.

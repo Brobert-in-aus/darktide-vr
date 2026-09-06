@@ -11,8 +11,11 @@ User accepts both turning modes, tested menu changes and the right unarmed wrist
 Hub/combat profile and shared notification/tutorial hint changes through 04b6053
 pass offline validation but have not been deployed; installed Lua remains 2477d82.
 The planned relaunch was cancelled for wind-down. Talent deactivation's right-click
-hint is deliberately retained as a broad-pass check. DLSS HUD displacement and
-blur remain distinct unresolved issues; the pose investigation is parked.
+hint is deliberately retained as a broad-pass check. Subsequent user direction
+reactivates DLSS image-quality work: fix blur first, then duplicated/displaced
+elements, which may be separate. DLSS-related and general performance optimization
+are active tasks. See [first mission readiness](MISSION-READINESS.md) for the
+explicit mission-mode/input/aim restrictions and minimum end-to-end test scope.
 This checkpoint supersedes older same-day status notes below.
 
 ## Supported development path

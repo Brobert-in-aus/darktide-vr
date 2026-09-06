@@ -218,3 +218,12 @@ Live knife candidate initialization passes: the existing concrete spawn/launch
 hooks install without matching mod errors; `shared_ready=307`, 44.1 fresh pairs/s,
 zero interval fallback and zero pose mismatches in the private range. Evidence:
 `artifacts/unattended/knife-aim-live-20260906.log`. No knife was thrown unattended.
+
+## Test equipment follow-up: 6 September
+
+The user purchased ranged guns on the Psyker. They can be equipped through the
+Operative menu for reticle/weapon alignment, muzzle origin and real impact tests.
+Inspect the available models before claiming weapon-family coverage; no exact
+models were specified. Use this character for the next gun validation pass and
+retain force staff as a regression control. See MISSION-READINESS.md for the
+separate mission-mode/authority requirements beyond private-range success.

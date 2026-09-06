@@ -3,7 +3,8 @@
 6 September 2026. Source audit only; left-handed gameplay is not implemented or
 visually accepted. User accepted the right-wrist correction in hub build 2477d82.
 Development is stopped for the night; game/XR are closed. See the
-[end-of-day handover](handoffs/2026-09-06-end-of-day.md). DLSS HUD investigation stays parked.
+[end-of-day handover](handoffs/2026-09-06-end-of-day.md). The user's later follow-up
+reactivates DLSS image-quality work with blur first; it does not change this audit.
 
 ## Decision
 

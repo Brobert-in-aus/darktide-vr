@@ -5,6 +5,9 @@
 This list supersedes task ordering and pending labels in the chronological
 details below. Development is stopped for the night. Resume from the
 [fresh-session handover](handoffs/2026-09-06-end-of-day.md).
+Updated after the user's follow-up: DLSS image quality is active again, blur
+first; performance investigation is active work. See [mission readiness](MISSION-READINESS.md)
+for the smaller set needed before a first end-to-end mission attempt.
 
 1. **Finish controller contexts and the broad binding-hint pass.** Deploy/test the
    saved hub/combat profiles and inventory shortcut; verify remap persistence,
@@ -13,7 +16,11 @@ details below. Development is stopped for the night. Resume from the
    Use the talent-points [I] reminder and talent deactivation right-click as
    acceptance cases. The shared onboarding fix is prepared; talent deactivation
    must remain untouched as an isolated patch, per the user's instruction.
-2. **Verify transition stability.** Manual hub-to-Psykhanium, menu/popup close,
+2. **Enable mission gameplay and verify transition stability.** Extend the explicit
+   hub/range-only VR input/body and range-only hand-aim gates with appropriate
+   mission ownership/replication handling; removing guards alone is insufficient.
+   Verify the selected loadout and essential objective/team interactions, then
+   launch/loading, extraction/results and return to hub. Manual hub-to-Psykhanium, menu/popup close,
    loading and Custom HUD editor transitions need a focused regression check.
    Existing material-lifetime/resume fixes are candidates; distinguish actual
    recurrence from the historical base-game remote-husk race. Confirm early
@@ -24,32 +31,39 @@ details below. Development is stopped for the night. Resume from the
    direction for every gun/flame/staff/projectile/throw mode. Preserve stock
    spread/homing and exclude self-collision only where justified. Candidates are
    not worn-accepted across families. Mission pose transport and remaining throws
-   remain open; include staff as a regression control.
-4. **Complete physical melee.** User owns complex contact verification. Finish
+   remain open; include staff as a regression control. The user has bought ranged
+   guns on their Psyker: equip them through the Operative menu for aim/muzzle/impact
+   checks. Exact models are not yet inventoried; do not assume all families covered.
+4. **Fix DLSS image quality, blur first.** Reactivated by the user. Treat blur and
+   duplicated/displaced HUD elements as possibly separate issues; isolate and fix
+   blur first, then investigate duplication/displacement. Do not assume a common
+   pose cause or repeat the rejected approach without new evidence. Generated
+   stereo delivery is working; the old output-association blocker is resolved.
+5. **Performance optimization.** Investigate the framerate loss when enabling
+   DLSS, separating super resolution from frame generation with controlled
+   comparisons. Revisit the measured two-eye FG cost without assuming it is all
+   unavoidable. Also perform a general CPU/GPU/frame-pacing pass in representative
+   combat, including HUD/marker and stereo-render overhead. This is active work,
+   no longer solely post-release profiling. Preserve the pool/worker rollback.
+6. **Complete physical melee.** User owns complex contact verification. Finish
    continuous contact/obstruction, per-target cooldowns using real combo timing,
    heavy-charge rules, and dedicated stock damage/proc/prediction ownership.
    Follow TRACKED-MELEE-DESIGN, including the selected cleave policy. The current
    query probe applies no damage. Button-driven hand-aimed melee is accepted.
-5. **Implement handedness.** Follow HANDEDNESS-AUDIT: dominant/support roles,
+7. **Implement handedness.** Follow HANDEDNESS-AUDIT: dominant/support roles,
    anatomical hands, weapon attachments/models, block/cast/throw/contact origins,
    effects, two-hand poses and accurate controls. Do not globally mirror the
    skeleton or swap raw tracking as a shortcut. Source audit is done; feature is not.
-6. **Finish release configuration and usability checks.** Validate non-default
+8. **Finish release configuration and usability checks.** Validate non-default
    HUD sliders, binding/menu ergonomics and remaining controller glyphs. Preserve
    the separate Custom HUD dependency/licensing policy; complete portable setup,
    runtime/resolution lifecycle and machine-configuration handling. Worker policy
    must use physical cores. Existing HUD/menu options are implemented, not a new
    task to rebuild them.
-7. **DLSS image-quality investigation: parked pending user direction.** Generated
-   HUD displacement/duplication and blur are separate unresolved symptoms. The
-   user stopped the pose-mismatch approach; do not resume it or activate the
-   separate UI layer automatically. Generated stereo delivery and motion timing
-   are working; do not resurrect the old output-association blocker.
-8. **Post-initial-release optimization/polish.** LOD policy beyond machine-local
+9. **Post-initial-release optimization/polish.** LOD policy beyond machine-local
    LOD 9, tiny extreme-edge marker asymmetry, selective smoke-only suppression,
-   and residual generation performance profiling. Most measured 70-to-50 original
-   fps cost is explained by two-eye FG work; this is not the old unexplained
-   30-fps regression. Keep the rolled-back pool/worker tuning trial off.
+   and remaining nonessential visual polish. General/DLSS performance is now
+   tracked in active priority 5. Keep the rolled-back pool/worker tuning trial off.
 
 Completed/accepted: smooth and snap turning; tested menu changes; left and right
 hand alignment; hand-directed button melee; the hub launch stale-request fix.
