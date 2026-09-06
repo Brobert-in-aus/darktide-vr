@@ -264,3 +264,7 @@ InputUtils prompt hook installed. Fresh synchronized stereo reached shared_ready
 No matching Lua error was found. Evidence: artifacts/unattended/menu-controller-hints-live-20260906.log.
 This verifies loading and hook coexistence, not a visual read of every footer.
 Menu footer appearance and readability remain pending user observation.
+
+Worn/menu acceptance: user confirms menu changes verified. Supported Back and
+pointed-click hints are accepted; keyboard-only actions remain intentionally
+accurate to their available routes. The deployed be43948 implementation is unchanged.

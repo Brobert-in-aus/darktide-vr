@@ -534,3 +534,6 @@ readability/coverage checks remain; see INPUT-REVISION-AUDIT for exact scope.
 Menu hints live-load successfully: fresh shared stereo (ready 652), no matching
 Lua error, and exactly one shared InputUtils prompt hook. Footer appearance and
 readability await observation; no further interaction-routing change was made.
+
+User acceptance: menu changes verified (be43948). Work continues on the reported
+right-wrist offset in the unarmed hub pose.
