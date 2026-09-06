@@ -98,9 +98,43 @@ function Timing.from_windup(template, windup_name, scale_for, inverted_kinds, va
         auto_complete_after = math.max(charge, hold.duration + release.time_window)
     end
     return {light_action=light,heavy_action=heavy,next_light_action=next_light,
+        next_windup_action=next_windup,
         light_interval=interval,heavy_charge=charge,
         heavy_auto_complete_after=auto_complete_after,
         heavy_damage_charge=actions[heavy].use_charge and "module" or "constant_one"}
+end
+
+-- Snapshot the explicit ordinary combo graph without inventing an idle entry
+-- or a global attack clock. Re-evaluate effective scales when the context changes.
+function Timing.light_combo(template, windup_name, scale_for, inverted_kinds, validate, limit)
+    limit = limit or 32
+    if not finite(limit) or limit < 1 or limit > 128 or limit ~= math.floor(limit) then
+        return nil, "invalid_combo_limit"
+    end
+    local steps, seen, elapsed = {}, {}, 0
+    local current = windup_name
+    for _=1,limit do
+        local previous = seen[current]
+        if previous then
+            return {steps=steps,cycle_start=previous.index,
+                entry_duration=previous.elapsed,cycle_duration=elapsed-previous.elapsed}
+        end
+        local timing, reason = Timing.from_windup(template,current,scale_for,inverted_kinds,validate)
+        if not timing then return nil, reason, current end
+        seen[current] = {index=#steps+1,elapsed=elapsed}
+        steps[#steps+1] = {windup_action=current,light_action=timing.light_action,
+            next_windup_action=timing.next_windup_action,
+            next_light_action=timing.next_light_action,interval=timing.light_interval}
+        elapsed = elapsed + timing.light_interval
+        if not finite(elapsed) then return nil, "invalid_combo_duration", current end
+        current = timing.next_windup_action
+    end
+    local previous = seen[current]
+    if previous then
+        return {steps=steps,cycle_start=previous.index,
+            entry_duration=previous.elapsed,cycle_duration=elapsed-previous.elapsed}
+    end
+    return nil, "combo_limit", current
 end
 
 return Timing

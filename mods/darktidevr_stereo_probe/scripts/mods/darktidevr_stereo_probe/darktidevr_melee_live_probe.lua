@@ -47,26 +47,42 @@ function Live.install(mod, presentation, tracking, game_mode)
         if weapon ~= state.weapon then
             state.weapon, state.volume, state.action_name = weapon, nil, nil
             state.windup_name = nil
+            state.windup_start_t, state.combo_fingerprint = nil, nil
             state.history_key = {}
         end
         local template = weapon and weapon.weapon_template
         local name = extension._weapon_action_component.current_action_name
         local action = template and template.actions and template.actions[name]
         local instance = weapon and weapon.actions and weapon.actions[name]
-        if action and action.kind == "windup" and state.windup_name ~= name then
-            state.windup_name = name
+        local action_start = extension._weapon_action_component.start_t
+        if action and action.kind == "windup" and
+                (state.windup_name ~= name or state.windup_start_t ~= action_start) then
+            state.windup_name, state.windup_start_t = name, action_start
             local handler = extension._action_handler
             local params = extension:condition_func_params(slot)
-            local timing, timing_reason = Timing.from_windup(template,name,
-                function(settings) return handler:_calculate_time_scale(settings) end,
-                handler._action_kinds_with_inverted_timescale,
-                function(settings) return handler:_validate_action(settings,params,t,0,nil) end)
+            local function scale_for(settings) return handler:_calculate_time_scale(settings) end
+            local function validate(settings) return handler:_validate_action(settings,params,t,0,nil) end
+            local inverted = handler._action_kinds_with_inverted_timescale
+            local timing, timing_reason = Timing.from_windup(template,name,scale_for,inverted,validate)
             mod:info("DARKTIDEVR_MELEE timing windup=%s result=%s light=%s heavy=%s light_interval=%.4f heavy_charge=%.4f heavy_auto_complete_after=%s heavy_damage_charge=%s damage=false",
                 name,timing and "resolved" or tostring(timing_reason),
                 timing and timing.light_action or "none",timing and timing.heavy_action or "none",
                 timing and timing.light_interval or 0,timing and timing.heavy_charge or 0,
                 timing and tostring(timing.heavy_auto_complete_after) or "unknown",
                 timing and timing.heavy_damage_charge or "unknown")
+            local combo, combo_reason, at = Timing.light_combo(template,name,scale_for,inverted,validate)
+            local steps = {}
+            for _,step in ipairs(combo and combo.steps or {}) do
+                steps[#steps+1] = string.format("%s:%.4f",step.light_action,step.interval)
+            end
+            local fingerprint = table.concat(steps,",") .. ":" .. tostring(combo_reason) .. ":" .. tostring(at)
+            if state.combo_fingerprint ~= fingerprint then
+                state.combo_fingerprint = fingerprint
+                mod:info("DARKTIDEVR_MELEE combo windup=%s result=%s at=%s cycle_start=%d entry_seconds=%.4f cycle_seconds=%.4f steps=%s snapshot=true damage=false",
+                    name,combo and "resolved" or tostring(combo_reason),tostring(at),
+                    combo and combo.cycle_start or 0,combo and combo.entry_duration or 0,
+                    combo and combo.cycle_duration or 0,table.concat(steps,","))
+            end
         end
         -- Observe an action the engine actually selected. Do not guess an idle
         -- route from unordered action names or use block/push timing as light.

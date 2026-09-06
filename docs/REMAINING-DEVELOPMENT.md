@@ -68,9 +68,11 @@ Next integration work:
   completion differ, and longer holds can grant windup/fully-charged bonuses.
   The resolver now exposes the separate auto-completion threshold and charge
   source. Carry these distinctions into the future damage/proc adapter.
-- Resolve light-attack intervals for every combo step: first swing versus
-  repeated swings, per-step variation, earliest chain windows and attack-speed
-  modifiers. Do not use the first attack's 0.35 s as a blanket combo cooldown.
+- The bounded ordinary combo resolver now distinguishes a separate opener and
+  repeating loop with per-step effective intervals. Same-named windup reentry
+  refreshes timing in the opt-in probe. Live coverage across equipped weapons
+  and conditional/unsupported routes remains open; do not use the first attack's
+  0.35 s as a blanket cooldown or advance a combo separately for every enemy hit.
 - Resolve the wielded weapon's explicit normal/heavy action routes and effective
   timing through its live action context; reject unsupported routes visibly in
   diagnostics rather than substituting guessed damage or timing.

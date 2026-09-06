@@ -57,4 +57,28 @@ live.fixed_update(extension,8,8)
 flag, crash = true, false
 live.fixed_update(extension,9,9)
 assert(#calls == 5)
-print("live melee diagnostic opt-in, private mode, idle continuity and failure recovery passed")
+local timing_calls, graph_calls, effective_scale = 0,0,1
+modules.timing.from_windup=function(_,name,scale_for,_,validate)
+    timing_calls=timing_calls+1
+    assert(name=='windup' and validate({}) and scale_for({})==effective_scale)
+    return {light_action='light',heavy_action='heavy',light_interval=.5/effective_scale,heavy_charge=.5}
+end
+modules.timing.light_combo=function()
+    graph_calls=graph_calls+1
+    return {steps={{light_action='light',interval=.5/effective_scale}},
+        cycle_start=1,entry_duration=0,cycle_duration=.5/effective_scale}
+end
+weapon.weapon_template.actions.windup={kind='windup'}
+extension._action_handler={_calculate_time_scale=function() return effective_scale end,
+    _validate_action=function() return true end}
+extension.condition_func_params=function() return {} end
+extension._weapon_action_component.current_action_name='windup'
+extension._weapon_action_component.start_t=10
+live.fixed_update(extension,10,10)
+live.fixed_update(extension,10.1,11)
+assert(timing_calls==1 and graph_calls==1,'same windup tick repeated timing resolution')
+effective_scale=2
+extension._weapon_action_component.start_t=11
+live.fixed_update(extension,11,12)
+assert(timing_calls==2 and graph_calls==2,'same-named new windup missed speed refresh')
+print("live melee diagnostic opt-in, private mode, idle continuity, timing reentry and failure recovery passed")

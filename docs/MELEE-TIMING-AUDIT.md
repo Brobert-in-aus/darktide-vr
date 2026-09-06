@@ -88,3 +88,37 @@ Validation: Windows x64 CTest `melee_timing`, `melee_live_probe` and
 `lua_source_compile` passed (27 pinned LuaJIT chunks). New coverage distinguishes
 minimum versus automatic heavy thresholds, charge-module selection, slow chain
 gates, missing/unbounded auto-completion and the varying four-step light loop.
+
+## Combo graph and repeated windups
+
+The timing module now exposes `light_combo`, starting from an explicitly
+observed windup. It follows each ordinary light sweep and next windup, preserves
+each step's action identity/effective interval, and reports the entry prefix
+separately from the repeating loop. The default walk limit is 32 steps; a broken,
+conditional, unavailable or over-limit route returns a reason and failure point
+instead of a guessed common interval. This uses the existing conservative
+windup validator, including its supported heavy-input requirement.
+
+This is a current-context timing snapshot, not a new global attack clock or an
+instruction to advance combo state once per contacted enemy. Future physical
+damage integration must choose action lifetimes separately from per-enemy
+cooldowns and resolve scales again when its live context changes.
+
+The opt-in live probe previously refreshed only when the windup name changed.
+It now also recognizes a changed stock `start_t`, so a repeated same-named
+windup refreshes effective speed instead of retaining the previous entry's
+diagnostic timing. Duplicate ticks within one entry do not rerun the resolver.
+The combo diagnostic lists `action:interval`, entry duration, cycle start and
+cycle duration; an unchanged report is suppressed. It remains non-damaging.
+
+Validation: `melee_timing`, `melee_live_probe` and the 31-chunk LuaJIT gate pass.
+Cases cover the four-step loop, a separate opener, action-specific scale
+changes, exact traversal limit, missing/conditional transitions, and same-name
+windup reentry. No equipped-weapon timing or physical contact was simulated.
+
+Deployment hashes match for both timing and live-probe modules. Fresh range
+initialization reached `shared_ready=667`, 44.2 fresh pairs/s, zero interval
+fallback and zero pose mismatches, without matching mod errors. Evidence:
+`artifacts/unattended/melee-combo-live-20260906.log`. The ordinary launch also
+confirms menu stabilization is off; the earlier opt-in trial did not change
+the default. Live combo reports still require an observed weapon windup.

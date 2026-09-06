@@ -73,4 +73,32 @@ for i=1,4 do
     assert(result.light_interval==intervals[i] and result.heavy_charge==heavy_thresholds[i])
     assert(result.heavy_auto_complete_after==1.35 and result.next_light_action=='l'..(i%4+1))
 end
-print("melee_timing=pass combo=variable heavy_minimum_distinct_from_auto_complete=true")
+local graph=assert(Timing.light_combo(combo,'w1',scale(1),nil,function() return true end,4))
+assert(#graph.steps==4 and graph.cycle_start==1 and graph.entry_duration==0)
+assert(math.abs(graph.cycle_duration-2.15)<1e-9)
+for i,step in ipairs(graph.steps) do
+    assert(step.light_action=='l'..i and step.interval==intervals[i])
+end
+-- A separate opening route can enter a loop without itself recurring.
+combo.actions.entry={kind='windup',allowed_chain_actions={
+    light_attack={action_name='opening',chain_time=0},heavy_attack={action_name='h1',chain_time=.5}}}
+combo.actions.opening={kind='sweep',allowed_chain_actions={
+    start_attack={action_name='w1',chain_time=.7}}}
+graph=assert(Timing.light_combo(combo,'entry',scale(2),nil,function() return true end))
+assert(#graph.steps==5 and graph.cycle_start==2 and graph.entry_duration==.35)
+assert(math.abs(graph.cycle_duration-1.075)<1e-9)
+-- Each action gets its own live effective scale, rather than the entry's scale.
+graph=assert(Timing.light_combo(combo,'w1',function(a)
+    return a==combo.actions.l2 and 2 or 1
+end,nil,function() return true end))
+assert(graph.steps[1].interval==.55 and graph.steps[2].interval==.3)
+local failed,reason,at=Timing.light_combo(combo,'w1',scale(1),nil,function() return true end,3)
+assert(not failed and reason=='combo_limit' and at=='w4')
+assert(not Timing.light_combo(combo,'w1',scale(1),nil,function() return true end,0))
+combo.actions.l3.allowed_chain_actions.start_attack.running_action_state_requirement={done=true}
+failed,reason,at=Timing.light_combo(combo,'w1',scale(1),nil,function() return true end)
+assert(not failed and reason=='unsupported_route' and at=='w3')
+combo.actions.l3.allowed_chain_actions.start_attack.running_action_state_requirement=nil
+combo.actions.l2.allowed_chain_actions.start_attack.action_name='missing'
+assert(not Timing.light_combo(combo,'w1',scale(1),nil,function() return true end))
+print("melee_timing=pass combo=variable graph=bounded heavy_minimum_distinct_from_auto_complete=true")
