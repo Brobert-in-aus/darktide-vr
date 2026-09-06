@@ -96,6 +96,24 @@ minion perception. These remain explicit limitations for incoming damage,
 enemy behavior and resource-exhaustion acceptance. No mission-equivalent
 survivability or AI behavior is claimed.
 
+Outgoing-rule follow-up: the inspected shooting-range init/loops add the
+unperceivable buff, whose template only supplies that keyword. They do not add
+the tutorial's `tg_player_nerfed_damage` (-0.95 damage stat), shortened ability
+cooldown or no-overcharge buffs. Shooting-range settings also omit
+`force_base_talents`; the shared mode class only selects base talents when that
+flag is set. This is source-scenario evidence, not an inventory of every live
+buff or other mod. Pickup stations still allow repeated ammo and stimulant use.
+
+Difficulty must match the intended mission comparison. Stock range Options maps
+the chosen danger level to `mechanism_context.challenge_level`; the difficulty
+manager uses challenge for minion health and other tables. The two literal 2s
+in the target spawn call are dissolve duration and enemy side, not difficulty.
+The first successful online-rules input record now includes `challenge` and
+`resistance` read from the live difficulty manager. Missing, invalid or retiring
+managers report `unknown` independently per field without disrupting input.
+This records the setting; it does not change difficulty or claim Havoc/modifier
+parity. Three focused checks and the LuaJIT gate pass.
+
 Incoming-combat follow-up audit: changing only the perception mode flag is not
 sufficient. Minion construction reads that flag, while the range's
 `sr_unperceivable_loop` continually re-adds the player's unperceivable buff.

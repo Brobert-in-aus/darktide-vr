@@ -8,6 +8,14 @@ local movement_names = {"move_right", "move_left", "move_forward", "move_backwar
 local function finite(value)
     return type(value)=="number" and value==value and math.abs(value)<math.huge
 end
+local function read_difficulty(method)
+    local manager = Managers.state.difficulty
+    return manager[method](manager)
+end
+local function difficulty_evidence(method)
+    local ok, value = pcall(read_difficulty, method)
+    return ok and finite(value) and tostring(value) or "unknown"
+end
 
 function Rules.install(mod, presentation, state, mode_name)
     local instance = {frames=0, failures=0}
@@ -141,8 +149,9 @@ function Rules.install(mod, presentation, state, mode_name)
         cache[handler._roll_index][index] = 0
         instance.frames = instance.frames + 1
         if instance.frames == 1 then
-            mod:info("DARKTIDEVR_ONLINE_RULES input_frame=%s aim=right_hand movement=stock_packed replay=stock_history",
-                tostring(frame))
+            mod:info("DARKTIDEVR_ONLINE_RULES input_frame=%s aim=dominant_hand movement=stock_packed replay=stock_history challenge=%s resistance=%s",
+                tostring(frame), difficulty_evidence("get_challenge"),
+                difficulty_evidence("get_resistance"))
         end
     end
     function instance.capture(handler, frame)

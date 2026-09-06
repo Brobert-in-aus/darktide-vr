@@ -698,3 +698,19 @@ quarantine, neutral rearming and normal release. Release native-capture, native
 export-test and gameplay-input-test builds pass. Five focused CTests pass:
 gameplay input, native capture hooks, online rules, bindings and real Lua adapter
 ownership. No live deployment; full-suite baseline remains 108/108 at `dd1ec4e`.
+
+## Continuous todo work: range difficulty evidence
+
+Branch `codex/online-rules-difficulty-evidence-2026-09-07` records live challenge
+and resistance on the first successful input frame per proving visit. Each
+optional difficulty query is protected; missing/retiring/nonfinite values report
+unknown without turning a completed input write into a failure. Stable frames
+do not repeat the queries/log. Aim diagnostic now says dominant_hand to match
+the role abstraction, with runtime policy still right-dominant.
+
+Source follow-up distinguishes shooting-range unperceivable/invulnerability and
+pickup aids from tutorial-only damage/cooldown/peril buffs and forced base
+talents. Selected range difficulty affects target health; the target spawn's 2s
+are duration/side, not difficulty. PSYKHANIUM-ONLINE-RULES records those limits.
+Three focused CTests pass (online rules, source invariants, smart-tag ownership),
+and 36 LuaJIT chunks compile. No deployment or runtime difficulty change.

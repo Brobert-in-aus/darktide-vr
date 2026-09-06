@@ -7,7 +7,7 @@ local player = {player_unit='local'}
 local logs, packed = {}, 0
 local orientation_class={_player_orientation_class=function(self) return self.chosen end}
 local mod = {get=function() return option end,
-    info=function(_,message) logs[#logs+1]=message end,
+    info=function(_,message,...) logs[#logs+1]=string.format(message,...) end,
     warning=function(_,message) logs[#logs+1]=message end,
     hook_require=function(_,path,callback) callback(orientation_class) end,
     hook=function(_,class,name,callback)
@@ -158,4 +158,25 @@ effects._is_local_unit=true; presentation.mode=5; assert(rules.preview_pose(effe
 presentation.mode=1
 extension=setmetatable({}, {__index=function() error('retiring preview owner') end})
 assert(rules.preview_pose(effects)==nil)
+-- Difficulty describes the successful proving sample; it must not authorize,
+-- alter or break input when an optional manager is missing/retiring/invalid.
+ScriptUnit.has_extension=function() return {current_state_name=function() return 'walking' end} end
+hand={yaw=1,pitch=0}
+for _,case in ipairs({
+    {manager={get_challenge=function() return 5 end,get_resistance=function() return 4 end},want='challenge=5 resistance=4'},
+    {manager={},want='challenge=unknown resistance=unknown'},
+    {manager=setmetatable({}, {__index=function() error('retiring difficulty') end}),want='challenge=unknown resistance=unknown'},
+    {manager={get_challenge=function() return 0/0 end,get_resistance=function() return math.huge end},want='challenge=unknown resistance=unknown'},
+    {manager={get_challenge=function() return 3 end,get_resistance=function() error('missing') end},want='challenge=3 resistance=unknown'},
+}) do
+    Managers.state.game_session={is_server=function() return true end}
+    Managers.state.difficulty=case.manager
+    fresh(30,0,1); rules.capture(h,30)
+    assert(rules.frames==1 and rules.failures==0 and h._input_cache[5][30]==1)
+    assert(logs[#logs]:find(case.want,1,true), 'Difficulty evidence was incorrect or broke input')
+    local count=#logs
+    fresh(31,0,1); rules.capture(h,31)
+    assert(#logs==count,'Difficulty diagnostics repeated on stable frames')
+end
+Managers.state.difficulty=nil
 print('PASS: range rules, frame aim, movement basis/packing, pitch limits, stock fallbacks and session setting')
