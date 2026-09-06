@@ -478,3 +478,16 @@ PowerShell parsing passes. The broad Lua invariant script still fails at its
 pre-existing controller-fire/muzzle expectation (line 495); no Lua source was
 changed by this helper fix. The pinned 31-chunk Lua compiler gate passed for the
 DLSS launches. Live automatic entry is the next check.
+
+The next helper retry also exposed an open-log timestamp trap: Windows retained
+LastWriteTime from creation while fresh readiness lines were readable. Log
+selection now uses the owned process start and log CreationTime, then pins that
+path. The offline startup test covers this exact case. The helper reports its
+actual Enter attempt count, so manual advancement cannot be mistaken for a pass.
+
+The latest bounded consecutive run passes eight consecutive stereo submissions
+at runtime eye extent 2496 x 2688, with 14 generated-eye Presents reported.
+All 14 complete feature-qualified NGX evaluations have completed queue fences.
+Evidence is archived as continuous-pass-{streamline.tsv,report.json,ngx.log,
+queue.log,timing.log}. This establishes consecutive input history and GPU
+completion; output ownership and generated XR publication remain unverified.

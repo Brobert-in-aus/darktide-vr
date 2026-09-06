@@ -24,6 +24,7 @@ $resolvedGameExe = (Resolve-Path -LiteralPath $GameExe).Path
 $script:ownedProcess = $null
 $script:ownedProcessStart = $null
 $script:ownedLogPath = $null
+$script:startupKeyAttempts = @{ StateTitle = 0; StateMainMenu = 0 }
 
 function Assert-DarktideStartupOwner {
     if (-not $script:ownedProcess) { return }
@@ -87,9 +88,10 @@ function Wait-DarktideLogMatch {
                 Get-Item -LiteralPath $script:ownedLogPath -ErrorAction SilentlyContinue
             } else { Get-ChildItem -LiteralPath $ConsoleLogRoot -Filter '*.log' `
                     -ErrorAction SilentlyContinue |
-                Where-Object { $_.LastWriteTime -ge $NotBefore -and
-                    $_.CreationTime -ge $script:ownedProcessStart.AddSeconds(-5) } |
-                Sort-Object LastWriteTime -Descending |
+                # Windows may retain the creation-time LastWriteTime until the
+                # game closes its log handle. Bind by process/log creation.
+                Where-Object { $_.CreationTime -ge $script:ownedProcessStart.AddSeconds(-1) } |
+                Sort-Object CreationTime -Descending |
                 Select-Object -First 1
             }
             if ($log) {
@@ -138,6 +140,7 @@ function Send-DarktideKey {
     if ($foregroundProcessId -ne $Process.Id) { return }
     $shell = New-Object -ComObject WScript.Shell
     $shell.SendKeys($Keys)
+    ++$script:startupKeyAttempts[$ExpectedState]
 }
 
 function Wait-DarktideLeavesTitle {
@@ -239,3 +242,4 @@ Wait-DarktideLeavesCharacterSelect -Process $characterSelect `
     -Deadline $deadline -NotBefore $started
 
 Write-Output 'Darktide title and character select advanced without mouse input.'
+Write-Output "startup.character_select.enter_attempts=$($script:startupKeyAttempts.StateMainMenu)"

@@ -33,9 +33,12 @@ try {
         'DARKTIDEVR_PRESENTATION open view=main_menu_view active=true',
         'DARKTIDEVR_MENU_READINESS view=main_menu elapsed=0.6 list_input=true start_ready=true reason=ready'
     )
+    # An open game log can retain its original modification timestamp while
+    # new readiness lines are readable. It must still be selected by ownership.
+    [IO.File]::SetLastWriteTime($path, $testProcess.StartTime)
     $found = Wait-DarktideLogMatch -Patterns @(
         'DARKTIDEVR_MENU_READINESS view=main_menu .*start_ready=true reason=ready'
-    ) -Deadline (Get-Date).AddSeconds(2)
+    ) -Deadline (Get-Date).AddSeconds(2) -NotBefore (Get-Date)
     if ($found.Id -ne $testProcess.Id -or (Get-DarktideStartupState) -ne 'StateMainMenu') {
         throw 'Readiness did not bind to the expected process and state.'
     }
