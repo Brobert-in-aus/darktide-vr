@@ -48,12 +48,14 @@ searched and are distinguished from player ranged weapons below.
 | `shoot_projectile` | grenadier gauntlet, missile launcher, projectile thumper | Concrete preparation hook; inspected configurations use `skip_aiming=true`, so spawn orientation/direction come from the prepared shot |
 | `flamer_gas`, `flamer_gas_burst` | flamers, flame force staff | Concrete preparation plus damage-target and suppression pose hooks |
 | `spawn_projectile` | force staffs | Existing explicit spawn/fire hooks retained; charged staff-tip and primary left-origin convergence unchanged |
+| `spawn_projectile` | Zealot/Psyker knives | Explicit named-template right-hand spawn/launch policy; Psyker stock smart targeting and homing retained |
+| `aim_projectile`, `throw_grenade` | generated grenades | Coupled action/preview/release hand pose for overhand/underhand; placement excluded |
 | `chain_lightning` | lightning force staff | Existing target-module and damage hooks retained |
 | `weapon_throw` | dual shivs special | Concrete spawn/launch hooks now provide right-hand pose for the audited straight-throw configuration; worn acceptance pending |
 
-Non-gun `spawn_projectile` grenade abilities remain outside the staff-only
-projectile target policy. `aim_projectile` generated grenade/luggable trajectories
-remain a separate throwing-input task. The projectile class's alternate cached
+Other non-gun `spawn_projectile` abilities remain outside the explicit
+staff/knife policy. Luggable throws/drops still need their separate handling
+described below. The projectile class's alternate cached
 aim-component path must be audited before supporting a future gun configuration
 without `skip_aiming=true`. New families in the source snapshot are not assumed
 to be available on this installed game/account.
