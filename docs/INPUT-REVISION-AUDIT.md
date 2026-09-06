@@ -227,3 +227,40 @@ for a worn check. Evidence: artifacts/unattended/right-stick-turning-live-202609
 Experimental HUD-alpha capture/submission flags were removed for this gameplay
 run; no graphics settings were changed. Headset proximity override remains off
 for the continuing development session. No desktop-control session is held.
+
+Worn acceptance: user confirms both smooth and snap turning work. Mark those
+controls accepted; no claim was made about every optional speed or room-scale
+pivot extreme. The deployed c27ee63 implementation remains unchanged.
+
+## Native-menu controller hint candidate (6 September)
+
+Source audit: the XR menu adapter provides right-trigger pointed left click,
+right-stick vertical scroll and Back from right-secondary B or the left Menu
+button. It does not provide keyboard/gamepad confirm, right click or arbitrary
+menu hotkeys. Text labels must reflect those actual routes.
+
+The new menu prompt module scopes the stock Text.localize_with_button_hint helper
+by action/service. View back shows B / Menu; left_pressed/left_released/left_hold
+show Point + RT. A ViewElementInputLegend entry with an explicit click callback
+can also show Point + RT, since stock binds that callback to its pointer hotspot.
+Unknown/non-clickable actions retain the stock binding. Hold/release localization,
+patterns, suffixes and legend width recalculation remain in the stock helper.
+No global gamepad-mode switch or input suppression is introduced.
+
+DMF's same-mod duplicate-hook policy replaces an existing hook handler. Therefore
+menu and gameplay labels share ONE InputUtils hook owned by controller_prompts;
+the menu module supplies its scoped label through an API. Combined tests reject
+duplicate registrations and verify both menu and gameplay output. Error/nested
+scope restoration, nil return values and cached legend refresh are covered.
+
+Pinned LuaJIT passes 33 chunks. Seven CTests pass: menu_prompts,
+controller_prompts, menu_input, turning, controller_bindings, hud_options and
+gameplay_heading. Native-menu hints outside the shared text/legend routes and
+unsupported controller actions remain stock. Live labels/readability pending.
+
+Live initialization passed: all three menu-text/legend hooks and exactly one
+InputUtils prompt hook installed. Fresh synchronized stereo reached shared_ready
+652 at about 51 real + 51 generated pairs/s, with zero fallback or pose mismatches.
+No matching Lua error was found. Evidence: artifacts/unattended/menu-controller-hints-live-20260906.log.
+This verifies loading and hook coexistence, not a visual read of every footer.
+Menu footer appearance and readability remain pending user observation.

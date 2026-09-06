@@ -518,3 +518,19 @@ Turning live initialization passed in the range: fresh shared stereo (ready 359)
 about 51.6 real + 51.6 generated pairs/s, no fallback/pose mismatches or matching
 Lua error. Deployed module matches source. Worn controls remain unverified;
 no synthetic stick inputs were used. Keyboard/mouse routes remain unchanged.
+
+User acceptance: both smooth and snap turning work (c27ee63). Turning is complete
+for the requested modes; ongoing work is native-menu controller hints.
+
+### Native-menu hint implementation
+
+Known menu Back and pointed-click labels now use B / Menu and Point + RT.
+Clickable stock input-legend footers use Point + RT; unsupported hotkeys remain
+stock. Menu and gameplay labels share one InputUtils hook to avoid DMF replacing
+an existing handler. Input routes, keyboard/mouse availability and gamepad mode
+are unchanged. The 33-chunk LuaJIT gate and seven focused CTests pass. Live
+readability/coverage checks remain; see INPUT-REVISION-AUDIT for exact scope.
+
+Menu hints live-load successfully: fresh shared stereo (ready 652), no matching
+Lua error, and exactly one shared InputUtils prompt hook. Footer appearance and
+readability await observation; no further interaction-routing change was made.

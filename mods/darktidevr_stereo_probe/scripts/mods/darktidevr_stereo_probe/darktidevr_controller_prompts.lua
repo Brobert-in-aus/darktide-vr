@@ -20,7 +20,7 @@ local scopes = {
 }
 local function pack(...) return {n=select("#",...),...} end
 
-function Prompts.install(mod, bindings, enabled)
+function Prompts.install(mod, bindings, enabled, menu_prompts)
     local InputUtils = require("scripts/managers/input/input_utils")
     local UIRenderer = require("scripts/managers/ui/ui_renderer")
     local depth, weapon_switch = 0, false
@@ -46,6 +46,10 @@ function Prompts.install(mod, bindings, enabled)
     end
     mod:hook(InputUtils,"input_text_for_current_input_device",
         function(func,service,alias,tint)
+            if menu_prompts then
+                local menu_text=menu_prompts.input_text(service,alias,tint)
+                if menu_text then return menu_text end
+            end
             local action = aliases[alias]
             if depth==0 or not enabled() or service~="Ingame" or action==nil then
                 return func(service,alias,tint)

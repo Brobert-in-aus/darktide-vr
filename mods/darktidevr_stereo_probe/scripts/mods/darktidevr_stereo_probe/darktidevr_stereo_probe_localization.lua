@@ -1,4 +1,6 @@
 return {
+    vr_menu_back = {en = "B / Menu"},
+    vr_menu_point_select = {en = "Point + RT"},
     vr_turning = {en = "VR turning"},
     vr_turning_description = {en = "Turn with the right stick horizontally. Centre it after menus, tracking loss or changing modes. Keyboard and mouse controls remain available."},
     vr_turn_mode = {en = "Turning mode"},

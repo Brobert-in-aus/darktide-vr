@@ -5370,11 +5370,16 @@ function presentation.apply_controller_turning(main_t)
             Quaternion.axis_angle(Vector3.up(), delta), active_base_rotation:unbox()))
     end
 end
+presentation.menu_prompts = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_menu_prompts"
+).install(mod,function()
+    return ui_native_capture_active == true
+end)
 mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_prompts"
 ).install(mod,presentation.controller_bindings,function()
     return controller_observation.gameplay_input_enabled == true
-end)
+end,presentation.menu_prompts)
 
 function presentation.inject_ephemeral_action_names(
         actions, cache, names, delivered, missing)

@@ -4,6 +4,8 @@ local Prompts=dofile(arg[2])
 local localized=dofile(arg[3])
 local hooks,settings,active={},{},true
 local utils={apply_color_to_input_text=function(text,color) assert(color=='tint'); return '<tint>'..text end}
+local Text={}
+package.loaded['scripts/utilities/ui/text']=Text
 package.loaded['scripts/managers/input/input_utils']=utils
 local fit_calls=0
 package.loaded['scripts/managers/ui/ui_renderer']={scaled_font_size_by_width=function(renderer,text,font,size,width)
@@ -19,7 +21,8 @@ local mod={get=function(_,key) return settings[key] end,
         hooks[class][name]=fn
     end}
 local bindings=Bindings.install(mod)
-Prompts.install(mod,bindings,function() return active end)
+local menu=dofile(arg[4]).install(mod,function() return active end)
+Prompts.install(mod,bindings,function() return active end,menu)
 local stock_calls=0
 local function stock(service,alias,tint)
     stock_calls=stock_calls+1
@@ -32,6 +35,10 @@ local function scope(class,method,fn,...)
     return hooks[class][method](fn,...)
 end
 assert(text('action_one')=='keyboard:action_one','scope leaked outside HUD')
+assert(hooks[Text].localize_with_button_hint(function()
+    return text('back','View')
+end,'back','Back')=='[B / Menu]','shared hook lost menu labels')
+assert(text('back','View')=='keyboard:back','menu label leaked out of action context')
 scope('HudElementWieldInfo','_create_entry',function()
     assert(text('action_one')=='[RT]')
     assert(text('weapon_extra')=='[R Grip]')

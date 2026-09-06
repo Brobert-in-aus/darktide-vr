@@ -331,3 +331,6 @@ The requested smooth default and 45/90-degree snap options are implemented, with
 configurable smooth speed and a turning-Off mode for horizontal shortcuts.
 Offline input/heading/options/aim regressions and 32-chunk LuaJIT validation pass.
 Live initialization and worn checks remain; do not mark comfort/pivot accepted.
+
+User confirms both smooth and snap turning work. Requested turning modes are
+accepted; native-menu binding hints are now the active backlog item.
