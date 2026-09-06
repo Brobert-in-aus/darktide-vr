@@ -54,13 +54,21 @@ for the smaller set needed before a first end-to-end mission attempt.
    anatomical hands, weapon attachments/models, block/cast/throw/contact origins,
    effects, two-hand poses and accurate controls. Do not globally mirror the
    skeleton or swap raw tracking as a shortcut. Source audit is done; feature is not.
-8. **Finish release configuration and usability checks.** Validate non-default
+8. **Test SoloPlay for in-mission functionality, after Psykhanium acceptance.**
+   The user supplied `_downloads/SoloPlay` (Nexus mod 176). Keep this fairly late:
+   first get the planned VR functionality working properly in Psykhanium, then
+   check SoloPlay compatibility and use it for mission combat, objectives,
+   interactions, performance and lifecycle tests. Use the supplied standalone
+   copy, not the older copy under `_downloads/deluxghost-darktide-mods` by accident.
+   This is a future test task; nothing has been installed or launched for it.
+   SoloPlay results do not establish online mission-server compatibility.
+9. **Finish release configuration and usability checks.** Validate non-default
    HUD sliders, binding/menu ergonomics and remaining controller glyphs. Preserve
    the separate Custom HUD dependency/licensing policy; complete portable setup,
    runtime/resolution lifecycle and machine-configuration handling. Worker policy
    must use physical cores. Existing HUD/menu options are implemented, not a new
    task to rebuild them.
-9. **Post-initial-release optimization/polish.** LOD policy beyond machine-local
+10. **Post-initial-release optimization/polish.** LOD policy beyond machine-local
    LOD 9, tiny extreme-edge marker asymmetry, selective smoke-only suppression,
    and remaining nonessential visual polish. General/DLSS performance is now
    tracked in active priority 5. Keep the rolled-back pool/worker tuning trial off.

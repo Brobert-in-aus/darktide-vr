@@ -4,6 +4,22 @@
 The user asks what is needed to try a full mission; that is a smaller milestone
 than completing every mod/release feature.
 
+## Later SoloPlay test stage
+
+The user supplied `_downloads/SoloPlay` and requested testing it fairly late,
+once VR functionality works properly in Psykhanium. Use it as the subsequent
+in-mission test environment: first verify compatibility with the VR mod and its
+mode/input paths, then combat, mission interactions/objectives, sustained
+performance, loading and return-to-hub behavior. Do not install or launch it as
+part of this documentation update. Another source copy exists under
+`_downloads/deluxghost-darktide-mods/SoloPlay`; prefer the explicitly supplied copy
+and inspect its version/dependencies when this task begins.
+
+The [author's description](https://www.nexusmods.com/warhammer40kdarktide/mods/176?tab=description)
+describes offline solo missions without rewards/progression. This makes it a
+candidate for local mission testing; success there is not proof of online
+mission-server replication/authority. Keep that later acceptance separate.
+
 ## Confirmed blocker
 
 `presentation.is_first_person_body_mode` in the main stereo Lua module accepts
