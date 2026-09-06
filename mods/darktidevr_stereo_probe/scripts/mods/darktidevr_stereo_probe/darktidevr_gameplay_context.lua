@@ -19,4 +19,13 @@ function Context.body_mode(mode, session)
     return mode == "hub" or Context.aim_mode(mode, session)
 end
 
+function Context.ui_blocks_gameplay(ui)
+    -- inputs_in_use() is a key-filter table for stock keyboard input. Query
+    -- the actual owner, including chat, HUD and views. A retiring manager
+    -- cannot authorize fresh VR input. Scanner display explicitly owns none.
+    if not ui or type(ui.using_input) ~= "function" then return true end
+    local ok, using = pcall(ui.using_input, ui)
+    return not ok or using ~= false
+end
+
 return Context

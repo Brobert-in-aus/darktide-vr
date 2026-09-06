@@ -214,3 +214,20 @@ Validation: pinned LuaJIT 34 chunks, four focused CTests pass (bindings, prompts
 gameplay UI input and Lua invariants). No native rebuild is needed. Still
 undeployed; game/XR remain closed with proximity automation restored.
 Next: correct the UI ownership guard discovered during this source audit.
+
+## Gameplay UI ownership corrected offline
+
+Branch `codex/gameplay-ui-ownership-2026-09-07` replaces the incorrect boolean
+comparison of `inputs_in_use()` (a stock key table) with the stock `using_input()`
+ownership query. Chat, HUD and views are included; unavailable/retiring managers
+block VR input. Blocked sampling clears native/Lua state and pending UI actions,
+then skips action-cache writes so cancellation cannot inject a charged-release
+edge. Neutral rearming and ordinary gameplay releases remain intact.
+
+The real adapter seam is exercised with the real binding mapper in the new
+`gameplay_ui_ownership` test: RT held across UI open/close, stock cache preservation,
+neutral resume, ordinary release, scanner ownership and invalid managers.
+Pinned LuaJIT compiles all 34 chunks and five focused CTests pass. This candidate
+remains undeployed; no new readiness attempt or live session.
+Full Windows x64 Release CTest passes **102/102**, recorded in
+`artifacts/unattended/ui-ownership-ctest-20260907.log`.

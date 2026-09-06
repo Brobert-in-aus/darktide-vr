@@ -16,8 +16,10 @@ SoloPlay run and no worn acceptance. The local-authority admission policy in
 
 Source paths are under `_downloads/Darktide-Source-Code/scripts/`. Revive's
 `stop` method only applies success on the server; input delivery alone cannot
-establish that a teammate was revived. Interaction targeting uses the stock
-first-person ray/validity checks, so this audit does not claim hand-pointed use.
+establish that a teammate was revived. The existing controller-aim module wraps
+stock target acquisition and ongoing validity checks in a scoped right-hand
+pose for the local player. Those source routes do not establish mission target
+alignment or hand-pointed interaction acceptance.
 
 ## Slot selection candidate
 
@@ -35,10 +37,19 @@ cover each stock action, edge-only delivery, held aliases, blocked transitions
 and distinct direct/cycle hints. Runtime deployment and mission acceptance are
 pending a successful Ready preflight and later live checks.
 
-## Follow-up found during audit
+## UI ownership correction
 
 The main gameplay adapter compares `UIManager.inputs_in_use()` with boolean
 true, but the audited stock function returns `_ui_inputs_in_use`, a key table.
 The separate `using_input()` API reports whether views/HUD/constant elements
-own input. Review and correct that guard as a separate task, retaining scanner
-gameplay input and native-menu release behavior.
+own input. The subsequent candidate uses `using_input()` without excluding any
+owner. Missing, failing or invalid managers block VR input. The native and Lua
+mappers still clear state while blocked, but the adapter no longer injects a
+charged-release edge from that cancellation. Reopening gameplay requires held
+controls to return neutral. Scanner gameplay input remains admitted because its
+display reports no input ownership. Stock keyboard caches are preserved.
+
+The isolated test exercises the actual adapter function and mapper across an
+overlay opening during RT hold, cancellation, neutral resume, ordinary release,
+scanner ownership and missing/retiring UI managers. Live chat/overlay and
+scanner transitions still need verification.

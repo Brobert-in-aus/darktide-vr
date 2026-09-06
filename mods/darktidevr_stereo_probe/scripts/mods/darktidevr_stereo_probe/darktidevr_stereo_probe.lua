@@ -5462,12 +5462,8 @@ function presentation.inject_gameplay_input(self, main_t)
     end
 
     local game_mode_name = active_game_mode_name()
-    local ui_inputs_in_use = false
-    if Managers and Managers.ui and
-            type(Managers.ui.inputs_in_use) == "function" then
-        local ok, value = pcall(Managers.ui.inputs_in_use, Managers.ui)
-        ui_inputs_in_use = ok and value == true
-    end
+    local ui_inputs_in_use = presentation.gameplay_context.ui_blocks_gameplay(
+        Managers and Managers.ui)
     local active = controller_observation.gameplay_input_enabled and
         presentation.is_first_person_body_mode(game_mode_name) and
         presentation.mode == 1 and not ui_inputs_in_use
@@ -5491,6 +5487,9 @@ function presentation.inject_gameplay_input(self, main_t)
     end
     controller_observation.gameplay_input_last_sequence =
         tonumber(controller_observation.gameplay_sequence[0])
+    -- Still sample/cancel both mappers and UI requests while blocked, but do
+    -- not turn cancellation into a charged-release action in the game cache.
+    if not active then return end
     if result ~= 0 and pressed == 0 and held == 0 and released == 0 then
         return
     end
