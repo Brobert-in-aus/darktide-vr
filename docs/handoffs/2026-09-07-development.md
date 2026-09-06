@@ -6,6 +6,13 @@ automated checks and offline work; keep worn checks pending without waiting for
 immediate feedback. The task has an active 20-minute heartbeat. Automation state
 and device identifiers remain outside Git.
 
+The day's continuation is collected in
+[draft review #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2),
+based on the saved 6 September backlog branch. The aggregate review branch is
+`codex/development-continuation-2026-09-07`; keep it advancing only by ordinary
+fast-forward pushes from validated checkpoints. Nothing is merged or deployed
+by that review. Preserve each task's separate implementation branch.
+
 ## Controller candidate deployed
 
 Ready preflight passed before deployment: one authorized Quest, Streamer/VDXR,
@@ -247,3 +254,13 @@ It confirms collision parameters, speed/momentum, cached delayed release,
 once-only/server physics and stock drop references. No native changes, deployment,
 game session or worn acceptance. Existing runtime still has only the earlier
 saved controller/onboarding candidate; all subsequent changes remain offline.
+
+## Scanner stick reference candidate
+
+Branch `codex/scanner-stick-reference-2026-09-07` keeps scanner minigame axes
+direct while retaining optional hand-relative locomotion outside that state.
+The live local state is queried per sample, avoiding the cached diagnostic name.
+Validation: pinned LuaJIT 34 chunks; five focused CTests pass for scanner axes,
+gameplay heading, turning, UI ownership and source invariants. The actual movement
+seam is tested across differing hand/head orientation and immediate state changes.
+No deployment or live session; worn scanner/lifecycle acceptance remains pending.

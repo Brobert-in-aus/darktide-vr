@@ -9989,11 +9989,24 @@ function presentation.movement_reference_yaw()
         controller_observation.gameplay_yaw, reference
 end
 
+function presentation.controller_movement_is_device_axis()
+    local player = Managers and Managers.player and Managers.player:local_player(1)
+    local unit = player and player.player_unit
+    if not unit or not Unit.alive(unit) then return false end
+    local extension = ScriptUnit.has_extension(unit, "character_state_machine_system")
+    if not extension or type(extension.current_state_name) ~= "function" then return false end
+    local ok, name = pcall(extension.current_state_name, extension)
+    return ok and name == "minigame"
+end
+
 function presentation.rotate_controller_movement(x, y)
     if not controller_observation.gameplay_yaw or
             (mod:get("movement_reference") or "head") ~= "left_hand" then
         return x, y
     end
+    -- The scanner's minigame consumes `move` as a knob/axis, not locomotion.
+    -- Query the current local state; never reuse the throttled diagnostic name.
+    if presentation.controller_movement_is_device_axis() then return x, y end
     local reference_rotation = presentation.left_hand_movement_rotation()
     if not reference_rotation then
         return x, y

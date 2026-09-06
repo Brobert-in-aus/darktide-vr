@@ -53,3 +53,19 @@ The isolated test exercises the actual adapter function and mapper across an
 overlay opening during RT hold, cancellation, neutral resume, ordinary release,
 scanner ownership and missing/retiring UI managers. Live chat/overlay and
 scanner transitions still need verification.
+
+## Scanner axis reference correction
+
+The shared movement adapter formerly applied optional left-hand-relative walking
+rotation to every `move` consumer. `PlayerCharacterStateMinigame._update_input`
+uses that vector directly as a device knob/axis. The candidate bypasses the
+walking transform while the current local character state is `minigame`, using
+the same state distinction as stock `utilities/weapon/auspex.lua`. It queries
+the current extension each sample, not the throttled diagnostic state name.
+
+This leaves native stick deadzone, keyboard composition, scanner algorithms,
+head-relative defaults and ordinary hand-relative walking intact. The real seam
+test covers a 90-degree hand offset, both device axes, changing hand orientation,
+immediate entry/exit, missing tracking and retiring/missing state. Five focused
+CTests and the 34-chunk LuaJIT gate pass. Scanner readability, tactile controls
+and mission lifecycle remain live acceptance items.
