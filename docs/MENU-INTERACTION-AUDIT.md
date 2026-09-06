@@ -1,5 +1,13 @@
 # Menu interaction audit and offline rework
 
+Latest checkpoint: the user accepted tested menu changes, but requested a broad
+binding-hint pass beyond menu footers. The hub talent-points [I] reminder and
+talent deactivation right-click are acceptance cases; do not patch the latter
+in isolation. The automated hint inventory and hub/combat profile candidate are
+documented in [the input audit](INPUT-REVISION-AUDIT.md) and
+[night handover](handoffs/2026-09-06-end-of-day.md). New profile/hint code is not
+yet deployed. Earlier entries below are chronological evidence.
+
 ## Packed-render desktop mirror follow-up — 6 September
 
 The editor integration check found that Esc in the private range selected

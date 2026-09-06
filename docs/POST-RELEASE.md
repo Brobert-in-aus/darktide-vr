@@ -1,5 +1,15 @@
 # Post-initial-release work
 
+## Residual frame-generation performance profiling
+
+The 6 September foreground comparison measured roughly 70 original fps with FG
+off and 50 with it on. GPU measurements account for about 4.7 ms of the 5.7 ms
+frame-time difference, including approximately 2.06 ms Evaluate per eye. The
+former roughly 30-original-fps issue is absent. Remaining scene/queue/contention
+profiling belongs here; no claim is made that every millisecond is unavoidable.
+See CURRENT-STATUS's foreground/NGX timing evidence. This does not resolve HUD
+blur or duplicated/displaced elements, which remain a separate parked issue.
+
 ## LOD distance and cost
 
 The user accepted lod_object_multiplier=3 on 5 September 2026 as a sufficient

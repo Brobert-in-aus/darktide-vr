@@ -5,6 +5,13 @@ already include both sticks and both stick clicks. The current gameplay mapper
 is in `src/core/gameplay_input.cpp`; its game-side delivery table is
 `presentation.gameplay_input_bindings` in the stereo Lua module.
 
+End-of-day checkpoint: turning, tested menu changes and right-wrist alignment are
+user-accepted. Hub/combat override profiles, stock inventory delivery and shared
+onboarding/tutorial hints through 04b6053 are tested offline but not deployed.
+Talent deactivation right-click remains an explicit unfixed broad-pass case.
+See the [handover](handoffs/2026-09-06-end-of-day.md) and the latest implementation
+sections at the end of this document; older pending labels below are historical.
+
 | Quest control | Current gameplay routing | Menu routing |
 | --- | --- | --- |
 | Right trigger | Primary attack/fire | Select |

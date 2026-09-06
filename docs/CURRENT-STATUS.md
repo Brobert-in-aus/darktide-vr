@@ -3,6 +3,18 @@
 Updated 6 September 2026. This page supersedes historical feasibility documents
 for current defaults and operating instructions.
 
+**End-of-day checkpoint:** development is stopped; Darktide/XR are closed and
+normal Quest proximity behavior is restored. Start tomorrow with the
+[6 September handover](handoffs/2026-09-06-end-of-day.md) and
+[current ordered todo list](REMAINING-DEVELOPMENT.md#current-priority-order-end-of-6-september-2026).
+User accepts both turning modes, tested menu changes and the right unarmed wrist.
+Hub/combat profile and shared notification/tutorial hint changes through 04b6053
+pass offline validation but have not been deployed; installed Lua remains 2477d82.
+The planned relaunch was cancelled for wind-down. Talent deactivation's right-click
+hint is deliberately retained as a broad-pass check. DLSS HUD displacement and
+blur remain distinct unresolved issues; the pose investigation is parked.
+This checkpoint supersedes older same-day status notes below.
+
 ## Supported development path
 
 Windows x64, Steam Darktide, Quest through Virtual Desktop/VDXR. Integration

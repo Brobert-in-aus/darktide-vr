@@ -1,5 +1,68 @@
 # Remaining development: melee, HUD and DLSS
 
+## Current priority order: end of 6 September 2026
+
+This list supersedes task ordering and pending labels in the chronological
+details below. Development is stopped for the night. Resume from the
+[fresh-session handover](handoffs/2026-09-06-end-of-day.md).
+
+1. **Finish controller contexts and the broad binding-hint pass.** Deploy/test the
+   saved hub/combat profiles and inventory shortcut; verify remap persistence,
+   neutral/release guards, keyboard/mouse coexistence and matching hints. Complete
+   the automated source/runtime review across menus, notifications and tutorials.
+   Use the talent-points [I] reminder and talent deactivation right-click as
+   acceptance cases. The shared onboarding fix is prepared; talent deactivation
+   must remain untouched as an isolated patch, per the user's instruction.
+2. **Verify transition stability.** Manual hub-to-Psykhanium, menu/popup close,
+   loading and Custom HUD editor transitions need a focused regression check.
+   Existing material-lifetime/resume fixes are candidates; distinguish actual
+   recurrence from the historical base-game remote-husk race. Confirm early
+   character-select clicks after stock readiness. Hub automatic-entry leakage is
+   already fixed and its retry passed; do not reopen that resolved bug.
+3. **Finish ranged-weapon functionality across classes.** Verify actual firing,
+   gun/reticle alignment, muzzle origins and impacts with hand aim away from head
+   direction for every gun/flame/staff/projectile/throw mode. Preserve stock
+   spread/homing and exclude self-collision only where justified. Candidates are
+   not worn-accepted across families. Mission pose transport and remaining throws
+   remain open; include staff as a regression control.
+4. **Complete physical melee.** User owns complex contact verification. Finish
+   continuous contact/obstruction, per-target cooldowns using real combo timing,
+   heavy-charge rules, and dedicated stock damage/proc/prediction ownership.
+   Follow TRACKED-MELEE-DESIGN, including the selected cleave policy. The current
+   query probe applies no damage. Button-driven hand-aimed melee is accepted.
+5. **Implement handedness.** Follow HANDEDNESS-AUDIT: dominant/support roles,
+   anatomical hands, weapon attachments/models, block/cast/throw/contact origins,
+   effects, two-hand poses and accurate controls. Do not globally mirror the
+   skeleton or swap raw tracking as a shortcut. Source audit is done; feature is not.
+6. **Finish release configuration and usability checks.** Validate non-default
+   HUD sliders, binding/menu ergonomics and remaining controller glyphs. Preserve
+   the separate Custom HUD dependency/licensing policy; complete portable setup,
+   runtime/resolution lifecycle and machine-configuration handling. Worker policy
+   must use physical cores. Existing HUD/menu options are implemented, not a new
+   task to rebuild them.
+7. **DLSS image-quality investigation: parked pending user direction.** Generated
+   HUD displacement/duplication and blur are separate unresolved symptoms. The
+   user stopped the pose-mismatch approach; do not resume it or activate the
+   separate UI layer automatically. Generated stereo delivery and motion timing
+   are working; do not resurrect the old output-association blocker.
+8. **Post-initial-release optimization/polish.** LOD policy beyond machine-local
+   LOD 9, tiny extreme-edge marker asymmetry, selective smoke-only suppression,
+   and residual generation performance profiling. Most measured 70-to-50 original
+   fps cost is explained by two-eye FG work; this is not the old unexplained
+   30-fps regression. Keep the rolled-back pool/worker tuning trial off.
+
+Completed/accepted: smooth and snap turning; tested menu changes; left and right
+hand alignment; hand-directed button melee; the hub launch stale-request fix.
+Latest not-yet-deployed candidate: 04b6053 (hub/combat bindings, stock inventory
+hotkey delivery, shared onboarding/tutorial hints). Game and XR are shut down;
+normal Quest proximity behavior is restored. See the handover for exact tests,
+evidence, commit chain and first-launch steps.
+
+## Historical subsystem detail and evidence
+
+Entries below preserve earlier findings and implementation history. Their older
+"next", "pending", and "current task" statements do not override the list above.
+
 Updated 6 September 2026. User accepts the e8bcfe4 packed-output checkpoint:
 VR world rendering, loading screens and desktop mirror all work. Subsequent
 opt-in development now delivers generated stereo to XR continuously. The user

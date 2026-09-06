@@ -6,6 +6,9 @@ native D3D12 producer, a Lua mod, and a separate OpenXR viewer.
 Start with [current status and operation](docs/CURRENT-STATUS.md),
 [working agreements](AGENTS.md), and the
 [maintenance implementation plan](docs/maintenance-plan-2026-09-05.md).
+For the next development session, read the
+[latest handover](docs/handoffs/2026-09-06-end-of-day.md) and the current priority
+order at the top of [remaining development](docs/REMAINING-DEVELOPMENT.md).
 The game integration is build-specific and used with EAC inactive. The project
 contains no anti-cheat bypass implementation.
 

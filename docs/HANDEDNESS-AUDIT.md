@@ -1,8 +1,9 @@
 # Handedness implementation audit
 
 6 September 2026. Source audit only; left-handed gameplay is not implemented or
-visually accepted. Right-wrist calibration is awaiting the user's hub check.
-The running hub build remains 2477d82. DLSS HUD investigation stays parked.
+visually accepted. User accepted the right-wrist correction in hub build 2477d82.
+Development is stopped for the night; game/XR are closed. See the
+[end-of-day handover](handoffs/2026-09-06-end-of-day.md). DLSS HUD investigation stays parked.
 
 ## Decision
 
