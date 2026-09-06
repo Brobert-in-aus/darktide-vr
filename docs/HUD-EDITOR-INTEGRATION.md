@@ -85,3 +85,23 @@ Validation: Release native/XR builds, all 31 Lua chunks, continuous_recovery,
 hud_panel, hud_options, streamline_submission and the existing generated transport
 checks pass. The recovery test repeats partial/full capture interruptions on WARP;
 the HUD fixture checks overlay reuse, close/deactivation and resize destruction.
+
+### Stock crosshair versus weapon counter
+
+The saved Custom HUD layout hides HudElementWeaponCounter|pivot. That element
+shows weapon-specific kill charges, cooldown charges and overheat lockout
+indicators near the crosshair. It is separate from HudElementCrosshair, which
+Custom HUD excludes from its editable element list.
+
+The VR HUD adapter now suppresses only HudElementCrosshair's active aiming widget
+while VR HUD is enabled, preserving the element's base hit-feedback widgets and
+restoring its pointer even after a draw error. It leaves the hand-aimed XR reticle
+and user layout settings intact. LuaJIT 31 chunks and hud_panel regression pass;
+next-launch worn confirmation remains required.
+
+The user reports that generated motion now feels consistent with the reported
+frame rate. They also report blur around HUD/world item markers. Current FG uses
+HUDless colour and the complete final colour, without a tagged UI colour/alpha
+buffer. Inspect explicit UI isolation before changing temporal quality settings;
+NVIDIA's v2.7.30 ProgrammingGuideDLSS_G recommends premultiplied UI colour/alpha
+for improved HUD/nameplate quality. Edge blur has not been declared fixed.

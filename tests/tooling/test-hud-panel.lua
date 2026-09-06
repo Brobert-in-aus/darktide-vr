@@ -438,3 +438,17 @@ assert(worlds_created==2 and worlds_destroyed==1)
 state.display_target=nil -- Not an actual engine allocation in this fixture.
 panel.set_enabled(false)
 assert(worlds_destroyed==2 and state.editor_renderer==nil)
+
+local crosshair={_widget={aim=true},hit_feedback={}}
+local original_crosshair=crosshair._widget
+state.enabled=true
+local crossed=pack(panel.draw_stock_crosshair(function(self)
+    assert(self._widget==nil and self.hit_feedback)
+    return "feedback",nil,3
+end,crosshair))
+assert(crossed.n==3 and crossed[1]=="feedback" and crossed[3]==3)
+assert(crosshair._widget==original_crosshair)
+assert(not pcall(panel.draw_stock_crosshair,function() error("draw failure") end,crosshair))
+assert(crosshair._widget==original_crosshair)
+state.enabled=false
+panel.draw_stock_crosshair(function(self) assert(self._widget==original_crosshair) end,crosshair)

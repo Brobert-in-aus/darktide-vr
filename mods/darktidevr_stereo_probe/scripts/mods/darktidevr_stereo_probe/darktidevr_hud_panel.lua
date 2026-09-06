@@ -227,6 +227,19 @@ function HudPanel.editing()
     return state.enabled and custom and custom.is_customizing == true
 end
 
+function HudPanel.draw_stock_crosshair(func, self, ...)
+    if not state.enabled then return func(self, ...) end
+    -- The hand-aimed XR reticle replaces only the stock centre aiming widget.
+    -- Base widgets still provide hit/kill feedback. Restore even if drawing
+    -- fails, so disabling VR or rebuilding this element retains stock state.
+    local widget = self._widget
+    self._widget = nil
+    local result = pack(pcall(func, self, ...))
+    self._widget = widget
+    if not result[1] then error(result[2], 0) end
+    return unpack(result, 2, result.n)
+end
+
 function HudPanel.request_editor()
     local custom = custom_hud()
     if not custom or type(custom.toggle_hud_customization) ~= "function" or
@@ -780,6 +793,7 @@ function HudPanel.install(mod)
         mod:notify(mod:localize(message))
     end
     HudPanel.read_settings(mod)
+    mod:hook("HudElementCrosshair", "_draw_widgets", HudPanel.draw_stock_crosshair)
     local previous_setting_changed = mod.on_setting_changed
     mod.on_setting_changed = function(setting_id)
         if previous_setting_changed then previous_setting_changed(setting_id) end

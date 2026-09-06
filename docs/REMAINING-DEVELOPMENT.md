@@ -303,3 +303,16 @@ menu route under DLSS. Live display and return to generated stereo pass; user
 layout dragging/persistence and worn readability remain to check. Maintain this
 open/close check in DLSS menu-transition acceptance. Original performance versus
 the user's approximately 70-fps pre-DLSS baseline remains a separate open task.
+
+### September 6 worn feedback after editor recovery
+
+F3 editor visible/functional: user PASS. Reopening was reported; one late
+open/close pair was the agent's explicit visual check. No repeating F3 script was
+found; diagnostic HUD flag is consumed and dependency keybind is pressed-only.
+Do not add automated F3 inputs while the user tests.
+Generated motion now feels consistent with reported frame rate: user PASS.
+Remaining image-quality issue: blur around HUD and world item markers. Inspect
+true premultiplied UI colour/alpha isolation; current FG tags HUDless only.
+A separate stock-centre-crosshair suppression is prepared and passes LuaJIT and
+hud_panel tests; deployed live confirmation remains pending. WeaponCounter is
+weapon-specific charge/lockout UI, not the crosshair. User layout is unchanged.
