@@ -17,6 +17,10 @@ fixed-frame input cache that stock simulation and the network sender read.
 Subsequent frames do not rewrite earlier samples. No custom RPC is introduced.
 Stock pitch limits and zero roll are retained; HMD view/orientation is not
 replaced with hand aim.
+The adapter observes `HumanGameplay._player_orientation_class` and only authors
+free/default aim. Forced look, weapon locks (including chainsaw-style attacks),
+sticky melee, ledge hangs, camera-owning wheels and death retain the actual
+stock-selected orientation even when the character still reports walking.
 
 The mode declines the common action-pose overrides, including weapon origins,
 staff/throw convergence, button-melee reference proxies, left-hand block proxies
@@ -85,7 +89,9 @@ build/dependencies/luajit/src/luajit.exe tests/tooling/test-online-rules-stock-c
 Both pass. The first covers stock buffering/send/receive/history behavior. The
 second applies the actual VR adapter before stock first-person and walking
 methods, verifying body-height origin, stock recoil, intended movement direction
-and backward penalty. Engine math and transport are isolated substitutes, so
+and backward penalty. It also executes the actual stock orientation selector
+across forced look, both weapon-lock forms, force-look weapons, melee stickiness,
+ledge hangs, communication/emote wheels and death. Engine math and transport are isolated substitutes, so
 these do not establish executable wire precision or live server acceptance.
 
 Fresh live diagnostics should include `DARKTIDEVR_ONLINE_RULES` with the range
@@ -96,3 +102,6 @@ differs from the head, menu cancellation, near cover, range exit/re-entry and
 camera independence. Worn aim, room movement and comfort remain pending while
 the user is at work. Current readiness is blocked by the observed Quest
 [tracking-loss prompt](QUEST-PASSTHROUGH-RECOVERY.md).
+
+Follow-up ownership fix: four focused CTests and the expanded stock-source
+check pass; the last full 105-test suite is the preceding candidate checkpoint.

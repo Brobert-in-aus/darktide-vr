@@ -45,7 +45,9 @@ GameSession={set_game_object_field=function() end}
 local walking=assert(loadstring(source('extension_systems/character_state_machine/character_states/utilities/accelerated_local_space_movement')))()
 local player={player_unit='local'}
 Managers={state={game_session={is_server=function() return true end}},
-    player={local_player=function() return player end},ui={using_input=function() return false end}}
+    player={local_player=function() return player end},ui={using_input=function() return false end,
+        communication_wheel_wants_camera_control=function() return false end,
+        emote_wheel_wants_camera_control=function() return false end}}
 Unit={alive=function() return true end}
 ScriptUnit={has_extension=function() return {current_state_name=function() return 'walking' end} end}
 Network={pack_unpack=function(_,value) return value end} -- Engine quantization not covered here.
@@ -57,12 +59,33 @@ local view=Quaternion.from_yaw_pitch_roll(0,.1,0)
 local presentation={mode=1,gameplay_context=dofile(arg[2]),
     flat_movement_rotation=function(y) return Quaternion.from_yaw_pitch_roll(y,0,0) end,
     controller_aim_target=function() return Vector3(99,88,77),aim end}
-local rules=dofile(arg[1]).install({get=function() return true end,info=function() end,warning=function() end},
+HumanGameplay={}
+local gameplay_source=source('managers/player/player_game_states/human_gameplay')
+local selection_start=assert(gameplay_source:find('HumanGameplay._player_orientation_class =',1,true))
+local selection_end=assert(gameplay_source:find('\nHumanGameplay._cb_player_activate_emote =',selection_start,true))
+assert(loadstring(gameplay_source:sub(selection_start,selection_end-1)))()
+local orientation_class=HumanGameplay
+ALIVE={['local']=true}
+PlayerUnitStatus={is_ledge_hanging=function(component) return component.hanging end}
+SweepStickyness={is_sticking_to_unit=function(component) return component.sticking end}
+local rules=dofile(arg[1]).install({get=function() return true end,info=function() end,warning=function() end,
+    hook_require=function(_,path,callback) callback(orientation_class) end,
+    hook=function(_,class,name,callback)
+        local original=class[name]; class[name]=function(...) return callback(original,...) end
+    end},
     presentation,{authoring_enabled=true,gameplay_input_active=true},function() return 'shooting_range' end)
 local h={_player=player,_input_cache={{0},{0},{1},{0},{0},{0},{0}},
     _action_lookup={move_right=1,move_left=2,move_forward=3,move_backward=4},
     _pack_unpack_action_to_network_type_index={move_right=1,move_left=1,move_forward=1,move_backward=1},
     _yaw_index=5,_pitch_index=6,_roll_index=7,_buffer_index=function() return 1 end}
+player.input_handler=h
+local gameplay={_player=player,_player_unit='local',_default_player_orientation={},
+    _weapon_lock_view_component={state='none'},_force_look_rotation_component={},
+    _character_state_component={},_action_sweep_component={},
+    _forced_player_orientation={},_ledge_hanging_player_orientation={},
+    _weapon_lock_view_player_orientation={},_weapon_force_view_player_orientation={},
+    _smooth_force_view_player_orientation={},_communication_wheel_orientation={},_dead_player_orientation={}}
+assert(orientation_class._player_orientation_class(gameplay)==gameplay._default_player_orientation)
 rules.capture(h,1); assert(rules.frames==1)
 local input={get_orientation=function() return h._input_cache[5][1],h._input_cache[6][1],h._input_cache[7][1] end,
     get=function(_,name) assert(name=='move'); return Vector3(h._input_cache[1][1]-h._input_cache[2][1],
@@ -95,5 +118,26 @@ rules.capture(h,2)
 direction,speed=move(aim.yaw)
 assert(math.abs(direction[1])<1e-12 and math.abs(direction[2]-1)<1e-12)
 assert(math.abs(speed-2.5)<1e-12,'Stock backward penalty must remain')
+-- Execute the actual stock selector for forced look, weapon lock, melee
+-- stickiness, ledge hanging, communication/emote wheels and dead ownership.
+local selected_cases={
+    function() gameplay._force_look_rotation_component.use_force_look_rotation=true end,
+    function() gameplay._force_look_rotation_component.use_force_look_rotation=false; gameplay._character_state_component.hanging=true end,
+    function() gameplay._character_state_component.hanging=false; gameplay._weapon_lock_view_component.state='weapon_lock' end,
+    function() gameplay._weapon_lock_view_component.state='weapon_lock_no_lerp' end,
+    function() gameplay._weapon_lock_view_component.state='force_look' end,
+    function() gameplay._weapon_lock_view_component.state='none'; gameplay._action_sweep_component.sticking=true end,
+    function() gameplay._action_sweep_component.sticking=false; Managers.ui.communication_wheel_wants_camera_control=function() return true end end,
+    function() Managers.ui.communication_wheel_wants_camera_control=function() return false end; Managers.ui.emote_wheel_wants_camera_control=function() return true end end,
+    function() Managers.ui.emote_wheel_wants_camera_control=function() return false end; ALIVE['local']=false end,
+}
+for i,select_case in ipairs(selected_cases) do
+    select_case()
+    assert(orientation_class._player_orientation_class(gameplay)~=gameplay._default_player_orientation)
+    h._input_cache={{0},{0},{1},{0},{0},{0},{0}}
+    rules.capture(h,i+10)
+    assert(h._input_cache[5][1]==0 and h._input_cache[3][1]==1,'Overrode forced stock orientation')
+end
 print('PASS: actual stock pose keeps body origin/recoil; actual walking preserves direction and backward penalty')
+print('PASS: actual stock orientation selector retains forced look, weapon locks, sticky melee, ledges, wheels and death')
 print('LIMIT: isolated engine math, no real quantization, live network or worn acceptance')

@@ -400,3 +400,18 @@ penalty. Engine serialization, remote correction and worn camera/aim/comfort
 remain unverified. Logs: `artifacts/unattended/online-rules-ctest-20260907.log`
 and `online-rules-configure-20260907.log`. No deployment due to failed Ready
 after the requested ADB recovery. Normal Quest proximity behavior is restored.
+
+## Online-rules forced-view ownership
+
+Follow-up branch `codex/online-rules-forced-view-2026-09-07` fixes a concrete
+source-audit finding: walking can coexist with a forced weapon view or sticky
+melee orientation. Observe the actual stock orientation object chosen immediately
+before input caching, using a weak handler-keyed ownership table. Only its
+default/free-aim owner admits hand input; unknown selection retains stock input.
+The selector and all returned objects remain unchanged.
+
+Four focused CTests pass (compiler, invariants, ranged and online rules), plus
+the optional source test now executes the real selector for forced look, ledges,
+both weapon-lock forms, force-look weapons, sticky melee, communication/emote
+wheels and death. No native change, deployment or new live readiness attempt.
+The prior full-suite result remains 105/105 at `e3647d0`.

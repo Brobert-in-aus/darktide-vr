@@ -12,6 +12,22 @@ end
 function Rules.install(mod, presentation, state, mode_name)
     local instance = {frames=0, failures=0}
     local session_owner, selected
+    local orientation_owners = setmetatable({}, {__mode="k"})
+    -- Walking alone does not imply free aim: chainsaw locks, forced look and
+    -- sweep stickiness select another orientation object in the same state.
+    -- Observe the stock selection that HumanGameplay makes immediately before
+    -- caching inputs. Do not replace it or eagerly load gameplay dependencies.
+    mod:hook_require("scripts/managers/player/player_game_states/human_gameplay", function(class)
+        mod:hook(class, "_player_orientation_class", function(func, self, ...)
+            local orientation = func(self, ...)
+            local handler = self._player and self._player.input_handler
+            if handler then
+                orientation_owners[handler] = orientation ~= nil and
+                    orientation == self._default_player_orientation
+            end
+            return orientation
+        end)
+    end)
     local function enabled()
         local session = Managers and Managers.state and Managers.state.game_session
         if not ranges[mode_name()] then
@@ -38,7 +54,8 @@ function Rules.install(mod, presentation, state, mode_name)
                 not state.authoring_enabled or not state.gameplay_input_active or
                 presentation.gameplay_context.ui_blocks_gameplay(Managers.ui) then return end
         local player = Managers.player and Managers.player:local_player(1)
-        if not player or handler._player ~= player or not finite(frame) then return end
+        if not player or handler._player ~= player or not finite(frame) or
+                orientation_owners[handler] ~= true then return end
         local unit = player.player_unit
         if not unit or not Unit.alive(unit) then return end
         local machine = ScriptUnit.has_extension(unit, "character_state_machine_system")

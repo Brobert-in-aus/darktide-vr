@@ -5,9 +5,14 @@ local mode, option, owns, character = 'shooting_range', true, false, 'walking'
 local hand = {yaw=math.pi/2,pitch=.2}
 local player = {player_unit='local'}
 local logs, packed = {}, 0
+local orientation_class={_player_orientation_class=function(self) return self.chosen end}
 local mod = {get=function() return option end,
     info=function(_,message) logs[#logs+1]=message end,
-    warning=function(_,message) logs[#logs+1]=message end}
+    warning=function(_,message) logs[#logs+1]=message end,
+    hook_require=function(_,path,callback) callback(orientation_class) end,
+    hook=function(_,class,name,callback)
+        local original=class[name]; class[name]=function(...) return callback(original,...) end
+    end}
 Managers={state={game_session={is_server=function() return true end}},
     player={local_player=function() return player end},
     ui={using_input=function() return owns end}}
@@ -39,6 +44,11 @@ local function handler()
     return h
 end
 local h=handler()
+player.input_handler=h
+local default_orientation={}
+local gameplay=setmetatable({_player=player,_default_player_orientation=default_orientation,
+    chosen=default_orientation},{__index=orientation_class})
+assert(gameplay:_player_orientation_class()==default_orientation)
 local function fresh(frame,x,y)
     local c=h._input_cache
     c[1][frame],c[2][frame]=math.max(x or 0,0),math.max(-(x or 0),0)
@@ -85,6 +95,16 @@ end
 fresh(20,0,1); rules.capture(h,20); stock(20)
 assert(h._input_cache[3][20]==1 and rules.failures==1,'Partial input mutation on failure')
 Network.pack_unpack=original_pack
+-- A forced look can occur while the character remains walking. Respect the
+-- actual stock orientation selection, including nil/unknown ownership.
+for _,choice in ipairs({{},false}) do
+    gameplay.chosen=choice or nil
+    assert(gameplay:_player_orientation_class()==gameplay.chosen)
+    fresh(21,0,1); rules.capture(h,21); stock(21)
+end
+gameplay.chosen=default_orientation
+gameplay:_player_orientation_class()
+fresh(22,0,1); rules.capture(h,22); assert(h._input_cache[5][22]==1)
 -- Settings are latched until leaving the range. Remote missions stay gated.
 option=false; assert(rules.enabled())
 mode='hub'; assert(not rules.enabled())
