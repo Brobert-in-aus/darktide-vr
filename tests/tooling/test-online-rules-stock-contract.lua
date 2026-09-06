@@ -124,6 +124,61 @@ local camera_yaw,camera_pitch=CameraHandler._camera_root_orientation({_mode='fir
     {orientation=function() return view.yaw,view.pitch,view.roll end,
      orientation_offset=function() return .01,.02,0 end})
 assert(camera_yaw==rendered_rotation.yaw and camera_pitch==rendered_rotation.pitch)
+-- Run real shot preparation against the stock pose produced above. Tag the
+-- engine-dependent weapon operations to verify ownership/order, not their math.
+local shooting_source=source('extension_systems/weapon/actions/action_shoot')
+local shot_start=assert(shooting_source:find('ActionShoot._prepare_shooting =',1,true))
+local shot_end=assert(shooting_source:find('\nActionShoot._spend_ammunition =',shot_start,true))
+ActionShoot={}
+assert(loadstring(shooting_source:sub(shot_start,shot_end-1)))()
+local operations,gamepad={},false
+local function stage(name,rotation)
+    operations[#operations+1]=name
+    return {stage=name,previous=rotation}
+end
+Recoil.apply_weapon_recoil_rotation=function(_,_,_,_,_,rotation) return stage('recoil',rotation) end
+Recoil.add_recoil=function() operations[#operations+1]='add_recoil' end
+Sway={apply_sway_rotation=function(_,_,rotation) return stage('sway',rotation) end,
+    add_immediate_sway=function() operations[#operations+1]='add_sway' end}
+Spread={add_immediate_spread_from_shooting=function() operations[#operations+1]='add_spread' end}
+SmartTargeting={smart_targeting_template=function() return 'stock_targeting' end}
+MultiFireModes={simultaneous='simultaneous'}
+DevParameters={disable_aim_assist=false}
+Managers.input={is_using_gamepad=function() return gamepad end}
+local shot={_first_person_component=component,
+    _action_component={current_fire_config=1,num_shots_fired=0},
+    _shooting_status_component={num_shots=0},_multi_fire_mode='simultaneous',
+    _base_fire_configurations={{},{}},_is_server=true,
+    _weapon_extension={recoil_template=function() return 'recoil' end,
+        sway_template=function() return 'sway' end,spread_template=function() return 'spread' end},
+    _weapon_spread_extension={randomized_spread=function(_,rotation) return stage('spread',rotation) end},
+    _smart_targeting_extension={assisted_hitscan_trajectory=function(_,_,_,rotation) return stage('assist',rotation) end},
+    _fire_configurations=function() return {{}} end,_prepare_fire_config=function() return .6 end,
+    _set_charge_animation_variable=function() end,_update_sound_reflection=function() end,
+    _play_muzzle_flash_vfx=function() end}
+ActionShoot._prepare_shooting(shot,.02,1)
+local shot_component=shot._action_component
+local shot_rotation=shot_component.shooting_rotation
+assert(shot_component.shooting_position==component.position and component.position[1]==10,
+    'Shot origin must come from simulated body pose, not tracked hand origin')
+assert(shot_component.shooting_charge_level==.6)
+assert(shot_rotation.stage=='spread' and shot_rotation.previous.stage=='sway' and
+    shot_rotation.previous.previous.stage=='recoil' and
+    shot_rotation.previous.previous.previous==component.rotation)
+assert(table.concat(operations,',')=='recoil,sway,spread,add_sway,add_spread,add_recoil')
+-- A second simultaneous bullet retains the prepared group sample; it must not
+-- reread a later live/controller pose or add recoil/spread a second time.
+local original_pose=component.rotation
+component.rotation={later_pose=true}
+ActionShoot._prepare_shooting(shot,.02,1.02)
+assert(shot_component.shooting_rotation==shot_rotation and #operations==6)
+assert(shot._shooting_status_component.num_shots==1 and shot_component.num_shots_fired==2)
+component.rotation=original_pose
+gamepad=true; operations={}
+ActionShoot._prepare_shooting(shot,.02,1.04)
+assert(table.concat(operations,',')=='recoil,sway,assist,spread,add_sway,add_spread,add_recoil')
+assert(shot._shooting_status_component.num_shots==2)
+gamepad=false
 -- With zero recoil, the actual walking method reconstructs the intended head-
 -- relative direction from the transformed input. Its own backward penalty stays.
 local constants={acceleration=1000,deceleration=1000,backward_move_scale=.5,
@@ -180,4 +235,5 @@ end
 print('PASS: actual stock pose keeps body origin/recoil; actual walking preserves direction and backward penalty')
 print('PASS: actual stock orientation selector retains forced look, weapon locks, sticky melee, ledges, wheels and death')
 print('PASS: actual stock local rendering and camera root retain independent view orientation')
+print('PASS: actual stock shot preparation retains body origin, charge, recoil/sway/assist/spread order and grouped-shot sample')
 print('LIMIT: isolated engine math, no real quantization, live network or worn acceptance')

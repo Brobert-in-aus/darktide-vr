@@ -469,3 +469,12 @@ failed before the change and passes afterward, including session replacement
 without an observed hub and bounded repeated errors. Three focused CTests
 (compiler, invariants, online rules) and the optional stock-source contract pass.
 No native change or deployment. The full-suite baseline remains `e3647d0`.
+
+## Stock shot-preparation integration
+
+The optional stock-source test now executes `ActionShoot._prepare_shooting`
+using the pose produced by the VR adapter and actual first-person method. It
+passes body-origin, charge, recoil/sway/assist/spread ordering and grouped-shot
+sample retention checks. The engine weapon operations are tagged substitutes;
+their math, bullet collisions and damage are not covered. No production change,
+deployment or broader suite rerun was needed for this fixture extension.

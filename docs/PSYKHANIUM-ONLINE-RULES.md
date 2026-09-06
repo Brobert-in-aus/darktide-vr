@@ -124,6 +124,14 @@ The actual stock local `_update_rotation` and camera-root orientation methods
 also pass with distinct head/hand angles: local rendering reads the original
 view owner while the fixed combat component keeps hand aim.
 
+The stock-source check also executes actual `ActionShoot._prepare_shooting`
+against that simulated pose. It verifies the body origin, returned charge level,
+recoil/sway/optional assist/spread sequence and retained sample for the second
+simultaneous bullet. Engine-dependent weapon operations are tagged substitutes:
+their order and data ownership are tested, not spread distributions or live
+damage. Changing the component rotation between grouped bullets does not replace
+the already prepared shot sample.
+
 The direct-bone audit found optional `spawn_node` branches in stock grenade and
 spawn-projectile actions, but no `spawn_node` assignments in the inspected
 equipment settings. Those branches remain a future template-coverage boundary;
