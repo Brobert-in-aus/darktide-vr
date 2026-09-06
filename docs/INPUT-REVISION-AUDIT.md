@@ -1,5 +1,16 @@
 # Input revision audit — 6 September 2026
 
+7 September continuous-work follow-up: a failed native controller read now
+cancels Lua delivery without injecting the mapper's synthetic release into stock
+attack caches. Previously the policy could still be active while the native
+read failed, and nonzero cancellation releases passed the final guard. The real
+adapter regression reproduces this and covers cleared/stale returned button
+levels, reconnect with a held attack, neutral rearming, ordinary release and
+preserved keyboard input. Six focused input/policy/source checks and 36 LuaJIT
+chunks pass. This covers unavailable/stale native reads (native return code 2)
+and defensive nonzero errors; it does not claim all per-hand tracking-loss or
+worn charge-cancellation behavior has been validated. Candidate is undeployed.
+
 This records the routing audit and subsequent candidates. The raw OpenXR actions
 already include both sticks and both stick clicks. The current gameplay mapper
 is in `src/core/gameplay_input.cpp`; its game-side delivery table is

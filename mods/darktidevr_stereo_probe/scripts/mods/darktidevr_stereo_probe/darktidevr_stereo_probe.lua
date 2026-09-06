@@ -5495,12 +5495,9 @@ function presentation.inject_gameplay_input(self, main_t)
     end
     controller_observation.gameplay_input_last_sequence =
         tonumber(controller_observation.gameplay_sequence[0])
-    -- Still sample/cancel both mappers and UI requests while blocked, but do
-    -- not turn cancellation into a charged-release action in the game cache.
-    if not active then return end
-    if result ~= 0 and pressed == 0 and held == 0 and released == 0 then
-        return
-    end
+    -- Still sample/cancel both mappers and UI requests while blocked or after
+    -- a failed native read. Cancellation is not a charged-release action.
+    if not controller_observation.gameplay_input_active then return end
     if pressed ~= 0 or released ~= 0 then
         mod:info(
             "DARKTIDEVR_INPUT gameplay_edges sequence=%d pressed=%d held=%d released=%d move=%.3f,%.3f",

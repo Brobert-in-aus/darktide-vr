@@ -645,3 +645,22 @@ Windows rejected Stop-Process with Access is denied. The guarded sequence did
 not launch another instance. No privilege workaround, headset wake/proximity
 change, deployment or new Ready attempt. Live rendering remains blocked; the
 user was informed and work returned to offline mission lifecycle checks.
+
+## Continuous todo work: failed controller-read cancellation
+
+Branch `codex/tracking-loss-input-cancel-2026-09-07` fixes another synthetic
+release leak. Lua sampled its mapper as inactive after native read failure, but
+the final delivery guard only rejected inactive gameplay policy; a nonzero
+cancellation release could still enter the stock ephemeral action cache.
+Require effective gameplay-input activity (policy plus successful native read)
+after sampling/cancelling both mappers and UI requests.
+
+The real adapter regression fails before the fix and passes afterward. It covers
+nonzero errors, cleared and stale returned levels, inherited holds on recovery,
+neutral rearming, normal release and unchanged keyboard cache. Native code
+returns 2 for unavailable/stale transport and resets its mapper; no native ABI
+or mapper change is required. Six focused CTests pass (gameplay input, Lua source
+invariants, online rules, gameplay UI input, controller bindings, UI ownership),
+and all 36 LuaJIT chunks compile. Full-suite baseline is 108/108 at `dd1ec4e`.
+No deployment; per-hand tracking flags and worn cancellation remain separate
+acceptance limits. Continue the todo list until the user instructs a stop.
