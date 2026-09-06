@@ -5,6 +5,7 @@
 #include "producer/ngx_command_observations.h"
 #include "producer/ngx_output_state.h"
 #include "producer/ngx_output_pair_state.h"
+#include "producer/ngx_output_copy_probe.h"
 #include <MinHook.h>
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -254,6 +255,13 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   const auto began = GetTickCount64();
   const auto result = original(commands, feature, parameters, callback);
   active_evaluation = previous_evaluation;
+  if (complete && result == ngx::kSuccess && output_state.seed_call &&
+      output_state.pair_observation.known && !output_state.pair_observation.ambiguous &&
+      output_state.pair_observation.state == D3D12_RESOURCE_STATE_UNORDERED_ACCESS &&
+      std::none_of(resources.begin() + 1, resources.end(), [&](auto resource) { return resource == resources[0]; })) {
+    stage_ngx_output_copy(static_cast<ID3D12GraphicsCommandList*>(commands), resources[0],
+                          output_state.seed_call, call);
+  }
   if (captured) record_output_barriers(call, output_state);
   record_slow_call("evaluate", identity.kind, began);
   if (captured && result == ngx::kSuccess) {
@@ -437,6 +445,7 @@ void poll_ngx_queue_completion() {
     const auto value = group.fence->GetCompletedValue();
     if (value == 0) continue;
     for (const auto call : group.calls) {
+      if (value != UINT64_MAX) complete_ngx_output_copy(call);
       char line[192]{};
       const auto length = std::snprintf(line, sizeof(line),
           "NGX_COMPLETE call=%llu ticket=%llu fence=%p completed=%llu gpu_complete=%u publication=0\n",
@@ -468,6 +477,8 @@ bool install_ngx_output_probe(HMODULE capture_module) {
   if (GetFileAttributesW(flag.c_str()) ==
       INVALID_FILE_ATTRIBUTES) return true;
   const bool wait_for_stereo = GetPrivateProfileIntW(L"probe", L"wait_for_stereo", 0, flag.c_str()) != 0;
+  configure_ngx_output_copy(wait_for_stereo &&
+      GetPrivateProfileIntW(L"probe", L"copy_output", 0, flag.c_str()) != 0);
   capture_window.configure(wait_for_stereo);
   runtime = GetModuleHandleW(L"_nvngx.dll");
   if (!runtime) return false;

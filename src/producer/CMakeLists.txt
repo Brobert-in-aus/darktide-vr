@@ -1,4 +1,4 @@
-add_library(darktidevr_native_capture SHARED native_capture.cpp resource_handle_trace.cpp ngx_output_probe.cpp streamline_continuous_submission.cpp)
+add_library(darktidevr_native_capture SHARED native_capture.cpp resource_handle_trace.cpp ngx_output_probe.cpp ngx_output_copy_probe.cpp streamline_continuous_submission.cpp)
 target_compile_options(darktidevr_native_capture PRIVATE
   /W4 /WX /permissive-)
 target_compile_definitions(darktidevr_native_capture PRIVATE

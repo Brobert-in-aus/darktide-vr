@@ -40,6 +40,8 @@ param(
 
     [switch] $NgxOutputProbeAtStereoSubmit,
 
+    [switch] $NgxOutputCopyProbe,
+
     [switch] $StreamlineStereoSubmitProbe,
     [switch] $StreamlineContinuousSubmitProbe,
     [ValidateRange(1, 8)] [int] $StreamlineStereoSubmitFrames = 1,
@@ -146,6 +148,10 @@ if ($OfflineDualViewBenchmark) {
     # requested: the native GPU profiler injects additional command lists and
     # submissions, so enabling it here changes the workload being measured.
     $AutoEnterHub = $true
+}
+if ($NgxOutputCopyProbe) {
+    $NgxOutputProbeAtStereoSubmit = $true
+    $StreamlineContinuousSubmitProbe = $true
 }
 if ($StreamlineContinuousSubmitProbe) {
     if ($StreamlineStereoSubmitFrames -lt 2) { throw 'Continuous submission requires 2 to 8 frames.' }
@@ -484,9 +490,11 @@ if ($NgxOutputProbe) {
         $ngxOutputProbeFlagOriginal = [IO.File]::ReadAllBytes($ngxOutputProbeFlagPath)
     }
     $ngxWaitForStereo = if ($NgxOutputProbeAtStereoSubmit) { 1 } else { 0 }
+    $ngxCopyOutput = if ($NgxOutputCopyProbe) { 1 } else { 0 }
     Set-Content -LiteralPath $ngxOutputProbeFlagPath `
-        -Value "[probe]`nwait_for_stereo=$ngxWaitForStereo" -Encoding ascii
+        -Value "[probe]`nwait_for_stereo=$ngxWaitForStereo`ncopy_output=$ngxCopyOutput" -Encoding ascii
     Write-Output 'Bounded NGX output identity observation enabled; no generated XR publication.'
+    if ($NgxOutputCopyProbe) { Write-Output 'One private generated stereo output copy/readback armed.' }
 }
 if ($StreamlineStereoSubmitProbe) {
     $streamlineStereoSubmitProbeFlagPath = Join-Path $GameRoot `

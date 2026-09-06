@@ -562,3 +562,15 @@ fences. It rejects mutated unknown state, wrong output, call gap, truncated scop
 and duplicate pair evidence. Evidence: pair-state-* including report.json.
 Output pixels are still not retained/copied/published; next is a single bounded
 private output copy/readback at the verified right-eye callback boundary.
+
+Private readback candidate: -NgxOutputCopyProbe implies the consecutive stereo
+probe and enables exactly one packed-output capture. At a complete successful
+right-eye NGX callback with verified adjacent-pair UAV state, it allocates an
+independent texture/readback from the actual output descriptor, copies on that
+same command list, and restores the source UAV state. All three resource owners
+remain alive until process shutdown. Export waits for the existing observed
+queue fence covering that right call; a worker writes a BMP and per-eye nonblack
+counts/hashes, so file I/O is off Present. Allocation is capped at 512 MiB per
+resource as a safety bound, not a resolution target. No generated XR publication.
+Release native, launcher parsing and five focused NGX/startup CTests pass.
+Live pixel ownership/visual inspection is next.
