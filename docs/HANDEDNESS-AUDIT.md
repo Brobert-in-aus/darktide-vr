@@ -91,6 +91,26 @@ wrist may retain an incorrect palm orientation. Shields, dual weapons, reloads,
 ejection ports and text decals need individual visual decisions. No source-only
 claim about negative-scale rendering/collision compatibility is made here.
 
+The 7 September follow-up found and fixed a partial-rig diagnostic failure:
+one hand could sync successfully, then the first scale log unconditionally
+resolved the missing opposite hand/parent. Detailed scale logging now requires
+both successful hand syncs; ordinary sync/error counters still cover partial
+success. A regression reproduces the original fault and exercises rotated
+parents, source scales 0.94/1/1.08, the existing near-zero scale fallback,
+missing source/proxy hands or parents, dead units and unchanged proxy/item-local
+transforms. Five focused CTests and all 36 LuaJIT chunks pass. This verifies the
+existing same-side relocation math, not a left-hand attachment basis.
+
+More specifically, stock `_register_fx_sources` initially registers weapon sound
+on `slot.unit_1p` while selecting 1P/3P VFX ownership by camera mode. Its
+`_move_fx_sources` later moves both sound and VFX to the selected unit. Base breed
+VFX are registered separately on the first-person or gameplay unit, with an
+optional gameplay-node counterpart. `PlayerUnitFxExtension.vfx_spawner_pose`
+reads the stored unit/node's current world pose; it does not cache the transform.
+Thus a moved registered ancestor should carry that source, but moving only 3P
+equipment does not establish that 1P sound or breed-hand effects follow it.
+The planned mapping must cover those ownership paths and mode changes explicitly.
+
 ## Integration and acceptance order
 
 1. Introduce a shared role policy with right-handed behavior as the default.

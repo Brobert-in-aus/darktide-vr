@@ -575,3 +575,22 @@ substitution. Optional stock grenade and online pose/shot contracts pass too.
 The source invariant's staff-origin diagnostic literal was updated to support
 terminology without removing its behavior guard. No native change since the
 focus-window build and no deployment. Continue attachment ownership work next.
+
+## Continuous todo work: partial equipment rig resilience
+
+Branch `codex/equipment-sync-resilience-2026-09-07` fixes an attachment-sync
+diagnostic crash: the per-hand path allowed partial success, but the first scale
+log still resolved both source hands and parents unconditionally. Require both
+successful hand syncs for that detailed scale log. Preserve ordinary partial
+sync counters and all accepted pose math.
+
+New `equipment_hand_sync` CTest reproduces the missing-hand fault before the fix,
+then passes rotated-parent/scaled-root pose agreement, partial source/proxy/
+parent cases, invalid owners, unchanged anatomical proxies and item animation.
+Configure with `cmake --preset windows-vs2022 -DDARKTIDEVR_ENABLE_HEADSET_TESTS=OFF`;
+run Release CTest with `-R 'equipment_hand_sync|wrist_transform|weapon_hand_roles|animation_aim|source_invariants'`:
+**5/5 pass**. `tools/stereo/test-darktide-lua-source.ps1`: **36 chunks pass**.
+108 tests are now registered; full-suite baseline remains 107/107 at `9f68b2b`.
+No deployment or worn acceptance. HANDEDNESS-AUDIT now details separate initial
+1P sound, camera-selected weapon VFX and breed-hand effect ownership; relocation
+must cover these before any left-handed option is exposed. Continue todo work.

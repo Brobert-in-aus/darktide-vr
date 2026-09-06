@@ -8197,7 +8197,10 @@ function presentation.sync_equipment_hands_to_proxy(
             angle_error)
         controller_observation.body_ik_equipment_hand_syncs =
             (controller_observation.body_ik_equipment_hand_syncs or 0) + 1
-        if controller_observation.body_ik_equipment_hand_syncs == 1 then
+        -- Partial rigs may sync one hand successfully. The detailed scale
+        -- diagnostic requires both source hands and their parents to exist.
+        if controller_observation.body_ik_equipment_hand_syncs == 1 and
+                left_synced and right_synced then
             local left_parent = Unit.scene_graph_parent(
                 source_unit, Unit.node(source_unit, "j_lefthand"))
             local right_parent = Unit.scene_graph_parent(
