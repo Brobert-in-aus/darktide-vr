@@ -55,12 +55,15 @@ Managers = {
         return private and "shooting_range" or "mission"
     end}},
 }
+local safe_hooks={}
 local mod = {
     hook = function(_, class, method, callback)
         local original = class[method] or function() end
         class[method] = function(...) return callback(original, ...) end
     end,
-    hook_safe = function() end, command = function() end, info = function() end,
+    hook_safe = function(_,class,method,callback)
+        safe_hooks[class]=safe_hooks[class] or {}; safe_hooks[class][method]=callback
+    end, command = function() end, info = function() end,
 }
 local aim = assert(loadfile(arg[1]))()
 aim.install(mod, {controller_aim_target = function()
@@ -194,3 +197,49 @@ for _,case in ipairs({'remote','untracked','not_private','node','position','othe
     assert(knife._first_person_component==shared)
 end
 print("ranged_aim=pass copied_classes=6 simultaneous_groups=pass throwing_guards=pass knife_routes=pass scope_recovery=pass")
+-- Exercise the shared mission authority decision through real preparation
+-- hooks. Remote units and remote-server sessions must retain stock poses.
+local context=dofile(arg[1]:gsub("darktidevr_controller_aim.lua$", "darktidevr_gameplay_context.lua"))
+local mode,owns="coop_complete_objective",true
+local session={is_server=function() return owns end}
+aim.presentation.is_controller_aim_mode=function() return context.aim_mode(mode,session) end
+aim.third_person_muzzle=function() return nil end
+enabled=true
+for _,owner in ipairs({player,remote}) do
+    for _,authority in ipairs({true,false}) do
+        owns=authority
+        local mission_action=action(modules[action_root..paths[1]])
+        mission_action._player_unit=owner
+        mission_action:_prepare_shooting(42)
+        local permitted=owner==player and authority
+        assert(mission_action._action_component.shooting_rotation==(permitted and 107 or 17))
+        assert(mission_action._action_component.shooting_position==(permitted and 20 or 1))
+        assert(mission_action._first_person_component==shared)
+    end
+end
+owns=true
+local mission_action=action(modules[action_root..paths[1]])
+mission_action:_prepare_shooting(42)
+owns=false
+mission_action:_prepare_shooting(42)
+assert(mission_action._action_component.shooting_rotation==17,"host loss retained hand authoring")
+print("mission_ranged=pass local_authority local_player stock_remote host_loss scope_restore")
+local network_hook=safe_hooks[modules["scripts/extension_systems/aim/player_unit_aim_extension"]].fixed_update
+Quaternion={forward=function(rotation) return rotation end}
+local writes=0
+GameSession={set_game_object_field=function(session_id,object_id,field,value)
+    assert(session_id==3 and object_id==4 and field=="aim_direction" and value==100)
+    writes=writes+1
+end}
+local extension={_is_server=true,_game_session_id=3,_game_object_id=4}
+owns=true
+network_hook(extension,player)
+assert(writes==1)
+network_hook(extension,remote)
+extension._is_server=false
+network_hook(extension,player)
+extension._is_server=true
+owns=false
+network_hook(extension,player)
+assert(writes==1,"remote unit/client/host-loss authored server aim")
+print("mission_aim_replication=pass local_server_only")

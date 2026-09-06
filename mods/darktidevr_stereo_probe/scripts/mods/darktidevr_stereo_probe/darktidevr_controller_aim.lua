@@ -151,7 +151,11 @@ function controller_aim.install(mod, presentation, state)
     controller_aim.convergence_fallbacks = 0
 
     function controller_aim.target(side)
-        if not state.authoring_enabled or not is_private_range() then
+        if not state.authoring_enabled then return nil, nil end
+        local mode_allowed = presentation.is_controller_aim_mode and
+            presentation.is_controller_aim_mode() or
+            (not presentation.is_controller_aim_mode and is_private_range())
+        if not mode_allowed then
             return nil, nil
         end
         if side == "left" then

@@ -159,3 +159,20 @@ Evidence: `artifacts/unattended/fixture-refresh-build-20260907.log` and
 `artifacts/unattended/fixture-refresh-ctest-20260907.log`. This supersedes the
 initial 95/98 result above. Shared secondary click remains undeployed and
 worn acceptance remains pending. Continue next with mission input/attack ownership.
+
+## Mission authority candidate completed offline
+
+Branch `codex/local-mission-authority-2026-09-07` contains the source ownership
+audit and shared body/input/hand-aim policy. Read
+[MISSION-AUTHORITY-AUDIT](../MISSION-AUTHORITY-AUDIT.md) for exact stock paths and
+remaining online work. Four explicit mission modes are admitted only while
+the local session owns simulation. Other-player hooks and remote-server sessions
+remain stock/gated; authority is rechecked and never latched across host loss.
+
+Validation: pinned LuaJIT 34 chunks; full Windows x64 Release CTest **99/99 pass**.
+The real ranged preparation hooks and server aim-field callback are tested for
+local authority, local player ownership, remote exclusion and authority loss.
+Game/XR remain closed. No mission or SoloPlay run, no new deployment, and no
+headset acceptance. Next work can proceed with remaining offline combat/input
+coverage or blur/performance investigation; retain the user's blur-first order
+and do not resume the rejected HUD-pose hypothesis.

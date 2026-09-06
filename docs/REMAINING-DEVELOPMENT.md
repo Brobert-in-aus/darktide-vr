@@ -30,6 +30,9 @@ for the smaller set needed before a first end-to-end mission attempt.
    recurrence from the historical base-game remote-husk race. Confirm early
    character-select clicks after stock readiness. Hub automatic-entry leakage is
    already fixed and its retry passed; do not reopen that resolved bug.
+   7 September: a shared local-authority mission policy is an offline candidate
+   (99 CTests pass). Remote-server missions remain gated. See
+   [mission authority](MISSION-AUTHORITY-AUDIT.md); no mission/SoloPlay acceptance.
 3. **Finish ranged-weapon functionality across classes.** Verify actual firing,
    gun/reticle alignment, muzzle origins and impacts with hand aim away from head
    direction for every gun/flame/staff/projectile/throw mode. Preserve stock

@@ -5279,9 +5279,17 @@ local function active_game_mode_name()
     return ok and name or nil
 end
 
+presentation.gameplay_context = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gameplay_context")
+
 function presentation.is_first_person_body_mode(mode)
-    return mode == "hub" or mode == "shooting_range" or
-        mode == "training_grounds"
+    return presentation.gameplay_context.body_mode(mode,
+        Managers and Managers.state and Managers.state.game_session)
+end
+
+function presentation.is_controller_aim_mode()
+    return presentation.gameplay_context.aim_mode(active_game_mode_name(),
+        Managers and Managers.state and Managers.state.game_session)
 end
 
 function presentation.inject_primary_action(self, main_t)

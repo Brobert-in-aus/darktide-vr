@@ -20,7 +20,16 @@ describes offline solo missions without rewards/progression. This makes it a
 candidate for local mission testing; success there is not proof of online
 mission-server replication/authority. Keep that later acceptance separate.
 
-## Confirmed blocker
+## Current candidate and remaining blocker
+
+7 September: [the authority audit](MISSION-AUTHORITY-AUDIT.md) and shared context
+policy now admit explicit mission modes only when the local process owns the
+server simulation. Body/input and hand aiming use the same decision. Offline
+tests pass; this is undeployed and has no mission/worn acceptance. Remote-server
+missions remain excluded because local pose hooks do not supply independent
+hand aim/origin to their authoritative action. SoloPlay remains the later test stage.
+
+The following describes the original blocker before that candidate:
 
 `presentation.is_first_person_body_mode` in the main stereo Lua module accepts
 only `hub`, `shooting_range` and `training_grounds`. Gameplay input uses that

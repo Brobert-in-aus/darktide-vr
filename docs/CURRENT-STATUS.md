@@ -10,6 +10,9 @@ deployed in the hub with fresh stereo initialization and nonzero shared_ready.
 That initialization run is now closed and normal proximity behavior restored.
 A shared LT secondary-click candidate is built and tested offline, not deployed;
 the validation fixtures were refreshed and all 98 Release CTests now pass.
+A subsequent local-authority mission policy candidate now passes 99 tests and
+34 compiled Lua chunks; it remains undeployed. Remote-server missions remain
+gated pending the [attack ownership work](MISSION-AUTHORITY-AUDIT.md).
 See the [current handoff](handoffs/2026-09-07-development.md) for evidence and
 the expanded shared hint audit. A 20-minute task heartbeat is active.
 
