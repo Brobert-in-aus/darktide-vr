@@ -218,6 +218,30 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
           "DLSSG.Backbuffer", "DLSSG.Depth", "DLSSG.MVecs", "DLSSG.HUDLess"};
       for (std::size_t i = 0; i < names.size(); ++i)
         results[i + 1] = ngx::read_resource(parameters, names[i], &resources[i + 1]);
+      // Observe the actual NGX boundary, not just Streamline tag acceptance.
+      // These keys are present in the installed sl.dlss_g runtime. Reading them
+      // cannot change UI composition or the parameters passed to evaluation.
+      if (diagnostic_sample) {
+        ID3D12Resource* ui{};
+        const auto ui_result = ngx::read_resource(parameters, "DLSSG.UI", &ui);
+        const auto ui_desc = ui_result == ngx::kSuccess && ui ? ui->GetDesc() : D3D12_RESOURCE_DESC{};
+        std::array<unsigned, 4> extent{};
+        std::array<std::uint32_t, 4> extent_results{};
+        constexpr std::array<const char*, 4> ui_keys{
+            "DLSSG.UISubrectBaseX", "DLSSG.UISubrectBaseY",
+            "DLSSG.UISubrectWidth", "DLSSG.UISubrectHeight"};
+        for (unsigned i = 0; i < ui_keys.size(); ++i)
+          extent_results[i] = ngx::read_unsigned(parameters, ui_keys[i], &extent[i]);
+        char line[512]{};
+        const auto length = std::snprintf(line, sizeof(line),
+            "NGX_UI call=%llu resource=%p result=%x width=%llu height=%u format=%u "
+            "extent=%u,%u,%u,%u extent_results=%x,%x,%x,%x\n",
+            static_cast<unsigned long long>(call), static_cast<void*>(ui), ui_result,
+            static_cast<unsigned long long>(ui_desc.Width), ui_desc.Height,
+            static_cast<unsigned>(ui_desc.Format), extent[0], extent[1], extent[2], extent[3],
+            extent_results[0], extent_results[1], extent_results[2], extent_results[3]);
+        if (length > 0 && length < sizeof(line)) write_line(line, length);
+      }
       // Inspect only during the live callback; retain no resource or parameter.
       output_description = resources[0]->GetDesc();
       constexpr std::array<const char*, 4> region_names{

@@ -7524,6 +7524,7 @@ struct WorldUiCaptureEye {
 std::mutex world_ui_capture_mutex;
 std::array<WorldUiCaptureEye, 2> world_ui_capture_eyes;
 std::array<std::atomic<std::uint64_t>, 8> world_ui_capture_stages{};
+std::atomic<bool> world_ui_capture_rejected{};
 // A resolution change must not release a texture still referenced by a GPU
 // command list. This bounded experiment retains its earlier allocations.
 std::vector<WorldUiCaptureEye> world_ui_capture_retired;
@@ -7668,6 +7669,19 @@ WorldUiDrawRedirect begin_world_ui_draw(ID3D12GraphicsCommandList* commands,
   if (metadata.depth_enabled || metadata.stencil_enabled || trace.depth_target ||
       !darktidevr::producer::ui_capture_blend_supported(metadata.ui_blend, metadata.alpha_to_coverage)) {
     ++capture.rejected;
+    if (world_ui_submission_requested()) world_ui_capture_rejected.store(true);
+    static unsigned rejection_reports{};
+    if (rejection_reports++ < 32)
+      write_streamline_probe_log(
+          "UI_ALPHA_REJECT\teye=%d\tpose=%llu\tvs=%llu\tps=%llu\tdepth=%u\tstencil=%u\tdsv=%llu\talpha_blend=%u,%u,%u\r\n",
+          eye, static_cast<unsigned long long>(pose),
+          static_cast<unsigned long long>(metadata.vertex_shader),
+          static_cast<unsigned long long>(metadata.pixel_shader),
+          metadata.depth_enabled ? 1U : 0U, metadata.stencil_enabled ? 1U : 0U,
+          static_cast<unsigned long long>(trace.depth_target),
+          static_cast<unsigned>(metadata.ui_blend.SrcBlendAlpha),
+          static_cast<unsigned>(metadata.ui_blend.DestBlendAlpha),
+          static_cast<unsigned>(metadata.ui_blend.BlendOpAlpha));
     return redirect;
   }
   redirect.original = {trace.render_target};
@@ -9497,6 +9511,14 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
   if (!state.failed && state.stereo_backbuffer_complete &&
       streamline_continuous_requested.load(std::memory_order_acquire)) {
     if (current_presentation_mode.load() != 1) return;
+    if (world_ui_submission_requested() && world_ui_capture_rejected.load()) {
+      // An unsupported GUI draw invalidates this experimental UI route for the
+      // session. Stay on original stereo rather than repeatedly pausing and
+      // restarting interpolation as that widget appears and disappears.
+      if (streamline_continuous.initialized())
+        streamline_continuous.pause(queue, original_execute_command_lists, "ui_capture_rejected");
+      return;
+    }
     // Never reuse a previous pose's UI or silently remove tag 23 from an active
     // tag set. The existing incomplete-pair path skips generation for this eye.
     if (world_ui_submission_requested() && (!ui_source || !ui_pair_allocated)) return;

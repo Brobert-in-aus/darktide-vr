@@ -445,3 +445,20 @@ than earlier replay sources; that small diagnostic change was built after this
 launch and is not yet deployed. Release native and recovery targets built; the
 five focused CTest cases passed. No Lua changes. Evidence: seventh-run-comparison
 and seventh-run-tagged.tsv beneath the existing local HUD-alpha diagnostics dir.
+
+### Worn acceptance failed; experimental UI submission disabled (2026-09-06)
+
+User report: no improvement to HUD blurring, severe intermittent frame drops after
+about 30 seconds. The live census shows known GUI draws increasingly rejected and
+repeated present_binding_or_gap pause/resume cycles. The earlier composition pass
+is limited to the sampled scene and is not acceptance of the generated image.
+The game was closed and both temporary alpha flags removed. Keep this feature
+opt-in; do not enable it in the default launcher.
+
+Added direct read-only NGX boundary reporting for DLSSG.UI and its resource/extent
+using keys found in the installed Streamline DLL, plus bounded rejected-draw
+shader/depth/alpha details. An unsupported GUI draw now latches the experimental
+route off for the session, clears its active bindings through the existing pause
+path, and stays on original stereo rather than oscillating frame generation.
+Native Release build and diff check passed. Boundary/rejection diagnostic pending.
+Evidence: seventh-run-framedrops.tsv in the local HUD-alpha diagnostics directory.
