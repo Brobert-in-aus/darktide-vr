@@ -2046,6 +2046,8 @@ void write_menu_resource_log(const char* format, ...) {
             &written, nullptr);
 }
 
+bool trace_streamline_submission_images();
+
 void write_streamline_probe_log(const char* format, ...) {
   // Startup can remain in character selection indefinitely. Reserve half the
   // bounded log for the one-shot input/submission transaction so periodic
@@ -2053,6 +2055,10 @@ void write_streamline_probe_log(const char* format, ...) {
   const bool transaction_record =
       std::strncmp(format, "STEREO_", 7) == 0 ||
       std::strncmp(format, "INPUT_SNAPSHOT", 14) == 0 ||
+      std::strncmp(format, "HEAD_POSE_READ", 14) == 0 ||
+      (trace_streamline_submission_images() &&
+       (std::strncmp(format, "EYE_OUTPUT_BOUNDARY", 19) == 0 ||
+        std::strncmp(format, "SET_CONSTANTS", 13) == 0)) ||
       std::strncmp(format, "ISOLATED_EYE_CAPTURE", sizeof("ISOLATED_EYE_CAPTURE") - 1) == 0;
   if (!transaction_record &&
       streamline_probe_background_log_count.fetch_add(

@@ -43,6 +43,7 @@ struct ActiveEvaluationState {
   void* commands{};
   ID3D12Resource* output{};
   NgxOutputState observation;
+  bool single_subresource{};
 };
 thread_local ActiveEvaluationState* active_evaluation{};
 std::mutex log_mutex;
@@ -143,6 +144,9 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   // The trampoline resumes INSIDE _nvngx.dll. Its internal feature call keeps
   // its real NVIDIA return address; no spoofed return or feature patch is used.
   ActiveEvaluationState output_state{commands, resources[0], {}};
+  output_state.single_subresource = output_description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
+      output_description.MipLevels == 1 && output_description.DepthOrArraySize == 1 &&
+      output_description.Format == DXGI_FORMAT_R8G8B8A8_UNORM;
   const auto previous_evaluation = active_evaluation;
   if (captured) active_evaluation = &output_state;
   const auto result = original(commands, feature, parameters, callback);
@@ -211,7 +215,7 @@ void observe_ngx_output_barriers(void* commands, unsigned count,
     if (barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION &&
         barrier.Transition.pResource == active->output) {
       active->observation.transition(barrier.Flags, barrier.Transition.Subresource,
-                                     barrier.Transition.StateAfter);
+                                     barrier.Transition.StateAfter, active->single_subresource);
     } else if (barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_ALIASING &&
                (!barrier.Aliasing.pResourceBefore || !barrier.Aliasing.pResourceAfter ||
                 barrier.Aliasing.pResourceBefore == active->output ||

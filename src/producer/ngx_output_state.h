@@ -8,9 +8,10 @@ struct NgxOutputState {
   std::uint32_t state{};
   unsigned transitions{};
   void transition(std::uint32_t flags, std::uint32_t subresource,
-                  std::uint32_t after) {
+                  std::uint32_t after, bool single_subresource = false) {
     ++transitions;
-    if (flags || subresource != ~std::uint32_t{}) ambiguous = true;
+    if (flags || (subresource != ~std::uint32_t{} &&
+                  !(single_subresource && subresource == 0))) ambiguous = true;
     known = !ambiguous;
     state = after;
   }

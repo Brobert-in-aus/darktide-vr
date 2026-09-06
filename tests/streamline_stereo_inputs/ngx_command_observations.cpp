@@ -17,6 +17,11 @@ int main() {
   state.transition(0, ~std::uint32_t{}, 8);
   state.alias();
   if (state.known) return 13;
+  state = {};
+  state.transition(0, 0, 8, true);
+  if (!state.known) return 14;
+  state.transition(0, 1, 8, true);
+  if (state.known) return 15;
   NgxCommandObservations observations;
   if (observations.add(0, 1) || observations.add(1, 0)) return 1;
   if (!observations.add(10, 1) || !observations.add(10, 2) ||

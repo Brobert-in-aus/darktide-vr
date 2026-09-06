@@ -347,3 +347,18 @@ base camera when native pose reading fails; the shared reader rejects data older
 than 250 ms. A bounded HEAD_POSE_READ trace around submission refresh is prepared
 to correlate read failures with camera direction changes. Do not relax pose
 freshness or claim this is the confirmed flicker cause before the correlation.
+
+The first state run reports two output transitions for each complete left-eye
+evaluation, ending in UAV state 8; right-eye evaluations have no observed output
+transitions. The conservative all-subresources-only rule leaves state unknown.
+The refinement accepts subresource zero only when the live description proves a
+single-mip, single-array, one-plane RGBA8 2D texture; other partial or split
+barriers stay ambiguous. Its whole-resource/single-subresource/alias tests pass.
+No cross-evaluation state inheritance is assumed.
+
+This run also exhausted the 8192-line background budget before the batches,
+suppressing the newly scoped pose/eye/matrix records. Those records now share
+the reserved transaction budget during the 16-Present capture window; the total
+16384-line bound remains. `state-first-ngx.log` and
+`state-first-streamline.tsv` preserve the incomplete first evidence. Next launch
+repeats the pose-read correlation with that logging gap closed.
