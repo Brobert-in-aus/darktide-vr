@@ -32,6 +32,11 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
   viewports_ = viewports;
   count_ = frames;
   persistent_ = persistent;
+  if (!make_commands(device, pause_allocator_, pause_commands_) ||
+      FAILED(pause_commands_->Close()) ||
+      FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pause_fence_)))) {
+    fail("pause_allocation"); return false;
+  }
   D3D12_HEAP_PROPERTIES heap{};
   heap.Type = D3D12_HEAP_TYPE_DEFAULT;
   for (unsigned i = 0; i < count_; ++i) {
@@ -90,11 +95,61 @@ bool StreamlineContinuousSubmission::recycle(Frame& frame) {
   return true;
 }
 
+void StreamlineContinuousSubmission::pause(ID3D12CommandQueue* queue, Execute execute, const char* reason) {
+  if (!initialized_ || stopped_ || staged_ || paused_ || !queue || !execute) return;
+  if (!persistent_) { fail(reason); return; }
+  if (pause_fence_->GetCompletedValue() < pause_value_ ||
+      FAILED(pause_allocator_->Reset()) ||
+      FAILED(pause_commands_->Reset(pause_allocator_.Get(), nullptr))) {
+    fail("pause_reset"); return;
+  }
+  if (previous_tags_active_ && !frames_[(current_-1)%count_].submission.clear_tags(pause_commands_.Get())) {
+    fail("pause_tags"); return;
+  }
+  if (FAILED(pause_commands_->Close())) { fail("pause_close"); return; }
+  ID3D12CommandList* lists[]{pause_commands_.Get()};
+  execute(queue, 1, lists);
+  if (FAILED(queue->Signal(pause_fence_.Get(), ++pause_value_))) { fail("pause_signal"); return; }
+  previous_tags_active_ = false;
+  previous_pose_ = previous_present_ = original_ready_ = 0;
+  paused_ = true;
+  log_("STEREO_CONTINUOUS\tphase=paused\tframe=%u\treason=%s\r\n", current_+1, reason);
+}
+
+bool StreamlineContinuousSubmission::resume_capture() {
+  if (!paused_) return true;
+  const auto completed = pause_fence_->GetCompletedValue();
+  if (completed == UINT64_MAX) { fail("pause_device_removed"); return false; }
+  if (completed < pause_value_) return false;
+  auto& frame = frames_[current_%count_];
+  // A rejected pair was copied but never tagged/presented. Its capture lists
+  // have independent completion fences; do not reset them while on the GPU.
+  if (!frame.presented) {
+    for (unsigned eye=0; eye<2; ++eye) if (frame.captured & (1U<<eye)) {
+      const auto captured = frame.capture_fences[eye]->GetCompletedValue();
+      if (captured == UINT64_MAX) { fail("capture_device_removed"); return false; }
+      if (captured < frame.reuse_value) return false;
+    }
+    for (unsigned eye=0; eye<2; ++eye) if (frame.captured & (1U<<eye)) {
+      if (FAILED(frame.capture_allocators[eye]->Reset()) ||
+          FAILED(frame.capture_commands[eye]->Reset(frame.capture_allocators[eye].Get(), nullptr))) {
+        fail("capture_discard_reset"); return false;
+      }
+    }
+    if (frame.captured) ++frame.reuse_value;
+    frame.captured = 0;
+  }
+  paused_ = false;
+  log_("STEREO_CONTINUOUS\tphase=resumed\tframe=%u\r\n", current_+1);
+  return true;
+}
+
 void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present,
     std::uint64_t pose, const sl::Constants& constants,
     const std::array<StreamlineTagInput, 4>& inputs,
     ID3D12CommandQueue* queue, Execute execute) {
   if (!initialized_ || stopped_ || staged_ || eye > 1 || !queue || !execute) return;
+  if (!resume_capture()) return;
   auto& frame = frames_[current_ % count_];
   if (eye == 0 && !recycle(frame)) { fail("ring_completion"); return; }
   if (frame.captured & (1U << eye)) return;
@@ -146,11 +201,11 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
       frame.source_present + 1 != present ||
       !core::streamline_present_binding_matches(present, viewports_, bindings) ||
       bindings[0].pose != frame.pose ||
-      (current_ && frames_[(current_ - 1) % count_].present + 1 != present)) {
+      (previous_present_ && previous_present_ + 1 != present)) {
     log_("STEREO_CONTINUOUS\tphase=binding_rejection\tcaptured=%u\tsource_present=%llu\tpresent=%llu\tprevious_present=%llu\tpose=%llu\tbound_pose=%llu\tbindings_match=%u\r\n",
         frame.captured,frame.source_present,present,current_ ? frames_[(current_-1)%count_].present : 0,
         frame.pose,bindings[0].pose,core::streamline_present_binding_matches(present,viewports_,bindings) ? 1U : 0U);
-    fail("present_binding_or_gap"); return;
+    pause(queue, execute, "present_binding_or_gap"); return;
   }
   ComPtr<ID3D12Resource> backbuffer;
   if (FAILED(swapchain->GetBuffer(swapchain->GetCurrentBackBufferIndex(), IID_PPV_ARGS(&backbuffer)))) {
@@ -206,7 +261,7 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
           tagging, StreamlineSubmission::ConstantsMode::already_supplied)) {
     fail("tag_stage"); return;
   }
-  if (current_ && !frames_[(current_ - 1) % count_].submission.replace_tags_with(frame.submission)) {
+  if (previous_tags_active_ && !frames_[(current_ - 1) % count_].submission.replace_tags_with(frame.submission)) {
     fail("tag_replacement"); return;
   }
   if (FAILED(commands->Close())) { fail("stage_close"); return; }
@@ -251,6 +306,8 @@ void StreamlineContinuousSubmission::after_present(ID3D12CommandQueue* queue,
   frame.presented = true;
   if (FAILED(queue->Signal(frame.stage_done.Get(), frame.reuse_value))) fail("stage_fence");
   previous_pose_ = frame.pose;
+  previous_present_ = frame.present;
+  previous_tags_active_ = true;
   staged_ = false;
   if (stopped_ || (!persistent_ && current_ + 1 == count_)) {
     clear_bindings(queue, execute);

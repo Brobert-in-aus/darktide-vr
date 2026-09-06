@@ -275,3 +275,16 @@ retirement/recycling is required for release. Restart after runtime resolution
 changes; unequal per-eye recommendations are explicitly unsupported by the
 current shared ABI. Details and validation are in the
 [DLSS handoff](handoffs/2026-09-05-dlss-offline.md).
+
+## DLSS Custom HUD editor recovery, 6 September 2026
+
+F3 now uses a dedicated final desktop overlay and explicit menu presentation.
+Live rendering shows the Custom HUD border, list and properties; closing it
+resumes approximately 51 original + 51 generated distinct frames/s. Menu/binding
+interruptions pause generation with GPU-safe input retirement rather than
+permanently stopping it. The XR consumer can fall back to fresh legacy stereo if
+the original ring expires. Dragging/persistence and worn acceptance remain open.
+See docs/HUD-EDITOR-INTEGRATION.md and the ignored
+artifacts/unattended/dlss-editor-overlay-live-20260906.log.
+The original-render performance regression remains open; this does not declare
+frame generation complete.

@@ -1841,6 +1841,12 @@ class OpenXrProbe {
           if(!original_surfaces)
             return opened_eyes->ready_fence->GetCompletedValue()>last_pair_pose_checked_ready_value;
           if(presentation_state.mode!=darktidevr::core::SharedPresentationMode::stereo_world) return true;
+          if(original_reader.read(original_state)) {
+            const auto tick=GetTickCount64();
+            const auto& latest=original_state.slots[darktidevr::core::generated_frame_slot(original_state.latest_sequence)];
+            if(!latest.tick_ms || latest.tick_ms>tick || tick-latest.tick_ms>=250)
+              return opened_eyes->ready_fence->GetCompletedValue()>last_pair_pose_checked_ready_value;
+          }
           if(generated_displayed_before_original>last_original_ready) {
             const auto elapsed=std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now()-last_tracking_prediction_at).count();
@@ -2114,7 +2120,11 @@ class OpenXrProbe {
         PendingOriginal* selected_original{};
         const std::array<XrPosef,2>* original_ring_poses{};
         darktidevr::core::SharedGeneratedFrameSlot original_metadata{};
+        bool original_ring_recent{};
         if(original_surfaces && original_reader.read(original_state)) {
+          const auto tick=GetTickCount64();
+          const auto& latest=original_state.slots[darktidevr::core::generated_frame_slot(original_state.latest_sequence)];
+          original_ring_recent=latest.tick_ms && latest.tick_ms<=tick && tick-latest.tick_ms<250;
           const auto completed=original_surfaces->ready_fence->GetCompletedValue();
           if(completed!=UINT64_MAX) {
             auto available=std::min(completed,original_state.latest_sequence);
@@ -2246,7 +2256,11 @@ class OpenXrProbe {
             darktidevr::core::generated_frame_slot(generated_state.latest_sequence)].tick_ms;
         const auto now_tick=GetTickCount64();
         const bool generation_recent=generated_tick && generated_tick<=now_tick && now_tick-generated_tick<250;
-        if(original_surfaces && generated_world && !selected_original) for(auto& original:pending_originals) {
+        if(!original_ring_recent) {
+          for(auto& original:pending_originals) original.ready=0;
+          generated_displayed_before_original=0;
+        }
+        if(original_ring_recent && generated_world && !selected_original) for(auto& original:pending_originals) {
           if(original.ready && (!generation_recent || now_tick-original.tick>=25) &&
               (!selected_original || original.ready<selected_original->ready)) selected_original=&original;
         }
@@ -2256,7 +2270,7 @@ class OpenXrProbe {
         const auto original_ready_for_frame=use_queued_original ? selected_original->ready : shared_ready_for_frame;
         const auto original_pose_for_frame=use_queued_original ? selected_original->pose : rendered_pair_pose_sequence;
         submitted_original_view_poses=use_queued_original ? selected_original->poses : rendered_pair_view_poses;
-        const bool use_shared_pair = !use_generated_pair && (use_queued_original || (!original_surfaces &&
+        const bool use_shared_pair = !use_generated_pair && (use_queued_original || (!original_ring_recent &&
             projection_active && opened_eyes && shared_ready_for_frame != 0 &&
             (!window_capture ||
              (shared_pair_fresh && shared_pair_pose_synced &&
@@ -2790,14 +2804,14 @@ class OpenXrProbe {
             std::cout << "openxr.generated_stereo=submitted count=" << generated_submitted
                 << " sequence=" << generated_sequence_for_frame << " before_original=" << selected_original->ready << '\n';
         }
-        if (use_shared_pair) {
+        if (use_shared_pair && (!original_surfaces || use_queued_original)) {
           last_original_ready=original_ready_for_frame;
           last_original_pose=original_pose_for_frame;
           if(use_queued_original) selected_original->ready=0;
         }
         if (ingested_original_this_frame)
           check(queue->Signal(original_surfaces->consumed_fence.Get(),original_ring_sequence_for_frame),"Signal original ring consumed");
-        if (original_surfaces && shared_ready_for_frame) {
+        if (original_surfaces && shared_ready_for_frame && !(use_shared_pair && !use_queued_original)) {
           // The legacy mailbox still supplies transition metadata. It no
           // longer owns the originals used for generated-stereo delivery.
           check(opened_eyes->consumed_fence->Signal(shared_ready_for_frame),"Discard legacy original mailbox");

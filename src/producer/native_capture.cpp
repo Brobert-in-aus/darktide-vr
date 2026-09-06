@@ -2077,6 +2077,7 @@ void write_streamline_probe_log(const char* format, ...) {
           1, std::memory_order_relaxed) >= 8192) return;
   const bool terminal_submission_record=std::strncmp(format,"STEREO_CONTINUOUS",17)==0 &&
       (std::strstr(format,"phase=failed") || std::strstr(format,"phase=stopped") ||
+       std::strstr(format,"phase=paused") || std::strstr(format,"phase=resumed") ||
        std::strstr(format,"phase=binding_rejection"));
   if (streamline_probe_log == INVALID_HANDLE_VALUE ||
       (!terminal_submission_record && streamline_probe_log_count.fetch_add(1, std::memory_order_relaxed) >=
@@ -9237,6 +9238,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
   auto& state = streamline_input_snapshot_state;
   if (!state.failed && state.stereo_backbuffer_complete &&
       streamline_continuous_requested.load(std::memory_order_acquire)) {
+    if (current_presentation_mode.load() != 1) return;
     if (!streamline_continuous.initialized() && !streamline_continuous.finished()) {
       // Never consume an unattended test while the user is in another app.
       if (!game_process_foreground()) return;
@@ -12252,7 +12254,9 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
           original_sl_set_constants, original_sl_set_tag_for_frame, original_sl_set_tag};
       if (streamline_continuous.initialized() && !streamline_persistent_requested.load() && !game_process_foreground())
         streamline_continuous.cancel("foreground_lost");
-      streamline_continuous.before_present(candidate.Get(), present_queue.Get(), present,
+      if (presentation_mode != darktidevr::core::SharedPresentationMode::stereo_world)
+        streamline_continuous.pause(present_queue.Get(), original_execute_command_lists, "non_world_presentation");
+      else streamline_continuous.before_present(candidate.Get(), present_queue.Get(), present,
           streamline_present_bindings(), api,
           tagging_modes == 1 ? darktidevr::producer::StreamlineSubmission::Tagging::legacy
                              : darktidevr::producer::StreamlineSubmission::Tagging::frame_based,

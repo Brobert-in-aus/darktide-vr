@@ -687,3 +687,31 @@ The native health stream confirms steady evaluations and input association.
 Six focused CTests including original_stereo_ring pass. Native/XR Release builds
 pass; all 31 Lua chunks passed at launch. Remaining original render throughput
 regression is not resolved and DLSS is not marked complete.
+
+## F3 editor recovery
+
+Branch codex/dlss-hud-editor-recovery-2026-09-06 follows 9727970.
+The first mode-5-only attempt resumed stereo across F3/ESC but the user correctly
+reported a stale loading/menu image. The gameplay HUD GUI does not own final
+desktop output under DLSS. Added a separate layer-200 overlay UI world, disabled
+on editor close and recreated when canvas dimensions change; no dependency source
+or saved layout was changed. The next live run visibly shows the full editor and
+returns to ~51 original + ~51 generated distinct submissions/s after F3 close.
+Desktop control was reset/released after each short inspection/action.
+
+Continuous submission now pauses on non-world modes and binding gaps, clears only
+its active tags, retains all NVIDIA input-ticket ownership, and waits for exact
+capture/cleanup fences before discard/reuse. Original ring expiry allows baseline
+stereo consumption instead of a stuck 500-ms ring wait. Original and legacy ready
+sequence namespaces remain separate; legacy fallback acknowledges after GPU copy.
+Native pause/resume diagnostics survive the finite diagnostic record budget.
+
+Validation: native/XR Release builds; pinned LuaJIT 31 chunks; generated_frame_state,
+original_stereo_ring, streamline_input_lifetime, streamline_submission,
+ngx_command_observations, startup_advance, continuous_recovery, hud_panel,
+hud_options and lua_source_compile pass. New WARP recovery test repeatedly rejects
+partial/full captures then resumes; Lua fixture verifies final overlay lifecycle.
+Latest run artifacts/unattended/dlss-editor-overlay-live-20260906.log (session68180).
+The logging-only addition after launch is built for the next run. No claim of
+saved layout dragging/persistence or worn readability acceptance. Return to the
+remaining original-render performance regression after committing this fix.

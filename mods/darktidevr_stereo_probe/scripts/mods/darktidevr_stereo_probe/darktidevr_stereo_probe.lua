@@ -1525,6 +1525,13 @@ function presentation.reconcile_fullscreen_views(manager)
             end
         end
     end
+    -- Custom HUD is a HUD element, not a registered fullscreen view. Route
+    -- its desktop editor through the same full-window path as native menus so
+    -- packed DLSS world presentation cannot overwrite or crop its overlay.
+    if not desired_mode and presentation.hud_panel and presentation.hud_panel.editing() then
+        desired_mode = 5
+        classified[#classified + 1] = "custom_hud:desktop_editor"
+    end
     presentation.world_menu_views = observed_world_menu_views
     local signature = table.concat(classified, ",")
     if signature ~= presentation.fullscreen_view_signature then

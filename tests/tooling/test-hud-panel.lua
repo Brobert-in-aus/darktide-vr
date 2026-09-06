@@ -393,3 +393,48 @@ end,transition))
 assert(destroyed_result.n==3 and destroyed_result[1]=="destroyed" and destroyed_result[3]==4)
 assert(popup_widget.dirty and retained_widget.dirty and not spatial_material.alive)
 assert(state.owner==nil and state.resource_renderer==nil)
+
+-- The desktop editor must own a final overlay rather than drawing into the
+-- gameplay GUI that DLSS resolves offscreen. Closing disables that viewport;
+-- reopening reuses it, and a canvas resize recreates it without saved edits.
+local draw_editor
+for i=1,30 do
+    local name,value=debug.getupvalue(hooks.draw,i)
+    if name == "draw_flat_editor" then draw_editor=value; break end
+end
+assert(draw_editor)
+local editor_custom={is_customizing=true}
+get_mod=function() return editor_custom end
+local worlds_created,worlds_destroyed,activated,deactivated=0,0,0,0
+Managers={ui={create_world=function(_,_,layer)
+    assert(layer == 200); worlds_created=worlds_created+1; return {}
+end,create_viewport=function(_,world,_,kind)
+    assert(world == state.editor_world and kind == "overlay"); return {}
+end,destroy_world=function() worlds_destroyed=worlds_destroyed+1 end}}
+local script_world=package.loaded["scripts/foundation/utilities/script_world"]
+script_world.activate_viewport=function() activated=activated+1 end
+script_world.deactivate_viewport=function() deactivated=deactivated+1 end
+script_world.destroy_viewport=function() end
+renderer_api.create_viewport_renderer=function(world)
+    return {world=world,gui={}}
+end
+renderer_api.destroy=function(renderer) assert(renderer == state.editor_renderer) end
+Gui.create_material=function(gui) assert(gui == state.editor_renderer.gui); return {} end
+Material={set_scalar=function() end,set_resource=function() end}
+Gui2={rect=function(gui) assert(gui == state.editor_renderer.gui) end,
+    bitmap=function(gui) assert(gui == state.editor_renderer.gui) end}
+RESOLUTION_LOOKUP={width=2496,height=2688}
+state.enabled,state.display_ready=true,true
+state.target_width,state.target_height=2496,1404
+state.display_target={}
+for i=1,4 do
+    editor_custom.is_customizing=true; draw_editor(screen)
+    editor_custom.is_customizing=false; draw_editor(screen)
+end
+assert(worlds_created==1 and activated==4 and deactivated==4)
+RESOLUTION_LOOKUP.width=1920
+editor_custom.is_customizing=true; draw_editor(screen)
+assert(worlds_created==2 and worlds_destroyed==1)
+state.display_target=nil -- Not an actual engine allocation in this fixture.
+panel.set_enabled(false)
+assert(worlds_destroyed==2 and state.editor_renderer==nil)

@@ -320,9 +320,45 @@ local function editor_input(input_service)
     end})
 end
 
+local function destroy_editor_output()
+    if state.editor_renderer then
+        UIRenderer.destroy(state.editor_renderer, state.editor_world)
+    end
+    if state.editor_viewport then
+        ScriptWorld.destroy_viewport(state.editor_world, state.editor_viewport_name)
+    end
+    if state.editor_world then Managers.ui:destroy_world(state.editor_world) end
+    state.editor_renderer, state.editor_world, state.editor_viewport = nil, nil, nil
+    state.editor_material = nil
+end
+
 local function draw_flat_editor(source_renderer)
-    if not HudPanel.editing() or not state.display_ready then return end
+    if not HudPanel.editing() or not state.display_ready then
+        if state.editor_viewport then ScriptWorld.deactivate_viewport(state.editor_world, state.editor_viewport) end
+        return
+    end
     local width,height = RESOLUTION_LOOKUP.width,RESOLUTION_LOOKUP.height
+    if state.editor_renderer and (state.editor_width ~= width or state.editor_height ~= height) then
+        destroy_editor_output()
+    end
+    if not state.editor_renderer then
+        -- The stock HUD GUI is rendered as part of the gameplay viewport.
+        -- DLSS resolves that viewport into its eye target, bypassing the
+        -- desktop backbuffer. A final overlay viewport explicitly owns the
+        -- desktop editor, just as a native fullscreen menu owns its output.
+        local name = "darktidevr_hud_editor_" .. tostring(state.generation)
+        state.editor_world = Managers.ui:create_world(name .. "_world", 200, "ui")
+        state.editor_renderer = UIRenderer.create_viewport_renderer(state.editor_world,
+            name .. "_renderer", "custom_size", width, height)
+        state.editor_viewport_name = name .. "_viewport"
+        state.editor_viewport = Managers.ui:create_viewport(state.editor_world,
+            state.editor_viewport_name, "overlay", 1)
+        state.editor_width, state.editor_height = width, height
+    end
+    ScriptWorld.activate_viewport(state.editor_world, state.editor_viewport)
+    source_renderer = state.editor_renderer
+    UIRenderer.clear_render_pass_queue(source_renderer)
+    UIRenderer.add_render_pass(source_renderer, 1, "to_screen", false)
     local rect = HudPanel.editor_rect(width,height,state.target_width,state.target_height,state.panel_aspect or (1.18/0.81),
         HudPanel.mirror_width,HudPanel.mirror_height)
     if not state.editor_material then
@@ -458,6 +494,7 @@ local function route_fixed_updates(owner)
 end
 
 local function destroy_resources()
+    destroy_editor_output()
     state.editor_requested = nil
     state.editor_material = nil
     state.follow_pose = nil

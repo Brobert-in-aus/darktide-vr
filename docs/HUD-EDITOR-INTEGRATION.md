@@ -58,3 +58,30 @@ restored the alive HUD group (26 elements). Fresh eye pairs continued without
 pose mismatches. No saved item positions were edited during this check.
 See `artifacts/unattended/menu-mirror-live-20260906.log` and the
 [menu follow-up](MENU-INTERACTION-AUDIT.md). Worn readability remains pending.
+
+## F3 editor with DLSS (6 September 2026)
+
+The generated-stereo path now routes Custom HUD editing explicitly as a desktop
+menu. Its image is drawn by a dedicated final UI overlay viewport; the gameplay
+HUD GUI resolves into an eye texture under DLSS and cannot supply the desktop
+editor. Closing F3 deactivates the overlay and restores the existing world HUD.
+The original Custom HUD still owns input, layout edits and persistence.
+
+Continuous generation pauses on non-world presentation or a rejected Present
+binding. Captured inputs are discarded only after their GPU fences complete;
+previously tagged inputs retain their exact completion-ticket lifetime. Returning
+to gameplay starts a fresh temporal sequence. An expired original ring also lets
+the XR consumer use current legacy stereo instead of freezing on old ring data.
+
+Live check: the editor border, element list, selected-element properties and
+instruction are visible with DLSS enabled. Closing F3 returned to approximately
+51 original plus 51 generated distinct frames per second. No saved layout was
+changed during this check. Cursor dragging/persistence and worn acceptance remain
+user checks. Evidence: artifacts/unattended/dlss-editor-overlay-live-20260906.log.
+The earlier mode-only attempt recovered gameplay but showed a stale loading/menu
+image; that attempt was not accepted as an editor fix.
+
+Validation: Release native/XR builds, all 31 Lua chunks, continuous_recovery,
+hud_panel, hud_options, streamline_submission and the existing generated transport
+checks pass. The recovery test repeats partial/full capture interruptions on WARP;
+the HUD fixture checks overlay reuse, close/deactivation and resize destruction.

@@ -34,6 +34,7 @@ class StreamlineContinuousSubmission {
                       StreamlineSubmissionApi api, StreamlineSubmission::Tagging tagging,
                       Execute execute, std::uint64_t generation = 0);
   void after_present(ID3D12CommandQueue* queue, GetState get_state, Execute execute);
+  void pause(ID3D12CommandQueue* queue, Execute execute, const char* reason);
   bool initialized() const noexcept { return initialized_; }
   bool finished() const noexcept { return stopped_; }
   bool staged() const noexcept { return staged_; }
@@ -69,6 +70,7 @@ class StreamlineContinuousSubmission {
   void fail(const char* reason);
   void clear_bindings(ID3D12CommandQueue* queue, Execute execute);
   bool recycle(Frame& frame);
+  bool resume_capture();
   bool make_commands(ID3D12Device* device, ComPtr<ID3D12CommandAllocator>& allocator,
                      ComPtr<ID3D12GraphicsCommandList>& commands);
   std::array<Frame, 8> frames_;
@@ -77,6 +79,11 @@ class StreamlineContinuousSubmission {
   std::uint32_t width_{}, height_{};
   bool initialized_{}, stopped_{}, staged_{}, cleanup_submitted_{};
   bool persistent_{};
+  bool paused_{}, previous_tags_active_{};
+  ComPtr<ID3D12CommandAllocator> pause_allocator_;
+  ComPtr<ID3D12GraphicsCommandList> pause_commands_;
+  ComPtr<ID3D12Fence> pause_fence_;
+  std::uint64_t pause_value_{}, previous_present_{};
   std::uint64_t previous_pose_{};
   std::uint64_t original_ready_{};
   Log log_{};

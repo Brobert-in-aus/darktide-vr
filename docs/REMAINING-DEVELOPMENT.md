@@ -295,3 +295,11 @@ baseline. See the continuous delivery handoff for current commands and evidence.
 The current machine retains LOD 9 and restored pool/workers 1024/13. Worker
 tuning is opt-in with -TuneWorkerThreads. Release auto-configuration must use
 physical cores, not logical processor count. Keep this separate from DLSS work.
+
+### F3 regression follow-up (6 September 2026)
+
+The Custom HUD desktop editor now has its own final overlay viewport and explicit
+menu route under DLSS. Live display and return to generated stereo pass; user
+layout dragging/persistence and worn readability remain to check. Maintain this
+open/close check in DLSS menu-transition acceptance. Original performance versus
+the user's approximately 70-fps pre-DLSS baseline remains a separate open task.
