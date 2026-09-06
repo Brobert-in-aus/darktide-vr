@@ -368,3 +368,12 @@ Documentation and tooling only; no deployment or online session.
 Latest user steering: make Psykhanium operate on online-compatible rules where
 possible and improve that path first. Proceed with a range proving mode while
 keeping actual mission-server validation and worn acceptance separate.
+
+## Requested ADB recovery investigation
+
+See [Quest recovery](../QUEST-PASSTHROUGH-RECOVERY.md). Verified passthrough
+toggle and VD resume via ADB. Screenshot identified actual tracking-loss prompt
+("Finding position in room"), not an established accidental DoubleTap event.
+Generic `PT is: ON` was not a reliable full-passthrough indicator. Ready still
+fails; normal proximity restored. No boundary/tracking setting disabled and no
+game/deployment performed. Continue Psykhanium online-rules implementation offline.
