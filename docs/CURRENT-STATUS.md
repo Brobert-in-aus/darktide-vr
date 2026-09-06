@@ -490,3 +490,16 @@ ring tests passed. Full harness relink was deferred because the live harness exe
 is running; no deployment of this foundation yet.
 Remaining: consumer pairing/copy/layer integration, clean-world FG inputs, preserve
 desktop mirror/menu behaviour, combined live stability and worn motion acceptance.
+
+### 6 September: HUD/FG investigation parked by user
+
+The user requested moving on from the pose-mismatch investigation. Duplicated or
+displaced HUD elements and blur around HUD/world markers are separate unresolved
+symptoms. Do not mark either fixed or attribute both to pose. Matched generated
+readback confirms UI at current-frame coordinates in a stationary sample only;
+that cannot establish motion behaviour. The latest combined run stayed about
+50-52 real + generated pairs/s beyond 30 seconds without HUD replay rejection.
+The separate UI-layer foundation remains inactive; the unfinished motion-trigger
+experiment was removed. Full native/harness builds and focused checks passed.
+See the DLSS output-boundary handoff for evidence and validation limits.
+Development moves to right-stick smooth/snap turning.

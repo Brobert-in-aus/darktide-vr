@@ -19,7 +19,7 @@ endif()
 
 add_executable(darktidevr-continuous-recovery-tests recovery.cpp
   ../../src/producer/streamline_continuous_submission.cpp ../../src/producer/generated_stereo.cpp
-  ../../src/producer/stereo_ui_readback.cpp)
+  ../../src/producer/stereo_ui_readback.cpp ../../src/producer/ngx_output_copy_probe.cpp)
 target_compile_options(darktidevr-continuous-recovery-tests PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-continuous-recovery-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 target_link_libraries(darktidevr-continuous-recovery-tests PRIVATE darktidevr_core darktidevr_bridge d3d12 dxgi)

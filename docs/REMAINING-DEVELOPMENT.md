@@ -316,3 +316,11 @@ true premultiplied UI colour/alpha isolation; current FG tags HUDless only.
 A separate stock-centre-crosshair suppression is prepared and passes LuaJIT and
 hud_panel tests; deployed live confirmation remains pending. WeaponCounter is
 weapon-specific charge/lockout UI, not the crosshair. User layout is unchanged.
+
+## 6 September task change requested by user
+
+Park the DLSS HUD pose-mismatch investigation. Track duplicated/displaced HUD
+and blur around HUD/world markers separately; both remain unresolved. Latest
+combined capture showed stationary current-coordinate UI and stable timing only,
+not worn motion acceptance. The separate-layer route stays inactive. Next active
+backlog item is right-stick turning: smooth default, 45/90-degree snap options.

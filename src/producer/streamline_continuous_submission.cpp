@@ -1,6 +1,7 @@
 #include "producer/streamline_continuous_submission.h"
 #include "producer/generated_stereo.h"
 #include "producer/stereo_ui_readback.h"
+#include "producer/ngx_output_copy_probe.h"
 
 namespace darktidevr::producer {
 namespace sl = streamline_2_7_30;
@@ -334,6 +335,7 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
   std::swap(destination.Transition.StateBefore, destination.Transition.StateAfter);
   commands->ResourceBarrier(1, &destination);
   original_ready_=persistent_ ? stage_original_stereo(commands,backbuffer.Get(),present,frame.pose,generation) : 0;
+  if(persistent_) observe_ngx_copy_frame(frame.textures[0][2].Get(),frame.textures[1][2].Get());
   if(persistent_) stage_stereo_ui_readback(commands,frame.textures[0][2].Get(),frame.textures[0][3].Get(),
       frame.textures[1][2].Get(),frame.textures[1][3].Get(),frame.pose,
       ui_enabled_ ? frame.textures[0][4].Get() : nullptr,

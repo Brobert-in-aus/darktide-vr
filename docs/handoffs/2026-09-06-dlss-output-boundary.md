@@ -1063,3 +1063,29 @@ ring tests passed. Full harness relink was deferred because the live harness exe
 is running; no deployment of this foundation yet.
 Remaining: consumer pairing/copy/layer integration, clean-world FG inputs, preserve
 desktop mirror/menu behaviour, combined live stability and worn motion acceptance.
+
+### UI investigation parked at user direction (6 September 2026)
+
+The user ended the pose-mismatch investigation and requested moving on. Preserve
+both separately reported symptoms: displaced/duplicated HUD elements AND blur
+around HUD/world markers with frame generation. Neither is accepted as fixed;
+pose mismatch is unproven and does not by itself explain the blur. Do not resume
+the separate-layer architecture or motion-triggered captures without new direction.
+The unfinished motion-trigger experiment was removed before this checkpoint.
+
+The tenth combined run captured exact owned UI and the matching NGX generated
+output by source resource identity and pose. The GPU-fenced export completed after
+the initial diagnostic sample budget. Input alpha composition passed both eyes
+with zero missing/invalid/residual pixels over tolerance. Generated UI best offset
+was zero in both eyes (opaque-pixel mean clipped error 1.29 / 1.52). World patches
+were also stationary; this is NOT evidence establishing the cause during motion.
+The run remained about 50-52 original + generated pairs per second beyond the
+previous 30-second failure window, with no UI draw rejection/restart loop. Worn
+late-stutter acceptance remains open. Foreground-loss periods remain separate.
+
+The matched diagnostic, comparison tool and seven Python checks are retained;
+no UI projection-layer consumer is active. Native, full harness and recovery
+builds passed; four focused CTests passed. No Lua edits in this checkpoint.
+Evidence: artifacts/diagnostics/hud-alpha-capture-20260906/tenth-run-*-comparison
+and artifacts/unattended/hud-output-match-live10-20260906.log (local only).
+Next development body: right-stick smooth/snap turning from the existing backlog.

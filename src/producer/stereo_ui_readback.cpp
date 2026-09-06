@@ -1,4 +1,5 @@
 #include "producer/stereo_ui_readback.h"
+#include "producer/ngx_output_copy_probe.h"
 #include <Windows.h>
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -143,6 +144,14 @@ void stage_stereo_ui_readback(ID3D12GraphicsCommandList* commands,
     commands->ResourceBarrier(1,&barrier);
   }
   probe.staged=true;
+  if (owned_ui) arm_ngx_copy_ui_match(left_scene, right_scene, pose);
+  FILE* identity{};
+  if (_wfopen_s(&identity,(probe.stem+L".log").c_str(),L"a")==0) {
+    std::fprintf(identity,"UI_READBACK_MATCH pose=%llu left_scene=%p right_scene=%p owned_ui=%u\n",
+        static_cast<unsigned long long>(pose),static_cast<void*>(left_scene),
+        static_cast<void*>(right_scene),owned_ui ? 1U : 0U);
+    std::fclose(identity);
+  }
   overlay_staged.store(probe.image_count == 6);
   log("staged",S_OK);
 }

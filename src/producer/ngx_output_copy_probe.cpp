@@ -8,6 +8,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <mutex>
 
 namespace darktidevr::producer {
 namespace {
@@ -17,6 +18,9 @@ struct CopyProbe {
   std::atomic<bool> attempted{}, exported{};
   std::atomic<std::uint64_t> call{};
   std::uint64_t left_call{};
+  std::uint64_t pose{};
+  std::array<void*,2> scenes{};
+  bool matched_request{};
   ComPtr<ID3D12Resource> source, owned, readback;
   D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
   std::uint64_t bytes{};
@@ -26,6 +30,7 @@ struct CopyProbe {
   std::jthread worker;
 };
 CopyProbe probe;
+std::mutex match_mutex;
 
 void log(const char* phase, HRESULT result, std::uint64_t right_call,
          std::uint64_t left_pixels = 0, std::uint64_t right_pixels = 0,
@@ -36,10 +41,11 @@ void log(const char* phase, HRESULT result, std::uint64_t right_call,
   if (file == INVALID_HANDLE_VALUE) return;
   char line[640]{};
   const auto length = std::snprintf(line, sizeof(line),
-      "NGX_COPY phase=%s left_call=%llu right_call=%llu result=0x%08x source=%p owned=%p readback=%p width=%u height=%u row_pitch=%u bytes=%llu left_nonblack=%llu right_nonblack=%llu left_hash=%llu right_hash=%llu publication=0\n",
+      "NGX_COPY phase=%s left_call=%llu right_call=%llu result=0x%08x source=%p owned=%p readback=%p width=%u height=%u row_pitch=%u bytes=%llu left_nonblack=%llu right_nonblack=%llu left_hash=%llu right_hash=%llu publication=0 pose=%llu left_scene=%p right_scene=%p\n",
       phase, probe.left_call, right_call, static_cast<unsigned>(result), probe.source.Get(),
       probe.owned.Get(), probe.readback.Get(), probe.width, probe.height,
-      probe.footprint.Footprint.RowPitch, probe.bytes, left_pixels, right_pixels, left_hash, right_hash);
+      probe.footprint.Footprint.RowPitch, probe.bytes, left_pixels, right_pixels, left_hash, right_hash,
+      probe.pose, probe.scenes[0], probe.scenes[1]);
   DWORD written{};
   if (length > 0 && length < sizeof(line)) WriteFile(file, line, length, &written, nullptr);
   CloseHandle(file);
@@ -91,13 +97,38 @@ void export_pixels(std::uint64_t call) {
 
 void configure_ngx_output_copy(bool enabled) { probe.enabled = enabled; }
 
-void stage_ngx_output_copy(ID3D12GraphicsCommandList* commands, ID3D12Resource* output,
-                           std::uint64_t left_call, std::uint64_t right_call) {
-  if (!probe.enabled || !commands || !output || !left_call || right_call != left_call + 1 ||
-      probe.attempted.exchange(true)) return;
+void observe_ngx_copy_frame(ID3D12Resource* left_scene, ID3D12Resource* right_scene) {
+  std::scoped_lock lock(match_mutex);
+  if (!probe.attempted.load() && probe.matched_request &&
+      (probe.scenes[0] == left_scene || probe.scenes[1] == right_scene)) {
+    probe.matched_request = false;
+    // Disable fallback too: this requested comparison must never capture an
+    // unrelated frame if FG was suspended while its owners were recycled.
+    probe.enabled = false;
+  }
+}
+
+void arm_ngx_copy_ui_match(ID3D12Resource* left_scene, ID3D12Resource* right_scene,
+    std::uint64_t pose) {
+  std::scoped_lock lock(match_mutex);
+  if (probe.attempted.load() || !left_scene || !right_scene || !pose) return;
+  probe.scenes = {left_scene, right_scene};
+  probe.pose = pose;
+  probe.matched_request = true;
+}
+
+bool stage_ngx_output_copy(ID3D12GraphicsCommandList* commands, ID3D12Resource* output,
+    std::uint64_t left_call, std::uint64_t right_call, const std::array<void*,6>& inputs) {
+  if (!commands || !output || !left_call || right_call <= left_call) return false;
+  {
+    std::scoped_lock lock(match_mutex);
+    if ((!probe.enabled && !probe.matched_request) || probe.attempted.load()) return false;
+    if (probe.matched_request && (inputs[2] != probe.scenes[0] || inputs[5] != probe.scenes[1])) return false;
+    if (probe.attempted.exchange(true)) return false;
+  }
   std::array<wchar_t, MAX_PATH> directory{};
   const auto length = GetTempPathW(static_cast<DWORD>(directory.size()), directory.data());
-  if (!length || length >= directory.size()) return;
+  if (!length || length >= directory.size()) return false;
   probe.stem = std::wstring(directory.data(), length) + L"darktidevr-ngx-copy-" +
       std::to_wstring(GetCurrentProcessId());
   probe.left_call = left_call;
@@ -108,29 +139,29 @@ void stage_ngx_output_copy(ID3D12GraphicsCommandList* commands, ID3D12Resource* 
       !description.Width || description.Width % 2 || !description.Height ||
       description.Width > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
       description.Height > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION) {
-    log("descriptor_failed", E_INVALIDARG, right_call); return;
+    log("descriptor_failed", E_INVALIDARG, right_call); return false;
   }
   ComPtr<ID3D12Device> device;
   auto result = output->GetDevice(IID_PPV_ARGS(&device));
-  if (FAILED(result)) { log("device_failed", result, right_call); return; }
+  if (FAILED(result)) { log("device_failed", result, right_call); return false; }
   probe.width = static_cast<unsigned>(description.Width); probe.height = description.Height;
   device->GetCopyableFootprints(&description, 0, 1, 0, &probe.footprint, nullptr, nullptr, &probe.bytes);
   // Allocation ceiling only; resolution is always the actual runtime output.
   if (!probe.bytes || probe.bytes > 512ULL*1024*1024) {
-    log("allocation_bound", E_OUTOFMEMORY, right_call); return;
+    log("allocation_bound", E_OUTOFMEMORY, right_call); return false;
   }
   description.Flags = D3D12_RESOURCE_FLAG_NONE;
   D3D12_HEAP_PROPERTIES heap{}; heap.Type = D3D12_HEAP_TYPE_DEFAULT;
   result = device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &description,
       D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&probe.owned));
-  if (FAILED(result)) { log("texture_failed", result, right_call); return; }
+  if (FAILED(result)) { log("texture_failed", result, right_call); return false; }
   D3D12_RESOURCE_DESC buffer{}; buffer.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
   buffer.Width = probe.bytes; buffer.Height = 1; buffer.DepthOrArraySize = 1;
   buffer.MipLevels = 1; buffer.SampleDesc.Count = 1; buffer.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
   heap.Type = D3D12_HEAP_TYPE_READBACK;
   result = device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &buffer,
       D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&probe.readback));
-  if (FAILED(result)) { log("readback_failed", result, right_call); return; }
+  if (FAILED(result)) { log("readback_failed", result, right_call); return false; }
   probe.source = output;
   D3D12_RESOURCE_BARRIER source{};
   source.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -151,6 +182,7 @@ void stage_ngx_output_copy(ID3D12GraphicsCommandList* commands, ID3D12Resource* 
   commands->CopyTextureRegion(&to, 0, 0, 0, &from, nullptr);
   probe.call.store(right_call, std::memory_order_release);
   log("staged", S_OK, right_call);
+  return true;
 }
 
 void complete_ngx_output_copy(std::uint64_t right_call) {

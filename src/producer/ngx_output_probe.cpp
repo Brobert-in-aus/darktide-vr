@@ -43,7 +43,9 @@ struct CompletionGroup {
   Microsoft::WRL::ComPtr<ID3D12Fence> fence;
   bool signaled{};
 };
-std::array<CompletionGroup, 256> completion_groups;
+// Reserve one fence group for a matched UI/output capture requested after the
+// bounded 256 diagnostic samples have finished.
+std::array<CompletionGroup, 257> completion_groups;
 std::size_t completion_group_count{};
 std::atomic<unsigned> pending_fences{};
 struct ActiveEvaluationState {
@@ -298,24 +300,25 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   active_evaluation = previous_evaluation;
   if(identity.kind==11)
     generated_stereo_evaluation(complete,output_state.seed_call!=0);
+  bool output_copy_staged = false;
   if (complete && result == ngx::kSuccess && output_state.seed_call &&
       output_state.pair_observation.known && !output_state.pair_observation.ambiguous &&
       output_state.pair_observation.state == D3D12_RESOURCE_STATE_UNORDERED_ACCESS &&
       std::none_of(resources.begin() + 1, resources.end(), [&](auto resource) { return resource == resources[0]; })) {
-    stage_ngx_output_copy(static_cast<ID3D12GraphicsCommandList*>(commands), resources[0],
-                          output_state.seed_call, call);
     const auto& first = output_state.left_inputs;
     const std::array<void*,6> inputs = legacy_region[0] == 0
         ? std::array<void*,6>{resources[2],resources[3],resources[4],first[0],first[1],first[2]}
         : std::array<void*,6>{first[0],first[1],first[2],resources[2],resources[3],resources[4]};
+    output_copy_staged = stage_ngx_output_copy(static_cast<ID3D12GraphicsCommandList*>(commands),
+        resources[0], output_state.seed_call, call, inputs);
     stage_generated_stereo(static_cast<ID3D12GraphicsCommandList*>(commands), resources[0], call,inputs);
   }
   end_ngx_gpu_timing(timing, static_cast<ID3D12GraphicsCommandList*>(commands), result == ngx::kSuccess);
-  if (captured && diagnostic_sample) record_output_barriers(call, output_state);
+  if (captured && (diagnostic_sample || output_copy_staged)) record_output_barriers(call, output_state);
   record_slow_call("evaluate", identity.kind, began);
   if (captured && result == ngx::kSuccess) {
     std::scoped_lock lock(command_mutex);
-    if (diagnostic_sample && command_observations.add(reinterpret_cast<std::uintptr_t>(commands), call))
+    if ((diagnostic_sample || output_copy_staged) && command_observations.add(reinterpret_cast<std::uintptr_t>(commands), call))
       pending_commands.fetch_add(1, std::memory_order_release);
     if (complete && !output_state.seed_call) {
       output_pair_state.left(pair_key, output_state.observation);
