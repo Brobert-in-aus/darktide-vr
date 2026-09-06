@@ -485,13 +485,15 @@ $controllerAimSource = Get-Content -LiteralPath (
 if (-not $controllerAimSource.Contains(
         'MultiFireModes.simultaneous') -or
         -not $controllerAimSource.Contains(
-            '(action.num_shots_fired + 1) % #configurations == 1') -or
+            '(before + 1) % #configurations == 1') -or
         -not $controllerAimSource.Contains(
             'controller_aim.reused_simultaneous_shots') -or
         -not $controllerAimSource.Contains(
             'fx_extension.vfx_spawner_unit_and_node') -or
         -not $controllerAimSource.Contains(
-            'action.shooting_position = muzzle_position')) {
+            'return with_first_person_pose(action, position, rotation, func, ...)') -or
+        -not $controllerAimSource.Contains(
+            'local results = packed(controller_aim.with_ranged_pose(action, func, ...))')) {
     throw 'Controller-authored fire must preserve simultaneous-shot ownership and use the live third-person weapon muzzle with a stock-origin fallback.'
 }
 if (-not $source.Contains(
@@ -505,11 +507,11 @@ if (-not $source.Contains(
         -not $controllerAimSource.Contains(
             'return left_position, rotation, "left_origin_converged_aim"') -or
         -not $controllerAimSource.Contains(
-            'controller_aim.reticle_world_point = position + direction * distance') -or
+            'controller_aim.reticle_world_point = Vector3Box(position + direction * distance)') -or
         -not $controllerAimSource.Contains(
             'local delta = point - origin') -or
         -not $controllerAimSource.Contains(
-            'aim_rotation = controller_aim.converged_rotation(') -or
+            'rotation = controller_aim.converged_rotation(') -or
         -not $controllerAimSource.Contains(
             'action_spawn_projectile') -or
         -not $controllerAimSource.Contains(
@@ -540,15 +542,15 @@ if (-not $hudPanelSource.Contains(
         -not $hudPanelSource.Contains(
             'Renderer.copy_render_target_rect,') -or
         -not $hudPanelSource.Contains(
-            'Material.set_resource, material, "source", display_target)') -or
+            'Material.set_resource(material, "render_target", display_target)') -or
         -not $hudPanelSource.Contains(
             'Gui2.bitmap_3d(') -or
         -not $hudPanelSource.Contains(
-            'local height = width * target_height / target_width')) {
-    throw 'Fixed HUD must use one authoritative draw, preserve spatial elements on the stock renderer, migrate retained ownership to Darktide-pattern dedicated queue/resource renderers and present an aspect-correct two-metre completed target.'
+            'local height = HudPanel.height * HudPanel.scale') -or
+        -not $hudPanelSource.Contains('state.panel_aspect = width / height')) {
+    throw 'Fixed HUD must use one authoritative draw, preserve spatial elements on the stock renderer, retain dedicated queue/resource ownership and present the completed target with configured panel dimensions.'
 }
-if ($hudPanelSource.Contains(
-        'Material.set_resource(material, "source", resource_renderer.render_target)')) {
+if ($hudPanelSource -match 'Material\.set_resource\s*\(\s*material\s*,\s*"(?:source|render_target)"\s*,\s*resource_renderer\.render_target\s*\)') {
     throw 'Fixed HUD must never sample its in-flight render target; worn hardware proved that aliases the binocular world render into the panel.'
 }
 $advanceHelperPath = Join-Path $repoRoot `
@@ -557,15 +559,16 @@ $advanceHelperSource = Get-Content -LiteralPath $advanceHelperPath -Raw
 if (-not $advanceHelperSource.Contains(
         'function Wait-DarktideLeavesTitle') -or
         -not $advanceHelperSource.Contains(
-        'function Wait-DarktideLeavesCharacterSelect') -or
+        'function Assert-DarktideStartupOwner') -or
         -not $advanceHelperSource.Contains('$_.Path -ieq $resolvedGameExe') -or
         -not $advanceHelperSource.Contains(
             'Wait-DarktideLeavesTitle -Process $title') -or
         -not $advanceHelperSource.Contains(
             "'Entering Game State StateLoading'") -or
         -not $advanceHelperSource.Contains(
-            'Wait-DarktideLeavesCharacterSelect -Process $characterSelect')) {
-    throw 'Authenticated unattended launch must retry title Space and character-select Enter until log-owned state transitions prove acceptance.'
+            'DARKTIDEVR_STARTUP character_select=start_requested source=one_shot') -or
+        $advanceHelperSource.Contains('Wait-DarktideLeavesCharacterSelect -Process $characterSelect')) {
+    throw 'Authenticated unattended launch must retain process/log ownership, retry title Space and observe stock character-select readiness without replaying Enter.'
 }
 $startHelperPath = Join-Path $repoRoot 'tools\stereo\start-darktide-vr.ps1'
 $startHelperSource = Get-Content -LiteralPath $startHelperPath -Raw
@@ -790,19 +793,19 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
         -not $startHelperSource.Contains(
             'darktidevr_streamline_stereo_swapchain_probe.flag') -or
         -not $nativeCaptureSource.Contains(
-            'PROBE\tmode=observe_only\tsdk_abi=2.7.30') -or
+            'PROBE\tmode=%s\tsdk_abi=2.7.30') -or
         -not $nativeCaptureSource.Contains(
-            'dlssg_state_query=wrap_existing_calls') -or
+            'dlssg_state_query=existing_calls_plus_bounded_present_probe') -or
         -not $nativeCaptureSource.Contains(
-            'independent_state_calls=0') -or
+            'independent_state_call_budget=%u') -or
         -not $nativeCaptureSource.Contains(
             'initialize_streamline_probe(swapchain_vtable[8],') -or
         -not $nativeCaptureSource.Contains(
-            'const auto result = original(viewport, state, options);') -or
+            'result = original(viewport, state, options);') -or
         -not $nativeCaptureSource.Contains(
             'DLSSG_STATE\tcall=%llu\tpresent_frame=%llu') -or
         -not $nativeCaptureSource.Contains(
-            'const auto result = original(viewport, options);') -or
+            'result = original(viewport, options);') -or
         -not $nativeCaptureSource.Contains(
             'DLSSG_OPTIONS\tcall=%llu\tpresent_frame=%llu') -or
         -not $nativeCaptureSource.Contains(
@@ -915,7 +918,7 @@ if (-not $startHelperSource.Contains('[switch] $StreamlineProbe') -or
             'streamline_native_present_count.load(std::memory_order_relaxed)') -or
         -not $nativeCaptureSource.Contains(
             '(present <= 5 || present % 120 == 0)')) {
-    throw 'The Streamline probe must remain launch-scoped, bounded and observe-only; wrap and forward the game existing state call exactly once rather than adding a state query.'
+    throw 'The Streamline diagnostics must remain launch-scoped with bounded independent state probes, forward stock calls and retain generated-frame transport ownership.'
 }
 if (-not $nativeCaptureSource.Contains(
         'std::atomic<bool> named_camera_outputs_ready_hint{};') -or
@@ -969,7 +972,9 @@ if (-not $source.Contains('dtvr_read_head_pose_v2') -or
 if (-not $gameplayInputSource.Contains(
         'const auto transport_changed = controllers.transport_generation != 0') -or
         -not $gameplayInputSource.Contains(
-            'transport_changed ? 0 : next & ~held_')) {
+            'if (!active_ || transport_changed) blocked_until_release_ = next;') -or
+        -not $gameplayInputSource.Contains('blocked_until_release_ &= next;') -or
+        -not $gameplayInputSource.Contains('next &= ~blocked_until_release_;')) {
     throw 'Gameplay input must baseline held buttons across a controller-writer generation change without synthesizing press edges.'
 }
 if (-not $source.Contains(

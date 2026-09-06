@@ -1,4 +1,5 @@
 #include "window_capture.h"
+#include "windows_dpi_scope.h"
 
 #include <Windows.h>
 
@@ -133,8 +134,13 @@ int wmain() {
                    idle_gameplay_reticle_pixel[3],
            "Disabling gameplay reticle must restore the pre-atlas panel pixel");
     RECT expected_client{};
-    expect(GetClientRect(window, &expected_client) != FALSE,
-           "Fixture client extent must be readable");
+    {
+      // The fixture may run DPI-unaware on a scaled desktop. Compare the
+      // physical-pixel contract to physical pixels, not virtualized DIPs.
+      const darktidevr::harness::ThreadDpiAwarenessScope dpi_awareness;
+      expect(GetClientRect(window, &expected_client) != FALSE,
+             "Fixture client extent must be readable");
+    }
     const auto source_extent = capture.source_extent();
     expect(source_extent &&
                source_extent->first == static_cast<std::uint32_t>(

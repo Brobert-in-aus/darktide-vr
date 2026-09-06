@@ -138,3 +138,24 @@ Remaining full-suite failures to resolve as a separate validation task:
 Logs: `artifacts/unattended/secondary-build-20260907.log`,
 `secondary-validation-build-20260907.log`, `secondary-ctest-20260907.log`, and
 `secondary-native-fixture-build-20260907.log` in the same ignored directory.
+
+## Validation fixture refresh completed
+
+Branch `codex/validation-fixture-refresh-2026-09-07` resolves the remaining two
+failures. The window fixture now reads its expected client rectangle inside the
+same physical-pixel DPI scope as production; capture still runs from the original
+caller context, exercising the production scope. No capture behavior changed.
+
+The legacy source assertions now follow the already-established ranged pose scope,
+boxed reticle point, configured HUD dimensions and completed render-target material,
+stock-ready startup callback, bounded Streamline state probe and gameplay release
+quarantine. Removed expectations for retired implementation text; retained the
+prohibition on sampling the in-flight HUD target. Existing behavioral tests remain
+the stronger evidence, and the pinned LuaJIT gate remains unchanged.
+
+Final Windows x64 validation: `lua_source_assertions=pass`; full Release CTest
+**98/98 passed** in 9.60 seconds with headset tests disabled in configuration.
+Evidence: `artifacts/unattended/fixture-refresh-build-20260907.log` and
+`artifacts/unattended/fixture-refresh-ctest-20260907.log`. This supersedes the
+initial 95/98 result above. Shared secondary click remains undeployed and
+worn acceptance remains pending. Continue next with mission input/attack ownership.
