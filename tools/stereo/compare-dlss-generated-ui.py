@@ -28,6 +28,11 @@ def verify_match(stem, generated):
     outputs = records(generated.with_suffix(".log"), "NGX_COPY")
     if len(inputs) != 1 or inputs[0].get("owned_ui") != "1":
         raise ValueError("An exact owned-UI readback is required")
+    ui_readbacks = records(f"{stem}.log", "UI_READBACK")
+    for phase in ("staged", "exported"):
+        rows = [row for row in ui_readbacks if row.get("phase") == phase]
+        if len(rows) != 1 or rows[0].get("result") != "0x00000000":
+            raise ValueError("UI input must have one staged and GPU-complete export")
     completed = [row for row in outputs if row.get("phase") == "exported"]
     staged = [row for row in outputs if row.get("phase") == "staged"]
     if len(completed) != 1 or len(staged) != 1:
@@ -35,6 +40,12 @@ def verify_match(stem, generated):
     for key in ("pose", "left_scene", "right_scene"):
         if inputs[0][key] != completed[0][key] or staged[0][key] != completed[0][key]:
             raise ValueError(f"Input/output identity mismatch: {key}")
+    for key in ("left_call", "right_call", "source", "owned", "readback",
+                "width", "height", "row_pitch", "bytes"):
+        if not staged[0].get(key) or staged[0][key] != completed[0].get(key):
+            raise ValueError(f"Staged/exported output identity mismatch: {key}")
+    if any(int(completed[0][key]) <= 0 for key in ("left_call", "right_call")):
+        raise ValueError("Both generated eye calls must have positive identities")
     if inputs[0]["pose"] == "0" or any(row["result"] != "0x00000000" for row in (staged[0], completed[0])):
         raise ValueError("Missing pose identity or failed output capture")
     return {key: completed[0][key] for key in ("pose", "left_call", "right_call")}

@@ -46,6 +46,10 @@ for the smaller set needed before a first end-to-end mission attempt.
    blur first, then investigate duplication/displacement. Do not assume a common
    pose cause or repeat the rejected approach without new evidence. Generated
    stereo delivery is working; the old output-association blocker is resolved.
+   7 September: [matched opaque UI detail](DLSS-UI-DETAIL.md) is now measurable
+   offline with stricter completed-capture identity checks. The saved static
+   sample with optional UI input retains 95.9–97.8% contrast in selected opaque
+   pairs; this does not resolve motion blur or describe the current default.
 5. **Performance optimization.** Investigate the framerate loss when enabling
    DLSS, separating super resolution from frame generation with controlled
    comparisons. Revisit the measured two-eye FG cost without assuming it is all

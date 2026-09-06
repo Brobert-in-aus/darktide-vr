@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import tempfile
 
 import numpy as np
 
@@ -36,6 +37,31 @@ class GeneratedUiCheck(unittest.TestCase):
     def test_translucent_pixels_cannot_establish_expected_colour(self):
         self.ui[:, :, 3] = 100
         self.assertEqual(module.compare(self.ui, self.ui)["placement_check"], "insufficient_opaque_UI")
+
+    def test_capture_identity_requires_completed_matching_owners(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stem = Path(directory) / "ui"
+            output = Path(directory) / "generated.bmp"
+            input_text = ("UI_READBACK_MATCH pose=8 left_scene=abc right_scene=def owned_ui=1\n"
+                          "UI_READBACK phase=staged result=0x00000000\n"
+                          "UI_READBACK phase=exported result=0x00000000\n")
+            identity = ("pose=8 left_scene=abc right_scene=def left_call=20 right_call=21 "
+                        "source=src owned=own readback=read width=256 height=128 row_pitch=1024 bytes=131072 "
+                        "result=0x00000000\n")
+            def logs(ui_text=input_text, staged=identity, exported=identity):
+                stem.with_suffix(".log").write_text(ui_text)
+                output.with_suffix(".log").write_text("NGX_COPY phase=staged " + staged +
+                                                     "NGX_COPY phase=exported " + exported)
+            logs()
+            self.assertEqual(module.verify_match(stem, output)["left_call"], "20")
+            logs(ui_text=input_text.replace("UI_READBACK phase=exported result=0x00000000\n", ""))
+            with self.assertRaises(ValueError):
+                module.verify_match(stem, output)
+            for old, new in (("left_call=20", "left_call=22"), ("readback=read", "readback=other"),
+                             ("pose=8", "pose=9"), ("result=0x00000000", "result=0x80004005")):
+                logs(exported=identity.replace(old, new))
+                with self.assertRaises(ValueError):
+                    module.verify_match(stem, output)
 
 
 if __name__ == "__main__":

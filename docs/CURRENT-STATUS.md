@@ -13,6 +13,10 @@ the validation fixtures were refreshed and all 98 Release CTests now pass.
 A subsequent local-authority mission policy candidate now passes 99 tests and
 34 compiled Lua chunks; it remains undeployed. Remote-server missions remain
 gated pending the [attack ownership work](MISSION-AUTHORITY-AUDIT.md).
+The next Ready preflight and retry could not obtain an HMD from VDXR. New
+runtime candidates remain undeployed; game/XR are closed and proximity automation
+is restored. Offline [UI detail measurement](DLSS-UI-DETAIL.md) now quantifies
+opaque contrast in an older static capture; motion blur remains unresolved.
 See the [current handoff](handoffs/2026-09-07-development.md) for evidence and
 the expanded shared hint audit. A 20-minute task heartbeat is active.
 

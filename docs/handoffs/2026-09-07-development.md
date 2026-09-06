@@ -176,3 +176,27 @@ Game/XR remain closed. No mission or SoloPlay run, no new deployment, and no
 headset acceptance. Next work can proceed with remaining offline combat/input
 coverage or blur/performance investigation; retain the user's blur-first order
 and do not resume the rejected HUD-pose hypothesis.
+
+## Live readiness unavailable; offline detail diagnostic
+
+Before deploying the shared-secondary/mission candidate, Ready preflight and
+one retry both returned `openxr.system=hmd-unavailable`, skipping session render.
+The headset could be woken, but VDXR did not expose a usable HMD. No deployment,
+game launch or VD restart followed. Restored proximity with Enable then Status
+(asleep); game/XR remain closed. Continue offline while the user is at work.
+Evidence: `artifacts/unattended/secondary-mission-preflight-20260907.log` and
+`secondary-mission-preflight-retry-20260907.log` in the same directory.
+
+Branch `codex/dlss-ui-detail-diagnostic-2026-09-07` adds a numerical contrast
+measurement and strengthens the existing capture identity gate to reject
+incomplete UI exports or changed output calls/resources/layout. See
+[DLSS-UI-DETAIL](../DLSS-UI-DETAIL.md) for use, evidence and limitations. The old
+tenth-run static sample retains 95.9–97.8% contrast in selected fully opaque
+neighbor pairs. That sample enabled optional UI input; the current baseline
+disables it. No motion-blur fix, pose hypothesis or worn acceptance is claimed.
+
+Validation: both Python suites pass (five tests each), and both newly registered
+CTests pass. Full Windows x64 Release CTest also passes **101/101** (headset tests
+disabled), logged in `artifacts/unattended/ui-detail-ctest-20260907.log`.
+No runtime code changed. The numerical smoothing fixture is an
+isolated test of the metric, not a synthetic headset or game experiment.

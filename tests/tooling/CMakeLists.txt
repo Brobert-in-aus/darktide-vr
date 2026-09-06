@@ -13,6 +13,10 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/test-projection-math.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_projection_math.lua")
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME dlss_ui_detail COMMAND "${Python3_EXECUTABLE}" -B
+    "${PROJECT_SOURCE_DIR}/tests/streamline_stereo_inputs/test_ui_detail.py")
+  add_test(NAME dlss_ui_capture_identity COMMAND "${Python3_EXECUTABLE}" -B
+    "${PROJECT_SOURCE_DIR}/tests/streamline_stereo_inputs/test_generated_ui_check.py")
   add_test(NAME ui_binding_audit COMMAND "${Python3_EXECUTABLE}" -B
     "${CMAKE_CURRENT_SOURCE_DIR}/test-ui-binding-audit.py")
   add_test(NAME menu_input COMMAND "${LUAJIT_VALIDATOR}"
