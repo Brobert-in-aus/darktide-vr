@@ -1,20 +1,31 @@
 local Grenade = {}
 local Action = require("scripts/utilities/action/action")
 local function pack(...) return {n=select("#",...),...} end
+local luggables = {luggable=true,luggable_light=true,luggable_mission=true}
 
 function Grenade.supported(template,settings)
-    if not template or not settings or settings.spawn_node or
-            (settings.kind~="aim_projectile" and settings.kind~="throw_grenade") or
-            (settings.throw_type~="throw" and settings.throw_type~="underhand_throw") then
-        return false
-    end
+    if not template or not settings or settings.spawn_node then return false end
     for _,keyword in ipairs(template.keywords or {}) do
-        if keyword=="grenade" then return true end
+        if keyword=="grenade" then
+            return (settings.kind=="aim_projectile" or settings.kind=="throw_grenade") and
+                (settings.throw_type=="throw" or settings.throw_type=="underhand_throw")
+        elseif keyword=="luggable" and luggables[template.name] then
+            -- ThrowLuggable consumes the cached aim unchanged after its stock
+            -- delay. Author that cache and its preview together; drops keep
+            -- the stock near-feet physics path and are never pose-substituted.
+            return settings.kind=="aim_projectile" and settings.throw_type=="throw"
+        end
     end
     return false
 end
 
 function Grenade.install(mod,aim)
+    -- Inherited methods are copied into concrete Stingray classes. Load both
+    -- before hooking, then patch the concrete luggable preview as well.
+    local effects={
+        require("scripts/extension_systems/visual_loadout/wieldable_slot_scripts/aim_projectile_effects"),
+        require("scripts/extension_systems/visual_loadout/wieldable_slot_scripts/aim_luggable_effects"),
+    }
     local function action_pose(func,self,...)
         local player=Managers and Managers.player and Managers.player:local_player(1)
         if not player or player.player_unit~=self._player_unit or
@@ -36,8 +47,7 @@ function Grenade.install(mod,aim)
     mod:hook(require("scripts/extension_systems/weapon/actions/action_throw_grenade"),
         "_spawn_projectile",action_pose)
 
-    mod:hook(require("scripts/extension_systems/visual_loadout/wieldable_slot_scripts/aim_projectile_effects"),
-        "_update_trajectory",function(func,self,settings,...)
+    local function trajectory_pose(func,self,settings,...)
             local component,actions=self._weapon_action_component,self._weapon_actions
             local action_settings=component and actions and
                 Action.current_action_settings_from_component(component,actions)
@@ -70,7 +80,8 @@ function Grenade.install(mod,aim)
             Unit.world_position,Unit.world_rotation=world_position,world_rotation
             if not result[1] then error(result[2],0) end
             return unpack(result,2,result.n)
-        end)
+    end
+    for _,class in ipairs(effects) do mod:hook(class,"_update_trajectory",trajectory_pose) end
 end
 
 return Grenade

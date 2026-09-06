@@ -61,8 +61,8 @@ searched and are distinguished from player ranged weapons below.
 | `weapon_throw` | dual shivs special | Concrete spawn/launch hooks now provide right-hand pose for the audited straight-throw configuration; worn acceptance pending |
 
 Other non-gun `spawn_projectile` abilities remain outside the explicit
-staff/knife policy. Luggable throws/drops still need their separate handling
-described below. The projectile class's alternate cached
+staff/knife policy. The 7 September luggable candidate below couples its aim
+cache and preview while preserving stock drops. The projectile class's alternate cached
 aim-component path must be audited before supporting a future gun configuration
 without `skip_aiming=true`. New families in the source snapshot are not assumed
 to be available on this installed game/account.
@@ -137,8 +137,50 @@ Grenade/luggable routes need a coupled pass, not a camera-pose-only patch:
   `grenade` keywords. Psyker homing knives require target-module ownership too.
 
 The grenade and knife candidates below address their respective routes.
-Luggables remain unmodified. Private-range acceptance does not
+The luggable candidate added on 7 September is described below. Private-range acceptance does not
 establish remote-server hand-pose transport for mission play.
+
+## Luggable trajectory candidate: 7 September
+
+The three audited templates `luggable`, `luggable_light` and `luggable_mission`
+now admit the shared hand-pose scope for their `aim_projectile` / `throw` action
+only, requiring the `luggable` keyword. The existing local-player, tracking and
+context/authority checks still own the target. Unknown templates, alternate
+routes, node origins and drops are excluded.
+
+`ActionAimProjectile.fixed_update` writes the hand-based pose into the stock
+aim cache using stock collision checks, radius, speed curves and momentum.
+`AimLuggableEffects` has its own copied `_update_trajectory` method: load it and
+`AimProjectileEffects` before hooking both concrete classes. Its inherited
+preview then reads the same hand reference with cosmetic start offsets removed.
+The luggable's own trajectory-settings method retains the existing item's
+locomotion template, mass and radius.
+
+`ActionThrowLuggable` already consumes that complete cached pose; it needs no
+release hook. Preserve its authored delay (0.32 s for the ordinary/light
+templates), once-only physics transition and server authority. Later hand
+movement during the delay does not redefine the game's cached release.
+Drops intentionally retain `Luggable.enable_physics`, including its near-feet
+radius-based placement and owner-velocity contribution. No controller-velocity
+throwing or physical carry-model change is implemented.
+
+Validation: pinned LuaJIT 34 chunks and focused `grenade_aim`, `ranged_aim`,
+`gameplay_context`, `lua_source_invariants` CTests pass. The shared fixture covers
+all three templates, concrete preview dispatch and unsupported/remote/tracking
+fallbacks. An additional optional test executes the actual local source-snapshot
+aim and throw methods with engine stubs:
+
+```powershell
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-luggable-stock-contract.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_grenade_aim.lua _downloads/Darktide-Source-Code
+# PASS: stock aim/collision parameters, cached delayed release, once-only/server
+# physics, equipment transition and untouched drop component references
+```
+
+The optional check requires the source snapshot and is not a CTest dependency.
+Evidence: `artifacts/unattended/luggable-stock-contract-20260907.log`.
+No deployment, real throw or worn/mission acceptance. Later live checks must
+cover preview/origin alignment, obstacles, moving-hand release, cancel/drop,
+objective sockets and the carried model; SoloPlay remains the later test stage.
 
 Dual-shiv live initialization: both concrete hooks installed; `shared_ready=2162`
 with 42.9 fresh pairs/s, zero interval fallback and zero pose mismatches. No

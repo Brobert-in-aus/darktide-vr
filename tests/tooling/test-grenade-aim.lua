@@ -1,7 +1,9 @@
 -- Scoped ownership tests: stock throw physics and timing remain behind these hooks.
 local root="scripts/extension_systems/weapon/actions/"
 local effects_path="scripts/extension_systems/visual_loadout/wieldable_slot_scripts/aim_projectile_effects"
-local classes={[root.."action_aim_projectile"]={},[root.."action_throw_grenade"]={},[effects_path]={}}
+local luggable_effects_path="scripts/extension_systems/visual_loadout/wieldable_slot_scripts/aim_luggable_effects"
+local classes={[root.."action_aim_projectile"]={},[root.."action_throw_grenade"]={},
+    [effects_path]={},[luggable_effects_path]={}}
 local action_utility={current_action_settings_from_component=function(component,actions)
     return actions[component.current_action_name]
 end}
@@ -12,7 +14,8 @@ for path,class in pairs(classes) do
 end
 local hooks={}
 local mod={hook=function(_,class,name,hook)
-    hooks[class]=hooks[class] or {}; hooks[class][name]=hook
+    hooks[class]=hooks[class] or {}; assert(not hooks[class][name],'Duplicate concrete hook')
+    hooks[class][name]=hook
 end}
 local available=true
 local target={target=function(side)
@@ -27,6 +30,7 @@ local grenade=dofile(assert(arg[1])); grenade.install(mod,target)
 local aim_hook=hooks[classes[root.."action_aim_projectile"]].fixed_update
 local throw_hook=hooks[classes[root.."action_throw_grenade"]]._spawn_projectile
 local preview_hook=hooks[classes[effects_path]]._update_trajectory
+local luggable_preview_hook=hooks[classes[luggable_effects_path]]._update_trajectory
 local template={keywords={"other","grenade"}}
 local settings={kind="aim_projectile",throw_type="throw"}
 local original=setmetatable({}, {__index={position=1,rotation=2,unchanged=33},
@@ -94,4 +98,29 @@ end
 effect._is_local_unit=false; preview_hook(fallback,effect,trajectory); effect._is_local_unit=true
 available=false; preview_hook(fallback,effect,trajectory); available=true
 effect._weapon_action_component.current_action_name="missing"; preview_hook(fallback,effect,trajectory)
+-- All three audited luggables author aim and the concrete inherited preview.
+-- Their cached throw and near-feet drop consumers require no release hook.
+effect._weapon_action_component.current_action_name='aim'
+template.keywords={'luggable'}
+settings.kind,settings.throw_type='aim_projectile','throw'
+for _,name in ipairs({'luggable','luggable_light','luggable_mission'}) do
+    template.name=name
+    expect(aim_hook,100,200)
+    luggable_preview_hook(arc,effect,trajectory,.01,42)
+    assert(Unit.world_position==old_position and action._first_person_component==original)
+end
+settings.kind='throw_luggable'
+assert(not grenade.supported(template,settings),'Cached release must remain stock')
+settings.throw_type='drop'
+assert(not grenade.supported(template,settings),'Near-feet drop was redirected')
+settings.kind,settings.throw_type='aim_projectile','underhand_throw'
+assert(not grenade.supported(template,settings),'Unaudited luggable route enabled')
+settings.throw_type='throw'; template.name='unknown_luggable'
+expect(aim_hook,1,2)
+luggable_preview_hook(fallback,effect,trajectory)
+template.name='luggable'; action._player_unit='remote'
+expect(aim_hook,1,2); action._player_unit='local'
+available=false
+expect(aim_hook,1,2); luggable_preview_hook(fallback,effect,trajectory)
+available=true
 print("grenade aim/throw/preview ownership, fallback and restoration passed")

@@ -231,3 +231,19 @@ Pinned LuaJIT compiles all 34 chunks and five focused CTests pass. This candidat
 remains undeployed; no new readiness attempt or live session.
 Full Windows x64 Release CTest passes **102/102**, recorded in
 `artifacts/unattended/ui-ownership-ctest-20260907.log`.
+
+## Luggable hand trajectory candidate
+
+Branch `codex/luggable-hand-trajectory-2026-09-07` adds explicit support for the
+three audited luggable templates to the shared aim/preview scope. Both concrete
+preview classes load before hooks are installed, addressing Stingray's copied
+inheritance. The stock throw consumes the authored cache after its existing
+delay; no release hook or physics replacement. Drops retain the stock near-feet
+path. See [ranged audit](../RANGED-WEAPON-AUDIT.md#luggable-trajectory-candidate-7-september).
+
+Validation: 34 pinned LuaJIT chunks, four focused CTests pass, plus the optional
+source-snapshot integration test executing actual stock aim/release methods.
+It confirms collision parameters, speed/momentum, cached delayed release,
+once-only/server physics and stock drop references. No native changes, deployment,
+game session or worn acceptance. Existing runtime still has only the earlier
+saved controller/onboarding candidate; all subsequent changes remain offline.
