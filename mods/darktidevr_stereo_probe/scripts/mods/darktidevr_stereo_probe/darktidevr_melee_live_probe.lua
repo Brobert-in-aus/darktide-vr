@@ -8,6 +8,7 @@ function Live.install(mod, presentation, tracking, game_mode)
     local Simulation, Planner, Probe = load("simulation"), load("sweep_plan"), load("probe")
     local Diagnostics, Volume = load("diagnostics"), load("volume")
     local Timing = load("timing")
+    local HitZone, Contacts = load("hit_zone"), load("contacts")
     local defaults = require("scripts/settings/equipment/action_sweep_settings")
     local states = setmetatable({}, {__mode="k"})
     local enabled, last_check, failed = false, nil, false
@@ -46,6 +47,7 @@ function Live.install(mod, presentation, tracking, game_mode)
         local weapon = extension._weapons[slot]
         if weapon ~= state.weapon then
             state.weapon, state.volume, state.action_name = weapon, nil, nil
+            state.selected_action = nil
             state.windup_name = nil
             state.windup_start_t, state.combo_fingerprint = nil, nil
             state.history_key = {}
@@ -90,6 +92,7 @@ function Live.install(mod, presentation, tracking, game_mode)
             local volume, reason = Volume.resolve(template, action, defaults, instance._uses_matrix_data)
             if volume and state.action_name ~= name then
                 state.volume, state.action_name, state.history_key = volume, name, {}
+                state.selected_action = action
                 mod:info("DARKTIDEVR_MELEE context template=%s action=%s shape=%s radius=%.4f origin=provisional_grip damage=false",
                     tostring(template.name), name, volume.shape, volume.corner_radius)
             elseif not volume then
@@ -122,10 +125,33 @@ function Live.install(mod, presentation, tracking, game_mode)
             limits={max_gap=.1,max_translation=1,arc_step=.05,max_segments=32}})
         if t-state.last_log >= 5 then
             state.last_log = t
+            local resolution, selection_reason
+            local attacker_position = POSITION_LOOKUP and POSITION_LOOKUP[extension._unit]
+            if report and state.selected_action and attacker_position then
+                resolution, selection_reason = Diagnostics.select_contacts(report,HitZone,Contacts,{
+                    attacker=extension._unit,attacker_position=attacker_position,
+                    action=state.selected_action,
+                    -- Diagnostic identity lives only for this one result batch.
+                    -- A future cooldown ledger needs a true spawn-generation key.
+                    target_key=function(unit) return unit end})
+            end
             mod:info("DARKTIDEVR_MELEE sample frame=%s result=%s actors=%d contacts=%d queries=%d saturated=%s capacity_verified=false damage=false detail=%s",
                 tostring(frame), report and report.plan.reason or tostring(reason),
                 report and report.overlap.actor_count or 0, report and #report.contacts or 0,
                 report and report.query_count or 0, tostring(report and report.saturated or false), tostring(detail))
+            if report then
+                local zones = {}
+                for _,contact in ipairs(resolution and resolution.selected or {}) do
+                    local zone = tostring(contact.hit_zone)
+                    zones[zone] = (zones[zone] or 0)+1
+                end
+                local summary = {}
+                for zone,count in pairs(zones) do summary[#summary+1]=zone..":"..tostring(count) end
+                table.sort(summary)
+                mod:info("DARKTIDEVR_MELEE selection targets=%d unresolved=%d zones=%s result=%s obstruction_verified=false damage=false",
+                    resolution and #resolution.selected or 0,resolution and #resolution.unresolved or 0,
+                    table.concat(summary,","),resolution and "resolved" or tostring(selection_reason or "missing_context"))
+            end
         end
     end
     function Live.fixed_update(extension, t, frame)

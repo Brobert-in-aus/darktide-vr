@@ -1,6 +1,7 @@
--- Offline contact collection for one simulation update, before cooldowns or
--- damage. The physics adapter supplies validated, unobstructed contacts and
--- stock action/shield priorities. This module performs no physics or damage.
+-- Contact collection before cooldowns or damage. The adapter supplies checked
+-- contact data and stock action/shield priorities. Diagnostic selection may
+-- precede obstruction checks; a damage consumer must validate those separately.
+-- This module performs no physics, authority checks or damage.
 local Contacts = {}
 local function finite(value)
     return type(value) == "number" and value == value and

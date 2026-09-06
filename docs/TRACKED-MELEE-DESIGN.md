@@ -1,7 +1,8 @@
 # Tracked melee: accepted direction and implementation investigation
 
-Status: design based on the local Darktide source snapshot, 5 September 2026.
-Not enabled in the current live build. Button-driven stock melee remains the
+Status: updated 6 September 2026 against the local Darktide source snapshot.
+An opt-in private-range probe observes contacts without applying physical damage.
+Button-driven stock melee remains the
 interim system; the user accepted its hand-directed aim on 5 September.
 
 ## User-selected rules
@@ -203,7 +204,8 @@ is not redistributed by this document.
 
 The [motion smoothing investigation](MOTION-SMOOTHING.md) recommends light,
 optional aim stabilization and minimal added filtering for physical swings and
-blocking, with shared visual/contact pose ownership. No filter is enabled yet.
+blocking, with shared visual/contact pose ownership. Physical swings remain
+direct; the separate optional menu-laser trial does not filter gameplay poses.
 
 `darktidevr_melee_contact_policy.lua` implements the per-target eligibility ledger,
 with shared light/heavy target deadlines and initial heavy readiness. It is not
@@ -215,7 +217,7 @@ generation keys, and retain stock obstruction separately from damage eligibility
 
 `darktidevr_melee_sweep_plan.lua` separately plans rotational subdivision and
 current-pose overlap, with explicit gap/discontinuity and query-budget outcomes.
-It also is not imported by the live mod. Its inputs are validated hilt displacement,
+The opt-in live probe imports it. Its inputs are validated hilt displacement,
 shortest-arc rotation, simulation interval and the collision volume's maximum
 corner radius about the hilt. Do not substitute the box half-length for this
 radius: the centre offset makes the far corner roughly a full box length away.
@@ -234,18 +236,20 @@ offset and origin-based corner radius. Matrix-authored and older spline actions
 use different length axes; treating both as the same would distort the hitbox.
 Sphere-sweep actions retain their explicit radius with no box centre offset.
 Missing/invalid geometry produces no volume rather than a guessed default.
-This module remains offline and unimported. A real tracked grip-to-sweep-origin
+The opt-in live probe uses this module. A real tracked grip-to-sweep-origin
 transform still needs calibration before physics queries or visible overlays.
 
 `darktidevr_melee_contacts.lua` accumulates one selected contact per target
 across a complete simulation update, using adapter-supplied stock hit-zone/shield
 priorities. It copies position/normal scalars before another physics query can
 reuse the source result, preserves the first contact on equal priority, and has
-no finite target count. It requires already validated unobstructed contacts;
-it does not implement wall/shield physics, actor liveness or authority itself.
+no finite target count. A damage consumer must supply validated unobstructed
+contacts; diagnostic selection can run earlier. The collector does not implement
+wall/shield physics, actor liveness or authority itself.
 Batch reset is independent of the cooldown ledger. Its integration fixture uses
 100 targets, several hurtboxes/substeps, and repeated stationary contact with
-the existing per-target policy. This module is also offline and unimported.
+the existing per-target policy. The diagnostic selector now imports it for
+within-report deduplication, without spending the separate cooldown ledger.
 
 Input readiness is a separate timing constraint: the inspected mid-speed melee
 input setup requires a 0.35-second heavy hold, while the windup chain threshold
@@ -262,7 +266,7 @@ input-ready offsets relative to each action entry. It sums intermediate waits,
 uses the engine's inverted-kind rule and takes the later of chain/input readiness.
 It rejects disconnected routes and conditional early-window timing instead of
 guessing. This is not automatic weapon route selection or a replacement for the
-live handler's condition validation; it remains offline and unimported. Tests
+live handler's condition validation; the opt-in probe now uses it. Tests
 cover the .55 attack chain versus .45 block chain, intermediate windup, speed
 scaling, inverted kinds and the heavy input floor.
 
@@ -273,8 +277,8 @@ Its owner persists across weapon/pose changes; reset only with a genuinely new
 player simulation lifetime. Controller sequence changes are intentionally not
 required: a stationary pose must still overlap on subsequent simulation ticks.
 The integration fixture combines this owner, contact collection and cooldowns.
-This remains offline; network prediction reconciliation and the engine physics/
-damage adapter are not implemented by this guard.
+The opt-in diagnostics use this guard before queries. Network prediction
+reconciliation and physical damage are not implemented by it.
 
 `darktidevr_melee_probe.lua` is the first non-damaging engine overlap adapter.
 It consumes the resolved volume and an already validated stock-origin pose,
@@ -283,7 +287,7 @@ and copies every returned actor before query-list reuse. Box and sphere argument
 forms follow inspected stock immediate_overlap calls. It requests both static
 and dynamic candidates so the caller can retain obstruction processing.
 
-The adapter is not imported or called by the live mod. Its mocked engine fixture
+The opt-in live probe imports and calls the adapter. Its mocked engine fixture
 checks a rotated box offset, sphere radius, 100 copied candidates, missing result
 entries and rejection before physics for invalid geometry. It cannot establish
 the engine's result capacity: capacity_verified remains false. Overlap returns
@@ -307,7 +311,7 @@ function. It excludes self/dead units and requires a caller-provided stable
 target-generation key. It has no head-view or cooldown rejection. Unresolved
 hit zones are returned separately: scenery still needs obstruction handling.
 Its fixture combines the adapter with contact selection for raised/lowered
-shields and action-specific priorities. The adapter remains unimported; it does
+shields and action-specific priorities. The opt-in diagnostic selector now uses it; it does
 not itself establish wall visibility, multiplayer authority or damage eligibility.
 
 The sweep planner also snapshots scalar poses and builds a shortest-arc spherical
@@ -325,4 +329,41 @@ a long gap or query failure. A repeated/replayed tick cannot issue more queries.
 Box queries use both endpoint orientations, with centres computed from each
 actual endpoint pose; sphere segments use one query. Results remain raw and
 explicitly report saturation/unverified capacity. Current overlap is preserved
-when historical sweeping is unsafe. This driver remains unhooked and unimported.
+when historical sweeping is unsafe. The opt-in live probe calls this driver.
+
+## Live contact-selection diagnostics
+
+The probe now resolves its sampled raw sweep contacts using the last observed
+valid sweep's hit-zone priorities and the stock dynamic shield-priority function.
+As in stock selection, the attacker position is `POSITION_LOOKUP[player_unit]`,
+not the tracked grip. One selected hurtbox per target is reported after all raw
+contacts are considered. Unresolved results retain their reason, actor and copied
+contact data; raw results and saturation/unverified-capacity flags remain intact.
+
+Selection runs on the existing five-second logging cadence, not every physics
+tick, and has no effect on attacks. Unit keys identify targets only within that
+diagnostic batch; they are not asserted to be spawn-generation-safe identities
+for future cooldowns. Reported targets and shield/body counts are diagnostic
+candidates, not proof of world visibility, unobstructed reach or damage eligibility.
+
+The source damage pass confirms that `ActionSweep.start` snapshots charge and
+auto-completion, checks critical strike once, resets counters, and emits
+`on_sweep_start`. `_handle_exit_procs` emits the aggregate finish event and stats.
+`_process_hit` also updates hit mass/counters, invokes specials, may extend the
+action or start chain lightning. `Attack.execute` owns separate per-hit effects
+and buffs. None of those lifetimes is replaced by this diagnostic selector.
+Physical damage remains blocked on a dedicated attack/proc context, explicit
+target-index policy, authoritative ownership and validated obstruction/contact
+geometry. The existing stateful hit routine is not called on idle overlaps.
+
+Validation: `melee_hit_zone`, `melee_live_probe`, `melee_diagnostics` and the
+31-chunk LuaJIT gate pass. Tests retain raised/lowered-shield priorities,
+unresolved scenery data, copied vectors, incomplete-query flags and the live
+selector's attacker position/log cadence. Worn contact calibration remains open.
+
+Fresh deployment loads without matching mod errors and reaches
+`shared_ready=2016`, 45.1 fresh pairs/s, zero interval fallback and zero pose
+mismatches. Local evidence: `artifacts/unattended/melee-selection-live-20260906.log`.
+The probe flag remains disabled, so no live contact selection or physical attack
+was simulated. This establishes module/render initialization, not shield contact
+or damage acceptance.

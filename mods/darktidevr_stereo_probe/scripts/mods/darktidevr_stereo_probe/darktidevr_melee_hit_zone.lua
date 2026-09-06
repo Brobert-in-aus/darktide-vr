@@ -1,4 +1,4 @@
--- Engine hit-zone adapter for the offline physical-melee prototype. Not live.
+-- Engine hit-zone adapter used by opt-in, non-damaging melee diagnostics.
 local HitZone = require("scripts/utilities/attack/hit_zone")
 local SweepSettings = require("scripts/settings/equipment/action_sweep_settings")
 local Resolver = {}

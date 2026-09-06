@@ -42,4 +42,22 @@ assert(not add({unit=player,zone="head"}))
 ALIVE[enemy] = false
 assert(not add(head))
 assert(shield_checks == 2)
-print("stock dynamic shield/hit-zone priority, source position and unresolved scenery passed")
+local Diagnostics=dofile(arg[3])
+ALIVE[enemy]=true; blocking=true
+context.action={}
+local raw={contacts={},saturated=true,capacity_verified=false}
+for _,actor in ipairs({body,head,shield,{unit=wall}}) do
+    raw.contacts[#raw.contacts+1]={actor=actor,position={x=10,y=0,z=1},normal={x=-1,y=0,z=0}}
+end
+local selection=assert(Diagnostics.select_contacts(raw,Resolver,Contacts,context))
+assert(#selection.selected==1 and selection.selected[1].actor==shield)
+assert(#selection.unresolved==1 and selection.unresolved[1].reason=='unresolved_hit_zone')
+assert(selection.saturated and not selection.capacity_verified and not selection.damage_eligible)
+raw.contacts[4].position.x=99
+assert(selection.unresolved[1].position.x==10,'unresolved scenery aliased raw query')
+blocking=false
+selection=assert(Diagnostics.select_contacts(raw,Resolver,Contacts,context))
+assert(selection.selected[1].actor==head and #selection.unresolved==1)
+assert(#raw.contacts==4,'selection discarded raw obstruction evidence')
+assert(not Diagnostics.select_contacts({},Resolver,Contacts,context))
+print("stock shield priority, unresolved scenery retention and diagnostic selection passed")

@@ -79,6 +79,9 @@ Next integration work:
 - Integrate the non-damaging overlap adapter and add sweeps, preserving shield/world blocking
   and reporting saturated queries. Calibrate the grip-to-volume transform with
   a visible overlay when worn testing resumes.
+  The live diagnostic report now resolves stock hit-zone/shield priority and
+  deduplicates each target while retaining unresolved scenery; this is sampled
+  reporting, not verified obstruction or damage eligibility.
 - Introduce a dedicated stock damage context with explicit proc lifetimes and
   prediction ownership. Validate continuous contact and multiple targets before
   adding weapon specials. Do not invoke the stateful stock action hit routine

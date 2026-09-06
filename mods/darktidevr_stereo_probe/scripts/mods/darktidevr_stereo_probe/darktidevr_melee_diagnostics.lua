@@ -1,5 +1,5 @@
--- Offline orchestration, with explicit dependencies for isolated tests. No live
--- hooks, cooldown consumption, damage or proc execution are installed here.
+-- Diagnostic orchestration with explicit dependencies for isolated tests and
+-- the opt-in live probe. No cooldown consumption, damage or proc execution.
 local Diagnostics = {}
 
 function Diagnostics.new(simulation, planner, probe)
@@ -84,6 +84,35 @@ function Diagnostics.sample(state, request)
     state.previous, state.previous_time, state.history_key = current,
         request.step.time, request.history_key
     return report
+end
+
+-- Resolve every raw contact before target deduplication. This is diagnostic
+-- selection, not an obstruction/authority/damage-eligibility decision.
+function Diagnostics.select_contacts(report, resolver, collector, context)
+    if type(report) ~= "table" or type(report.contacts) ~= "table" or
+            type(context) ~= "table" or not context.attacker_position then
+        return nil, "invalid_selection_context"
+    end
+    local batch = collector.new()
+    local result = {selected=batch.ordered,unresolved={},raw_count=#report.contacts,
+        saturated=report.saturated==true,capacity_verified=report.capacity_verified==true,
+        damage_eligible=false}
+    for _,hit in ipairs(report.contacts) do
+        local resolved, reason = resolver.resolve(hit,context)
+        if resolved then
+            local added, add_reason = collector.add(batch,resolved)
+            if not added and add_reason ~= "existing_priority" then
+                return nil, "invalid_resolved_contact"
+            end
+        else
+            local position, normal = hit.position, hit.normal
+            result.unresolved[#result.unresolved+1] = {reason=reason,actor=hit.actor,
+                distance=hit.distance,
+                position=position and {x=position.x,y=position.y,z=position.z},
+                normal=normal and {x=normal.x,y=normal.y,z=normal.z}}
+        end
+    end
+    return result
 end
 
 return Diagnostics

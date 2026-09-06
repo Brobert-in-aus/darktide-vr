@@ -1,6 +1,8 @@
 local Live = dofile(arg[1])
 local flag, mode, calls, crash = false, "shooting_range", {}, false
 local player = {player_unit={}}
+local player_position={9,8,7}
+POSITION_LOOKUP={[player.player_unit]=player_position}
 Managers = {player={local_player=function() return player end}}
 Mods = {lua={io={open=function()
     return {read=function() return flag and "enabled" or "disabled" end,close=function() end}
@@ -9,13 +11,21 @@ package.preload["scripts/settings/equipment/action_sweep_settings"] = function()
 Vector3 = {x=function(p) return p[1] end,y=function(p) return p[2] end,z=function(p) return p[3] end}
 Quaternion = {to_elements=function(q) return unpack(q) end}
 local volume = {shape="oobb",corner_radius=1}
-local modules = {simulation={},sweep_plan={},probe={},timing={},volume={resolve=function() return volume end},
+local modules = {simulation={},sweep_plan={},probe={},timing={},hit_zone={},contacts={},volume={resolve=function() return volume end},
     diagnostics={new=function() return {} end,sample=function(_,request)
         calls[#calls+1] = request
         if crash then error("fixture failure") end
         return {plan={reason="fixture"},overlap={actor_count=0},contacts={},query_count=1}
     end}}
 local warnings = 0
+local selections = 0
+modules.diagnostics.select_contacts=function(report,resolver,collector,context)
+    selections=selections+1
+    assert(report.contacts and resolver==modules.hit_zone and collector==modules.contacts)
+    assert(context.attacker==player.player_unit and context.attacker_position==player_position)
+    assert(context.action.kind=='sweep' and context.target_key(player)==player)
+    return {selected={{hit_zone='shield'}},unresolved={{reason='unresolved_hit_zone'}}}
+end
 local mod = {io_dofile=function(_,path) return assert(modules[path:match("melee_(.+)$")]) end,
     info=function() end,warning=function() warnings=warnings+1 end}
 local tracking = {right_grip_usable=true,body_anchor_qw=1}
@@ -34,10 +44,12 @@ assert(#calls == 0)
 mode = "shooting_range"
 live.fixed_update(extension,2,2)
 assert(#calls == 1 and calls[1].volume == volume and calls[1].step.tracking_valid)
+assert(selections==1,'live result did not reach contact selection')
 local key = calls[1].history_key
 extension._weapon_action_component.current_action_name = "none"
 live.fixed_update(extension,3,3)
 assert(#calls == 2 and calls[2].history_key == key) -- Remains active while idle.
+assert(selections==1,'selection ignored five-second diagnostic cadence')
 tracking.right_grip_usable = false
 extension._unit_data_extension.is_resimulating = true
 live.fixed_update(extension,4,4)
