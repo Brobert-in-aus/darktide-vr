@@ -16574,7 +16574,9 @@ extern "C" __declspec(dllexport) int dtvr_read_gameplay_input(
   *sequence = available ? sample.sequence : 0;
   movement[0] = frame.move_x;
   movement[1] = frame.move_y;
-  return available ? 0 : 2;
+  // Lua's pose observation may still have the previous generation. Signal the
+  // button reader's own transition so its cancellation cannot finish a charge.
+  return !available ? 2 : frame.publisher_changed ? 3 : 0;
 }
 extern "C" __declspec(dllexport) int dtvr_enable_marker_log() {
   std::scoped_lock lock(state_mutex);

@@ -79,11 +79,13 @@ GameplayInputFrame GameplayInputMapper::update(
   // Menu confirmation/back and stale reconnect levels must not become fire,
   // dodge, abilities or a reopened menu. Each inherited action independently
   // requires release; held levels matter too because stock windups use them.
+  const bool publisher_changed = active_ && transport_changed;
   if (!active_ || transport_changed) blocked_until_release_ = next;
   active_ = true;
   blocked_until_release_ &= next;
   next &= ~blocked_until_release_;
   GameplayInputFrame frame{next & ~held_, next, held_ & ~next};
+  frame.publisher_changed = publisher_changed;
   apply_radial_deadzone(left.thumbstick_x, left.thumbstick_y, frame.move_x,
                         frame.move_y);
   held_ = next;

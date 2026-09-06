@@ -18,8 +18,15 @@ a healthy button alias stays held without a repeat press, and its later physical
 release still works. Real-adapter tests reproduce the old remap release and cover
 observed restart cancellation. Mapper cases cover invalid axes and shared aliases.
 Five focused CTests and 36 LuaJIT chunks pass. The pose-observation generation
-and native button read are separate samples; their ordering still needs review
-before claiming an unobserved between-read restart is fully covered. Stock action
+and native button read are separate samples. The next native candidate closes
+that ordering gap by returning status **3** for its own active publisher change;
+the existing status **2** remains unavailable/stale transport, **1** invalid
+output pointers and **0** ordinary success. Output layout and function signature
+are unchanged. The Lua effective-activity guard cancels every nonzero result.
+An actual DLL-export fixture replaces the writer during a held attack without
+an intervening pose read, then verifies once-only transition status, neutral
+rearming and ordinary release. Five native/Lua focused tests and Release builds
+pass. Stock action
 behavior when held input disappears remains stock; only synthetic release-edge
 injection is suppressed. No deployment or worn acceptance.
 

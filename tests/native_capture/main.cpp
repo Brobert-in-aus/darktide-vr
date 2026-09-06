@@ -336,6 +336,35 @@ int wmain(int argc, wchar_t** argv) {
       throw std::runtime_error(
           "Expired controller transport did not release gameplay input");
     }
+    // Detect a writer restart solely through gameplay input: no intervening
+    // pose read may be required for Lua to discard a synthetic charge release.
+    const auto publish_gameplay = [&](darktidevr::core::SharedControllerStateWriter& writer,
+                                      std::uint64_t sequence, float trigger) {
+      controller_sample.sequence = sequence;
+      controller_sample.timestamp_ns = static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::steady_clock::now().time_since_epoch()).count());
+      controller_sample.hands[1].trigger = trigger;
+      if (!writer.publish(controller_sample)) throw std::runtime_error("Controller fixture publish failed");
+      return read_gameplay_input(1, &gameplay_pressed, &gameplay_held, &gameplay_released,
+                                 &gameplay_sequence, gameplay_movement);
+    };
+    if (publish_gameplay(controller_writer, 47, 0) != 0 ||
+        publish_gameplay(controller_writer, 48, 1) != 0 || !(gameplay_held & 1ULL)) {
+      throw std::runtime_error("Could not establish held action before publisher replacement");
+    }
+    darktidevr::core::SharedControllerStateWriter replacement_controller_writer;
+    if (publish_gameplay(replacement_controller_writer, 1, 1) != 3 ||
+        gameplay_held != 0 || !(gameplay_released & 1ULL) || gameplay_sequence != 1) {
+      throw std::runtime_error("Publisher replacement was not signalled independently of pose observation");
+    }
+    if (publish_gameplay(replacement_controller_writer, 2, 1) != 0 ||
+        gameplay_held != 0 || gameplay_pressed != 0 || gameplay_released != 0 ||
+        publish_gameplay(replacement_controller_writer, 3, 0) != 0 ||
+        publish_gameplay(replacement_controller_writer, 4, 1) != 0 || !(gameplay_pressed & 1ULL) ||
+        publish_gameplay(replacement_controller_writer, 5, 0) != 0 || !(gameplay_released & 1ULL)) {
+      throw std::runtime_error("Publisher replacement did not retain neutral rearming and ordinary release");
+    }
     float ik_input[17]{0.0F, 0.0F, 1.5F, 0.45F, 0.35F, 1.25F,
                        0.25F, 0.1F, 0.8F, 0.0F, 1.0F, 0.0F,
                        0.0F, 0.0F, -1.0F, 0.36F, 0.34F};

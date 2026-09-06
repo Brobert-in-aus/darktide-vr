@@ -54,7 +54,7 @@ assert(sample(0)[2],'Ordinary gameplay release was lost')
 assert(native_active==1 and ui_active)
 -- A failed native read cancels the mapper just like UI ownership does. Its
 -- synthetic release must not enter the game's charged attack/throw cache.
-for _,failure in ipairs({1,-1,2}) do
+for _,failure in ipairs({1,-1,2,3}) do
   for _,failed_level in ipairs({0,1}) do
     sample(0)
     assert(sample(1)[1])

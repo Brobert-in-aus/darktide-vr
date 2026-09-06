@@ -30,6 +30,9 @@ struct GameplayInputFrame {
   std::uint64_t released{};
   float move_x{};
   float move_y{};
+  // A valid sample can still replace the publisher that owned a held action.
+  // Callers must treat this frame as cancellation, not a physical release.
+  bool publisher_changed{};
 };
 
 class GameplayInputMapper {

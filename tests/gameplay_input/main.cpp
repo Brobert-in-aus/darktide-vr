@@ -120,6 +120,10 @@ int main() {
     restarted.transport_generation = 9;
     frame = restart_mapper.update(restarted, true);
     expect_edge(frame, GameplayAction::action_one, false, false, true);
+    expect(frame.publisher_changed, "A valid publisher change must identify its cancellation frame");
+    frame = restart_mapper.update(restarted, true);
+    expect(!frame.publisher_changed && frame.held == 0 && frame.released == 0,
+           "The publisher-change signal must be one frame, with inherited holds still blocked");
 
     // Every held control, not only menu-confirm A, is quarantined on reentry.
     GameplayInputMapper entry_mapper;

@@ -681,3 +681,20 @@ source invariants) and 36 LuaJIT chunks pass. No deployment. Full-suite baseline
 remains 108/108 at `dd1ec4e`. Next investigate the separate pose-generation versus
 native-button sampling order: this change covers an observed generation, not
 yet a restart detected by the native reader before Lua observes its generation.
+
+## Continuous todo work: native publisher-change status
+
+Branch `codex/native-publisher-transition-2026-09-07` closes that sampling-order
+gap. The core mapper marks an active publisher change; `dtvr_read_gameplay_input`
+returns status 3 for that frame, independently of Lua's last pose observation.
+Lua's effective-activity guard already cancels all nonzero statuses. Return
+values 0/1/2 retain success/invalid-output/unavailable semantics; the export's
+signature and output layout are unchanged. Internal cancellation releases remain
+available to mapper consumers but are not delivered into Lua's action cache.
+
+The actual DLL-export test replaces the shared writer during a held attack,
+without a pose read in between, then checks once-only status, inherited-hold
+quarantine, neutral rearming and normal release. Release native-capture, native
+export-test and gameplay-input-test builds pass. Five focused CTests pass:
+gameplay input, native capture hooks, online rules, bindings and real Lua adapter
+ownership. No live deployment; full-suite baseline remains 108/108 at `dd1ec4e`.
