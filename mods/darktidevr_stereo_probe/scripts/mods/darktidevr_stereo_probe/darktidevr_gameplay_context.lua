@@ -38,4 +38,14 @@ function Context.device_axes(state_machine)
     return ok and name == "minigame"
 end
 
+local function current_input_handler(handler, players)
+    local player = players:local_player(1)
+    return player ~= nil and handler._player == player and player.input_handler == handler
+end
+
+function Context.local_input_handler(handler, players)
+    local ok, current = pcall(current_input_handler, handler, players)
+    return ok and current == true
+end
+
 return Context

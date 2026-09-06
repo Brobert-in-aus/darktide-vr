@@ -67,6 +67,18 @@ compatibility or online support. Body, movement, interactions, scanner/objective
 screens, server impacts, actual loadouts, death/spectating and extraction/return
 still need lifecycle checks. No SoloPlay files were installed or changed.
 
+Input-handler lifecycle follow-up: ordinary and synthetic input injection now
+require both the local player identity and that player's current `input_handler`.
+Foreign/retired handlers cannot consume the shared controller sample. The fixed
+cache hook also requires that current handler to have passed pre-update sampling.
+A replacement handler drains one frame and requires neutral rearming, covering
+loading that never called the old mapper with an inactive policy. The observed
+identity is held weakly. The real adapter regression reproduces the old foreign
+read and covers replacement, fixed-cache admission and synthetic request scope;
+five focused checks and 36 LuaJIT chunks pass. This does not claim the historical
+base-game remote-husk teardown race is fixed or that mission transitions passed
+live validation.
+
 ## Validation
 
 Pinned LuaJIT compiles all 34 mod chunks. The policy test covers explicit modes,

@@ -5301,6 +5301,8 @@ function presentation.is_controller_aim_mode()
 end
 
 function presentation.inject_primary_action(self, main_t)
+    if not presentation.gameplay_context.local_input_handler(
+            self, Managers and Managers.player) then return end
     if not Mods or not Mods.lua or not Mods.lua.io then
         return
     end
@@ -5445,7 +5447,12 @@ function presentation.inject_ephemeral_action_names(
     end
 end
 
+-- Observe identity without keeping a retired player/input cache alive.
+presentation.gameplay_input_owner = setmetatable({}, {__mode = "v"})
+
 function presentation.inject_gameplay_input(self, main_t)
+    if not presentation.gameplay_context.local_input_handler(
+            self, Managers and Managers.player) then return end
     if not ui_native_capture or not Mods or not Mods.lua or not Mods.lua.io or
             not controller_observation.gameplay_pressed then
         return
@@ -5472,7 +5479,11 @@ function presentation.inject_gameplay_input(self, main_t)
     local game_mode_name = active_game_mode_name()
     local ui_inputs_in_use = presentation.gameplay_context.ui_blocks_gameplay(
         Managers and Managers.ui)
-    local active = controller_observation.gameplay_input_enabled and
+    local handler_changed = presentation.gameplay_input_owner[1] ~= self
+    presentation.gameplay_input_owner[1] = self
+    -- Loading can replace the input handler without any intervening callback
+    -- that cancels the old mapper. Drain one frame and require a fresh release.
+    local active = not handler_changed and controller_observation.gameplay_input_enabled and
         presentation.is_first_person_body_mode(game_mode_name) and
         presentation.mode == 1 and not ui_inputs_in_use
     local result = ui_native_capture.dtvr_read_gameplay_input(
@@ -5551,6 +5562,9 @@ mod:hook_safe(
     require("scripts/managers/player/player_game_states/human_input_handler"),
     "fixed_update",
     function(self, _, _, frame)
+        if self ~= presentation.gameplay_input_owner[1] or
+                not presentation.gameplay_context.local_input_handler(
+                    self, Managers and Managers.player) then return end
         presentation.scan_movement_inventory(self, frame)
         controller_observation.gameplay_stick_active = false
         local gameplay_held = controller_observation.gameplay_input_enabled and

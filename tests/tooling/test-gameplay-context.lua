@@ -38,3 +38,17 @@ assert(context.aim_mode("coop_complete_objective",changing))
 owns=false
 assert(not context.aim_mode("coop_complete_objective",changing))
 print("gameplay_context=pass explicit_modes local_authority missing_retiring_sessions host_loss baseline_preserved")
+local player={}
+local handler={_player=player}
+player.input_handler=handler
+local players={local_player=function(self,index) assert(self and index==1); return player end}
+assert(context.local_input_handler(handler,players))
+assert(not context.local_input_handler({_player=player},players),'Retired handler authorized input')
+assert(not context.local_input_handler({_player={}},players),'Foreign player authorized input')
+for _,invalid_owner in ipairs({{},true,17,setmetatable({}, {__index=function() error('retired lookup') end})}) do
+    assert(not context.local_input_handler(handler,invalid_owner))
+    assert(not context.local_input_handler(invalid_owner,players))
+end
+assert(not context.local_input_handler(handler,nil))
+player=nil
+assert(not context.local_input_handler(handler,players))

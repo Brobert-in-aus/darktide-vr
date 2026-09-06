@@ -714,3 +714,21 @@ talents. Selected range difficulty affects target health; the target spawn's 2s
 are duration/side, not difficulty. PSYKHANIUM-ONLINE-RULES records those limits.
 Three focused CTests pass (online rules, source invariants, smart-tag ownership),
 and 36 LuaJIT chunks compile. No deployment or runtime difficulty change.
+
+## Continuous todo work: current input-handler ownership
+
+Branch `codex/gameplay-handler-ownership-2026-09-07` restricts ordinary and
+synthetic injection to the local player's current handler. The fixed hook also
+requires the same handler to have been observed by pre-update. A weak identity
+reference detects replacement without retaining retired player caches; its first
+sample cancels input and requires neutral rearming, even without an intervening
+inactive callback during loading.
+
+The real adapter regression reproduces a foreign handler consuming shared input
+before the fix. It now covers foreign/retired pre-updates, inherited holds on
+replacement, foreign/unsampled fixed updates and synthetic request ownership.
+The shared policy also rejects missing/retiring managers and mismatched current
+handlers. Five focused CTests (context, real adapter ownership, bindings, online
+rules, source invariants) and 36 LuaJIT chunks pass. No native change beyond
+`6eb81f7`, deployment or live mission-transition acceptance. The historical
+remote-husk teardown race remains a separate base-game condition.

@@ -32,6 +32,9 @@ presentation.gameplay_ui={sample=function(active) ui_active=active end}
 assert(loadstring(source:sub(first,last-1)))()
 local owner={_ephemeral_actions={'action_one_pressed','action_one_release','stock_action'},
     _ephemeral_action_cache={}}
+local player={input_handler=owner}
+owner._player=player
+Managers.player={local_player=function(_,index) assert(index==1); return player end}
 local function sample(value)
     physical=value
     owner._ephemeral_action_cache={false,false,true}
@@ -40,6 +43,7 @@ local function sample(value)
     return owner._ephemeral_action_cache
 end
 sample(0)
+sample(0) -- First handler frame drains previous native/semantic ownership.
 assert(sample(1)[1] and native_active==1 and ui_active)
 owns=true -- Chat/overlay opens while RT is held.
 local blocked=sample(1)
@@ -84,6 +88,25 @@ assert(not restarted[1] and not restarted[2], 'Observed publisher restart inject
 assert(not sample(1)[1], 'Publisher restart must require a neutral sample before rearming')
 sample(0)
 assert(sample(1)[1] and sample(0)[2])
+-- An obsolete/foreign handler must not read shared controller input, reset the
+-- current mapper or consume a press. A replacement current handler starts cold.
+local foreign={_player={},_ephemeral_actions=owner._ephemeral_actions,_ephemeral_action_cache={false,false,true}}
+native_active='not_read'
+presentation.inject_gameplay_input(foreign,.1)
+assert(native_active=='not_read' and not foreign._ephemeral_action_cache[1], 'Foreign handler consumed controller input')
+sample(0)
+assert(sample(1)[1])
+local retired=owner
+owner={_player=player,_ephemeral_actions=retired._ephemeral_actions,_ephemeral_action_cache={}}
+player.input_handler=owner
+native_active='not_read'
+presentation.inject_gameplay_input(retired,.1)
+assert(native_active=='not_read', 'Retired handler still consumed controller input')
+local replaced=sample(1)
+assert(not replaced[1] and not replaced[2] and not ui_active, 'Replacement handler inherited a held attack')
+assert(not sample(1)[1])
+sample(0)
+assert(sample(1)[1] and sample(0)[2])
 for _,ui in ipairs({{}, {using_input=function() error('retiring') end},
         {using_input=function() return {} end}, {using_input=function() return nil end},
         17,true,setmetatable({}, {__index=function() error('retired proxy lookup') end})}) do
@@ -92,4 +115,32 @@ for _,ui in ipairs({{}, {using_input=function() error('retiring') end},
 end
 Managers.ui=nil
 assert(not sample(1)[1] and native_active==0)
+-- The fixed-frame hook must enforce the same owner before touching history or
+-- running diagnostics, including a new handler not yet sampled by pre-update.
+local fixed_hook
+mod.hook_safe=function(_,class,method,callback)
+    if method=='fixed_update' then fixed_hook=callback end
+end
+local saved_require=require
+require=function() return {} end
+local hook_end=assert(source:find('\nfunction presentation.log_unit_pose',last,true))
+assert(loadstring(source:sub(last,hook_end-1)))()
+require=saved_require
+local scans,captures=0,0
+presentation.scan_movement_inventory=function() scans=scans+1 end
+presentation.online_rules={capture=function() captures=captures+1 end}
+fixed_hook(foreign,0,0,1)
+fixed_hook(retired,0,0,1)
+assert(scans==0 and captures==0)
+fixed_hook(owner,0,0,1)
+assert(scans==1 and captures==1)
+local unsampled={_player=player}
+player.input_handler=unsampled
+fixed_hook(unsampled,0,0,1)
+assert(scans==1 and captures==1,'Unsampled replacement inherited previous fixed input state')
+local primary_first=assert(source:find('function presentation.inject_primary_action',1,true))
+local primary_last=assert(source:find('\npresentation.controller_bindings =',primary_first,true))
+assert(loadstring(source:sub(primary_first,primary_last-1)))()
+Mods.lua.io.open=function() error('Foreign handler consumed synthetic test request') end
+presentation.inject_primary_action(foreign,1)
 print('gameplay_ui_ownership=pass real_adapter overlay_cancel failed_read_cancel neutral_resume stock_cache scanner retiring_owner')
