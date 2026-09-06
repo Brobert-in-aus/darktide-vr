@@ -17,3 +17,6 @@ add_test(NAME ngx_queue_completion
   COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/validate-ngx-queue.ps1"
     -Reader "${PROJECT_SOURCE_DIR}/tools/stereo/read-ngx-queue-probe.ps1")
+add_test(NAME streamline_continuous_observation
+  COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/validate-continuous-submission.ps1")

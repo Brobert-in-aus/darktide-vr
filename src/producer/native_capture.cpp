@@ -28,6 +28,7 @@
 #include "core/two_bone_ik.h"
 #include "streamline_abi_2_7_30.h"
 #include "producer/streamline_submission.h"
+#include "producer/streamline_continuous_submission.h"
 #include "producer/engine_eye_backbuffers.h"
 #include "producer/desktop_mirror_blit.h"
 #include <memory>
@@ -253,6 +254,14 @@ std::array<std::array<StreamlineTaggedInput, kStreamlineInputCount>, 2>
 std::array<StreamlineConstantsObservation, 2>
     streamline_constants_observations;
 StreamlineInputSnapshotState streamline_input_snapshot_state;
+std::atomic<bool> streamline_continuous_requested{};
+darktidevr::producer::StreamlineContinuousSubmission streamline_continuous;
+
+bool game_process_foreground() {
+  DWORD foreground_process{};
+  GetWindowThreadProcessId(GetForegroundWindow(), &foreground_process);
+  return foreground_process == GetCurrentProcessId();
+}
 
 // Caller holds streamline_input_snapshot_mutex.
 std::array<darktidevr::core::StreamlinePresentEyeBinding, 2>
@@ -2793,6 +2802,11 @@ void initialize_streamline_probe(void* present_target,
       L"probe", L"frames", 1, stereo_submit_flag_path.c_str());
   streamline_input_snapshot_state.submission_limit =
       submission_limit >= 1 && submission_limit <= 8 ? submission_limit : 1;
+  streamline_continuous_requested.store(
+      GetPrivateProfileIntW(L"probe", L"continuous", 0, stereo_submit_flag_path.c_str()) == 1 &&
+      submission_limit >= 2 && submission_limit <= 8 &&
+      streamline_stereo_submit_probe_requested.load(std::memory_order_relaxed),
+      std::memory_order_release);
   write_streamline_probe_log("STEREO_SUBMISSION_PROBE\tenabled=%u\tframes=%u\r\n",
       streamline_stereo_submit_probe_requested.load(std::memory_order_relaxed) ? 1U : 0U,
       streamline_input_snapshot_state.submission_limit);
@@ -9209,6 +9223,38 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
   }
   std::scoped_lock lock(streamline_input_snapshot_mutex);
   auto& state = streamline_input_snapshot_state;
+  if (!state.failed && state.stereo_backbuffer_complete &&
+      streamline_continuous_requested.load(std::memory_order_acquire)) {
+    if (!streamline_continuous.initialized() && !streamline_continuous.finished()) {
+      // Never consume an unattended test while the user is in another app.
+      if (!game_process_foreground()) return;
+      ComPtr<ID3D12Device> device;
+      if (FAILED(queue->GetDevice(IID_PPV_ARGS(&device)))) return;
+      std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2> descriptions{};
+      for (std::size_t captured_eye = 0; captured_eye < 2; ++captured_eye)
+        for (std::size_t role = 0; role < 3; ++role)
+          descriptions[captured_eye][role] = state.snapshots[captured_eye][role]->GetDesc();
+      if (!streamline_continuous.initialize(device.Get(), state.submission_limit,
+          {state.constants[0].viewport, state.constants[1].viewport}, descriptions,
+          write_streamline_probe_log)) return;
+      streamline_submission_trace_start.store(present_frame, std::memory_order_relaxed);
+    }
+    const auto index = static_cast<std::size_t>(eye);
+    const auto& constants = streamline_constants_observations[index];
+    if (!constants.valid || constants.present_frame != present_frame ||
+        constants.pose_sequence != pose_sequence || constants.viewport != state.constants[index].viewport) return;
+    std::array<darktidevr::producer::StreamlineTagInput, 3> inputs{};
+    for (std::size_t role = 0; role < inputs.size(); ++role) {
+      const auto& source = streamline_tagged_inputs[index][role];
+      if (!source.resource || source.present_frame != present_frame || source.pose_sequence != pose_sequence) return;
+      const auto description = source.resource->GetDesc();
+      inputs[role] = {source.resource.Get(), static_cast<unsigned>(description.Width),
+          description.Height, static_cast<unsigned>(source.state), static_cast<unsigned>(description.Format)};
+    }
+    streamline_continuous.capture(static_cast<unsigned>(eye), present_frame, pose_sequence,
+        constants.constants, inputs, queue, original_execute_command_lists);
+    return;
+  }
   if (!state.failed && state.submission_refresh_armed && !state.submission_attempted) {
     refresh_streamline_submission_inputs(eye, present_frame, pose_sequence, queue);
     return;
@@ -12157,7 +12203,24 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
       }
     }
   }
-  if (candidate &&
+  if (candidate && present_queue && streamline_continuous_requested.load(std::memory_order_acquire)) {
+    std::scoped_lock lock(streamline_input_snapshot_mutex);
+    const auto tagging_modes = streamline_tagging_api_modes.load(std::memory_order_relaxed);
+    if (tagging_modes == 1 || tagging_modes == 2) {
+      const darktidevr::producer::StreamlineSubmissionApi api{
+          original_sl_set_constants, original_sl_set_tag_for_frame, original_sl_set_tag};
+      if (streamline_continuous.initialized() && !game_process_foreground())
+        streamline_continuous.cancel("foreground_lost");
+      streamline_continuous.before_present(candidate.Get(), present_queue.Get(), present,
+          streamline_present_bindings(), api,
+          tagging_modes == 1 ? darktidevr::producer::StreamlineSubmission::Tagging::legacy
+                             : darktidevr::producer::StreamlineSubmission::Tagging::frame_based,
+          original_execute_command_lists);
+      if (streamline_continuous.staged())
+        darktidevr::producer::arm_ngx_output_probe(1, present);
+    }
+  }
+  if (candidate && !streamline_continuous_requested.load(std::memory_order_acquire) &&
       streamline_target_token_probe_requested.load(std::memory_order_acquire) &&
       streamline_stereo_swapchain_probe_requested.load(
           std::memory_order_acquire)) {
@@ -12462,7 +12525,14 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
         present, present_began_ms, GetTickCount64());
   }
   streamline_outer_present_active_frame.store(0, std::memory_order_release);
-  if (SUCCEEDED(result) && streamline_input_snapshot_probe_requested.load(
+  if (streamline_continuous_requested.load(std::memory_order_acquire) && present_queue) {
+    std::scoped_lock api_lock(streamline_feature_api_mutex);
+    std::scoped_lock lock(streamline_input_snapshot_mutex);
+    streamline_continuous.after_present(present_queue.Get(),
+        original_sl_dlssg_get_state.load(std::memory_order_acquire), original_execute_command_lists);
+  }
+  if (!streamline_continuous_requested.load(std::memory_order_acquire) &&
+      SUCCEEDED(result) && streamline_input_snapshot_probe_requested.load(
           std::memory_order_acquire)) {
     const auto get_state = original_sl_dlssg_get_state.load(std::memory_order_acquire);
     std::array<std::uint32_t, 2> completion_viewports{};

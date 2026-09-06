@@ -107,6 +107,32 @@ class StreamlineSubmission {
                      std::uintptr_t fence, std::uint64_t value) noexcept {
     return lifetime_.record_ticket(id, eye, fence, value);
   }
+  // Called on the same Present thread after a successor has installed BOTH
+  // eye tag sets. Retiring this owner must not clear the successor's viewport
+  // bindings. Resource release still requires this owner's completion tickets.
+  bool replace_tags_with(const StreamlineSubmission& successor) noexcept {
+    if (phase_ != Phase::awaiting_completion || successor.phase_ != Phase::staged ||
+        successor.id_ <= id_ || tagging_ != successor.tagging_ ||
+        api_.tags != successor.api_.tags || api_.legacy_tags != successor.api_.legacy_tags)
+      return false;
+    for (std::uint32_t eye = 0; eye < 2; ++eye) {
+      if (!touched_[eye] || !successor.touched_[eye] ||
+          viewports_[eye].value != successor.viewports_[eye].value) return false;
+      const auto& extent = pair_.eye(eye)->data()[3].extent;
+      const auto& next_extent = successor.pair_.eye(eye)->data()[3].extent;
+      if (std::memcmp(&extent, &next_extent, sizeof(extent)) != 0) return false;
+      // Separate owners cannot keep immutable inputs if any resource is shared,
+      // including aliases across different eye/role combinations.
+      for (std::uint32_t role = 0; role < 3; ++role)
+        for (std::uint32_t next_eye = 0; next_eye < 2; ++next_eye)
+          for (std::uint32_t next_role = 0; next_role < 3; ++next_role)
+            if (pair_.eye(eye)->data()[role].resource->native ==
+                successor.pair_.eye(next_eye)->data()[next_role].resource->native)
+              return false;
+    }
+    touched_ = {};
+    return lifetime_.mark_tags_cleared(id_); // Removed by replacement, not null tags.
+  }
   bool observe_completion(std::uint64_t id, std::uint32_t eye,
                           std::uintptr_t fence, std::uint64_t value) noexcept {
     return lifetime_.observe_completion(id, eye, fence, value);

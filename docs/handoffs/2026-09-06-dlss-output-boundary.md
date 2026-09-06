@@ -438,3 +438,30 @@ all captured FG evaluations lack HUDless input, so its output-completion count
 is zero. The output association reader correctly refuses success. Do not treat
 the pose regression pass as an NGX ownership pass. Next investigate when
 stereo tags reach FG relative to the batch cleanup/recreation lifecycle.
+
+
+## Bounded consecutive submission candidate
+
+`-StreamlineContinuousSubmitProbe -StreamlineStereoSubmitFrames 8` selects a
+2–8 frame consecutive experiment. Each frame has separately allocated depth,
+motion and HUDless inputs copied at the existing eye boundaries. No allocation
+is reused; GPU owners remain alive through process shutdown even on failure.
+Successor tags replace both prior eye bindings without nulling the active
+viewports, and final/failure cleanup removes tags once. Current Present token,
+pose, viewport, options and consecutive-frame identity checks remain mandatory.
+The first capture waits for game foreground; focus loss cancels the experiment.
+It does not activate windows or publish generated XR images.
+
+Native Release, the Lua gate, submission/lifetime/ABI tests and the new strict
+continuous report tests pass. The first live attempt stopped before tag staging:
+its copy compatibility check rejected the game's typeless RGBA8 HUDless backing
+against typed RGBA8 Present. The corrected guard accepts that known bitwise-copy
+family only. Evidence: `continuous-first-streamline.tsv`. A second run is active
+but has not yet recorded a continuous transaction; live acceptance is pending.
+Use `read-streamline-continuous-probe.ps1` for this path, not the old intermittent
+batch report. Generated counters are reported separately from pixel ownership.
+
+User requested working automatic character select for the next launch. Inspection
+found old helpers still waiting for a stock `UIProfileSpawner` streaming message
+absent in current logs, despite the mod's readiness message reporting Start ready.
+Fixing that launch helper is the immediate follow-up before another DLSS run.

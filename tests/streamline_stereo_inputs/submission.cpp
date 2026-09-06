@@ -3,6 +3,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <vector>
+#include <source_location>
 
 using namespace darktidevr::producer;
 namespace sl = streamline_2_7_30;
@@ -10,7 +11,12 @@ namespace {
 std::vector<int> calls;
 int fail_at{}, attempt{}, clear_fail_eye{};
 void* expected_frame;
-void check(bool value) { if (!value) throw std::runtime_error("submission contract"); }
+void check(bool value, std::source_location location = std::source_location::current()) {
+  if (!value) {
+    std::cerr << "submission contract line=" << location.line() << std::endl;
+    throw std::runtime_error("submission contract");
+  }
+}
 int constants(const void* values, const void* frame, const void* viewport) {
   check(values && frame == expected_frame);
   const auto id = static_cast<const sl::ViewportHandle*>(viewport)->value;
@@ -166,6 +172,54 @@ int main() {
     check(sequence.observe_completion(id, 1, 200, id));
     check(sequence.retire());
     check(!sequence.prepare(id, 200, 200, {1, 2}, values, inputs));
+  }
+  // Consecutive owners replace tags without inserting a blank frame. Their
+  // independent completion fences still govern reuse of each input allocation.
+  int next_resources[6]{};
+  auto next_inputs = inputs;
+  for (std::uint32_t eye = 0; eye < 2; ++eye)
+    for (std::uint32_t role = 0; role < 3; ++role)
+      next_inputs[eye][role].native = &next_resources[eye * 3 + role];
+  for (int scenario = 0; scenario < 6; ++scenario) {
+    StreamlineSubmission first, successor;
+    auto candidate_inputs = next_inputs;
+    if (scenario == 4)
+      for (auto& eye : candidate_inputs) eye[2].width = 201;
+    if (scenario == 1) candidate_inputs[1][2].native = inputs[0][1].native;
+    const std::array<std::uint32_t, 2> candidate_viewports =
+        scenario == 2 ? std::array<std::uint32_t, 2>{1, 3}
+                      : std::array<std::uint32_t, 2>{1, 2};
+    const auto candidate_id = scenario == 3 ? 1U : 2U;
+    check(first.prepare(1, 200, 200, {1, 2}, values, inputs));
+    check(first.stage({nullptr, nullptr, legacy_tags}, &next_frame, &commands,
+        StreamlineSubmission::Tagging::legacy,
+        StreamlineSubmission::ConstantsMode::already_supplied));
+    check(first.begin_present());
+    check(successor.prepare(candidate_id, scenario == 4 ? 201U : 200U, 200,
+                            candidate_viewports, values, candidate_inputs));
+    check(!first.replace_tags_with(successor)); // Not staged yet.
+    fail_at = scenario == 5 ? attempt + 2 : 0;
+    const auto staged = successor.stage({nullptr, nullptr, legacy_tags},
+        &next_frame, &commands, StreamlineSubmission::Tagging::legacy,
+        StreamlineSubmission::ConstantsMode::already_supplied);
+    check(staged == (scenario != 5));
+    const auto before_replacement = calls.size();
+    check(first.replace_tags_with(successor) == (scenario == 0));
+    check(calls.size() == before_replacement); // Never null the new tags.
+    check(!first.retire());
+    if (scenario == 0) {
+      check(first.record_ticket(1, 0, 300, 8));
+      check(first.record_ticket(1, 1, 400, 9));
+      check(first.observe_completion(1, 0, 300, 8));
+      check(!first.observe_completion(1, 1, 400, 8));
+      check(!first.retire());
+      check(first.observe_completion(1, 1, 400, 9));
+      check(first.retire());
+      check(successor.phase() == StreamlineSubmission::Phase::staged);
+      check(successor.begin_present());
+      check(!successor.retire());
+    }
+    fail_at = 0;
   }
   std::cout << "streamline_submission=pass\n";
 }

@@ -41,6 +41,7 @@ param(
     [switch] $NgxOutputProbeAtStereoSubmit,
 
     [switch] $StreamlineStereoSubmitProbe,
+    [switch] $StreamlineContinuousSubmitProbe,
     [ValidateRange(1, 8)] [int] $StreamlineStereoSubmitFrames = 1,
 
     [switch] $ClusterLightTrace,
@@ -144,6 +145,10 @@ if ($OfflineDualViewBenchmark) {
     # requested: the native GPU profiler injects additional command lists and
     # submissions, so enabling it here changes the workload being measured.
     $AutoEnterHub = $true
+}
+if ($StreamlineContinuousSubmitProbe) {
+    if ($StreamlineStereoSubmitFrames -lt 2) { throw 'Continuous submission requires 2 to 8 frames.' }
+    $StreamlineStereoSubmitProbe = $true
 }
 if ($NgxOutputProbeAtStereoSubmit) {
     $NgxOutputProbe = $true
@@ -485,7 +490,7 @@ if ($StreamlineStereoSubmitProbe) {
             $streamlineStereoSubmitProbeFlagPath -Raw
     }
     Set-Content -LiteralPath $streamlineStereoSubmitProbeFlagPath `
-        -Value "[probe]`nframes=$StreamlineStereoSubmitFrames" -Encoding ascii
+        -Value "[probe]`nframes=$StreamlineStereoSubmitFrames`ncontinuous=$([int]$StreamlineContinuousSubmitProbe.IsPresent)" -Encoding ascii
     Write-Output "Stereo tag submission enabled for $StreamlineStereoSubmitFrames batches; generated XR publication remains disabled."
 }
 if ($SyntheticRuntimeFrusta) {
