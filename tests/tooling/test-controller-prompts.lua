@@ -23,6 +23,25 @@ local mod={get=function(_,key) return settings[key] end,
 local bindings=Bindings.install(mod)
 local menu=dofile(arg[4]).install(mod,function() return active end)
 Prompts.install(mod,bindings,function() return active end,menu)
+-- Stock tutorial refresh only watches keyboard aliases/device changes. A VR
+-- remap must also invalidate its cached description, including VR loss/recovery.
+local tutorial, tutorial_info={}, {input_descriptions={{input_action='action_one'}}}
+local function tutorial_refresh(info,stock_result)
+    return assert(hooks.HudElementPrologueTutorialInfoBox._should_update_input,
+        'Tutorial has no binding-revision refresh')(function(self,passed)
+            assert(self==tutorial and passed==info); return stock_result or false
+        end,tutorial,info)
+end
+assert(not tutorial_refresh(nil))
+assert(tutorial_refresh(tutorial_info))
+assert(not tutorial_refresh(tutorial_info),'Unchanged tutorial refreshed every frame')
+settings.vr_bind_right_trigger='alternate'; mod.on_setting_changed('vr_bind_right_trigger')
+assert(tutorial_refresh(tutorial_info),'VR remap left tutorial hint cached')
+assert(not tutorial_refresh(tutorial_info))
+assert(tutorial_refresh(tutorial_info,true),'Stock keyboard refresh was suppressed')
+active=false; assert(tutorial_refresh(tutorial_info)); assert(not tutorial_refresh(tutorial_info))
+active=true; assert(tutorial_refresh(tutorial_info))
+settings.vr_bind_right_trigger=nil; mod.on_setting_changed('vr_bind_right_trigger')
 local stock_calls=0
 local function stock(service,alias,tint)
     stock_calls=stock_calls+1

@@ -528,3 +528,12 @@ of `darktidevr_native_capture` and `darktidevr-generated-frame-state-tests` pass
 focused `generated_frame_state` and `generated_health_analysis` CTests pass.
 No performance improvement, cause of earlier slow windows or live acceptance is
 claimed. No deployment; normal headset sleep and existing graphics settings remain.
+
+## Continuous todo work: cached tutorial binding hints
+
+Branch `codex/tutorial-binding-refresh-2026-09-07` fixes prologue tutorial cache
+invalidation after VR remaps and availability changes. Stock only checks keyboard
+aliases/device selection. The shared prompt module adds binding-revision refresh
+while preserving stock decisions and leaving stable frames alone. Five focused
+CTests pass (prompts, bindings, menu prompts, Lua compile/invariants); regression
+failed before the fix. No live test or deployment and no talent-specific patch.

@@ -355,3 +355,18 @@ ui_binding_audit, menu_input, turning, menu_prompts, gameplay_ui_input,
 hud_options, controller_bindings and controller_prompts. Worn/live acceptance
 for hub profile and notification text remains pending. The source inventory
 continues to list user cases; it cannot prove deployment or visual correctness.
+
+### Tutorial remap refresh, 7 September
+
+Stock prologue tutorial descriptions are cached. Their `_should_update_input`
+checks keyboard alias identity and device selection, which do not necessarily
+change after a VR remap. The controller-prompt module now also requests a refresh
+when the effective binding revision or VR availability changes. Stable mappings
+do not refresh every frame; the original keyboard refresh decision is retained.
+No tutorial progression or notification activation is replayed.
+
+Five focused CTests pass: controller prompts/bindings, menu prompts, Lua compiler
+and source invariants. The regression covers remap, unchanged frames, missing
+info, stock refresh and VR loss/recovery. This candidate is undeployed; actual
+cached tutorial text and sizing still require a live check. Talent deactivation
+remains untouched as the user's shared-hint acceptance case.
