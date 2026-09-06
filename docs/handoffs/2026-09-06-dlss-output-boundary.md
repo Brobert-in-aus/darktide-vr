@@ -1015,3 +1015,23 @@ route off for the session, clears its active bindings through the existing pause
 path, and stays on original stereo rather than oscillating frame generation.
 Native Release build and diff check passed. Boundary/rejection diagnostic pending.
 Evidence: seventh-run-framedrops.tsv in the local HUD-alpha diagnostics directory.
+
+### Combined blur and late-stutter investigation (2026-09-06)
+
+The baseline (UI submission off) identified the rejected pair exactly:
+VS 8136461109370980353 / PS 13875852906623432269, no depth/stencil/DSV,
+alpha SRC_ALPHA / INV_SRC_ALPHA / ADD. Its original alpha equation squares
+coverage, so it cannot be replayed unchanged into transparent UI.
+
+Added capture-only PSO clones for this supported source-over case: preserve RGB,
+shader substitutions, root signatures and original PSO; use ONE for source alpha
+only in the duplicate draw and restore the original pipeline afterward. Graphics,
+pipeline-library and stream creation paths are covered; cached PSO blobs are
+removed from clones. Unsupported/additive/depth-sensitive draws still fail closed.
+Native Release and blend targets built; blend/recovery/submission tests passed.
+The ninth run combines alpha stability, exact-owner readback and NGX UI boundary
+checks. Worn blur acceptance remains failed until new evidence says otherwise.
+
+Baseline NGX samples reported DLSSG.UI=null. Later baseline zero-generated-frame
+intervals occurred with foreground=0, no additional NGX evaluations and original
+frames continuing, so those focus-related periods are not evidence of UI rejection.

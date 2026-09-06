@@ -18,6 +18,16 @@ int main() {
   valid.SrcBlend = D3D12_BLEND_ONE; // Already-premultiplied material.
   check(ui_capture_blend_supported(valid, false));
   check(!ui_capture_blend_supported(valid, true));
+  using darktidevr::producer::ui_capture_blend_needs_alpha_fix;
+  check(!ui_capture_blend_needs_alpha_fix(valid, false));
+  auto opaque_gui = valid;
+  opaque_gui.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+  opaque_gui.SrcBlendAlpha = D3D12_BLEND_SRC_ALPHA;
+  check(!ui_capture_blend_supported(opaque_gui, false));
+  check(ui_capture_blend_needs_alpha_fix(opaque_gui, false));
+  check(!ui_capture_blend_needs_alpha_fix(opaque_gui, true));
+  opaque_gui.DestBlend = D3D12_BLEND_ONE;
+  check(!ui_capture_blend_needs_alpha_fix(opaque_gui, false)); // Additive colour is still unsafe.
   for (unsigned scenario = 0; scenario < 9; ++scenario) {
     auto invalid = valid;
     switch (scenario) {

@@ -15,4 +15,12 @@ inline bool ui_capture_blend_supported(const D3D12_RENDER_TARGET_BLEND_DESC& ble
       blend.BlendOpAlpha == D3D12_BLEND_OP_ADD &&
       blend.RenderTargetWriteMask == D3D12_COLOR_WRITE_ENABLE_ALL;
 }
+// Opaque-target GUI shaders sometimes multiply coverage by itself. Preserve
+// their colour equation but accumulate real source coverage in the replay PSO.
+inline bool ui_capture_blend_needs_alpha_fix(D3D12_RENDER_TARGET_BLEND_DESC blend,
+                                            bool alpha_to_coverage) noexcept {
+  if (blend.SrcBlendAlpha != D3D12_BLEND_SRC_ALPHA) return false;
+  blend.SrcBlendAlpha = D3D12_BLEND_ONE;
+  return ui_capture_blend_supported(blend, alpha_to_coverage);
+}
 }

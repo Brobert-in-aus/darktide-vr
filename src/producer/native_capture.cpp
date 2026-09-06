@@ -1098,6 +1098,9 @@ struct PsoMetadata {
   bool stencil_enabled{};
   bool alpha_to_coverage{};
   D3D12_RENDER_TARGET_BLEND_DESC ui_blend{};
+  ComPtr<ID3D12PipelineState> ui_alpha_pipeline;
+  std::size_t ui_blend_stream_offset{SIZE_MAX};
+  std::size_t ui_cached_stream_offset{SIZE_MAX};
 };
 bool world_ui_capture_requested();
 
@@ -4678,7 +4681,7 @@ PsoMetadata inspect_pipeline_stream(
       case D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND: {
         D3D12_BLEND_DESC value{};
         read = read_stream_subobject(stream, description.SizeInBytes, offset,
-                                     value);
+                                     value, &metadata.ui_blend_stream_offset);
         metadata.blend_enabled = read && value.RenderTarget[0].BlendEnable;
         if (read) {
           metadata.ui_blend = value.RenderTarget[0];
@@ -4764,6 +4767,7 @@ PsoMetadata inspect_pipeline_stream(
         std::size_t value_offset{};
         read = read_stream_subobject(stream, description.SizeInBytes, offset,
                                      value, &value_offset);
+        if (read) metadata.ui_cached_stream_offset = value_offset;
         if (read && replacement_stream &&
             replacement_stream->size() == description.SizeInBytes) {
           const D3D12_CACHED_PIPELINE_STATE empty{};
@@ -4796,6 +4800,41 @@ PsoMetadata inspect_pipeline_stream(
     dump_blended_pixel_shader(pixel_shader_bytecode);
   }
   return metadata;
+}
+
+bool needs_world_ui_alpha_pipeline(const PsoMetadata& metadata) {
+  return world_ui_capture_requested() && is_stock_menu_shader_pair(metadata) &&
+      metadata.render_target_count == 1 && metadata.render_target_format == DXGI_FORMAT_R8G8B8A8_UNORM &&
+      !metadata.depth_enabled && !metadata.stencil_enabled &&
+      darktidevr::producer::ui_capture_blend_needs_alpha_fix(metadata.ui_blend, metadata.alpha_to_coverage);
+}
+void prepare_world_ui_alpha_pipeline(ID3D12Device* device,
+    const D3D12_GRAPHICS_PIPELINE_STATE_DESC& description, PsoMetadata& metadata) {
+  if (!device || !original_create_graphics_pipeline_state || !needs_world_ui_alpha_pipeline(metadata)) return;
+  auto replay = description;
+  replay.CachedPSO = {};
+  replay.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+  original_create_graphics_pipeline_state(device, &replay, IID_PPV_ARGS(&metadata.ui_alpha_pipeline));
+}
+void prepare_world_ui_alpha_pipeline(ID3D12Device2* device,
+    const D3D12_PIPELINE_STATE_STREAM_DESC& description, PsoMetadata& metadata) {
+  if (!device || !original_create_pipeline_state_stream || !needs_world_ui_alpha_pipeline(metadata) ||
+      metadata.ui_blend_stream_offset > description.SizeInBytes ||
+      sizeof(D3D12_BLEND_DESC) > description.SizeInBytes - metadata.ui_blend_stream_offset) return;
+  const auto* bytes = static_cast<const std::uint8_t*>(description.pPipelineStateSubobjectStream);
+  std::vector<std::uint8_t> stream(bytes, bytes + description.SizeInBytes);
+  D3D12_BLEND_DESC blend{};
+  std::memcpy(&blend, stream.data() + metadata.ui_blend_stream_offset, sizeof(blend));
+  blend.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+  std::memcpy(stream.data() + metadata.ui_blend_stream_offset, &blend, sizeof(blend));
+  if (metadata.ui_cached_stream_offset != SIZE_MAX) {
+    if (metadata.ui_cached_stream_offset > stream.size() ||
+        sizeof(D3D12_CACHED_PIPELINE_STATE) > stream.size() - metadata.ui_cached_stream_offset) return;
+    const D3D12_CACHED_PIPELINE_STATE empty{};
+    std::memcpy(stream.data() + metadata.ui_cached_stream_offset, &empty, sizeof(empty));
+  }
+  const D3D12_PIPELINE_STATE_STREAM_DESC replay{stream.size(), stream.data()};
+  original_create_pipeline_state_stream(device, &replay, IID_PPV_ARGS(&metadata.ui_alpha_pipeline));
 }
 
 HRESULT STDMETHODCALLTYPE create_pipeline_state_stream_hook(
@@ -4850,6 +4889,8 @@ HRESULT STDMETHODCALLTYPE create_pipeline_state_stream_hook(
     auto metadata = inspect_pipeline_stream(*description);
     preserve_billboard_substitution(metadata, original_vertex_shader,
                                     substituted);
+    prepare_world_ui_alpha_pipeline(device,
+        (substituted || pixel_substituted) ? *effective_description : *description, metadata);
     record_pso_shader_mapping_if_requested(
         reinterpret_cast<ID3D12PipelineState*>(*output), metadata);
     std::scoped_lock lock(pso_mutex);
@@ -5660,6 +5701,8 @@ HRESULT STDMETHODCALLTYPE create_graphics_pipeline_state_hook(
     metadata.ui_blend = description->BlendState.RenderTarget[0];
     preserve_billboard_substitution(metadata, hash_bytecode(description->VS),
                                     substituted);
+    prepare_world_ui_alpha_pipeline(device,
+        (substituted || pixel_substituted) ? *effective_description : *description, metadata);
     record_pso_shader_mapping_if_requested(
         reinterpret_cast<ID3D12PipelineState*>(*output), metadata);
     std::scoped_lock lock(pso_mutex);
@@ -5821,6 +5864,10 @@ HRESULT STDMETHODCALLTYPE load_graphics_pipeline_hook(
     metadata.ui_blend = description->BlendState.RenderTarget[0];
     preserve_billboard_substitution(metadata, hash_bytecode(description->VS),
                                     substituted);
+    ComPtr<ID3D12Device> ui_device;
+    if (needs_world_ui_alpha_pipeline(metadata) && SUCCEEDED(library->GetDevice(IID_PPV_ARGS(&ui_device))))
+      prepare_world_ui_alpha_pipeline(ui_device.Get(),
+          (substituted || pixel_substituted) ? *effective_description : *description, metadata);
     record_pso_shader_mapping_if_requested(
         reinterpret_cast<ID3D12PipelineState*>(*output), metadata);
     std::scoped_lock lock(pso_mutex);
@@ -5907,6 +5954,9 @@ HRESULT STDMETHODCALLTYPE load_pipeline_hook(
     auto metadata = inspect_pipeline_stream(*description);
     preserve_billboard_substitution(metadata, original_vertex_shader,
                                     substituted);
+    ComPtr<ID3D12Device2> ui_device;
+    if (needs_world_ui_alpha_pipeline(metadata) && SUCCEEDED(library->GetDevice(IID_PPV_ARGS(&ui_device))))
+      prepare_world_ui_alpha_pipeline(ui_device.Get(), substituted ? *effective_description : *description, metadata);
     record_pso_shader_mapping_if_requested(
         reinterpret_cast<ID3D12PipelineState*>(*output), metadata);
     std::scoped_lock lock(pso_mutex);
@@ -7556,6 +7606,7 @@ bool world_ui_capture_requested() {
 struct WorldUiDrawRedirect {
   std::unique_lock<std::mutex> lock;
   D3D12_CPU_DESCRIPTOR_HANDLE original{};
+  ID3D12PipelineState* original_pipeline{};
   bool active{};
 };
 WorldUiDrawRedirect begin_world_ui_draw(ID3D12GraphicsCommandList* commands,
@@ -7667,7 +7718,8 @@ WorldUiDrawRedirect begin_world_ui_draw(ID3D12GraphicsCommandList* commands,
         capture.rtv->GetCPUDescriptorHandleForHeapStart(), transparent, 0, nullptr);
   }
   if (metadata.depth_enabled || metadata.stencil_enabled || trace.depth_target ||
-      !darktidevr::producer::ui_capture_blend_supported(metadata.ui_blend, metadata.alpha_to_coverage)) {
+      (!metadata.ui_alpha_pipeline &&
+       !darktidevr::producer::ui_capture_blend_supported(metadata.ui_blend, metadata.alpha_to_coverage))) {
     ++capture.rejected;
     if (world_ui_submission_requested()) world_ui_capture_rejected.store(true);
     static unsigned rejection_reports{};
@@ -7685,6 +7737,11 @@ WorldUiDrawRedirect begin_world_ui_draw(ID3D12GraphicsCommandList* commands,
     return redirect;
   }
   redirect.original = {trace.render_target};
+  if (metadata.ui_alpha_pipeline) {
+    if (!original_set_pipeline_state || !trace.pso) return redirect;
+    redirect.original_pipeline = reinterpret_cast<ID3D12PipelineState*>(trace.pso);
+    original_set_pipeline_state(commands, metadata.ui_alpha_pipeline.Get());
+  }
   const auto output = capture.rtv->GetCPUDescriptorHandleForHeapStart();
   original_om_set_render_targets(commands, 1, &output, FALSE, nullptr);
   ++capture.draws;
@@ -7693,6 +7750,7 @@ WorldUiDrawRedirect begin_world_ui_draw(ID3D12GraphicsCommandList* commands,
   return redirect;
 }
 void end_world_ui_draw(ID3D12GraphicsCommandList* commands, WorldUiDrawRedirect& redirect) {
+  if (redirect.original_pipeline) original_set_pipeline_state(commands, redirect.original_pipeline);
   if (redirect.active)
     original_om_set_render_targets(commands, 1, &redirect.original, FALSE, nullptr);
 }
