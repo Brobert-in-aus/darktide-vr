@@ -251,7 +251,7 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
     ID3D12CommandQueue* queue, std::uint64_t present,
     const std::array<core::StreamlinePresentEyeBinding, 2>& bindings,
     StreamlineSubmissionApi api, StreamlineSubmission::Tagging tagging, Execute execute, std::uint64_t generation) {
-  if (!initialized_ || stopped_ || staged_) return;
+  if (!initialized_ || stopped_ || staged_ || paused_) return;
   auto& frame = frames_[current_ % count_];
   if (!frame.captured) return;
   if (!swapchain || !queue || !execute || frame.captured != 3 ||

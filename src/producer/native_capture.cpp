@@ -258,6 +258,7 @@ std::array<StreamlineConstantsObservation, 2>
 StreamlineInputSnapshotState streamline_input_snapshot_state;
 std::atomic<bool> streamline_continuous_requested{};
 std::atomic<bool> streamline_persistent_requested{};
+std::atomic<bool> streamline_packed_mirror_active{};
 darktidevr::producer::StreamlineContinuousSubmission streamline_continuous;
 
 bool game_process_foreground() {
@@ -11893,7 +11894,7 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
     if (SUCCEEDED(swapchain->QueryInterface(IID_PPV_ARGS(&mirror_swapchain)))) {
       DXGI_SWAP_CHAIN_DESC1 description{};
       if (SUCCEEDED(mirror_swapchain->GetDesc1(&description))) {
-        const bool packed_world=current_presentation_mode.load()==1 &&
+        const bool packed_world=streamline_packed_mirror_active.load() && current_presentation_mode.load()==1 &&
             description.Width==swapchain_present_width.load() &&
             description.Width==camera_input_width.load()*2 &&
             description.Height==camera_input_height.load();
@@ -12224,32 +12225,7 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
         capture_present_halves(candidate.Get(), queue.Get()),
         std::memory_order_relaxed);
   }
-  // Packed rendering gives the engine a private backbuffer. Flat menus and
-  // loading screens must reach DXGI from that current buffer too; otherwise
-  // skipping the eye mirror leaves the last world image on the desktop.
-  const bool engine_flat_mirror = darktidevr::producer::engine_flat_mirror_required(
-      streamline_stereo_swapchain_probe_requested.load(std::memory_order_acquire),
-      presentation_mode);
-  if ((engine_flat_mirror || (presentation_mode !=
-          darktidevr::core::SharedPresentationMode::flat_loading_or_cinematic &&
-      !darktidevr::core::flat_interactive_active(presentation_mode))) &&
-      candidate && present_queue &&
-      !(streamline_persistent_requested.load() && presentation_mode==darktidevr::core::SharedPresentationMode::stereo_world) &&
-      (engine_flat_mirror || desktop_mirror_ready.load(std::memory_order_acquire))) {
-    const auto mirror_result =
-        present_desktop_eye_mirror(candidate.Get(), present_queue.Get(), engine_flat_mirror);
-    if (mirror_result != 0) {
-      const auto error = desktop_mirror_error_count.fetch_add(
-                             1, std::memory_order_relaxed) +
-                         1;
-      if (error <= 20 || error % 120 == 0) {
-        write_menu_resource_log(
-            "DESKTOP_EYE_MIRROR\tframe=%llu\tresult=%d\terror=%llu\r\n",
-            present, mirror_result,
-            static_cast<unsigned long long>(error));
-      }
-    }
-  }
+  bool packed_submission = false;
   if (candidate && present_queue && streamline_continuous_requested.load(std::memory_order_acquire)) {
     std::scoped_lock lock(streamline_input_snapshot_mutex);
     const auto tagging_modes = streamline_tagging_api_modes.load(std::memory_order_relaxed);
@@ -12266,11 +12242,39 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                              : darktidevr::producer::StreamlineSubmission::Tagging::frame_based,
           original_execute_command_lists,current_gameplay_generation.load());
       if (streamline_continuous.staged()) {
+        packed_submission = streamline_persistent_requested.load();
         darktidevr::producer::arm_ngx_output_probe(1, present);
         darktidevr::producer::generated_stereo_context(streamline_continuous.previous_pose(),
             streamline_continuous.pose(),current_gameplay_generation.load(),
             streamline_continuous.original_ready(),
             streamline_continuous.inputs());
+      }
+    }
+  }
+  streamline_packed_mirror_active.store(packed_submission);
+  // Packed rendering gives the engine a private backbuffer. Flat menus and
+  // loading screens must reach DXGI from that current buffer too; otherwise
+  // skipping the eye mirror leaves the last world image on the desktop.
+  const bool engine_flat_mirror = darktidevr::producer::engine_flat_mirror_required(
+      streamline_stereo_swapchain_probe_requested.load(std::memory_order_acquire),
+      presentation_mode);
+  if ((engine_flat_mirror || (presentation_mode !=
+          darktidevr::core::SharedPresentationMode::flat_loading_or_cinematic &&
+      !darktidevr::core::flat_interactive_active(presentation_mode))) &&
+      candidate && present_queue &&
+      !packed_submission &&
+      (engine_flat_mirror || desktop_mirror_ready.load(std::memory_order_acquire))) {
+    const auto mirror_result =
+        present_desktop_eye_mirror(candidate.Get(), present_queue.Get(), engine_flat_mirror);
+    if (mirror_result != 0) {
+      const auto error = desktop_mirror_error_count.fetch_add(
+                             1, std::memory_order_relaxed) +
+                         1;
+      if (error <= 20 || error % 120 == 0) {
+        write_menu_resource_log(
+            "DESKTOP_EYE_MIRROR\tframe=%llu\tresult=%d\terror=%llu\r\n",
+            present, mirror_result,
+            static_cast<unsigned long long>(error));
       }
     }
   }

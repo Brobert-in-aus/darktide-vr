@@ -2,12 +2,16 @@
 #include "producer/streamline_continuous_submission.h"
 #include <iostream>
 #include <stdexcept>
+#include <cstring>
 
 using Microsoft::WRL::ComPtr;
 using darktidevr::producer::StreamlineContinuousSubmission;
 void check(HRESULT result) { if(FAILED(result)) throw std::runtime_error("D3D12 failed"); }
 void expect(bool value) { if(!value) throw std::runtime_error("Recovery invariant failed"); }
-void log_message(const char*, ...) {}
+unsigned binding_rejections{};
+void log_message(const char* format, ...) {
+  if (std::strstr(format,"phase=binding_rejection")) ++binding_rejections;
+}
 void STDMETHODCALLTYPE execute(ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists) {
   queue->ExecuteCommandLists(count,lists);
 }
@@ -49,6 +53,11 @@ int main() {
       submission.pause(queue.Get(),execute,"editor_open");
       submission.after_present(queue.Get(),nullptr,execute);
       expect(!submission.finished() && !submission.staged() && submission.previous_pose()==0);
+      const auto rejections=binding_rejections;
+      for (unsigned repeat=0;repeat<3;++repeat)
+        submission.before_present(nullptr,queue.Get(),frame+2+repeat,{}, {},
+            darktidevr::producer::StreamlineSubmission::Tagging::legacy,execute);
+      expect(binding_rejections==rejections); // Paused owners are not resubmitted.
       drain();
     }
     // Bounded diagnostic probes intentionally retain their fail-closed policy.

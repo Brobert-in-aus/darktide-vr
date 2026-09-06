@@ -825,3 +825,19 @@ shifted/duplicated beside its correct position in generated frames. Acceptance
 must include fast real head movement, not just stationary clarity. Prioritize a
 separate UI color/alpha or post-generation composition path while preserving
 background velocity; do not zero world motion under the HUD.
+
+### 2026-09-06: live frame-generation-off mirror repair (prepared)
+
+User confirmed disabling FG left desktop on the last ESC-menu image while VR
+continued. Mirror selection wrongly depended on persistent launch intent rather
+than whether this Present actually staged packed stereo. The selection now runs
+after the submission attempt: staged packed frames use the crop path; unstaged
+world frames get the normal current-eye mirror and full source extent. NVIDIA's
+private DXGI buffers are still never GPU-written by the native Present hook.
+Paused submission skips stale binding retries until fresh capture resumes.
+
+Release native/recovery builds and continuous_recovery, original_stereo_ring,
+streamline_submission and stereo_color_resample passed. NOT live accepted yet.
+User requested batching with HUD work before another relaunch. Launcher was
+cancelled before Darktide started; no game/harness process remains. Preserve
+FG-off setting until deliberate combined test. Continue HUD implementation.
