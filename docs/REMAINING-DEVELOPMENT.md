@@ -148,13 +148,15 @@ were checked; worn acceptance of non-default values remains pending.
 Add configurable action/key bindings and controller button glyphs/prompts
 instead of the current mouse/keyboard prompts.
 The [input revision audit](INPUT-REVISION-AUDIT.md) maps current controls: right
-stick scrolls menus but has no gameplay route; R3 produces a native tag bit
-which the Lua adapter does not forward. Complete these missing routes and use
+stick scrolls menus but has no gameplay route. R3 tag and the left menu button
+now reach stock HUD/UI handlers; live module initialization passes, with worn
+button acceptance pending. All inherited gameplay holds are quarantined until
+release on activation/reconnect. Use
 the available controls to make the full layout more sensible. Review gameplay,
 weapon specials, movement, interactions and menu
 contexts together, including hold/toggle behavior and conflicting actions.
 Implement remapping and matching controller prompts with the revised defaults.
-This is backlog work; no bindings changed in response to this feedback.
+Configurable bindings and revised defaults remain backlog work.
 Desktop layout editing now draws "Use the desktop view to edit your HUD layout."
 into the shared HUD texture while the editor is open. It is removed on close.
 An XR freeze occurred with synchronized producer frames continuing; the harness

@@ -65,14 +65,8 @@ GameplayInputFrame GameplayInputMapper::update(
              (left.buttons & controller_primary) != 0);
   set_action(next, GameplayAction::quick_wield,
              (left.buttons & controller_secondary) != 0);
-  const bool jump_button_down = (right.buttons & controller_primary) != 0;
-  if (!jump_button_down) {
-    jump_dodge_armed_ = true;
-  }
-  // A is also menu confirmation. Require a release after entering gameplay
-  // so a held confirmation cannot become the stock backwards dodge.
   set_action(next, GameplayAction::jump_dodge,
-             jump_dodge_armed_ && jump_button_down);
+             (right.buttons & controller_primary) != 0);
   set_action(next, GameplayAction::crouch,
              (right.buttons & controller_secondary) != 0);
   set_action(next, GameplayAction::sprint,
@@ -82,11 +76,14 @@ GameplayInputFrame GameplayInputMapper::update(
   set_action(next, GameplayAction::menu,
              (left.buttons & controller_menu) != 0);
 
-  // A reconnect may publish buttons already held. Preserve their held state,
-  // and release any vanished old actions, but never manufacture a new press
-  // edge merely because a different XR writer owns the same mapping.
-  GameplayInputFrame frame{
-      transport_changed ? 0 : next & ~held_, next, held_ & ~next};
+  // Menu confirmation/back and stale reconnect levels must not become fire,
+  // dodge, abilities or a reopened menu. Each inherited action independently
+  // requires release; held levels matter too because stock windups use them.
+  if (!active_ || transport_changed) blocked_until_release_ = next;
+  active_ = true;
+  blocked_until_release_ &= next;
+  next &= ~blocked_until_release_;
+  GameplayInputFrame frame{next & ~held_, next, held_ & ~next};
   apply_radial_deadzone(left.thumbstick_x, left.thumbstick_y, frame.move_x,
                         frame.move_y);
   held_ = next;
@@ -100,7 +97,8 @@ GameplayInputFrame GameplayInputMapper::reset() {
   right_trigger_down_ = false;
   left_squeeze_down_ = false;
   right_squeeze_down_ = false;
-  jump_dodge_armed_ = false;
+  active_ = false;
+  blocked_until_release_ = 0;
   return frame;
 }
 

@@ -5005,6 +5005,7 @@ mod:hook(
     local result = func(self, dt, t, ...)
     presentation.reconcile_fullscreen_views(self)
     presentation.update_system_menu_test(self)
+    if presentation.gameplay_ui then presentation.gameplay_ui.update_menu(self) end
     presentation.update_vendor_menu_test(self)
     presentation.update_psykhanium(self, t or 0)
     if presentation.billboard_pixel_shader_probe_requested and
@@ -5447,6 +5448,9 @@ function presentation.inject_gameplay_input(self, main_t)
         controller_observation.gameplay_movement)
     controller_observation.gameplay_input_active = active and result == 0
     local pressed = tonumber(controller_observation.gameplay_pressed[0])
+    if presentation.gameplay_ui then
+        presentation.gameplay_ui.sample(controller_observation.gameplay_input_active, pressed)
+    end
     local held = tonumber(controller_observation.gameplay_held[0])
     local released = tonumber(controller_observation.gameplay_released[0])
     controller_observation.gameplay_input_last_sequence =
@@ -13118,6 +13122,12 @@ presentation.hud_panel.read_mirror = function()
     return tonumber(values[0]),tonumber(values[1]),tonumber(values[2]),tonumber(values[3]),values[4] ~= 0
 end
 presentation.hud_panel.install(mod)
+presentation.gameplay_ui = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gameplay_ui_input"
+).install(mod, function()
+    local player = Managers and Managers.player and Managers.player:local_player(1)
+    return player and player.player_unit
+end)
 
 presentation.controller_aim = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_aim"

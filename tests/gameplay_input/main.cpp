@@ -107,16 +107,39 @@ int main() {
     restarted.transport_generation = 7;
     restarted.hands[1].trigger = 1.0F;
     frame = restart_mapper.update(restarted, true);
-    expect_edge(frame, GameplayAction::action_one, false, true, false);
+    expect_edge(frame, GameplayAction::action_one, false, false, false);
     frame = restart_mapper.update(restarted, true);
-    expect_edge(frame, GameplayAction::action_one, false, true, false);
+    expect_edge(frame, GameplayAction::action_one, false, false, false);
     restarted.transport_generation = 8;
     restarted.hands[1].trigger = 0.0F;
     frame = restart_mapper.update(restarted, true);
-    expect_edge(frame, GameplayAction::action_one, false, false, true);
+    expect_edge(frame, GameplayAction::action_one, false, false, false);
     restarted.hands[1].trigger = 1.0F;
     frame = restart_mapper.update(restarted, true);
     expect_edge(frame, GameplayAction::action_one, true, true, false);
+    restarted.transport_generation = 9;
+    frame = restart_mapper.update(restarted, true);
+    expect_edge(frame, GameplayAction::action_one, false, false, true);
+
+    // Every held control, not only menu-confirm A, is quarantined on reentry.
+    GameplayInputMapper entry_mapper;
+    using namespace darktidevr::core;
+    SharedControllerState entry{};
+    entry.hands[0].trigger=entry.hands[1].trigger=1;
+    entry.hands[0].squeeze=entry.hands[1].squeeze=1;
+    entry.hands[0].buttons=controller_primary | controller_secondary | controller_stick_click | controller_menu;
+    entry.hands[1].buttons=controller_primary | controller_secondary | controller_stick_click;
+    frame=entry_mapper.update(entry,true);
+    expect(frame.pressed==0 && frame.held==0,"Inherited gameplay levels became actions");
+    entry.hands[1].buttons &= ~controller_stick_click;
+    entry_mapper.update(entry,true);
+    entry.hands[1].buttons |= controller_stick_click;
+    frame=entry_mapper.update(entry,true);
+    expect(frame.pressed==gameplay_action_bit(GameplayAction::smart_tag) &&
+           frame.held==frame.pressed,"Independent tag rearm unblocked another held control");
+    entry_mapper.update(entry,false);
+    frame=entry_mapper.update(entry,true);
+    expect(frame.pressed==0 && frame.held==0,"Menu return reactivated inherited controls");
 
     std::cout << "gameplay_input.result=pass\n";
     return 0;

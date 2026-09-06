@@ -20,6 +20,11 @@ by normal sync. Full-body and fixed HUD-panel presentation remain experimental.
 
 ## Launch
 
+R3 tagging and the left menu button now have game-side delivery through stock
+HUD/UI handlers. Inherited gameplay button holds require release after entering
+gameplay or reconnecting. Live initialization passes; worn button acceptance is
+pending. See the [input revision audit](INPUT-REVISION-AUDIT.md).
+
 Mod Options > Darktide VR exposes HUD size, distance, and text/icon size sliders.
 Defaults (100%, 2 m, 100%) preserve the accepted HUD layout. Distance changes
 retain approximately the same apparent size; internal scaling leaves saved

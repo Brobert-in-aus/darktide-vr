@@ -59,3 +59,31 @@ sequence changes, ray misses and mode transitions.
 This checkpoint changes only the menu-primary lockout; gameplay bindings remain
 unchanged. Right-stick turning, new defaults and controller ergonomics need
 worn acceptance. Native Release and targeted input/presentation tests pass.
+
+## Semantic delivery follow-up
+
+The next implementation adds the missing R3/menu delivery without changing
+their physical bindings. A separate Lua module feeds a pressed `smart_tag` into
+the local stock HUD handler and opens `system_view` through UIManager for the
+menu button. It preserves stock null-service suppression, keyboard input,
+same-frame reads and nil return values. Blocked events expire rather than
+opening/tagging later. It does not call network tag functions or synthesize keys.
+
+The native mapper now quarantines every gameplay button held on activation or
+transport-generation change until that action is released. This extends the
+previous A-only entry guard to fire, block, special, blitz, tag and menu too.
+Both pressed and held levels are suppressed: preventing only press edges is
+insufficient because stock windups can start from held input. Other released
+controls can rearm independently. Movement mapping and existing control choices
+are unchanged.
+
+Windows Release and `gameplay_input`, `panel_pointer`, `gameplay_ui_input`,
+`menu_input`, and the pinned LuaJIT gate pass. The Lua gate now covers 28 chunks.
+Fixtures cover inherited holds, reconnect release, independent rearming, local
+HUD ownership, blocked events, menu precedence, same-frame tag reads, keyboard
+preservation and stock error/return behavior. Worn R3/menu acceptance is pending.
+
+Live validation: the newly deployed `_handle_tagging` hook installed after
+gameplay HUD creation. Harness `shared_ready=10621`, fresh-pair rate about 44 fps,
+zero interval fallback and zero pose mismatches. No physical controller action
+was simulated; this establishes load/render health, not worn input acceptance.
