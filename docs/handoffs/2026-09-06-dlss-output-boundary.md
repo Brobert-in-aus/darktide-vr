@@ -465,3 +465,16 @@ User requested working automatic character select for the next launch. Inspectio
 found old helpers still waiting for a stock `UIProfileSpawner` streaming message
 absent in current logs, despite the mod's readiness message reporting Start ready.
 Fixing that launch helper is the immediate follow-up before another DLSS run.
+
+
+The next-launch character-select helper now uses the observed
+`DARKTIDEVR_MENU_READINESS ... start_ready=true reason=ready` event instead of
+waiting for the missing stock profile-spawner line. It binds to the launch's
+PID/start time and one console log, refuses keys after a later game state has
+arrived, and its parent retains/cleans up the helper process. Foreground-only
+input is preserved. Offline `test-startup-advance.ps1` passes readiness, stale
+menu state and process-replacement checks without loading desktop input APIs.
+PowerShell parsing passes. The broad Lua invariant script still fails at its
+pre-existing controller-fire/muzzle expectation (line 495); no Lua source was
+changed by this helper fix. The pinned 31-chunk Lua compiler gate passed for the
+DLSS launches. Live automatic entry is the next check.

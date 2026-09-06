@@ -34,6 +34,14 @@ acceptance remains pending. See the [output-boundary handoff](handoffs/2026-09-0
 
 ## Launch
 
+`-AutoEnterHub` advances title/character select using the mod's stock Start
+readiness observation. `-EnterPsykhanium` includes this automatically;
+`-ManualCharacterSelect` stops before selecting. The helper sends only while
+the game is foreground, checks the latest state before every key, is bound to
+one game process/log, and is cleaned up by its launcher. It does not steal
+focus. Per-launch stdout/stderr are saved under ignored `artifacts/unattended`.
+
+
 Optional menu-laser stabilization is available with `-MenuAimStabilization`.
 Ordinary launches retain direct tracking. It shares one filtered ray between
 hover, clicks and laser presentation; gameplay weapons remain direct. The trial

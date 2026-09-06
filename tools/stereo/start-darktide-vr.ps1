@@ -338,6 +338,7 @@ if ($CaptureBillboardPsoIdentities) {
         "Billboard PSO identity slice armed; scene=$sceneLabel offset=$billboardIdentityStartOffset"
 }
 $launchStarted = Get-Date
+$advanceProcess = $null
 try {
 if ($EnterPsykhanium) {
     if (Get-Process Darktide -ErrorAction SilentlyContinue) {
@@ -678,8 +679,17 @@ if (-not $ManualStartup -and ($AutoEnterHub -or $AutoAdvanceSplash)) {
     if ($ManualCharacterSelect -or ($AutoAdvanceSplash -and -not $AutoEnterHub)) {
         $advanceArguments += '-StopAtCharacterSelect'
     }
-    Start-Process -FilePath $powershell -WindowStyle Hidden `
-        -ArgumentList $advanceArguments
+    $advanceGames = @(Get-Process Darktide -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -ieq $expectedGamePath })
+    if ($advanceGames.Count -gt 1) { throw 'Startup advance requires one Darktide process.' }
+    if ($advanceGames.Count -eq 1) { $advanceArguments += @('-GameProcessId', $advanceGames[0].Id) }
+    $advanceLogRoot = Join-Path $repoRoot 'artifacts\unattended'
+    New-Item -ItemType Directory -Path $advanceLogRoot -Force | Out-Null
+    $advanceLogStamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ')
+    $advanceProcess = Start-Process -FilePath $powershell -WindowStyle Hidden `
+        -ArgumentList $advanceArguments -PassThru `
+        -RedirectStandardOutput (Join-Path $advanceLogRoot "character-select-$advanceLogStamp.log") `
+        -RedirectStandardError (Join-Path $advanceLogRoot "character-select-$advanceLogStamp.err.log")
     if ($AutoEnterHub -and -not $ManualCharacterSelect) {
         Write-Output 'Armed state-gated Space/Enter automation through character select.'
     }
@@ -838,6 +848,11 @@ else {
 }
 }
 finally {
+    if ($advanceProcess) {
+        $advanceProcess.Refresh()
+        if (-not $advanceProcess.HasExited) { $advanceProcess.Kill() }
+        $advanceProcess.Dispose()
+    }
     if ($ngxOutputProbeFlagPath) {
         if ($null -ne $ngxOutputProbeFlagOriginal) {
             [IO.File]::WriteAllBytes($ngxOutputProbeFlagPath, $ngxOutputProbeFlagOriginal)

@@ -5,6 +5,8 @@ param(
 
     [switch] $StopAtCharacterSelect,
 
+    [int] $GameProcessId = 0,
+
     [string] $GameExe =
         'D:\SteamLibrary\steamapps\common\Warhammer 40,000 DARKTIDE\binaries\Darktide.exe',
 
@@ -19,6 +21,26 @@ if (-not (Test-Path -LiteralPath $GameExe -PathType Leaf)) {
     throw "Darktide executable not found: $GameExe"
 }
 $resolvedGameExe = (Resolve-Path -LiteralPath $GameExe).Path
+$script:ownedProcess = $null
+$script:ownedProcessStart = $null
+$script:ownedLogPath = $null
+
+function Assert-DarktideStartupOwner {
+    if (-not $script:ownedProcess) { return }
+    $current = Get-Process -Id $script:ownedProcess.Id -ErrorAction SilentlyContinue
+    if (-not $current -or $current.StartTime -ne $script:ownedProcessStart) {
+        throw 'The launch-owned Darktide process exited; startup automation is finished.'
+    }
+}
+
+function Get-DarktideStartupState {
+    if (-not $script:ownedLogPath) { return '' }
+    $text = Get-Content -LiteralPath $script:ownedLogPath -Raw -ErrorAction SilentlyContinue
+    if (-not $text) { return '' }
+    $states = [regex]::Matches($text, 'Entering Game State (State[A-Za-z0-9_]+)')
+    if (-not $states.Count) { return '' }
+    return $states[$states.Count - 1].Groups[1].Value
+}
 
 Add-Type -TypeDefinition @'
 using System;
@@ -43,10 +65,13 @@ function Wait-DarktideLogMatch {
     )
 
     while ((Get-Date) -lt $Deadline) {
+        Assert-DarktideStartupOwner
         $process = Get-Process Darktide -ErrorAction SilentlyContinue |
             Where-Object {
                 try {
-                    $_.Path -ieq $resolvedGameExe
+                    $_.Path -ieq $resolvedGameExe -and
+                        ($GameProcessId -eq 0 -or $_.Id -eq $GameProcessId) -and
+                        (-not $script:ownedProcess -or $_.Id -eq $script:ownedProcess.Id)
                 }
                 catch {
                     $false
@@ -54,12 +79,21 @@ function Wait-DarktideLogMatch {
             } |
             Select-Object -First 1
         if ($process) {
-            $log = Get-ChildItem -LiteralPath $ConsoleLogRoot -Filter '*.log' `
+            if (-not $script:ownedProcess) {
+                $script:ownedProcess = $process
+                $script:ownedProcessStart = $process.StartTime
+            }
+            $log = if ($script:ownedLogPath) {
+                Get-Item -LiteralPath $script:ownedLogPath -ErrorAction SilentlyContinue
+            } else { Get-ChildItem -LiteralPath $ConsoleLogRoot -Filter '*.log' `
                     -ErrorAction SilentlyContinue |
-                Where-Object LastWriteTime -ge $NotBefore |
+                Where-Object { $_.LastWriteTime -ge $NotBefore -and
+                    $_.CreationTime -ge $script:ownedProcessStart.AddSeconds(-5) } |
                 Sort-Object LastWriteTime -Descending |
                 Select-Object -First 1
+            }
             if ($log) {
+                $script:ownedLogPath = $log.FullName
                 $text = Get-Content -LiteralPath $log.FullName -Raw `
                     -ErrorAction SilentlyContinue
                 $matched = $true
@@ -85,9 +119,16 @@ function Send-DarktideKey {
         [System.Diagnostics.Process] $Process,
 
         [Parameter(Mandatory)]
-        [string] $Keys
+        [string] $Keys,
+
+        [Parameter(Mandatory)]
+        [string] $ExpectedState
     )
 
+    Assert-DarktideStartupOwner
+    # A readiness line remains in the log after the player advances manually.
+    # Check the newest state before sending, not after the first key attempt.
+    if ((Get-DarktideStartupState) -ne $ExpectedState) { return }
     # Alt-Tab belongs to the user. Retry state observation in the caller, but
     # never activate the game or send keys to another foreground application.
     $foregroundProcessId = [uint32] 0
@@ -116,7 +157,7 @@ function Wait-DarktideLeavesTitle {
     # the title view. Retry only while waiting for the next log-owned state
     # boundary so input cannot leak through character select or into the hub.
     while ((Get-Date) -lt $Deadline) {
-        Send-DarktideKey -Process $Process -Keys ' '
+        Send-DarktideKey -Process $Process -Keys ' ' -ExpectedState 'StateTitle'
         $retryDeadline = (Get-Date).AddSeconds(2)
         if ($retryDeadline -gt $Deadline) {
             $retryDeadline = $Deadline
@@ -153,7 +194,7 @@ function Wait-DarktideLeavesCharacterSelect {
     # stop as soon as the log proves that StateMainMenu has begun leaving; this
     # avoids advancing any subsequent gameplay UI.
     while ((Get-Date) -lt $Deadline) {
-        Send-DarktideKey -Process $Process -Keys '{ENTER}'
+        Send-DarktideKey -Process $Process -Keys '{ENTER}' -ExpectedState 'StateMainMenu'
         $retryDeadline = (Get-Date).AddSeconds(2)
         if ($retryDeadline -gt $Deadline) {
             $retryDeadline = $Deadline
@@ -185,12 +226,9 @@ Wait-DarktideLeavesTitle -Process $title `
 $characterSelect = Wait-DarktideLogMatch -Patterns @(
     'Entering Game State StateMainMenu',
     'DARKTIDEVR_PRESENTATION open view=main_menu_view active=true',
-    # MainMenuView exists before its selected operative has finished
-    # streaming.  Enter sent in that interval is silently ignored, which made
-    # nominal unattended runs stop at character select.  This stock spawner
-    # completion is the first observed log-owned readiness boundary after
-    # which the same Enter action is accepted.
-    'UIProfileSpawner.*cb_on_unit_3p_streaming_complete'
+    # Current game logs no longer emit the old UIProfileSpawner completion.
+    # The mod observes the actual stock Start widget and input gates instead.
+    'DARKTIDEVR_MENU_READINESS view=main_menu .*start_ready=true reason=ready'
 ) -Deadline $deadline -NotBefore $started
 if ($StopAtCharacterSelect) {
     Write-Output 'Darktide title advanced to character select without mouse input.'
