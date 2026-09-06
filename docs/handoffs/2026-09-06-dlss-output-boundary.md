@@ -521,3 +521,22 @@ Pose failures are now logged outside the DLSS transaction window too (bounded
 256 failures), because the user's single startup flash may precede that window.
 Native Release and four focused transport/NGX CTests pass. Live trace pending.
 The second eight-frame consecutive pass is archived as auto-start-pass-*.
+
+Barrier trace live pass (120848): eight consecutive stereo Presents, 16 reported
+generated-eye Presents, 16 complete FG evaluations and 16 completed queue fences.
+No failed head-pose reads were recorded, including startup. Trace shows the first
+FG call in each pair emits a null/null alias barrier, followed by whole-resource
+UAV(8)->COPY_SOURCE(1024)->UAV(8). The second eye has no output transitions.
+The observer incorrectly kept alias uncertainty after a new explicit transition;
+it now recognizes the final explicit state, while split/partial observations
+remain unresolved. It does not infer right-eye state across callbacks or copy
+output. See Microsoft's resource-barrier documentation:
+https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-resource-barriers-to-synchronize-resource-states-in-direct3d-12
+
+Continuous submission now checks the returned DLSS status and rejects a failed
+input-ticket registration. The reader reports StateStatusVerified separately;
+old archives remain readable but cannot establish that status. Reader tests
+cover failed result/status and old struct versions. The corresponding NVIDIA
+2.7.30 header defines status zero as success and completion-fence requirements:
+https://raw.githubusercontent.com/NVIDIA-RTX/Streamline/v2.7.30/include/sl_dlss_g.h
+Native build and focused state/command tests pass. Evidence: barrier-trace-*.

@@ -196,14 +196,18 @@ void StreamlineContinuousSubmission::after_present(ID3D12CommandQueue* queue,
     const auto viewport = sl::make_viewport(viewports_[eye]);
     auto state = sl::make_dlssg_state();
     const auto result = get_state(&viewport, &state, nullptr);
-    if (result != 0 || state.base.struct_version < 3 || !state.inputs_processing_completion_fence ||
+    log_("STEREO_CONTINUOUS\tphase=state\tframe=%u\teye=%u\tresult=%u\tstatus=%u\tversion=%u\r\n",
+         current_ + 1, eye, result, state.status, state.base.struct_version);
+    if (result != 0 || state.status != 0 || state.base.struct_version < 3 || !state.inputs_processing_completion_fence ||
         FAILED(static_cast<IUnknown*>(state.inputs_processing_completion_fence)->QueryInterface(
             IID_PPV_ARGS(&frame.input_fences[eye])))) {
       fail("input_ticket"); break;
     }
-    frame.submission.record_ticket(current_ + 1, eye,
+    if (!frame.submission.record_ticket(current_ + 1, eye,
         reinterpret_cast<std::uintptr_t>(frame.input_fences[eye].Get()),
-        state.last_present_inputs_processing_completion_fence_value);
+        state.last_present_inputs_processing_completion_fence_value)) {
+      fail("rejected_input_ticket"); break;
+    }
     log_("STEREO_CONTINUOUS\tphase=ticket\tframe=%u\teye=%u\tframes_presented=%u\tvalue=%llu\r\n",
         current_ + 1, eye, state.num_frames_actually_presented,
         state.last_present_inputs_processing_completion_fence_value);

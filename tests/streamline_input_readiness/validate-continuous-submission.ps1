@@ -17,6 +17,21 @@ try {
     $result = & $reader -Path $path
     if (-not $result.ConsecutiveSubmissionVerified -or $result.GeneratedEyePresentsReported -ne 2 -or
         $result.OutputOwnershipVerified -or $result.GeneratedXrPublicationVerified) { throw 'Invalid positive report.' }
+    $withStates = @($valid)
+    foreach ($frame in 1..2) { foreach ($eye in 0..1) {
+        $withStates += "STEREO_CONTINUOUS`tphase=state`tframe=$frame`teye=$eye`tresult=0`tstatus=0`tversion=3"
+    } }
+    Set-Content -LiteralPath $path -Value $withStates
+    if (-not (& $reader -Path $path).StateStatusVerified) { throw 'State status was not verified.' }
+    foreach ($badState in @('status=2', 'result=1', 'version=2')) {
+        $candidate = @($withStates)
+        $key = ($badState -split '=')[0]
+        $candidate[-1] = $candidate[-1] -replace "$key=\d+", $badState
+        Set-Content -LiteralPath $path -Value $candidate
+        $rejected = $false
+        try { & $reader -Path $path | Out-Null } catch { $rejected = $true }
+        if (-not $rejected) { throw "Invalid state $badState was accepted." }
+    }
     foreach ($scenario in 1..6) {
         $candidate = @($valid)
         switch ($scenario) {

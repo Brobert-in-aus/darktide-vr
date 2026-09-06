@@ -17,6 +17,13 @@ int main() {
   state.transition(0, ~std::uint32_t{}, 8);
   state.alias();
   if (state.known) return 13;
+  state.transition(0, ~std::uint32_t{}, 1024);
+  state.transition(0, ~std::uint32_t{}, 8);
+  if (!state.known || state.ambiguous || state.state != 8) return 16;
+  state.alias();
+  state.transition(1, ~std::uint32_t{}, 8);
+  state.transition(0, ~std::uint32_t{}, 8);
+  if (state.known) return 17;
   state = {};
   state.transition(0, 0, 8, true);
   if (!state.known) return 14;

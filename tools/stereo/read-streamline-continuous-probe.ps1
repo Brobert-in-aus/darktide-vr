@@ -17,6 +17,7 @@ $ready = @($records | Where-Object phase -EQ 'ready')
 $stop = @($records | Where-Object phase -EQ 'stopped')
 $presents = @($records | Where-Object phase -EQ 'present')
 $tickets = @($records | Where-Object phase -EQ 'ticket')
+$states = @($records | Where-Object phase -EQ 'state')
 if ($ready.Count -ne 1 -or $stop.Count -ne 1) { throw 'Incomplete or duplicate continuous lifecycle.' }
 $count = [uint32]$ready[0].frames
 if ($count -lt 2 -or $count -gt 8 -or [uint32]$ready[0].eye_width -eq 0 -or
@@ -26,6 +27,9 @@ if ($count -lt 2 -or $count -gt 8 -or [uint32]$ready[0].eye_width -eq 0 -or
     throw 'Continuous frame count, extent, cleanup or ownership evidence is incomplete.'
 }
 $reportedGeneratedEyes = 0
+if ($states.Count -ne 0 -and $states.Count -ne 2 * $count) {
+    throw 'Incomplete DLSS state status evidence.'
+}
 for ($index = 0; $index -lt $count; ++$index) {
     $present = $presents[$index]
     if ([uint32]$present.frame -ne $index + 1 -or [uint64]$present.pose -eq 0 -or
@@ -36,6 +40,13 @@ for ($index = 0; $index -lt $count; ++$index) {
         throw 'Continuous submission contains a Present gap.'
     }
     for ($eye = 0; $eye -lt 2; ++$eye) {
+        if ($states.Count) {
+            $state = @($states | Where-Object { [uint32]$_.frame -eq $index + 1 -and [uint32]$_.eye -eq $eye })
+            if ($state.Count -ne 1 -or $state[0].result -ne '0' -or
+                $state[0].status -ne '0' -or [uint32]$state[0].version -lt 3) {
+                throw 'Missing, duplicate or unsuccessful DLSS state.'
+            }
+        }
         $ticket = @($tickets | Where-Object { [uint32]$_.frame -eq $index + 1 -and [uint32]$_.eye -eq $eye })
         if ($ticket.Count -ne 1 -or [uint64]$ticket[0].value -eq [uint64]::MaxValue) {
             throw 'Missing, duplicate or poisoned input completion ticket.'
@@ -50,6 +61,7 @@ for ($index = 0; $index -lt $count; ++$index) {
     EyeHeight = [uint32]$ready[0].eye_height
     GeneratedEyePresentsReported = $reportedGeneratedEyes
     OwnersRetained = $true
+    StateStatusVerified = $states.Count -eq 2 * $count
     OutputOwnershipVerified = $false
     GeneratedXrPublicationVerified = $false
     VisualAcceptance = 'unverified'
