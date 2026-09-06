@@ -540,3 +540,14 @@ cover failed result/status and old struct versions. The corresponding NVIDIA
 2.7.30 header defines status zero as success and completion-fence requirements:
 https://raw.githubusercontent.com/NVIDIA-RTX/Streamline/v2.7.30/include/sl_dlss_g.h
 Native build and focused state/command tests pass. Evidence: barrier-trace-*.
+
+The next candidate observes an adjacent left/right FG pair as one recording
+scope. It carries explicit left-output state only when command list, thread,
+output resource, capture window, extents and consecutive NGX call identity all
+match, with distinct nonzero feature lifetimes. It observes intervening barriers
+and invalidates on Reset/ExecuteCommandLists or any different evaluation. This
+is one pending pair, not a long-lived state cache. NGX_PAIR records in the state
+trace remain evidence only; no output retention, copies or XR publication.
+Release native and focused paired-state/continuous-reader tests pass, including
+mismatched identities, unknown initial state, aliasing and reset invalidation.
+Live paired-state verification is next.

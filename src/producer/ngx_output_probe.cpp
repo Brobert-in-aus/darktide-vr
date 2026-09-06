@@ -4,10 +4,12 @@
 #include "producer/ngx_feature_registry.h"
 #include "producer/ngx_command_observations.h"
 #include "producer/ngx_output_state.h"
+#include "producer/ngx_output_pair_state.h"
 #include <MinHook.h>
 #include <d3d12.h>
 #include <wrl/client.h>
 #include <array>
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -30,6 +32,8 @@ HANDLE log_file = INVALID_HANDLE_VALUE;
 HANDLE queue_log = INVALID_HANDLE_VALUE;
 std::mutex command_mutex;
 NgxCommandObservations command_observations;
+NgxOutputPairState output_pair_state;
+std::atomic<bool> pending_output_pair{};
 std::atomic<unsigned> pending_commands{};
 struct CompletionGroup {
   std::vector<std::uint64_t> calls;
@@ -52,6 +56,8 @@ struct ActiveEvaluationState {
   std::array<Barrier, 32> barriers{};
   unsigned barrier_count{};
   bool truncated{};
+  std::uint64_t seed_call{};
+  NgxOutputState pair_observation;
 };
 thread_local ActiveEvaluationState* active_evaluation{};
 std::mutex log_mutex;
@@ -144,6 +150,14 @@ void record_output_barriers(std::uint64_t call, const ActiveEvaluationState& sta
       call, state.commands, state.output, state.barrier_count,
       state.truncated ? 1U : 0U, state.single_subresource ? 1U : 0U);
   if (length > 0 && length < sizeof(line)) WriteFile(state_file, line, length, &written, nullptr);
+  if (state.seed_call) {
+    length = std::snprintf(line, sizeof(line),
+        "NGX_PAIR call=%llu left_call=%llu commands=%p output=%p known=%u state=%u ambiguous=%u transitions=%u publication=0\n",
+        call, state.seed_call, state.commands, state.output,
+        state.pair_observation.known ? 1U : 0U, state.pair_observation.state,
+        state.pair_observation.ambiguous ? 1U : 0U, state.pair_observation.transitions);
+    if (length > 0 && length < sizeof(line)) WriteFile(state_file, line, length, &written, nullptr);
+  }
   for (unsigned i = 0; i < state.barrier_count; ++i) {
     const auto& barrier = state.barriers[i];
     length = std::snprintf(line, sizeof(line),
@@ -215,6 +229,26 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   output_state.single_subresource = output_description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
       output_description.MipLevels == 1 && output_description.DepthOrArraySize == 1 &&
       output_description.Format == DXGI_FORMAT_R8G8B8A8_UNORM;
+  const auto complete = captured && output_state.single_subresource &&
+      output_description.Width == legacy_region[2] * 2ULL &&
+      output_description.Height == legacy_region[3] && legacy_region[1] == 0 &&
+      legacy_region[2] && legacy_region[3] &&
+      std::all_of(results.begin(), results.end(), [](auto value) { return value == ngx::kSuccess; }) &&
+      std::all_of(resources.begin(), resources.end(), [](auto value) { return value != nullptr; }) &&
+      std::all_of(legacy_results.begin(), legacy_results.end(), [](auto value) { return value == ngx::kSuccess; });
+  const NgxOutputPairState::Key pair_key{call, identity.lifetime, window.batch, window.present,
+      reinterpret_cast<std::uintptr_t>(commands), reinterpret_cast<std::uintptr_t>(resources[0]),
+      GetCurrentThreadId(), legacy_region[2], legacy_region[3]};
+  {
+    std::scoped_lock lock(command_mutex);
+    if (complete && legacy_region[0] == legacy_region[2]) {
+      if (const auto seed = output_pair_state.right(pair_key)) {
+        output_state.seed_call = seed->key.call;
+        output_state.pair_observation = seed->state;
+      }
+    } else output_pair_state.clear();
+    pending_output_pair.store(false, std::memory_order_release);
+  }
   const auto previous_evaluation = active_evaluation;
   if (captured) active_evaluation = &output_state;
   const auto began = GetTickCount64();
@@ -226,6 +260,10 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
     std::scoped_lock lock(command_mutex);
     if (command_observations.add(reinterpret_cast<std::uintptr_t>(commands), call))
       pending_commands.fetch_add(1, std::memory_order_release);
+    if (complete && legacy_region[0] == 0) {
+      output_pair_state.left(pair_key, output_state.observation);
+      pending_output_pair.store(output_state.observation.known, std::memory_order_release);
+    }
   }
   if (captured || call <= 4 || (window.eligible &&
       (call-window.first_call <= 4 || call-window.first_call == kCallLimit))) {
@@ -280,6 +318,21 @@ bool verified_runtime(const std::wstring& path) {
 void observe_ngx_output_barriers(void* commands, unsigned count,
                                  const D3D12_RESOURCE_BARRIER* barriers) {
   const auto active = active_evaluation;
+  if (pending_output_pair.load(std::memory_order_acquire)) {
+    std::scoped_lock lock(command_mutex);
+    output_pair_state.observe(reinterpret_cast<std::uintptr_t>(commands), [&](auto& pending) {
+      auto* output = reinterpret_cast<ID3D12Resource*>(pending.key.output);
+      for (unsigned i = 0; i < count; ++i) {
+        const auto& barrier = barriers[i];
+        if (barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION && barrier.Transition.pResource == output)
+          pending.state.transition(barrier.Flags, barrier.Transition.Subresource, barrier.Transition.StateAfter, true);
+        else if (barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_ALIASING &&
+            (!barrier.Aliasing.pResourceBefore || !barrier.Aliasing.pResourceAfter ||
+             barrier.Aliasing.pResourceBefore == output || barrier.Aliasing.pResourceAfter == output))
+          pending.state.alias();
+      }
+    });
+  }
   if (!active || active->commands != commands) return;
   for (unsigned i = 0; i < count; ++i) {
     const auto& barrier = barriers[i];
@@ -293,6 +346,8 @@ void observe_ngx_output_barriers(void* commands, unsigned count,
       } else active->truncated = true;
       active->observation.transition(barrier.Flags, barrier.Transition.Subresource,
                                      barrier.Transition.StateAfter, active->single_subresource);
+      if (active->seed_call) active->pair_observation.transition(barrier.Flags,
+          barrier.Transition.Subresource, barrier.Transition.StateAfter, active->single_subresource);
     } else if (barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_ALIASING &&
                (!barrier.Aliasing.pResourceBefore || !barrier.Aliasing.pResourceAfter ||
                 barrier.Aliasing.pResourceBefore == active->output ||
@@ -303,6 +358,7 @@ void observe_ngx_output_barriers(void* commands, unsigned count,
             barrier.Aliasing.pResourceBefore, barrier.Aliasing.pResourceAfter};
       } else active->truncated = true;
       active->observation.alias();
+      if (active->seed_call) active->pair_observation.alias();
     }
   }
 }
@@ -311,6 +367,7 @@ void observe_ngx_command_reset(void* commands) {
   if (!probe_installed.load(std::memory_order_acquire) ||
       !pending_commands.load(std::memory_order_acquire)) return;
   std::scoped_lock lock(command_mutex);
+  output_pair_state.invalidate(reinterpret_cast<std::uintptr_t>(commands));
   command_observations.consume(reinterpret_cast<std::uintptr_t>(commands), [&](std::uint64_t call) {
     pending_commands.fetch_sub(1, std::memory_order_relaxed);
     char line[160]{};
@@ -329,6 +386,7 @@ std::uint64_t observe_ngx_queue_submit(ID3D12CommandQueue* queue, unsigned count
   std::scoped_lock lock(command_mutex);
   std::uint64_t ticket{};
   for (unsigned i = 0; i < count; ++i) {
+    output_pair_state.invalidate(reinterpret_cast<std::uintptr_t>(commands[i]));
     command_observations.consume(reinterpret_cast<std::uintptr_t>(commands[i]), [&](std::uint64_t call) {
       pending_commands.fetch_sub(1, std::memory_order_relaxed);
       if (!ticket && completion_group_count < completion_groups.size())
