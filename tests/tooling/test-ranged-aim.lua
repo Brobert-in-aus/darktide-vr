@@ -22,6 +22,15 @@ local function stock_prepare(self, marker)
 end
 local base = {_prepare_shooting = stock_prepare}
 modules[action_root .. "action_shoot"] = base
+local function stock_throw(self, marker)
+    assert(marker==42)
+    self.launches=(self.launches or 0)+1
+    return self._first_person_component.position,nil,self._first_person_component.rotation,65
+end
+modules[action_root.."action_spawn_projectile"]={
+    _spawn_projectile_unit=stock_throw,_fire_projectile=stock_throw}
+modules[action_root.."action_weapon_throw"]={
+    _spawn_projectile_unit=stock_throw,_fire_projectile=stock_throw}
 for _, name in ipairs(paths) do
     modules[action_root .. name] = {
         __class_name = name, _prepare_shooting = base._prepare_shooting,
@@ -130,4 +139,34 @@ for shot = 0, 3 do
     assert(actual_muzzle(a) == 60)
     assert(source_seen == (shot % 2 == 0 and "left" or "right"))
 end
-print("ranged_aim=pass copied_classes=5 simultaneous_groups=pass scope_recovery=pass")
+local throw=action(modules[action_root.."action_weapon_throw"])
+throw._action_settings={kind='weapon_throw'}
+throw._weapon_template={keywords={'melee','dual_shivs','p1'}}
+for _,method in ipairs({'_spawn_projectile_unit','_fire_projectile'}) do
+    assert(modules[action_root.."action_weapon_throw"][method]~=stock_throw)
+    local p,n,r,s=throw[method](throw,42)
+    assert(p==20 and n==nil and r==100 and s==65)
+    assert(throw._first_person_component==shared)
+end
+assert(throw.launches==2,'duplicated stock launch')
+local p,_,r=modules[action_root.."action_spawn_projectile"]._fire_projectile(throw,42)
+assert(p==1 and r==10,'changed the staff-only base policy')
+for _,case in ipairs({'remote','untracked','not_private','node','homing','position','other_weapon','other_action'}) do
+    throw._player_unit=case=='remote' and remote or player
+    enabled,private=case~='untracked',case~='not_private'
+    throw._weapon_template.keywords=case=='other_weapon' and {'melee'} or {'dual_shivs'}
+    throw._action_settings={kind=case=='other_action' and 'spawn_projectile' or 'weapon_throw',
+        spawn_node=case=='node' and 'hand' or nil,
+        track_towards_target=case=='homing',track_towards_position=case=='position'}
+    local p,_,r=throw:_fire_projectile(42)
+    assert(p==1 and r==10,'changed unsupported throw: '..case)
+    assert(throw._first_person_component==shared)
+end
+enabled,private=true,true
+throw._action_settings={kind='weapon_throw'}
+assert(not pcall(aim.with_weapon_throw_pose,throw,function(self)
+    assert(self._first_person_component.rotation==100)
+    error('throw failure')
+end))
+assert(throw._first_person_component==shared and shared.rotation==10)
+print("ranged_aim=pass copied_classes=6 simultaneous_groups=pass throwing_guards=pass scope_recovery=pass")

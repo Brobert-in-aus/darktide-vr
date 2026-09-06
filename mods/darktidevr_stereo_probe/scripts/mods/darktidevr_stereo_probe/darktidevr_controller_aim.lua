@@ -578,6 +578,30 @@ function controller_aim.install(mod, presentation, state)
             return with_first_person_pose(self, position, rotation, func, ...)
         end)
 
+    function controller_aim.with_weapon_throw_pose(action, func, ...)
+        local settings = action._action_settings
+        local template = action._weapon_template
+        -- Audited dual-shiv specials use straight launch parameters. Node-based
+        -- origins and homing/position modules need their own ownership policy.
+        if not is_local_unit(action._player_unit) or not settings or
+                settings.kind ~= "weapon_throw" or settings.spawn_node or
+                settings.track_towards_target or settings.track_towards_position or
+                not template or not has_keyword(template.keywords,"dual_shivs") then
+            return func(action,...)
+        end
+        local position,rotation = controller_aim.target("right")
+        return with_first_person_pose(action,position,rotation,func,...)
+    end
+    local ActionWeaponThrow = require(
+        "scripts/extension_systems/weapon/actions/action_weapon_throw")
+    for _,method in ipairs({"_spawn_projectile_unit","_fire_projectile"}) do
+        -- Stingray copies inherited methods into concrete classes; hooking only
+        -- ActionSpawnProjectile can miss an already-created ActionWeaponThrow.
+        mod:hook(ActionWeaponThrow,method,function(func,self,...)
+            return controller_aim.with_weapon_throw_pose(self,func,...)
+        end)
+    end
+
     function controller_aim.with_melee_aim(action, func, ...)
         if not is_local_unit(action._player_unit) then
             return func(action, ...)

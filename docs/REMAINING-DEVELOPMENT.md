@@ -31,8 +31,10 @@ that physical damage integration is complete.
 The [source audit and candidate](RANGED-WEAPON-AUDIT.md) identifies copied-class
 hook bypass, post-increment simultaneous grouping and independent flame query
 routes. The candidate directly hooks the five shooting classes before stock
-preparation and passes offline regressions. Live firing acceptance is pending;
-throwing specials and non-staff grenade abilities require separate coverage.
+preparation and passes offline regressions. The dual-shiv throwing special now
+has its own guarded spawn/launch pose hooks with live initialization verified.
+Live firing acceptance is pending; grenade preview/aim/release and other thrown
+abilities require the coupled follow-up described in that audit.
 
 User reports that ranged weapons other than the force staff do not fire along
 the intended aim. Perform a pass across every class and ranged weapon family,

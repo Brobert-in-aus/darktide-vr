@@ -49,7 +49,7 @@ searched and are distinguished from player ranged weapons below.
 | `flamer_gas`, `flamer_gas_burst` | flamers, flame force staff | Concrete preparation plus damage-target and suppression pose hooks |
 | `spawn_projectile` | force staffs | Existing explicit spawn/fire hooks retained; charged staff-tip and primary left-origin convergence unchanged |
 | `chain_lightning` | lightning force staff | Existing target-module and damage hooks retained |
-| `weapon_throw` | dual shivs special | Separate copied `ActionSpawnProjectile` subclass; not covered by the gun fix, requires its own origin/targeting audit |
+| `weapon_throw` | dual shivs special | Concrete spawn/launch hooks now provide right-hand pose for the audited straight-throw configuration; worn acceptance pending |
 
 Non-gun `spawn_projectile` grenade abilities remain outside the staff-only
 projectile target policy. `aim_projectile` generated grenade/luggable trajectories
@@ -91,3 +91,48 @@ shotgun, projectile launcher and both flamer modes. Include repeated and
 simultaneous fire, ADS/hip fire, charge/release and force-staff regression. Do
 not equate a successful Lua load or synthetic counters with physical aim
 acceptance. No such acceptance has been claimed.
+
+## Throwing follow-up — 6 September
+
+Both dual-shiv variants use `ActionWeaponThrow`, a copied-method subclass of
+`ActionSpawnProjectile`. The staff-only base policy did not author its pose.
+The candidate directly hooks `_spawn_projectile_unit` and `_fire_projectile`
+on the concrete class. It accepts only local, tracked, private-range actions
+with kind `weapon_throw` and the `dual_shivs` keyword. Node-based origins and
+target/position-tracking variants fall back to stock pending separate audits.
+
+The stock throw retains its 0.2 s fire time, 0.5 s total action time, special
+charge consumption, 65 launch speed, 0.2 m forward spawn offset, small authored
+yaw/pitch offsets, gravity and 0.2 m projectile collision radius. The scoped
+read proxy changes the reference pose; it does not implement physical throwing
+or claim the ballistic path is identical to the straight aim reticle.
+
+The expanded `ranged_aim` fixture covers copied throw-class dispatch, both
+spawn/launch stages, nil returns, exactly-once stock calls, scope restoration
+on error, and unsupported-owner/tracking/mode/configuration fallbacks. It is
+now registered in CTest alongside `melee_aim`; both and the 30-chunk LuaJIT gate
+pass. Staff-only base behavior remains unchanged.
+
+Grenade/luggable routes need a coupled pass, not a camera-pose-only patch:
+
+- `ActionAimProjectile.fixed_update` authors trajectory state from camera pose.
+- `ActionThrowGrenade._spawn_projectile` combines a fresh camera-based direction
+  with cached aim rotation/speed/momentum; release occurs after an authored delay.
+- `AimProjectileEffects.update_unit_position` independently reads the first-person
+  unit's root transform and recomputes its visual arc. It also applies a separate
+  cosmetic arc-start offset. Updating only the action would leave the preview
+  pointing elsewhere.
+- `ActionThrowLuggable` consumes the cached aim state for throws and a different
+  first-person physics helper for drops.
+- Zealot knives use another `spawn_projectile` route with `zealot` rather than
+  `grenade` keywords. Psyker homing knives require target-module ownership too.
+
+These remain unmodified. The next pass must align simulation, release and visual
+preview while retaining charge-speed curves, collision-safe spawn checks, stock
+ability costs and remote-player behavior. Private-range acceptance does not
+establish remote-server hand-pose transport for mission play.
+
+Dual-shiv live initialization: both concrete hooks installed; `shared_ready=2162`
+with 42.9 fresh pairs/s, zero interval fallback and zero pose mismatches. No
+matching mod error was found. The weapon was not equipped or thrown unattended;
+physical hand-aim acceptance remains pending.
