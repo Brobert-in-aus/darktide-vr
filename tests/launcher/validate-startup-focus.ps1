@@ -30,6 +30,10 @@ public static class DarktideStartupFocus {
 }
 '@
 $script:sent = @()
+$script:startupKeyAttempts = @{ StateTitle = 0 }
+$script:observedState = 'StateTitle'
+function Assert-DarktideStartupOwner { }
+function Get-DarktideStartupState { return $script:observedState }
 function New-Object {
     param([string] $ComObject)
     if ($ComObject -ne 'WScript.Shell') { throw 'Unexpected COM request' }
@@ -40,14 +44,19 @@ function New-Object {
 }
 $process = Get-Process -Id $PID
 [DarktideStartupFocus]::ForegroundProcess = 0
-Send-DarktideKey -Process $process -Keys '{ENTER}'
+Send-DarktideKey -Process $process -Keys '{ENTER}' -ExpectedState 'StateTitle'
 if ($script:sent.Count) { throw 'Background startup injected input' }
 [DarktideStartupFocus]::ForegroundProcess = $PID
-Send-DarktideKey -Process $process -Keys ' '
+Send-DarktideKey -Process $process -Keys ' ' -ExpectedState 'StateTitle'
 if ($script:sent.Count -ne 1 -or $script:sent[0] -ne ' ') {
     throw 'Foreground startup did not deliver its key'
 }
 [DarktideStartupFocus]::ForegroundProcess = 0
-Send-DarktideKey -Process $process -Keys '{ENTER}'
+Send-DarktideKey -Process $process -Keys '{ENTER}' -ExpectedState 'StateTitle'
 if ($script:sent.Count -ne 1) { throw 'Alt-Tab did not suspend input' }
+[DarktideStartupFocus]::ForegroundProcess = $PID
+$script:observedState = 'StateGameplay'
+Send-DarktideKey -Process $process -Keys ' ' -ExpectedState 'StateTitle'
+if ($script:sent.Count -ne 1) { throw 'Stale title readiness injected gameplay input' }
+if ($script:startupKeyAttempts.StateTitle -ne 1) { throw 'Skipped keys counted as attempts' }
 Write-Output 'startup_focus=pass'

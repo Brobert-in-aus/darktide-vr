@@ -7423,27 +7423,14 @@ end
 
 function presentation.body_ik_calibrated_wrist_target(
         side, target_position, target_rotation)
-    if side == "left" then
-        -- A held controller-to-wrist offset must rotate with the controller.
-        -- Preserve the existing neutral-pose correction, but keep every part
-        -- in grip space so wrist roll cannot slide the glove across the palm.
-        return target_position - Quaternion.right(target_rotation) * 0.03 -
-            Quaternion.forward(target_rotation) * 0.04 +
-            Quaternion.up(target_rotation) * 0.04
-    end
-    -- OpenXR locates the grip pose inside the Touch controller while the model
-    -- target is the anatomical wrist. The original 5 cm grip-up correction
-    -- placed the controller inside the palm but left the rendered hand inward,
-    -- forward and high. Apply the measured residual in the body frame so
-    -- lateral correction mirrors between hands and does not rotate when the
-    -- player pronates the wrist.
-    local body_rotation = Quaternion.axis_angle(
-        Vector3.up(), controller_observation.body_visual_yaw or 0)
+    -- The anatomical wrist is a rigid offset from the controller grip on both
+    -- sides. Preserve each neutral-pose correction, but rotate the complete
+    -- vector in grip space. A body/world residual made the unarmed right glove
+    -- slide across the palm when the controller rolled or pointed sideways.
     local out_sign = side == "left" and -1 or 1
-    return target_position + Quaternion.up(target_rotation) * 0.05 +
-        Quaternion.right(body_rotation) * (0.03 * out_sign) -
-        Quaternion.forward(body_rotation) * 0.04 -
-        Vector3.up() * 0.01
+    return target_position + Quaternion.right(target_rotation) * (0.03 * out_sign) -
+        Quaternion.forward(target_rotation) * 0.04 +
+        Quaternion.up(target_rotation) * 0.04
 end
 
 function presentation.update_body_ik_trace_gate(fixed_frame)
@@ -8192,7 +8179,7 @@ function presentation.apply_tracked_arms(unit, sequence, world, anchor_unit)
             presentation.body_proxy.rigid_hands_active() then
         -- Rigid glove roots still target the anatomical wrist, not the grip
         -- origin embedded inside the Touch controller. Preserve the accepted
-        -- body-frame correction used by the earlier articulated-hand path.
+        -- grip-relative correction used by the articulated-hand path.
         local rigid_left_target = left_target and
             presentation.body_ik_calibrated_wrist_target(
                 "left", left_target, left_rotation)

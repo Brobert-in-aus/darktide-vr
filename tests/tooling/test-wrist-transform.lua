@@ -32,6 +32,14 @@ near(presentation.body_ik_calibrated_wrist_target('left',origin,roll),origin+v(.
 -- Upside down, where body-frame residuals previously moved across the palm.
 local inverted={right=v(-1,0,0),forward=v(0,1,0),up=v(0,0,-1)}
 near(presentation.body_ik_calibrated_wrist_target('left',origin,inverted),origin+v(.03,-.04,-.04))
--- Keep the previously accepted right-hand mapping in this candidate.
-near(presentation.body_ik_calibrated_wrist_target('right',origin,roll),origin+v(.08,-.04,-.01))
-print('wrist transform covariance and right-hand preservation passed')
+-- Right neutral calibration is unchanged; its full correction now follows
+-- grip roll just like the accepted left-hand correction.
+near(presentation.body_ik_calibrated_wrist_target('right',origin,identity),origin+v(.03,-.04,.04))
+near(presentation.body_ik_calibrated_wrist_target('right',origin,roll),origin+v(.04,-.04,-.03))
+near(presentation.body_ik_calibrated_wrist_target('right',origin,inverted),origin+v(-.03,-.04,-.04))
+local yaw={right=v(0,1,0),forward=v(-1,0,0),up=v(0,0,1)}
+near(presentation.body_ik_calibrated_wrist_target('right',origin,yaw),origin+v(.04,.03,.04))
+controller_observation.body_visual_yaw=1.8
+near(presentation.body_ik_calibrated_wrist_target('right',origin,roll),origin+v(.04,-.04,-.03))
+near(presentation.body_ik_calibrated_wrist_target('left',origin,roll),origin+v(.04,-.04,.03))
+print('both wrist offsets follow grip rotation; neutral calibration preserved')

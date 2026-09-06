@@ -117,6 +117,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+. (Join-Path $PSScriptRoot 'psykhanium-launch-request.ps1')
 
 $runner = Join-Path $PSScriptRoot 'run-darktide-shared-eyes.ps1'
 if (-not (Test-Path -LiteralPath $runner -PathType Leaf)) {
@@ -257,9 +258,7 @@ if (-not $SkipDeploymentSync) {
     }
 }
 
-$psykhaniumFlag = $null
-$psykhaniumFlagOriginal = $null
-$psykhaniumFlagExisted = $false
+$psykhaniumRequest = $null
 
 if ($FreshPsoCache) {
     if (Get-Process -Name Darktide -ErrorAction SilentlyContinue) {
@@ -355,19 +354,16 @@ $launchStarted = Get-Date
 $advanceProcess = $null
 $characterStartFlag = Join-Path $GameRoot 'mods\darktidevr_stereo_probe\darktidevr_start_character.flag'
 try {
+$gameAlreadyRunning = [bool](Get-Process Darktide -ErrorAction SilentlyContinue)
+if ($EnterPsykhanium -and $gameAlreadyRunning) {
+    throw 'Psykhanium entry must be armed before Darktide starts; close the game and retry.'
+}
+if (-not $gameAlreadyRunning) {
+    $rangeAction = if ($EnterPsykhanium) { 'enter' } else { 'disabled' }
+    $psykhaniumRequest = Set-PsykhaniumLaunchRequest -GameRoot $GameRoot -Action $rangeAction
+    Write-Output "Psykhanium one-shot request: $rangeAction (owned by this launch)."
+}
 if ($EnterPsykhanium) {
-    if (Get-Process Darktide -ErrorAction SilentlyContinue) {
-        throw 'Psykhanium entry must be armed before Darktide starts; close the game and retry.'
-    }
-    $psykhaniumFlag = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_enter_psykhanium.flag'
-    $psykhaniumFlagExisted =
-        Test-Path -LiteralPath $psykhaniumFlag -PathType Leaf
-    if ($psykhaniumFlagExisted) {
-        $psykhaniumFlagOriginal = Get-Content -LiteralPath $psykhaniumFlag -Raw
-    }
-    Set-Content -LiteralPath $psykhaniumFlag -Value 'enter' -Encoding ascii
-    Write-Output 'Psykhanium entry armed before launcher startup.'
 
     # The in-game one-shot state machine deliberately waits for an
     # authenticated hub before opening the training-ground view.  Therefore
@@ -376,8 +372,8 @@ if ($EnterPsykhanium) {
     $AutoEnterHub = $true
 }
 
-# One-shot mod callback: the tracked menu pointer intentionally suppresses
-# keyboard confirm, so sending Enter cannot reliably select Start in VR.
+# One-shot mod callback: use the actual ready Start action without depending on
+# desktop focus or synthetic confirmation timing. Keyboard input stays enabled.
 $characterStartRequest = if ($AutoEnterHub -and -not $ManualStartup -and -not $ManualCharacterSelect) { 'start' } else { 'disabled' }
 Set-Content -LiteralPath $characterStartFlag -Value $characterStartRequest -Encoding ascii
 
@@ -1105,16 +1101,9 @@ finally {
             Start-Sleep -Milliseconds 500
         } while ($true)
     }
-    if ($psykhaniumFlag) {
-        if ($psykhaniumFlagExisted) {
-            Set-Content -LiteralPath $psykhaniumFlag `
-                -Value $psykhaniumFlagOriginal.Trim() -Encoding ascii
-            Write-Output 'Restored the prior Psykhanium one-shot flag.'
-        }
-        elseif (Test-Path -LiteralPath $psykhaniumFlag -PathType Leaf) {
-            Remove-Item -LiteralPath $psykhaniumFlag -Force
-            Write-Output 'Removed the run-owned Psykhanium one-shot flag.'
-        }
+    if ($psykhaniumRequest) {
+        Clear-PsykhaniumLaunchRequest -Request $psykhaniumRequest
+        Write-Output 'Retired this launch''s Psykhanium request without restoring old commands.'
     }
     if ($billboardIdentityCapturePath -and $billboardIdentityLogPath -and
             (Test-Path -LiteralPath $billboardIdentityLogPath -PathType Leaf)) {

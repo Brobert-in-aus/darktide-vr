@@ -537,3 +537,35 @@ readability await observation; no further interaction-routing change was made.
 
 User acceptance: menu changes verified (be43948). Work continues on the reported
 right-wrist offset in the unarmed hub pose.
+
+### Right unarmed wrist correction candidate (6 September)
+
+The accepted left-hand fix used a rigid controller-relative wrist offset; right
+still combined grip-up with body-right/body-forward/world-up residuals. Applying
+the same rigid-vector policy to right preserves its neutral (+3,-4,+4 cm) offset
+while rotating all components with grip yaw/roll. Left's accepted calculation is
+unchanged. The shared helper covers articulated IK, rigid glove placement and
+reach estimation; no weapon aim or attack direction code is changed.
+
+Pinned LuaJIT passes 33 chunks. Seven focused CTests pass: wrist_transform,
+turning, gameplay_heading, ranged_aim, melee_aim, animation_aim and
+melee_animation_owner. The wrist fixture checks both neutral offsets, roll,
+inversion, right yaw and body-heading independence. Worn right-hand placement
+remains pending. The next launch goes to hub without automatic Psykhanium entry.
+
+### Hub launch automation correction (6 September)
+
+The first right-wrist hub run unexpectedly entered Psykhanium: the fresh console
+reported armed source=one_shot_flag. The launcher previously left stale requests
+untouched on hub launches and restored their old contents during cleanup.
+Each closed-game launch now owns a unique enter/disabled request; hub launches
+explicitly disable entry. Cleanup removes its own request without restoring an
+older command, and cannot delete another launch's still-armed request. Attaching
+to an existing game does not arm or disable range entry.
+
+All five launcher CTests pass, including stale request ownership, early failure,
+startup focus and play transition. The focus fixture was updated for the current
+state/owner-guarded dispatcher; it also verifies stale title readiness cannot
+inject into gameplay. No real desktop input is used by these tests. Retry log:
+artifacts/unattended/right-wrist-hub-retry-20260906.log. Worn wrist acceptance
+remains pending; automated readiness cannot establish alignment.

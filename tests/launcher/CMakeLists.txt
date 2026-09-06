@@ -1,4 +1,7 @@
 if(BUILD_TESTING)
+  add_test(NAME launcher_psykhanium_request
+    COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+      "${CMAKE_CURRENT_SOURCE_DIR}/validate-psykhanium-request.ps1")
   add_test(NAME launcher_game_exit_result
     COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
       "${CMAKE_CURRENT_SOURCE_DIR}/validate-game-exit-result.ps1")

@@ -334,3 +334,11 @@ Live initialization and worn checks remain; do not mark comfort/pivot accepted.
 
 User confirms both smooth and snap turning work. Requested turning modes are
 accepted; native-menu binding hints are now the active backlog item.
+
+### Right wrist candidate: same rigid calibration policy as left
+
+The right-hand helper retained a mixed body/grip-space correction after the
+accepted left fix. Right now uses the mirrored rigid grip-space vector, retaining
+neutral calibration; shared IK/glove/reach callers use that one helper. Seven
+targeted regressions and the 33-chunk LuaJIT gate pass. Hub unarmed and subsequent
+weapon-equipped placement remain for worn validation; no visual pass is claimed.
