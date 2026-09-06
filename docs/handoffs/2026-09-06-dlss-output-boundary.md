@@ -273,3 +273,15 @@ bounds. It does not infer a legacy rectangle when a getter fails or certify an
 eye association from a valid rectangle. Release build and the observation and
 ABI tests pass, including supported legacy data with unsupported newer data,
 out-of-bounds/empty legacy rectangles and failed queries. Live check underway.
+
+The legacy live check passes: complete feature-qualified pairs report
+`0,0,2496,2688` for left and `2496,0,2496,2688` for right within the observed
+4992x2688 output. All legacy getters succeed; newer output-specific getters stay
+unavailable. Calls 10248/10249 and 10260/10261 provide paired evidence. This
+establishes observed rectangle placement, not GPU completion or pixel validity.
+Startup waited at selection while another app was foreground; briefly activating
+the game let the existing startup helper advance. The desktop automation kernel
+was reset immediately afterward. No manual gameplay input was sent.
+Ignored evidence: `legacy-live-ngx.log`, `legacy-live-streamline.tsv` and
+`legacy-live-report.json`. Next trace evaluation command-list submission and
+recording lifetime before attempting any generated-output copy.
