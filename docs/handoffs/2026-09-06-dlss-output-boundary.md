@@ -841,3 +841,43 @@ streamline_submission and stereo_color_resample passed. NOT live accepted yet.
 User requested batching with HUD work before another relaunch. Launcher was
 cancelled before Darktide started; no game/harness process remains. Preserve
 FG-off setting until deliberate combined test. Continue HUD implementation.
+
+## 2026-09-06: explicit HUD alpha submission groundwork (offline)
+
+User requested batching HUD work with the pending live-FG-off mirror fix before
+another launch. Darktide and the harness remain stopped; no visual acceptance is
+claimed. The game FG setting remains off from the user's comparison.
+
+StreamlineEyeTags, StreamlineStereoTags and StreamlineSubmission now accept an
+optional pair of independently rendered, premultiplied UI colour/alpha textures.
+The UI extent must match the runtime eye extent, not the packed two-eye width.
+The descriptors are retained in the input owner and cleared along with other
+tags, including partial API failures. Cross-eye and cross-owner resource aliases
+are rejected. Replacement retirement cannot silently drop an existing UI tag;
+a tag-set change requires explicit cleanup. Existing no-UI callers are unchanged.
+
+This is not yet connected to continuous capture or a runtime UI producer. Do not
+pass the opaque final-frame texture or an RGB-difference image as alpha. Exact
+readback established opaque alpha in both current final and HUDless textures.
+Next work is a genuine transparent render of the HUD panel and world markers;
+stock-menu shader selection alone is not evidence of complete world-GUI coverage.
+Do not capture arbitrary blended draws (lighting/effects), or zero background
+motion vectors under UI rectangles.
+
+Validation on Windows x64: CMake Release targets darktidevr_native_capture,
+darktidevr-streamline-submission-tests, darktidevr-streamline-stereo-inputs-tests,
+and darktidevr-streamline-abi-reference built successfully. CTest
+streamline_submission, streamline_stereo_inputs, streamline_abi_reference passed.
+Submission tests cover both tagging APIs, malformed/aliased UI resources,
+partial failures, ownership fences and UI removal during replacement. The ABI
+test compares UI tag identity against the pinned official Streamline headers.
+No Lua changes. Required live check remains rapid head movement with FG enabled,
+plus editor open/close and live FG off/on mirror recovery in the combined run.
+
+Follow-up in the same offline batch: continuous submission now optionally owns
+and copies a fifth per-eye texture for premultiplied UI, using the existing
+capture and Streamline completion fences. The option is fixed at initialization;
+missing/unconfigured UI fails closed instead of retaining a stale layer. UI is
+currently restricted to full-eye RGBA8 UNORM. Existing native callers do not
+request this option yet. Release native/recovery builds and continuous_recovery
+passed, including 12 pause/discard/resume cycles with and without the UI plane.

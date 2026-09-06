@@ -23,16 +23,17 @@ class StreamlineSubmission {
   bool prepare(std::uint64_t id, std::uint32_t width,
                std::uint32_t height, const std::array<std::uint32_t, 2>& viewports,
                const std::array<StreamlineStereoTags::Constants, 2>& constants,
-               const StreamlineStereoTags::Inputs& inputs) noexcept {
+               const StreamlineStereoTags::Inputs& inputs,
+               const StreamlineStereoTags::UiInputs* ui = nullptr) noexcept {
     if (phase_ != Phase::idle ||
-        !pair_.prepare(width, height, viewports, constants, inputs) ||
+        !pair_.prepare(width, height, viewports, constants, inputs, ui) ||
         !lifetime_.begin(id)) return false;
     id_ = id;
     frame_ = nullptr;
     touched_ = {};
     for (std::uint32_t eye = 0; eye < 2; ++eye) {
       viewports_[eye] = {{nullptr, viewport_type_, 1}, viewports[eye]};
-      for (std::uint32_t tag = 0; tag < 4; ++tag) {
+      for (std::uint32_t tag = 0; tag < pair_.eye(eye)->count(); ++tag) {
         clear_[eye][tag] = pair_.eye(eye)->data()[tag];
         clear_[eye][tag].resource = nullptr;
         clear_[eye][tag].extent = {};
@@ -118,15 +119,21 @@ class StreamlineSubmission {
     for (std::uint32_t eye = 0; eye < 2; ++eye) {
       if (!touched_[eye] || !successor.touched_[eye] ||
           viewports_[eye].value != successor.viewports_[eye].value) return false;
+      // Omitting a UI tag does not remove a previous UI binding. A change of
+      // tag set requires explicit cleanup, rather than replacement retirement.
+      if (pair_.eye(eye)->count() != successor.pair_.eye(eye)->count()) return false;
       const auto& extent = pair_.eye(eye)->data()[3].extent;
       const auto& next_extent = successor.pair_.eye(eye)->data()[3].extent;
       if (std::memcmp(&extent, &next_extent, sizeof(extent)) != 0) return false;
       // Separate owners cannot keep immutable inputs if any resource is shared,
       // including aliases across different eye/role combinations.
-      for (std::uint32_t role = 0; role < 3; ++role)
+      for (std::uint32_t role = 0; role < pair_.eye(eye)->count(); ++role)
         for (std::uint32_t next_eye = 0; next_eye < 2; ++next_eye)
-          for (std::uint32_t next_role = 0; next_role < 3; ++next_role)
-            if (pair_.eye(eye)->data()[role].resource->native ==
+          for (std::uint32_t next_role = 0;
+               next_role < successor.pair_.eye(next_eye)->count(); ++next_role)
+            if (pair_.eye(eye)->data()[role].resource &&
+                successor.pair_.eye(next_eye)->data()[next_role].resource &&
+                pair_.eye(eye)->data()[role].resource->native ==
                 successor.pair_.eye(next_eye)->data()[next_role].resource->native)
               return false;
     }
@@ -151,8 +158,8 @@ class StreamlineSubmission {
                const streamline_2_7_30::ResourceTag* tags,
                void* commands) noexcept {
     return tagging_ == Tagging::frame_based
-        ? api_.tags(frame_, &viewports_[eye], tags, 4, commands)
-        : api_.legacy_tags(&viewports_[eye], tags, 4, commands);
+        ? api_.tags(frame_, &viewports_[eye], tags, pair_.eye(eye)->count(), commands)
+        : api_.legacy_tags(&viewports_[eye], tags, pair_.eye(eye)->count(), commands);
   }
   static constexpr streamline_2_7_30::StructType viewport_type_{
       0x171b6435, 0x9b3c, 0x4fc8, {0x99, 0x94, 0xfb, 0xe5, 0x25, 0x69, 0xaa, 0xa4}};
@@ -165,7 +172,7 @@ class StreamlineSubmission {
   StreamlineStereoTags pair_;
   core::StreamlineInputLifetime lifetime_;
   std::array<streamline_2_7_30::ViewportHandle, 2> viewports_{};
-  std::array<std::array<streamline_2_7_30::ResourceTag, 4>, 2> clear_{};
+  std::array<std::array<streamline_2_7_30::ResourceTag, 5>, 2> clear_{};
   std::array<bool, 2> touched_{};
 };
 } // namespace darktidevr::producer

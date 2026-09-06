@@ -13,11 +13,12 @@ class StreamlineStereoTags {
  public:
   using Constants = streamline_2_7_30::Constants;
   using Inputs = std::array<std::array<StreamlineTagInput, 3>, 2>;
+  using UiInputs = std::array<StreamlineTagInput, 2>;
 
   bool prepare(std::uint32_t width, std::uint32_t height,
                const std::array<std::uint32_t, 2>& viewports,
                const std::array<Constants, 2>& constants,
-               const Inputs& inputs) noexcept {
+               const Inputs& inputs, const UiInputs* ui = nullptr) noexcept {
     ready_ = false;
     constants_ = {};
     viewports_ = {};
@@ -34,8 +35,15 @@ class StreamlineStereoTags {
     for (const auto& left : inputs[0])
       for (const auto& right : inputs[1])
         if (left.native == right.native) return false;
-    if (!eyes_[0].prepare(0, width, height, inputs[0]) ||
-        !eyes_[1].prepare(1, width, height, inputs[1])) return false;
+    if (ui) {
+      if ((*ui)[0].native == (*ui)[1].native) return false;
+      for (const auto& overlay : *ui)
+        for (const auto& eye : inputs)
+          for (const auto& input : eye)
+            if (overlay.native == input.native) return false;
+    }
+    if (!eyes_[0].prepare(0, width, height, inputs[0], ui ? &(*ui)[0] : nullptr) ||
+        !eyes_[1].prepare(1, width, height, inputs[1], ui ? &(*ui)[1] : nullptr)) return false;
     constants_ = constants; // Preserve per-eye matrices, jitter and reset flags.
     viewports_ = viewports;
     ready_ = true;

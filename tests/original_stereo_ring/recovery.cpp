@@ -40,14 +40,22 @@ int main() {
       check(queue->Signal(done.Get(),++value)); check(done->SetEventOnCompletion(value,event));
       expect(WaitForSingleObject(event,10000)==WAIT_OBJECT_0);
     };
-    StreamlineContinuousSubmission submission;
-    expect(submission.initialize(device.Get(),2,{1,2},descriptions,log_message,true,true));
+    ComPtr<ID3D12Resource> ui_source;
+    check(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,
+        D3D12_RESOURCE_STATE_COMMON,nullptr,IID_PPV_ARGS(&ui_source)));
+    const std::array<D3D12_RESOURCE_DESC,2> ui_descriptions{desc,desc};
+    const darktidevr::producer::StreamlineTagInput ui_input{
+        ui_source.Get(),8,4,D3D12_RESOURCE_STATE_COMMON,DXGI_FORMAT_R8G8B8A8_UNORM};
     darktidevr::producer::streamline_2_7_30::Constants constants{};
+    for (const bool with_ui : {false,true}) {
+    StreamlineContinuousSubmission submission;
+    expect(submission.initialize(device.Get(),2,{1,2},descriptions,log_message,true,true,
+                                  with_ui ? &ui_descriptions : nullptr));
     for(std::uint64_t frame=1;frame<=12;++frame) {
-      submission.capture(0,frame,frame,constants,inputs,queue.Get(),execute);
+      submission.capture(0,frame,frame,constants,inputs,queue.Get(),execute,with_ui ? &ui_input : nullptr);
       expect(submission.pose()==frame && !submission.finished());
       // Exercise discarded partial and complete captures, plus repeated pause.
-      if(frame%2==0) submission.capture(1,frame,frame,constants,inputs,queue.Get(),execute);
+      if(frame%2==0) submission.capture(1,frame,frame,constants,inputs,queue.Get(),execute,with_ui ? &ui_input : nullptr);
       submission.before_present(nullptr,queue.Get(),frame+1,{}, {},
           darktidevr::producer::StreamlineSubmission::Tagging::legacy,execute);
       submission.pause(queue.Get(),execute,"editor_open");
@@ -59,6 +67,14 @@ int main() {
             darktidevr::producer::StreamlineSubmission::Tagging::legacy,execute);
       expect(binding_rejections==rejections); // Paused owners are not resubmitted.
       drain();
+    }
+    }
+    for (const bool configured : {false,true}) {
+      StreamlineContinuousSubmission invalid;
+      expect(invalid.initialize(device.Get(),2,{1,2},descriptions,log_message,true,false,
+                                 configured ? &ui_descriptions : nullptr));
+      invalid.capture(0,1,1,constants,inputs,queue.Get(),execute,configured ? nullptr : &ui_input);
+      expect(invalid.finished()); // Never silently omit an expected alpha plane.
     }
     // Bounded diagnostic probes intentionally retain their fail-closed policy.
     StreamlineContinuousSubmission bounded;

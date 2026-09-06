@@ -106,6 +106,15 @@ int main() {
       prepared.data()[1].type != sl::kBufferTypeMotionVectors ||
       prepared.data()[2].type != sl::kBufferTypeHUDLessColor ||
       prepared.data()[3].type != sl::kBufferTypeBackbuffer) return 1;
+  int ui_resource{};
+  const darktidevr::producer::StreamlineTagInput ui{
+      &ui_resource, 200, 200, 64, 28};
+  if (!prepared.prepare(1, 200, 200, inputs, &ui) || prepared.count() != 5 ||
+      prepared.data()[4].type != sl::kBufferTypeUIColorAndAlpha ||
+      prepared.data()[4].lifecycle != sl::ResourceLifecycle::eValidUntilPresent ||
+      prepared.data()[4].resource->native != &ui_resource ||
+      prepared.data()[4].extent.width != 200 ||
+      prepared.data()[4].extent.left != 0) return 1;
   sl::Constants sdk_constants;
   sdk_constants.jitterOffset = {0.25f, -0.125f};
   std::array<mirror::Constants, 2> constants{};

@@ -20,7 +20,8 @@ bool StreamlineContinuousSubmission::make_commands(ID3D12Device* device,
 
 bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned frames,
     const std::array<std::uint32_t, 2>& viewports,
-    const std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2>& descriptions, Log log, bool persistent, bool profile) {
+    const std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2>& descriptions, Log log, bool persistent, bool profile,
+    const std::array<D3D12_RESOURCE_DESC, 2>* ui) {
   if (initialized_ || stopped_) return false;
   log_ = log;
   if (!device || frames < 2 || frames > frames_.size() || !viewports[0] ||
@@ -33,6 +34,13 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
   viewports_ = viewports;
   count_ = frames;
   persistent_ = persistent;
+  ui_enabled_ = ui != nullptr;
+  if (ui) for (const auto& description : *ui) {
+    if (description.Width != width_ || description.Height != height_ ||
+        description.Format != DXGI_FORMAT_R8G8B8A8_UNORM) {
+      fail("ui_extent_or_format"); return false;
+    }
+  }
   if (!make_commands(device, pause_allocator_, pause_commands_) ||
       FAILED(pause_commands_->Close()) ||
       FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pause_fence_)))) {
@@ -64,8 +72,8 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
       }
     }
     for (unsigned eye = 0; eye < 2; ++eye) {
-      for (unsigned role = 0; role < 4; ++role) {
-        const auto& description = descriptions[eye][role==3 ? 2 : role];
+      for (unsigned role = 0; role < (ui_enabled_ ? 5U : 4U); ++role) {
+        const auto& description = role == 4 ? (*ui)[eye] : descriptions[eye][role==3 ? 2 : role];
         if (description.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
             description.MipLevels != 1 || description.DepthOrArraySize != 1 ||
             description.SampleDesc.Count != 1 ||
@@ -196,7 +204,7 @@ bool StreamlineContinuousSubmission::resume_capture() {
 void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present,
     std::uint64_t pose, const sl::Constants& constants,
     const std::array<StreamlineTagInput, 4>& inputs,
-    ID3D12CommandQueue* queue, Execute execute) {
+    ID3D12CommandQueue* queue, Execute execute, const StreamlineTagInput* ui) {
   if (!initialized_ || stopped_ || staged_ || eye > 1 || !queue || !execute) return;
   if (!resume_capture()) return;
   auto& frame = frames_[current_ % count_];
@@ -206,8 +214,12 @@ void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present
   if (!pose || (eye == 1 && (frame.source_present != present || frame.pose != pose))) {
     fail("pair_identity"); return;
   }
-  for (unsigned role = 0; role < 4; ++role) {
-    const auto& input = inputs[role];
+  if (ui_enabled_ != (ui != nullptr)) { fail("ui_capture_missing_or_unconfigured"); return; }
+  if (ui) for (const auto& input : inputs) {
+    if (input.native == ui->native) { fail("ui_capture_alias"); return; }
+  }
+  for (unsigned role = 0; role < (ui_enabled_ ? 5U : 4U); ++role) {
+    const auto& input = role == 4 ? *ui : inputs[role];
     const auto target = frame.textures[eye][role]->GetDesc();
     if (!input.native || input.state == UINT_MAX || input.width != target.Width ||
         input.height != target.Height || (input.format != static_cast<unsigned>(target.Format) &&
@@ -219,8 +231,8 @@ void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present
   frame.timing_frequencies[eye] = 0;
   if (frame.timing_queries && SUCCEEDED(queue->GetTimestampFrequency(&frame.timing_frequencies[eye])))
     commands->EndQuery(frame.timing_queries.Get(), D3D12_QUERY_TYPE_TIMESTAMP, eye * 2);
-  for (unsigned role = 0; role < 4; ++role) {
-    const auto& input = inputs[role];
+  for (unsigned role = 0; role < (ui_enabled_ ? 5U : 4U); ++role) {
+    const auto& input = role == 4 ? *ui : inputs[role];
     auto* source = static_cast<ID3D12Resource*>(input.native);
     frame.sources[eye][role] = source;
     D3D12_RESOURCE_BARRIER barrier{};
@@ -281,6 +293,7 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
     fail("backbuffer_extent"); return;
   }
   StreamlineStereoTags::Inputs inputs{};
+  StreamlineStereoTags::UiInputs ui{};
   auto* commands = frame.stage_commands.Get();
   frame.timing_frequencies[2] = 0;
   if (frame.timing_queries && SUCCEEDED(queue->GetTimestampFrequency(&frame.timing_frequencies[2])))
@@ -290,6 +303,11 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
     for (unsigned role = 0; role < 3; ++role) {
       const auto source = frame.textures[eye][role]->GetDesc();
       inputs[eye][role] = {frame.textures[eye][role].Get(), static_cast<unsigned>(source.Width),
+          source.Height, D3D12_RESOURCE_STATE_COPY_DEST, static_cast<unsigned>(source.Format)};
+    }
+    if (ui_enabled_) {
+      const auto source = frame.textures[eye][4]->GetDesc();
+      ui[eye] = {frame.textures[eye][4].Get(), static_cast<unsigned>(source.Width),
           source.Height, D3D12_RESOURCE_STATE_COPY_DEST, static_cast<unsigned>(source.Format)};
     }
   }
@@ -318,7 +336,8 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
   original_ready_=persistent_ ? stage_original_stereo(commands,backbuffer.Get(),present,frame.pose,generation) : 0;
   if(persistent_) stage_stereo_ui_readback(commands,frame.textures[0][2].Get(),frame.textures[0][3].Get(),
       frame.textures[1][2].Get(),frame.textures[1][3].Get());
-  if (!frame.submission.prepare(current_ + 1, width_, height_, viewports_, frame.constants, inputs) ||
+  if (!frame.submission.prepare(current_ + 1, width_, height_, viewports_, frame.constants, inputs,
+                                 ui_enabled_ ? &ui : nullptr) ||
       !frame.submission.stage(api, reinterpret_cast<void*>(bindings[0].token), commands,
           tagging, StreamlineSubmission::ConstantsMode::already_supplied)) {
     fail("tag_stage"); return;

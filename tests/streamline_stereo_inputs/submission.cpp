@@ -10,6 +10,7 @@ namespace sl = streamline_2_7_30;
 namespace {
 std::vector<int> calls;
 int fail_at{}, attempt{}, clear_fail_eye{};
+std::uint32_t expected_tag_count = 4;
 void* expected_frame;
 void check(bool value, std::source_location location = std::source_location::current()) {
   if (!value) {
@@ -25,10 +26,15 @@ int constants(const void* values, const void* frame, const void* viewport) {
 }
 int tags(const void* frame, const void* viewport, const void* data,
          std::uint32_t count, void* commands) {
-  check(frame == expected_frame && count == 4 && commands);
+  check(frame == expected_frame && count == expected_tag_count && commands);
   const auto id = static_cast<const sl::ViewportHandle*>(viewport)->value;
   const auto* tag = static_cast<const sl::ResourceTag*>(data);
   const bool clearing = !tag[0].resource;
+  if (count == 5) {
+    check(tag[4].type == 23);
+    if (!clearing) check(tag[4].resource && tag[4].extent.width == 200 &&
+                         tag[4].extent.height == 200 && tag[4].extent.left == 0);
+  }
   calls.push_back(static_cast<int>(id * 10 + (clearing ? 2 : 1)));
   if (clearing) {
     for (std::uint32_t i = 0; i < count; ++i)
@@ -220,6 +226,64 @@ int main() {
       check(!successor.retire());
     }
     fail_at = 0;
+  }
+  // Explicit alpha belongs to the same immutable owner as scene/motion. Cover
+  // both API routes, partially installed tags and UI-to-no-UI replacement.
+  int ui_resources[4]{};
+  StreamlineStereoTags::UiInputs ui{{
+      {&ui_resources[0], 200, 200, 64, 28},
+      {&ui_resources[1], 200, 200, 64, 28}}};
+  for (int mutation = 0; mutation < 6; ++mutation) {
+    auto invalid = ui;
+    switch (mutation) {
+      case 0: invalid[1].native = nullptr; break;
+      case 1: invalid[1].width = 400; break;
+      case 2: invalid[1].native = invalid[0].native; break;
+      case 3: invalid[1].native = inputs[0][0].native; break;
+      case 4: invalid[0].state = ~0U; break;
+      case 5: invalid[0].format = 0; break;
+    }
+    StreamlineSubmission invalid_batch;
+    check(!invalid_batch.prepare(1, 200, 200, {1, 2}, values, inputs, &invalid));
+  }
+  for (const auto mode : {StreamlineSubmission::Tagging::frame_based,
+                          StreamlineSubmission::Tagging::legacy}) {
+    for (int failure = 0; failure <= 2; ++failure) {
+      StreamlineSubmission overlay;
+      expected_tag_count = 5;
+      attempt = 0; fail_at = failure;
+      check(overlay.prepare(1, 200, 200, {1, 2}, values, inputs, &ui));
+      check(overlay.stage({nullptr, tags, legacy_tags}, &next_frame, &commands,
+                          mode, StreamlineSubmission::ConstantsMode::already_supplied)
+            == (failure == 0));
+      check(overlay.clear_tags(&commands));
+      check(overlay.retire());
+    }
+  }
+  fail_at = 0;
+  for (int scenario = 0; scenario < 3; ++scenario) {
+    StreamlineSubmission first, successor;
+    auto next_ui = ui;
+    next_ui[0].native = &ui_resources[2];
+    next_ui[1].native = scenario == 1 ? ui[0].native : &ui_resources[3];
+    expected_tag_count = 5;
+    check(first.prepare(1, 200, 200, {1, 2}, values, inputs, &ui));
+    check(first.stage(api, &next_frame, &commands));
+    check(first.begin_present());
+    check(successor.prepare(2, 200, 200, {1, 2}, values, next_inputs,
+                            scenario == 2 ? nullptr : &next_ui));
+    expected_tag_count = scenario == 2 ? 4 : 5;
+    check(successor.stage(api, &next_frame, &commands));
+    check(first.replace_tags_with(successor) == (scenario == 0));
+    check(!first.retire());
+    if (scenario == 0) {
+      check(first.record_ticket(1, 0, 100, 1));
+      check(first.record_ticket(1, 1, 200, 1));
+      check(first.observe_completion(1, 0, 100, 1));
+      check(!first.retire());
+      check(first.observe_completion(1, 1, 200, 1));
+      check(first.retire());
+    }
   }
   std::cout << "streamline_submission=pass\n";
 }

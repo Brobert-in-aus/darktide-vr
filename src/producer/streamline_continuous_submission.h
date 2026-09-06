@@ -23,11 +23,13 @@ class StreamlineContinuousSubmission {
   bool initialize(ID3D12Device* device, unsigned frames,
                   const std::array<std::uint32_t, 2>& viewports,
                   const std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2>& descriptions,
-                  Log log, bool persistent = false, bool profile = false);
+                  Log log, bool persistent = false, bool profile = false,
+                  const std::array<D3D12_RESOURCE_DESC, 2>* ui = nullptr);
   void capture(unsigned eye, std::uint64_t present, std::uint64_t pose,
                const streamline_2_7_30::Constants& constants,
                const std::array<StreamlineTagInput, 4>& inputs,
-               ID3D12CommandQueue* queue, Execute execute);
+               ID3D12CommandQueue* queue, Execute execute,
+               const StreamlineTagInput* ui = nullptr);
   void before_present(IDXGISwapChain3* swapchain, ID3D12CommandQueue* queue,
                       std::uint64_t present,
                       const std::array<core::StreamlinePresentEyeBinding, 2>& bindings,
@@ -53,8 +55,8 @@ class StreamlineContinuousSubmission {
   template<class T> using ComPtr = Microsoft::WRL::ComPtr<T>;
   struct Frame {
     StreamlineSubmission submission;
-    // Depth, motion, HUDless scene, and final color including UI.
-    std::array<std::array<ComPtr<ID3D12Resource>, 4>, 2> textures, sources;
+    // Depth, motion, HUDless scene, final color and optional premultiplied UI.
+    std::array<std::array<ComPtr<ID3D12Resource>, 5>, 2> textures, sources;
     std::array<ComPtr<ID3D12CommandAllocator>, 2> capture_allocators;
     std::array<ComPtr<ID3D12GraphicsCommandList>, 2> capture_commands;
     std::array<ComPtr<ID3D12Fence>, 2> capture_fences, input_fences;
@@ -83,6 +85,7 @@ class StreamlineContinuousSubmission {
   std::uint32_t width_{}, height_{};
   bool initialized_{}, stopped_{}, staged_{}, cleanup_submitted_{};
   bool persistent_{};
+  bool ui_enabled_{};
   std::array<double, 3> timing_totals_{};
   unsigned timing_samples_{};
   bool paused_{}, previous_tags_active_{};
