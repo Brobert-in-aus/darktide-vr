@@ -505,3 +505,10 @@ only title Space and reports whether the callback was observed when loading begi
 Offline menu input/startup tests and the pinned 31-chunk Lua gate pass. Live check
 pending. The user observed one side-by-side frame at startup in run 88580;
 worn startup-flicker acceptance remains open despite the prior stale-read fix.
+
+Live automatic Start PASS: callback run reports ready at 04:10:37.430, invokes
+stock Start at 04:10:38.434, enters StateLoading, and helper exits reporting
+startup.character_select.callback_observed=True. No Enter/click was supplied by
+the desktop tooling. Desktop control was reset immediately after observation.
+Evidence: artifacts/unattended/auto-start-callback-live-20260906.log and the
+corresponding character-select/console logs. Generated XR acceptance is separate.

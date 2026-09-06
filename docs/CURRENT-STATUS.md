@@ -26,21 +26,27 @@ by normal sync. Full-body and fixed HUD-panel presentation remain experimental.
 
 Head-pose starvation during bounded DLSS submissions is diagnosed and corrected:
 the pair-driven image wait now services fresh tracking independently. Before the
-change, seven reads rejected 343–469 ms-old poses; the same four-batch test now
+change, seven reads rejected 343ï¿½469 ms-old poses; the same four-batch test now
 has zero failed reads. The delay comes from recreating two NVIDIA FG features
-on each diagnostic entry/exit (328–391 ms Presents). Image submission remains
+on each diagnostic entry/exit (328ï¿½391 ms Presents). Image submission remains
 pair-driven, the 250 ms pose freshness gate is unchanged, and worn flicker
 acceptance remains pending. See the [output-boundary handoff](handoffs/2026-09-06-dlss-output-boundary.md#head-pose-starvation-investigation).
 
 ## Launch
 
-`-AutoEnterHub` advances title/character select using the mod's stock Start
-readiness observation. `-EnterPsykhanium` includes this automatically;
-`-ManualCharacterSelect` stops before selecting. The helper sends only while
-the game is foreground, checks the latest state before every key, is bound to
-one game process/log, and is cleaned up by its launcher. It does not steal
-focus. Per-launch stdout/stderr are saved under ignored `artifacts/unattended`.
+`-AutoEnterHub` arms a one-shot stock Start callback after character-select
+readiness remains valid for a second. `-EnterPsykhanium` includes it;
+`-ManualCharacterSelect` disables it. Live automatic Start is verified. Keyboard
+Enter is intentionally suppressed by the VR pointer layer, so the helper only
+sends title Space while foreground and observes the subsequent Start callback
+and loading transition. It is bound to one game process/log, exits after startup,
+and never steals focus. Per-launch logs are under ignored `artifacts/unattended`.
 
+The bounded consecutive DLSS experiment passes eight stereo frames with 14
+reported generated-eye Presents and 14 complete NGX evaluations completing on
+the GPU. Generated output ownership and XR publication remain open. A single
+startup side-by-side frame is still reported by the user; investigate separately
+from the previously corrected stale-pose wait dependency.
 
 Optional menu-laser stabilization is available with `-MenuAimStabilization`.
 Ordinary launches retain direct tracking. It shares one filtered ray between
