@@ -220,3 +220,12 @@ to distinguish source selection/extent, camera projection and presentation-mode
 changes before changing rendering behavior. Do not count later fresh counters
 as a visual pass. Desktop input is left untouched while examining logs, per the
 user's request to release control when idle.
+
+The next native build extends eye execute/capture and isolated-eye validation
+logging for 16 Presents from each batch's refresh arming. Capture records now
+include source dimensions, vertical FOV, aspect, presentation mode and gameplay
+generation. The window includes refresh before the staged Present and expires
+after the final batch; normal launches do not arm it. Rendering, publication and
+resource lifetimes are unchanged. Validation: Windows x64 Release
+`cmake --build build/windows-vs2022 --config Release --target
+darktidevr_native_capture` passes. Live correlation is still required.

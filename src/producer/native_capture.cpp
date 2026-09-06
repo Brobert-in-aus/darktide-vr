@@ -108,6 +108,7 @@ std::atomic<bool> streamline_stereo_submit_probe_requested{};
 std::atomic<DWORD> streamline_outer_present_thread{};
 std::atomic<std::uint64_t> streamline_outer_present_active_frame{};
 std::atomic<std::uint64_t> streamline_stereo_submission_present{};
+std::atomic<std::uint64_t> streamline_submission_trace_start{};
 std::atomic<std::uint64_t> streamline_native_burst_until_call{};
 std::atomic<std::uint64_t> streamline_frame_token_call_count{};
 std::atomic<std::uint64_t> streamline_set_constants_call_count{};
@@ -10044,6 +10045,14 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
       static_cast<unsigned long long>(signal_value));
 }
 
+// Startup can exhaust the native-Present burst before the diagnostic runs.
+// Each bounded batch also traces its refresh and the following 16 Presents.
+bool trace_streamline_submission_images() {
+  const auto start = streamline_submission_trace_start.load(std::memory_order_acquire);
+  const auto current = present_count.load(std::memory_order_relaxed);
+  return start != 0 && current >= start && current - start < 16;
+}
+
 void STDMETHODCALLTYPE execute_command_lists_hook(
     ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists) {
   StreamlineExecuteSnapshot* streamline_snapshot{};
@@ -10299,9 +10308,9 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
         streamline_native_burst_until_call.load(std::memory_order_acquire);
     const auto log_streamline_eye_boundary =
         requested_eye >= 0 && streamline_probe_log != INVALID_HANDLE_VALUE &&
-        streamline_burst_until != 0 &&
+        (trace_streamline_submission_images() || (streamline_burst_until != 0 &&
         streamline_native_present_count.load(std::memory_order_relaxed) <=
-            streamline_burst_until;
+            streamline_burst_until));
     if (log_streamline_eye_boundary) {
       LARGE_INTEGER boundary_qpc{};
       QueryPerformanceCounter(&boundary_qpc);
@@ -10370,15 +10379,18 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
     const auto streamline_burst_until =
         streamline_native_burst_until_call.load(std::memory_order_acquire);
     if (streamline_probe_log != INVALID_HANDLE_VALUE &&
-        streamline_burst_until != 0 &&
+        (trace_streamline_submission_images() || (streamline_burst_until != 0 &&
         streamline_native_present_count.load(std::memory_order_relaxed) <=
-            streamline_burst_until) {
+            streamline_burst_until))) {
       LARGE_INTEGER boundary_qpc{};
       QueryPerformanceCounter(&boundary_qpc);
+      const auto source_description = completed_back_buffer->GetDesc();
       write_streamline_probe_log(
           "EYE_OUTPUT_BOUNDARY\tphase=capture_complete\tpresent_frame=%llu"
           "\texecute_call=%llu\teye=%d\tpose=%llu\tqueue=%p\tresource=%p"
-          "\tstate=%u\tresult=%d\tqpc=%lld\r\n",
+          "\tstate=%u\tresult=%d\tqpc=%lld"
+          "\twidth=%llu\theight=%u\tfov=%.9g\taspect=%.9g"
+          "\tpresentation_mode=%u\tgameplay_generation=%llu\r\n",
           static_cast<unsigned long long>(
               present_count.load(std::memory_order_relaxed)),
           static_cast<unsigned long long>(streamline_execute_call),
@@ -10386,7 +10398,11 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
           static_cast<unsigned long long>(requested_pose_sequence), queue,
           completed_back_buffer.Get(),
           static_cast<unsigned>(completed_source_state), result,
-          boundary_qpc.QuadPart);
+          boundary_qpc.QuadPart,
+          static_cast<unsigned long long>(source_description.Width),
+          source_description.Height, requested_vertical_fov, requested_aspect_ratio,
+          current_presentation_mode.load(std::memory_order_relaxed),
+          static_cast<unsigned long long>(current_gameplay_generation.load(std::memory_order_acquire)));
     }
     boundary_last_capture_result.store(result, std::memory_order_relaxed);
     if (result == 0) {
@@ -12220,6 +12236,7 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
           binding_valid = binding_valid && (tagging_modes == 1 || tagging_modes == 2);
           if (!snapshot.submission_refresh_armed) {
             snapshot.submission_refresh_armed = true;
+            streamline_submission_trace_start.store(present, std::memory_order_release);
             write_streamline_probe_log("STEREO_REFRESH\tphase=armed\r\n");
           }
           binding_valid = binding_valid && snapshot.submission_refresh_mask == 3;
@@ -13939,7 +13956,7 @@ int capture_eye_from_resource(int eye, ID3D12CommandQueue* supplied_queue,
     static std::array<std::atomic<std::uint64_t>, 2> checks{};
     const auto check = checks[static_cast<std::size_t>(eye)].fetch_add(
         1, std::memory_order_relaxed);
-    if (check < 8 || check % 120 == 0) {
+    if (check < 8 || check % 120 == 0 || trace_streamline_submission_images()) {
       write_streamline_probe_log(
           "ISOLATED_EYE_CAPTURE\teye=%d\tnamed_eye=%d\tsource=%llux%u"
           "\texpected=%ux%u\tvalid=%u\tcropped=0\r\n",
