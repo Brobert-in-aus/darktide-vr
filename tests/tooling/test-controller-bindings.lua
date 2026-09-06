@@ -76,7 +76,7 @@ for _,binding in ipairs(mapper.bindings) do
     end
 end
 local widgets=Bindings.widgets()
-assert(#widgets.sub_widgets==11)
+assert(#widgets.sub_widgets==15)
 local used={}
 for _,widget in ipairs(widgets.sub_widgets) do
     assert(not used[widget.setting_id]); used[widget.setting_id]=true
@@ -88,4 +88,46 @@ for _,widget in ipairs(widgets.sub_widgets) do
     end
     assert(found)
 end
-print('controller_bindings=pass defaults aliases remap_release context_handoff stock_names options')
+local directional_settings={vr_bind_right_stick_up='combat_ability',vr_bind_right_stick_down='inspect',
+    vr_bind_right_stick_left='reload',vr_bind_right_stick_right='reload'}
+local directional_mod={get=function(_,key) return directional_settings[key] end}
+local directional=Bindings.install(directional_mod)
+local function stick(enabled,x,y,usable,generation,p,h,r,physical)
+    local ap,ah,ar=directional.sample(enabled,physical or 0,x,y,usable,generation)
+    assert(ap==p and ah==h and ar==r,
+        string.format('stick got %d,%d,%d expected %d,%d,%d',ap,ah,ar,p,h,r))
+end
+stick(true,0,1,true,1,0,0,0) -- Entry while deflected: no inherited action.
+stick(true,0,0,true,1,0,0,0)
+stick(true,0,.64,true,1,0,0,0)
+stick(true,0,.65,true,1,2048,2048,0)
+stick(true,0,.5,true,1,0,2048,0) -- Hysteresis prevents noisy retriggering.
+stick(true,0,.44,true,1,0,0,2048)
+stick(true,.8,.8,true,1,2048+4096,2048+4096,0) -- Diagonal shortcuts coexist.
+stick(true,-.8,0,true,1,0,4096,2048) -- Alias across directions does not retrigger.
+stick(true,0,0,true,1,0,0,4096)
+stick(true,0,-.8,true,1,16384,16384,0)
+stick(false,0,-.8,true,1,0,0,16384)
+stick(true,0,-.8,true,1,0,0,0)
+stick(true,0,0,true,1,0,0,0)
+stick(true,0,1,true,1,2048,2048,0)
+stick(true,0,1,false,1,0,0,2048)
+stick(true,0,1,true,1,0,0,0) -- Tracking reacquisition requires neutral.
+stick(true,0,0,true,1,0,0,0)
+stick(true,0,1,true,1,2048,2048,0)
+stick(true,0,1,true,2,0,0,2048) -- Writer restart also requires neutral.
+stick(true,0,0,true,2,0,0,0)
+stick(true,0,1,true,2,2048,2048,0)
+directional_settings.vr_bind_right_stick_up='special'
+directional_mod.on_setting_changed('vr_bind_right_stick_up')
+stick(true,0,1,true,2,0,0,2048)
+stick(true,0,0,true,2,0,0,0)
+stick(true,0,1,true,2,4,4,0)
+stick(true,0/0,1,true,2,0,0,4)
+stick(true,0,1,true,2,0,0,0) -- Invalid axes invalidate the old latch.
+stick(true,0,0,true,2,0,0,0,2048) -- Unknown native bits cannot impersonate directions.
+local default_mapper=Bindings.install({get=function() end})
+default_mapper.sample(true,0,0,0,true,1)
+local p,h,r=default_mapper.sample(true,0,1,1,true,1)
+assert(p==0 and h==0 and r==0,'new direction defaults were not unbound')
+print('controller_bindings=pass defaults aliases remap_release context_handoff directional_hysteresis tracking generation stock_names options')

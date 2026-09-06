@@ -109,4 +109,11 @@ active=false
 scope('HudElementPlayerAbility','update',update,element,0.01,3,{scale=2})
 assert(style.font_size==20 and fit_calls==1,'did not restore stock font outside VR')
 assert(stock_calls>0)
+for key in pairs(settings) do settings[key]=nil end
+settings.vr_bind_right_stick_up='combat_ability'
+mod.on_setting_changed('vr_bind_right_stick_up')
+active=true
+scope('HudElementPlayerAbility','_update_input',function()
+    assert(text('combat_ability')=='[RS Up]','directional binding hint missing')
+end)
 print('controller_prompts=pass scoped labels remap aliases unbound cache_refresh errors nil_returns')

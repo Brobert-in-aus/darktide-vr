@@ -1,6 +1,6 @@
 # Input revision audit — 6 September 2026
 
-This records actual routing before revising defaults. The raw OpenXR actions
+This records the routing audit and subsequent candidates. The raw OpenXR actions
 already include both sticks and both stick clicks. The current gameplay mapper
 is in `src/core/gameplay_input.cpp`; its game-side delivery table is
 `presentation.gameplay_input_bindings` in the stereo Lua module.
@@ -17,15 +17,13 @@ is in `src/core/gameplay_input.cpp`; its game-side delivery table is
 | B | Crouch | Back |
 | Left stick | Movement, configurable head/left-hand reference | None |
 | L3 | Sprint | None |
-| Right stick | No gameplay axis consumption | Vertical scrolling |
-| R3 | Native smart-tag bit produced, **not delivered by Lua** | None |
-| Left menu button | Native menu bit produced, **not delivered by Lua** | Back |
+| Right stick | Four optional directional shortcuts; all unbound by default | Vertical scrolling |
+| R3 | Smart tag through stock HUD handler | None |
+| Left menu button | Opens stock system menu | Back |
 
-R3 is not absent from the native bindings, but the missing Lua consumer explains
-why it appears unused. Smart-tag targeting hooks currently change the target,
-not the input trigger. The stock HUD reads the pressed `smart_tag` input itself.
-The combat ability has no mapper bit or delivery route; blitz/grenade is a
-different action. Communication wheel and push-to-talk also lack explicit VR
+The initial missing R3/menu consumers are now implemented below. Combat ability
+is a configurable action, unbound in the legacy default layout; blitz/grenade is
+a different action. Communication wheel and push-to-talk still lack explicit VR
 routes. Runtime/system buttons remain reserved by OpenXR/the headset.
 
 ## Immediate defect found
@@ -154,3 +152,40 @@ matching mod error. This establishes desktop rendering and dynamic refresh;
 worn readability, pickup/tag visual coverage and icon artwork remain pending.
 Right grip was restored to Weapon special in Mod Options; the saved settings
 still contain `vr_bind_right_grip = "special"` and right trigger `primary`.
+
+## Optional right-stick directional shortcuts
+
+Mod Options now exposes right-stick up/down/left/right alongside the eleven
+existing controls. All four default to Unbound. They use the same action catalog,
+held/pressed/released delivery and prompt labels (`RS Up`, etc.). This adds
+digital shortcuts, not artificial turning or a radial weapon wheel. Menu
+scrolling retains its native route.
+
+Each direction activates at 0.65 deflection and releases below 0.45 to avoid
+threshold jitter. Diagonals can activate two assigned directions; aliases still
+aggregate before logical edge detection, so shared actions do not double-fire.
+The channels are formed in Lua from the observed right-stick axes; native
+controller transport and its eleven button bits remain unchanged. Unknown native
+bits are masked before directional channels are added.
+
+Gameplay/menu handoff, invalid/lost right-hand tracking, writer-generation
+changes and live remapping quarantine deflected directions until release.
+Invalid/nonfinite/out-of-range axes cannot fire a shortcut. The original control
+defaults and every direction's Unbound default remain intact. Ergonomic defaults,
+turning policy, communication wheel and push-to-talk remain separate work.
+
+Validation: controller bindings/prompts, gameplay UI delivery, HUD options and
+the 31-chunk LuaJIT gate pass. Cases cover thresholds/hysteresis, diagonals,
+opposite-direction aliases, menu return, tracking reacquisition, transport
+restart, remapping while held, invalid axes, native-bit isolation and directional
+HUD labels. Physical controller use and revised layout comfort still need a worn
+check; no gameplay shortcuts were actuated unattended.
+
+The candidate was deployed and the Darktide VR settings page opened at character
+selection. Desktop wheel scrolling and a scrollbar drag did not move the list,
+so the four new dropdowns below the fold were not visually verified or changed.
+This is an unresolved menu-input observation, not established as a directional
+shortcut regression. Inspect desktop wheel/held-pointer ownership in the native
+menu proxy before changing routing. This launch remained in flat menu mode 5
+with `shared_ready=0`; it does not establish fresh gameplay stereo acceptance.
+The five targeted CTest cases above passed again at final handoff.

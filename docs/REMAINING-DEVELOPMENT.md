@@ -14,6 +14,12 @@ This is acceptance of tested routes, not every possible view. The source pass co
 all 72 registered views and direct View-service consumers. Pickup marker edge
 asymmetry remains open.
 
+Return-session follow-up: desktop wheel scrolling and a scrollbar drag failed
+to move the Darktide VR Mod Options list at character selection. New right-stick
+dropdowns remain unverified below the fold. Reproduce and inspect desktop versus
+controller pointer ownership; the cause is not established. See the
+[input audit](INPUT-REVISION-AUDIT.md).
+
 The user has taken ownership of melee contact verification and explicitly moved
 development to HUD and then DLSS. Preserve accepted HUD/menu behavior and
 continue DLSS, completing one body of work before switching to the next. The
@@ -166,14 +172,15 @@ action and requires release before the replacement can activate. Weapon,
 ability, interaction and tag HUD prompts now display compact binding labels;
 dedicated controller glyphs and tutorial/spectator/onboarding coverage remain.
 The [input revision audit](INPUT-REVISION-AUDIT.md) maps current controls: right
-stick scrolls menus but has no gameplay route. R3 tag and the left menu button
+stick scrolls menus and now offers four optional gameplay shortcuts, all unbound
+by default. R3 tag and the left menu button
 now reach stock HUD/UI handlers; live module initialization passes, with worn
 button acceptance pending. All inherited gameplay holds are quarantined until
 release on activation/reconnect. Use
 the available controls to make the full layout more sensible. Review gameplay,
 weapon specials, movement, interactions and menu
 contexts together, including hold/toggle behavior and conflicting actions.
-Remaining controller prompts, right-stick gameplay and revised ergonomic defaults
+Remaining controller prompts, right-stick turning and revised ergonomic defaults
 remain backlog work. The configurable mapping candidate needs worn validation.
 Desktop layout editing now draws "Use the desktop view to edit your HUD layout."
 into the shared HUD texture while the editor is open. It is removed on close.

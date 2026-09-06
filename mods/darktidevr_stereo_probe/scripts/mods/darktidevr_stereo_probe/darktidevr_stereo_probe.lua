@@ -5402,7 +5402,10 @@ function presentation.inject_gameplay_input(self, main_t)
     controller_observation.gameplay_input_active = active and result == 0
     local pressed, held, released = presentation.controller_bindings.sample(
         controller_observation.gameplay_input_active,
-        tonumber(controller_observation.gameplay_held[0]))
+        tonumber(controller_observation.gameplay_held[0]),
+        controller_observation.right_stick_x,controller_observation.right_stick_y,
+        controller_observation.right_aim_usable,
+        controller_observation.last_transport_generation)
     if presentation.gameplay_ui then
         presentation.gameplay_ui.sample(controller_observation.gameplay_input_active, pressed)
     end

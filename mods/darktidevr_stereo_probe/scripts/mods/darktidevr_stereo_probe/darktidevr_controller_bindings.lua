@@ -13,6 +13,10 @@ Bindings.controls = {
     {id="l3", bit=128, default="sprint"},
     {id="r3", bit=256, default="tag"},
     {id="menu", bit=1024, default="menu"},
+    {id="right_stick_up", bit=2048, default="unbound", axis="y", sign=1},
+    {id="right_stick_down", bit=4096, default="unbound", axis="y", sign=-1},
+    {id="right_stick_left", bit=8192, default="unbound", axis="x", sign=-1},
+    {id="right_stick_right", bit=16384, default="unbound", axis="x", sign=1},
 }
 Bindings.actions = {
     {id="unbound", mask=0},
@@ -52,6 +56,8 @@ function Bindings.install(mod)
     local api = {held=0,bindings={},revision=0}
     local masks, resolved = {}, {}
     local dirty, blocked, active = true, 0, false
+    local stick_held, stick_active = 0, false
+    local stick_generation
     for _,action in ipairs(Bindings.actions) do
         masks[action.id] = action.mask
         if action.pressed or action.held or action.released then
@@ -76,8 +82,30 @@ function Bindings.install(mod)
         end
         return controls
     end
-    function api.sample(enabled, physical)
-        physical = physical or 0
+    function api.sample(enabled, physical, stick_x, stick_y, stick_usable, generation)
+        -- The eleven native channels occupy bits 0..10. Directional channels
+        -- exist only here, so native input cannot impersonate a virtual shortcut.
+        physical = bit.band(physical or 0,2047)
+        if generation ~= stick_generation then stick_active=false end
+        stick_generation = generation
+        local axes_valid = enabled == true and stick_usable == true and
+            type(stick_x)=="number" and type(stick_y)=="number" and
+            stick_x>=-1 and stick_x<=1 and stick_y>=-1 and stick_y<=1
+        local next_stick = 0
+        if axes_valid then
+            for _,control in ipairs(Bindings.controls) do
+                if control.axis then
+                    local value = (control.axis=="x" and stick_x or stick_y)*control.sign
+                    local was_held = bit.band(stick_held,control.bit)~=0
+                    if value >= (was_held and 0.45 or 0.65) then
+                        next_stick = bit.bor(next_stick,control.bit)
+                    end
+                end
+            end
+            if not stick_active then blocked=bit.bor(blocked,next_stick) end
+        end
+        stick_held, stick_active = next_stick, axes_valid
+        physical = bit.bor(physical,next_stick)
         if dirty then
             for _,control in ipairs(Bindings.controls) do
                 local requested = mod:get("vr_bind_"..control.id)
