@@ -299,3 +299,15 @@ not GPU execution completion; evaluations internally submitted before returning
 may be missed and must not be guessed. Release native build and three tests pass
 (command observations, output observations, official ABI), including reset/reuse,
 duplicate/unknown identities, paired calls, bounded capacity and no double consume.
+
+Live queue observation passes: all six complete FG evaluations (312/313,
+324/325, 336/337) match the same compute queue (D3D12 type 2). Each paired output
+has the correct legacy left/right rectangles. Another 250 incomplete-input
+evaluations also submit; no captured calls were discarded by Reset. All four
+batches retire. The queue reader joins by call and exact command-list identity,
+rejects duplicates/mismatches and keeps GPU completion false. Its positive and
+mismatched-command fixtures pass. Evidence: `queue-live-ngx.log`,
+`queue-live-submit.log`, `queue-live-streamline.tsv`, `queue-live-report.json`.
+Next place completion evidence on the observed compute queue, not merely the
+game's direct/render queue. This still will not retain output pixels against
+future reuse; output copying and ownership remain separate required work.
