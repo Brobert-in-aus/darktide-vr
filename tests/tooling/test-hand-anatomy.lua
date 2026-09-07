@@ -111,4 +111,31 @@ for _,side in ipairs({'left','right'}) do
         assert(rigid_hands[side].anatomy_inverse==nil)
     end
 end
-print('both anatomical bases preserve physical grip axes, cache valid anatomy and retry invalid poses')
+-- Moving equipment to the opposite physical grip retains the authored weapon
+-- wrist axes. It must not borrow the destination glove's mirrored joint basis.
+state={source_unit={}}
+local active=true
+BodyProxy={rigid_hands_active=function() return active end}
+Unit.alive=function(unit) return not unit.dead end
+local equipment_first=assert(source:find('function BodyProxy.equipment_hand_rotation(',1,true))
+local equipment_last=assert(source:find('\nfunction BodyProxy.align_gun_hand(',equipment_first,true))
+assert(loadstring(source:sub(equipment_first,equipment_last-1)))()
+for _,side in ipairs({'left','right'}) do
+    local unit,longitudinal,across=rig(side,axis_rotation(v(1,3,-2),.7),1.08)
+    rigid_hands[side]={unit=unit,ready=true}
+    calibrate(unit,side,q(0,0,0,1))
+    local grip=axis_rotation(v(2,-1,3),-1.4)
+    local saved=rigid_hands[side].anatomy_inverse
+    local result=assert(BodyProxy.equipment_hand_rotation(state.source_unit,side,grip))
+    near(rotate(result,longitudinal),rotate(grip,v(0,0,-1)))
+    near(rotate(result,across),rotate(grip,v(0,1,0)))
+    assert(rigid_hands[side].anatomy_inverse==saved)
+    assert(not BodyProxy.equipment_hand_rotation({},side,grip))
+    active=false; assert(not BodyProxy.equipment_hand_rotation(state.source_unit,side,grip)); active=true
+    unit.dead=true; assert(not BodyProxy.equipment_hand_rotation(state.source_unit,side,grip)); unit.dead=nil
+    rigid_hands[side].ready=false; assert(not BodyProxy.equipment_hand_rotation(state.source_unit,side,grip))
+    rigid_hands[side].ready=true; rigid_hands[side].anatomy_inverse=nil
+    assert(not BodyProxy.equipment_hand_rotation(state.source_unit,side,grip))
+end
+assert(not BodyProxy.equipment_hand_rotation(state.source_unit,'unknown',q(0,0,0,1)))
+print('anatomical calibration and equipment relocation retain authored bases, physical grip axes and owner readiness')

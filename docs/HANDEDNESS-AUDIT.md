@@ -7,6 +7,32 @@ in the [development handoff](handoffs/2026-09-07-development.md).
 
 ## Implemented role foundation, 7 September
 
+### Rigid tracked equipment mapping, 8 September
+
+The tracked rigid-hand path now resolves each authored equipment hand through
+dominant/support roles. Same-side destinations retain the accepted proxy wrist
+pose. Opposite-side destinations use the physical destination's calibrated wrist
+position and grip rotation, composed with the weapon hand's original measured
+anatomical basis. They do not import the opposite glove's joint axes or mutate
+anatomical hand meshes, item-local animation or raw tracking.
+
+Each hand's placement result is returned separately. A successful left placement
+cannot authorize a stale right pose, or vice versa. Missing roles, missing source
+calibration, retired owners and unavailable hands decline equipment writes.
+World-to-parent conversion retains the existing avatar-scale handling.
+
+Actual-branch tests cover both role policies, .94/1/1.08 scales, distinct authored
+bases, partial placement and unknown roles; 3D anatomical tests cover the exported
+rotation helper and owner/readiness rejection. Runtime still constructs the
+accepted right-dominant policy. This is an undeployed attachment foundation,
+not complete left-handed gameplay: stock animated melee, gun visual alignment,
+two-hand poses, first-person/breed effect ownership, bindings and menu pointer
+still need coordinated role mapping before exposing the setting.
+
+Validation: full Windows x64 offline CTest passes 134/134 in 22.74 seconds;
+the pinned LuaJIT gate compiles 47 chunks. Evidence is
+`artifacts/unattended/handedness-attachment-final-134-20260908.log`.
+
 `darktidevr_weapon_hand_roles.lua` constructs a fixed dominant/support policy.
 Physical left/right identities remain unchanged; invalid policy input defaults
 to right dominance and unknown role names produce no target. Gameplay attack,

@@ -1,7 +1,7 @@
 local file = assert(io.open(arg[1], 'r'))
 local source = file:read('*all')
 file:close()
-local first = assert(source:find('function presentation.sync_equipment_hand_to_proxy', 1, true))
+local first = assert(source:find('function presentation.sync_equipment_hand_pose', 1, true))
 local last = assert(source:find('\nfunction presentation.apply_tracked_arms', first, true))
 
 local mt = {}
@@ -118,4 +118,60 @@ for _,case in ipairs({'same','dead_source','dead_proxy','nil_source'}) do
     assert(not presentation.sync_equipment_hands_to_proxy({},s,p))
     assert(writes==0 and updates==0)
 end
-print('equipment sync preserves scaled world poses, item animation and partial-rig fallback')
+-- Execute the actual rigid-hand branch with an opposite role policy. Each
+-- destination supplies its own placement status; one successful hand cannot
+-- authorize a stale pose from the other hand.
+local apply_first=assert(source:find('function presentation.apply_tracked_arms(',1,true))
+local apply_last=assert(source:find('    -- Rigid hands use authored joint-to-root transforms.',apply_first,true))
+assert(loadstring(source:sub(apply_first,apply_last-1)..'\nend'))()
+local left_ok,right_ok=true,true
+local destination_valid=true
+local left_grip,right_grip=.8,-.6
+local left_wrist,right_wrist=v(-1,3,2),v(4,2,1)
+local source_unit,left_proxy,right_proxy
+presentation.refresh_body_anchor_from_avatar=function() end
+presentation.body_ik_controller_grip_target=function(_,side)
+    if side=='left' then return left_wrist,left_grip end
+    return right_wrist,right_grip
+end
+presentation.body_ik_calibrated_wrist_target=function(_,position) return position end
+presentation.weapon_hand_roles={physical=function(role)
+    if not destination_valid then return nil end
+    return role=='dominant' and 'left' or 'right'
+end}
+presentation.body_proxy={rigid_hands_active=function() return true end,
+    place_rigid_hands=function() return left_proxy,right_proxy,left_ok or right_ok,left_ok,right_ok end,
+    equipment_hand_rotation=function(owner,side,grip)
+        assert(owner==source_unit)
+        return grip+(side=='right' and .2 or -.4) -- Distinct authored bases.
+    end}
+for _,scale in ipairs({.94,1,1.08}) do
+    source_unit,left_proxy=units(scale); right_proxy=left_proxy
+    controller_observation.body_ik_presentation_writes=0
+    presentation.apply_tracked_arms(left_proxy,1,{},source_unit)
+    near(source_unit.nodes.j_righthand.position,left_wrist)
+    near(source_unit.nodes.j_lefthand.position,right_wrist)
+    assert(math.abs(source_unit.nodes.j_righthand.rotation-(left_grip+.2))<1e-8)
+    assert(math.abs(source_unit.nodes.j_lefthand.rotation-(right_grip-.4))<1e-8)
+    assert(writes==4)
+    assert(left_proxy.nodes.j_lefthand.local_position==nil)
+    near(source_unit.nodes.weapon.local_position,v(.1,.2,.3))
+end
+source_unit,left_proxy=units(1); right_proxy=left_proxy
+controller_observation.body_ik_presentation_writes=0
+left_ok=false
+presentation.apply_tracked_arms(left_proxy,1,{},source_unit)
+assert(writes==2 and source_unit.nodes.j_righthand.local_position==nil,'Failed destination retained a stale equipment pose')
+destination_valid=false; writes=0
+presentation.apply_tracked_arms(left_proxy,1,{},source_unit)
+assert(writes==0,'Unknown role fell back to the opposite hand')
+left_ok=true; destination_valid=true
+presentation.weapon_hand_roles.physical=function(role) return role=='dominant' and 'right' or 'left' end
+source_unit,left_proxy=units(1.08); right_proxy=left_proxy
+controller_observation.body_ik_presentation_writes=0
+presentation.body_proxy.equipment_hand_rotation=function() error('Default policy must retain accepted proxy rotation') end
+presentation.apply_tracked_arms(left_proxy,1,{},source_unit)
+near(source_unit.nodes.j_lefthand.position,left_proxy.nodes.j_lefthand.position)
+near(source_unit.nodes.j_righthand.position,right_proxy.nodes.j_righthand.position)
+assert(writes==4)
+print('equipment sync preserves scale, item animation, authored bases, role destinations and per-hand placement ownership')

@@ -583,7 +583,19 @@ function BodyProxy.place_rigid_hands(
     local right_written = place_rigid_hand(
         world, rigid_hands.right, right_position, right_rotation)
     return rigid_hands.left.unit, rigid_hands.right.unit,
-        left_written or right_written
+        left_written or right_written, left_written, right_written
+end
+
+-- Keep the weapon's authored wrist basis when its role moves to another grip.
+-- Anatomical glove placement and raw physical controller identities stay fixed.
+function BodyProxy.equipment_hand_rotation(source, authored_side, grip_rotation)
+    if source~=state.source_unit or not source or not Unit.alive(source) or
+            not grip_rotation or (authored_side~='left' and authored_side~='right') or
+            not BodyProxy.rigid_hands_active() then return nil end
+    local hand=rigid_hands[authored_side]
+    if not hand.ready or not hand.unit or not Unit.alive(hand.unit) or
+            not hand.anatomy_inverse then return nil end
+    return anatomical_hand_rotation(hand.unit,authored_side,grip_rotation)
 end
 
 function BodyProxy.align_gun_hand(world,source,old_position,old_rotation,new_position,new_rotation)

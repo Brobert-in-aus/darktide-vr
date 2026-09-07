@@ -8220,10 +8220,10 @@ end
 -- the local profile proxy. After the proxy has accepted the tracked/held hand
 -- pose, mirror only those two hidden source nodes to it. The visible weapon
 -- follows the controller while all item-local animation remains untouched.
-function presentation.sync_equipment_hand_to_proxy(
-        source_unit, proxy_unit, hand_name)
-    if not Unit.has_node(source_unit, hand_name) or
-            not Unit.has_node(proxy_unit, hand_name) then
+function presentation.sync_equipment_hand_pose(
+        source_unit, hand_name, target_position, target_rotation)
+    if not source_unit or not Unit.alive(source_unit) or not target_position or
+            not target_rotation or not Unit.has_node(source_unit, hand_name) then
         return false
     end
     local source_hand = Unit.node(source_unit, hand_name)
@@ -8231,13 +8231,12 @@ function presentation.sync_equipment_hand_to_proxy(
     if source_parent == nil then
         return false
     end
-    local proxy_hand = Unit.node(proxy_unit, hand_name)
     local parent_position = Unit.world_position(source_unit, source_parent)
     local inverse_parent = presentation.inverse_quaternion(
         Unit.world_rotation(source_unit, source_parent))
     local parent_space_target = presentation.rotate_vector(
         inverse_parent,
-        Unit.world_position(proxy_unit, proxy_hand) - parent_position)
+        target_position - parent_position)
     -- The gameplay avatar applies its breed/profile scale at the unit root,
     -- while UIProfileSpawner's local proxy root remains 1.0. Convert the
     -- desired world displacement through that uniform source scale before
@@ -8251,8 +8250,28 @@ function presentation.sync_equipment_hand_to_proxy(
         source_unit, source_hand, parent_space_target / source_root_scale)
     Unit.set_local_rotation(
         source_unit, source_hand, Quaternion.multiply(
-            inverse_parent, Unit.world_rotation(proxy_unit, proxy_hand)))
+            inverse_parent, target_rotation))
     return true
+end
+
+function presentation.sync_equipment_hand_to_proxy(source_unit, proxy_unit, hand_name)
+    if not proxy_unit or not Unit.alive(proxy_unit) or not Unit.has_node(proxy_unit,hand_name) then return false end
+    local node=Unit.node(proxy_unit,hand_name)
+    return presentation.sync_equipment_hand_pose(source_unit,hand_name,
+        Unit.world_position(proxy_unit,node),Unit.world_rotation(proxy_unit,node))
+end
+
+function presentation.sync_tracked_equipment_hand(source, authored_side, destination,
+        proxy, wrist_position, grip_rotation, placed)
+    if not placed or (authored_side~='left' and authored_side~='right') or
+            (destination~='left' and destination~='right') then return false end
+    local name='j_'..authored_side..'hand'
+    if authored_side==destination then
+        return presentation.sync_equipment_hand_to_proxy(source,proxy,name)
+    end
+    local rotation=presentation.body_proxy.equipment_hand_rotation(source,authored_side,grip_rotation)
+    if not rotation then return false end
+    return presentation.sync_equipment_hand_pose(source,name,wrist_position,rotation)
 end
 
 function presentation.sync_equipment_hands_to_proxy(
@@ -8360,18 +8379,22 @@ function presentation.apply_tracked_arms(unit, sequence, world, anchor_unit)
         local rigid_right_target = right_target and
             presentation.body_ik_calibrated_wrist_target(
                 "right", right_target, right_rotation)
-        local left_unit, right_unit, rigid_written =
+        local left_unit, right_unit, rigid_written, left_written, right_written =
             presentation.body_proxy.place_rigid_hands(
                 world, rigid_left_target, left_rotation,
                 rigid_right_target, right_rotation)
         if rigid_written then
-            if left_target and left_unit then
-                presentation.sync_equipment_hand_to_proxy(
-                    anchor_unit, left_unit, "j_lefthand")
-            end
-            if right_target and right_unit then
-                presentation.sync_equipment_hand_to_proxy(
-                    anchor_unit, right_unit, "j_righthand")
+            for side_index=1,2 do
+                local authored_side=side_index==1 and 'left' or 'right'
+                local role=authored_side=='left' and 'support' or 'dominant'
+                local destination=presentation.weapon_hand_roles.physical(role)
+                if destination=='left' then
+                    presentation.sync_tracked_equipment_hand(anchor_unit,authored_side,destination,
+                        left_unit,rigid_left_target,left_rotation,left_written)
+                elseif destination=='right' then
+                    presentation.sync_tracked_equipment_hand(anchor_unit,authored_side,destination,
+                        right_unit,rigid_right_target,right_rotation,right_written)
+                end
             end
             World.update_unit_and_children(world, anchor_unit)
             controller_observation.body_ik_presentation_writes =

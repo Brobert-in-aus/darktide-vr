@@ -273,10 +273,11 @@ if (-not $bodyProxySource.Contains(
         -not $source.Contains(
             '"right", right_target, right_rotation)') -or
         -not $source.Contains(
-            'anchor_unit, left_unit, "j_lefthand"') -or
+            'left_unit,rigid_left_target,left_rotation,left_written)') -or
         -not $source.Contains(
-            'anchor_unit, right_unit, "j_righthand"')) {
-    throw 'Tracked hands must use two independently rooted one-sided glove profiles, map their measured anatomical axes and calibrated wrist positions to each controller, and keep gameplay equipment synchronized per side.'
+            'right_unit,rigid_right_target,right_rotation,right_written)') -or
+        -not $bodyProxySource.Contains('function BodyProxy.equipment_hand_rotation(')) {
+    throw 'Tracked hands must keep independent anatomical glove profiles and calibrated physical wrist positions, with equipment using its authored basis and the selected destination placement.'
 }
 if (-not $source.Contains('"/gear_hands/"') -or
         -not $source.Contains(
