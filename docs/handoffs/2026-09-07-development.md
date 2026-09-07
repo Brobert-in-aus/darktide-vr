@@ -63,6 +63,20 @@ read-only. It records endpoint/collision ownership to distinguish local visual
 blockers from other hits. No hit filtering or barrel correction has been made.
 The prior game is closing to load this diagnostic; resume with the same HUD,
 generated stereo and closed-game range options. Native components are unchanged.
+The diagnostic confirms zero-distance hit blockers on the visual profile roots
+(left/body and right hand), with endpoints equal to the firing origin. The user
+completed the requested shots and reported no behavioral change, as expected
+for diagnostics. Candidate `aa00288` disables collision and scene queries on
+those local visual roots, explicitly rejecting the gameplay source body. It
+also aligns the third-person gun attachment from the actual muzzle orientation
+to dominant controller aim, with authored-rotation restoration and staff/action
+exclusions. Nine focused CTests pass (1.18 seconds), including 43 Lua chunks,
+proxy collision/readiness and 120 multi-axis gun poses. Configured count is 126.
+Ready passed again and `aa00288` deployed with the unchanged native components.
+The new session log is `artifacts/unattended/lasgun-fix-session-20260907.log`;
+console begins 09:17:07 UTC. Fresh range/stereo, collider cleanup, gun alignment
+and worn enemy-hit checks are pending startup. Game launch retains HUD and
+generated stereo; no Virtual Desktop restart.
 
 At 16:17 Brisbane they returned home with the headset and requested setup.
 They later closed Virtual Desktop for a break. Continue offline; at the roomscale
