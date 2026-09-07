@@ -4,6 +4,8 @@ param(
 
     [switch] $InitializeInstall,
 
+    [switch] $UsePrebuiltProductionShader,
+
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Release',
 
@@ -46,6 +48,9 @@ if ($InitializeInstall) {
             throw "Install the Darktide Mod Loader and Framework first. Missing: $required"
         }
     }
+}
+if ($UsePrebuiltProductionShader -and (-not $BillboardShaderSubstitution -or $ParticleHorizonLock -or $ParticleDiagnosticMagenta)) {
+    throw 'Prebuilt production shader mode requires ordinary billboard substitution without particle diagnostic switches.'
 }
 $sourceLua = Join-Path $repoRoot `
     'mods\darktidevr_stereo_probe\scripts\mods\darktidevr_stereo_probe\darktidevr_stereo_probe.lua'
@@ -105,7 +110,11 @@ $billboardVertexSource = Join-Path $repoRoot `
     'build\generated\billboard_shaders\vs-42e436fb1ef1b392.dxil'
 $billboardPixelDiagnosticDestination = Join-Path $billboardShaderDestination `
     'ps-6020f2548f29fd47.dxil'
-if ($BillboardShaderSubstitution -and -not $ParticleHorizonLock) {
+if ($UsePrebuiltProductionShader) {
+    . (Join-Path $PSScriptRoot 'production-billboard-shader.ps1')
+    Assert-ProductionBillboardShader -ShaderPath $billboardVertexSource `
+        -SourcePath (Join-Path $PSScriptRoot 'particle-horizon-lock.vs.hlsl')
+} elseif ($BillboardShaderSubstitution -and -not $ParticleHorizonLock) {
     # An ordinary production sync must be self-contained.  Previously the
     # bootstrap flag was enabled while the replacement shader was copied only
     # by an explicit diagnostic switch, allowing a clean install to run stock

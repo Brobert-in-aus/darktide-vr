@@ -61,6 +61,15 @@ preflight and with Darktide closed. Source compilation, native build artifacts
 and the ordinary shader build requirements still apply. This is a source-tree
 installation path; a standalone release package remains pending.
 
+For a package prepared with precompiled production shader output, add
+`-UsePrebuiltProductionShader` to sync or the ordinary start/launch scripts.
+It requires `production-shader.json`, produced by the shader build, with the
+production scale/spin/basis profile and matching shader/source SHA256 hashes.
+Diagnostic, modified or stale outputs are rejected before installed writes.
+The shader source remains in the package for identity validation. Ordinary
+development sync continues to compile the production shader by default; the
+prebuilt option avoids requiring DXC on the destination machine.
+
 The existing list is retained byte-for-byte before its appended entry, including
 comments and LF/CRLF style. Repeated installation does not duplicate the entry.
 Ambiguous duplicates/capitalization and NUL or UTF-8 BOM files are rejected;

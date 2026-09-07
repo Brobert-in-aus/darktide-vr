@@ -3,7 +3,8 @@ param(
     [ValidateRange(5, 43200)]
     [int] $DurationSeconds = 28800,
 
-    [string] $GameRoot
+    [string] $GameRoot,
+    [switch] $UsePrebuiltProductionShader
 )
 
 Set-StrictMode -Version Latest
@@ -33,6 +34,7 @@ try {
         DurationSeconds = $DurationSeconds
         GameStartTimeoutSeconds = 1800
         EnableMenuInput = $true
+        UsePrebuiltProductionShader = $UsePrebuiltProductionShader
     }
     if ($GameRoot) { $startArguments.GameRoot = $GameRoot }
     & $startScript @startArguments 2>&1 |

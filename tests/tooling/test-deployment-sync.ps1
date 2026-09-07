@@ -36,7 +36,7 @@ function Assert-Unchanged([hashtable] $Before) {
 }
 try {
     [IO.Directory]::CreateDirectory($tools) | Out-Null
-    foreach ($name in @('sync-darktide-vr-dev.ps1', 'resolve-darktide-game-root.ps1', 'invoke-deployment-transaction.ps1', 'get-vr-mod-load-order.ps1')) {
+    foreach ($name in @('sync-darktide-vr-dev.ps1', 'resolve-darktide-game-root.ps1', 'invoke-deployment-transaction.ps1', 'get-vr-mod-load-order.ps1', 'production-billboard-shader.ps1')) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot ('..\..\tools\stereo\' + $name)) -Destination (Join-Path $tools $name)
     }
     Write-Fixture (Join-Path $tools 'test-darktide-lua-source.ps1') @'
@@ -121,7 +121,37 @@ if ($global:DeploymentFixtureGateFailure) { throw 'fixture syntax gate failed' }
     $before = Get-InstallationSnapshot
     & $sync -GameRoot $game -BillboardShaderSubstitution:$false -InitializeInstall | Out-Null
     Assert-Unchanged $before
-    Write-Output 'deployment_sync=pass complete_copy flags diagnostic_removal late_failure_rollback Lua_gate'
+    # No compiler/build script exists here: the package path must use only the
+    # verified shader and refuse mismatched production identities before writes.
+    $shader = Join-Path $repo 'build\generated\billboard_shaders\vs-42e436fb1ef1b392.dxil'
+    $shaderSource = Join-Path $tools 'particle-horizon-lock.vs.hlsl'
+    Write-Fixture $shader 'production-shader-fixture'
+    Write-Fixture $shaderSource 'production-source-fixture'
+    $shaderManifestPath = Join-Path (Split-Path -Parent $shader) 'production-shader.json'
+    $shaderManifest = @{schema_version=1;profile='production';scale=1;zero_spin=1;cylindrical=1;
+        source_sha256=(Get-FileHash -LiteralPath $shaderSource -Algorithm SHA256).Hash;
+        shader_sha256=(Get-FileHash -LiteralPath $shader -Algorithm SHA256).Hash}
+    $shaderManifest | ConvertTo-Json | Set-Content -LiteralPath $shaderManifestPath -Encoding UTF8
+    & $sync -GameRoot $game -InitializeInstall -UsePrebuiltProductionShader | Out-Null
+    $installedShader = Join-Path $game ($modRelative + '\bin\billboard_shaders\vs-42e436fb1ef1b392.dxil')
+    if ([IO.File]::ReadAllText($installedShader) -ne 'production-shader-fixture') { throw 'Prebuilt shader was not installed.' }
+    $before = Get-InstallationSnapshot
+    foreach ($case in @('diagnostic', 'stale-source', 'damaged-shader', 'missing-manifest')) {
+        if ($case -eq 'diagnostic') { $shaderManifest.profile = 'diagnostic' }
+        else { $shaderManifest.profile = 'production' }
+        $shaderManifest | ConvertTo-Json | Set-Content -LiteralPath $shaderManifestPath -Encoding UTF8
+        if ($case -eq 'stale-source') { Write-Fixture $shaderSource 'changed-source' }
+        if ($case -eq 'damaged-shader') { Write-Fixture $shader 'changed-shader' }
+        if ($case -eq 'missing-manifest') { Remove-Item -LiteralPath $shaderManifestPath }
+        $failed = $false
+        try { & $sync -GameRoot $game -InitializeInstall -UsePrebuiltProductionShader | Out-Null }
+        catch { $failed = $_.Exception.Message -match 'Prebuilt (particle|production) shader' }
+        if (-not $failed) { throw "Invalid prebuilt shader accepted: $case" }
+        Assert-Unchanged $before
+        Write-Fixture $shaderSource 'production-source-fixture'
+        Write-Fixture $shader 'production-shader-fixture'
+    }
+    Write-Output 'deployment_sync=pass complete_copy flags diagnostic_removal late_failure_rollback Lua_gate clean_install prebuilt_shader'
 } finally {
     if ($lock) { $lock.Dispose() }
     Remove-Variable -Name DeploymentFixtureGateFailure -Scope Global -ErrorAction SilentlyContinue

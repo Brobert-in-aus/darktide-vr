@@ -18,6 +18,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
 
 if (-not (Test-Path -LiteralPath $DxcPath -PathType Leaf)) {
     throw "DXC not found: $DxcPath"
@@ -82,3 +83,16 @@ if ($DiagnosticMagenta) {
     }
     Write-Output "Built magenta particle diagnostic shader: $pixelOutputPath"
 }
+
+# Packages can carry this verified production output without requiring DXC on
+# the destination. Diagnostic builds are stamped too, so they cannot masquerade
+# as the production variant merely by sharing its output filename.
+$productionProfile = -not $DiagnosticMagenta -and -not $PreserveParticleSpin -and
+    -not $DiagnosticSpherical -and $DiagnosticScale -eq 1
+[ordered]@{
+    schema_version = 1
+    profile = if ($productionProfile) { 'production' } else { 'diagnostic' }
+    scale = $DiagnosticScale; zero_spin = $zeroSpin; cylindrical = $cylindrical
+    source_sha256 = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
+    shader_sha256 = (Get-FileHash -LiteralPath $outputPath -Algorithm SHA256).Hash
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $resolvedOutput 'production-shader.json') -Encoding UTF8

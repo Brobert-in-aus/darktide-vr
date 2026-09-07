@@ -108,6 +108,8 @@ param(
 
     [switch] $SkipDeploymentSync,
 
+    [switch] $UsePrebuiltProductionShader,
+
     [switch] $DoNotOpenLauncher,
 
     [switch] $ManualLauncherPlay
@@ -253,6 +255,7 @@ if (-not $SkipDeploymentSync) {
     }
     else {
         & $sync -GameRoot $GameRoot -Configuration Release `
+            -UsePrebuiltProductionShader:$UsePrebuiltProductionShader `
             -DiagnosticRenderHooks:$DiagnosticRenderHooks `
             -ClusterLightTrace:$ClusterLightTrace `
             -ClusterLightVisibilityFix:$ClusterLightVisibilityFix

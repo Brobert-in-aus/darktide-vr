@@ -191,6 +191,8 @@ for the smaller set needed before a first end-to-end mission attempt.
    offline. Saved staged/committed manifests now have a guarded recovery command,
    including backup of the pre-recovery state. Standalone packaging and live
    clean-install/recovery acceptance remain pending.
+   A verified prebuilt production shader option removes the destination SDK
+   compiler requirement; ordinary development sync still rebuilds by default.
 10. **Post-initial-release optimization/polish.** LOD policy beyond machine-local
    LOD 9, tiny extreme-edge marker asymmetry, selective smoke-only suppression,
    and remaining nonessential visual polish. General/DLSS performance is now
