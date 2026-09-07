@@ -81,14 +81,16 @@ DMF and the installed stereo mod directories. Development sync updates an
 existing installation; it is not a clean installer. General OpenXR runtime and
 character/weapon coverage remains experimental.
 
-The ordinary launcher and development sync now discover installed Darktide from
+The ordinary launcher, development sync and readiness preflight discover Darktide from
 Steam's registry roots, library list and app manifest. Explicit `-GameRoot`
 overrides discovery; multiple valid installations require an explicit choice.
 Stale manifests without the executable are skipped, malformed metadata is
 rejected and no files are changed by discovery. Modern/legacy library fixtures,
 explicit selection, ambiguity and launcher regressions pass ten focused checks;
 read-only discovery also finds this workstation's existing installation. Other
-standalone diagnostics retain their own GameRoot parameters. No clean-install
+standalone diagnostics retain their own GameRoot parameters. The preflight's
+discovery change passes parsing and existing discovery/readiness checks without
+starting a live session. No clean-install
 or live-launch acceptance is claimed.
 
 The ranged coverage candidate includes concrete gun/flame preparation routes,

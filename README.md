@@ -35,7 +35,7 @@ The ordinary D3D12 smoke/resize checks pass `--no-openxr`, which skips runtime
 discovery even when a Quest is connected. This option is also available for
 manual desktop-only harness checks and rejects conflicting XR requests.
 
-The ordinary launcher and development sync discover Darktide through registered
+The ordinary launcher, development sync and readiness preflight discover Darktide through registered
 Steam libraries and its app manifest. If several installations exist, choose one
 with `-GameRoot <folder>`. A shortcut can save that choice through
 `tools/stereo/install-darktide-vr-shortcut.ps1 -GameRoot <folder>`; omitting it

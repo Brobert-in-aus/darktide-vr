@@ -1696,3 +1696,13 @@ weak reference has already disappeared. That recovery edge has its own failing
 then passing regression. Six focused CTests pass in 0.81 seconds, including all
 37 chunks. No damage/native change, deployment or live memory/visual claim.
 Full baseline remains 116/116 at `2790e7d`, configured count 118. Continue work.
+
+## Continuous todo work: portable readiness game selection
+
+Branch `codex/preflight-steam-discovery-2026-09-07` applies the existing Steam
+discovery helper to the required readiness preflight. Explicit GameRoot still
+takes priority; resolution and executable validation precede any device access.
+PowerShell parsing, the discovery and source-invariant CTests, and the seven-case
+readiness fixture pass. No live preflight, headset change or deployment was run.
+The other weak-key caches inspected did not show the melee probe's owner cycle;
+no speculative cache changes were made. Continue the todo.

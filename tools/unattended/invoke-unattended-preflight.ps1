@@ -1,7 +1,6 @@
 [CmdletBinding()]
 param(
-    [string] $GameRoot =
-        'D:\SteamLibrary\steamapps\common\Warhammer 40,000 DARKTIDE',
+    [string] $GameRoot,
 
     [string] $OutputPath,
 
@@ -24,7 +23,8 @@ $ErrorActionPreference = 'Stop'
 Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$gameRootPath = (Resolve-Path -LiteralPath $GameRoot).Path
+. (Join-Path $repoRoot 'tools\stereo\resolve-darktide-game-root.ps1')
+$gameRootPath = Resolve-DarktideGameRoot -GameRoot $GameRoot
 $gameExe = Join-Path $gameRootPath 'binaries\Darktide.exe'
 $modRoot = Join-Path $gameRootPath 'mods\darktidevr_stereo_probe'
 $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
