@@ -4,6 +4,9 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/test-quest-watcher.ps1")
   add_test(NAME validate-xr-readiness COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/validate-xr-readiness.ps1")
+  add_test(NAME xr_smoke_timeout COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-xr-smoke-timeout.ps1")
+  set_tests_properties(xr_smoke_timeout PROPERTIES TIMEOUT 30)
   add_test(NAME lua_source_compile COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${PROJECT_SOURCE_DIR}/tools/stereo/test-darktide-lua-source.ps1")
   add_test(NAME lua_source_invariants COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File

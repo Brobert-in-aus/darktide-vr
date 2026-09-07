@@ -6,6 +6,15 @@ automated checks and offline work; keep worn checks pending without waiting for
 immediate feedback. The task has an active 20-minute heartbeat. Automation state
 and device identifiers remain outside Git.
 
+Latest integrated offline check: **112/112 CTests pass** on the
+`codex/xr-preflight-timeout-2026-09-07` candidate (14.31 seconds), with headset
+tests disabled and all 36 Lua chunks compiling. Full Release build baseline is
+`df99611`, with the newer XR harness built at `f201a9a`. Guardian pause/resume is
+now verified via ADB; a settled Ready attempt still fails at VDXR texture
+creation. Guardian and proximity automation were restored. Darktide is closed;
+the day's later candidates remain undeployed. Chronological entries below retain
+their older validation states; the final entries describe the newest changes.
+
 The day's continuation is collected in
 [draft review #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2),
 based on the saved 6 September backlog branch. The aggregate review branch is
@@ -1242,3 +1251,20 @@ binding is needed: stock shared pocketables use the existing weapon-special hold
 The optional stock-rules fixture passes. Smart-targeting results, fixed-time
 rounding and final inventory/notification endpoints are supplied. No production
 change or live teammate acceptance; continue the todo while the user is away.
+
+## Continuous todo work: bounded rendering preflight
+
+Branch `codex/xr-preflight-timeout-2026-09-07` bounds the Ready smoke process at
+90 seconds. Both output pipes drain asynchronously. Timeout terminates only the
+child process started by that invocation, records timeout/completeness fields,
+and cannot pass because of an earlier `result=pass` line. Ordinary nonzero exit
+remains a failure. The helper opens no console window and does not restart VD.
+
+Real isolated child-process tests cover output beyond pipe capacity on stdout
+and stderr, nonzero exit, a stalled process after an early pass marker, child
+termination and the actual preflight result-classification block. Five focused
+checks and the **full 112/112 offline CTest suite pass** (14.31 seconds), including
+all 36 Lua chunks. Evidence:
+`artifacts/unattended/continuous-todo-xr-timeout-ctest-20260907.log`.
+No headset was awakened for these tests; the runtime blocker remains. Continue
+the todo until instructed to stop.

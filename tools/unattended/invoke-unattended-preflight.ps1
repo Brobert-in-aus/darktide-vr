@@ -177,16 +177,10 @@ if ($Mode -eq 'Ready') {
         throw "$Configuration XR harness not found: $harness"
     }
 
-    $priorErrorAction = $ErrorActionPreference
-    try {
-        # Loader API-version fallback may write to stderr before succeeding.
-        $ErrorActionPreference = 'Continue'
-        $smokeOutput = @(& $harness --frames 30 --debug-layer --require-openxr `
-            --require-rendering --xr-frames $XrFrames 2>&1 | ForEach-Object { [string] $_ })
-        $smokeExitCode = $LASTEXITCODE
-    } finally {
-        $ErrorActionPreference = $priorErrorAction
-    }
+    $smokeProcess = Invoke-BoundedXrSmoke -FilePath $harness -Arguments `
+        "--frames 30 --debug-layer --require-openxr --require-rendering --xr-frames $XrFrames"
+    $smokeOutput = @($smokeProcess.output)
+    $smokeExitCode = $smokeProcess.exit_code
     $resultLine = $smokeOutput | Where-Object { $_ -match '^result=' } |
         Select-Object -Last 1
     $stateLines = @($smokeOutput | Where-Object {
@@ -194,11 +188,16 @@ if ($Mode -eq 'Ready') {
     })
     $xrSmoke = [ordered]@{
         exit_code = $smokeExitCode
+        timed_out = $smokeProcess.timed_out
+        timeout_seconds = $smokeProcess.timeout_seconds
+        output_complete = $smokeProcess.output_complete
         result = if ($resultLine) { $resultLine.Substring(7) } else { 'missing' }
         state = $stateLines
         output = $smokeOutput
     }
-    if ($smokeExitCode -ne 0 -or $xrSmoke.result -ne 'pass') {
+    if ($smokeProcess.timed_out -or -not $smokeProcess.output_complete) {
+        $smokeFailure = "XR rendering test timed out or its output was incomplete. See $outputFullPath for runtime diagnostics; no restart was attempted."
+    } elseif ($smokeExitCode -ne 0 -or $xrSmoke.result -ne 'pass') {
         $smokeFailure = "XR rendering is unavailable (exit $smokeExitCode, result $($xrSmoke.result)). See $outputFullPath for runtime diagnostics. If Quest passthrough suspended VD, resume streaming and retry; no restart was attempted."
     }
 }
