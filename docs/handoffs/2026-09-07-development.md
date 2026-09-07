@@ -1717,3 +1717,14 @@ Evidence: `artifacts/unattended/integrated-118-ctest-20260907.log`. This superse
 the previous 116-test full baseline; no deployment or live readiness was run.
 Runtime Lua remains `5906ba9`, native source `01617d6`, XR harness source
 `4298262`. Continue working until instructed to stop.
+
+## Continuous todo work: optional menu renderer error cleanup
+
+Branch `codex/menu-renderer-error-retirement-2026-09-07` restores temporary
+crafting/system view renderers and begin/end pass fields after stock or diagnostic
+errors, then propagates the original error. Failed queue setup remains retryable
+in the same UI frame. The actual-hook regressions fail before the fix and pass
+afterward, including nesting and bypass. Five focused CTests pass in 0.83 seconds
+with 37 Lua chunks. Configured count is now 119; the last full baseline remains
+118/118 at `5ffb1a7`. No native change, deployment, live recovery or visual claim.
+Continue the todo; normal proximity remains restored.

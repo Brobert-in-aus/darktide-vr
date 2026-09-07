@@ -215,3 +215,19 @@ The follow-up native Release build and `panel_pointer`, `gameplay_input`,
 a fresh click at 0.26 s while rejecting inherited holds and brief release
 transients. The first full build encountered the running harness's file lock;
 after stopping the live processes, the rebuild completed successfully.
+
+## Optional resource-renderer error cleanup, 7 September
+
+The crafting/system draw hooks temporarily replace the view renderer. A stock
+draw error previously skipped restoration; the begin/end pass hooks likewise
+left temporary pass fields and stack entries behind. These paths now restore
+their own fields before propagating the original error. Failed pass-queue setup
+does not mark that UI frame complete, allowing the next attempt to register it.
+Successful and nested draws retain their previous renderer ordering.
+
+The fixture executes the actual hooks and reproduces the old view/pass failures.
+It covers stock errors, failed diagnostic drawing, same-frame setup retry,
+nested passes and disabled/inactive/unavailable bypass. Five focused CTests pass
+in 0.83 seconds, including all 37 Lua chunks. This affects only the optional
+resource redirection path; it does not repair stock engine state after a failed
+draw or diagnose a previously observed live transition. Undeployed.

@@ -10610,8 +10610,9 @@ mod:hook(
                     #self._content_widgets or 0)
         end
         self._ui_renderer = resource_renderer
-        local result = func(self, dt, t, input_service, layer)
+        local ok, result = pcall(func, self, dt, t, input_service, layer)
         self._ui_renderer = source_renderer
+        if not ok then error(result, 0) end
         return result
     end)
 
@@ -10654,33 +10655,40 @@ mod:hook(UIRenderer, "begin_pass", function(func, self, ...)
         states = {}
         presentation.menu_resource_pass_states[self] = states
     end
-    states[#states + 1] = {
+    local state = {
         base_render_pass = self.base_render_pass,
         render_pass_flag = self.render_pass_flag,
     }
+    states[#states + 1] = state
 
-    local frame_time = Managers.time and Managers.time:time("ui") or 0
-    if presentation.menu_resource_clear_time ~= frame_time then
-        presentation.menu_resource_clear_time = frame_time
-        UIRenderer.clear_render_pass_queue(self)
-        UIRenderer.add_render_pass(
-            self,
-            0,
-            resource_renderer.base_render_pass,
-            true,
-            resource_renderer.render_target
-        )
-        if presentation.world_menu_target_desktop_probe then
-            UIRenderer.add_render_pass(self, 1, "to_screen", false)
+    local ok, result = pcall(function(...)
+        local frame_time = Managers.time and Managers.time:time("ui") or 0
+        if presentation.menu_resource_clear_time ~= frame_time then
+            UIRenderer.clear_render_pass_queue(self)
+            UIRenderer.add_render_pass(
+                self,
+                0,
+                resource_renderer.base_render_pass,
+                true,
+                resource_renderer.render_target
+            )
+            if presentation.world_menu_target_desktop_probe then
+                UIRenderer.add_render_pass(self, 1, "to_screen", false)
+            end
+            presentation.menu_resource_clear_time = frame_time
         end
+        self.base_render_pass = resource_renderer.base_render_pass
+        self.render_pass_flag = resource_renderer.render_pass_flag
+        -- The resource pass must exist before stock begins its widget pass.
+        return func(self, ...)
+    end, ...)
+    if not ok then
+        states[#states] = nil
+        self.base_render_pass = state.base_render_pass
+        self.render_pass_flag = state.render_pass_flag
+        error(result, 0)
     end
-    self.base_render_pass = resource_renderer.base_render_pass
-    self.render_pass_flag = resource_renderer.render_pass_flag
-    -- Register and select the resource pass before the renderer begins its
-    -- widget pass. Darktide's own resource-backed grids follow this ordering;
-    -- doing it after begin_pass left the pass valid in Lua but produced an
-    -- untouched (black) target in the engine.
-    return func(self, ...)
+    return result
 end)
 
 -- SystemView creates its materials and retained widgets against one renderer.
@@ -10733,8 +10741,9 @@ mod:hook(
         end
 
         self._ui_default_renderer = resource_renderer
-        local result = func(self, ...)
+        local ok, result = pcall(func, self, ...)
         self._ui_default_renderer = source_renderer
+        if not ok then error(result, 0) end
 
         if presentation.world_menu_target_probe_requested then
             UIRenderer.begin_pass(
@@ -10785,39 +10794,41 @@ mod:hook(UIRenderer, "end_pass", function(func, self, ...)
     end
     local states = presentation.menu_resource_pass_states[self]
     local state = states and states[#states] or nil
-    if state and presentation.world_menu_target_probe_requested then
-        -- Opaque L-shaped registration mark. Magenta is the top edge in UI
-        -- coordinates; cyan is the left edge. Their presence and orientation
-        -- distinguish target/sample failure from a transform-axis failure.
-        UIRenderer.draw_rect(
-            self,
-            Vector3(0, 0, 10000),
-            Vector3(600, 32, 0),
-            Color(255, 255, 0, 255))
-        UIRenderer.draw_rect(
-            self,
-            Vector3(0, 0, 10001),
-            Vector3(32, 600, 0),
-            Color(255, 0, 255, 255))
-    end
-    if state and presentation.world_menu_target_desktop_probe then
-        local resource_renderer = presentation.menu_resource_renderer
-        local width, height = presentation.menu_resource_extent()
-        Gui.bitmap(
-            self.gui,
-            resource_renderer.render_target_material,
-            "render_pass",
-            "to_screen",
-            Vector3(0, 0, 20000),
-            Vector3(width, height, 0),
-            Color(255, 255, 255, 255))
-    end
-    local result = func(self, ...)
-    if state then
-        states[#states] = nil
-        self.base_render_pass = state.base_render_pass
-        self.render_pass_flag = state.render_pass_flag
-    end
+    if not state then return func(self, ...) end
+    local ok, result = pcall(function(...)
+        if presentation.world_menu_target_probe_requested then
+            -- Opaque L-shaped registration mark. Magenta is the top edge in UI
+            -- coordinates; cyan is the left edge. Their presence and orientation
+            -- distinguish target/sample failure from a transform-axis failure.
+            UIRenderer.draw_rect(
+                self,
+                Vector3(0, 0, 10000),
+                Vector3(600, 32, 0),
+                Color(255, 255, 0, 255))
+            UIRenderer.draw_rect(
+                self,
+                Vector3(0, 0, 10001),
+                Vector3(32, 600, 0),
+                Color(255, 0, 255, 255))
+        end
+        if presentation.world_menu_target_desktop_probe then
+            local resource_renderer = presentation.menu_resource_renderer
+            local width, height = presentation.menu_resource_extent()
+            Gui.bitmap(
+                self.gui,
+                resource_renderer.render_target_material,
+                "render_pass",
+                "to_screen",
+                Vector3(0, 0, 20000),
+                Vector3(width, height, 0),
+                Color(255, 255, 255, 255))
+        end
+        return func(self, ...)
+    end, ...)
+    states[#states] = nil
+    self.base_render_pass = state.base_render_pass
+    self.render_pass_flag = state.render_pass_flag
+    if not ok then error(result, 0) end
     return result
 end)
 
