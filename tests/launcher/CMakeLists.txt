@@ -1,4 +1,7 @@
 if(BUILD_TESTING)
+  add_test(NAME launcher_cleanup_continuation COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/validate-cleanup-continuation.ps1")
+  set_tests_properties(launcher_cleanup_continuation PROPERTIES TIMEOUT 10 LABELS "launcher")
   add_test(NAME launcher_psykhanium_request
     COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
       "${CMAKE_CURRENT_SOURCE_DIR}/validate-psykhanium-request.ps1")

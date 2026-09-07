@@ -1404,3 +1404,22 @@ and the same first-eye texture failure. Guardian and proximity restored, no
 game/deployment. The source also explains the absent optional accessibility
 file's warning; it is not a proven corruption to repair. Exact sources, limits
 and evidence paths are in QUEST-PASSTHROUGH-RECOVERY. Continue offline work.
+
+## Continuous todo work: launcher cleanup continuation
+
+Branch `codex/launcher-cleanup-continuation-2026-09-07` fixes sequential cleanup
+in `start-darktide-vr.ps1`. A failed early file restoration previously skipped
+all later flags, run-owned game cleanup and Psykhanium request retirement. Each
+independent cleanup step now runs despite earlier errors; billboard flag and
+binary restoration are separate steps. The startup helper handle disposes in
+its own `finally`. Cleanup errors aggregate after all steps. An existing launch
+exception remains primary and cleanup errors are warnings; an otherwise
+successful launch fails if cleanup did not complete.
+
+The actual finalizer fixture reproduces the skipped flag before the fix. It
+covers normal completion, one/multiple cleanup failures, original-error
+preservation, later request retirement and preservation of pre-existing or
+wrong-path game processes. Eight focused CTests pass in 5.95 seconds, with
+file/process endpoints mocked; no installation, process kill or live XR run.
+The configured suite now has 114 tests; the latest full baseline remains
+113/113 at `e2aa82a`. Harness remains `4298262`. Continue the todo.

@@ -351,6 +351,7 @@ if ($CaptureBillboardPsoIdentities) {
         "Billboard PSO identity slice armed; scene=$sceneLabel offset=$billboardIdentityStartOffset"
 }
 $launchStarted = Get-Date
+$launchFailure = $null
 $advanceProcess = $null
 $characterStartFlag = Join-Path $GameRoot 'mods\darktidevr_stereo_probe\darktidevr_start_character.flag'
 try {
@@ -867,281 +868,351 @@ else {
     & $runner @runnerArguments
 }
 }
+catch { $launchFailure = $_; throw }
 finally {
-    if (Test-Path -LiteralPath $characterStartFlag -PathType Leaf) {
-        Remove-Item -LiteralPath $characterStartFlag -Force
-    }
-    if ($advanceProcess) {
-        $advanceProcess.Refresh()
-        if (-not $advanceProcess.HasExited) { $advanceProcess.Kill() }
-        $advanceProcess.Dispose()
-    }
-    if ($ngxOutputProbeFlagPath) {
-        if ($null -ne $ngxOutputProbeFlagOriginal) {
-            [IO.File]::WriteAllBytes($ngxOutputProbeFlagPath, $ngxOutputProbeFlagOriginal)
-        }
-        elseif (Test-Path -LiteralPath $ngxOutputProbeFlagPath -PathType Leaf) {
-            Remove-Item -LiteralPath $ngxOutputProbeFlagPath -Force
+    # Attempt every independent owner even if an earlier restoration fails.
+    $cleanupSteps = @(
+    {
+        if (Test-Path -LiteralPath $characterStartFlag -PathType Leaf) {
+            Remove-Item -LiteralPath $characterStartFlag -Force
         }
     }
-    if ($streamlineStereoSubmitProbeFlagPath) {
-        if ($streamlineStereoSubmitProbeFlagExisted) {
-            Set-Content -LiteralPath $streamlineStereoSubmitProbeFlagPath `
-                -Value $streamlineStereoSubmitProbeFlagOriginal.Trim() -Encoding ascii
-        }
-        elseif (Test-Path -LiteralPath $streamlineStereoSubmitProbeFlagPath -PathType Leaf) {
-            Remove-Item -LiteralPath $streamlineStereoSubmitProbeFlagPath -Force
-        }
-    }
-    if ($streamlineProbeFlagPath) {
-        if ($streamlineProbeFlagExisted) {
-            Set-Content -LiteralPath $streamlineProbeFlagPath `
-                -Value $streamlineProbeFlagOriginal.Trim() -Encoding ascii
-        }
-        elseif (Test-Path -LiteralPath $streamlineProbeFlagPath `
-                -PathType Leaf) {
-            Remove-Item -LiteralPath $streamlineProbeFlagPath -Force
-        }
-        Write-Output 'Restored the prior Streamline probe flag.'
-    }
-    if ($streamlineCopyProbeFlagPath) {
-        if ($streamlineCopyProbeFlagExisted) {
-            Set-Content -LiteralPath $streamlineCopyProbeFlagPath `
-                -Value $streamlineCopyProbeFlagOriginal.Trim() -Encoding ascii
-        }
-        elseif (Test-Path -LiteralPath $streamlineCopyProbeFlagPath `
-                -PathType Leaf) {
-            Remove-Item -LiteralPath $streamlineCopyProbeFlagPath -Force
-        }
-        Write-Output 'Restored the prior Streamline copy-probe flag.'
-    }
-    if ($streamlineTransportProbeFlagPath) {
-        if ($streamlineTransportProbeFlagExisted) {
-            Set-Content -LiteralPath $streamlineTransportProbeFlagPath `
-                -Value $streamlineTransportProbeFlagOriginal.Trim() `
-                -Encoding ascii
-        }
-        elseif (Test-Path -LiteralPath $streamlineTransportProbeFlagPath `
-                -PathType Leaf) {
-            Remove-Item -LiteralPath $streamlineTransportProbeFlagPath -Force
-        }
-        Write-Output 'Restored the prior Streamline transport-probe flag.'
-    }
-    if ($streamlineInputSnapshotProbeFlagPath) {
-        if ($streamlineInputSnapshotProbeFlagExisted) {
-            Set-Content -LiteralPath $streamlineInputSnapshotProbeFlagPath `
-                -Value $streamlineInputSnapshotProbeFlagOriginal.Trim() `
-                -Encoding ascii
-        }
-        elseif (Test-Path -LiteralPath $streamlineInputSnapshotProbeFlagPath `
-                -PathType Leaf) {
-            Remove-Item -LiteralPath $streamlineInputSnapshotProbeFlagPath `
-                -Force
-        }
-        Write-Output 'Restored the prior Streamline input-snapshot flag.'
-    }
-    if ($streamlineTargetTokenProbeFlagPath) {
-        if ($streamlineTargetTokenProbeFlagExisted) {
-            Set-Content -LiteralPath $streamlineTargetTokenProbeFlagPath `
-                -Value $streamlineTargetTokenProbeFlagOriginal.Trim() `
-                -Encoding ascii
-        }
-        elseif (Test-Path -LiteralPath $streamlineTargetTokenProbeFlagPath `
-                -PathType Leaf) {
-            Remove-Item -LiteralPath $streamlineTargetTokenProbeFlagPath `
-                -Force
-        }
-        Write-Output 'Restored the prior Streamline target-token flag.'
-    }
-    if ($streamlineEyeTargetProbeFlagPath) {
-        if ($streamlineEyeTargetProbeFlagExisted) {
-            Set-Content -LiteralPath $streamlineEyeTargetProbeFlagPath `
-                -Value $streamlineEyeTargetProbeFlagOriginal.Trim() `
-                -Encoding ascii
-        }
-        elseif (Test-Path -LiteralPath $streamlineEyeTargetProbeFlagPath `
-                -PathType Leaf) {
-            Remove-Item -LiteralPath $streamlineEyeTargetProbeFlagPath `
-                -Force
-        }
-        Write-Output 'Restored the prior Streamline eye-target flag.'
-    }
-    if ($streamlineStereoSwapchainProbeFlagPath) {
-        if ($streamlineStereoSwapchainProbeFlagExisted) {
-            Set-Content -LiteralPath $streamlineStereoSwapchainProbeFlagPath `
-                -Value $streamlineStereoSwapchainProbeFlagOriginal.Trim() `
-                -Encoding ascii
-        }
-        elseif (Test-Path -LiteralPath $streamlineStereoSwapchainProbeFlagPath `
-                -PathType Leaf) {
-            Remove-Item -LiteralPath $streamlineStereoSwapchainProbeFlagPath `
-                -Force
-        }
-        Write-Output 'Restored the prior Streamline stereo-swapchain flag.'
-    }
-    if ($streamlineStereoStageProbeFlagPath) {
-        if ($streamlineStereoStageProbeFlagExisted) {
-            Set-Content -LiteralPath $streamlineStereoStageProbeFlagPath `
-                -Value $streamlineStereoStageProbeFlagOriginal.Trim() `
-                -Encoding ascii
-        }
-        elseif (Test-Path -LiteralPath $streamlineStereoStageProbeFlagPath `
-                -PathType Leaf) {
-            Remove-Item -LiteralPath $streamlineStereoStageProbeFlagPath `
-                -Force
-        }
-        Write-Output 'Restored the prior Streamline stereo-stage flag.'
-    }
-    if ($syntheticHeadPublisher) {
-        if (-not $syntheticHeadPublisher.HasExited) {
-            $syntheticHeadPublisher | Stop-Process -Force
-        }
-        Write-Output 'Stopped the run-owned synthetic head publisher.'
-    }
-    if ($billboardPixelProbeFlagPath) {
-        if ($billboardPixelProbeFlagExisted) {
-            Set-Content -LiteralPath $billboardPixelProbeFlagPath `
-                -Value $billboardPixelProbeFlagOriginal.Trim() -Encoding ascii
-        }
-        elseif (Test-Path -LiteralPath $billboardPixelProbeFlagPath -PathType Leaf) {
-            Remove-Item -LiteralPath $billboardPixelProbeFlagPath -Force
-        }
-        if ($billboardPixelProbeDestinationExisted) {
-            [IO.File]::WriteAllBytes(
-                $billboardPixelProbeDestinationPath,
-                $billboardPixelProbeDestinationOriginal)
-        }
-        elseif (Test-Path -LiteralPath $billboardPixelProbeDestinationPath `
-                -PathType Leaf) {
-            Remove-Item -LiteralPath $billboardPixelProbeDestinationPath -Force
-        }
-        Write-Output 'Restored the prior exact billboard pixel-probe state.'
-    }
-    if ($offlineDualViewFlagPath) {
-        if ($offlineDualViewFlagExisted) {
-            Set-Content -LiteralPath $offlineDualViewFlagPath `
-                -Value $offlineDualViewFlagOriginal.Trim() -Encoding ascii
-        }
-        elseif (Test-Path -LiteralPath $offlineDualViewFlagPath -PathType Leaf) {
-            Remove-Item -LiteralPath $offlineDualViewFlagPath -Force
-        }
-        Write-Output 'Restored the prior offline dual-view benchmark flag.'
-    }
-    if ($performancePassTraceFlagPath) {
-        Set-Content -LiteralPath $performancePassTraceFlagPath `
-            -Value $performancePassTraceFlagOriginal.Trim() -Encoding ascii
-        Write-Output 'Restored the prior performance-pass trace flag.'
-    }
-    if ($performanceProfileFlagPath) {
-        Set-Content -LiteralPath $performanceProfileFlagPath `
-            -Value $performanceProfileFlagOriginal.Trim() -Encoding ascii
-        Write-Output 'Restored the prior performance-profile flag.'
-    }
-    if ($controllerAimFlagPath) {
-        Set-Content -LiteralPath $controllerAimFlagPath `
-            -Value $controllerAimFlagOriginal.Trim() -Encoding ascii
-        Write-Output 'Restored the prior controller-aim test flag.'
-    }
-    if ($hudPanelFlagPath) {
-        Set-Content -LiteralPath $hudPanelFlagPath `
-            -Value $hudPanelFlagOriginal.Trim() -Encoding ascii
-        Write-Output 'Restored the prior HUD-panel test flag.'
-    }
-    if ($gameplayInputFlagPath) {
-        Set-Content -LiteralPath $gameplayInputFlagPath `
-            -Value $gameplayInputFlagOriginal.Trim() -Encoding ascii
-        Write-Output 'Restored the prior gameplay-input test flag.'
-    }
-    if ($xrLaunchOwnsGame) {
-        # A supported launch must never leave its authenticated flat Darktide
-        # process behind after its XR owner exits. Preserve every PID that
-        # existed before this invocation and require the exact configured
-        # executable so cleanup cannot terminate an unrelated same-name game.
-        # Launcher Play can complete just after its UI helper reports failure,
-        # so cover that late-process race before returning the original error.
-        $cleanupDeadline = if ($xrRunnerStarted) {
-            Get-Date
-        }
-        else {
-            (Get-Date).AddSeconds(30)
-        }
-        do {
-            $orphanedGames = @(Get-Process -Name Darktide `
-                    -ErrorAction SilentlyContinue |
-                Where-Object {
-                    if ($preLaunchGameProcessIds.Contains($_.Id)) {
-                        return $false
-                    }
-                    try {
-                        $_.Path -ieq $expectedGamePath
-                    }
-                    catch {
-                        $false
-                    }
-                })
-            if ($orphanedGames.Count -gt 0) {
-                $orphanedGames | Stop-Process -Force
-                if ($offlineNoHeadset) {
-                    Write-Output `
-                        'Offline run completed; terminated the run-owned Darktide process.'
-                }
-                elseif ($xrRunnerStarted) {
-                    Write-Warning `
-                        'XR owner exited; terminated the orphaned flat Darktide process.'
-                }
-                else {
-                    Write-Warning `
-                        'Launch failed; terminated the late run-owned Darktide process.'
-                }
-                break
-            }
-            if ((Get-Date) -ge $cleanupDeadline) {
-                break
-            }
-            Start-Sleep -Milliseconds 500
-        } while ($true)
-    }
-    if ($psykhaniumRequest) {
-        Clear-PsykhaniumLaunchRequest -Request $psykhaniumRequest
-        Write-Output 'Retired this launch''s Psykhanium request without restoring old commands.'
-    }
-    if ($billboardIdentityCapturePath -and $billboardIdentityLogPath -and
-            (Test-Path -LiteralPath $billboardIdentityLogPath -PathType Leaf)) {
-        $identityLength =
-            (Get-Item -LiteralPath $billboardIdentityLogPath).Length
-        if ($identityLength -gt $billboardIdentityStartOffset) {
-            $captureDirectory = Split-Path -Parent $billboardIdentityCapturePath
-            New-Item -ItemType Directory -Path $captureDirectory -Force |
-                Out-Null
-            $sourceStream = [System.IO.File]::Open(
-                $billboardIdentityLogPath,
-                [System.IO.FileMode]::Open,
-                [System.IO.FileAccess]::Read,
-                [System.IO.FileShare]::ReadWrite)
-            $destinationStream = $null
+    {
+        if ($advanceProcess) {
             try {
-                [void]$sourceStream.Seek(
-                    $billboardIdentityStartOffset,
-                    [System.IO.SeekOrigin]::Begin)
-                $destinationStream = [System.IO.File]::Create(
-                    $billboardIdentityCapturePath)
-                $sourceStream.CopyTo($destinationStream)
+                $advanceProcess.Refresh()
+                if (-not $advanceProcess.HasExited) { $advanceProcess.Kill() }
+            } finally {
+                $advanceProcess.Dispose()
             }
-            finally {
-                if ($destinationStream) {
-                    $destinationStream.Dispose()
+        }
+    }
+    {
+        if ($ngxOutputProbeFlagPath) {
+            if ($null -ne $ngxOutputProbeFlagOriginal) {
+                [IO.File]::WriteAllBytes($ngxOutputProbeFlagPath, $ngxOutputProbeFlagOriginal)
+            }
+            elseif (Test-Path -LiteralPath $ngxOutputProbeFlagPath -PathType Leaf) {
+                Remove-Item -LiteralPath $ngxOutputProbeFlagPath -Force
+            }
+        }
+    }
+    {
+        if ($streamlineStereoSubmitProbeFlagPath) {
+            if ($streamlineStereoSubmitProbeFlagExisted) {
+                Set-Content -LiteralPath $streamlineStereoSubmitProbeFlagPath `
+                    -Value $streamlineStereoSubmitProbeFlagOriginal.Trim() -Encoding ascii
+            }
+            elseif (Test-Path -LiteralPath $streamlineStereoSubmitProbeFlagPath -PathType Leaf) {
+                Remove-Item -LiteralPath $streamlineStereoSubmitProbeFlagPath -Force
+            }
+        }
+    }
+    {
+        if ($streamlineProbeFlagPath) {
+            if ($streamlineProbeFlagExisted) {
+                Set-Content -LiteralPath $streamlineProbeFlagPath `
+                    -Value $streamlineProbeFlagOriginal.Trim() -Encoding ascii
+            }
+            elseif (Test-Path -LiteralPath $streamlineProbeFlagPath `
+                    -PathType Leaf) {
+                Remove-Item -LiteralPath $streamlineProbeFlagPath -Force
+            }
+            Write-Output 'Restored the prior Streamline probe flag.'
+        }
+    }
+    {
+        if ($streamlineCopyProbeFlagPath) {
+            if ($streamlineCopyProbeFlagExisted) {
+                Set-Content -LiteralPath $streamlineCopyProbeFlagPath `
+                    -Value $streamlineCopyProbeFlagOriginal.Trim() -Encoding ascii
+            }
+            elseif (Test-Path -LiteralPath $streamlineCopyProbeFlagPath `
+                    -PathType Leaf) {
+                Remove-Item -LiteralPath $streamlineCopyProbeFlagPath -Force
+            }
+            Write-Output 'Restored the prior Streamline copy-probe flag.'
+        }
+    }
+    {
+        if ($streamlineTransportProbeFlagPath) {
+            if ($streamlineTransportProbeFlagExisted) {
+                Set-Content -LiteralPath $streamlineTransportProbeFlagPath `
+                    -Value $streamlineTransportProbeFlagOriginal.Trim() `
+                    -Encoding ascii
+            }
+            elseif (Test-Path -LiteralPath $streamlineTransportProbeFlagPath `
+                    -PathType Leaf) {
+                Remove-Item -LiteralPath $streamlineTransportProbeFlagPath -Force
+            }
+            Write-Output 'Restored the prior Streamline transport-probe flag.'
+        }
+    }
+    {
+        if ($streamlineInputSnapshotProbeFlagPath) {
+            if ($streamlineInputSnapshotProbeFlagExisted) {
+                Set-Content -LiteralPath $streamlineInputSnapshotProbeFlagPath `
+                    -Value $streamlineInputSnapshotProbeFlagOriginal.Trim() `
+                    -Encoding ascii
+            }
+            elseif (Test-Path -LiteralPath $streamlineInputSnapshotProbeFlagPath `
+                    -PathType Leaf) {
+                Remove-Item -LiteralPath $streamlineInputSnapshotProbeFlagPath `
+                    -Force
+            }
+            Write-Output 'Restored the prior Streamline input-snapshot flag.'
+        }
+    }
+    {
+        if ($streamlineTargetTokenProbeFlagPath) {
+            if ($streamlineTargetTokenProbeFlagExisted) {
+                Set-Content -LiteralPath $streamlineTargetTokenProbeFlagPath `
+                    -Value $streamlineTargetTokenProbeFlagOriginal.Trim() `
+                    -Encoding ascii
+            }
+            elseif (Test-Path -LiteralPath $streamlineTargetTokenProbeFlagPath `
+                    -PathType Leaf) {
+                Remove-Item -LiteralPath $streamlineTargetTokenProbeFlagPath `
+                    -Force
+            }
+            Write-Output 'Restored the prior Streamline target-token flag.'
+        }
+    }
+    {
+        if ($streamlineEyeTargetProbeFlagPath) {
+            if ($streamlineEyeTargetProbeFlagExisted) {
+                Set-Content -LiteralPath $streamlineEyeTargetProbeFlagPath `
+                    -Value $streamlineEyeTargetProbeFlagOriginal.Trim() `
+                    -Encoding ascii
+            }
+            elseif (Test-Path -LiteralPath $streamlineEyeTargetProbeFlagPath `
+                    -PathType Leaf) {
+                Remove-Item -LiteralPath $streamlineEyeTargetProbeFlagPath `
+                    -Force
+            }
+            Write-Output 'Restored the prior Streamline eye-target flag.'
+        }
+    }
+    {
+        if ($streamlineStereoSwapchainProbeFlagPath) {
+            if ($streamlineStereoSwapchainProbeFlagExisted) {
+                Set-Content -LiteralPath $streamlineStereoSwapchainProbeFlagPath `
+                    -Value $streamlineStereoSwapchainProbeFlagOriginal.Trim() `
+                    -Encoding ascii
+            }
+            elseif (Test-Path -LiteralPath $streamlineStereoSwapchainProbeFlagPath `
+                    -PathType Leaf) {
+                Remove-Item -LiteralPath $streamlineStereoSwapchainProbeFlagPath `
+                    -Force
+            }
+            Write-Output 'Restored the prior Streamline stereo-swapchain flag.'
+        }
+    }
+    {
+        if ($streamlineStereoStageProbeFlagPath) {
+            if ($streamlineStereoStageProbeFlagExisted) {
+                Set-Content -LiteralPath $streamlineStereoStageProbeFlagPath `
+                    -Value $streamlineStereoStageProbeFlagOriginal.Trim() `
+                    -Encoding ascii
+            }
+            elseif (Test-Path -LiteralPath $streamlineStereoStageProbeFlagPath `
+                    -PathType Leaf) {
+                Remove-Item -LiteralPath $streamlineStereoStageProbeFlagPath `
+                    -Force
+            }
+            Write-Output 'Restored the prior Streamline stereo-stage flag.'
+        }
+    }
+    {
+        if ($syntheticHeadPublisher) {
+            if (-not $syntheticHeadPublisher.HasExited) {
+                $syntheticHeadPublisher | Stop-Process -Force
+            }
+            Write-Output 'Stopped the run-owned synthetic head publisher.'
+        }
+    }
+    {
+        if ($billboardPixelProbeFlagPath) {
+            if ($billboardPixelProbeFlagExisted) {
+                Set-Content -LiteralPath $billboardPixelProbeFlagPath `
+                    -Value $billboardPixelProbeFlagOriginal.Trim() -Encoding ascii
+            }
+            elseif (Test-Path -LiteralPath $billboardPixelProbeFlagPath -PathType Leaf) {
+                Remove-Item -LiteralPath $billboardPixelProbeFlagPath -Force
+            }
+        }
+    }
+    {
+        if ($billboardPixelProbeFlagPath) {
+            if ($billboardPixelProbeDestinationExisted) {
+                [IO.File]::WriteAllBytes(
+                    $billboardPixelProbeDestinationPath,
+                    $billboardPixelProbeDestinationOriginal)
+            }
+            elseif (Test-Path -LiteralPath $billboardPixelProbeDestinationPath `
+                    -PathType Leaf) {
+                Remove-Item -LiteralPath $billboardPixelProbeDestinationPath -Force
+            }
+        }
+    }
+    {
+        if ($offlineDualViewFlagPath) {
+            if ($offlineDualViewFlagExisted) {
+                Set-Content -LiteralPath $offlineDualViewFlagPath `
+                    -Value $offlineDualViewFlagOriginal.Trim() -Encoding ascii
+            }
+            elseif (Test-Path -LiteralPath $offlineDualViewFlagPath -PathType Leaf) {
+                Remove-Item -LiteralPath $offlineDualViewFlagPath -Force
+            }
+            Write-Output 'Restored the prior offline dual-view benchmark flag.'
+        }
+    }
+    {
+        if ($performancePassTraceFlagPath) {
+            Set-Content -LiteralPath $performancePassTraceFlagPath `
+                -Value $performancePassTraceFlagOriginal.Trim() -Encoding ascii
+            Write-Output 'Restored the prior performance-pass trace flag.'
+        }
+    }
+    {
+        if ($performanceProfileFlagPath) {
+            Set-Content -LiteralPath $performanceProfileFlagPath `
+                -Value $performanceProfileFlagOriginal.Trim() -Encoding ascii
+            Write-Output 'Restored the prior performance-profile flag.'
+        }
+    }
+    {
+        if ($controllerAimFlagPath) {
+            Set-Content -LiteralPath $controllerAimFlagPath `
+                -Value $controllerAimFlagOriginal.Trim() -Encoding ascii
+            Write-Output 'Restored the prior controller-aim test flag.'
+        }
+    }
+    {
+        if ($hudPanelFlagPath) {
+            Set-Content -LiteralPath $hudPanelFlagPath `
+                -Value $hudPanelFlagOriginal.Trim() -Encoding ascii
+            Write-Output 'Restored the prior HUD-panel test flag.'
+        }
+    }
+    {
+        if ($gameplayInputFlagPath) {
+            Set-Content -LiteralPath $gameplayInputFlagPath `
+                -Value $gameplayInputFlagOriginal.Trim() -Encoding ascii
+            Write-Output 'Restored the prior gameplay-input test flag.'
+        }
+    }
+    {
+        if ($xrLaunchOwnsGame) {
+            # A supported launch must never leave its authenticated flat Darktide
+            # process behind after its XR owner exits. Preserve every PID that
+            # existed before this invocation and require the exact configured
+            # executable so cleanup cannot terminate an unrelated same-name game.
+            # Launcher Play can complete just after its UI helper reports failure,
+            # so cover that late-process race before returning the original error.
+            $cleanupDeadline = if ($xrRunnerStarted) {
+                Get-Date
+            }
+            else {
+                (Get-Date).AddSeconds(30)
+            }
+            do {
+                $orphanedGames = @(Get-Process -Name Darktide `
+                        -ErrorAction SilentlyContinue |
+                    Where-Object {
+                        if ($preLaunchGameProcessIds.Contains($_.Id)) {
+                            return $false
+                        }
+                        try {
+                            $_.Path -ieq $expectedGamePath
+                        }
+                        catch {
+                            $false
+                        }
+                    })
+                if ($orphanedGames.Count -gt 0) {
+                    $orphanedGames | Stop-Process -Force
+                    if ($offlineNoHeadset) {
+                        Write-Output `
+                            'Offline run completed; terminated the run-owned Darktide process.'
+                    }
+                    elseif ($xrRunnerStarted) {
+                        Write-Warning `
+                            'XR owner exited; terminated the orphaned flat Darktide process.'
+                    }
+                    else {
+                        Write-Warning `
+                            'Launch failed; terminated the late run-owned Darktide process.'
+                    }
+                    break
                 }
-                $sourceStream.Dispose()
+                if ((Get-Date) -ge $cleanupDeadline) {
+                    break
+                }
+                Start-Sleep -Milliseconds 500
+            } while ($true)
+        }
+    }
+    {
+        if ($psykhaniumRequest) {
+            Clear-PsykhaniumLaunchRequest -Request $psykhaniumRequest
+            Write-Output 'Retired this launch''s Psykhanium request without restoring old commands.'
+        }
+    }
+    {
+        if ($billboardIdentityCapturePath -and $billboardIdentityLogPath -and
+                (Test-Path -LiteralPath $billboardIdentityLogPath -PathType Leaf)) {
+            $identityLength =
+                (Get-Item -LiteralPath $billboardIdentityLogPath).Length
+            if ($identityLength -gt $billboardIdentityStartOffset) {
+                $captureDirectory = Split-Path -Parent $billboardIdentityCapturePath
+                New-Item -ItemType Directory -Path $captureDirectory -Force |
+                    Out-Null
+                $sourceStream = [System.IO.File]::Open(
+                    $billboardIdentityLogPath,
+                    [System.IO.FileMode]::Open,
+                    [System.IO.FileAccess]::Read,
+                    [System.IO.FileShare]::ReadWrite)
+                $destinationStream = $null
+                try {
+                    [void]$sourceStream.Seek(
+                        $billboardIdentityStartOffset,
+                        [System.IO.SeekOrigin]::Begin)
+                    $destinationStream = [System.IO.File]::Create(
+                        $billboardIdentityCapturePath)
+                    $sourceStream.CopyTo($destinationStream)
+                }
+                finally {
+                    if ($destinationStream) {
+                        $destinationStream.Dispose()
+                    }
+                    $sourceStream.Dispose()
+                }
+                Write-Output `
+                    "Captured run-scoped billboard PSO identities: $billboardIdentityCapturePath"
             }
-            Write-Output `
-                "Captured run-scoped billboard PSO identities: $billboardIdentityCapturePath"
+            elseif ($identityLength -lt $billboardIdentityStartOffset) {
+                Write-Warning `
+                    'Billboard PSO identity log was replaced during the run; no unsafe cross-run slice was emitted.'
+            }
+            else {
+                Write-Warning 'No billboard PSO identities were appended during this run.'
+            }
         }
-        elseif ($identityLength -lt $billboardIdentityStartOffset) {
-            Write-Warning `
-                'Billboard PSO identity log was replaced during the run; no unsafe cross-run slice was emitted.'
-        }
-        else {
-            Write-Warning 'No billboard PSO identities were appended during this run.'
+    }
+    )
+    $cleanupFailures = [Collections.Generic.List[string]]::new()
+    foreach ($cleanupStep in $cleanupSteps) {
+        try { & $cleanupStep }
+        catch { $cleanupFailures.Add($_.Exception.Message) }
+    }
+    if ($cleanupFailures.Count -gt 0) {
+        $cleanupMessage = 'Launch cleanup failed: ' + ($cleanupFailures -join '; ')
+        if ($launchFailure) {
+            # Keep the original launch exception after reporting cleanup damage.
+            Write-Warning -Message $cleanupMessage -WarningAction Continue
+        } else {
+            throw $cleanupMessage
         }
     }
 }
