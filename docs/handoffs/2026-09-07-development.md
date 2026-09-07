@@ -1084,3 +1084,22 @@ walking axes retain hand-relative rotation. No new input admission policy.
 Five focused CTests pass (scanner stick, online rules, gameplay ownership,
 Lua compile/invariants); all 36 chunks compile. Undeployed, with no live
 transition acceptance. Continue the todo while the user is away.
+
+## Continuous todo work: character input ownership
+
+Branch `codex/character-input-owner-2026-09-07` extends the mapper's weak owner
+record from the input handler to its live local character unit. Actual stock
+`HumanGameplay.pre_update` replaces unit/orientation components without creating
+a new input handler. The real adapter regression reproduced a held attack
+surviving that replacement. Replacement now drains input and requires neutral
+rearming, and a missing/non-live unit remains inactive. A changed unit between
+pre-update and fixed caching cannot inherit the old sample. Protected lookup
+retains strict current-player/current-handler ownership and stock caches.
+
+Six focused checks and the **full 111/111 offline CTest suite pass**, with all
+36 Lua chunks compiling. Evidence:
+`artifacts/unattended/continuous-todo-character-owner-ctest-20260907.log`.
+No native code changed; full Release baseline remains `df99611`, with the newer
+XR harness built at `f201a9a`. Unit liveness is engine object liveness, not proof
+of health-state/spectator gameplay acceptance. This remains undeployed; continue
+the todo without waiting for worn verification.

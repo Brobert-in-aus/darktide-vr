@@ -32,7 +32,8 @@ presentation.gameplay_ui={sample=function(active) ui_active=active end}
 assert(loadstring(source:sub(first,last-1)))()
 local owner={_ephemeral_actions={'action_one_pressed','action_one_release','stock_action'},
     _ephemeral_action_cache={}}
-local player={input_handler=owner}
+local player={input_handler=owner,player_unit='first_character'}
+Unit={alive=function(unit) return unit~=nil and unit~='dead_character' end}
 owner._player=player
 Managers.player={local_player=function(_,index) assert(index==1); return player end}
 local function sample(value)
@@ -107,6 +108,26 @@ assert(not replaced[1] and not replaced[2] and not ui_active, 'Replacement handl
 assert(not sample(1)[1])
 sample(0)
 assert(sample(1)[1] and sample(0)[2])
+-- HumanGameplay can replace player_unit while retaining this input handler.
+sample(0)
+assert(sample(1)[1])
+player.player_unit='replacement_character'
+local respawned=sample(1)
+assert(not respawned[1] and not respawned[2] and not ui_active and
+    presentation.controller_bindings.held==0, 'Replacement character inherited a held attack')
+assert(not sample(1)[1])
+sample(0)
+assert(sample(1)[1] and sample(0)[2])
+player.player_unit='dead_character'
+assert(not sample(1)[1] and not ui_active and presentation.controller_bindings.held==0,
+    'Dead character admitted new controller input')
+player.player_unit=nil
+assert(not sample(1)[1] and not ui_active)
+player.player_unit='next_character'
+assert(not sample(1)[1] and not ui_active)
+assert(not sample(1)[1])
+sample(0)
+assert(sample(1)[1] and sample(0)[2])
 for _,ui in ipairs({{}, {using_input=function() error('retiring') end},
         {using_input=function() return {} end}, {using_input=function() return nil end},
         17,true,setmetatable({}, {__index=function() error('retired proxy lookup') end})}) do
@@ -134,6 +155,9 @@ fixed_hook(retired,0,0,1)
 assert(scans==0 and captures==0)
 fixed_hook(owner,0,0,1)
 assert(scans==1 and captures==1)
+player.player_unit='unsampled_character'
+fixed_hook(owner,0,0,1)
+assert(scans==1 and captures==1,'Replacement character inherited previous fixed input state')
 local unsampled={_player=player}
 player.input_handler=unsampled
 fixed_hook(unsampled,0,0,1)

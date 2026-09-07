@@ -48,4 +48,15 @@ function Context.local_input_handler(handler, players)
     return ok and current == true
 end
 
+local function current_input_unit(handler, players)
+    if not current_input_handler(handler, players) then return end
+    local unit = handler._player.player_unit
+    return unit and Unit.alive(unit) and unit or nil
+end
+
+function Context.local_input_unit(handler, players)
+    local ok, unit = pcall(current_input_unit, handler, players)
+    return ok and unit or nil
+end
+
 return Context

@@ -79,6 +79,18 @@ five focused checks and 36 LuaJIT chunks pass. This does not claim the historica
 base-game remote-husk teardown race is fixed or that mission transitions passed
 live validation.
 
+Character-owner follow-up: stock `HumanGameplay.pre_update` can refresh its
+character and orientation components while preserving `player.input_handler`.
+The VR mapper now observes both the current handler and its live local unit,
+held weakly. Unit replacement drains inherited controls and requires neutral
+rearming; absent/non-live units cannot authorize new input. Fixed-cache routing
+also rejects a changed unit before that unit has been sampled. This addresses
+object lifetime and replacement, not the health-state meaning of a still-live
+downed/dead character. Stock spectator and health-state actions still require
+their later live checks. The regression reproduces inherited holds across a
+same-handler replacement and covers missing/non-live units and fixed-frame
+admission. All 111 offline CTests pass with the candidate.
+
 ## Validation
 
 Pinned LuaJIT compiles all 34 mod chunks. The policy test covers explicit modes,

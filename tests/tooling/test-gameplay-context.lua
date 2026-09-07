@@ -43,11 +43,21 @@ local handler={_player=player}
 player.input_handler=handler
 local players={local_player=function(self,index) assert(self and index==1); return player end}
 assert(context.local_input_handler(handler,players))
+Unit={alive=function(unit) return unit=='live' end}
+assert(context.local_input_unit(handler,players)==nil)
+player.player_unit='live'
+assert(context.local_input_unit(handler,players)=='live')
+player.player_unit='dead'
+assert(context.local_input_unit(handler,players)==nil)
+player.player_unit='live'
 assert(not context.local_input_handler({_player=player},players),'Retired handler authorized input')
 assert(not context.local_input_handler({_player={}},players),'Foreign player authorized input')
+assert(context.local_input_unit({_player=player},players)==nil)
 for _,invalid_owner in ipairs({{},true,17,setmetatable({}, {__index=function() error('retired lookup') end})}) do
     assert(not context.local_input_handler(handler,invalid_owner))
     assert(not context.local_input_handler(invalid_owner,players))
+    assert(context.local_input_unit(handler,invalid_owner)==nil)
+    assert(context.local_input_unit(invalid_owner,players)==nil)
 end
 assert(not context.local_input_handler(handler,nil))
 player=nil

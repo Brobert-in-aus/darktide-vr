@@ -5479,11 +5479,14 @@ function presentation.inject_gameplay_input(self, main_t)
     local game_mode_name = active_game_mode_name()
     local ui_inputs_in_use = presentation.gameplay_context.ui_blocks_gameplay(
         Managers and Managers.ui)
-    local handler_changed = presentation.gameplay_input_owner[1] ~= self
-    presentation.gameplay_input_owner[1] = self
-    -- Loading can replace the input handler without any intervening callback
-    -- that cancels the old mapper. Drain one frame and require a fresh release.
-    local active = not handler_changed and controller_observation.gameplay_input_enabled and
+    local player_unit = presentation.gameplay_context.local_input_unit(
+        self, Managers and Managers.player)
+    local owner_changed = presentation.gameplay_input_owner[1] ~= self or
+        presentation.gameplay_input_owner[2] ~= player_unit
+    presentation.gameplay_input_owner[1], presentation.gameplay_input_owner[2] = self, player_unit
+    -- Loading can replace the handler, or stock can replace its character,
+    -- without an intervening inactive callback. Drain and require neutral input.
+    local active = player_unit ~= nil and not owner_changed and controller_observation.gameplay_input_enabled and
         presentation.is_first_person_body_mode(game_mode_name) and
         presentation.mode == 1 and not ui_inputs_in_use
     local result = ui_native_capture.dtvr_read_gameplay_input(
@@ -5566,8 +5569,9 @@ mod:hook_safe(
     "fixed_update",
     function(self, _, _, frame)
         if self ~= presentation.gameplay_input_owner[1] or
-                not presentation.gameplay_context.local_input_handler(
-                    self, Managers and Managers.player) then return end
+                presentation.gameplay_input_owner[2] == nil or
+                presentation.gameplay_context.local_input_unit(
+                    self, Managers and Managers.player) ~= presentation.gameplay_input_owner[2] then return end
         presentation.scan_movement_inventory(self, frame)
         controller_observation.gameplay_stick_active = false
         local gameplay_held = controller_observation.gameplay_input_enabled and
