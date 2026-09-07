@@ -269,3 +269,24 @@ Inspect the available models before claiming weapon-family coverage; no exact
 models were specified. Use this character for the next gun validation pass and
 retain force staff as a regression control. See MISSION-READINESS.md for the
 separate mission-mode/authority requirements beyond private-range success.
+
+## Reticle cache ownership: 7 September
+
+The convergence cache previously accepted any sequence difference at most 60,
+including a negative age after a publisher restart. A cached world point now
+requires age 0–60, the same controller generation, the same game-session object
+and the current live local player unit. Invalid identity clears the cache and
+uses the existing hand-ray fallback. Valid convergence math and the age window
+remain unchanged. Online-rules combat continues to use stock simulation origins.
+
+The hand-origin HUD tag path now uses the same checked cache getter instead of
+reading target fields directly. A missing observation, ray error, unavailable
+hand aim or missing online simulation component clears cached points/targets
+and retained owner references. Online stock forced-targeting remains unchanged.
+
+The actual publication/convergence fixture reproduces the negative-age fault
+and passes age boundaries, publisher restart that has advanced beyond the old
+sequence, player/session replacement, dead owner and missing/failed observations.
+Concrete targeting-hook and HUD fixtures check cache invalidation and empty-tag
+fallback. Six focused CTests pass, including all 36 LuaJIT chunks. No deployment,
+live transition or worn convergence acceptance; full 110/110 baseline is `aadf4f3`.

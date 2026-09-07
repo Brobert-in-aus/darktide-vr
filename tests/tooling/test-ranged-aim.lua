@@ -270,6 +270,20 @@ smart.fixed_update({_is_local_unit=true,_first_person_component=shared})
 assert(reticles==1,'Online reticle did not use the stock simulated origin')
 smart.fixed_update({_is_local_unit=false,_first_person_component=shared})
 assert(reticles==1,'Changed remote reticle')
+local native_clears=0
+aim.presentation.publish_gameplay_aim_state=function(active,hit,distance)
+    assert(not active and not hit and distance==0); native_clears=native_clears+1
+end
+for _,online in ipairs({true,false}) do
+    aim.reticle_world_point={}; aim.reticle_hit_unit={}; aim.reticle_point_owner={}
+    aim.presentation.online_rules.enabled=function() return online end
+    -- Missing simulation component online, or unavailable hand aim in the
+    -- local pose mode, must invalidate convergence and HUD target caches.
+    smart.fixed_update({_is_local_unit=true})
+    assert(aim.reticle_world_point==nil and aim.reticle_hit_unit==nil and aim.reticle_point_owner==nil)
+end
+assert(native_clears==2)
+aim.presentation.online_rules.enabled=function() return true end
 for _,route in ipairs(lightning_routes) do
     for _,unit in ipairs({player,remote}) do
         local target_action=action(modules[route[1]])

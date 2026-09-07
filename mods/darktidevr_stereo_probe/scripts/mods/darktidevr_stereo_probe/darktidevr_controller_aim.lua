@@ -147,6 +147,9 @@ function controller_aim.install(mod, presentation, state)
     controller_aim.last_reticle_log_sequence = 0
     controller_aim.reticle_world_point = nil
     controller_aim.reticle_point_sequence = 0
+    controller_aim.reticle_point_owner = nil
+    controller_aim.reticle_point_session = nil
+    controller_aim.reticle_point_generation = nil
     controller_aim.converged_writes = 0
     controller_aim.convergence_fallbacks = 0
 
@@ -170,13 +173,20 @@ function controller_aim.install(mod, presentation, state)
         return presentation.controller_aim_target()
     end
 
-    function controller_aim.publish_reticle(extension, stock_position, stock_rotation)
+    function controller_aim.clear_reticle()
         controller_aim.reticle_hit_unit = nil
+        controller_aim.reticle_world_point = nil
+        controller_aim.reticle_point_owner = nil
+        controller_aim.reticle_point_session = nil
+        controller_aim.reticle_point_generation = nil
+    end
+
+    function controller_aim.publish_reticle(extension, stock_position, stock_rotation)
+        controller_aim.clear_reticle()
         local position, rotation = stock_position, stock_rotation
         if not position or not rotation then position, rotation = controller_aim.target("dominant") end
         local physics_world = extension and extension._physics_world
         if not position or not rotation or not physics_world then
-            controller_aim.reticle_world_point = nil
             presentation.publish_gameplay_aim_state(false, false, 0)
             return
         end
@@ -195,7 +205,6 @@ function controller_aim.install(mod, presentation, state)
             "collision_filter",
             "filter_player_character_shooting_raycast")
         if not ok then
-            controller_aim.reticle_world_point = nil
             controller_aim.reticle_failures =
                 controller_aim.reticle_failures + 1
             presentation.publish_gameplay_aim_state(false, false, 0)
@@ -262,6 +271,10 @@ function controller_aim.install(mod, presentation, state)
         distance = math.max(0.05, math.min(200, distance or 50))
         controller_aim.reticle_world_point = Vector3Box(position + direction * distance)
         controller_aim.reticle_point_sequence = state.last_sequence
+        controller_aim.reticle_point_generation = state.last_transport_generation
+        controller_aim.reticle_point_owner = extension._unit
+        controller_aim.reticle_point_session = Managers and Managers.state and
+            Managers.state.game_session
         if not presentation.publish_gameplay_aim_state(
                 true, hit == true, distance) then
             controller_aim.reticle_failures =
@@ -303,15 +316,34 @@ function controller_aim.install(mod, presentation, state)
         end
     end
 
+    function controller_aim.cached_reticle_target()
+        local point = controller_aim.reticle_world_point
+        local age = point and state.last_sequence - controller_aim.reticle_point_sequence
+        local session = Managers and Managers.state and Managers.state.game_session
+        -- Sequence restarts must not turn a previous world's point into a
+        -- "fresh" negative-age sample, including a restart that advances past
+        -- the old sequence before this consumer next runs.
+        local fresh = point and age >= 0 and age <= 60 and
+            controller_aim.reticle_point_generation == state.last_transport_generation and
+            controller_aim.reticle_point_owner ~= nil and
+            Unit.alive(controller_aim.reticle_point_owner) and
+            is_local_unit(controller_aim.reticle_point_owner) and
+            controller_aim.reticle_point_session == session
+        if not fresh then
+            controller_aim.clear_reticle()
+            return nil, nil
+        end
+        return point, controller_aim.reticle_hit_unit
+    end
+
     function controller_aim.converged_rotation(origin, right_position,
             right_rotation)
         if not origin or not right_position or not right_rotation then
             return right_rotation, false
         end
-        local point = controller_aim.reticle_world_point and controller_aim.reticle_world_point:unbox()
-        local fresh = point and state.last_sequence -
-            controller_aim.reticle_point_sequence <= 60
-        if not fresh then
+        local cached = controller_aim.cached_reticle_target()
+        local point = cached and cached:unbox()
+        if not point then
             point = right_position + Quaternion.forward(right_rotation) * 50
             controller_aim.convergence_fallbacks =
                 controller_aim.convergence_fallbacks + 1
@@ -776,12 +808,14 @@ function controller_aim.install(mod, presentation, state)
                 if component then
                     controller_aim.publish_reticle(self, component.position, component.rotation)
                 else
+                    controller_aim.clear_reticle()
                     presentation.publish_gameplay_aim_state(false, false, 0)
                 end
                 return result
             end
             local position, rotation = controller_aim.target("dominant")
             if not position or not rotation then
+                controller_aim.clear_reticle()
                 presentation.publish_gameplay_aim_state(false, false, 0)
                 return func(self, ...)
             end

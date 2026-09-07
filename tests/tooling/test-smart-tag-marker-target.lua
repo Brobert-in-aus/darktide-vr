@@ -16,7 +16,7 @@ callback=function() return function() end end
 local state={authoring_enabled=true}
 presentation={mode=1,gameplay_context=dofile(arg[3]),controller_aim={
     target=function() if live_hand then return 20,30 end end,
-    reticle_hit_unit='aim_enemy',reticle_world_point='reticle_point'}}
+    cached_reticle_target=function() return 'reticle_point','aim_enemy' end}}
 presentation.online_rules=dofile(arg[2]).install(mod,presentation,state,function() return mode end)
 assert(loadstring(source:sub(first,last-1)))()
 local head_marker={name='head',widget={content={distance=2}}}
@@ -51,4 +51,8 @@ mode='hub'; live_hand=true
 assert(marker()==aim_marker)
 assert(hud:_find_raycast_targets(false).static_hit_position=='reticle_point')
 assert(requests==4)
+presentation.controller_aim.cached_reticle_target=function() end
+local missing=hud:_find_raycast_targets(false)
+assert(missing.unit==nil and missing.static_hit_position==nil,'Stale reticle target survived cache invalidation')
+selected,distance=marker(); assert(selected==nil and distance==math.huge)
 print('PASS: simulated tag target beats unrelated head marker; stock force update, validation and local hand path retained')

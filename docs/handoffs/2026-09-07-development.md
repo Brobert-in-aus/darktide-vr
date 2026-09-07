@@ -841,3 +841,22 @@ chunks, with headset tests disabled at configuration. Evidence:
 Native code is unchanged since the full Release build at `5f1eccd`. No deployment
 or claim that this constructed unit-loss case caused a historical live crash.
 Continue the remaining todo list; user has not instructed a stop.
+
+## Continuous todo work: reticle cache ownership
+
+Branch `codex/reticle-cache-ownership-2026-09-07` fixes negative-age freshness
+after controller sequence restart and binds cached convergence/tag targets to
+their controller generation, game session and live current player. A shared
+getter invalidates stale data; convergence retains its existing hand-ray
+fallback, and the hand-origin HUD receives no stale target. Invalid publication,
+ray error, lost hand aim or missing simulation component clears cached owner
+references as well. Online-mode stock forced tagging and combat origins remain.
+
+The regression executes real publication/convergence and reproduces the old
+negative-age error. It covers 0/60/61-frame boundaries, generation changes even
+after sequence catch-up, player/session changes, owner death, no pose and failed
+query. Actual installed targeting hooks and HUD hooks verify clearing/empty
+fallback. Six focused CTests pass (reticle surfaces/cache, ranged aim, online
+rules, smart-tag marker, Lua compile/invariants); 36 chunks compile. Full-suite
+baseline remains 110/110 at `aadf4f3`, native build `5f1eccd`. No deployment or live
+aim/transition acceptance. Continue other todo work without headset verification.
