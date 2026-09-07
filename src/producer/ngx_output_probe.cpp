@@ -293,7 +293,8 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   const auto previous_evaluation = active_evaluation;
   if (captured) active_evaluation = &output_state;
   const auto timing = complete ? begin_ngx_gpu_timing(
-      static_cast<ID3D12GraphicsCommandList*>(commands), legacy_region[0] ? 1U : 0U) : 0;
+      static_cast<ID3D12GraphicsCommandList*>(commands), legacy_region[0] ? 1U : 0U,
+      {identity.lifetime,legacy_region[2],legacy_region[3]}) : 0;
   const auto began = GetTickCount64();
   const auto result = original(commands, feature, parameters, callback);
   mark_ngx_gpu_timing(timing, static_cast<ID3D12GraphicsCommandList*>(commands));

@@ -925,3 +925,18 @@ retaining the stock component and multi-value return. The optional stock fixture
 and focused melee/online-rules/gameplay-ownership CTests pass. Production code is
 unchanged; full-suite baseline 110/110 at `aadf4f3`, native build `5f1eccd`.
 Continue the todo; no deployment, live revive, rescue or worn acceptance claimed.
+
+## Continuous todo work: GPU timing workload boundaries
+
+Branch `codex/ngx-timing-workload-2026-09-07` labels NGX GPU averages with observed
+feature lifetime and per-eye dimensions. A changed key flushes the prior partial
+group, preventing the old 120-sample aggregation from mixing feature/extent
+changes. Zero/unknown keys are skipped; normal bounded query/fence behavior and
+120-sample reporting remain. Direct and compute D3D12 WARP fixtures independently
+change lifetime, width and height and verify six 60-sample boundary rows plus two
+120-sample rows across both eyes. Initial MSVC build rejected the fixture's
+deprecated scanner; it now uses bounded `sscanf_s`. Release profiler/native DLL
+builds and four focused CTests pass (both profiler queues, native hooks, generated
+frame state). This records workload identity, not an FPS improvement or blur fix.
+Full-suite baseline remains 110/110 at `aadf4f3`; native sources have now advanced
+beyond the prior full Release build at `5f1eccd`. No deployment; continue the todo.

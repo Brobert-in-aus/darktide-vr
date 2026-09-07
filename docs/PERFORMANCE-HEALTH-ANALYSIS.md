@@ -110,3 +110,23 @@ inactive changes, including complete teardown; stable frames retain the normal
 cadence. Actual liveness/update/visibility seams pass constructed loss/recovery
 cases, and the full offline suite passes 110/110. This establishes control flow,
 not live rendering acceptance or a diagnosis of the historical hub teardown race.
+
+## GPU timing workload boundaries
+
+The NGX GPU timer previously averaged 120 successful samples per eye without
+recording the feature lifetime or image extent. The candidate records
+`feature_lifetime`, `eye_width` and `eye_height` from the observed frame-generation
+evaluation. Completed samples with different keys cannot share an average.
+On a key change, the previous partial group is emitted with
+`boundary=workload_change`; an ordinary 120-sample group uses
+`boundary=sample_limit`. Compare sample counts explicitly, and weight by them if
+combining compatible groups. Unknown/zero lifetime or extents are not profiled.
+
+Both direct and compute D3D12 WARP tests exercise feature, width and height
+changes independently. Each eye produces three 60-sample groups and one
+120-sample group with exact keys and boundary labels; fixed capacity,
+unsubmitted-reset cancellation and completed readback checks remain. Release
+profiler/native DLL builds and the two profiler tests pass, as do native hook
+and generated-frame-state checks. No headset is needed for these isolated GPU
+tests. These fields do not identify scene motion, SR quality, driver or streaming
+conditions; controlled live comparisons and all performance claims remain pending.

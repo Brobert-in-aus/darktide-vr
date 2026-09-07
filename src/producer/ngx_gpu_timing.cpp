@@ -20,12 +20,32 @@ struct Slot {
   Phase phase{};
   UINT64 value{}, frequency{};
   unsigned eye{};
+  NgxGpuTimingWorkload workload;
   bool valid{};
 };
 std::array<Slot,32> slots;
-struct Aggregate { unsigned count{}; double evaluate{}, copy{}; };
+struct Aggregate {
+  unsigned count{};
+  double evaluate{}, copy{};
+  NgxGpuTimingWorkload workload;
+};
 std::array<Aggregate,2> aggregates;
 HANDLE log_file{INVALID_HANDLE_VALUE};
+
+void report(Aggregate& a, unsigned eye, const char* reason) {
+  if (!a.count) return;
+  char line[384];
+  const auto length=std::snprintf(line,sizeof(line),
+      "NGX_GPU_TIMING tick_ms=%llu eye=%u samples=%u evaluate_gpu_ms=%.4f post_evaluate_gpu_ms=%.4f "
+      "feature_lifetime=%llu eye_width=%u eye_height=%u boundary=%s\n",
+      GetTickCount64(),eye,a.count,a.evaluate/a.count,a.copy/a.count,
+      static_cast<unsigned long long>(a.workload.feature_lifetime),
+      a.workload.eye_width,a.workload.eye_height,reason);
+  DWORD written{};
+  if (log_file!=INVALID_HANDLE_VALUE && length>0 && length<int(sizeof(line)))
+    WriteFile(log_file,line,static_cast<DWORD>(length),&written,nullptr);
+  a={};
+}
 
 bool allocate(Slot& slot, ID3D12GraphicsCommandList* commands) {
   if (slot.queries) return true;
@@ -53,18 +73,11 @@ void harvest(Slot& slot) {
   if (slot.valid && slot.frequency && SUCCEEDED(slot.readback->Map(0,&read,reinterpret_cast<void**>(&ticks)))) {
     if (ticks[0]<=ticks[1] && ticks[1]<=ticks[2]) {
       auto& a=aggregates[slot.eye];
+      if (a.count && a.workload!=slot.workload) report(a,slot.eye,"workload_change");
+      if (!a.count) a.workload=slot.workload;
       a.evaluate+=double(ticks[1]-ticks[0])*1000.0/slot.frequency;
       a.copy+=double(ticks[2]-ticks[1])*1000.0/slot.frequency;
-      if (++a.count==120) {
-        char line[256];
-        const auto length=std::snprintf(line,sizeof(line),
-            "NGX_GPU_TIMING tick_ms=%llu eye=%u samples=%u evaluate_gpu_ms=%.4f post_evaluate_gpu_ms=%.4f\n",
-            GetTickCount64(),slot.eye,a.count,a.evaluate/a.count,a.copy/a.count);
-        DWORD written{};
-        if (log_file!=INVALID_HANDLE_VALUE && length>0 && length<int(sizeof(line)))
-          WriteFile(log_file,line,static_cast<DWORD>(length),&written,nullptr);
-        a={};
-      }
+      if (++a.count==120) report(a,slot.eye,"sample_limit");
     }
     D3D12_RANGE written{0,0}; slot.readback->Unmap(0,&written);
   }
@@ -81,8 +94,10 @@ void configure_ngx_gpu_timing(bool value) {
   log_file=CreateFileW(path.c_str(),GENERIC_WRITE,FILE_SHARE_READ,nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
   enabled.store(log_file!=INVALID_HANDLE_VALUE);
 }
-unsigned begin_ngx_gpu_timing(ID3D12GraphicsCommandList* commands, unsigned eye) {
-  if (!enabled.load() || !commands || eye>1) return 0;
+unsigned begin_ngx_gpu_timing(ID3D12GraphicsCommandList* commands, unsigned eye,
+    const NgxGpuTimingWorkload& workload) {
+  if (!enabled.load() || !commands || eye>1 || !workload.feature_lifetime ||
+      !workload.eye_width || !workload.eye_height) return 0;
   const auto type=commands->GetType();
   if (type!=D3D12_COMMAND_LIST_TYPE_DIRECT && type!=D3D12_COMMAND_LIST_TYPE_COMPUTE) return 0;
   std::scoped_lock lock(mutex);
@@ -91,6 +106,7 @@ unsigned begin_ngx_gpu_timing(ID3D12GraphicsCommandList* commands, unsigned eye)
     auto& slot=slots[i];
     if (slot.phase!=Phase::free || !allocate(slot,commands)) continue;
     slot.phase=Phase::recording; slot.commands=commands; slot.eye=eye; slot.valid=false;
+    slot.workload=workload;
     commands->EndQuery(slot.queries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,0);
     return i+1;
   }
