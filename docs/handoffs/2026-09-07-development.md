@@ -816,3 +816,28 @@ equipment sync, both melee animation fixtures, Lua source compile/invariants).
 LuaJIT compiles 36 chunks; configured CTest inventory is now 110, with the last
 full 109/109 baseline at `5f1eccd`. No native changes or deployment. Keep working
 through the todo list and preserve the documented live/XR readiness boundary.
+
+## Continuous todo work: rigid-hand liveness and visibility fallback
+
+Branch `codex/rigid-hand-liveness-2026-09-07` requires both ready hand units to
+remain alive before the pair can own presentation or hide source hands. If a
+previously ready pair loses a unit, both proxies retire together, preventing a
+surviving glove from overlapping fallback hands. The existing failed-source
+quarantine prevents repeated respawn attempts until source or enable ownership
+changes; disabling/re-enabling allows the same player to reacquire.
+
+The outer presentation seam now forces visibility refresh on active/inactive
+changes, including a nil proxy return, instead of waiting for the regular
+60-frame visibility pass. Stable frames do not repeat the forced refresh.
+Diagnostics report active/inactive explicitly, and cached proxy poses clear on
+either transition. The regression reproduces stale active ownership before the
+fix and executes actual liveness/slot policy, update orchestration and the main
+visibility seam with mocked unit/spawner operations. It covers each missing/dead
+hand, complete teardown, replacement, survivor retirement and quarantine reset.
+
+Full Windows x64 offline CTest suite: **110/110 pass**, including all 36 LuaJIT
+chunks, with headset tests disabled at configuration. Evidence:
+`artifacts/unattended/continuous-todo-full-ctest-110-20260907.log`.
+Native code is unchanged since the full Release build at `5f1eccd`. No deployment
+or claim that this constructed unit-loss case caused a historical live crash.
+Continue the remaining todo list; user has not instructed a stop.

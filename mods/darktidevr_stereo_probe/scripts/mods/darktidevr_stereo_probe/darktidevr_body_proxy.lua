@@ -468,6 +468,16 @@ function BodyProxy.update(
         end
         local left_unit = update_rigid_hand(rigid_hands.left, dt, t)
         local right_unit = update_rigid_hand(rigid_hands.right, dt, t)
+        if state.ready and (not left_unit or not right_unit) then
+            -- Retire the pair together so fallback source hands cannot overlap
+            -- a surviving glove. Reuse the failed-owner quarantine until a
+            -- source/enable transition instead of respawning every frame.
+            safe_destroy()
+            state.failed_source_unit = source_unit
+            state.failure = "rigid_hand_unit_lost"
+            print("DARKTIDEVR_IK rigid_hands=failed reason=" .. state.failure)
+            return nil
+        end
         if left_unit and right_unit and not state.ready then
             state.ready = true
             state.ready_transition = true
@@ -512,8 +522,10 @@ end
 
 function BodyProxy.active()
     if state.hands_only then
-        return state.ready and rigid_hands.left.ready and
-            rigid_hands.right.ready
+        local left, right = rigid_hands.left, rigid_hands.right
+        return state.ready and left.ready and right.ready and
+            left.unit ~= nil and right.unit ~= nil and
+            Unit.alive(left.unit) and Unit.alive(right.unit)
     end
     return state.ready and state.unit and Unit.alive(state.unit)
 end

@@ -10382,8 +10382,13 @@ mod:hook_safe(
                 dt,
                 t,
                 not controller_observation.full_body_experimental_enabled)
-        if proxy_unit and
-                presentation.body_proxy.consume_ready_transition() then
+        local proxy_active = presentation.body_proxy and
+            presentation.body_proxy.active() == true or false
+        local proxy_changed = presentation.body_proxy_active ~= proxy_active
+        presentation.body_proxy_active = proxy_active
+        local proxy_ready = proxy_unit and
+            presentation.body_proxy.consume_ready_transition()
+        if proxy_changed or proxy_ready then
             controller_observation.body_ik_hand_proxy_pose = {}
             controller_observation.body_ik_hand_proxy_held = {}
             local visual_loadout = ScriptUnit.has_extension(
@@ -10395,7 +10400,8 @@ mod:hook_safe(
                     true)
             end
             mod:info(
-                "DARKTIDEVR_IK visual_proxy=active mode=%s source=ui_profile authoritative_body=gameplay",
+                "DARKTIDEVR_IK visual_proxy=%s mode=%s source=ui_profile authoritative_body=gameplay",
+                proxy_active and "active" or "inactive",
                 controller_observation.full_body_experimental_enabled and
                     "upper_body" or "tracked_hands")
         end
@@ -13178,6 +13184,7 @@ presentation.projection_math = mod:io_dofile(
 presentation.body_proxy = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_body_proxy"
 )
+presentation.body_proxy_active = false
 
 presentation.melee_live_probe = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_live_probe"

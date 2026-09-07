@@ -102,3 +102,11 @@ its surface once. A regression reproduces premature readiness and checks pending
 updates, 100 stable updates without repeated visibility work, dead/missing units,
 failed streaming quarantine and a fresh replacement owner. Seven focused CTests
 including the 36-chunk LuaJIT gate pass. Candidate remains undeployed.
+
+Follow-up lifecycle protection requires both hand units to remain alive. Loss
+of a previously ready unit retires the pair and uses the existing failed-owner
+quarantine. The presentation seam forces a source-visibility refresh on active/
+inactive changes, including complete teardown; stable frames retain the normal
+cadence. Actual liveness/update/visibility seams pass constructed loss/recovery
+cases, and the full offline suite passes 110/110. This establishes control flow,
+not live rendering acceptance or a diagnosis of the historical hub teardown race.
