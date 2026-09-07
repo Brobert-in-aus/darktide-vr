@@ -1423,3 +1423,14 @@ wrong-path game processes. Eight focused CTests pass in 5.95 seconds, with
 file/process endpoints mocked; no installation, process kill or live XR run.
 The configured suite now has 114 tests; the latest full baseline remains
 113/113 at `e2aa82a`. Harness remains `4298262`. Continue the todo.
+
+## Continuous todo work: alternate-library shortcut path
+
+Branch `codex/launcher-game-root-forwarding-2026-09-07` adds optional GameRoot
+forwarding to the ordinary launch wrapper and shortcut generator. A supplied
+shortcut path resolves literally and must contain `binaries/Darktide.exe`; it
+is quoted in the shortcut arguments. Omitted GameRoot preserves the existing
+start-script default, and ordinary launch/authentication settings remain.
+Both edited PowerShell scripts parse and the diff check passes. No shortcut was
+installed and no game files changed. This closes a development setup gap; it
+does not provide a clean installer or complete portable-release acceptance.

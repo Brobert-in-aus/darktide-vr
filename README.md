@@ -35,6 +35,12 @@ The ordinary D3D12 smoke/resize checks pass `--no-openxr`, which skips runtime
 discovery even when a Quest is connected. This option is also available for
 manual desktop-only harness checks and rejects conflicting XR requests.
 
+For an existing development installation in a different Steam library, pass its
+game folder to `tools/stereo/install-darktide-vr-shortcut.ps1 -GameRoot <folder>`.
+The saved shortcut forwards that folder through the ordinary launcher. This
+does not install Darktide, DMF or mod dependencies; omitting the option retains
+the development launcher's existing default path.
+
 ## Repository map
 
 - `src/core`: math, input/presentation policy, and shared-memory transports.

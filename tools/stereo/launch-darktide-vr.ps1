@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [ValidateRange(5, 43200)]
-    [int] $DurationSeconds = 28800
+    [int] $DurationSeconds = 28800,
+
+    [string] $GameRoot
 )
 
 Set-StrictMode -Version Latest
@@ -27,10 +29,13 @@ try {
     # Retain the ordinary Steam -> Fatshark launcher -> Darktide authentication
     # path. start-darktide-vr.ps1 invokes the launcher's normal Play control and
     # the bridge attaches automatically when the resulting game process starts.
-    & $startScript `
-        -DurationSeconds $DurationSeconds `
-        -GameStartTimeoutSeconds 1800 `
-        -EnableMenuInput 2>&1 |
+    $startArguments = @{
+        DurationSeconds = $DurationSeconds
+        GameStartTimeoutSeconds = 1800
+        EnableMenuInput = $true
+    }
+    if ($GameRoot) { $startArguments.GameRoot = $GameRoot }
+    & $startScript @startArguments 2>&1 |
         ForEach-Object {
             $line = [string] $_
             $line | Out-File -LiteralPath $logPath -Encoding utf8 -Append

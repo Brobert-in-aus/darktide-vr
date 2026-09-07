@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([string] $GameRoot)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -7,6 +7,12 @@ $ErrorActionPreference = 'Stop'
 $launcher = Join-Path $PSScriptRoot 'launch-darktide-vr.ps1'
 if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
     throw "Darktide VR launcher not found: $launcher"
+}
+if ($GameRoot) {
+    $GameRoot = (Resolve-Path -LiteralPath $GameRoot).Path
+    if (-not (Test-Path -LiteralPath (Join-Path $GameRoot 'binaries\Darktide.exe') -PathType Leaf)) {
+        throw 'The selected game folder does not contain binaries\Darktide.exe.'
+    }
 }
 
 $desktop = [Environment]::GetFolderPath('Desktop')
@@ -29,6 +35,7 @@ $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $powerShell
 $shortcut.Arguments =
     "-NoProfile -ExecutionPolicy Bypass -File `"$launcher`""
+if ($GameRoot) { $shortcut.Arguments += " -GameRoot `"$GameRoot`"" }
 $shortcut.WorkingDirectory =
     (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $shortcut.Description =
