@@ -860,3 +860,9 @@ fallback. Six focused CTests pass (reticle surfaces/cache, ranged aim, online
 rules, smart-tag marker, Lua compile/invariants); 36 chunks compile. Full-suite
 baseline remains 110/110 at `aadf4f3`, native build `5f1eccd`. No deployment or live
 aim/transition acceptance. Continue other todo work without headset verification.
+
+Reticle follow-up on the same task: protect the current-player lookup while
+checking a cached point. A retiring manager can throw despite the cached owner
+still being alive. The new fixture reproduces that exception; the getter now
+clears the point and falls back. Four focused CTests pass (reticle cache, ranged
+aim, smart-tag marker, 36-chunk Lua compile). No native/deployment change.

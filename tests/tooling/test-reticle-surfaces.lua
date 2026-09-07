@@ -69,6 +69,10 @@ publish(); state.last_sequence=110; state.last_transport_generation=2; expect(v(
 publish(); player.player_unit={}; expect(v(0,1,0))
 publish(); owner.dead=true; expect(v(0,1,0)); owner.dead=false
 publish(); Managers.state.game_session={}; expect(v(0,1,0))
+publish()
+local player_manager=Managers.player
+Managers.player={local_player=function() error('retiring player manager') end}
+expect(v(0,1,0)); Managers.player=player_manager
 publish(); aim.publish_reticle(extension); assert(not native_active); expect(v(0,1,0))
 publish(); fail_query=true; aim.publish_reticle(extension,origin,ray)
 assert(not native_active); expect(v(0,1,0))

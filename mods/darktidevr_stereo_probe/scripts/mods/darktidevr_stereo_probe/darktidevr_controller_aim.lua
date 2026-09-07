@@ -327,8 +327,11 @@ function controller_aim.install(mod, presentation, state)
             controller_aim.reticle_point_generation == state.last_transport_generation and
             controller_aim.reticle_point_owner ~= nil and
             Unit.alive(controller_aim.reticle_point_owner) and
-            is_local_unit(controller_aim.reticle_point_owner) and
             controller_aim.reticle_point_session == session
+        if fresh then
+            local ok, is_owner = pcall(is_local_unit, controller_aim.reticle_point_owner)
+            fresh = ok and is_owner == true
+        end
         if not fresh then
             controller_aim.clear_reticle()
             return nil, nil
