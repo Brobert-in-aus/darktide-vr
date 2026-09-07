@@ -50,6 +50,14 @@ function Pose.near(rotation,primary,support,socket,radius)
     local distance_squared,limit=dot(offset,offset),radius*radius
     return finite(distance_squared) and finite(limit) and distance_squared<=limit
 end
+function Pose.socket(rotation,primary,support)
+    local q=normalize(rotation,4)
+    if not q or not valid(primary,3) or not valid(support,3) then return nil end
+    local offset=rotate(inverse(q),difference(support,primary))
+    local length=dot(offset,offset)
+    if not finite(length) or length<.0064 or length>1 then return nil end
+    return offset
+end
 function Pose.correction(rotation,primary,support,socket)
     local q=normalize(rotation,4)
     if not q or not valid(primary,3) or not valid(support,3) or not valid(socket,3) then return nil end

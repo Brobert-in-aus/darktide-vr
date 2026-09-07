@@ -86,7 +86,9 @@ local presentation={
     gun_aim={is_gun=function(t) return t.gun end,base_aim=function(_,q) return q end},
     controller_aim_target=function() return primary,{0,0,0,1} end,
     weapon_grip_target=function(role) return role=='dominant' and primary or secondary end}
-local installed=Support.install({io_dofile=function() return Pose end,info=function() end},presentation,observations)
+local commands={}
+local installed=Support.install({io_dofile=function() return Pose end,info=function() end,
+    command=function(_,name,_,callback) commands[name]=callback end,echo=function() end},presentation,observations)
 installed.profiles.example={socket={0,.3,0},acquire=.1,release=.2,smoothing=0,ads=true}
 installed.enabled=true
 local handler={_input_settings_table={toggle_ads=false}}
@@ -123,3 +125,43 @@ retired=false; installed_sample(0)
 state_name='dead'
 assert(installed_sample(512)==512,'dead state claimed the support grip')
 print('two_hand_support_adapter=pass cached_tracking reload weapon_switch retirement death')
+-- Explicit calibration waits for chat to close, then samples real tracked
+-- positions after the countdown. It never enables support by itself.
+Managers={player={local_player=function() return {player_unit=unit} end}}
+state_name='walking'; installed_sample(0)
+secondary={.02,.35,-.03}
+commands.dtvr_two_hand_calibrate()
+assert(installed.capture_pending and not installed.enabled)
+local saved=installed.profiles.example
+t=t+.1; installed.sample(unit,false,t,handler)
+assert(installed.capture_pending and not installed.capture_pending.at)
+installed_sample(0)
+local deadline=installed.capture_pending.at
+while t<deadline-.02 do installed_sample(0) end
+assert(installed.profiles.example==saved,'Capture occurred before countdown')
+while installed.capture_pending do installed_sample(0) end
+local captured=installed.profiles.example
+for i=1,3 do assert(math.abs(captured.socket[i]-secondary[i])<1e-8) end
+assert(not installed.enabled)
+commands.dtvr_two_hand_on(); installed_sample(0)
+assert(installed_sample(512)==2,'Calibrated grip did not acquire')
+commands.dtvr_two_hand_off()
+assert(not installed.enabled and not installed.capture_pending)
+installed_sample(0)
+for _,transition in ipairs({'menu','weapon','recenter','generation','tracking','reload','timeout'}) do
+    state_name='walking'; action=nil
+    assert(installed.arm_capture(unit))
+    installed_sample(0)
+    if transition=='menu' then installed.sample(unit,false,t+.01,handler)
+    elseif transition=='weapon' then equipped={}
+    elseif transition=='recenter' then observations.head_recenter_generation=observations.head_recenter_generation+1
+    elseif transition=='generation' then observations.last_transport_generation=observations.last_transport_generation+1
+    elseif transition=='tracking' then observations.left_grip_tracking_live=false
+    elseif transition=='reload' then action={kind='reload'}
+    elseif transition=='timeout' then t=t+31 end
+    installed_sample(0)
+    assert(not installed.capture_pending and installed.profiles.example==captured,
+        'Capture survived '..transition)
+    observations.left_grip_tracking_live=true
+end
+print('two_hand_calibration=pass countdown explicit_enable interruption identity expiry')

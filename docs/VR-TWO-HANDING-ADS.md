@@ -186,3 +186,25 @@ Coordinator/production-seam validation: ten focused CTests passed in 1.11 second
 after adding fixed-update cancellation and actual shared-aim ordering checks,
 seven affected checks passed in 1.16 seconds. All 45 Lua chunks compile. The
 configured suite contains 128 checks; full integrated rerun is not claimed.
+
+## Session-only support calibration candidate
+
+The candidate now registers local DMF commands. `/dtvr_two_hand_calibrate`
+disables support aim, waits for chat to close, then captures the tracked
+primary-to-support offset after three seconds. The user must physically place
+the support controller at the desired visible grip during that countdown.
+Weapon/character replacement, recentering, publisher changes, tracking loss,
+reload/firing, reopening menus or the 30-second request deadline cancel capture.
+Degenerate or implausibly distant geometry is rejected. The result remains in
+memory for that weapon template; it is not persisted or committed as a profile.
+
+`/dtvr_two_hand_on` enables registered sockets; `/dtvr_two_hand_off` cancels
+pending capture and returns to one-hand aiming. Capture never auto-enables the
+feature. Initial acquisition/release/smoothing values are candidate tuning,
+not worn acceptance. Hold-mode ADS is requested for the captured profile;
+toggle/unknown ADS preference retains support aim without an alternate request.
+
+Calibration/geometry/compiler/invariant checks passed 4/4 in 0.97 seconds.
+No commands have been invoked in the live session and the candidate is not
+deployed. Next worn request: place the support hand naturally under the same
+lasgun, calibrate, then observe grab/release continuity and barrel/reticle/hits.

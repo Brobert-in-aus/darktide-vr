@@ -22,6 +22,9 @@ local quarter={0,0,math.sqrt(.5),math.sqrt(.5)}
 local turned=Pose.new().update(quarter,{8,9,2},{8,9.3,2},socket,true,owner,.01,0)
 near(rotated_y(turned),{0,1,0})
 assert(Pose.near(quarter,{8,9,2},{7.7,9,2},socket,.01))
+near(Pose.socket(quarter,{8,9,2},{7.7,9,2}),socket)
+assert(Pose.socket(identity,primary,primary)==nil)
+assert(Pose.socket(identity,primary,{30,4,5})==nil)
 -- Aligned support retains primary wrist roll; no up-vector/horizon lock.
 local roll={0,math.sin(.4),0,math.cos(.4)}
 near(Pose.new().update(roll,primary,{3,4.3,5},socket,true,owner,.01,0),roll)

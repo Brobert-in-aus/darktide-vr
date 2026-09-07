@@ -84,18 +84,16 @@ function Support.install(mod,presentation,observation)
             observation[dominant..'_grip_tracking_live']==true and
             observation[support..'_grip_tracking_live']==true and observation[dominant..'_aim_usable']==true
     end
-    local function sample(unit,active,t,handler)
-        local dt=previous_t and t-previous_t or 0
-        previous_t=t
-        if not api.enabled or not active or not unit or not live() or
-            not presentation.online_rules.simulation_aim_active(unit) then return api.prepare(nil) end
+    local function snapshot(unit,dt,handler)
+        if not unit or not live() or
+            not presentation.online_rules.simulation_aim_active(unit) then return nil end
         local machine=ScriptUnit.has_extension(unit,'character_state_machine_system')
-        if not machine or not allowed_states[machine:current_state_name()] then return api.prepare(nil) end
+        if not machine or not allowed_states[machine:current_state_name()] then return nil end
         local weapon=ScriptUnit.has_extension(unit,'weapon_system')
         local template=weapon and weapon:weapon_template()
-        if not presentation.gun_aim.is_gun(template) then return api.prepare(nil) end
+        if not presentation.gun_aim.is_gun(template) then return nil end
         local action=weapon:running_action_settings()
-        if action and not allowed_actions[action.kind] then return api.prepare(nil) end
+        if action and not allowed_actions[action.kind] then return nil end
         local equipped=weapon:_wielded_weapon(weapon._inventory_component,weapon._weapons)
         local dominant=presentation.weapon_hand_roles.physical('dominant')
         local _,rotation
@@ -103,16 +101,72 @@ function Support.install(mod,presentation,observation)
         else _,rotation=presentation.left_controller_aim_target() end
         rotation=presentation.gun_aim.base_aim(unit,rotation)
         local settings=handler and handler._input_settings_table
-        return api.prepare({active=true,live=true,unit=unit,weapon=equipped,template=template.name,
+        return {active=true,live=true,unit=unit,weapon=equipped,template=template.name,
             side=presentation.weapon_hand_roles.physical('support'),
             generation=observation.last_transport_generation,recenter=observation.head_recenter_generation,
             dt=dt,rotation=quaternion(rotation),primary=vector(presentation.weapon_grip_target('dominant')),
-            support=vector(presentation.weapon_grip_target('support')),toggle_ads=settings and settings.toggle_ads})
+            support=vector(presentation.weapon_grip_target('support')),toggle_ads=settings and settings.toggle_ads,
+            action=action and action.kind}
+    end
+    function api.arm_capture(unit)
+        api.capture_pending=nil
+        local ok,frame=pcall(snapshot,unit,0,nil)
+        if not ok or not frame or not frame.weapon or type(frame.template)~='string' then return false end
+        api.enabled=false; api.clear()
+        api.capture_pending={unit=unit,weapon=frame.weapon,template=frame.template,side=frame.side,
+            generation=frame.generation,recenter=frame.recenter,deadline=previous_t and previous_t+30}
+        return true
+    end
+    local function capture(frame,t)
+        local pending=api.capture_pending
+        if not pending then return end
+        if not frame or t>pending.deadline or pending.weapon~=frame.weapon or pending.unit~=frame.unit or
+            pending.template~=frame.template or pending.side~=frame.side or
+            pending.generation~=frame.generation or pending.recenter~=frame.recenter or
+            (frame.action and frame.action~='aim' and frame.action~='unaim') then
+            api.capture_pending=nil
+            mod:info('DARKTIDEVR_TWO_HAND calibration=cancelled')
+            return
+        end
+        if not pending.at then
+            pending.at=t+3
+            mod:info('DARKTIDEVR_TWO_HAND calibration=countdown seconds=3')
+            return
+        end
+        if t<pending.at then return end
+        api.capture_pending=nil
+        local socket=Pose.socket(frame.rotation,frame.primary,frame.support)
+        if not socket then mod:info('DARKTIDEVR_TWO_HAND calibration=invalid_geometry'); return end
+        api.profiles[frame.template]={socket=socket,acquire=.1,release=.2,smoothing=.07,ads=true}
+        api.clear()
+        mod:info('DARKTIDEVR_TWO_HAND calibration=captured weapon=%s socket=%.4f,%.4f,%.4f session_only=true',
+            frame.template,socket[1],socket[2],socket[3])
+        if mod.echo then mod:echo('Support grip recorded for this session. Use /dtvr_two_hand_on to test it.') end
+    end
+    local function sample(unit,active,t,handler)
+        local dt=previous_t and t-previous_t or 0
+        previous_t=t
+        if api.capture_pending and finite(t) and not api.capture_pending.deadline then
+            api.capture_pending.deadline=t+30
+        end
+        if api.capture_pending and (not finite(t) or t>api.capture_pending.deadline or not live()) then
+            api.capture_pending=nil
+        end
+        if not active then
+            -- Allow the command's chat box to close before starting its countdown.
+            -- Reopening a menu after that point cancels the measurement.
+            if api.capture_pending and api.capture_pending.at then api.capture_pending=nil end
+            return api.prepare(nil)
+        end
+        if not api.enabled and not api.capture_pending then return api.prepare(nil) end
+        local frame=snapshot(unit,dt,handler)
+        capture(frame,t)
+        return api.prepare(frame)
     end
     function api.sample(unit,active,t,handler)
         local ok,request=pcall(sample,unit,active,t,handler)
         if ok then return request end
-        api.clear(); previous_t=nil
+        api.clear(); previous_t=nil; api.capture_pending=nil
         if not api.failure_logged then
             api.failure_logged=true
             mod:info('DARKTIDEVR_TWO_HAND cancelled=%s',tostring(request):sub(1,160))
@@ -139,6 +193,23 @@ function Support.install(mod,presentation,observation)
         if ok then return result end
         api.clear()
         return rotation
+    end
+    if mod.command then
+        mod:command('dtvr_two_hand_calibrate','Record the current gun support grip after a three-second delay',function()
+            local manager=Managers and Managers.player
+            local player=manager and manager:local_player(1)
+            local armed=api.arm_capture(player and player.player_unit)
+            mod:echo(armed and 'Close chat and hold the support hand at the gun grip for three seconds. Capture does not enable two-handing.' or
+                'Support capture needs a live tracked gun in Psykhanium.')
+        end)
+        mod:command('dtvr_two_hand_on','Enable calibrated two-hand support for this session',function()
+            api.enabled=true
+            mod:echo('Two-hand support enabled for calibrated guns. Press grip near the recorded support point.')
+        end)
+        mod:command('dtvr_two_hand_off','Disable two-hand support and cancel pending capture',function()
+            api.enabled=false; api.capture_pending=nil; api.clear()
+            mod:echo('Two-hand support disabled.')
+        end)
     end
     return api
 end
