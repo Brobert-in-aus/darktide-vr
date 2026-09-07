@@ -70,6 +70,12 @@ The shader source remains in the package for identity validation. Ordinary
 development sync continues to compile the production shader by default; the
 prebuilt option avoids requiring DXC on the destination machine.
 
+Readiness reports tolerate extracted source packages without Git. They mark
+checkout identity unavailable, with unknown revision/dirty status, while still
+requiring all normal Quest/VDXR/rendering checks. A package nested inside another
+repository does not inherit that parent's revision. This removes a metadata-only
+dependency; it does not supply a release package identity or relax readiness.
+
 The existing list is retained byte-for-byte before its appended entry, including
 comments and LF/CRLF style. Repeated installation does not duplicate the entry.
 Ambiguous duplicates/capitalization and NUL or UTF-8 BOM files are rejected;

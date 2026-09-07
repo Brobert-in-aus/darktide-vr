@@ -159,15 +159,8 @@ $filePaths = @(
 )
 $files = @($filePaths | ForEach-Object { Get-FileIdentity $_[0] $_[1] })
 
-Push-Location $repoRoot
-try {
-    $gitHead = (& git rev-parse HEAD).Trim()
-    $gitBranch = (& git branch --show-current).Trim()
-    $gitStatus = @(& git status --short)
-}
-finally {
-    Pop-Location
-}
+. (Join-Path $PSScriptRoot 'source-checkout-identity.ps1')
+$sourceIdentity = Get-SourceCheckoutIdentity -Root $repoRoot
 
 $xrSmoke = $null
 $smokeFailure = $null
@@ -213,12 +206,7 @@ $report = [ordered]@{
     mode = $Mode
     readiness_verified = ($Mode -eq 'Ready' -and -not $smokeFailure)
     captured_utc = (Get-Date).ToUniversalTime().ToString('o')
-    git = [ordered]@{
-        head = $gitHead
-        branch = $gitBranch
-        dirty = $gitStatus.Count -gt 0
-        status = $gitStatus
-    }
+    git = $sourceIdentity
     quest = [ordered]@{
         authorized_device_count = $authorizedDevices.Count
         model = $questModel

@@ -19,6 +19,8 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/test-vr-mod-load-order.ps1")
   add_test(NAME deployment_recovery COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/test-deployment-recovery.ps1")
+  add_test(NAME source_checkout_identity COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-source-checkout-identity.ps1")
   set(LUAJIT_VALIDATOR "${PROJECT_SOURCE_DIR}/build/dependencies/luajit/src/luajit.exe")
   add_test(NAME luajit_compiler_contract COMMAND "${LUAJIT_VALIDATOR}"
     "${PROJECT_SOURCE_DIR}/tools/lua/test-compiler.lua")
