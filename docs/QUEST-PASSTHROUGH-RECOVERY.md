@@ -270,3 +270,12 @@ then normal proximity restoration completed. Darktide and the harness are closed
 Evidence: `artifacts/unattended/quest-internal-d3d11-20260907-153717.json` and its
 recovery log. A fresh Quest Virtual Desktop client connection is the next scoped
 recovery test for the newly observed import failure.
+
+At 15:40 the Quest Virtual Desktop app was stopped and relaunched; its process
+changed, with an empty process check between stop/start. After 20 seconds, Ready
+again reached the same first-eye error and two OpenSharedResource E_INVALIDARG
+messages on its sole captured D3D11 device. A fresh client process did not clear
+the observed failure; this does not prove all PC-side session resources reset.
+Guardian logs confirm 0 -> 1 -> 0 and normal proximity restoration completed.
+No game/deployment or PC Streamer restart. Complete output, no timeout. Evidence:
+`artifacts/unattended/quest-fresh-vd-client-20260907-154028.json` and recovery log.

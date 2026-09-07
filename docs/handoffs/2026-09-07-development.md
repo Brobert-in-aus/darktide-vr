@@ -1747,3 +1747,9 @@ in headset logs and proximity Enable/Status completed; game/harness are closed.
 See QUEST-PASSTHROUGH-RECOVERY and ignored quest-internal-d3d11-20260907-153717
 evidence. Next: a fresh Quest VD client connection to test stale session resource
 state; no PC Streamer restart or installed-runtime replacement is planned.
+
+At 15:40 the fresh Quest VD client process was verified and given 20 seconds to
+settle. Ready reproduced both import errors and the same first-eye failure;
+complete output/no timeout. Guardian 0 -> 1 -> 0 is logged and proximity restored.
+Evidence: quest-fresh-vd-client-20260907-154028. Next diagnostic work should capture
+the failed import's handle/interface/caller instead of repeating client restarts.
