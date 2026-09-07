@@ -18,6 +18,10 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/test-projection-math.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_projection_math.lua")
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME xr_disabled_contract COMMAND "${Python3_EXECUTABLE}" -B
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-xr-disabled-contract.py"
+    "$<TARGET_FILE:darktidevr-xr-harness>")
+  set_tests_properties(xr_disabled_contract PROPERTIES TIMEOUT 30)
   execute_process(COMMAND "${Python3_EXECUTABLE}" -c "import numpy; import PIL"
     RESULT_VARIABLE DARKTIDEVR_ANALYSIS_IMPORT_RESULT OUTPUT_QUIET ERROR_QUIET)
   if(NOT DARKTIDEVR_ANALYSIS_IMPORT_RESULT EQUAL 0)

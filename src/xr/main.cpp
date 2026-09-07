@@ -121,7 +121,11 @@ std::wstring registry_string(HKEY root, const wchar_t* subkey,
 
 class OpenXrProbe {
  public:
-  OpenXrProbe() {
+  explicit OpenXrProbe(bool enabled = true) {
+    if (!enabled) {
+      std::cout << "openxr.discovery=disabled\n";
+      return;
+    }
     constexpr auto key = L"SOFTWARE\\Khronos\\OpenXR\\1";
     auto runtime = registry_string(HKEY_CURRENT_USER, key, L"ActiveRuntime");
     if (runtime.empty()) {
@@ -5016,7 +5020,7 @@ class Harness {
 void usage() {
   std::cout << "DarktideVR Phase 0 synthetic graphics harness\n\n"
             << "Usage: darktidevr-xr-harness [--frames N] [--show] "
-               "[--debug-layer] [--require-openxr] [--require-rendering] "
+               "[--debug-layer] [--no-openxr | --require-openxr] [--require-rendering] "
                "[--xr-frames N | --xr-seconds N] [--theatre] "
                "[--stereo-sbs] [--stereo-tb] "
                 "[--capture-window-title TEXT] [--shared-eyes] "
@@ -5041,6 +5045,7 @@ void usage() {
                "[--resize-at N]\n\n"
             << "Creates an independent D3D12 swapchain and reports OpenXR "
                "discovery.\n"
+            << "--no-openxr runs desktop graphics only without runtime discovery.\n"
             << "It never loads or modifies Darktide.\n";
 }
 
@@ -5051,6 +5056,7 @@ int wmain(int argc, wchar_t** argv) {
     UINT frames = 120;
     bool show = false;
     bool debug_layer = false;
+    bool no_openxr = false;
     bool require_openxr = false;
     bool require_rendering = false;
     bool theatre = false;
@@ -5094,6 +5100,8 @@ int wmain(int argc, wchar_t** argv) {
         show = true;
       } else if (argument == L"--debug-layer") {
         debug_layer = true;
+      } else if (argument == L"--no-openxr") {
+        no_openxr = true;
       } else if (argument == L"--require-openxr") {
         require_openxr = true;
       } else if (argument == L"--require-rendering") {
@@ -5175,6 +5183,10 @@ int wmain(int argc, wchar_t** argv) {
       } else {
         throw std::invalid_argument("Unknown or incomplete argument");
       }
+    }
+    if (no_openxr && (require_openxr || xr_frames > 0 || xr_duration ||
+                      synthetic_billboard_sweep)) {
+      throw std::invalid_argument("--no-openxr cannot be combined with XR requests");
     }
     if (resize_at && *resize_at >= frames) {
       throw std::invalid_argument("--resize-at must be less than --frames");
@@ -5274,7 +5286,7 @@ int wmain(int argc, wchar_t** argv) {
     }
     pair_driven_shared = shared_eyes && pair_driven_shared;
 
-    OpenXrProbe openxr;
+    OpenXrProbe openxr(!no_openxr);
     Harness harness(show, debug_layer, openxr.adapter_luid(),
                     openxr.minimum_feature_level());
     openxr.create_session(harness.device(), harness.queue(), !theatre);

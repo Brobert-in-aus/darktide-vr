@@ -31,6 +31,9 @@ Dependencies and revisions are in [third-party notices](THIRD_PARTY_NOTICES.md).
 CTest transport fixtures use private process-specific mappings. Headset tests
 remain opt-in and require a fresh XR readiness check; avoid running compositor
 smoke tests alongside a worn session.
+The ordinary D3D12 smoke/resize checks pass `--no-openxr`, which skips runtime
+discovery even when a Quest is connected. This option is also available for
+manual desktop-only harness checks and rejects conflicting XR requests.
 
 ## Repository map
 

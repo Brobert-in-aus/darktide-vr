@@ -103,13 +103,14 @@ if(BUILD_TESTING)
     COMMAND darktidevr-shared-eye-capture --help)
   add_test(NAME synthetic_controller_publisher_help
     COMMAND darktidevr-synthetic-controller-publisher --help)
-  add_test(NAME d3d12_smoke COMMAND darktidevr-xr-harness --frames 3)
+  add_test(NAME d3d12_smoke COMMAND darktidevr-xr-harness --no-openxr --frames 3)
   set_tests_properties(d3d12_smoke PROPERTIES TIMEOUT 30)
   add_test(NAME d3d12_debug_resize
-    COMMAND darktidevr-xr-harness --frames 8 --resize-at 4 --debug-layer)
+    COMMAND darktidevr-xr-harness --no-openxr --frames 8 --resize-at 4 --debug-layer)
   set_tests_properties(d3d12_debug_resize PROPERTIES TIMEOUT 30)
   set_tests_properties(d3d12_smoke d3d12_debug_resize PROPERTIES
-    ENVIRONMENT "DARKTIDEVR_TEST_TRANSPORTS=1" RUN_SERIAL TRUE)
+    ENVIRONMENT "DARKTIDEVR_TEST_TRANSPORTS=1" RUN_SERIAL TRUE
+    FAIL_REGULAR_EXPRESSION "openxr.active_runtime=;openxr.instance=created;openxr.session=created")
   if(DARKTIDEVR_ENABLE_HEADSET_TESTS)
     add_test(NAME xr_projection_smoke
       COMMAND darktidevr-xr-harness --frames 30 --debug-layer
