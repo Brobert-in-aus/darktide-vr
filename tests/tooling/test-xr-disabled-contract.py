@@ -15,7 +15,7 @@ def main():
         requests = (["--require-openxr"], ["--require-rendering"],
                     ["--xr-frames", "1"], ["--xr-seconds", "1", "--theatre"],
                     ["--shared-eyes"], ["--synthetic-billboard-sweep"],
-                    ["--runtime-d3d11-diagnostics"])
+                    ["--runtime-d3d11-diagnostics"], ["--probe-shared-import-adapters"])
         for request in requests:
             for arguments in (["--no-openxr", *request], [*request, "--no-openxr"]):
                 result = subprocess.run([str(executable), *arguments], env=environment,

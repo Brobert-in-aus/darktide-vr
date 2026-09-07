@@ -2,6 +2,7 @@
 #include <Windows.h>
 #include <d3d11.h>
 #include <d3d11sdklayers.h>
+#include <dxgi1_2.h>
 #include <wrl/client.h>
 #include <MinHook.h>
 #include <intrin.h>
@@ -28,6 +29,7 @@ std::mutex capture_mutex;
 std::array<Record,8> records;
 unsigned calls{};
 bool capturing{};
+bool probe_adapters_requested{};
 decltype(&D3D11CreateDevice) original_create{};
 using OpenShared=HRESULT(STDMETHODCALLTYPE*)(ID3D11Device*,HANDLE,REFIID,void**);
 OpenShared original_open{};
@@ -147,19 +149,85 @@ struct RuntimeD3D11Diagnostics::Impl {
     if (enabled) {
       std::scoped_lock lock(capture_mutex);
       capturing=false; records={}; calls=0; imports={}; import_calls=0;
-      open_target=nullptr; open_attempted=false;
+      open_target=nullptr; open_attempted=false; probe_adapters_requested=false;
     }
     if (module) FreeLibrary(module);
   }
 };
 
-RuntimeD3D11Diagnostics::RuntimeD3D11Diagnostics(bool enabled) {
+RuntimeD3D11Diagnostics::RuntimeD3D11Diagnostics(bool enabled, bool probe_adapters) {
   if (enabled) {
     impl_=std::make_unique<Impl>();
     impl_->start();
+    std::scoped_lock lock(capture_mutex);
+    probe_adapters_requested=probe_adapters;
   }
 }
 RuntimeD3D11Diagnostics::~RuntimeD3D11Diagnostics()=default;
+
+SharedTextureProbe probe_shared_texture(ID3D11Device* device,std::uintptr_t handle) {
+  SharedTextureProbe result;
+  if (!device || !handle) { result.result=E_INVALIDARG; return result; }
+  ComPtr<ID3D11Texture2D> texture;
+  result.result=device->OpenSharedResource(reinterpret_cast<HANDLE>(handle),IID_PPV_ARGS(&texture));
+  if (SUCCEEDED(result.result) && texture) {
+    D3D11_TEXTURE2D_DESC desc{}; texture->GetDesc(&desc);
+    result.width=desc.Width; result.height=desc.Height;
+    result.format=desc.Format; result.misc_flags=desc.MiscFlags;
+  }
+  return result;
+}
+
+void probe_runtime_d3d11_import_adapters(std::ostream& output) {
+  std::array<std::uintptr_t,8> handles{};
+  unsigned count{};
+  {
+    std::scoped_lock lock(capture_mutex);
+    if (!capturing || !probe_adapters_requested) return;
+    for (unsigned i=0;i<import_calls && i<imports.size();++i) {
+      const auto& entry=imports[i];
+      if (SUCCEEDED(entry.result) || !entry.handle || entry.interface_id!=__uuidof(ID3D11Texture2D)) continue;
+      bool duplicate=false;
+      for (unsigned h=0;h<count;++h) duplicate=duplicate || handles[h]==entry.handle;
+      if (!duplicate) handles[count++]=entry.handle;
+    }
+  }
+  output<<"runtime_d3d11.adapter_probe_handles="<<count<<'\n';
+  if (!count) return;
+  ComPtr<IDXGIFactory1> factory;
+  const auto factory_result=CreateDXGIFactory1(IID_PPV_ARGS(&factory));
+  if (FAILED(factory_result)) {
+    output<<"runtime_d3d11.adapter_probe_factory="<<static_cast<std::uint32_t>(factory_result)<<'\n';
+    return;
+  }
+  for (unsigned i=0;i<8;++i) {
+    ComPtr<IDXGIAdapter1> adapter;
+    const auto enumerated=factory->EnumAdapters1(i,&adapter);
+    if (enumerated==DXGI_ERROR_NOT_FOUND) break;
+    if (FAILED(enumerated)) {
+      output<<"runtime_d3d11.adapter_probe_enumeration="<<static_cast<std::uint32_t>(enumerated)<<'\n'; break;
+    }
+    DXGI_ADAPTER_DESC1 desc{};
+    if (FAILED(adapter->GetDesc1(&desc)) || (desc.Flags&DXGI_ADAPTER_FLAG_SOFTWARE)) continue;
+    ComPtr<ID3D11Device> device;
+    // Bypass our creation hook: these are diagnostic devices, never backend
+    // observations. No context, rendering, writes or debug flag override.
+    const auto created=original_create(adapter.Get(),D3D_DRIVER_TYPE_UNKNOWN,nullptr,
+        D3D11_CREATE_DEVICE_BGRA_SUPPORT,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,nullptr);
+    char name[512]{};
+    WideCharToMultiByte(CP_UTF8,0,desc.Description,-1,name,sizeof(name),nullptr,nullptr);
+    output<<"runtime_d3d11.adapter_probe="<<i<<" name="<<name
+        <<" create_result="<<static_cast<std::uint32_t>(created)<<'\n';
+    if (FAILED(created)) continue;
+    for (unsigned h=0;h<count;++h) {
+      const auto result=probe_shared_texture(device.Get(),handles[h]);
+      output<<"runtime_d3d11.adapter_import="<<i<<" handle="<<handles[h]
+          <<" result="<<static_cast<std::uint32_t>(result.result)
+          <<" width="<<result.width<<" height="<<result.height
+          <<" format="<<result.format<<" misc_flags="<<result.misc_flags<<'\n';
+    }
+  }
+}
 
 void report_runtime_d3d11_diagnostics(std::ostream& output) {
   std::scoped_lock lock(capture_mutex);

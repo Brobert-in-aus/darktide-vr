@@ -10,6 +10,8 @@ param(
 
     [switch] $RuntimeD3D11Diagnostics,
 
+    [switch] $ProbeSharedImportAdapters,
+
     [ValidateSet('Ready', 'Inventory')]
     [string] $Mode = 'Ready',
 
@@ -181,6 +183,7 @@ if ($Mode -eq 'Ready') {
 
     $smokeArguments = "--frames 30 --debug-layer --require-openxr --require-rendering --xr-frames $XrFrames"
     if ($RuntimeD3D11Diagnostics) { $smokeArguments += ' --runtime-d3d11-diagnostics' }
+    if ($ProbeSharedImportAdapters) { $smokeArguments += ' --probe-shared-import-adapters' }
     $smokeProcess = Invoke-BoundedXrSmoke -FilePath $harness -Arguments $smokeArguments
     $smokeOutput = @($smokeProcess.output)
     $smokeExitCode = $smokeProcess.exit_code

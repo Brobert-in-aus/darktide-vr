@@ -57,7 +57,7 @@ add_library(darktidevr-runtime-d3d11-diagnostics STATIC runtime_d3d11_diagnostic
 target_include_directories(darktidevr-runtime-d3d11-diagnostics PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(darktidevr-runtime-d3d11-diagnostics PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-runtime-d3d11-diagnostics PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-target_link_libraries(darktidevr-runtime-d3d11-diagnostics PRIVATE minhook d3d11 dxguid)
+target_link_libraries(darktidevr-runtime-d3d11-diagnostics PRIVATE minhook d3d11 dxgi dxguid)
 
 add_executable(darktidevr-xr-harness main.cpp synthetic_scene.cpp)
 target_compile_options(darktidevr-xr-harness PRIVATE /W4 /WX /permissive-)

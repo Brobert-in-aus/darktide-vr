@@ -72,12 +72,22 @@ int main() {
       expect(bounded.str().find("calls=12")!=std::string::npos);
       expect(bounded.str().find("runtime_d3d11.device=7 ")!=std::string::npos);
       expect(bounded.str().find("runtime_d3d11.device=8 ")==std::string::npos);
+      auto other=create();
+      const auto probe=probe_shared_texture(other.Get(),reinterpret_cast<std::uintptr_t>(shared));
+      expect(probe.result==S_OK && probe.width==64 && probe.height==64 &&
+          probe.format==DXGI_FORMAT_R8G8B8A8_UNORM && (probe.misc_flags&D3D11_RESOURCE_MISC_SHARED));
+      expect(probe_shared_texture(other.Get(),0).result==E_INVALIDARG);
+      expect(probe_shared_texture(nullptr,reinterpret_cast<std::uintptr_t>(shared)).result==E_INVALIDARG);
+      std::ostringstream off; probe_runtime_d3d11_import_adapters(off);
+      expect(off.str().empty());
     }
     expect(!(create()->GetCreationFlags()&D3D11_CREATE_DEVICE_DEBUG));
     std::ostringstream after; report_runtime_d3d11_diagnostics(after); expect(after.str().empty());
     // A fresh scope must not inherit old devices or counts.
-    { RuntimeD3D11Diagnostics again(true); std::ostringstream clean;
-      report_runtime_d3d11_diagnostics(clean); expect(clean.str().find("calls=0")!=std::string::npos); }
+    { RuntimeD3D11Diagnostics again(true,true); std::ostringstream clean;
+      report_runtime_d3d11_diagnostics(clean); expect(clean.str().find("calls=0")!=std::string::npos);
+      std::ostringstream empty; probe_runtime_d3d11_import_adapters(empty);
+      expect(empty.str()=="runtime_d3d11.adapter_probe_handles=0\n"); }
     std::cout<<"runtime_d3d11_diagnostics=pass WARP flags errors bounded_records cleanup\n";
   } catch (const std::exception& error) { std::cerr<<error.what()<<'\n'; return 1; }
 }

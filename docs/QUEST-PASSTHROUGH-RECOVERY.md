@@ -316,3 +316,18 @@ Read-only process inspection reports the shell, Codex and Streamer in session 11
 mismatch. Both physical AMD/NVIDIA adapters report normal status. The Virtual
 Desktop Monitor reports code 22 (disabled), while the SudoMaker virtual display
 reports normal status; no driver/display setting was changed or blamed.
+
+The next opt-in extension is `--probe-shared-import-adapters`, forwarded by
+Ready with `-ProbeSharedImportAdapters`. It implies the existing diagnostic and
+only runs after swapchain failure. It deduplicates up to eight failed, nonzero
+texture handles and tries them on at most eight enumerated physical adapters.
+Separate diagnostic devices bypass creation capture, and no context/rendering,
+resource writes, pixel readback or persistent GPU selection is used. Successful
+imports report dimensions, format and sharing flags. Failure on every adapter
+would still not prove which handle-lifetime or sharing requirement failed.
+
+Release builds and five focused CTests pass in 1.40 seconds. The WARP fixture
+opens a real shared texture on another device and verifies its description,
+checks null-input rejection without calling the graphics API, and covers disabled
+and empty-evidence probe paths. Live physical-adapter probing remains the next
+bounded Ready action.

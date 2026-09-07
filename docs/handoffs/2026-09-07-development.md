@@ -1775,3 +1775,14 @@ See QUEST-PASSTHROUGH-RECOVERY for exact backend identity and evidence limits.
 Complete output/no timeout, Guardian confirmed restored and proximity restored;
 game/harness closed. Next: narrow adapter/resource ownership with read-only or
 isolated graphics checks, not another identical readiness run.
+
+## Continuous blocker work: adapter-specific import probe
+
+Branch `codex/runtime-import-adapter-probe-2026-09-07` adds an explicit Ready
+`-ProbeSharedImportAdapters` option. After the observed failure it deduplicates
+captured failed texture handles and probes each physical adapter with separate
+non-rendering devices. Up to eight handles/adapters; no settings or pixel access.
+Real WARP cross-device sharing/description, null rejection, disabled/empty paths
+and desktop-only argument rejection pass; Release builds/five focused CTests
+pass in 1.40 seconds. Configured 120, full baseline 118 at `5ffb1a7`. Next action:
+one bounded Ready with the new adapter probe, restoring Guardian/proximity.
