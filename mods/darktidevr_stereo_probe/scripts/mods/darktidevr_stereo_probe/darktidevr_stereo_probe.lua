@@ -13314,6 +13314,9 @@ presentation.controller_aim.install(
 presentation.projectile_visual = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_projectile_visual"
 ).install(mod, presentation)
+presentation.ranged_evidence = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_ranged_evidence"
+).install(mod, presentation)
 
 mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_grenade_aim"

@@ -65,6 +65,14 @@ validation is recorded above. Stock inputs/origins/damage remain; firing-only
 aim switching is held. Native reticle alignment, chase comfort, gun firing and
 model/barrel alignment remain worn checks, not claimed acceptance.
 
+The subsequent ranged observer logs four stock dispatches per weapon/route/visit
+and exposes a count summary, including real shot direction and angle to the
+cached reticle. Its five-route fixture and 41-chunk Lua/invariant gates pass;
+native code is unchanged from `809d275`. It is queued for the same deployment.
+The user was asked asynchronously whether VD is reconnected; continue offline
+until they report readiness. No game/XR processes were found during the ranged
+build, and no attempt was made to restart VD.
+
 The day's continuation is collected in
 [draft review #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2),
 based on the saved 6 September backlog branch. The aggregate review branch is

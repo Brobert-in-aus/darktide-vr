@@ -106,3 +106,24 @@ alignment or equivalent cosmetic particle treatment. Those visual checks,
 native timing under real rendering, spread/assist feel, and actual firing and
 damage across owned weapons remain unproven. Firing-only aim switching and
 physical crouch detection remain deferred.
+
+## Bounded firing evidence for the next session
+
+The follow-up observer records the first four stock `_shoot` dispatches per
+weapon/route/visit across hitscan, pellets, projectiles and both flame classes.
+`DARKTIDEVR_RANGED_EVIDENCE` includes the actual template/action, origin,
+direction, charge, server/client context, angle to the last valid reticle point,
+and the stock `hit_minion` result when supplied. Further dispatches increment
+the `dtvr_ranged_evidence` summary without per-shot logging. A pellet dispatch
+can be one batch of a shell; a flame dispatch does not prove every later cone
+tick. Reticle-angle differences include spread and timing and are not an
+automatic failure verdict. Missing logs alone do not identify why firing failed.
+
+This observer changes no inputs, action fields, positions or results. Remote
+owners and resimulation are excluded; new owners/visits reset the count.
+Diagnostic errors are contained and emit at most one informational fallback,
+avoiding repeated audible mod errors. The five-route observer fixture passes
+stock-return/result preservation, angle measurements, output bounds, ownership,
+replay and failure isolation. All 41 Lua chunks and source invariants pass.
+This follow-up is also undeployed; the integrated 124-test baseline above
+predates its new CTest registration.
