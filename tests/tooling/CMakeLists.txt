@@ -153,7 +153,10 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/test-gun-aim.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gun_aim.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_stereo_probe.lua")
-  add_test(NAME hud_panel COMMAND "${LUAJIT_VALIDATOR}"
+    add_test(NAME two_hand_pose COMMAND "${LUAJIT_VALIDATOR}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/test-two-hand-pose.lua"
+      "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_two_hand_pose.lua")
+    add_test(NAME hud_panel COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-hud-panel.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_hud_panel.lua")
   add_test(NAME hud_options COMMAND "${LUAJIT_VALIDATOR}"

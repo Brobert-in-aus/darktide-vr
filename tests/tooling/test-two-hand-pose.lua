@@ -1,0 +1,80 @@
+local Pose=dofile(assert(arg[1]))
+local identity={0,0,0,1}
+local primary,socket={3,4,5},{0,.3,0}
+local function near(a,b,tolerance)
+    for i=1,#a do assert(math.abs(a[i]-b[i])<(tolerance or 1e-8),'pose component mismatch') end
+end
+local function rotated_y(q)
+    return {2*(q[1]*q[2]-q[3]*q[4]),1-2*(q[1]^2+q[3]^2),2*(q[2]*q[3]+q[1]*q[4])}
+end
+assert(Pose.near(identity,primary,{3,4.3,5},socket,.01))
+assert(not Pose.near(identity,primary,{3,4.45,5},socket,.1))
+assert(Pose.near(identity,primary,{3,4.45,5},socket,.2))
+local state,owner=Pose.new(),{}
+local q=state.update(identity,primary,{3.3,4,5},socket,true,owner,.01,0)
+near(rotated_y(q),{1,0,0})
+-- Controller distance cannot scale the gun: orientation is unchanged when
+-- the support hand moves farther along the same line.
+near(state.update(identity,primary,{3.6,4,5},socket,true,owner,.01,0),q)
+near(primary,{3,4,5}); near(socket,{0,.3,0})
+-- A common translation/rotation of both hands and the aim preserves the solution.
+local quarter={0,0,math.sqrt(.5),math.sqrt(.5)}
+local turned=Pose.new().update(quarter,{8,9,2},{8,9.3,2},socket,true,owner,.01,0)
+near(rotated_y(turned),{0,1,0})
+assert(Pose.near(quarter,{8,9,2},{7.7,9,2},socket,.01))
+-- Aligned support retains primary wrist roll; no up-vector/horizon lock.
+local roll={0,math.sin(.4),0,math.cos(.4)}
+near(Pose.new().update(roll,primary,{3,4.3,5},socket,true,owner,.01,0),roll)
+local reference
+for _,fps in ipairs({30,60,90,120}) do
+    local filter=Pose.new()
+    local result
+    for frame=1,fps do
+        result=filter.update(identity,primary,{3.3,4,5},socket,true,owner,1/fps,.2)
+    end
+    if reference then near(result,reference,1e-6) else reference=result end
+    -- A complete second of release has the same decay at each update rate.
+    for frame=1,fps do result=filter.update(identity,nil,nil,nil,false,owner,1/fps,.2) end
+    assert(math.abs(result[3])<.006,'release did not return to one-hand aim')
+end
+-- Invalid tracking/geometry cannot preserve a stale two-hand correction.
+for _,invalid in ipairs({primary,{3,3.7,5},{0/0,4,5},{math.huge,4,5}}) do
+    state.update(identity,primary,{3.3,4,5},socket,true,owner,.01,0)
+    near(state.update(identity,primary,invalid,socket,true,owner,.01,.2),identity)
+    assert(state.owner==nil)
+end
+state.update(identity,primary,{3.3,4,5},socket,true,owner,.01,0)
+near(state.update(identity,primary,{3.3,4,5},socket,true,{},0,.2),identity)
+state.update(identity,primary,{3.3,4,5},socket,true,owner,.01,0)
+near(state.update(identity,primary,{3.3,4,5},socket,true,owner,.01,.2,true),identity)
+for _,dt in ipairs({-.1,.5,math.huge,0/0}) do
+    near(state.update(identity,primary,{3.3,4,5},socket,true,owner,dt,.2),identity)
+end
+assert(state.update({0,0,0,0},primary,{3.3,4,5},socket,true,owner,.01,.2)==nil)
+assert(not Pose.near(identity,primary,primary,socket,0/0))
+assert(not Pose.near(identity,primary,primary,socket,-1))
+assert(not Pose.near(identity,primary,{1e308,1e308,1e308},socket,1e308))
+-- Off-axis authored sockets must steer the actual socket ray, not silently
+-- assume every support grip sits on the barrel's forward axis.
+local function rotate(q,v)
+    return {
+        (1-2*(q[2]^2+q[3]^2))*v[1]+2*(q[1]*q[2]-q[3]*q[4])*v[2]+2*(q[1]*q[3]+q[2]*q[4])*v[3],
+        2*(q[1]*q[2]+q[3]*q[4])*v[1]+(1-2*(q[1]^2+q[3]^2))*v[2]+2*(q[2]*q[3]-q[1]*q[4])*v[3],
+        2*(q[1]*q[3]-q[2]*q[4])*v[1]+2*(q[2]*q[3]+q[1]*q[4])*v[2]+(1-2*(q[1]^2+q[2]^2))*v[3]}
+end
+for i=1,120 do
+    local angle=i*.017
+    local base={0,0,math.sin(angle),math.cos(angle)}
+    local offset={.03*math.sin(i),.2+.001*i,-.04}
+    local target_local={.08*math.cos(i),.3,.06*math.sin(i)}
+    local target_world=rotate(base,target_local)
+    local hand={primary[1]+target_world[1],primary[2]+target_world[2],primary[3]+target_world[3]}
+    local result=Pose.new().update(base,primary,hand,offset,true,owner,.01,0)
+    local socket_world=rotate(result,offset)
+    local socket_length=math.sqrt(offset[1]^2+offset[2]^2+offset[3]^2)
+    local target_length=math.sqrt(target_world[1]^2+target_world[2]^2+target_world[3]^2)
+    for axis=1,3 do
+        assert(math.abs(socket_world[axis]/socket_length-target_world[axis]/target_length)<1e-8)
+    end
+end
+print('two_hand_pose=pass geometry roll distance covariance smoothing invalidity reset')

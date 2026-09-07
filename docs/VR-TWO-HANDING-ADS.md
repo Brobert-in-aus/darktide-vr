@@ -1,7 +1,8 @@
 # Two-handed guns, virtual stock and ADS
 
-Status: researched design/backlog, 7 September 2026. Not implemented or deployed.
-The current held-gun aim correction remains the prerequisite worn check.
+Status: offline input/pose foundations implemented 8 September 2026; no live
+two-hand behavior is deployed. The user accepted the final controller-based gun
+pitch, hand placement and draw/reload checks on `ab9e9db`.
 
 ## Requested interaction
 
@@ -120,3 +121,44 @@ its `settings_templates/lasgun_spread_templates.lua` and `lasgun_recoil_template
 `autoguns/autogun_p2_m1.lua`, and `stub_pistols/stubrevolver_p1_m1.lua` under the
 ignored local Darktide source checkout. Per-weapon scope, physical stock and
 grip-socket configuration remain implementation work.
+
+## 8 September implementation checkpoint
+
+The controller mapper accepts an optional support request as its last sample
+argument: `{control, owner, acquire, retain, action}`. Control is a physical
+left/right grip; owner is a stable weapon/tracking identity; action is `alternate`
+or `unbound`. No request preserves normal mapping. It owns a fresh press before
+semantic aggregation, suppresses the displaced gesture, and exposes support
+pressed/held/released/cancelled state. Weapon changes, disappearance, retention
+loss, publisher changes, menus and remaps cancel/rearm without leaking a held
+control into its old binding. Independent aliases retain their own contribution.
+
+`darktidevr_two_hand_pose.lua` supplies geometry and smoothing with explicit
+numeric inputs in a common space. It steers the authored primary-to-support
+socket ray, preserves controller wrist roll through a shortest-arc correction,
+does not scale the weapon, and smooths only the correction in controller-local
+space. Release decays to one-hand aim. Owner changes, cancellation, long/invalid
+frame intervals and invalid or nearly coincident hand poses discard stale state.
+Sockets shorter than 8 cm and nearly reversed directions are rejected for now;
+close pistol support needs a separate policy rather than pretending it provides
+a stable two-point direction. Radius-based acquisition supports a larger release
+volume; no weapon socket measurements or tuning are inferred from these tests.
+
+Focused Windows x64 CTests pass 9/9 in 1.13 seconds, including controller aliases,
+lifecycle cancellation, 120 off-axis socket geometry cases, translation/rotation
+covariance, wrist roll, 30/60/90/120 Hz smoothing, gun regression, all 44 compiled
+Lua chunks and source invariants. Configured count is 127. These modules still
+need a production caller, verified per-weapon sockets, stock ADS arbitration,
+support-hand visuals and virtual-stock handling before live acceptance.
+
+Stock `toggle_ads` is carried in input-handler settings. The inspected lasgun
+uses `action_two_hold=true/false` for ordinary enter/exit, but substitutes
+`action_two_pressed=true` for both transitions when toggle ADS is selected.
+Consequently the mapper's alternate contribution alone must not be enabled as
+hold-to-two-hand ADS in toggle mode. Keep saved preferences intact and use a
+state-aware coordinator (including an independently active aim owner) before
+enabling that route. Raw grip release is not a toggle-mode ADS exit.
+
+The live controller observation has distinct `*_grip_tracking_live` fields;
+`*_grip_usable` can retain an old wrist pose intentionally. Two-hand acquisition
+and retention must require live tracking, not the presentation fallback pose.

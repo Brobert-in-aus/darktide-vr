@@ -219,3 +219,70 @@ aliases.sample(true,0,0,0,true,1)
 assert(aliases.sample(true,0,0,1,true,1)==2048)
 ap,ah,ar=aliases.sample(true,0,0,1,false,1)
 assert(ap==0 and ah==0 and ar==0,'Axis-only cancellation emitted a charged release')
+
+-- A contextual support grip owns the physical gesture, before remapped actions
+-- are aggregated. Other controls bound to either action remain independent.
+local grip_settings={}
+local grip_mod={get=function(_,key) return grip_settings[key] end}
+local grip_mapper=Bindings.install(grip_mod)
+local grip_request={control='left_grip',owner={},acquire=true,retain=true,action='alternate'}
+local function grip_sample(physical,p,h,r,owned,request,enabled,generation,mode)
+    local gp,gh,gr=grip_mapper.sample(enabled~=false,physical,0,0,true,generation or 1,
+        mode or 'combat',request)
+    assert(gp==p and gh==h and gr==r,
+        string.format('support grip got %d,%d,%d expected %d,%d,%d',gp,gh,gr,p,h,r))
+    assert(grip_mapper.support_grip.held==owned,'Incorrect contextual grip ownership')
+end
+grip_sample(0,0,0,0,false,grip_request)
+grip_sample(512,2,2,0,true,grip_request)
+assert(grip_mapper.support_grip.pressed)
+grip_sample(512,0,2,0,true,grip_request)
+grip_sample(512+2,0,2,0,true,grip_request)
+grip_sample(2,0,2,0,false,grip_request)
+assert(grip_mapper.support_grip.released,'Physical support release was lost')
+grip_sample(0,0,0,2,false,grip_request)
+grip_request.acquire=false
+grip_sample(512,512,512,0,false,grip_request)
+grip_request.acquire=true
+grip_sample(512,0,512,0,false,grip_request) -- Moving a held grip into range is not a press.
+grip_sample(0,0,0,512,false,grip_request)
+grip_sample(512,2,2,0,true,grip_request)
+grip_request.retain=false
+grip_sample(512,0,0,0,false,grip_request)
+assert(grip_mapper.support_grip.cancelled,'Tracking/retention loss did not cancel')
+grip_request.retain=true
+grip_sample(512,0,0,0,false,grip_request)
+grip_sample(0,0,0,0,false,grip_request)
+grip_sample(512,2,2,0,true,grip_request)
+grip_request.owner={}
+grip_sample(512,0,0,0,false,grip_request) -- Weapon replacement requires neutral.
+grip_sample(0,0,0,0,false,grip_request)
+grip_sample(512+2,2,2,0,true,grip_request)
+grip_sample(512+2,0,2,0,false,nil) -- An ordinary aim alias survives cancellation.
+grip_sample(512,0,0,2,false,nil) -- Its real release must still be delivered.
+grip_sample(0,0,0,0,false,grip_request)
+grip_settings.vr_bind_right_trigger='blitz'
+grip_mod.on_setting_changed('vr_bind_right_trigger')
+grip_sample(0,0,0,0,false,grip_request)
+grip_sample(512+1,514,514,0,true,grip_request)
+grip_sample(1,0,512,2,false,grip_request) -- Displaced blitz alias is not suppressed.
+grip_sample(0,0,0,512,false,grip_request)
+for _,transition in ipairs({'disabled','generation','context','remap'}) do
+    grip_sample(512,2,2,0,true,grip_request)
+    if transition=='remap' then
+        grip_settings.vr_bind_left_grip='primary'
+        grip_mod.on_setting_changed('vr_bind_left_grip')
+    end
+    grip_sample(512,0,0,0,false,grip_request,transition~='disabled',
+        transition=='generation' and 2 or 1,transition=='context' and 'hub' or 'combat')
+    grip_sample(512,0,0,0,false,grip_request)
+    grip_sample(0,0,0,0,false,grip_request)
+end
+-- Future handedness selects a physical grip without swapping tracking channels.
+grip_request.control='right_grip'
+grip_sample(4,2,2,0,true,grip_request)
+grip_sample(0,0,0,2,false,grip_request)
+grip_request.action='unbound'
+grip_sample(4,0,0,0,true,grip_request) -- Support can hold without requesting ADS.
+grip_sample(0,0,0,0,false,grip_request)
+print('support_grip=pass fresh_press aliases cancellation neutral roles optional_ads')

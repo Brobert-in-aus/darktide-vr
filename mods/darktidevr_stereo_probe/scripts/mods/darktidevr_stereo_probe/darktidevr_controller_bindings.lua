@@ -69,7 +69,9 @@ function Bindings.widgets()
 end
 
 function Bindings.install(mod)
-    local api = {held=0,bindings={},revision=0,context="combat"}
+    local api = {held=0,bindings={},revision=0,context="combat",
+        support_grip={held=false,pressed=false,released=false,cancelled=false}}
+    local previous_physical, grip_claim = 0, nil
     local masks, resolved = {}, {}
     local dirty, blocked, active = true, 0, false
     local stick_held, stick_active = 0, false
@@ -108,8 +110,12 @@ function Bindings.install(mod)
         end
         return controls
     end
-    function api.sample(enabled, physical, stick_x, stick_y, stick_usable, generation, mode)
+    function api.sample(enabled, physical, stick_x, stick_y, stick_usable, generation, mode, support)
         local context=mode=="hub" and "hub" or "combat"
+        local reset_grip=dirty or enabled~=true or not active or
+            generation~=stick_generation or context~=api.context
+        local grip=api.support_grip
+        grip.held,grip.pressed,grip.released,grip.cancelled=false,false,false,false
         if context~=api.context then
             api.context=context; api.revision=api.revision+1
             dirty=true; stick_active=false
@@ -166,19 +172,56 @@ function Bindings.install(mod)
         if not enabled or not active then blocked=physical end
         active = enabled == true
         blocked = bit.band(blocked,physical)
+        -- Only a fresh, unblocked physical grip may acquire contextual ownership.
+        -- The caller supplies weapon/tracking identity and acquisition/retention
+        -- tests; saved user bindings are never rewritten. No caller means the
+        -- original mapper behavior, including ordinary keyboard coexistence.
+        local request_bit=type(support)=='table' and
+            (support.control=='left_grip' and 512 or support.control=='right_grip' and 4) or nil
+        local request_mask=request_bit and
+            (support.action=='alternate' and 2 or support.action=='unbound' and 0) or nil
+        local request_valid=request_bit and request_mask~=nil and support.owner~=nil
+        local cancelled_grip=0
+        if grip_claim then
+            local down=bit.band(physical,grip_claim.bit)~=0
+            if reset_grip or not request_valid or support.owner~=grip_claim.owner or
+                request_bit~=grip_claim.bit or request_mask~=grip_claim.mask or support.retain~=true then
+                blocked=bit.bor(blocked,bit.band(physical,grip_claim.bit))
+                cancelled_grip=grip_claim.mask
+                grip.cancelled=true
+                grip_claim=nil
+            elseif not down then
+                grip.released=true
+                grip_claim=nil
+            end
+        end
+        if not grip_claim and not reset_grip and active and request_valid and
+            support.acquire==true and support.retain==true and
+            bit.band(physical,request_bit)~=0 and
+            bit.band(bit.bor(blocked,previous_physical),request_bit)==0 then
+            grip_claim={bit=request_bit,mask=request_mask,owner=support.owner}
+            grip.pressed=true
+        end
+        previous_physical=physical
         local next_held = 0
         if active then
             local available = bit.band(physical,bit.bnot(blocked))
             for _,control in ipairs(Bindings.controls) do
-                if bit.band(available,control.bit)~=0 then
+                if bit.band(available,control.bit)~=0 and
+                    (not grip_claim or control.bit~=grip_claim.bit) then
                     next_held = bit.bor(next_held,resolved[control.id])
                 end
+            end
+            if grip_claim then
+                next_held=bit.bor(next_held,grip_claim.mask)
+                grip.held=true
             end
         end
         local pressed = bit.band(next_held,bit.bnot(api.held))
         -- Losing the stick's tracking/validity cancels its contribution. Keep
         -- semantic history for healthy button aliases so they do not retrigger.
-        local released = bit.band(api.held,bit.bnot(next_held),bit.bnot(cancelled_axes))
+        local released = bit.band(api.held,bit.bnot(next_held),
+            bit.bnot(bit.bor(cancelled_axes,cancelled_grip)))
         api.held = next_held
         return pressed,next_held,released
     end
