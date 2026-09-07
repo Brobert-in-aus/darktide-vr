@@ -43,7 +43,7 @@ for the smaller set needed before a first end-to-end mission attempt.
    character-select clicks after stock readiness. Hub automatic-entry leakage is
    already fixed and its retry passed; do not reopen that resolved bug.
    7 September: a shared local-authority mission policy is an offline candidate
-   (the latest integrated offline suite passes 118/118). Remote-server missions remain gated. See
+   (the latest integrated offline suite passes 121/121). Remote-server missions remain gated. See
    [mission authority](MISSION-AUTHORITY-AUDIT.md); no mission/SoloPlay acceptance.
    Launcher cleanup now attempts later flags, owned-process cleanup and range
    request retirement even when an earlier restoration fails. Eight focused

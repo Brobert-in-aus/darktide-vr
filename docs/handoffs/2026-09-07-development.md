@@ -1806,3 +1806,14 @@ This is a basic same-user interop comparison, not the VD producer's lifetime,
 descriptor or privilege context. Evidence: d3d11-sharing-adapter*-20260907.log.
 Configured count is now 121. All runtime candidates remain undeployed, and normal
 proximity is restored. Continue the todo; full integration validation is next.
+
+## Integrated offline validation after blocker diagnostics
+
+Full Windows x64 Release build and all 121 configured CTests pass through
+`28e6cca` in 20.73 seconds. Headset tests remain OFF and ordinary graphics tests
+explicitly skip OpenXR. This integrates optional menu error cleanup, runtime
+D3D11/shared-import/adapter diagnostics and cross-process sharing with the
+previous controller/melee baseline. Evidence: integrated-121-build-20260907.log
+and integrated-121-ctest-20260907.log under artifacts/unattended. Runtime Lua
+remains `99cd45b`, native capture `01617d6`, XR harness `1324a87`. No deployment.
+Continue the todo; review remaining game-mode lookups for retiring-manager errors.

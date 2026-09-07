@@ -38,10 +38,10 @@ Offline [UI detail measurement](DLSS-UI-DETAIL.md), precise Present timing and
 and performance investigation. Motion blur remains unresolved; no framerate
 gain or worn acceptance is claimed. Existing old Present timings remain coarse.
 
-Windows x64 full Release build succeeds through `5ffb1a7`, including the native
-health and spectator changes; the XR harness source remains at `4298262`.
+Windows x64 full Release build succeeds through `28e6cca`, including the native
+health and spectator changes; the XR harness source is `1324a87`.
 Pinned LuaJIT compiles 37 chunks and the full offline CTest
-checkpoint passes 118/118 in 18.49 seconds, with headset tests disabled and ordinary
+checkpoint passes 121/121 in 20.73 seconds, with headset tests disabled and ordinary
 D3D12 checks now explicitly skipping OpenXR discovery. The stock null-service
 guards cover both render and fixed input updates through `596c459`. Optional
 stock contracts through `b6f74b4` cover input history/replay, movement, combat,
