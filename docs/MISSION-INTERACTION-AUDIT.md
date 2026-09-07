@@ -4,6 +4,34 @@
 SoloPlay run and no worn acceptance. The local-authority admission policy in
 [MISSION-AUTHORITY-AUDIT](MISSION-AUTHORITY-AUDIT.md) still applies.
 
+## Stock consumer integration follow-up: 8 September
+
+`tests/tooling/test-mission-device-stock-contract.lua` now executes the cached
+stock `PlayerCharacterStateMinigame._update_input` and
+`InteractorExtension._check_current_state` methods with real VR binding output.
+It passes against source `0f0cb45991e9305ef4a7b925370792d7d6035f95`.
+
+Device checks cover RT/X/A holds and release, stock dodge eligibility for A,
+LT pressed cancellation without repeat while held, device-specific escape
+policy, weapon-action blocking, both knob directions, completion animation and
+loss of the wielded device. A is still subject to the stock dodge decision; it
+is not an unconditional minigame action. Movement vectors are supplied directly
+here; the separate production seam tests cover their movement-reference bypass.
+
+Hold checks cover X with a remapped independent interaction alias, ordinary
+release, invalid or missing targets, refused starts, timer completion, explicit
+UI completion and server-only component events. The interaction implementation,
+target validity, animation, device algorithm, timer setup and engine side
+effects are fixtures. In particular the interaction's real revive/rescue `stop`
+implementation and resulting teammate state are not exercised. No mission,
+network, tactile, readability or worn acceptance is established.
+
+This is an optional source-dependent test, not added to portable CTest:
+
+```powershell
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-mission-device-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings.lua
+```
+
 | Interaction | Stock consumer | Controller candidate / remaining check |
 | --- | --- | --- |
 | Use, pickups, revive, rescue and objective sockets | `InteractorExtension._check_current_state` reads the interaction's action (normally `interact_pressed`), then `interact_hold` for required holds. | X supplies both through the shared mapper. Target validity, hold cancellation and actual server completion need live checks. |
