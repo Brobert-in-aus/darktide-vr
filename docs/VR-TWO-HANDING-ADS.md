@@ -77,3 +77,28 @@ gameplay ADS state; scopes need their own readable stereo treatment.
 
 True firing origins remain the stock body/face-based origins. Two-handed aiming
 and cosmetic muzzle effects do not enable gun-only blind fire around cover.
+
+## Located integration boundaries
+
+`darktidevr_controller_bindings.lua` treats native channels as physical inputs:
+left grip is channel 512 (default blitz), and alternate action maps to the stock
+`action_two_pressed/hold/release` names. The main input reader calls its `sample`
+before dispatching ephemeral actions; fixed updates use the mapper's held state.
+Insert contextual ownership at that mapping boundary, before semantic actions
+are aggregated. Masking the grenade action afterward would break remaps and
+could suppress an independent control bound to the same action.
+
+Keep each control's contribution separate until aggregation, including a
+two-hand ADS contribution. Releasing the support grip must not release ADS if
+the normal aim control is still held. Preserve existing remap/context/publisher
+neutral guards and keyboard/mouse coexistence; do not mutate saved bindings.
+This requires explicit handling of the user's hold/toggle ADS preference rather
+than assuming every `action_two` gesture has the same lifecycle.
+
+Stock `ActionAim.start` calls `AlternateFire.start`, which selects the weapon's
+alternate spread/recoil/sway templates, starts animation and immediate
+spread/sway changes, and triggers relevant buffs/stats. `ActionUnaim` uses the
+matching stop route. `AlternateFire.movement_speed_modifier` applies the active
+weapon curve. Request ordinary inputs so these transitions remain intact;
+setting only `alternate_fire.is_active` or directly replacing accuracy templates
+would skip stock behavior.

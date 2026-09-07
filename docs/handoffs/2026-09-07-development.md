@@ -25,6 +25,17 @@ This is a design/backlog addition, not an implemented input or accuracy change.
 
 ## Earlier session record
 
+Held-grip candidate `313111e` deployed after closing the owned prior game and a
+new Ready pass. Capture/harness remain `23345e5`. Launch uses HUD, generated
+stereo and closed-game Psykhanium entry. Console beginning 09:36:49 UTC reports
+range pass at 09:37:50, both visual roots' 24/44 actor cleanup and rigid-hand
+readiness. Fresh stereo reaches `shared_ready=364` with zero interval fallback
+and zero cumulative pose mismatches at that sample. No mod WARNING/ERROR in
+the checked log. A gun basis capture has not yet appeared; the user was asked
+to equip the same lasgun, rest briefly, then check hand seating, reticle and
+enemy hits. Worn acceptance and gun-basis initialization are still pending.
+Evidence: `artifacts/unattended/held-gun-aim-*20260907.*` (ignored).
+
 The user resumed development and requested continued work until told to stop.
 At 18:42 Brisbane they corrected an accidental break response and confirmed
 Virtual Desktop was connected and ready. Proximity Disable then Status succeeded;
