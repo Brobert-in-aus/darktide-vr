@@ -21,8 +21,30 @@ The receipt distinguishes `committed`, `rolled_back`, `rollback_incomplete`
 and `failed_before_write`. An incomplete rollback includes the affected paths;
 keep the backup and resolve those failures before launching. This handles
 caught update errors, not abrupt process termination or power loss. Recovery
-from those interruptions still requires inspection of the saved manifest and
-original files. A user-facing recovery command remains work.
+from those interruptions requires an intact staged manifest and original files.
+
+## Restore a saved update
+
+After the required default Ready preflight, with Darktide closed, run
+`tools/stereo/restore-darktide-vr-deployment.ps1 -Manifest <backup/manifest.json>
+-GameRoot <installation>`. The chosen installation must match the manifest.
+The command validates every original backup hash and destination before it
+restores files. It accepts mixed original/staged/missing files after an interrupted
+write and also permits undoing a completed update.
+
+Files changed since that update stop recovery before writes. Inspect those
+changes first; explicit `-AllowChangedFiles` permits replacing them, including
+partial bytes left by an interrupted write. Recovery always backs up the current
+state in a new transaction, so those changed bytes remain available. A caught
+failure during restoration rolls back to the state before recovery started.
+
+Newly deployed files are removed, and recorded new directories are removed only
+when empty. Unrelated files in those folders are retained and reported as
+`files_restored_directories_retained`. The new backup contains `recovery.json`
+linking the original and recovery manifests. This command does not launch the
+game or certify worn/runtime acceptance. A missing/damaged manifest or original
+backup still requires manual investigation; interrupted operations cannot be
+made atomic across machine failure.
 
 ## First installation from a built checkout
 
@@ -57,6 +79,9 @@ must return exactly to their originals. Success, diagnostic removal, newly
 created file/directory rollback, path/junction guards and Lua-gate rejection are covered.
 Clean installation, missing prerequisites, final mod-list failure and repeated
 installation are also exercised against an isolated fake installation.
+Recovery fixtures cover mixed interrupted state, repeat restoration, changed
+file rejection/explicit preservation, damaged backups, wrong-root rejection,
+nonempty folder retention and rollback after a failed recovery write.
 Process discovery and compilation are fixtures in the orchestration test; the
 real project Lua gate runs separately in CTest. Nothing from these checks is
 deployed to the running accepted-baseline preview session.

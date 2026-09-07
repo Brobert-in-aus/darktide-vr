@@ -30,6 +30,14 @@ heartbeat, until explicitly told to stop. The user is away at work; continue
 independent offline development when worn observations are needed. Yesterday's
 night-stop instructions are historical.
 
+Further offline checkpoints add [physical-hand ownership foundations](HANDEDNESS-AUDIT.md)
+for equipment, gun alignment, support calibration and local weapon sound. The
+left-handed setting remains unexposed pending coherent animated-hand/finger work
+and worn acceptance. [Deployment recovery](DEPLOYMENT-TRANSACTIONS.md) now covers
+staged updates, explicit source-tree installation into an existing loader setup,
+and restoring saved manifests. These candidates are not deployed to the focused
+live preview. Use the handoff for the latest validation totals and review stack.
+
 Quest setup passed default Ready on 8 September: one authorized Quest, Virtual
 Desktop/VDXR, 600/600 submitted frames and no unrendered frames. The ordinary
 launcher entered Psykhanium with HUD and generated stereo. Fresh range pass,
