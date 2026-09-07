@@ -18,6 +18,17 @@ continuity and the actual hand-correction function. Native unchanged. Final
 deployment and worn acceptance pending at this record. The user requests ending
 development for the night after these fixes, documenting today, updating the
 tomorrow handover, committing and pushing. Do not continue overnight.
+Final implementation `ab9e9db` was deployed after Ready and initialized in
+Psykhanium: fresh console beginning 10:21:33 UTC, range pass 10:22:55, rigid hands
+and both roots' collision cleanup. Shared readiness reaches 750 with zero
+interval fallback and one cumulative pose mismatch. Lasgun residual is 0.0290
+degrees with zero grip-position error; no mod WARNING/ERROR in the checked log.
+Final worn pitch/hand/draw/reload response remains pending. See
+`2026-09-08-handover.md` for the consolidated next-day state and cleanup record.
+Night shutdown complete: owned launch exited and restored runtime flags, its
+range request was retired, proximity Enable/Status succeeded, and both work
+continuation automations remain PAUSED. Final worn feedback did not arrive before
+shutdown. Changes and the next-day handover are committed/pushed; no merge.
 
 ## Latest candidate: controller-referenced gun placement and aim
 

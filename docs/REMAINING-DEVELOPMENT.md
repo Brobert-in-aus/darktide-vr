@@ -1,5 +1,11 @@
 # Remaining development: melee, HUD and DLSS
 
+**Night stop, 7 September:** the user requested stopping after the final gun
+pitch/hand/draw/reload fixes and a committed, pushed handover. Both continuation
+automations are PAUSED. Do not resume overnight. Start with the
+[8 September handover](handoffs/2026-09-08-handover.md); earlier continuous-work
+instructions and pending labels below are historical.
+
 ## Current priority order: end of 6 September 2026
 
 This list supersedes task ordering and pending labels in the chronological
