@@ -1017,3 +1017,8 @@ expecting desktop ownership. This addresses the source-level wheel mismatch,
 not proof of the historical live scroll/drag cause. Desktop drag release and
 possible duplicate mouse-edge transport remain to investigate. Undeployed;
 continue the todo, with full build/suite baseline still `df99611`.
+
+Integration checkpoint `6c79aec`: **111/111 offline CTests pass**, including
+watcher cleanup and the desktop-wheel candidate. Native code is unchanged from
+the full Release build at `df99611`. Evidence:
+`artifacts/unattended/continuous-todo-full-ctest-6c79aec-20260907.log`.
