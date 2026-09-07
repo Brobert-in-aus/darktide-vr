@@ -40,14 +40,18 @@ function Live.install(mod, presentation, tracking, game_mode)
         end
         local state = states[extension]
         if not state then
-            state = {diagnostics=Diagnostics.new(Simulation, Planner, Probe), last_log=-math.huge}
+            state = {diagnostics=Diagnostics.new(Simulation, Planner, Probe), last_log=-math.huge,
+                references=setmetatable({}, {__mode="v"})}
             states[extension] = state
         end
         local slot = extension._inventory_component.wielded_slot
         local weapon = extension._weapons[slot]
-        if weapon ~= state.weapon then
-            state.weapon, state.volume, state.action_name = weapon, nil, nil
-            state.selected_action = nil
+        -- Action instances point back to their owning extension. A strong
+        -- weapon here defeats the outer weak key under LuaJIT's collector.
+        if (weapon ~= nil) ~= state.weapon_present or weapon ~= state.references.weapon then
+            state.weapon_present = weapon ~= nil
+            state.references.weapon, state.volume, state.action_name = weapon, nil, nil
+            state.references.action = nil
             state.reason = nil
             state.windup_name = nil
             state.windup_start_t, state.combo_fingerprint = nil, nil
@@ -93,7 +97,7 @@ function Live.install(mod, presentation, tracking, game_mode)
             local volume, reason = Volume.resolve(template, action, defaults, instance._uses_matrix_data)
             if volume and (not state.volume or state.action_name ~= name) then
                 state.volume, state.action_name, state.history_key = volume, name, {}
-                state.selected_action = action
+                state.references.action = action
                 state.reason = nil
                 mod:info("DARKTIDEVR_MELEE context template=%s action=%s shape=%s radius=%.4f origin=provisional_grip damage=false",
                     tostring(template.name), name, volume.shape, volume.corner_radius)
@@ -148,10 +152,10 @@ function Live.install(mod, presentation, tracking, game_mode)
             state.last_log = t
             local resolution, selection_reason
             local attacker_position = POSITION_LOOKUP and POSITION_LOOKUP[extension._unit]
-            if report and state.selected_action and attacker_position then
+            if report and state.references.action and attacker_position then
                 resolution, selection_reason = Diagnostics.select_contacts(report,HitZone,Contacts,{
                     attacker=extension._unit,attacker_position=attacker_position,
-                    action=state.selected_action,
+                    action=state.references.action,
                     -- Diagnostic identity lives only for this one result batch.
                     -- A future cooldown ledger needs a true spawn-generation key.
                     target_key=function(unit) return unit end})

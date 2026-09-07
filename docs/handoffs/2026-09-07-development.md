@@ -1684,3 +1684,15 @@ headset action or clean installation occurred.
 
 Configured count is now 118; full baseline remains 116/116 at `2790e7d`, latest
 native build `01617d6`, runtime Lua `2d44cdc` (37 chunks). Continue the todo.
+
+## Continuous todo work: melee probe owner collection
+
+Branch `codex/melee-probe-owner-release-2026-09-07` removes the strong cached
+weapon/action references that could retain a retired extension through stock
+ActionWeaponBase's back-reference. The pinned LuaJIT regression reproduced that
+weak-key/value cycle. Weak context values now allow both objects to collect;
+explicit weapon-presence state also clears a cached volume when an empty slot's
+weak reference has already disappeared. That recovery edge has its own failing
+then passing regression. Six focused CTests pass in 0.81 seconds, including all
+37 chunks. No damage/native change, deployment or live memory/visual claim.
+Full baseline remains 116/116 at `2790e7d`, configured count 118. Continue work.

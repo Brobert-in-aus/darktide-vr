@@ -137,6 +137,15 @@ malformed time/request recovery afterward. Ordinary duplicate ticks preserve
 the accepted trajectory, and the simulation ledger is not reset. Six focused
 checks pass; this changes neither contact eligibility nor physical damage.
 
+Probe state now holds weapon/action context through weak values as well as its
+outer weak owner key. Stock action instances point back to the owning extension,
+so the previous strong weapon value kept that key alive under the pinned LuaJIT
+collector. A regression reproduces the retained cycle and now confirms release
+of both weapon and extension. A separate presence bit still detects an empty
+slot after the weak weapon reference is collected, clearing its old volume.
+Existing action/geometry recovery checks pass alongside collection coverage;
+this establishes the tested cache lifetime, not a measured in-game memory gain.
+
 Deduplicate multiple hurtboxes, repeated substeps and duplicate physics results
 per target before applying cooldowns. Cooldowns use simulation-clock deadlines
 and stable unit generation identities. Do not clear them on a pose-history reset

@@ -164,4 +164,21 @@ assert(calls[#calls].step.tracking_valid and calls[#calls].pose and grip_reads==
 hand='right'; tracking.right_grip_tracking_live=false
 live.fixed_update(extension,13.12,28)
 assert(not calls[#calls].step.tracking_valid and grip_reads==1,'Tracking gate ignored the physical hand')
+-- Stock ActionWeaponBase retains its owning weapon extension. LuaJIT weak-key
+-- tables alone do not collect a key reachable through a strong cached value.
+local discarded=setmetatable({weapon},{__mode='v'})
+extension._weapons.slot_primary=nil; weapon=nil
+collectgarbage(); collectgarbage()
+assert(discarded[1]==nil,'Probe retained an unequipped weapon')
+local count_before_empty=#calls
+live.fixed_update(extension,13.14,29)
+assert(#calls==count_before_empty,'Collected weapon identity concealed an empty slot and retained its volume')
+weapon={weapon_template={name='replacement',actions={light={kind='sweep'}}},actions={light={_uses_matrix_data=true}}}
+extension._weapons.slot_primary=weapon
+live.fixed_update(extension,13.16,30)
+weapon.actions.light._weapon_extension=extension
+local retired=setmetatable({extension,weapon},{__mode='v'})
+extension=nil; weapon=nil
+collectgarbage(); collectgarbage()
+assert(retired[1]==nil and retired[2]==nil,'Diagnostic cache retained a retired weapon extension cycle')
 print("live melee diagnostic opt-in, private mode, idle continuity, timing reentry and failure recovery passed")
