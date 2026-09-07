@@ -416,3 +416,32 @@ and source invariants. The regression covers remap, unchanged frames, missing
 info, stock refresh and VR loss/recovery. This candidate is undeployed; actual
 cached tutorial text and sizing still require a live check. Talent deactivation
 remains untouched as the user's shared-hint acceptance case.
+
+### Stock shared formatter contract, 7 September
+
+The refreshed inventory on stock snapshot `0f0cb45991e9305ef4a7b925370792d7d6035f95`
+contains **138 calls across 47 files**, with 108 dynamic action expressions and
+four raw-key formatters. These current totals supersede the earlier inventory
+counts above. Both user acceptance cases remain in the report. Shared helpers
+are not all visible in cursor mode: for example, tutorial navigation and grid
+sort labels have gamepad-only display gates. Chat's raw-key formatter describes
+device keys, and spectator cycling has no implemented VR route; neither is
+renamed to advertise a controller action.
+
+The menu prompt fixture optionally executes actual stock
+`TextUtilities.localize_with_button_hint` and
+`ViewElementInputLegend._update_widget_text`. It verifies action-to-alias
+separation, hold/release localization, localization context, tint, custom
+patterns, legend suffixes and recalculated text width. Clickable legend entries
+receive the pointed-click hint without invoking their callback; non-clickable
+unsupported actions and unavailable VR routes retain stock text. This tests the
+common path, with no talent-specific code change.
+
+```powershell
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-menu-prompts.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_menu_prompts.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_stereo_probe_localization.lua _downloads/Darktide-Source-Code
+```
+
+PASS, along with three focused CTests (menu prompts, controller prompts and
+source inventory). Localization/device text are isolated substitutes, not
+rendered label sizing or worn acceptance. The broad hint pass still needs live
+review of the pending cases when the user is available.

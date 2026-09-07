@@ -1120,3 +1120,20 @@ CTests pass, all 36 chunks compile, and both optional stock input/rules fixtures
 pass (including recorded objective-device inputs). Full suite remains 111/111
 at `968df68`; full Release baseline `df99611`, newer XR harness `f201a9a`.
 Undeployed; continue the todo while the user is away.
+
+## Continuous todo work: stock shared menu hints
+
+Branch `codex/menu-hint-stock-contract-2026-09-07` adds optional actual-stock
+formatter and input-legend execution to the menu hint fixture. Alias lookup,
+hold/release wording, localization context, tint, patterns, suffixes, width
+invalidation and clickable-callback ownership pass; no callback is activated.
+Three focused CTests pass. No production change or talent-specific patch.
+
+The refreshed hint inventory is 138 calls/47 files, with 108 dynamic action
+expressions and four raw-key formatters. Its two user acceptance cases remain
+pending. Gamepad-only hidden labels, raw chat keys and unsupported spectator
+cycling are not relabelled as controller routes. Current evidence is
+`artifacts/unattended/ui-binding-hint-audit-current-20260907.json` and the
+optional command in INPUT-REVISION-AUDIT. Localized/device text is substituted;
+no rendered label/readability acceptance. Continue the todo; full-suite baseline
+111/111 at `968df68`, newer movement changes have focused passing checks.
