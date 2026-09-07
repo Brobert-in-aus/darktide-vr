@@ -1,21 +1,23 @@
 # Remaining development: melee, HUD and DLSS
 
-**Night stop, 7 September:** the user requested stopping after the final gun
-pitch/hand/draw/reload fixes and a committed, pushed handover. Both continuation
-automations are PAUSED. Do not resume overnight. Start with the
-[8 September handover](handoffs/2026-09-08-handover.md); earlier continuous-work
-instructions and pending labels below are historical.
-The user subsequently confirmed **all final pitch/hand/draw/reload checks pass**
-on `ab9e9db`. Preserve that accepted baseline; continue remaining weapon families
-and two-handing/ADS when development is resumed.
+**Workday continuation, 8 September:** the user resumed development in the current
+session with a 20-minute heartbeat until explicitly told to stop. Quest Ready and
+Psykhanium stereo initialization pass; the accepted live build remains running.
+Start with the [workday handoff](handoffs/2026-09-08-workday.md). Yesterday's
+night-stop wording and older pending labels below are historical.
+The user confirmed **all final pitch/hand/draw/reload checks pass** on `ab9e9db`.
+Preserve that baseline. The [two-hand candidate](VR-TWO-HANDING-ADS.md) now has
+offline input/pose integration, tracked calibration and support-hand visuals;
+it is disabled by default and undeployed. Full offline baseline: 128/128 at
+`1b3de45`, then four affected checks for the ADS-route/item guard. Continue
+independent implementation while the remaining worn weapon checks await the user.
 
 ## Current priority order: end of 6 September 2026
 
-This list supersedes task ordering and pending labels in the chronological
-details below. Development resumed on 7 September; the user has since returned
-home and established a working headset session. Continue from the
-[current handoff](handoffs/2026-09-07-development.md); record worn checks only
-when actually observed. Earlier at-work/pending labels below are historical.
+The workday summary above and latest user instructions supersede historical
+deployment and acceptance labels in the chronological notes below. Continue from
+the [current handoff](handoffs/2026-09-08-workday.md); record worn checks only
+when actually observed.
 Latest steering: restore free 6DoF with a 10 cm collider chase using ordinary
 movement inputs and acceleration/braking prediction. The
 [roomscale candidate](ROOMSCALE-COLLIDER-FOLLOW.md) passes offline checks; the

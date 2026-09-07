@@ -1,91 +1,61 @@
 # Current status and operation
 
-Updated 7 September 2026. This page supersedes historical feasibility documents
-for current defaults and operating instructions.
+Updated 8 September 2026. This summary supersedes the chronological evidence
+below. Start with the [workday handoff](handoffs/2026-09-08-workday.md) and
+[remaining development](REMAINING-DEVELOPMENT.md).
 
-**Headset setup resumed 7 September, 16:20 Brisbane:** the user is home and has
-restarted both sides of Virtual Desktop. Ready now passes 600/600 rendered
-frames, clearing the day's persistent texture-creation failure. Lua `57ad12c`
-and native capture `01617d6` are deployed with hash verification. Darktide is
-running in Psykhanium with HUD and generated stereo enabled. Fresh synchronized
-stereo initialization, nonzero shared_ready and range entry are confirmed at
-16:25 and again after the logging-error fix at 16:33. Online-rules logging
-confirms enabled=true, origins=stock, damage=stock. The user confirms stereo,
-trigger input, force-staff shots aimed at the reticle from the face, and stock
-movement penalties following aim direction. Other weapon acceptance remains
-pending. The repeated error-sound cause is fixed; the new log has no mod errors.
-Proximity override is applied.
-The saved controller/onboarding candidate initialized in the hub after Ready
-preflight, with fresh stereo messages and nonzero shared_ready. That run is
-closed. The day's subsequent candidates are now deployed for this new session.
-ADB dismissed the inspected tracking
-prompt, and a SideQuest-derived Guardian preference pause/resume route was
-verified by headset logs. It did not fix rendering: the latest settled Ready
-attempt created an OpenXR session but failed creating its first eye texture.
-VDXR reports `-7000`; the application device reports no removal or D3D12 debug
-messages. An opt-in D3D11 diagnostic now exposes two internal OpenSharedResource
-E_INVALIDARG errors without device removal. Restarting the Quest VD client did
-not clear them. Both failed ID3D11Texture2D imports originate inside the VD
-backend and fail on every enumerated non-software adapter. Controlled sharing
-between separate processes succeeds on each adapter; the VD producer's resource
-lifetime and descriptor remain unknown. Accidental double tap remains unproven.
-Guardian was restored with logged confirmation. See [Quest recovery](QUEST-PASSTHROUGH-RECOVERY.md). Continue
-useful offline work; repeat live readiness when new evidence justifies recovery.
+Development is active in the user's requested session, with a 20-minute
+heartbeat, until explicitly told to stop. The user is away at work; continue
+independent offline development when worn observations are needed. Yesterday's
+night-stop instructions are historical.
 
-Latest requested candidate: [Psykhanium online rules](PSYKHANIUM-ONLINE-RULES.md).
-It defaults on for the next range visit, uses stock input history and firing
-origins, and retains stock movement/combat rules. This source is now deployed;
-actual online mission support and worn acceptance remain pending.
+Quest setup passed default Ready on 8 September: one authorized Quest, Virtual
+Desktop/VDXR, 600/600 submitted frames and no unrendered frames. The ordinary
+launcher entered Psykhanium with HUD and generated stereo. Fresh range pass,
+synchronized stereo and both rigid hands initialized at 05:48 Brisbane.
+Subsequent delivery samples have nonzero shared_ready and zero interval fallback
+and pose mismatches. These are delivery checks, not fresh worn acceptance.
+Proximity override remains applied for active development; restore normal
+proximity automation when development ends. The earlier VD import failure is
+historical, not the current live state.
 
-[Draft review #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2)
-collects the continuation: shared LT menu secondary clicks, optional
-item/stim/device and hub target bindings, corrected UI ownership guards,
-scanner stick reference and luggable hand trajectories. See
-[mission interaction coverage](MISSION-INTERACTION-AUDIT.md). Mission body/input
-and hand aim require local simulation authority; remote-server missions remain
-gated pending [attack ownership work](MISSION-AUTHORITY-AUDIT.md).
+The live game retains the accepted `ab9e9db` gun behavior and matching native
+capture/harness stamped `23345e5`. The user accepted the final -10-degree default
+adjustable gun pitch, visible hand placement, switching and reload continuity.
+Sideways roomscale step/stop settling and the tested staff shots/reticle under
+leaning are also accepted. Do not reopen those checks as unresolved bugs.
+Separate enemy-damage confirmation, other owned ranged families, settings
+adjustment and broader roomscale transitions remain open. See the
+[accepted handover](handoffs/2026-09-08-handover.md).
 
-Offline [UI detail measurement](DLSS-UI-DETAIL.md), precise Present timing and
-[health summaries](PERFORMANCE-HEALTH-ANALYSIS.md) improve the next image-quality
-and performance investigation. Motion blur remains unresolved; no framerate
-gain or worn acceptance is claimed. Existing old Present timings remain coarse.
+The new [two-hand candidate](VR-TWO-HANDING-ADS.md) is offline and undeployed.
+It includes whole-gesture grip ownership, pose smoothing, session-only tracked
+socket/hand calibration, local support-hand placement, and guarded stock hold-ADS
+requests. It defaults disabled and never guesses sockets for other items.
+Toggle-ADS coordination and a production virtual-stock shoulder anchor remain;
+optional stock geometry is tested independently. Review is
+[PR #3](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/3), based on
+the aggregate branch in [PR #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2).
 
-Windows x64 full Release build succeeds through `28e6cca`, including the native
-health and spectator changes; the XR harness source is `1324a87`.
-Pinned LuaJIT compiles 37 chunks and the full offline CTest
-checkpoint passes 121/121 in 20.73 seconds, with headset tests disabled and ordinary
-D3D12 checks now explicitly skipping OpenXR discovery. The stock null-service
-guards cover both render and fixed input updates through `596c459`. Optional
-stock contracts through `b6f74b4` cover input history/replay, movement, combat,
-objectives and supplies, including pellet batches, hitscan effects and stock
-ledge/vault rules. Ledge discovery follows recorded hand aim; head-relative
-walking does not independently redirect its search toward the headset. Engine
-math, collision, damage and service endpoints have explicit fixture limits;
-these do not establish online or worn acceptance. The local cached catalogue
-identifies 30 Psyker-tagged ranged templates, not the user's owned guns. See the
-[current handoff](handoffs/2026-09-07-development.md). A 20-minute task heartbeat
-is active; continue the ordered todo until instructed to stop.
+Windows x64 offline validation passed 128/128 CTests in 21.88 seconds at the
+support-hand checkpoint `1b3de45`, including all 45 Lua chunks, with headset tests
+OFF. The subsequent ADS-route/item guard passes four affected checks in 0.98
+seconds. An optional cached-source fixture inspects 62 ranged templates and
+admits 54 canonical ADS input routes; staff/plasma charging routes are excluded.
+It validates parser admission and independent aim aliases, not full action
+chains, live weapon behavior or network acceptance. Native code is unchanged.
 
-The undeployed spectator route follows the jump binding (A by default) with
-matching hints and independent camera input rearming. It works without a local
-character in the offline checks and preserves stock UI, rescue and target
-decisions. Actual stock-method integration passes; observer view/comfort and
-mission lifecycle still need live acceptance.
+Psykhanium online rules use stock input history, firing origins and damage.
+Actual remote-server missions remain gated. Firing-only aim switching is on
+hold. Continue the [mission authority work](MISSION-AUTHORITY-AUDIT.md) and
+[mission interaction checks](MISSION-INTERACTION-AUDIT.md) without treating
+range delivery as mission acceptance. Physical melee, handedness, crouch and
+later SoloPlay work remain in the ordered backlog.
 
-**Historical 6 September end-of-day checkpoint:** development was stopped; Darktide/XR were closed and
-normal Quest proximity behavior is restored. Start tomorrow with the
-[6 September handover](handoffs/2026-09-06-end-of-day.md) and
-[current ordered todo list](REMAINING-DEVELOPMENT.md#current-priority-order-end-of-6-september-2026).
-User accepts both turning modes, tested menu changes and the right unarmed wrist.
-Hub/combat profile and shared notification/tutorial hint changes through 04b6053
-pass offline validation but have not been deployed; installed Lua remains 2477d82.
-The planned relaunch was cancelled for wind-down. Talent deactivation's right-click
-hint is deliberately retained as a broad-pass check. Subsequent user direction
-reactivates DLSS image-quality work: fix blur first, then duplicated/displaced
-elements, which may be separate. DLSS-related and general performance optimization
-are active tasks. See [first mission readiness](MISSION-READINESS.md) for the
-explicit mission-mode/input/aim restrictions and minimum end-to-end test scope.
-The 7 September continuation above supersedes this shutdown/deployment state.
+DLSS blur and performance work remain active and unresolved; no new image-quality
+or framerate improvement is claimed. See [UI detail measurement](DLSS-UI-DETAIL.md)
+and [performance evidence](PERFORMANCE-HEALTH-ANALYSIS.md). Earlier measurements,
+failed recovery attempts and deployment checkpoints are historical evidence.
 
 ## Supported development path
 
@@ -221,12 +191,11 @@ ownership: runtime input must never reactivate the game in the background.
 
 ## Acceptance still pending
 
-The 6 September [ranged aiming candidate](RANGED-WEAPON-AUDIT.md) hooks the
-concrete hitscan, pellet, projectile and flame action classes before stock shot
-preparation, preserving recoil/spread and simultaneous grouping. Flame damage
-and suppression queries also use hand pose. Offline regressions and fresh live
-initialization pass; actual hand-versus-head firing alignment awaits worn checks.
-It retains private-range authoring and does not enable mission-wide combat.
+The [ranged aiming work](RANGED-WEAPON-AUDIT.md) still needs separate enemy-damage
+confirmation and broader gun, pellet, projectile and flame coverage. The final
+tested gun pitch/hand/draw/reload alignment and staff regression are accepted as
+recorded above. Offline route coverage and fresh stereo initialization do not
+establish the remaining weapon families or mission-wide combat.
 
 September 5 live input validation exposed dead laser clicks and focus stealing,
 then delayed activation of a previously missed click. A candidate now preserves

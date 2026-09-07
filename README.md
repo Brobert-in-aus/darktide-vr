@@ -7,7 +7,7 @@ Start with [current status and operation](docs/CURRENT-STATUS.md),
 [working agreements](AGENTS.md), and the
 [maintenance implementation plan](docs/maintenance-plan-2026-09-05.md).
 For the next development session, read the
-[latest handover](docs/handoffs/2026-09-07-development.md) and the current priority
+[latest handover](docs/handoffs/2026-09-08-workday.md) and the current priority
 order at the top of [remaining development](docs/REMAINING-DEVELOPMENT.md).
 The game integration is build-specific and used with EAC inactive. The project
 contains no anti-cheat bypass implementation.
