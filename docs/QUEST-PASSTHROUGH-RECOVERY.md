@@ -226,3 +226,27 @@ transaction numbers, root access or identity workaround were attempted. This
 identifies the actual Java event gate; it does not establish an available ADB
 shortcut toggle, the current preference value, or the cause of the earlier
 passthrough event. No XR session, wake/proximity override or game action ran.
+
+## Opt-in runtime D3D11 diagnostics
+
+The harness now supports `--runtime-d3d11-diagnostics`; the Ready preflight
+forwards it with `-RuntimeD3D11Diagnostics`. It instruments D3D11CreateDevice
+inside the harness process, requesting the D3D11 debug layer and recording up to
+eight device results. If the optional layer is missing, it retries the original
+flags only for that specific SDK-component error. Other creation errors remain
+errors. Swapchain failure reports captured device removal reasons and up to
+eight bounded debug messages per device, alongside the existing application
+D3D12 and backend-last-error records. A successful session also reports them.
+
+This covers D3D11 creation in the test process, not a proven attribution of every
+captured device to VDXR. The inspected runtime's submission-device creation calls
+that API. Instrumentation retains captured devices until scope exit and can
+change execution/performance; it is a diagnostic condition, not a default or a
+performance sample. It does not replace the installed runtime, change registry
+settings, or attach to another process.
+
+Release harness/fixture builds and seven focused CTests pass in 4.69 seconds.
+The WARP fixture checks requested flags, original failure preservation, recorded
+messages, the eight-record bound, rejected nested scopes and restoration after
+scope exit. Desktop-only mode rejects the option before XR discovery. Missing
+debug-layer fallback is environment-dependent; no layer was removed to force it.

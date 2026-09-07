@@ -53,6 +53,12 @@ target_compile_options(darktidevr-ui-projection PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-ui-projection PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 target_link_libraries(darktidevr-ui-projection PUBLIC OpenXR::openxr_loader d3d12)
 
+add_library(darktidevr-runtime-d3d11-diagnostics STATIC runtime_d3d11_diagnostics.cpp)
+target_include_directories(darktidevr-runtime-d3d11-diagnostics PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(darktidevr-runtime-d3d11-diagnostics PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-runtime-d3d11-diagnostics PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(darktidevr-runtime-d3d11-diagnostics PRIVATE minhook d3d11 dxguid)
+
 add_executable(darktidevr-xr-harness main.cpp synthetic_scene.cpp)
 target_compile_options(darktidevr-xr-harness PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-xr-harness PRIVATE
@@ -61,7 +67,7 @@ target_link_libraries(darktidevr-xr-harness PRIVATE
   OpenXR::openxr_loader darktidevr_core darktidevr_bridge darktidevr-window-capture
   darktidevr-menu-input darktidevr-synthetic-controller
   darktidevr-synthetic-head darktidevr-tracked-cuff-renderer darktidevr-ui-projection
-  d3d12 d3dcompiler dxgi dxguid)
+  darktidevr-runtime-d3d11-diagnostics d3d12 d3dcompiler dxgi dxguid)
 
 add_custom_command(TARGET darktidevr-xr-harness POST_BUILD
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different

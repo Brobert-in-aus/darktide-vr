@@ -9,6 +9,7 @@
 #include <openxr/openxr_platform.h>
 
 #include "synthetic_scene.h"
+#include "runtime_d3d11_diagnostics.h"
 #include "menu_input_injector.h"
 #include "synthetic_controller_path.h"
 #include "synthetic_head_path.h"
@@ -4515,6 +4516,7 @@ class OpenXrProbe {
                       << " text=" << error.text << '\n';
           }
         }
+        darktidevr::xr::report_runtime_d3d11_diagnostics(std::cerr);
         std::cerr << "openxr.swapchain_failure eye=" << swapchains_.size()
                   << " result=" << create_result
                   << " width=" << create_info.width << " height=" << create_info.height
@@ -5043,7 +5045,7 @@ class Harness {
 void usage() {
   std::cout << "DarktideVR Phase 0 synthetic graphics harness\n\n"
             << "Usage: darktidevr-xr-harness [--frames N] [--show] "
-               "[--debug-layer] [--no-openxr | --require-openxr] [--require-rendering] "
+               "[--debug-layer] [--runtime-d3d11-diagnostics] [--no-openxr | --require-openxr] [--require-rendering] "
                "[--xr-frames N | --xr-seconds N] [--theatre] "
                "[--stereo-sbs] [--stereo-tb] "
                 "[--capture-window-title TEXT] [--shared-eyes] "
@@ -5069,6 +5071,7 @@ void usage() {
             << "Creates an independent D3D12 swapchain and reports OpenXR "
                "discovery.\n"
             << "--no-openxr runs desktop graphics only without runtime discovery.\n"
+            << "--runtime-d3d11-diagnostics requests the D3D11 debug layer inside this process; not for performance measurements.\n"
             << "It never loads or modifies Darktide.\n";
 }
 
@@ -5079,6 +5082,7 @@ int wmain(int argc, wchar_t** argv) {
     UINT frames = 120;
     bool show = false;
     bool debug_layer = false;
+    bool runtime_d3d11_diagnostics = false;
     bool no_openxr = false;
     bool require_openxr = false;
     bool require_rendering = false;
@@ -5123,6 +5127,8 @@ int wmain(int argc, wchar_t** argv) {
         show = true;
       } else if (argument == L"--debug-layer") {
         debug_layer = true;
+      } else if (argument == L"--runtime-d3d11-diagnostics") {
+        runtime_d3d11_diagnostics = true;
       } else if (argument == L"--no-openxr") {
         no_openxr = true;
       } else if (argument == L"--require-openxr") {
@@ -5208,7 +5214,7 @@ int wmain(int argc, wchar_t** argv) {
       }
     }
     if (no_openxr && (require_openxr || xr_frames > 0 || xr_duration ||
-                      synthetic_billboard_sweep)) {
+                      synthetic_billboard_sweep || runtime_d3d11_diagnostics)) {
       throw std::invalid_argument("--no-openxr cannot be combined with XR requests");
     }
     if (resize_at && *resize_at >= frames) {
@@ -5309,10 +5315,12 @@ int wmain(int argc, wchar_t** argv) {
     }
     pair_driven_shared = shared_eyes && pair_driven_shared;
 
+    darktidevr::xr::RuntimeD3D11Diagnostics runtime_diagnostics(runtime_d3d11_diagnostics);
     OpenXrProbe openxr(!no_openxr);
     Harness harness(show, debug_layer, openxr.adapter_luid(),
                     openxr.minimum_feature_level());
     openxr.create_session(harness.device(), harness.queue(), !theatre);
+    darktidevr::xr::report_runtime_d3d11_diagnostics(std::cout);
     if (require_openxr && !openxr.session_created()) {
       throw std::runtime_error(
           "OpenXR session required, but no usable HMD system is available");

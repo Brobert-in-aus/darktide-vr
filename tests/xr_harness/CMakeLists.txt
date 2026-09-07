@@ -32,6 +32,12 @@ target_link_libraries(darktidevr-synthetic-head-publisher PRIVATE
   darktidevr_core)
 
 if(BUILD_TESTING)
+  add_executable(darktidevr-runtime-d3d11-diagnostics-tests runtime_d3d11_diagnostics_tests.cpp)
+  target_compile_options(darktidevr-runtime-d3d11-diagnostics-tests PRIVATE /W4 /WX /permissive-)
+  target_compile_definitions(darktidevr-runtime-d3d11-diagnostics-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+  target_link_libraries(darktidevr-runtime-d3d11-diagnostics-tests PRIVATE darktidevr-runtime-d3d11-diagnostics d3d11 dxguid)
+  add_test(NAME runtime_d3d11_diagnostics COMMAND darktidevr-runtime-d3d11-diagnostics-tests)
+  set_tests_properties(runtime_d3d11_diagnostics PROPERTIES TIMEOUT 30)
   add_executable(darktidevr-synthetic-controller-tests
     synthetic_controller_path_tests.cpp)
   target_compile_options(darktidevr-synthetic-controller-tests PRIVATE

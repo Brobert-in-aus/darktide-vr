@@ -1728,3 +1728,15 @@ afterward, including nesting and bypass. Five focused CTests pass in 0.83 second
 with 37 Lua chunks. Configured count is now 119; the last full baseline remains
 118/118 at `5ffb1a7`. No native change, deployment, live recovery or visual claim.
 Continue the todo; normal proximity remains restored.
+
+## Continuous blocker work: internal D3D11 diagnostics
+
+Branch `codex/runtime-d3d11-diagnostics-2026-09-07` adds an opt-in, process-local
+D3D11CreateDevice diagnostic to the harness and Ready preflight. It requests the
+debug layer, retains at most eight devices, and reports removal/debug evidence
+on swapchain failure or successful session creation. Only a missing SDK debug
+component permits retry with original flags. No installed runtime or system
+setting is changed. Release builds and seven focused CTests pass in 4.69 seconds;
+see QUEST-PASSTHROUGH-RECOVERY for coverage and measurement limitations.
+Configured count is now 120; full baseline remains 118/118 at `5ffb1a7`.
+One bounded Ready run with this new evidence source is the next action.

@@ -8,6 +8,8 @@ param(
 
     [switch] $RunXrSmoke,
 
+    [switch] $RuntimeD3D11Diagnostics,
+
     [ValidateSet('Ready', 'Inventory')]
     [string] $Mode = 'Ready',
 
@@ -177,8 +179,9 @@ if ($Mode -eq 'Ready') {
         throw "$Configuration XR harness not found: $harness"
     }
 
-    $smokeProcess = Invoke-BoundedXrSmoke -FilePath $harness -Arguments `
-        "--frames 30 --debug-layer --require-openxr --require-rendering --xr-frames $XrFrames"
+    $smokeArguments = "--frames 30 --debug-layer --require-openxr --require-rendering --xr-frames $XrFrames"
+    if ($RuntimeD3D11Diagnostics) { $smokeArguments += ' --runtime-d3d11-diagnostics' }
+    $smokeProcess = Invoke-BoundedXrSmoke -FilePath $harness -Arguments $smokeArguments
     $smokeOutput = @($smokeProcess.output)
     $smokeExitCode = $smokeProcess.exit_code
     $resultLine = $smokeOutput | Where-Object { $_ -match '^result=' } |
