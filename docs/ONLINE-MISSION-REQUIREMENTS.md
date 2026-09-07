@@ -128,8 +128,18 @@ the source-root argument in the input-history test also exercises the actual
 adapter through stock send/receive and `HumanUnitInput` frame lookup. Eight
 representative action/movement/angle columns retain their paired history,
 including UI/tracking fallbacks, later changed live aim, resends and ring wrap.
-This does not execute the engine's component rollback/resimulation or establish
-wire precision. Real corrections and remote admission remain later checks.
+This does not restore engine component state or establish wire precision.
+Real corrections and remote admission remain later checks.
+
+The optional fixture now also executes actual `ExtensionManager`,
+`ExtensionSystemHolder` and `ExtensionSystemBase` replay dispatch against three
+recorded frames. Correction callbacks run before replay; each frame advances
+the stock input reader before the simulation consumer. Old aim, movement and
+action columns remain paired even when reading current hand tracking would
+throw. No input recapture or packet send occurs. System maps/lists clear before
+replaying a different unit. The correction component and consuming simulation
+are supplied fixtures, so this covers Lua replay orchestration and history
+ownership, not engine component restoration or live correction convergence.
 
 Objective-device follow-up runs stock minigame input against both the client
 and server `HumanUnitInput` readers after recorded send/receive. Eleven frames

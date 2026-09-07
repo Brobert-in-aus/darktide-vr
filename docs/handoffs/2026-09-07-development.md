@@ -1154,3 +1154,19 @@ The three most recent saved console logs did not identify the user's purchased
 gun templates; the exact loadout remains unknown. Existing requested weapon
 inventory diagnostics were reviewed, not armed or run. Continue the todo with
 full-suite baseline 111/111 at `968df68`; no live launch or deployment.
+
+## Continuous todo work: stock replay dispatch
+
+Branch `codex/stock-replay-dispatch-2026-09-07` executes actual extension-manager,
+holder and base-system correction/replay dispatch against the recorded VR input
+fixture. Three old frames run in order, with correction notification first and
+the stock input reader before the consuming simulation. Old action, movement
+and aim stay paired while current hand lookup deliberately throws if read.
+No capture or packet send occurs. A subsequent empty-unit replay verifies that
+the stock temporary maps/lists do not retain the previous unit's systems.
+
+The expanded optional input fixture passes; no production change. Correction
+component data and the simulation consumer are supplied, so engine rollback
+and real correction convergence remain untested. This is additional source
+orchestration evidence, not remote mission admission. Continue the todo while
+the user is away; full-suite/build baselines and live blocker are unchanged.

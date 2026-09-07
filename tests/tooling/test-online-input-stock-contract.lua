@@ -182,6 +182,65 @@ if rules then
     assert(rules.frames==7 and rules.failures==0,'Transport must not resample current hand pose')
     print('PASS: real VR adapter keeps action/movement/aim columns paired across stock replay, including UI/tracking fallback frames')
 
+    do
+        -- Execute the real extension-manager/holder/base replay dispatch. The
+        -- component correction itself is supplied; replay reads recorded input.
+        ExtensionManager,ExtensionSystemHolder,ExtensionSystemBase={},{},{}
+        method('foundation/managers/extension/extension_manager','local TEMP_SYSTEM_MAP =',
+            '\nExtensionManager.registered_level_units =')
+        method('foundation/managers/extension/extension_system_holder','local TEMP_SYSTEM_LIST =',
+            '\nExtensionSystemHolder.hot_join_sync =')
+        method('foundation/managers/extension/extension_system_base',
+            'ExtensionSystemBase.unit_server_correction_occurred =','\nExtensionSystemBase.hot_join_sync =')
+        local correction={supplied=true}
+        local corrected,replayed,resets=0,{},0
+        Script={temp_byte_count=function() return 42 end,set_temp_byte_count=function(count)
+            assert(count==42); resets=resets+1
+        end}
+        hand=setmetatable({}, {__index=function() error('Replay read current hand tracking') end})
+        local consumer={fixed_update=function(_,unit,dt,t,frame,context)
+            assert(unit=='local' and dt==.02 and t==frame*.02 and corrected==1)
+            assert(context.resimulate_from_frame==7 and context.resimulate_to_frame==9)
+            assert(client_unit_input._frame==frame,'Input system did not run before simulation consumer')
+            local yaw,pitch,roll=client_unit_input:get_orientation()
+            local recorded=expected[frame]
+            local movement=client_unit_input:get('move')
+            assert(yaw==recorded[6] and pitch==recorded[7] and roll==recorded[8])
+            assert(movement[1]==recorded[2]-recorded[3] and movement[2]==recorded[4]-recorded[5])
+            assert(client_unit_input:get('action_one_hold')==recorded[1])
+            replayed[#replayed+1]=frame
+        end,server_correction_occurred=function(_,unit,first,last,components)
+            assert(unit=='local' and first==7 and last==9 and components==correction)
+            corrected=corrected+1
+        end}
+        local function system(name,extension)
+            return setmetatable({NAME=name,_fixed_update_extensions={['local']=extension},
+                _unit_to_extension_map={['local']=extension}}, {__index=ExtensionSystemBase})
+        end
+        local inputs=system('input_system',client_unit_input)
+        local simulation=system('simulation_system',consumer)
+        local unrelated=system('unrelated_system',{fixed_update=function() error('Replayed unrelated extension') end,
+            server_correction_occurred=function() error('Corrected unrelated extension') end})
+        local holder=setmetatable({_system_update_context={fixed_frame=9},_fixed_time_step=.02,
+            _systems={unrelated,simulation,inputs},_num_systems=3,
+            _update_lists={fixed_update={inputs,unrelated,simulation}}}, {__index=ExtensionSystemHolder})
+        local manager=setmetatable({_extension_system_holder=holder,
+            _units={['local']={input_extension=client_unit_input,simulation_extension=consumer},empty={}},
+            _extension_to_system_map={input_extension='input_system',simulation_extension='simulation_system'}},
+            {__index=ExtensionManager})
+        local packet_count=#packets
+        manager:fixed_update_resimulate_unit('local',7,correction)
+        assert(table.concat(replayed,',')=='7,8,9' and corrected==1 and resets==6)
+        assert(holder._system_update_context.fixed_frame==9)
+        assert(rules.frames==7 and rules.failures==0 and #packets==packet_count,
+            'Replay recaptured input or sent another packet')
+        agrees(7); agrees(8); agrees(9)
+        -- Both manager maps and holder lists must be cleared between owners.
+        manager:fixed_update_resimulate_unit('empty',8,{})
+        assert(#replayed==3 and corrected==1 and resets==6,'Replay retained the prior unit systems')
+        print('PASS: actual stock replay dispatch follows recorded input order/frames without tracking recapture or cross-unit system leakage')
+    end
+
     -- Objective devices consume the same stock columns, but `move` is a device
     -- axis here. Run the real minigame input method against both recorded sides.
     -- Minigame/animation/weapon endpoints are sinks, not real objective outcomes.
