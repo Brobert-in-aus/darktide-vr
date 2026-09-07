@@ -2,6 +2,10 @@
 -- The animated hand model is never an input to gameplay aim or the grip target.
 local Alignment={}
 local guns={shoot_hit_scan=true,shoot_pellets=true,shoot_projectile=true}
+function Alignment.pitch(rotation,degrees)
+    local half=math.rad(degrees)*0.5
+    return Quaternion.multiply(rotation,Quaternion.from_elements(math.sin(half),0,0,math.cos(half)))
+end
 function Alignment.is_gun(template)
     for _,keyword in ipairs(template and template.keywords or {}) do
         if keyword=='force_staff' then return false end
@@ -23,6 +27,14 @@ local function same(a,b)
 end
 function Alignment.install(mod,presentation)
     local instance={failures=0,writes=0}
+    function instance.aim(unit,rotation)
+        if not unit or not rotation then return rotation end
+        local weapon=ScriptUnit.has_extension(unit,'weapon_system')
+        if not Alignment.is_gun(weapon and weapon:weapon_template()) then return rotation end
+        local degrees=tonumber(mod:get('vr_gun_pitch')) or -10
+        if degrees~=degrees then degrees=-10 end
+        return Alignment.pitch(rotation,math.max(-45,math.min(45,degrees)))
+    end
     local saved
     local function restore(world)
         if saved and saved.world==world and Unit.alive(saved.unit) then
@@ -44,9 +56,9 @@ function Alignment.install(mod,presentation)
         local template=weapon and weapon:weapon_template()
         if not Alignment.is_gun(template) then return end
         local settings=weapon:running_action_settings()
-        if settings and (settings.kind=='reload_shotgun' or settings.kind=='reload_state' or
-                settings.kind=='reload' or settings.kind=='sweep' or settings.kind=='push' or
-                settings.kind=='unwield' or settings.kind=='ranged_wield') then return end
+        -- Keep controller ownership through draw/reload/unwield. Stock still
+        -- advances ammo, timings and moving weapon parts; it cannot tilt the gun.
+        if settings and (settings.kind=='sweep' or settings.kind=='push') then return end
         local _,aim=presentation.weapon_aim_target('dominant')
         local grip=presentation.weapon_grip_target('dominant')
         if not aim or not grip then return end
@@ -62,6 +74,8 @@ function Alignment.install(mod,presentation)
         local parent=Unit.scene_graph_parent(unit,attach)
         if parent==nil then return end
         local original=Unit.local_rotation(unit,attach)
+        local old_attach_position=Unit.world_position(unit,attach)
+        local old_attach_rotation=Unit.world_rotation(unit,attach)
         local original_position=Unit.local_position(unit,attach)
         local desired_position=Matrix4x4.transform(Matrix4x4.inverse(Unit.world_pose(unit,parent)),grip)
         local desired=Alignment.rotation(Unit.world_rotation(unit,parent),
@@ -71,6 +85,10 @@ function Alignment.install(mod,presentation)
         Unit.set_local_rotation(unit,attach,desired)
         Unit.set_local_position(unit,attach,desired_position)
         World.update_unit_and_children(world,unit)
+        if presentation.body_proxy and presentation.body_proxy.align_gun_hand then
+            presentation.body_proxy.align_gun_hand(world,unit,old_attach_position,old_attach_rotation,
+                Unit.world_position(unit,attach),Unit.world_rotation(unit,attach))
+        end
         instance.writes=instance.writes+1
         if instance.last_weapon~=template then
             instance.last_weapon=template

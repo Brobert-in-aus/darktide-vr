@@ -586,6 +586,16 @@ function BodyProxy.place_rigid_hands(
         left_written or right_written
 end
 
+function BodyProxy.align_gun_hand(world,source,old_position,old_rotation,new_position,new_rotation)
+    if not BodyProxy.rigid_hands_active() or source~=state.source_unit or
+            not Unit.alive(source) or not Unit.has_node(source,'j_righthand') then return false end
+    local node=Unit.node(source,'j_righthand')
+    local delta=Quaternion.multiply(new_rotation,inverse_quaternion(old_rotation))
+    local position=new_position+Quaternion.rotate(delta,Unit.world_position(source,node)-old_position)
+    local rotation=Quaternion.multiply(delta,Unit.world_rotation(source,node))
+    return place_rigid_hand(world,rigid_hands.right,position,rotation,true)
+end
+
 function BodyProxy.follow_gameplay_hands(world, aim_rotation)
     local source = state.source_unit
     if not BodyProxy.rigid_hands_active() or not source or not Unit.alive(source) then

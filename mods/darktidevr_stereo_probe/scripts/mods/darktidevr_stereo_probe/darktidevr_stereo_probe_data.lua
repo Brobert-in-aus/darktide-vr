@@ -7,6 +7,14 @@ return {
     options = {
         widgets = {
             {
+                setting_id = "vr_gun_pitch",
+                type = "numeric",
+                default_value = -10,
+                range = {-45, 45},
+                decimals_number = 0,
+                step_size_value = 1,
+            },
+            {
                 setting_id = "hud_options",
                 type = "group",
                 sub_widgets = {

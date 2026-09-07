@@ -14,6 +14,7 @@ local function near(a,b)
     assert(math.abs(dot)>1-1e-8,'muzzle orientation mismatch')
 end
 Quaternion={multiply=mul,inverse=function(a) return {-a[1],-a[2],-a[3],a[4]} end,
+    from_elements=function(...) return {...} end,
     to_elements=function(a) return unpack(a) end}
 QuaternionBox=function(a) local copy={unpack(a)}; return {unbox=function() return copy end} end
 Vector3Box=QuaternionBox
@@ -64,7 +65,9 @@ local messages=0
 local presentation={online_rules={simulation_aim_active=function(unit) return active and unit==source end},
     weapon_hand_roles={physical=function(role) return role=='support' and 'left' or dominant end},
     weapon_aim_target=function() return nil,aim end,weapon_grip_target=function() return grip end}
-local instance=Alignment.install({info=function(_,format) if format:find('fallback',1,true) then messages=messages+1 end end},presentation)
+local pitch_setting
+local instance=Alignment.install({get=function() return pitch_setting end,
+    info=function(_,format) if format:find('fallback',1,true) then messages=messages+1 end end},presentation)
 for i=1,120 do
     parent=q(.01*i,.3,-.6)
     aim=q(.2,.02*i,-.4)
@@ -79,8 +82,11 @@ instance.update(world,source); near(local_rotation,original)
 near_position(local_position,original_position)
 template={actions={shoot={kind='shoot_pellets'}}}
 instance.update(world,source); near(Unit.world_rotation(muzzle,1),aim)
-settings={kind='reload'}; instance.update(world,source); near(local_rotation,original)
-near_position(local_position,original_position)
+for _,kind in ipairs({'reload','reload_state','reload_shotgun','ranged_wield','unwield'}) do
+    settings={kind=kind}; local_rotation=q(.9,-.7,.4)
+    instance.update(world,source); near(Unit.world_rotation(muzzle,1),aim)
+    near_position(Unit.world_position(source,2),grip)
+end
 settings=nil; instance.update(world,source)
 local engine_authored=q(.4,-.2,.8)
 local_rotation=engine_authored; local_position={.9,.8,.7}; active=false
@@ -102,9 +108,44 @@ local raw=q(.6,.2,-.7)
 presentation.controller_aim_target=function() return 42,raw end
 presentation.left_controller_aim_target=function() return 24,raw end
 presentation.weapon_grip_target=function() error('Simulation aim read hand/grip basis') end
-presentation.gun_aim={aim=function() error('Simulation aim used animated weapon basis') end}
+presentation.gun_aim=instance
+Managers={player={local_player=function() return {player_unit=source} end}}
 local chunk=assert(loadstring(main:sub(first,last-1)))
 setfenv(chunk,setmetatable({presentation=presentation},{__index=_G})); chunk()
-local p,r=presentation.weapon_aim_target('dominant'); assert(p==42); near(r,raw)
+local p,r=presentation.weapon_aim_target('dominant'); assert(p==42); near(r,mul(raw,q(math.rad(-10),0,0)))
+-- A level controller's barrel pitches down, with unchanged heading.
+local down=rotate(Alignment.pitch(q(0,0,0),-10),{0,1,0})
+assert(math.abs(down[1])<1e-8 and math.abs(down[3]+math.sin(math.rad(10)))<1e-8)
+pitch_setting=15; p,r=presentation.weapon_aim_target('dominant'); near(r,mul(raw,q(math.rad(15),0,0)))
+pitch_setting=0; p,r=presentation.weapon_aim_target('dominant'); near(r,raw)
+pitch_setting=-10; template={keywords={'force_staff'}}
+p,r=presentation.weapon_aim_target('dominant'); near(r,raw)
 p,r=presentation.weapon_aim_target('support'); assert(p==24); near(r,raw)
-print('PASS controller gun alignment: 120 translated/rotated/scaled parent poses, controller grip placement, native aim reader, independent animation restoration, staff/reload/ownership/tracking guards')
+-- Execute the actual visible-hand correction with a separate visual root.
+local body_file=assert(io.open(arg[2]:gsub('darktidevr_stereo_probe.lua$','darktidevr_body_proxy.lua'),'rb'))
+local body=body_file:read('*a'); body_file:close()
+local begin=assert(body:find('function BodyProxy.align_gun_hand(',1,true))
+local finish=assert(body:find('\nfunction BodyProxy.follow_gameplay_hands(',begin,true))
+local vmeta={}; local function vec(a) return setmetatable(a,vmeta) end
+vmeta.__add=function(a,b) return vec(add(a,b)) end
+vmeta.__sub=function(a,b) return vec(add(a,scale(b,-1))) end
+Quaternion.rotate=function(r,v) return vec(rotate(r,v)) end
+local wrist_offset={.03,-.04,.02}; local wrist_basis=q(.3,.5,.2)
+local oldp,newp=vec({2,3,4}),vec({-1,4,2})
+local oldr,newr=q(.4,-.3,.2),q(-.5,.8,.6)
+local proxy={rigid_hands_active=function() return true end}
+local visible_hand={}; local placed
+local hand_chunk=assert(loadstring(body:sub(begin,finish-1)))
+setfenv(hand_chunk,setmetatable({BodyProxy=proxy,state={source_unit=source},
+    rigid_hands={right=visible_hand},inverse_quaternion=Quaternion.inverse,
+    Unit={alive=function() return true end,has_node=function() return true end,node=function() return 8 end,
+        world_position=function() return oldp+Quaternion.rotate(oldr,wrist_offset) end,
+        world_rotation=function() return mul(oldr,wrist_basis) end},
+    place_rigid_hand=function(w,hand,pos,rot,authored)
+        assert(w==world and hand==visible_hand and authored)
+        near_position(pos,newp+Quaternion.rotate(newr,wrist_offset)); near(rot,mul(newr,wrist_basis))
+        placed=true; return true
+    end},{__index=_G})); hand_chunk()
+assert(proxy.align_gun_hand(world,source,oldp,oldr,newp,newr) and placed)
+assert(not proxy.align_gun_hand(world,{},oldp,oldr,newp,newr))
+print('PASS controller gun pitch/hand: 120 poses, pitch sign/live setting/staff isolation, draw/reload ownership, actual simulation reader and rigid-hand relative grip preservation')

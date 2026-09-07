@@ -1,5 +1,24 @@
 # Development continuation: 7 September 2026
 
+## Final evening candidate: pitch, visible grip and animation continuity
+
+The user accepts controller left/right alignment on `859b460`, requests about
+10 degrees downward pitch, a settings-menu pitch option, the visible hand aligned
+to the gun, and removal of draw/reload angle jumps. The candidate adds
+`vr_gun_pitch` (-45..45 degrees, default -10, negative down), applied live to
+firearm simulation aim and hence reticle/visible gun. Staff/support remain
+unchanged. The right visual hand receives the gun attachment's correction as a
+rigid transform, preserving its authored wrist-to-grip relationship. It never
+feeds back into controller aim. Draw/reload/unwield no longer release controller
+ownership; ordinary action timing, ammo and moving weapon parts remain stock.
+
+Nine affected CTests pass in 0.91 seconds, including all 43 Lua chunks/invariants,
+pitch direction/live setting/staff isolation, 120 parent poses, draw/reload
+continuity and the actual hand-correction function. Native unchanged. Final
+deployment and worn acceptance pending at this record. The user requests ending
+development for the night after these fixes, documenting today, updating the
+tomorrow handover, committing and pushing. Do not continue overnight.
+
 ## Latest candidate: controller-referenced gun placement and aim
 
 The user rejects the held-muzzle basis as badly misaligned and explicitly asks

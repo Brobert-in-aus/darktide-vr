@@ -1,4 +1,6 @@
 return {
+    vr_gun_pitch = {en = "Gun pitch angle (degrees)"},
+    vr_gun_pitch_description = {en = "Tilt guns relative to the controller. Negative angles lower the barrel; positive angles raise it. Updates gun, hand and aim together. Does not affect staffs."},
     psykhanium_online_rules = {en = "Online combat rules in Psykhanium"},
     psykhanium_online_rules_description = {en = "Aim with the right hand using normal firing positions, button melee and movement rules. Room movement stays visual and training aids remain. Applies on your next visit to Psykhanium; online missions are still under development."},
     vr_menu_back = {en = "B / Menu"},
