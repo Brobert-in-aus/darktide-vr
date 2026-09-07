@@ -29,6 +29,13 @@ Validation commands are in the linked assessment and online requirements.
 No runtime deployment,
 backend change or experimental remote-server message was made for this audit.
 
+The user then selected cosmetic hand/staff-origin projectiles converging onto
+the real projectile over one metre. The
+[staff visual candidate](../STAFF-PROJECTILE-VISUAL-CONVERGENCE.md) passes its
+actual-stock FX contract, all 38 Lua chunks and source invariants. The quiet
+game was asked to close for deployment; readiness, fresh stereo initialization
+and worn acceptance still need recording for this candidate.
+
 The day's continuation is collected in
 [draft review #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2),
 based on the saved 6 September backlog branch. The aggregate review branch is
