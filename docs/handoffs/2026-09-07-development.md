@@ -1215,3 +1215,17 @@ lost. Four focused CTests pass after the fix, including HUD routing/options and
 Lua compile/invariants; all 36 chunks compile. The replacement-before-draw case
 also runs the actual registered HUD update hook. Undeployed; live menu/editor
 transition and saved-position acceptance remain pending. Continue the todo.
+
+## Continuous todo work: deployable placement contracts
+
+Branch `codex/stock-deployable-placement-2026-09-07` extends the optional
+stock-rules fixture through actual deployable aim, base action and pickup spawn
+methods. Simulated pose feeds forward/downward/forced rays; stock slope and
+registered-attachment checks remain. Cached placement avoids live pose reads,
+retry defers spawning, ammo gates retain stock timing, and only the server
+spawns pickups. Owner/session metadata and drop/training callbacks pass.
+
+The optional stock-rules command passes. No production change. Ray responses,
+fixed-time rounding and final service endpoints are fixtures; real geometry,
+item consumption and remote acceptance remain pending. Continue the todo with
+the existing full-suite/build baselines and unresolved VDXR rendering blocker.

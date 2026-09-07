@@ -268,6 +268,140 @@ do
     assert(#spawns==5 and #procs==8,'Missing optional proc table blocked server spawning')
     assert(shot_component.shooting_position==current_position and shot_component.shooting_rotation==current_rotation)
 end
+do
+    -- Deployables must use the same simulated pose as weapons. Execute stock
+    -- placement selection and timed inventory/spawn routing with collision and
+    -- final pickup services supplied; no engine geometry or real item mutation.
+    local base,pickup,utility={},{},{}
+    local rays,responses,spawns,events={},{},{},{}
+    local target,placed={},{}
+    local registered=true
+    local v=setmetatable({down=function() return Vector3(0,0,-1) end,
+        zero=function() return Vector3(0,0,0) end},{__index=Vector3})
+    local env=setmetatable({Vector3=v,Unit={world_position=function() error('rendered placement origin read') end},
+        Actor={unit=function(actor) assert(actor==target); return target end},
+        PhysicsWorld={raycast=function(world,position,direction,distance,...)
+            assert(world=='placement_world')
+            assert(table.concat({...},'|')=='closest|types|both|collision_filter|filter_player_place_deployable')
+            rays[#rays+1]={position,direction,distance}
+            local result=assert(responses[#rays],'unexpected placement ray')
+            return result.hit,result.position,1,result.normal,result.actor
+        end},Managers={state={unit_spawner={
+            game_object_id=function() return registered and 8 or nil end,
+            level_index=function() return nil end}}}}, {__index=_G})
+    local placement=setfenv(assert(loadstring(source('extension_systems/weapon/actions/utilities/aim_placement'))),env)()
+    local function methods(path,first,last,scope)
+        local text=source(path)
+        local a=assert(text:find(first,1,true)); local b=assert(text:find(last,a,true))
+        setfenv(assert(loadstring(text:sub(a,b-1),'@'..path)),setmetatable(scope,{__index=_G}))()
+    end
+    methods('extension_systems/weapon/actions/utilities/action_utility',
+        'local EPSILON =','\nActionUtility.projectile_template =',
+        {ActionUtility=utility,FixedFrame={clamp_to_fixed_time=function(t) return t end}})
+    local function record(name,...) events[#events+1]={name,...} end
+    methods('extension_systems/weapon/actions/action_place_base',
+        'ActionPlaceBase.fixed_update =','\nreturn ActionPlaceBase',
+        {ActionPlaceBase=base,AimPlacement=placement,ActionUtility=utility,
+         Ammo={current_ammo_in_clips=function(slot) return slot.ammo end,
+            set_current_ammo_in_clips=function(slot,ammo) slot.ammo=ammo end},
+         PlayerUnitVisualLoadout={wield_previous_weapon_slot=function(...) record('wield',...) end,
+            unequip_item_from_slot=function(...) record('unequip',...) end}})
+    local pickup_owner={session_id=function() return 'fixture_session' end}
+    local has_owner=true
+    local pickup_system={player_spawn_pickup=function(_,...) spawns[#spawns+1]={...}; return placed end,
+        spawn_pickup=function(_,...) spawns[#spawns+1]={...}; return placed end,
+        dropped=function(_,unit) assert(unit==placed); record('dropped',unit) end}
+    local game_mode='shooting_range'
+    methods('extension_systems/weapon/actions/action_place_pickup',
+        'ActionPlacePickup._place_unit =','\nreturn ActionPlacePickup',
+        {ActionPlacePickup=pickup,TRAINING_GROUNDS_GAME_MODE_NAME='training_grounds',
+         Pickups={by_name={crate={on_drop_func=function(unit) assert(unit==placed); record('on_drop',unit) end}}},
+         Managers={state={player_unit_spawn={owner=function(_,unit) assert(unit=='local'); return has_owner and pickup_owner or nil end},
+             extension={system=function(_,name) assert(name=='pickup_system'); return pickup_system end},
+             game_mode={game_mode_name=function() return game_mode end}},
+             event={trigger=function(_,...) record('event',...) end}}})
+    local action=setmetatable({_first_person_component=component,_physics_world='placement_world',
+        _action_component={},_player_unit='local',_weapon_template={pickup_name='crate'},
+        _inventory_component={wielded_slot='slot_pocketable'},_inventory_slot_component={ammo=1},
+        _weapon_action_component={time_scale=2},_place_unit=pickup._place_unit,
+        _register_stats_and_telemetry=function(_,...) record('stats',...) end,
+        trigger_anim_event=function(_,...) record('anim',...) end}, {__index=base})
+    local config={distance=3}
+    local floor=Vector3(4,5,0)
+    local function result(hit,normal)
+        return {hit=hit,position=hit and floor or nil,normal=normal or Vector3(0,0,1),actor=hit and target or nil}
+    end
+    local function calculate(results)
+        rays,responses={},results
+        action._action_settings={place_configuration=config,total_time=1,place_time=.4,
+            remove_item_from_inventory=true,ammunition_usage=1,can_drop_anim_event='can_drop'}
+        action:_update_place_data(20)
+        assert(rays[1][1]==component.position and rays[1][3]==3)
+        assert(Vector3.dot(rays[1][2],Quaternion.forward(component.rotation))>.999)
+        return action._action_component
+    end
+    local cached=calculate({result(true)})
+    assert(cached.can_place and cached.position==floor and cached.placed_on_unit==target and cached.can_place_time==20)
+    assert(cached.rotation.yaw==Quaternion.look(Vector3.flat(Quaternion.forward(component.rotation))).yaw)
+    for _,server in ipairs({false,true}) do
+        events,spawns={},{}
+        action._is_server=server; action._inventory_slot_component.ammo=1
+        action:fixed_update(.1,20.1,.1)
+        assert(#spawns==0 and action._inventory_slot_component.ammo==1)
+        action:fixed_update(.1,20.2,.2)
+        assert(action._inventory_slot_component.ammo==0 and action._inventory_slot_component.last_ammunition_usage==20.2)
+        assert(events[1][1]=='wield' and events[2][1]=='unequip')
+        assert(#spawns==(server and 1 or 0),'Client spawned a deployable')
+        if server then
+            local spawn=spawns[1]
+            assert(spawn[1]=='crate' and spawn[2]==floor and spawn[3]==cached.rotation)
+            assert(spawn[4]==pickup_owner and spawn[5]=='fixture_session' and spawn[6]==target)
+            assert(events[3][1]=='on_drop' and events[4][1]=='dropped' and events[5][1]=='stats' and #events==5)
+        end
+        action:fixed_update(.1,20.3,.3)
+        assert(#spawns==(server and 1 or 0),'Deployable repeated after trigger time')
+    end
+    -- Cached origin survives current first-person changes, but insufficient ammo
+    -- still prevents both predicted consumption and server placement.
+    local pose=action._first_person_component
+    action._first_person_component=setmetatable({}, {__index=function() error('cached placement reread live pose') end})
+    action:fixed_update(.1,20.2,.2)
+    assert(#spawns==1)
+    action._inventory_slot_component.ammo=1
+    action:fixed_update(.1,20.2,.2)
+    assert(#spawns==2 and spawns[2][2]==floor and spawns[2][3]==cached.rotation)
+    action._action_settings.use_aim_data=true
+    action:_update_place_data(21)
+    assert(cached.position==floor and cached.can_place_time==21 and #rays==1)
+    action._first_person_component=pose
+    calculate({result(false),result(true)})
+    assert(#rays==2 and rays[2][3]==3 and rays[2][2][3]==-1)
+    local fallback=component.position+Quaternion.forward(component.rotation)*3
+    assert(Vector3.length(rays[2][1]-fallback)<1e-12)
+    config.allow_aim_upwards_deployment=true
+    calculate({result(false),result(true)})
+    assert(rays[2][3]==15)
+    config.force_place=true
+    calculate({result(true,Vector3(0,0,.7)),result(true)})
+    assert(#rays==2 and rays[2][1]==component.position and rays[2][2][3]==-1 and rays[2][3]==3)
+    config.force_place=false
+    calculate({result(true,Vector3(0,0,.7))})
+    assert(not cached.can_place,'Stock slope threshold was relaxed')
+    events={}; assert(action:fixed_update(.1,20.2,.2)==true and #events==0)
+    action._action_settings.try_until_placed=true
+    responses[#rays+1]=result(true)
+    local before_spawns=#spawns
+    assert(action:fixed_update(.1,21,.2)==false and cached.can_place and cached.can_place_time==21)
+    assert(#spawns==before_spawns and #events==1 and events[1][1]=='anim' and events[1][2]=='can_drop')
+    registered=false
+    calculate({result(true)})
+    assert(cached.can_place and cached.placed_on_unit==nil,'Unregistered hit unit became a network attachment')
+    has_owner=false; game_mode='training_grounds'; events,spawns={},{}
+    action._inventory_slot_component.ammo=1
+    action:fixed_update(.1,20.2,.2)
+    assert(#spawns==1 and spawns[1][4]==nil and spawns[1][5]==nil)
+    assert(events[#events][1]=='event' and events[#events][2]=='tg_on_pickup_placed')
+end
 -- Stock sweeps use successive simulation references and their authored damage
 -- window. No visible weapon/hand node is sampled by these orchestration methods.
 do
@@ -957,6 +1091,7 @@ print('PASS: actual stock orientation selector retains forced look, weapon locks
 print('PASS: actual stock local rendering and camera root retain independent view orientation')
 print('PASS: actual stock shot preparation retains body origin, charge, recoil/sway/assist/spread order and grouped-shot sample')
 print('PASS: actual stock projectile launch retains prepared origin/direction, cached ballistic branches, proc metadata and server-only spawn ownership')
+print('PASS: stock deployables retain simulated placement rays, slope/attachment validation, timed ammo consumption and server-only pickup spawning')
 print('PASS: actual stock sweeps retain simulation references, damage-window edges/final drain, abort masks and time scaling')
 print('PASS: actual stock flame loops retain simulation rays, obstructions, target filtering, rewind and server-only damage/burn calls')
 print('PASS: actual stock targeting retains simulation aim/recoil/sway, assist ownership, sticky charges, strict range and resimulation targets')

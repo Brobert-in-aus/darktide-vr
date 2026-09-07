@@ -163,6 +163,16 @@ sinks; this does not complete an actual objective or test its rendered scanner.
 The separate portable scanner-stick test covers bypassing the optional
 left-hand locomotion rotation for device axes.
 
+The optional stock-rules fixture also executes deployable `AimPlacement`,
+`ActionPlaceBase` and `ActionPlacePickup` methods against the VR-authored stock
+first-person component. Forward/downward/forced rays retain the stock collision
+filter, slope threshold and registered-attachment requirement. Cached placement,
+retry timing, ammo checks/consumption and server-only spawning remain stock;
+owner/session metadata, drop callbacks and the training-grounds-only event pass.
+The shooting range does not emit that training-grounds event. Engine ray hits,
+fixed-time rounding and final inventory/pickup/telemetry endpoints are supplied;
+these checks do not establish live placement geometry or server acceptance.
+
 Follow-up user direction: configure Psykhanium to use the same combat/input
 rules as online where possible, and improve that path there first. This changes
 the next implementation target to a range-only online-rules proving mode.
