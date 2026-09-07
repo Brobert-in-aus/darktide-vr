@@ -5,6 +5,11 @@ Deployed for the home headset session. The user confirms stereo, triggers,
 correct force-staff aim, stock face/body firing origin, and movement-speed
 constraints following aim direction. This is limited worn feedback; gun firing
 remains unresolved and actual online missions remain gated.
+The later one-metre staff cosmetic convergence was accepted. While VD is closed,
+the [roomscale chase](ROOMSCALE-COLLIDER-FOLLOW.md) and
+[ranged reticle/target transport](RANGED-ONLINE-RETICLE.md) are offline candidates;
+the latter corrects the earlier distance-only overlay mismatch. Neither has
+been deployed for worn verification.
 
 ## Behavior
 
@@ -29,7 +34,8 @@ staff/throw convergence, button-melee reference proxies, left-hand block proxies
 and local aim-field writes. Stock actions instead read their normal first-person
 component, reconstructed from the chosen input angles and body/character height.
 Weapon spread, recoil, charge, sweep shapes, damage windows, cleave and damage
-calculation remain stock. The reticle ray uses that simulated origin/direction.
+calculation remain stock. The new offline reticle candidate uses the simulated
+origin and route-specific firing centre and transports the complete target to XR.
 The visible tracked weapon can therefore diverge from the firing ray near cover;
 this candidate does not promise muzzle-origin collision agreement.
 

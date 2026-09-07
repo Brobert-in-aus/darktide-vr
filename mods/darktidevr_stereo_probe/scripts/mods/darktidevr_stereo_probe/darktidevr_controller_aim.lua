@@ -281,7 +281,7 @@ function controller_aim.install(mod, presentation, state)
         controller_aim.reticle_point_session = Managers and Managers.state and
             Managers.state.game_session
         if not presentation.publish_gameplay_aim_state(
-                true, hit == true, distance) then
+                true, hit == true, distance, controller_aim.reticle_world_point:unbox()) then
             controller_aim.reticle_failures =
                 controller_aim.reticle_failures + 1
             return
@@ -810,15 +810,19 @@ function controller_aim.install(mod, presentation, state)
     mod:hook(
         PlayerUnitSmartTargetingExtension,
         "fixed_update",
-        function(func, self, ...)
+        function(func, self, unit, dt, t, ...)
             if not self._is_local_unit then
-                return func(self, ...)
+                return func(self, unit, dt, t, ...)
             end
             if presentation.online_rules and presentation.online_rules.enabled() then
-                local result = func(self, ...)
+                local result = func(self, unit, dt, t, ...)
                 local component = self._first_person_component
-                if component then
-                    controller_aim.publish_reticle(self, component.position, component.rotation)
+                local position, rotation
+                if presentation.online_reticle then
+                    position, rotation = presentation.online_reticle.pose(self, t)
+                elseif component then position, rotation = component.position, component.rotation end
+                if position and rotation then
+                    controller_aim.publish_reticle(self, position, rotation)
                 else
                     controller_aim.clear_reticle()
                     presentation.publish_gameplay_aim_state(false, false, 0)
@@ -829,10 +833,10 @@ function controller_aim.install(mod, presentation, state)
             if not position or not rotation then
                 controller_aim.clear_reticle()
                 presentation.publish_gameplay_aim_state(false, false, 0)
-                return func(self, ...)
+                return func(self, unit, dt, t, ...)
             end
             local result = with_first_person_pose(
-                self, position, rotation, func, ...)
+                self, position, rotation, func, unit, dt, t, ...)
             controller_aim.publish_reticle(self)
             return result
         end)

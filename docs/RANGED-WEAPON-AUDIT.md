@@ -1,5 +1,17 @@
 # Ranged weapon aim audit
 
+## Latest: online-rules pass while VD is closed
+
+The [ranged reticle candidate](RANGED-ONLINE-RETICLE.md) fixes two newly confirmed
+online mismatches: missing gun recoil/sway in the reticle ray and distance-only
+native transport that rebuilt that ray from the controller. It now transports
+the actual target with its sampled tracking reference. The source inventory
+covers 62 player ranged templates in 23 families; 530 actual stock combat input
+elements accept real VR binding transitions. Release build, 40-chunk Lua gate
+and 124/124 offline CTests pass. Matching Lua/DLL/harness deployment and worn
+firing across owned guns remain pending. Older local-pose findings below are
+historical and do not establish acceptance of this new candidate.
+
 ## 7 September cached catalogue scope
 
 Read-only inspection of the game's local HTTP cache found general catalogue

@@ -258,6 +258,11 @@ bool SharedHeadPoseWriter::read_rendered_pair(
   return false;
 }
 
+std::uint64_t SharedHeadPoseWriter::transport_generation() const {
+  const auto& data = *static_cast<const SharedLayout*>(view_);
+  return static_cast<std::uint64_t>(data.writer_generation);
+}
+
 std::uint64_t SharedHeadPoseWriter::read_gameplay_generation() const {
   const auto& data = *static_cast<const SharedLayout*>(view_);
   const auto generation = data.gameplay_generation;

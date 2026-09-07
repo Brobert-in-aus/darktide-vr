@@ -271,6 +271,17 @@ smart.fixed_update({_is_local_unit=true,_first_person_component=shared})
 assert(reticles==1,'Online reticle did not use the stock simulated origin')
 smart.fixed_update({_is_local_unit=false,_first_person_component=shared})
 assert(reticles==1,'Changed remote reticle')
+local stock_publisher=aim.publish_reticle
+aim.presentation.online_reticle={pose=function(ext,t)
+    assert(t==456,'reticle lost fixed-frame time')
+    return ext._first_person_component.position,ext._first_person_component.rotation+7
+end}
+aim.publish_reticle=function(ext,position,rotation)
+    assert(position==shared.position and rotation==shared.rotation+7,'gun centre preview was ignored')
+    assert(ext._first_person_component==shared)
+end
+smart.fixed_update({_is_local_unit=true,_first_person_component=shared},player,1/60,456,42)
+aim.presentation.online_reticle=nil; aim.publish_reticle=stock_publisher
 local native_clears=0
 aim.presentation.publish_gameplay_aim_state=function(active,hit,distance)
     assert(not active and not hit and distance==0); native_clears=native_clears+1

@@ -63,6 +63,7 @@ class SharedHeadPoseWriter {
   SharedHeadPoseWriter& operator=(const SharedHeadPoseWriter&) = delete;
 
   bool publish(const SharedHeadPoseSample& sample);
+  std::uint64_t transport_generation() const;
   bool read_rendered_pair(SharedRenderedEyePairPose& pair) const;
   std::uint64_t read_gameplay_generation() const;
   std::uint64_t read_eye_surface_generation() const;

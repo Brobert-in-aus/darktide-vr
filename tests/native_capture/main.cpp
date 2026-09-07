@@ -8,6 +8,7 @@
 
 #include "core/shared_controller_state.h"
 #include "core/shared_menu_pointer_state.h"
+#include "core/shared_gameplay_aim_state.h"
 
 #include <chrono>
 #include <cmath>
@@ -98,6 +99,30 @@ int wmain(int argc, wchar_t** argv) {
         unsigned long long*, float*, unsigned long long*, float*)>(
         GetProcAddress(module, "dtvr_read_spectator_input"));
     if (!read_spectator_input) throw std::runtime_error("Missing spectator input export");
+    const auto publish_aim_target = reinterpret_cast<int (*)(int, float, float, float,
+        float, unsigned long long, unsigned long long, unsigned int)>(
+        GetProcAddress(module, "dtvr_set_gameplay_aim_target"));
+    const auto publish_aim_state = reinterpret_cast<int (*)(int, int, float)>(
+        GetProcAddress(module, "dtvr_set_gameplay_aim_state"));
+    if (!publish_aim_target || !publish_aim_state) {
+      throw std::runtime_error("Missing gameplay target exports");
+    }
+    darktidevr::core::SharedGameplayAimStateReader target_reader;
+    darktidevr::core::SharedGameplayAimState target_sample{};
+    if (publish_aim_target(1, 12.5F, .4F, -.2F, -12.5F, 42, 3, 8) != 0 ||
+        !target_reader.read(target_sample) || !target_sample.target_point_valid ||
+        target_sample.target_point.x != .4F || target_sample.target_point.y != -.2F ||
+        target_sample.target_point.z != -12.5F || target_sample.head_pose_sequence != 42 ||
+        target_sample.head_transport_generation != 3 || target_sample.recenter_generation != 8) {
+      throw std::runtime_error("Gameplay target export lost point/reference fields");
+    }
+    if (publish_aim_target(2, 12, 0, 0, -12, 42, 3, 8) != 2 ||
+        publish_aim_target(1, 300, 0, 0, -12, 42, 3, 8) != 3 ||
+        publish_aim_target(1, 12, 0, 0, -12, 0, 3, 8) != 3 ||
+        publish_aim_state(0, 0, 0) != 0 || !target_reader.read(target_sample) ||
+        target_sample.active || target_sample.target_point_valid) {
+      throw std::runtime_error("Gameplay target validation/clear failed");
+    }
     const auto read_menu_pointer_state_v3 = reinterpret_cast<int (*)(
         unsigned int*, unsigned int, unsigned long long*, unsigned long long*,
         unsigned long long*)>(

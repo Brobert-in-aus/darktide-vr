@@ -40,7 +40,16 @@ bool valid_gameplay_aim_state(const SharedGameplayAimState& state) {
     return false;
   }
   if (!state.active) {
-    return state.distance_metres == 0.0F && !state.hit;
+    return state.distance_metres == 0.0F && !state.hit && !state.target_point_valid;
+  }
+  if (state.target_point_valid) {
+    const auto& p = state.target_point;
+    if (state.head_pose_sequence == 0 || state.head_transport_generation == 0 ||
+        !std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z) ||
+        std::abs(p.x) > 1000.0F || std::abs(p.y) > 1000.0F ||
+        std::abs(p.z) > 1000.0F) {
+      return false;
+    }
   }
   return state.distance_metres >= 0.05F && state.distance_metres <= 200.0F;
 }
@@ -50,6 +59,19 @@ bool gameplay_aim_state_is_fresh(const SharedGameplayAimState& state,
                                  std::uint64_t maximum_age_ns) {
   return valid_gameplay_aim_state(state) && now_ns >= state.timestamp_ns &&
          now_ns - state.timestamp_ns <= maximum_age_ns;
+}
+
+std::optional<math::Vec3> resolve_gameplay_aim_target(
+    const SharedGameplayAimState& state, std::uint64_t reference_sequence,
+    std::uint64_t head_generation, std::uint32_t recenter_generation,
+    math::Pose sampled_origin) {
+  if (!valid_gameplay_aim_state(state) || !state.active ||
+      !state.target_point_valid || state.head_pose_sequence != reference_sequence ||
+      state.head_transport_generation != head_generation ||
+      state.recenter_generation != recenter_generation) {
+    return std::nullopt;
+  }
+  return math::transform_point(sampled_origin, state.target_point);
 }
 
 SharedGameplayAimStateWriter::SharedGameplayAimStateWriter() {

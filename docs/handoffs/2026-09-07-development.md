@@ -9,10 +9,10 @@ heartbeat was subsequently found PAUSED during the comprehensive assessment;
 that external setting was left unchanged. Automation state and device
 identifiers remain outside Git.
 
-Latest integrated offline check: **121/121 CTests pass** at `28e6cca` (20.73
-seconds), with headset tests disabled and all 37 Lua chunks compiling. Full
-Release build also passes at that baseline; eight focused checks pass for the
-newer mode-query fix `1cdd0fd`. The user restarted both Virtual Desktop ends,
+Latest integrated offline check: **124/124 CTests pass** for the ranged candidate
+(22.92 seconds), with headset tests disabled and all 40 Lua chunks compiling.
+Full Windows x64 Release build passes; nine affected checks pass after adding
+native export/failure coverage (1.67 seconds). The user restarted both Virtual Desktop ends,
 Ready subsequently passed, and the latest deployed Psykhanium session runs Lua
 `9c55945`, capture `01617d6`, harness `1324a87`. Guardian is restored and proximity
 override remains applied for live development. Stereo/triggers and the tested
@@ -54,6 +54,16 @@ compensation. All 39 chunks and source invariants pass, the 45-case stock
 movement fixture passes, and nine focused CTests pass (0.92 seconds). No XR
 deployment was attempted while VD is closed. Next: offline ranged-family pass;
 roomscale worn acceptance remains queued for the user's return.
+
+The [ranged pass](../RANGED-ONLINE-RETICLE.md) has now fixed missing gun recoil/sway
+in the reticle calculation and the larger distance-only transport mismatch.
+XR receives the actual target point plus sampled tracking identity. Deploy Lua,
+capture DLL and harness together (gameplay aim transport v4); no deployment was
+made with VD closed. Inventory: 62 ranged templates, 23 families; actual parser
+accepts 530 combat input elements from real VR transitions. Full/focused offline
+validation is recorded above. Stock inputs/origins/damage remain; firing-only
+aim switching is held. Native reticle alignment, chase comfort, gun firing and
+model/barrel alignment remain worn checks, not claimed acceptance.
 
 The day's continuation is collected in
 [draft review #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2),

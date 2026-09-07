@@ -688,6 +688,9 @@ local function ensure_ui_native_hooks()
         int dtvr_commit_gameplay_generation(unsigned long long generation);
         int dtvr_set_gameplay_aim_state(int active, int hit,
             float distance_metres);
+        int dtvr_set_gameplay_aim_target(int hit, float distance_metres,
+            float x, float y, float z, unsigned long long head_sequence,
+            unsigned long long head_generation, unsigned int recenter_generation);
         int dtvr_capture_eye(int eye);
         int dtvr_capture_armed_swapchain_eye(int eye);
         int dtvr_set_camera_output_candidate_index(int index);
@@ -959,6 +962,12 @@ local function ensure_ui_native_hooks()
     end
 
     ui_native_capture = library
+    local target_ok, target_function = pcall(function()
+        return library.dtvr_set_gameplay_aim_target
+    end)
+    presentation.native_gameplay_aim_target = target_ok and target_function or nil
+    mod:info("DARKTIDEVR_ONLINE_RETICLE target_transport=%s",
+        target_ok and "ready" or "unavailable")
     presentation.cluster_light_visibility_fix_active =
         tonumber(library.dtvr_cluster_light_visibility_fix_active()) == 1
     mod:info(
@@ -4751,9 +4760,13 @@ end
 -- travel, and sampling the off-centre model-eye anchor before restoring HMD
 -- heading makes both wrist targets trace a fixed-radius circle with the stick.
 function presentation.roomscale_anchor_offset(unit, rotation)
+    controller_observation.body_anchor_pose_sequence = 0
     if not presentation.roomscale or not head_translation_requested or
             not head_pose_values or not head_pose_sequence or
             presentation.read_head_pose() ~= 0 then return Vector3.zero() end
+    controller_observation.body_anchor_pose_sequence = tonumber(head_pose_sequence[0])
+    controller_observation.body_anchor_pose_generation = tonumber(presentation.head_pose_transport_generation[0])
+    controller_observation.body_anchor_recenter_generation = tonumber(head_pose_values[23])
     local player = Managers and Managers.player and Managers.player:local_player(1)
     unit = unit or (player and player.player_unit)
     local x, y, z = presentation.roomscale.offset(unit,
@@ -5303,6 +5316,9 @@ presentation.online_rules = mod:io_dofile(
 ).install(mod, presentation, controller_observation, active_game_mode_name)
 presentation.roomscale = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_roomscale"
+).install(mod, presentation)
+presentation.online_reticle = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_online_reticle"
 ).install(mod, presentation)
 
 function presentation.is_first_person_body_mode(mode)
@@ -7520,10 +7536,37 @@ function presentation.weapon_grip_target(role)
     if side == "right" then return presentation.controller_grip_target() end
 end
 
-function presentation.publish_gameplay_aim_state(active, hit, distance)
+function presentation.publish_gameplay_aim_state(active, hit, distance, world_point)
     if not ui_native_capture or
             not ui_native_capture.dtvr_set_gameplay_aim_state then
         return false
+    end
+    if active and world_point and presentation.online_rules.enabled() then
+        local publish = presentation.native_gameplay_aim_target
+        local sequence = controller_observation.body_anchor_pose_sequence or 0
+        if not publish or sequence <= 0 then
+            -- An old capture DLL cannot represent the stock-origin target.
+            -- Clear the overlay instead of silently drawing a different ray.
+            ui_native_capture.dtvr_set_gameplay_aim_state(0, 0, 0)
+            return false
+        end
+        local anchor = Vector3(controller_observation.body_anchor_x,
+            controller_observation.body_anchor_y, controller_observation.body_anchor_z)
+        local rotation = Quaternion.from_elements(controller_observation.body_anchor_qx,
+            controller_observation.body_anchor_qy, controller_observation.body_anchor_qz,
+            controller_observation.body_anchor_qw)
+        local player = Managers.player:local_player(1)
+        local scale = presentation.calibrated_character_scale(player)
+        local point = Quaternion.rotate(Quaternion.inverse(rotation),world_point-anchor)/scale
+        local result = publish(hit and 1 or 0, math.max(.05,math.min(200,distance/scale)),
+            Vector3.x(point), Vector3.z(point), -Vector3.y(point), sequence,
+            controller_observation.body_anchor_pose_generation,
+            controller_observation.body_anchor_recenter_generation)
+        if tonumber(result) ~= 0 then
+            ui_native_capture.dtvr_set_gameplay_aim_state(0, 0, 0)
+            return false
+        end
+        return true
     end
     local result = ui_native_capture.dtvr_set_gameplay_aim_state(
         active and 1 or 0,

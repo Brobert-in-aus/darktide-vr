@@ -1098,6 +1098,8 @@ class OpenXrProbe {
     bool recentered_view_poses_valid{};
     std::deque<std::pair<std::uint64_t, std::array<XrPosef, 2>>>
         head_pose_history;
+    std::deque<std::pair<std::uint64_t, darktidevr::math::Pose>>
+        gameplay_aim_origin_history;
     std::array<XrPosef, 2> rendered_pair_view_poses{};
     std::array<XrPosef, 2> generated_view_poses{};
     darktidevr::core::SharedGeneratedFrameStateReader generated_reader;
@@ -1321,6 +1323,7 @@ class OpenXrProbe {
             recentered_view_poses_valid = false;
             rendered_pair_pose_ready_value = 0;
             head_pose_history.clear();
+            gameplay_aim_origin_history.clear();
             // A flat panel is anchored independently in LOCAL space. Force the
             // active presentation state to rebuild it from this same leveled
             // centre-head pose, otherwise a recenter corrects the world while
@@ -1467,6 +1470,11 @@ class OpenXrProbe {
           recentered_view_poses_valid = true;
           head_pose_history.emplace_back(head_pose_sequence,
                                          recentered_view_poses);
+          gameplay_aim_origin_history.emplace_back(head_pose_sequence,
+                                                   *head_recenter_pose);
+          while (gameplay_aim_origin_history.size() > 512) {
+            gameplay_aim_origin_history.pop_front();
+          }
           while (head_pose_history.size() > 512) {
             head_pose_history.pop_front();
           }
@@ -3646,29 +3654,44 @@ class OpenXrProbe {
                 right.aim_pose.position, current_head.position, 1.5F)) {
           const auto reticle_distance_metres =
               gameplay_aim_state.distance_metres;
-          const auto direction = darktidevr::math::rotate(
-              right.aim_pose.orientation, {0.0F, 0.0F, -1.0F});
-          gameplay_reticle_pose = darktidevr::math::Pose{
-              current_head.orientation,
-              {right.aim_pose.position.x +
-                   direction.x * reticle_distance_metres,
-               right.aim_pose.position.y +
-                   direction.y * reticle_distance_metres,
-               right.aim_pose.position.z +
-                   direction.z * reticle_distance_metres}};
-          ++gameplay_reticle_frames_;
-          const auto frame_start_ns = static_cast<std::uint64_t>(
-              std::chrono::duration_cast<std::chrono::nanoseconds>(
-                  frame_start.time_since_epoch()).count());
-          if (gameplay_aim_state.timestamp_ns > frame_start_ns) {
-            ++gameplay_reticle_post_start_frames_;
+          if (gameplay_aim_state.target_point_valid && head_pose_writer) {
+            for (auto entry = gameplay_aim_origin_history.rbegin();
+                 entry != gameplay_aim_origin_history.rend(); ++entry) {
+              if (entry->first != gameplay_aim_state.head_pose_sequence) continue;
+              const auto target = darktidevr::core::resolve_gameplay_aim_target(
+                  gameplay_aim_state, entry->first,
+                  head_pose_writer->transport_generation(),
+                  head_recenter_generation, entry->second);
+              if (target) {
+                gameplay_reticle_pose = darktidevr::math::Pose{
+                    current_head.orientation, *target};
+              }
+              break;
+            }
+          } else if (!gameplay_aim_state.target_point_valid) {
+            const auto direction = darktidevr::math::rotate(
+                right.aim_pose.orientation, {0.0F, 0.0F, -1.0F});
+            gameplay_reticle_pose = darktidevr::math::Pose{
+                current_head.orientation,
+                {right.aim_pose.position.x + direction.x * reticle_distance_metres,
+                 right.aim_pose.position.y + direction.y * reticle_distance_metres,
+                 right.aim_pose.position.z + direction.z * reticle_distance_metres}};
           }
-          if (gameplay_aim_state.hit) {
-            ++gameplay_reticle_hit_frames_;
-          } else {
-            ++gameplay_reticle_miss_frames_;
+          if (gameplay_reticle_pose) {
+            ++gameplay_reticle_frames_;
+            const auto frame_start_ns = static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    frame_start.time_since_epoch()).count());
+            if (gameplay_aim_state.timestamp_ns > frame_start_ns) {
+              ++gameplay_reticle_post_start_frames_;
+            }
+            if (gameplay_aim_state.hit) {
+              ++gameplay_reticle_hit_frames_;
+            } else {
+              ++gameplay_reticle_miss_frames_;
+            }
+            gameplay_reticle_distance_metres_ = reticle_distance_metres;
           }
-          gameplay_reticle_distance_metres_ = reticle_distance_metres;
         }
       }
       std::array<XrCompositionLayerQuad, 3> pointer_quads{{

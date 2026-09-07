@@ -14917,7 +14917,10 @@ bool publish_presentation_state(
   }
 }
 
-bool publish_gameplay_aim_state(float distance_metres, bool active, bool hit) {
+bool publish_gameplay_aim_state(float distance_metres, bool active, bool hit,
+    bool target_point_valid = false, darktidevr::math::Vec3 target_point = {},
+    std::uint64_t head_sequence = 0, std::uint64_t head_generation = 0,
+    std::uint32_t recenter_generation = 0) {
   try {
     static darktidevr::core::SharedGameplayAimStateWriter writer;
     static std::atomic<std::uint64_t> transport_sequence{0};
@@ -14930,7 +14933,8 @@ bool publish_gameplay_aim_state(float distance_metres, bool active, bool hit) {
         timestamp_ns,
         active ? distance_metres : 0.0F,
         active,
-        active && hit};
+        active && hit, 0, active && target_point_valid, target_point,
+        head_sequence, head_generation, recenter_generation};
     return writer.publish(state);
   } catch (...) {
     return false;
@@ -14951,6 +14955,14 @@ extern "C" __declspec(dllexport) int dtvr_set_gameplay_aim_state(
   return publish_gameplay_aim_state(distance_metres, active != 0, hit != 0)
              ? 0
              : 3;
+}
+extern "C" __declspec(dllexport) int dtvr_set_gameplay_aim_target(
+    int hit, float distance_metres, float x, float y, float z,
+    unsigned long long head_sequence, unsigned long long head_generation,
+    unsigned int recenter_generation) {
+  if (hit != 0 && hit != 1) return 2;
+  return publish_gameplay_aim_state(distance_metres, true, hit != 0, true,
+      {x, y, z}, head_sequence, head_generation, recenter_generation) ? 0 : 3;
 }
 extern "C" __declspec(dllexport) int dtvr_commit_gameplay_generation(
     unsigned long long generation) {

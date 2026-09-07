@@ -12,6 +12,12 @@ movement inputs and acceleration/braking prediction. The
 [roomscale candidate](ROOMSCALE-COLLIDER-FOLLOW.md) passes offline checks; the
 user closed VD and requested the ranged-weapon pass when worn checks are needed.
 Prioritize ranged aim/reticle agreement and firing across all families next.
+The [ranged candidate](RANGED-ONLINE-RETICLE.md) now includes route-specific gun
+recoil/sway and exact target transport to XR. Build and 124 offline checks pass;
+530 stock input elements across 62 templates pass source integration. Deploy
+matching Lua/capture/harness only after VD readiness returns, then verify worn
+reticle, chase, firing and barrel alignment. This does not complete all ranged
+weapon acceptance.
 Firing-only aim switching remains on hold. The
 [server capability assessment](ONLINE-SERVER-CAPABILITY-ASSESSMENT.md) is complete;
 the user accepted the deployed one-metre staff visual convergence candidate.

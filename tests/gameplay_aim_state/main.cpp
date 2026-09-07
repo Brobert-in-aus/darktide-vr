@@ -2,7 +2,9 @@
 #include "core/shared_gameplay_aim_state.h"
 
 #include <chrono>
+#include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -56,6 +58,40 @@ int main() {
                  read.active && read.hit && read.transport_generation != 0,
              "Gameplay aim transport changed the sample");
       first_generation = read.transport_generation;
+
+      sample.target_point_valid = true;
+      sample.target_point = {0.4F, -0.2F, -12.5F};
+      sample.head_pose_sequence = 42;
+      sample.head_transport_generation = 3;
+      sample.recenter_generation = 8;
+      expect(writer.publish(sample) && reader.read(read) &&
+                 read.target_point_valid && read.target_point.x == 0.4F &&
+                 read.head_pose_sequence == 42 && read.head_transport_generation == 3 &&
+                 read.recenter_generation == 8,
+             "Target point and tracking reference must survive transport");
+      const darktidevr::math::Pose sampled_origin{
+          darktidevr::math::from_axis_angle({0, 1, 0}, 1.57079632679F),
+          {1.0F, 1.7F, 2.0F}};
+      const auto target = resolve_gameplay_aim_target(sample, 42, 3, 8, sampled_origin);
+      expect(target && std::abs(target->x + 11.5F) < 0.0001F &&
+                 std::abs(target->y - 1.5F) < 0.0001F &&
+                 std::abs(target->z - 1.6F) < 0.0001F,
+             "Stock target must use sampled origin rather than current controller ray");
+      expect(!resolve_gameplay_aim_target(sample, 41, 3, 8, sampled_origin) &&
+                 !resolve_gameplay_aim_target(sample, 42, 4, 8, sampled_origin) &&
+                 !resolve_gameplay_aim_target(sample, 42, 3, 9, sampled_origin),
+             "Wrong head frame, publisher or recenter must hide the target");
+      auto invalid_target = sample;
+      invalid_target.target_point.x = std::numeric_limits<float>::quiet_NaN();
+      expect(!writer.publish(invalid_target), "Nonfinite target was published");
+      invalid_target = sample;
+      invalid_target.head_transport_generation = 0;
+      expect(!writer.publish(invalid_target), "Unidentified target reference was published");
+      invalid_target = sample;
+      invalid_target.active = false;
+      invalid_target.hit = false;
+      invalid_target.distance_metres = 0;
+      expect(!writer.publish(invalid_target), "Inactive target must clear point validity");
 
       sample = {8, now_ns, 0.0F, false, false};
       expect(writer.publish(sample), "Inactive gameplay aim publish failed");
