@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <mutex>
 #include <atomic>
+#include <share.h>
 
 namespace darktidevr::producer {
 namespace {
@@ -34,9 +35,9 @@ std::array<ComPtr<ID3D12Resource>,2> overlays;
 std::array<std::uint64_t,2> overlay_poses{};
 std::atomic<bool> overlay_staged{};
 void log(const char* phase, HRESULT result) {
-  FILE* file{};
-  if(_wfopen_s(&file,(probe.stem+L".log").c_str(),L"a")!=0) return;
-  std::fprintf(file,"UI_READBACK phase=%s result=0x%08x\n",phase,static_cast<unsigned>(result));
+  FILE* file=_wfsopen((probe.stem+L".log").c_str(),L"a",_SH_DENYNO);
+  if(!file) return;
+  std::fprintf(file,"UI_READBACK phase=%s result=0x%08x image_checksum=rgba_fnv1a64\n",phase,static_cast<unsigned>(result));
   std::fclose(file);
 }
 bool export_image(const Image& image, const wchar_t* suffix) {
@@ -56,17 +57,29 @@ bool export_image(const Image& image, const wchar_t* suffix) {
   info.biPlanes=1; info.biBitCount=32;
   write(&header,sizeof(header)); write(&info,sizeof(info));
   std::vector<unsigned char> row(footprint.Width*4ULL);
+  std::uint64_t rgba_hash=14695981039346656037ULL;
   const auto* base=static_cast<const unsigned char*>(mapped)+image.footprint.Offset;
   for(UINT y=0;y<footprint.Height && ok;++y) {
     const auto* source=base+static_cast<std::size_t>(y)*footprint.RowPitch;
     for(UINT x=0;x<footprint.Width;++x) {
+      for(unsigned channel=0;channel<4;++channel) {
+        rgba_hash^=source[x*4ULL+channel]; rgba_hash*=1099511628211ULL;
+      }
       row[x*4ULL]=source[x*4ULL+2]; row[x*4ULL+1]=source[x*4ULL+1];
       row[x*4ULL+2]=source[x*4ULL]; row[x*4ULL+3]=source[x*4ULL+3];
     }
     write(row.data(),row.size());
   }
-  if(file) std::fclose(file);
+  if(file && std::fclose(file)!=0) ok=false;
   D3D12_RANGE written{0,0}; image.readback->Unmap(0,&written);
+  if(ok) {
+    FILE* metadata=_wfsopen((probe.stem+L".log").c_str(),L"a",_SH_DENYNO);
+    if(!metadata) return false;
+    ok=std::fprintf(metadata,
+        "UI_READBACK_IMAGE phase=exported role=%ls width=%u height=%u rgba_hash=%llu\n",
+        suffix+1,footprint.Width,footprint.Height,static_cast<unsigned long long>(rgba_hash))>0;
+    if(std::fclose(metadata)!=0) ok=false;
+  }
   return ok;
 }
 }
@@ -145,8 +158,8 @@ void stage_stereo_ui_readback(ID3D12GraphicsCommandList* commands,
   }
   probe.staged=true;
   if (owned_ui) arm_ngx_copy_ui_match(left_scene, right_scene, pose);
-  FILE* identity{};
-  if (_wfopen_s(&identity,(probe.stem+L".log").c_str(),L"a")==0) {
+  FILE* identity=_wfsopen((probe.stem+L".log").c_str(),L"a",_SH_DENYNO);
+  if (identity) {
     std::fprintf(identity,"UI_READBACK_MATCH pose=%llu left_scene=%p right_scene=%p owned_ui=%u\n",
         static_cast<unsigned long long>(pose),static_cast<void*>(left_scene),
         static_cast<void*>(right_scene),owned_ui ? 1U : 0U);

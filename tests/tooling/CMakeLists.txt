@@ -33,6 +33,10 @@ if(BUILD_TESTING)
     "${PROJECT_SOURCE_DIR}/tests/streamline_stereo_inputs/test_ui_detail.py")
   add_test(NAME dlss_ui_capture_identity COMMAND "${Python3_EXECUTABLE}" -B
     "${PROJECT_SOURCE_DIR}/tests/streamline_stereo_inputs/test_generated_ui_check.py")
+  add_test(NAME ui_readback_native_roundtrip COMMAND "${Python3_EXECUTABLE}" -B
+    "${PROJECT_SOURCE_DIR}/tests/streamline_stereo_inputs/test_ui_readback_native.py"
+    "$<TARGET_FILE:darktidevr-ui-readback-tests>")
+  set_tests_properties(ui_readback_native_roundtrip PROPERTIES TIMEOUT 30)
   add_test(NAME ui_binding_audit COMMAND "${Python3_EXECUTABLE}" -B
     "${CMAKE_CURRENT_SOURCE_DIR}/test-ui-binding-audit.py")
   add_test(NAME menu_input COMMAND "${LUAJIT_VALIDATOR}"

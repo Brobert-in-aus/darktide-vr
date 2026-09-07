@@ -27,3 +27,12 @@ target_link_libraries(darktidevr-continuous-recovery-tests PRIVATE darktidevr_co
 if(BUILD_TESTING)
   add_test(NAME continuous_recovery COMMAND darktidevr-continuous-recovery-tests)
 endif()
+
+add_executable(darktidevr-ui-readback-tests ui_readback.cpp ../../src/producer/stereo_ui_readback.cpp)
+target_compile_options(darktidevr-ui-readback-tests PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-ui-readback-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+target_link_libraries(darktidevr-ui-readback-tests PRIVATE darktidevr_core d3d12 dxgi)
+if(BUILD_TESTING)
+  add_test(NAME ui_readback_content COMMAND darktidevr-ui-readback-tests)
+  add_test(NAME ui_readback_failure COMMAND darktidevr-ui-readback-tests failure)
+endif()

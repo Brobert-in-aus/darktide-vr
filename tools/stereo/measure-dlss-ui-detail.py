@@ -63,13 +63,11 @@ def main():
     parser.add_argument("generated", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    identity = generated_ui.verify_match(args.stem, args.generated)
-    packed = generated_ui.ui_alpha.read_rgba(args.generated)
-    generated_ui.verify_content(identity, packed)
+    identity, packed, submitted = generated_ui.read_verified_images(args.stem, args.generated)
     width = packed.shape[1] // 2
     report = {"identity": identity, "visual_acceptance": "unverified", "eyes": {}}
     for i, eye in enumerate(("left", "right")):
-        ui = generated_ui.ui_alpha.read_rgba(f"{args.stem}-{eye}-ui.bmp")
+        ui = submitted[eye]
         report["eyes"][eye] = measure(ui, packed[:, i * width:(i + 1) * width])
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

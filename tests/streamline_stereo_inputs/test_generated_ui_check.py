@@ -13,6 +13,36 @@ spec.loader.exec_module(module)
 
 
 class GeneratedUiCheck(unittest.TestCase):
+    def test_cli_checks_both_ui_images_before_output(self):
+        ui = np.arange(16, dtype=np.uint8).reshape(2, 2, 4)
+        packed = np.concatenate((ui, ui), axis=1)
+        metadata = {"width": 4, "height": 2, "left_hash": module.pixel_hash(ui, 3),
+                    "right_hash": module.pixel_hash(ui, 3),
+                    "ui_rgba_hashes": {"left": "8972538887847352181", "right": "8972538887847352181"}}
+        changed = ui.copy()
+        changed[0, 0, 3] ^= 1
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "report"
+            with mock.patch.object(module, "verify_match", return_value=metadata), \
+                    mock.patch.object(module.ui_alpha, "read_rgba", side_effect=[packed, ui, changed]), \
+                    mock.patch("sys.argv", ["compare", "ui", "generated.bmp", "--output", str(destination)]):
+                with self.assertRaisesRegex(ValueError, "right UI RGBA content"):
+                    module.main()
+            self.assertFalse(destination.exists())
+
+    def test_ui_checksum_includes_transparency(self):
+        ui = np.arange(16, dtype=np.uint8).reshape(2, 2, 4)
+        metadata = {"width": 4, "height": 2, "ui_rgba_hashes": {"left": "8972538887847352181"}}
+        module.verify_ui_content(metadata, "left", ui)
+        for channel in (0, 3):
+            changed = ui.copy()
+            changed[0, 0, channel] ^= 1
+            with self.assertRaisesRegex(ValueError, "UI RGBA content"):
+                module.verify_ui_content(metadata, "left", changed)
+        legacy = {"width": 4, "height": 2, "ui_rgba_hashes": {}}
+        module.verify_ui_content(legacy, "left", ui)
+        self.assertNotIn("ui_rgba_hash_verified", legacy)
+
     def test_native_rgb_hash_checks_each_eye_in_row_order(self):
         # Standard FNV-1a 64-bit "foobar" vector, laid out as two RGB rows.
         packed = np.array([[[102, 111, 111, 255], [102, 111, 111, 0]],
@@ -87,6 +117,7 @@ class GeneratedUiCheck(unittest.TestCase):
             logs()
             self.assertEqual(module.verify_match(stem, output)["left_call"], "20")
             metadata = module.verify_match(stem, output)
+            self.assertEqual(metadata["ui_content_evidence"], "legacy_metadata_only")
             module.verify_extent(metadata, np.zeros((128, 256, 4), dtype=np.uint8))
             for image in (np.zeros((64, 256, 4), dtype=np.uint8),
                           np.zeros((128, 128, 4), dtype=np.uint8),
@@ -103,6 +134,25 @@ class GeneratedUiCheck(unittest.TestCase):
                              ("right_hash=9625390261332436968 ", "")):
                 changed = identity.replace(old, new)
                 logs(ui_text=input_text.replace(old, new), staged=changed, exported=changed)
+                with self.assertRaises(ValueError):
+                    module.verify_match(stem, output)
+            image_rows = ("UI_READBACK_IMAGE phase=exported role=left-ui width=128 height=128 rgba_hash=1\n"
+                          "UI_READBACK_IMAGE phase=exported role=right-ui width=128 height=128 rgba_hash=2\n")
+            logs(ui_text=input_text + image_rows)
+            self.assertEqual(module.verify_match(stem, output)["ui_rgba_hashes"], {"left": "1", "right": "2"})
+            declared = input_text.replace("result=0x00000000", "result=0x00000000 image_checksum=rgba_fnv1a64")
+            logs(ui_text=declared + image_rows)
+            self.assertEqual(module.verify_match(stem, output)["ui_content_evidence"], "native_rgba_checksums")
+            for text in (declared, declared.replace("rgba_fnv1a64", "unknown") + image_rows,
+                         input_text.replace("phase=exported", "phase=exported image_checksum=rgba_fnv1a64") + image_rows):
+                logs(ui_text=text)
+                with self.assertRaises(ValueError):
+                    module.verify_match(stem, output)
+            for changed in (image_rows.splitlines(True)[0], image_rows + image_rows,
+                            image_rows.replace("width=128", "width=64"),
+                            image_rows.replace("rgba_hash=1", "rgba_hash=-1"),
+                            image_rows.replace("phase=exported", "phase=staged")):
+                logs(ui_text=input_text + changed)
                 with self.assertRaises(ValueError):
                     module.verify_match(stem, output)
             logs(ui_text=input_text.replace("UI_READBACK phase=exported result=0x00000000\n", ""))

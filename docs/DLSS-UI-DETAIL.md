@@ -1,5 +1,44 @@
 # Matched UI detail measurement
 
+## UI RGBA exporter candidate: 8 September
+
+The one-shot native UI exporter now records a per-image RGBA checksum and
+extent after a successful BMP write/close. It declares
+`image_checksum=rgba_fnv1a64` on its staged/exported status records. Both analysis
+CLIs require the declared left/right UI metadata, verify all input RGBA bytes
+(including transparency), and check both eyes before producing report files.
+Missing, duplicated, inconsistent or unknown checksum evidence is rejected.
+
+Historical logs without checksum declarations remain readable but explicitly
+report `ui_content_evidence=legacy_metadata_only` and
+`ui_rgba_hash_verified=false`. Their UI pixels cannot be retroactively verified.
+The original pose-8589 capture retains its existing measurements and this legacy
+label; generated RGB hashes still verify. Evidence:
+`artifacts/unattended/ui-detail-legacy-evidence-20260908.json`.
+
+The native regression uses WARP and a process-local temporary directory, checked
+before its request flag is written. It does not address the running game's
+request directory. It verifies row padding, BMP channel order, RGBA checksums and
+a deliberately unwritable image destination. A Python round trip reads the
+actual exported BMP/log and rejects altered alpha. NGX output metadata in that
+round trip is a fixture, not a GPU-generated frame.
+
+The first full run exposed missing completion records during concurrent log
+polling. Changing the test reader alone did not resolve it: secure CRT append
+opens could exclude an already-open monitoring reader. Diagnostic log writers
+now use explicit shared opens. The native tests deliberately hold a reader open
+throughout export; both success/failure cases pass 20 consecutive runs each
+(4.02 seconds). This fixes a diagnostic log-sharing issue, not image quality.
+
+Windows x64 Release builds of `darktidevr-ui-readback-tests`,
+`darktidevr-continuous-recovery-tests` and `darktidevr_native_capture` pass.
+The new native candidate is **undeployed**; the accepted live game remains on
+its prior DLL. No live capture or worn visual acceptance is claimed.
+Full Windows x64 Release CTest passes **131/131 in 23.23 seconds**, headset
+tests OFF, including all 45 Lua chunks. Command:
+`ctest --test-dir build/windows-vs2022 -C Release --output-on-failure`.
+Evidence: `artifacts/unattended/ui-rgba-final-131-20260908.log`.
+
 `tools/stereo/measure-dlss-ui-detail.py` measures contrast between adjacent,
 fully opaque UI pixels in an identity-matched generated frame. It does not
 search for alignment or assign visual acceptance. Translucent boundaries, world

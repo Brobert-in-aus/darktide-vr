@@ -29,10 +29,14 @@ def verify_match(stem, generated):
     if len(inputs) != 1 or inputs[0].get("owned_ui") != "1":
         raise ValueError("An exact owned-UI readback is required")
     ui_readbacks = records(f"{stem}.log", "UI_READBACK")
+    checksum_policies = set()
     for phase in ("staged", "exported"):
         rows = [row for row in ui_readbacks if row.get("phase") == phase]
         if len(rows) != 1 or rows[0].get("result") != "0x00000000":
             raise ValueError("UI input must have one staged and GPU-complete export")
+        checksum_policies.add(rows[0].get("image_checksum", "legacy"))
+    if len(checksum_policies) != 1 or not checksum_policies <= {"legacy", "rgba_fnv1a64"}:
+        raise ValueError("UI image checksum policy is unknown or changed during export")
     completed = [row for row in outputs if row.get("phase") == "exported"]
     staged = [row for row in outputs if row.get("phase") == "staged"]
     if len(completed) != 1 or len(staged) != 1:
@@ -61,8 +65,27 @@ def verify_match(stem, generated):
         raise ValueError("Generated export requires both native RGB hashes") from error
     if any(value < 0 or value >= 2**64 for value in hashes.values()):
         raise ValueError("Generated RGB hashes must be unsigned 64-bit values")
-    return {**{key: completed[0][key] for key in ("pose", "left_call", "right_call")},
-            **layout, **{key: str(value) for key, value in hashes.items()}}
+    identity = {**{key: completed[0][key] for key in ("pose", "left_call", "right_call")},
+                **layout, **{key: str(value) for key, value in hashes.items()}}
+    images = records(f"{stem}.log", "UI_READBACK_IMAGE")
+    ui_hashes = {}
+    if images or "rgba_fnv1a64" in checksum_policies:
+        for eye in ("left", "right"):
+            rows = [row for row in images if row.get("role") == eye + "-ui"]
+            if len(rows) != 1 or rows[0].get("phase") != "exported":
+                raise ValueError(f"UI image metadata requires one completed {eye} export")
+            row = rows[0]
+            try:
+                value = int(row["rgba_hash"])
+                dimensions = (int(row["width"]), int(row["height"]))
+            except (KeyError, ValueError) as error:
+                raise ValueError("Invalid UI image checksum metadata") from error
+            if not 0 <= value < 2**64 or dimensions != (width // 2, height):
+                raise ValueError("UI image checksum/extent does not match the capture")
+            ui_hashes[eye] = str(value)
+    identity["ui_rgba_hashes"] = ui_hashes
+    identity["ui_content_evidence"] = "native_rgba_checksums" if ui_hashes else "legacy_metadata_only"
+    return identity
 
 
 def verify_extent(identity, packed):
@@ -70,11 +93,11 @@ def verify_extent(identity, packed):
         raise ValueError("Generated bitmap does not match the logged RGBA8 extent")
 
 
-def rgb_hash(image):
-    # Matches ngx_output_copy_probe.cpp: top-to-bottom RGB bytes, excluding
-    # alpha and D3D12 row padding. The BMP reader has already restored RGBA.
+def pixel_hash(image, channels):
+    # Native probes hash top-to-bottom pixels, excluding D3D12 row padding:
+    # RGB for NGX output, RGBA for UI input. BMP decoding has restored RGBA.
     value = 14695981039346656037
-    for byte in image[:, :, :3].tobytes():
+    for byte in image[:, :, :channels].tobytes():
         value = ((value ^ byte) * 1099511628211) & 0xffffffffffffffff
     return value
 
@@ -84,9 +107,28 @@ def verify_content(identity, packed):
     verify_extent(identity, packed)
     width = identity["width"] // 2
     for index, eye in enumerate(("left", "right")):
-        if rgb_hash(packed[:, index * width:(index + 1) * width]) != int(identity[eye + "_hash"]):
+        if pixel_hash(packed[:, index * width:(index + 1) * width], 3) != int(identity[eye + "_hash"]):
             raise ValueError(f"Generated {eye} RGB content does not match the native export hash")
     identity["generated_rgb_hash_verified"] = True
+
+
+def verify_ui_content(identity, eye, ui):
+    if ui.shape != (identity["height"], identity["width"] // 2, 4) or ui.dtype != np.uint8:
+        raise ValueError(f"Submitted {eye} UI bitmap does not match the logged RGBA8 extent")
+    hashes = identity.get("ui_rgba_hashes", {})
+    if hashes and pixel_hash(ui, 4) != int(hashes[eye]):
+        raise ValueError(f"Submitted {eye} UI RGBA content does not match the native export hash")
+
+
+def read_verified_images(stem, generated):
+    identity = verify_match(stem, generated)
+    packed = ui_alpha.read_rgba(generated)
+    verify_content(identity, packed)
+    submitted = {eye: ui_alpha.read_rgba(f"{stem}-{eye}-ui.bmp") for eye in ("left", "right")}
+    for eye, ui in submitted.items():
+        verify_ui_content(identity, eye, ui)
+    identity["ui_rgba_hash_verified"] = bool(identity.get("ui_rgba_hashes"))
+    return identity, packed, submitted
 
 
 def compare(ui, generated, radius=64):
@@ -135,14 +177,12 @@ def main():
     parser.add_argument("generated", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    identity = verify_match(args.stem, args.generated)
-    generated = ui_alpha.read_rgba(args.generated)
-    verify_content(identity, generated)
+    identity, generated, submitted = read_verified_images(args.stem, args.generated)
     args.output.mkdir(parents=True, exist_ok=True)
     width = generated.shape[1] // 2
     report = {"identity": identity, "visual_acceptance": "unverified", "eyes": {}}
     for i, eye in enumerate(("left", "right")):
-        ui = ui_alpha.read_rgba(f"{args.stem}-{eye}-ui.bmp")
+        ui = submitted[eye]
         output = generated[:, i*width:(i+1)*width]
         report["eyes"][eye] = compare(ui, output)
         Image.fromarray(output[:, :, :3]).save(args.output / f"{eye}-generated.png")

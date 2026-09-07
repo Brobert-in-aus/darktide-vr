@@ -39,7 +39,7 @@ The original two-hand review is
 [PR #3](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/3), based on
 the aggregate branch in [PR #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2).
 
-The active branch is `codex/virtual-stock-anchor-2026-09-08`, review
+The stock checkpoint is on `codex/virtual-stock-anchor-2026-09-08`, review
 [PR #6](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/6), stacked
 through the GPU report and DLSS readback integrity reviews (#4/#5) on #3.
 Windows x64 offline validation passed **128/128 CTests in 26.36 seconds** at
@@ -47,7 +47,15 @@ Windows x64 offline validation passed **128/128 CTests in 26.36 seconds** at
 cached-source fixture inspects 62 ranged templates and
 admits 54 canonical ADS input routes; staff/plasma charging routes are excluded.
 It validates parser admission and independent aim aliases, not full action
-chains, live weapon behavior or network acceptance. Native code is unchanged.
+chains, live weapon behavior or network acceptance.
+
+Subsequent offline work adds stock mission-device/hold consumer checks, verifies
+generated RGB readbacks, and adds native UI RGBA checksum/export-sharing checks.
+The active branch is `codex/ui-readback-rgba-2026-09-08`; follow the handoff for
+the stacked review chain. Its final Windows x64 Release suite passes **131/131
+in 23.23 seconds**, including all 45 Lua chunks. Native exporter and test builds
+pass, but this new DLL is undeployed. Diagnostic integrity improvements do not
+establish a rendering, blur, performance or mission acceptance result.
 
 Psykhanium online rules use stock input history, firing origins and damage.
 Actual remote-server missions remain gated. Firing-only aim switching is on
