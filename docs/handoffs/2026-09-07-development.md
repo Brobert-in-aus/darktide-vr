@@ -1534,3 +1534,18 @@ queries completed, with no matching runtime/graphics events across all levels.
 This supplies no new root cause. The current token is not elevated; the official
 WPR trace procedure remains unstarted. No XR session or device setting changed.
 Continue offline work rather than repeating an unchanged failing Ready attempt.
+
+## Continuous todo work: actual Quest double-tap event gate
+
+Branch `codex/quest-shortcut-settings-audit-2026-09-07` traces the installed shell
+APK's actual double-tap handler. Standard ADB settings only surfaced an Android
+wake gesture; the matching FUSE property is unrelated storage configuration.
+The shell instead reads `passthrough_on_demand_enabled` from Meta's preference
+service before forwarding sensor events. A separate feature/config gate can
+re-enable that preference under its setup conditions, so it is not a verified
+persistent-disable recipe. The preference service denied ADB's diagnostic dump;
+no identity/root workaround or preference change was attempted. Exact software
+version/hash, method evidence and primary Android links are recorded in
+QUEST-PASSTHROUGH-RECOVERY. APK/disassembly are ignored local inspection artifacts.
+Read-only inventory/inspection only; no XR session or device setting change.
+Rendering and the suspected accidental trigger remain unresolved. Continue work.

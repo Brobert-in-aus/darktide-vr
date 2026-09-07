@@ -189,3 +189,40 @@ matched Display, nvlddmkm or DxgKrnl providers. These filters found no additiona
 evidence; they do not establish that the backend had no internal error. The
 current Windows token is not elevated, so the documented elevated trace has not
 been started. No new Ready attempt or device setting change followed this check.
+
+## Double-tap preference ownership, 14:07
+
+Read-only ADB settings/property inventory found no named Guardian or headset
+passthrough shortcut in the standard global/system settings. Secure settings
+contained `double_tap_to_wake=1`; AOSP defines this as the
+[wake gesture setting](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/core/java/android/provider/Settings.java),
+which does not establish ownership of Meta's headset shortcut. The sole matching
+property, `persist.sys.fuse.passthrough.enable`, concerns
+[filesystem FUSE passthrough](https://source.android.com/docs/core/storage/fuse-passthrough).
+Neither value was changed.
+
+The installed shell APK was copied read-only to ignored
+`_downloads/quest-shortcut-inspection` and inspected with Android SDK tools.
+It is `com.oculus.vrshell` version `207.0.0.539.436` / code `1051347662`, SHA-256
+`ab8fde3129c15dac90d8455673412110570ca93a335ef37103ad472c13395f19`.
+The APK/disassembly remain local and are not distributed in Git.
+
+In this build, sensor handler `X.08B.onSensorChanged` reads the boolean
+`passthrough_on_demand_enabled` through
+`horizonos.os.preferences.PreferencesManager`. When enabled, it forwards a new
+sensor timestamp to `IShellAPI.forwardDoubleTapEvent` after its one-second
+initial grace period. The constructor selects `oculus.sensor.doubletap`.
+The `double_tap_passthrough:is_enabled` string is a feature/config lookup,
+not a standard Android settings key. If that lookup is false, setup is complete
+and the preference is false, the handler writes the preference true. Thus simply
+finding a writable preference would not prove a persistent disable under every
+feature configuration. Native event handling remains a further boundary.
+
+Service inventory exposes `PreferencesService` with the Horizon OS preferences
+interface. Its `cmd ... help` request failed a transaction, and its diagnostic
+dump explicitly returned `PERMISSION_DENIED` to ADB shell (despite an ADB exit
+code of zero). No preference value was read or changed, and no service-call
+transaction numbers, root access or identity workaround were attempted. This
+identifies the actual Java event gate; it does not establish an available ADB
+shortcut toggle, the current preference value, or the cause of the earlier
+passthrough event. No XR session, wake/proximity override or game action ran.
