@@ -7,12 +7,17 @@ below. Start with the [workday handoff](handoffs/2026-09-08-workday.md) and
 Latest user priority: physical melee is paused until server-side stock melee is
 locked in. The [first-swing preview candidate](STOCK-MELEE-PREVIEW.md) uses stock
 authored geometry and the correct simulated/local aim owner. It remains opt-in,
-undeployed and awaiting a worn check. Branch `codex/stock-melee-preview-2026-09-08`;
+and awaits a worn check. The focused PR #11 candidate `8efdf66` is now deployed
+on accepted baseline `ab9e9db`, including the melee animation correction. Native
+capture/harness remain `23345e5`; other stacked candidates remain undeployed.
+Fresh Psykhanium/rigid-hand initialization passes, shared_ready=1068, zero interval
+fallback/pose mismatches. Preview defaults off. Original stacked branch `codex/stock-melee-preview-2026-09-08`;
 full offline CTest 133/133 passed in 23.70 seconds, with 47 Lua chunks compiled.
 The subsequent [melee visual correction](STOCK-MELEE-VISUAL-AIM.md) fixes a
 reproduced head-facing animated-hand fallback in stock-input mode. Full CTest
 134/134 passes in 24.79 seconds at `a85d91f`; the focused PR #11 candidate includes
-the correction at `aa4da89` and passes its Lua/preview/visual checks. Still undeployed.
+the correction at `aa4da89` and passes its Lua/preview/visual checks. The focused
+deployment above establishes initialization, not worn or damage acceptance.
 
 Development is active in the user's requested session, with a 20-minute
 heartbeat, until explicitly told to stop. The user is away at work; continue

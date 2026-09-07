@@ -2,7 +2,10 @@
 
 8 September 2026: the user paused physical melee until server-side stock melee
 is locked in, and requested a preview based on the tracked hand. This candidate
-is local presentation only and is not deployed or visually accepted.
+is local presentation only. Focused PR #11 at `8efdf66`, based on accepted
+`ab9e9db`, is deployed with the melee visual correction from PR #13. Fresh range,
+rigid hands and shared_ready=1068 pass with zero interval fallback/mismatches.
+Preview remains opt-in; worn alignment and server damage are not accepted.
 
 `/dtvr_melee_preview_on` enables a thin cyan path with an arrow at its end;
 `/dtvr_melee_preview_off` removes it. It defaults off. The path follows the outer
