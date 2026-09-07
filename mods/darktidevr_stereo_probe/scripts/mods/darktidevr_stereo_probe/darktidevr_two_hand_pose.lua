@@ -103,6 +103,42 @@ function Pose.stock_correction(rotation,primary,support,socket,stock)
     local proximity=1-distance/stock.radius
     return slerp(correction,shouldered,stock.strength*proximity*proximity)
 end
+function Pose.stock_profile(profile)
+    if type(profile)~='table' or not valid(profile.shoulder,3) or not valid(profile.offset,3) or
+        dot(profile.shoulder,profile.shoulder)>9 or dot(profile.offset,profile.offset)>1 or
+        not finite(profile.radius) or profile.radius<=0 or profile.radius>.5 or
+        not finite(profile.strength) or profile.strength<=0 or profile.strength>1 then return nil end
+    return {shoulder={unpack(profile.shoulder,1,3)},offset={unpack(profile.offset,1,3)},
+        radius=profile.radius,strength=profile.strength}
+end
+function Pose.new_stock_anchor()
+    local state={owner=nil,relative_yaw=nil}
+    function state.reset() state.owner=nil; state.relative_yaw=nil end
+    function state.update(frame,socket,profile,held,owner)
+        if not held or not owner or not profile or not valid(frame.body_position,3) or
+            not finite(frame.scene_yaw) or not finite(frame.body_yaw) then state.reset(); return nil end
+        if state.owner~=owner then state.reset() end
+        -- Avatar yaw is sampled only when contact starts. During contact the
+        -- anchor turns with the scene (stick turning), never head-only yaw.
+        local relative=state.relative_yaw or frame.body_yaw-frame.scene_yaw
+        local yaw=frame.scene_yaw+relative
+        local q={0,0,math.sin(yaw*.5),math.cos(yaw*.5)}
+        local offset=rotate(q,profile.shoulder)
+        local anchor={frame.body_position[1]+offset[1],frame.body_position[2]+offset[2],
+            frame.body_position[3]+offset[3]}
+        local correction=Pose.correction(frame.rotation,frame.primary,frame.support,socket)
+        local base=normalize(frame.rotation,4)
+        if not correction or not base then state.reset(); return nil end
+        local stock_point=rotate(multiply(base,correction),profile.offset)
+        local delta={frame.primary[1]+stock_point[1]-anchor[1],frame.primary[2]+stock_point[2]-anchor[2],
+            frame.primary[3]+stock_point[3]-anchor[3]}
+        local distance=dot(delta,delta)
+        if not finite(distance) or distance>=profile.radius*profile.radius then state.reset(); return nil end
+        state.owner=owner; state.relative_yaw=relative
+        return {anchor=anchor,offset=profile.offset,radius=profile.radius,strength=profile.strength}
+    end
+    return state
+end
 function Pose.new()
     local state={correction={0,0,0,1},owner=nil}
     function state.reset()

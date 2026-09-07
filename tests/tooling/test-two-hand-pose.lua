@@ -105,3 +105,29 @@ for _,bad in ipairs({{anchor={30,30,30},offset={0,-.25,0},radius=.2,strength=1},
     near(Pose.new().update(identity,primary,{3,4.3,5},socket,true,owner,.01,0,false,bad),identity)
 end
 print('virtual_stock_pose=pass proximity strength release invalidity fixed_primary')
+local anchor=Pose.new_stock_anchor()
+local stock_profile=Pose.stock_profile({shoulder={.2,0,1.4},offset={0,-.25,0},radius=.2,strength=.5})
+local body_frame={body_position={0,0,0},scene_yaw=0,body_yaw=0,
+    rotation=identity,primary={.2,.25,1.4},support={.2,.55,1.4}}
+local contact=assert(anchor.update(body_frame,socket,stock_profile,true,owner))
+near(contact.anchor,{.2,0,1.4})
+body_frame.body_yaw=math.pi/2
+near(assert(anchor.update(body_frame,socket,stock_profile,true,owner)).anchor,{.2,0,1.4})
+-- A scene turn rotates both tracking and the latched shoulder together.
+body_frame.scene_yaw=math.pi/2; body_frame.rotation=quarter
+body_frame.primary={-.25,.2,1.4}; body_frame.support={-.55,.2,1.4}
+near(assert(anchor.update(body_frame,socket,stock_profile,true,owner)).anchor,{0,.2,1.4})
+body_frame.body_position={3,4,5}
+body_frame.primary={2.75,4.2,6.4}; body_frame.support={2.45,4.2,6.4}
+near(assert(anchor.update(body_frame,socket,stock_profile,true,owner)).anchor,{3,4.2,6.4})
+assert(not anchor.update(body_frame,socket,stock_profile,false,owner) and not anchor.owner)
+-- New contact uses the current body heading, not the previous mount's latch.
+body_frame.body_yaw=math.pi/2
+assert(anchor.update(body_frame,socket,stock_profile,true,owner))
+body_frame.primary={5,5,5}; body_frame.support={5,5.3,5}
+assert(not anchor.update(body_frame,socket,stock_profile,true,owner) and not anchor.owner)
+body_frame.body_position={0/0,0,0}
+assert(not anchor.update(body_frame,socket,stock_profile,true,owner))
+assert(not Pose.stock_profile({shoulder={0,0,0},offset={0,0,0},radius=.2,strength=0}))
+assert(not Pose.stock_profile({shoulder={0,0,10},offset={0,0,0},radius=.2,strength=.5}))
+print('virtual_stock_anchor=pass head_glance scene_turn translation release contact invalidity')

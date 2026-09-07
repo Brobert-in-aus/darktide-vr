@@ -22,6 +22,14 @@ function Support.ads_supported(template)
     return found.aim==true and found.unaim==true
 end
 local function finite(x) return type(x)=='number' and x==x and math.abs(x)<math.huge end
+local function same_stock(a,b)
+    if not a or not b then return a==b end
+    if a.radius~=b.radius or a.strength~=b.strength then return false end
+    for i=1,3 do
+        if a.shoulder[i]~=b.shoulder[i] or a.offset[i]~=b.offset[i] then return false end
+    end
+    return true
+end
 local function valid_profile(profile)
     if type(profile)~='table' or type(profile.socket)~='table' then return false end
     local length=0
@@ -36,8 +44,9 @@ local function valid_profile(profile)
         finite(profile.smoothing) and profile.smoothing>=0 and profile.smoothing<=.3
 end
 function Support.new(Pose)
-    local api={profiles={},enabled=false,ads_unavailable=false,held=false}
+    local api={profiles={},enabled=false,ads_unavailable=false,held=false,stock_active=false}
     local filter=Pose.new()
+    local stock_anchor=Pose.new_stock_anchor()
     local context,identity
     function api.clear(interrupted)
         -- Fixed input can lose gameplay ownership between render samples.
@@ -48,7 +57,9 @@ function Support.new(Pose)
         context,identity=nil,nil
         api.ads_unavailable=false
         api.held=false
+        api.stock_active=false
         filter.reset()
+        stock_anchor.reset()
     end
     function api.prepare(frame)
         local profile=frame and api.profiles[frame.template]
@@ -64,19 +75,22 @@ function Support.new(Pose)
         -- recentering and weapon replacement all retire the old gesture.
         local action=profile.ads==true and frame.ads_supported==true and frame.toggle_ads==false and 'alternate' or 'unbound'
         local hand=type(profile.hand_rotation)=='table' and profile.hand_rotation or {}
+        local stock=Pose.stock_profile(profile.stock)
         if not identity or identity.weapon~=frame.weapon or identity.unit~=frame.unit or
             identity.generation~=frame.generation or identity.recenter~=frame.recenter or
             identity.side~=frame.side or identity.profile~=profile or identity.action~=action or
             identity.acquire~=profile.acquire or identity.release~=profile.release or
             identity.smoothing~=profile.smoothing or identity.x~=profile.socket[1] or
             identity.y~=profile.socket[2] or identity.z~=profile.socket[3] or
-            identity.hx~=hand[1] or identity.hy~=hand[2] or identity.hz~=hand[3] or identity.hw~=hand[4] then
+            identity.hx~=hand[1] or identity.hy~=hand[2] or identity.hz~=hand[3] or identity.hw~=hand[4] or
+            not same_stock(identity.stock,stock) then
             identity={weapon=frame.weapon,unit=frame.unit,generation=frame.generation,
                 recenter=frame.recenter,side=frame.side,profile=profile,action=action,
                 acquire=profile.acquire,release=profile.release,smoothing=profile.smoothing,
                 x=profile.socket[1],y=profile.socket[2],z=profile.socket[3],
-                hx=hand[1],hy=hand[2],hz=hand[3],hw=hand[4]}
+                hx=hand[1],hy=hand[2],hz=hand[3],hw=hand[4],stock=stock}
             filter.reset()
+            stock_anchor.reset()
         end
         context=frame
         api.ads_unavailable=profile.ads==true and (frame.toggle_ads~=false or frame.ads_supported~=true)
@@ -86,10 +100,14 @@ function Support.new(Pose)
     end
     function api.finish(grip)
         api.held=false
-        if not context or not identity then filter.reset(); return end
+        api.stock_active=false
+        if not context or not identity then filter.reset(); stock_anchor.reset(); return end
+        local stock=stock_anchor.update(context,identity.profile.socket,identity.stock,
+            grip.held and not grip.cancelled,identity)
         filter.update(context.rotation,context.primary,context.support,identity.profile.socket,
-            grip.held,identity,context.dt,identity.smoothing,grip.cancelled)
+            grip.held,identity,context.dt,identity.smoothing,grip.cancelled,stock)
         api.held=grip.held and filter.owner~=nil
+        api.stock_active=api.held and stock~=nil
     end
     function api.rotation(unit,rotation)
         if not identity or identity.unit~=unit or not filter.owner then return rotation end
@@ -139,13 +157,25 @@ function Support.install(mod,presentation,observation)
         rotation=presentation.gun_aim.base_aim(unit,rotation)
         local settings=handler and handler._input_settings_table
         local support_position,support_rotation=presentation.weapon_grip_target('support')
-        return {active=true,live=true,unit=unit,weapon=equipped,template=template.name,
+        local frame={active=true,live=true,unit=unit,weapon=equipped,template=template.name,
             side=presentation.weapon_hand_roles.physical('support'),
             generation=observation.last_transport_generation,recenter=observation.head_recenter_generation,
             dt=dt,rotation=quaternion(rotation),primary=vector(presentation.weapon_grip_target('dominant')),
             support=vector(support_position),support_rotation=quaternion(support_rotation),
             toggle_ads=settings and settings.toggle_ads,ads_supported=Support.ads_supported(template),
             action=action and action.kind}
+        local profile=api.profiles[template.name]
+        if profile and profile.stock and presentation.body_alignment_unit==unit and
+            finite(observation.body_visual_yaw) and finite(observation.body_anchor_qx) and
+            finite(observation.body_anchor_qy) and finite(observation.body_anchor_qz) and
+            finite(observation.body_anchor_qw) then
+            frame.body_position=vector(Unit.world_position(unit,1))
+            frame.body_yaw=observation.body_visual_yaw
+            -- This is the scene basis captured before physical head tracking.
+            frame.scene_yaw=Quaternion.yaw(Quaternion.from_elements(observation.body_anchor_qx,
+                observation.body_anchor_qy,observation.body_anchor_qz,observation.body_anchor_qw))
+        end
+        return frame
     end
     function api.arm_capture(unit)
         api.capture_pending=nil

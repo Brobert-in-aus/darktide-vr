@@ -4,6 +4,41 @@ Status: offline calibrated two-hand candidate implemented 8 September 2026;
 no live two-hand behavior is deployed. The user accepted the final controller-based gun
 pitch, hand placement and draw/reload checks on `ab9e9db`.
 
+## Optional stock anchor candidate: 8 September follow-up
+
+The coordinator now supports an explicit `profile.stock` with `shoulder` and
+`offset` numeric XYZ arrays, `radius` and `strength`. `shoulder` is measured
+relative to the player's root in the avatar-heading basis; `offset` is the
+weapon's rear contact point relative to the primary grip in the gun basis.
+No stock profile or shoulder/stock dimensions are supplied by default. The
+support calibration command does not invent these additional measurements.
+
+At contact, the anchor latches avatar yaw relative to the scene's pre-head-
+tracking basis. During contact it follows root translation and artificial scene
+turns, holding that relative yaw through delayed avatar catch-up during head-only
+glances. Leaving the contact radius or releasing grip clears the latch. Invalid
+or missing owned body data falls back to ordinary two-hand aiming. Stock
+configuration changes retire gesture ownership and require neutral input.
+`stock_active` reports whether the optional contribution is currently engaged.
+
+This is an estimated shoulder reference, not tracked torso orientation. Real
+torso turns, crouching, roomscale collider repayment, high/low aim and shouldering
+comfort still require worn checks. Root-relative shoulder height does not
+automatically solve crouch posture; leaving contact removes stock influence.
+The measured main grip remains fixed and the same resolved aim drives gun and
+reticle. No candidate code or stock profile has been deployed.
+
+Four affected offline checks pass in 0.10 seconds: `gun_aim`, `two_hand_pose`,
+`two_hand_support`, and `gameplay_ui_ownership`. The installed-adapter fixture
+holds a changed body heading for 120 samples without steering the mounted gun;
+geometry tests cover artificial turns, translation, contact loss and invalidity.
+All 45 Lua chunks compile. Earlier notes below describe the staged implementation
+before this optional anchor connection.
+
+The subsequent full Windows x64 Release CTest run passes **128/128 in 26.36
+seconds**, headset tests OFF. Evidence:
+`artifacts/unattended/virtual-stock-integrated-128-20260908.log`.
+
 ## Requested interaction
 
 Move the left hand to the gun's support grip and press grip to two-hand it.

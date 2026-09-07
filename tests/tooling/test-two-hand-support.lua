@@ -107,6 +107,41 @@ local function installed_sample(bits)
 end
 installed_sample(0)
 assert(installed_sample(512)==2)
+assert(not installed.stock_active,'Stock enabled without an explicit measured profile')
+Unit={world_position=function(u,node) assert(u==unit and node==1); return {0,0,0} end}
+Quaternion.yaw=function(q) return 2*math.atan2(q[3],q[4]) end
+presentation.body_alignment_unit=unit
+observations.body_visual_yaw=0
+observations.body_anchor_qx,observations.body_anchor_qy=0,0
+observations.body_anchor_qz,observations.body_anchor_qw=0,1
+installed.profiles.example.stock={shoulder={.05,-.25,0},offset={0,-.25,0},radius=.2,strength=.5}
+local _,stock_hold=installed_sample(512)
+assert(stock_hold==0 and not installed.stock_active,'Adding a stock profile retained the old grip gesture')
+installed_sample(0); installed_sample(512)
+assert(installed.stock_active)
+local mounted=installed.resolve(unit,{0,0,0,1})
+assert(math.abs(mounted[3])>0,'Production stock did not influence supported aim')
+observations.body_visual_yaw=math.pi/2
+for i=1,120 do
+    installed_sample(512)
+    local current=installed.resolve(unit,{0,0,0,1})
+    for axis=1,4 do assert(math.abs(current[axis]-mounted[axis])<1e-8,'Head-only body catch-up steered mounted stock') end
+end
+installed.profiles.example.stock.strength=.3
+installed_sample(512)
+assert(not installed.held and not installed.stock_active,'In-place stock tuning retained ownership')
+observations.body_visual_yaw=0
+installed_sample(0); installed_sample(512)
+assert(installed.stock_active)
+presentation.body_alignment_unit={}
+installed_sample(512)
+assert(installed.held and not installed.stock_active,'Missing owned body frame did not fall back to two-hand aim')
+presentation.body_alignment_unit=unit
+installed_sample(512); assert(installed.stock_active)
+installed.profiles.example.stock=nil
+installed_sample(512); installed_sample(0); installed_sample(512)
+assert(installed.held and not installed.stock_active)
+print('virtual_stock_adapter=pass opt_in body_owner head_glance tuning_cancel fallback')
 secondary={.1,.3,0}; installed_sample(512)
 assert(math.abs(installed.resolve(unit,{0,0,0,1})[3])>.1)
 observations.left_grip_tracking_live=false
