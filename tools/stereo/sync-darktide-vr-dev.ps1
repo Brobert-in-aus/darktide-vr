@@ -134,16 +134,9 @@ foreach ($entry in $destinations) {
     }
 }
 
-foreach ($entry in $destinations) {
-    Copy-Item -LiteralPath $entry.Source -Destination $entry.Destination -Force
-    $sourceHash = (Get-FileHash -LiteralPath $entry.Source -Algorithm SHA256).Hash
-    $destinationHash = (Get-FileHash -LiteralPath $entry.Destination `
-        -Algorithm SHA256).Hash
-    if ($sourceHash -ne $destinationHash) {
-        throw "Development deployment hash mismatch: $($entry.Destination)"
-    }
-    Write-Output "Synchronized $($entry.Destination) sha256=$sourceHash"
-}
+$deploymentEntries = @($destinations | ForEach-Object {
+    @{ Source = $_.Source; Destination = $_.Destination }
+})
 
 # Magenta is an ownership diagnostic, never a production default.  Remove its
 # exact deployed shader when the current sync did not request it so a prior
@@ -151,8 +144,7 @@ foreach ($entry in $destinations) {
 if (-not $ParticleDiagnosticMagenta -and
         (Test-Path -LiteralPath $billboardPixelDiagnosticDestination `
             -PathType Leaf)) {
-    Remove-Item -LiteralPath $billboardPixelDiagnosticDestination -Force
-    Write-Output "Removed stale particle diagnostic: $billboardPixelDiagnosticDestination"
+    $deploymentEntries += @{ Destination = $billboardPixelDiagnosticDestination; Remove = $true }
 }
 
 # d3d12.dll loads the native capture DLL before Lua can configure it. Keep the
@@ -185,12 +177,10 @@ $bootstrapFlags = @(
 foreach ($flag in $bootstrapFlags) {
     if ($flag.Enabled) {
         if (-not (Test-Path -LiteralPath $flag.Path -PathType Leaf)) {
-            New-Item -ItemType File -Path $flag.Path | Out-Null
+            $deploymentEntries += @{ Destination = $flag.Path; Content = '' }
         }
-        Write-Output "Bootstrap flag enabled: $($flag.Path)"
     } elseif (Test-Path -LiteralPath $flag.Path -PathType Leaf) {
-        Remove-Item -LiteralPath $flag.Path -Force
-        Write-Output "Bootstrap flag removed: $($flag.Path)"
+        $deploymentEntries += @{ Destination = $flag.Path; Remove = $true }
     }
 }
 
@@ -199,8 +189,7 @@ foreach ($flag in $bootstrapFlags) {
 # test merely because its runtime flag was left behind.
 $fullBodyFlag = Join-Path $modRoot 'darktidevr_full_body_experimental.flag'
 $fullBodyFlagValue = if ($FullBodyExperimental) { 'enabled' } else { 'disabled' }
-Set-Content -LiteralPath $fullBodyFlag -Value $fullBodyFlagValue -Encoding ascii
-Write-Output "Full-body experimental presentation=$($FullBodyExperimental.IsPresent)"
+$deploymentEntries += @{ Destination = $fullBodyFlag; Content = $fullBodyFlagValue + [Environment]::NewLine }
 
 # Controller locomotion and right-hand aiming are production behavior, not
 # diagnostics.  Every normal deployment reasserts them so a helper that
@@ -218,8 +207,7 @@ $productionRuntimeFlags = @(
 )
 foreach ($runtimeFlag in $productionRuntimeFlags) {
     $runtimeValue = if ($runtimeFlag.Enabled) { 'enabled' } else { 'disabled' }
-    Set-Content -LiteralPath $runtimeFlag.Path -Value $runtimeValue -Encoding ascii
-    Write-Output "Production runtime flag $($runtimeFlag.Path)=$runtimeValue"
+    $deploymentEntries += @{ Destination = $runtimeFlag.Path; Content = $runtimeValue + [Environment]::NewLine }
 }
 
 # Diagnostic flags are never production state. Make a normal deployment an
@@ -239,6 +227,12 @@ $disabledDiagnosticFlags = @(
 )
 foreach ($diagnosticFlagName in $disabledDiagnosticFlags) {
     $diagnosticFlagPath = Join-Path $modRoot $diagnosticFlagName
-    Set-Content -LiteralPath $diagnosticFlagPath -Value 'disabled' -Encoding ascii
-    Write-Output "Diagnostic runtime flag $diagnosticFlagPath=disabled"
+    $deploymentEntries += @{ Destination = $diagnosticFlagPath; Content = 'disabled' + [Environment]::NewLine }
 }
+
+# Files and runtime flags form one update. Stage and back up everything before
+# the first installed write; a failed copy must not leave mixed build versions.
+. (Join-Path $PSScriptRoot 'invoke-deployment-transaction.ps1')
+$deployment = Invoke-DarktideDeploymentTransaction -Root $gameRootPath `
+    -Entries $deploymentEntries -BackupRoot (Join-Path $repoRoot 'artifacts\deployment-backups')
+Write-Output "Development deployment=$($deployment.Status) files=$($deployment.FileCount) backup=$($deployment.BackupDirectory)"

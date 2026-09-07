@@ -11,6 +11,10 @@ if(BUILD_TESTING)
     "${PROJECT_SOURCE_DIR}/tools/stereo/test-darktide-lua-source.ps1")
   add_test(NAME lua_source_invariants COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${PROJECT_SOURCE_DIR}/tools/stereo/test-darktide-lua-invariants.ps1")
+  add_test(NAME deployment_transaction COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-deployment-transaction.ps1")
+  add_test(NAME deployment_sync COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-deployment-sync.ps1")
   set(LUAJIT_VALIDATOR "${PROJECT_SOURCE_DIR}/build/dependencies/luajit/src/luajit.exe")
   add_test(NAME luajit_compiler_contract COMMAND "${LUAJIT_VALIDATOR}"
     "${PROJECT_SOURCE_DIR}/tools/lua/test-compiler.lua")

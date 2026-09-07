@@ -184,6 +184,9 @@ for the smaller set needed before a first end-to-end mission attempt.
    the Darktide app manifest, retaining explicit GameRoot selection for multiple
    copies. Ten focused checks pass. This is existing-installation portability,
    not a clean installer or live launch validation.
+   Development updates now stage files and flags together and restore their
+   verified originals on caught failures; see [update recovery](DEPLOYMENT-TRANSACTIONS.md).
+   Clean installation and recovery after abrupt interruption remain pending.
 10. **Post-initial-release optimization/polish.** LOD policy beyond machine-local
    LOD 9, tiny extreme-edge marker asymmetry, selective smoke-only suppression,
    and remaining nonessential visual polish. General/DLSS performance is now
