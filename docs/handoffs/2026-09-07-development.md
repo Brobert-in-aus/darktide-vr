@@ -1051,3 +1051,22 @@ now map outside the UI canvas, preserving stock drag and hit-test behavior.
 Invalid dimensions, background windows and failing reads still fall back as
 before. The new boundary regression and all six focused checks above pass;
 36 Lua chunks compile. This remains an undeployed candidate.
+
+## Continuous todo work: recorded objective-device input
+
+Branch `codex/objective-input-stock-contract-2026-09-07` extends the optional
+stock input-history fixture through the actual minigame input method. Both
+client and server readers consume eleven recorded frames containing primary,
+interact and jump holds/releases, alternate cancellation, stick quadrants/zero,
+stock dodge arbitration, weapon-action blocking and loss of the wielded device.
+Changing live hand aim does not alter the device's stock view or axis columns.
+The first fixture run exposed a retained sender frame from the preceding test;
+resetting the independent pipeline's sent-frame marker fixes that fixture setup.
+No production change was required by these cases.
+
+Optional stock fixture passes both with and without the VR module arguments.
+Four focused CTests pass (online rules, controller bindings, gameplay ownership,
+scanner stick reference). Device outcomes, animations and weapon execution are
+sinks; no real objective, network serialization or headset acceptance. Continue
+offline todo work while renderability remains blocked. Full suite remains
+111/111 at `6c79aec`; full Release build `df99611`, newer XR harness `f201a9a`.

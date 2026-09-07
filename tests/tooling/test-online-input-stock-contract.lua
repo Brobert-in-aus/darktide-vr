@@ -52,6 +52,7 @@ local server = setmetatable({_received_frame = 0, _parsed_frame = 0,
     _clock_handler = {frame_received = function() end},
 }, {__index = AuthoritativePlayerInputHandler})
 local rules, hand, owns, expected = nil, nil, false, {}
+local character = 'walking'
 local client_unit_input, server_unit_input
 if arg[2] then
     assert(arg[3], 'The VR adapter check also requires gameplay-context.lua')
@@ -89,7 +90,7 @@ if arg[2] then
     -- remote pipeline. Production still gates actual remote mission admission.
     Managers.state.game_session.is_server=function() return true end
     Unit={alive=function(unit) return unit=='local' end}
-    ScriptUnit={has_extension=function() return {current_state_name=function() return 'walking' end} end}
+    ScriptUnit={has_extension=function() return {current_state_name=function() return character end} end}
     Vector3=setmetatable({x=function(v) return v[1] end,y=function(v) return v[2] end},
         {__call=function(_,x,y,z) return {x,y,z} end})
     Quaternion={yaw=function(q) return q.yaw end,pitch=function(q) return q.pitch end,
@@ -180,5 +181,109 @@ print('PASS: stock fixed-frame aim/action agreement, resend, duplicate, ring wra
 if rules then
     assert(rules.frames==7 and rules.failures==0,'Transport must not resample current hand pose')
     print('PASS: real VR adapter keeps action/movement/aim columns paired across stock replay, including UI/tracking fallback frames')
+
+    -- Objective devices consume the same stock columns, but `move` is a device
+    -- axis here. Run the real minigame input method against both recorded sides.
+    -- Minigame/animation/weapon endpoints are sinks, not real objective outcomes.
+    PlayerCharacterStateMinigame={}
+    method('extension_systems/character_state_machine/character_states/player_character_state_minigame',
+        'PlayerCharacterStateMinigame._update_input =',
+        '\nPlayerCharacterStateMinigame._is_minigame_active =')
+    local axis_meta={__index=function(v,key)
+        if key=='x' then return v[1] elseif key=='y' then return v[2] end
+    end}
+    setmetatable(Vector3,{__call=function(_,x,y,z) return setmetatable({x,y,z},axis_meta) end})
+    Vector3.zero=function() return Vector3(0,0,0) end
+    Vector3.equal=function(a,b) return a[1]==b[1] and a[2]==b[2] and a[3]==b[3] end
+    local dodge=false
+    Dodge={check=function() return dodge end}
+    character='minigame'
+    local columns={'action_one_hold','interact_hold','jump_held','action_two_pressed',
+        'move_right','move_left','move_forward','move_backward'}
+    client._frame,client._last_frame_acknowledged=0,0
+    client._last_sent_frame=nil
+    packets={}
+    client._input_cache,client._send_array,client._action_lookup={},{},{}
+    client._pack_unpack_action_to_network_type_index={}
+    server._input_cache={}
+    server._parsed_frame,server._received_frame,server._input_cache_size=0,0,11
+    for i=1,11 do client._input_cache[i]={}; client._send_array[i]={}; server._input_cache[i]={} end
+    for i,name in ipairs(columns) do
+        client._action_lookup[name]=i
+        if i>=5 then client._pack_unpack_action_to_network_type_index[name]=7 end
+    end
+    server._action_lookup=client._action_lookup
+    client._yaw_index,client._pitch_index,client._roll_index=9,10,11
+    server._yaw_index,server._pitch_index,server._roll_index=9,10,11
+    client._parse_input=function(_,cache,input,index)
+        for i=1,4 do cache[i][index]=input[columns[i]]==true end
+        cache[5][index],cache[6][index]=math.max(input.x,0),math.max(-input.x,0)
+        cache[7][index],cache[8][index]=math.max(input.y,0),math.max(-input.y,0)
+    end
+    local function device(input)
+        local observed={actions={},axes={},animations={},weapons={}}
+        local active={uses_action=function() return true end,
+            action=function(_,primary,t) observed.actions[#observed.actions+1]={primary,t}; return primary end,
+            is_completed=function() return false end,
+            uses_joystick=function() return true end,
+            on_axis_set=function(_,t,x,y) observed.axes[#observed.axes+1]={t,x,y} end,
+            escape_action=function(_,cancel) return cancel end,
+            blocks_weapon_actions=function() return observed.blocks==true end}
+        return {_input_extension=input,_minigame=active,
+            _previous_action_one_hold=false,_previous_interact_hold=false,
+            _previous_jump_held=false,_previous_input=false,
+            _is_wielding_minigame_device=function() return observed.wielded~=false end,
+            _animation_extension={anim_event_1p=function(_,event) observed.animations[#observed.animations+1]=event end},
+            _weapon_extension={update_weapon_actions=function(_,frame) observed.weapons[#observed.weapons+1]=frame end}},observed
+    end
+    local predicted,predicted_events=device(client_unit_input)
+    local authoritative,server_events=device(server_unit_input)
+    local cases={
+        {action_one_hold=true,x=.4,y=-.7,primary=true},
+        {action_one_hold=true,x=-.6,y=.2,primary=true},
+        {x=0,y=0,primary=false},
+        {interact_hold=true,x=-1,y=-1,primary=true},
+        {x=1,y=0,primary=false},
+        {jump_held=true,x=0,y=1,primary=true},
+        {x=0,y=-1,primary=true,dodge=true}, -- Stock dodge leaves prior primary input alone.
+        {jump_held=true,x=1,y=1,primary=true},
+        {x=-1,y=0,primary=false,blocks=true},
+        {action_two_pressed=true,x=.2,y=.3,primary=false,cancel=true},
+        {x=0,y=0,primary=false,wielded=false,cancel=true},
+    }
+    for frame,case in ipairs(cases) do
+        local t=frame*.02
+        client:fixed_update(.02,t,frame,case,.25,.1,0)
+        hand={yaw=frame*.8,pitch=-.4}
+        rules.capture(client,frame)
+        assert(rules.frames==7 and rules.failures==0,'Device state authored combat aim')
+        client:update(); receive(packets[#packets])
+        client._last_frame_acknowledged=frame
+        for _,entry in ipairs({{predicted,predicted_events},{authoritative,server_events}}) do
+            local state,events=entry[1],entry[2]
+            state._input_extension:fixed_update('local',.02,t,frame)
+            local yaw,pitch=state._input_extension:get_orientation()
+            assert(yaw==.25 and pitch==.1,'Device view inherited hand combat aim')
+            events.blocks,events.wielded=case.blocks,case.wielded
+            dodge=case.dodge==true
+            local prior_actions,prior_weapons=#events.actions,#events.weapons
+            local cancelled=PlayerCharacterStateMinigame._update_input(state,t,frame,state._input_extension)
+            assert(cancelled==(case.cancel==true),'Stock device cancellation changed')
+            if case.wielded==false then
+                assert(#events.actions==prior_actions and #events.weapons==prior_weapons,
+                    'Missing device still consumed objective input')
+            else
+                assert(events.actions[#events.actions][1]==case.primary,'Stock device primary phase changed')
+                local axes=events.axes[#events.axes]
+                assert(axes[1]==t and axes[2]==case.x and axes[3]==case.y,
+                    'Recorded objective axes were rotated by hand aim')
+                assert(#events.weapons==prior_weapons+((case.cancel or case.blocks) and 0 or 1),
+                    'Stock device weapon-action ownership changed')
+            end
+        end
+    end
+    assert(#predicted_events.animations==#server_events.animations)
+    for i,event in ipairs(predicted_events.animations) do assert(event==server_events.animations[i]) end
+    print('PASS: stock objective input holds, axes, cancel, dodge arbitration and weapon gates agree after recorded send/receive')
 end
 print('LIMIT: no engine serialization, live server, damage, movement or headset acceptance')

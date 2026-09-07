@@ -131,6 +131,16 @@ including UI/tracking fallbacks, later changed live aim, resends and ring wrap.
 This does not execute the engine's component rollback/resimulation or establish
 wire precision. Real corrections and remote admission remain later checks.
 
+Objective-device follow-up runs stock minigame input against both the client
+and server `HumanUnitInput` readers after recorded send/receive. Eleven frames
+cover primary/interact/jump holds, release, alternate cancellation, stock dodge
+arbitration, device-axis quadrants and zero, blocked weapon actions and a missing
+wielded device. The range adapter leaves this state in stock view/axis ownership
+despite changed live hand aim. Animation, minigame and weapon endpoints are
+sinks; this does not complete an actual objective or test its rendered scanner.
+The separate portable scanner-stick test covers bypassing the optional
+left-hand locomotion rotation for device axes.
+
 Follow-up user direction: configure Psykhanium to use the same combat/input
 rules as online where possible, and improve that path there first. This changes
 the next implementation target to a range-only online-rules proving mode.
