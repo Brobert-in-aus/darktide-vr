@@ -62,7 +62,8 @@ print('two_hand_support=pass mapper pose live_tracking identity profiles toggle_
 
 -- Exercise the installed adapter against engine-shaped owners and deliberately
 -- retained presentation poses. Live flags, not usable cached wrists, authorize it.
-Vector3={x=function(v) return v[1] end,y=function(v) return v[2] end,z=function(v) return v[3] end}
+Vector3=setmetatable({x=function(v) return v[1] end,y=function(v) return v[2] end,z=function(v) return v[3] end},
+    {__call=function(_,...) return {...} end})
 Quaternion={to_elements=function(q) return unpack(q) end,from_elements=function(...) return {...} end}
 local unit,equipped={},{}
 local primary,secondary={0,0,0},{0,.3,0}
@@ -85,7 +86,7 @@ local presentation={
     weapon_hand_roles={physical=function(role) return role=='dominant' and 'right' or 'left' end},
     gun_aim={is_gun=function(t) return t.gun end,base_aim=function(_,q) return q end},
     controller_aim_target=function() return primary,{0,0,0,1} end,
-    weapon_grip_target=function(role) return role=='dominant' and primary or secondary end}
+    weapon_grip_target=function(role) return role=='dominant' and primary or secondary,{0,0,0,1} end}
 local commands={}
 local installed=Support.install({io_dofile=function() return Pose end,info=function() end,
     command=function(_,name,_,callback) commands[name]=callback end,echo=function() end},presentation,observations)
@@ -145,6 +146,17 @@ for i=1,3 do assert(math.abs(captured.socket[i]-secondary[i])<1e-8) end
 assert(not installed.enabled)
 commands.dtvr_two_hand_on(); installed_sample(0)
 assert(installed_sample(512)==2,'Calibrated grip did not acquire')
+local hand_writes=0
+presentation.body_proxy={place_support_hand=function(world,u,side,position,rotation)
+    assert(world=='world' and u==unit and side=='left')
+    for i=1,3 do assert(math.abs(position[i]-captured.socket[i])<1e-8) end
+    assert(math.abs(rotation[4]-1)<1e-8)
+    hand_writes=hand_writes+1; return true
+end}
+assert(installed.place_hand('world',unit,primary,{0,0,0,1}) and hand_writes==1)
+installed_sample(0)
+assert(not installed.place_hand('world',unit,primary,{0,0,0,1}) and hand_writes==1,
+    'Released support hand stayed constrained')
 commands.dtvr_two_hand_off()
 assert(not installed.enabled and not installed.capture_pending)
 installed_sample(0)
@@ -165,3 +177,22 @@ for _,transition in ipairs({'menu','weapon','recenter','generation','tracking','
     observations.left_grip_tracking_live=true
 end
 print('two_hand_calibration=pass countdown explicit_enable interruption identity expiry')
+-- Execute the actual visual-root entry point; it must not move gameplay bones
+-- or a foreign player's hands, and anatomical alignment stays in its helper.
+local file=assert(io.open(assert(arg[4]),'rb')); local source=file:read('*a'); file:close()
+local first=assert(source:find('function BodyProxy.place_support_hand(',1,true))
+local last=assert(source:find('\nfunction BodyProxy.follow_gameplay_hands(',first,true))
+local roots={left={},right={}}
+local proxy={rigid_hands_active=function() return true end}
+local placed
+local chunk=assert(loadstring(source:sub(first,last-1)))
+setfenv(chunk,{BodyProxy=proxy,state={source_unit=unit},rigid_hands=roots,
+    Unit={alive=function(u) return u==unit end},
+    place_rigid_hand=function(world,hand,position,rotation,authored)
+        assert(world=='world' and hand==roots.left and position==primary and rotation==frame.rotation and authored==nil)
+        placed=true; return true
+    end}); chunk()
+assert(proxy.place_support_hand('world',unit,'left',primary,frame.rotation) and placed)
+assert(not proxy.place_support_hand('world',{},'left',primary,frame.rotation))
+assert(not proxy.place_support_hand('world',unit,'unknown',primary,frame.rotation))
+print('two_hand_visual=pass calibrated_pose release anatomical_boundary local_owner')

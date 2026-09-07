@@ -16,12 +16,13 @@ local function valid_profile(profile)
         finite(profile.smoothing) and profile.smoothing>=0 and profile.smoothing<=.3
 end
 function Support.new(Pose)
-    local api={profiles={},enabled=false,ads_unavailable=false}
+    local api={profiles={},enabled=false,ads_unavailable=false,held=false}
     local filter=Pose.new()
     local context,identity
     function api.clear()
         context,identity=nil,nil
         api.ads_unavailable=false
+        api.held=false
         filter.reset()
     end
     function api.prepare(frame)
@@ -36,16 +37,19 @@ function Support.new(Pose)
         -- Copy tunable values into identity. In-place tuning, role changes,
         -- recentering and weapon replacement all retire the old gesture.
         local action=profile.ads==true and frame.toggle_ads==false and 'alternate' or 'unbound'
+        local hand=type(profile.hand_rotation)=='table' and profile.hand_rotation or {}
         if not identity or identity.weapon~=frame.weapon or identity.unit~=frame.unit or
             identity.generation~=frame.generation or identity.recenter~=frame.recenter or
             identity.side~=frame.side or identity.profile~=profile or identity.action~=action or
             identity.acquire~=profile.acquire or identity.release~=profile.release or
             identity.smoothing~=profile.smoothing or identity.x~=profile.socket[1] or
-            identity.y~=profile.socket[2] or identity.z~=profile.socket[3] then
+            identity.y~=profile.socket[2] or identity.z~=profile.socket[3] or
+            identity.hx~=hand[1] or identity.hy~=hand[2] or identity.hz~=hand[3] or identity.hw~=hand[4] then
             identity={weapon=frame.weapon,unit=frame.unit,generation=frame.generation,
                 recenter=frame.recenter,side=frame.side,profile=profile,action=action,
                 acquire=profile.acquire,release=profile.release,smoothing=profile.smoothing,
-                x=profile.socket[1],y=profile.socket[2],z=profile.socket[3]}
+                x=profile.socket[1],y=profile.socket[2],z=profile.socket[3],
+                hx=hand[1],hy=hand[2],hz=hand[3],hw=hand[4]}
             filter.reset()
         end
         context=frame
@@ -55,17 +59,24 @@ function Support.new(Pose)
             retain=Pose.near(filter.apply(frame.rotation),frame.primary,frame.support,profile.socket,profile.release)}
     end
     function api.finish(grip)
+        api.held=false
         if not context or not identity then filter.reset(); return end
         filter.update(context.rotation,context.primary,context.support,identity.profile.socket,
             grip.held,identity,context.dt,identity.smoothing,grip.cancelled)
+        api.held=grip.held and filter.owner~=nil
     end
     function api.rotation(unit,rotation)
         if not identity or identity.unit~=unit or not filter.owner then return rotation end
         return filter.apply(rotation) or rotation
     end
-    function api.current(unit,weapon,generation,recenter)
+    function api.current(unit,weapon,generation,recenter,side)
         return identity and identity.unit==unit and identity.weapon==weapon and
-            identity.generation==generation and identity.recenter==recenter or false
+            identity.generation==generation and identity.recenter==recenter and
+            (side==nil or identity.side==side) or false
+    end
+    function api.hand_pose(unit,primary,rotation)
+        if not api.held or not identity or identity.unit~=unit then return nil end
+        return Pose.hand(rotation,primary,identity.profile.socket,identity.profile.hand_rotation)
     end
     return api
 end
@@ -101,11 +112,13 @@ function Support.install(mod,presentation,observation)
         else _,rotation=presentation.left_controller_aim_target() end
         rotation=presentation.gun_aim.base_aim(unit,rotation)
         local settings=handler and handler._input_settings_table
+        local support_position,support_rotation=presentation.weapon_grip_target('support')
         return {active=true,live=true,unit=unit,weapon=equipped,template=template.name,
             side=presentation.weapon_hand_roles.physical('support'),
             generation=observation.last_transport_generation,recenter=observation.head_recenter_generation,
             dt=dt,rotation=quaternion(rotation),primary=vector(presentation.weapon_grip_target('dominant')),
-            support=vector(presentation.weapon_grip_target('support')),toggle_ads=settings and settings.toggle_ads,
+            support=vector(support_position),support_rotation=quaternion(support_rotation),
+            toggle_ads=settings and settings.toggle_ads,
             action=action and action.kind}
     end
     function api.arm_capture(unit)
@@ -136,8 +149,9 @@ function Support.install(mod,presentation,observation)
         if t<pending.at then return end
         api.capture_pending=nil
         local socket=Pose.socket(frame.rotation,frame.primary,frame.support)
-        if not socket then mod:info('DARKTIDEVR_TWO_HAND calibration=invalid_geometry'); return end
-        api.profiles[frame.template]={socket=socket,acquire=.1,release=.2,smoothing=.07,ads=true}
+        local hand_rotation=Pose.relative_rotation(frame.rotation,frame.support_rotation)
+        if not socket or not hand_rotation then mod:info('DARKTIDEVR_TWO_HAND calibration=invalid_geometry'); return end
+        api.profiles[frame.template]={socket=socket,hand_rotation=hand_rotation,acquire=.1,release=.2,smoothing=.07,ads=true}
         api.clear()
         mod:info('DARKTIDEVR_TWO_HAND calibration=captured weapon=%s socket=%.4f,%.4f,%.4f session_only=true',
             frame.template,socket[1],socket[2],socket[3])
@@ -150,6 +164,9 @@ function Support.install(mod,presentation,observation)
             api.capture_pending.deadline=t+30
         end
         if api.capture_pending and (not finite(t) or t>api.capture_pending.deadline or not live()) then
+            api.capture_pending=nil
+        end
+        if api.capture_pending and api.capture_pending.at and (not finite(dt) or dt<0 or dt>.25) then
             api.capture_pending=nil
         end
         if not active then
@@ -181,7 +198,8 @@ function Support.install(mod,presentation,observation)
         local equipped=weapon and weapon:_wielded_weapon(weapon._inventory_component,weapon._weapons)
         local action=weapon and weapon:running_action_settings()
         local machine=unit and ScriptUnit.has_extension(unit,'character_state_machine_system')
-        if not api.current(unit,equipped,observation.last_transport_generation,observation.head_recenter_generation) or
+        if not api.current(unit,equipped,observation.last_transport_generation,observation.head_recenter_generation,
+                presentation.weapon_hand_roles.physical('support')) or
             not machine or not allowed_states[machine:current_state_name()] or
             not weapon or not presentation.gun_aim.is_gun(weapon:weapon_template()) or
             (action and not allowed_actions[action.kind]) then api.clear(); return rotation end
@@ -193,6 +211,16 @@ function Support.install(mod,presentation,observation)
         if ok then return result end
         api.clear()
         return rotation
+    end
+    function api.place_hand(world,unit,primary,rotation)
+        if not api.enabled or not api.held or not live() or not presentation.body_proxy or
+            not presentation.body_proxy.place_support_hand then return false end
+        local position,orientation=api.hand_pose(unit,vector(primary),quaternion(rotation))
+        if not position then return false end
+        local ok,written=pcall(presentation.body_proxy.place_support_hand,world,unit,
+            presentation.weapon_hand_roles.physical('support'),Vector3(unpack(position)),
+            Quaternion.from_elements(unpack(orientation)))
+        return ok and written==true
     end
     if mod.command then
         mod:command('dtvr_two_hand_calibrate','Record the current gun support grip after a three-second delay',function()

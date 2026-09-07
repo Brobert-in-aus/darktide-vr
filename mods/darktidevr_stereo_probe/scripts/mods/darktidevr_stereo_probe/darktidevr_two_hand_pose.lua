@@ -58,6 +58,17 @@ function Pose.socket(rotation,primary,support)
     if not finite(length) or length<.0064 or length>1 then return nil end
     return offset
 end
+function Pose.relative_rotation(base,rotation)
+    local a,b=normalize(base,4),normalize(rotation,4)
+    return a and b and normalize(multiply(inverse(a),b),4) or nil
+end
+function Pose.hand(rotation,primary,socket,relative_rotation)
+    local q,hand=normalize(rotation,4),normalize(relative_rotation,4)
+    if not q or not hand or not valid(primary,3) or not valid(socket,3) then return nil end
+    local offset=rotate(q,socket)
+    return {primary[1]+offset[1],primary[2]+offset[2],primary[3]+offset[3]},
+        normalize(multiply(q,hand),4)
+end
 function Pose.correction(rotation,primary,support,socket)
     local q=normalize(rotation,4)
     if not q or not valid(primary,3) or not valid(support,3) or not valid(socket,3) then return nil end

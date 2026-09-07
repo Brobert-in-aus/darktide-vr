@@ -218,3 +218,17 @@ not wired to the production coordinator: a stable body/shoulder anchor and worn
 tuning remain required. The existing avatar heading follows head yaw with a
 dead zone and delayed convergence; using it directly would still eventually
 swivel a shouldered gun during a sustained head-only glance.
+
+Support-hand presentation is now connected to the calibrated profile. Capture
+also records the support grip's rotation relative to the pitch-corrected gun.
+While held, the visible local support hand uses that socket position and grip
+rotation through the existing anatomical hand-placement helper. It does not
+write the gameplay skeleton; release stops constraining the visual hand. Grip
+rotation/profile/role changes retire ownership, and calibration cancels on
+long frame discontinuities. Worn pose and release comfort remain unverified.
+
+Full Windows x64 offline CTest suite passes **128/128 in 21.88 seconds** with
+headset tests OFF, including all 45 Lua chunks. Evidence:
+`artifacts/unattended/two-hand-offline-128-20260908.log`. Native code is unchanged;
+the running accepted Psykhanium session remains separate from these source
+changes. Review is PR #3, based on the aggregate development branch in PR #2.

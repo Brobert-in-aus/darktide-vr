@@ -94,6 +94,7 @@ function Alignment.install(mod,presentation)
             presentation.body_proxy.align_gun_hand(world,unit,old_attach_position,old_attach_rotation,
                 Unit.world_position(unit,attach),Unit.world_rotation(unit,attach))
         end
+        if presentation.two_hand then presentation.two_hand.place_hand(world,unit,grip,aim) end
         instance.writes=instance.writes+1
         if instance.last_weapon~=template then
             instance.last_weapon=template

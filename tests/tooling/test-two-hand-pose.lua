@@ -23,6 +23,11 @@ local turned=Pose.new().update(quarter,{8,9,2},{8,9.3,2},socket,true,owner,.01,0
 near(rotated_y(turned),{0,1,0})
 assert(Pose.near(quarter,{8,9,2},{7.7,9,2},socket,.01))
 near(Pose.socket(quarter,{8,9,2},{7.7,9,2}),socket)
+local hand_position,hand_rotation=Pose.hand(quarter,{8,9,2},socket,identity)
+near(hand_position,{7.7,9,2}); near(hand_rotation,quarter)
+near(Pose.relative_rotation(quarter,quarter),identity)
+local _,captured_hand=Pose.hand(quarter,{0,0,0},socket,Pose.relative_rotation(quarter,identity))
+near(captured_hand,identity)
 assert(Pose.socket(identity,primary,primary)==nil)
 assert(Pose.socket(identity,primary,{30,4,5})==nil)
 -- Aligned support retains primary wrist roll; no up-vector/horizon lock.

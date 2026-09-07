@@ -596,6 +596,12 @@ function BodyProxy.align_gun_hand(world,source,old_position,old_rotation,new_pos
     return place_rigid_hand(world,rigid_hands.right,position,rotation,true)
 end
 
+function BodyProxy.place_support_hand(world,source,side,position,rotation)
+    if not BodyProxy.rigid_hands_active() or source~=state.source_unit or
+        not Unit.alive(source) or (side~='left' and side~='right') then return false end
+    return place_rigid_hand(world,rigid_hands[side],position,rotation)
+end
+
 function BodyProxy.follow_gameplay_hands(world, aim_rotation)
     local source = state.source_unit
     if not BodyProxy.rigid_hands_active() or not source or not Unit.alive(source) then
