@@ -122,3 +122,27 @@ fallback and zero pose mismatches, without matching mod errors. Evidence:
 `artifacts/unattended/melee-combo-live-20260906.log`. The ordinary launch also
 confirms menu stabilization is off; the earlier opt-in trial did not change
 the default. Live combo reports still require an observed weapon windup.
+
+## Actual stock timing contract, 7 September
+
+`tests/tooling/test-melee-timing-stock-contract.lua` executes stock
+`ActionHandler._calculate_time_scale` and `_validate_single_chain_action`, using
+the stock gameplay cap settings and the VR timing resolver. Sixteen boundary
+cases confirm rejection immediately before, and admission at, resolved sweep
+and windup thresholds with several handling scales and inverted-kind fixtures.
+Listed speed buffs add before multiplication by weapon handling; absent buffs
+and unrelated buffs do not alter that calculation. The actual sweep cap applies.
+Early alternative windows, running-state requirements and unavailable targets
+retain stock admission behavior; the resolver conservatively rejects conditional
+timing instead of presenting it as an ordinary interval.
+
+```powershell
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-timing-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_timing.lua
+```
+
+PASS on snapshot `0f0cb45991e9305ef4a7b925370792d7d6035f95`. Network min/max
+values normally come from engine `Network.type_info`; this fixture supplies
+distinct bounds to exercise the clamps, not to assert live wire bounds. Action
+routes, inverted-kind membership, buffs and target availability are also supplied.
+The contract does not load the user's weapon, simulate damage or replace worn
+verification. No production change or deployment accompanies this check.

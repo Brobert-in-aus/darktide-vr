@@ -1641,3 +1641,13 @@ pass in 0.82 seconds, including all 37 Lua chunks and existing invalid-tracking
 history/query tests. No damage, native change, deployment or worn acceptance.
 Last full suite remains 116/116 at `2790e7d`; latest native build `01617d6` and
 configured count 117. Continue the todo.
+
+## Continuous todo work: actual stock melee timing boundaries
+
+Branch `codex/stock-melee-timing-contract-2026-09-07` adds an optional actual
+ActionHandler timing/chain contract. Sixteen threshold cases pass, along with
+additive buffs, handling, stock gameplay caps and conditional admission checks.
+Engine network bounds, routes, inversion membership and availability endpoints
+are supplied fixtures; see MELEE-TIMING-AUDIT for the command and limits. No
+production/native change or deployment; continue the todo. Runtime Lua remains
+`42d4d53`, native build `01617d6`, full suite 116/116 at `2790e7d`, configured 117.
