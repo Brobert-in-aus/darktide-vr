@@ -5,7 +5,7 @@ local updates,surfaces=0,0
 local collision_writes=0
 state={source_unit={}}
 Unit={alive=function(u) return not u.dead end,
-    num_actors=function(u) return #(u.actors or {}) end,
+    num_actors=function(u) return u.actor_count or #(u.actors or {}) end,
     actor=function(u,i) return u.actors[i] end}
 Actor={set_collision_enabled=function(a,value) a.collision=value; collision_writes=collision_writes+1 end,
     set_scene_query_enabled=function(a,value) a.query=value; collision_writes=collision_writes+1 end}
@@ -13,7 +13,7 @@ show_rigid_hand_surface=function(hand) assert(hand.unit); surfaces=surfaces+1 en
 local update,disable=assert(loadstring(source:sub(first,last-1)..'\nreturn update_rigid_hand,disable_visual_colliders'))()
 assert(not pcall(disable,state.source_unit),'Gameplay body admitted to visual collision cleanup')
 local function hand()
-    local spawner={unit={actors={{collision=true,query=true},{collision=true,query=true}}},complete=false,fail=false}
+    local spawner={unit={actor_count=3,actors={[1]={collision=true,query=true},[3]={collision=true,query=true}}},complete=false,fail=false}
     function spawner:update(dt,t)
         assert(dt==.02 and t==10); updates=updates+1
         if self.fail then error('stream failed') end
@@ -29,7 +29,7 @@ assert(update(h,.02,10)==nil and updates==2,'Pending spawner stopped receiving u
 s.complete=true
 assert(update(h,.02,10)==s.unit and h.ready and h.unit==s.unit)
 assert(updates==3 and surfaces==1)
-assert(collision_writes==4 and not s.unit.actors[1].collision and not s.unit.actors[2].query,
+assert(collision_writes==4 and not s.unit.actors[1].collision and not s.unit.actors[3].query,
     'Ready visual hand retained collision/query actors')
 for _=1,100 do assert(update(h,.02,10)==s.unit) end
 assert(updates==3 and surfaces==1,'Ready-hand update repeated the placement visibility pass')

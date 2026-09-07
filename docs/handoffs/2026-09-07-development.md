@@ -77,6 +77,15 @@ The new session log is `artifacts/unattended/lasgun-fix-session-20260907.log`;
 console begins 09:17:07 UTC. Fresh range/stereo, collider cleanup, gun alignment
 and worn enemy-hit checks are pending startup. Game launch retains HUD and
 generated stereo; no Virtual Desktop restart.
+The first correction launch reached stereo but exposed sparse actor slots:
+`Unit.actor` returned nil within `Unit.num_actors`, and cleanup raised repeated
+safe-hook errors before hand readiness. The game was closed immediately after
+detection. Stock pickup/deployable loops guard nil actor slots; cleanup now does
+the same and records valid actors separately from slot count. The regression
+uses a hole between two real actors and confirms both later actors are disabled.
+Four affected CTests pass (0.88 seconds), including 43 chunks/invariants. Do not
+claim the `aa00288` run as successful gun acceptance; its sparse-slot correction
+must be deployed and rechecked.
 
 At 16:17 Brisbane they returned home with the headset and requested setup.
 They later closed Virtual Desktop for a break. Continue offline; at the roomscale

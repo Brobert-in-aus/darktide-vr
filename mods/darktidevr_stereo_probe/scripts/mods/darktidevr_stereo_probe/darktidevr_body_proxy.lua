@@ -328,12 +328,17 @@ end
 local function disable_visual_colliders(unit)
     assert(unit~=state.source_unit,'Visual collision cleanup cannot own the gameplay body')
     local count=Unit.num_actors(unit)
+    local disabled=0
     for index=1,count do
         local actor=Unit.actor(unit,index)
-        Actor.set_collision_enabled(actor,false)
-        Actor.set_scene_query_enabled(actor,false)
+        -- Stock deployable/pickup loops also allow empty actor slots.
+        if actor then
+            Actor.set_collision_enabled(actor,false)
+            Actor.set_scene_query_enabled(actor,false)
+            disabled=disabled+1
+        end
     end
-    print('DARKTIDEVR_IK visual_colliders=disabled actors='..count)
+    print('DARKTIDEVR_IK visual_colliders=disabled actors='..disabled..' slots='..count)
 end
 
 local function update_rigid_hand(hand, dt, t)
