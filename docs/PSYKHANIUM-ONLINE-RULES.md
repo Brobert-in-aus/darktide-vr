@@ -312,7 +312,7 @@ the user is at work. ADB dismissed the Quest tracking-loss prompt, but current
 readiness fails at VDXR rendering-buffer creation; see
 [recovery evidence](QUEST-PASSTHROUGH-RECOVERY.md).
 
-Current full offline suite: 111/111 on the character-input-owner candidate.
+Current full offline suite: 112/112 at `124361b`, with headset tests disabled.
 Full native Release build baseline: `df99611`, with the newer XR harness built
-at `f201a9a`. Watcher/input fixes and source-contract expansions are recorded in
+at `03d60d1`. Watcher/input fixes and source-contract expansions are recorded in
 the current handoff. They remain undeployed.

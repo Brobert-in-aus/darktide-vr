@@ -9,7 +9,7 @@ and device identifiers remain outside Git.
 Latest integrated offline check: **112/112 CTests pass** on the
 `codex/xr-preflight-timeout-2026-09-07` candidate (14.31 seconds), with headset
 tests disabled and all 36 Lua chunks compiling. Full Release build baseline is
-`df99611`, with the newer XR harness built at `f201a9a`. Guardian pause/resume is
+`df99611`, with the newer XR harness built at `03d60d1`. Guardian pause/resume is
 now verified via ADB; a settled Ready attempt still fails at VDXR texture
 creation. Guardian and proximity automation were restored. Darktide is closed;
 the day's later candidates remain undeployed. Chronological entries below retain
@@ -1334,3 +1334,16 @@ batches preserve grouped aim, all shell parameters, rewind/filter arguments and
 final processing/proc metadata. Spread/collision/damage endpoints are supplied;
 no live pellet distribution or damage acceptance. The fixture passes; no
 production change. Continue the todo with the existing suite/build baselines.
+
+## Continuous todo work: hitscan effects and hit ordering
+
+Branch `codex/stock-hitscan-effects-2026-09-07` extends the optional stock-rules
+fixture through actual hitscan shooting after VR input, simulated pose and stock
+shot preparation. Twenty constructed cases cross local/remote and client/server
+ownership with default or combined collision tests, empty hits, power fallback,
+charge thresholds, optional proc/chain dispatch and effect endpoints. Combined
+ray/sphere results sort by both supported distance layouts before processing;
+shot-result fields overwrite stale values. Stock origin, charge and prediction
+arguments reach the damage sink unchanged. The fixture passes. Engine rotation,
+collision and damage are supplied, so this does not establish physical impacts,
+network damage or all owned loadouts. No production change or new live attempt.

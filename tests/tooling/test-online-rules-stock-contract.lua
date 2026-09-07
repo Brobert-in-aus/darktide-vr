@@ -181,6 +181,114 @@ assert(table.concat(operations,',')=='recoil,sway,assist,spread,add_sway,add_spr
 assert(shot._shooting_status_component.num_shots==2)
 gamepad=false
 do
+    -- Execute stock hitscan dispatch after VR -> stock pose -> shot preparation.
+    -- Collision/damage and engine rotation math are sinks, not simulated combat.
+    local hitscan,all_hits,impact={},{stale=true},{will_be_predicted=true}
+    local position,rotation=shot_component.shooting_position,shot_component.shooting_rotation
+    local direction=Vector3(.25,.75,0)
+    local current,rays,spheres,processed,procs,chains,lines
+    local near,mid,far={distance=2,id='near'},{[2]=5,id='mid'},{distance=9,id='far'}
+    local per_unit={{unit='target'}}
+    local env=setmetatable({ActionShootHitScan=hitscan,ALL_HITS=all_hits,IMPACT_FX_DATA=impact,
+        INDEX_DISTANCE=2,DEFAULT_POWER_LEVEL=500,proc_events={on_shoot='shoot'},
+        Quaternion={forward=function(value) assert(value==rotation); return direction end},
+        table=setmetatable({clear=function(t) for k in pairs(t) do t[k]=nil end end,
+            append=function(t,values) for i=1,#values do t[#t+1]=values[i] end end},{__index=table})},
+        {__index=_G})
+    local function collision(world,origin,forward,range,against,filter,rewind)
+        assert(world=='physics' and origin==position and forward==direction and range==60 and rewind==23)
+        if current.multiple then
+            assert((against=='statics' and filter=='ray_filter') or (against=='dynamics' and filter=='sphere_filter'))
+        else assert(against==nil and filter==nil) end
+    end
+    env.HitScan={raycast=function(world,origin,forward,range,against,filter,rewind,is_local,owner,is_server)
+        collision(world,origin,forward,range,against,filter,rewind)
+        assert(is_local==current.is_local and owner=='player' and is_server==current.is_server)
+        rays=rays+1
+        return not current.empty and {far,near} or nil
+    end,sphere_sweep=function(world,origin,forward,range,against,filter,rewind,radius)
+        collision(world,origin,forward,range,against,filter,rewind)
+        assert(radius==.12); spheres=spheres+1
+        return not current.empty and {mid} or nil
+    end,process_hits=function(is_server,world,physics,unit,config,hits,origin,forward,power,charge,fx,range,
+            debug_drawer,is_local,owner,instakill,critical,item,slot,predict)
+        assert(is_server==current.is_server and world=='world' and physics=='physics' and unit=='local')
+        assert(config==current.config and origin==position and forward==direction)
+        assert(power==current.expected_power and charge==current.charge and fx==impact and range==60)
+        assert(debug_drawer=='debug' and is_local==current.is_local and owner=='player' and instakill==false)
+        assert(critical==current.critical and item=='weapon' and slot=='slot_secondary' and predict==true)
+        if current.multiple then
+            assert(hits==all_hits and hits.stale==nil)
+            if current.empty then assert(#hits==0)
+            else assert(#hits==3 and hits[1]==near and hits[2]==mid and hits[3]==far) end
+        elseif current.empty then assert(hits==nil)
+        else assert(#hits==2 and hits[1]==far and hits[2]==near) end
+        processed=processed+1
+        return current.endpoint,current.elite,current.weakspot,current.killing,current.minion,
+            current.empty and 0 or 1,'stock_result',current.empty and {} or per_unit
+    end}
+    env.ScriptUnit={extension=function(unit,system)
+        assert(unit=='local' and system=='buff_system')
+        return {request_proc_event_param_table=function() return current.proc and {} or nil end,
+            add_proc_event=function(_,event,data)
+                assert(event=='shoot' and data.attacking_unit=='local' and data.num_shots_fired==7 and data.combo_count==3)
+                assert(data.hit_elite==current.elite and data.hit_weakspot==current.weakspot)
+                assert(data.num_hit_units==(current.empty and 0 or 1) and data.is_critical_strike==current.critical)
+                procs=procs+1
+            end}
+    end}
+    local text=source('extension_systems/weapon/actions/action_shoot_hit_scan')
+    local first=assert(text:find('ActionShootHitScan._shoot =',1,true))
+    local last=assert(text:find('\nfunction _on_chain_node_add_func(',first,true))
+    setfenv(assert(loadstring(text:sub(first,last-1))),env)()
+    local action=setmetatable({_physics_world='physics',_player='player',_player_unit='local',_world='world',
+        _weapon={item='weapon'},_inventory_component={wielded_slot='slot_secondary'},_debug_drawer='debug',
+        _critical_strike_component={},_action_component={num_shots_fired=7},_combo_count=3,
+        _rewind_ms=function(_,is_local,owner,origin,forward,range)
+            assert(is_local==current.is_local and owner=='player' and origin==position and forward==direction and range==60)
+            return 23
+        end,_try_make_chain_from_shoot=function(_,results,t)
+            assert(results==per_unit and t==12); chains=chains+1
+        end,_reference_attachment_id=function(_,config) assert(config==current.config); return 'muzzle' end,
+        _play_line_fx=function(_,effect,origin,endpoint,attachment)
+            assert(effect==current.effect and origin==position and attachment=='muzzle')
+            local expected=current.endpoint or position+direction*60
+            assert(Vector3.length(endpoint-expected)<1e-10); lines=lines+1
+        end},{__index=hitscan})
+    local charged={is_charge_dependant=true,line_effect={{charge_level=.2,line_effect='low'},
+        {charge_level=.6,line_effect='high'}}}
+    local cases={
+        {power=300,expected_power=300,charge=.6,fx=charged,effect='high',chain=true,proc=true,critical=true,
+            elite=true,weakspot=true,killing=true,minion=true,endpoint=Vector3(11,22,3)},
+        {multiple=true,power=300,template_power=700,expected_power=700,charge=.59,fx=charged,effect='low',
+            chain=true,proc=true,minion=true},
+        {multiple=true,empty=true,expected_power=500,charge=.1,fx=charged,chain=true,proc=true},
+        {empty=true,expected_power=500,charge=0},
+        {multiple=true,expected_power=500,charge=1,fx={line_effect='constant'},effect='constant'}
+    }
+    for _,is_server in ipairs({false,true}) do
+        for _,is_local in ipairs({false,true}) do
+            for _,case in ipairs(cases) do
+                current=case; current.is_server=is_server; current.is_local=is_local
+                rays,spheres,processed,procs,chains,lines=0,0,0,0,0,0
+                current.config={hit_scan_template={range=60,power_level=case.template_power}}
+                if case.multiple then current.config.hit_scan_template.collision_tests={
+                    {test='ray',against='statics',collision_filter='ray_filter'},
+                    {test='sphere',against='dynamics',collision_filter='sphere_filter',radius=.12}} end
+                action._is_server=is_server; action._is_local_unit=is_local
+                action._critical_strike_component.is_active=case.critical
+                action._action_settings={fx=case.fx}; action._do_chain_lightning_on_shoot=case.chain
+                action._shot_result={data_valid=false,hit_minion='stale',hit_weakspot='stale',killing_blow='stale'}
+                hitscan._shoot(action,position,rotation,case.power,case.charge,12,current.config)
+                assert(rays==1 and spheres==(case.multiple and 1 or 0) and processed==1 and lines==1)
+                assert(procs==(case.proc and 1 or 0) and chains==(case.chain and not case.empty and 1 or 0))
+                assert(action._shot_result.data_valid and action._shot_result.hit_minion==case.minion and
+                    action._shot_result.hit_weakspot==case.weakspot and action._shot_result.killing_blow==case.killing)
+            end
+        end
+    end
+end
+do
     local pellets={}
     local spread_calls,rays,procs,processed,special_resets={},{},{},0,0
     local chosen,all_hits
@@ -1278,6 +1386,7 @@ print('PASS: actual stock pose keeps body origin/recoil; actual walking preserve
 print('PASS: actual stock orientation selector retains forced look, weapon locks, sticky melee, ledges, wheels and death')
 print('PASS: actual stock local rendering and camera root retain independent view orientation')
 print('PASS: actual stock shot preparation retains body origin, charge, recoil/sway/assist/spread order and grouped-shot sample')
+print('PASS: stock hitscan retains prepared pose, combined collision sorting, power/charge precedence, proc/chain metadata and line effects')
 print('PASS: stock shotgun pellets retain grouped aim, shell parameters, exact multi-frame counts, rewind and final-batch processing')
 print('PASS: actual stock projectile launch retains prepared origin/direction, cached ballistic branches, proc metadata and server-only spawn ownership')
 print('PASS: stock deployables retain simulated placement rays, slope/attachment validation, timed ammo consumption and server-only pickup spawning')

@@ -18,6 +18,13 @@ spread, ray hits and damage remain substitutes. See PSYKHANIUM-ONLINE-RULES.
 Derived local evidence is `artifacts/unattended/psyker-cached-catalogue-20260907.json`;
 the full cache and any connection/account data remain outside Git.
 
+Actual hitscan dispatch is also exercised after that prepared pose across local
+and remote units on client and server. Twenty constructed cases cover the
+default ray and combined ray/sphere routes, mixed hit distance representations,
+empty results, power precedence, charge thresholds, shot/proc metadata, optional
+chain dispatch and line-effect endpoints. Collision, damage and rotation math
+remain substitutes; catalogue coverage is not live weapon acceptance.
+
 ## Earlier findings
 
 6 September 2026. Active work after the documented DLSS output-association
