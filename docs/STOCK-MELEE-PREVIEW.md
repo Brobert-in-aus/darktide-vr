@@ -43,9 +43,16 @@ Offline checks cover route rejection, all authored fixture frames, box offsets,
 separate raw versus simulated aim ownership, vector copying, invalid data,
 default-off behavior, UI/tracking/player loss, world replacement and failure
 latching. The display fixture does not establish actual world-GUI rendering.
-Windows x64 validation: full CTest 133/133 passed in 23.70 seconds with headset
-tests OFF; the pinned LuaJIT gate compiled 47 chunks. Local evidence:
-`artifacts/unattended/stock-melee-preview-133-20260908.log`.
+It also exercises the real display's segment/arrow construction using vector
+and matrix fixtures, checking lengths, orthonormal planes and backward wings.
+
+While enabled, an observation of stock ActionSweep.start compares the selected
+action name with the latest same-player/same-weapon preview up to one second
+old, then consumes it. The log reports matching, age and server-process status,
+explicitly damage_verified=false. UI/tracking/owner loss, world replacement and
+expired predictions clear it. This does not change actions or prove damage.
+The integrated branch now includes the focused candidate's display diagnostics
+and unknown-hand-role rejection. The focused live deployment is unchanged.
 
 Required worn check when the user is available: with the first melee weapon
 idle, enable the guide and rotate the hand left/right and up/down. Report whether

@@ -7,8 +7,12 @@ function Display.install(mod,presentation,tracking)
     function api.destroy()
         if gui then pcall(World.destroy_gui,world,gui) end
         world,gui=nil,nil
+        api.last_preview=nil
     end
-    local function hide() if gui then Gui.set_visible(gui,false) end end
+    local function hide(clear)
+        if gui then Gui.set_visible(gui,false) end
+        if clear then api.last_preview=nil end
+    end
     local function vector(p) return Vector3(p.x,p.y,p.z) end
     local function line(a,b,eye,color,width)
         local delta=b-a
@@ -26,21 +30,29 @@ function Display.install(mod,presentation,tracking)
         Gui.rect_3d(gui,tm,Vector2(0,-width*.5),1,Vector2(length,width),color)
     end
     local function update()
-        if not api.enabled or failed then hide(); return end
+        if not api.enabled or failed then hide(true); return end
         local player=Managers.player and Managers.player:local_player(1)
         local unit=player and player.player_unit
         if not unit or not Unit.alive(unit) or presentation.mode~=1 or
                 not tracking.authoring_enabled or
-                presentation.gameplay_context.ui_blocks_gameplay(Managers.ui) then hide(); return end
-        local side=presentation.weapon_hand_roles and presentation.weapon_hand_roles.physical('dominant') or 'right'
-        if not tracking[side..'_aim_usable'] then hide(); return end
+                presentation.gameplay_context.ui_blocks_gameplay(Managers.ui) then hide(true); return end
+        local side='right'
+        if presentation.weapon_hand_roles then side=presentation.weapon_hand_roles.physical('dominant') end
+        if side~='left' and side~='right' then hide(true); return end
+        if not tracking[side..'_aim_usable'] then hide(true); return end
         local extension=ScriptUnit.has_extension(unit,'weapon_system')
-        if not extension then hide(); return end
+        if not extension then hide(true); return end
         local t=Managers.time:time('gameplay')
-        local result=Preview.context(extension,presentation,t)
-        if not result then hide(); return end
+        local result,reason=Preview.context(extension,presentation,t)
+        if not result then
+            local prior=api.last_preview
+            hide(reason~='action_running' or not prior or t<prior.t or t-prior.t>1)
+            return
+        end
         if world~=extension._world then api.destroy(); world=extension._world end
         if not gui then gui=World.create_world_gui(world,Matrix4x4.identity(),1,1) end
+        api.last_preview={name=result.action_name,t=t,unit=unit,
+            weapon=extension._weapons[extension._inventory_component.wielded_slot]}
         Gui.set_visible(gui,true)
         local eye=extension._first_person_component.position
         for _,path in ipairs(result.paths) do
@@ -68,6 +80,16 @@ function Display.install(mod,presentation,tracking)
             mod:warning('DARKTIDEVR_MELEE preview_error=%s damage=false',tostring(err))
         end
     end
+    mod:hook_safe('ActionSweep','start',function(action,settings,t)
+        local prior=api.last_preview
+        if not api.enabled or not prior or action._player_unit~=prior.unit then return end
+        api.last_preview=nil
+        if action._weapon~=prior.weapon or type(t)~='number' or t~=t or
+                math.abs(t)==math.huge or t<prior.t or t-prior.t>1 then return end
+        mod:info('DARKTIDEVR_MELEE preview_action=%s started_action=%s matched=%s preview_age=%.4f server_process=%s damage_verified=false',
+            tostring(prior.name),tostring(settings.name),tostring(prior.name==settings.name),
+            t-prior.t,tostring(action._is_server==true))
+    end)
     mod:command('dtvr_melee_preview_on','Show the first stock light swing direction',function()
         failed=nil; api.enabled=true
         mod:info('DARKTIDEVR_MELEE preview=on damage=false obstruction_tested=false')
