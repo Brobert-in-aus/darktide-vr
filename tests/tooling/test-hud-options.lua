@@ -66,9 +66,14 @@ mod.io_dofile=function(_,path)
 end
 local data=dofile(arg[2])
 local text=dofile(arg[3])
-local options=data.options.widgets[1]
-assert(data.options.widgets[2].setting_id=='vr_turning')
-assert(data.options.widgets[3].setting_id=='controller_bindings')
+local groups={}
+for _,widget in ipairs(data.options.widgets) do
+    assert(not groups[widget.setting_id], 'duplicate setting: '..widget.setting_id)
+    groups[widget.setting_id]=widget
+end
+local options=assert(groups.hud_options, 'missing HUD settings')
+assert(groups.vr_turning and groups.vr_turning.type=='group')
+assert(groups.controller_bindings and groups.controller_bindings.type=='group')
 assert(options.setting_id=='hud_options' and options.type=='group')
 assert(#options.sub_widgets==4)
 for _,widget in ipairs(options.sub_widgets) do
