@@ -1,5 +1,9 @@
 # Remaining development: melee, HUD and DLSS
 
+**Latest work order, 8 September:** finish the pre-launch TODO work, then make
+fixing billboarding the next task. Do not expand unrelated polish ahead of that
+work. Required worn/live acceptance remains explicitly pending until observed.
+
 **Latest 8 September steering:** pause physical melee until server-side stock
 melee is locked in. The requested [first-swing preview](STOCK-MELEE-PREVIEW.md)
 is prepared in PR #10 and as a focused accepted-baseline candidate in PR #11.

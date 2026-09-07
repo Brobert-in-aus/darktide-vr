@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string] $GameRoot)
+param([string] $GameRoot, [switch] $UsePrebuiltProductionShader)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -36,6 +36,7 @@ $shortcut.TargetPath = $powerShell
 $shortcut.Arguments =
     "-NoProfile -ExecutionPolicy Bypass -File `"$launcher`""
 if ($GameRoot) { $shortcut.Arguments += " -GameRoot `"$GameRoot`"" }
+if ($UsePrebuiltProductionShader) { $shortcut.Arguments += ' -UsePrebuiltProductionShader' }
 $shortcut.WorkingDirectory =
     (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $shortcut.Description =

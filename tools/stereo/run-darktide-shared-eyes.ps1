@@ -7,7 +7,7 @@ param(
         'D:\SteamLibrary\steamapps\common\Warhammer 40,000 DARKTIDE\binaries\Darktide.exe',
 
     [string] $Harness =
-        'build\windows-vs2022\tests\xr_harness\Release\darktidevr-xr-harness.exe',
+        (Join-Path $PSScriptRoot '..\..\build\windows-vs2022\tests\xr_harness\Release\darktidevr-xr-harness.exe'),
 
     [switch] $EnableMenuInput,
 
