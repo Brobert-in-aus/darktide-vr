@@ -1525,3 +1525,12 @@ volume, clears the old reason and starts fresh trajectory history; stable
 geometry retains that history. Invalid volumes still perform no queries. Five
 focused CTests pass in 0.77 seconds, including the 36-chunk LuaJIT gate.
 No physical damage, deployment or live acceptance change; continue the todo.
+
+## Continuous todo work: Windows runtime event evidence
+
+Branch `codex/quest-event-log-check-2026-09-07` records read-only Windows event
+queries around the 13:15 Ready failure. The 13:10–13:20 Application/System
+queries completed, with no matching runtime/graphics events across all levels.
+This supplies no new root cause. The current token is not elevated; the official
+WPR trace procedure remains unstarted. No XR session or device setting changed.
+Continue offline work rather than repeating an unchanged failing Ready attempt.

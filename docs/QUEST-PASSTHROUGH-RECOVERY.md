@@ -181,3 +181,11 @@ No accessibility file was created or changed. The official
 [VDXR trace procedure](https://github.com/mbucchia/VirtualDesktop-OpenXR/wiki/Capturing-debug-traces)
 uses its installed WPR profile and an elevated capture; a read-only WPR status
 query found no recording. No trace session or support message was started.
+
+At 13:56, read-only Application and System event queries covering 13:10–13:20
+completed without access/query errors. Across all event levels, no Application
+messages matched Virtual Desktop/LibOVR/OpenXR/the harness, and no System events
+matched Display, nvlddmkm or DxgKrnl providers. These filters found no additional
+evidence; they do not establish that the backend had no internal error. The
+current Windows token is not elevated, so the documented elevated trace has not
+been started. No new Ready attempt or device setting change followed this check.
