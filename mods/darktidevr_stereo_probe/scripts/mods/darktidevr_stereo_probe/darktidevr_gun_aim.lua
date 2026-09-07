@@ -56,7 +56,9 @@ function Alignment.install(mod,presentation)
     local function update(world,unit)
         restore(world)
         if not presentation.online_rules.simulation_aim_active(unit) then return end
-        if presentation.weapon_hand_roles.physical('dominant')~='right' then return end
+        local dominant=presentation.weapon_hand_roles.physical('dominant')
+        if dominant~='right' and dominant~='left' then return end
+        if dominant=='left' and (not presentation.body_proxy or not presentation.body_proxy.align_gun_hand) then return end
         local weapon=ScriptUnit.has_extension(unit,'weapon_system')
         local template=weapon and weapon:weapon_template()
         if not Alignment.is_gun(template) then return end
@@ -91,8 +93,9 @@ function Alignment.install(mod,presentation)
         Unit.set_local_position(unit,attach,desired_position)
         World.update_unit_and_children(world,unit)
         if presentation.body_proxy and presentation.body_proxy.align_gun_hand then
-            presentation.body_proxy.align_gun_hand(world,unit,old_attach_position,old_attach_rotation,
-                Unit.world_position(unit,attach),Unit.world_rotation(unit,attach))
+            local aligned=presentation.body_proxy.align_gun_hand(world,unit,old_attach_position,old_attach_rotation,
+                Unit.world_position(unit,attach),Unit.world_rotation(unit,attach),dominant)
+            if dominant=='left' and not aligned then restore(world); return end
         end
         if presentation.two_hand then presentation.two_hand.place_hand(world,unit,grip,aim) end
         instance.writes=instance.writes+1

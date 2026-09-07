@@ -25,8 +25,8 @@ Actual-branch tests cover both role policies, .94/1/1.08 scales, distinct author
 bases, partial placement and unknown roles; 3D anatomical tests cover the exported
 rotation helper and owner/readiness rejection. Runtime still constructs the
 accepted right-dominant policy. This is an undeployed attachment foundation,
-not complete left-handed gameplay: stock animated melee, gun visual alignment,
-two-hand poses, first-person/breed effect ownership, bindings and menu pointer
+not complete left-handed gameplay: stock animated melee, two-hand calibration
+ownership, bindings and menu pointer
 still need coordinated role mapping before exposing the setting.
 
 Validation: full Windows x64 offline CTest passes 134/134 in 22.74 seconds;
@@ -56,6 +56,23 @@ The actual stock registration helper passes through this hook with sound and
 VFX selecting the 3P item. Portable ownership/fallback cases also pass. This
 does not establish spatial-audio perception or all effects under left-handed
 animation. The candidate is undeployed, with no new live acceptance.
+
+### Gun alignment at either dominant grip, 8 September
+
+The gun visual correction now admits either known dominant side. The stock
+right-authored weapon attachment remains the weapon owner; its world target
+comes from the selected physical grip/aim. The visible destination glove uses
+its own measured joint basis, converted from the weapon's authored wrist pose.
+Same-side right-hand math is unchanged. A missing opposite-hand calibration or
+failed glove placement restores the tentative attachment transform rather than
+leaving a gun correction without its hand.
+
+Tests exercise actual gun and glove functions, default pitch/draw/reload
+behavior, destination rejection and independent anatomical-axis checks in both
+conversion directions. Full Windows x64 offline CTest passes 135/135 in 22.91
+seconds and 48 Lua chunks compile. Evidence:
+`artifacts/unattended/handedness-gun-135-20260908.log`. Runtime handedness remains
+fixed right; this candidate is undeployed and needs future worn acceptance.
 
 `darktidevr_weapon_hand_roles.lua` constructs a fixed dominant/support policy.
 Physical left/right identities remain unchanged; invalid policy input defaults

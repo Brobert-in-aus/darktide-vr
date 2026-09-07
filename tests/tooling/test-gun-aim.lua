@@ -93,6 +93,16 @@ local_rotation=engine_authored; local_position={.9,.8,.7}; active=false
 instance.update(world,source); near(local_rotation,engine_authored)
 near_position(local_position,{.9,.8,.7})
 active=true; dominant='left'; instance.update(world,source); near(local_rotation,engine_authored)
+local aligned=false
+presentation.body_proxy={align_gun_hand=function(_,_,_,_,_,_,side) assert(side=='left'); return aligned end}
+local prior_writes=instance.writes
+instance.update(world,source); near(local_rotation,engine_authored)
+assert(instance.writes==prior_writes,'Unavailable destination glove left an aligned gun behind')
+aligned=true; instance.update(world,source)
+near(Unit.world_rotation(muzzle,1),aim); near_position(Unit.world_position(source,2),grip)
+assert(instance.writes==prior_writes+1)
+dominant=nil; instance.update(world,source); near(local_rotation,engine_authored)
+presentation.body_proxy=nil
 dominant='right'; instance.update(world,source)
 aim=nil; instance.update(world,source); near(local_rotation,engine_authored)
 aim=q(.3,.2,.1)
@@ -140,7 +150,7 @@ presentation.two_hand=nil
 -- Execute the actual visible-hand correction with a separate visual root.
 local body_file=assert(io.open(arg[2]:gsub('darktidevr_stereo_probe.lua$','darktidevr_body_proxy.lua'),'rb'))
 local body=body_file:read('*a'); body_file:close()
-local begin=assert(body:find('function BodyProxy.align_gun_hand(',1,true))
+local begin=assert(body:find('function BodyProxy.convert_hand_rotation(',1,true))
 local finish=assert(body:find('\nfunction BodyProxy.follow_gameplay_hands(',begin,true))
 local vmeta={}; local function vec(a) return setmetatable(a,vmeta) end
 vmeta.__add=function(a,b) return vec(add(a,b)) end
@@ -151,17 +161,29 @@ local oldp,newp=vec({2,3,4}),vec({-1,4,2})
 local oldr,newr=q(.4,-.3,.2),q(-.5,.8,.6)
 local proxy={rigid_hands_active=function() return true end}
 local visible_hand={}; local placed
+local opposite_hand={}
+local hands={right=visible_hand,left=opposite_hand}
+local expected_hand=visible_hand
+local expected_rotation=mul(newr,wrist_basis)
 local hand_chunk=assert(loadstring(body:sub(begin,finish-1)))
 setfenv(hand_chunk,setmetatable({BodyProxy=proxy,state={source_unit=source},
-    rigid_hands={right=visible_hand},inverse_quaternion=Quaternion.inverse,
+    rigid_hands=hands,inverse_quaternion=Quaternion.inverse,
     Unit={alive=function() return true end,has_node=function() return true end,node=function() return 8 end,
         world_position=function() return oldp+Quaternion.rotate(oldr,wrist_offset) end,
         world_rotation=function() return mul(oldr,wrist_basis) end},
     place_rigid_hand=function(w,hand,pos,rot,authored)
-        assert(w==world and hand==visible_hand and authored)
-        near_position(pos,newp+Quaternion.rotate(newr,wrist_offset)); near(rot,mul(newr,wrist_basis))
+        assert(w==world and hand==expected_hand and authored)
+        near_position(pos,newp+Quaternion.rotate(newr,wrist_offset)); near(rot,expected_rotation)
         placed=true; return true
     end},{__index=_G})); hand_chunk()
 assert(proxy.align_gun_hand(world,source,oldp,oldr,newp,newr) and placed)
 assert(not proxy.align_gun_hand(world,{},oldp,oldr,newp,newr))
+placed=false
+assert(not proxy.align_gun_hand(world,source,oldp,oldr,newp,newr,'left') and not placed)
+hands.right.anatomy_inverse=QuaternionBox(q(.2,-.7,.9))
+hands.left.anatomy_inverse=QuaternionBox(q(-.6,.4,-.3))
+expected_hand=opposite_hand
+expected_rotation=mul(mul(mul(newr,wrist_basis),Quaternion.inverse(hands.right.anatomy_inverse:unbox())),hands.left.anatomy_inverse:unbox())
+assert(proxy.align_gun_hand(world,source,oldp,oldr,newp,newr,'left') and placed)
+assert(not proxy.align_gun_hand(world,source,oldp,oldr,newp,newr,'unknown'))
 print('PASS controller gun pitch/hand: 120 poses, pitch sign/live setting/staff isolation, draw/reload ownership, actual simulation reader and rigid-hand relative grip preservation')

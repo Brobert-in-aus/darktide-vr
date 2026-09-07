@@ -598,14 +598,32 @@ function BodyProxy.equipment_hand_rotation(source, authored_side, grip_rotation)
     return anatomical_hand_rotation(hand.unit,authored_side,grip_rotation)
 end
 
-function BodyProxy.align_gun_hand(world,source,old_position,old_rotation,new_position,new_rotation)
+function BodyProxy.convert_hand_rotation(source,authored_side,destination_side,rotation)
+    if not source or source~=state.source_unit or not Unit.alive(source) or not rotation or
+            not BodyProxy.rigid_hands_active() or
+            (authored_side~='left' and authored_side~='right') or
+            (destination_side~='left' and destination_side~='right') then return nil end
+    if authored_side==destination_side then return rotation end
+    local authored,destination=rigid_hands[authored_side],rigid_hands[destination_side]
+    if not authored.anatomy_inverse or not destination.anatomy_inverse then return nil end
+    return Quaternion.multiply(Quaternion.multiply(rotation,
+        inverse_quaternion(authored.anatomy_inverse:unbox())),destination.anatomy_inverse:unbox())
+end
+
+function BodyProxy.align_gun_hand(world,source,old_position,old_rotation,new_position,new_rotation,destination)
+    destination=destination or 'right'
     if not BodyProxy.rigid_hands_active() or source~=state.source_unit or
-            not Unit.alive(source) or not Unit.has_node(source,'j_righthand') then return false end
+            not Unit.alive(source) or not Unit.has_node(source,'j_righthand') or
+            (destination~='left' and destination~='right') then return false end
     local node=Unit.node(source,'j_righthand')
     local delta=Quaternion.multiply(new_rotation,inverse_quaternion(old_rotation))
     local position=new_position+Quaternion.rotate(delta,Unit.world_position(source,node)-old_position)
     local rotation=Quaternion.multiply(delta,Unit.world_rotation(source,node))
-    return place_rigid_hand(world,rigid_hands.right,position,rotation,true)
+    if destination~='right' then
+        rotation=BodyProxy.convert_hand_rotation(source,'right',destination,rotation)
+        if not rotation then return false end
+    end
+    return place_rigid_hand(world,rigid_hands[destination],position,rotation,true)
 end
 
 function BodyProxy.place_support_hand(world,source,side,position,rotation)

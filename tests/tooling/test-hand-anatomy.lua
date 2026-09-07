@@ -138,4 +138,22 @@ for _,side in ipairs({'left','right'}) do
     assert(not BodyProxy.equipment_hand_rotation(state.source_unit,side,grip))
 end
 assert(not BodyProxy.equipment_hand_rotation(state.source_unit,'unknown',q(0,0,0,1)))
+inverse_quaternion=function(rotation) return q(-rotation[1],-rotation[2],-rotation[3],rotation[4]) end
+local axes={}
+local destination_grip=axis_rotation(v(-3,2,1),1.9)
+local authored_rotations={}
+for _,side in ipairs({'left','right'}) do
+    local unit,longitudinal,across=rig(side,axis_rotation(v(1,-2,3),.5),.94)
+    rigid_hands[side]={unit=unit,ready=true}
+    axes[side]={longitudinal=longitudinal,across=across}
+    authored_rotations[side]=calibrate(unit,side,destination_grip)
+end
+for _,side in ipairs({'left','right'}) do
+    local destination=side=='left' and 'right' or 'left'
+    local converted=assert(BodyProxy.convert_hand_rotation(state.source_unit,side,destination,authored_rotations[side]))
+    near(rotate(converted,axes[destination].longitudinal),rotate(destination_grip,v(0,0,-1)))
+    near(rotate(converted,axes[destination].across),rotate(destination_grip,v(0,1,0)))
+    assert(BodyProxy.convert_hand_rotation(state.source_unit,side,side,authored_rotations[side])==authored_rotations[side])
+    assert(not BodyProxy.convert_hand_rotation({},side,destination,authored_rotations[side]))
+end
 print('anatomical calibration and equipment relocation retain authored bases, physical grip axes and owner readiness')
