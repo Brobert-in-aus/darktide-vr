@@ -5570,11 +5570,22 @@ mod:hook_safe(
 mod:hook_safe(
     require("scripts/managers/player/player_game_states/human_input_handler"),
     "fixed_update",
-    function(self, _, _, frame)
+    function(self, _, _, frame, input)
         if self ~= presentation.gameplay_input_owner[1] or
                 presentation.gameplay_input_owner[2] == nil or
                 presentation.gameplay_context.local_input_unit(
                     self, Managers and Managers.player) ~= presentation.gameplay_input_owner[2] then return end
+        -- Stock selects its service again for each fixed frame. Ownership can
+        -- change after pre_update; cancel before merging history or authoring aim.
+        if not presentation.gameplay_context.input_service_enabled(input) then
+            controller_observation.gameplay_input_active = false
+            controller_observation.gameplay_stick_active = false
+            controller_observation.primary_action_injected = false
+            presentation.controller_bindings.sample(false, 0, nil, nil, false,
+                controller_observation.last_transport_generation, active_game_mode_name())
+            if presentation.gameplay_ui then presentation.gameplay_ui.sample(false, 0) end
+            return
+        end
         presentation.scan_movement_inventory(self, frame)
         controller_observation.gameplay_stick_active = false
         local gameplay_held = controller_observation.gameplay_input_enabled and

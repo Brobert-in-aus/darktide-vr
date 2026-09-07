@@ -1,5 +1,14 @@
 # Input revision audit — 6 September 2026
 
+The 7 September fixed-frame follow-up also checks the service passed to stock
+`HumanInputHandler.fixed_update`: `HumanGameplay` selects it again after
+pre-update. A null/missing/retiring service cancels the mapper, pending UI input
+and synthetic probe before movement/holds or aim enter cached history. Recovery
+requires a new neutral sample; a later valid fixed call alone does not resurrect
+holds. The regression first reproduced movement merging into a null-service
+frame. Six focused checks pass, with all 36 Lua chunks compiling. This remains
+undeployed and retains stock false-held release behavior.
+
 7 September stock-service follow-up: the adapter now consumes the actual input
 service passed to `HumanInputHandler.pre_update`. Stock `HumanGameplay._get_input`
 selects its null service for ordinary UI, ImGui and active cinematics. Checking

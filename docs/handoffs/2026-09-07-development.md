@@ -1355,3 +1355,16 @@ ordered todo with the current validation/build baselines, Guardian restoration,
 texture failure, input ownership and catalogue/stock-contract scope. Historical
 entries remain historical; worn and remote-server acceptance remain pending.
 Draft review #2 now includes changes through `3f1bfbb`. Continue the todo.
+
+## Continuous todo work: fixed-frame input service ownership
+
+Branch `codex/fixed-input-service-owner-2026-09-07` closes the corresponding
+fixed-frame gap after `9f254d0`. Stock selects its service for each fixed call,
+so a null service can follow an earlier accepted render sample. The actual-hook
+regression reproduced movement merging in that case. The hook now cancels
+mapper/UI/synthetic state before touching controller history or online aim.
+Null, missing and retiring services preserve stock cache contents; later valid
+fixed calls cannot restore held input without a new neutral render sample.
+Six focused CTests pass, including 36-chunk compilation. Undeployed; full-suite
+and native build baselines are unchanged. No universal charged-action
+cancellation claim: stock held=false rules still apply. Continue the todo.

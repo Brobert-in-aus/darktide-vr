@@ -169,7 +169,7 @@ presentation.online_rules={capture=function() captures=captures+1 end}
 fixed_hook(foreign,0,0,1)
 fixed_hook(retired,0,0,1)
 assert(scans==0 and captures==0)
-fixed_hook(owner,0,0,1)
+fixed_hook(owner,0,0,1,input_service)
 assert(scans==1 and captures==1)
 player.player_unit='unsampled_character'
 fixed_hook(owner,0,0,1)
@@ -192,7 +192,7 @@ owner._action_lookup={move_right=1,move_left=2,move_forward=3,move_backward=4,ac
 local function movement(x,y,initial,wanted)
     owner._input_cache={{initial[1],91},{initial[2],92},{initial[3],93},{initial[4],94},{false,95}}
     controller_observation.gameplay_movement[0],controller_observation.gameplay_movement[1]=x,y
-    fixed_hook(owner,0,0,2)
+    fixed_hook(owner,0,0,2,input_service)
     for i=1,4 do
         assert(math.abs(owner._input_cache[i][1]-wanted[i])<1e-6,'Mixed keyboard/stick cache changed')
         assert(owner._input_cache[i][2]==90+i,'Movement rewrote a different cached frame')
@@ -213,6 +213,30 @@ owns=true; sample(1)
 movement(1,1,{.8,.5,.2,.1},{.8,.5,.2,.1})
 assert(not owner._input_cache[5][1] and not controller_observation.gameplay_stick_active,
     'Inactive input merged movement or holds')
+-- Stock selects input again for each fixed update. A cinematic/null service
+-- can arrive after an ordinary pre-update sample; cancel before history writes.
+for _,service in ipairs({{is_null_service=function() return true end},{},false,
+        setmetatable({}, {__index=function() error('fixed service retired') end})}) do
+    owns=false; sample(0); assert(sample(1)[1])
+    local captures_before=captures
+    owner.get=function() return false end
+    controller_observation.primary_action_sequence=1
+    controller_observation.primary_action_injected=true
+    controller_observation.primary_action_stage='press'
+    controller_observation.gameplay_stick_active=true
+    input_service=service or nil
+    movement(1,1,{.8,.5,.2,.1},{.8,.5,.2,.1})
+    assert(not owner._input_cache[5][1] and captures==captures_before,
+        'Fixed null service admitted controller holds or aim capture')
+    assert(not controller_observation.gameplay_input_active and not controller_observation.gameplay_stick_active and
+        not controller_observation.primary_action_injected and not ui_active and presentation.controller_bindings.held==0)
+    input_service={is_null_service=function() return false end}
+    -- Recovery without another render sample must also leave old holds disabled.
+    movement(1,1,{.8,.5,.2,.1},{.8,.5,.2,.1})
+    assert(not owner._input_cache[5][1])
+    assert(not sample(1)[1],'Fixed service recovery inherited the held attack')
+    sample(0); assert(sample(1)[1] and sample(0)[2])
+end
 local primary_first=assert(source:find('function presentation.inject_primary_action',1,true))
 local primary_last=assert(source:find('\npresentation.controller_bindings =',primary_first,true))
 assert(loadstring(source:sub(primary_first,primary_last-1)))()
