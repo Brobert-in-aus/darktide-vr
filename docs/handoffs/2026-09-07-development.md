@@ -3,19 +3,31 @@
 The user resumed development and requested continued work until told to stop.
 At 16:17 Brisbane they returned home with the headset and requested setup.
 Prioritize establishing a working live session and their current feedback.
-Worn checks remain pending until actually observed. The task has an active
-20-minute heartbeat, updated for the user's return. Automation state
-and device identifiers remain outside Git.
+Worn checks remain pending until actually observed. The configured 20-minute
+heartbeat was subsequently found PAUSED during the comprehensive assessment;
+that external setting was left unchanged. Automation state and device
+identifiers remain outside Git.
 
 Latest integrated offline check: **121/121 CTests pass** at `28e6cca` (20.73
 seconds), with headset tests disabled and all 37 Lua chunks compiling. Full
 Release build also passes at that baseline; eight focused checks pass for the
-newer mode-query fix `1cdd0fd`. Guardian pause/resume is
-now verified via ADB; a settled Ready attempt still fails at VDXR texture
-creation. Guardian was restored; proximity override is now applied for the
-home setup session. Darktide is closed;
-the day's later candidates remain undeployed. Chronological entries below retain
-their older validation states; the final entries describe the newest changes.
+newer mode-query fix `1cdd0fd`. The user restarted both Virtual Desktop ends,
+Ready subsequently passed, and the current quiet Psykhanium session runs Lua
+`57ad12c`, capture `01617d6`, harness `1324a87`. Guardian is restored and proximity
+override remains applied for live development. Stereo/triggers and the tested
+staff's hand-directed aim with stock face origin have worn feedback; other
+acceptance remains pending. The later auto-entry fix `65c4f83` is undeployed.
+Chronological entries below retain older validation states.
+
+Latest steering holds firing-only aim switching. The
+[comprehensive server capability assessment](../ONLINE-SERVER-CAPABILITY-ASSESSMENT.md)
+now records head/height reconstruction, profile/backend ownership, body movement,
+weapon offsets, other position-bearing messages and specific uncertainty limits.
+The new optional stock head-position fixture passes. Existing stock input and
+broad online-rules contracts were rerun and pass; all 37 mod chunks compile.
+Validation commands are in the linked assessment and online requirements.
+No runtime deployment,
+backend change or experimental remote-server message was made for this audit.
 
 The day's continuation is collected in
 [draft review #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2),

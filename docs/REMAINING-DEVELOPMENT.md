@@ -3,16 +3,22 @@
 ## Current priority order: end of 6 September 2026
 
 This list supersedes task ordering and pending labels in the chronological
-details below. Development resumed on 7 September; the user is at work all day
-and cannot provide worn verification. Continue automated/offline work from the
-[current handoff](handoffs/2026-09-07-development.md), recording worn checks as pending.
-Latest 7 September steering: investigate online-server missions alongside local
+details below. Development resumed on 7 September; the user has since returned
+home and established a working headset session. Continue from the
+[current handoff](handoffs/2026-09-07-development.md); record worn checks only
+when actually observed. Earlier at-work/pending labels below are historical.
+Latest steering: hold firing-only aim switching and comprehensively assess
+client/server control, including reporting a head position at the hand. See
+[server capability assessment](ONLINE-SERVER-CAPABILITY-ASSESSMENT.md).
+Earlier 7 September steering: investigate online-server missions alongside local
 missions. See [online requirements](ONLINE-MISSION-REQUIREMENTS.md) for the stock
 input route, authority limits and implementation/validation sequence. This is
 the active investigation; remote mission gameplay remains disabled.
-The user's next instruction is implemented as an undeployed
+The user's next instruction is implemented as a deployed
 [Psykhanium online-rules candidate](PSYKHANIUM-ONLINE-RULES.md): stock input-frame
 aim and origins, with explicit range-only training and live-validation limits.
+The user confirms reticle-directed, face-origin shots from forcestaff_p4_m1;
+this is not acceptance of other weapons or an official online mission.
 Updated after the user's follow-up: DLSS image quality is active again, blur
 first; performance investigation is active work. See [mission readiness](MISSION-READINESS.md)
 for the smaller set needed before a first end-to-end mission attempt.

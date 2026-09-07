@@ -2,7 +2,10 @@
 
 7 September 2026. User asks whether online play can accept a different firing
 origin, and whether reported aim can follow the headset except on firing frames.
-Investigation only; the live session retains continuous hand aim.
+Investigation only; the live session retains continuous hand aim. The user has
+since put firing-only aim switching on hold. The active follow-up is the
+[comprehensive server capability assessment](ONLINE-SERVER-CAPABILITY-ASSESSMENT.md),
+including head position, height, profile ownership and alternative messages.
 
 The audited input history contains one yaw/pitch/roll per simulation frame.
 The server reconstructs first-person position from locomotion, character height

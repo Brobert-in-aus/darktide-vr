@@ -5,7 +5,9 @@ source audit with an isolated input-stream check, not an online test or an
 enabled remote gameplay mode. The user is home and has confirmed limited staff
 behavior in locally hosted Psykhanium. See the
 [head-aim-between-attacks investigation](ONLINE-AIM-WINDOW-AUDIT.md) for the
-new origin and firing-frame questions.
+new origin and firing-frame questions. Firing-only switching is now on hold;
+the [comprehensive capability assessment](ONLINE-SERVER-CAPABILITY-ASSESSMENT.md)
+is the current answer on head/hand origins, height and server trust.
 
 ## Finding
 
