@@ -40,9 +40,13 @@ def summarize(lines):
     groups = defaultdict(list)
     excluded = Counter()
     total = 0
+    timing_counter_boundaries = 0
     for line in lines:
         if line.strip() in ("enabled", "disabled"):
             previous = None
+        if line.startswith("health_boundary "):
+            previous = None
+            timing_counter_boundaries += 1
         if not line.startswith("health "):
             continue
         total += 1
@@ -86,6 +90,7 @@ def summarize(lines):
                row["clock"], row["focus_tracking"])
         groups[key].append(row)
     result = {"comparison_status": "observational_only", "health_rows": total,
+              "timing_counter_boundaries": timing_counter_boundaries,
               "excluded_windows": dict(excluded), "groups": []}
     for (focus, progress, clock, focus_tracking), rows in sorted(groups.items()):
         metrics = {}

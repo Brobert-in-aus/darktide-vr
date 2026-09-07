@@ -1617,3 +1617,14 @@ The suite now has 117 configured tests; last full pass remains 116/116 at
 `2790e7d`. No Lua change (37-chunk baseline), deployment, XR or device setting
 change. Explicit bridge configuration does not identify the game's FG setting;
 this is measurement correctness, not a measured performance fix. Continue work.
+
+## Continuous todo work: health counter regression
+
+Branch `codex/generated-health-counter-regression-2026-09-07` prevents unsigned
+FPS subtraction after a surface/fence publication counter drops below its window
+baseline. The reporter starts a fresh window and emits a timing boundary; the
+Python summary counts it and breaks generation-counter continuity. Actual native
+and analyzer regressions reproduce both old failures. Native DLL/ring/recovery
+targets build; seven focused checks pass in 3.92 seconds. Full baseline remains
+116/116 at `2790e7d`, configured count 117. No live resize, deployment, headset
+action or measured performance claim. Continue the todo.

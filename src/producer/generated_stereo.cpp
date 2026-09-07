@@ -223,6 +223,12 @@ void generated_stereo_health(std::uint64_t present, std::uint64_t original_ready
   if(!enabled.load()) return; // Configuration can change while acquiring the lock.
   auto& [last_tick,last_present,last_ready,last_original,present_samples,
          present_total_ms,focus_window]=health_window;
+  if(last_tick && (present<last_present || original_ready<last_ready || originals.sequence<last_original)) {
+    // Surface/fence recreation can restart publication independently of the
+    // bridge configuration. Never subtract regressed unsigned counters.
+    status("health_boundary reason=counter_regression\n");
+    health_window={};
+  }
   focus_window.observe(foreground);
   present_total_ms+=present_ms; ++present_samples;
   const auto now=GetTickCount64();

@@ -49,6 +49,14 @@ int main(int argc, char** argv) {
       expect(text.find("health ")!=std::string::npos);
       expect(text.find("present_mean_ms=2.5000")!=std::string::npos);
       expect(text.find("focus_changes=0")!=std::string::npos);
+      // Eye-surface recreation resets its ready fence value independently of
+      // bridge enablement. Detect the decrease before unsigned FPS subtraction.
+      generated_stereo_health(10101,0,true,4.5);
+      expect(read_log()==text+"health_boundary reason=counter_regression\n");
+      Sleep(1050);
+      generated_stereo_health(10201,100,true,4.5);
+      text=read_log();
+      expect(text.find("present_mean_ms=4.5000")!=std::string::npos);
       configure_generated_stereo(false);
       generated_stereo_health(20000,2000,false,999.0);
       expect(read_log()==text+"disabled\n");

@@ -151,3 +151,14 @@ CTests pass in 2.87 seconds, including the existing analyzer boundary handling.
 These are generated-bridge configuration boundaries, not proof that the game's
 FG graphics option changed. Old logs cannot recover missing boundaries, and no
 live performance improvement or cause for the user's frame-rate loss is claimed.
+
+Eye-surface recreation also resets the original publication fence value without
+necessarily disabling the bridge. The health reporter now detects counters
+below their current window baseline before unsigned subtraction, records
+`health_boundary reason=counter_regression`, and starts a fresh window. This
+avoids wrapped FPS values. The analyzer counts these timing boundaries and
+breaks its publication-history chain even if those separate cumulative counters
+remain increasing. The native reset/resume and analyzer regressions both fail
+before the fix and pass afterward; the same seven focused checks pass in 3.92
+seconds. A boundary reports an observed regression, not a diagnosis of its cause
+or evidence that a live resize succeeded.

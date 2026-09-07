@@ -53,6 +53,13 @@ class Health(unittest.TestCase):
         self.assertEqual(report["excluded_windows"]["no_observed_original_output"], 2)
         self.assertEqual(report["groups"], [])
 
+    def test_native_timing_counter_boundary_breaks_publication_history(self):
+        report = health.summarize([row(0), row(1),
+                                   "health_boundary reason=counter_regression", row(2), row(3)])
+        self.assertEqual(report["excluded_windows"]["counter_baseline"], 2)
+        self.assertEqual(sum(group["windows"] for group in report["groups"]), 2)
+        self.assertEqual(report["timing_counter_boundaries"], 1)
+
     def test_away_and_back_with_same_end_focus_is_not_a_stable_window(self):
         report = health.summarize([row(0, focus_changes=0), row(1, focus_changes=2),
                                    row(2, focus_changes=0)])
