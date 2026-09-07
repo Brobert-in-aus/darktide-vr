@@ -1472,3 +1472,15 @@ parse successfully. Configured suite count is now 115; full baseline remains
 This verifies delivery counters only: fresh Lua initialization must still be
 checked in the current game log, and worn visual acceptance is pending.
 Continue the todo; no stop instruction has been received.
+
+## Continuous todo work: spectator consumer audit
+
+Branch `codex/spectator-input-ownership-audit-2026-09-07` records the actual
+direct `spectate_next` consumer and stock death/hogtied/rescue/safe-zone camera
+ownership. No VR route exists yet, and fixed combat-cache delivery alone would
+not reach it. A separate scoped local-player route must work when the character
+is unavailable while retaining UI/null-service/cinematic exclusion. The first-
+person observer root also follows the target unit's interpolated aim; ordinary
+local HMD independence does not cover that camera branch. Source references
+and acceptance gaps are in MISSION-INTERACTION-AUDIT. Documentation only, no new
+tests or live actions; runtime/build validation baselines remain unchanged.

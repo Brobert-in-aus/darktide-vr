@@ -13,6 +13,7 @@ SoloPlay run and no worn acceptance. The local-authority admission policy in
 | Luggable aim / throw / cancel | `luggables/luggable.lua` uses primary hold then release; alternate cancels/pushes. | Existing controls supply the actions. The subsequent [trajectory candidate](RANGED-WEAPON-AUDIT.md#luggable-trajectory-candidate-7-september) couples hand aim and preview, preserving cached release and stock drops. Physical carry alignment and live throw origin remain unverified. |
 | Scanner minigame action / cancel / knob | `PlayerCharacterStateMinigame._update_input` reads primary/interact/jump holds, alternate press and `move`. | Existing RT/X/A, LT and left-stick routes. `ScannerDisplayView.is_using_input` returns false; it renders the device rather than owning those gameplay actions. Visual readability, axis behavior with left-hand movement reference, and lifecycle remain unverified. |
 | Inspect operative / companion | Interaction templates override the input to `interact_inspect_pressed`. | Newly assignable Inspect operative / pet companion action, separate from ordinary interaction and weapon inspection. Stock companion ownership/idle checks and operative-view validation remain in charge. |
+| Cycle spectator target | `CameraHandler.update` reads `spectate_next` directly from the selected local Ingame service. | No VR route yet. The stock default is mouse-left / gamepad A; the combat fire/jump cache does not implement this separate action. Ownership must survive an unavailable local character without enabling that character's combat input. |
 
 Source paths are under `_downloads/Darktide-Source-Code/scripts/`. Revive's
 `stop` method only applies success on the server; input delivery alone cannot
@@ -92,3 +93,31 @@ No live tag, revive, rescue or mission completion is claimed.
 Validation: 34 LuaJIT chunks and four focused CTests pass. Fixtures cover the
 stock edge name, held aliases/rearming, hub/combat hint changes and separation
 from ordinary interaction and weapon inspection.
+
+## Spectator input and rescue ownership, 7 September
+
+On source snapshot `0f0cb45991e9305ef4a7b925370792d7d6035f95`,
+`HumanGameplay.update` selects `_get_input()` again and passes it directly to
+`CameraHandler.update`. Spectator cycling therefore needs a scoped local input
+route at that consumer; adding an action to the fixed combat cache alone would
+not reach it. The same null-service/UI/cinematic ownership rules must apply.
+The present VR mapper intentionally requires a current live character object,
+so it cannot be reused unchanged for a player whose character is unavailable.
+The current mod has no `spectate_next` route and its hint remains stock.
+
+The stock camera selects its own transition policy. Entering the hogtied state
+or beginning rescue returns observation to the player's own unit. A subsequent
+cycle press can select a teammate while hogtied; recovery returns to the owner
+and first-person mode. Death outside an expedition safe zone selects the dead
+camera instead of immediately cycling. The safe-zone branch can select a
+teammate, and unavailable players can cycle past their own unit. Cinematics
+skip the ordinary switching branch. A future binding must feed the action and
+let these decisions remain stock, rather than selecting targets directly.
+
+`CameraHandler._camera_root_orientation` also has a separate first-person
+observer branch: it uses the followed unit's interpolated spectated aim, falling
+back to that unit's first-person component. The existing offline independent
+HMD/hand check covers ordinary local first-person mode, not this observer
+branch. Spectator view/comfort, transition to rescue and the disappearance of
+the local character remain explicit mission acceptance items. No spectator
+binding, hint, camera override or live session was changed for this audit.
