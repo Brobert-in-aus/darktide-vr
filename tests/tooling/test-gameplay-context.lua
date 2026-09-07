@@ -79,6 +79,12 @@ setmetatable(environment,{__index=_G})
 local chunk=assert(loadstring(source:sub(first,last-1)..'\nreturn active_game_mode_name'))
 setfenv(chunk,environment)
 local active_mode=chunk()
+local current_first=assert(source:find('function presentation.current_game_mode_name()',1,true))
+local current_last=assert(source:find('\nfunction presentation.apply_offline_benchmark_spin',current_first,true))
+local current_chunk=assert(loadstring(source:sub(current_first,current_last-1)))
+setfenv(current_chunk,environment); current_chunk()
+for _,active_mode in ipairs({active_mode,environment.presentation.current_game_mode_name}) do
+environment.Managers={state={}}
 environment.Managers.state.game_mode=setmetatable({}, {__index=function() error('mode owner retired during lookup') end})
 assert(active_mode()==nil,'Retired mode lookup escaped into gameplay')
 for _,owner in ipairs({{},true,17,
@@ -98,4 +104,5 @@ end}})
 assert(active_mode()=='shooting_range')
 current_mode='hub'; assert(active_mode()=='hub','Mode lookup cached a retired context')
 environment.Managers=nil; assert(active_mode()==nil)
+end
 print('game_mode_lookup=pass actual_seam protected_lookup_call strict_type inherited_receiver current_mode')

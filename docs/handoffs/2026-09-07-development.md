@@ -1817,3 +1817,13 @@ previous controller/melee baseline. Evidence: integrated-121-build-20260907.log
 and integrated-121-ctest-20260907.log under artifacts/unattended. Runtime Lua
 remains `99cd45b`, native capture `01617d6`, XR harness `1324a87`. No deployment.
 Continue the todo; review remaining game-mode lookups for retiring-manager errors.
+
+## Presentation and controller mode-owner retirement
+
+The presentation mode reader now uses the shared protected mode lookup.
+Standalone controller aim protects both helper and manager queries, including
+status reporting, and accepts only string mode names. Actual production-seam
+regressions failed before the fix and pass for malformed/retiring owners,
+inherited methods and changing contexts. Eight focused CTests pass in 0.86
+seconds, including all 37 Lua chunks. No deployment. Continue with automatic
+Psykhanium entry during loading and manager retirement.

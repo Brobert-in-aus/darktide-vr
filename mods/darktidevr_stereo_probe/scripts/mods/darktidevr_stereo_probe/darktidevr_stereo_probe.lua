@@ -2563,8 +2563,8 @@ function presentation.read_head_pose()
 end
 
 function presentation.current_game_mode_name()
-    return Managers and Managers.state and Managers.state.game_mode and
-        Managers.state.game_mode:game_mode_name() or nil
+    return presentation.gameplay_context.game_mode_name(
+        Managers and Managers.state and Managers.state.game_mode)
 end
 
 function presentation.apply_offline_benchmark_spin(rotation)

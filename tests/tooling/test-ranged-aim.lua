@@ -61,7 +61,7 @@ Managers = {
         return private and "shooting_range" or "mission"
     end}},
 }
-local safe_hooks={}
+local safe_hooks,commands,echoes={},{},{}
 local mod = {
     hook = function(_, class, method, callback)
         local original = class[method] or function() end
@@ -69,7 +69,8 @@ local mod = {
     end,
     hook_safe = function(_,class,method,callback)
         safe_hooks[class]=safe_hooks[class] or {}; safe_hooks[class][method]=callback
-    end, command = function() end, info = function() end,
+    end, command = function(_,name,_,callback) commands[name]=callback end, info = function() end,
+    echo=function(_,format,...) echoes[#echoes+1]=string.format(format,...) end,
 }
 local aim = assert(loadfile(arg[1]))()
 aim.install(mod, {controller_aim_target = function()
@@ -319,3 +320,26 @@ lost:_prepare_shooting(42)
 assert(lost._action_component.shooting_position==shared.position and
     lost._action_component.shooting_rotation==shared.rotation+7,'Tracking loss fell back to the other hand')
 print('weapon_roles_ranged=pass dominant_input physical_identity tracking_loss stock_fallback')
+-- The shared runtime helper and the standalone range fallback must reject a
+-- retiring mode owner before a shot or status command escapes its scope.
+aim.presentation.is_controller_aim_mode=nil
+aim.presentation.online_rules=nil
+for _,owner in ipairs({{},17,true,
+        setmetatable({}, {__index=function() error('retired mode lookup') end}),
+        {game_mode_name=function() error('retired mode call') end},
+        {game_mode_name=function() return {} end}}) do
+    Managers.state.game_mode=owner
+    local pending=action(modules[action_root..paths[1]])
+    pending:_prepare_shooting(42)
+    assert(pending._action_component.shooting_position==shared.position)
+    assert(aim.target()==nil)
+    commands.dtvr_controller_aim_status()
+    assert(echoes[#echoes]:find('mode=nil',1,true))
+end
+aim.presentation.current_game_mode_name=function() return 'hub' end
+commands.dtvr_controller_aim_status()
+assert(echoes[#echoes]:find('mode=hub',1,true),'Shared mode helper was ignored')
+aim.presentation.current_game_mode_name=function() error('retiring helper') end
+commands.dtvr_controller_aim_status()
+assert(echoes[#echoes]:find('mode=nil',1,true))
+print('ranged_mode_retirement=pass shared_helper stock_fallback protected_lookup status')

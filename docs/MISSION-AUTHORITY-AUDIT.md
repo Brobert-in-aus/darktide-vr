@@ -119,3 +119,9 @@ ctest --test-dir build/windows-vs2022 -C Release --output-on-failure
 Evidence: ignored `artifacts/unattended/mission-authority-configure-20260907.log`
 and `artifacts/unattended/mission-authority-ctest-20260907.log`.
 No deployment or worn/mission acceptance in this task.
+
+The presentation mode reader and standalone controller-aim fallback now also
+protect manager method lookup and reject non-string mode names. Regression
+fixtures exercise missing, malformed, inherited and retiring owners through
+the actual production helpers; unavailable context leaves weapon aim stock.
+Eight focused gameplay/aim/compiler checks pass. Live transitions remain pending.

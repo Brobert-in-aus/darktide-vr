@@ -11,13 +11,18 @@ function controller_aim.is_reticle_surface(is_self, is_static, damageable, hit_z
         (is_static or (damageable and hit_zone ~= nil))
 end
 
-local function active_mode()
-    local manager = Managers and Managers.state and Managers.state.game_mode
-    if not manager or type(manager.game_mode_name) ~= "function" then
-        return nil
+local function query_active_mode()
+    local presentation = controller_aim.presentation
+    if presentation and presentation.current_game_mode_name then
+        return presentation.current_game_mode_name()
     end
-    local ok, mode = pcall(manager.game_mode_name, manager)
-    return ok and mode or nil
+    local manager = Managers and Managers.state and Managers.state.game_mode
+    return manager and manager:game_mode_name() or nil
+end
+
+local function active_mode()
+    local ok, mode = pcall(query_active_mode)
+    return ok and type(mode) == "string" and mode or nil
 end
 
 local function is_private_range()
