@@ -25,6 +25,12 @@ Ready then passed and sync completed. No VD restart or readiness bypass.
 The new closed-game Psykhanium/HUD/generated-stereo launch is running; fresh
 stereo and worn controller alignment are still pending at this record.
 Evidence: `artifacts/unattended/controller-gun-*20260907.*` (ignored).
+The fresh console beginning 10:13:29 UTC now reports stereo/rigid-hand readiness,
+with both roots' 24/44 collision cleanup. The harness reaches `shared_ready=538`,
+zero interval fallback and one cumulative pose mismatch at that sample. No mod
+WARNING/ERROR in the checked fresh log. The user was asked to equip the lasgun
+and compare barrel/reticle with physical controller direction, then enemy hits.
+The gun-specific controller residual log and worn acceptance remain pending.
 
 ## Superseded candidate: preserve the held gun grip
 
