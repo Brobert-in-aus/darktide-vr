@@ -1229,3 +1229,16 @@ The optional stock-rules command passes. No production change. Ray responses,
 fixed-time rounding and final service endpoints are fixtures; real geometry,
 item consumption and remote acceptance remain pending. Continue the todo with
 the existing full-suite/build baselines and unresolved VDXR rendering blocker.
+
+## Continuous todo work: teammate supply transfer
+
+Branch `codex/stock-pocketable-transfer-2026-09-07` executes stock ally target
+retention/cancellation, give action and recipient-slot validation in the optional
+stock-rules fixture. Transfer timing rechecks recipient liveness, human ownership
+and free slot before removing the item; server-only equip/assist/effect/voice
+calls remain. Missing definitions/targets and replay skip transfer. No new
+binding is needed: stock shared pocketables use the existing weapon-special hold.
+
+The optional stock-rules fixture passes. Smart-targeting results, fixed-time
+rounding and final inventory/notification endpoints are supplied. No production
+change or live teammate acceptance; continue the todo while the user is away.

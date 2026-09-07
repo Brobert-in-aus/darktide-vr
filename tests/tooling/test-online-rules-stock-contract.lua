@@ -402,6 +402,110 @@ do
     assert(#spawns==1 and spawns[1][4]==nil and spawns[1][5]==nil)
     assert(events[#events][1]=='event' and events[#events][2]=='tg_on_pickup_placed')
 end
+do
+    local give,ally,utility={},{},{}
+    local events={}
+    local recipient,other={},{}
+    local target_data={unit=recipient}
+    local targets={}
+    local alive={[recipient]=true,[other]=true}
+    local human,equipped,item_available=true,false,true
+    local function record(name,...) events[#events+1]={name,...} end
+    local loadout={slot_equipped=function() return equipped end,
+        wield_previous_weapon_slot=function(...) record('wield',...) end,
+        unequip_item_from_slot=function(...) record('unequip',...) end,
+        equip_item_to_slot=function(...) record('equip',...) end}
+    local target_player={is_human_controlled=function() return human end}
+    local target_inventory={}
+    local extensions={unit_data_system={read_component=function(_,name) assert(name=='inventory'); return target_inventory end},
+        visual_loadout_system={},fx_system={trigger_exclusive_gear_wwise_event=function(_,event,properties)
+            assert(event=='recieve_gifted_item' and properties.pocketable_name=='crate')
+            record('fx',event)
+        end}}
+    local env=setmetatable({ALIVE=alive,ActionGivePocketable=give,ActionTargetAlly=ally,ActionUtility=utility,
+        PlayerUnitVisualLoadout=loadout,
+        Managers={state={player_unit_spawn={owner=function(_,unit) return unit==recipient and target_player or nil end}}},
+        ScriptUnit={extension=function(unit,name) assert(unit==recipient); return assert(extensions[name]) end},
+        require=function(path)
+            assert(path=='scripts/extension_systems/visual_loadout/utilities/player_unit_visual_loadout')
+            return loadout
+        end}, {__index=_G})
+    local slots=setfenv(assert(loadstring(source('settings/equipment/weapon_templates/pocketables/pockatables_utils'))),env)()
+    env.PocketableUtils=slots
+    env.Pickups={by_name={crate={inventory_item='crate_item',inventory_slot_name='slot_pocketable'}}}
+    env.Pocketable={item_from_name=function(name) assert(name=='crate_item'); return item_available and 'item' or nil end}
+    env.PlayerAssistNotifications={show_notification=function(...) record('assist',...) end}
+    env.Vo={on_demand_vo_event=function(...) record('voice',...) end}
+    env.RECIEVE_GIFTED_ITEM_ALIAS='recieve_gifted_item'
+    env.FixedFrame={clamp_to_fixed_time=function(t) return t end}
+    env.table=setmetatable({clear=function(t) for k in pairs(t) do t[k]=nil end end},{__index=table})
+    local function methods(path,first,last)
+        local text=source(path)
+        local a=assert(text:find(first,1,true)); local b=assert(text:find(last,a,true))
+        setfenv(assert(loadstring(text:sub(a,b-1),'@'..path)),env)()
+    end
+    methods('extension_systems/weapon/actions/utilities/action_utility','local EPSILON =','\nActionUtility.projectile_template =')
+    methods('extension_systems/weapon/actions/action_give_pocketable','local external_properties =','\nreturn ActionGivePocketable')
+    methods('extension_systems/weapon/actions/action_target_ally','ActionTargetAlly.start =','\nreturn ActionTargetAlly')
+    local super={start=function() end,finish=function() end}
+    give.super,ally.super=super,super
+    local unit_data={is_resimulating=false}
+    local targeting=setmetatable({_player_unit='local',_unit_data_extension=unit_data,
+        _action_module_target_finder_component=targets,
+        _smart_targeting_extension={targeting_data=function() return target_data end},
+        _action_settings={validate_target_func=slots.validate_give_pocketable_target_func,
+            clear_on_hold_release=true,has_target_anim_event='has_target',no_target_anim_event='no_target'},
+        trigger_anim_event=function(_,event) record('anim',event) end}, {__index=ally})
+    local action=setmetatable({_player_unit='local',_unit_data_extension=unit_data,
+        _action_module_target_finder_component=targets,_inventory_component={wielded_slot='slot_pocketable'},
+        _weapon_template={give_pickup_name='crate'},_weapon_action_component={time_scale=2},
+        _action_settings={total_time=.7,give_time=.7,assist_notification_type='gifted',
+            voice_event_data={voice_tag_concept='concept',voice_tag_id='take_this'}}}, {__index=give})
+    targeting:start()
+    targeting:fixed_update(.05,10,0)
+    assert(targets.target_unit_1==recipient and events[1][2]=='has_target')
+    targeting:finish('new_interrupting_action',nil,10,0)
+    assert(targets.target_unit_1==recipient,'Giving chain discarded the acquired recipient')
+    for _,server in ipairs({false,true}) do
+        action._is_server=server; events={}
+        action:fixed_update(.05,10,.3)
+        assert(#events==0)
+        action:fixed_update(.05,10,.35)
+        assert(events[1][1]=='wield' and events[2][1]=='unequip')
+        if server then
+            assert(#events==6 and events[3][1]=='assist' and events[4][1]=='equip' and events[5][1]=='fx' and events[6][1]=='voice')
+            assert(events[3][2]==recipient and events[4][2]==recipient and events[4][3]=='item' and events[4][4]=='slot_pocketable')
+        else assert(#events==2,'Client equipped or notified the recipient') end
+        local before=#events
+        action:fixed_update(.05,10,.4)
+        assert(#events==before,'Transfer repeated after its stock trigger time')
+    end
+    -- Target validation is repeated when transfer fires, even if the slot was
+    -- free when aim began. Invalid stock targeting data may retain its unit;
+    -- it must not cause item removal/equip at the action boundary.
+    for _,failure in ipairs({'dead','bot','occupied','unowned','no_item','no_target'}) do
+        alive[recipient]=failure~='dead'; human=failure~='bot'; equipped=failure=='occupied'
+        item_available=failure~='no_item'; targets.target_unit_1=failure=='unowned' and other or recipient
+        if failure=='no_target' then targets.target_unit_1=nil end
+        events={}; action:fixed_update(.05,10,.35)
+        assert(#events==((failure=='no_item' or failure=='no_target') and 0 or 1),failure)
+        if #events>0 then assert(events[1][1]=='wield',failure) end
+    end
+    alive[recipient],human,equipped,item_available=true,true,false,true
+    targets.target_unit_1=recipient
+    unit_data.is_resimulating=true
+    target_data.unit=other; events={}
+    targeting:fixed_update(.05,11,0); action:fixed_update(.05,11,.35)
+    assert(targets.target_unit_1==recipient and #events==0,'Replay reacquired or retransferred a pocketable')
+    unit_data.is_resimulating=false
+    target_data.unit='local'; targeting:fixed_update(.05,11,0)
+    assert(targets.target_unit_1==nil,'Self-target survived ally selection')
+    targets.target_unit_1,targets.target_unit_2,targets.target_unit_3=recipient,other,recipient
+    targeting:finish('hold_input_released',nil,11,0)
+    assert(targets.target_unit_1==nil and targets.target_unit_2==nil and targets.target_unit_3==nil)
+    targets.target_unit_1=recipient; action:finish('action_complete',nil,11,.7)
+    assert(targets.target_unit_1==nil)
+end
 -- Stock sweeps use successive simulation references and their authored damage
 -- window. No visible weapon/hand node is sampled by these orchestration methods.
 do
@@ -1092,6 +1196,7 @@ print('PASS: actual stock local rendering and camera root retain independent vie
 print('PASS: actual stock shot preparation retains body origin, charge, recoil/sway/assist/spread order and grouped-shot sample')
 print('PASS: actual stock projectile launch retains prepared origin/direction, cached ballistic branches, proc metadata and server-only spawn ownership')
 print('PASS: stock deployables retain simulated placement rays, slope/attachment validation, timed ammo consumption and server-only pickup spawning')
+print('PASS: stock pocketable transfer revalidates recipient inventory, retains chain/release rules and suppresses transfer during replay')
 print('PASS: actual stock sweeps retain simulation references, damage-window edges/final drain, abort masks and time scaling')
 print('PASS: actual stock flame loops retain simulation rays, obstructions, target filtering, rewind and server-only damage/burn calls')
 print('PASS: actual stock targeting retains simulation aim/recoil/sway, assist ownership, sticky charges, strict range and resimulation targets')

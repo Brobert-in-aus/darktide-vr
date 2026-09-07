@@ -173,6 +173,17 @@ The shooting range does not emit that training-grounds event. Engine ray hits,
 fixed-time rounding and final inventory/pickup/telemetry endpoints are supplied;
 these checks do not establish live placement geometry or server acceptance.
 
+Actual `ActionTargetAlly`, `ActionGivePocketable` and pocketable slot validation
+also pass with supplied smart-targeting data and final service endpoints. The
+target survives the giving action chain but clears on hold cancellation/finish.
+Transfer-time checks reject dead, nonhuman, occupied-slot, unowned or missing
+recipients and missing item definitions. Prediction unwields/unequips locally;
+only the server equips the recipient and sends assist/effect/voice events.
+Resimulation skips reacquisition and transfer. The shared pocketable template
+uses `weapon_extra_hold` and its release; the existing combat special binding
+(right grip by default) already supplies that hold. These findings do not prove
+rendered target selection, real inventory mutation or teammate acceptance.
+
 Follow-up user direction: configure Psykhanium to use the same combat/input
 rules as online where possible, and improve that path there first. This changes
 the next implementation target to a range-only online-rules proving mode.
