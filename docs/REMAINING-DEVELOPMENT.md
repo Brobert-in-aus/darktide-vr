@@ -7,9 +7,14 @@ details below. Development resumed on 7 September; the user has since returned
 home and established a working headset session. Continue from the
 [current handoff](handoffs/2026-09-07-development.md); record worn checks only
 when actually observed. Earlier at-work/pending labels below are historical.
-Latest steering: hold firing-only aim switching and comprehensively assess
-client/server control, including reporting a head position at the hand. See
-[server capability assessment](ONLINE-SERVER-CAPABILITY-ASSESSMENT.md).
+Latest steering: restore free 6DoF with a 10 cm collider chase using ordinary
+movement inputs and acceleration/braking prediction. The
+[roomscale candidate](ROOMSCALE-COLLIDER-FOLLOW.md) passes offline checks; the
+user closed VD and requested the ranged-weapon pass when worn checks are needed.
+Prioritize ranged aim/reticle agreement and firing across all families next.
+Firing-only aim switching remains on hold. The
+[server capability assessment](ONLINE-SERVER-CAPABILITY-ASSESSMENT.md) is complete;
+the user accepted the deployed one-metre staff visual convergence candidate.
 Earlier 7 September steering: investigate online-server missions alongside local
 missions. See [online requirements](ONLINE-MISSION-REQUIREMENTS.md) for the stock
 input route, authority limits and implementation/validation sequence. This is

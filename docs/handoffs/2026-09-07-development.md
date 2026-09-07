@@ -2,7 +2,8 @@
 
 The user resumed development and requested continued work until told to stop.
 At 16:17 Brisbane they returned home with the headset and requested setup.
-Prioritize establishing a working live session and their current feedback.
+They later closed Virtual Desktop for a break. Continue offline; at the roomscale
+worn-test boundary switch to the ranged-weapon pass rather than waiting for XR.
 Worn checks remain pending until actually observed. The configured 20-minute
 heartbeat was subsequently found PAUSED during the comprehensive assessment;
 that external setting was left unchanged. Automation state and device
@@ -12,11 +13,11 @@ Latest integrated offline check: **121/121 CTests pass** at `28e6cca` (20.73
 seconds), with headset tests disabled and all 37 Lua chunks compiling. Full
 Release build also passes at that baseline; eight focused checks pass for the
 newer mode-query fix `1cdd0fd`. The user restarted both Virtual Desktop ends,
-Ready subsequently passed, and the current quiet Psykhanium session runs Lua
-`57ad12c`, capture `01617d6`, harness `1324a87`. Guardian is restored and proximity
+Ready subsequently passed, and the latest deployed Psykhanium session runs Lua
+`9c55945`, capture `01617d6`, harness `1324a87`. Guardian is restored and proximity
 override remains applied for live development. Stereo/triggers and the tested
 staff's hand-directed aim with stock face origin have worn feedback; other
-acceptance remains pending. The later auto-entry fix `65c4f83` is undeployed.
+acceptance remains pending. Auto-entry fix `65c4f83` is included in that deployment.
 Chronological entries below retain older validation states.
 
 Latest steering holds firing-only aim switching. The
@@ -33,8 +34,26 @@ The user then selected cosmetic hand/staff-origin projectiles converging onto
 the real projectile over one metre. The
 [staff visual candidate](../STAFF-PROJECTILE-VISUAL-CONVERGENCE.md) passes its
 actual-stock FX contract, all 38 Lua chunks and source invariants. The quiet
-game was asked to close for deployment; readiness, fresh stereo initialization
-and worn acceptance still need recording for this candidate.
+game was asked to close for deployment. Ready passed with 600/600 submitted
+frames. The first launch revealed a duplicate same-mod firing hook warning;
+`9c55945` routes through the existing hook instead and the actual-hook regression
+rejects duplicate registration. Nine focused CTests pass (1.21 seconds).
+The corrected candidate is deployed: fresh stereo and online-rules startup,
+shared_ready=670, and no mod WARNING/ERROR in the checked fresh log. One
+cumulative pose mismatch was observed; this is not a zero-mismatch claim.
+The user called the result acceptable and moved on to 6DoF/collider following.
+
+Current request: restore independent tracked head translation, follow its
+horizontal position using ordinary server movement inputs with a roughly 10 cm
+deadzone, and leave vertical translation independent. Physical crouch detection
+is explicitly deferred. Work is on `codex/online-roomscale-collider-follow-2026-09-07`.
+The [roomscale chase candidate](../ROOMSCALE-COLLIDER-FOLLOW.md) is implemented
+offline: actual stock acceleration/braking prediction, 10 cm deadzone, manual
+priority, measured movement repayment, correction history, and camera-phase
+compensation. All 39 chunks and source invariants pass, the 45-case stock
+movement fixture passes, and nine focused CTests pass (0.92 seconds). No XR
+deployment was attempted while VD is closed. Next: offline ranged-family pass;
+roomscale worn acceptance remains queued for the user's return.
 
 The day's continuation is collected in
 [draft review #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2),

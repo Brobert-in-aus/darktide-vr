@@ -138,6 +138,9 @@ if(BUILD_TESTING)
     add_test(NAME gameplay_ui_input COMMAND "${LUAJIT_VALIDATOR}"
       "${CMAKE_CURRENT_SOURCE_DIR}/test-gameplay-ui-input.lua"
       "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gameplay_ui_input.lua")
+  add_test(NAME roomscale COMMAND "${LUAJIT_VALIDATOR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-roomscale.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_roomscale.lua")
   add_test(NAME hud_panel COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-hud-panel.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_hud_panel.lua")

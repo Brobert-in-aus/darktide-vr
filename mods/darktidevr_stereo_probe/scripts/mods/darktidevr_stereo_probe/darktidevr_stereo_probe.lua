@@ -4750,6 +4750,22 @@ end
 -- body-heading correction must run first: Darktide turns the stock root toward
 -- travel, and sampling the off-centre model-eye anchor before restoring HMD
 -- heading makes both wrist targets trace a fixed-radius circle with the stick.
+function presentation.roomscale_anchor_offset(unit, rotation)
+    if not presentation.roomscale or not head_translation_requested or
+            not head_pose_values or not head_pose_sequence or
+            presentation.read_head_pose() ~= 0 then return Vector3.zero() end
+    local player = Managers and Managers.player and Managers.player:local_player(1)
+    unit = unit or (player and player.player_unit)
+    local x, y, z = presentation.roomscale.offset(unit,
+        tostring(tonumber(presentation.head_pose_transport_generation[0])) .. ":" ..
+            tostring(tonumber(head_pose_values[23])),
+        tonumber(head_pose_sequence[0]), Managers.time:time("main"),
+        tonumber(head_pose_values[20]), tonumber(head_pose_values[22]),
+        tonumber(head_pose_values[1]), tonumber(head_pose_values[24]),
+        presentation.calibrated_character_scale(player), Quaternion.yaw(rotation))
+    return Vector3(x, y, z)
+end
+
 function presentation.refresh_body_anchor_from_avatar(unit)
     if not active_base_rotation or not unit or not Unit.alive(unit) then
         return false
@@ -4759,6 +4775,7 @@ function presentation.refresh_body_anchor_from_avatar(unit)
         return false
     end
     local anchor_rotation = active_base_rotation:unbox()
+    eye_position = eye_position + presentation.roomscale_anchor_offset(unit, anchor_rotation)
     -- The former one-user lateral correction subtracted 6 cm along the
     -- recenter-frame right axis. That is exactly a persistent leftward camera
     -- displacement and, by construction, cannot be changed by recentering.
@@ -4893,6 +4910,9 @@ local function update_stereo(manager)
             clean_rotation
         )
     end
+    local roomscale_offset = presentation.roomscale_anchor_offset(nil, clean_rotation)
+    clean_position = clean_position + roomscale_offset
+    body_anchor_position = body_anchor_position + roomscale_offset
     controller_observation.body_anchor_x = Vector3.x(body_anchor_position)
     controller_observation.body_anchor_y = Vector3.y(body_anchor_position)
     controller_observation.body_anchor_z = Vector3.z(body_anchor_position)
@@ -5281,6 +5301,9 @@ presentation.weapon_hand_roles = mod:io_dofile(
 presentation.online_rules = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_online_rules"
 ).install(mod, presentation, controller_observation, active_game_mode_name)
+presentation.roomscale = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_roomscale"
+).install(mod, presentation)
 
 function presentation.is_first_person_body_mode(mode)
     return presentation.gameplay_context.body_mode(mode,
@@ -5572,7 +5595,7 @@ mod:hook_safe(
 mod:hook_safe(
     require("scripts/managers/player/player_game_states/human_input_handler"),
     "fixed_update",
-    function(self, _, _, frame, input)
+    function(self, dt, t, frame, input)
         if self ~= presentation.gameplay_input_owner[1] or
                 presentation.gameplay_input_owner[2] == nil or
                 presentation.gameplay_context.local_input_unit(
@@ -5706,7 +5729,7 @@ mod:hook_safe(
         end
         -- Finalize the same cached input columns consumed by local simulation
         -- and the stock network sender, after the controller adapter above.
-        presentation.online_rules.capture(self, frame)
+        presentation.online_rules.capture(self, frame, dt, t)
         if not controller_observation.primary_action_injected then
             return
         end
@@ -6158,9 +6181,14 @@ mod:hook(
         local original_velocity = presentation.apply_body_follow_translation(
             unit, dt, t, locomotion_component, steering_component,
             current_position)
+        local before_x, before_y = Vector3.x(current_position), Vector3.y(current_position)
         local result = func(
             self, unit, dt, t, locomotion_component, steering_component,
             current_position, calculate_fall_velocity, on_ground, mover)
+        if presentation.roomscale and result then
+            presentation.roomscale.moved(self, unit, self._input_extension._frame,
+                Vector3.x(result) - before_x, Vector3.y(result) - before_y)
+        end
         if original_velocity then
             steering_component.velocity_wanted = original_velocity
         end
@@ -10228,7 +10256,8 @@ mod:hook_safe(
 mod:hook_safe(
     require("scripts/extension_systems/first_person/player_unit_first_person_extension"),
     "fixed_update",
-    function(self)
+    function(self, unit, dt, t, frame)
+        if presentation.roomscale then presentation.roomscale.capture_base(unit, frame) end
         if not controller_observation.authoring_enabled or
                 not controller_observation.right_aim_usable or
                 controller_observation.last_sequence <

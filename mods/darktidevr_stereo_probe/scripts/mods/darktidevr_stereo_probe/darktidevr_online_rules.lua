@@ -88,7 +88,7 @@ function Rules.install(mod, presentation, state, mode_name)
         if ok then return position, rotation end
     end
 
-    local function capture(handler, frame)
+    local function capture(handler, frame, dt, t)
         if not enabled() or presentation.mode ~= 1 or
                 not state.authoring_enabled or not state.gameplay_input_active or
                 presentation.gameplay_context.ui_blocks_gameplay(Managers.ui) then return end
@@ -122,6 +122,18 @@ function Rules.install(mod, presentation, state, mode_name)
         if not finite(right) or not finite(left) or not finite(forward) or not finite(backward) then return end
         local desired = Quaternion.rotate(presentation.flat_movement_rotation(old_yaw),
             Vector3(right-left, forward-backward, 0))
+        local types = handler._pack_unpack_action_to_network_type_index
+        if not types.move_right or not types.move_left or not types.move_forward or not types.move_backward then return end
+        local automatic = false
+        if presentation.roomscale then
+            desired, automatic = presentation.roomscale.plan(unit, frame, dt, t, yaw, desired,
+                function(x, y)
+                    return Network.pack_unpack(types.move_right, math.max(x,0)) -
+                        Network.pack_unpack(types.move_left, math.max(-x,0)),
+                        Network.pack_unpack(types.move_forward, math.max(y,0)) -
+                        Network.pack_unpack(types.move_backward, math.max(-y,0))
+                end)
+        end
         local relative = Quaternion.rotate(Quaternion.inverse(
             presentation.flat_movement_rotation(yaw)), desired)
         local x, y = Vector3.x(relative), Vector3.y(relative)
@@ -133,8 +145,6 @@ function Rules.install(mod, presentation, state, mode_name)
         x, y = x/scale, y/scale
         -- Keep the transaction in scalar locals rather than constructing two
         -- scratch arrays on every authored fixed frame.
-        local types = handler._pack_unpack_action_to_network_type_index
-        if not types.move_right or not types.move_left or not types.move_forward or not types.move_backward then return end
         right = Network.pack_unpack(types.move_right, math.max(x,0))
         if not finite(right) then return end
         left = Network.pack_unpack(types.move_left, math.max(-x,0))
@@ -151,6 +161,7 @@ function Rules.install(mod, presentation, state, mode_name)
         cache[handler._yaw_index][index] = yaw
         cache[handler._pitch_index][index] = pitch
         cache[handler._roll_index][index] = 0
+        if presentation.roomscale then presentation.roomscale.record(frame, automatic) end
         instance.frames = instance.frames + 1
         if instance.frames == 1 then
             mod:info("DARKTIDEVR_ONLINE_RULES input_frame=%s aim=dominant_hand movement=stock_packed replay=stock_history challenge=%s resistance=%s",
@@ -158,8 +169,8 @@ function Rules.install(mod, presentation, state, mode_name)
                 difficulty_evidence("get_resistance"))
         end
     end
-    function instance.capture(handler, frame)
-        local ok, message = pcall(capture, handler, frame)
+    function instance.capture(handler, frame, dt, t)
+        local ok, message = pcall(capture, handler, frame, dt, t)
         if not ok then
             instance.failures = instance.failures + 1
             if instance.failures == 1 then
