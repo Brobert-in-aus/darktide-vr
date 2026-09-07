@@ -198,9 +198,45 @@ for _,variant in ipairs({{name='fast',hold=.3},{name='mid',hold=.35},{name='slow
         completed.t<=.02+variant.hold+1+.03,'Stock heavy auto-completion timing: '..variant.name)
 end
 assert(template.action_inputs.heavy_attack.input_sequence[1].duration==.25,'Variant fixture mutated default setup')
+-- Execute the actual force-sword input setup and per-weapon overrides, stopping
+-- before damage profiles and engine resources unrelated to input parsing.
+local force_setup=env.require('scripts/settings/equipment/weapon_templates/forcesword_melee_action_input_setup')
+for _,variant in ipairs({'forcesword_p1_m1','forcesword_p1_m2','forcesword_p1_m3'}) do
+    local file=assert(io.open(root..'/scripts/settings/equipment/weapon_templates/force_swords/'..variant..'.lua','r'))
+    local source=file:read('*a'); file:close()
+    local first=assert(source:find('local weapon_template = {}',1,true))
+    local marker='weapon_template.action_input_hierarchy = action_input_hierarchy'
+    local last=assert(source:find(marker,first,true))+#marker-1
+    local setup_env=setmetatable({ForceswordMeleeActionInputSetup=force_setup,
+        ActionInputHierarchy=env.require('scripts/utilities/action/action_input_hierarchy')},{__index=env})
+    local selected=setfenv(assert(loadstring(source:sub(first,last)..'\nreturn weapon_template','@'..variant)),setup_env)()
+    tick,events=session(selected)
+    assert(tick(1)=='start_attack',variant)
+    for _=1,5 do tick(1) end
+    assert(tick(0)=='light_attack',variant)
+    tick,events=session(selected)
+    assert(tick(1)=='start_attack',variant)
+    for _=1,35 do tick(1) end
+    assert(tick(0)=='heavy_attack',variant)
+    tick,events=session(selected)
+    assert(tick(8)=='vent',variant)
+    for _=1,80 do assert(tick(8)==nil,'Held quell repeated: '..variant) end
+    assert(tick(0)=='vent_release',variant)
+    assert(#events==2,'Unexpected quell action: '..variant)
+    tick,events=session(selected)
+    assert(tick(2)=='block',variant); assert(tick(3)=='push',variant)
+    for _=1,25 do tick(3) end
+    assert(events[3].action=='push_follow_up',variant)
+    assert(tick(2)=='find_target_release','Primary release must select stock target-release priority: '..variant)
+    tick,events=session(selected)
+    assert(tick(2)=='block'); assert(tick(3)=='push')
+    for _=1,25 do tick(3) end
+    assert(tick(1)==nil,'Alternate-only release incorrectly ended target hold: '..variant)
+    assert(tick(0)=='find_target_release','Both released must retain stock release priority: '..variant)
+end
 local corrupted=session(nil,2)
 local ok,reason=pcall(corrupted,1)
 assert(not ok and tostring(reason):find('Receiving parser selected a different action',1,true),
     'Deliberate false receiving input did not expose divergence')
-print('melee_parser_stock=pass default_fast_mid_slow light_release heavy_hold auto_complete block_push_followup_release cancel stock_send_receive duplicate_packet')
+print('melee_parser_stock=pass default_fast_mid_slow forcesword_m1_m2_m3_quell_target_release light_release heavy_hold auto_complete block_push_followup_release cancel stock_send_receive duplicate_packet')
 print('LIMIT: in-memory RPC, shared input setups, unrelated common inputs, engine services and action consumption are fixtures; no authoritative damage')

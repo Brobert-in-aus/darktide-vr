@@ -26,8 +26,14 @@ VR cancellation fix or proof that the action handler admits every queued action.
 
 The parser is real; class construction, engine services, 10 ms fixed ticks,
 unrelated common-action inputs and immediate action consumption are fixtures.
-Weapon-specific overrides, forcesword special hierarchy, stock action admission,
-engine network serialization and authoritative damage remain outside this check.
+The three force-sword variants also execute their actual input overrides. Light
+release, held heavy, an 80-tick quell hold/release and push-follow-up releases
+agree across both parsers. Releasing only alternate preserves the target hold;
+releasing primary selects `find_target_release`, including when both are released.
+The stock hierarchy gives that input priority over the raw-release `fling_target`.
+Actual target finding, conditional action-state fling, peril reduction, stock
+action admission, engine network serialization and authoritative damage remain
+outside this check. Other weapon-specific overrides remain untested.
 Existing separate transport tests cover correction/replay. The new combined
 transport/parser fixture is not a live or end-to-end damage/server test.
 
