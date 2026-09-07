@@ -102,3 +102,21 @@ matching stop route. `AlternateFire.movement_speed_modifier` applies the active
 weapon curve. Request ordinary inputs so these transitions remain intact;
 setting only `alternate_fire.is_active` or directly replacing accuracy templates
 would skip stock behavior.
+
+## Initial weapon-specific findings
+
+These are raw local source values, before item stats, buffs and the active
+movement/firing state; they are not measured final weapon performance.
+
+| Template | Relevant stock behavior | Consequence for the candidate |
+| --- | --- | --- |
+| `lasgun_p3_m2` | Uses `hip_lasgun_p3_m1` and `default_lasgun_killshot` spread templates. Their still-state minimum pitch/yaw spread is 1.8–1.5 versus 0; maximum is 6.25–6 versus 2.5. | Stock ADS provides a concrete spread advantage to test through two-hand hold. |
+| Same lasgun | Hip and ADS recoil templates have matching listed rise magnitudes, but camera recoil fraction changes from 0.15 to 0.01 and rise duration from 0.075 to 0.01. | Do not describe this simply as uniformly less total recoil. Preserve the complete template and verify visible/actual shot agreement. |
+| `autogun_p2_m1` | Uses `kind = "aim"` with a `to_braced` first-person animation, alternate recoil/spread and a movement-speed curve. | An aim action can mean bracing rather than looking through sights; generic ADS naming is insufficient. |
+| `stubrevolver_p1_m1` | Uses ironsight recoil/spread/sway and camera settings, but its alternate settings contain `action_movement_curve`, not the lasgun's `movement_speed_modifier` field. | Audit the actual action/movement consumers before promising the same slowdown for pistols. |
+
+Files inspected: `scripts/settings/equipment/weapon_templates/lasguns/lasgun_p3_m2.lua`,
+its `settings_templates/lasgun_spread_templates.lua` and `lasgun_recoil_templates.lua`,
+`autoguns/autogun_p2_m1.lua`, and `stub_pistols/stubrevolver_p1_m1.lua` under the
+ignored local Darktide source checkout. Per-weapon scope, physical stock and
+grip-socket configuration remain implementation work.
