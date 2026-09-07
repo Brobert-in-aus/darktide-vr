@@ -87,3 +87,44 @@ The command stopped there, so no replacement instance was launched and no PC
 restart occurred. No privilege workaround, headset wake, proximity change or new
 Ready result followed. The rendering failure remains unresolved; continue useful
 offline work while the user is away.
+
+## Follow-up: verified Guardian pause/resume command
+
+At approximately 12:14, the installed SideQuest desktop 1.1.0 implementation
+(`dist/sidequest-desktop/browser/chunk-JNO7CKtG.js` inside its application archive)
+provided this reversible development command, shown as Android-shell input:
+
+```text
+am broadcast -a com.oculus.vrguardianservice.JsonCmdUserBroadcast --es cmd '{"settings":{"name":"guardian_paused","action":"set","val":true}}'
+```
+
+The Android shell command is the broadcast and JSON above; host-shell quoting
+must preserve the JSON. Send `val:false` to resume Guardian. This sets a state,
+unlike the earlier full-passthrough toggle. Meta also documents a development
+Boundary toggle in MQDH's Device Manager, with restoration after development:
+[Manage your Headset with MQDH](https://developers.meta.com/horizon/documentation/unity/ts-mqdh-basic-usage/).
+
+One bounded attempt applied proximity Disable/Status, sent the pause command,
+resumed VD and ran default Ready preflight. Guardian's own log confirmed the
+preference change; cleanup sent `val:false` and the log confirmed `1 -> 0`,
+`paused via pref store : 0` and Guardian resume. The older
+`getprop debug.oculus.guardian_pause` query remained empty before, during and
+after this change: it cannot verify this preference-based route on this headset.
+Broadcast success alone is also insufficient; use the receiving service's
+state-change evidence.
+
+The immediate Ready attempt still reported HMD unavailable, before session or
+swapchain creation; its timestamp preceded the logged pause completion. A second
+bounded attempt at 12:16 allowed 15 seconds after pause/resume, recorded Guardian
+paused before Ready, and reached HMD/session creation. It failed at the same
+`xrCreateSwapchain` / `ovr_CreateTextureSwapChainDX -7000` boundary. Therefore this
+verified Guardian route has not resolved the rendering blocker. Cleanup again
+confirmed `guardian_paused: 1 -> 0` and `paused via pref store : 0`.
+
+No game launch, deployment or permanent monitor followed. Normal proximity
+automation was restored in `finally`; its immediate power sample remained awake.
+Boundary pause does not establish tracking recovery or a double-tap cause.
+
+Ignored local evidence: `quest-boundary-ready-20260907.json` and the matching
+pause, restore, state-evidence and proximity logs under `artifacts/unattended`;
+the settled attempt uses the `quest-boundary-settled-` prefix.

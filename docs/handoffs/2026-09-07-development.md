@@ -1185,3 +1185,18 @@ No production change. Game-object decoding, schema, clock effects, telemetry
 and the simulation consumer are fixtures. Engine vector/quaternion userdata
 restoration and live convergence remain unverified. Continue offline work;
 full-suite baseline 111/111 at `968df68`, native build baselines unchanged.
+
+## Continuous todo work: Guardian preference recovery
+
+Branch `codex/quest-boundary-recovery-2026-09-07` records a verified ADB
+Guardian pause/resume route from the installed SideQuest implementation, alongside
+Meta's documented MQDH development Boundary switch. Guardian's own logs confirm
+the preference changing and restoration. The older system property query stays
+blank and cannot verify this route. See QUEST-PASSTHROUGH-RECOVERY for the command.
+
+The immediate Ready attempt ran before pause completion and saw no HMD. A settled
+15-second attempt with logged Guardian pause reached session creation, then
+failed with the existing VDXR swapchain error `-7000`. Guardian was restored with
+logged `1 -> 0`, and proximity Enable/Status ran in `finally`. No deployment or
+Darktide launch; double-tap cause and tracking recovery remain unproven. Continue
+offline work; do not repeatedly retry the same runtime failure without new evidence.
