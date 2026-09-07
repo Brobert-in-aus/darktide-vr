@@ -92,6 +92,15 @@ for the smaller set needed before a first end-to-end mission attempt.
    hitscan, four pellet and four staff), but no owned-inventory response. Stock
    firing/targeting/throw and pellet/hitscan contract checks now pass with engine
    and damage substitutes. This narrows source coverage, not live acceptance.
+   7 September worn follow-up: the visual-copy collision blocker is fixed and
+   the user confirms gun/reticle agreement, but both are misaligned with the
+   hand after rotating the weapon attachment. Preserve the held grip and derive
+   firearm aim from the held muzzle pose; staff acceptance must be retained.
+   **Design and implement ADS for VR**, explicitly requested by the user: decide
+   how ADS is entered/exited, align sights to the real eye and held weapon, and
+   handle scopes, two-hand support, stock spread/recoil/zoom rules and readable
+   aiming feedback. Button versus physical sight alignment needs a deliberate
+   interaction choice; no ADS implementation is claimed by the firing fix.
 4. **Fix DLSS image quality, blur first.** Reactivated by the user. Treat blur and
    duplicated/displaced HUD elements as possibly separate issues; isolate and fix
    blur first, then investigate duplication/displacement. Do not assume a common

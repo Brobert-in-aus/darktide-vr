@@ -100,6 +100,13 @@ in the checked fresh log. Four actual lasgun endpoints now reach scenery
 The user has been asked for a fresh no-recenter enemy-hit/hand-barrel check.
 Evidence: `artifacts/unattended/lasgun-sparse-*20260907.*` (ignored). Session is
 running with HUD/generated stereo and unchanged native components.
+The user confirms gun/reticle agreement in the corrected session, but both are
+misaligned with the hand. The attachment rotation solved the wrong presentation
+constraint: next preserve the authored weapon seating in the tracked hand and
+derive firearm aim from that held muzzle basis. Do not call this general gun
+acceptance; the user has not separately confirmed enemy damage. They explicitly
+requested VR ADS work, now added to REMAINING-DEVELOPMENT.md (entry/exit, physical
+sight/eye alignment, scopes/support and stock ADS behavior).
 
 At 16:17 Brisbane they returned home with the headset and requested setup.
 They later closed Virtual Desktop for a break. Continue offline; at the roomscale
