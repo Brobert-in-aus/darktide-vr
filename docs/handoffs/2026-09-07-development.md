@@ -754,3 +754,28 @@ The LuaJIT gate still compiles 36 chunks. Full-suite baseline remains 108/108 at
 `dd1ec4e`; the new test increases the configured inventory to 109. No claim that
 this constructed failure caused an observed live alignment issue. Continue
 online-rule action-family checks and the todo list while live readiness is blocked.
+
+## Continuous todo work: stock flame action contract
+
+Branch `codex/online-flamer-stock-contract-2026-09-07` extends the optional
+`test-online-rules-stock-contract.lua` fixture with actual stock continuous/burst
+flame acquisition, ray loops, hit processing and fixed-update authority. The
+real VR input adapter and first-person update precede those reads. Client and
+server cases retain the body/eye simulation origin, hand-directed angle, rewind
+arguments, one/eight ray ownership and server-only damage/burn calls. Supplied
+hits cover self/afro/duplicate filters, friendly fire, wall/shield obstruction,
+buff-only targets, burst distance delay and clearing an empty preview.
+
+The optional fixture passes using the existing three module/source arguments
+documented in PSYKHANIUM-ONLINE-RULES. Engine collision, spread and final damage
+are substituted; no portable source dependency, production edit, deployment or
+live flame acceptance is introduced. Continue integrated offline validation and
+the remaining todo list; no headset confirmation is expected while the user works.
+
+Integrated follow-up: the full Windows x64 Release preset build passes, followed
+by **109/109 offline CTests** with headset tests disabled at configuration.
+Evidence: `artifacts/unattended/continuous-todo-full-ctest-109-20260907.log`.
+This includes native publisher-transition cancellation, current handler ownership,
+range difficulty diagnostics and the new anatomical-calibration test. LuaJIT
+compiles 36 chunks. The optional source fixture remains separate and passes;
+current candidates remain undeployed.

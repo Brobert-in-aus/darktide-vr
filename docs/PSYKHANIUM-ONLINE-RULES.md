@@ -189,6 +189,18 @@ and reference ownership, not actual contact/cleave or live damage. The common
 melee-hook test also verifies that online-mode admission leaves both the action
 component and view extension untouched even with valid live hand tracking.
 
+The stock-source fixture also executes continuous and burst flame target
+acquisition, ray loops, hit processing and fixed-update authority branches.
+Both use the current stock simulation component produced after the VR adapter;
+no rendered weapon origin is read. Client prediction casts the central ray and
+updates its obstruction preview, while the server casts eight rays and owns
+damage/burn calls. Supplied hit lists cover self/afro/duplicate filtering,
+friendly-fire policy, wall and shield stops, a buff-only target, burst distance
+delay and an empty frame clearing preview validity. Rewind arguments and spread
+call counts remain stock. Collision results, spread distribution and final
+damage/buff application are substitutes; this is source-level orchestration
+evidence, not proof of live flame damage, effects alignment or server acceptance.
+
 An optional stock grenade check passes:
 
 ```powershell

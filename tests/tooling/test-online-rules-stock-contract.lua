@@ -259,6 +259,123 @@ do
     aim,h._input_cache=saved_aim,saved_cache
     Unit.world_position,Unit.world_rotation=saved_world_position,saved_world_rotation
 end
+-- Flame target acquisition is separate from ordinary shot preparation. Run
+-- its real ray loop, obstruction and ownership policy with supplied ray hits.
+do
+    local saved_aim,saved_cache=aim,h._input_cache
+    Vector3.distance=function(a,b)
+        return math.sqrt((a[1]-b[1])^2+(a[2]-b[2])^2+(a[3]-b[3])^2)
+    end
+    for _,burst in ipairs({false,true}) do
+        local class_name=burst and 'ActionFlamerGasBurst' or 'ActionFlamerGas'
+        local flame_source=source('extension_systems/weapon/actions/'..
+            (burst and 'action_flamer_gas_burst' or 'action_flamer_gas'))
+        local class={}; local hits,rays,spread_calls,hit_counts={},0,0,{}
+        local friendly=false
+        local positions={['local']=Vector3(10,20,0),enemy=Vector3(10,24,0),
+            ally=Vector3(10,22,0),buff_only=Vector3(10,23,0)}
+        local side={is_ally=function(_,_,unit) return unit=='ally' end}
+        local env=setmetatable({[class_name]=class,POSITION_LOOKUP=positions,
+            INDEX_POSITION=1,INDEX_NORMAL=3,INDEX_ACTOR=4,
+            Managers={state={extension={system=function(_,name) assert(name=='side_system'); return side end}}},
+            Actor={unit=function(actor) return actor.unit end},
+            HitZone={get_name=function(_,actor) return actor.zone end,hit_zone_names={afro='afro'}},
+            FriendlyFire={is_enabled=function() return friendly end},
+            ScriptUnit={has_extension=function(unit,name)
+                if name=='shield_system' then
+                    if unit=='shield' then return {can_block_from_position=function(_,p)
+                        assert(p==positions['local']); return true end} end
+                elseif unit~='wall' and unit~='shield' and
+                        not (unit=='buff_only' and name=='health_system') then return {} end
+            end},
+            math=setmetatable({random_seed=function() return 123 end},{__index=math}),
+            table=setmetatable({clear=function(t) for k in pairs(t) do t[k]=nil end end},{__index=table}),
+            Unit={world_position=function() error('flame read rendered weapon origin') end,
+                world_rotation=function() error('flame read rendered weapon direction') end},
+        },{__index=_G})
+        local function method(name,next_name)
+            local a=assert(flame_source:find(class_name..'.'..name..' =',1,true))
+            local b=assert(flame_source:find('\n'..class_name..'.'..next_name..' =',a,true))
+            setfenv(assert(loadstring(flame_source:sub(a,b-1))),env)()
+        end
+        method('_is_unit_blocking',burst and '_damage_and_burn_targets' or '_hit_target')
+        local function check_spread(rotation)
+            assert(rotation==component.rotation); spread_calls=spread_calls+1
+            return rotation -- Distribution is an engine-dependent substitute.
+        end
+        env.Spread={uniform_circle=check_spread,target_style_spread=function(rotation,i,count,rings,bullseye)
+            assert(i==rays+1 and count==8 and rings==2 and bullseye)
+            return check_spread(rotation)
+        end}
+        env.HitScan={raycast=function(world,position,direction,range,unused,filter,rewind)
+            rays=rays+1
+            assert(world=='physics' and position==component.position and range==12 and unused==nil)
+            assert(filter=='filter_player_character_shooting_raycast' and rewind==37)
+            assert(math.abs(direction[1]+math.sin(component.rotation.yaw))<1e-12 and
+                math.abs(direction[2]-math.cos(component.rotation.yaw))<1e-12)
+            return hits
+        end}
+        local function hit(unit,zone)
+            return {Vector3(10,23,1),0,Vector3(0,-1,0),{unit=unit,zone=zone or 'torso'}}
+        end
+        for _,server in ipairs({false,true}) do
+            aim=Quaternion.from_yaw_pitch_roll(server and 1.2 or -.8,.2,0)
+            h._input_cache={{0},{0},{0},{0},{view.yaw},{view.pitch},{0}}
+            rules.capture(h,200)
+            PlayerUnitFirstPersonExtension.fixed_update(fp,'local',.02,20,1)
+            local action=setmetatable({_is_server=server,_is_local_unit=not server,
+                _player_unit='local',_player='player',_physics_world='physics',
+                _first_person_component=component,_spread_angle=.2,_range=12,
+                _action_module_position_finder_component={},_targets={},_target_actors={},_dot_targets={},
+                _rewind_ms=function(_,is_local,player,position,direction,range)
+                    assert(is_local==not server and player=='player' and position==component.position and range==12)
+                    return 37
+                end,_hit_target=function(_,unit) hit_counts[unit]=(hit_counts[unit] or 0)+1 end},
+                {__index=class})
+            rays,spread_calls,hit_counts=0,0,{}
+            hits={hit('local'),hit('afro','afro'),hit('ally'),hit('enemy'),hit('enemy'),
+                hit('buff_only'),hit('wall'),hit('behind')}
+            action:_acquire_targets(20)
+            assert(rays==(server and 8 or 1))
+            assert(spread_calls==(burst and rays or rays-1))
+            local finder=action._action_module_position_finder_component
+            assert(finder.position_valid and finder.position==hits[7][1] and finder.normal==hits[7][3])
+            assert(action._target_actors.enemy==(server and hits[4][4] or nil))
+            assert((action._dot_targets.enemy~=nil)==server and
+                (action._dot_targets.buff_only~=nil)==server)
+            assert(action._target_actors.ally==nil and action._target_actors['local']==nil and
+                action._target_actors.afro==nil and action._target_actors.behind==nil)
+            if burst then
+                assert(action._targets.enemy==(server and (20+4/12*.5) or nil))
+            else assert(hit_counts.enemy==(server and 1 or nil)) end
+            -- A shield ends the ray before any enemy; friendly fire remains a
+            -- stock decision, and no-hit frames clear the central preview flag.
+            rays,spread_calls,hit_counts=0,0,{}
+            action._targets={}; action._target_actors={}; action._dot_targets={}
+            hits={hit('shield'),hit('enemy')}; action:_acquire_targets(21)
+            assert(finder.position==hits[1][1] and action._target_actors.enemy==nil and hit_counts.enemy==nil)
+            rays,spread_calls=0,0; friendly=true
+            hits={hit('ally')}; action:_acquire_targets(22)
+            assert(action._target_actors.ally==(server and hits[1][4] or nil))
+            assert(not finder.position_valid)
+            rays,spread_calls=0,0; friendly=false; hits={}; action:_acquire_targets(23)
+            assert(not finder.position_valid)
+            -- Execute the real fixed-update authority branch with damage/burn
+            -- sinks. No local prediction branch may apply those effects.
+            local parent_updates,damage,burns=0,0,0
+            class.super={fixed_update=function() parent_updates=parent_updates+1 end}
+            method('fixed_update',burst and '_shoot' or '_is_unit_blocking')
+            action._flamer_gas_template={}
+            action._acquire_targets=function() end
+            action._damage_targets=function() damage=damage+1 end
+            action._burn_targets=function() burns=burns+1 end
+            action._damage_and_burn_targets=function() damage=damage+1; burns=burns+1 end
+            action:fixed_update(.02,24,1,200)
+            assert(parent_updates==1 and damage==(server and 1 or 0) and burns==damage)
+        end
+    end
+    aim,h._input_cache=saved_aim,saved_cache
+end
 -- With zero recoil, the actual walking method reconstructs the intended head-
 -- relative direction from the transformed input. Its own backward penalty stays.
 local constants={acceleration=1000,deceleration=1000,backward_move_scale=.5,
@@ -317,4 +434,5 @@ print('PASS: actual stock orientation selector retains forced look, weapon locks
 print('PASS: actual stock local rendering and camera root retain independent view orientation')
 print('PASS: actual stock shot preparation retains body origin, charge, recoil/sway/assist/spread order and grouped-shot sample')
 print('PASS: actual stock sweeps retain simulation references, damage-window edges/final drain, abort masks and time scaling')
+print('PASS: actual stock flame loops retain simulation rays, obstructions, target filtering, rewind and server-only damage/burn calls')
 print('LIMIT: isolated engine math, no real quantization, live network or worn acceptance')
