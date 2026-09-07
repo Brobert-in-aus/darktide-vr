@@ -340,3 +340,20 @@ open them, and does not establish why. The source and probe device requests diff
 in debug-layer flags, but both failed. No graphics setting changed. Output was
 complete without timeout; Guardian restoration and normal proximity restoration
 completed. Evidence: `artifacts/unattended/quest-import-adapters-20260907-155947.json`.
+
+## Controlled D3D11 sharing comparison
+
+`darktidevr-d3d11-shared-process-tests` creates a 64x64 RGBA8 shared texture,
+completes a GPU red clear, exports its KMT handle and retains the texture while
+a separate hidden child opens it on the same adapter. The child checks its
+description and reads back the expected red pixel. Parent/child waits are bounded;
+only the owned child can be terminated, and the KMT handle is never treated as
+an NT handle. The default CTest uses WARP and passes. `--hardware <index>` is an
+explicit manual diagnostic, independent of OpenXR/headset state.
+
+The manual comparison passed on all three adapter entries used by the live
+probe (0, 1 and 2). This establishes basic same-adapter, same-user cross-process
+KMT sharing with retained resources and controlled pixels. It does not reproduce
+the backend producer's texture descriptors, privilege context or resource lifetime,
+and does not prove its handles are stale. No game/XR, driver setting or Streamer
+restart occurred. Evidence: `artifacts/unattended/d3d11-sharing-adapter*-20260907.log`.

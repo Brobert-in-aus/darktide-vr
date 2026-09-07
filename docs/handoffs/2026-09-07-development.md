@@ -1794,3 +1794,15 @@ complete output/no timeout, Guardian and normal proximity restored. Evidence:
 quest-import-adapters-20260907-155947. No more identical live runs are justified.
 Next useful offline diagnostic: ordinary D3D11 KMT sharing between two controlled
 processes, to separate general interop failure from the VD-produced handles.
+
+## Continuous blocker work: controlled cross-process sharing
+
+Branch `codex/d3d11-cross-process-sharing-2026-09-07` adds a bounded, hidden-child
+D3D11 KMT sharing fixture. The parent retains a GPU-cleared 64x64 RGBA8 texture;
+the child matches its adapter, opens the handle, verifies the description and
+reads back the exact red pixel. WARP CTest passes in 0.19 seconds; explicit
+hardware runs on adapter entries 0, 1 and 2 all pass. No OpenXR or headset action.
+This is a basic same-user interop comparison, not the VD producer's lifetime,
+descriptor or privilege context. Evidence: d3d11-sharing-adapter*-20260907.log.
+Configured count is now 121. All runtime candidates remain undeployed, and normal
+proximity is restored. Continue the todo; full integration validation is next.
