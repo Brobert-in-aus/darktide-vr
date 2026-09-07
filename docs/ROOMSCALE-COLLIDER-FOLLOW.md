@@ -1,8 +1,9 @@
 # Independent tracking and ordinary-input collider follow
 
-Offline candidate, 7 September 2026. The user closed Virtual Desktop and asked
-that work switch to ranged weapons when further validation needs the headset.
-This candidate has not been deployed or accepted in-headset.
+Implemented offline on 7 September 2026 while Virtual Desktop was closed, then
+deployed after the user returned. The initial perpetual-drift failure is fixed
+by `38f356c`; the user accepts the repeated sideways step/stop check. Broader
+movement checks remain pending. Offline and live evidence are separated below.
 
 ## Behavior
 

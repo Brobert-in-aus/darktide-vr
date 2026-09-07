@@ -1,8 +1,9 @@
 # Ranged reticle and firing-input pass
 
-7 September 2026, offline while the user has Virtual Desktop closed. This
-candidate follows the roomscale chase at `72831bd`. It is not deployed and has
-no new worn acceptance. Remote mission admission remains disabled.
+Implemented offline on 7 September 2026 after the roomscale chase at `72831bd`.
+The combined candidate is now deployed with fresh stereo and target transport
+readiness. The user is testing staff/gun alignment; ranged visual acceptance is
+pending. Remote mission admission remains disabled.
 
 ## Corrected mismatch
 
@@ -134,8 +135,8 @@ Diagnostic errors are contained and emit at most one informational fallback,
 avoiding repeated audible mod errors. The five-route observer fixture passes
 stock-return/result preservation, angle measurements, output bounds, ownership,
 replay and failure isolation. All 41 Lua chunks and source invariants pass.
-This follow-up is also undeployed; the integrated 124-test baseline above
-predates its new CTest registration.
+This follow-up is included in the current deployment; the integrated 124-test
+baseline above predates its new CTest registration.
 Five affected CTests pass after the muzzle observation addition (2.52 seconds).
 The matching native components were rebuilt at `23345e5`; their implementation
 is unchanged by this Lua observation follow-up.

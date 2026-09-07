@@ -358,3 +358,11 @@ action hierarchy, pellet batches, real aim/spread, engine damage or installed
 weapon templates. It is additional scheduler evidence, not acceptance of 135
 weapons, all ranged families, wire behavior or headset firing. The current user
 check remains staff shots/reticle while leaning, followed by an owned gun.
+
+During that live check, the bounded observer records four stock hitscan
+dispatches each for `stubrevolver_p1_m1` (08:56:41 UTC onward) and `lasgun_p3_m2`
+(08:57:21 UTC onward). This identifies two actually used owned templates and
+confirms dispatch on their hip-fire route. Recorded rows report no minion hit;
+they do not establish damage or visual alignment. Await the user's observations.
+The current console starts at 08:50:52 UTC; no mod WARNING/ERROR was found in the
+checked log. Source-based family coverage is still separate from this evidence.
