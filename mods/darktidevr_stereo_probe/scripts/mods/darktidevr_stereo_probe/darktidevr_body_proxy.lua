@@ -154,6 +154,14 @@ local function inverse_quaternion(rotation)
     return Quaternion.from_elements(-x, -y, -z, w)
 end
 
+local function normalized_anatomical_axis(axis)
+    local length_squared = Vector3.length_squared(axis)
+    if not (length_squared > 1e-12 and length_squared < math.huge) then
+        return nil
+    end
+    return Vector3.normalize(axis)
+end
+
 local function anatomical_hand_rotation(unit, side, target_rotation)
     local hand = rigid_hands[side]
     local target_frame = Quaternion.look(
@@ -192,9 +200,13 @@ local function anatomical_hand_rotation(unit, side, target_rotation)
     local across = Quaternion.rotate(inverse_hand,
         Unit.world_position(unit, Unit.node(unit, index_name)) -
             Unit.world_position(unit, Unit.node(unit, pinky_name)))
-    longitudinal = Vector3.normalize(longitudinal)
-    across = Vector3.normalize(across)
-    local palm = Vector3.normalize(Vector3.cross(across, longitudinal))
+    longitudinal = normalized_anatomical_axis(longitudinal)
+    across = normalized_anatomical_axis(across)
+    if not longitudinal or not across then return nil end
+    local palm = normalized_anatomical_axis(Vector3.cross(across, longitudinal))
+    -- A partial pose must not permanently poison the cached wrist basis.
+    -- Leave calibration unset so the next usable authored pose can retry.
+    if not palm then return nil end
     local source_frame = Quaternion.look(palm, across)
     -- Capture the authored basis before importing finger animation. Rebuilding
     -- it from curled fingers would make an open/closed palm rotate the wrist.
@@ -350,11 +362,11 @@ local function place_rigid_hand(world, hand, target_position, target_rotation,
     local hand_node = Unit.node(unit, hand_name)
     local desired_hand_rotation = anatomical_hand_rotation(
         unit, hand.side, target_rotation)
-    if authored_rotation then
-        desired_hand_rotation = target_rotation
-    end
     if not desired_hand_rotation then
         return false
+    end
+    if authored_rotation then
+        desired_hand_rotation = target_rotation
     end
     copy_gameplay_fingers(hand)
     local root_rotation = Unit.world_rotation(unit, 1)

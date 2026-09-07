@@ -732,3 +732,25 @@ handlers. Five focused CTests (context, real adapter ownership, bindings, online
 rules, source invariants) and 36 LuaJIT chunks pass. No native change beyond
 `6eb81f7`, deployment or live mission-transition acceptance. The historical
 remote-husk teardown race remains a separate base-game condition.
+
+## Continuous todo work: anatomical calibration recovery
+
+Branch `codex/hand-anatomy-calibration-2026-09-07` prevents an unusable initial
+finger-joint pose from poisoning the rigid glove's cached anatomical basis.
+It rejects zero/nonfinite axes and collinear anatomy before normalization/cache,
+then retries on a later usable pose. Authored-animation placement also waits for
+calibration before importing fingers. Valid calibration and wrist offsets retain
+their existing math. No handedness setting, weapon relocation or deployment.
+
+The actual extracted solver passes 3D axis invariants for distinct authored
+hands, arbitrary world/grip rotations, scales 0.94/1/1.08 and cached calibration
+under later finger animation. The new test reproduced invalid cached rotation
+and premature animation import before the fixes. Missing/invalid anatomy and
+recovery pass. Configure with `cmake --preset windows-vs2022
+-DDARKTIDEVR_ENABLE_HEADSET_TESTS=OFF`; seven focused CTests pass using
+`ctest --test-dir build/windows-vs2022 -C Release --output-on-failure -R
+'^(hand_anatomy|wrist_transform|equipment_hand_sync|melee_animation_owner|melee_animation_source|lua_source_compile|lua_source_invariants)$'`.
+The LuaJIT gate still compiles 36 chunks. Full-suite baseline remains 108/108 at
+`dd1ec4e`; the new test increases the configured inventory to 109. No claim that
+this constructed failure caused an observed live alignment issue. Continue
+online-rule action-family checks and the todo list while live readiness is blocked.

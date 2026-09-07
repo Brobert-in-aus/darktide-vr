@@ -113,6 +113,26 @@ The planned mapping must cover those ownership paths and mode changes explicitly
 
 ## Integration and acceptance order
 
+The rigid glove's anatomical solve maps little-to-index to grip forward,
+fingertips to negative grip up, and its signed cross normal to negative grip
+right on both hands. Each authored wrist has its own inverse anatomical basis.
+Moving a weapon's authored right wrist directly to the left glove quaternion
+would import the left joint basis into that weapon. A future rigid relocation
+must retain the weapon's authored basis while expressing it in the destination
+grip frame; stock animated attacks and separately owned effects still need their
+own mapping. This is an implementation constraint, not left-hand acceptance.
+
+An offline 3D regression now exercises the actual anatomical calibration with
+distinct left/right authored bases, arbitrary world/grip rotations and scales
+0.94/1/1.08. It preserves valid cached calibration under later finger animation.
+Zero-length, zero-width, collinear and nonfinite initial geometry previously
+could produce and cache an invalid rotation; calibration now leaves that cache
+unset and retries. Both tracked and authored-animation placement wait before
+copying finger animation over the initial anatomy. Missing nodes also retry.
+Seven focused CTests, including the 36-chunk LuaJIT gate, pass. These are
+constructed failure cases, not evidence that malformed anatomy caused a live
+alignment issue. Accepted offsets and valid-basis math are unchanged.
+
 1. Introduce a shared role policy with right-handed behavior as the default.
    Test role resolution, invalid settings, tracking loss and revision changes.
    Do not expose an apparently complete left-handed option before presentation
