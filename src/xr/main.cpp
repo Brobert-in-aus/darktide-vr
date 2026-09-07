@@ -4492,6 +4492,29 @@ class OpenXrProbe {
       XrSwapchain swapchain{XR_NULL_HANDLE};
       const auto create_result = xrCreateSwapchain(session_, &create_info, &swapchain);
       if (XR_FAILED(create_result)) {
+        // VDXR's OVR wrapper reports only the numeric result. Read the optional
+        // thread-local diagnostic from its already loaded backend immediately;
+        // do not load/initialize another runtime or infer that old text is fresh.
+        // ABI: LibOVR 3621783c/include/OVR_ErrorCode.h and OVR_CAPI.h.
+        if (const auto backend = GetModuleHandleW(L"VirtualDesktop.LibOVRRT64_1.dll")) {
+          struct OvrErrorInfo {
+            std::int32_t result;
+            char text[512];
+          };
+          static_assert(sizeof(OvrErrorInfo) == 516);
+          using GetLastError = void(__cdecl*)(OvrErrorInfo*);
+          const auto address = GetProcAddress(backend, "ovr_GetLastErrorInfo");
+          if (address) {
+            GetLastError read_error{};
+            static_assert(sizeof(read_error) == sizeof(address));
+            std::memcpy(&read_error, &address, sizeof(read_error));
+            OvrErrorInfo error{};
+            read_error(&error);
+            error.text[sizeof(error.text) - 1] = '\0';
+            std::cerr << "openxr.swapchain_failure.vd_last_error result=" << error.result
+                      << " text=" << error.text << '\n';
+          }
+        }
         std::cerr << "openxr.swapchain_failure eye=" << swapchains_.size()
                   << " result=" << create_result
                   << " width=" << create_info.width << " height=" << create_info.height
