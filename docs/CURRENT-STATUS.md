@@ -13,8 +13,10 @@ prompt, and a SideQuest-derived Guardian preference pause/resume route was
 verified by headset logs. It did not fix rendering: the latest settled Ready
 attempt created an OpenXR session but failed creating its first eye texture.
 VDXR reports `-7000`; the application device reports no removal or D3D12 debug
-messages. The internal cause and suspected accidental double tap remain
-unestablished. Guardian was restored with logged confirmation, then proximity
+messages. An opt-in D3D11 diagnostic now exposes two internal OpenSharedResource
+E_INVALIDARG errors without device removal. Restarting the Quest VD client did
+not clear them. The failed import parameters and suspected accidental double tap
+remain unestablished. Guardian was restored with logged confirmation, then proximity
 Enable/Status ran. See [Quest recovery](QUEST-PASSTHROUGH-RECOVERY.md). Continue
 useful offline work; repeat live readiness when new evidence justifies recovery.
 

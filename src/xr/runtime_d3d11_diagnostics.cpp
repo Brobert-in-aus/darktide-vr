@@ -4,8 +4,11 @@
 #include <d3d11sdklayers.h>
 #include <wrl/client.h>
 #include <MinHook.h>
+#include <intrin.h>
 #include <array>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <mutex>
 #include <ostream>
 #include <stdexcept>
@@ -26,6 +29,49 @@ std::array<Record,8> records;
 unsigned calls{};
 bool capturing{};
 decltype(&D3D11CreateDevice) original_create{};
+using OpenShared=HRESULT(STDMETHODCALLTYPE*)(ID3D11Device*,HANDLE,REFIID,void**);
+OpenShared original_open{};
+void* open_target{};
+bool open_attempted{};
+struct Import {
+  unsigned device{};
+  std::uintptr_t handle{}, caller_offset{};
+  GUID interface_id{};
+  HRESULT result{};
+  std::array<char,MAX_PATH> caller{};
+};
+std::array<Import,8> imports;
+unsigned import_calls{};
+
+HRESULT STDMETHODCALLTYPE capture_open(ID3D11Device* device, HANDLE shared,
+    REFIID interface_id, void** resource) {
+  const auto caller=_ReturnAddress();
+  const auto result=original_open(device,shared,interface_id,resource);
+  std::scoped_lock lock(capture_mutex);
+  for (unsigned i=0;i<records.size();++i) {
+    if (records[i].device.Get()!=device) continue;
+    if (import_calls<imports.size()) {
+      auto& entry=imports[import_calls];
+      entry.device=i; entry.handle=reinterpret_cast<std::uintptr_t>(shared);
+      entry.interface_id=interface_id; entry.result=result;
+      HMODULE module{};
+      if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|
+              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+              reinterpret_cast<LPCWSTR>(caller),&module)) {
+        std::array<char,MAX_PATH> path{};
+        if (GetModuleFileNameA(module,path.data(),static_cast<DWORD>(path.size()))) {
+          const auto leaf=std::strrchr(path.data(),'\\');
+          strcpy_s(entry.caller.data(),entry.caller.size(),leaf ? leaf+1 : path.data());
+        }
+        entry.caller_offset=reinterpret_cast<std::uintptr_t>(caller)-
+            reinterpret_cast<std::uintptr_t>(module);
+      }
+    }
+    ++import_calls;
+    break;
+  }
+  return result;
+}
 
 HRESULT WINAPI capture_create(IDXGIAdapter* adapter, D3D_DRIVER_TYPE type,
     HMODULE software, UINT flags, const D3D_FEATURE_LEVEL* levels, UINT level_count,
@@ -47,6 +93,17 @@ HRESULT WINAPI capture_create(IDXGIAdapter* adapter, D3D_DRIVER_TYPE type,
   if (SUCCEEDED(record.result) && device && *device) record.device=*device;
   const auto result=record.result;
   std::scoped_lock lock(capture_mutex);
+  if (record.device && !open_attempted) {
+    open_attempted=true;
+    // Windows SDK ID3D11DeviceVtbl: OpenSharedResource is slot 28. Only the
+    // first implementation is instrumented, and only captured devices log.
+    const auto target=(*reinterpret_cast<void***>(record.device.Get()))[28];
+    if (MH_CreateHook(target,reinterpret_cast<void*>(&capture_open),
+          reinterpret_cast<void**>(&original_open))==MH_OK) {
+      if (MH_EnableHook(target)==MH_OK) open_target=target;
+      else MH_RemoveHook(target);
+    }
+  }
   if (calls<records.size()) records[calls]=std::move(record);
   ++calls;
   return result;
@@ -78,15 +135,19 @@ struct RuntimeD3D11Diagnostics::Impl {
       throw std::runtime_error("D3D11 diagnostic hook enable failed");
     enabled=true;
     std::scoped_lock lock(capture_mutex);
-    records={}; calls=0; capturing=true;
+    records={}; calls=0; imports={}; import_calls=0;
+    open_attempted=false; open_target=nullptr; capturing=true;
   }
   ~Impl() {
+    if (enabled && open_target) MH_DisableHook(open_target);
     if (enabled) MH_DisableHook(target);
+    if (enabled && open_target) MH_RemoveHook(open_target);
     if (created) MH_RemoveHook(target);
     if (owns_minhook) MH_Uninitialize();
     if (enabled) {
       std::scoped_lock lock(capture_mutex);
-      capturing=false; records={}; calls=0;
+      capturing=false; records={}; calls=0; imports={}; import_calls=0;
+      open_target=nullptr; open_attempted=false;
     }
     if (module) FreeLibrary(module);
   }
@@ -104,6 +165,20 @@ void report_runtime_d3d11_diagnostics(std::ostream& output) {
   std::scoped_lock lock(capture_mutex);
   if (!capturing) return;
   output<<"runtime_d3d11.diagnostic=debug_layer_requested process_local=1 calls="<<calls<<'\n';
+  output<<"runtime_d3d11.import_hook="<<(open_target ? "enabled" : "unavailable")
+      <<" calls="<<import_calls<<'\n';
+  for (unsigned i=0;i<import_calls && i<imports.size();++i) {
+    const auto& entry=imports[i];
+    const auto& id=entry.interface_id;
+    char guid[40]{};
+    std::snprintf(guid,sizeof(guid),"%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+        id.Data1,id.Data2,id.Data3,id.Data4[0],id.Data4[1],id.Data4[2],id.Data4[3],
+        id.Data4[4],id.Data4[5],id.Data4[6],id.Data4[7]);
+    output<<"runtime_d3d11.import="<<i<<" device="<<entry.device
+        <<" handle="<<entry.handle<<" iid="<<guid
+        <<" result="<<static_cast<std::uint32_t>(entry.result)
+        <<" caller="<<entry.caller.data()<<" caller_offset="<<entry.caller_offset<<'\n';
+  }
   for (unsigned i=0;i<calls && i<records.size();++i) {
     const auto& record=records[i];
     output<<"runtime_d3d11.device="<<i<<" original_flags="<<record.original_flags

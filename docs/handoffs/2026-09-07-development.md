@@ -1753,3 +1753,15 @@ settle. Ready reproduced both import errors and the same first-eye failure;
 complete output/no timeout. Guardian 0 -> 1 -> 0 is logged and proximity restored.
 Evidence: quest-fresh-vd-client-20260907-154028. Next diagnostic work should capture
 the failed import's handle/interface/caller instead of repeating client restarts.
+
+## Continuous blocker work: shared import parameters
+
+Branch `codex/runtime-shared-import-evidence-2026-09-07` extends the diagnostic
+with the first captured OpenSharedResource implementation, recording eight
+captured-device calls at most. It forwards arguments/results and reports handle,
+interface, HRESULT and caller module/offset. Actual SDK slot 28 was verified;
+the WARP shared-texture regression exercises successful forwarding and the bound.
+Release builds/five focused CTests pass in 2.34 seconds. An initial null-handle
+WARP experiment exited 2173 and was replaced with real shared-resource forwarding;
+do not claim invalid-handle fixture acceptance. No live run with this extension
+yet. One bounded Ready with new parameters is next; game closed/proximity restored.

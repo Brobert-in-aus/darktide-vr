@@ -279,3 +279,15 @@ the observed failure; this does not prove all PC-side session resources reset.
 Guardian logs confirm 0 -> 1 -> 0 and normal proximity restoration completed.
 No game/deployment or PC Streamer restart. Complete output, no timeout. Evidence:
 `artifacts/unattended/quest-fresh-vd-client-20260907-154028.json` and recovery log.
+
+The diagnostic follow-up also instruments the first captured device's
+OpenSharedResource implementation (SDK ID3D11Device vtable slot 28). It records
+up to eight calls on captured devices, including handle, requested interface,
+HRESULT and caller module/offset. It forwards the original request unchanged;
+other device implementations are not claimed to be intercepted. Hook availability
+and total recorded-call count are explicit. The WARP regression opens a real
+shared texture, checks the texture interface/caller and preserves returned
+resources across repeated imports. It verifies the eight-record bound. Release
+builds and five focused CTests pass in 2.34 seconds; another bounded Ready run
+with this additional evidence is next. Invalid-handle behavior is not simulated
+as a passing graphics fixture.
