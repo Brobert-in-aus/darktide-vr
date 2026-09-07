@@ -329,3 +329,32 @@ sequence, player/session replacement, dead owner and missing/failed observations
 Concrete targeting-hook and HUD fixtures check cache invalidation and empty-tag
 fallback. Six focused CTests pass, including all 36 LuaJIT chunks. No deployment,
 live transition or worn convergence acceptance; full 110/110 baseline is `aadf4f3`.
+
+## Stock scheduler and ammo gates: 7 September
+
+The optional scheduler contract executes inspected `ActionShoot.fixed_update`,
+`_next_fire_state`, ammo admission/spending helpers, attack-speed scaling and
+`FixedFrame` rounding. It covers 135 combinations: 30/60/90 Hz, three attack-speed
+factors and 15 supplied scenarios. Single and repeated fire, shot limits, empty
+and insufficient magazines, reload/free-transfer returns, permitted partial
+shots, free-ammo and critical-only keywords, double cost, half/full charge and
+resimulation all pass. Preparation observations change pose on each shot, and
+the stock scheduler forwards that shot's supplied pose and clears prior results.
+
+```powershell
+& build/dependencies/luajit/src/luajit.exe tests/tooling/test-ranged-scheduler-stock-contract.lua _downloads/Darktide-Source-Code
+```
+
+An admitted trigger alone cannot establish that a gun will fire: stock ammo
+gates can return a reload request or enter the completed-shot state without
+dispatch. Auto-fire timing is rounded to fixed frames after attack-speed buffs;
+later shots go through preparation again. Resimulation advances the shot state
+and ammo spending while omitting effect/damage dispatch. Existing stock rules
+retain ownership of these behaviors; this check changes no runtime code.
+
+The fixture uses supplied action settings, one abstract ammo pool and substituted
+preparation, shot dispatch and secondary effects. It does not execute the full
+action hierarchy, pellet batches, real aim/spread, engine damage or installed
+weapon templates. It is additional scheduler evidence, not acceptance of 135
+weapons, all ranged families, wire behavior or headset firing. The current user
+check remains staff shots/reticle while leaning, followed by an owned gun.

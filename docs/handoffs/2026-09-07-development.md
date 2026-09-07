@@ -47,6 +47,11 @@ That accepts this specific drift/settling regression; blocked/manual transitions
 vertical travel and recenter/resume are not yet worn-accepted. A follow-up asks
 for normal/charged staff shots while aiming away from the head and leaning,
 then an owned gun's name and firing result. No loadout is changed automatically.
+While the user tests, the optional ranged scheduler source contract passes 135
+fixed-rate/buff/scenario combinations covering repeated fire, ammo/charge gates
+and resimulation. See RANGED-WEAPON-AUDIT.md for the command and fixture limits;
+this is offline evidence only and changes no deployed code. The normal CTest
+count remains 125, with its previous 124-test full baseline unchanged.
 
 At 16:17 Brisbane they returned home with the headset and requested setup.
 They later closed Virtual Desktop for a break. Continue offline; at the roomscale
