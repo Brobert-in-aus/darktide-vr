@@ -92,6 +92,11 @@ $audit.templates | Where-Object scope -eq player_ranged | ForEach-Object path | 
 
 ## Remaining acceptance
 
+7 September, 18:45 Brisbane: Lua `4ad2520` and matching native components stamped
+`23345e5` are deployed after Ready passed. Fresh target transport readiness,
+stereo and nonzero `shared_ready` are verified in Psykhanium. The staff regression
+and roomscale worn check are with the user; ranged-family acceptance is pending.
+
 Resume VD, run Ready, deploy the matching three components, then confirm fresh
 stereo and nonzero `shared_ready`. Check the accepted staff first, followed by
 an owned hitscan gun and shotgun: hand aim away from the head, single/repeated

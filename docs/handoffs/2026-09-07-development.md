@@ -1,6 +1,36 @@
 # Development continuation: 7 September 2026
 
 The user resumed development and requested continued work until told to stop.
+At 18:42 Brisbane they corrected an accidental break response and confirmed
+Virtual Desktop was connected and ready. Proximity Disable then Status succeeded;
+Ready verified one authorized Quest, VDXR, and 600/600 submitted/rendered frames.
+All 41 deployed Lua chunks match `4ad2520`; the deployed capture DLL matches the
+native build stamped `23345e5`, also used by the harness. Evidence is under
+`artifacts/unattended/roomscale-ranged-*20260907.*` (ignored).
+The first launch was closed during startup because it omitted the prior HUD and
+generated-stereo options. Its incomplete-stereo gate failure follows that
+intentional close and is not a successful session. The corrected launch uses:
+
+```powershell
+tools/stereo/start-darktide-vr.ps1 -EnterPsykhanium -EnableHudPanel -DlssGeneratedStereo -SkipDeploymentSync
+```
+
+The range request was armed while the game was closed. The corrected session
+reports `DARKTIDEVR_ONLINE_RETICLE target_transport=ready`, fresh synchronized
+sequential stereo at 08:45:27 UTC and successful range entry at 08:45:42. A later
+harness sample reaches `shared_ready=764`, with zero interval fallback and zero
+cumulative pose mismatches at that sample. The checked fresh console has no mod
+WARNING/ERROR. These are initialization checks; worn movement/reticle acceptance
+is pending the specific step/stop/staff question sent to the user. The console
+starts at 08:44:09 UTC. No Virtual Desktop restart. Game and harness remain
+running for the user's check.
+The user reports constant slow drift after a sideways physical move. This fails
+the first roomscale worn check; staff regression is not yet reported. The
+locomotion observer reads `_input_extension._frame`, but stock owns that frame
+on `_input_extension._human_unit_input._frame`. The nil frame skips movement
+repayment, leaving the chase target outstanding. A regression at the actual
+registered hook boundary and corrected frame lookup are the next fix.
+
 At 16:17 Brisbane they returned home with the headset and requested setup.
 They later closed Virtual Desktop for a break. Continue offline; at the roomscale
 worn-test boundary switch to the ranged-weapon pass rather than waiting for XR.

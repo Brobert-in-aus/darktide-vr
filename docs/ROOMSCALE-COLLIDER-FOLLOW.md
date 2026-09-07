@@ -69,6 +69,11 @@ needed. No full 123-test run is claimed.
 
 ## Required live checks
 
+7 September, 18:45 Brisbane: the combined roomscale/ranged candidate is deployed
+after Ready passed 600/600 frames. Fresh stereo and nonzero `shared_ready` are
+confirmed in Psykhanium. The user has been asked for the first step/stop/staff
+check; worn acceptance remains pending. See the current development handoff.
+
 After the user resumes VD, pass Ready and deploy with the normal Lua gates.
 Check fresh stereo initialization and nonzero `shared_ready`, then ask the
 user to lean within 10 cm, step 30–60 cm, stop, turn the staff away from their

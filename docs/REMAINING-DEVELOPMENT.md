@@ -18,6 +18,9 @@ recoil/sway and exact target transport to XR. Build and 124 offline checks pass;
 matching Lua/capture/harness only after VD readiness returns, then verify worn
 reticle, chase, firing and barrel alignment. This does not complete all ranged
 weapon acceptance.
+The user subsequently confirmed VD is ready. The combined candidate is deployed
+and initialized in Psykhanium, with fresh stereo and target transport readiness;
+the first worn step/stop/staff check is pending their observations.
 Firing-only aim switching remains on hold. The
 [server capability assessment](ONLINE-SERVER-CAPABILITY-ASSESSMENT.md) is complete;
 the user accepted the deployed one-metre staff visual convergence candidate.
