@@ -31,6 +31,12 @@ modules[action_root.."action_spawn_projectile"]={
     _spawn_projectile_unit=stock_throw,_fire_projectile=stock_throw}
 modules[action_root.."action_weapon_throw"]={
     _spawn_projectile_unit=stock_throw,_fire_projectile=stock_throw}
+local lightning_routes={
+    {action_root..'modules/chain_lightning_targeting_action_module','fixed_update'},
+    {action_root..'modules/psyker_chain_lightning_single_targeting_action_module','fixed_update'},
+    {action_root..'action_chain_lightning','_deal_damage'},
+}
+for _,route in ipairs(lightning_routes) do modules[route[1]]={[route[2]]=stock_throw} end
 for _, name in ipairs(paths) do
     modules[action_root .. name] = {
         __class_name = name, _prepare_shooting = base._prepare_shooting,
@@ -264,6 +270,15 @@ smart.fixed_update({_is_local_unit=true,_first_person_component=shared})
 assert(reticles==1,'Online reticle did not use the stock simulated origin')
 smart.fixed_update({_is_local_unit=false,_first_person_component=shared})
 assert(reticles==1,'Changed remote reticle')
+for _,route in ipairs(lightning_routes) do
+    for _,unit in ipairs({player,remote}) do
+        local target_action=action(modules[route[1]])
+        target_action._player_unit=unit
+        local position,empty,rotation,marker=target_action[route[2]](target_action,42)
+        assert(position==shared.position and rotation==shared.rotation and empty==nil and marker==65)
+        assert(target_action._first_person_component==shared)
+    end
+end
 print('online_range_ranged=pass stock_origins stock_preparation simulated_reticle remote_unchanged')
 -- Exercise role routing through concrete attack hooks without swapping raw
 -- physical readers or the local player's anatomical skeleton.

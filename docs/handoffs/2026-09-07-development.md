@@ -779,3 +779,22 @@ This includes native publisher-transition cancellation, current handler ownershi
 range difficulty diagnostics and the new anatomical-calibration test. LuaJIT
 compiles 36 chunks. The optional source fixture remains separate and passes;
 current candidates remain undeployed.
+
+## Continuous todo work: stock Psyker target-lock contract
+
+Branch `codex/online-target-lock-contract-2026-09-07` adds actual smart-targeting
+parameters/fixed-update and Psyker smite/single-lightning module checks to the
+optional stock-source fixture. The adapter's simulation pose supplies body
+origin and aim; recoil/sway order and ordinary/keyword auto-aim selection remain
+stock. Sticky target retention, non-sticky retargeting, strict range boundaries,
+visibility-cache expiry and replay's transient-data clear/recorded-target
+retention pass. The finder supplies target ranking; no engine rollback or live
+visibility/damage is executed.
+
+The portable ranged fixture now checks all three concrete lightning hooks in
+online mode for both local and remote units, with live hand tracking available:
+the stock component and return values remain unchanged. Three focused CTests
+pass (ranged aim, online rules, smart-tag marker ownership), plus the expanded
+optional source fixture. Production code is unchanged; full Release build and
+109/109 CTest baseline remain `5f1eccd`. Continue the todo list with live readiness
+and worn acceptance still blocked as previously recorded.

@@ -376,6 +376,100 @@ do
     end
     aim,h._input_cache=saved_aim,saved_cache
 end
+-- Smart targeting selects a target before the attack module locks it. Its
+-- stock resimulation guard must keep a later live aim sample out of replay.
+do
+    local saved_aim,saved_cache=aim,h._input_cache
+    aim=Quaternion.from_yaw_pitch_roll(1.1,.2,0)
+    h._input_cache={{0},{0},{0},{0},{view.yaw},{view.pitch},{0}}
+    rules.capture(h,300)
+    PlayerUnitFirstPersonExtension.fixed_update(fp,'local',.02,30,1)
+    local selected='enemy_a'; local auto_aim,human=false,true
+    local calls,stages={},{}
+    local template={precision_target={max_range=8},precision_target_auto_aim={}}
+    local targets={}; local data={is_resimulating=false}
+    local env=setmetatable({PlayerUnitSmartTargetingExtension={},
+        EMPTY_TABLE={},SMART_TAG_TARGETING_DELAY=.2,DEDICATED_SERVER=false,
+        SmartTargeting={smart_targeting_template=function() return template end},
+        HEALTH_ALIVE={enemy_a=true,enemy_b=true,edge=true},
+        POSITION_LOOKUP={['local']=Vector3(0,0,0),enemy_a=Vector3(0,3,0),
+            enemy_b=Vector3(0,4,0),edge=Vector3(0,8,0)},
+        table=setmetatable({clear=function(t) for k in pairs(t) do t[k]=nil end end},{__index=table}),
+        Quaternion=setmetatable({right=function(q) return Vector3(math.cos(q.yaw),math.sin(q.yaw),0) end,
+            up=function() return Vector3(0,0,1) end},{__index=Quaternion}),
+        Vector3=setmetatable({distance_squared=function(a,b) return Vector3.distance(a,b)^2 end},{__index=Vector3}),
+        Recoil={apply_weapon_recoil_rotation=function(_,_,_,_,_,rotation)
+            assert(rotation==component.rotation); stages[#stages+1]='recoil'
+            return {yaw=rotation.yaw+.03,pitch=rotation.pitch,roll=0}
+        end},
+        Sway={apply_sway_rotation=function(_,_,rotation)
+            assert(math.abs(rotation.yaw-(component.rotation.yaw+.03))<1e-12)
+            stages[#stages+1]='sway'; return {yaw=rotation.yaw+.04,pitch=rotation.pitch,roll=0}
+        end},
+    },{__index=_G})
+    local function methods(path,class_name,first_name,next_name)
+        local text=source(path)
+        local a=assert(text:find(class_name..'.'..first_name..' =',1,true))
+        local b=assert(text:find('\n'..class_name..'.'..next_name..' =',a,true))
+        setfenv(assert(loadstring(text:sub(a,b-1))),env)()
+    end
+    methods('extension_systems/smart_targeting/player_unit_smart_targeting_extension',
+        'PlayerUnitSmartTargetingExtension','fixed_update','_update_proximity')
+    local function finder(kind)
+        return {update_precision_target=function(_,unit,settings,origin,forward,right,up,out,frame)
+            calls[#calls+1]=kind
+            assert(unit=='local' and settings==template and origin==component.position)
+            assert(math.abs(forward[1]+math.sin(component.rotation.yaw+.07))<1e-12)
+            assert(math.abs(right[1]-math.cos(component.rotation.yaw))<1e-12 and up[3]==1)
+            out.unit=selected
+        end}
+    end
+    local targeting=setmetatable({_unit_data_extension=data,_targeting_data=targets,
+        _smart_tag_targeting_data={unit='old_tag'},_smart_tag_targeting_time=1000,
+        _player={is_human_controlled=function() return human end},
+        _first_person_component=component,_weapon_extension={recoil_template=function() end,sway_template=function() end},
+        _buff_extension={has_keyword=function(_,key) assert(key=='enable_auto_aim'); return auto_aim end},
+        _precision_target_aim_assist=finder('assist'),_precision_target_auto_aim=finder('auto'),
+        _line_of_sight_cache={expired=.01,retained=.1},_visibility_cache={},_visibility_check_frame={},
+        _update_proximity=function() end,_is_local_unit=true,_is_social_hub=false},
+        {__index=env.PlayerUnitSmartTargetingExtension})
+    targeting:fixed_update('local',.02,30,301)
+    assert(targets.unit=='enemy_a' and calls[1]=='assist' and table.concat(stages,',')=='recoil,sway')
+    assert(targeting._line_of_sight_cache.expired==nil and targeting._line_of_sight_cache.retained==.08)
+    auto_aim=true; selected='enemy_b'; targeting:fixed_update('local',.02,30.02,302)
+    assert(targets.unit=='enemy_b' and calls[2]=='auto')
+    local before=#calls; human=false; targeting:fixed_update('local',.02,30.04,303)
+    assert(#calls==before); human=true
+    -- Both Psyker modules retain their recorded target while resimulating;
+    -- the targeting extension itself clears transient target-selection data.
+    for _,single in ipairs({false,true}) do
+        local class_name=single and 'PsykerChainLightningSingleTargetingActionModule' or 'PsykerSmiteTargetingActionModule'
+        local path='extension_systems/weapon/actions/modules/'..
+            (single and 'psyker_chain_lightning_single_targeting_action_module' or 'psyker_smite_targeting_action_module')
+        env[class_name]={}
+        methods(path,class_name,'fixed_update','finish')
+        local locked={}
+        local lock=setmetatable({_component=locked,_unit_data_extension=data,_action_settings={sticky_targeting=true},
+            _player_unit='local',_first_person_component=component,
+            _smart_targeting_extension={targeting_data=function() return targets end}}, {__index=env[class_name]})
+        targets.unit='enemy_a'; lock:fixed_update(.02,31)
+        assert(locked.target_unit_1=='enemy_a')
+        targets.unit='enemy_b'; lock:fixed_update(.02,31.02)
+        assert(locked.target_unit_1=='enemy_a','Sticky charge retargeted after aim changed')
+        lock._action_settings.sticky_targeting=false; lock:fixed_update(.02,31.04)
+        assert(locked.target_unit_1=='enemy_b')
+        targets.unit='edge'; lock:fixed_update(.02,31.06)
+        assert(locked.target_unit_1==nil,'Stock strict range boundary changed')
+        targets.unit='enemy_a'; lock:fixed_update(.02,31.08)
+        data.is_resimulating=true
+        targeting:fixed_update('local',.02,31.1,304)
+        assert(targets.unit==nil and targeting._smart_tag_targeting_data.unit==nil and #calls==before)
+        lock:fixed_update(.02,31.1)
+        assert(locked.target_unit_1=='enemy_a','Resimulation discarded recorded target')
+        data.is_resimulating=false
+    end
+    aim,h._input_cache=saved_aim,saved_cache
+end
 -- With zero recoil, the actual walking method reconstructs the intended head-
 -- relative direction from the transformed input. Its own backward penalty stays.
 local constants={acceleration=1000,deceleration=1000,backward_move_scale=.5,
@@ -435,4 +529,5 @@ print('PASS: actual stock local rendering and camera root retain independent vie
 print('PASS: actual stock shot preparation retains body origin, charge, recoil/sway/assist/spread order and grouped-shot sample')
 print('PASS: actual stock sweeps retain simulation references, damage-window edges/final drain, abort masks and time scaling')
 print('PASS: actual stock flame loops retain simulation rays, obstructions, target filtering, rewind and server-only damage/burn calls')
+print('PASS: actual stock targeting retains simulation aim/recoil/sway, assist ownership, sticky charges, strict range and resimulation targets')
 print('LIMIT: isolated engine math, no real quantization, live network or worn acceptance')

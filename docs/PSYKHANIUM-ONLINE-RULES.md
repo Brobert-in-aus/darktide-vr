@@ -201,6 +201,18 @@ call counts remain stock. Collision results, spread distribution and final
 damage/buff application are substitutes; this is source-level orchestration
 evidence, not proof of live flame damage, effects alignment or server acceptance.
 
+Smart-targeting coverage now runs actual `_targeting_parameters` and fixed-update
+methods after the VR cache/stock first-person path. Body origin, recoil then sway,
+base right/up axes, ordinary versus keyword-enabled auto-aim selection and
+visibility-cache expiry remain stock. Precision target ranking is supplied by
+the fixture. Actual Psyker smite and single-lightning modules retain sticky
+charge targets, follow changed targets when stickiness is disabled, enforce the
+strict range boundary and preserve recorded targets while resimulating. Stock
+smart targeting clears its transient data and skips queries during replay;
+this does not execute engine component rollback. Concrete local/remote lightning
+hooks also leave the component/return values unchanged in online-rules mode.
+No live lock-on, ranking/visibility, damage or server correction claim is made.
+
 An optional stock grenade check passes:
 
 ```powershell
