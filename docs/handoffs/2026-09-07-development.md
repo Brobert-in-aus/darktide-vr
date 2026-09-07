@@ -17,6 +17,15 @@ parent poses and the actual native-aim reader, which rejects any attempt to
 read a hand-model basis. Native components remain unchanged. Deployment and
 worn controller alignment still pending; previous candidates below are historical.
 
+Controller correction `859b460` is deployed. The first Ready attempt found no
+ADB device although Virtual Desktop remained connected. Wireless discovery
+found the Quest; reconnecting briefly produced two transports to the same
+device, verified by matching serials. Removed only the added duplicate transport.
+Ready then passed and sync completed. No VD restart or readiness bypass.
+The new closed-game Psykhanium/HUD/generated-stereo launch is running; fresh
+stereo and worn controller alignment are still pending at this record.
+Evidence: `artifacts/unattended/controller-gun-*20260907.*` (ignored).
+
 ## Superseded candidate: preserve the held gun grip
 
 The user confirms gun/reticle agreement on `9b5981b`, but both are misaligned

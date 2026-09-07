@@ -422,3 +422,11 @@ native aim and changes no firing origin. Nine affected CTests pass (1.32 s),
 including a 120-pose gun-aim fixture and all 43 Lua chunks. Deployment and worn
 hand seating/reticle/enemy-hit checks remain pending. See the latest handoff;
 the prior visual-rotation approach above is historical and superseded.
+
+The user rejects the held-muzzle basis too and specifies controller alignment,
+not hand-model alignment. `859b460` restores direct native controller simulation
+aim and places the visual gun attachment at controller grip position, with its
+muzzle rotated to controller aim. This differs from the first visual correction,
+which retained the hand-model attachment position. Nine affected tests pass in
+1.27 seconds, including 120 translated/rotated/scaled parent cases and the real
+aim reader. Deployed after wireless ADB recovery and Ready; worn acceptance pending.
