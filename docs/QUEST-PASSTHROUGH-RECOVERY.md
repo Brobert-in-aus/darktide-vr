@@ -148,3 +148,36 @@ closed and nothing was deployed. The next retry needs a new recovery condition,
 not another identical smoke run.
 
 Ignored evidence uses `quest-swapchain-evidence-` under `artifacts/unattended`.
+
+## Follow-up: exact runtime source and backend diagnostic
+
+The installed log identifies VDXR 1.0.10 source revision
+`f17345f7dbc7bc52395eaedb7aa15bfa13a675bf`. A read-only checkout of that revision
+is under ignored `_downloads/VirtualDesktop-OpenXR-source`. Its
+[D3D12 interop](https://github.com/mbucchia/VirtualDesktop-OpenXR/blob/f17345f7dbc7bc52395eaedb7aa15bfa13a675bf/virtualdesktop-openxr/d3d12_interop.cpp)
+creates a separate D3D11 submission device for OVR. The failing
+[swapchain call](https://github.com/mbucchia/VirtualDesktop-OpenXR/blob/f17345f7dbc7bc52395eaedb7aa15bfa13a675bf/virtualdesktop-openxr/swapchain.cpp#L387)
+uses that device, not the application's D3D12 device. Its error wrapper logs only
+the numeric OVR result. The pinned LibOVR header (`3621783c`) names `-7000` as
+`ovrError_RuntimeException`; this category does not identify the internal cause.
+
+Harness `4298262` reads the optional `ovr_GetLastErrorInfo` export only from the
+already loaded Virtual Desktop backend, immediately after swapchain failure.
+It never loads or initializes another backend. The verified ABI contains one
+32-bit result and 512 text bytes; output is bounded. This is a thread-local last
+error query and may be empty or stale, so it cannot replace the failed XR result.
+Release build and four focused desktop/argument checks pass.
+
+One settled Ready attempt at 13:15 collected `result=0 text=` from that query;
+it did not provide further detail. The same first-eye texture request failed,
+with no application-device removal/debug message, complete output and no timeout.
+Guardian restored with logged `1 -> 0` and proximity Enable/Status ran in cleanup.
+No game launch/deployment. Ignored evidence uses `quest-backend-error-20260907-`.
+
+The accessibility JSON warning does not establish a corrupted setting: the file
+is absent here, and the inspected source tries parsing an empty string in that
+case. Its factory catches the error and returns no optional accessibility helper.
+No accessibility file was created or changed. The official
+[VDXR trace procedure](https://github.com/mbucchia/VirtualDesktop-OpenXR/wiki/Capturing-debug-traces)
+uses its installed WPR profile and an elevated capture; a read-only WPR status
+query found no recording. No trace session or support message was started.

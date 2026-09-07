@@ -37,7 +37,7 @@ and performance investigation. Motion blur remains unresolved; no framerate
 gain or worn acceptance is claimed. Existing old Present timings remain coarse.
 
 Windows x64 full Release build baseline is `df99611`; the newer XR harness builds
-at `e2aa82a`. Pinned LuaJIT compiles 36 chunks and the last full offline CTest
+at `4298262`. Pinned LuaJIT compiles 36 chunks and the last full offline CTest
 checkpoint passed 113/113 at `e2aa82a`, with headset tests disabled and ordinary
 D3D12 checks now explicitly skipping OpenXR discovery. The stock null-service
 guards cover both render and fixed input updates through `596c459`. Optional

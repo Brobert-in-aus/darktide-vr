@@ -9,7 +9,7 @@ and device identifiers remain outside Git.
 Latest integrated offline check: **113/113 CTests pass** at `e2aa82a` on the
 `codex/offline-graphics-test-isolation-2026-09-07` candidate (14.84 seconds), with headset
 tests disabled and all 36 Lua chunks compiling. Full Release build baseline is
-`df99611`, with the newer XR harness built at `e2aa82a`. Guardian pause/resume is
+`df99611`, with the newer XR harness built at `4298262`. Guardian pause/resume is
 now verified via ADB; a settled Ready attempt still fails at VDXR texture
 creation. Guardian and proximity automation were restored. Darktide is closed;
 the day's later candidates remain undeployed. Chronological entries below retain
@@ -1389,3 +1389,18 @@ passes **113/113 in 14.84 seconds**, including all 36 Lua chunks. Evidence:
 `artifacts/unattended/continuous-todo-offline-isolation-ctest-20260907.log`.
 This supersedes the integrated suite and harness baselines, not the full native
 producer build at `df99611`. No new live recovery attempt. Continue the todo.
+
+## Continuous todo work: exact VDXR backend error boundary
+
+Branch `codex/vdxr-last-error-diagnostic-2026-09-07`, implementation `4298262`,
+adds a failure-only query of the already loaded Virtual Desktop backend's
+thread-local last-error text. Exact installed VDXR source confirms its failing
+OVR call uses an internal D3D11 device; our D3D12 diagnostics cannot inspect that
+device. The Release harness builds and four focused offline checks pass. This
+is the newest harness build; full suite remains 113/113 at `e2aa82a`.
+
+A new bounded Ready attempt at 13:15 collected empty backend error information
+and the same first-eye texture failure. Guardian and proximity restored, no
+game/deployment. The source also explains the absent optional accessibility
+file's warning; it is not a proven corruption to repair. Exact sources, limits
+and evidence paths are in QUEST-PASSTHROUGH-RECOVERY. Continue offline work.

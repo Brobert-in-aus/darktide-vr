@@ -315,5 +315,5 @@ readiness fails at VDXR rendering-buffer creation; see
 Current full offline suite: 113/113 at `e2aa82a`, with headset tests disabled
 and desktop graphics tests explicitly skipping OpenXR discovery.
 Full native Release build baseline: `df99611`, with the newer XR harness built
-at `e2aa82a`. Watcher/input fixes and source-contract expansions are recorded in
+at `4298262`. Watcher/input fixes and source-contract expansions are recorded in
 the current handoff. They remain undeployed.
