@@ -78,6 +78,22 @@ try {
     New-Item -ItemType Junction -Path $link -Target $outside | Out-Null
     Assert-Rejected @(@{ Content = 'escaped'; Destination = (Join-Path $link 'file') }) 'reparse point'
     Assert-Text $victim 'outside-original'
+    $nested = Join-Path $game 'fresh\nested\binary'
+    $empty = Join-Path $game 'fresh\empty.flag'
+    $freshPlan = @(@{ Bytes = [byte[]] @(0, 255, 128, 42); Destination = $nested },
+        @{ Content = ''; Destination = $empty }, $entries[3])
+    $lock = [IO.File]::Open($b, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    $failed = $false
+    try { Invoke-DarktideDeploymentTransaction -Root $game -Entries $freshPlan -BackupRoot $backup -CreateDirectories | Out-Null }
+    catch { $failed = $_.Exception.Message.Contains('Status=rolled_back') }
+    $lock.Dispose(); $lock = $null
+    if (-not $failed -or (Test-Path -LiteralPath (Join-Path $game 'fresh'))) { throw 'New directory tree survived rollback.' }
+    Assert-Text $b 'original-lua'
+    $installed = Invoke-DarktideDeploymentTransaction -Root $game -Entries $freshPlan -BackupRoot $backup -CreateDirectories
+    if (([IO.File]::ReadAllBytes($nested) -join ',') -ne '0,255,128,42') { throw 'Binary content was changed.' }
+    if ((Get-Item -LiteralPath $empty).Length -ne 0) { throw 'Empty flag was not preserved.' }
+    $manifest = Get-Content -LiteralPath $installed.Manifest -Raw | ConvertFrom-Json
+    if ($manifest.created_directories.Count -ne 2) { throw 'Created directories were not recorded.' }
     Write-Output 'deployment_transaction=pass staging backup success locked_write rollback new_file removal scope duplicate junction'
 } finally {
     if ($lock) { $lock.Dispose() }

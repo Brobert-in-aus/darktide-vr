@@ -36,7 +36,7 @@ function Assert-Unchanged([hashtable] $Before) {
 }
 try {
     [IO.Directory]::CreateDirectory($tools) | Out-Null
-    foreach ($name in @('sync-darktide-vr-dev.ps1', 'resolve-darktide-game-root.ps1', 'invoke-deployment-transaction.ps1')) {
+    foreach ($name in @('sync-darktide-vr-dev.ps1', 'resolve-darktide-game-root.ps1', 'invoke-deployment-transaction.ps1', 'get-vr-mod-load-order.ps1')) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot ('..\..\tools\stereo\' + $name)) -Destination (Join-Path $tools $name)
     }
     Write-Fixture (Join-Path $tools 'test-darktide-lua-source.ps1') @'
@@ -84,6 +84,42 @@ if ($global:DeploymentFixtureGateFailure) { throw 'fixture syntax gate failed' }
     try { & $sync -GameRoot $game -BillboardShaderSubstitution:$false | Out-Null }
     catch { $failed = $_.Exception.Message.Contains('fixture syntax gate failed') }
     if (-not $failed) { throw 'Sync bypassed the Lua gate.' }
+    Assert-Unchanged $before
+    $global:DeploymentFixtureGateFailure = $false
+    # A separate fixture has a loader/framework but no VR directories.
+    $game = Join-Path $testRoot 'clean-game'
+    foreach ($required in @('binaries\Darktide.exe', 'binaries\mod_loader', 'mods\base\mod_manager.lua', 'mods\dmf\dmf.mod')) {
+        Write-Fixture (Join-Path $game $required) 'fixture-dependency'
+    }
+    $orderPath = Join-Path $game 'mods\mod_load_order.txt'
+    Write-Fixture $orderPath "-- Existing user list`ncustom_hud"
+    $before = Get-InstallationSnapshot
+    $failed = $false
+    try { & $sync -GameRoot $game -BillboardShaderSubstitution:$false | Out-Null }
+    catch { $failed = $_.Exception.Message.Contains('Installed Darktide VR directory not found') }
+    if (-not $failed) { throw 'Ordinary sync unexpectedly initialized a new installation.' }
+    Assert-Unchanged $before
+    $framework = Join-Path $game 'mods\dmf\dmf.mod'
+    Remove-Item -LiteralPath $framework
+    $withoutFramework = Get-InstallationSnapshot
+    $failed = $false
+    try { & $sync -GameRoot $game -BillboardShaderSubstitution:$false -InitializeInstall | Out-Null }
+    catch { $failed = $_.Exception.Message.Contains('Install the Darktide Mod Loader and Framework first') }
+    if (-not $failed) { throw 'Clean installation bypassed framework prerequisites.' }
+    Assert-Unchanged $withoutFramework
+    Write-Fixture $framework 'fixture-dependency'
+    $lock = [IO.File]::Open($orderPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    $failed = $false
+    try { & $sync -GameRoot $game -BillboardShaderSubstitution:$false -InitializeInstall | Out-Null }
+    catch { $failed = $_.Exception.Message.Contains('Status=rolled_back') }
+    $lock.Dispose(); $lock = $null
+    if (-not $failed) { throw 'Clean installation failure did not roll back.' }
+    Assert-Unchanged $before
+    if (Test-Path -LiteralPath (Join-Path $game $modRelative)) { throw 'New VR tree survived clean-install rollback.' }
+    & $sync -GameRoot $game -BillboardShaderSubstitution:$false -InitializeInstall | Out-Null
+    if ([IO.File]::ReadAllText($orderPath) -cne "-- Existing user list`ncustom_hud`ndarktidevr_stereo_probe`n") { throw 'Mod load order changed unexpectedly.' }
+    $before = Get-InstallationSnapshot
+    & $sync -GameRoot $game -BillboardShaderSubstitution:$false -InitializeInstall | Out-Null
     Assert-Unchanged $before
     Write-Output 'deployment_sync=pass complete_copy flags diagnostic_removal late_failure_rollback Lua_gate'
 } finally {

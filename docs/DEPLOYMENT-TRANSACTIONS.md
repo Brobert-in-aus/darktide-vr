@@ -7,7 +7,7 @@ are copied and SHA256-verified before the first installed file changes.
 
 `Invoke-DarktideDeploymentTransaction` rejects duplicate destinations, paths
 outside the selected installation, reparse points below that root, directory
-destinations and missing parent directories. It checks that each destination
+destinations and, by default, missing parent directories. It checks that each destination
 still matches its staged original before writing, then verifies the result.
 
 On a caught failure, it restores touched files in reverse order, removes new
@@ -22,7 +22,31 @@ and `failed_before_write`. An incomplete rollback includes the affected paths;
 keep the backup and resolve those failures before launching. This handles
 caught update errors, not abrupt process termination or power loss. Recovery
 from those interruptions still requires inspection of the saved manifest and
-original files. A user-facing recovery command and clean installer remain work.
+original files. A user-facing recovery command remains work.
+
+## First installation from a built checkout
+
+With the Darktide Mod Loader and Framework already installed, the explicit
+`-InitializeInstall` switch permits creation of the VR mod directory tree and
+appends its missing `darktidevr_stereo_probe` entry to `mods/mod_load_order.txt`.
+It requires the game executable, loader, base manager, framework descriptor and
+existing mod list. It does not install or activate the loader, install optional
+Custom HUD, change other mod ordering, create a shortcut or launch the game.
+
+From a built Windows checkout, use `tools/stereo/sync-darktide-vr-dev.ps1
+-InitializeInstall -GameRoot <installation>` after the required default Ready
+preflight and with Darktide closed. Source compilation, native build artifacts
+and the ordinary shader build requirements still apply. This is a source-tree
+installation path; a standalone release package remains pending.
+
+The existing list is retained byte-for-byte before its appended entry, including
+comments and LF/CRLF style. Repeated installation does not duplicate the entry.
+Ambiguous duplicates/capitalization and NUL or UTF-8 BOM files are rejected;
+the stock loader reads byte lines and does not strip a BOM. New directories
+are recorded in the backup manifest. On caught failure, only directories this
+transaction created are removed, deepest first, and only if empty. Existing
+directories and unrelated files are preserved. Ordinary sync retains its
+existing-installation requirement.
 
 ## Validation, 8 September 2026
 
@@ -30,7 +54,9 @@ Windows PowerShell fixtures exercise real temporary filesystem writes and the
 actual sync orchestration. A locked final destination forces a late failure
 after earlier Lua, native and flag writes; the installed file set and hashes
 must return exactly to their originals. Success, diagnostic removal, newly
-created file rollback, path/junction guards and Lua-gate rejection are covered.
+created file/directory rollback, path/junction guards and Lua-gate rejection are covered.
+Clean installation, missing prerequisites, final mod-list failure and repeated
+installation are also exercised against an isolated fake installation.
 Process discovery and compilation are fixtures in the orchestration test; the
 real project Lua gate runs separately in CTest. Nothing from these checks is
 deployed to the running accepted-baseline preview session.

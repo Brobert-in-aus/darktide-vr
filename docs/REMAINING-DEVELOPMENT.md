@@ -186,7 +186,10 @@ for the smaller set needed before a first end-to-end mission attempt.
    not a clean installer or live launch validation.
    Development updates now stage files and flags together and restore their
    verified originals on caught failures; see [update recovery](DEPLOYMENT-TRANSACTIONS.md).
-   Clean installation and recovery after abrupt interruption remain pending.
+   The explicit `-InitializeInstall` path now creates missing VR folders and
+   registers the mod in an existing loader/framework setup, with rollback tested
+   offline. Standalone packaging, live clean-install acceptance and recovery
+   after abrupt interruption remain pending.
 10. **Post-initial-release optimization/polish.** LOD policy beyond machine-local
    LOD 9, tiny extreme-edge marker asymmetry, selective smoke-only suppression,
    and remaining nonessential visual polish. General/DLSS performance is now

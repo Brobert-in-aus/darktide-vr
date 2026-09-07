@@ -5,10 +5,12 @@ function Invoke-DarktideDeploymentTransaction {
     param(
         [Parameter(Mandatory)][string] $Root,
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()][hashtable[]] $Entries,
-        [Parameter(Mandatory)][string] $BackupRoot
+        [Parameter(Mandatory)][string] $BackupRoot,
+        [switch] $CreateDirectories
     )
     Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) { throw 'Deployment root must be an existing directory.' }
     $rootPath = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\', '/')
     if ($rootPath -eq [IO.Path]::GetPathRoot($rootPath).TrimEnd('\', '/')) {
         throw 'A deployment root must be a specific installation directory.'
@@ -27,13 +29,16 @@ function Invoke-DarktideDeploymentTransaction {
                 if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
                     throw "Deployment path contains a reparse point: $cursor"
                 }
+                if ($cursor -ne $absolute -and -not $item.PSIsContainer) {
+                    throw "Deployment parent is a file: $cursor"
+                }
             }
             $cursor = Split-Path -Parent $cursor
         }
         if (Test-Path -LiteralPath $absolute -PathType Container) {
             throw "Deployment destination is a directory: $absolute"
         }
-        if (-not (Test-Path -LiteralPath (Split-Path -Parent $absolute) -PathType Container)) {
+        if (-not $CreateDirectories -and -not (Test-Path -LiteralPath (Split-Path -Parent $absolute) -PathType Container)) {
             throw "Deployment destination directory is missing: $absolute"
         }
         return $absolute
@@ -43,8 +48,8 @@ function Invoke-DarktideDeploymentTransaction {
     foreach ($entry in $Entries) {
         $destination = & $assertDestination $entry.Destination
         if (-not $seen.Add($destination)) { throw "Duplicate deployment destination: $destination" }
-        $kinds = @('Source', 'Content', 'Remove' | Where-Object { $entry.ContainsKey($_) })
-        if ($kinds.Count -ne 1) { throw 'Each deployment entry requires exactly one Source, Content or Remove.' }
+        $kinds = @('Source', 'Content', 'Bytes', 'Remove' | Where-Object { $entry.ContainsKey($_) })
+        if ($kinds.Count -ne 1) { throw 'Each deployment entry requires exactly one Source, Content, Bytes or Remove.' }
         $kind = $kinds[0]
         $source = $null
         if ($kind -eq 'Source') {
@@ -52,9 +57,11 @@ function Invoke-DarktideDeploymentTransaction {
             $source = (Resolve-Path -LiteralPath $entry.Source).Path
         }
         if ($kind -eq 'Remove' -and $entry.Remove -ne $true) { throw 'Remove entries must explicitly select true.' }
+        if ($kind -eq 'Bytes' -and $entry.Bytes -isnot [byte[]]) { throw 'Bytes entries require a byte array.' }
         $plan += [pscustomobject]@{
             Destination = $destination; Kind = $kind; Source = $source
             Content = if ($kind -eq 'Content') { [string] $entry.Content } else { $null }
+            Bytes = if ($kind -eq 'Bytes') { ,$entry.Bytes } else { $null }
             Existed = $false; OriginalHash = $null; ExpectedHash = $null
             Backup = $null; Staged = $null
         }
@@ -67,7 +74,8 @@ function Invoke-DarktideDeploymentTransaction {
     $backupDirectory = Join-Path $backupBase ('deployment-' + [Guid]::NewGuid().ToString('N'))
     [IO.Directory]::CreateDirectory($backupDirectory) | Out-Null
     $manifestPath = Join-Path $backupDirectory 'manifest.json'
-    $receipt = [ordered]@{ schema_version = 1; root = $rootPath; status = 'preparing'; entries = $plan }
+    $createdDirectories = [Collections.Generic.List[string]]::new()
+    $receipt = [ordered]@{ schema_version = 2; root = $rootPath; status = 'preparing'; entries = $plan; created_directories = @() }
     $saveManifest = { $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding UTF8 }
     $touched = [Collections.Generic.List[object]]::new()
     try {
@@ -92,7 +100,8 @@ function Invoke-DarktideDeploymentTransaction {
                         throw "Source changed while staging: $($entry.Source)"
                     }
                 } else {
-                    [IO.File]::WriteAllBytes($entry.Staged, [Text.Encoding]::ASCII.GetBytes($entry.Content))
+                    $bytes = if ($entry.Kind -eq 'Bytes') { ,$entry.Bytes } else { ,([Text.Encoding]::ASCII.GetBytes($entry.Content)) }
+                    [IO.File]::WriteAllBytes($entry.Staged, [byte[]] $bytes)
                     $entry.ExpectedHash = (Get-FileHash -LiteralPath $entry.Staged -Algorithm SHA256).Hash
                 }
             }
@@ -101,6 +110,23 @@ function Invoke-DarktideDeploymentTransaction {
         & $saveManifest
         foreach ($entry in $plan) {
             $null = & $assertDestination $entry.Destination
+            if ($CreateDirectories -and $entry.Kind -ne 'Remove') {
+                $missing = [Collections.Generic.Stack[string]]::new()
+                $parent = Split-Path -Parent $entry.Destination
+                while (-not (Test-Path -LiteralPath $parent -PathType Container)) {
+                    $missing.Push($parent)
+                    $parent = Split-Path -Parent $parent
+                }
+                while ($missing.Count) {
+                    $directory = $missing.Pop()
+                    # Recheck the target chain immediately before creating a directory.
+                    $null = & $assertDestination $entry.Destination
+                    New-Item -ItemType Directory -Path $directory -ErrorAction Stop | Out-Null
+                    $createdDirectories.Add($directory)
+                    $receipt.created_directories = @($createdDirectories.ToArray())
+                    & $saveManifest
+                }
+            }
             $existsNow = Test-Path -LiteralPath $entry.Destination -PathType Leaf
             if ($existsNow -ne $entry.Existed -or ($existsNow -and
                     (Get-FileHash -LiteralPath $entry.Destination -Algorithm SHA256).Hash -ne $entry.OriginalHash)) {
@@ -143,7 +169,15 @@ function Invoke-DarktideDeploymentTransaction {
                 }
             } catch { $rollbackFailures.Add("$($entry.Destination): $($_.Exception.Message)") }
         }
-        $receipt.status = if ($rollbackFailures.Count) { 'rollback_incomplete' } elseif ($touched.Count) { 'rolled_back' } else { 'failed_before_write' }
+        for ($index = $createdDirectories.Count - 1; $index -ge 0; $index--) {
+            $directory = $createdDirectories[$index]
+            try {
+                # Validate the chain; remove only this transaction's empty directory.
+                $null = & $assertDestination (Join-Path $directory '.deployment-scope-check')
+                if (Test-Path -LiteralPath $directory) { [IO.Directory]::Delete($directory, $false) }
+            } catch { $rollbackFailures.Add("${directory}: $($_.Exception.Message)") }
+        }
+        $receipt.status = if ($rollbackFailures.Count) { 'rollback_incomplete' } elseif ($touched.Count -or $createdDirectories.Count) { 'rolled_back' } else { 'failed_before_write' }
         $receipt['failure'] = $failure
         $receipt['rollback_failures'] = @($rollbackFailures.ToArray())
         try { & $saveManifest } catch { $rollbackFailures.Add("Manifest: $($_.Exception.Message)") }

@@ -2,6 +2,8 @@
 param(
     [string] $GameRoot,
 
+    [switch] $InitializeInstall,
+
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Release',
 
@@ -38,6 +40,13 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 . (Join-Path $PSScriptRoot 'resolve-darktide-game-root.ps1')
 $gameRootPath = Resolve-DarktideGameRoot -GameRoot $GameRoot
 $modRoot = Join-Path $gameRootPath 'mods\darktidevr_stereo_probe'
+if ($InitializeInstall) {
+    foreach ($required in @('binaries\mod_loader', 'mods\base\mod_manager.lua', 'mods\dmf\dmf.mod', 'mods\mod_load_order.txt')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $gameRootPath $required) -PathType Leaf)) {
+            throw "Install the Darktide Mod Loader and Framework first. Missing: $required"
+        }
+    }
+}
 $sourceLua = Join-Path $repoRoot `
     'mods\darktidevr_stereo_probe\scripts\mods\darktidevr_stereo_probe\darktidevr_stereo_probe.lua'
 $sourceLuaRoot = Split-Path -Parent $sourceLua
@@ -129,7 +138,7 @@ foreach ($entry in $destinations) {
         throw "Development source file not found: $($entry.Source)"
     }
     $destinationParent = Split-Path -Parent $entry.Destination
-    if (-not (Test-Path -LiteralPath $destinationParent -PathType Container)) {
+    if (-not $InitializeInstall -and -not (Test-Path -LiteralPath $destinationParent -PathType Container)) {
         throw "Installed Darktide VR directory not found: $destinationParent"
     }
 }
@@ -230,9 +239,17 @@ foreach ($diagnosticFlagName in $disabledDiagnosticFlags) {
     $deploymentEntries += @{ Destination = $diagnosticFlagPath; Content = 'disabled' + [Environment]::NewLine }
 }
 
+if ($InitializeInstall) {
+    . (Join-Path $PSScriptRoot 'get-vr-mod-load-order.ps1')
+    $orderPath = Join-Path $gameRootPath 'mods\mod_load_order.txt'
+    $order = Get-DarktideVrModLoadOrder -Bytes ([IO.File]::ReadAllBytes($orderPath))
+    if ($order.Changed) { $deploymentEntries += @{ Destination = $orderPath; Bytes = $order.Bytes } }
+}
+
 # Files and runtime flags form one update. Stage and back up everything before
 # the first installed write; a failed copy must not leave mixed build versions.
 . (Join-Path $PSScriptRoot 'invoke-deployment-transaction.ps1')
 $deployment = Invoke-DarktideDeploymentTransaction -Root $gameRootPath `
-    -Entries $deploymentEntries -BackupRoot (Join-Path $repoRoot 'artifacts\deployment-backups')
+    -Entries $deploymentEntries -BackupRoot (Join-Path $repoRoot 'artifacts\deployment-backups') `
+    -CreateDirectories:$InitializeInstall
 Write-Output "Development deployment=$($deployment.Status) files=$($deployment.FileCount) backup=$($deployment.BackupDirectory)"
