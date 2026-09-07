@@ -966,3 +966,15 @@ proximity change, wait or headset launch occurs in this test. Two focused CTests
 pass (watcher cleanup and XR readiness); the inventory is now 111 tests, while
 the last full suite/build remains the 110-test `df99611` checkpoint. Continue
 offline work; this tool fix does not resolve the current VDXR renderability fault.
+
+## Continuous todo work: unchanged controller samples
+
+Branch `codex/controller-idle-fastpath-2026-09-07` skips ephemeral-action routing
+when a valid controller sample has no press/release edge. Native/semantic
+sampling, UI cancellation, owner handling and turning still occur first; held
+inputs, movement and online aim continue in the separate fixed-frame hook.
+This avoids two diagnostic tables and a binding scan on those samples. Six
+existing focused CTests pass (controller bindings, gameplay UI input/ownership,
+online rules, Lua compile/invariants); 36 chunks compile. No added test for the
+simple early return and no measured FPS claim. Full build/suite baseline remains
+`df99611` (110 tests); the newer watcher test passes separately. Undeployed.
