@@ -2,7 +2,10 @@
 
 7 September 2026. Requested alongside local-server mission support. This is a
 source audit with an isolated input-stream check, not an online test or an
-enabled gameplay mode. The user is away and worn verification is pending.
+enabled remote gameplay mode. The user is home and has confirmed limited staff
+behavior in locally hosted Psykhanium. See the
+[head-aim-between-attacks investigation](ONLINE-AIM-WINDOW-AUDIT.md) for the
+new origin and firing-frame questions.
 
 ## Finding
 

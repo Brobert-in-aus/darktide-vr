@@ -1877,3 +1877,17 @@ fallback and pose mismatches). Repeated locomotion messages now format correctly
 no mod ERROR entries in the fresh console at 16:33. User clarified the staff
 shots go to the reticle and originate at the face. Game/XR remain running with
 proximity override applied. Do not call that confirmation broad gun acceptance.
+
+## Online origin and intermittent hand-aim question
+
+User asks about reporting a hand origin and headset aim except on actual firing
+frames. See ONLINE-AIM-WINDOW-AUDIT.md. No independent origin input was found in
+the audited stock route; true hand-origin collision remains unsupported on the
+unmodified remote server. Intermittent recorded aim is plausible but shares
+movement/traversal orientation on those frames. The actual staff launch scheduler
+passes an optional 48-case probe with 72 dispatches; trigger-only aim misses 32
+later samples in the selected matrix. This rules out a trigger-frame shortcut,
+not the user's actual-firing-frame proposal. Action time scale, remote rewind,
+extra projectiles and finish fallback need a deterministic attack window.
+The fixture substitutes launch dispatch and does not test network acceptance.
+No gameplay changes; quiet 57ad12c session remains running.
