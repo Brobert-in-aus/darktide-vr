@@ -8,6 +8,8 @@ is local presentation only and is not deployed or visually accepted.
 `/dtvr_melee_preview_off` removes it. It defaults off. The path follows the outer
 tip of the stock collision box across its authored damage-window frames. It is
 not a predicted hit, wall test, entire hit-volume outline or damage guarantee.
+It shows the path for the aim held now. Moving aim during the real swing can
+change the stock sweep reference; the guide does not promise a latched path.
 
 The preview asks the stock action handler which `start_attack` is currently
 valid, then follows its unambiguous light-attack chain. It uses that action's

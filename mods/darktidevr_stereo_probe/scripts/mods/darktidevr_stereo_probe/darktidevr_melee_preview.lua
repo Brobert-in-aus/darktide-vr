@@ -24,7 +24,7 @@ end
 function Preview.sample(instance,origin,rotation)
     local settings=instance and instance._action_settings
     local splines=instance and instance._sweep_splines
-    if not settings or settings.kind~='sweep' or settings.sphere_radius or
+    if not settings or settings.kind~='sweep' or settings.use_sphere_sweep or settings.sphere_radius or
             not splines or #splines==0 or #splines>8 or not origin or not rotation then
         return nil,'unsupported_geometry'
     end
