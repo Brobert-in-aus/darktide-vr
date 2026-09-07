@@ -33,6 +33,30 @@ Validation: full Windows x64 offline CTest passes 134/134 in 22.74 seconds;
 the pinned LuaJIT gate compiles 47 chunks. Evidence is
 `artifacts/unattended/handedness-attachment-final-134-20260908.log`.
 
+### Effect ownership follow-up, 8 September
+
+Stock `is_in_first_person_mode()` reads equipment visibility, separately from
+`wants_first_person_camera()`. The existing VR split therefore selects 3P
+weapon VFX and breed-node VFX while retaining the first-person camera. Those
+registered nodes follow their moved equipment/hand ancestors; an additional
+global particle-pose redirect would duplicate that routing and risk gameplay
+consumers of the same accessor.
+
+Initial `_register_fx_sources` nevertheless always registers weapon sounds on
+the 1P item. Stock `_move_fx_sources` moves them later when equipment mode or
+attachment readiness changes. `darktidevr_weapon_sound.lua` now redirects that
+initial sound registration for a current local VR slot already using 3P
+equipment. It requires exact 1P slot/attachment identity, a live 3P tree and
+usable node/attachment lookup; all other cases retain stock registration.
+Unknown/retiring owners, missing metadata and dead attachments decline the
+redirect. Stock movement, unregistration, result tuples and exceptions remain
+intact. No particle, attack-origin, damage or global camera API is changed.
+
+The actual stock registration helper passes through this hook with sound and
+VFX selecting the 3P item. Portable ownership/fallback cases also pass. This
+does not establish spatial-audio perception or all effects under left-handed
+animation. The candidate is undeployed, with no new live acceptance.
+
 `darktidevr_weapon_hand_roles.lua` constructs a fixed dominant/support policy.
 Physical left/right identities remain unchanged; invalid policy input defaults
 to right dominance and unknown role names produce no target. Gameplay attack,
