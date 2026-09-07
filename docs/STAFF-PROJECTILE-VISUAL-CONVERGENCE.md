@@ -12,7 +12,10 @@ Other projectile types, hitscan tracers, beams and remote mission admission are
 not implemented by this change.
 
 The release hook records the cosmetic origin and actual launch position after
-stock launch. The stock projectile FX creates its normal particle at an offset
+stock launch. This runs through the existing controller-aim hook; DMF replaces
+duplicate hooks from the same mod, so a separate second firing hook is invalid.
+The regression now executes the real existing hook and rejects duplicates.
+The stock projectile FX creates its normal particle at an offset
 position. For the first metre of projectile travel, the visual position is:
 
 ```text

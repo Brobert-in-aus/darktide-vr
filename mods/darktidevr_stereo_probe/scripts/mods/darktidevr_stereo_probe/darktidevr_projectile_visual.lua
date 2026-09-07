@@ -58,8 +58,9 @@ function module.install(mod, presentation)
         pcall(World.destroy_particles,entry.world,entry.id)
         if owns_slot then fx._effect_ids.spawn=nil end
     end
-    local Action = require('scripts/extension_systems/weapon/actions/action_spawn_projectile')
-    mod:hook(Action,'_fire_projectile',function(func,self,t,unit,paid,locomotion,...)
+    -- Called by the existing controller-aim hook: DMF replaces duplicate hooks
+    -- from one mod instead of composing them like an ordinary Lua wrapper.
+    function instance.fire_projectile(func,self,t,unit,paid,locomotion,...)
         local ok,hand=pcall(origin,self)
         if not ok then report_failure(); hand=nil end
         local result=pack(func(self,t,unit,paid,locomotion,...))
@@ -73,7 +74,7 @@ function module.install(mod, presentation)
             if saved then pending[unit]=entry else report_failure() end
         end
         return unpack(result,1,result.n)
-    end)
+    end
     -- Scope the engine hooks to exactly the particle created by stock start_fx.
     -- Stock retains charge variables, particle groups, sounds and effect IDs.
     mod:hook(World,'create_particles',function(func,world,name,position,rotation,...)

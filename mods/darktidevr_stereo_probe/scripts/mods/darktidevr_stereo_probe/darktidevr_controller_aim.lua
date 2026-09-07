@@ -639,6 +639,10 @@ function controller_aim.install(mod, presentation, state)
             if not is_local_unit(self._player_unit) then
                 return func(self, ...)
             end
+            if presentation.projectile_visual and presentation.online_rules and
+                    presentation.online_rules.simulation_aim_active(self._player_unit) then
+                return presentation.projectile_visual.fire_projectile(func, self, ...)
+            end
             local position, rotation = controller_aim.projectile_target(self)
             if not position or not rotation then
                 return func(self, ...)

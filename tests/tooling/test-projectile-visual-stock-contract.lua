@@ -64,10 +64,26 @@ local presentation={online_rules={simulation_aim_active=function(u) return enabl
     weapon_aim_target=function(role) return hand end,
     controller_aim={staff_tip=function() return tip end}}
 local warnings=0
-local mod={hook=function(_,c,n,h) local f=assert(c[n],n); c[n]=function(...) return h(f,...) end end,
+local installed=setmetatable({}, {__mode='k'})
+local mod={hook=function(_,c,n,h)
+    installed[c]=installed[c] or {}; assert(not installed[c][n],'duplicate DMF hook: '..n)
+    installed[c][n]=true
+    local f=assert(c[n],n); c[n]=function(...) return h(f,...) end
+end,
     info=function() end,warning=function() warnings=warnings+1 end}
 local visual=dofile(module_path)
 local instance=visual.install(mod,presentation)
+presentation.projectile_visual=instance
+-- Execute the actual existing hook, rather than assuming same-mod hooks stack.
+local aim_path=module_path:gsub('darktidevr_projectile_visual.lua$','darktidevr_controller_aim.lua')
+local file=assert(io.open(aim_path,'r')); local aim_source=file:read('*all'); file:close()
+aim_source=aim_source:gsub('\r\n','\n')
+local first=assert(aim_source:find('    mod:hook(\n        ActionSpawnProjectile,\n        "_fire_projectile",',1,true))
+local last=assert(aim_source:find('\n    function controller_aim.with_weapon_throw_pose',first,true))
+local installer=assert(loadstring('local mod,ActionSpawnProjectile,is_local_unit,presentation,controller_aim,with_first_person_pose=...\n'..
+    aim_source:sub(first,last-1)))
+installer(mod,Action,function(u) return u=='owner' end,presentation,
+    {projectile_target=function() return nil end},function() error('unexpected legacy pose') end)
 local function near(a,b) assert(math.abs(a-b)<1e-8,tostring(a)..' != '..tostring(b)) end
 near(visual.weight(0),1); near(visual.weight(.5),.5); near(visual.weight(1),0)
 local serial=0
