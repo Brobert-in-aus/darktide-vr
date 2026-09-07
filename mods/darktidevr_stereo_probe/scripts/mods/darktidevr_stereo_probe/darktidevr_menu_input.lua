@@ -145,8 +145,9 @@ function MenuInput.proxy(source, null_service, sample, vector, read_desktop, wid
             if desktop_event then
                 local ok,x,y,w,h,foreground = pcall(read_desktop)
                 if ok and foreground==true and finite(x) and finite(y) and finite(w) and finite(h) and
-                        finite(width) and finite(height) and w>0 and h>0 and width>0 and height>0 and
-                        x>=0 and x<w and y>=0 and y<h then
+                        finite(width) and finite(height) and w>0 and h>0 and width>0 and height>0 then
+                    -- Keep off-window mouse positions outside the canvas so a
+                    -- drag/release cannot jump to an unrelated controller hit.
                     sample.desktop_cursor_x, sample.desktop_cursor_y = x*width/w, y*height/h
                 end
             end

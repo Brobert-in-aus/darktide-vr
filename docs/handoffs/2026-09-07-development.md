@@ -1044,3 +1044,10 @@ with 36 chunks compiling. The Lua/harness pair remains undeployed; the historica
 live scrollbar failure is not declared resolved. Full-suite baseline remains
 111/111 at `6c79aec`; full Release baseline `df99611`, newer harness built here.
 Continue the todo without requesting worn verification while the user is away.
+
+Follow-up on the same branch reproduces a desktop drag/release crossing the
+window edge and jumping to the controller cursor. Finite off-window coordinates
+now map outside the UI canvas, preserving stock drag and hit-test behavior.
+Invalid dimensions, background windows and failing reads still fall back as
+before. The new boundary regression and all six focused checks above pass;
+36 Lua chunks compile. This remains an undeployed candidate.

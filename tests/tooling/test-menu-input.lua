@@ -74,14 +74,18 @@ end
 for _,read in ipairs({
     function() error('retired window') end,
     function() return 100,200,1000,500,false end,
-    function() return -1,200,1000,500,true end,
-    function() return 1000,200,1000,500,true end,
-    function() return 100,500,1000,500,true end,
     function() return 100,200,0,500,true end,
     function() return 0/0,200,1000,500,true end,
 }) do
     local routed=menu.proxy(desktop_source,null,{override=true,x=900,y=800,scroll=0},vector,read,2000,1000)
     assert(routed:get('cursor')[1]==900,'Invalid desktop point replaced XR input')
+end
+for _,point in ipairs({{-1,200},{1000,200},{100,500}}) do
+    local mouse={get=function(_,name) return name=='left_hold' or name=='left_released' end}
+    local routed=menu.proxy(mouse,null,{override=true,x=900,y=800,scroll=0},vector,
+        function() return point[1],point[2],1000,500,true end,2000,1000)
+    assert(routed:get('cursor')[1]==point[1]*2 and routed:get('cursor')[2]==point[2]*2,
+        'A desktop drag outside the window jumped to the controller ray')
 end
 local idle_desktop={get=function() return vector(0,0,0) end}
 local idle=menu.proxy(idle_desktop,null,{override=true,x=900,y=800,scroll=0},vector,
