@@ -13306,6 +13306,14 @@ presentation.melee_live_probe = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_live_probe"
 ).install(mod, presentation, controller_observation, active_game_mode_name)
 
+presentation.melee_preview = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_preview_display"
+).install(mod, presentation, controller_observation)
+
+mod.update = function()
+    presentation.melee_preview.update()
+end
+
 presentation.hud_panel = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_hud_panel"
 )
@@ -13383,6 +13391,8 @@ end
 mod.on_disabled = function()
     requested = false
     ui_stereo_requested = false
+    presentation.melee_preview.enabled = false
+    presentation.melee_preview.destroy()
     pcall(presentation.hud_panel.set_enabled, false)
     pcall(presentation.marker_gui.destroy_all)
     pcall(teardown)
@@ -13394,6 +13404,8 @@ end
 mod.on_unload = function()
     requested = false
     ui_stereo_requested = false
+    presentation.melee_preview.enabled = false
+    presentation.melee_preview.destroy()
     pcall(presentation.hud_panel.set_enabled, false)
     pcall(presentation.marker_gui.destroy_all)
     pcall(teardown)

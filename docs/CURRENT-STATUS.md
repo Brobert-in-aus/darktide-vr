@@ -4,6 +4,12 @@ Updated 8 September 2026. This summary supersedes the chronological evidence
 below. Start with the [workday handoff](handoffs/2026-09-08-workday.md) and
 [remaining development](REMAINING-DEVELOPMENT.md).
 
+Latest user priority: physical melee is paused until server-side stock melee is
+locked in. The [first-swing preview candidate](STOCK-MELEE-PREVIEW.md) uses stock
+authored geometry and the correct simulated/local aim owner. It remains opt-in,
+undeployed and awaiting a worn check. Branch `codex/stock-melee-preview-2026-09-08`;
+full offline CTest 133/133 passed in 23.70 seconds, with 47 Lua chunks compiled.
+
 Development is active in the user's requested session, with a 20-minute
 heartbeat, until explicitly told to stop. The user is away at work; continue
 independent offline development when worn observations are needed. Yesterday's
