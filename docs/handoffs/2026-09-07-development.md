@@ -86,6 +86,20 @@ uses a hole between two real actors and confirms both later actors are disabled.
 Four affected CTests pass (0.88 seconds), including 43 chunks/invariants. Do not
 claim the `aa00288` run as successful gun acceptance; its sparse-slot correction
 must be deployed and rechecked.
+The user describes the prior failed run as an improvement after recentering,
+but with stock hands and a headset-facing physical gun while the reticle/shot
+direction followed hand aim. That matches the failed proxy initialization;
+recenter moving residual visual colliders is an inference, not a proven cause.
+The sparse-slot correction `9b5981b` is deployed after Ready. Its console starts
+09:20:33 UTC, reaches range at 09:21:44, then reports both visual roots cleaned
+(24 actors in 44 slots each), tracked rigid hands ready, and lasgun muzzle
+post-angle error 0.0000 degrees. A harness sample has `shared_ready=817`, zero
+interval fallback and one cumulative pose mismatch. No mod WARNING/ERROR appears
+in the checked fresh log. Four actual lasgun endpoints now reach scenery
+62–82 m away; their collision lists contain no owned visual proxy roots.
+The user has been asked for a fresh no-recenter enemy-hit/hand-barrel check.
+Evidence: `artifacts/unattended/lasgun-sparse-*20260907.*` (ignored). Session is
+running with HUD/generated stereo and unchanged native components.
 
 At 16:17 Brisbane they returned home with the headset and requested setup.
 They later closed Virtual Desktop for a break. Continue offline; at the roomscale

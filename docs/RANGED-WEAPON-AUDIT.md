@@ -404,3 +404,12 @@ collision/readiness, equipment-hand synchronization and the new 120-pose
 multi-axis alignment fixture. The normal configured count is now 126; no full
 126-test run is claimed. Native components remain unchanged. Deployment and
 worn enemy-hit/barrel/reticle checks are the next boundary.
+The first correction launch exposed nil actor slots in the copied character.
+`9b5981b` skips them like stock pickup/deployable loops. Four affected tests pass
+in 0.88 seconds, including a sparse-list cleanup regression. The corrected
+session reports 24 actor disables in 44 slots on each of the two tracked-hand
+roots, successful hand readiness and a 0.0000-degree lasgun muzzle post-angle.
+Actual hit endpoints now reach distant scenery (62–82 m); owned visual roots
+are absent from those collision lists. Fresh stereo is verified with nonzero
+shared readiness. The user's enemy damage and barrel/reticle observation is
+still pending; these measurements alone do not establish worn acceptance.
