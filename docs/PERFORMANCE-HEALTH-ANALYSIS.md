@@ -85,3 +85,20 @@ looks consecutive; legacy complete logs remain accepted. Release native-capture
 and generated-frame-state builds pass. Three focused CTests pass: generated
 frame state, continuous observation and health analysis. Actual performance
 effect needs a controlled live comparison after Ready succeeds.
+
+## Rigid glove update cost and spawn readiness
+
+The rigid-hand update and placement paths both reapplied full root/slot/attachment
+visibility. With one update and one placement for each hand per frame, that was
+four traversals. Ready-hand update now leaves visibility to placement, reducing
+that case to two traversals. Initial visibility, placement-time enforcement and
+streaming callback recovery remain; there is no measured frame-rate claim.
+
+The same inspection found readiness based on `spawned_character_unit()` alone.
+Stock UIProfileSpawner can return a unit before `spawned()` reports ready. Its
+next updates complete streaming/visibility initialization and pending work. The
+rigid-hand path now continues those updates until stock readiness, then initializes
+its surface once. A regression reproduces premature readiness and checks pending
+updates, 100 stable updates without repeated visibility work, dead/missing units,
+failed streaming quarantine and a fresh replacement owner. Seven focused CTests
+including the 36-chunk LuaJIT gate pass. Candidate remains undeployed.

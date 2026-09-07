@@ -798,3 +798,21 @@ pass (ranged aim, online rules, smart-tag marker ownership), plus the expanded
 optional source fixture. Production code is unchanged; full Release build and
 109/109 CTest baseline remain `5f1eccd`. Continue the todo list with live readiness
 and worn acceptance still blocked as previously recorded.
+
+## Continuous todo work: rigid-hand spawner readiness
+
+Branch `codex/rigid-hand-spawn-readiness-2026-09-07` waits for the stock profile
+spawner's `spawned()` readiness instead of accepting early unit existence. The
+spawner continues receiving initialization updates while pending. Once ready,
+update no longer duplicates placement's full glove-visibility traversal; initial
+visibility and placement enforcement remain. One update plus one placement per
+hand now requests two traversals instead of four. No measured FPS improvement.
+
+The regression reproduced premature readiness before the fix and passes pending
+streaming, stable updates without repeated visibility calls, missing/dead units,
+failed streaming quarantine and fresh replacement ownership. Configure with
+headset tests disabled; seven focused CTests pass (rigid hand readiness, anatomy,
+equipment sync, both melee animation fixtures, Lua source compile/invariants).
+LuaJIT compiles 36 chunks; configured CTest inventory is now 110, with the last
+full 109/109 baseline at `5f1eccd`. No native changes or deployment. Keep working
+through the todo list and preserve the documented live/XR readiness boundary.

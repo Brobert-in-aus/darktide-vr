@@ -339,11 +339,14 @@ local function update_rigid_hand(hand, dt, t)
                 " reason=" .. hand.failure)
             return nil
         end
+        -- Unit creation precedes the spawner's final streaming/visibility and
+        -- pending-animation work. Keep updating until stock reports readiness.
+        if not hand.profile_spawner:spawned() then return nil end
     end
     local unit = hand.profile_spawner:spawned_character_unit()
     if unit and Unit.alive(unit) then
         hand.unit = unit
-        show_rigid_hand_surface(hand)
+        if not hand.ready then show_rigid_hand_surface(hand) end
         hand.ready = true
         return unit
     end
