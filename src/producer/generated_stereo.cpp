@@ -36,6 +36,11 @@ std::atomic<std::uint64_t> evaluations{}, complete_evaluations{}, paired_evaluat
 std::uint64_t context_misses{}, output_busy{}, input_contexts{}, unmapped_contexts{};
 unsigned width{}, height{};
 HANDLE status_log{INVALID_HANDLE_VALUE};
+struct HealthWindow {
+  std::uint64_t last_tick{}, last_present{}, last_ready{}, last_original{}, present_samples{};
+  double present_total_ms{};
+  core::PresentFocusWindow focus_window;
+} health_window;
 struct OriginalRing {
   std::array<ComPtr<ID3D12Resource>,3> textures;
   std::array<ComPtr<ID3D12Resource>,3> ui_textures;
@@ -89,12 +94,19 @@ bool initialize(ID3D12Resource* output) {
 }
 }
 void configure_generated_stereo(bool value) {
-  enabled.store(value);
+  std::scoped_lock lock(mutex);
+  const bool changed=enabled.exchange(value)!=value;
   if(value && status_log==INVALID_HANDLE_VALUE) {
     wchar_t temp[MAX_PATH]{}; GetTempPathW(MAX_PATH,temp);
     const auto path=std::wstring(temp)+L"darktidevr-generated-stereo-"+std::to_wstring(GetCurrentProcessId())+L".log";
     status_log=CreateFileW(path.c_str(),GENERIC_WRITE,FILE_SHARE_READ,nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
-    status("enabled\n");
+    if(!changed) status("enabled\n");
+  }
+  if(changed) {
+    // The next Present establishes a fresh timing/counter/focus baseline.
+    // Disabled time and its unobserved frames cannot enter a resumed window.
+    health_window={};
+    status(value ? "enabled\n" : "disabled\n");
   }
 }
 bool generated_stereo_enabled() { return enabled.load(); }
@@ -208,9 +220,9 @@ void generated_stereo_health(std::uint64_t present, std::uint64_t original_ready
     bool foreground, double present_ms) {
   if(!enabled.load()) return;
   std::scoped_lock lock(mutex);
-  static std::uint64_t last_tick{}, last_present{}, last_ready{}, last_original{}, present_samples{};
-  static double present_total_ms{};
-  static core::PresentFocusWindow focus_window;
+  if(!enabled.load()) return; // Configuration can change while acquiring the lock.
+  auto& [last_tick,last_present,last_ready,last_original,present_samples,
+         present_total_ms,focus_window]=health_window;
   focus_window.observe(foreground);
   present_total_ms+=present_ms; ++present_samples;
   const auto now=GetTickCount64();

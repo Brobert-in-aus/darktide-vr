@@ -1600,3 +1600,20 @@ at the existing first-eye failure; no new Ready attempt or device setting change
 Fresh stereo initialization and nonzero shared_ready will still be required
 after future deployment. Observer comfort, live input and mission lifecycle
 are pending the user; continue the todo without claiming worn acceptance.
+
+## Continuous todo work: generated health configuration boundaries
+
+Branch `codex/generated-health-session-boundaries-2026-09-07` fixes timing and
+focus history spanning an explicit generated-bridge disable/re-enable. Each
+transition now resets its health window and is logged; repeated configuration
+preserves the current window. Health also rechecks enablement under its lock.
+The actual native regression fails before the fix and passes after it, checking
+a disabled interval longer than the reporting period and clean resumed timing.
+
+Release native DLL, ring and continuous-recovery targets build. Seven focused
+CTests pass in 2.87 seconds: native health session, health analyzer, original
+ring/UI ring, continuous recovery, native hooks and generated frame state.
+The suite now has 117 configured tests; last full pass remains 116/116 at
+`2790e7d`. No Lua change (37-chunk baseline), deployment, XR or device setting
+change. Explicit bridge configuration does not identify the game's FG setting;
+this is measurement correctness, not a measured performance fix. Continue work.

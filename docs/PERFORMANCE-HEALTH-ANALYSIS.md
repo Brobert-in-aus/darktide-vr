@@ -130,3 +130,24 @@ profiler/native DLL builds and the two profiler tests pass, as do native hook
 and generated-frame-state checks. No headset is needed for these isolated GPU
 tests. These fields do not identify scene motion, SR quality, driver or streaming
 conditions; controlled live comparisons and all performance claims remain pending.
+
+## Generated-bridge enable boundaries
+
+The native health window previously survived an explicit generated-bridge
+disable/re-enable. Its elapsed time and cumulative Present differences could
+span the disabled interval, while only the first enable was logged. The new
+candidate resets timing, counter baselines, accumulated Present duration and
+focus history on configuration transitions, and logs every explicit enable or
+disable. Repeating an unchanged setting does not reset a valid window. A health
+call rechecks enablement after acquiring its lock so it cannot publish after a
+concurrent disable marker.
+
+An actual native regression reproduces the old behavior by waiting longer than
+the reporting period while disabled. The resumed call must establish a baseline
+without emitting a mixed health row; the next full interval retains only new
+Present timings and focus. The original failure reproduced before the fix and
+passes afterward. Release native, ring and recovery targets build; seven focused
+CTests pass in 2.87 seconds, including the existing analyzer boundary handling.
+These are generated-bridge configuration boundaries, not proof that the game's
+FG graphics option changed. Old logs cannot recover missing boundaries, and no
+live performance improvement or cause for the user's frame-rate loss is claimed.

@@ -10,6 +10,9 @@
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
+#include <fstream>
+#include <filesystem>
+#include <iterator>
 
 using Microsoft::WRL::ComPtr;
 void check(HRESULT hr) { if(FAILED(hr)) throw std::runtime_error("D3D12 operation failed"); }
@@ -18,6 +21,40 @@ int main(int argc, char** argv) {
   try {
     const bool with_ui = argc == 2 && std::string_view(argv[1]) == "ui";
     darktidevr::tests::isolate_transports();
+    if (argc == 2 && std::string_view(argv[1]) == "health") {
+      using namespace darktidevr::producer;
+      wchar_t temp[MAX_PATH]{}; expect(GetTempPathW(MAX_PATH,temp)>0);
+      const auto path=std::filesystem::path(temp) /
+          (L"darktidevr-generated-stereo-"+std::to_wstring(GetCurrentProcessId())+L".log");
+      const auto read_log=[&]() {
+        std::ifstream file(path); expect(file.good());
+        return std::string(std::istreambuf_iterator<char>(file),{});
+      };
+      configure_generated_stereo(true);
+      generated_stereo_health(100,10,false,99.0);
+      configure_generated_stereo(false);
+      Sleep(1050); // A real disabled interval exceeds the native reporting period.
+      configure_generated_stereo(true);
+      generated_stereo_health(10000,1000,true,2.5);
+      auto text=read_log();
+      if (text.find("health ")!=std::string::npos || text!="enabled\ndisabled\nenabled\n") {
+        throw std::runtime_error("Resumed health window retained disabled time or lost boundaries");
+      }
+      configure_generated_stereo(true); // Repeated configuration is not a boundary.
+      generated_stereo_health(10001,1001,true,2.5);
+      expect(read_log()==text);
+      Sleep(1050);
+      generated_stereo_health(10100,1100,true,2.5);
+      text=read_log();
+      expect(text.find("health ")!=std::string::npos);
+      expect(text.find("present_mean_ms=2.5000")!=std::string::npos);
+      expect(text.find("focus_changes=0")!=std::string::npos);
+      configure_generated_stereo(false);
+      generated_stereo_health(20000,2000,false,999.0);
+      expect(read_log()==text+"disabled\n");
+      std::cout << "generated_health_session=pass\n";
+      return 0;
+    }
     ComPtr<IDXGIFactory4> factory; check(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
     ComPtr<IDXGIAdapter> warp; check(factory->EnumWarpAdapter(IID_PPV_ARGS(&warp)));
     ComPtr<ID3D12Device> device; check(D3D12CreateDevice(warp.Get(),D3D_FEATURE_LEVEL_11_0,IID_PPV_ARGS(&device)));
