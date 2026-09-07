@@ -7,17 +7,16 @@ for current defaults and operating instructions.
 headset today. Continue automated/offline work and record worn checks as pending.
 The saved controller/onboarding candidate initialized in the hub after Ready
 preflight, with fresh stereo messages and nonzero shared_ready. That run is
-closed. A later Ready preflight and retry returned HMD unavailable from VDXR;
-all subsequent runtime candidates remain undeployed. Game/XR are closed and
-normal proximity behavior is restored.
-A later connection inventory still found one authorized Quest and Streamer.
-After waking, Ready remained unavailable and the headset reported a Guardian
-dialog as a focused activity. No dialog interaction, app restart or deployment
-followed; normal proximity behavior was restored. The user later requested ADB
-recovery: passthrough toggle and VD resume worked, but a screenshot identified
-"Finding position in room" (tracking unavailable). Ready still failed; normal
-proximity restored again. See [Quest recovery](QUEST-PASSTHROUGH-RECOVERY.md).
-Continue offline today.
+closed. All subsequent runtime candidates remain undeployed. Game/XR are closed
+and normal proximity behavior is restored. ADB dismissed the inspected tracking
+prompt, and a SideQuest-derived Guardian preference pause/resume route was
+verified by headset logs. It did not fix rendering: the latest settled Ready
+attempt created an OpenXR session but failed creating its first eye texture.
+VDXR reports `-7000`; the application device reports no removal or D3D12 debug
+messages. The internal cause and suspected accidental double tap remain
+unestablished. Guardian was restored with logged confirmation, then proximity
+Enable/Status ran. See [Quest recovery](QUEST-PASSTHROUGH-RECOVERY.md). Continue
+useful offline work; repeat live readiness when new evidence justifies recovery.
 
 Latest requested candidate: [Psykhanium online rules](PSYKHANIUM-ONLINE-RULES.md).
 It defaults on for the next range visit, uses stock input history and firing
@@ -37,10 +36,17 @@ Offline [UI detail measurement](DLSS-UI-DETAIL.md), precise Present timing and
 and performance investigation. Motion blur remains unresolved; no framerate
 gain or worn acceptance is claimed. Existing old Present timings remain coarse.
 
-Windows x64 Release builds pass, pinned LuaJIT compiles 34 chunks, and the last
-full CTest checkpoint passed 102/102. Later changes pass their focused checks
-recorded in the [current handoff](handoffs/2026-09-07-development.md), including
-the source-snapshot luggable contract. A 20-minute task heartbeat is active.
+Windows x64 full Release build baseline is `df99611`; the newer XR harness builds
+at `03d60d1`. Pinned LuaJIT compiles 36 chunks and the last full offline CTest
+checkpoint passed 112/112 at `124361b`, with headset tests disabled. The newer
+stock null-input-service guard passes six focused checks at `9f254d0`. Optional
+stock contracts through `3f1bfbb` cover input history/replay, movement, combat,
+objectives and supplies, including pellet batches and hitscan effects. Engine
+math, collision, damage and service endpoints have explicit fixture limits;
+these do not establish online or worn acceptance. The local cached catalogue
+identifies 30 Psyker-tagged ranged templates, not the user's owned guns. See the
+[current handoff](handoffs/2026-09-07-development.md). A 20-minute task heartbeat
+is active; continue the ordered todo until instructed to stop.
 
 **Historical 6 September end-of-day checkpoint:** development was stopped; Darktide/XR were closed and
 normal Quest proximity behavior is restored. Start tomorrow with the

@@ -27,6 +27,11 @@ for the smaller set needed before a first end-to-end mission attempt.
    7 September: saved profiles deployed and initialized in hub; worn checks
    pending while the user is at work. Shared LT secondary-click transport/input
    and common hints are now an offline candidate, with no talent-specific patch.
+   The current source inventory covers 138 hint calls in 47 files. Stock null
+   input services now block controller/synthetic delivery; handler, unit, remap
+   and queued-HUD ownership checks pass offline. Stock held=false release rules
+   remain a limitation; suppressing explicit release edges is not universal
+   charged-action cancellation. Worn reminder and talent checks remain pending.
 2. **Enable mission gameplay and verify transition stability.** Extend the explicit
    hub/range-only VR input/body and range-only hand-aim gates with appropriate
    mission ownership/replication handling; removing guards alone is insufficient.
@@ -38,7 +43,7 @@ for the smaller set needed before a first end-to-end mission attempt.
    character-select clicks after stock readiness. Hub automatic-entry leakage is
    already fixed and its retry passed; do not reopen that resolved bug.
    7 September: a shared local-authority mission policy is an offline candidate
-   (99 CTests pass). Remote-server missions remain gated. See
+   (the latest integrated offline suite passes 112/112). Remote-server missions remain gated. See
    [mission authority](MISSION-AUTHORITY-AUDIT.md); no mission/SoloPlay acceptance.
 3. **Finish ranged-weapon functionality across classes.** Verify actual firing,
    gun/reticle alignment, muzzle origins and impacts with hand aim away from head
@@ -48,6 +53,10 @@ for the smaller set needed before a first end-to-end mission attempt.
    remain open; include staff as a regression control. The user has bought ranged
    guns on their Psyker: equip them through the Operative menu for aim/muzzle/impact
    checks. Exact models are not yet inventoried; do not assume all families covered.
+   The read-only local catalogue has 30 Psyker-tagged ranged templates (22
+   hitscan, four pellet and four staff), but no owned-inventory response. Stock
+   firing/targeting/throw and pellet/hitscan contract checks now pass with engine
+   and damage substitutes. This narrows source coverage, not live acceptance.
 4. **Fix DLSS image quality, blur first.** Reactivated by the user. Treat blur and
    duplicated/displaced HUD elements as possibly separate issues; isolate and fix
    blur first, then investigate duplication/displacement. Do not assume a common

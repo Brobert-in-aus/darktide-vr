@@ -1347,3 +1347,11 @@ shot-result fields overwrite stale values. Stock origin, charge and prediction
 arguments reach the damage sink unchanged. The fixture passes. Engine rotation,
 collision and damage are supplied, so this does not establish physical impacts,
 network damage or all owned loadouts. No production change or new live attempt.
+
+## Continuous todo work: authoritative status refresh
+
+Branch `codex/current-status-refresh-2026-09-07` updates CURRENT-STATUS and the
+ordered todo with the current validation/build baselines, Guardian restoration,
+texture failure, input ownership and catalogue/stock-contract scope. Historical
+entries remain historical; worn and remote-server acceptance remain pending.
+Draft review #2 now includes changes through `3f1bfbb`. Continue the todo.
