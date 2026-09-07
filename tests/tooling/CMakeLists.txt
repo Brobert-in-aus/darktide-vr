@@ -212,6 +212,10 @@ if(BUILD_TESTING)
   add_test(NAME melee_preview COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-melee-preview.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_preview.lua")
+  add_test(NAME melee_simulation_visual COMMAND "${LUAJIT_VALIDATOR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-melee-simulation-visual.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_stereo_probe.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_aim.lua")
   add_test(NAME melee_preview_display COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-melee-preview-display.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_preview_display.lua")

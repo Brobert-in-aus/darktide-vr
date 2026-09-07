@@ -9274,7 +9274,7 @@ function presentation.apply_body_ik(unit, sequence, world, anchor_unit)
         controller_observation.body_ik_presentation_block_reason =
             "stock_melee_animation"
         if presentation.body_proxy and presentation.body_proxy.rigid_hands_active() then
-            local _, aim_rotation = presentation.controller_aim.target("dominant")
+            local aim_rotation = presentation.controller_aim.melee_visual_rotation(anchor_unit or unit)
             local followed, left_hand, right_hand =
                 presentation.body_proxy.follow_gameplay_hands(world, aim_rotation)
             if followed and aim_rotation and anchor_unit then
@@ -10421,9 +10421,13 @@ mod:hook_safe(
             height * Vector3.up()
         local controller_rotation
         if presentation.controller_aim then
-            -- A logical expression keeps only one return value in Lua.
-            local _, rotation = presentation.controller_aim.target("dominant")
-            controller_rotation = rotation
+            if controller_observation.stock_melee_animation_active then
+                controller_rotation = presentation.controller_aim.melee_visual_rotation(unit)
+            else
+                -- A logical expression keeps only one return value in Lua.
+                local _, rotation = presentation.controller_aim.target("dominant")
+                controller_rotation = rotation
+            end
         end
         local target_rotation = controller_rotation or Quaternion.axis_angle(
             Vector3.up(), controller_observation.body_head_yaw)

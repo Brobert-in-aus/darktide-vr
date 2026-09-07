@@ -95,6 +95,13 @@ local function packed(...)
     return {n = select("#", ...), ...}
 end
 
+local function simulated_melee_visual_rotation(unit)
+    local extension = ScriptUnit.has_extension(unit, "first_person_system")
+    if not extension or extension._unit ~= unit or not extension._is_local_unit then return end
+    local component = extension._first_person_component
+    return component and component.rotation
+end
+
 local function with_first_person_pose(action, position, rotation, func, ...)
     local component = action and action._first_person_component
     if not component or not position or not rotation then
@@ -176,6 +183,19 @@ function controller_aim.install(mod, presentation, state)
             return presentation.left_controller_aim_target()
         end
         return presentation.controller_aim_target()
+    end
+
+    function controller_aim.melee_visual_rotation(unit)
+        if not unit or not is_local_unit(unit) or not Unit.alive(unit) or
+                not state.authoring_enabled then return end
+        if presentation.online_rules and presentation.online_rules.simulation_aim_active(unit) then
+            -- Presentation only: stock-input mode declines the action pose
+            -- overrides, so use the same simulated aim as its sweep/preview.
+            local ok, rotation = pcall(simulated_melee_visual_rotation, unit)
+            return ok and rotation or nil
+        end
+        local _, rotation = controller_aim.target("dominant")
+        return rotation
     end
 
     function controller_aim.clear_reticle()
