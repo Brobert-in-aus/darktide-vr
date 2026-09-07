@@ -1170,3 +1170,18 @@ component data and the simulation consumer are supplied, so engine rollback
 and real correction convergence remain untested. This is additional source
 orchestration evidence, not remote mission admission. Continue the todo while
 the user is away; full-suite/build baselines and live blocker are unchanged.
+
+## Continuous todo work: stock correction boundary
+
+Branch `codex/stock-correction-boundary-2026-09-07` connects actual stock
+unit-data correction and component copying to the replay fixture, with stock
+input-handler acknowledgement/panic methods. A supplied number/boolean/array
+schema covers mismatch restoration, next-ring copy, action notification,
+resimulating lifetime, matching state, duplicate/old snapshots and future/expired
+snapshot rejection before component reads. In-window recovery clears the stock
+panic state. The optional stock input fixture passes with no tracking recapture.
+
+No production change. Game-object decoding, schema, clock effects, telemetry
+and the simulation consumer are fixtures. Engine vector/quaternion userdata
+restoration and live convergence remain unverified. Continue offline work;
+full-suite baseline 111/111 at `968df68`, native build baselines unchanged.

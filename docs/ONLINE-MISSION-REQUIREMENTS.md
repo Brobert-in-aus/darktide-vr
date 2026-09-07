@@ -141,6 +141,18 @@ replaying a different unit. The correction component and consuming simulation
 are supplied fixtures, so this covers Lua replay orchestration and history
 ownership, not engine component restoration or live correction convergence.
 
+The correction-boundary follow-up executes stock
+`PlayerUnitDataExtension._read_server_unit_data_state` and `_copy_components`,
+plus stock input-handler clock acknowledgement/panic methods. With a small
+supplied number/boolean/array schema, a mismatch corrects the cached state,
+copies the next ring entry, notifies action input and enters/exits replay.
+Matching, duplicate and older snapshots do not replay. Future or expired-window
+snapshots acknowledge stock clock state and enter its panic path without
+decoding components or overwriting newer ring entries; an in-window recovery
+clears panic. Game-object decoding, the field schema, clock effects, telemetry
+and the simulation consumer remain substitutes. Engine vector/quaternion
+userdata restoration and live correction convergence are not exercised.
+
 Objective-device follow-up runs stock minigame input against both the client
 and server `HumanUnitInput` readers after recorded send/receive. Eleven frames
 cover primary/interact/jump holds, release, alternate cancellation, stock dodge

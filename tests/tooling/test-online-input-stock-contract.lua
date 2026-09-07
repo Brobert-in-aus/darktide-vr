@@ -239,6 +239,97 @@ if rules then
         manager:fixed_update_resimulate_unit('empty',8,{})
         assert(#replayed==3 and corrected==1 and resets==6,'Replay retained the prior unit systems')
         print('PASS: actual stock replay dispatch follows recorded input order/frames without tracking recapture or cross-unit system leakage')
+
+        -- Stock correction boundary with a deliberately small supplied schema.
+        -- Scalar/boolean/array component restore is real Lua; engine game-object
+        -- decoding, vector/quaternion userdata and simulation remain substitutes.
+        local data_class={}
+        local snapshot={frame=6,remainder=.004,frame_time=.02,
+            fields={'value',2,'flag',false,'entries',{9}}}
+        local field_reads,correction_events,correction_frames,action_corrections=0,0,0,0
+        local acknowledgements,panics={},{}
+        local boundary_environment={PlayerUnitDataExtension=data_class,
+            FRAME_INDEX_FIELD='frame',REMAINDER_TIME_FIELD='remainder',FRAME_TIME_FIELD='frame_time',
+            _game_object_field=function(session,id,field) assert(session=='session' and id==44); return snapshot[field] end,
+            NETWORK_NAME_ID_TO_FIELD_ID={value=1,flag=2,entries=3},
+            FIELD_NETWORK_LOOKUP={{'test','value','number',nil,'float'},
+                {'test','flag','boolean'},{'test','entries','array'}},
+            NUMBER_NETWORK_TYPE_TOLERANCES={default=.001},FIXED_FRAME_OFFSET_NETWORK_TYPES={},
+            info=function() end,
+            GameSession={game_object_fields_array=function(session,id,target)
+                assert(session=='session' and id==44); field_reads=field_reads+1
+                for i,value in ipairs(snapshot.fields) do target[i]=value end
+                return #snapshot.fields
+            end},
+            Managers={state={extension=manager},telemetry_reporters={reporter=function(_,name)
+                assert(name=='mispredict')
+                return {register_event=function() correction_events=correction_events+1 end,
+                    register_frame=function() correction_frames=correction_frames+1 end}
+            end}}}
+        local function boundary_method(first_marker,last_marker)
+            local file=assert(io.open(arg[1]..'/scripts/extension_systems/unit_data/player_unit_data_extension.lua','r'))
+            local source=file:read('*all'); file:close()
+            local first=assert(source:find(first_marker,1,true)); local last=assert(source:find(last_marker,first,true))
+            local chunk=assert(loadstring(source:sub(first,last-1)))
+            setfenv(chunk,setmetatable(boundary_environment,{__index=_G})); chunk()
+        end
+        boundary_method('PlayerUnitDataExtension._read_server_unit_data_state =','\nreturn PlayerUnitDataExtension')
+        boundary_method('PlayerUnitDataExtension._copy_components =','\nPlayerUnitDataExtension.update =')
+        method(human,'HumanInputHandler.frame_parsed =','\nHumanInputHandler.frame_acknowledged =')
+        method(human,'HumanInputHandler.set_in_panic =','\nreturn HumanInputHandler')
+        client._last_frame_parsed=0
+        client._client_clock_handler={frame_parsed=function(_,frame,remainder,frame_time)
+            assert(remainder==.004 and frame_time==.02); acknowledgements[#acknowledgements+1]=frame
+        end,set_in_panic=function(_,value) panics[#panics+1]=value end}
+        local data=setmetatable({_server_data_state_game_object_id=44,_game_session='session',
+            _state_cache_size=4,_player={input_handler=client},_last_received_frame=5,_last_fixed_frame=9,
+            _components={test={}},_rollback_components={test={}},_component_blackboard={},
+            _component_config={test={value={type='number'},flag={type='boolean'},entries={type='array'}}},
+            _game_object_return_table={},_time_since_last_mispredict=3,_unit='local',is_resimulating=false,
+            _action_input_extension={mispredict_happened=function(_,frame,session,id)
+                assert(frame==6 and session=='session' and id==44); action_corrections=action_corrections+1
+            end}}, {__index=data_class})
+        for i=1,4 do data._components.test[i]={value=1,flag=true,entries={__data={3,4,5}}} end
+        correction=data._rollback_components
+        corrected,replayed,resets=0,{},0
+        local consume=consumer.fixed_update
+        consumer.fixed_update=function(...)
+            assert(data.is_resimulating and data._component_index==3 and data._component_blackboard.index==3)
+            return consume(...)
+        end
+        data:_read_server_unit_data_state(20)
+        assert(table.concat(replayed,',')=='7,8,9' and corrected==1 and action_corrections==1)
+        assert(correction_events==3 and correction_frames==1 and not data.is_resimulating)
+        assert(data._last_received_frame==6 and data._time_since_last_mispredict==0)
+        for _,index in ipairs({2,3}) do
+            local component=data._components.test[index]
+            assert(component.value==2 and component.flag==false and #component.entries.__data==1 and component.entries.__data[1]==9)
+        end
+        assert(data._components.test[1].value==1 and data._components.test[4].flag==true)
+        assert(correction.test.value==1 and correction.test.flag==true and correction.test.entries[1]==9)
+        assert(acknowledgements[1]==6 and client._last_frame_acknowledged==6)
+        local before_reads=field_reads
+        data:_read_server_unit_data_state(21) -- Duplicate correction does not replay or acknowledge again.
+        snapshot.frame=5; data:_read_server_unit_data_state(22)
+        assert(field_reads==before_reads and #acknowledgements==1 and correction_frames==1)
+        snapshot.frame=7; data:_read_server_unit_data_state(23) -- Matching corrected next state.
+        assert(correction_frames==1 and #replayed==3 and acknowledgements[2]==7)
+        assert(data._last_received_frame==7 and client._last_frame_acknowledged==7)
+        -- Out-of-window snapshots update the stock clock/panic state without
+        -- decoding components or overwriting a newer ring slot.
+        for _,case in ipairs({{frame=11,fixed=9,behind=true},{frame=5,fixed=9,behind=false}}) do
+            data._last_received_frame=0; data._last_fixed_frame=case.fixed; data._in_panic=false
+            client._last_frame_parsed=0; snapshot.frame=case.frame
+            local reads=field_reads
+            data:_read_server_unit_data_state(30)
+            assert(field_reads==reads and data._in_panic and data._panic_is_behind==case.behind)
+            assert(client._in_panic and panics[#panics]==true and acknowledgements[#acknowledgements]==case.frame)
+            assert(correction_frames==1 and #replayed==3)
+        end
+        snapshot.frame=7; data:_read_server_unit_data_state(31)
+        assert(not data._in_panic and not client._in_panic and panics[#panics]==false)
+        assert(correction_frames==1 and rules.frames==7 and rules.failures==0 and #packets==packet_count)
+        print('PASS: stock correction boundary restores supplied scalar/array state, rejects duplicates and protects the ring from future/expired snapshots')
     end
 
     -- Objective devices consume the same stock columns, but `move` is a device
