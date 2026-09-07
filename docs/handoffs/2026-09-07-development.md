@@ -6,10 +6,10 @@ automated checks and offline work; keep worn checks pending without waiting for
 immediate feedback. The task has an active 20-minute heartbeat. Automation state
 and device identifiers remain outside Git.
 
-Latest integrated offline check: **112/112 CTests pass** on the
-`codex/xr-preflight-timeout-2026-09-07` candidate (14.31 seconds), with headset
+Latest integrated offline check: **113/113 CTests pass** at `e2aa82a` on the
+`codex/offline-graphics-test-isolation-2026-09-07` candidate (14.84 seconds), with headset
 tests disabled and all 36 Lua chunks compiling. Full Release build baseline is
-`df99611`, with the newer XR harness built at `03d60d1`. Guardian pause/resume is
+`df99611`, with the newer XR harness built at `e2aa82a`. Guardian pause/resume is
 now verified via ADB; a settled Ready attempt still fails at VDXR texture
 creation. Guardian and proximity automation were restored. Darktide is closed;
 the day's later candidates remain undeployed. Chronological entries below retain
@@ -1368,3 +1368,24 @@ fixed calls cannot restore held input without a new neutral render sample.
 Six focused CTests pass, including 36-chunk compilation. Undeployed; full-suite
 and native build baselines are unchanged. No universal charged-action
 cancellation claim: stock held=false rules still apply. Continue the todo.
+
+## Continuous todo work: offline graphics isolation
+
+After `596c459`, the integrated suite exposed a test-configuration gap: although
+headset tests were disabled, the two ordinary D3D12 smoke tests constructed the
+OpenXR probe by default. Both unexpectedly created a headset session and failed
+at the known texture boundary; 110/112 passed. Sessions were destroyed and no
+Guardian/proximity settings or game deployment were performed by those tests.
+Earlier 112/112 results were state-dependent and did not prove this isolation.
+Failed evidence: `artifacts/unattended/continuous-todo-fixed-input-ctest-20260907.log`.
+
+Branch `codex/offline-graphics-test-isolation-2026-09-07`, implementation
+`e2aa82a`, adds explicit `--no-openxr` before runtime discovery and uses it in
+both desktop smoke tests. XR requests conflict with this mode before discovery
+or device construction. Twelve real process cases cover both argument orders;
+the smoke tests reject unexpected discovery/session markers. Normal launch and
+Ready defaults are unchanged. The Release harness builds and the full suite
+passes **113/113 in 14.84 seconds**, including all 36 Lua chunks. Evidence:
+`artifacts/unattended/continuous-todo-offline-isolation-ctest-20260907.log`.
+This supersedes the integrated suite and harness baselines, not the full native
+producer build at `df99611`. No new live recovery attempt. Continue the todo.

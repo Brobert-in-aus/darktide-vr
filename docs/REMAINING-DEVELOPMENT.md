@@ -43,7 +43,7 @@ for the smaller set needed before a first end-to-end mission attempt.
    character-select clicks after stock readiness. Hub automatic-entry leakage is
    already fixed and its retry passed; do not reopen that resolved bug.
    7 September: a shared local-authority mission policy is an offline candidate
-   (the latest integrated offline suite passes 112/112). Remote-server missions remain gated. See
+   (the latest integrated offline suite passes 113/113). Remote-server missions remain gated. See
    [mission authority](MISSION-AUTHORITY-AUDIT.md); no mission/SoloPlay acceptance.
 3. **Finish ranged-weapon functionality across classes.** Verify actual firing,
    gun/reticle alignment, muzzle origins and impacts with hand aim away from head
