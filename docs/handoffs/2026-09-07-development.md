@@ -1283,3 +1283,18 @@ The optional stock-input fixture passes. This refines the online/transition
 acceptance boundary and does not admit remote missions. Continue the todo;
 full offline suite remains 112/112 at `124361b`, with native build baselines
 unchanged and later changes limited to this optional fixture/comments/docs.
+
+## Continuous todo work: stock input-service gate
+
+Branch `codex/stock-null-input-gate-2026-09-07` fixes controller admission when
+stock supplies a null input service independently of ordinary UI ownership
+(cinematic/ImGui paths in HumanGameplay). The registered pre-update hook forwards
+its actual service; real controller delivery and the synthetic fire probe both
+require a protected `is_null_service() == false` result. Missing/retiring services
+block delivery, and controller cancellation/neutral rearming remain in place.
+
+The adapter fixture reproduced stock-disabled input admitting controller actions.
+Six focused CTests pass, including real registered-hook forwarding and protected
+service queries; all 36 Lua chunks compile. This also prevents online aim capture
+through its existing gameplay-active gate. Undeployed; the full-suite baseline
+remains 112/112 at `124361b`. Continue the todo with no new live preflight attempt.

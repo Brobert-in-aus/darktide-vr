@@ -38,6 +38,13 @@ function Context.device_axes(state_machine)
     return ok and name == "minigame"
 end
 
+function Context.input_service_enabled(input)
+    -- Stock HumanGameplay substitutes a null service for UI, ImGui and
+    -- cinematics. It remains authoritative even when our stereo mode is active.
+    local ok, is_null = pcall(query_owner, input, "is_null_service")
+    return ok and is_null == false
+end
+
 local function current_input_handler(handler, players)
     local player = players:local_player(1)
     return player ~= nil and handler._player == player and player.input_handler == handler

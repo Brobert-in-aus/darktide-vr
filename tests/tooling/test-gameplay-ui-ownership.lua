@@ -18,6 +18,7 @@ controller_observation={gameplay_input_enabled=true,gameplay_input_last_check_t=
 Mods={lua={io={}}}
 active_game_mode_name=function() return 'hub' end
 local owns,physical,native_active,native_result=false,0,nil,0
+local input_service={is_null_service=function() return false end}
 Managers={ui={using_input=function(self,...)
     assert(self==Managers.ui and select('#',...)==0,'UI owners must not be ignored')
     return owns
@@ -39,7 +40,7 @@ Managers.player={local_player=function(_,index) assert(index==1); return player 
 local function sample(value)
     physical=value
     owner._ephemeral_action_cache={false,false,true}
-    presentation.inject_gameplay_input(owner,.1)
+    presentation.inject_gameplay_input(owner,.1,input_service)
     assert(owner._ephemeral_action_cache[3],'Stock keyboard cache was changed')
     return owner._ephemeral_action_cache
 end
@@ -57,6 +58,20 @@ assert(sample(1)[1],'Released control did not rearm')
 assert(sample(0)[2],'Ordinary gameplay release was lost')
 -- Scanner display reports no input ownership: stock gameplay controls survive.
 assert(native_active==1 and ui_active)
+-- HumanGameplay also uses its null service for cinematics and ImGui ownership,
+-- independently of ordinary UI ownership and the current stereo mode.
+for _,service in ipairs({{is_null_service=function() return true end},{},
+        {is_null_service=function() return nil end},
+        setmetatable({}, {__index=function() error('input service retired') end})}) do
+    sample(0); assert(sample(1)[1])
+    input_service=service
+    local cancelled=sample(1)
+    assert(native_active==0 and not ui_active and not cancelled[1] and not cancelled[2],
+        'Stock-disabled input was replaced with fresh controller actions')
+    input_service={is_null_service=function() return false end}
+    assert(not sample(1)[1],'Stock input recovery inherited an old controller hold')
+    sample(0); assert(sample(1)[1] and sample(0)[2])
+end
 -- A failed native read cancels the mapper just like UI ownership does. Its
 -- synthetic release must not enter the game's charged attack/throw cache.
 for _,failure in ipairs({1,-1,2,3}) do
@@ -138,9 +153,10 @@ Managers.ui=nil
 assert(not sample(1)[1] and native_active==0)
 -- The fixed-frame hook must enforce the same owner before touching history or
 -- running diagnostics, including a new handler not yet sampled by pre-update.
-local fixed_hook
+local fixed_hook,pre_hook
 mod.hook_safe=function(_,class,method,callback)
     if method=='fixed_update' then fixed_hook=callback end
+    if method=='pre_update' then pre_hook=callback end
 end
 local saved_require=require
 require=function() return {} end
@@ -202,4 +218,15 @@ local primary_last=assert(source:find('\npresentation.controller_bindings =',pri
 assert(loadstring(source:sub(primary_first,primary_last-1)))()
 Mods.lua.io.open=function() error('Foreign handler consumed synthetic test request') end
 presentation.inject_primary_action(foreign,1)
+-- The registered hook must forward stock's actual service to both consumers.
+local real_primary=presentation.inject_primary_action
+presentation.inject_primary_action=function(self,t,input)
+    assert(self==owner and t==.1 and input==input_service)
+end
+owns=false; physical=0
+pre_hook(owner,0,.1,input_service)
+assert(native_active==1 and ui_active,'Registered hook lost the stock service')
+presentation.inject_primary_action=real_primary
+pre_hook(owner,0,.1,{is_null_service=function() return true end})
+assert(native_active==0 and not ui_active,'Null service reached gameplay or synthetic test input')
 print('gameplay_ui_ownership=pass real_adapter overlay_cancel failed_read_cancel neutral_resume stock_cache scanner retiring_owner')

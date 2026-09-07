@@ -1,5 +1,15 @@
 # Input revision audit — 6 September 2026
 
+7 September stock-service follow-up: the adapter now consumes the actual input
+service passed to `HumanInputHandler.pre_update`. Stock `HumanGameplay._get_input`
+selects its null service for ordinary UI, ImGui and active cinematics. Checking
+only UI ownership and stereo mode could admit VR actions after stock had disabled
+input for another reason. Both real controller delivery and the synthetic fire
+probe now require `is_null_service() == false`; missing/retiring services cannot
+authorize input. Real controller state still drains and rearms through neutral.
+Six focused checks pass, including a reproduced null-service failure, real hook
+argument forwarding, stock-cache preservation and all 36 Lua chunks. Undeployed.
+
 7 September continuous-work follow-up: a failed native controller read now
 cancels Lua delivery without injecting the mapper's synthetic release into stock
 attack caches. Previously the policy could still be active while the native

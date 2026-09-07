@@ -20,11 +20,17 @@ for _,session in ipairs({server,client,missing,broken,invalid}) do
 end
 assert(not context.aim_mode(nil,server) and not context.body_mode(nil,server))
 assert(not context.aim_mode("coop_complete_objective",nil))
+assert(context.input_service_enabled({is_null_service=function() return false end}))
+assert(not context.input_service_enabled({is_null_service=function() return true end}))
+assert(not context.input_service_enabled(nil))
+assert(not context.input_service_enabled({}))
+assert(not context.input_service_enabled({is_null_service=function() return nil end}))
 for _,owner in ipairs({true,17,'invalid',setmetatable({}, {
         __index=function() error('retired proxy lookup') end})}) do
     assert(not context.local_authority(owner),'Invalid owner authorized simulation')
     assert(context.ui_blocks_gameplay(owner),'Invalid owner authorized UI input')
     assert(not context.device_axes(owner),'Invalid owner selected device axes')
+    assert(not context.input_service_enabled(owner),'Invalid input service admitted controller actions')
 end
 local proxy=setmetatable({}, {__index={is_server=function(self)
     assert(getmetatable(self)); return true

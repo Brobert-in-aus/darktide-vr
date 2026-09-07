@@ -5300,9 +5300,10 @@ function presentation.is_controller_aim_mode()
         Managers and Managers.state and Managers.state.game_session)
 end
 
-function presentation.inject_primary_action(self, main_t)
+function presentation.inject_primary_action(self, main_t, input)
     if not presentation.gameplay_context.local_input_handler(
             self, Managers and Managers.player) then return end
+    if not presentation.gameplay_context.input_service_enabled(input) then return end
     if not Mods or not Mods.lua or not Mods.lua.io then
         return
     end
@@ -5450,7 +5451,7 @@ end
 -- Observe identity without keeping a retired player/input cache alive.
 presentation.gameplay_input_owner = setmetatable({}, {__mode = "v"})
 
-function presentation.inject_gameplay_input(self, main_t)
+function presentation.inject_gameplay_input(self, main_t, input)
     if not presentation.gameplay_context.local_input_handler(
             self, Managers and Managers.player) then return end
     if not ui_native_capture or not Mods or not Mods.lua or not Mods.lua.io or
@@ -5488,7 +5489,8 @@ function presentation.inject_gameplay_input(self, main_t)
     -- without an intervening inactive callback. Drain and require neutral input.
     local active = player_unit ~= nil and not owner_changed and controller_observation.gameplay_input_enabled and
         presentation.is_first_person_body_mode(game_mode_name) and
-        presentation.mode == 1 and not ui_inputs_in_use
+        presentation.mode == 1 and not ui_inputs_in_use and
+        presentation.gameplay_context.input_service_enabled(input)
     local result = ui_native_capture.dtvr_read_gameplay_input(
         active and 1 or 0,
         controller_observation.gameplay_pressed,
@@ -5510,7 +5512,8 @@ function presentation.inject_gameplay_input(self, main_t)
     controller_observation.gameplay_input_last_sequence =
         tonumber(controller_observation.gameplay_sequence[0])
     -- Still sample/cancel both mappers and UI requests while blocked or after
-    -- a failed native read. Cancellation is not a charged-release action.
+    -- a failed native read. Do not inject synthetic cancellation release edges;
+    -- stock false-held action behavior still applies.
     if not controller_observation.gameplay_input_active then return end
     -- Holds and movement are merged by fixed_update below. An unchanged sample
     -- has no ephemeral actions, so avoid its tables and binding scan entirely.
@@ -5559,9 +5562,9 @@ end
 mod:hook_safe(
     require("scripts/managers/player/player_game_states/human_input_handler"),
     "pre_update",
-    function(self, _, main_t)
-        presentation.inject_primary_action(self, main_t or 0)
-        presentation.inject_gameplay_input(self, main_t or 0)
+    function(self, _, main_t, input)
+        presentation.inject_primary_action(self, main_t or 0, input)
+        presentation.inject_gameplay_input(self, main_t or 0, input)
     end)
 
 mod:hook_safe(
