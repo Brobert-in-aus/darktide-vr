@@ -5586,23 +5586,16 @@ mod:hook_safe(
                     controller_observation.gameplay_movement[1])
                 move_x, move_y = presentation.rotate_controller_movement(
                     move_x, move_y)
-                local movement_names = {
-                    "move_right", "move_left",
-                    "move_forward", "move_backward"
-                }
-                local movement_values = {}
-                for name_index = 1, #movement_names do
-                    local action_name = movement_names[name_index]
-                    local action_index = self._action_lookup[action_name]
-                    local action_cache = action_index and
-                        self._input_cache[action_index]
-                    movement_values[action_name] = tonumber(
-                        action_cache and action_cache[cache_index]) or 0
-                end
-                local existing_x = movement_values.move_right -
-                    movement_values.move_left
-                local existing_y = movement_values.move_forward -
-                    movement_values.move_backward
+                -- Cache references and scalar values avoid three temporary
+                -- movement tables on every fixed input frame, even at rest.
+                local right_cache = self._input_cache[self._action_lookup.move_right]
+                local left_cache = self._input_cache[self._action_lookup.move_left]
+                local forward_cache = self._input_cache[self._action_lookup.move_forward]
+                local backward_cache = self._input_cache[self._action_lookup.move_backward]
+                local existing_x = (tonumber(right_cache and right_cache[cache_index]) or 0) -
+                    (tonumber(left_cache and left_cache[cache_index]) or 0)
+                local existing_y = (tonumber(forward_cache and forward_cache[cache_index]) or 0) -
+                    (tonumber(backward_cache and backward_cache[cache_index]) or 0)
                 local stick_active = math.abs(move_x) > 0.0001 or
                     math.abs(move_y) > 0.0001
                 controller_observation.gameplay_stick_active = stick_active
@@ -5610,22 +5603,16 @@ mod:hook_safe(
                     1, existing_x + move_x))
                 local combined_y = math.max(-1, math.min(
                     1, existing_y + move_y))
-                local movement = {
-                    move_right = math.max(combined_x, 0),
-                    move_left = math.max(-combined_x, 0),
-                    move_forward = math.max(combined_y, 0),
-                    move_backward = math.max(-combined_y, 0)
-                }
+                local movement_right, movement_left = math.max(combined_x, 0), math.max(-combined_x, 0)
+                local movement_forward, movement_backward = math.max(combined_y, 0), math.max(-combined_y, 0)
                 -- A neutral or unavailable VR stick must not claim locomotion
                 -- ownership. Leaving the cache untouched preserves keyboard,
                 -- gamepad and accessibility inputs sampled by Darktide.
                 if stick_active then
-                    for action_name, value in pairs(movement) do
-                        local action_index = self._action_lookup[action_name]
-                        if action_index and self._input_cache[action_index] then
-                            self._input_cache[action_index][cache_index] = value
-                        end
-                    end
+                    if right_cache then right_cache[cache_index] = movement_right end
+                    if left_cache then left_cache[cache_index] = movement_left end
+                    if forward_cache then forward_cache[cache_index] = movement_forward end
+                    if backward_cache then backward_cache[cache_index] = movement_backward end
                 end
                 if type(frame) == "number" and
                         frame - controller_observation.gameplay_locomotion_last_frame >= 60 then
@@ -5679,8 +5666,8 @@ mod:hook_safe(
                             tostring(stick_active),
                             tostring(controller_observation.left_grip_tracking_live),
                             tostring(controller_observation.right_grip_tracking_live),
-                            movement.move_right, movement.move_left,
-                            movement.move_forward, movement.move_backward,
+                            movement_right, movement_left,
+                            movement_forward, movement_backward,
                             Vector3.x(player_position), Vector3.y(player_position),
                             Vector3.z(player_position))
                     end

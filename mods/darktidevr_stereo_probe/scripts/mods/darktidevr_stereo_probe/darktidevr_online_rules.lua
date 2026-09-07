@@ -4,7 +4,6 @@ local Rules = {}
 local ranges = {shooting_range=true}
 local controllable = {walking=true, sprinting=true, sliding=true,
     jumping=true, falling=true, dodging=true, interacting=true}
-local movement_names = {"move_right", "move_left", "move_forward", "move_backward"}
 local function finite(value)
     return type(value)=="number" and value==value and math.abs(value)<math.huge
 end
@@ -116,14 +115,13 @@ function Rules.install(mod, presentation, state, mode_name)
         -- The existing adapter has already combined keyboard and VR movement
         -- in the head basis. Express that same desired vector in the sent aim
         -- basis, then pack it exactly as stock movement input requires.
-        local values = {}
-        for i, name in ipairs(movement_names) do
-            local value = cache[lookup[name]][index]
-            if not finite(value) then return end
-            values[i] = value
-        end
+        local right = cache[lookup.move_right][index]
+        local left = cache[lookup.move_left][index]
+        local forward = cache[lookup.move_forward][index]
+        local backward = cache[lookup.move_backward][index]
+        if not finite(right) or not finite(left) or not finite(forward) or not finite(backward) then return end
         local desired = Quaternion.rotate(presentation.flat_movement_rotation(old_yaw),
-            Vector3(values[1]-values[2], values[3]-values[4], 0))
+            Vector3(right-left, forward-backward, 0))
         local relative = Quaternion.rotate(Quaternion.inverse(
             presentation.flat_movement_rotation(yaw)), desired)
         local x, y = Vector3.x(relative), Vector3.y(relative)
@@ -133,17 +131,23 @@ function Rules.install(mod, presentation, state, mode_name)
         -- intended world direction. Stock speed/acceleration still apply.
         local scale = math.max(1, math.abs(x), math.abs(y))
         x, y = x/scale, y/scale
-        values = {math.max(x,0), math.max(-x,0), math.max(y,0), math.max(-y,0)}
-        for i, name in ipairs(movement_names) do
-            local network_type = handler._pack_unpack_action_to_network_type_index[name]
-            if not network_type then return end
-            values[i] = Network.pack_unpack(network_type, values[i])
-            if not finite(values[i]) then return end
-        end
+        -- Keep the transaction in scalar locals rather than constructing two
+        -- scratch arrays on every authored fixed frame.
+        local types = handler._pack_unpack_action_to_network_type_index
+        if not types.move_right or not types.move_left or not types.move_forward or not types.move_backward then return end
+        right = Network.pack_unpack(types.move_right, math.max(x,0))
+        if not finite(right) then return end
+        left = Network.pack_unpack(types.move_left, math.max(-x,0))
+        if not finite(left) then return end
+        forward = Network.pack_unpack(types.move_forward, math.max(y,0))
+        if not finite(forward) then return end
+        backward = Network.pack_unpack(types.move_backward, math.max(-y,0))
+        if not finite(backward) then return end
         -- Validate destinations before making any writes. Failure keeps all
         -- original stock columns together, rather than changing only aim.
         assert(cache[handler._pitch_index] and cache[handler._roll_index])
-        for i, name in ipairs(movement_names) do cache[lookup[name]][index] = values[i] end
+        cache[lookup.move_right][index], cache[lookup.move_left][index] = right, left
+        cache[lookup.move_forward][index], cache[lookup.move_backward][index] = forward, backward
         cache[handler._yaw_index][index] = yaw
         cache[handler._pitch_index][index] = pitch
         cache[handler._roll_index][index] = 0

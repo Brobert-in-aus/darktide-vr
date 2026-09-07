@@ -162,6 +162,41 @@ local unsampled={_player=player}
 player.input_handler=unsampled
 fixed_hook(unsampled,0,0,1)
 assert(scans==1 and captures==1,'Unsampled replacement inherited previous fixed input state')
+-- Fixed-cache movement must preserve neutral keyboard channels and combine
+-- active stick input without altering unrelated/older entries or held actions.
+player.input_handler=owner
+player.player_unit='next_character'
+Managers.ui={using_input=function() return owns end}
+owns=false
+sample(0)
+controller_observation.gameplay_locomotion_last_frame=0
+presentation.rotate_controller_movement=function(x,y) return x,y end
+owner._buffer_index=function() return 1 end
+owner._action_lookup={move_right=1,move_left=2,move_forward=3,move_backward=4,action_one_hold=5}
+local function movement(x,y,initial,wanted)
+    owner._input_cache={{initial[1],91},{initial[2],92},{initial[3],93},{initial[4],94},{false,95}}
+    controller_observation.gameplay_movement[0],controller_observation.gameplay_movement[1]=x,y
+    fixed_hook(owner,0,0,2)
+    for i=1,4 do
+        assert(math.abs(owner._input_cache[i][1]-wanted[i])<1e-6,'Mixed keyboard/stick cache changed')
+        assert(owner._input_cache[i][2]==90+i,'Movement rewrote a different cached frame')
+    end
+end
+movement(0,0,{.8,.5,.2,.1},{.8,.5,.2,.1})
+assert(not controller_observation.gameplay_stick_active)
+movement(.9,-.8,{.8,.5,.2,.1},{1,0,0,.7})
+movement(-.9,.2,{.8,.5,.2,.1},{0,.6,.3,0})
+assert(controller_observation.gameplay_stick_active)
+assert(sample(1)[1])
+movement(0,0,{.8,.5,.2,.1},{.8,.5,.2,.1})
+assert(owner._input_cache[5][1] and owner._input_cache[5][2]==95,'Neutral stick lost held attack or changed older input')
+owner._action_lookup.move_left=nil
+movement(-.6,.8,{.4,.5,.5,0},{0,.5,1,0}) -- Missing channel remains untouched.
+owner._action_lookup.move_left=2
+owns=true; sample(1)
+movement(1,1,{.8,.5,.2,.1},{.8,.5,.2,.1})
+assert(not owner._input_cache[5][1] and not controller_observation.gameplay_stick_active,
+    'Inactive input merged movement or holds')
 local primary_first=assert(source:find('function presentation.inject_primary_action',1,true))
 local primary_last=assert(source:find('\npresentation.controller_bindings =',primary_first,true))
 assert(loadstring(source:sub(primary_first,primary_last-1)))()

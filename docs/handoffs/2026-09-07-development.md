@@ -1103,3 +1103,20 @@ No native code changed; full Release baseline remains `df99611`, with the newer
 XR harness built at `f201a9a`. Unit liveness is engine object liveness, not proof
 of health-state/spectator gameplay acceptance. This remains undeployed; continue
 the todo without waiting for worn verification.
+
+## Continuous todo work: movement table construction
+
+Branch `codex/movement-cache-allocation-2026-09-07` removes three temporary
+table constructions from the ordinary fixed movement merge and two scratch
+arrays from online-rules movement conversion. Scalar locals retain neutral
+keyboard/gamepad channels, component clamping, partial action maps, held-action
+routing and diagnostics. Online conversion still validates all packed values
+before writing movement and aim together. No live allocation/FPS claim.
+
+The real fixed-cache fixture passes before and after the refactor with neutral
+overlapping keyboard channels, mixed opposing/saturated stick input, untouched
+older entries, missing channels, held attacks and UI cancellation. Six focused
+CTests pass, all 36 chunks compile, and both optional stock input/rules fixtures
+pass (including recorded objective-device inputs). Full suite remains 111/111
+at `968df68`; full Release baseline `df99611`, newer XR harness `f201a9a`.
+Undeployed; continue the todo while the user is away.
