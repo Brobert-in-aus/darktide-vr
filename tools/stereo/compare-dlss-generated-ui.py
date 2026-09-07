@@ -46,6 +46,8 @@ def verify_match(stem, generated):
             raise ValueError(f"Staged/exported output identity mismatch: {key}")
     if any(int(completed[0][key]) <= 0 for key in ("left_call", "right_call")):
         raise ValueError("Both generated eye calls must have positive identities")
+    if int(completed[0]["right_call"]) <= int(completed[0]["left_call"]):
+        raise ValueError("Generated eye calls must retain native left/right order")
     if int(inputs[0]["pose"]) <= 0 or any(row["result"] != "0x00000000" for row in (staged[0], completed[0])):
         raise ValueError("Missing pose identity or failed output capture")
     layout = {key: int(completed[0][key]) for key in ("width", "height", "row_pitch", "bytes")}
@@ -53,12 +55,38 @@ def verify_match(stem, generated):
     if width <= 0 or width % 2 or height <= 0 or pitch < width * 4 or pitch % 256 or \
             layout["bytes"] < (height - 1) * pitch + width * 4:
         raise ValueError("Invalid packed RGBA8 readback layout")
-    return {**{key: completed[0][key] for key in ("pose", "left_call", "right_call")}, **layout}
+    try:
+        hashes = {key: int(completed[0][key]) for key in ("left_hash", "right_hash")}
+    except (KeyError, ValueError) as error:
+        raise ValueError("Generated export requires both native RGB hashes") from error
+    if any(value < 0 or value >= 2**64 for value in hashes.values()):
+        raise ValueError("Generated RGB hashes must be unsigned 64-bit values")
+    return {**{key: completed[0][key] for key in ("pose", "left_call", "right_call")},
+            **layout, **{key: str(value) for key, value in hashes.items()}}
 
 
 def verify_extent(identity, packed):
     if packed.shape != (identity["height"], identity["width"], 4) or packed.dtype != np.uint8:
         raise ValueError("Generated bitmap does not match the logged RGBA8 extent")
+
+
+def rgb_hash(image):
+    # Matches ngx_output_copy_probe.cpp: top-to-bottom RGB bytes, excluding
+    # alpha and D3D12 row padding. The BMP reader has already restored RGBA.
+    value = 14695981039346656037
+    for byte in image[:, :, :3].tobytes():
+        value = ((value ^ byte) * 1099511628211) & 0xffffffffffffffff
+    return value
+
+
+def verify_content(identity, packed):
+    identity.pop("generated_rgb_hash_verified", None)
+    verify_extent(identity, packed)
+    width = identity["width"] // 2
+    for index, eye in enumerate(("left", "right")):
+        if rgb_hash(packed[:, index * width:(index + 1) * width]) != int(identity[eye + "_hash"]):
+            raise ValueError(f"Generated {eye} RGB content does not match the native export hash")
+    identity["generated_rgb_hash_verified"] = True
 
 
 def compare(ui, generated, radius=64):
@@ -109,7 +137,7 @@ def main():
     args = parser.parse_args()
     identity = verify_match(args.stem, args.generated)
     generated = ui_alpha.read_rgba(args.generated)
-    verify_extent(identity, generated)
+    verify_content(identity, generated)
     args.output.mkdir(parents=True, exist_ok=True)
     width = generated.shape[1] // 2
     report = {"identity": identity, "visual_acceptance": "unverified", "eyes": {}}

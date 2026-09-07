@@ -15,14 +15,30 @@ positive height, a valid RGBA8 D3D12 row pitch and sufficient readback bytes.
 Both CLI tools compare the loaded bitmap's actual extent/type with that logged
 layout before measurement or report output. Matching log rows alone could
 previously admit an unrelated bitmap of another size. Pose IDs must be positive.
-This rejects size mismatches; it does not establish content identity for a
-different bitmap of the same size.
+This initial check rejects size mismatches. The subsequent RGB content check
+below also validates the generated bitmap against its native export checksum.
 
 The two focused CTests (`dlss_ui_detail|dlss_ui_capture_identity`) pass in 1.22
 seconds, including both CLI rejection paths. Re-running the original pose-8589
 readback accepts its 4992x2688 packed layout and reproduces the prior contrast
 results below. Evidence: `artifacts/unattended/ui-detail-extent-validation-20260908.json`.
 No new live capture, synthetic visual experiment or blur acceptance is claimed.
+
+The next follow-up verifies each generated eye's RGB bytes against the existing
+exported `left_hash`/`right_hash` values from `ngx_output_copy_probe.cpp`.
+It reproduces the native FNV-1a 64-bit order: top-to-bottom RGB, without alpha
+or row padding. Both CLI tools reject missing/invalid checksums, altered RGB
+content and invalid eye-call ordering before producing measurements. Reports
+record `generated_rgb_hash_verified=true` only after both eyes match; checksums
+are decimal strings to preserve all 64 bits in JSON consumers.
+
+Two focused CTests pass in 0.84 seconds with a known FNV vector, independent
+eye corruption, row reversal and CLI rejection coverage. The original pose-8589
+readback matches both native checksums and retains all prior contrast values;
+evidence is `artifacts/unattended/ui-detail-content-validation-20260908.json`.
+This verifies generated RGB content only. Generated alpha and the input UI
+bitmap bytes are not covered by these native RGB checksums; the latter retain
+the existing ownership/log and matching-extent checks. No rendering code changed.
 
 Run against the original native RGBA readbacks, keeping their accompanying logs:
 

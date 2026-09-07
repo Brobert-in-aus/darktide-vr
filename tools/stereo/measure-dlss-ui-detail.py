@@ -65,7 +65,7 @@ def main():
     args = parser.parse_args()
     identity = generated_ui.verify_match(args.stem, args.generated)
     packed = generated_ui.ui_alpha.read_rgba(args.generated)
-    generated_ui.verify_extent(identity, packed)
+    generated_ui.verify_content(identity, packed)
     width = packed.shape[1] // 2
     report = {"identity": identity, "visual_acceptance": "unverified", "eyes": {}}
     for i, eye in enumerate(("left", "right")):

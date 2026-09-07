@@ -13,6 +13,26 @@ spec.loader.exec_module(module)
 
 
 class GeneratedUiCheck(unittest.TestCase):
+    def test_native_rgb_hash_checks_each_eye_in_row_order(self):
+        # Standard FNV-1a 64-bit "foobar" vector, laid out as two RGB rows.
+        packed = np.array([[[102, 111, 111, 255], [102, 111, 111, 0]],
+                           [[98, 97, 114, 0], [98, 97, 114, 255]]], dtype=np.uint8)
+        metadata = {"width": 2, "height": 2, "left_hash": 0x85944171f73967e8,
+                    "right_hash": 0x85944171f73967e8}
+        module.verify_content(metadata, packed)
+        self.assertTrue(metadata["generated_rgb_hash_verified"])
+        alpha_changed = packed.copy()
+        alpha_changed[:, :, 3] = 17
+        module.verify_content(metadata, alpha_changed)  # Native checksum covers RGB only.
+        for eye in (0, 1):
+            changed = packed.copy()
+            changed[0, eye, 0] ^= 1
+            with self.assertRaisesRegex(ValueError, "native export hash"):
+                module.verify_content(metadata, changed)
+            self.assertNotIn("generated_rgb_hash_verified", metadata)
+        with self.assertRaisesRegex(ValueError, "native export hash"):
+            module.verify_content(metadata, packed[::-1])
+
     def test_cli_rejects_bitmap_extent_before_writing_report(self):
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / "report"
@@ -58,6 +78,7 @@ class GeneratedUiCheck(unittest.TestCase):
                           "UI_READBACK phase=exported result=0x00000000\n")
             identity = ("pose=8 left_scene=abc right_scene=def left_call=20 right_call=21 "
                         "source=src owned=own readback=read width=256 height=128 row_pitch=1024 bytes=131072 "
+                        "left_hash=9625390261332436968 right_hash=9625390261332436968 "
                         "result=0x00000000\n")
             def logs(ui_text=input_text, staged=identity, exported=identity):
                 stem.with_suffix(".log").write_text(ui_text)
@@ -75,7 +96,11 @@ class GeneratedUiCheck(unittest.TestCase):
                     module.verify_extent(metadata, image)
             for old, new in (("width=256", "width=255"), ("height=128", "height=0"),
                              ("row_pitch=1024", "row_pitch=512"), ("row_pitch=1024", "row_pitch=1025"),
-                             ("bytes=131072", "bytes=1024"), ("pose=8", "pose=-8")):
+                             ("bytes=131072", "bytes=1024"), ("pose=8", "pose=-8"),
+                             ("right_call=21", "right_call=20"),
+                             ("left_hash=9625390261332436968", "left_hash=-1"),
+                             ("right_hash=9625390261332436968", "right_hash=18446744073709551616"),
+                             ("right_hash=9625390261332436968 ", "")):
                 changed = identity.replace(old, new)
                 logs(ui_text=input_text.replace(old, new), staged=changed, exported=changed)
                 with self.assertRaises(ValueError):
