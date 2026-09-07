@@ -331,3 +331,12 @@ opens a real shared texture on another device and verifies its description,
 checks null-input rejection without calling the graphics API, and covers disabled
 and empty-evidence probe paths. Live physical-adapter probing remains the next
 bounded Ready action.
+
+At 16:00 Ready reproduced the same failure. All three enumerated non-software
+adapter entries created diagnostic devices successfully (RTX 4090, AMD graphics,
+and a second entry named RTX 4090); both handles returned E_INVALIDARG on each.
+No texture description was available. This did not find an adapter that could
+open them, and does not establish why. The source and probe device requests differ
+in debug-layer flags, but both failed. No graphics setting changed. Output was
+complete without timeout; Guardian restoration and normal proximity restoration
+completed. Evidence: `artifacts/unattended/quest-import-adapters-20260907-155947.json`.

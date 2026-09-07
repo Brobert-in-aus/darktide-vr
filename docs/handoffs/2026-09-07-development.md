@@ -1786,3 +1786,11 @@ Real WARP cross-device sharing/description, null rejection, disabled/empty paths
 and desktop-only argument rejection pass; Release builds/five focused CTests
 pass in 1.40 seconds. Configured 120, full baseline 118 at `5ffb1a7`. Next action:
 one bounded Ready with the new adapter probe, restoring Guardian/proximity.
+
+At 16:00 all three non-software DXGI entries created probe devices, but neither
+backend handle opened on any entry (RTX 4090, AMD graphics, second RTX 4090-named
+entry). All imports E_INVALIDARG; no texture metadata. Same first-eye failure,
+complete output/no timeout, Guardian and normal proximity restored. Evidence:
+quest-import-adapters-20260907-155947. No more identical live runs are justified.
+Next useful offline diagnostic: ordinary D3D11 KMT sharing between two controlled
+processes, to separate general interop failure from the VD-produced handles.
