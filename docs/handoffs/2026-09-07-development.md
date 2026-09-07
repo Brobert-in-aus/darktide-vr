@@ -1137,3 +1137,20 @@ cycling are not relabelled as controller routes. Current evidence is
 optional command in INPUT-REVISION-AUDIT. Localized/device text is substituted;
 no rendered label/readability acceptance. Continue the todo; full-suite baseline
 111/111 at `968df68`, newer movement changes have focused passing checks.
+
+## Continuous todo work: stock projectile spawning
+
+Branch `codex/projectile-stock-spawn-2026-09-07` extends the optional stock-rules
+fixture through actual projectile firing and current/cached spawn-parameter
+readers after the existing shot-preparation test. Eight client/server,
+immediate/cached and explicit/default combinations preserve prepared origin and
+direction, cached ballistic values where stock chooses them, projectile/weapon
+metadata, owner/critical/side fields and server-only spawning. Optional proc
+metadata and the no-proc-table branch pass. Trajectory calculation and final
+proc/spawn endpoints are sinks; no live collision, damage or server acceptance.
+
+The optional stock-rules fixture passes. No production change was needed.
+The three most recent saved console logs did not identify the user's purchased
+gun templates; the exact loadout remains unknown. Existing requested weapon
+inventory diagnostics were reviewed, not armed or run. Continue the todo with
+full-suite baseline 111/111 at `968df68`; no live launch or deployment.

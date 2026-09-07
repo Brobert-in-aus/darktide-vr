@@ -180,6 +180,94 @@ ActionShoot._prepare_shooting(shot,.02,1.04)
 assert(table.concat(operations,',')=='recoil,sway,assist,spread,add_sway,add_spread,add_recoil')
 assert(shot._shooting_status_component.num_shots==2)
 gamepad=false
+-- Execute actual projectile firing and stock spawn-parameter ownership after
+-- the preparation above. Trajectory math/procs/network creation are sinks.
+do
+    local projectile_class,projectile_aim={},{}
+    local spawns,procs,parameters={},{},{}
+    local current_position=shot_component.shooting_position
+    local current_rotation=shot_component.shooting_rotation
+    local initial_rotation={identity=true}
+    local launch_position=current_position+Vector3(0,.2,0)
+    local launch_rotation,launch_direction={launch=true},{direction=true}
+    local zero_momentum,initial_momentum=Vector3(0,0,0),Vector3(1,2,3)
+    local cached={position=Vector3(800,900,700),rotation={cached=true},
+        direction={cached_direction=true},speed=55,momentum=Vector3(8,9,10)}
+    local throw_config={}
+    local locomotion={trajectory_parameters={throw=throw_config}}
+    local projectile={name='stock_projectile',locomotion_template=locomotion}
+    projectile_aim.aim_parameters=function(position,initial,rotation,configuration,throw_type,time)
+        assert(position==current_position and initial==initial_rotation and rotation==current_rotation,
+            'Projectile ignored its prepared shot or read a rendered pose')
+        assert(configuration==locomotion and throw_type=='throw' and time==0)
+        parameters[#parameters+1]={position,rotation}
+        return {position=launch_position,rotation=launch_rotation,direction=launch_direction,speed=40}
+    end
+    local function load_methods(path,first_marker,last_marker,environment)
+        local text=source(path)
+        local first=assert(text:find(first_marker,1,true)); local last=assert(text:find(last_marker,first,true))
+        local chunk=assert(loadstring(text:sub(first,last-1),'@'..path))
+        setfenv(chunk,setmetatable(environment,{__index=_G})); chunk()
+    end
+    load_methods('utilities/aim_projectile','AimProjectile.get_spawn_parameters_from_current_aim =',
+        '\nAimProjectile.check_throw_position =',
+        {AimProjectile=projectile_aim,Quaternion={identity=function() return initial_rotation end},
+         Vector3={zero=function() return zero_momentum end}})
+    local proc_enabled=true
+    local buffs={request_proc_event_param_table=function() return proc_enabled and {} or nil end,
+        add_proc_event=function(_,event,params)
+            assert(event=='shoot_projectile'); procs[#procs+1]=params
+        end}
+    load_methods('extension_systems/weapon/actions/action_shoot_projectile',
+        'ActionShootProjectile._shoot =','\nreturn ActionShootProjectile',
+        {ActionShootProjectile=projectile_class,AimProjectile=projectile_aim,
+         proc_events={on_shoot_projectile='shoot_projectile'},locomotion_states={manual_physics='manual'},
+         ScriptUnit={extension=function(unit,system) assert(unit=='local' and system=='buff_system'); return buffs end},
+         Managers={state={unit_spawner={spawn_network_unit=function(_,...) spawns[#spawns+1]={...} end}}}})
+    local action=setmetatable({_player_unit='local',_action_component=shot_component,
+        _action_settings={throw_type='throw',fire_configuration={inventory_item_name='payload'}},
+        _item_definitions={payload='projectile_item'},_weapon={item='weapon_item'},
+        _action_aim_projectile_component=cached,_combo_count=3,
+        _critical_strike_component={is_active=true},_inventory_component={wielded_slot='slot_secondary'},
+        _side_system={side_by_unit={['local']={name=function() return 'heroes' end}}}},
+        {__index=projectile_class})
+    for _,server in ipairs({false,true}) do
+        for _,skip in ipairs({false,true}) do
+            for _,explicit in ipairs({false,true}) do
+                action._is_server=server
+                throw_config.locomotion_state=explicit and 'ballistic' or nil
+                throw_config.initial_angular_velocity=explicit and {unbox=function() return initial_momentum end} or nil
+                projectile.unit_template_name=explicit and 'explicit_projectile' or nil
+                local prior_spawns,prior_procs=#spawns,#procs
+                action:_shoot(Vector3(900,800,700),{unrelated_argument=true},999,.8,10,
+                    {projectile=projectile,skip_aiming=skip})
+                assert(#spawns==prior_spawns+(server and 1 or 0),'Client spawned an authoritative projectile')
+                assert(#procs==prior_procs+1)
+                local proc=procs[#procs]
+                assert(proc.attacking_unit=='local' and proc.projectile_template_name=='stock_projectile' and
+                    proc.num_shots_fired==shot_component.num_shots_fired and proc.combo_count==3)
+                if server then
+                    local spawn=spawns[#spawns]
+                    assert(spawn[1]==nil and spawn[2]==(explicit and 'explicit_projectile' or 'item_projectile'))
+                    assert(spawn[3]==launch_position and spawn[9]==launch_direction,
+                        'Cached aim replaced the fresh prepared origin/direction')
+                    assert(spawn[4]==(skip and launch_rotation or cached.rotation))
+                    assert(spawn[5]==nil and spawn[6]=='projectile_item' and spawn[7]==projectile)
+                    assert(spawn[8]==(explicit and 'ballistic' or 'manual'))
+                    assert(spawn[10]==(skip and 40 or 55))
+                    assert(spawn[11]==(skip and (explicit and initial_momentum or zero_momentum) or cached.momentum))
+                    assert(spawn[12]=='local' and spawn[13]==true and spawn[14]=='slot_secondary')
+                    assert(spawn[18]=='weapon_item' and spawn[20]=='heroes')
+                end
+            end
+        end
+    end
+    assert(#parameters==8 and #spawns==4 and #procs==8)
+    proc_enabled=false
+    action:_shoot(nil,nil,1,0,11,{projectile=projectile,skip_aiming=true})
+    assert(#spawns==5 and #procs==8,'Missing optional proc table blocked server spawning')
+    assert(shot_component.shooting_position==current_position and shot_component.shooting_rotation==current_rotation)
+end
 -- Stock sweeps use successive simulation references and their authored damage
 -- window. No visible weapon/hand node is sampled by these orchestration methods.
 do
@@ -868,6 +956,7 @@ print('PASS: actual stock pose keeps body origin/recoil; actual walking preserve
 print('PASS: actual stock orientation selector retains forced look, weapon locks, sticky melee, ledges, wheels and death')
 print('PASS: actual stock local rendering and camera root retain independent view orientation')
 print('PASS: actual stock shot preparation retains body origin, charge, recoil/sway/assist/spread order and grouped-shot sample')
+print('PASS: actual stock projectile launch retains prepared origin/direction, cached ballistic branches, proc metadata and server-only spawn ownership')
 print('PASS: actual stock sweeps retain simulation references, damage-window edges/final drain, abort masks and time scaling')
 print('PASS: actual stock flame loops retain simulation rays, obstructions, target filtering, rewind and server-only damage/burn calls')
 print('PASS: actual stock targeting retains simulation aim/recoil/sway, assist ownership, sticky charges, strict range and resimulation targets')

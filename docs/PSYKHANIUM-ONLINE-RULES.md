@@ -192,6 +192,17 @@ their order and data ownership are tested, not spread distributions or live
 damage. Changing the component rotation between grouped bullets does not replace
 the already prepared shot sample.
 
+Projectile firing coverage now runs actual `ActionShootProjectile._shoot` and
+both stock spawn-parameter readers after that preparation. Eight combinations
+of client/server, immediate/cached aim and explicit/default locomotion retain
+the prepared origin/direction, projectile/weapon metadata, critical state,
+owner side and server-only spawning. The cached branch takes rotation, speed
+and momentum from the aim component while retaining fresh origin/direction.
+Optional buff-proc metadata is preserved; a missing proc table does not block
+spawning. Trajectory math, proc handling and the network spawner are substituted.
+This does not prove projectile clearance, impact damage, current loadout coverage
+or correct aim-component production for a new template using the cached branch.
+
 The same optional fixture now executes actual `ActionSweep` reset, sweep update,
 damage-window and abort-mask methods against stock first-person poses produced
 from the real VR adapter. Two tagged splines receive successive simulated
