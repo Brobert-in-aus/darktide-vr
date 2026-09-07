@@ -568,6 +568,145 @@ do
     vector_meta.__index=original_index
     aim,h._input_cache=saved_aim,saved_cache
 end
+-- Actual interaction state/timer and revive completion, with supplied collision
+-- results. The same simulated pose supplies acquisition and ongoing validity.
+do
+    local saved_aim,saved_cache=aim,h._input_cache
+    aim=Quaternion.from_yaw_pitch_roll(.8,0,0)
+    h._input_cache={{0},{0},{1},{0},{0},{0},{0}}
+    rules.capture(h,39); PlayerUnitFirstPersonExtension.fixed_update(fp,'local',.02,39,39)
+    local text=source('extension_systems/interaction/interactor_extension')
+    local states={waiting_to_interact='waiting',is_interacting='active'}
+    local results={success='success',stopped_holding='released',interaction_cancelled='cancelled',ongoing='ongoing'}
+    local ext,revive={},{}
+    local supplied,events,stops,starts={}, {}, {}, 0
+    local held,pressed,finished,valid,obstructed,infinite,ui,allow_start=true,true,false,true,false,false,false,true
+    local assisted,knocked={},{}
+    local interactee={hold_required=function() return true end,ui_interaction=function() return ui end,
+        infinite_interaction=function() return infinite end,started=function() starts=starts+1 end,
+        stopped=function(_,result) stops[#stops+1]=result end}
+    local target_data={write_component=function(_,name)
+        if name=='assisted_state_input' then return assisted end
+        assert(name=='knocked_down_state_input'); return knocked
+    end}
+    local env=setmetatable({InteractorExtension=ext,interaction_states=states,interaction_results=results,
+        ONGOING_INTERACTION_LEEWAY=1.2,INDEX_DISTANCE=2,INDEX_ACTOR=4,
+        INTERACTABLE_FILTER='filter_interactable_overlap',LINE_OF_SIGHT_FILTER='filter_interactable_line_of_sight_check',
+        NetworkConstants={fixed_time_offset_unset=-1},ALIVE={target=true},
+        Component={event=function(_,name) events[#events+1]=name end},
+        Vo={interaction_start_event=function() end},
+        ScriptUnit={extension=function(unit,name)
+            assert(unit=='target')
+            if name=='interactee_system' then return interactee end
+            assert(name=='unit_data_system'); return target_data
+        end},
+        Actor={unit=function(actor) assert(actor=='target_actor'); return 'target' end,
+            world_bounds=function() return component.position+Quaternion.forward(component.rotation),{} end},
+        Unit={actor=function() return 'target_actor' end},
+        PhysicsWorld={raycast=function(world,position,forward,distance,kind,_,filter)
+            assert(world=='physics' and position==component.position and math.abs(distance-3)<1e-12)
+            assert(Vector3.length(forward-Quaternion.forward(component.rotation))<1e-12)
+            assert(math.abs(component.rotation.yaw-.81)<1e-12,'Interaction used rendered/head aim')
+            if kind=='all' then
+                assert(filter=='filter_interactable_overlap'); return {{nil,1,nil,'target_actor'}}
+            end
+            assert(kind=='closest' and filter=='filter_interactable_line_of_sight_check')
+            return obstructed,nil,.5
+        end},
+    },{__index=_G})
+    local function methods(first,last)
+        local a=assert(text:find('InteractorExtension.'..first..' =',1,true))
+        local b=assert(text:find('\nInteractorExtension.'..last..' =',a,true))
+        setfenv(assert(loadstring(text:sub(a,b-1))),env)()
+    end
+    methods('reset_interaction','extensions_ready')
+    methods('_check_current_state','_find_object_in_direct_line_of_sight')
+    methods('_find_interaction_object','_max_interaction_distance')
+    local revive_env=setmetatable({class=function() return revive end,require=function(path)
+        if path:find('buff_settings',1,true) then return {proc_events={on_revive='revive'}} end
+        if path:find('interaction_settings',1,true) then return {results=results} end
+        return {}
+    end},{__index=env})
+    setfenv(assert(loadstring(source('extension_systems/interaction/interactions/revive_interaction'))),revive_env)()
+    local buffs,stats=0,0
+    revive._handle_buffs=function() buffs=buffs+1 end
+    revive._record_stats_and_telemetry=function() stats=stats+1 end
+    local stopped_result
+    local interaction={interaction_input=function() return 'interact_pressed' end,type=function() return 'revive' end,
+        start=function() return allow_start end,
+        stop=function(_,world,unit,piece,t,result,server)
+            stopped_result=result; revive.stop(revive,world,unit,piece,t,result,server)
+        end}
+    local actor=setmetatable({_unit='local',_world='world',_physics_world='physics',_first_person_component=component,
+        _input_extension={get=function(_,name)
+            if name=='interact_pressed' then return pressed end
+            if name=='interact_hold' then return held end
+            assert(name=='finished_interaction'); return finished
+        end},interaction=function() return interaction end,
+        _consume_conflicting_gamepad_inputs=function() end,
+        _check_valid_interaction_target=function() return valid end,
+        _max_interaction_distance=function() return 2.5 end,
+        _check_collision_clear=function(_,position) assert(position==component.position); return not obstructed end,
+        _find_object_in_direct_line_of_sight=function(_,unit,position,forward)
+            assert(unit=='local' and position==component.position)
+            assert(Vector3.length(forward-Quaternion.forward(component.rotation))<1e-12)
+            return unpack(supplied,1,4)
+        end,
+        _find_object_near_line_of_sight=function() return 'near',4,'near_focus',5 end,
+    },{__index=ext})
+    supplied={'target',2,'focus',3}
+    local target,node,focus,focus_node=actor:_find_interaction_object('local')
+    assert(target=='target' and node==2 and focus=='focus' and focus_node==3)
+    supplied={nil,nil,'direct_focus',6}
+    target,node,focus,focus_node=actor:_find_interaction_object('local')
+    assert(target=='near' and node==4 and focus=='direct_focus' and focus_node==6)
+    local function prepare(server)
+        actor._is_server=server
+        actor._interaction_component={target_unit='target',target_actor_node_index=2,type='revive',
+            state=states.waiting_to_interact,duration=2}
+        held,pressed,finished,valid,obstructed,infinite,ui,allow_start=true,true,false,true,false,false,false,true
+        assisted,knocked={success=false},{knock_down=true}
+        stopped_result=nil; events={}; stops={}; starts=0; buffs=0; stats=0
+        env.ALIVE.target=true
+    end
+    local function step(t,chosen)
+        actor:_check_current_state('local',.02,t,chosen,actor._interaction_component.state)
+    end
+    for _,server in ipairs({false,true}) do
+        prepare(server); step(10,true)
+        assert(starts==1 and actor._interaction_component.state==states.is_interacting)
+        assert(actor._interaction_component.start_time==10 and actor._interaction_component.done_time==12)
+        pressed=false; step(11.99,true)
+        assert(not stopped_result and not assisted.success)
+        step(12,true)
+        assert(stopped_result==results.success and actor._interaction_component.target_unit==nil)
+        assert(assisted.success==server and knocked.knock_down==not server)
+        assert(buffs==(server and 1 or 0) and stats==buffs)
+        assert(#events==(server and 2 or 0) and #stops==(server and 1 or 0))
+        if server then assert(events[2]=='interaction_success') end
+        for _,cancel in ipairs({'release','obstruction','invalid','dead','missing'}) do
+            prepare(server); step(20,true); pressed=false
+            if cancel=='release' then held=false
+            elseif cancel=='obstruction' then obstructed=true
+            elseif cancel=='invalid' then valid=false
+            elseif cancel=='dead' then env.ALIVE.target=false
+            else actor._interaction_component.target_unit=nil end
+            step(22,true) -- Cancellation wins even at the completion boundary.
+            assert(stopped_result==(cancel=='release' and results.stopped_holding or results.interaction_cancelled))
+            assert(not assisted.success and knocked.knock_down and buffs==0 and stats==0)
+        end
+    end
+    prepare(true); pressed=false; step(1,true); assert(starts==0)
+    prepare(true); step(1,false); assert(starts==0)
+    prepare(true); allow_start=false; step(1,true); assert(starts==0)
+    prepare(true); infinite=true; step(1,true); pressed=false; step(100,true)
+    assert(not stopped_result and actor._interaction_component.done_time==0)
+    ui=true; finished=true; step(101,true)
+    assert(stopped_result==results.success and assisted.success)
+    -- Stock node-zero interactions deliberately bypass spatial validity.
+    assert(actor:_check_valid_ongoing_interaction(nil,0))
+    aim,h._input_cache=saved_aim,saved_cache
+end
 -- With zero recoil, the actual walking method reconstructs the intended head-
 -- relative direction from the transformed input. Its own backward penalty stays.
 local constants={acceleration=1000,deceleration=1000,backward_move_scale=.5,
@@ -629,4 +768,5 @@ print('PASS: actual stock sweeps retain simulation references, damage-window edg
 print('PASS: actual stock flame loops retain simulation rays, obstructions, target filtering, rewind and server-only damage/burn calls')
 print('PASS: actual stock targeting retains simulation aim/recoil/sway, assist ownership, sticky charges, strict range and resimulation targets')
 print('PASS: actual stock block angles/costs, ranged keyword, revive authority, warp-charge cap and break notifications retained')
+print('PASS: actual stock interaction acquisition/holds/cancellation uses simulation pose; revive completion remains server-owned')
 print('LIMIT: isolated engine math, no real quantization, live network or worn acceptance')

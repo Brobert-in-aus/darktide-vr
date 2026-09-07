@@ -230,6 +230,17 @@ sinks; this does not apply live damage. The portable block-hook test separately
 retains the stock component when pose overrides are declined despite an available
 support-hand pose. Three focused CTests and the optional source fixture pass.
 
+Interaction coverage executes stock acquisition and ongoing validity against
+the same simulated pose, then the real interaction state/timer and revive stop
+methods. Direct-target preference, fallback focus, holds, completion boundary,
+release/obstruction/invalid/dead/missing-target cancellation, denied starts and
+infinite/UI completion retain stock decisions. Revive success changes assisted
+and knocked-down inputs and calls buffs/stats only on the server. Collision
+queries, interactee services and event endpoints are substitutes; no real target
+geometry, network or live rescue is exercised. Portable installed interaction
+hooks retain the simulated component and return tuple when hand overrides are
+declined. This strengthens the offline contract, not mission acceptance.
+
 An optional stock grenade check passes:
 
 ```powershell
@@ -263,5 +274,6 @@ the user is at work. ADB dismissed the Quest tracking-loss prompt, but current
 readiness fails at VDXR rendering-buffer creation; see
 [recovery evidence](QUEST-PASSTHROUGH-RECOVERY.md).
 
-Follow-up ownership fix: four focused CTests and the expanded stock-source
-check pass; the last full 105-test suite is the preceding candidate checkpoint.
+Current full-suite baseline: 110/110 at `aadf4f3`; native Release build at
+`5f1eccd`. Subsequent ownership fixes and source-contract expansions have focused
+passing checks recorded in the current handoff. They remain undeployed.

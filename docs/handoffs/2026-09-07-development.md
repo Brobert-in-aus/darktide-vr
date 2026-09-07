@@ -907,3 +907,21 @@ empty. No speculative event wrapper or talent-specific patch was added. The
 communication wheel remains without a VR action: its held input, selection and
 HUD ownership need a complete route before advertising a binding. Continue the
 mission interaction review and remaining todo while headset rendering is blocked.
+
+## Continuous todo work: stock interaction contract
+
+Branch `codex/online-interaction-stock-contract-2026-09-07` extends the optional
+stock-source fixture with actual acquisition, ongoing spatial validity,
+interaction state/timer and revive completion methods. The current VR-authored
+stock first-person component supplies query origin/direction. Supplied collisions
+cover direct/fallback targets, holding, exact completion time, release and
+obstruction/invalid/dead/missing-target cancellation, denied starts and infinite
+UI completion. Actual revive stop mutates assisted/knocked-down inputs and calls
+buff/stat endpoints only on server success. Physics, interactee service and event
+endpoints are substitutes; no real mission or geometry was exercised.
+
+The portable installed interaction hooks now also decline hand overrides while
+retaining the stock component and multi-value return. The optional stock fixture
+and focused melee/online-rules/gameplay-ownership CTests pass. Production code is
+unchanged; full-suite baseline 110/110 at `aadf4f3`, native build `5f1eccd`.
+Continue the todo; no deployment, live revive, rescue or worn acceptance claimed.

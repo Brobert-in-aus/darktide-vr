@@ -78,4 +78,12 @@ for _, method in ipairs({"start", "_update_sweep", "_push", "_find_explosion_pos
     end, action)
     assert(result == 'stock' and missing == nil and tail == 12)
 end
+for _, method in ipairs({"_find_interaction_object", "_find_interaction_object_3p",
+        "_check_valid_ongoing_interaction", "force_update_smart_tag_targets"}) do
+    local result, missing, tail = hooks[method](function(self)
+        assert(self._first_person_component == component, 'Online interaction replaced simulation pose')
+        return 'stock_target', nil, 14
+    end, interactor)
+    assert(result == 'stock_target' and missing == nil and tail == 14)
+end
 print("melee_aim=pass")
