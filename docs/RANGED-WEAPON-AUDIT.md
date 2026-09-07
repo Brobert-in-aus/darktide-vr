@@ -1,5 +1,25 @@
 # Ranged weapon aim audit
 
+## 7 September cached catalogue scope
+
+Read-only inspection of the game's local HTTP cache found general catalogue
+version 135417, but no owned-inventory response. Thirty non-empty ranged weapon
+templates carry the `psyker` archetype tag; all thirty have matching files in
+source snapshot `0f0cb45991e9305ef4a7b925370792d7d6035f95`. Direct lexical action
+kinds divide them into 22 hitscan, four pellet and four staff templates. Fourteen
+additional ranged-tagged catalogue entries have an empty template and are not
+counted as independent firing routes. Catalogue tags/feature flags do not prove
+current availability or ownership. The user's purchased gun models remain unknown.
+
+The optional online-rules fixture now covers stock pellet shooting/count/state
+progression and special-shell selection after shot preparation. Constructed
+4/4/1 and 2/2/1 batches preserve grouped aim and final-batch processing; engine
+spread, ray hits and damage remain substitutes. See PSYKHANIUM-ONLINE-RULES.
+Derived local evidence is `artifacts/unattended/psyker-cached-catalogue-20260907.json`;
+the full cache and any connection/account data remain outside Git.
+
+## Earlier findings
+
 6 September 2026. Active work after the documented DLSS output-association
 blocker. User reports every ranged weapon except the force staff firing away
 from hand aim. Source coverage is not live acceptance of every weapon.

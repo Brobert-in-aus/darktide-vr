@@ -180,6 +180,90 @@ ActionShoot._prepare_shooting(shot,.02,1.04)
 assert(table.concat(operations,',')=='recoil,sway,assist,spread,add_sway,add_spread,add_recoil')
 assert(shot._shooting_status_component.num_shots==2)
 gamepad=false
+do
+    local pellets={}
+    local spread_calls,rays,procs,processed,special_resets={},{},{},0,0
+    local chosen,all_hits
+    local current_position,current_rotation=shot_component.shooting_position,shot_component.shooting_rotation
+    local normal={num_pellets=9,pellets_per_frame=4,num_spread_circles=2,bullseye=true,
+        spread_pitch=.1,spread_yaw=.2,scatter_range=.3,no_random_roll=true,roll_offset=.4,range=50}
+    local special={num_pellets=5,pellets_per_frame=2,num_spread_circles=1,bullseye=false,
+        spread_pitch=.5,spread_yaw=.6,scatter_range=.7,no_random_roll=false,roll_offset=.8,range=70}
+    local config={shotshell=normal,shotshell_special=special}
+    local env=setmetatable({ActionShootPellets=pellets,MAX_NUM_HITS_UNITS=128,
+        proc_events={on_shoot='shoot'},
+        HitScan={raycast=function(world,position,direction,distance,against,filter,rewind)
+            local index=#spread_calls
+            assert(world=='pellet_world' and position==current_position and distance==chosen.range)
+            assert(against==nil and filter=='filter_player_character_shooting_raycast' and rewind==17)
+            assert(Vector3.dot(direction,Quaternion.forward(spread_calls[index].rotation))>.999)
+            rays[#rays+1]=index
+            return (all_hits or index%3~=0) and {index=index} or nil
+        end},table=setmetatable({clear=function(t) for k in pairs(t) do t[k]=nil end end},{__index=table})}, {__index=_G})
+    local text=source('extension_systems/weapon/actions/action_shoot_pellets')
+    local function methods(first,last)
+        local a=assert(text:find(first,1,true)); local b=assert(text:find(last,a,true))
+        setfenv(assert(loadstring(text:sub(a,b-1))),env)()
+    end
+    methods('ActionShootPellets._shoot =','\nlocal INDEX_POSITION =')
+    methods('ActionShootPellets._count_number_of_pellets_fired_this_frame =','\nActionShootPellets._prepare_shooting =')
+    methods('function _shotshell_template(','\nfunction _line_effect(')
+    local action=setmetatable({_player_unit='local',_player='player',_physics_world='pellet_world',
+        _is_local_unit=true,_action_component=shot_component,_action_shoot_pellets_component={},
+        _inventory_slot_component={},_action_settings={fire_configuration=config},_combo_count=3,
+        _critical_strike_component={is_active=true},_unit_to_damage_data_index={},_unit_damage_data={},
+        _num_hits_per_unit_per_hit_zone={},_num_hits_per_unit={},_damage_per_unit={},
+        _weapon_extension={set_wielded_weapon_weapon_special_active=function(_,t,active,reason)
+            assert(active==false and reason=='shot_complete'); special_resets=special_resets+1
+        end},_fire_rate_settings=function() return {max_shots=shot_component.num_shots_fired} end,
+        _weapon_spread_extension={target_style_spread=function(_,rotation,index,total,circles,bullseye,pitch,yaw,scatter,no_roll,roll)
+            assert(rotation==current_rotation and index==#spread_calls+1 and total==chosen.num_pellets)
+            assert(circles==chosen.num_spread_circles and bullseye==chosen.bullseye)
+            assert(pitch==chosen.spread_pitch and yaw==chosen.spread_yaw and scatter==chosen.scatter_range)
+            assert(no_roll==chosen.no_random_roll and roll==chosen.roll_offset)
+            local result=Quaternion.from_yaw_pitch_roll(index*.01,0,0)
+            spread_calls[#spread_calls+1]={rotation=result}; return result
+        end},_rewind_ms=function(_,local_unit,player,position,direction,distance)
+            assert(local_unit and player=='player' and position==current_position and distance==chosen.range)
+            return 17
+        end,_save_pellet_hits=function(self,shell,hits,position,direction,distance,charge)
+            assert(shell==chosen and position==current_position and distance==chosen.range and charge==.6)
+            local hit=all_hits or hits.index%2==0
+            if hit then self._num_hits_per_unit.target=(self._num_hits_per_unit.target or 0)+1 end
+            return hit
+        end,_process_hits=function(_,power,t,fire)
+            assert(power==100 and fire==config); processed=processed+1; return 1,true,false
+        end,_buff_extension={request_proc_event_param_table=function() return {} end,
+            add_proc_event=function(_,name,params) assert(name=='shoot'); procs[#procs+1]=params end}}, {__index=pellets})
+    for i=1,128 do action._unit_damage_data[i]={} end
+    for _,use_special in ipairs({false,true}) do
+        chosen=use_special and special or normal; all_hits=use_special
+        spread_calls,rays,procs,processed,special_resets={},{},{},0,0
+        action._inventory_slot_component.special_active=use_special
+        action._action_shoot_pellets_component.num_pellets_fired=0
+        action._number_of_pellets_hit=0
+        action._has_shot_this_frame=false
+        action:_count_number_of_pellets_fired_this_frame()
+        assert(action._action_shoot_pellets_component.num_pellets_fired==0)
+        for frame=1,3 do
+            action._has_shot_this_frame=true
+            action:_shoot(current_position,current_rotation,100,.6,10+frame,config)
+            local next_state=action:_next_fire_state(.01,10+frame)
+            assert(next_state==(frame==3 and 'shot' or 'shooting'))
+            assert(action._action_shoot_pellets_component.num_pellets_fired==math.min(frame*chosen.pellets_per_frame,chosen.num_pellets))
+            assert(processed==(frame==3 and 1 or 0),'Processed a partial pellet batch')
+        end
+        assert(#spread_calls==chosen.num_pellets and #rays==chosen.num_pellets and special_resets==1 and #procs==1)
+        local proc=procs[1]
+        assert(proc.attacking_unit=='local' and proc.attacked_unit=='target' and proc.combo_count==3)
+        assert(proc.num_shots_fired==shot_component.num_shots_fired and proc.is_critical_strike)
+        assert(proc.hit_all_pellets==all_hits and proc.hit_all_pellets_on_same==all_hits)
+        assert(proc.num_hit_units==1 and proc.hit_elite and not proc.hit_weakspot)
+        assert(next(action._num_hits_per_unit)==nil and next(action._damage_per_unit)==nil)
+    end
+    -- A weapon with special active but no special shell retains its normal one.
+    assert(env._shotshell_template({shotshell=normal},{special_active=true})==normal)
+end
 -- Execute actual projectile firing and stock spawn-parameter ownership after
 -- the preparation above. Trajectory math/procs/network creation are sinks.
 do
@@ -1194,6 +1278,7 @@ print('PASS: actual stock pose keeps body origin/recoil; actual walking preserve
 print('PASS: actual stock orientation selector retains forced look, weapon locks, sticky melee, ledges, wheels and death')
 print('PASS: actual stock local rendering and camera root retain independent view orientation')
 print('PASS: actual stock shot preparation retains body origin, charge, recoil/sway/assist/spread order and grouped-shot sample')
+print('PASS: stock shotgun pellets retain grouped aim, shell parameters, exact multi-frame counts, rewind and final-batch processing')
 print('PASS: actual stock projectile launch retains prepared origin/direction, cached ballistic branches, proc metadata and server-only spawn ownership')
 print('PASS: stock deployables retain simulated placement rays, slope/attachment validation, timed ammo consumption and server-only pickup spawning')
 print('PASS: stock pocketable transfer revalidates recipient inventory, retains chain/release rules and suppresses transfer during replay')

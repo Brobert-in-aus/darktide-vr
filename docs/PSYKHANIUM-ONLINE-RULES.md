@@ -192,6 +192,16 @@ their order and data ownership are tested, not spread distributions or live
 damage. Changing the component rotation between grouped bullets does not replace
 the already prepared shot sample.
 
+Actual `ActionShootPellets._shoot`, pellet-count progression, next-fire-state
+and normal/special-shell selection also execute after preparation. Constructed
+nine-pellet (4/4/1) and five-pellet (2/2/1) batches retain the prepared reference,
+each shell's spread/range fields, indexed pellet order, rewind/filter arguments
+and final-batch processing/proc metadata. Special state clears at stock shot
+completion; missing special shells fall back to the normal shell. Spread math,
+ray hits, damage processing and effect endpoints are supplied. These are
+orchestration checks, not actual shotgun distributions, pellet damage or loadout
+acceptance. The optional stock-rules fixture passes without production changes.
+
 Projectile firing coverage now runs actual `ActionShootProjectile._shoot` and
 both stock spawn-parameter readers after that preparation. Eight combinations
 of client/server, immediate/cached aim and explicit/default locomotion retain

@@ -1315,3 +1315,22 @@ captured complete output. Guardian restored with logged `1 -> 0`; proximity
 Enable/Status ran in `finally`. No Darktide launch/deployment or texture fallback.
 See QUEST-PASSTHROUGH-RECOVERY; the runtime's internal cause remains unknown.
 Continue useful offline work instead of repeating unchanged smoke attempts.
+
+## Continuous todo work: cached catalogue and shotgun batches
+
+Branch `codex/stock-shotgun-pellets-2026-09-07` reads the local game's HTTP
+cache read-only. It contains a general item catalogue (version 135417), not an
+owned-inventory response. Thirty non-empty ranged templates are tagged for
+Psyker and all thirty have matching source files in the audited snapshot.
+Direct action kinds identify 22 hitscan, four pellet and four staff templates;
+this is not a list of the user's purchases or proof of current feature access.
+Ignored derived evidence: `artifacts/unattended/psyker-cached-catalogue-20260907.json`.
+No headers, connection information, account identifiers or full catalogue were
+copied into Git. The actual owned gun models remain unknown.
+
+The optional stock-rules fixture now executes shotgun shooting, count/state
+progression and special-shell selection. Constructed 4/4/1 and 2/2/1 pellet
+batches preserve grouped aim, all shell parameters, rewind/filter arguments and
+final processing/proc metadata. Spread/collision/damage endpoints are supplied;
+no live pellet distribution or damage acceptance. The fixture passes; no
+production change. Continue the todo with the existing suite/build baselines.
