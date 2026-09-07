@@ -38,12 +38,21 @@ after abort. Pose values and authored-spline/physics sinks are supplied. Moving
 aim during an attack can change its sweep, so the local guide is a snapshot of
 the path for the current aim rather than a latched future trajectory.
 
-Both pass against cached source snapshot
+`tests/tooling/test-melee-authority-stock-contract.lua` executes the stock final
+attack dispatcher with `attack_type=melee`. A supplied positive calculated result
+can be returned on the client while the health mutation sink remains uncalled.
+Only the allowed server path invokes that sink and returns its supplied actual
+damage value. Blocking, ally protection and assisted/hogtied skips also pass;
+the block-state write remains server-owned. Damage calculation and health math
+are fixtures, so this establishes dispatch ownership, not live damage amounts.
+
+All three pass against cached source snapshot
 `0f0cb45991e9305ef4a7b925370792d7d6035f95` with the pinned LuaJIT:
 
 ```powershell
 & build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-parser-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings.lua
 & build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-reference-stock-contract.lua _downloads/Darktide-Source-Code
+& build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-authority-stock-contract.lua _downloads/Darktide-Source-Code
 ```
 
 For the next worn check use the focused [first-swing preview candidate](STOCK-MELEE-PREVIEW.md)
