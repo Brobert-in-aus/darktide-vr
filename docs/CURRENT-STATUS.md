@@ -5,11 +5,13 @@ for current defaults and operating instructions.
 
 **Headset setup resumed 7 September, 16:20 Brisbane:** the user is home and has
 restarted both sides of Virtual Desktop. Ready now passes 600/600 rendered
-frames, clearing the day's persistent texture-creation failure. Lua `1cdd0fd`
+frames, clearing the day's persistent texture-creation failure. Lua `a96e929`
 and native capture `01617d6` are deployed with hash verification. Darktide is
-starting with Psykhanium entry armed, HUD enabled and generated stereo enabled.
-Fresh game stereo initialization and range entry are being checked; worn
-acceptance remains pending. Proximity override is applied for this live session.
+running in Psykhanium with HUD and generated stereo enabled. Fresh synchronized
+stereo initialization, nonzero shared_ready and range entry are confirmed at
+16:25. Online-rules logging confirms enabled=true, origins=stock, damage=stock.
+The user has been asked to check stereo, controls and shots aimed away from
+the head; worn acceptance remains pending. Proximity override is applied.
 The saved controller/onboarding candidate initialized in the hub after Ready
 preflight, with fresh stereo messages and nonzero shared_ready. That run is
 closed. The day's subsequent candidates are now deployed for this new session.

@@ -1840,3 +1840,12 @@ spectator_module=nil during early native-hook initialization. Shared ready staye
 zero. The owned game was closed and launcher cleanup completed. The module now
 loads before native hooks can initialize; gameplay hook installation stays later.
 Three spectator/compiler/invariant checks pass in 0.92 seconds. Relaunch pending.
+
+Relaunch at a96e929 succeeded: fresh synchronized stereo at 06:25:16 UTC,
+Psykhanium result=pass at 06:25:30, and online rules enabled with stock origins
+and damage at 06:25:31. Initial shared_ready=145, zero interval fallback and
+zero pose mismatches; roughly 49.57 original plus 49.57 generated pairs/s in
+that short sample. These are delivery observations, not performance acceptance.
+Evidence: home-psykhanium-relaunch-20260907.log. Game and XR remain running;
+proximity override remains applied. User asked for stereo/control and hand-aim
+shot observations. Do not restart or replace this session while they test.
