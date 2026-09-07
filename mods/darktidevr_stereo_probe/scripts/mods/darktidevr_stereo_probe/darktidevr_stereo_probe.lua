@@ -7531,7 +7531,16 @@ end
 function presentation.weapon_aim_target(role)
     local side = presentation.weapon_hand_roles.physical(role)
     if side == "left" then return presentation.left_controller_aim_target() end
-    if side == "right" then return presentation.controller_aim_target() end
+    if side == "right" then
+        local position,rotation=presentation.controller_aim_target()
+        if role=='dominant' and presentation.gun_aim then
+            local player=Managers.player and Managers.player:local_player(1)
+            local _,grip=presentation.weapon_grip_target(role)
+            local held_aim=presentation.gun_aim.aim(player and player.player_unit,grip)
+            rotation=held_aim or rotation
+        end
+        return position,rotation
+    end
 end
 
 function presentation.weapon_grip_target(role)
@@ -10501,8 +10510,8 @@ mod:hook_safe(
             controller_observation.last_sequence,
             self._world,
             player_unit)
-        if ok and presentation.gun_alignment then
-            presentation.gun_alignment.update(self._world, player_unit)
+        if ok and presentation.gun_aim then
+            presentation.gun_aim.update(self._world, player_unit)
         end
         local ik_end = performance_tick()
         if presentation_start and ik_start and ik_end and ui_native_capture then
@@ -13324,8 +13333,8 @@ presentation.projectile_visual = mod:io_dofile(
 presentation.ranged_evidence = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_ranged_evidence"
 ).install(mod, presentation)
-presentation.gun_alignment = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gun_alignment"
+presentation.gun_aim = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gun_aim"
 ).install(mod, presentation)
 
 mod:io_dofile(

@@ -1,5 +1,30 @@
 # Development continuation: 7 September 2026
 
+## Latest candidate: preserve the held gun grip
+
+The user confirms gun/reticle agreement on `9b5981b`, but both are misaligned
+with the hand. The replacement `darktidevr_gun_aim.lua` captures the resting
+held muzzle basis relative to the dominant controller grip after hand sync,
+then resolves that basis against current tracking for simulation aim. It does
+not rotate the weapon attachment. The old gun-alignment module is removed.
+Cache ownership follows player/world/equipped weapon; staff/support retain the
+native aim route. Firing/reload poses cannot initialize the resting cache.
+Stock recoil/spread and firing origin remain unchanged.
+
+Validation: CMake configured with `windows-vs2022` and headset tests disabled;
+the selected `gun_aim`, Lua compile/invariants, online reticle, ranged aim/evidence,
+roomscale, rigid-hand readiness and weapon-hand roles CTests pass 9/9 in 1.32 s.
+All 43 Lua chunks compile. The new fixture exercises 120 multi-axis poses,
+equipment/cache transitions and the actual main aim reader. Native unchanged;
+126 tests configured, no new full-suite claim. Deployment/worn check pending.
+
+The user also requests contextual left-grip two-handing, with virtual-stock
+research and possible normal ADS activation. Added to priority 3 and
+VR-TWO-HANDING-ADS.md with primary-source references and stock lasgun evidence.
+This is a design/backlog addition, not an implemented input or accuracy change.
+
+## Earlier session record
+
 The user resumed development and requested continued work until told to stop.
 At 18:42 Brisbane they corrected an accidental break response and confirmed
 Virtual Desktop was connected and ready. Proximity Disable then Status succeeded;

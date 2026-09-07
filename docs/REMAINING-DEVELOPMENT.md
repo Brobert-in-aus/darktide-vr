@@ -101,6 +101,16 @@ for the smaller set needed before a first end-to-end mission attempt.
    handle scopes, two-hand support, stock spread/recoil/zoom rules and readable
    aiming feedback. Button versus physical sight alignment needs a deliberate
    interaction choice; no ADS implementation is claimed by the firing fix.
+   **Implement contextual two-handing**, requested on 7 September: when the left
+   hand is near the gun's support grip, a fresh grip press takes priority over
+   its current binding and holds the gun with both hands. Consume that press,
+   hold and release without leaking the displaced action; restore normal input
+   after release. Research/design is in [two-hand and virtual-stock handling](VR-TWO-HANDING-ADS.md).
+   Include smooth support-hand aiming, a tunable virtual shoulder stock, clean
+   release/tracking-loss behavior and per-weapon grip locations. Trial two-hand
+   hold as entry to the weapon's ordinary ADS/braced state, retaining its actual
+   movement/recoil/spread rules; distinguish that gameplay state from physically
+   looking through sights. This is planned work, not deployed behavior.
 4. **Fix DLSS image quality, blur first.** Reactivated by the user. Treat blur and
    duplicated/displaced HUD elements as possibly separate issues; isolate and fix
    blur first, then investigate duplication/displacement. Do not assume a common

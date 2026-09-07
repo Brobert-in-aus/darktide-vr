@@ -413,3 +413,12 @@ Actual hit endpoints now reach distant scenery (62–82 m); owned visual roots
 are absent from those collision lists. Fresh stereo is verified with nonzero
 shared readiness. The user's enemy damage and barrel/reticle observation is
 still pending; these measurements alone do not establish worn acceptance.
+
+The user subsequently confirms gun/reticle agreement but rejects their shared
+misalignment with the hand. The next candidate removes attachment rotation and
+derives firearm aim from the resting held muzzle basis relative to the live
+controller grip. It caches that basis across recoil animation, preserves staff
+native aim and changes no firing origin. Nine affected CTests pass (1.32 s),
+including a 120-pose gun-aim fixture and all 43 Lua chunks. Deployment and worn
+hand seating/reticle/enemy-hit checks remain pending. See the latest handoff;
+the prior visual-rotation approach above is historical and superseded.
