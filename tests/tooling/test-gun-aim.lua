@@ -121,6 +121,22 @@ pitch_setting=0; p,r=presentation.weapon_aim_target('dominant'); near(r,raw)
 pitch_setting=-10; template={keywords={'force_staff'}}
 p,r=presentation.weapon_aim_target('dominant'); near(r,raw)
 p,r=presentation.weapon_aim_target('support'); assert(p==24); near(r,raw)
+-- The shared aim reader applies pitch once, then the support correction. The
+-- calibration/base reader must not feed the corrected pose back into itself.
+template={actions={shoot={kind='shoot_hit_scan'}}}
+local base=mul(raw,q(math.rad(-10),0,0))
+local correction=q(0,0,.2)
+local support_calls=0
+presentation.two_hand={resolve=function(unit,rotation)
+    assert(unit==source); near(rotation,base); support_calls=support_calls+1
+    return mul(rotation,correction)
+end}
+p,r=presentation.weapon_aim_target('dominant'); near(r,mul(base,correction))
+near(instance.base_aim(source,raw),base)
+assert(support_calls==1,'Base pose recursively used two-hand aim')
+p,r=presentation.weapon_aim_target('support'); near(r,raw)
+assert(support_calls==1,'Support controller received the gun correction')
+presentation.two_hand=nil
 -- Execute the actual visible-hand correction with a separate visual root.
 local body_file=assert(io.open(arg[2]:gsub('darktidevr_stereo_probe.lua$','darktidevr_body_proxy.lua'),'rb'))
 local body=body_file:read('*a'); body_file:close()

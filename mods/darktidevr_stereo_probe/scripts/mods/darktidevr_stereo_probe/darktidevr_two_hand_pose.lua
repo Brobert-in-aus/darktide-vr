@@ -69,6 +69,10 @@ function Pose.new()
     function state.reset()
         state.correction={0,0,0,1}; state.owner=nil
     end
+    function state.apply(rotation)
+        local q=normalize(rotation,4)
+        return q and normalize(multiply(q,state.correction),4) or nil
+    end
     function state.update(rotation,primary,support,socket,held,owner,dt,smoothing,cancelled)
         local q=normalize(rotation,4)
         if not q then state.reset(); return nil end

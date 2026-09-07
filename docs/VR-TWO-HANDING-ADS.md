@@ -148,7 +148,7 @@ Focused Windows x64 CTests pass 9/9 in 1.13 seconds, including controller aliase
 lifecycle cancellation, 120 off-axis socket geometry cases, translation/rotation
 covariance, wrist roll, 30/60/90/120 Hz smoothing, gun regression, all 44 compiled
 Lua chunks and source invariants. Configured count is 127. These modules still
-need a production caller, verified per-weapon sockets, stock ADS arbitration,
+need verified per-weapon sockets, stock ADS arbitration,
 support-hand visuals and virtual-stock handling before live acceptance.
 
 Stock `toggle_ads` is carried in input-handler settings. The inspected lasgun
@@ -162,3 +162,27 @@ enabling that route. Raw grip release is not a toggle-mode ADS exit.
 The live controller observation has distinct `*_grip_tracking_live` fields;
 `*_grip_usable` can retain an old wrist pose intentionally. Two-hand acquisition
 and retention must require live tracking, not the presentation fallback pose.
+
+The subsequent production coordinator is connected before semantic mapping in
+pre-update, and its result passes through the shared gun-aim reader after the
+accepted pitch adjustment. A separate base-aim reader prevents solver feedback.
+Fixed-update stock-input cancellation clears support state before aim/history
+updates. The coordinator checks current weapon identity, role, recenter,
+publisher, real grip tracking and character/action eligibility; reload/draw,
+death, retired owners and unsupported weapon modes cancel support. Current
+weapon/action identity is checked again when aim is read, covering switches
+between input samples.
+
+The coordinator defaults disabled and its profile registry is empty. Register a
+verified `profiles[template_name]` with numeric socket, acquisition/release radii,
+smoothing and an optional ADS request before enabling the candidate. Socket
+coordinates are measured from the primary grip in the pitch-corrected gun basis,
+in the same world units as the tracked grip targets. In-place profile edits
+retire the current gesture. Toggle ADS or an unknown preference permits support
+aim only; it does not request alternate fire. No socket is guessed for a staff,
+another gun or a replacement loadout. No automatic enable or live deployment.
+
+Coordinator/production-seam validation: ten focused CTests passed in 1.11 seconds;
+after adding fixed-update cancellation and actual shared-aim ordering checks,
+seven affected checks passed in 1.16 seconds. All 45 Lua chunks compile. The
+configured suite contains 128 checks; full integrated rerun is not claimed.

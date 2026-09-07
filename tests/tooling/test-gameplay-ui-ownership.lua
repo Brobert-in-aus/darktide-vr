@@ -254,3 +254,26 @@ presentation.inject_primary_action=real_primary
 pre_hook(owner,0,.1,{is_null_service=function() return true end})
 assert(native_active==0 and not ui_active,'Null service reached gameplay or synthetic test input')
 print('gameplay_ui_ownership=pass real_adapter overlay_cancel failed_read_cancel neutral_resume stock_cache scanner retiring_owner')
+-- Verify contextual ownership reaches the actual pre-update mapper and is
+-- retired by a stock service change in fixed_update, before another sample.
+local support_owner={}
+local support_finished,support_cleared
+presentation.two_hand={sample=function(unit,active,t,handler)
+    assert(unit==player.player_unit and handler==owner and t==.1)
+    if active then return {control='left_grip',owner=support_owner,acquire=true,retain=true,action='alternate'} end
+end,finish=function(grip) support_finished=grip.held end,
+clear=function() support_cleared=true end}
+owner._ephemeral_actions={'action_two_pressed','action_two_release','stock_action'}
+owns=false; input_service={is_null_service=function() return false end}
+sample(0); sample(0)
+assert(sample(512)[1] and support_finished,'Production mapper did not acquire contextual grip')
+input_service={is_null_service=function() return true end}
+movement(0,0,{0,0,0,0},{0,0,0,0})
+assert(support_cleared and presentation.controller_bindings.held==0,
+    'Fixed service cancellation retained two-hand state')
+input_service={is_null_service=function() return false end}
+assert(not sample(512)[1] and not support_finished,'Support rearmed before neutral after fixed cancellation')
+sample(0)
+assert(sample(512)[1] and support_finished)
+assert(sample(0)[2] and not support_finished)
+print('two_hand_production_input=pass pre_update fixed_cancel stock_cache')

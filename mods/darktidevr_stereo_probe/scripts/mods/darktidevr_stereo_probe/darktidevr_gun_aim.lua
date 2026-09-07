@@ -26,14 +26,19 @@ local function same(a,b)
     return math.abs(ax*bx+ay*by+az*bz+aw*bw)>1-1e-7
 end
 function Alignment.install(mod,presentation)
-    local instance={failures=0,writes=0}
-    function instance.aim(unit,rotation)
+    local instance={failures=0,writes=0,is_gun=Alignment.is_gun}
+    function instance.base_aim(unit,rotation)
         if not unit or not rotation then return rotation end
         local weapon=ScriptUnit.has_extension(unit,'weapon_system')
         if not Alignment.is_gun(weapon and weapon:weapon_template()) then return rotation end
         local degrees=tonumber(mod:get('vr_gun_pitch')) or -10
         if degrees~=degrees then degrees=-10 end
         return Alignment.pitch(rotation,math.max(-45,math.min(45,degrees)))
+    end
+    function instance.aim(unit,rotation)
+        rotation=instance.base_aim(unit,rotation)
+        if presentation.two_hand then return presentation.two_hand.resolve(unit,rotation) end
+        return rotation
     end
     local saved
     local function restore(world)

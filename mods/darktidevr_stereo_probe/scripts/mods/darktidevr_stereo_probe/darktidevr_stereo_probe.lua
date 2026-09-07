@@ -5541,12 +5541,17 @@ function presentation.inject_gameplay_input(self, main_t, input)
         controller_observation.gameplay_movement)
     controller_observation.gameplay_input_active = active and result == 0
     presentation.apply_controller_turning(main_t)
+    local support_request=presentation.two_hand and presentation.two_hand.sample(
+        player_unit,controller_observation.gameplay_input_active,main_t,self)
     local pressed, held, released = presentation.controller_bindings.sample(
         controller_observation.gameplay_input_active,
         tonumber(controller_observation.gameplay_held[0]),
         controller_observation.right_stick_x,controller_observation.right_stick_y,
         controller_observation.right_aim_usable,
-        controller_observation.last_transport_generation, game_mode_name)
+        controller_observation.last_transport_generation, game_mode_name,support_request)
+    if presentation.two_hand then
+        presentation.two_hand.finish(presentation.controller_bindings.support_grip)
+    end
     if presentation.gameplay_ui then
         presentation.gameplay_ui.sample(controller_observation.gameplay_input_active, pressed)
     end
@@ -5624,6 +5629,7 @@ mod:hook_safe(
             controller_observation.primary_action_injected = false
             presentation.controller_bindings.sample(false, 0, nil, nil, false,
                 controller_observation.last_transport_generation, active_game_mode_name())
+            if presentation.two_hand then presentation.two_hand.clear() end
             if presentation.gameplay_ui then presentation.gameplay_ui.sample(false, 0) end
             return
         end
@@ -13334,6 +13340,9 @@ presentation.ranged_evidence = mod:io_dofile(
 presentation.gun_aim = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gun_aim"
 ).install(mod, presentation)
+presentation.two_hand = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_two_hand_support"
+).install(mod, presentation, controller_observation)
 
 mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_grenade_aim"
