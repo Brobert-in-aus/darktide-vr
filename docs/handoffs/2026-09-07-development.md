@@ -1904,3 +1904,13 @@ wrong mission, valid entry and timeout. Four focused CTests pass in 1.38 seconds
 including all 37 Lua chunks. Configured offline count is now 122; full integrated
 baseline remains 121 at 28e6cca. This new Lua change is not deployed. Quiet
 57ad12c session remains active without recent mod errors at 16:42 Brisbane.
+
+## Home session performance observation
+
+Snapshot/analyzer of the current producer health log: 823 rows, 726 stable
+background/no-generation-progress windows and two foreground/generation-progress
+windows. See PERFORMANCE-HEALTH-ANALYSIS.md. Counts freeze at 212 evaluations /
+100 publications while original stereo continues. The brief foreground sample
+is startup-biased, so its 47 FPS versus background median 68 is not an FG cost
+comparison. No focus, graphics setting or session change. Heartbeat remains
+ACTIVE every 20 minutes with the user's home/headset availability saved.

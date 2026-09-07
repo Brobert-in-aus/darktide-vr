@@ -162,3 +162,22 @@ remain increasing. The native reset/resume and analyzer regressions both fail
 before the fix and pass afterward; the same seven focused checks pass in 3.92
 seconds. A boundary reports an observed regression, not a diagnosis of its cause
 or evidence that a live resize succeeded.
+
+## Home session focus observation
+
+The quiet 57ad12c Lua / 01617d6 native run supplied 823 health rows in an
+ignored snapshot, home-generated-health-20260907.log. The existing analyzer
+reports 726 stable background windows without evaluation/publication progress
+and two stable foreground windows with generated publication progress. It
+excludes one baseline, 90 windows without observed original output and four
+focus/clock transitions. Median window engine rates are 68 and 47 respectively,
+but the tiny foreground group includes startup and is not a matched scene.
+Do not interpret these numbers as an FG cost or optimization result.
+
+Generation counters stop at evaluations=212, complete=210, paired=105,
+published=100 while original stereo continues. Persisted user settings still
+show DLSS and frame generation enabled; that file alone does not establish
+runtime feature state. This is a focus correlation, not a demonstrated causal
+fix or a controlled settings test. No focus or graphics setting was changed.
+The per-run JSON summary is home-generated-health-20260907.json under
+artifacts/unattended. The live session remains available for the user's testing.
