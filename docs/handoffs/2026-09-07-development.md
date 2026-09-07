@@ -1561,3 +1561,15 @@ pass in 0.82 seconds: gameplay context, ranged aim, online rules, gameplay UI
 ownership, source invariants and the 36-chunk LuaJIT gate. No deployment or live
 transition acceptance; full offline baseline remains 113/113 at `e2aa82a` with
 115 tests configured. Continue the todo while live rendering remains blocked.
+
+## Continuous todo work: actual stock spectator lifecycle
+
+Branch `codex/stock-spectator-contract-2026-09-07` adds an optional source
+contract for actual local service selection, camera update, human roster
+selection and observer aim. Normal/hogtied/rescue/death/safe-zone transitions,
+unavailable/removed owners, lost targets, UI/ImGui and cinematics pass. Stock
+selection excludes bots; safe-zone death does not continuously consume cycle
+input. See MISSION-INTERACTION-AUDIT for the command and fixture limits.
+No production change, deployment or visual acceptance. The existing combat
+mapper resets without a live character, so a spectator route needs separately
+admitted sampling rather than reusing its cleared held output. Continue work.

@@ -121,3 +121,28 @@ HMD/hand check covers ordinary local first-person mode, not this observer
 branch. Spectator view/comfort, transition to rescue and the disappearance of
 the local character remain explicit mission acceptance items. No spectator
 binding, hint, camera override or live session was changed for this audit.
+
+The optional `tests/tooling/test-spectator-stock-contract.lua` now executes the
+actual `HumanGameplay` input selection/update and `CameraHandler` update,
+roster selection and root-orientation methods. It covers normal ownership,
+hogtied entry/cycling/rescue, ordinary death, expedition safe-zone death,
+unavailable and removed local units, lost follow targets, UI/ImGui null services
+and cinematics. Actual roster selection skips bots, wraps between humans and
+returns no target for an empty roster or an excluded sole owner. In particular,
+the dead safe-zone branch selects away from the owner but does not consume cycle
+input while that dead branch remains active. Preserve this stock distinction.
+
+Validation command (PASS on the snapshot above):
+
+```powershell
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-spectator-stock-contract.lua _downloads/Darktide-Source-Code
+```
+
+Engine camera/mood/UI work and character-state components are supplied sinks or
+fixtures. Input edges are supplied, not read from a headset. The observer checks
+confirm followed-unit aim and its component fallback, not comfort or tracking.
+This remains an optional source check, independent of the portable CTest suite.
+The native gameplay mapper resets while combat ownership is unavailable; its
+current held output therefore cannot simply be reused for spectator controls.
+A separate admitted camera-input sample must preserve combat cancellation,
+current local camera ownership, input-service restrictions and neutral rearming.
