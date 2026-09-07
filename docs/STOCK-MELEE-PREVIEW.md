@@ -10,6 +10,11 @@ tip of the stock collision box across its authored damage-window frames. It is
 not a predicted hit, wall test, entire hit-volume outline or damage guarantee.
 It shows the path for the aim held now. Moving aim during the real swing can
 change the stock sweep reference; the guide does not promise a latched path.
+The optional cached-source `test-melee-reference-stock-contract.lua` executes
+the stock sweep update and confirms pre-window reference refresh, previous/current
+reference sampling during damage, final-frame clamping, one exit/proc dispatch,
+and suppression after abort. Its poses and spline/physics sinks are fixtures;
+it does not establish network precision, authoritative damage or worn alignment.
 
 The preview asks the stock action handler which `start_attack` is currently
 valid, then follows its unambiguous light-attack chain. It uses that action's
