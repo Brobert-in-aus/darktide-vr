@@ -30,6 +30,17 @@ pass. Stock action
 behavior when held input disappears remains stock; only synthetic release-edge
 injection is suppressed. No deployment or worn acceptance.
 
+The optional stock-input fixture now executes the actual parser's element
+evaluation against current default melee and pocketable definitions. A real
+mapper remap clears holds and all explicit release edges; nevertheless stock
+light/heavy/attack-release and giving-release elements accept the resulting
+`held=false`. This confirms the distinction above. Element evaluation is not
+full hierarchy/action dispatch or proof that an attack fired. Do not claim
+universal charged-action cancellation from zero release counters. No forced
+holster, persistent artificial hold or client-only action-state reset was added.
+An action-specific interruption strategy would need stock client/server agreement
+and actual weapon/transition validation before claiming stronger cancellation.
+
 This records the routing audit and subsequent candidates. The raw OpenXR actions
 already include both sticks and both stick clicks. The current gameplay mapper
 is in `src/core/gameplay_input.cpp`; its game-side delivery table is

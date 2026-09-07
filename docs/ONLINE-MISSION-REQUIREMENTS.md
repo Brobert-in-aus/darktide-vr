@@ -184,6 +184,15 @@ uses `weapon_extra_hold` and its release; the existing combat special binding
 (right grip by default) already supplies that hold. These findings do not prove
 rendered target selection, real inventory mutation or teammate acceptance.
 
+Input cancellation has a distinct stock limit: after a remap clears a held
+control, melee and giving release definitions can match `held=false` without
+an explicit release edge. The optional stock-input fixture executes those real
+parser elements after real mapper cancellation. Their completion does not by
+itself establish an action-chain outcome, but zero synthetic release counters
+cannot prove an ongoing charged action was cancelled. Stronger interruption
+would require a stock action-specific route that agrees on client and server;
+the candidate preserves existing stock behavior. See INPUT-REVISION-AUDIT.
+
 Follow-up user direction: configure Psykhanium to use the same combat/input
 rules as online where possible, and improve that path there first. This changes
 the next implementation target to a range-only online-rules proving mode.

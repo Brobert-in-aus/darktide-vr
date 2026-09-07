@@ -1268,3 +1268,18 @@ all 36 Lua chunks. Evidence:
 `artifacts/unattended/continuous-todo-xr-timeout-ctest-20260907.log`.
 No headset was awakened for these tests; the runtime blocker remains. Continue
 the todo until instructed to stop.
+
+## Continuous todo work: false-held release boundary
+
+Branch `codex/stock-held-release-boundary-2026-09-07` confirms the existing
+cancellation caveat by executing stock melee/pocketable release elements after
+a real mapper remap. Holds and explicit release edges clear, but stock parser
+elements can complete on `held=false`. Comments now describe edge suppression
+precisely; runtime behavior is unchanged. No universal charge-cancellation claim,
+forced holster or client-only action reset. Actual hierarchy/weapon outcomes
+remain untested by this element-level fixture.
+
+The optional stock-input fixture passes. This refines the online/transition
+acceptance boundary and does not admit remote missions. Continue the todo;
+full offline suite remains 112/112 at `124361b`, with native build baselines
+unchanged and later changes limited to this optional fixture/comments/docs.

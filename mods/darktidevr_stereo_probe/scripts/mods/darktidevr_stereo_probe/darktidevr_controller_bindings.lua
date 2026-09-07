@@ -113,8 +113,9 @@ function Bindings.install(mod)
         if context~=api.context then
             api.context=context; api.revision=api.revision+1
             dirty=true; stick_active=false
-            -- Cancel old context state without synthesizing a charged-release
-            -- attack. Held physical inputs must return neutral before reuse.
+            -- Cancel old context state without synthesizing release edges.
+            -- Stock actions may still react to held=false. Physical inputs
+            -- must return neutral before reuse.
             api.held=0
         end
         -- The eleven native channels occupy bits 0..10. Directional channels
@@ -153,8 +154,8 @@ function Bindings.install(mod)
         stick_held, stick_active = next_stick, axes_valid
         physical = bit.bor(physical,next_stick)
         if dirty then
-            -- Remap cancellation is not a physical release; emitting one can
-            -- finish the old charged attack as the setting is changed.
+            -- Remap cancellation emits no physical release edge. Stock
+            -- false-held action sequences retain their ordinary behavior.
             api.held=0
             for _,control in ipairs(Bindings.controls) do
                 resolved[control.id] = selection(control)

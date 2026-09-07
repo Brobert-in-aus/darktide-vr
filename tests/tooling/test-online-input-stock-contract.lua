@@ -436,4 +436,53 @@ if rules then
     for i,event in ipairs(predicted_events.animations) do assert(event==server_events.animations[i]) end
     print('PASS: stock objective input holds, axes, cancel, dodge arbitration and weapon gates agree after recorded send/receive')
 end
+if arg[2] then
+    -- Zero synthetic release edges do not mean a stock action is cancelled:
+    -- several real templates finish their release sequence on held=false.
+    local parser={}
+    local function text(path)
+        local f=assert(io.open(arg[1]..'/scripts/'..path..'.lua','r'))
+        local s=f:read('*all'); f:close(); return s
+    end
+    local parser_source=text('extension_systems/action_input/action_input_parser')
+    local a=assert(parser_source:find('ActionInputParser._evaluate_element =',1,true))
+    local b=assert(parser_source:find('\nActionInputParser._progress_input_sequence =',a,true))
+    setfenv(assert(loadstring(parser_source:sub(a,b-1))),setmetatable({ActionInputParser=parser,ELEMENT_START_T=3},{__index=_G}))()
+    local function inputs(path,name)
+        local s=text(path)
+        local first=assert(s:find('local '..name..' = {}',1,true))
+        local last=assert(s:find('\ntable.add_missing(',first,true))
+        return setfenv(assert(loadstring(s:sub(first,last-1)..'\nreturn '..name..'.action_inputs')),
+            setmetatable({wield_inputs={}},{__index=_G}))()
+    end
+    local melee=inputs('settings/equipment/weapon_templates/default_melee_action_input_setup','default_melee_action_input_setup')
+    local pocket=inputs('settings/equipment/weapon_templates/pocketables/settings_templates/pocketables_template_settings','pocketables_template_settings')
+    local bindings_path=arg[2]:gsub('darktidevr_online_rules.lua$','darktidevr_controller_bindings.lua')
+    local mapper_module=dofile(bindings_path)
+    local settings={}
+    local mod={get=function(_,key) return settings[key] end}
+    local mapper=mapper_module.install(mod)
+    bit=require('bit')
+    mapper.sample(true,0,0,0,true,1,'combat')
+    local _,held=mapper.sample(true,5,0,0,true,1,'combat')
+    assert(held==5)
+    settings.vr_bind_right_trigger='unbound'; settings.vr_bind_right_grip='unbound'
+    mod.on_setting_changed('vr_bind_right_trigger')
+    local pressed,cancelled_held,released=mapper.sample(true,5,0,0,true,1,'combat')
+    assert(pressed==0 and cancelled_held==0 and released==0)
+    local raw={action_one_pressed=false,action_one_hold=false,action_one_release=false,
+        weapon_extra_pressed=false,weapon_extra_hold=false,weapon_extra_release=false}
+    local cases={melee.light_attack.input_sequence[1],melee.heavy_attack.input_sequence[2],
+        melee.attack_release.input_sequence[1],pocket.aim_give_release.input_sequence[1]}
+    for _,config in ipairs(cases) do
+        local failed,completed=parser:_evaluate_element(config,raw,{true,1,0},.1)
+        assert(not failed and completed,'Stock false-held release was incorrectly treated as cancelled')
+        raw[config.input]=true
+        local _,still_complete=parser:_evaluate_element(config,raw,{true,1,0},.1)
+        assert(not still_complete,'Held action completed a release sequence')
+        raw[config.input]=false
+    end
+    print('PASS: real remap suppresses explicit release edges; actual stock melee/giving sequences still accept false-held input')
+    print('LIMIT: this executes sequence elements, not action hierarchy dispatch or a live release/damage outcome')
+end
 print('LIMIT: no engine serialization, live server, damage, movement or headset acceptance')
