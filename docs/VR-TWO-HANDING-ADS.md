@@ -208,3 +208,13 @@ Calibration/geometry/compiler/invariant checks passed 4/4 in 0.97 seconds.
 No commands have been invoked in the live session and the candidate is not
 deployed. Next worn request: place the support hand naturally under the same
 lasgun, calibrate, then observe grab/release continuity and barrel/reticle/hits.
+
+Optional virtual-stock geometry is now tested in the pose module. It blends a
+shoulder-to-support ray into two-hand aim only when the authored rear stock
+point is close to an explicit shoulder anchor, with tunable strength and smooth
+proximity falloff. It changes orientation only, clears on release and ignores
+invalid/out-of-range anchors. Four focused checks pass in 0.96 seconds. It is
+not wired to the production coordinator: a stable body/shoulder anchor and worn
+tuning remain required. The existing avatar heading follows head yaw with a
+dead zone and delayed convergence; using it directly would still eventually
+swivel a shouldered gun during a sustained head-only glance.

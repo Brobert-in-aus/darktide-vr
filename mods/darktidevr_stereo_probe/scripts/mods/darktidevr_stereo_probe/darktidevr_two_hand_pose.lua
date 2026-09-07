@@ -72,6 +72,26 @@ function Pose.correction(rotation,primary,support,socket)
     return normalize({from[2]*to[3]-from[3]*to[2],from[3]*to[1]-from[1]*to[3],
         from[1]*to[2]-from[2]*to[1],1+d},4)
 end
+function Pose.stock_correction(rotation,primary,support,socket,stock)
+    local correction=Pose.correction(rotation,primary,support,socket)
+    if not correction or type(stock)~='table' or not valid(stock.anchor,3) or
+        not valid(stock.offset,3) or not finite(stock.radius) or stock.radius<=0 or stock.radius>.5 or
+        not finite(stock.strength) or stock.strength<=0 or stock.strength>1 or
+        dot(stock.offset,stock.offset)>1 then return correction end
+    local q=normalize(rotation,4)
+    local placed=rotate(multiply(q,correction),stock.offset)
+    local delta={primary[1]+placed[1]-stock.anchor[1],primary[2]+placed[2]-stock.anchor[2],
+        primary[3]+placed[3]-stock.anchor[3]}
+    local distance=math.sqrt(dot(delta,delta))
+    if not finite(distance) or distance>=stock.radius then return correction end
+    local stock_ray=difference(socket,stock.offset)
+    local shouldered=Pose.correction(q,stock.anchor,support,stock_ray)
+    if not shouldered then return correction end
+    -- The caller supplies a stable body/shoulder anchor. No headset yaw is
+    -- used here, and the primary grip position is never moved to the shoulder.
+    local proximity=1-distance/stock.radius
+    return slerp(correction,shouldered,stock.strength*proximity*proximity)
+end
 function Pose.new()
     local state={correction={0,0,0,1},owner=nil}
     function state.reset()
@@ -81,14 +101,14 @@ function Pose.new()
         local q=normalize(rotation,4)
         return q and normalize(multiply(q,state.correction),4) or nil
     end
-    function state.update(rotation,primary,support,socket,held,owner,dt,smoothing,cancelled)
+    function state.update(rotation,primary,support,socket,held,owner,dt,smoothing,cancelled,stock)
         local q=normalize(rotation,4)
         if not q then state.reset(); return nil end
         if cancelled or owner==nil or not finite(dt) or dt<0 or dt>0.25 or
             not finite(smoothing) or smoothing<0 then state.reset(); return q end
         if state.owner~=owner then state.reset(); state.owner=owner end
         local target={0,0,0,1}
-        if held then target=Pose.correction(q,primary,support,socket) end
+        if held then target=Pose.stock_correction(q,primary,support,socket,stock) end
         if not target then state.reset(); return q end
         -- Smooth only the support correction in controller-local space. The
         -- primary controller's deliberate motion remains immediate; release

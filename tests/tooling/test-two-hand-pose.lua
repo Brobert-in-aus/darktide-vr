@@ -81,3 +81,22 @@ for i=1,120 do
     end
 end
 print('two_hand_pose=pass geometry roll distance covariance smoothing invalidity reset')
+-- Optional virtual stock only influences aiming close to an explicit shoulder
+-- anchor. It cannot translate the main grip or silently attach to the headset.
+local stock={anchor={3.05,3.75,5},offset={0,-.25,0},radius=.2,strength=1}
+local stock_pose=Pose.new().update(identity,primary,{3,4.3,5},socket,true,owner,.01,0,false,stock)
+assert(math.abs(stock_pose[3])>0 and math.abs(stock_pose[3])<.05)
+near(primary,{3,4,5})
+local weaker={anchor=stock.anchor,offset=stock.offset,radius=.2,strength=.5}
+local weak_pose=Pose.new().update(identity,primary,{3,4.3,5},socket,true,owner,.01,0,false,weaker)
+assert(math.abs(weak_pose[3])<math.abs(stock_pose[3]))
+local filter=Pose.new()
+filter.update(identity,primary,{3,4.3,5},socket,true,owner,.01,0,false,stock)
+near(filter.update(identity,primary,{3,4.3,5},socket,false,owner,.01,0,false,stock),identity)
+for _,bad in ipairs({{anchor={30,30,30},offset={0,-.25,0},radius=.2,strength=1},
+        {anchor=stock.anchor,offset=stock.offset,radius=.2,strength=0},
+        {anchor={0/0,0,0},offset=stock.offset,radius=.2,strength=1},
+        {anchor=stock.anchor,offset=stock.offset,radius=math.huge,strength=1}}) do
+    near(Pose.new().update(identity,primary,{3,4.3,5},socket,true,owner,.01,0,false,bad),identity)
+end
+print('virtual_stock_pose=pass proximity strength release invalidity fixed_primary')
