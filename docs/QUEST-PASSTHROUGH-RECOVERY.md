@@ -250,3 +250,23 @@ The WARP fixture checks requested flags, original failure preservation, recorded
 messages, the eight-record bound, rejected nested scopes and restoration after
 scope exit. Desktop-only mode rejects the option before XR discovery. Missing
 debug-layer fallback is environment-dependent; no layer was removed to force it.
+The fallback uses Microsoft's documented
+[D3D11CreateDevice error](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-d3d11createdevice).
+
+At 15:37 the bounded Ready run captured one D3D11 device: original flags 32,
+requested/actual flags 34, successful creation without fallback and removal
+reason zero. Its debug queue contained two ID 381/error-severity records:
+`ID3D11Device::OpenSharedResource: Returning E_INVALIDARG, meaning invalid parameters were passed.`
+The first eye still failed with OVR -7000; application D3D12 messages remained
+zero and backend last-error text empty. This adds a shared-resource import clue,
+not proof of a stale handle, format mismatch or particular calling component.
+[OpenSharedResource](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11device-opensharedresource)
+has resource/handle/interface requirements; the failed parameters are not yet
+captured. No installed runtime change or deployment occurred.
+
+The child exited 1 with complete output and no timeout. Guardian restoration was
+confirmed in a time-bounded log query (`guardian_paused: 1 -> 0` and pref-store 0),
+then normal proximity restoration completed. Darktide and the harness are closed.
+Evidence: `artifacts/unattended/quest-internal-d3d11-20260907-153717.json` and its
+recovery log. A fresh Quest Virtual Desktop client connection is the next scoped
+recovery test for the newly observed import failure.

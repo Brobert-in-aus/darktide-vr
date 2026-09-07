@@ -1739,4 +1739,11 @@ component permits retry with original flags. No installed runtime or system
 setting is changed. Release builds and seven focused CTests pass in 4.69 seconds;
 see QUEST-PASSTHROUGH-RECOVERY for coverage and measurement limitations.
 Configured count is now 120; full baseline remains 118/118 at `5ffb1a7`.
-One bounded Ready run with this new evidence source is the next action.
+At 15:37 one bounded Ready run captured new evidence: the sole D3D11 device
+created successfully with debug flags and no removal, then reported two
+OpenSharedResource E_INVALIDARG errors before the same OVR -7000 first-eye
+failure. Complete child output, no timeout. Guardian restoration was verified
+in headset logs and proximity Enable/Status completed; game/harness are closed.
+See QUEST-PASSTHROUGH-RECOVERY and ignored quest-internal-d3d11-20260907-153717
+evidence. Next: a fresh Quest VD client connection to test stale session resource
+state; no PC Streamer restart or installed-runtime replacement is planned.
