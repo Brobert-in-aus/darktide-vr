@@ -122,7 +122,10 @@ function Live.install(mod, presentation, tracking, game_mode)
             -- simulation tick ownership; only retire the trajectory history.
             state.history_key = {}
         end
-        local valid = tracking[hand.."_grip_usable"] == true and tracking.body_anchor_qw ~= nil
+        -- IK may keep a last-known grip for visual continuity. That held pose
+        -- cannot authorize physical queries after its live tracking is lost.
+        local valid = tracking[hand.."_grip_usable"] == true and
+            tracking[hand.."_grip_tracking_live"] == true and tracking.body_anchor_qw ~= nil
         local position, rotation
         if valid then
             if presentation.weapon_grip_target then position, rotation = presentation.weapon_grip_target("dominant")

@@ -120,6 +120,15 @@ trajectory and clears the obsolete wait reason; stable valid geometry retains
 history. Five focused checks pass, including the before/after regression and
 all 36 Lua chunks. Invalid geometry still produces no probe queries.
 
+The live probe now also requires the physical hand's current grip-tracking flag.
+`grip_usable` alone deliberately retains the last valid pose for IK during a
+tracking dropout; it is not contact authority. A regression reproduced stale
+contact sampling from that held pose. Lost or missing live tracking now submits
+an invalid sample without reading the cached grip target, allowing the existing
+diagnostic pipeline to retire trajectory history and skip queries. Fresh tracking
+recovers normally. The rendering fallback remains unchanged. Six focused checks
+pass, including the 37-chunk gate; physical contact acceptance remains pending.
+
 Deduplicate multiple hurtboxes, repeated substeps and duplicate physics results
 per target before applying cooldowns. Cooldowns use simulation-clock deadlines
 and stable unit generation identities. Do not clear them on a pose-history reset

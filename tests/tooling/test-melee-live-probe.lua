@@ -28,7 +28,7 @@ modules.diagnostics.select_contacts=function(report,resolver,collector,context)
 end
 local mod = {io_dofile=function(_,path) return assert(modules[path:match("melee_(.+)$")]) end,
     info=function() end,warning=function() warnings=warnings+1 end}
-local tracking = {right_grip_usable=true,body_anchor_qw=1}
+local tracking = {right_grip_usable=true,right_grip_tracking_live=true,body_anchor_qw=1}
 local presentation={controller_grip_target=function() return {1,2,3},{0,0,0,1} end}
 local live = Live.install(mod,presentation,
     tracking,function() return mode end)
@@ -120,6 +120,7 @@ presentation.weapon_grip_target=function(role)
     assert(role=='dominant'); return {1,2,3},{0,0,0,1}
 end
 tracking.left_grip_usable=true
+tracking.left_grip_tracking_live=true
 live.fixed_update(extension,12.12,19)
 assert(calls[#calls].history_key==reference_key)
 hand='left'
@@ -142,4 +143,25 @@ assert(calls[#calls].history_key~=reference_key,'Geometry recovery bridged an in
 reference_key=calls[#calls].history_key
 live.fixed_update(extension,13.04,24)
 assert(calls[#calls].history_key==reference_key,'Stable recovered geometry repeatedly discarded history')
+-- IK deliberately retains a usable grip pose during tracking loss. Contact
+-- queries must use current tracking, not that held presentation fallback.
+local grip_reads=0
+extension._unit_data_extension.is_resimulating=false
+presentation.weapon_grip_target=function()
+    grip_reads=grip_reads+1; return {1,2,3},{0,0,0,1}
+end
+tracking.left_grip_tracking_live=false
+live.fixed_update(extension,13.06,25)
+assert(tracking.left_grip_usable,'Probe changed the held IK pose policy')
+assert(not calls[#calls].step.tracking_valid and not calls[#calls].pose and grip_reads==0,
+    'Held IK pose authorized a stale physical-contact sample')
+tracking.left_grip_tracking_live=nil
+live.fixed_update(extension,13.08,26)
+assert(not calls[#calls].step.tracking_valid and grip_reads==0,'Missing live tracking was admitted')
+tracking.left_grip_tracking_live=true
+live.fixed_update(extension,13.10,27)
+assert(calls[#calls].step.tracking_valid and calls[#calls].pose and grip_reads==1)
+hand='right'; tracking.right_grip_tracking_live=false
+live.fixed_update(extension,13.12,28)
+assert(not calls[#calls].step.tracking_valid and grip_reads==1,'Tracking gate ignored the physical hand')
 print("live melee diagnostic opt-in, private mode, idle continuity, timing reentry and failure recovery passed")

@@ -1628,3 +1628,16 @@ and analyzer regressions reproduce both old failures. Native DLL/ring/recovery
 targets build; seven focused checks pass in 3.92 seconds. Full baseline remains
 116/116 at `2790e7d`, configured count 117. No live resize, deployment, headset
 action or measured performance claim. Continue the todo.
+
+## Continuous todo work: live tracking for melee queries
+
+Branch `codex/melee-live-tracking-gate-2026-09-07` fixes the diagnostic probe
+using held IK availability as contact authority. The actual adapter regression
+reproduces a stale pose after live grip tracking becomes false. Query admission
+now requires the resolved physical hand's live tracking flag as well as its
+usable pose; false/missing tracking never reads that held target. Recovery and
+physical-hand changes pass while IK retention is untouched. Six focused CTests
+pass in 0.82 seconds, including all 37 Lua chunks and existing invalid-tracking
+history/query tests. No damage, native change, deployment or worn acceptance.
+Last full suite remains 116/116 at `2790e7d`; latest native build `01617d6` and
+configured count 117. Continue the todo.
