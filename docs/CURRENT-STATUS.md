@@ -9,6 +9,10 @@ locked in. The [first-swing preview candidate](STOCK-MELEE-PREVIEW.md) uses stoc
 authored geometry and the correct simulated/local aim owner. It remains opt-in,
 undeployed and awaiting a worn check. Branch `codex/stock-melee-preview-2026-09-08`;
 full offline CTest 133/133 passed in 23.70 seconds, with 47 Lua chunks compiled.
+The subsequent [melee visual correction](STOCK-MELEE-VISUAL-AIM.md) fixes a
+reproduced head-facing animated-hand fallback in stock-input mode. Full CTest
+134/134 passes in 24.79 seconds at `a85d91f`; the focused PR #11 candidate includes
+the correction at `aa4da89` and passes its Lua/preview/visual checks. Still undeployed.
 
 Development is active in the user's requested session, with a 20-minute
 heartbeat, until explicitly told to stop. The user is away at work; continue
