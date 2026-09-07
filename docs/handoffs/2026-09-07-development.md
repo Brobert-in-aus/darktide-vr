@@ -1515,3 +1515,13 @@ The regression fails before the fix and passes after it. Six focused CTests,
 including all 36 chunks through LuaJIT, pass in 0.78 seconds. No damage path,
 network behavior, deployment or headset action changed. Continue offline work;
 the full-suite and harness baselines remain unchanged.
+
+## Continuous todo work: melee probe geometry recovery
+
+Branch `codex/melee-probe-volume-recovery-2026-09-07` fixes permanent waiting
+after invalid geometry recovers within the same named attack. The regression
+reproduces the missed recovery before the fix. Valid recovery now restores the
+volume, clears the old reason and starts fresh trajectory history; stable
+geometry retains that history. Invalid volumes still perform no queries. Five
+focused CTests pass in 0.77 seconds, including the 36-chunk LuaJIT gate.
+No physical damage, deployment or live acceptance change; continue the todo.

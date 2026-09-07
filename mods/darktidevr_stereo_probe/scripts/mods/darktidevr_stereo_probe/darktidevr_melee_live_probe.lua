@@ -48,6 +48,7 @@ function Live.install(mod, presentation, tracking, game_mode)
         if weapon ~= state.weapon then
             state.weapon, state.volume, state.action_name = weapon, nil, nil
             state.selected_action = nil
+            state.reason = nil
             state.windup_name = nil
             state.windup_start_t, state.combo_fingerprint = nil, nil
             state.history_key = {}
@@ -90,9 +91,10 @@ function Live.install(mod, presentation, tracking, game_mode)
         -- route from unordered action names or use block/push timing as light.
         if action and action.kind == "sweep" and instance then
             local volume, reason = Volume.resolve(template, action, defaults, instance._uses_matrix_data)
-            if volume and state.action_name ~= name then
+            if volume and (not state.volume or state.action_name ~= name) then
                 state.volume, state.action_name, state.history_key = volume, name, {}
                 state.selected_action = action
+                state.reason = nil
                 mod:info("DARKTIDEVR_MELEE context template=%s action=%s shape=%s radius=%.4f origin=provisional_grip damage=false",
                     tostring(template.name), name, volume.shape, volume.corner_radius)
             elseif not volume then

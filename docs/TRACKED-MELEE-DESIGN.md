@@ -113,6 +113,13 @@ intact, so a repeated recovered tick cannot query again. A regression reproduces
 the old retained trajectory; six focused checks and the 36-chunk compiler gate
 pass. This is probe history handling, not damage/prediction reconciliation.
 
+The probe also recovers when a rejected volume becomes valid again for the
+same-named sweep. Previously it remembered the action name and never restored
+that volume until another action/weapon was selected. Recovery now starts a new
+trajectory and clears the obsolete wait reason; stable valid geometry retains
+history. Five focused checks pass, including the before/after regression and
+all 36 Lua chunks. Invalid geometry still produces no probe queries.
+
 Deduplicate multiple hurtboxes, repeated substeps and duplicate physics results
 per target before applying cooldowns. Cooldowns use simulation-clock deadlines
 and stable unit generation identities. Do not clear them on a pose-history reset

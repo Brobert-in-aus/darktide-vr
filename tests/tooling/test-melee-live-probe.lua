@@ -129,4 +129,17 @@ assert(calls[#calls].history_key~=reference_key and calls[#calls].step.tracking_
 reference_key=calls[#calls].history_key
 live.fixed_update(extension,12.16,21)
 assert(calls[#calls].history_key==reference_key)
+extension._weapon_action_component.current_action_name='light'
+local last_count=#calls
+modules.volume.resolve=function() return nil,'invalid_modifiers' end
+live.fixed_update(extension,13,22)
+assert(#calls==last_count,'Invalid geometry continued querying the cached volume')
+modules.volume.resolve=function() return volume end
+live.fixed_update(extension,13.02,23)
+assert(#calls==last_count+1 and calls[#calls].volume==volume,
+    'A restored same-named sweep never recovered its valid volume')
+assert(calls[#calls].history_key~=reference_key,'Geometry recovery bridged an invalid-volume interval')
+reference_key=calls[#calls].history_key
+live.fixed_update(extension,13.04,24)
+assert(calls[#calls].history_key==reference_key,'Stable recovered geometry repeatedly discarded history')
 print("live melee diagnostic opt-in, private mode, idle continuity, timing reentry and failure recovery passed")
