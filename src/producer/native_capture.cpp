@@ -16547,10 +16547,12 @@ extern "C" __declspec(dllexport) int dtvr_read_menu_pointer_state_v3(
   return read_menu_pointer_state(values, sequence, timestamp_ns,
                                  transport_generation, true);
 }
-extern "C" __declspec(dllexport) int dtvr_read_gameplay_input(
+static int read_mapped_controller_input(
+    darktidevr::core::GameplayInputMapper& mapper,
     int gameplay_active, unsigned long long* pressed,
     unsigned long long* held, unsigned long long* released,
-    unsigned long long* sequence, float* movement) {
+    unsigned long long* sequence, float* movement,
+    unsigned long long* generation = nullptr, float* right_stick = nullptr) {
   if (!pressed || !held || !released || !sequence || !movement) {
     return 1;
   }
@@ -16565,18 +16567,45 @@ extern "C" __declspec(dllexport) int dtvr_read_gameplay_input(
       read_available && darktidevr::core::controller_state_is_fresh(
                             sample, now_ns, maximum_controller_age_ns);
   const auto frame = available
-                         ? gameplay_input_mapper().update(
-                               sample, gameplay_active != 0)
-                         : gameplay_input_mapper().reset();
+                         ? mapper.update(sample, gameplay_active != 0)
+                         : mapper.reset();
   *pressed = frame.pressed;
   *held = frame.held;
   *released = frame.released;
   *sequence = available ? sample.sequence : 0;
   movement[0] = frame.move_x;
   movement[1] = frame.move_y;
+  if (generation) *generation = available ? sample.transport_generation : 0;
+  if (right_stick) {
+    right_stick[0] = available ? sample.hands[1].thumbstick_x : 0.0F;
+    right_stick[1] = available ? sample.hands[1].thumbstick_y : 0.0F;
+    constexpr auto valid_pose = darktidevr::core::controller_orientation_valid |
+                                darktidevr::core::controller_position_valid;
+    right_stick[2] = available &&
+                            (sample.hands[1].aim_tracking_flags & valid_pose) == valid_pose
+                        ? 1.0F : 0.0F;
+  }
   // Lua's pose observation may still have the previous generation. Signal the
   // button reader's own transition so its cancellation cannot finish a charge.
   return !available ? 2 : frame.publisher_changed ? 3 : 0;
+}
+extern "C" __declspec(dllexport) int dtvr_read_gameplay_input(
+    int gameplay_active, unsigned long long* pressed,
+    unsigned long long* held, unsigned long long* released,
+    unsigned long long* sequence, float* movement) {
+  return read_mapped_controller_input(gameplay_input_mapper(), gameplay_active,
+                                     pressed, held, released, sequence, movement);
+}
+extern "C" __declspec(dllexport) int dtvr_read_spectator_input(
+    int active, unsigned long long* pressed, unsigned long long* held,
+    unsigned long long* released, unsigned long long* sequence, float* movement,
+    unsigned long long* generation, float* right_stick) {
+  if (!generation || !right_stick) return 1;
+  // Camera input survives an unavailable character. It must never share the
+  // combat mapper's cancellation/rearming state or consume its press edges.
+  static darktidevr::core::GameplayInputMapper mapper;
+  return read_mapped_controller_input(mapper, active, pressed, held, released,
+                                     sequence, movement, generation, right_stick);
 }
 extern "C" __declspec(dllexport) int dtvr_enable_marker_log() {
   std::scoped_lock lock(state_mutex);

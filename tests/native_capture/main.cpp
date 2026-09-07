@@ -93,6 +93,11 @@ int wmain(int argc, wchar_t** argv) {
         int, unsigned long long*, unsigned long long*, unsigned long long*,
         unsigned long long*, float*)>(
         GetProcAddress(module, "dtvr_read_gameplay_input"));
+    const auto read_spectator_input = reinterpret_cast<int (*)(
+        int, unsigned long long*, unsigned long long*, unsigned long long*,
+        unsigned long long*, float*, unsigned long long*, float*)>(
+        GetProcAddress(module, "dtvr_read_spectator_input"));
+    if (!read_spectator_input) throw std::runtime_error("Missing spectator input export");
     const auto read_menu_pointer_state_v3 = reinterpret_cast<int (*)(
         unsigned int*, unsigned int, unsigned long long*, unsigned long long*,
         unsigned long long*)>(
@@ -364,6 +369,54 @@ int wmain(int argc, wchar_t** argv) {
         publish_gameplay(replacement_controller_writer, 4, 1) != 0 || !(gameplay_pressed & 1ULL) ||
         publish_gameplay(replacement_controller_writer, 5, 0) != 0 || !(gameplay_released & 1ULL)) {
       throw std::runtime_error("Publisher replacement did not retain neutral rearming and ordinary release");
+    }
+    {
+      unsigned long long camera_pressed{}, camera_held{}, camera_released{},
+          camera_sequence{}, camera_generation{};
+      float camera_movement[2]{}, camera_stick[3]{};
+      const auto read_camera = [&](int active) {
+        return read_spectator_input(active, &camera_pressed, &camera_held,
+                                    &camera_released, &camera_sequence,
+                                    camera_movement, &camera_generation, camera_stick);
+      };
+      if (read_camera(1) != 0 || camera_held != 0 || camera_generation == 0) {
+        throw std::runtime_error("Spectator reader did not initialize independently");
+      }
+      controller_sample.hands[1].buttons = darktidevr::core::controller_primary;
+      controller_sample.hands[1].thumbstick_x = .75F;
+      controller_sample.hands[1].thumbstick_y = -.5F;
+      controller_sample.hands[1].aim_tracking_flags =
+          darktidevr::core::controller_orientation_valid | darktidevr::core::controller_position_valid;
+      if (publish_gameplay(replacement_controller_writer, 6, 0) != 0 || read_camera(1) != 0 ||
+          !(camera_pressed & 32ULL) || !(gameplay_pressed & 32ULL) || camera_sequence != 6 ||
+          camera_stick[0] != .75F || camera_stick[1] != -.5F || camera_stick[2] != 1.0F) {
+        throw std::runtime_error("Camera/combat readers consumed each other's edge or lost sample metadata");
+      }
+      if (read_camera(0) != 0 || camera_held != 0 ||
+          read_gameplay_input(1, &gameplay_pressed, &gameplay_held, &gameplay_released,
+                              &gameplay_sequence, gameplay_movement) != 0 || !(gameplay_held & 32ULL) ||
+          read_camera(1) != 0 || camera_held != 0) {
+        throw std::runtime_error("Spectator cancellation changed combat or failed neutral rearming");
+      }
+      controller_sample.hands[1].buttons = 0;
+      if (publish_gameplay(replacement_controller_writer, 7, 0) != 0 || read_camera(1) != 0) {
+        throw std::runtime_error("Spectator neutral sample failed");
+      }
+      controller_sample.hands[1].buttons = darktidevr::core::controller_primary;
+      if (publish_gameplay(replacement_controller_writer, 8, 0) != 0 || read_camera(1) != 0 ||
+          !(camera_pressed & 32ULL)) throw std::runtime_error("Spectator fresh press did not rearm");
+      const auto old_generation = camera_generation;
+      darktidevr::core::SharedControllerStateWriter spectator_replacement;
+      if (publish_gameplay(spectator_replacement, 1, 0) != 3 || read_camera(1) != 3 ||
+          camera_held != 0 || camera_generation == old_generation) {
+        throw std::runtime_error("Spectator publisher replacement was not independently cancelled");
+      }
+      controller_sample.timestamp_ns -= 200'000'000ULL;
+      controller_sample.sequence = 2;
+      if (!spectator_replacement.publish(controller_sample) || read_camera(1) != 2 ||
+          camera_held != 0 || camera_sequence != 0 || camera_generation != 0 || camera_stick[2] != 0) {
+        throw std::runtime_error("Spectator reader admitted expired input");
+      }
     }
     float ik_input[17]{0.0F, 0.0F, 1.5F, 0.45F, 0.35F, 1.25F,
                        0.25F, 0.1F, 0.8F, 0.0F, 1.0F, 0.0F,

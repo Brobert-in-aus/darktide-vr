@@ -1573,3 +1573,30 @@ input. See MISSION-INTERACTION-AUDIT for the command and fixture limits.
 No production change, deployment or visual acceptance. The existing combat
 mapper resets without a live character, so a spectator route needs separately
 admitted sampling rather than reusing its cleared held output. Continue work.
+
+## Continuous todo work: scoped spectator controller route
+
+Branch `codex/spectator-controller-route-2026-09-07` implements camera-only
+cycling using the jump binding (A by default), independent native input state,
+fresh sample generation/axes and matching cached hints. Current local
+camera/player/service ownership, observer/dead mode, existing local-authority
+policy and neutral rearming are required; no character object is required.
+Only the stock camera call receives the extra action. Combat holds/cancellation
+and stock rescue/death/target/camera-orientation rules remain independent.
+
+Validation on Windows x64: full Release build succeeds; CTest passes 116/116 in
+15.52 seconds with headset tests OFF and desktop tests explicitly skipping XR.
+The pinned gate compiles all 37 Lua chunks. Actual native exports verify camera
+and combat edge independence, cancellation/rearming, publisher replacement,
+sample metadata and stale input rejection. Portable Lua covers foreign/retiring
+owners, UI/null services, mode/service changes, remaps/directional controls,
+hint refresh, stock errors and old-DLL fallback. The optional stock spectator
+contract with all three module paths also passes real VR-driven cycling and
+stock UI/rescue transitions. Log: ignored
+`artifacts/unattended/spectator-route-ctest-20260907.log`.
+
+This paired native/Lua candidate remains undeployed. Rendering remains blocked
+at the existing first-eye failure; no new Ready attempt or device setting change.
+Fresh stereo initialization and nonzero shared_ready will still be required
+after future deployment. Observer comfort, live input and mission lifecycle
+are pending the user; continue the todo without claiming worn acceptance.

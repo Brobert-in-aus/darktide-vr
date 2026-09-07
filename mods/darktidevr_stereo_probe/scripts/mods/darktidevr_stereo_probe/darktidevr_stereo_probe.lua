@@ -860,6 +860,10 @@ local function ensure_ui_native_hooks()
             unsigned long long *pressed, unsigned long long *held,
             unsigned long long *released, unsigned long long *sequence,
             float *movement);
+        int dtvr_read_spectator_input(int active,
+            unsigned long long *pressed, unsigned long long *held,
+            unsigned long long *released, unsigned long long *sequence,
+            float *movement, unsigned long long *generation, float *right_stick);
         unsigned long long dtvr_qpc_ticks(void);
         unsigned long long dtvr_qpc_frequency(void);
         int dtvr_take_gpu_eye_profile(int eye, unsigned long long *values);
@@ -1022,6 +1026,7 @@ local function ensure_ui_native_hooks()
     controller_observation.gameplay_sequence =
         ffi.new("unsigned long long[1]")
     controller_observation.gameplay_movement = ffi.new("float[2]")
+    presentation.spectator_reader = presentation.spectator_module.native_reader(ffi,library)
     controller_observation.ik_input = ffi.new("float[17]")
     controller_observation.ik_output = ffi.new("float[14]")
     controller_observation.ik_flags = ffi.new("unsigned int[1]")
@@ -5397,6 +5402,17 @@ presentation.controller_bindings = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings"
 ).install(mod)
 presentation.gameplay_input_bindings = presentation.controller_bindings.bindings
+presentation.spectator_module = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_spectator_input")
+presentation.spectator_module.install(mod,mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings"),
+    presentation.gameplay_context,function(enabled)
+        if presentation.spectator_reader then return presentation.spectator_reader(enabled) end
+        return 2,0,0
+    end,function()
+        return controller_observation.gameplay_input_enabled == true and presentation.mode == 1 and
+            presentation.is_first_person_body_mode(active_game_mode_name())
+    end)
 presentation.turning = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_turning"
 ).install(mod)

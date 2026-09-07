@@ -113,11 +113,13 @@ Technical authority conclusions above come from the code, not that policy.
    extraction and return to hub. Preserve stock server validation and weapon
    statistics throughout.
    Spectator cycling is a separate local `CameraHandler.update` input consumer,
-   outside the fixed combat cache. It currently has no VR route. First-person
+   outside the fixed combat cache. An undeployed camera-only route now follows
+   the jump binding (A by default) with independent native rearming and matching
+   hints. It preserves local mode admission and stock target decisions. First-person
    observation also takes its root aim from the followed unit, so ordinary local
    HMD/hand independence does not establish spectator comfort. Preserve stock
-   death, safe-zone, hogtied and rescue transitions when adding the scoped input
-   route; see [spectator ownership](MISSION-INTERACTION-AUDIT.md#spectator-input-and-rescue-ownership-7-september).
+   death, safe-zone, hogtied and rescue transitions remain under stock ownership;
+   see [spectator ownership](MISSION-INTERACTION-AUDIT.md#spectator-input-and-rescue-ownership-7-september).
 
 ## Validation ladder
 

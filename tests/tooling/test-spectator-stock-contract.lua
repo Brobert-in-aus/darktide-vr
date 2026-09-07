@@ -127,3 +127,36 @@ handler._first_person_spectating_mode=false
 y,p,r=handler:_camera_root_orientation(orientation); assert(y==7.1 and p==8.2 and r==9.3)
 assert(camera_updates>0 and moods>0)
 print('PASS: actual stock spectator service selection, rescue/death lifecycle, human roster and observer aim')
+
+-- Optional trailing args connect the real VR route to the same stock camera:
+-- <spectator-input.lua> <controller-bindings.lua> <gameplay-context.lua>
+if arg[2] then
+    bit=require('bit')
+    package.loaded['scripts/managers/player/player_game_states/camera_handler']=CameraHandler
+    package.loaded['scripts/managers/player/player_game_states/utilities/camera_modes']=CameraModes
+    local mod={get=function() end,hook=function(_,class,name,callback)
+        if class~=CameraHandler then return end -- HUD rendering is outside this contract.
+        local original=class[name]
+        class[name]=function(...) return callback(original,...) end
+    end}
+    input.is_null_service=function() return false end
+    null.is_null_service=function() return true end
+    local physical=0
+    Managers.player={local_player=function() return player end}
+    dofile(arg[2]).install(mod,dofile(arg[3]),dofile(arg[4]),function(active)
+        return 0,active and physical or 0,1,0,0,true
+    end,function() return true end)
+    handler._side_id=1; handler._camera_follow_unit=own; handler._mode='first_person'
+    handler._is_hogtied=false; handler._is_being_rescued=false
+    alive=true; hogtied=false; rescued=false; dead=false; cinematic=false; ui=false; imgui=false; pressed=false
+    members[1]=own; members[2]=bot; members[3]=one; members[4]=two
+    step(own,'first_person')
+    hogtied=true; step(own,'observer')
+    step(own,'observer'); step(own,'observer') -- Drain the mode transition, then arm neutral.
+    physical=32; step(one,'observer'); step(one,'observer')
+    ui=true; step(one,'observer'); ui=false; step(one,'observer')
+    physical=0; step(one,'observer'); physical=32; step(two,'observer')
+    rescued=true; step(own,'observer')
+    hogtied=false; rescued=false; step(own,'first_person')
+    print('PASS: real VR spectator route drives stock cycling and preserves UI/recovery transitions')
+end

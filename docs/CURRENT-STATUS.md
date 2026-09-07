@@ -36,9 +36,10 @@ Offline [UI detail measurement](DLSS-UI-DETAIL.md), precise Present timing and
 and performance investigation. Motion blur remains unresolved; no framerate
 gain or worn acceptance is claimed. Existing old Present timings remain coarse.
 
-Windows x64 full Release build baseline is `df99611`; the newer XR harness builds
-at `4298262`. Pinned LuaJIT compiles 36 chunks and the last full offline CTest
-checkpoint passed 113/113 at `e2aa82a`, with headset tests disabled and ordinary
+Windows x64 full Release build succeeds with the spectator controller candidate
+on `codex/spectator-controller-route-2026-09-07`; the XR harness remains
+at `4298262`. Pinned LuaJIT compiles 37 chunks and the full offline CTest
+checkpoint passes 116/116 in 15.52 seconds, with headset tests disabled and ordinary
 D3D12 checks now explicitly skipping OpenXR discovery. The stock null-service
 guards cover both render and fixed input updates through `596c459`. Optional
 stock contracts through `b6f74b4` cover input history/replay, movement, combat,
@@ -50,6 +51,12 @@ these do not establish online or worn acceptance. The local cached catalogue
 identifies 30 Psyker-tagged ranged templates, not the user's owned guns. See the
 [current handoff](handoffs/2026-09-07-development.md). A 20-minute task heartbeat
 is active; continue the ordered todo until instructed to stop.
+
+The undeployed spectator route follows the jump binding (A by default) with
+matching hints and independent camera input rearming. It works without a local
+character in the offline checks and preserves stock UI, rescue and target
+decisions. Actual stock-method integration passes; observer view/comfort and
+mission lifecycle still need live acceptance.
 
 **Historical 6 September end-of-day checkpoint:** development was stopped; Darktide/XR were closed and
 normal Quest proximity behavior is restored. Start tomorrow with the

@@ -13,7 +13,7 @@ SoloPlay run and no worn acceptance. The local-authority admission policy in
 | Luggable aim / throw / cancel | `luggables/luggable.lua` uses primary hold then release; alternate cancels/pushes. | Existing controls supply the actions. The subsequent [trajectory candidate](RANGED-WEAPON-AUDIT.md#luggable-trajectory-candidate-7-september) couples hand aim and preview, preserving cached release and stock drops. Physical carry alignment and live throw origin remain unverified. |
 | Scanner minigame action / cancel / knob | `PlayerCharacterStateMinigame._update_input` reads primary/interact/jump holds, alternate press and `move`. | Existing RT/X/A, LT and left-stick routes. `ScannerDisplayView.is_using_input` returns false; it renders the device rather than owning those gameplay actions. Visual readability, axis behavior with left-hand movement reference, and lifecycle remain unverified. |
 | Inspect operative / companion | Interaction templates override the input to `interact_inspect_pressed`. | Newly assignable Inspect operative / pet companion action, separate from ordinary interaction and weapon inspection. Stock companion ownership/idle checks and operative-view validation remain in charge. |
-| Cycle spectator target | `CameraHandler.update` reads `spectate_next` directly from the selected local Ingame service. | No VR route yet. The stock default is mouse-left / gamepad A; the combat fire/jump cache does not implement this separate action. Ownership must survive an unavailable local character without enabling that character's combat input. |
+| Cycle spectator target | `CameraHandler.update` reads `spectate_next` directly from the selected local Ingame service. | A by default, following the configured jump binding, through a separate camera-only reader. Current local camera, stock service, mode and neutral-rearming guards apply without requiring a character. Matching cached hints follow remaps. Undeployed; stock target decisions and observer comfort still need live checks. |
 
 Source paths are under `_downloads/Darktide-Source-Code/scripts/`. Revive's
 `stop` method only applies success on the server; input delivery alone cannot
@@ -103,7 +103,7 @@ route at that consumer; adding an action to the fixed combat cache alone would
 not reach it. The same null-service/UI/cinematic ownership rules must apply.
 The present VR mapper intentionally requires a current live character object,
 so it cannot be reused unchanged for a player whose character is unavailable.
-The current mod has no `spectate_next` route and its hint remains stock.
+The subsequent candidate below adds that separately admitted route and hint.
 
 The stock camera selects its own transition policy. Entering the hogtied state
 or beginning rescue returns observation to the player's own unit. A subsequent
@@ -119,8 +119,8 @@ observer branch: it uses the followed unit's interpolated spectated aim, falling
 back to that unit's first-person component. The existing offline independent
 HMD/hand check covers ordinary local first-person mode, not this observer
 branch. Spectator view/comfort, transition to rescue and the disappearance of
-the local character remain explicit mission acceptance items. No spectator
-binding, hint, camera override or live session was changed for this audit.
+the local character remain explicit mission acceptance items. The later input
+candidate leaves this camera orientation policy unchanged.
 
 The optional `tests/tooling/test-spectator-stock-contract.lua` now executes the
 actual `HumanGameplay` input selection/update and `CameraHandler` update,
@@ -146,3 +146,30 @@ The native gameplay mapper resets while combat ownership is unavailable; its
 current held output therefore cannot simply be reused for spectator controls.
 A separate admitted camera-input sample must preserve combat cancellation,
 current local camera ownership, input-service restrictions and neutral rearming.
+
+## Spectator controller candidate, 7 September
+
+`darktidevr_spectator_input.lua` now supplies a pressed `spectate_next` only
+inside the current local `CameraHandler.update` call. It follows the configured
+jump action (A by default), including directional remaps and their turning
+exclusion. A separate native mapper uses the same fresh controller transport
+validation and button rules as combat, with independent cancellation history.
+Its own publisher generation and right-stick validity travel with the sample.
+The existing local-authority mode policy, stereo/gameplay enablement, UI owner
+and stock null service remain required. Observer/dead camera modes are admitted;
+the stock method still decides whether to consume the edge and which unit to
+follow. No combat cache, target, aim or damage field is written.
+
+Camera/player/service/mode changes, transport loss/replacement and remaps drain
+inherited levels and require neutral input. Missing native exports fall back to
+stock input. Spectator hints follow the jump remap and refresh their cached text
+when mappings or availability change; an unbound action keeps the stock hint.
+Deploy the paired Lua/native candidate together after a successful Ready check.
+
+The full Windows x64 Release build succeeds and all 116 offline CTests pass in
+15.52 seconds, including actual native exports/isolated transports, portable
+camera ownership/remap checks and all 37 chunks through the pinned LuaJIT gate.
+The optional stock contract also accepts trailing spectator, bindings and
+gameplay-context module paths; that combined run passes real VR-driven cycling,
+UI hold cancellation and stock rescue recovery. Native and engine fixtures do
+not establish live headset input, observer comfort or mission acceptance.
