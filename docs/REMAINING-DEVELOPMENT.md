@@ -8,8 +8,10 @@ night-stop wording and older pending labels below are historical.
 The user confirmed **all final pitch/hand/draw/reload checks pass** on `ab9e9db`.
 Preserve that baseline. The [two-hand candidate](VR-TWO-HANDING-ADS.md) now has
 offline input/pose integration, tracked calibration and support-hand visuals;
-it is disabled by default and undeployed. Full offline baseline: 128/128 at
-`1b3de45`, then four affected checks for the ADS-route/item guard. Continue
+it is disabled by default and undeployed. An opt-in stock anchor now latches
+contact heading and requires measured profile values; none are supplied.
+Full integrated offline baseline: 128/128 at `1a481f1`, including stock and
+diagnostic integrity changes. Continue
 independent implementation while the remaining worn weapon checks await the user.
 
 ## Current priority order: end of 6 September 2026

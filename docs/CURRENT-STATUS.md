@@ -32,15 +32,19 @@ The new [two-hand candidate](VR-TWO-HANDING-ADS.md) is offline and undeployed.
 It includes whole-gesture grip ownership, pose smoothing, session-only tracked
 socket/hand calibration, local support-hand placement, and guarded stock hold-ADS
 requests. It defaults disabled and never guesses sockets for other items.
-Toggle-ADS coordination and a production virtual-stock shoulder anchor remain;
-optional stock geometry is tested independently. Review is
+Toggle-ADS coordination remains. An optional stock anchor is now connected with
+latched contact heading, requiring explicit measured shoulder/stock profile
+values; none are supplied or enabled. Worn posture/comfort checks remain.
+The original two-hand review is
 [PR #3](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/3), based on
 the aggregate branch in [PR #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2).
 
-Windows x64 offline validation passed 128/128 CTests in 21.88 seconds at the
-support-hand checkpoint `1b3de45`, including all 45 Lua chunks, with headset tests
-OFF. The subsequent ADS-route/item guard passes four affected checks in 0.98
-seconds. An optional cached-source fixture inspects 62 ranged templates and
+The active branch is `codex/virtual-stock-anchor-2026-09-08`, review
+[PR #6](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/6), stacked
+through the GPU report and DLSS readback integrity reviews (#4/#5) on #3.
+Windows x64 offline validation passed **128/128 CTests in 26.36 seconds** at
+`1a481f1`, including all 45 Lua chunks, with headset tests OFF. An optional
+cached-source fixture inspects 62 ranged templates and
 admits 54 canonical ADS input routes; staff/plasma charging routes are excluded.
 It validates parser admission and independent aim aliases, not full action
 chains, live weapon behavior or network acceptance. Native code is unchanged.
