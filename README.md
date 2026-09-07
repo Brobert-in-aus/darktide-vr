@@ -41,6 +41,12 @@ The saved shortcut forwards that folder through the ordinary launcher. This
 does not install Darktide, DMF or mod dependencies; omitting the option retains
 the development launcher's existing default path.
 
+Automatic hub/Psykhanium launches require a successful shared-stereo delivery
+summary as well as successful viewer/game exit status. Flat fallback alone does
+not pass. Direct shared-eye runner checks can opt in with `-RequireSharedStereo`.
+This is a delivery check; fresh game-log initialization and worn visual checks
+remain part of live acceptance.
+
 ## Repository map
 
 - `src/core`: math, input/presentation policy, and shared-memory transports.

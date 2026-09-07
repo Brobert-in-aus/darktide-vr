@@ -48,6 +48,9 @@ for the smaller set needed before a first end-to-end mission attempt.
    Launcher cleanup now attempts later flags, owned-process cleanup and range
    request retirement even when an earlier restoration fails. Eight focused
    offline checks pass; live transition and cleanup acceptance remain pending.
+   Automatic hub/range launches now also reject flat-fallback-only viewer
+   success using completed shared-stereo counters. Eight focused checks pass;
+   fresh Lua initialization and worn visual acceptance remain separate checks.
 3. **Finish ranged-weapon functionality across classes.** Verify actual firing,
    gun/reticle alignment, muzzle origins and impacts with hand aim away from head
    direction for every gun/flame/staff/projectile/throw mode. Preserve stock

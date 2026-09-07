@@ -11,6 +11,8 @@ param(
 
     [switch] $EnableMenuInput,
 
+    [switch] $RequireSharedStereo,
+
     [switch] $EnableMenuTestControls,
 
     [switch] $SyntheticControllerPath,
@@ -50,6 +52,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
 . (Join-Path $PSScriptRoot 'darktide-process-result.ps1')
+. (Join-Path $PSScriptRoot 'shared-stereo-evidence.ps1')
 $observedGameProcess = $null
 
 # The shared mapping has one producer sequence and no multi-writer arbitration.
@@ -197,17 +200,22 @@ $arguments += $ProjectionTranslationScale.ToString(
     [System.Globalization.CultureInfo]::InvariantCulture)
 
 $priorErrorActionPreference = $ErrorActionPreference
+$sharedStereoEvidence = @{}
 try {
     # The Khronos loader can write a diagnostic to stderr when the harness's
     # first API-version attempt is rejected, then succeed on its built-in
     # compatibility retry. Windows PowerShell converts native stderr into
     # ErrorRecord objects; with the launcher's Stop policy those records used
     # to abort the shortcut before the successful retry. Stream both native
-    # channels back as ordinary text and use only the process exit code as the
-    # success/failure contract.
+    # channels back as ordinary text. Process failure remains authoritative;
+    # automatic gameplay runs also require actual shared stereo delivery.
     $ErrorActionPreference = 'Continue'
     & $harnessPath @arguments 2>&1 | ForEach-Object {
-        Write-Output ([string] $_)
+        $line = [string] $_
+        if ($RequireSharedStereo) {
+            Add-SharedStereoEvidence -Evidence $sharedStereoEvidence -Line $line
+        }
+        Write-Output $line
     }
     $harnessExitCode = $LASTEXITCODE
 }
@@ -221,6 +229,9 @@ if ($harnessExitCode -ne 0) {
 }
 if ($gameResult.Status -eq 'failed') {
     throw "Darktide exited abnormally with code $($gameResult.ExitCode); XR viewer shutdown is not game stability."
+}
+if ($RequireSharedStereo) {
+    Assert-SharedStereoEvidence -Evidence $sharedStereoEvidence
 }
 }
 finally {

@@ -725,6 +725,7 @@ $runnerArguments = @{
     WaitForGameSeconds = $GameStartTimeoutSeconds
     ProjectionTranslationScale = $ProjectionTranslationScale
     GameExe = Join-Path $GameRoot 'binaries\Darktide.exe'
+    RequireSharedStereo = [bool]($AutoEnterHub -or $EnterPsykhanium)
 }
 if ($EnableMenuInput) {
     $runnerArguments.EnableMenuInput = $true

@@ -41,8 +41,10 @@ at `4298262`. Pinned LuaJIT compiles 36 chunks and the last full offline CTest
 checkpoint passed 113/113 at `e2aa82a`, with headset tests disabled and ordinary
 D3D12 checks now explicitly skipping OpenXR discovery. The stock null-service
 guards cover both render and fixed input updates through `596c459`. Optional
-stock contracts through `3f1bfbb` cover input history/replay, movement, combat,
-objectives and supplies, including pellet batches and hitscan effects. Engine
+stock contracts through `b6f74b4` cover input history/replay, movement, combat,
+objectives and supplies, including pellet batches, hitscan effects and stock
+ledge/vault rules. Ledge discovery follows recorded hand aim; head-relative
+walking does not independently redirect its search toward the headset. Engine
 math, collision, damage and service endpoints have explicit fixture limits;
 these do not establish online or worn acceptance. The local cached catalogue
 identifies 30 Psyker-tagged ranged templates, not the user's owned guns. See the

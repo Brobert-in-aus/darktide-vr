@@ -1453,3 +1453,22 @@ direction change to make silently. Collision responses, ring indices and
 yaw-only math are substitutes; no real geometry, pitched traversal, climbing or
 live server acceptance. No production code or deployment changed. The offline
 full-suite baseline and harness build remain unchanged. Continue the todo.
+
+## Continuous todo work: automatic gameplay stereo evidence
+
+Branch `codex/unattended-stereo-evidence-2026-09-07` adds a launcher delivery
+requirement for `AutoEnterHub` and `EnterPsykhanium`; direct runner callers can
+select `RequireSharedStereo`. The viewer's ordinary success can mean only flat
+fallback, so these runs now also require its completed shared-eye presentation
+summary with nonzero fresh shared pairs and submitted frames. Missing,
+duplicate, invalid or zero summaries fail. Live progress lines and reused-frame
+counts cannot substitute. Nonzero harness exit and abnormal game exit remain
+the primary failures; ordinary manual/menu-only launches retain their behavior.
+
+Eight focused offline CTests pass in 3.08 seconds, including the real start
+argument expression and evidence parser. All three edited production scripts
+parse successfully. Configured suite count is now 115; full baseline remains
+113/113 at `e2aa82a`, harness `4298262`. No game, deployment or headset action.
+This verifies delivery counters only: fresh Lua initialization must still be
+checked in the current game log, and worn visual acceptance is pending.
+Continue the todo; no stop instruction has been received.
