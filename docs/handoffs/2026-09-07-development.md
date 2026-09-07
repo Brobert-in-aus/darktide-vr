@@ -1,17 +1,19 @@
 # Development continuation: 7 September 2026
 
 The user resumed development and requested continued work until told to stop.
-They are at work all day and cannot provide in-headset verification. Continue
-automated checks and offline work; keep worn checks pending without waiting for
-immediate feedback. The task has an active 20-minute heartbeat. Automation state
+At 16:17 Brisbane they returned home with the headset and requested setup.
+Prioritize establishing a working live session and their current feedback.
+Worn checks remain pending until actually observed. The task has an active
+20-minute heartbeat, updated for the user's return. Automation state
 and device identifiers remain outside Git.
 
-Latest integrated offline check: **113/113 CTests pass** at `e2aa82a` on the
-`codex/offline-graphics-test-isolation-2026-09-07` candidate (14.84 seconds), with headset
-tests disabled and all 36 Lua chunks compiling. Full Release build baseline is
-`df99611`, with the newer XR harness built at `4298262`. Guardian pause/resume is
+Latest integrated offline check: **121/121 CTests pass** at `28e6cca` (20.73
+seconds), with headset tests disabled and all 37 Lua chunks compiling. Full
+Release build also passes at that baseline; eight focused checks pass for the
+newer mode-query fix `1cdd0fd`. Guardian pause/resume is
 now verified via ADB; a settled Ready attempt still fails at VDXR texture
-creation. Guardian and proximity automation were restored. Darktide is closed;
+creation. Guardian was restored; proximity override is now applied for the
+home setup session. Darktide is closed;
 the day's later candidates remain undeployed. Chronological entries below retain
 their older validation states; the final entries describe the newest changes.
 
@@ -1827,3 +1829,14 @@ regressions failed before the fix and pass for malformed/retiring owners,
 inherited methods and changing contexts. Eight focused CTests pass in 0.86
 seconds, including all 37 Lua chunks. No deployment. Continue with automatic
 Psykhanium entry during loading and manager retirement.
+
+## Home setup and spectator bootstrap repair
+
+The user returned with the headset and restarted both Virtual Desktop ends.
+Ready then passed 600/600 frames (116.016 Hz), clearing the persistent import
+failure without changing Guardian. Evidence: home-restarted-ready-20260907.json.
+Launch deployed 1cdd0fd Lua and 01617d6 native capture, but fresh game logs exposed
+spectator_module=nil during early native-hook initialization. Shared ready stayed
+zero. The owned game was closed and launcher cleanup completed. The module now
+loads before native hooks can initialize; gameplay hook installation stays later.
+Three spectator/compiler/invariant checks pass in 0.92 seconds. Relaunch pending.

@@ -642,6 +642,10 @@ local presentation = {
     hud_panel = nil,
 }
 
+-- Native hooks initialize during this chunk, before gameplay hooks install.
+presentation.spectator_module = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_spectator_input")
+
 -- Stingray 1.6 exposed a native SteamVR namespace when its VR subsystem was
 -- compiled in. Record presence only; do not call or mutate an undocumented
 -- backend in the correctness build.
@@ -5402,8 +5406,6 @@ presentation.controller_bindings = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings"
 ).install(mod)
 presentation.gameplay_input_bindings = presentation.controller_bindings.bindings
-presentation.spectator_module = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_spectator_input")
 presentation.spectator_module.install(mod,mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings"),
     presentation.gameplay_context,function(enabled)

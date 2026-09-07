@@ -3,26 +3,33 @@
 Updated 7 September 2026. This page supersedes historical feasibility documents
 for current defaults and operating instructions.
 
-**Development resumed 7 September:** the user is at work and cannot verify in
-headset today. Continue automated/offline work and record worn checks as pending.
+**Headset setup resumed 7 September, 16:20 Brisbane:** the user is home and has
+restarted both sides of Virtual Desktop. Ready now passes 600/600 rendered
+frames, clearing the day's persistent texture-creation failure. Lua `1cdd0fd`
+and native capture `01617d6` are deployed with hash verification. Darktide is
+starting with Psykhanium entry armed, HUD enabled and generated stereo enabled.
+Fresh game stereo initialization and range entry are being checked; worn
+acceptance remains pending. Proximity override is applied for this live session.
 The saved controller/onboarding candidate initialized in the hub after Ready
 preflight, with fresh stereo messages and nonzero shared_ready. That run is
-closed. All subsequent runtime candidates remain undeployed. Game/XR are closed
-and normal proximity behavior is restored. ADB dismissed the inspected tracking
+closed. The day's subsequent candidates are now deployed for this new session.
+ADB dismissed the inspected tracking
 prompt, and a SideQuest-derived Guardian preference pause/resume route was
 verified by headset logs. It did not fix rendering: the latest settled Ready
 attempt created an OpenXR session but failed creating its first eye texture.
 VDXR reports `-7000`; the application device reports no removal or D3D12 debug
 messages. An opt-in D3D11 diagnostic now exposes two internal OpenSharedResource
 E_INVALIDARG errors without device removal. Restarting the Quest VD client did
-not clear them. The failed import parameters and suspected accidental double tap
-remain unestablished. Guardian was restored with logged confirmation, then proximity
-Enable/Status ran. See [Quest recovery](QUEST-PASSTHROUGH-RECOVERY.md). Continue
+not clear them. Both failed ID3D11Texture2D imports originate inside the VD
+backend and fail on every enumerated non-software adapter. Controlled sharing
+between separate processes succeeds on each adapter; the VD producer's resource
+lifetime and descriptor remain unknown. Accidental double tap remains unproven.
+Guardian was restored with logged confirmation. See [Quest recovery](QUEST-PASSTHROUGH-RECOVERY.md). Continue
 useful offline work; repeat live readiness when new evidence justifies recovery.
 
 Latest requested candidate: [Psykhanium online rules](PSYKHANIUM-ONLINE-RULES.md).
 It defaults on for the next range visit, uses stock input history and firing
-origins, and retains stock movement/combat rules. This source is not deployed;
+origins, and retains stock movement/combat rules. This source is now deployed;
 actual online mission support and worn acceptance remain pending.
 
 [Draft review #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2)

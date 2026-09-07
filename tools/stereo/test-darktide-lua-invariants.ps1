@@ -65,6 +65,12 @@ foreach ($tableName in $trackedTables) {
 # off-centre eye anchor while Darktide's root still faces travel makes both
 # wrist targets trace a fixed-radius circle as the locomotion stick rotates.
 $source = Get-Content -LiteralPath $resolvedSource -Raw
+$spectatorModuleInit = $source.IndexOf('presentation.spectator_module = mod:io_dofile(')
+$nativeHookDefinition = $source.IndexOf('local function ensure_ui_native_hooks()')
+if ($spectatorModuleInit -lt 0 -or $nativeHookDefinition -lt 0 -or
+        $spectatorModuleInit -gt $nativeHookDefinition) {
+    throw 'Load the spectator module before native hooks can initialize its reader during mod loading.'
+}
 $bootstrapPath = Join-Path $repoRoot `
     'mods\darktidevr_stereo_probe\darktidevr_stereo_probe.mod'
 $bootstrap = Get-Content -LiteralPath $bootstrapPath -Raw
