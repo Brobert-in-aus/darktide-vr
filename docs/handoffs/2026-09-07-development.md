@@ -946,3 +946,23 @@ Integration checkpoint `df99611`: full Windows x64 Release preset build and
 `artifacts/unattended/continuous-todo-full-build-df99611-20260907.log` and
 `artifacts/unattended/continuous-todo-full-ctest-df99611-20260907.log`. This is the
 new build/suite baseline; no live checks were performed by that run.
+
+## Continuous todo work: Quest watcher cleanup
+
+Branch `codex/quest-watcher-cleanup-2026-09-07` restores normal proximity
+automation when the reconnect watcher exits. It remembers every authorized
+Quest override attempt, including an ambiguous failed broadcast and a later
+disconnect. Cleanup attempts every remembered device; a restore failure is
+logged and returns failure after the other devices have been handled. Ordinary
+loop faults retain their original error when cleanup succeeds. The isolated
+fixture also reproduced startup failure when the ADB fallback pipeline collapsed
+to a scalar/null under Windows PowerShell; fallback discovery now preserves an
+array before appending a PATH client.
+
+The actual watcher and proximity scripts run against an isolated fake ADB client
+with simulated polling/time, covering normal exit, disconnect, failed apply,
+loop failure and one failed restore among two devices. No real ADB invocation,
+proximity change, wait or headset launch occurs in this test. Two focused CTests
+pass (watcher cleanup and XR readiness); the inventory is now 111 tests, while
+the last full suite/build remains the 110-test `df99611` checkpoint. Continue
+offline work; this tool fix does not resolve the current VDXR renderability fault.

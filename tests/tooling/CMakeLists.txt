@@ -1,5 +1,7 @@
 
 if(BUILD_TESTING)
+  add_test(NAME quest_watcher_cleanup COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-quest-watcher.ps1")
   add_test(NAME validate-xr-readiness COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/validate-xr-readiness.ps1")
   add_test(NAME lua_source_compile COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File

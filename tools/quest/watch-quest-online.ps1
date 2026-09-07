@@ -15,7 +15,8 @@ $ErrorActionPreference = 'Stop'
 $adbFallbacks = @(
     (Join-Path $env:LOCALAPPDATA 'Android\Sdk\platform-tools\adb.exe'),
     (Join-Path $env:APPDATA 'SideQuest\platform-tools\adb.exe')
-) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+)
+$adbFallbacks = @($adbFallbacks | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
 $adbCommand = Get-Command adb -ErrorAction SilentlyContinue
 if ($adbCommand -and $adbFallbacks -notcontains $adbCommand.Source) {
     $adbFallbacks += $adbCommand.Source
@@ -26,6 +27,8 @@ if ($adbFallbacks.Count -eq 0) {
 
 $proximityScript = Join-Path $PSScriptRoot 'set-proximity-override.ps1'
 $applied = @{}
+# Keep cleanup responsibility even when a device disappears from a poll.
+$restoreDevices = @{}
 $lastAdb = $null
 
 function Get-AdbCandidates {
@@ -111,6 +114,7 @@ try {
                         $model = (& $activeAdb -s $device shell getprop `
                             ro.product.model 2>&1).Trim()
                         if ($LASTEXITCODE -eq 0 -and $model -match '^Quest') {
+                            $restoreDevices[$device] = $activeAdb
                             $result = & $proximityScript `
                                 -Action Disable -Device $device `
                                 -AdbPath $activeAdb 2>&1
@@ -145,5 +149,21 @@ catch {
     throw
 }
 finally {
+    $restoreFailures = 0
+    foreach ($device in @($restoreDevices.Keys)) {
+        try {
+            $result = & $proximityScript -Action Enable -Device $device `
+                -AdbPath $restoreDevices[$device] 2>&1
+            if ($LASTEXITCODE -ne 0) { throw ($result -join ' ') }
+            Write-WatcherLog "listener=restored device=$device result=$($result -join ' ')"
+        }
+        catch {
+            $restoreFailures++
+            Write-WatcherLog "listener=restore_failed device=$device error=$($_.Exception.Message)"
+        }
+    }
     Write-WatcherLog "listener=stopped pid=$PID"
+    if ($restoreFailures) {
+        throw "Could not restore proximity automation on $restoreFailures Quest device(s); see $LogPath"
+    }
 }
