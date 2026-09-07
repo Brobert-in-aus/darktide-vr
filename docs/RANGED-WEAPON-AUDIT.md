@@ -375,3 +375,32 @@ from barrel back toward the face, fails to hit enemies in their test, and its
 reticle appears about 45 degrees above-left of the expected barrel direction.
 This is a failed gun visual/aim/hit check despite stock dispatch. Trace the
 actual hit endpoint, local-body collisions and barrel transform next.
+
+The next diagnostic session (console beginning 09:06:35 UTC) confirms the cause:
+lasgun hits end at the exact firing origin, with zero-distance collisions on the
+VR left/body and right-hand profile copies. Stock skips the real attacker unit;
+it treats these separate, non-damageable copied character actors as blockers.
+The user completed the requested shots and observed no change, as expected for
+an observation-only build.
+
+The correction disables collision and scene-query participation on actors of
+the locally spawned visual profile roots when they become ready. A guard rejects
+the gameplay source body; stock ray filters, hit processing and damage are not
+modified. The fixture verifies both collision flags and no repeated cleanup on
+a stable ready hand. The hit diagnostic remains to verify that these objects
+disappear from the real shot's collision list after deployment.
+
+A separate visual alignment module resolves the equipped gun's third-person
+muzzle and rotates only the hidden weapon-attachment node so that muzzle
+orientation follows dominant controller aim. It preserves attachment translation
+and the accepted anatomical hand pose. It restores its last rotation before the
+next solve, respects intervening animation writes, and releases ownership for
+staff, reload/melee/wield actions, missing tracking and inactive contexts. The
+current right-handed presentation is required; other handedness remains open.
+This does not alter first-person simulation aim or randomized firing spread.
+
+Nine focused CTests pass in 1.18 seconds, including 43 Lua chunks/invariants,
+collision/readiness, equipment-hand synchronization and the new 120-pose
+multi-axis alignment fixture. The normal configured count is now 126; no full
+126-test run is claimed. Native components remain unchanged. Deployment and
+worn enemy-hit/barrel/reticle checks are the next boundary.

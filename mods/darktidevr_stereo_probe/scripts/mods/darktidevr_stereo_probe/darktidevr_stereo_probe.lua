@@ -10501,6 +10501,9 @@ mod:hook_safe(
             controller_observation.last_sequence,
             self._world,
             player_unit)
+        if ok and presentation.gun_alignment then
+            presentation.gun_alignment.update(self._world, player_unit)
+        end
         local ik_end = performance_tick()
         if presentation_start and ik_start and ik_end and ui_native_capture then
             local weapon_ticks =
@@ -13320,6 +13323,9 @@ presentation.projectile_visual = mod:io_dofile(
 ).install(mod, presentation)
 presentation.ranged_evidence = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_ranged_evidence"
+).install(mod, presentation)
+presentation.gun_alignment = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gun_alignment"
 ).install(mod, presentation)
 
 mod:io_dofile(

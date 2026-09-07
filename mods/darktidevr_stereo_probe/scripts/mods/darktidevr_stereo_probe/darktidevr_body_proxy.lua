@@ -325,6 +325,17 @@ local function spawn_rigid_hands(world, source_unit, profile)
     spawn_rigid_hand(world, source_unit, profile, "right")
 end
 
+local function disable_visual_colliders(unit)
+    assert(unit~=state.source_unit,'Visual collision cleanup cannot own the gameplay body')
+    local count=Unit.num_actors(unit)
+    for index=1,count do
+        local actor=Unit.actor(unit,index)
+        Actor.set_collision_enabled(actor,false)
+        Actor.set_scene_query_enabled(actor,false)
+    end
+    print('DARKTIDEVR_IK visual_colliders=disabled actors='..count)
+end
+
 local function update_rigid_hand(hand, dt, t)
     if hand.failure then
         return nil
@@ -345,6 +356,7 @@ local function update_rigid_hand(hand, dt, t)
     end
     local unit = hand.profile_spawner:spawned_character_unit()
     if unit and Unit.alive(unit) then
+        if hand.unit~=unit or not hand.ready then disable_visual_colliders(unit) end
         hand.unit = unit
         if not hand.ready then show_rigid_hand_surface(hand) end
         hand.ready = true
@@ -506,6 +518,7 @@ function BodyProxy.update(
     end
     local unit = state.profile_spawner:spawned_character_unit()
     if unit and Unit.alive(unit) then
+        if state.unit~=unit or not state.ready then disable_visual_colliders(unit) end
         Unit.set_local_position(unit, 1, Unit.local_position(source_unit, 1))
         Unit.set_local_rotation(unit, 1, Unit.local_rotation(source_unit, 1))
         inherit_authoritative_pose(unit, source_unit)
