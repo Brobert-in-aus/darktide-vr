@@ -350,7 +350,7 @@ class OpenXrProbe {
       std::cout << "openxr.swapchain_format[" << index
                 << "]=" << formats[index] << '\n';
     }
-    create_swapchains(formats, create_projection_swapchains);
+    create_swapchains(formats, create_projection_swapchains, device);
   }
 
   void run_frame_lifecycle(std::uint32_t frame_count, ID3D12Device* device,
@@ -4455,7 +4455,7 @@ class OpenXrProbe {
   }
 
   void create_swapchains(const std::vector<std::int64_t>& formats,
-                         bool create_projection_swapchains) {
+                         bool create_projection_swapchains, ID3D12Device* device) {
     const std::array<std::int64_t, 4> preferred_formats{
         DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
         DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM};
@@ -4486,8 +4486,40 @@ class OpenXrProbe {
       create_info.arraySize = 1;
       create_info.mipCount = 1;
       XrSwapchain swapchain{XR_NULL_HANDLE};
-      check_xr(xrCreateSwapchain(session_, &create_info, &swapchain),
-               "xrCreateSwapchain");
+      const auto create_result = xrCreateSwapchain(session_, &create_info, &swapchain);
+      if (XR_FAILED(create_result)) {
+        std::cerr << "openxr.swapchain_failure eye=" << swapchains_.size()
+                  << " result=" << create_result
+                  << " width=" << create_info.width << " height=" << create_info.height
+                  << " format=" << create_info.format << " samples=" << create_info.sampleCount
+                  << " usage=" << create_info.usageFlags << " array=" << create_info.arraySize
+                  << " faces=" << create_info.faceCount << " mips=" << create_info.mipCount
+                  << " device_removed_reason="
+                  << static_cast<std::uint32_t>(device->GetDeviceRemovedReason()) << '\n';
+        ComPtr<ID3D12InfoQueue> messages;
+        if (SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&messages)))) {
+          const auto count = messages->GetNumStoredMessagesAllowedByRetrievalFilter();
+          std::cerr << "openxr.swapchain_failure.d3d12_messages=" << count << '\n';
+          const auto first = count > 8 ? count - 8 : 0;
+          for (auto index = first; index < count; ++index) {
+            SIZE_T bytes{};
+            if (FAILED(messages->GetMessage(index, nullptr, &bytes)) ||
+                bytes < sizeof(D3D12_MESSAGE) || bytes > 1024 * 1024) {
+              continue;
+            }
+            std::vector<std::byte> storage(bytes);
+            auto* message = reinterpret_cast<D3D12_MESSAGE*>(storage.data());
+            if (SUCCEEDED(messages->GetMessage(index, message, &bytes))) {
+              std::cerr << "openxr.swapchain_failure.d3d12 id=" << message->ID
+                        << " severity=" << message->Severity << " text="
+                        << (message->pDescription ? message->pDescription : "unavailable") << '\n';
+            }
+          }
+        } else {
+          std::cerr << "openxr.swapchain_failure.d3d12_messages=unavailable\n";
+        }
+      }
+      check_xr(create_result, "xrCreateSwapchain");
       swapchains_.push_back(swapchain);
 
       std::uint32_t image_count{};
