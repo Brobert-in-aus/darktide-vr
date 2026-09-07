@@ -72,6 +72,7 @@ function Bindings.install(mod)
     local api = {held=0,bindings={},revision=0,context="combat",
         support_grip={held=false,pressed=false,released=false,cancelled=false}}
     local previous_physical, grip_claim = 0, nil
+    local previous_contributors=0
     local masks, resolved = {}, {}
     local dirty, blocked, active = true, 0, false
     local stick_held, stick_active = 0, false
@@ -204,12 +205,18 @@ function Bindings.install(mod)
         end
         previous_physical=physical
         local next_held = 0
+        local contributors,physical_releases=0,0
         if active then
             local available = bit.band(physical,bit.bnot(blocked))
             for _,control in ipairs(Bindings.controls) do
+                if not reset_grip and bit.band(previous_contributors,control.bit)~=0 and
+                    bit.band(physical,control.bit)==0 and (not control.axis or axes_valid) then
+                    physical_releases=bit.bor(physical_releases,resolved[control.id])
+                end
                 if bit.band(available,control.bit)~=0 and
                     (not grip_claim or control.bit~=grip_claim.bit) then
                     next_held = bit.bor(next_held,resolved[control.id])
+                    contributors=bit.bor(contributors,control.bit)
                 end
             end
             if grip_claim then
@@ -217,11 +224,14 @@ function Bindings.install(mod)
                 grip.held=true
             end
         end
+        previous_contributors=contributors
         local pressed = bit.band(next_held,bit.bnot(api.held))
         -- Losing the stick's tracking/validity cancels its contribution. Keep
         -- semantic history for healthy button aliases so they do not retrigger.
-        local released = bit.band(api.held,bit.bnot(next_held),
-            bit.bnot(bit.bor(cancelled_axes,cancelled_grip)))
+        -- A cancelled contributor must not swallow a healthy alias's real
+        -- release in the same frame. Cancelled-only actions still emit no edge.
+        local cancelled=bit.band(bit.bor(cancelled_axes,cancelled_grip),bit.bnot(physical_releases))
+        local released = bit.band(api.held,bit.bnot(next_held),bit.bnot(cancelled))
         api.held = next_held
         return pressed,next_held,released
     end

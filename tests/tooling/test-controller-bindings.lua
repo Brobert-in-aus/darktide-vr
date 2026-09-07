@@ -219,6 +219,17 @@ aliases.sample(true,0,0,0,true,1)
 assert(aliases.sample(true,0,0,1,true,1)==2048)
 ap,ah,ar=aliases.sample(true,0,0,1,false,1)
 assert(ap==0 and ah==0 and ar==0,'Axis-only cancellation emitted a charged release')
+aliases.sample(true,0,0,0,true,1)
+aliases.sample(true,1,0,1,true,1)
+ap,ah,ar=aliases.sample(true,0,0,1,false,1)
+assert(ap==0 and ah==0 and ar==2048,'Same-frame healthy button release was swallowed by axis loss')
+-- A physically held but blocked alias never contributed and cannot turn a
+-- cancelled axis into a release when that blocked button returns neutral.
+aliases.sample(false,1,0,0,true,1)
+aliases.sample(true,1,0,0,true,1)
+aliases.sample(true,1,0,1,true,1)
+ap,ah,ar=aliases.sample(true,0,0,1,false,1)
+assert(ap==0 and ah==0 and ar==0,'Blocked alias manufactured a release during axis cancellation')
 
 -- A contextual support grip owns the physical gesture, before remapped actions
 -- are aggregated. Other controls bound to either action remain independent.
@@ -260,6 +271,9 @@ grip_sample(0,0,0,0,false,grip_request)
 grip_sample(512+2,2,2,0,true,grip_request)
 grip_sample(512+2,0,2,0,false,nil) -- An ordinary aim alias survives cancellation.
 grip_sample(512,0,0,2,false,nil) -- Its real release must still be delivered.
+grip_sample(0,0,0,0,false,grip_request)
+grip_sample(512+2,2,2,0,true,grip_request)
+grip_sample(512,0,0,2,false,nil) -- Same-frame alias release survives support cancellation.
 grip_sample(0,0,0,0,false,grip_request)
 grip_settings.vr_bind_right_trigger='blitz'
 grip_mod.on_setting_changed('vr_bind_right_trigger')
