@@ -51,6 +51,42 @@ for _,key in ipairs({'left_pressed','left_released','left_hold','right_pressed',
         'middle_hold','confirm_pressed'}) do assert(combined:get(key),key..' suppressed') end
 assert(combined:get('scroll_axis')[1]==2 and combined:get('scroll_axis')[2]==5,
     'mouse wheel must combine with VR scrolling')
+-- A desktop wheel event must use the desktop's physical cursor, even while a
+-- stationary controller ray hits a different part of the menu.
+local wheel_reads=0
+local function desktop_cursor()
+    wheel_reads=wheel_reads+1
+    return 100,200,1000,500,true
+end
+local wheel_sample={override=true,x=900,y=800,scroll=0}
+local wheel_proxy=menu.proxy(desktop_source,null,wheel_sample,vector,desktop_cursor,2000,1000)
+assert(wheel_proxy:get('cursor')[1]==200 and wheel_proxy:get('cursor')[2]==400,
+    'Desktop wheel used the controller cursor')
+local repeated_wheel=menu.proxy(desktop_source,null,wheel_sample,vector,
+    function() error('Resampled a cursor within the same UI frame') end,2000,1000)
+assert(repeated_wheel:get('cursor')[1]==200 and wheel_reads==1)
+assert(repeated_wheel:get('scroll_axis')[2]==3,'Desktop wheel magnitude changed')
+for _,gesture in ipairs({'held','released','pressed','secondary_held','secondary_released','secondary_pressed','scroll'}) do
+    local sample={override=true,x=900,y=800,scroll=0}; sample[gesture]=gesture=='scroll' and 1 or true
+    local routed=menu.proxy(desktop_source,null,sample,vector,desktop_cursor,2000,1000)
+    assert(routed:get('cursor')[1]==900 and wheel_reads==1,'Desktop wheel moved an XR gesture')
+end
+for _,read in ipairs({
+    function() error('retired window') end,
+    function() return 100,200,1000,500,false end,
+    function() return -1,200,1000,500,true end,
+    function() return 1000,200,1000,500,true end,
+    function() return 100,500,1000,500,true end,
+    function() return 100,200,0,500,true end,
+    function() return 0/0,200,1000,500,true end,
+}) do
+    local routed=menu.proxy(desktop_source,null,{override=true,x=900,y=800,scroll=0},vector,read,2000,1000)
+    assert(routed:get('cursor')[1]==900,'Invalid desktop point replaced XR input')
+end
+local idle_desktop={get=function() return vector(0,0,0) end}
+local idle=menu.proxy(idle_desktop,null,{override=true,x=900,y=800,scroll=0},vector,
+    function() error('Idle mouse requested a desktop point') end,2000,1000)
+assert(idle:get('cursor')[1]==900,'Previous wheel event retained cursor ownership')
 assert(sample(2)==s, 'update/draw/eye passes must share an immutable input frame')
 p.primary_pressed=false
 p.x=800
@@ -293,3 +329,24 @@ assert(secondary_service:get('right_hold') and consumed.secondary==1)
 local again=hook(function() return desktop_source,null,false end,handler)
 assert(again:get('right_hold') and consumed.secondary==1)
 print('menu_secondary: shared route, independent holds, tracking, modal/restart quarantine and edge consumption passed')
+
+-- Both shared service entry points use the same physical/canvas mapping and
+-- immutable point. Stock null-service suppression still wins before any read.
+presentation.mode=5
+presentation.read_desktop_mirror=desktop_cursor
+desktop_source.null_service=function() return null end
+p.frame_id,p.primary_down,p.primary_pressed=1000,false,false
+p.secondary_down,p.secondary_pressed,p.scroll_steps=false,false,0
+p.available,p.active=true,true
+handler._active_popups={}
+Managers.ui=handler
+local reads_before=wheel_reads
+hook(function() return desktop_source,null,false end,handler) -- Route the previous XR release first.
+assert(wheel_reads==reads_before)
+p.frame_id=1001
+local routed=hook(function() return desktop_source,null,false end,handler)
+assert(math.abs(routed:get('cursor')[1]-249.6)<1e-9 and math.abs(routed:get('cursor')[2]-1075.2)<1e-9)
+local routed_direct=direct_hook(function() return desktop_source end,{},'View')
+assert(routed_direct:get('cursor')[1]==routed:get('cursor')[1] and wheel_reads==reads_before+1)
+assert(hook(function() return null,null,false end,handler)==null and wheel_reads==reads_before+1)
+print('menu_desktop_wheel=pass physical_cursor immutable_frame xr_gesture_priority shared_services')

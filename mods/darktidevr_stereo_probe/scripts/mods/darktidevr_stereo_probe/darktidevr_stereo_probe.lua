@@ -13198,11 +13198,12 @@ presentation.hud_panel = mod:io_dofile(
 )
 presentation.hud_panel.mirror_width = ui_mirror_client_width
 presentation.hud_panel.mirror_height = ui_mirror_client_height
-presentation.hud_panel.read_mirror = function()
+presentation.read_desktop_mirror = function()
     local values = presentation.hud_mirror_values
     if not ui_native_capture or not values or ui_native_capture.dtvr_read_mirror_cursor(values,5) ~= 0 then return end
     return tonumber(values[0]),tonumber(values[1]),tonumber(values[2]),tonumber(values[3]),values[4] ~= 0
 end
+presentation.hud_panel.read_mirror = presentation.read_desktop_mirror
 presentation.hud_panel.install(mod)
 presentation.gameplay_ui = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gameplay_ui_input"

@@ -116,11 +116,38 @@ function MenuInput.character_select_readiness(view, input_blocked)
     return not not (not blocked), not not start_ready, reason
 end
 
-function MenuInput.proxy(source, null_service, sample, vector)
+local function finite(value)
+    return type(value)=="number" and value==value and math.abs(value)<math.huge
+end
+
+function MenuInput.proxy(source, null_service, sample, vector, read_desktop, width, height)
     if not sample.override then return source end
+    -- The mouse wheel was already preserved, but its hit test still used the
+    -- tracked ray. Snapshot the physical desktop point once for this UI frame.
+    -- An active XR gesture keeps its target until its release has been routed.
+    if not sample.desktop_scroll_checked then
+        sample.desktop_scroll_checked = true
+        if read_desktop and not sample.held and not sample.released and not sample.pressed and
+                not sample.secondary_held and not sample.secondary_released and not sample.secondary_pressed and
+                (sample.scroll or 0)==0 then
+            local wheel = source:get("scroll_axis")
+            local dx = wheel and (wheel.x or wheel[1]) or 0
+            local dy = wheel and (wheel.y or wheel[2]) or 0
+            if finite(dx) and finite(dy) and (dx~=0 or dy~=0) then
+                local ok,x,y,w,h,foreground = pcall(read_desktop)
+                if ok and foreground==true and finite(x) and finite(y) and finite(w) and finite(h) and
+                        finite(width) and finite(height) and w>0 and h>0 and width>0 and height>0 and
+                        x>=0 and x<w and y>=0 and y<h then
+                    sample.desktop_scroll_x, sample.desktop_scroll_y = x*width/w, y*height/h
+                end
+            end
+        end
+    end
     local proxy = {}
     function proxy:get(action)
-        if action == "cursor" then return vector(sample.x, sample.y, 0) end
+        if action == "cursor" then
+            return vector(sample.desktop_scroll_x or sample.x, sample.desktop_scroll_y or sample.y, 0)
+        end
         if action == "left_pressed" then return sample.pressed or source:get(action) end
         if action == "left_released" then return sample.released or source:get(action) end
         if action == "left_hold" then return sample.held or source:get(action) end
@@ -289,7 +316,8 @@ function MenuInput.install(mod, presentation)
         if pointer.secondary_pressed then presentation.consume_menu_secondary(pointer) end
         if pointer.back_pressed then presentation.consume_menu_back(pointer) end
         if (pointer.scroll_steps or 0) ~= 0 then presentation.consume_menu_scroll(pointer) end
-        local proxy = MenuInput.proxy(source, null_service, sample, Vector3)
+        local proxy = MenuInput.proxy(source, null_service, sample, Vector3,
+            presentation.read_desktop_mirror, RESOLUTION_LOOKUP.width, RESOLUTION_LOOKUP.height)
         if proxy ~= source then proxies[proxy] = true end
         if sample.override then gamepad = false end
         return proxy, null_service, gamepad

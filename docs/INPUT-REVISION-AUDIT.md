@@ -227,6 +227,14 @@ menu proxy before changing routing. This launch remained in flat menu mode 5
 with `shared_ready=0`; it does not establish fresh gameplay stereo acceptance.
 The five targeted CTest cases above passed again at final handoff.
 
+7 September offline follow-up: a shared wheel-target mismatch was reproduced.
+Desktop wheel deltas survived, but their cursor could remain on the tracked ray.
+The candidate snapshots the foreground desktop point for a wheel frame through
+the existing physical mirror reader; controller gestures keep their own target.
+Five focused CTests and the 36-chunk gate pass. This is undeployed and does not
+establish the cause of the prior live drag failure. Drag-release ownership and
+duplicate mouse edges remain under investigation in the current handoff.
+
 ## Right-stick turning candidate (6 September)
 
 Smooth turning is now the default, with 45-degree and 90-degree snap modes and an

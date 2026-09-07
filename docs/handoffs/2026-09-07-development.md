@@ -997,3 +997,23 @@ stock fixture passes; no live locomotion/comfort claim or production change.
 The block-selection review also found stock deliberately preserves blocking into
 some attacks, so no simplistic support-hand switch was added. Full build/suite
 baseline stays `df99611`; continue the user's todo until instructed to stop.
+
+## Continuous todo work: desktop wheel target
+
+Branch `codex/menu-desktop-event-ownership-2026-09-07` fixes a reproduced mismatch
+in the common menu adapter: stock desktop wheel deltas were retained while the
+cursor still followed an unrelated controller ray. A wheel event now snapshots
+the foreground desktop's physical cursor through the existing mirror reader,
+maps it to the UI canvas and retains that point across the frame's service
+reads. Active XR press/hold/release and XR scrolling keep their target. Invalid,
+off-window, background or failing desktop reads retain the existing route.
+The mirror reader is shared with the HUD panel; no native ABI change.
+
+Five focused CTests pass (menu input, gameplay UI, HUD panel, Lua
+compile/invariants), including both shared service entry points, coordinate
+mapping, immutable repeated reads and gesture priority; all 36 chunks compile.
+The integration fixture first needed to drain the preceding XR release before
+expecting desktop ownership. This addresses the source-level wheel mismatch,
+not proof of the historical live scroll/drag cause. Desktop drag release and
+possible duplicate mouse-edge transport remain to investigate. Undeployed;
+continue the todo, with full build/suite baseline still `df99611`.
