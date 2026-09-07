@@ -1765,3 +1765,13 @@ Release builds/five focused CTests pass in 2.34 seconds. An initial null-handle
 WARP experiment exited 2173 and was replaced with real shared-resource forwarding;
 do not claim invalid-handle fixture acceptance. No live run with this extension
 yet. One bounded Ready with new parameters is next; game closed/proximity restored.
+
+At 15:48 the run captured two nonzero-handle ID3D11Texture2D imports from the VD
+backend (RVAs 0x524d/0x526b), both E_INVALIDARG. Read-only binary inspection places
+them in backend initialization before the requested eye descriptor is consumed.
+Session IDs match between Codex/shell/Streamer; AMD/NVIDIA report normal status.
+The VD virtual monitor is disabled (code 22), SudoMaker normal; neither was changed.
+See QUEST-PASSTHROUGH-RECOVERY for exact backend identity and evidence limits.
+Complete output/no timeout, Guardian confirmed restored and proximity restored;
+game/harness closed. Next: narrow adapter/resource ownership with read-only or
+isolated graphics checks, not another identical readiness run.

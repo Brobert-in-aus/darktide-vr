@@ -291,3 +291,28 @@ resources across repeated imports. It verifies the eight-record bound. Release
 builds and five focused CTests pass in 2.34 seconds; another bounded Ready run
 with this additional evidence is next. Invalid-handle behavior is not simulated
 as a passing graphics fixture.
+
+At 15:48 the extended Ready run captured exactly two imports from
+VirtualDesktop.LibOVRRT64_1.dll (return RVAs 0x524d and 0x526b). Both handles were
+nonzero; both requested ID3D11Texture2D (6F15AAF2-D208-4E89-9AB4-489535D34F9C)
+and returned 0x80070057/E_INVALIDARG. The same first-eye failure followed.
+Complete output/no timeout, Guardian restored in logs, proximity Enable/Status
+completed, and game/harness closed. Raw parameters remain in ignored
+`artifacts/unattended/quest-import-arguments-20260907-154829.json`.
+
+Read-only inspection of the installed 409,624-byte backend DLL (file version
+1.55.0.0, SHA-256 40340dc298f58f441a63ba30bbbf20c93aca3b8fe8de4d3446db7e3b981f008e)
+locates both calls in its initializer at RVA 0x5070. Its exported
+ovr_CreateTextureSwapChainDX returns -7000 if that initializer returns null,
+before passing the requested swapchain descriptor to the subsequent routine.
+The initializer receives the two handles through its request/event/shared-memory
+helper. This supports investigating backend initialization/resource ownership
+before changing eye format/extent; it does not establish whether the handles are
+stale, belong to another adapter or fail another sharing requirement. No backend
+binary was patched or redistributed.
+
+Read-only process inspection reports the shell, Codex and Streamer in session 11
+(the VD service is in session 0), so it did not find a client/Streamer session-ID
+mismatch. Both physical AMD/NVIDIA adapters report normal status. The Virtual
+Desktop Monitor reports code 22 (disabled), while the SudoMaker virtual display
+reports normal status; no driver/display setting was changed or blamed.
