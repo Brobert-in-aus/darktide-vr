@@ -36,10 +36,10 @@ Offline [UI detail measurement](DLSS-UI-DETAIL.md), precise Present timing and
 and performance investigation. Motion blur remains unresolved; no framerate
 gain or worn acceptance is claimed. Existing old Present timings remain coarse.
 
-Windows x64 full Release build succeeds with the spectator controller candidate
-on `codex/spectator-controller-route-2026-09-07`; the XR harness remains
-at `4298262`. Pinned LuaJIT compiles 37 chunks and the full offline CTest
-checkpoint passes 116/116 in 15.52 seconds, with headset tests disabled and ordinary
+Windows x64 full Release build succeeds through `5ffb1a7`, including the native
+health and spectator changes; the XR harness source remains at `4298262`.
+Pinned LuaJIT compiles 37 chunks and the full offline CTest
+checkpoint passes 118/118 in 18.49 seconds, with headset tests disabled and ordinary
 D3D12 checks now explicitly skipping OpenXR discovery. The stock null-service
 guards cover both render and fixed input updates through `596c459`. Optional
 stock contracts through `b6f74b4` cover input history/replay, movement, combat,

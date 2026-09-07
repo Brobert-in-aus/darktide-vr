@@ -1706,3 +1706,14 @@ PowerShell parsing, the discovery and source-invariant CTests, and the seven-cas
 readiness fixture pass. No live preflight, headset change or deployment was run.
 The other weak-key caches inspected did not show the melee probe's owner cycle;
 no speculative cache changes were made. Continue the todo.
+
+## Integrated validation at 15:22 Brisbane
+
+Full Windows x64 Release build and all 118 configured CTests pass through
+`5ffb1a7` in 18.49 seconds. This integrates the native health boundaries, melee
+tracking/history/collection fixes and Steam discovery with the spectator baseline.
+Headset tests remain OFF; desktop graphics tests explicitly skip OpenXR.
+Evidence: `artifacts/unattended/integrated-118-ctest-20260907.log`. This supersedes
+the previous 116-test full baseline; no deployment or live readiness was run.
+Runtime Lua remains `5906ba9`, native source `01617d6`, XR harness source
+`4298262`. Continue working until instructed to stop.
