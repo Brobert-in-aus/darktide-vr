@@ -94,6 +94,13 @@ Technical authority conclusions above come from the code, not that policy.
    preserves a direction geometrically but does not promise identical speed or
    acceleration because these stock rules are direction-dependent. Minigame
    device axes must continue bypassing locomotion transformations.
+   Stock ledge discovery also follows the recorded aim, before recoil. The
+   optional source contract now confirms this through actual first-person and
+   ledge methods: head-relative movement alone does not find a head-facing ledge
+   while the hand points elsewhere. Preserve server agreement when defining a
+   traversal aim policy; vault admission retains its stock movement, height,
+   distance and carried-object gates. Supplied collisions and yaw-only math do
+   not establish successful real-geometry traversal.
 5. **Use one honest firing origin.** Start with the stock body/eye-derived
    authoritative ray, pointed along hand aim. A visible muzzle-to-target line
    can differ at close range. Converging that ray on a point selected by the

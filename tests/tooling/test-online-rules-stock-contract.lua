@@ -1362,6 +1362,130 @@ for step=0,11 do
         for index=1,4 do assert(h._input_cache[index][1]>=0 and h._input_cache[index][1]<=1) end
     end
 end
+-- Follow authored stock angles into ledge discovery and vault admission. The
+-- collision response is supplied: this establishes ownership and thresholds,
+-- not successful traversal of real level geometry.
+do
+    local saved_aim,saved_cache=aim,h._input_cache
+    local finder_class={}
+    local text=source('extension_systems/ledge_finder/player_unit_ledge_finder_extension')
+    local first=assert(text:find('PlayerUnitLedgeFinderExtension.calculate_ledges =',1,true))
+    local last=assert(text:find('\nlocal RAYCAST_RESULTS_LEFT =',first,true))
+    local collision,significant,queries=false,false,0
+    local last_sweep,last_scan,last_ray
+    local ring={num_ledges=7,ledge_data={}}
+    local flags={true,true}
+    local quat=setmetatable({right=function(q) return Quaternion.rotate(q,Vector3(1,0,0)) end},{__index=Quaternion})
+    local env=setmetatable({PlayerUnitLedgeFinderExtension=finder_class,
+        Quaternion=quat,OBB_HALF_HEIGHT=1.5,OBB_LENGTH=1,PLAYER_RADIUS=.1,
+        _ring_buffer_index=function(frame) assert(frame==71); return 1 end,
+        _significant_obstacles_ring_buffer_index=function(frame) assert(frame==71); return 1 end,
+        PhysicsWorld={linear_obb_sweep=function(world,from,to,extents,rotation,count,...)
+            assert(world=='world' and count==1)
+            assert(table.concat({...},',')=='types,statics,collision_filter,filter_player_mover')
+            queries=queries+1; last_sweep={from=from,to=to,extents=extents,rotation=rotation}
+            return collision and {{}} or nil
+        end},Raycast={cast=function(object,position,direction,distance)
+            assert(object=='raycast' and distance==.8)
+            last_ray={position=position,direction=direction}; return true
+        end}},{__index=_G})
+    setfenv(assert(loadstring(text:sub(first,last-1))),env)()
+    local finder={_unit_data_extension={},_ledge_ring_buffer={ring},
+        _significant_obstacles_ring_buffer=flags,_physics_world='world',
+        _ledge_collision_filter='filter_player_mover',_raycast_object='raycast',
+        _ledge_finder_tweak_data={significant_obstacle_distance=.8},
+        _try_find_ledges=function(_,entries,base,position,forward,right)
+            last_scan={base=base,position=position,forward=forward,right=right}
+            entries.num_ledges=1; return significant
+        end}
+    finder.calculate_ledges=finder_class.calculate_ledges
+    fp._ledge_finder_extension=finder
+    for _,yaw in ipairs({0,math.pi/2,math.pi}) do
+        aim=Quaternion.from_yaw_pitch_roll(yaw,0,0)
+        h._input_cache={{0},{0},{1},{0},{0},{0},{0}}
+        rules.capture(h,71)
+        for _,grounded in ipairs({true,false}) do
+            fp._inair_state_component.on_ground=grounded
+            collision,significant=false,false
+            last_scan,last_ray=nil,nil
+            PlayerUnitFirstPersonExtension.fixed_update(fp,'local',.02,71,71)
+            assert(ring.num_ledges==0 and flags[1]==false and flags[2]==false)
+            assert(not last_scan and not last_ray)
+            local expected=Quaternion.forward(aim)
+            assert(Vector3.length(last_sweep.to-last_sweep.from-expected)<1e-12,
+                'Ledge search must follow recorded hand aim, not independently follow the HMD')
+            assert(math.abs(last_sweep.from[3]-(grounded and 1.7 or 1.3))<1e-12)
+            collision=true
+            PlayerUnitFirstPersonExtension.fixed_update(fp,'local',.02,71,71)
+            assert(ring.num_ledges==1 and not flags[1] and not flags[2] and not last_ray)
+            assert(Vector3.length(last_scan.forward-expected)<1e-12,
+                'Recoil must not rotate the stock ledge discovery ray')
+            significant=true
+            PlayerUnitFirstPersonExtension.fixed_update(fp,'local',.02,71,71)
+            assert(flags[1] and flags[2] and last_ray)
+            assert(Vector3.length(last_ray.position-fp._locomotion_component.position-Vector3(0,0,1.7))<1e-12)
+            assert(Vector3.length(last_ray.direction-expected)<1e-12)
+            local before=queries
+            finder._unit_data_extension.is_resimulating=true
+            PlayerUnitFirstPersonExtension.fixed_update(fp,'local',.02,71,71)
+            assert(queries==before and ring.num_ledges==1 and flags[1] and flags[2],
+                'Replay must retain the recorded ledges without a new physics query')
+            finder._unit_data_extension.is_resimulating=false
+        end
+    end
+    fp._ledge_finder_extension=nil; fp._inair_state_component.on_ground=true
+    local carried,state_name=false,'walking'
+    local loadout={slot_equipped=function(_,_,slot) assert(slot=='slot_luggable'); return carried end}
+    local chunk=assert(loadstring(source('extension_systems/character_state_machine/character_states/utilities/ledge_vaulting')))
+    setfenv(chunk,setmetatable({require=function(path)
+        assert(path=='scripts/extension_systems/visual_loadout/utilities/player_unit_visual_loadout')
+        return loadout
+    end},{__index=_G}))
+    local vault=chunk()
+    local inventory={}
+    local unit_data={read_component=function(_,name)
+        if name=='inventory' then return inventory end
+        if name=='character_state' then return {state_name=state_name} end
+        assert(name=='first_person'); return {rotation=Quaternion.from_yaw_pitch_roll(h._input_cache[5][1],0,0)}
+    end}
+    local function ledge(height,distance,forward)
+        return {height_distance_from_player_unit=height,distance_flat_sq_from_player_unit=distance,
+            forward={unbox=function() return forward or Vector3(0,1,0) end}}
+    end
+    local entries={}
+    local ledges={ledges=function() return #entries,entries end}
+    local limits={allowed_height_distance_min=.5,allowed_height_distance_max=1.5,
+        inair_allowed_height_distance_min=.2,inair_allowed_height_distance_max=2,
+        allowed_flat_distance_to_ledge=1}
+    local function can_enter() return vault.can_enter(ledges,limits,unit_data,input,{}) end
+    for _,yaw in ipairs({0,math.pi/2,math.pi}) do
+        aim=Quaternion.from_yaw_pitch_roll(yaw,0,0)
+        h._input_cache={{0},{0},{1},{0},{0},{0},{0}}
+        rules.capture(h,71)
+        local near=ledge(.5,1); local preferred=ledge(1.5,1)
+        entries={near,preferred}
+        local allowed,selected=can_enter()
+        assert(allowed and selected==preferred,'Stock reverse ledge priority changed')
+        preferred.height_distance_from_player_unit=1.5001
+        allowed,selected=can_enter(); assert(allowed and selected==near)
+        near.distance_flat_sq_from_player_unit=1.0001
+        assert(not can_enter())
+        entries={ledge(.4999,1)}; assert(not can_enter())
+        for _,air in ipairs({'jumping','falling'}) do
+            state_name=air; entries={ledge(.2,1)}; assert(can_enter())
+            entries={ledge(2,1)}; assert(can_enter())
+            entries={ledge(2.0001,1)}; assert(not can_enter())
+        end
+        state_name='walking'; entries={near}; near.distance_flat_sq_from_player_unit=1
+        carried=true; assert(not can_enter()); carried=false
+        entries={}; assert(not can_enter())
+        entries={ledge(1,1,Vector3(1,0,0))}; assert(not can_enter())
+        entries={ledge(1,1)}
+        h._input_cache[1][1],h._input_cache[2][1],h._input_cache[3][1],h._input_cache[4][1]=0,0,0,0
+        assert(not can_enter(),'No movement must not authorize a vault')
+    end
+    aim,h._input_cache=saved_aim,saved_cache
+end
 -- Execute the actual stock selector for forced look, weapon lock, melee
 -- stickiness, ledge hanging, communication/emote wheels and dead ownership.
 local selected_cases={
@@ -1397,4 +1521,5 @@ print('PASS: actual stock targeting retains simulation aim/recoil/sway, assist o
 print('PASS: actual stock block angles/costs, ranged keyword, revive authority, warp-charge cap and break notifications retained')
 print('PASS: actual stock interaction acquisition/holds/cancellation uses simulation pose; revive completion remains server-owned')
 print('PASS: actual stock jumping/falling preserve air steering, drag, gravity and authority; slide entry facing and world friction remain stock')
+print('PASS: stock ledge discovery follows recorded aim and retains replay data; vault admission keeps movement, height, distance and carried-object gates')
 print('LIMIT: isolated engine math, no real quantization, live network or worn acceptance')

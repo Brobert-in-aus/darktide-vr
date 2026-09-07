@@ -98,6 +98,24 @@ by switching the option off before entering the range.
 
 ## What the range does not reproduce
 
+Traversal has an additional stock-aim constraint. First-person fixed update
+passes the recorded aim, before recoil, into ledge discovery. Its forward sweep
+therefore follows the dominant hand in this mode even when movement remains
+head-relative. Vault admission then checks movement against the discovered
+ledge, with stock height/distance limits and the carried-object restriction.
+A ledge in front of the headset can be missed while the hand points elsewhere.
+Changing only the client's discovery direction would not establish agreement
+with an unmodified server. This needs a deliberate traversal aim policy and a
+later live test; no traversal behavior was changed here.
+
+The optional stock-rules fixture now executes the actual first-person-to-ledge
+call, discovery entry method and vault admission. Three horizontal aim headings
+and grounded/airborne offsets retain stock search direction, collision filters,
+obstacle flags and recorded data during replay. Supplied ledges exercise reverse
+priority, height/distance boundaries, air limits, movement and luggable gates.
+Collision hits, ring indices and yaw-only engine math are substitutes; real
+geometry, pitched traversal, climbing and correction convergence remain open.
+
 This is a combat/input compatibility proving mode, not a simulated dedicated
 server. It does not add latency, packet loss, remote prediction correction,
 matchmaking, remote teammates or mission transitions. Those need later tests.

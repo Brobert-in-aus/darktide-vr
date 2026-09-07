@@ -1434,3 +1434,22 @@ start-script default, and ordinary launch/authentication settings remain.
 Both edited PowerShell scripts parse and the diff check passes. No shortcut was
 installed and no game files changed. This closes a development setup gap; it
 does not provide a clean installer or complete portable-release acceptance.
+
+## Continuous todo work: stock ledge and vault ownership
+
+Branch `codex/stock-vaulting-contract-2026-09-07` extends the optional stock-rules
+fixture through actual first-person ledge dispatch, ledge discovery entry and
+vault admission. Three yaw headings, grounded/airborne offsets, absent/present
+collisions and significant obstacles retain stock direction/filter/flag rules.
+Resimulation retains existing ledge results without another physics query.
+Supplied ledges cover reverse selection, height/distance boundaries, air limits,
+zero/wrong-direction movement and the luggable restriction. The complete
+optional stock-rules fixture passes with the pinned LuaJIT validator.
+
+Finding: ledge discovery uses recorded simulation aim before recoil, so the
+online-rules candidate searches toward the hand even when walking remains
+head-relative. This is an explicit traversal limitation, not a client-only
+direction change to make silently. Collision responses, ring indices and
+yaw-only math are substitutes; no real geometry, pitched traversal, climbing or
+live server acceptance. No production code or deployment changed. The offline
+full-suite baseline and harness build remain unchanged. Continue the todo.
