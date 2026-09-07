@@ -35,6 +35,13 @@ five focused CTests pass (1.18 seconds), with all 41 chunks compiling. The user
 also suspected that collider movement was carrying their head along, which is
 consistent with the missing repayment. The first game was asked to close for
 the corrected deployment; worn retest remains pending.
+Correction `38f356c` was deployed after a new Ready pass and relaunched with HUD,
+generated stereo and the closed-game range request. Console starting 08:50:52
+UTC confirms fresh target transport, stereo and range entry by 08:51:54. The
+harness reaches `shared_ready=604` with zero interval fallback; one cumulative
+pose mismatch is present. No mod WARNING/ERROR appears in the checked fresh
+console. The user has been asked to repeat one sideways step then stand still.
+Evidence: `artifacts/unattended/roomscale-repayment-*20260907.*` (ignored).
 
 At 16:17 Brisbane they returned home with the headset and requested setup.
 They later closed Virtual Desktop for a break. Continue offline; at the roomscale
