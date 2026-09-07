@@ -1503,3 +1503,15 @@ keys do not sweep across the preceding trajectory. No deployment/headset work;
 full suite remains 113/113 at `e2aa82a`, configured count 115, harness `4298262`.
 The non-damaging probe remains opt-in and contact acceptance remains with the
 user. Continue the todo.
+
+## Continuous todo work: melee probe correction recovery
+
+Branch `codex/melee-probe-correction-history-2026-09-07` closes the corresponding
+diagnostic replay gap. Skipping a replay query previously retained the preceding
+trajectory, allowing the next live sample to sweep across a correction. Replay
+now clears only the old pose; the simulation ledger remains intact. The first
+recovered tick uses a fresh pose, and repeating that tick still cannot query.
+The regression fails before the fix and passes after it. Six focused CTests,
+including all 36 chunks through LuaJIT, pass in 0.78 seconds. No damage path,
+network behavior, deployment or headset action changed. Continue offline work;
+the full-suite and harness baselines remain unchanged.

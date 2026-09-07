@@ -49,4 +49,12 @@ before = calls
 assert(not sample(6,1.02,math.pi/2,true,false) and calls == before)
 fail = false
 assert(sample(7,1.04,math.pi/2,true,false).query_count == 2)
+before = calls
+assert(not sample(8,1.06,0,true,true) and calls == before)
+local after_correction = assert(sample(8,1.06,0,true,false))
+assert(after_correction.plan.reason == "fresh_pose" and after_correction.query_count == 2,
+    "Correction replay retained a trajectory across the simulation pose change")
+before = calls
+assert(not sample(8,1.06,0,true,false) and calls == before,
+    "Correction recovery reset the already claimed simulation tick")
 print("non-damaging melee query orchestration, arc sampling and history recovery passed")

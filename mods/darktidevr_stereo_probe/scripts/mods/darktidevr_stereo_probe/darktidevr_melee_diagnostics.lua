@@ -21,7 +21,12 @@ function Diagnostics.sample(state, request)
     end
     local accepted, reason = state.simulation.begin_step(state.tick, request.step)
     if not accepted then
-        if reason == "invalid_tracking" then state.previous = nil end
+        -- Correction replay may move the body's coordinate reference. Skip
+        -- queries during replay and do not join the corrected pose to an old
+        -- trajectory on recovery. Keep the simulation tick ledger intact.
+        if reason == "invalid_tracking" or reason == "resimulation" then
+            state.previous = nil
+        end
         return nil, reason
     end
     local planner = state.planner

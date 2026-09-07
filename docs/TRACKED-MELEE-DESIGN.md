@@ -106,6 +106,13 @@ reproduced cross-publisher history reuse before the fix; seven focused checks,
 including all 36 Lua chunks, pass. The probe still applies no damage, and this
 does not establish contact or calibration acceptance.
 
+Correction replay now retires the diagnostic trajectory too. Replay still runs
+no physics queries, and the first subsequent accepted tick starts from a fresh
+pose instead of sweeping across the correction. The simulation ledger remains
+intact, so a repeated recovered tick cannot query again. A regression reproduces
+the old retained trajectory; six focused checks and the 36-chunk compiler gate
+pass. This is probe history handling, not damage/prediction reconciliation.
+
 Deduplicate multiple hurtboxes, repeated substeps and duplicate physics results
 per target before applying cooldowns. Cooldowns use simulation-clock deadlines
 and stable unit generation identities. Do not clear them on a pose-history reset
