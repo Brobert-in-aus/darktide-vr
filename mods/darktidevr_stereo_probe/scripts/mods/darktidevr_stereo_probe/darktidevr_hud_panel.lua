@@ -249,14 +249,18 @@ function HudPanel.request_editor()
     if not state.enabled or not state.owner or not state.display_ready then
         return false, "hud_editor_gameplay"
     end
-    state.editor_requested = not state.editor_requested
+    -- Menu close can coincide with a new HUD's update before draw retires the
+    -- old resources. Only the HUD that accepted this request may consume it.
+    state.editor_requested = not state.editor_requested and state.owner or nil
     return true, state.editor_requested and "hud_editor_close_menu" or "hud_editor_cancelled"
 end
 
-function HudPanel.update_editor_request()
+function HudPanel.update_editor_request(owner)
     if not state.editor_requested then return end
     local custom = custom_hud()
-    if not state.enabled or not custom or type(custom.toggle_hud_customization) ~= "function" or
+    if not state.enabled or not state.display_ready or not state.owner or
+            state.editor_requested ~= state.owner or owner ~= state.owner or
+            not custom or type(custom.toggle_hud_customization) ~= "function" or
             (custom.is_enabled and not custom:is_enabled()) then
         state.editor_requested = nil
         return
@@ -802,7 +806,7 @@ function HudPanel.install(mod)
     end
     mod:hook("UIHud", "update", function(func, self, dt, t, input_service)
         update_enabled_flag(mod, t or 0)
-        HudPanel.update_editor_request()
+        HudPanel.update_editor_request(self)
         local editor = self._elements and self._elements.HudElementCustomizer
         if state.enabled and editor and not editor._setup_complete then
             HudPanel.layout_status(self)

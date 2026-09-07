@@ -93,14 +93,14 @@ assert(not panel.request_editor())
 state.display_ready=true
 Managers={ui={_view_handler={using_input=function() return blocked end}}}
 assert(panel.request_editor())
-panel.update_editor_request()
+panel.update_editor_request(owner)
 assert(toggles==0 and state.editor_requested)
 assert(panel.request_editor()) -- Cancel before closing menus.
 blocked=false
-panel.update_editor_request()
+panel.update_editor_request(owner)
 assert(toggles==0)
 assert(panel.request_editor())
-panel.update_editor_request(); panel.update_editor_request()
+panel.update_editor_request(owner); panel.update_editor_request(owner)
 assert(toggles==1 and panel.editing() and not state.editor_requested)
 local drawn, rects = {}, 0
 Vector3=function(x,y,z) return {x,y,z} end
@@ -121,6 +121,30 @@ panel.draw_editor_notice(resource)
 assert(#drawn==2,'editor instruction persisted after close')
 assert(panel.request_editor())
 custom.is_enabled=function() return false end
-panel.update_editor_request()
+panel.update_editor_request(owner)
 assert(not state.editor_requested and toggles==1)
+custom.is_enabled=function() return true end
+-- A queued request must not cross a HUD replacement before draw retires the
+-- old resources, or open against a display that stopped being ready.
+for _,transition in ipairs({'display_lost','owner_replaced','foreign_update'}) do
+    state.owner,state.display_ready=owner,true
+    blocked=true
+    assert(panel.request_editor())
+    panel.update_editor_request(owner)
+    blocked=false
+    local update_owner=owner
+    if transition=='display_lost' then state.display_ready=false
+    elseif transition=='owner_replaced' then state.owner={}
+    else update_owner={} end
+    if transition=='foreign_update' then
+        hooks.update(function(self) assert(self==update_owner) end,update_owner,0.01,5,{})
+    else
+        panel.update_editor_request(update_owner)
+    end
+    assert(toggles==1 and not state.editor_requested,
+        'queued HUD editor request survived '..transition)
+    state.owner,state.display_ready=owner,true
+    panel.update_editor_request(owner)
+    assert(toggles==1,'cancelled editor request returned with its old owner')
+end
 print('hud_options=pass defaults=accepted angular_distance=preserved fixed_refresh=once')

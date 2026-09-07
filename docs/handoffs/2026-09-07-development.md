@@ -1200,3 +1200,18 @@ failed with the existing VDXR swapchain error `-7000`. Guardian was restored wit
 logged `1 -> 0`, and proximity Enable/Status ran in `finally`. No deployment or
 Darktide launch; double-tap cause and tracking recovery remain unproven. Continue
 offline work; do not repeatedly retry the same runtime failure without new evidence.
+
+## Continuous todo work: HUD editor request ownership
+
+Branch `codex/hud-editor-request-owner-2026-09-07` ties a queued editor request to
+the HUD that accepted it. Menu-close delivery rechecks display readiness and
+both retained/current-update ownership, cancelling across HUD replacement,
+foreign update or display loss. The request cannot revive when the old owner
+returns. Existing second-click cancellation and ordinary menu-close delivery
+remain intact.
+
+The real module fixture reproduced editor opening after display readiness was
+lost. Four focused CTests pass after the fix, including HUD routing/options and
+Lua compile/invariants; all 36 chunks compile. The replacement-before-draw case
+also runs the actual registered HUD update hook. Undeployed; live menu/editor
+transition and saved-position acceptance remain pending. Continue the todo.
