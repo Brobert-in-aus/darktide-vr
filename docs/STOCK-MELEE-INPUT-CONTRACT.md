@@ -61,6 +61,18 @@ All three pass against cached source snapshot
 & build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-authority-stock-contract.lua _downloads/Darktide-Source-Code
 ```
 
+`tests/tooling/test-melee-preview-spline-stock-contract.lua` additionally loads
+the full stock exported-spline evaluator and real force-sword animation matrices.
+The preview's seven sampled damage-window frames agree with independent raw
+matrix calculations at three reference orientations, including anchor offset,
+weapon extents, center and tip. Engine value types and the selected action's
+parameters are fixtures. This validates geometry sampling, not live rendering or
+damage, and does not replace the user's worn check.
+
+```powershell
+& build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-preview-spline-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_preview.lua
+```
+
 For the next worn check use the focused [first-swing preview candidate](STOCK-MELEE-PREVIEW.md)
 in PR #11. Visibility and local swing correspondence do not establish server
 damage. Preserve the current remote-mission gate until authoritative behavior,
