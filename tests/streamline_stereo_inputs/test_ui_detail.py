@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import tempfile
+from unittest import mock
 
 import numpy as np
 
@@ -11,6 +13,16 @@ spec.loader.exec_module(detail)
 
 
 class UiDetail(unittest.TestCase):
+    def test_cli_rejects_bitmap_extent_before_writing_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "report.json"
+            with mock.patch.object(detail.generated_ui, "verify_match", return_value={"width": 256, "height": 128}), \
+                    mock.patch.object(detail.generated_ui.ui_alpha, "read_rgba", return_value=np.zeros((128, 128, 4), dtype=np.uint8)), \
+                    mock.patch("sys.argv", ["measure", "ui", "generated.bmp", "--output", str(destination)]):
+                with self.assertRaisesRegex(ValueError, "logged RGBA8 extent"):
+                    detail.main()
+            self.assertFalse(destination.exists())
+
     def setUp(self):
         self.ui = np.full((32, 32, 4), 255, dtype=np.uint8)
         self.ui[:, :, :3] = np.random.default_rng(72).integers(20, 235, (32, 32, 3), dtype=np.uint8)

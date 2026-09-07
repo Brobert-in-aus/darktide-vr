@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 import unittest
 import tempfile
+from unittest import mock
 
 import numpy as np
 
@@ -12,6 +13,16 @@ spec.loader.exec_module(module)
 
 
 class GeneratedUiCheck(unittest.TestCase):
+    def test_cli_rejects_bitmap_extent_before_writing_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "report"
+            with mock.patch.object(module, "verify_match", return_value={"width": 256, "height": 128}), \
+                    mock.patch.object(module.ui_alpha, "read_rgba", return_value=np.zeros((128, 128, 4), dtype=np.uint8)), \
+                    mock.patch("sys.argv", ["compare", "ui", "generated.bmp", "--output", str(destination)]):
+                with self.assertRaisesRegex(ValueError, "logged RGBA8 extent"):
+                    module.main()
+            self.assertFalse(destination.exists())
+
     def setUp(self):
         self.ui = np.zeros((128, 128, 4), dtype=np.uint8)
         self.ui[40:80, 40:80, :3] = np.random.default_rng(12).integers(30, 255, (40, 40, 3))
@@ -54,6 +65,21 @@ class GeneratedUiCheck(unittest.TestCase):
                                                      "NGX_COPY phase=exported " + exported)
             logs()
             self.assertEqual(module.verify_match(stem, output)["left_call"], "20")
+            metadata = module.verify_match(stem, output)
+            module.verify_extent(metadata, np.zeros((128, 256, 4), dtype=np.uint8))
+            for image in (np.zeros((64, 256, 4), dtype=np.uint8),
+                          np.zeros((128, 128, 4), dtype=np.uint8),
+                          np.zeros((128, 256, 3), dtype=np.uint8),
+                          np.zeros((128, 256, 4), dtype=np.float32)):
+                with self.assertRaisesRegex(ValueError, "logged RGBA8 extent"):
+                    module.verify_extent(metadata, image)
+            for old, new in (("width=256", "width=255"), ("height=128", "height=0"),
+                             ("row_pitch=1024", "row_pitch=512"), ("row_pitch=1024", "row_pitch=1025"),
+                             ("bytes=131072", "bytes=1024"), ("pose=8", "pose=-8")):
+                changed = identity.replace(old, new)
+                logs(ui_text=input_text.replace(old, new), staged=changed, exported=changed)
+                with self.assertRaises(ValueError):
+                    module.verify_match(stem, output)
             logs(ui_text=input_text.replace("UI_READBACK phase=exported result=0x00000000\n", ""))
             with self.assertRaises(ValueError):
                 module.verify_match(stem, output)

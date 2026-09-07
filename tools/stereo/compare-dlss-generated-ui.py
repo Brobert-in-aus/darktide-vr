@@ -46,9 +46,19 @@ def verify_match(stem, generated):
             raise ValueError(f"Staged/exported output identity mismatch: {key}")
     if any(int(completed[0][key]) <= 0 for key in ("left_call", "right_call")):
         raise ValueError("Both generated eye calls must have positive identities")
-    if inputs[0]["pose"] == "0" or any(row["result"] != "0x00000000" for row in (staged[0], completed[0])):
+    if int(inputs[0]["pose"]) <= 0 or any(row["result"] != "0x00000000" for row in (staged[0], completed[0])):
         raise ValueError("Missing pose identity or failed output capture")
-    return {key: completed[0][key] for key in ("pose", "left_call", "right_call")}
+    layout = {key: int(completed[0][key]) for key in ("width", "height", "row_pitch", "bytes")}
+    width, height, pitch = layout["width"], layout["height"], layout["row_pitch"]
+    if width <= 0 or width % 2 or height <= 0 or pitch < width * 4 or pitch % 256 or \
+            layout["bytes"] < (height - 1) * pitch + width * 4:
+        raise ValueError("Invalid packed RGBA8 readback layout")
+    return {**{key: completed[0][key] for key in ("pose", "left_call", "right_call")}, **layout}
+
+
+def verify_extent(identity, packed):
+    if packed.shape != (identity["height"], identity["width"], 4) or packed.dtype != np.uint8:
+        raise ValueError("Generated bitmap does not match the logged RGBA8 extent")
 
 
 def compare(ui, generated, radius=64):
@@ -99,8 +109,7 @@ def main():
     args = parser.parse_args()
     identity = verify_match(args.stem, args.generated)
     generated = ui_alpha.read_rgba(args.generated)
-    if generated.shape[1] % 2:
-        raise ValueError("Expected a packed stereo output")
+    verify_extent(identity, generated)
     args.output.mkdir(parents=True, exist_ok=True)
     width = generated.shape[1] // 2
     report = {"identity": identity, "visual_acceptance": "unverified", "eyes": {}}

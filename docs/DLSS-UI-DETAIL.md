@@ -10,6 +10,20 @@ generated log must record successful staging/export with matching pose, both
 scene resources, both eye calls, resources and layout. Failed or incomplete
 readbacks are rejected before measuring existing bitmap files.
 
+8 September: the layout check now also requires positive even packed width,
+positive height, a valid RGBA8 D3D12 row pitch and sufficient readback bytes.
+Both CLI tools compare the loaded bitmap's actual extent/type with that logged
+layout before measurement or report output. Matching log rows alone could
+previously admit an unrelated bitmap of another size. Pose IDs must be positive.
+This rejects size mismatches; it does not establish content identity for a
+different bitmap of the same size.
+
+The two focused CTests (`dlss_ui_detail|dlss_ui_capture_identity`) pass in 1.22
+seconds, including both CLI rejection paths. Re-running the original pose-8589
+readback accepts its 4992x2688 packed layout and reproduces the prior contrast
+results below. Evidence: `artifacts/unattended/ui-detail-extent-validation-20260908.json`.
+No new live capture, synthetic visual experiment or blur acceptance is claimed.
+
 Run against the original native RGBA readbacks, keeping their accompanying logs:
 
 ```powershell
