@@ -1,8 +1,8 @@
--- Keep the authored weapon grip. Aim from its held muzzle basis instead of
--- rotating the equipment out of the hand to match OpenXR's generic aim ray.
-local GunAim={}
+-- Controller aim owns direction; controller grip owns weapon placement.
+-- The animated hand model is never an input to gameplay aim or the grip target.
+local Alignment={}
 local guns={shoot_hit_scan=true,shoot_pellets=true,shoot_projectile=true}
-function GunAim.is_gun(template)
+function Alignment.is_gun(template)
     for _,keyword in ipairs(template and template.keywords or {}) do
         if keyword=='force_staff' then return false end
     end
@@ -11,59 +11,86 @@ function GunAim.is_gun(template)
     end
     return false
 end
-function GunAim.relative(grip,muzzle)
-    return Quaternion.multiply(Quaternion.inverse(grip),muzzle)
+function Alignment.rotation(parent,attachment,muzzle,aim)
+    local relative=Quaternion.multiply(Quaternion.inverse(attachment),muzzle)
+    return Quaternion.multiply(Quaternion.inverse(parent),
+        Quaternion.multiply(aim,Quaternion.inverse(relative)))
 end
-function GunAim.resolve(grip,relative)
-    return Quaternion.multiply(grip,relative)
+local function same(a,b)
+    local ax,ay,az,aw=Quaternion.to_elements(a)
+    local bx,by,bz,bw=Quaternion.to_elements(b)
+    return math.abs(ax*bx+ay*by+az*bz+aw*bw)>1-1e-7
 end
-function GunAim.install(mod,presentation)
-    local instance={failures=0}
-    local cache
-    local function equipped(unit)
-        if not presentation.online_rules.simulation_aim_active(unit) or
-                presentation.weapon_hand_roles.physical('dominant')~='right' then return end
-        local weapon=ScriptUnit.has_extension(unit,'weapon_system')
-        local template=weapon and weapon:weapon_template()
-        if not GunAim.is_gun(template) then return end
-        local held=weapon:_wielded_weapon(weapon._inventory_component,weapon._weapons)
-        return weapon,template,held
+function Alignment.install(mod,presentation)
+    local instance={failures=0,writes=0}
+    local saved
+    local function restore(world)
+        if saved and saved.world==world and Unit.alive(saved.unit) then
+            if same(Unit.local_rotation(saved.unit,saved.node),saved.written:unbox()) then
+                Unit.set_local_rotation(saved.unit,saved.node,saved.original:unbox())
+            end
+            if Vector3.distance(Unit.local_position(saved.unit,saved.node),saved.written_position:unbox())<1e-6 then
+                Unit.set_local_position(saved.unit,saved.node,saved.original_position:unbox())
+            end
+            World.update_unit_and_children(world,saved.unit)
+        end
+        saved=nil
     end
     local function update(world,unit)
-        local weapon,template,held=equipped(unit)
-        if not held then cache=nil; return end
-        if cache and cache.unit==unit and cache.world==world and cache.held==held and
-                cache.template==template and Unit.alive(cache.muzzle) then return end
-        cache=nil
+        restore(world)
+        if not presentation.online_rules.simulation_aim_active(unit) then return end
+        if presentation.weapon_hand_roles.physical('dominant')~='right' then return end
+        local weapon=ScriptUnit.has_extension(unit,'weapon_system')
+        local template=weapon and weapon:weapon_template()
+        if not Alignment.is_gun(template) then return end
         local settings=weapon:running_action_settings()
-        -- Capture a resting attachment basis, not a temporary reload, recoil,
-        -- melee or wield pose. Later shots retain this basis and apply stock
-        -- recoil/sway/spread once through the ordinary preparation route.
-        if settings and settings.kind~='aim' then return end
-        local _,grip=presentation.weapon_grip_target('dominant')
-        local source=held.fx_sources and held.fx_sources._muzzle
+        if settings and (settings.kind=='reload_shotgun' or settings.kind=='reload_state' or
+                settings.kind=='reload' or settings.kind=='sweep' or settings.kind=='push' or
+                settings.kind=='unwield' or settings.kind=='ranged_wield') then return end
+        local _,aim=presentation.weapon_aim_target('dominant')
+        local grip=presentation.weapon_grip_target('dominant')
+        if not aim or not grip then return end
+        local equipped=weapon:_wielded_weapon(weapon._inventory_component,weapon._weapons)
+        local source=equipped and equipped.fx_sources and equipped.fx_sources._muzzle
         local fx=weapon._fx_extension
-        if not grip or not source or not fx then return end
+        if not source or not fx then return end
         local _,_,muzzle_unit,muzzle_node=fx:vfx_spawner_unit_and_node(source)
         if not muzzle_unit or muzzle_node==nil or not Unit.alive(muzzle_unit) then return end
-        local relative=GunAim.relative(grip,Unit.world_rotation(muzzle_unit,muzzle_node))
-        cache={unit=unit,world=world,held=held,template=template,muzzle=muzzle_unit,relative=QuaternionBox(relative)}
-        mod:info('DARKTIDEVR_GUN_AIM weapon=%s source=held_grip stock_attachment=preserved',tostring(template.name))
+        local attach_name='j_rightweaponattach'
+        if not Unit.has_node(unit,attach_name) then return end
+        local attach=Unit.node(unit,attach_name)
+        local parent=Unit.scene_graph_parent(unit,attach)
+        if parent==nil then return end
+        local original=Unit.local_rotation(unit,attach)
+        local original_position=Unit.local_position(unit,attach)
+        local desired_position=Matrix4x4.transform(Matrix4x4.inverse(Unit.world_pose(unit,parent)),grip)
+        local desired=Alignment.rotation(Unit.world_rotation(unit,parent),
+            Unit.world_rotation(unit,attach),Unit.world_rotation(muzzle_unit,muzzle_node),aim)
+        saved={world=world,unit=unit,node=attach,original=QuaternionBox(original),written=QuaternionBox(desired),
+            original_position=Vector3Box(original_position),written_position=Vector3Box(desired_position)}
+        Unit.set_local_rotation(unit,attach,desired)
+        Unit.set_local_position(unit,attach,desired_position)
+        World.update_unit_and_children(world,unit)
+        instance.writes=instance.writes+1
+        if instance.last_weapon~=template then
+            instance.last_weapon=template
+            local ax,ay,az,aw=Quaternion.to_elements(aim)
+            local bx,by,bz,bw=Quaternion.to_elements(Unit.world_rotation(muzzle_unit,muzzle_node))
+            local dot=math.min(1,math.abs(ax*bx+ay*by+az*bz+aw*bw))
+            mod:info('DARKTIDEVR_GUN_AIM weapon=%s source=controller aim_angle_deg=%.4f grip_error_m=%.6f',
+                tostring(template.name),math.deg(2*math.acos(dot)),Vector3.distance(Unit.world_position(unit,attach),grip))
+        end
     end
     function instance.update(world,unit)
         local ok,message=pcall(update,world,unit)
         if not ok then
-            cache=nil
+            pcall(restore,world)
             instance.failures=instance.failures+1
-            if instance.failures==1 then mod:info('DARKTIDEVR_GUN_AIM fallback=%s',tostring(message):sub(1,160)) end
+            if instance.failures==1 then
+                mod:info('DARKTIDEVR_GUN_AIM fallback=%s',tostring(message):sub(1,160))
+            end
         end
-    end
-    function instance.aim(unit,grip)
-        if not cache or not grip or cache.unit~=unit or not Unit.alive(cache.muzzle) then return end
-        local ok,weapon,template,held=pcall(equipped,unit)
-        if not ok or held~=cache.held or template~=cache.template then return end
-        return GunAim.resolve(grip,cache.relative:unbox())
     end
     return instance
 end
-return GunAim
+return Alignment

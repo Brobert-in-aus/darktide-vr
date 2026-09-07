@@ -96,6 +96,10 @@ for the smaller set needed before a first end-to-end mission attempt.
    the user confirms gun/reticle agreement, but both are misaligned with the
    hand after rotating the weapon attachment. Preserve the held grip and derive
    firearm aim from the held muzzle pose; staff acceptance must be retained.
+   The next held-muzzle candidate was also rejected: the user explicitly wants
+   the physical controller as the alignment reference, not the hand model.
+   Current correction uses native controller aim plus controller grip position
+   for visible gun placement; its worn acceptance is pending.
    **Design and implement ADS for VR**, explicitly requested by the user: decide
    how ADS is entered/exited, align sights to the real eye and held weapon, and
    handle scopes, two-hand support, stock spread/recoil/zoom rules and readable

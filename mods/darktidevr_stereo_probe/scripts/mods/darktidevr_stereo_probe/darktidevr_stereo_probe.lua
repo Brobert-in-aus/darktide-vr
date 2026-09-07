@@ -7531,16 +7531,7 @@ end
 function presentation.weapon_aim_target(role)
     local side = presentation.weapon_hand_roles.physical(role)
     if side == "left" then return presentation.left_controller_aim_target() end
-    if side == "right" then
-        local position,rotation=presentation.controller_aim_target()
-        if role=='dominant' and presentation.gun_aim then
-            local player=Managers.player and Managers.player:local_player(1)
-            local _,grip=presentation.weapon_grip_target(role)
-            local held_aim=presentation.gun_aim.aim(player and player.player_unit,grip)
-            rotation=held_aim or rotation
-        end
-        return position,rotation
-    end
+    if side == "right" then return presentation.controller_aim_target() end
 end
 
 function presentation.weapon_grip_target(role)

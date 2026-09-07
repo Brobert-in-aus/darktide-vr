@@ -1,6 +1,23 @@
 # Development continuation: 7 September 2026
 
-## Latest candidate: preserve the held gun grip
+## Latest candidate: controller-referenced gun placement and aim
+
+The user rejects the held-muzzle basis as badly misaligned and explicitly asks
+for controller alignment, not hand-model alignment. Simulation aim now reads
+the native controller aim pose directly again. The gun's attachment is placed
+at the controller grip position and rotated so its muzzle follows that same
+controller aim pose. Parent-space position conversion includes parent scale.
+No animated hand/muzzle orientation feeds back into simulation aim. Attachment
+position and rotation restoration independently respect later animation writes.
+Staff, reload/wield, inactive ownership and missing pose guards remain.
+
+Nine affected CTests pass in 1.27 seconds; all 43 Lua chunks compile and source
+invariants pass. The gun fixture verifies 120 multi-axis, translated/scaled
+parent poses and the actual native-aim reader, which rejects any attempt to
+read a hand-model basis. Native components remain unchanged. Deployment and
+worn controller alignment still pending; previous candidates below are historical.
+
+## Superseded candidate: preserve the held gun grip
 
 The user confirms gun/reticle agreement on `9b5981b`, but both are misaligned
 with the hand. The replacement `darktidevr_gun_aim.lua` captures the resting
