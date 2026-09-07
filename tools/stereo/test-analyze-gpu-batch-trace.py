@@ -101,6 +101,46 @@ def main() -> None:
         path = Path(directory) / "trace.log"
         path.write_text(trace, encoding="utf-8")
         report = MODULE.analyze(path)
+        path.write_text(trace.replace("batches=2", "batches=3"), encoding="utf-8")
+        partial = MODULE.analyze(path)["eyes"]["0"]
+        assert not partial["render_segment_comparisons"], "Incomplete capture produced a timing comparison"
+        assert "batch_count_mismatch" in partial["integrity_issues"]
+        path.write_text(trace + trace.replace("eye=0", "eye=1"), encoding="utf-8")
+        mixed = MODULE.analyze(path)
+        assert mixed["eye_pair_comparison"] is None, "Mixed render-eye captures were labelled left/right"
+        variants = {
+            "missing_completion": "".join(row for row in trace.splitlines(True) if "GPU_BATCH_COMPLETE" not in row),
+            "truncated_capture": trace.replace("truncated=0", "truncated=1"),
+            "command_list_count_mismatch": trace.replace("lists=1", "lists=2", 1),
+            "duplicate_batch": trace + line(1, "GPU_BATCH", "eye=0", "ordinal=0", "duration_ms=1", "lists=0", "terminal=1", "terminal_eye=0"),
+            "mixed_capture_frames": trace.replace("frame=1\tGPU_BATCH_COMPLETE", "frame=2\tGPU_BATCH_COMPLETE"),
+            "noncontiguous_batches": trace.replace("ordinal=1", "ordinal=3").replace("batch=1", "batch=3"),
+            "unterminated_render_segment": trace.replace("terminal=1\tterminal_eye=0", "terminal=0\tterminal_eye=0"),
+            "ambiguous_render_eye": trace.replace("terminal_eye=0", "terminal_eye=1"),
+            "command_list_index_mismatch": trace.replace("GPU_BATCH_LIST\t", "GPU_BATCH_LIST\tlist_index=1\t"),
+        }
+        for expected, broken in variants.items():
+            path.write_text(broken, encoding="utf-8")
+            data = MODULE.analyze(path)["eyes"]["0"]
+            assert expected in data["integrity_issues"], (expected, data["integrity_issues"])
+            assert not data["render_segment_comparisons"], expected
+        for duration in ("nan", "inf", "-1"):
+            path.write_text(trace.replace("duration_ms=2.0", "duration_ms=" + duration), encoding="utf-8")
+            try:
+                MODULE.analyze(path)
+            except ValueError as error:
+                assert "duration" in str(error)
+            else:
+                raise AssertionError("Invalid GPU duration admitted: " + duration)
+        pair_trace = ""
+        for eye in (0, 1):
+            pair_trace += line(1, "GPU_BATCH", f"eye={eye}", "ordinal=0", f"duration_ms={eye+1}",
+                               "lists=0", "terminal=1", f"terminal_eye={eye}")
+            pair_trace += line(1, "GPU_BATCH_COMPLETE", f"eye={eye}", "batches=1", "truncated=0")
+        path.write_text(pair_trace, encoding="utf-8")
+        pair = MODULE.analyze(path)["eye_pair_comparison"]
+        assert pair and pair["left_timed_ms"] == 1 and pair["right_timed_ms"] == 2
+        assert pair["right_minus_left_ms"] == 1
 
     capture = report["eyes"]["0"]
     comparison = capture["render_segment_comparisons"][0]

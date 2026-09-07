@@ -1,5 +1,33 @@
 # Generated-stereo health summaries
 
+## GPU batch report integrity: 8 September
+
+The offline batch analyzer now withholds timing comparisons when completion is
+missing, counts disagree, ordinals are discontinuous, captures are truncated,
+records span different phase/frame identities, or terminal render-eye evidence
+conflicts. Duplicate batch/completion records and orphan/misindexed command
+lists also mark a capture incomplete. Nonfinite or negative durations are
+rejected. Raw available batches remain inspectable with explicit integrity
+issues; they are not promoted into a complete timing comparison.
+
+Timing capture IDs are not assumed to identify rendered eyes. The top-level
+left/right comparison requires complete captures containing exactly one render
+segment each, with matching eye identities. Complete mixed-eye captures retain
+their individually identified adjacent-segment comparison. Reports expose
+phase/frame identities and describe durations as observed direct-queue work,
+not whole-frame GPU time or a controlled graphics-settings comparison.
+
+The regression reproduced an incomplete capture producing a comparison before
+the fix. `ctest --test-dir build/windows-vs2022 -C Release -R
+'^gpu_trace_analysis$' --output-on-failure` passes (0.13 seconds), covering the
+integrity failures and a valid left/right pair. Reanalysis of the saved 1
+September copy trace preserves its complete pair (2.599/2.476 ms). The 31
+August trace remains a mixed-eye timing capture with its valid identified
+segments (5.499/6.955 ms); it does not become a top-level left/right pair.
+Ignored reports are `artifacts/unattended/gpu-trace-integrity-20260908.*` and
+`gpu-trace-integrity-mixed-20260908.*`. No live settings or native code changed,
+and no performance improvement is claimed.
+
 Use `tools/stereo/summarize-generated-health.py` to summarize a saved native
 health log without treating every quiet-generation interval as FG disabled:
 
