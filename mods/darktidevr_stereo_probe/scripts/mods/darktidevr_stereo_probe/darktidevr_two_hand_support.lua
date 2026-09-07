@@ -1,6 +1,26 @@
 -- Coordinates a registered weapon socket, live tracking and the physical grip
 -- mapper. No guessed socket profiles or changes to the user's ADS preference.
 local Support={}
+function Support.ads_supported(template)
+    if type(template)~='table' or type(template.actions)~='table' or
+        type(template.action_inputs)~='table' or type(template.alternate_fire_settings)~='table' then return false end
+    local found={}
+    for _,action in pairs(template.actions) do
+        if type(action)=='table' and (action.kind=='aim' or action.kind=='unaim') then
+            local definition=template.action_inputs[action.start_input]
+            local sequence=type(definition)=='table' and definition.input_sequence
+            local step=type(sequence)=='table' and #sequence==1 and sequence[1]
+            if type(step)=='table' and step.input=='action_two_hold' and step.value==(action.kind=='aim') then
+                local setting=step.input_setting
+                if setting==nil or (type(setting)=='table' and setting.setting=='toggle_ads' and
+                    setting.setting_value==true and setting.input=='action_two_pressed' and setting.value==true) then
+                    found[action.kind]=true
+                end
+            end
+        end
+    end
+    return found.aim==true and found.unaim==true
+end
 local function finite(x) return type(x)=='number' and x==x and math.abs(x)<math.huge end
 local function valid_profile(profile)
     if type(profile)~='table' or type(profile.socket)~='table' then return false end
@@ -30,13 +50,14 @@ function Support.new(Pose)
         if not api.enabled or not frame or frame.active~=true or frame.live~=true or
             frame.weapon==nil or frame.unit==nil or frame.generation==nil or frame.recenter==nil or
             (frame.side~='left' and frame.side~='right') or not valid_profile(profile) or
+            (profile.weapon~=nil and profile.weapon~=frame.weapon) or
             not finite(frame.dt) or frame.dt<0 or frame.dt>.25 or
             not Pose.correction(frame.rotation,frame.primary,frame.support,profile.socket) then
             api.clear(); return nil
         end
         -- Copy tunable values into identity. In-place tuning, role changes,
         -- recentering and weapon replacement all retire the old gesture.
-        local action=profile.ads==true and frame.toggle_ads==false and 'alternate' or 'unbound'
+        local action=profile.ads==true and frame.ads_supported==true and frame.toggle_ads==false and 'alternate' or 'unbound'
         local hand=type(profile.hand_rotation)=='table' and profile.hand_rotation or {}
         if not identity or identity.weapon~=frame.weapon or identity.unit~=frame.unit or
             identity.generation~=frame.generation or identity.recenter~=frame.recenter or
@@ -53,7 +74,7 @@ function Support.new(Pose)
             filter.reset()
         end
         context=frame
-        api.ads_unavailable=profile.ads==true and frame.toggle_ads~=false
+        api.ads_unavailable=profile.ads==true and (frame.toggle_ads~=false or frame.ads_supported~=true)
         return {control=frame.side..'_grip',owner=identity,action=action,
             acquire=Pose.near(frame.rotation,frame.primary,frame.support,profile.socket,profile.acquire),
             retain=Pose.near(filter.apply(frame.rotation),frame.primary,frame.support,profile.socket,profile.release)}
@@ -118,7 +139,7 @@ function Support.install(mod,presentation,observation)
             generation=observation.last_transport_generation,recenter=observation.head_recenter_generation,
             dt=dt,rotation=quaternion(rotation),primary=vector(presentation.weapon_grip_target('dominant')),
             support=vector(support_position),support_rotation=quaternion(support_rotation),
-            toggle_ads=settings and settings.toggle_ads,
+            toggle_ads=settings and settings.toggle_ads,ads_supported=Support.ads_supported(template),
             action=action and action.kind}
     end
     function api.arm_capture(unit)
@@ -151,7 +172,8 @@ function Support.install(mod,presentation,observation)
         local socket=Pose.socket(frame.rotation,frame.primary,frame.support)
         local hand_rotation=Pose.relative_rotation(frame.rotation,frame.support_rotation)
         if not socket or not hand_rotation then mod:info('DARKTIDEVR_TWO_HAND calibration=invalid_geometry'); return end
-        api.profiles[frame.template]={socket=socket,hand_rotation=hand_rotation,acquire=.1,release=.2,smoothing=.07,ads=true}
+        api.profiles[frame.template]={weapon=frame.weapon,socket=socket,hand_rotation=hand_rotation,
+            acquire=.1,release=.2,smoothing=.07,ads=true}
         api.clear()
         mod:info('DARKTIDEVR_TWO_HAND calibration=captured weapon=%s socket=%.4f,%.4f,%.4f session_only=true',
             frame.template,socket[1],socket[2],socket[3])

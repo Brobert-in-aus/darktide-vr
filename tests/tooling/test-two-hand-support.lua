@@ -7,7 +7,7 @@ local mapper=Bindings.install({get=function() end})
 local profile={socket={0,.3,0},acquire=.1,release=.2,smoothing=0,ads=true}
 api.profiles.example=profile
 local frame={active=true,live=true,weapon={},unit={},generation=1,recenter=0,side='left',
-    dt=.01,rotation={0,0,0,1},primary={0,0,0},support={0,.3,0},template='example',toggle_ads=false}
+    dt=.01,rotation={0,0,0,1},primary={0,0,0},support={0,.3,0},template='example',toggle_ads=false,ads_supported=true}
 local function sample(physical,pressed,held,released,owned)
     local request=api.prepare(frame)
     local p,h,r=mapper.sample(frame.active,physical,0,0,true,frame.generation,'combat',request)
@@ -67,7 +67,10 @@ Vector3=setmetatable({x=function(v) return v[1] end,y=function(v) return v[2] en
 Quaternion={to_elements=function(q) return unpack(q) end,from_elements=function(...) return {...} end}
 local unit,equipped={},{}
 local primary,secondary={0,0,0},{0,.3,0}
-local template={name='example',gun=true}
+local template={name='example',gun=true,alternate_fire_settings={},
+    actions={zoom={kind='aim',start_input='zoom'},unzoom={kind='unaim',start_input='unzoom'}},
+    action_inputs={zoom={input_sequence={{input='action_two_hold',value=true}}},
+        unzoom={input_sequence={{input='action_two_hold',value=false}}}}}
 local action,retired=nil,false
 local state_name='walking'
 local weapon={weapon_template=function() return template end,
@@ -142,6 +145,7 @@ while t<deadline-.02 do installed_sample(0) end
 assert(installed.profiles.example==saved,'Capture occurred before countdown')
 while installed.capture_pending do installed_sample(0) end
 local captured=installed.profiles.example
+local calibrated_weapon=equipped
 for i=1,3 do assert(math.abs(captured.socket[i]-secondary[i])<1e-8) end
 assert(not installed.enabled)
 commands.dtvr_two_hand_on(); installed_sample(0)
@@ -157,6 +161,10 @@ assert(installed.place_hand('world',unit,primary,{0,0,0,1}) and hand_writes==1)
 installed_sample(0)
 assert(not installed.place_hand('world',unit,primary,{0,0,0,1}) and hand_writes==1,
     'Released support hand stayed constrained')
+equipped={}
+assert(installed_sample(512)==512 and not real_mapper.support_grip.held,
+    'A different item with the same template inherited a measured grip')
+installed_sample(0); equipped=calibrated_weapon
 commands.dtvr_two_hand_off()
 assert(not installed.enabled and not installed.capture_pending)
 installed_sample(0)
@@ -196,3 +204,22 @@ assert(proxy.place_support_hand('world',unit,'left',primary,frame.rotation) and 
 assert(not proxy.place_support_hand('world',{},'left',primary,frame.rotation))
 assert(not proxy.place_support_hand('world',unit,'unknown',primary,frame.rotation))
 print('two_hand_visual=pass calibrated_pose release anatomical_boundary local_owner')
+assert(Support.ads_supported(template))
+local aim_step=template.action_inputs.zoom.input_sequence[1]
+aim_step.input_setting={input='action_two_pressed',value=true,setting='toggle_ads',setting_value=true}
+assert(Support.ads_supported(template))
+aim_step.input_setting.setting='another_preference'
+assert(not Support.ads_supported(template))
+aim_step.input_setting=nil
+template.actions.zoom.kind='charge'
+assert(not Support.ads_supported(template),'A charge action was classified as ADS')
+state_name='walking'; action=nil; installed.enabled=true; equipped=calibrated_weapon
+installed_sample(0)
+local unsupported_p,unsupported_h=installed_sample(512)
+assert(unsupported_p==0 and unsupported_h==0 and real_mapper.support_grip.held and installed.ads_unavailable,
+    'Unsupported secondary action was requested by support grip')
+installed_sample(0)
+template.actions.zoom.kind='aim'
+template.action_inputs.zoom.input_sequence[2]={input='action_one_hold',value=true}
+assert(not Support.ads_supported(template),'A compound weapon gesture was classified as plain ADS')
+print('two_hand_ads_route=pass canonical_hold toggle_override charge compound unknown_setting')

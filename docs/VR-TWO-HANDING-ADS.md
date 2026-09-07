@@ -1,7 +1,7 @@
 # Two-handed guns, virtual stock and ADS
 
-Status: offline input/pose foundations implemented 8 September 2026; no live
-two-hand behavior is deployed. The user accepted the final controller-based gun
+Status: offline calibrated two-hand candidate implemented 8 September 2026;
+no live two-hand behavior is deployed. The user accepted the final controller-based gun
 pitch, hand placement and draw/reload checks on `ab9e9db`.
 
 ## Requested interaction
@@ -196,7 +196,9 @@ the support controller at the desired visible grip during that countdown.
 Weapon/character replacement, recentering, publisher changes, tracking loss,
 reload/firing, reopening menus or the 30-second request deadline cancel capture.
 Degenerate or implausibly distant geometry is rejected. The result remains in
-memory for that weapon template; it is not persisted or committed as a profile.
+memory under that weapon template and is bound to the calibrated equipped-item
+object; another item with the same template does not inherit it. It is not
+persisted or committed as a profile.
 
 `/dtvr_two_hand_on` enables registered sockets; `/dtvr_two_hand_off` cancels
 pending capture and returns to one-hand aiming. Capture never auto-enables the
@@ -232,3 +234,24 @@ headset tests OFF, including all 45 Lua chunks. Evidence:
 `artifacts/unattended/two-hand-offline-128-20260908.log`. Native code is unchanged;
 the running accepted Psykhanium session remains separate from these source
 changes. Review is PR #3, based on the aggregate development branch in PR #2.
+
+The production ADS gate now requires a canonical `aim`/`unaim` pair backed by
+single `action_two_hold=true/false` sequences and normal alternate-fire settings.
+Only absent or recognized toggle-ADS overrides are admitted. A charge action,
+compound gesture or unknown input-setting override keeps support aiming without
+requesting secondary fire. Four affected checks pass in 0.98 seconds after this
+gate and exact-item calibration ownership were added.
+
+The optional stock-source fixture passes against cached source
+`0f0cb45991e9305ef4a7b925370792d7d6035f95`: 62 ranged templates inspected, 54 with
+canonical ADS input routes and eight excluded. All four staff and both plasma
+templates are explicitly checked as excluded. The fixture executes the actual
+literal input tables and stock parser with contextual mapper output, verifying
+entry/release admission and no exit while an independent aim alias remains held.
+Action kind/start-input metadata is extracted without executing asset setup.
+This does not execute the complete action hierarchy or establish live firing,
+accuracy, server behavior or worn acceptance. Run:
+
+```powershell
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-two-hand-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_two_hand_support.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings.lua artifacts/unattended/ranged-template-paths-20260907.txt
+```
