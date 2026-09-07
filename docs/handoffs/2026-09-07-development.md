@@ -1484,3 +1484,22 @@ person observer root also follows the target unit's interpolated aim; ordinary
 local HMD independence does not cover that camera branch. Source references
 and acceptance gaps are in MISSION-INTERACTION-AUDIT. Documentation only, no new
 tests or live actions; runtime/build validation baselines remain unchanged.
+
+## Continuous todo work: melee probe reference-history ownership
+
+Branch `codex/melee-probe-reference-history-2026-09-07` fixes the diagnostic
+probe's trajectory key, which previously changed for weapons/actions but not
+bridge replacement or headset recenter. It now also observes controller
+transport generation, recenter generation and the resolved physical hand.
+Stable samples retain history; changed references start a fresh trajectory
+without replacing the simulation tick owner. No cooldown or damage path changes.
+
+The actual live-adapter regression fails before the fix on publisher replacement
+and passes afterward, including stable/recenter/physical-hand cases. Seven
+focused CTests pass in 0.82 seconds: live probe, diagnostic orchestration,
+simulation, sweep planning, hand roles, Lua source invariants and all 36 chunks
+through the pinned compiler. Existing orchestration coverage confirms changed
+keys do not sweep across the preceding trajectory. No deployment/headset work;
+full suite remains 113/113 at `e2aa82a`, configured count 115, harness `4298262`.
+The non-damaging probe remains opt-in and contact acceptance remains with the
+user. Continue the todo.

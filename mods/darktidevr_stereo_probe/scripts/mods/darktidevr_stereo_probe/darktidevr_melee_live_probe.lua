@@ -109,6 +109,17 @@ function Live.install(mod, presentation, tracking, game_mode)
         end
         local hand = presentation.weapon_hand_roles and
             presentation.weapon_hand_roles.physical("dominant") or "right"
+        if state.transport_generation ~= tracking.last_transport_generation or
+                state.recenter_generation ~= tracking.head_recenter_generation or
+                state.hand ~= hand then
+            state.transport_generation = tracking.last_transport_generation
+            state.recenter_generation = tracking.head_recenter_generation
+            state.hand = hand
+            -- A new coordinate reference is not weapon motion, even when its
+            -- displacement fits the ordinary per-tick sweep limits. Preserve
+            -- simulation tick ownership; only retire the trajectory history.
+            state.history_key = {}
+        end
         local valid = tracking[hand.."_grip_usable"] == true and tracking.body_anchor_qw ~= nil
         local position, rotation
         if valid then

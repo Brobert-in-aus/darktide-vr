@@ -97,6 +97,15 @@ frame, teleport, recenter or tracking loss must reset history instead of sweepin
 across an artificial discontinuity. Invalid tracking suspends the volume until a
 fresh valid pose is established; this is input validity, not a movement threshold.
 
+7 September offline follow-up: the live probe now changes its trajectory-history
+key when the observed controller publisher, headset recenter generation or
+physical dominant hand changes. A small reference jump must not pass as ordinary
+weapon motion merely because it fits translation/rotation limits. Stable samples
+retain history, and the simulation tick owner is preserved. The regression
+reproduced cross-publisher history reuse before the fix; seven focused checks,
+including all 36 Lua chunks, pass. The probe still applies no damage, and this
+does not establish contact or calibration acceptance.
+
 Deduplicate multiple hurtboxes, repeated substeps and duplicate physics results
 per target before applying cooldowns. Cooldowns use simulation-clock deadlines
 and stable unit generation identities. Do not clear them on a pose-history reset

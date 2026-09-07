@@ -29,7 +29,8 @@ end
 local mod = {io_dofile=function(_,path) return assert(modules[path:match("melee_(.+)$")]) end,
     info=function() end,warning=function() warnings=warnings+1 end}
 local tracking = {right_grip_usable=true,body_anchor_qw=1}
-local live = Live.install(mod,{controller_grip_target=function() return {1,2,3},{0,0,0,1} end},
+local presentation={controller_grip_target=function() return {1,2,3},{0,0,0,1} end}
+local live = Live.install(mod,presentation,
     tracking,function() return mode end)
 local weapon = {weapon_template={name="fixture",actions={light={kind="sweep"}}},actions={light={_uses_matrix_data=true}}}
 local extension = {_unit=player.player_unit,_inventory_component={wielded_slot="slot_primary"},
@@ -93,4 +94,39 @@ effective_scale=2
 extension._weapon_action_component.start_t=11
 live.fixed_update(extension,11,12)
 assert(timing_calls==2 and graph_calls==2,'same-named new windup missed speed refresh')
+tracking.right_grip_usable=true
+tracking.last_transport_generation=1
+tracking.head_recenter_generation=0
+live.fixed_update(extension,12,13)
+local reference_key=calls[#calls].history_key
+tracking.last_sequence=100
+live.fixed_update(extension,12.02,14)
+assert(calls[#calls].history_key==reference_key,'Ordinary samples must retain sweep history')
+tracking.last_transport_generation=2
+live.fixed_update(extension,12.04,15)
+assert(calls[#calls].history_key~=reference_key,'Publisher replacement retained a cross-reference sweep')
+reference_key=calls[#calls].history_key
+live.fixed_update(extension,12.06,16)
+assert(calls[#calls].history_key==reference_key,'Stable publisher discarded sweep history')
+tracking.head_recenter_generation=1
+live.fixed_update(extension,12.08,17)
+assert(calls[#calls].history_key~=reference_key,'Recenter retained a cross-reference sweep')
+reference_key=calls[#calls].history_key
+live.fixed_update(extension,12.10,18)
+assert(calls[#calls].history_key==reference_key,'Stable recenter discarded sweep history')
+local hand='right'
+presentation.weapon_hand_roles={physical=function(role) assert(role=='dominant'); return hand end}
+presentation.weapon_grip_target=function(role)
+    assert(role=='dominant'); return {1,2,3},{0,0,0,1}
+end
+tracking.left_grip_usable=true
+live.fixed_update(extension,12.12,19)
+assert(calls[#calls].history_key==reference_key)
+hand='left'
+live.fixed_update(extension,12.14,20)
+assert(calls[#calls].history_key~=reference_key and calls[#calls].step.tracking_valid,
+    'Changing the physical hand retained the previous hand trajectory')
+reference_key=calls[#calls].history_key
+live.fixed_update(extension,12.16,21)
+assert(calls[#calls].history_key==reference_key)
 print("live melee diagnostic opt-in, private mode, idle continuity, timing reentry and failure recovery passed")
