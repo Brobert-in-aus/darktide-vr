@@ -10,6 +10,13 @@ VR controller-binding output. The default, fast, mid and slow shared melee
 input setups pass light release, held heavy and automatic heavy completion.
 The default setup also passes block, push, push follow-up, cancellation and
 release-to-base cases. The hold runs cross the parser's 60-frame ring boundary.
+Each case now runs a second full parser fed by the actual stock client buffering,
+send and authoritative receive methods through an in-memory RPC sink. The client
+input ring is deliberately four frames wide; duplicate packets are delivered.
+Both parsers agree on the next action, automatic-completion state and hierarchy
+on every tick. An intentionally false received primary hold is detected as a
+divergence, confirming that the fixture cannot substitute current local input
+when a recorded receiving value is false.
 
 Two release cases differ. Releasing immediately after push follow-up returns
 the hierarchy to base without queuing the `dont_queue` release as an action.
@@ -20,9 +27,9 @@ VR cancellation fix or proof that the action handler admits every queued action.
 The parser is real; class construction, engine services, 10 ms fixed ticks,
 unrelated common-action inputs and immediate action consumption are fixtures.
 Weapon-specific overrides, forcesword special hierarchy, stock action admission,
-network serialization and authoritative damage remain outside this check.
-Existing separate transport tests cover recorded input send/receive/replay;
-these results must not be described as a new end-to-end server test.
+engine network serialization and authoritative damage remain outside this check.
+Existing separate transport tests cover correction/replay. The new combined
+transport/parser fixture is not a live or end-to-end damage/server test.
 
 `tests/tooling/test-melee-reference-stock-contract.lua` executes the stock sweep
 update. It verifies pre-window reference refresh, previous/current aim sampling,

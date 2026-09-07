@@ -4,6 +4,7 @@ local root=assert(arg[1])
 local bindings_path=assert(arg[2])
 local cache={}
 local raw={}
+local input_reader
 local function clone(value)
     if type(value)~='table' then return value end
     local result={}; for k,v in pairs(value) do result[k]=clone(v) end; return result
@@ -12,7 +13,8 @@ local env=setmetatable({}, {__index=_G})
 env.Script={new_array=function() return {} end}
 env.settings=function(_,value) return value end
 env.NetworkConstants={fixed_frame_offset_start_t_5bit={min=-16},fixed_time_offset_unset=-1000}
-env.table=setmetatable({clone=clone,keys=function(t) local out={}; for k in pairs(t) do out[#out+1]=k end; return out end,
+env.table=setmetatable({clone=clone,clear=function(t) for k in pairs(t) do t[k]=nil end end,
+    keys=function(t) local out={}; for k in pairs(t) do out[#out+1]=k end; return out end,
     add_missing=function(dest,src) for k,v in pairs(src) do if dest[k]==nil then dest[k]=v end end end}, {__index=table})
 env.class=function()
     local class={}; class.__index=class
@@ -20,12 +22,19 @@ env.class=function()
     return class
 end
 env.ferror=function(format,...) error(string.format(format,...)) end
-env.Log={info=function() end,error=function(_,message) error(message) end}
+env.Log={debug=function() end,info=function() end,error=function(_,message) error(message) end}
+env._debug=function() end
 env.Managers={state={game_session={fixed_time_step=.01},player_unit_spawn={owner=function()
     return {is_human_controlled=function() return true end}
 end}}}
 env.ScriptUnit={extension=function(_,name)
-    if name=='input_system' then return {get=function(_,key) return raw[key] or false end} end
+    if name=='input_system' then
+        local reader=input_reader
+        return {get=function(_,key)
+            if reader then return reader(key) end
+            return raw[key] or false
+        end}
+    end
     assert(name=='unit_data_system')
     return {read_component=function() return {cooldown=0} end}
 end}
@@ -43,14 +52,58 @@ env.require=function(path)
 end
 local template=env.require('scripts/settings/equipment/weapon_templates/default_melee_action_input_setup')
 local Parser=env.require('scripts/extension_systems/action_input/action_input_parser')
+env.HumanInputHandler,env.AuthoritativePlayerInputHandler={},{}
+local function method(path,first_marker,last_marker)
+    local file=assert(io.open(root..'/scripts/'..path..'.lua','r'))
+    local source=file:read('*a'); file:close()
+    local first=assert(source:find(first_marker,1,true))
+    local last=assert(source:find(last_marker,first,true))
+    setfenv(assert(loadstring(source:sub(first,last-1),'@'..path)),env)()
+end
+local human='managers/player/player_game_states/human_input_handler'
+for _,pair in ipairs({{'_buffer_index','pre_update'},{'fixed_update','get_orientation'},
+        {'update','rpc_player_input_array_ack'}}) do
+    method(human,'HumanInputHandler.'..pair[1]..' =','\nHumanInputHandler.'..pair[2]..' =')
+end
+method('managers/player/player_game_states/authoritative_player_input_handler',
+    'AuthoritativePlayerInputHandler.get =','\nAuthoritativePlayerInputHandler.rewind_ms =')
 bit=require('bit')
 local Bindings=dofile(bindings_path)
-local function session(selected_template)
+local function session(selected_template,corrupt_frame)
     raw={}
     local mapper=Bindings.install({get=function() end})
     local parser=Parser:new('player','weapon_action',{template_name='melee'},
         {action_input_type='weapon',templates={melee=selected_template or template}},1)
     local frame=0
+    local names=parser._RAW_INPUTS_NETWORK_LOOKUP
+    local column_count=#names-1 -- final formatter sentinel is not an input
+    local sender=setmetatable({_frame=0,_last_frame_acknowledged=0,_input_buffer_size=4,
+        _send_buffer_size=3,_is_server=false,_input_cache={},_send_array={},
+        _yaw_index=column_count+1,_pitch_index=column_count+2,_roll_index=column_count+3,
+        _player={local_player_id=function() return 1 end},
+        _parse_input=function(_,columns,values,index)
+            for i=1,column_count do columns[i][index]=values[names[i]] or false end
+        end},{__index=env.HumanInputHandler})
+    local receiver=setmetatable({_received_frame=0,_parsed_frame=0,_input_cache={},
+        _input_cache_size=column_count+3,_action_lookup={},
+        _clock_handler={frame_received=function() end}},{__index=env.AuthoritativePlayerInputHandler})
+    for i=1,column_count+3 do sender._input_cache[i]={}; sender._send_array[i]={}; receiver._input_cache[i]={} end
+    for i=1,column_count do receiver._action_lookup[names[i]]=i end
+    input_reader=function(name) return receiver:get(name,frame) end
+    local remote_parser=Parser:new('player','weapon_action',{template_name='melee'},
+        {action_input_type='weapon',templates={melee=selected_template or template}},2)
+    input_reader=nil
+    local game=env.Managers.state.game_session
+    game.can_send_session_bound_rpcs=function() return true end
+    game.send_rpc_server=function(_,name,player,first,offset,...)
+        assert(name=='rpc_player_input_array' and player==1)
+        local packet=clone({...})
+        receiver:rpc_player_input_array('fixture',player,first,offset,unpack(packet))
+        receiver:rpc_player_input_array('fixture',player,first,offset,unpack(packet)) -- duplicate packet
+        if frame==corrupt_frame then
+            receiver._input_cache[receiver._action_lookup.action_one_hold][frame]=false
+        end
+    end
     local events={}
     local function tick(mask,consume)
         frame=frame+1
@@ -61,11 +114,21 @@ local function session(selected_template)
                 for _,name in ipairs(pair[1]) do raw[name]=bit.band(pair[2],binding.mask)~=0 end
             end
         end
+        sender:fixed_update(.01,frame*.01,frame,raw,.2,-.1,0)
+        sender:update()
+        sender._last_frame_acknowledged=frame
         parser:fixed_update('player',.01,frame*.01,frame)
+        remote_parser:fixed_update('player',.01,frame*.01,frame)
         local action=parser:peek_next_input()
+        assert(remote_parser:peek_next_input()==action,'Receiving parser selected a different action')
+        assert(remote_parser:last_action_auto_completed()==parser:last_action_auto_completed())
+        local local_hierarchy=parser._hierarchy_position[parser._ring_buffer_index]
+        local remote_hierarchy=remote_parser._hierarchy_position[remote_parser._ring_buffer_index]
+        for i,value in ipairs(local_hierarchy) do assert(remote_hierarchy[i]==value,'Receiving hierarchy disagreed') end
         if action and consume~=false then
             events[#events+1]={action=action,t=frame*.01,auto=parser:last_action_auto_completed()}
             parser:consume_next_input(frame*.01)
+            remote_parser:consume_next_input(frame*.01)
         end
         return action
     end
@@ -135,5 +198,9 @@ for _,variant in ipairs({{name='fast',hold=.3},{name='mid',hold=.35},{name='slow
         completed.t<=.02+variant.hold+1+.03,'Stock heavy auto-completion timing: '..variant.name)
 end
 assert(template.action_inputs.heavy_attack.input_sequence[1].duration==.25,'Variant fixture mutated default setup')
-print('melee_parser_stock=pass default_fast_mid_slow light_release heavy_hold auto_complete block_push_followup_release cancel')
-print('LIMIT: shared stock input setups; unrelated common inputs, engine services and action consumption are fixtures')
+local corrupted=session(nil,2)
+local ok,reason=pcall(corrupted,1)
+assert(not ok and tostring(reason):find('Receiving parser selected a different action',1,true),
+    'Deliberate false receiving input did not expose divergence')
+print('melee_parser_stock=pass default_fast_mid_slow light_release heavy_hold auto_complete block_push_followup_release cancel stock_send_receive duplicate_packet')
+print('LIMIT: in-memory RPC, shared input setups, unrelated common inputs, engine services and action consumption are fixtures; no authoritative damage')
