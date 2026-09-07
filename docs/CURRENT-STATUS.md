@@ -19,6 +19,12 @@ reproduced head-facing animated-hand fallback in stock-input mode. Full CTest
 the correction at `aa4da89` and passes its Lua/preview/visual checks. The focused
 deployment above establishes initialization, not worn or damage acceptance.
 
+The integrated preview now retains the focused branch's action-match diagnostic,
+unknown-hand-role rejection and drawing-geometry checks. Full offline CTest
+134/134 passes in 23.36 seconds at `29e965a`; LuaJIT compiles 47 chunks. Optional
+cached-stock tests also cover all three force-sword input overrides (PR #15)
+and real exported preview spline frames (PR #16). Live deployment is unchanged.
+
 Development is active in the user's requested session, with a 20-minute
 heartbeat, until explicitly told to stop. The user is away at work; continue
 independent offline development when worn observations are needed. Yesterday's
