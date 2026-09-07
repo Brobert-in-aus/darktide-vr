@@ -28,10 +28,11 @@ local mod={info=function(_,format,...) logs[#logs+1]=string.format(format,...) e
         end
     end}
 local presentation={online_rules={simulation_aim_active=function(unit) return unit=='local' end},
-    controller_aim={cached_reticle_target=function() return {unbox=function() return Vector3(0,10,0) end} end}}
+    controller_aim={cached_reticle_target=function() return {unbox=function() return Vector3(0,10,0) end} end,
+        third_person_muzzle=function(_,count) assert(count==0); return Vector3(.3,0,0),Vector3(0,1,0) end}}
 local instance=Evidence.install(mod,presentation)
 local action={_player_unit='local',_is_server=true,_weapon_template={name='fixture_gun'},
-    _action_settings={kind='shoot_hit_scan'},stock_calls=0}
+    _action_settings={kind='shoot_hit_scan'},_action_component={num_shots_fired=1},stock_calls=0}
 for _,class in pairs(classes) do
     local a,b=class._shoot(action,Vector3(0,0,0),Vector3(0,1,0),100,.5,12)
     assert(a==nil and b==123 and action._shot_result.hit_minion,'observer altered stock return/results')
@@ -39,6 +40,7 @@ end
 assert(action.stock_calls==5 and #logs==4,'diagnostic was not bounded')
 assert(logs[1]:find('weapon=fixture_gun',1,true) and logs[1]:find('shot_vs_reticle_deg=0.000',1,true))
 assert(logs[1]:find('hit_minion=true',1,true))
+assert(logs[1]:find('muzzle=0.3000,0.0000,0.0000',1,true))
 action._player_unit='remote'; instance.observe(action); assert(#logs==4)
 action._player_unit='local'; action._unit_data_extension={is_resimulating=true}
 instance.observe(action); assert(#logs==4)

@@ -113,7 +113,11 @@ The follow-up observer records the first four stock `_shoot` dispatches per
 weapon/route/visit across hitscan, pellets, projectiles and both flame classes.
 `DARKTIDEVR_RANGED_EVIDENCE` includes the actual template/action, origin,
 direction, charge, server/client context, angle to the last valid reticle point,
-and the stock `hit_minion` result when supplied. Further dispatches increment
+and the stock `hit_minion` result when supplied. It also records the observed
+third-person muzzle position and node-forward direction, using the just-fired
+barrel for alternating muzzles. Node-forward is diagnostic geometry, not an
+assertion that every asset's node axis equals its visual barrel axis.
+Further dispatches increment
 the `dtvr_ranged_evidence` summary without per-shot logging. A pellet dispatch
 can be one batch of a shell; a flame dispatch does not prove every later cone
 tick. Reticle-angle differences include spread and timing and are not an
@@ -127,3 +131,6 @@ stock-return/result preservation, angle measurements, output bounds, ownership,
 replay and failure isolation. All 41 Lua chunks and source invariants pass.
 This follow-up is also undeployed; the integrated 124-test baseline above
 predates its new CTest registration.
+Five affected CTests pass after the muzzle observation addition (2.52 seconds).
+The matching native components were rebuilt at `23345e5`; their implementation
+is unchanged by this Lua observation follow-up.

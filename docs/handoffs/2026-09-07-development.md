@@ -67,11 +67,15 @@ model/barrel alignment remain worn checks, not claimed acceptance.
 
 The subsequent ranged observer logs four stock dispatches per weapon/route/visit
 and exposes a count summary, including real shot direction and angle to the
-cached reticle. Its five-route fixture and 41-chunk Lua/invariant gates pass;
+cached reticle. It includes third-person muzzle position/node-forward evidence
+and correct post-dispatch alternating-barrel selection. Five affected CTests
+pass (2.52 seconds), including the 41-chunk Lua/invariant gates;
 native code is unchanged from `809d275`. It is queued for the same deployment.
 The user was asked asynchronously whether VD is reconnected; continue offline
 until they report readiness. No game/XR processes were found during the ranged
 build, and no attempt was made to restart VD.
+Matching native capture/harness components were rebuilt successfully at
+`23345e5`, ready for the queued combined deployment after Ready passes.
 
 The day's continuation is collected in
 [draft review #2](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/2),

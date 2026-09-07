@@ -440,7 +440,7 @@ function controller_aim.install(mod, presentation, state)
         return left_position, rotation, "support_origin_converged_aim"
     end
 
-    function controller_aim.third_person_muzzle(action)
+    function controller_aim.third_person_muzzle(action, prepared_shots)
         local fx_extension = action._fx_extension
         local action_component = action._action_component
         if not fx_extension or
@@ -458,7 +458,7 @@ function controller_aim.install(mod, presentation, state)
         local fx = action._action_settings and action._action_settings.fx
         if fx and fx.alternate_muzzle_flashes then
             -- Called before stock preparation advances the shot counter.
-            local prepared_index = math.max(0, action_component.num_shots_fired)
+            local prepared_index = math.max(0, prepared_shots or action_component.num_shots_fired)
             source_name = prepared_index % 2 == 0 and
                 action._muzzle_fx_source_name or
                 action._muzzle_fx_source_secondary_name
@@ -493,7 +493,9 @@ function controller_aim.install(mod, presentation, state)
         end
         local position_ok, position = pcall(
             Unit.world_position, target_unit, target_node)
-        return position_ok and position or nil
+        local rotation_ok, rotation = pcall(
+            Unit.world_rotation, target_unit, target_node)
+        return position_ok and position or nil, rotation_ok and rotation or nil
     end
 
     local PlayerUnitAimExtension = require(

@@ -39,10 +39,19 @@ function Evidence.install(mod,presentation)
         local result=action._shot_result
         local hit=result and result.data_valid and tostring(result.hit_minion==true) or 'unknown'
         local action_name=action._weapon_action_component and action._weapon_action_component.current_action_name
-        mod:info('DARKTIDEVR_RANGED_EVIDENCE weapon=%s kind=%s action=%s dispatch=%d authority=%s time=%s charge=%s origin=%s direction=%s shot_vs_reticle_deg=%s hit_minion=%s',
+        local muzzle,muzzle_rotation
+        if aim and aim.third_person_muzzle then
+            local fired=action._action_component and action._action_component.num_shots_fired
+            -- Stock preparation has already advanced this count; observe the
+            -- barrel used by this shot, not the next alternating muzzle.
+            muzzle,muzzle_rotation=aim.third_person_muzzle(action,finite(fired) and math.max(0,fired-1) or nil)
+        end
+        local muzzle_direction=muzzle_rotation and Quaternion.forward(muzzle_rotation)
+        mod:info('DARKTIDEVR_RANGED_EVIDENCE weapon=%s kind=%s action=%s dispatch=%d authority=%s time=%s charge=%s origin=%s direction=%s shot_vs_reticle_deg=%s hit_minion=%s muzzle=%s muzzle_node_forward=%s',
             weapon,kind,tostring(action_name or 'unknown'),row.calls,
             action._is_server and 'server' or 'client',tostring(t),tostring(charge),
-            vector_text(position),vector_text(direction),angle,hit)
+            vector_text(position),vector_text(direction),angle,hit,
+            vector_text(muzzle),vector_text(muzzle_direction))
     end
     function instance.observe(...)
         local ok,message=pcall(observe,...)

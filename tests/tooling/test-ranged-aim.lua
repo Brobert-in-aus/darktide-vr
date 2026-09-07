@@ -134,7 +134,8 @@ assert(a._action_component.shooting_rotation == 127, "lost stock offset at conve
 assert(a._first_person_component == shared)
 -- Barrel lookup runs before stock increments the counter.
 local source_seen
-Unit = {alive = function() return true end, world_position = function(_, node) return node end}
+Unit = {alive = function() return true end, world_position = function(_, node) return node end,
+    world_rotation=function(_,node) return node+100 end}
 a._action_settings = {fx = {alternate_muzzle_flashes = true}}
 a._muzzle_fx_source_name, a._muzzle_fx_source_secondary_name = "left", "right"
 a._action_component.current_fire_config = 1
@@ -148,6 +149,10 @@ for shot = 0, 3 do
     a._action_component.num_shots_fired = shot
     assert(actual_muzzle(a) == 60)
     assert(source_seen == (shot % 2 == 0 and "left" or "right"))
+    a._action_component.num_shots_fired=shot+1
+    local position,rotation=actual_muzzle(a,shot)
+    assert(position==60 and rotation==160)
+    assert(source_seen == (shot % 2 == 0 and "left" or "right"),'post-dispatch evidence selected the next barrel')
 end
 local throw=action(modules[action_root.."action_weapon_throw"])
 throw._action_settings={kind='weapon_throw'}
