@@ -1298,3 +1298,20 @@ Six focused CTests pass, including real registered-hook forwarding and protected
 service queries; all 36 Lua chunks compile. This also prevents online aim capture
 through its existing gameplay-active gate. Undeployed; the full-suite baseline
 remains 112/112 at `124361b`. Continue the todo with no new live preflight attempt.
+
+## Continuous todo work: swapchain failure evidence
+
+Branch `codex/xr-swapchain-failure-evidence-2026-09-07`, implementation `03d60d1`,
+adds failure-only XR projection texture request/device/debug-queue logging. The
+Release harness builds; help, D3D12 smoke/resize and bounded-process checks pass.
+This is the newest harness build, superseding `f201a9a`; full native build
+baseline remains `df99611`.
+
+One settled Ready attempt with verified Guardian pause collected the new fields:
+first eye, recommended 2496x2688, format 29, one sample/layer/face/mip, usage 33,
+application device removal reason 0 and zero D3D12 debug messages. VDXR still
+failed creating its texture with `-7000`. The smoke exited 1 without timeout and
+captured complete output. Guardian restored with logged `1 -> 0`; proximity
+Enable/Status ran in `finally`. No Darktide launch/deployment or texture fallback.
+See QUEST-PASSTHROUGH-RECOVERY; the runtime's internal cause remains unknown.
+Continue useful offline work instead of repeating unchanged smoke attempts.

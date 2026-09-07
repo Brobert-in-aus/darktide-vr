@@ -128,3 +128,23 @@ Boundary pause does not establish tracking recovery or a double-tap cause.
 Ignored local evidence: `quest-boundary-ready-20260907.json` and the matching
 pause, restore, state-evidence and proximity logs under `artifacts/unattended`;
 the settled attempt uses the `quest-boundary-settled-` prefix.
+
+## Follow-up: swapchain failure diagnostics
+
+At 12:41, harness `03d60d1` added failure-only diagnostics and a settled Ready
+attempt collected them with Guardian paused. The first eye failed with OpenXR
+result `-2`: width 2496, height 2688 (the reported recommendation), format 29,
+sample count 1, usage flags 33, one array layer/face/mip. The application D3D12
+device returned `GetDeviceRemovedReason = 0` and its debug message queue contained
+zero messages. VDXR still reported `ovr_CreateTextureSwapChainDX -7000`.
+
+This rules out an observed removal/debug-layer error on this application device;
+it does not inspect VD's internal device, prove memory availability or identify
+the runtime's underlying exception. No texture parameter fallback or graphics
+setting was changed. The bounded smoke completed normally with exit 1, complete
+captured output and `timed_out=false`. Guardian restoration was confirmed by
+`1 -> 0` in its log, and proximity Enable/Status ran in `finally`. Darktide stayed
+closed and nothing was deployed. The next retry needs a new recovery condition,
+not another identical smoke run.
+
+Ignored evidence uses `quest-swapchain-evidence-` under `artifacts/unattended`.
