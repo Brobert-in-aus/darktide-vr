@@ -37,6 +37,9 @@ support hand does not independently orient a shield in this mode. Selecting a
 different hand for a blocking action is a possible later policy, but two
 independent simultaneous authoritative directions are not present in the audited
 input stream. The proving mode deliberately retains the single-direction rule.
+The stock blocking flag alone is not a safe hand selector: `ActionBlock.finish`
+deliberately retains it into some push, sweep and shooting transitions. A later
+selection policy must handle those attacks and their first cached frame.
 
 Grenade and audited luggable previews also use the simulated first-person pose.
 The stock trajectory renderer otherwise reads the visual root, which continues
@@ -63,6 +66,10 @@ sliding, collision and recoil-related effects remain. The isolated stock-method
 test confirms a concrete consequence: looking/aiming behind while walking in
 the head's forward direction retains the server's backward-movement penalty.
 The mode does not implement a local speed compensation that the server lacks.
+Slide entry also requires sufficient velocity along the simulated aim direction.
+With forward world velocity, aiming sideways or backward can prevent entry;
+once sliding, stock friction continues along existing world velocity. This is a
+confirmed stock-rule consequence, not a new controller-direction correction.
 Rotated diagonal inputs now use one shared saturation scale, preserving their
 world direction instead of clipping axes independently. This was a reproduced
 adapter bug; the regression check failed before the fix and passes afterward.
@@ -241,6 +248,16 @@ geometry, network or live rescue is exercised. Portable installed interaction
 hooks retain the simulated component and return tuple when hand overrides are
 declined. This strengthens the offline contract, not mission acceptance.
 
+Actual stock air steering and jumping/falling updates also run after the adapter
+and first-person update. Across six aim headings, three movement directions and
+three starting velocities, they match the unconverted head-basis control for
+air acceleration/drag and jump gravity, including weapon/player speed modifiers
+and the same recoil offset. Sprint-jump speed thresholds and server-only fall
+damage-check dispatch remain. Actual slide entry retains its facing gate, while
+the sliding update retains ordinary/sprint friction along world velocity. Engine
+math is isolated; transitions, collision, fall damage and stuck recovery are
+substitutes, not live movement or comfort evidence.
+
 An optional stock grenade check passes:
 
 ```powershell
@@ -274,6 +291,6 @@ the user is at work. ADB dismissed the Quest tracking-loss prompt, but current
 readiness fails at VDXR rendering-buffer creation; see
 [recovery evidence](QUEST-PASSTHROUGH-RECOVERY.md).
 
-Current full-suite baseline: 110/110 at `aadf4f3`; native Release build at
-`5f1eccd`. Subsequent ownership fixes and source-contract expansions have focused
+Current full-suite/native Release build baseline: 110/110 at `df99611`.
+Subsequent watcher/input fixes and source-contract expansions have focused
 passing checks recorded in the current handoff. They remain undeployed.

@@ -707,6 +707,110 @@ do
     assert(actor:_check_valid_ongoing_interaction(nil,0))
     aim,h._input_cache=saved_aim,saved_cache
 end
+-- Air steering reconstructs the world direction before applying stock drag,
+-- acceleration and jump gravity. Sliding admission still depends on aim facing.
+do
+    local saved_aim,saved_cache,saved_extension=aim,h._input_cache,ScriptUnit.has_extension
+    local saved_index,saved_newindex,saved_angle=vector_meta.__index,vector_meta.__newindex,Vector3.angle
+    local keys={x=1,y=2,z=3}
+    vector_meta.__index=function(v,key) return keys[key] and v[keys[key]] end
+    vector_meta.__newindex=function(v,key,value) rawset(v,keys[key] or key,value) end
+    Vector3.angle=function(a,b)
+        local lengths=Vector3.length(a)*Vector3.length(b)
+        assert(lengths>0,'This fixture does not substitute zero-vector angle policy')
+        return math.acos(math.max(-1,math.min(1,Vector3.dot(a,b)/lengths)))
+    end
+    local character='jumping'
+    ScriptUnit.has_extension=function() return {current_state_name=function() return character end} end
+    local base,jump,fall,slide={},{},{},{}
+    local damage_checks,weapon_updates,ability_updates=0,0,0
+    local env=setmetatable({PlayerCharacterStateBase=base,PlayerCharacterStateJumping=jump,
+        PlayerCharacterStateFalling=fall,PlayerCharacterStateSliding=slide,
+        math=setmetatable({clamp01=function(v) return math.max(0,math.min(1,v)) end},{__index=math}),
+        Fall={check_damage=function() damage_checks=damage_checks+1 end},
+        Crouch={check=function() return true end},PlayerUnitPeeking={fixed_update=function() end},
+        SPEED_EPSILON=.001,buff_keywords={knock_down_on_slide='knock',zero_slide_friction='zero'},
+    },{__index=_G})
+    local function method(class,file,first,last)
+        local text=source('extension_systems/character_state_machine/character_states/'..file)
+        local a=assert(text:find(class..'.'..first..' =',1,true))
+        local b=assert(text:find('\n'..class..'.'..last..' =',a,true))
+        setfenv(assert(loadstring(text:sub(a,b-1))),env)()
+    end
+    method('PlayerCharacterStateBase','player_character_state_base','_air_movement','_is_colliding_with_gameplay_collision_box')
+    method('PlayerCharacterStateJumping','player_character_state_jumping','fixed_update','_check_transition')
+    method('PlayerCharacterStateFalling','player_character_state_falling','fixed_update','_update_falling_sound')
+    method('PlayerCharacterStateSliding','player_character_state_sliding','fixed_update','_do_material_query')
+    local constants={move_speed=5,air_acceleration=3,air_directional_speed_scale_angle=.8,
+        air_move_speed_scale=1.1,air_drag_angle=1.2,gravity=9.81,sprint_jump_speed_threshold_sq=9,
+        slide_commit_time=.25,slide_friction_function=function() return 2 end,
+        sprint_slide_friction_function=function() return 4 end}
+    local actor=setmetatable({_constants=constants,_first_person_component=component,_input_extension=input,
+        _locomotion_component={},_locomotion_steering_component={},_movement_settings_component={player_speed_scale=1},
+        _sprint_character_state_component={},_character_state_component={entered_t=0},
+        _slide_character_state_component={friction_function='default'},
+        _weapon_extension={update_weapon_actions=function() weapon_updates=weapon_updates+1 end,
+            move_speed_modifier=function() return .8 end,weapon_template=function() return {} end},
+        _ability_extension={update_ability_actions=function() ability_updates=ability_updates+1 end},
+        _update_falling_sound=function() end,_update_likely_stuck_hack=function() end,
+        _check_transition=function() return 'stock_transition' end,
+        _fx_extension={run_looping_sound=function() end},_buff_extension={has_keyword=function() return false end},
+    },{__index=base})
+    local baseline=Quaternion.from_yaw_pitch_roll(.01,.02,0)
+    local dt=.02
+    for _,state_name in ipairs({'jumping','falling'}) do
+        character=state_name
+        for step=0,5 do
+            for _,direction in ipairs({{.4,1},{-.6,.2},{0,-1}}) do
+                for _,velocity in ipairs({Vector3(1,2,3),Vector3(7,-1,-2),Vector3(-3,1,0)}) do
+                    aim=Quaternion.from_yaw_pitch_roll(step*math.pi/3,.25,0)
+                    local x,y=unpack(direction)
+                    h._input_cache={{math.max(x,0)},{math.max(-x,0)},{math.max(y,0)},{math.max(-y,0)},{0},{0},{0}}
+                    rules.capture(h,40); PlayerUnitFirstPersonExtension.fixed_update(fp,'local',dt,40,40)
+                    actor._locomotion_component.velocity_current=velocity
+                    actor._is_server=step%2==0
+                    actor._movement_settings_component.player_speed_scale=step%2==0 and .7 or 1.2
+                    actor._sprint_character_state_component={is_sprint_jumping=true,wants_sprint_camera=true}
+                    local expected=base._air_movement(actor,velocity,x,y,baseline,4,
+                        actor._movement_settings_component.player_speed_scale,dt)
+                    if state_name=='jumping' then expected.z=expected.z-constants.gravity*dt end
+                    local selected=state_name=='jumping' and jump or fall
+                    local checks_before=damage_checks
+                    assert(selected.fixed_update(actor,'local',dt,40,{},40)=='stock_transition')
+                    assert(Vector3.length(actor._locomotion_steering_component.velocity_wanted-expected)<1e-10,
+                        'Aim basis changed stock air acceleration/drag/gravity')
+                    assert(damage_checks-checks_before==((state_name=='falling' and actor._is_server) and 1 or 0))
+                    assert(actor._sprint_character_state_component.is_sprint_jumping==
+                        (Vector3.length_squared(Vector3.flat(velocity))>=9))
+                end
+            end
+        end
+    end
+    assert(weapon_updates==ability_updates and weapon_updates==108)
+    -- Slide entry is a forward-velocity test, not just a crouch button. Looking
+    -- the simulated aim sideways/backwards can prevent entry under stock rules.
+    local walk_constants={acceleration=1000,deceleration=1000,backward_move_scale=.5,
+        move_speed=5,crouch_move_speed=2,slide_move_speed_threshold=2}
+    character='walking'
+    for _,case in ipairs({{0,true},{math.pi/2,false},{math.pi,false}}) do
+        aim=Quaternion.from_yaw_pitch_roll(case[1],0,0)
+        h._input_cache={{0},{0},{1},{0},{0},{0},{0}}
+        rules.capture(h,41); PlayerUnitFirstPersonExtension.fixed_update(fp,'local',dt,41,41)
+        local result={walking.wanted_movement(walk_constants,input,{local_move_x=0,local_move_y=0},
+            {player_speed_scale=1},component,true,Vector3(0,5,0),dt)}
+        assert(result[8]==case[2],'Stock slide facing gate changed')
+        -- Once sliding, existing world velocity/friction is not rotated by aim.
+        for _,friction in ipairs({'default','sprint'}) do
+            actor._slide_character_state_component.friction_function=friction
+            actor._locomotion_component.velocity_current=Vector3(0,5,0)
+            assert(slide.fixed_update(actor,'local',dt,41,{},41)=='stock_transition')
+            local expected=Vector3(0,5-(friction=='default' and 2 or 4)*dt,0)
+            assert(Vector3.length(actor._locomotion_steering_component.velocity_wanted-expected)<1e-12)
+        end
+    end
+    aim,h._input_cache,ScriptUnit.has_extension=saved_aim,saved_cache,saved_extension
+    vector_meta.__index,vector_meta.__newindex,Vector3.angle=saved_index,saved_newindex,saved_angle
+end
 -- With zero recoil, the actual walking method reconstructs the intended head-
 -- relative direction from the transformed input. Its own backward penalty stays.
 local constants={acceleration=1000,deceleration=1000,backward_move_scale=.5,
@@ -769,4 +873,5 @@ print('PASS: actual stock flame loops retain simulation rays, obstructions, targ
 print('PASS: actual stock targeting retains simulation aim/recoil/sway, assist ownership, sticky charges, strict range and resimulation targets')
 print('PASS: actual stock block angles/costs, ranged keyword, revive authority, warp-charge cap and break notifications retained')
 print('PASS: actual stock interaction acquisition/holds/cancellation uses simulation pose; revive completion remains server-owned')
+print('PASS: actual stock jumping/falling preserve air steering, drag, gravity and authority; slide entry facing and world friction remain stock')
 print('LIMIT: isolated engine math, no real quantization, live network or worn acceptance')

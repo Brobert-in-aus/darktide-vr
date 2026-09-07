@@ -978,3 +978,22 @@ existing focused CTests pass (controller bindings, gameplay UI input/ownership,
 online rules, Lua compile/invariants); 36 chunks compile. No added test for the
 simple early return and no measured FPS claim. Full build/suite baseline remains
 `df99611` (110 tests); the newer watcher test passes separately. Undeployed.
+
+## Continuous todo work: stock air movement and sliding
+
+Branch `codex/online-air-slide-contract-2026-09-07` executes actual stock air
+steering and jumping/falling updates after the VR cache and first-person update.
+108 combinations of state, aim heading, input direction and starting velocity
+preserve baseline air acceleration/drag and jump gravity, with weapon/player
+speed modifiers and a shared recoil offset. Sprint-jump thresholds and server
+fall-damage-check dispatch remain. A missing stuck-recovery sink was added to
+the initial fixture; no production fix was needed.
+
+Actual slide entry confirms the facing limitation: sideways/backward hand aim
+can prevent a slide despite forward world velocity. Once sliding, ordinary and
+sprint friction follow existing world velocity rather than rotating with aim.
+Transitions, collisions, damage and stuck recovery are substituted. The optional
+stock fixture passes; no live locomotion/comfort claim or production change.
+The block-selection review also found stock deliberately preserves blocking into
+some attacks, so no simplistic support-hand switch was added. Full build/suite
+baseline stays `df99611`; continue the user's todo until instructed to stop.
