@@ -1849,3 +1849,15 @@ that short sample. These are delivery observations, not performance acceptance.
 Evidence: home-psykhanium-relaunch-20260907.log. Game and XR remain running;
 proximity override remains applied. User asked for stereo/control and hand-aim
 shot observations. Do not restart or replace this session while they test.
+
+## Worn feedback and locomotion diagnostic repair
+
+User confirms stereo and triggers work, but gun shooting does not, and constant
+error sounds occur. They explicitly note the gun problem predates the online
+rules test. The repeated logging error is a shadowed local: the reference-forward
+vector replaces the numeric forward input while formatting cache fields. Rename
+the vector; actual extracted logging with userdata and numeric cache now passes,
+as do compiler/invariant checks (three in 1.13 seconds). Fix is not deployed.
+User requested keeping this session running to try the force staff before any
+restart. Preserve that request. Trigger press/release delivery is observed in
+fresh logs; delivery alone does not establish a stock shot or correct direction.

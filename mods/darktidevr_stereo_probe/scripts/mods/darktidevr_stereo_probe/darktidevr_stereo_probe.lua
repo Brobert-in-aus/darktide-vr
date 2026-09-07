@@ -5670,7 +5670,7 @@ mod:hook_safe(
                         end
                         local movement_rotation, movement_reference =
                             presentation.movement_reference_rotation()
-                        local movement_forward = movement_rotation and
+                        local reference_forward = movement_rotation and
                             Quaternion.forward(movement_rotation) or Vector3.zero()
                         mod:info(
                             "DARKTIDEVR_INPUT locomotion frame=%d state=%s reference=%s reference_yaw=%.4f head_yaw=%.4f reference_forward=%.4f,%.4f aim_q=%.4f,%.4f,%.4f,%.4f move=%.3f,%.3f raw_left=%.3f,%.3f raw_right=%.3f,%.3f existing=%.3f,%.3f combined=%.3f,%.3f stick_active=%s tracking_live=%s,%s cache=%.3f,%.3f,%.3f,%.3f player=%.4f,%.4f,%.4f",
@@ -5678,8 +5678,8 @@ mod:hook_safe(
                             tostring(movement_reference), movement_rotation and
                                 Quaternion.yaw(movement_rotation) or 0,
                             controller_observation.gameplay_yaw or 0,
-                            Vector3.x(movement_forward),
-                            Vector3.y(movement_forward),
+                            Vector3.x(reference_forward),
+                            Vector3.y(reference_forward),
                             controller_observation.left_aim_qx or 0,
                             controller_observation.left_aim_qy or 0,
                             controller_observation.left_aim_qz or 0,

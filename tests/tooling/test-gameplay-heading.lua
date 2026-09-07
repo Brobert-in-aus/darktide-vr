@@ -74,3 +74,26 @@ commit_result=0
 observe(1)
 assert(commits[#commits]==55 and not controller_observation.gameplay_generation_pending)
 print("gameplay_heading=pass")
+
+-- Run the actual locomotion log with engine-style userdata vectors. The
+-- reference direction must not shadow the numeric forward input cache value.
+local log_first=assert(source:find('                        local movement_rotation, movement_reference =',1,true))
+local log_end=assert(source:find('Vector3.z(player_position))',log_first,true))+#'Vector3.z(player_position))'-1
+local vector=newproxy(true)
+local logged
+local environment={
+    presentation={movement_reference_rotation=function() return {},'head' end},
+    controller_observation={left_stick_x=0,left_stick_y=.6,right_stick_x=0,right_stick_y=0},
+    Quaternion={forward=function() return vector end,yaw=function() return 0 end},
+    Vector3={zero=function() return vector end,x=function() return 0 end,
+        y=function() return 1 end,z=function() return 0 end},
+    mod={info=function(_,format,...) logged=string.format(format,...) end},
+    frame=60,state_name='walking',move_x=0,move_y=.6,existing_x=0,existing_y=0,
+    combined_x=0,combined_y=.6,stick_active=true,movement_right=0,movement_left=0,
+    movement_forward=.6,movement_backward=0,player_position=vector,
+}
+setmetatable(environment,{__index=_G})
+local log_chunk=assert(loadstring(source:sub(log_first,log_end)))
+setfenv(log_chunk,environment); log_chunk()
+assert(logged:find('cache=0.000,0.000,0.600,0.000',1,true),logged)
+print('locomotion_log=pass vector_reference numeric_input_cache')
