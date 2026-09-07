@@ -43,6 +43,35 @@ isolated pulses, but leaves less time using headset aim. Charge targeting,
 burst/automatic fire, alternate actions, finish paths and replay need coverage.
 Official-server acceptance is not established by Psykhanium.
 
+## Movement response to a firing-frame pulse
+
+An additional optional probe executes the actual stock
+`AcceleratedLocalSpaceMovement.wanted_movement` with supplied cardinal inputs
+that preserve the requested world-forward direction across head/hand aim bases.
+The steering component begins at settled forward input. Under the fixture's
+acceleration=19, deceleration=6, speed=5 and hypothetical 60 Hz timestep:
+
+- A 90-degree hand-aim pulse produces about 65.14 degrees of first-frame wanted
+  movement error, even though its input vector was converted into the new basis.
+- A 180-degree pulse initially requests movement opposite world-forward.
+- After a six-frame 180-degree interval, returning to head aim also produces
+  temporary backward wanted movement while the retained local axes settle.
+
+These are desired-movement outputs, not measured body motion. The fixture uses
+exact cardinal inputs and simplified engine math; an earlier exploratory probe
+with near-zero floating-point inputs produced different 90-degree speed/steering
+behavior because stock `speed_function` branches on exact zero. Real input
+packing, collision, integration, buffs and worn comfort are not established.
+The robust conclusion is that changing aim basis can change the server's
+stateful movement response; it is not enough to rotate only the new stick input.
+
+```powershell
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-aim-pulse-movement-stock-contract.lua _downloads/Darktide-Source-Code
+```
+
+PASS for one/six-frame pulses at 90/180 degrees, with recovery to settled
+movement. No change to the running game or implementation of hybrid aim.
+
 ## Alternative message routes checked
 
 The source's attack/projectile/hit message names were also inspected for an

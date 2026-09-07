@@ -1921,3 +1921,12 @@ senders/receivers. They do not provide an independent hand-origin firing request
 for the tested staff. The authoritative explosion path returns on non-server
 callers; husk handling runs local effects and ragdoll interaction. Source-only
 inspection, no crafted network traffic. Details in ONLINE-AIM-WINDOW-AUDIT.md.
+
+Optional stock aim-pulse movement probe: four supplied cardinal scenarios pass,
+executing real wanted_movement with retained local-axis state. A 90-degree pulse
+produces ~65.14 degrees first-frame desired-direction error; a 180-degree pulse
+can initially reverse desired movement. Six-frame 180-degree intervals also
+reverse desired movement briefly on return to head aim. These are fixture
+desired-movement outputs, not live body displacement or wire-accurate input.
+Near-zero versus exact-zero inputs affect the stock branch and must not be
+conflated. Details and runnable fixture in ONLINE-AIM-WINDOW-AUDIT.md. No deploy.
