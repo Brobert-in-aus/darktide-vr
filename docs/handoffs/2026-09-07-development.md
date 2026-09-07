@@ -29,7 +29,12 @@ the first roomscale worn check; staff regression is not yet reported. The
 locomotion observer reads `_input_extension._frame`, but stock owns that frame
 on `_input_extension._human_unit_input._frame`. The nil frame skips movement
 repayment, leaving the chase target outstanding. A regression at the actual
-registered hook boundary and corrected frame lookup are the next fix.
+registered hook boundary reproduces that failure; the corrected nested frame
+lookup passes it. The 45-case stock movement fixture, dynamic-target checks and
+five focused CTests pass (1.18 seconds), with all 41 chunks compiling. The user
+also suspected that collider movement was carrying their head along, which is
+consistent with the missing repayment. The first game was asked to close for
+the corrected deployment; worn retest remains pending.
 
 At 16:17 Brisbane they returned home with the headset and requested setup.
 They later closed Virtual Desktop for a break. Continue offline; at the roomscale

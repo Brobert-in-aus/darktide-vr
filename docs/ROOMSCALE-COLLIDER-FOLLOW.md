@@ -48,7 +48,7 @@ From the Windows repository root:
 ```powershell
 & tools/stereo/test-darktide-lua-source.ps1
 & tools/stereo/test-darktide-lua-invariants.ps1
-& build/dependencies/luajit/src/luajit.exe tests/tooling/test-roomscale.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_roomscale.lua
+& build/dependencies/luajit/src/luajit.exe tests/tooling/test-roomscale.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_roomscale.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_stereo_probe.lua
 & build/dependencies/luajit/src/luajit.exe tests/tooling/test-roomscale-stock-contract.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_roomscale.lua _downloads/Darktide-Source-Code
 ```
 
@@ -73,6 +73,23 @@ needed. No full 123-test run is claimed.
 after Ready passed 600/600 frames. Fresh stereo and nonzero `shared_ready` are
 confirmed in Psykhanium. The user has been asked for the first step/stop/staff
 check; worn acceptance remains pending. See the current development handoff.
+
+The first worn check failed: a sideways physical move produced continuous slow
+drift. The repayment hook read `_input_extension._frame`, but the inspected
+stock `PlayerUnitInputExtension` delegates the simulation frame to its nested
+`_human_unit_input`. The nil frame discarded every measured movement sample,
+leaving the chase offset outstanding and carrying the visual head with the
+collider. The corrected hook reads the nested human reader's frame.
+
+The regular roomscale test now executes the production registered hook, rather
+than testing only its state/controller in isolation. It reproduces the old
+failure (40 cm remains after 10 cm of movement), then passes with the lookup
+fix: measured repayment, stationary visual head, aliased engine position,
+correction replay, and removal of pushed-frame attribution. The 45-case actual
+stock walking fixture and dynamic-target checks also pass. Five focused CTests
+pass in 1.18 seconds, including all 41 chunks and invariants. Native code is
+unchanged. The corrected candidate still requires the user's repeated worn
+step/stop check; the initial deployment is not roomscale acceptance.
 
 After the user resumes VD, pass Ready and deploy with the normal Lua gates.
 Check fresh stereo initialization and nonzero `shared_ready`, then ask the

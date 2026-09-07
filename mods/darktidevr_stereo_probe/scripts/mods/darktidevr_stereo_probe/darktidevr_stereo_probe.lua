@@ -6202,7 +6202,11 @@ mod:hook(
             self, unit, dt, t, locomotion_component, steering_component,
             current_position, calculate_fall_velocity, on_ground, mover)
         if presentation.roomscale and result then
-            presentation.roomscale.moved(self, unit, self._input_extension._frame,
+            -- PlayerUnitInputExtension delegates frame ownership to its human
+            -- reader. A frame read from the extension itself is nil and silently
+            -- leaves every collider step unpaid, producing perpetual chase.
+            local human_input = self._input_extension and self._input_extension._human_unit_input
+            presentation.roomscale.moved(self, unit, human_input and human_input._frame,
                 Vector3.x(result) - before_x, Vector3.y(result) - before_y)
         end
         if original_velocity then
