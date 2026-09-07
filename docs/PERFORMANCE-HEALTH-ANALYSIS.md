@@ -209,3 +209,20 @@ runtime feature state. This is a focus correlation, not a demonstrated causal
 fix or a controlled settings test. No focus or graphics setting was changed.
 The per-run JSON summary is home-generated-health-20260907.json under
 artifacts/unattended. The live session remains available for the user's testing.
+
+## Workday session observation: 8 September
+
+A read-only snapshot of the running accepted build contains 4,060 health rows:
+3,874 stable foreground windows with generated publication progress, two
+foreground windows without evaluation/publication progress, one baseline,
+180 windows without observed original output, one endpoint transition and two
+within-window focus transitions. No timing-counter boundary was recorded.
+The progressing group has median window engine/original-ring rates of 54.13
+and median window-average Present duration of 0.0797 ms. These are window
+statistics across an uncontrolled live session, not frame-time percentiles,
+a combat benchmark, a comparison against FG off, or evidence of an optimization.
+
+The existing `summarize-generated-health.py` produced the report from
+`artifacts/unattended/workday-health-snapshot-20260908.log` into the adjacent
+JSON file. No focus, graphics setting, runtime or game deployment was changed
+for this observation. The two-hand source candidate remains undeployed.
