@@ -940,3 +940,9 @@ builds and four focused CTests pass (both profiler queues, native hooks, generat
 frame state). This records workload identity, not an FPS improvement or blur fix.
 Full-suite baseline remains 110/110 at `aadf4f3`; native sources have now advanced
 beyond the prior full Release build at `5f1eccd`. No deployment; continue the todo.
+
+Integration checkpoint `df99611`: full Windows x64 Release preset build and
+**110/110 offline CTests pass**, with headset tests still disabled. Evidence:
+`artifacts/unattended/continuous-todo-full-build-df99611-20260907.log` and
+`artifacts/unattended/continuous-todo-full-ctest-df99611-20260907.log`. This is the
+new build/suite baseline; no live checks were performed by that run.
