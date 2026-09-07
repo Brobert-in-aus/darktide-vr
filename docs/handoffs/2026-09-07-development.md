@@ -1,5 +1,10 @@
 # Development continuation: 7 September 2026
 
+**Final worn acceptance:** after the night shutdown, the user replied **"All
+checks passed"** to the final gun pitch, hand placement, switch-away/back and
+reload question. These checks pass on deployed `ab9e9db`. Earlier pending labels
+below are historical. Development remains stopped for the night.
+
 ## Final evening candidate: pitch, visible grip and animation continuity
 
 The user accepts controller left/right alignment on `859b460`, requests about

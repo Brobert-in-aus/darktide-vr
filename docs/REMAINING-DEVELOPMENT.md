@@ -5,6 +5,9 @@ pitch/hand/draw/reload fixes and a committed, pushed handover. Both continuation
 automations are PAUSED. Do not resume overnight. Start with the
 [8 September handover](handoffs/2026-09-08-handover.md); earlier continuous-work
 instructions and pending labels below are historical.
+The user subsequently confirmed **all final pitch/hand/draw/reload checks pass**
+on `ab9e9db`. Preserve that accepted baseline; continue remaining weapon families
+and two-handing/ADS when development is resumed.
 
 ## Current priority order: end of 6 September 2026
 
