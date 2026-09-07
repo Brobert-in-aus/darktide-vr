@@ -1,5 +1,11 @@
 # Remaining development: melee, HUD and DLSS
 
+**Latest 8 September steering:** pause physical melee until server-side stock
+melee is locked in. The requested [first-swing preview](STOCK-MELEE-PREVIEW.md)
+is prepared in PR #10 and as a focused accepted-baseline candidate in PR #11.
+It remains undeployed and awaits a worn check. Continue stock input/aim/sweep
+ownership work; do not resume physical-damage implementation from older notes.
+
 **Workday continuation, 8 September:** the user resumed development in the current
 session with a 20-minute heartbeat until explicitly told to stop. Quest Ready and
 Psykhanium stereo initialization pass; the accepted live build remains running.
