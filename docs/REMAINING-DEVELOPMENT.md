@@ -112,6 +112,10 @@ for the smaller set needed before a first end-to-end mission attempt.
    runtime/resolution lifecycle and machine-configuration handling. Worker policy
    must use physical cores. Existing HUD/menu options are implemented, not a new
    task to rebuild them.
+   The ordinary launcher and development sync now discover Steam libraries and
+   the Darktide app manifest, retaining explicit GameRoot selection for multiple
+   copies. Ten focused checks pass. This is existing-installation portability,
+   not a clean installer or live launch validation.
 10. **Post-initial-release optimization/polish.** LOD policy beyond machine-local
    LOD 9, tiny extreme-edge marker asymmetry, selective smoke-only suppression,
    and remaining nonessential visual polish. General/DLSS performance is now

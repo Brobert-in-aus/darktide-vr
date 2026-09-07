@@ -1,7 +1,6 @@
 [CmdletBinding()]
 param(
-    [string] $GameRoot =
-        'D:\SteamLibrary\steamapps\common\Warhammer 40,000 DARKTIDE',
+    [string] $GameRoot,
 
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Release',
@@ -36,7 +35,8 @@ if (Get-Process Darktide -ErrorAction SilentlyContinue) {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$gameRootPath = (Resolve-Path -LiteralPath $GameRoot).Path
+. (Join-Path $PSScriptRoot 'resolve-darktide-game-root.ps1')
+$gameRootPath = Resolve-DarktideGameRoot -GameRoot $GameRoot
 $modRoot = Join-Path $gameRootPath 'mods\darktidevr_stereo_probe'
 $sourceLua = Join-Path $repoRoot `
     'mods\darktidevr_stereo_probe\scripts\mods\darktidevr_stereo_probe\darktidevr_stereo_probe.lua'

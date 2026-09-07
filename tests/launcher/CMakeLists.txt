@@ -1,4 +1,7 @@
 if(BUILD_TESTING)
+  add_test(NAME launcher_game_root_discovery COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/validate-game-root-discovery.ps1")
+  set_tests_properties(launcher_game_root_discovery PROPERTIES TIMEOUT 15 LABELS "launcher")
   add_test(NAME launcher_shared_stereo_evidence COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/validate-shared-stereo-evidence.ps1")
   set_tests_properties(launcher_shared_stereo_evidence PROPERTIES TIMEOUT 10 LABELS "launcher")

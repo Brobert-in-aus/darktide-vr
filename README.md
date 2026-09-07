@@ -35,11 +35,12 @@ The ordinary D3D12 smoke/resize checks pass `--no-openxr`, which skips runtime
 discovery even when a Quest is connected. This option is also available for
 manual desktop-only harness checks and rejects conflicting XR requests.
 
-For an existing development installation in a different Steam library, pass its
-game folder to `tools/stereo/install-darktide-vr-shortcut.ps1 -GameRoot <folder>`.
-The saved shortcut forwards that folder through the ordinary launcher. This
-does not install Darktide, DMF or mod dependencies; omitting the option retains
-the development launcher's existing default path.
+The ordinary launcher and development sync discover Darktide through registered
+Steam libraries and its app manifest. If several installations exist, choose one
+with `-GameRoot <folder>`. A shortcut can save that choice through
+`tools/stereo/install-darktide-vr-shortcut.ps1 -GameRoot <folder>`; omitting it
+keeps automatic discovery at launch. This does not install Darktide, DMF or mod
+dependencies. Other standalone diagnostic scripts still take their own GameRoot.
 
 Automatic hub/Psykhanium launches require a successful shared-stereo delivery
 summary as well as successful viewer/game exit status. Flat fallback alone does

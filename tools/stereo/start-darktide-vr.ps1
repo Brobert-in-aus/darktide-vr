@@ -6,8 +6,7 @@ param(
     [ValidateRange(5, 1800)]
     [int] $GameStartTimeoutSeconds = 600,
 
-    [string] $GameRoot =
-        'D:\SteamLibrary\steamapps\common\Warhammer 40,000 DARKTIDE',
+    [string] $GameRoot,
 
     [switch] $FreshPsoCache,
 
@@ -117,6 +116,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+. (Join-Path $PSScriptRoot 'resolve-darktide-game-root.ps1')
+$GameRoot = Resolve-DarktideGameRoot -GameRoot $GameRoot
 . (Join-Path $PSScriptRoot 'psykhanium-launch-request.ps1')
 
 $runner = Join-Path $PSScriptRoot 'run-darktide-shared-eyes.ps1'

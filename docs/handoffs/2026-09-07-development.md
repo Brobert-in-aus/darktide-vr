@@ -1661,3 +1661,26 @@ clock sample. Recovery now starts fresh, while ordinary duplicate ticks preserve
 history and the simulation tick ledger remains intact. Six focused CTests pass
 in 0.80 seconds, including all 37 Lua chunks. No damage/native change, deployment
 or live acceptance. Continue the todo; full/native baselines remain unchanged.
+
+## Continuous todo work: Steam game-folder discovery
+
+Branch `codex/steam-game-root-discovery-2026-09-07` removes the machine-specific
+default from the ordinary start script and development sync. A read-only helper
+uses Steam registry roots, modern/legacy library lists and the Darktide manifest;
+explicit GameRoot takes priority. It rejects malformed metadata/invalid folders,
+deduplicates paths, ignores stale installations without the executable and
+requires a choice when several valid copies exist. Shortcut defaults inherit
+discovery; other standalone diagnostics retain their own parameters.
+
+Windows PowerShell 5 fixtures cover modern/legacy libraries, spaces/apostrophes,
+explicit selection, ambiguity, stale metadata, invalid app identity, traversal,
+duplicate keys and malformed grammar. Read-only real discovery locates the
+existing installation. Ten focused launcher/source CTests pass in 3.67 seconds;
+the final absolute-library-path restriction also passes the discovery fixture.
+Early-failure testing uses an inert fixture executable and still cannot arm a
+range launch before prerequisites pass. Fixture cleanup is confined to its newly
+created artifacts/tests subtree. No shortcut creation, deployment, game launch,
+headset action or clean installation occurred.
+
+Configured count is now 118; full baseline remains 116/116 at `2790e7d`, latest
+native build `01617d6`, runtime Lua `2d44cdc` (37 chunks). Continue the todo.

@@ -5,6 +5,9 @@ $previousAppData = $env:APPDATA
 New-Item -ItemType Directory -Path $fixture | Out-Null
 $modDirectory = Join-Path $fixture 'mods/darktidevr_stereo_probe'
 New-Item -ItemType Directory -Path $modDirectory -Force | Out-Null
+$binaryDirectory = Join-Path $fixture 'binaries'
+New-Item -ItemType Directory -Path $binaryDirectory | Out-Null
+New-Item -ItemType File -Path (Join-Path $binaryDirectory 'Darktide.exe') | Out-Null
 try {
     $env:APPDATA = $fixture
     # Prevent this source-level scenario from observing an unrelated live game.
@@ -32,5 +35,7 @@ try {
     if (Test-Path $flag) { Remove-Item -LiteralPath $flag }
     Remove-Item -LiteralPath $modDirectory
     Remove-Item -LiteralPath (Join-Path $fixture 'mods')
+    Remove-Item -LiteralPath (Join-Path $binaryDirectory 'Darktide.exe')
+    Remove-Item -LiteralPath $binaryDirectory
     Remove-Item -LiteralPath $fixture
 }
