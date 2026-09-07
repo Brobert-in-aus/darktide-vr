@@ -129,6 +129,14 @@ diagnostic pipeline to retire trajectory history and skip queries. Fresh trackin
 recovers normally. The rendering fallback remains unchanged. Six focused checks
 pass, including the 37-chunk gate; physical contact acceptance remains pending.
 
+Rejected simulation times and malformed steps/requests now retire diagnostic
+trajectory history too. Previously they skipped queries but could join a later
+accepted pose to the old trajectory across that unaccepted interval. The
+regression reproduces a nonadvancing-clock case before the fix and covers
+malformed time/request recovery afterward. Ordinary duplicate ticks preserve
+the accepted trajectory, and the simulation ledger is not reset. Six focused
+checks pass; this changes neither contact eligibility nor physical damage.
+
 Deduplicate multiple hurtboxes, repeated substeps and duplicate physics results
 per target before applying cooldowns. Cooldowns use simulation-clock deadlines
 and stable unit generation identities. Do not clear them on a pose-history reset

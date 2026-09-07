@@ -57,4 +57,22 @@ assert(after_correction.plan.reason == "fresh_pose" and after_correction.query_c
 before = calls
 assert(not sample(8,1.06,0,true,false) and calls == before,
     "Correction recovery reset the already claimed simulation tick")
+before=calls
+local rejected,why=sample(9,1.06,.2,true,false)
+assert(not rejected and why=='nonadvancing_time' and calls==before)
+local after_clock=assert(sample(10,1.08,.4,true,false))
+assert(after_clock.plan.reason=='fresh_pose' and after_clock.query_count==2,
+    'Clock suspension retained a trajectory across an unaccepted sample')
+local saved_pose=state.previous
+assert(not sample(10,1.08,.4,true,false) and state.previous==saved_pose,
+    'Ordinary duplicate delivery should preserve accepted trajectory history')
+before=calls
+rejected,why=sample(11,0/0,.6,true,false)
+assert(not rejected and why=='invalid_step' and calls==before)
+assert(sample(11,1.10,.8,true,false).plan.reason=='fresh_pose')
+local limits=request.limits; request.limits=nil; before=calls
+rejected,why=sample(12,1.12,1,true,false)
+assert(not rejected and why=='invalid_request' and calls==before)
+request.limits=limits
+assert(sample(13,1.14,1.2,true,false).plan.reason=='fresh_pose')
 print("non-damaging melee query orchestration, arc sampling and history recovery passed")

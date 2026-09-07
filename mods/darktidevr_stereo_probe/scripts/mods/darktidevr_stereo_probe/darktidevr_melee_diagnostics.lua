@@ -17,14 +17,16 @@ function Diagnostics.sample(state, request)
     -- generation. Change it after recenter or transport restart, never per eye.
     if type(request) ~= "table" or not request.history_key or
             type(request.volume) ~= "table" or type(request.limits) ~= "table" then
+        state.previous = nil
         return nil, "invalid_request"
     end
     local accepted, reason = state.simulation.begin_step(state.tick, request.step)
     if not accepted then
-        -- Correction replay may move the body's coordinate reference. Skip
-        -- queries during replay and do not join the corrected pose to an old
-        -- trajectory on recovery. Keep the simulation tick ledger intact.
-        if reason == "invalid_tracking" or reason == "resimulation" then
+        -- Invalid tracking/timing and correction replay break pose continuity.
+        -- An ordinary duplicate tick does not. Keep the simulation ledger intact
+        -- while preventing recovery from sweeping across an unknown interval.
+        if reason == "invalid_tracking" or reason == "resimulation" or
+                reason == "nonadvancing_time" or reason == "invalid_step" then
             state.previous = nil
         end
         return nil, reason

@@ -1651,3 +1651,13 @@ Engine network bounds, routes, inversion membership and availability endpoints
 are supplied fixtures; see MELEE-TIMING-AUDIT for the command and limits. No
 production/native change or deployment; continue the todo. Runtime Lua remains
 `42d4d53`, native build `01617d6`, full suite 116/116 at `2790e7d`, configured 117.
+
+## Continuous todo work: rejected-step melee trajectory recovery
+
+Branch `codex/melee-invalid-step-history-2026-09-07` clears diagnostic trajectory
+history after nonadvancing time, malformed steps or malformed requests. The
+actual orchestration regression reproduced an old trajectory across a rejected
+clock sample. Recovery now starts fresh, while ordinary duplicate ticks preserve
+history and the simulation tick ledger remains intact. Six focused CTests pass
+in 0.80 seconds, including all 37 Lua chunks. No damage/native change, deployment
+or live acceptance. Continue the todo; full/native baselines remain unchanged.
