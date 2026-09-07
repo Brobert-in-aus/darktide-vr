@@ -1,5 +1,10 @@
 # Tracked melee: accepted direction and implementation investigation
 
+8 September priority change: the user paused physical melee until server-side
+stock melee is locked in. Continue with a preview of the first stock swing
+using the tracked hand. The physical-damage investigation below is parked;
+the outstanding damage-falloff question is no longer an active blocker.
+
 Status: updated 6 September 2026 against the local Darktide source snapshot.
 An opt-in private-range probe observes contacts without applying physical damage.
 Button-driven stock melee remains the
@@ -404,6 +409,19 @@ and buffs. None of those lifetimes is replaced by this diagnostic selector.
 Physical damage remains blocked on a dedicated attack/proc context, explicit
 target-index policy, authoritative ownership and validated obstruction/contact
 geometry. The existing stateful hit routine is not called on idle overlaps.
+
+The optional `tests/tooling/test-melee-damage-stock-contract.lua` now executes
+the cached stock `_process_hit` and `_do_damage_to_unit` methods with engine
+fixtures. It confirms damage/impact forwarding, ordinary versus special profile
+and wound selection, separate `target_index` and `target_number`, and independent
+mass, armour and breed abort paths. A replay fixture confirms that damage and
+hit effects are skipped while counters, blood, special callbacks, duration
+extension and chain callbacks still run; server attack intensity also runs.
+Those callbacks are observed fixtures, not validation of their internal behavior.
+The contract does not execute `Attack.execute` internals or establish prediction,
+authority, damage balance or live proc counts. Run with the pinned LuaJIT and
+the cached source root as its sole argument. It passed on 8 September against
+stock snapshot `0f0cb45991e9305ef4a7b925370792d7d6035f95`.
 
 Validation: `melee_hit_zone`, `melee_live_probe`, `melee_diagnostics` and the
 31-chunk LuaJIT gate pass. Tests retain raised/lowered-shield priorities,
