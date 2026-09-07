@@ -16,6 +16,11 @@ function Context.local_authority(session)
     return ok and server == true
 end
 
+function Context.game_mode_name(game_mode)
+    local ok, name = pcall(query_owner, game_mode, "game_mode_name")
+    return ok and type(name) == "string" and name or nil
+end
+
 function Context.aim_mode(mode, session)
     if ranges[mode] then return true end
     return missions[mode] == true and Context.local_authority(session)

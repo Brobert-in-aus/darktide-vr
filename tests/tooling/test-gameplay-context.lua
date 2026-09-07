@@ -68,3 +68,34 @@ end
 assert(not context.local_input_handler(handler,nil))
 player=nil
 assert(not context.local_input_handler(handler,players))
+
+-- Exercise the actual main-mod mode seam as well as its shared policy. Lookup
+-- can throw before a retiring manager's method is even obtained.
+local file=assert(io.open(arg[2],'r')); local source=file:read('*all'); file:close()
+local first=assert(source:find('local function active_game_mode_name()',1,true))
+local last=assert(source:find('\npresentation.gameplay_context =',first,true))
+local environment={presentation={gameplay_context=context},Managers={state={}}}
+setmetatable(environment,{__index=_G})
+local chunk=assert(loadstring(source:sub(first,last-1)..'\nreturn active_game_mode_name'))
+setfenv(chunk,environment)
+local active_mode=chunk()
+environment.Managers.state.game_mode=setmetatable({}, {__index=function() error('mode owner retired during lookup') end})
+assert(active_mode()==nil,'Retired mode lookup escaped into gameplay')
+for _,owner in ipairs({{},true,17,
+        {game_mode_name=function() error('mode owner retired during call') end}}) do
+    environment.Managers.state.game_mode=owner
+    assert(active_mode()==nil)
+end
+environment.Managers.state.game_mode=nil; assert(active_mode()==nil)
+for _,value in ipairs({true,17,{}}) do
+    environment.Managers.state.game_mode={game_mode_name=function() return value end}
+    assert(active_mode()==nil,'Non-string mode was accepted')
+end
+local current_mode='shooting_range'
+environment.Managers.state.game_mode=setmetatable({}, {__index={game_mode_name=function(self)
+    assert(getmetatable(self)); return current_mode
+end}})
+assert(active_mode()=='shooting_range')
+current_mode='hub'; assert(active_mode()=='hub','Mode lookup cached a retired context')
+environment.Managers=nil; assert(active_mode()==nil)
+print('game_mode_lookup=pass actual_seam protected_lookup_call strict_type inherited_receiver current_mode')

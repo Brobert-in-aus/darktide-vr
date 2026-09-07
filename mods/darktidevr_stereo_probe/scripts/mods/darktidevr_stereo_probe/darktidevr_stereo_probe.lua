@@ -5271,12 +5271,8 @@ mod:hook_safe(
     end)
 
 local function active_game_mode_name()
-    local game_mode = Managers and Managers.state and Managers.state.game_mode
-    if not game_mode or type(game_mode.game_mode_name) ~= "function" then
-        return nil
-    end
-    local ok, name = pcall(game_mode.game_mode_name, game_mode)
-    return ok and name or nil
+    return presentation.gameplay_context.game_mode_name(
+        Managers and Managers.state and Managers.state.game_mode)
 end
 
 presentation.gameplay_context = mod:io_dofile(

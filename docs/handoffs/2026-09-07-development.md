@@ -1549,3 +1549,15 @@ version/hash, method evidence and primary Android links are recorded in
 QUEST-PASSTHROUGH-RECOVERY. APK/disassembly are ignored local inspection artifacts.
 Read-only inventory/inspection only; no XR session or device setting change.
 Rendering and the suspected accidental trigger remain unresolved. Continue work.
+
+## Continuous todo work: retiring game-mode lookup
+
+Branch `codex/game-mode-lookup-retirement-2026-09-07` protects method lookup as
+well as invocation in the main game-mode predicate. A retiring proxy previously
+raised before the existing call guard. The actual main predicate regression
+reproduces that failure and now passes for missing/invalid/throwing owners,
+non-string results, inherited receivers and mode changes. Six focused CTests
+pass in 0.82 seconds: gameplay context, ranged aim, online rules, gameplay UI
+ownership, source invariants and the 36-chunk LuaJIT gate. No deployment or live
+transition acceptance; full offline baseline remains 113/113 at `e2aa82a` with
+115 tests configured. Continue the todo while live rendering remains blocked.

@@ -91,6 +91,15 @@ their later live checks. The regression reproduces inherited holds across a
 same-handler replacement and covers missing/non-live units and fixed-frame
 admission. All 111 offline CTests pass with the candidate.
 
+Mode-owner lookup follow-up: the main mode predicate now protects both method
+lookup and invocation through the gameplay-context module. A retiring manager
+proxy can throw during lookup, before an invocation-only guard takes effect.
+Missing, invalid, throwing or non-string owners now return no mode and disable
+mode-dependent input. The actual main predicate regression reproduces that
+lookup failure before the fix and covers inherited methods, changing modes and
+missing managers. Six focused checks pass, including all 36 Lua chunks; no live
+mission transition or deployment is claimed.
+
 ## Validation
 
 Pinned LuaJIT compiles all 34 mod chunks. The policy test covers explicit modes,
