@@ -1891,3 +1891,16 @@ not the user's actual-firing-frame proposal. Action time scale, remote rewind,
 extra projectiles and finish fallback need a deterministic attack window.
 The fixture substitutes launch dispatch and does not test network acceptance.
 No gameplay changes; quiet 57ad12c session remains running.
+
+## Automatic range-entry manager retirement
+
+Default wait-for-hub and wait-for-range queries previously evaluated retiring
+manager methods outside their protected calls. They now use the shared protected
+mode reader and protect backend/mission lookup and invocation. Completion also
+requires shooting_range plus tg_shooting_range, rejecting stale mission metadata
+under another mode. The actual state-machine fixture reproduces the old lookup
+failure, covers malformed/retiring owners, inherited mission methods, wrong mode,
+wrong mission, valid entry and timeout. Four focused CTests pass in 1.38 seconds,
+including all 37 Lua chunks. Configured offline count is now 122; full integrated
+baseline remains 121 at 28e6cca. This new Lua change is not deployed. Quiet
+57ad12c session remains active without recent mod errors at 16:42 Brisbane.

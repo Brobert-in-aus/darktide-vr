@@ -1776,18 +1776,12 @@ function presentation.update_psykhanium(manager, t)
     end
 
     if state.stage == "wait_for_hub" then
-        if not Managers.state or not Managers.state.game_mode or
-                not Managers.backend then
-            return
-        end
-        local mode_ok, game_mode = pcall(
-            Managers.state.game_mode.game_mode_name,
-            Managers.state.game_mode)
-        local auth_ok, authenticated = pcall(
-            Managers.backend.authenticated,
-            Managers.backend)
-        if not mode_ok or game_mode ~= "hub" or
-                not auth_ok or not authenticated then
+        if presentation.current_game_mode_name() ~= "hub" then return end
+        local auth_ok, authenticated = pcall(function()
+            local backend = Managers and Managers.backend
+            return backend and backend:authenticated()
+        end)
+        if not auth_ok or not authenticated then
             return
         end
         state.stage = "open_training_view"
@@ -1870,20 +1864,14 @@ function presentation.update_psykhanium(manager, t)
         return
     end
 
-    if state.stage == "wait_shooting_range" and Managers.state and
-            Managers.state.game_mode and
-            type(Managers.state.game_mode.game_mode_name) == "function" then
-        local ok, game_mode = pcall(
-            Managers.state.game_mode.game_mode_name,
-            Managers.state.game_mode)
-        local mission_ok, mission_name = false, nil
-        if Managers.state.mission and
-                type(Managers.state.mission.mission_name) == "function" then
-            mission_ok, mission_name = pcall(
-                Managers.state.mission.mission_name,
-                Managers.state.mission)
-        end
-        if ok and mission_ok and mission_name == "tg_shooting_range" then
+    if state.stage == "wait_shooting_range" then
+        local game_mode = presentation.current_game_mode_name()
+        local mission_ok, mission_name = pcall(function()
+            local mission = Managers and Managers.state and Managers.state.mission
+            return mission and mission:mission_name()
+        end)
+        if game_mode == "shooting_range" and mission_ok and
+                mission_name == "tg_shooting_range" then
             state.stage = "complete"
             state.last_error = nil
             mod:info(
