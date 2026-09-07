@@ -1861,3 +1861,19 @@ as do compiler/invariant checks (three in 1.13 seconds). Fix is not deployed.
 User requested keeping this session running to try the force staff before any
 restart. Preserve that request. Trigger press/release delivery is observed in
 fresh logs; delivery alone does not establish a stock shot or correct direction.
+
+The user tested forcestaff_p4_m1 (confirmed by the one-shot weapon inventory):
+shots originate from the face rather than staff/hand but aim correctly, and
+movement speed follows aim rather than look direction as expected. Record these
+specific worn observations, not broad weapon or mission acceptance. They then
+authorized restart. The owned game was closed, launch cleanup finished and
+57ad12c launched with the same range/HUD/generated-stereo options. Evidence:
+home-psykhanium-quiet-20260907.log. Await fresh initialization and absence of the
+repeated formatting errors. Asked which gun and whether its failure is absent
+shots or incorrect direction; gun issue reportedly predates online rules.
+
+The 57ad12c relaunch reached range and nonzero shared_ready (1035, zero interval
+fallback and pose mismatches). Repeated locomotion messages now format correctly;
+no mod ERROR entries in the fresh console at 16:33. User clarified the staff
+shots go to the reticle and originate at the face. Game/XR remain running with
+proximity override applied. Do not call that confirmation broad gun acceptance.

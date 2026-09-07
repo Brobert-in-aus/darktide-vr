@@ -1,8 +1,10 @@
 # Psykhanium online-rules proving mode
 
 7 September 2026. Requested by the user after the dedicated-server audit.
-Implemented as an offline candidate; not deployed or worn-accepted. Actual
-online missions remain gated.
+Deployed for the home headset session. The user confirms stereo, triggers,
+correct force-staff aim, stock face/body firing origin, and movement-speed
+constraints following aim direction. This is limited worn feedback; gun firing
+remains unresolved and actual online missions remain gated.
 
 ## Behavior
 
