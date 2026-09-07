@@ -1070,3 +1070,17 @@ scanner stick reference). Device outcomes, animations and weapon execution are
 sinks; no real objective, network serialization or headset acceptance. Continue
 offline todo work while renderability remains blocked. Full suite remains
 111/111 at `6c79aec`; full Release build `df99611`, newer XR harness `f201a9a`.
+
+## Continuous todo work: scanner transition lookup
+
+Branch `codex/scanner-transition-lookup-2026-09-07` protects the complete current
+player/state lookup used by optional hand-relative movement. The existing
+protected state-name query did not cover obtaining the player or extension;
+a retiring lookup could throw out of fixed input caching. Both failures are
+reproduced in the real movement-seam fixture and now retain its existing
+missing-state locomotion fallback. Valid minigame axes stay direct and valid
+walking axes retain hand-relative rotation. No new input admission policy.
+
+Five focused CTests pass (scanner stick, online rules, gameplay ownership,
+Lua compile/invariants); all 36 chunks compile. Undeployed, with no live
+transition acceptance. Continue the todo while the user is away.

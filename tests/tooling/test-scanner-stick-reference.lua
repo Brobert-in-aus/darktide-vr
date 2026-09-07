@@ -43,5 +43,11 @@ extension={current_state_name=function() error('retiring') end}; expect(1,0,0,1)
 extension=setmetatable({}, {__index=function() error('retired proxy lookup') end})
 expect(1,0,0,1)
 player=nil; expect(1,0,0,1)
+Managers.player=setmetatable({}, {__index=function() error('retiring player manager') end})
+expect(1,0,0,1)
+player={player_unit='local'}
+Managers.player={local_player=function() return player end}
+ScriptUnit.has_extension=function() error('state extension removed during transition') end
+expect(1,0,0,1)
 controller_observation.gameplay_yaw=nil; expect(1,0,1,0)
 print('scanner_stick_reference=pass real_seam direct_device_axes immediate_state_transitions locomotion_preserved fallbacks')

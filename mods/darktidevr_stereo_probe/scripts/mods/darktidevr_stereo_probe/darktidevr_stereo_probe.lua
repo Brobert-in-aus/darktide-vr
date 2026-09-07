@@ -10045,7 +10045,10 @@ function presentation.rotate_controller_movement(x, y)
     end
     -- The scanner's minigame consumes `move` as a knob/axis, not locomotion.
     -- Query the current local state; never reuse the throttled diagnostic name.
-    if presentation.controller_movement_is_device_axis() then return x, y end
+    -- Player/state lookup can retire before the protected state-name query.
+    -- Keep the existing missing-state fallback without aborting input caching.
+    local device_ok, device_axis = pcall(presentation.controller_movement_is_device_axis)
+    if device_ok and device_axis then return x, y end
     local reference_rotation = presentation.left_hand_movement_rotation()
     if not reference_rotation then
         return x, y
