@@ -1914,3 +1914,10 @@ windows. See PERFORMANCE-HEALTH-ANALYSIS.md. Counts freeze at 212 evaluations /
 is startup-biased, so its 47 FPS versus background median 68 is not an FG cost
 comparison. No focus, graphics setting or session change. Heartbeat remains
 ACTIVE every 20 minutes with the user's home/headset availability saved.
+
+Alternative origin-message follow-up: inspected attack-result, projectile-effect,
+block-result, husk-explosion, destructible feedback and prop-physics message
+senders/receivers. They do not provide an independent hand-origin firing request
+for the tested staff. The authoritative explosion path returns on non-server
+callers; husk handling runs local effects and ragdoll interaction. Source-only
+inspection, no crafted network traffic. Details in ONLINE-AIM-WINDOW-AUDIT.md.

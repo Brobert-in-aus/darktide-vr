@@ -43,6 +43,30 @@ isolated pulses, but leaves less time using headset aim. Charge targeting,
 burst/automatic fire, alternate actions, finish paths and replay need coverage.
 Official-server acceptance is not established by Psykhanium.
 
+## Alternative message routes checked
+
+The source's attack/projectile/hit message names were also inspected for an
+existing client-authored origin route. This is a Lua source audit, not an audit
+of compiled serialization or every server authorization rule.
+
+| Message | Inspected behavior |
+| --- | --- |
+| `rpc_add_attack_result` | AttackReportManager sends completed results to clients, then drives hit feedback; not a staff-shot request with a supplied origin. |
+| `rpc_projectile_trigger_fx` | Resolves an existing projectile unit and starts an effect; no origin parameter. |
+| `rpc_player_blocked_attack` | Stock block logic sends a result to clients; not a second authoritative hand direction. |
+| `rpc_trigger_husk_explosion` | Server explosion logic sends client effects. The damage path in `Explosion.create_explosion` returns for non-server callers. |
+| `rpc_destructible_damage_taken` | Client receiver triggers the unit's `lua_damage_taken` flow event; no supplied staff origin or shot evaluator. |
+| `rpc_prop_on_hit_physics` | Server component event drives client prop force/flow effects; no authoritative ranged firing pose. |
+
+These routes do not supply the missing hand-origin input for the tested staff.
+They do not prove that an undiscovered mechanism is impossible. No packets were
+crafted or sent to an official server. Relevant source paths under `scripts/`:
+`managers/attack_report/attack_report_manager.lua`, `extension_systems/fx/fx_system.lua`,
+`utilities/attack/block.lua`, `utilities/attack/explosion.lua`,
+`extension_systems/weapon/weapon_system.lua`,
+`extension_systems/destructible/destructible_extension.lua`, and
+`components/prop_on_hit_physics.lua`.
+
 ## Isolated scheduling check
 
 `tests/tooling/test-staff-aim-window-stock-contract.lua` executes the actual stock
