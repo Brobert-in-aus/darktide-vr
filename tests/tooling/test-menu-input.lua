@@ -176,11 +176,12 @@ presentation.mode=1
 -- three return values and leave modal/null/keyboard semantics untouched.
 bit=require('bit')
 local gameplay_hooks={}
+local gameplay_owner={}
 presentation.gameplay_ui=dofile(arg[1]:gsub('darktidevr_menu_input.lua$',
     'darktidevr_gameplay_ui_input.lua')).install({hook=function(_,class,name,fn)
     assert(not (class=='UIManager' and name=='input_service'),'Duplicate shared service hook')
     gameplay_hooks[class..'.'..name]=fn
-end},function() return {} end)
+end},function() return gameplay_owner end)
 local hotkey=gameplay_hooks['UIManager._update_view_hotkeys']
 presentation.gameplay_ui.sample(true,32768)
 hotkey(function(self)

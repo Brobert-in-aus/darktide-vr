@@ -6,7 +6,11 @@ local mod={hook=function(_,class,method,fn)
     if class=='HudElementSmartTagging' and method=='_handle_tagging' then hook=fn end
 end}
 local unit={}
-local api=dofile(arg[1]).install(mod,function() return unit end)
+local retiring=false
+local api=dofile(arg[1]).install(mod,function()
+    if retiring then error('player manager retired') end
+    return unit
+end)
 local opened,blocked=0,false
 local manager={using_input=function() return blocked end,
     view_active=function(_,name) assert(name=='system_view'); return false end,
@@ -94,3 +98,54 @@ inventory_keyboard=false
 api.sample(true,32768+1024)
 assert(not inventory_hook(stock_hotkeys,ui),'Inventory competed with menu')
 print('inventory_hotkey=pass stock_gates=preserved no_replay=true')
+
+-- UI requests belong to the player present when input was sampled. The HUD
+-- object may survive a respawn, including a duplicate read at the same time.
+api.sample(true,256)
+hook(stock,hud,8,{}, {},source); assert(seen[#seen])
+unit={}
+hook(stock,hud,8,{}, {},source)
+assert(not seen[#seen],'Cached tag crossed a player replacement')
+api.sample(true,256)
+unit={}
+hook(stock,hud,9,{}, {},source)
+assert(not seen[#seen],'Pending tag crossed a player replacement')
+api.sample(true,1024)
+unit={}
+api.update_menu(manager)
+assert(opened==1,'Pending menu crossed a player replacement')
+api.sample(true,32768)
+unit={}
+assert(not inventory_hook(stock_hotkeys,ui),'Pending inventory crossed a player replacement')
+api.sample(true,256)
+retiring=true
+assert(pcall(hook,stock,hud,10,{}, {},source),'Retiring owner lookup escaped tag adapter')
+assert(not seen[#seen])
+retiring=false
+hook(stock,hud,10,{}, {},source)
+assert(not seen[#seen],'Retired tag returned on manager recovery')
+api.sample(true,32768)
+retiring=true
+assert(not inventory_hook(stock_hotkeys,ui),'Retiring owner admitted inventory')
+retiring=false
+assert(not inventory_hook(stock_hotkeys,ui),'Retired inventory replayed')
+api.sample(true,1024)
+retiring=true
+assert(pcall(api.update_menu,manager),'Retiring owner escaped menu adapter')
+retiring=false
+api.update_menu(manager)
+assert(opened==1,'Retired menu replayed')
+retiring=true
+assert(pcall(api.sample,true,256),'Retiring owner escaped sample')
+retiring=false
+hook(stock,hud,11,{}, {},source)
+assert(not seen[#seen],'Request without a sample owner replayed')
+api.sample(true,256)
+hook(stock,hud,12,{}, {},source); assert(seen[#seen],'Fresh owner could not tag')
+local old_owner=unit
+unit={}
+hook(stock,remote,12,{}, {},source)
+unit=old_owner
+hook(stock,hud,12,{}, {},source)
+assert(not seen[#seen],'A cached HUD revived a cancelled request when the old owner returned')
+print('ui_request_ownership=pass replacement=cancelled retiring_lookup=cancelled fresh_request=accepted')

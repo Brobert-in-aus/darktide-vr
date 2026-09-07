@@ -886,3 +886,24 @@ dominant-hand simulation direction, not an independently oriented support shield
 No production code/deployment change; full-suite baseline remains 110/110 at
 `aadf4f3`, native build `5f1eccd`. Continue the user's todo list until instructed
 to stop, with worn verification pending while they are at work.
+
+## Continuous todo work: queued UI request ownership
+
+Branch `codex/ui-request-owner-2026-09-07` binds queued controller tag, inventory
+and menu requests to the local player at sampling time. A changed or unavailable
+owner cancels the request; protected owner lookup handles a retiring manager.
+Tag cancellation applies across cached HUD instances and cannot revive when an
+old player returns. Stock keyboard input, modal gates and return values remain.
+The regression reproduced a cached tag crossing a player replacement before the
+fix, then covers pending requests, lookup failure/recovery and fresh input.
+The shared menu fixture now supplies a stable player instead of inventing a new
+one on each lookup. Six focused CTests pass (gameplay UI input/ownership, shared
+menu input/injector, Lua compile/invariants); all 36 chunks compile. Full-suite
+baseline remains 110/110 at `aadf4f3`, native build `5f1eccd`. No deployment.
+
+The broader hint investigation found no event callback formatting gap in the
+three stock inventory onboarding hints: their event registration lists are
+empty. No speculative event wrapper or talent-specific patch was added. The
+communication wheel remains without a VR action: its held input, selection and
+HUD ownership need a complete route before advertising a binding. Continue the
+mission interaction review and remaining todo while headset rendering is blocked.
