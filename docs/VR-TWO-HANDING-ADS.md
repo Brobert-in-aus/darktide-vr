@@ -57,6 +57,18 @@ All solver details above are a proposed adaptation and require worn tuning.
 
 ## ADS coupling
 
+The 8 September stock-parser follow-up executes 108 toggle entry/exit routes
+across the 54 admitted templates. Both directions require a press in toggle
+mode; grip release alone matches neither. The extracted stock buffering method
+also preserves an unconsumed lasgun zoom request until its buffer deadline and
+refreshes that deadline during sprint. Therefore a fixed timeout or an exit
+pulse based only on the current `alternate_fire.is_active` value is insufficient:
+an earlier entry may still be pending. These checks extend
+`tests/tooling/test-two-hand-stock-contract.lua`; they isolate input evaluation
+and buffering, with hierarchy-jump/clear callbacks substituted, rather than
+executing the full action lifecycle. Toggle coupling remains disabled pending
+ownership-aware integration that preserves independent manual inputs.
+
 The user's suggested first candidate is: two-hand hold requests the weapon's
 normal ADS/braced input; release requests its ordinary exit. Physical sight
 alignment remains something the user performs with the held weapon. A later
