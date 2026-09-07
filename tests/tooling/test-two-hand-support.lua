@@ -82,13 +82,18 @@ ScriptUnit={has_extension=function(u,name)
     return {current_state_name=function() return state_name end}
 end}
 local observations={left_grip_tracking_live=true,right_grip_tracking_live=true,
-    left_grip_usable=true,right_grip_usable=true,right_aim_usable=true,
+    left_grip_usable=true,right_grip_usable=true,right_aim_usable=true,left_aim_usable=true,
     last_transport_generation=1,head_recenter_generation=0}
+local support_side='left'
 local presentation={
     online_rules={simulation_aim_active=function(u) return u==unit end},
-    weapon_hand_roles={physical=function(role) return role=='dominant' and 'right' or 'left' end},
+    weapon_hand_roles={physical=function(role)
+        if role=='support' then return support_side end
+        return support_side=='left' and 'right' or 'left'
+    end},
     gun_aim={is_gun=function(t) return t.gun end,base_aim=function(_,q) return q end},
     controller_aim_target=function() return primary,{0,0,0,1} end,
+    left_controller_aim_target=function() return primary,{0,0,0,1} end,
     weapon_grip_target=function(role) return role=='dominant' and primary or secondary,{0,0,0,1} end}
 local commands={}
 local installed=Support.install({io_dofile=function() return Pose end,info=function() end,
@@ -182,6 +187,7 @@ while t<deadline-.02 do installed_sample(0) end
 assert(installed.profiles.example==saved,'Capture occurred before countdown')
 while installed.capture_pending do installed_sample(0) end
 local captured=installed.profiles.example
+assert(captured.side=='left','Measured grip did not retain its physical hand owner')
 local calibrated_weapon=equipped
 for i=1,3 do assert(math.abs(captured.socket[i]-secondary[i])<1e-8) end
 assert(not installed.enabled)
@@ -202,11 +208,17 @@ equipped={}
 assert(installed_sample(512)==512 and not real_mapper.support_grip.held,
     'A different item with the same template inherited a measured grip')
 installed_sample(0); equipped=calibrated_weapon
+support_side='right'; installed_sample(0)
+assert(installed_sample(4)==4 and not real_mapper.support_grip.held,
+    'Opposite support hand inherited the other hand measured socket')
+installed_sample(0); support_side='left'; installed_sample(0)
+assert(installed_sample(512)==2 and real_mapper.support_grip.held,'Original measured hand could not reacquire')
+installed_sample(0)
 commands.dtvr_two_hand_off()
 assert(not installed.enabled and not installed.capture_pending)
 installed_sample(0)
-for _,transition in ipairs({'menu','fixed_menu','weapon','recenter','generation','tracking','reload','timeout'}) do
-    state_name='walking'; action=nil
+for _,transition in ipairs({'menu','fixed_menu','weapon','recenter','generation','tracking','reload','role','timeout'}) do
+    state_name='walking'; action=nil; support_side='left'
     assert(installed.arm_capture(unit))
     installed_sample(0)
     if transition=='menu' then installed.sample(unit,false,t+.01,handler)
@@ -216,6 +228,7 @@ for _,transition in ipairs({'menu','fixed_menu','weapon','recenter','generation'
     elseif transition=='generation' then observations.last_transport_generation=observations.last_transport_generation+1
     elseif transition=='tracking' then observations.left_grip_tracking_live=false
     elseif transition=='reload' then action={kind='reload'}
+    elseif transition=='role' then support_side='right'
     elseif transition=='timeout' then t=t+31 end
     installed_sample(0)
     assert(not installed.capture_pending and installed.profiles.example==captured,

@@ -74,6 +74,12 @@ seconds and 48 Lua chunks compile. Evidence:
 `artifacts/unattended/handedness-gun-135-20260908.log`. Runtime handedness remains
 fixed right; this candidate is undeployed and needs future worn acceptance.
 
+Measured two-hand profiles now also retain their physical support-hand owner.
+They cannot carry the other hand's measured socket/orientation into a new role
+policy. Role changes during calibration cancel the countdown. A failing-before
+regression and six focused checks pass. Animated melee/finger retargeting,
+binding presets and pointer choice remain before exposing handedness.
+
 `darktidevr_weapon_hand_roles.lua` constructs a fixed dominant/support policy.
 Physical left/right identities remain unchanged; invalid policy input defaults
 to right dominance and unknown role names produce no target. Gameplay attack,

@@ -236,6 +236,16 @@ configured suite contains 128 checks; full integrated rerun is not claimed.
 
 ## Session-only support calibration candidate
 
+8 September follow-up: measured profiles now retain the physical support side
+alongside equipped-item identity. A role change cannot reuse the opposite
+hand's socket/orientation; neutral input and returning to the measured side
+allow normal reacquisition. A role change during the countdown cancels capture.
+Explicit generic profiles without a side remain supported by the pure geometry
+coordinator; the runtime measurement command always binds its physical side.
+The new regression failed before the fix. Six focused CTests pass, including
+support, pose, bindings, gun alignment, anatomical calibration and 48-chunk Lua
+compilation. This candidate remains undeployed and disabled by default.
+
 The candidate now registers local DMF commands. `/dtvr_two_hand_calibrate`
 disables support aim, waits for chat to close, then captures the tracked
 primary-to-support offset after three seconds. The user must physically place

@@ -32,6 +32,7 @@ local function same_stock(a,b)
 end
 local function valid_profile(profile)
     if type(profile)~='table' or type(profile.socket)~='table' then return false end
+    if profile.side~=nil and profile.side~='left' and profile.side~='right' then return false end
     local length=0
     for i=1,3 do
         local v=profile.socket[i]
@@ -66,6 +67,7 @@ function Support.new(Pose)
         if not api.enabled or not frame or frame.active~=true or frame.live~=true or
             frame.weapon==nil or frame.unit==nil or frame.generation==nil or frame.recenter==nil or
             (frame.side~='left' and frame.side~='right') or not valid_profile(profile) or
+            (profile.side~=nil and profile.side~=frame.side) or
             (profile.weapon~=nil and profile.weapon~=frame.weapon) or
             not finite(frame.dt) or frame.dt<0 or frame.dt>.25 or
             not Pose.correction(frame.rotation,frame.primary,frame.support,profile.socket) then
@@ -207,7 +209,7 @@ function Support.install(mod,presentation,observation)
         local socket=Pose.socket(frame.rotation,frame.primary,frame.support)
         local hand_rotation=Pose.relative_rotation(frame.rotation,frame.support_rotation)
         if not socket or not hand_rotation then mod:info('DARKTIDEVR_TWO_HAND calibration=invalid_geometry'); return end
-        api.profiles[frame.template]={weapon=frame.weapon,socket=socket,hand_rotation=hand_rotation,
+        api.profiles[frame.template]={weapon=frame.weapon,side=frame.side,socket=socket,hand_rotation=hand_rotation,
             acquire=.1,release=.2,smoothing=.07,ads=true}
         api.clear()
         mod:info('DARKTIDEVR_TWO_HAND calibration=captured weapon=%s socket=%.4f,%.4f,%.4f session_only=true',
