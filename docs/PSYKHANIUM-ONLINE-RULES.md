@@ -31,6 +31,13 @@ calculation remain stock. The reticle ray uses that simulated origin/direction.
 The visible tracked weapon can therefore diverge from the firing ray near cover;
 this candidate does not promise muzzle-origin collision agreement.
 
+There is one chosen simulation direction, currently the dominant/right hand.
+Block eligibility and block cost therefore use that direction too; the visible
+support hand does not independently orient a shield in this mode. Selecting a
+different hand for a blocking action is a possible later policy, but two
+independent simultaneous authoritative directions are not present in the audited
+input stream. The proving mode deliberately retains the single-direction rule.
+
 Grenade and audited luggable previews also use the simulated first-person pose.
 The stock trajectory renderer otherwise reads the visual root, which continues
 following the head and can differ from simulation aim. The preview-only scope
@@ -212,6 +219,16 @@ smart targeting clears its transient data and skips queries during replay;
 this does not execute engine component rollback. Concrete local/remote lightning
 hooks also leave the component/return values unchanged in online-rules mode.
 No live lock-on, ranking/visibility, damage or server correction claim is made.
+
+The optional fixture also loads the actual stock Block module against the
+adapter-produced simulation component. Constructed attacks verify inner/outer
+angles, melee/ranged stamina groups and buff/damage multipliers, ranged-block
+permission, server-only revive auto-block with available stamina, the Psyker
+97% block-conversion cap and excess stamina cost, block-break stun immunity and
+stock outcome notifications. Final stamina depletion, stun and RPC delivery use
+sinks; this does not apply live damage. The portable block-hook test separately
+retains the stock component when pose overrides are declined despite an available
+support-hand pose. Three focused CTests and the optional source fixture pass.
 
 An optional stock grenade check passes:
 

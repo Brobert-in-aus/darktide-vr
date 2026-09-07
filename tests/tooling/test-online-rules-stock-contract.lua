@@ -3,6 +3,7 @@
 local vector_meta={}
 Vector3=setmetatable({}, {__call=function(_,x,y,z) return setmetatable({x,y,z},vector_meta) end})
 vector_meta.__add=function(a,b) return Vector3(a[1]+b[1],a[2]+b[2],a[3]+b[3]) end
+vector_meta.__sub=function(a,b) return Vector3(a[1]-b[1],a[2]-b[2],a[3]-b[3]) end
 vector_meta.__unm=function(a) return Vector3(-a[1],-a[2],-a[3]) end
 vector_meta.__mul=function(a,b)
     if type(a)=='number' then a,b=b,a end
@@ -470,6 +471,103 @@ do
     end
     aim,h._input_cache=saved_aim,saved_cache
 end
+-- Blocking consumes the same single simulation direction as attacks. Execute
+-- stock eligibility/cost and Psyker warp-charge conversion without damage.
+do
+    local saved_aim,saved_cache=aim,h._input_cache
+    aim=Quaternion.from_yaw_pitch_roll(1.3,.2,0)
+    h._input_cache={{0},{0},{0},{0},{view.yaw},{view.pitch},{0}}
+    rules.capture(h,400); PlayerUnitFirstPersonExtension.fixed_update(fp,'local',.02,40,1)
+    local original_index=vector_meta.__index
+    vector_meta.__index=function(value,key) return value[({x=1,y=2,z=3})[key]] end
+    local positions={['local']=Vector3(10,20,0)}
+    local flags,stats={}, {block_cost_multiplier=.5,block_cost_modifier=.8,
+        block_cost_ranged_multiplier=1,block_cost_ranged_modifier=1,warp_charge_block_cost=1}
+    local pieces={first_person=component,block={is_blocking=true,is_perfect_blocking=false},
+        weapon_action={},interaction={state='none'},stamina={},warp_charge={current_percentage=.9}}
+    local stamina_template={block_cost_melee={inner=2,outer=6},block_cost_ranged={inner=3,outer=7}}
+    local weapon={name='fixture_weapon',block_angles={default={inner=.3,outer=1.1}}}
+    local action_setting
+    local drained,stuns,rpcs,events=0,0,0,0
+    local depleted,current_stamina=false,20
+    local unit_data={breed=function() return 'player' end,
+        read_component=function(_,name) return assert(pieces[name]) end,
+        write_component=function(_,name) return assert(pieces[name]) end,
+        archetype=function() return {stamina={}} end}
+    local buff={has_keyword=function(_,key) return flags[key]==true end,
+        stat_buffs=function() return stats end,request_proc_event_param_table=function() end}
+    local extensions={unit_data_system=unit_data,buff_system=buff,
+        weapon_system={stamina_template=function() return stamina_template end}}
+    local names=setmetatable({}, {__index=function(_,key) return key end})
+    local dependencies={
+        ['scripts/utilities/action/action']={current_action=function() return nil,action_setting end},
+        ['scripts/settings/damage/attack_settings']={attack_types={melee='melee',ranged='ranged'}},
+        ['scripts/utilities/breed']={is_player=function(breed) return breed=='player' end},
+        ['scripts/settings/buff/buff_settings']={keywords=names,proc_events=names,stat_buffs=names},
+        ['scripts/settings/interaction/interaction_settings']={states={is_interacting='active'}},
+        ['scripts/utilities/attack/stamina']={current_and_max_value=function() return current_stamina,20 end,
+            drain=function(unit,cost,t) assert(unit=='local' and t==40); drained=cost; return 0,depleted end},
+        ['scripts/utilities/attack/stun']={apply=function(unit,kind)
+            assert(unit=='local' and kind=='block_broken'); stuns=stuns+1 end},
+    }
+    local env=setmetatable({POSITION_LOOKUP=positions,
+        require=function(path) return assert(dependencies[path],path) end,
+        ScriptUnit={has_extension=function(unit,name) assert(unit=='local'); return extensions[name] end,
+            extension=function(unit,name) assert(unit=='local'); return assert(extensions[name]) end},
+        Quaternion=setmetatable({right=function(rotation)
+            assert(rotation==component.rotation,'Block read the rendered head/hand pose')
+            return Vector3(math.cos(rotation.yaw),math.sin(rotation.yaw),0)
+        end},{__index=Quaternion}),
+        Vector3=setmetatable({down=function() return Vector3(0,0,-1) end,
+            cross=function(a,b) return Vector3(a[2]*b[3]-a[3]*b[2],a[3]*b[1]-a[1]*b[3],a[1]*b[2]-a[2]*b[1]) end,
+            angle=function(a,b) return math.acos(math.max(-1,math.min(1,Vector3.dot(a,b)))) end},{__index=Vector3}),
+        Unit={world_rotation=function() error('Block read rendered unit rotation') end},
+        Managers={state={extension={latest_fixed_t=function() return 40 end},
+            unit_spawner={game_object_id=function(_,unit) return unit=='local' and 1 or 2 end},
+            game_session={send_rpc_clients=function(_,rpc,unit,attacker,position,broken,template,attack)
+                assert(rpc=='rpc_player_blocked_attack' and unit==1 and attacker==2 and template==7)
+                assert(attack==8 or attack==9); rpcs=rpcs+1
+            end}}},NetworkLookup={weapon_templates={fixture_weapon=7},attack_types={melee=8,ranged=9}},
+    },{__index=_G})
+    local block=setfenv(assert(loadstring(source('utilities/attack/block'))),env)()
+    block.player_blocked_attack=function(_,_,_,_,_,_,cost) assert(cost==drained); events=events+1 end
+    local function attacker(angle)
+        local yaw=component.rotation.yaw+angle
+        positions.attacker=positions['local']+Vector3(-math.sin(yaw),math.cos(yaw),0)*3
+    end
+    local function attempt(kind)
+        return block.attempt_block_break('local','attacker',Vector3(0,0,0),kind,
+            Vector3(0,1,0),weapon,{block_cost_multiplier=1.5})
+    end
+    for _,case in ipairs({{0,true,1.2},{.5,true,3.6},{1.2,false},{math.pi,false}}) do
+        attacker(case[1])
+        assert(block.is_blocking('local','attacker','melee',weapon,true)==case[2])
+        if case[2] then assert(not attempt('melee') and math.abs(drained-case[3])<1e-12) end
+    end
+    attacker(0)
+    assert(not block.is_blocking('local','attacker','ranged',weapon,true))
+    flags.can_block_ranged=true
+    assert(block.is_blocking('local','attacker','ranged',weapon,true))
+    assert(not attempt('ranged') and math.abs(drained-1.8)<1e-12)
+    flags.can_block_ranged=nil
+    pieces.block.is_blocking=false; pieces.interaction={state='active',type='revive'}
+    assert(block.is_blocking('local','attacker','melee',weapon,true))
+    assert(not block.is_blocking('local','attacker','melee',weapon,false),'Client invented server auto-block')
+    current_stamina=0
+    assert(not block.is_blocking('local','attacker','melee',weapon,true))
+    current_stamina=20; pieces.block.is_blocking=true; pieces.interaction.state='none'
+    attacker(.5); flags.block_gives_warp_charge=true
+    assert(not attempt('melee') and math.abs(drained-2.2)<1e-12)
+    assert(pieces.warp_charge.current_percentage==.97 and pieces.warp_charge.last_charge_at_t==40)
+    assert(not attempt('melee') and math.abs(drained-3.6)<1e-12,'Warp cap replaced stock stamina cost')
+    flags.block_gives_warp_charge=nil; depleted=true
+    assert(attempt('melee') and stuns==1)
+    flags.stun_immune_block_broken=true
+    assert(attempt('melee') and stuns==1)
+    assert(events==rpcs and events==7,'Block outcomes did not follow stock notification path')
+    vector_meta.__index=original_index
+    aim,h._input_cache=saved_aim,saved_cache
+end
 -- With zero recoil, the actual walking method reconstructs the intended head-
 -- relative direction from the transformed input. Its own backward penalty stays.
 local constants={acceleration=1000,deceleration=1000,backward_move_scale=.5,
@@ -530,4 +628,5 @@ print('PASS: actual stock shot preparation retains body origin, charge, recoil/s
 print('PASS: actual stock sweeps retain simulation references, damage-window edges/final drain, abort masks and time scaling')
 print('PASS: actual stock flame loops retain simulation rays, obstructions, target filtering, rewind and server-only damage/burn calls')
 print('PASS: actual stock targeting retains simulation aim/recoil/sway, assist ownership, sticky charges, strict range and resimulation targets')
+print('PASS: actual stock block angles/costs, ranged keyword, revive authority, warp-charge cap and break notifications retained')
 print('LIMIT: isolated engine math, no real quantization, live network or worn acceptance')

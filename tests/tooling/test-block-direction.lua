@@ -20,11 +20,14 @@ require=function(path)
 end
 Managers={player={local_player=function() return {player_unit=player} end}}
 local deferred
+local pose_overrides=true
 local mod={hook_require=function(_,_,callback) deferred=callback end,hook=function(_,target,name,callback)
  local original=target[name]
  target[name]=function(...) return callback(original,...) end
 end,info=function() end}
-module.install(mod,{target=function(side) assert(side=='support'); return {},left end})
+module.install(mod,{target=function(side)
+ assert(side=='support'); if pose_overrides then return {},left end
+end})
 assert(deferred, 'missing deferred unit-data registration')
 deferred(data_class)
 for _,name in ipairs({'is_blocking','attempt_block_break'}) do
@@ -41,4 +44,12 @@ data_class.read_component=read_original
 assert(data_class.read_component(data,'first_person').rotation==head)
 left=nil
 assert(not block.is_blocking(player),'missing left pose must keep stock behavior')
+-- Online-rules admission declines pose overrides even with a physical support
+-- hand available. Both eligibility and cost retain the simulation component.
+left={}; pose_overrides=false
+for _,name in ipairs({'is_blocking','attempt_block_break'}) do
+ local a,b,c=block[name](player)
+ assert(a==false and b==nil and c==17)
+ assert(data_class.read_component(data,'first_person')==components.first_person)
+end
 print('left-hand block eligibility/cost scope, remote isolation and cleanup passed')

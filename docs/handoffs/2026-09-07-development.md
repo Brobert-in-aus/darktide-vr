@@ -866,3 +866,23 @@ checking a cached point. A retiring manager can throw despite the cached owner
 still being alive. The new fixture reproduces that exception; the getter now
 clears the point and falls back. Four focused CTests pass (reticle cache, ranged
 aim, smart-tag marker, 36-chunk Lua compile). No native/deployment change.
+
+## Continuous todo work: stock blocking contract
+
+Branch `codex/online-block-stock-contract-2026-09-07` runs actual stock Block
+eligibility and cost code after the VR cache and stock first-person update.
+Constructed attack positions verify simulation-facing inner/outer limits, block
+cost groups and multipliers, ranged permission, server-owned revive auto-block,
+Psyker warp-charge cap/excess stamina cost, break stun immunity and outcome
+notifications. Stamina depletion, stun and RPC endpoints are sinks; engine
+collision/live incoming damage is not exercised. The fixture needed vector
+subtraction added to its math substitute; no production block fix was required.
+
+The existing portable block-hook test now explicitly declines pose overrides
+with a support-hand pose still available. Three focused CTests (block direction,
+online rules, ranged aim) and the optional source fixture pass. Documentation
+makes the one-direction limit explicit: current online-rules blocking uses the
+dominant-hand simulation direction, not an independently oriented support shield.
+No production code/deployment change; full-suite baseline remains 110/110 at
+`aadf4f3`, native build `5f1eccd`. Continue the user's todo list until instructed
+to stop, with worn verification pending while they are at work.
