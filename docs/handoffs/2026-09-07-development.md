@@ -1022,3 +1022,25 @@ Integration checkpoint `6c79aec`: **111/111 offline CTests pass**, including
 watcher cleanup and the desktop-wheel candidate. Native code is unchanged from
 the full Release build at `df99611`. Evidence:
 `artifacts/unattended/continuous-todo-full-ctest-6c79aec-20260907.log`.
+
+## Continuous todo work: desktop mouse phases and duplicate transport
+
+Branch `codex/menu-mouse-gesture-2026-09-07` extends the physical desktop cursor
+snapshot to stock left/right/middle press, hold and release. The first mouse
+event and release frame no longer need a later XR-publisher coordinate sample.
+Active XR gestures retain the existing precedence. The native harness no longer
+ORs the desktop left-button level into the XR primary edge state machine: stock
+already delivers that mouse event, and the second asynchronous route could
+replay it. Controller and explicit named-test edges, desktop fallback/held
+coordinate selection and the transport ABI remain.
+
+The Lua regression reproduced a mouse press using the unrelated controller
+point before the fix. All nine mouse phases and an installed-service drag check
+now retain the immediate desktop point, one stock press/release and subsequent
+controller cursor return. This uses an independent simulated XR input stream;
+it is not live end-to-end timing evidence. Release XR harness builds and six
+focused CTests pass (menu, HUD, panel pointer, injector, Lua compile/invariants),
+with 36 chunks compiling. The Lua/harness pair remains undeployed; the historical
+live scrollbar failure is not declared resolved. Full-suite baseline remains
+111/111 at `6c79aec`; full Release baseline `df99611`, newer harness built here.
+Continue the todo without requesting worn verification while the user is away.

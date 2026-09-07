@@ -87,6 +87,13 @@ local idle_desktop={get=function() return vector(0,0,0) end}
 local idle=menu.proxy(idle_desktop,null,{override=true,x=900,y=800,scroll=0},vector,
     function() error('Idle mouse requested a desktop point') end,2000,1000)
 assert(idle:get('cursor')[1]==900,'Previous wheel event retained cursor ownership')
+for _,action in ipairs({'left_pressed','left_hold','left_released','right_pressed','right_hold',
+        'right_released','middle_pressed','middle_hold','middle_released'}) do
+    local mouse={get=function(_,name) return name==action end}
+    local routed=menu.proxy(mouse,null,{override=true,x=900,y=800,scroll=0},vector,desktop_cursor,2000,1000)
+    assert(routed:get('cursor')[1]==200 and routed:get(action),
+        'Desktop button phase used a delayed controller point: '..action)
+end
 assert(sample(2)==s, 'update/draw/eye passes must share an immutable input frame')
 p.primary_pressed=false
 p.x=800
@@ -350,3 +357,28 @@ local routed_direct=direct_hook(function() return desktop_source end,{},'View')
 assert(routed_direct:get('cursor')[1]==routed:get('cursor')[1] and wheel_reads==reads_before+1)
 assert(hook(function() return null,null,false end,handler)==null and wheel_reads==reads_before+1)
 print('menu_desktop_wheel=pass physical_cursor immutable_frame xr_gesture_priority shared_services')
+
+-- A mouse drag uses immediate stock events, not an extra XR press counter.
+-- The controller may point elsewhere or resume its point on the release frame.
+local mouse_events={}
+local mouse_position=100
+local mouse_source={get=function(_,name) return mouse_events[name] or false end,
+    null_service=function() return null end}
+presentation.read_desktop_mirror=function() return mouse_position,200,1000,500,true end
+local mouse_presses,mouse_releases=0,0
+for index,events in ipairs({{left_pressed=true,left_hold=true},{left_hold=true},{left_released=true}}) do
+    mouse_events=events; mouse_position=100*index
+    p.frame_id=2000+index
+    p.primary_down,p.primary_pressed=false,false -- Native stream contains XR/test buttons only.
+    local current=hook(function() return mouse_source,null,false end,handler)
+    assert(math.abs(current:get('cursor')[1]-249.6*index)<1e-9,'Desktop drag lost its current point')
+    if current:get('left_pressed') then mouse_presses=mouse_presses+1 end
+    if current:get('left_released') then mouse_releases=mouse_releases+1 end
+    assert(current:get('left_hold')==(events.left_hold or false))
+end
+assert(mouse_presses==1 and mouse_releases==1)
+mouse_events={}; p.frame_id=2004
+presentation.read_desktop_mirror=function() error('Released desktop retained cursor ownership') end
+local after_mouse=hook(function() return mouse_source,null,false end,handler)
+assert(after_mouse:get('cursor')[1]==p.x*RESOLUTION_LOOKUP.width/p.source_width)
+print('menu_desktop_buttons=pass all_mouse_phases immediate_drag_point single_stock_click release_frame')

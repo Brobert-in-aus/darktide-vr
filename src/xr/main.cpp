@@ -3333,7 +3333,6 @@ class OpenXrProbe {
           }
         }
       }
-      bool desktop_pointer_active{};
       bool desktop_pointer_primary_down{};
       const auto menu_mode =
           presentation_sequence != 0 &&
@@ -3356,7 +3355,6 @@ class OpenXrProbe {
              desktop_pointer->auxiliary_down)) {
           menu_pointer_position =
               std::pair{desktop_pointer->source_x, desktop_pointer->source_y};
-          desktop_pointer_active = true;
           desktop_pointer_primary_down = desktop_pointer->primary_down;
         }
       }
@@ -3467,10 +3465,10 @@ class OpenXrProbe {
         }
         shared_pointer.back_down =
             shared_pointer.back_down || shared_menu_back_down;
-        if (desktop_pointer_active) {
-          shared_pointer.primary_down =
-              shared_pointer.primary_down || desktop_pointer_primary_down;
-        }
+        // Desktop buttons already reach the stock UI service. Publishing a
+        // second edge here can replay that click on a later game/UI frame.
+        // Desktop coordinates retain fallback/held pointing; Lua snapshots their
+        // immediate point for stock mouse press/hold/release and wheel events.
         shared_pointer.primary_down =
             shared_pointer.primary_down || shared_menu_primary_down;
         const bool was_primary_armed = menu_primary_state.armed();

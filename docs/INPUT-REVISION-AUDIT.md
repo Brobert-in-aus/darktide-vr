@@ -235,6 +235,14 @@ Five focused CTests and the 36-chunk gate pass. This is undeployed and does not
 establish the cause of the prior live drag failure. Drag-release ownership and
 duplicate mouse edges remain under investigation in the current handoff.
 
+The subsequent offline candidate extends that cursor snapshot across all mouse
+button phases and removes desktop left-button duplication from the native XR
+edge stream. The stock mouse service remains the sole desktop click source.
+The installed-service fixture verifies immediate drag points and one
+press/release; the XR harness builds and six focused checks pass. Both parts
+remain undeployed, so the historical live scrollbar observation still needs its
+focused verification after Ready succeeds.
+
 ## Right-stick turning candidate (6 September)
 
 Smooth turning is now the default, with 45-degree and 90-degree snap modes and an
