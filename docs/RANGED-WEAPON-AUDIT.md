@@ -340,6 +340,10 @@ and insufficient magazines, reload/free-transfer returns, permitted partial
 shots, free-ammo and critical-only keywords, double cost, half/full charge and
 resimulation all pass. Preparation observations change pose on each shot, and
 the stock scheduler forwards that shot's supplied pose and clears prior results.
+Twelve further actual-stock pellet-scheduler cases cover 30/60/90 Hz, normal
+versus special shells and resimulation: batches retain the shell's prepared pose
+and consume one ammo cost only after the final batch. Engine pellet dispatch
+and damage remain substituted.
 
 ```powershell
 & build/dependencies/luajit/src/luajit.exe tests/tooling/test-ranged-scheduler-stock-contract.lua _downloads/Darktide-Source-Code
@@ -354,7 +358,7 @@ retain ownership of these behaviors; this check changes no runtime code.
 
 The fixture uses supplied action settings, one abstract ammo pool and substituted
 preparation, shot dispatch and secondary effects. It does not execute the full
-action hierarchy, pellet batches, real aim/spread, engine damage or installed
+action hierarchy, engine pellet dispatch, real aim/spread, engine damage or installed
 weapon templates. It is additional scheduler evidence, not acceptance of 135
 weapons, all ranged families, wire behavior or headset firing. The current user
 check remains staff shots/reticle while leaning, followed by an owned gun.
@@ -366,3 +370,8 @@ confirms dispatch on their hip-fire route. Recorded rows report no minion hit;
 they do not establish damage or visual alignment. Await the user's observations.
 The current console starts at 08:50:52 UTC; no mod WARNING/ERROR was found in the
 checked log. Source-based family coverage is still separate from this evidence.
+The user confirms staff shots/reticle are good, but the lasgun visibly fires
+from barrel back toward the face, fails to hit enemies in their test, and its
+reticle appears about 45 degrees above-left of the expected barrel direction.
+This is a failed gun visual/aim/hit check despite stock dispatch. Trace the
+actual hit endpoint, local-body collisions and barrel transform next.

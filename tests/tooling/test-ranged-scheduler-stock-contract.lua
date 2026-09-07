@@ -127,4 +127,48 @@ for _,hz in ipairs({30,60,90}) do
     end
 end
 print('PASS stock ranged scheduler: '..cases..' fixed-rate/buff/scenario combinations; cadence, fresh pose, ammo, charge and replay')
-print('LIMIT: supplied settings; single ammo pool; preparation/dispatch and secondary effects substituted; no action hierarchy, damage, pellet batching or live acceptance')
+
+-- Pellet dispatch may span multiple fixed frames. Retain the prepared pose
+-- across those batches and spend ammunition only after the shell completes.
+ActionShootPellets={}
+local pellets=read('extension_systems/weapon/actions/action_shoot_pellets')
+assert(loadstring(section(pellets,'ActionShootPellets._count_number_of_pellets_fired_this_frame =',
+    '\nActionShootPellets._prepare_shooting =')))()
+assert(loadstring(section(pellets,'function _shotshell_template(', '\nfunction _line_effect(')))()
+local pellet_cases=0
+for _,hz in ipairs({30,60,90}) do
+    for _,special in ipairs({false,true}) do
+        for _,replay in ipairs({false,true}) do
+            Managers.state.game_session.fixed_time_step=1/hz
+            local s=make({auto=false,replay=replay})
+            local shells={shotshell={num_pellets=7,pellets_per_frame=2},
+                shotshell_special={num_pellets=3,pellets_per_frame=3}}
+            local batches=special and 1 or 4
+            s._action_settings.fire_configuration=shells
+            s._base_fire_configurations={shells}; s._fire_special_configurations={shells}
+            s._inventory_slot_component.special_active=special
+            s._action_shoot_pellets_component={num_pellets_fired=0}
+            s._next_fire_state=ActionShootPellets._next_fire_state
+            s._count_number_of_pellets_fired_this_frame=ActionShootPellets._count_number_of_pellets_fired_this_frame
+            s._weapon_extension.set_wielded_weapon_weapon_special_active=function(self,t,active,reason)
+                assert(not active and reason=='shot_complete')
+                s.special_cleared=true
+                s._inventory_slot_component.special_active=active
+            end
+            s._shoot=function(self,position,rotation,power,charge,t)
+                assert(position=='stock_body_origin' and rotation==self.prepared[1])
+                assert(self._inventory_slot_component.clip==20,'ammo spent before shell completion')
+                self.dispatched[#self.dispatched+1]=t
+            end
+            for frame=1,hz do s:fixed_update(1/hz,frame/hz,frame/hz,frame) end
+            assert(#s.prepared==1)
+            assert(#s.dispatched==(replay and 0 or batches))
+            assert(s._action_shoot_pellets_component.num_pellets_fired==(special and 3 or 7))
+            assert(s._inventory_slot_component.clip==19 and s.special_cleared)
+            assert(s._action_component.fire_state=='shot')
+            pellet_cases=pellet_cases+1
+        end
+    end
+end
+print('PASS stock pellet scheduler: '..pellet_cases..' fixed-rate/special/replay cases; multi-frame pose retention and one ammo cost per shell')
+print('LIMIT: supplied settings; single ammo pool; preparation/dispatch and secondary effects substituted; no action hierarchy, engine pellets/damage or live acceptance')
