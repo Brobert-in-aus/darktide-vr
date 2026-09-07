@@ -139,6 +139,8 @@ assert(installed.capture_pending and not installed.enabled)
 local saved=installed.profiles.example
 t=t+.1; installed.sample(unit,false,t,handler)
 assert(installed.capture_pending and not installed.capture_pending.at)
+installed.clear(true)
+assert(installed.capture_pending,'Fixed chat ownership cancelled the initial calibration wait')
 installed_sample(0)
 local deadline=installed.capture_pending.at
 while t<deadline-.02 do installed_sample(0) end
@@ -168,11 +170,12 @@ installed_sample(0); equipped=calibrated_weapon
 commands.dtvr_two_hand_off()
 assert(not installed.enabled and not installed.capture_pending)
 installed_sample(0)
-for _,transition in ipairs({'menu','weapon','recenter','generation','tracking','reload','timeout'}) do
+for _,transition in ipairs({'menu','fixed_menu','weapon','recenter','generation','tracking','reload','timeout'}) do
     state_name='walking'; action=nil
     assert(installed.arm_capture(unit))
     installed_sample(0)
     if transition=='menu' then installed.sample(unit,false,t+.01,handler)
+    elseif transition=='fixed_menu' then installed.clear(true)
     elseif transition=='weapon' then equipped={}
     elseif transition=='recenter' then observations.head_recenter_generation=observations.head_recenter_generation+1
     elseif transition=='generation' then observations.last_transport_generation=observations.last_transport_generation+1

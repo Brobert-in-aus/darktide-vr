@@ -5629,7 +5629,7 @@ mod:hook_safe(
             controller_observation.primary_action_injected = false
             presentation.controller_bindings.sample(false, 0, nil, nil, false,
                 controller_observation.last_transport_generation, active_game_mode_name())
-            if presentation.two_hand then presentation.two_hand.clear() end
+            if presentation.two_hand then presentation.two_hand.clear(true) end
             if presentation.gameplay_ui then presentation.gameplay_ui.sample(false, 0) end
             return
         end

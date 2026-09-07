@@ -39,7 +39,12 @@ function Support.new(Pose)
     local api={profiles={},enabled=false,ads_unavailable=false,held=false}
     local filter=Pose.new()
     local context,identity
-    function api.clear()
+    function api.clear(interrupted)
+        -- Fixed input can lose gameplay ownership between render samples.
+        -- Preserve only the initial wait for the calibration command's chat.
+        if interrupted and api.capture_pending and api.capture_pending.at then
+            api.capture_pending=nil
+        end
         context,identity=nil,nil
         api.ads_unavailable=false
         api.held=false

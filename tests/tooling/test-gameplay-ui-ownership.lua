@@ -262,7 +262,7 @@ presentation.two_hand={sample=function(unit,active,t,handler)
     assert(unit==player.player_unit and handler==owner and t==.1)
     if active then return {control='left_grip',owner=support_owner,acquire=true,retain=true,action='alternate'} end
 end,finish=function(grip) support_finished=grip.held end,
-clear=function() support_cleared=true end}
+clear=function(interrupted) support_cleared=interrupted==true end}
 owner._ephemeral_actions={'action_two_pressed','action_two_release','stock_action'}
 owns=false; input_service={is_null_service=function() return false end}
 sample(0); sample(0)
