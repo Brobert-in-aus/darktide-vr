@@ -21,6 +21,11 @@ weapon acceptance.
 The user subsequently confirmed VD is ready. The combined candidate is deployed
 and initialized in Psykhanium, with fresh stereo and target transport readiness;
 the first worn step/stop/staff check is pending their observations.
+The initial step test exposed continuous drift from a wrong simulation-frame
+lookup in the movement repayment hook. Corrected Lua `38f356c` is deployed; the
+user's repeated sideways step/stop check now passes ("Yep, seems fine"). Staff
+shots/reticle under physical leaning and an owned gun's firing are the next
+requested observations; the broader roomscale/ranged checklist remains open.
 Firing-only aim switching remains on hold. The
 [server capability assessment](ONLINE-SERVER-CAPABILITY-ASSESSMENT.md) is complete;
 the user accepted the deployed one-metre staff visual convergence candidate.

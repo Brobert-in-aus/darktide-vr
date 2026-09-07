@@ -91,6 +91,11 @@ pass in 1.18 seconds, including all 41 chunks and invariants. Native code is
 unchanged. The corrected candidate still requires the user's repeated worn
 step/stop check; the initial deployment is not roomscale acceptance.
 
+After deploying `38f356c`, the user repeated the sideways step/stop test and
+reported "Yep, seems fine". Record that narrow worn regression as passing.
+Blocked movement, manual transitions, button crouch/vertical tracking, recenter
+and VD resume remain separate checks. Staff/reticle regression is now requested.
+
 After the user resumes VD, pass Ready and deploy with the normal Lua gates.
 Check fresh stereo initialization and nonzero `shared_ready`, then ask the
 user to lean within 10 cm, step 30–60 cm, stop, turn the staff away from their

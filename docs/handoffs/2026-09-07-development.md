@@ -42,6 +42,11 @@ harness reaches `shared_ready=604` with zero interval fallback; one cumulative
 pose mismatch is present. No mod WARNING/ERROR appears in the checked fresh
 console. The user has been asked to repeat one sideways step then stand still.
 Evidence: `artifacts/unattended/roomscale-repayment-*20260907.*` (ignored).
+The user repeated the sideways step/stop test and replied "Yep, seems fine".
+That accepts this specific drift/settling regression; blocked/manual transitions,
+vertical travel and recenter/resume are not yet worn-accepted. A follow-up asks
+for normal/charged staff shots while aiming away from the head and leaning,
+then an owned gun's name and firing result. No loadout is changed automatically.
 
 At 16:17 Brisbane they returned home with the headset and requested setup.
 They later closed Virtual Desktop for a break. Continue offline; at the roomscale
