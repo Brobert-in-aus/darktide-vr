@@ -19,7 +19,24 @@ for _,name in ipairs({'action_shoot_hit_scan','action_shoot_pellets','action_sho
 end
 Managers={state={game_session={}}}
 local logs,commands={},{}
+local endpoint=Vector3(0,.02,0)
+local hit_scan={process_hits=function() return endpoint,nil,false,nil,false,0,'surface',nil,99 end}
+package.loaded['scripts/utilities/attack/hit_scan']=hit_scan
+package.loaded['scripts/utilities/health']={is_damagable=function() return false end}
+package.loaded['scripts/utilities/attack/hit_zone']={get_name=function() return nil end}
+Actor={unit=function(actor) return actor.unit end,is_static=function() return false end}
+ScriptUnit={has_extension=function(_,name)
+    if name=='weapon_system' then return {weapon_template=function() return {name='fixture_gun'} end} end
+end}
 local mod={info=function(_,format,...) logs[#logs+1]=string.format(format,...) end,
+    io_dofile=function(_,path)
+        assert(path:match('/darktidevr_hit_evidence$'))
+        return dofile(arg[1]:gsub('darktidevr_ranged_evidence.lua$','darktidevr_hit_evidence.lua'))
+    end,
+    hook=function(_,class,method,callback)
+        local original=class[method]
+        class[method]=function(...) return callback(original,...) end
+    end,
     echo=function() end,command=function(_,name,_,callback) commands[name]=callback end,
     hook_safe=function(_,class,method,callback)
         local original=class[method]
@@ -53,3 +70,21 @@ instance.observe(action,Vector3(0,0,0),Vector3(0,1,0))
 assert(instance.failures==2 and #logs==6,'failure created repeating error messages')
 commands.dtvr_ranged_evidence()
 print('PASS ranged evidence: five dispatch hooks, stock nil returns/results, bounded output, angular evidence, remote/replay/visit guards and failure isolation')
+
+presentation.body_proxy={visual_owner=function(unit) return unit=='proxy' and 'right_hand_proxy' or nil end}
+local hits={{position=endpoint,distance=.02,actor={unit='proxy'}}}
+local before=#logs
+local a,b,c,d,e,f,g,h,i=hit_scan.process_hits(true,{}, {},'local',{},hits,Vector3(0,0,0),Vector3(0,1,0))
+assert(a==endpoint and b==nil and c==false and d==nil and e==false and f==0 and g=='surface' and h==nil and i==99)
+assert(hits[1].position==endpoint and hits[1].actor.unit=='proxy','observer changed hit list')
+assert(logs[before+1]:find('distance=0.0200',1,true) and logs[before+2]:find('proxy=right_hand_proxy',1,true))
+for n=1,6 do hit_scan.process_hits(true,{}, {},'local',{},hits,Vector3(0,0,0),Vector3(0,1,0)) end
+assert(#logs==before+8,'hit observer exceeds four bounded shots')
+hit_scan.process_hits(true,{}, {},'remote',{},hits,Vector3(0,0,0),Vector3(0,1,0))
+assert(#logs==before+8,'remote hit observed')
+Managers.state.game_session={}
+Actor.unit=function() error('retired actor') end
+hit_scan.process_hits(true,{}, {},'local',{},hits,Vector3(0,0,0),Vector3(0,1,0))
+hit_scan.process_hits(true,{}, {},'local',{},hits,Vector3(0,0,0),Vector3(0,1,0))
+assert(instance.hits.failures==2,'hit diagnostic failure escaped containment')
+print('PASS hit evidence: exact nil-bearing stock returns, untouched hits, proxy classification, bounded local observations and failure isolation')

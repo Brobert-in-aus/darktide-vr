@@ -52,6 +52,17 @@ fixed-rate/buff/scenario combinations covering repeated fire, ammo/charge gates
 and resimulation. See RANGED-WEAPON-AUDIT.md for the command and fixture limits;
 this is offline evidence only and changes no deployed code. The normal CTest
 count remains 125, with its previous 124-test full baseline unchanged.
+The user confirms staff normal/charged shots and reticle while leaning are good.
+Guns fail: the used lasgun (`lasgun_p3_m2`, identified by live dispatch) shows a
+barrel-to-face effect, no enemy hits in their test, and a reticle about 45 degrees
+above-left of the expected barrel direction. `stubrevolver_p1_m1` also has stock
+dispatch evidence but no separate worn acceptance. Six focused CTests pass
+(1.08 seconds), including all 42 chunks, for a bounded actual-hit diagnostic
+that preserves stock returns and collision lists. A proxy-unit classifier is
+read-only. It records endpoint/collision ownership to distinguish local visual
+blockers from other hits. No hit filtering or barrel correction has been made.
+The prior game is closing to load this diagnostic; resume with the same HUD,
+generated stereo and closed-game range options. Native components are unchanged.
 
 At 16:17 Brisbane they returned home with the headset and requested setup.
 They later closed Virtual Desktop for a break. Continue offline; at the roomscale

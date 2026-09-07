@@ -607,6 +607,14 @@ function BodyProxy.follow_gameplay_hands(world, aim_rotation)
     return true, rigid_hands.left.unit, rigid_hands.right.unit
 end
 
+function BodyProxy.visual_owner(unit)
+    if not unit then return nil end
+    if unit==state.unit then return 'body_proxy' end
+    for side,hand in pairs(rigid_hands) do
+        if unit==hand.unit then return side..'_hand_proxy' end
+    end
+end
+
 function BodyProxy.hides_source_slot(slot_name)
     if not BodyProxy.active() then
         return false
