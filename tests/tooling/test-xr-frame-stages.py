@@ -66,6 +66,29 @@ class FrameStages(unittest.TestCase):
         self.assertEqual([g["epoch"] for g in result["groups"]], [0, 1])
         self.assertEqual(result["excluded_windows"], {"frame_discontinuity": 1})
 
+    def test_optional_poll_samples_and_wait_modes(self):
+        legacy = row()
+        standard = row(240) + " pair_wait_mode=standard pair_poll_sleep_samples=0"
+        precise = row(360) + (" pair_wait_mode=high_resolution pair_poll_sleep_samples=300"
+                              " pair_poll_sleep_mean=0.6 pair_poll_sleep_max=1.1")
+        result = stages.summarize([presentation(), legacy, standard, precise])
+        self.assertEqual(result["excluded_windows"], {})
+        self.assertEqual(len(result["groups"]), 3)
+        groups = {g["pair_wait_mode"]: g["all"]["stages"]["pair_poll_sleep"]
+                  for g in result["groups"]}
+        self.assertEqual(groups["unreported"], {"count": 0, "observed_windows": 0})
+        self.assertEqual(groups["standard"], {"count": 0, "observed_windows": 1})
+        self.assertEqual(groups["high_resolution"]["count"], 300)
+        self.assertEqual(groups["high_resolution"]["mean_call_ms"], 0.6)
+        for invalid in (" pair_poll_sleep_mean=1", " pair_wait_mode=mixed_failure",
+                        " pair_poll_sleep_samples=0 pair_poll_sleep_max=1"):
+            self.assertEqual(stages.summarize([presentation(), legacy + invalid])["groups"], [])
+        recovery = stages.summarize([presentation(), legacy,
+                                    row(240) + " pair_wait_mode=mixed_failure",
+                                    row(360) + " pair_wait_mode=standard"])
+        self.assertEqual([r["window_end_frame"] for r in recovery["windows"]], [120, 360])
+        self.assertEqual(recovery["excluded_windows"], {"unknown_or_mixed_pair_wait_mode": 1})
+
 
 if __name__ == "__main__":
     unittest.main()

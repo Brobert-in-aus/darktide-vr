@@ -32,6 +32,12 @@ target_link_libraries(darktidevr-synthetic-head-publisher PRIVATE
   darktidevr_core)
 
 if(BUILD_TESTING)
+  add_executable(darktidevr-pair-poll-wait-tests pair_poll_wait_tests.cpp)
+  target_compile_options(darktidevr-pair-poll-wait-tests PRIVATE /W4 /WX /permissive-)
+  target_compile_definitions(darktidevr-pair-poll-wait-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+  target_include_directories(darktidevr-pair-poll-wait-tests PRIVATE "${PROJECT_SOURCE_DIR}/src/xr")
+  add_test(NAME pair_poll_wait COMMAND darktidevr-pair-poll-wait-tests)
+  set_tests_properties(pair_poll_wait PROPERTIES TIMEOUT 10)
   add_executable(darktidevr-frame-stage-timing-tests frame_stage_timing_tests.cpp)
   target_compile_options(darktidevr-frame-stage-timing-tests PRIVATE /W4 /WX /permissive-)
   target_link_libraries(darktidevr-frame-stage-timing-tests PRIVATE darktidevr_core)

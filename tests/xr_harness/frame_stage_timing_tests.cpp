@@ -23,6 +23,7 @@ int main() {
   timing.sample(FrameStage::SwapchainAcquireWait, 0);
   timing.sample(FrameStage::SwapchainAcquireWait, 0.125);
   timing.sample(FrameStage::SwapchainAcquireWait, 0.375);
+  for (int i=0; i<3; ++i) timing.sample(FrameStage::PairPollSleep, 0.75);
   auto rows=timing.samples();
   require(rows[0].count==2 && rows[0].mean_ms()==15 && rows[0].maximum_ms==20,
           "active-loop window aggregate is wrong");
@@ -37,7 +38,7 @@ int main() {
   require(timing.samples()[static_cast<std::size_t>(FrameStage::WaitFrame)].count==2,
           "invalid durations must not contaminate the valid mean");
   std::ostringstream output;
-  timing.write(output, 120, 10000000);
+  timing.write(output, 120, 10000000, "standard");
   const auto text=output.str();
   require(text.find("scope=cpu_wall")!=std::string::npos, "timing scope missing");
   require(text.find("window_end_frame=120 last_display_period_ms=10")!=std::string::npos,
@@ -46,6 +47,9 @@ int main() {
           text.find("gpu_fence_mean=")==std::string::npos,
           "unobserved GPU wait must not become a measured zero");
   require(text.find("wait_frame_mean=2")!=std::string::npos, "fractional mean lost");
+  require(text.find("pair_wait_mode=standard")!=std::string::npos &&
+          text.find("pair_poll_sleep_samples=3 pair_poll_sleep_mean=0.75")!=std::string::npos,
+          "poll count and selected wait mode must be retained");
   timing.reset();
   require(timing.invalid_samples()==0, "reset must start a new independent window");
   for(const auto& row:timing.samples()) require(row.count==0 && row.total_ms==0 &&

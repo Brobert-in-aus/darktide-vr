@@ -30,6 +30,7 @@
 #include "core/shared_generated_frame_state.h"
 #include "core/generated_frame_cadence.h"
 #include "core/frame_stage_timing.h"
+#include "pair_poll_wait.h"
 
 #include <algorithm>
 #include <atomic>
@@ -1143,6 +1144,15 @@ class OpenXrProbe {
     std::uint64_t last_pose_publish_tick{};
     unsigned pose_timing_reports{};
     darktidevr::core::FrameStageTiming frame_stage_timing;
+    wchar_t precise_pair_wait_value[2]{};
+    const bool precise_pair_wait_requested = GetEnvironmentVariableW(
+        L"DTVR_XR_PRECISE_PAIR_WAIT", precise_pair_wait_value, 2) == 1 &&
+        precise_pair_wait_value[0] == L'1';
+    darktidevr::xr::PairPollWait pair_poll_wait(precise_pair_wait_requested);
+    auto previous_pair_wait_failures = pair_poll_wait.failures();
+    std::cout << "openxr.pair_poll_wait requested=" << precise_pair_wait_requested
+              << " precise=" << pair_poll_wait.precise()
+              << " failures=" << pair_poll_wait.failures() << '\n';
     using FrameStage = darktidevr::core::FrameStage;
     auto report_pose_wait = [&](const char* stage, ULONGLONG began) {
       const auto ended = GetTickCount64();
@@ -1909,7 +1919,9 @@ class OpenXrProbe {
             next_wait_tracking_update = tracking_now +
                 std::chrono::nanoseconds(tracking_period);
           }
-          std::this_thread::sleep_for(std::chrono::microseconds(500));
+          const auto poll_sleep_start = std::chrono::steady_clock::now();
+          pair_poll_wait.wait();
+          frame_stage_timing.elapsed(FrameStage::PairPollSleep, poll_sleep_start);
         }
         if (!distinct_frame_available()) {
           ++pair_driven_timeouts;
@@ -3862,7 +3874,14 @@ class OpenXrProbe {
       poll_session_events();
       frame_stage_timing.elapsed(FrameStage::ActiveLoop, frame_start);
       if ((frame + 1) % 120 == 0) {
-        frame_stage_timing.write(std::cout, processed_frames, frame_state.predictedDisplayPeriod);
+        const char* pair_wait_mode = pair_poll_wait.failures() != previous_pair_wait_failures
+            ? "mixed_failure" : pair_poll_wait.precise() ? "high_resolution" : "standard";
+        frame_stage_timing.write(std::cout, processed_frames, frame_state.predictedDisplayPeriod,
+                                pair_wait_mode);
+        std::cout << "openxr.pair_poll_wait requested=" << precise_pair_wait_requested
+                  << " precise=" << pair_poll_wait.precise()
+                  << " failures=" << pair_poll_wait.failures() << '\n';
+        previous_pair_wait_failures = pair_poll_wait.failures();
         frame_stage_timing.reset();
         const auto report_time = std::chrono::steady_clock::now();
         const auto live_seconds =

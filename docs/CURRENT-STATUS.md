@@ -13,6 +13,9 @@ with fresh Psykhanium stereo and a [timing-only viewer](XR-FRAME-STAGE-TIMING.md
 to investigate a sustained idle delivery decline. SoloPlay/native/Lua/shaders
 are unchanged; fresh delivery is about 53 original + 53 generated pairs/s.
 No solo mission or worn mission acceptance yet.
+An [optional precise-wait candidate](XR-PRECISE-PAIR-WAIT.md) now passes its
+offline build/checks. It is undeployed and defaults off; the uninterrupted live
+session still uses the earlier timing-only viewer while awaiting recurrence.
 
 Latest follow-ups: after pre-launch TODO work, fix billboarding next. The user
 also reports item-pickup popups shrinking differently between eyes near screen

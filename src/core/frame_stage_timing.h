@@ -12,7 +12,7 @@ namespace darktidevr::core {
 // CPU-observed wall time around calls, not GPU timestamps or display latency.
 enum class FrameStage : std::size_t {
   ActiveLoop, PairWait, WaitFrame, BeginFrame, Tracking,
-  SwapchainAcquireWait, GpuFence, EndFrame, Count
+  SwapchainAcquireWait, GpuFence, EndFrame, PairPollSleep, Count
 };
 
 struct FrameStageSample {
@@ -53,14 +53,15 @@ class FrameStageTiming {
   [[nodiscard]] std::uint64_t invalid_samples() const noexcept { return invalid_samples_; }
 
   void write(std::ostream& output, std::uint64_t completed_frames,
-             std::int64_t last_display_period_ns) const {
+             std::int64_t last_display_period_ns, const char* pair_wait_mode = nullptr) const {
     static constexpr std::array<const char*, kCount> names{
         "active_loop", "pair_wait", "wait_frame", "begin_frame", "tracking",
-        "swapchain_acquire_wait", "gpu_fence", "end_frame"};
+        "swapchain_acquire_wait", "gpu_fence", "end_frame", "pair_poll_sleep"};
     output << "openxr.frame_stage_timing clock=steady units=ms scope=cpu_wall"
            << " window_end_frame=" << completed_frames
            << " last_display_period_ms=" << static_cast<double>(last_display_period_ns)/1.0e6
            << " invalid_samples=" << invalid_samples_;
+    if (pair_wait_mode) output << " pair_wait_mode=" << pair_wait_mode;
     for (std::size_t i=0; i<kCount; ++i) {
       const auto& row=samples_[i];
       output << ' ' << names[i] << "_samples=" << row.count;

@@ -7,6 +7,7 @@ from pathlib import Path
 
 STAGES = ("active_loop", "pair_wait", "wait_frame", "begin_frame", "tracking",
           "swapchain_acquire_wait", "gpu_fence", "end_frame")
+OPTIONAL_STAGES = ("pair_poll_sleep",)
 
 
 def fields(line):
@@ -35,8 +36,15 @@ def parse(line):
     if int(data["invalid_samples"]) != 0:
         raise ValueError("invalid_samples")
     row = {"window_end_frame": int(data["window_end_frame"]),
-           "last_display_period_ms": number(data["last_display_period_ms"]), "stages": {}}
-    for stage in STAGES:
+           "last_display_period_ms": number(data["last_display_period_ms"]),
+           "pair_wait_mode": data.get("pair_wait_mode", "unreported"), "stages": {}}
+    if row["pair_wait_mode"] not in ("unreported", "standard", "high_resolution", "mixed_failure"):
+        raise ValueError("unknown_or_mixed_pair_wait_mode")
+    for stage in STAGES + OPTIONAL_STAGES:
+        if stage in OPTIONAL_STAGES and stage + "_samples" not in data:
+            if stage + "_mean" in data or stage + "_max" in data:
+                raise ValueError("duration_without_samples")
+            continue
         count = int(data[stage + "_samples"])
         if count < 0:
             raise ValueError("invalid_count")
@@ -63,10 +71,13 @@ def parse(line):
 
 def aggregate(rows):
     result = {"windows": len(rows), "stages": {}}
-    for stage in STAGES:
-        samples = [row["stages"][stage] for row in rows if row["stages"][stage]["count"]]
+    for stage in STAGES + OPTIONAL_STAGES:
+        observed = [row["stages"][stage] for row in rows if stage in row["stages"]]
+        samples = [sample for sample in observed if sample["count"]]
         count = sum(sample["count"] for sample in samples)
         output = {"count": count}
+        if stage in OPTIONAL_STAGES:
+            output["observed_windows"] = len(observed)
         if count:
             output.update(mean_call_ms=sum(s["count"] * s["mean_ms"] for s in samples) / count,
                           maximum_observed_call_ms=max(s["maximum_ms"] for s in samples))
@@ -103,23 +114,27 @@ def summarize(lines):
                     raise ValueError("frame_discontinuity")
                 if len(contexts) != 1 or context is None:
                     raise ValueError("unknown_or_mixed_presentation")
+                if row["pair_wait_mode"] == "mixed_failure":
+                    raise ValueError("unknown_or_mixed_pair_wait_mode")
                 row["presentation"] = dict(zip(("mode", "generation", "source", "crop"), context))
                 row["epoch"] = epoch
                 rows.append(row)
             except (KeyError, ValueError) as error:
                 # A malformed row cannot establish frame continuity.
-                if str(error) not in ("frame_discontinuity", "unknown_or_mixed_presentation"):
+                if str(error) not in ("frame_discontinuity", "unknown_or_mixed_presentation",
+                                      "unknown_or_mixed_pair_wait_mode"):
                     previous_frame = None
                 excluded[str(error)] += 1
             contexts = {context}
     groups = defaultdict(list)
     for row in rows:
-        key = (row["epoch"], *row["presentation"].values())
+        key = (row["epoch"], *row["presentation"].values(), row["pair_wait_mode"])
         groups[key].append(row)
     summaries = []
     for key, group in sorted(groups.items()):
         summaries.append({"epoch": key[0],
-                          "presentation": dict(zip(("mode", "generation", "source", "crop"), key[1:])),
+                          "presentation": dict(zip(("mode", "generation", "source", "crop"), key[1:5])),
+                          "pair_wait_mode": key[5],
                           "all": aggregate(group), "first_60_windows": aggregate(group[:60]),
                           "last_60_windows": aggregate(group[-60:])})
     return {"status": "observational_only", "timing_rows": total,
