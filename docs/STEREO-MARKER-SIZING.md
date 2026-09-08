@@ -92,6 +92,8 @@ Do not adopt a partial scalar or texture-only change as the completed fix.
 
 ## Work and acceptance checklist
 
+- [x] Prepare a bounded, default-off [primitive measurement candidate](MARKER-PRIMITIVE-METRICS.md)
+  for marker, popup and tag draws; offline checks pass, live measurements pending.
 - [x] Inventory all 20 registered templates and their primitive families,
   including the separate popup/tag paths and custom damage-number draws.
 - [ ] Determine whether actual popup primitive extents, projection, or both

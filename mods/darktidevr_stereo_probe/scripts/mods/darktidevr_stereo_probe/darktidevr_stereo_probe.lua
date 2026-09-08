@@ -12198,8 +12198,10 @@ mod:hook(
         end
 
         local result
-        if capture then
-            result = presentation.marker_gui.draw(ui_renderer, func,
+        if capture or world_marker_reprojecting then
+            result = presentation.marker_metrics.draw(ui_renderer, "markers", self,
+                t, world_marker_reprojecting and 2 or 1,
+                capture and presentation.marker_gui.draw or nil, func,
                 self, dt, t, input_service, ui_renderer, render_settings)
         else
             result = func(self, dt, t, input_service, ui_renderer, render_settings)
@@ -12254,8 +12256,10 @@ mod:hook(
         end
 
         local result
-        if capture then
-            result = presentation.marker_gui.draw(ui_renderer, func,
+        if capture or world_marker_reprojecting then
+            result = presentation.marker_metrics.draw(ui_renderer, "interaction", self,
+                t, world_marker_reprojecting and 2 or 1,
+                capture and presentation.marker_gui.draw or nil, func,
                 self, dt, t, input_service, ui_renderer, render_settings)
         else
             result = func(self, dt, t, input_service, ui_renderer, render_settings)
@@ -12331,12 +12335,15 @@ mod:hook("HudElementSmartTagging", "_draw_active_interaction_line",
             return func(self, dt, t, input_service, ui_renderer, render_settings)
         end
         if world_marker_reprojecting then
-            return presentation.draw_tag_prompt(self, dt, t, input_service, ui_renderer, render_settings)
+            return presentation.marker_metrics.draw(ui_renderer, "tag", self, t, 2,
+                nil, presentation.draw_tag_prompt,
+                self, dt, t, input_service, ui_renderer, render_settings)
         end
         presentation.tag_hud_context = {instance=self,t=t,input_service=input_service,
             ui_renderer=ui_renderer,
             render_settings=presentation.marker_gui.snapshot_settings(render_settings)}
-        return presentation.marker_gui.draw(ui_renderer, presentation.draw_tag_prompt,
+        return presentation.marker_metrics.draw(ui_renderer, "tag", self, t, 1,
+            presentation.marker_gui.draw, presentation.draw_tag_prompt,
             self, dt, t, input_service, ui_renderer, render_settings)
     end)
 
@@ -13371,6 +13378,9 @@ presentation.marker_gui = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_marker_gui"
 )
 presentation.marker_gui.install(mod, UIRenderer)
+presentation.marker_metrics = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_marker_metrics"
+).install(mod, UIRenderer)
 
 presentation.visual_settings = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_visual_settings"
