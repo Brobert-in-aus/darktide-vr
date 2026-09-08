@@ -142,8 +142,9 @@ stick(true,0,.64,true,1,0,0,0)
 stick(true,0,.65,true,1,2048,2048,0)
 stick(true,0,.5,true,1,0,2048,0) -- Hysteresis prevents noisy retriggering.
 stick(true,0,.44,true,1,0,0,2048)
-stick(true,.8,.8,true,1,2048+4096,2048+4096,0) -- Diagonal shortcuts coexist.
-stick(true,-.8,0,true,1,0,4096,2048) -- Alias across directions does not retrigger.
+stick(true,.8,.8,true,1,2048,2048,0) -- Exact diagonal belongs only to vertical.
+stick(true,.81,.8,true,1,4096,4096,2048) -- Crossing sector releases the old action.
+stick(true,-.8,0,true,1,0,4096,0) -- Horizontal aliases do not retrigger.
 stick(true,0,0,true,1,0,0,4096)
 stick(true,0,-.8,true,1,16384,16384,0)
 stick(false,0,-.8,true,1,0,0,0)

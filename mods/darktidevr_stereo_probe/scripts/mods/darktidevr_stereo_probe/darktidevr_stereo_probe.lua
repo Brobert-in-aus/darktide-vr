@@ -5446,7 +5446,8 @@ presentation.turning = mod:io_dofile(
 function presentation.apply_controller_turning(main_t)
     local delta = presentation.turning.sample(
         controller_observation.gameplay_input_active and active and active_base_rotation ~= nil,
-        controller_observation.right_stick_x, controller_observation.right_aim_usable,
+        controller_observation.right_stick_x, controller_observation.right_stick_y,
+        controller_observation.right_aim_usable,
         controller_observation.last_transport_generation,
         controller_observation.head_recenter_generation, active_world, main_t)
     if delta ~= 0 and active_base_rotation then

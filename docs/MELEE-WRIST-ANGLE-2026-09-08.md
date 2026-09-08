@@ -1,5 +1,9 @@
 # Wrist roll and stock melee angle
 
+Worn follow-up: the user reports "Melee aim fixed" after the 09:44 UTC restart.
+The wrist-twist aiming issue is accepted. Server damage and the separate
+feedback/menu appearance are not implied by that observation.
+
 ## Live deployment, 09:44 UTC
 
 After the user authorized restart, the seven changed focused Lua files were

@@ -27,7 +27,7 @@ function Feedback.quad(pass,widget)
 end
 function Feedback.pixel_scale(distance,character_scale)
     -- Match the accepted XR reticle's 41-pixel atlas, including its size caps.
-    return math.max(.105,math.min(.84,distance/character_scale*.049))*character_scale/41
+    return math.max(.105,math.min(.84,distance/character_scale*.049))*character_scale/41*.7
 end
 function Feedback.install(mod,presentation,tracking)
     local api={}

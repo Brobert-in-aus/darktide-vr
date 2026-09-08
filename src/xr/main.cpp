@@ -3824,7 +3824,7 @@ class OpenXrProbe {
             gameplay_reticle_pose->position.y,
             gameplay_reticle_pose->position.z};
         const auto angular_size_metres = std::clamp(
-            gameplay_reticle_distance_metres_ * 0.049F, 0.105F, 0.84F) *
+            gameplay_reticle_distance_metres_ * 0.049F, 0.105F, 0.84F) * 0.7F *
             (static_cast<float>(gameplay_reticle_sample_extent) /
              static_cast<float>(gameplay_reticle_extent));
         gameplay_reticle_quad.size = {angular_size_metres,

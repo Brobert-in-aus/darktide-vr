@@ -224,7 +224,10 @@ function Bindings.install(mod)
                 if control.axis and (control.axis~="x" or mod:get("vr_turn_mode")=="off") then
                     local value = (control.axis=="x" and stick_x or stick_y)*control.sign
                     local was_held = bit.band(stick_held,control.bit)~=0
-                    if value >= (was_held and 0.45 or 0.65) then
+                    local horizontal = math.abs(stick_x)>math.abs(stick_y)
+                    local in_sector = (control.axis=="x" and horizontal) or
+                        (control.axis=="y" and not horizontal)
+                    if in_sector and value >= (was_held and 0.45 or 0.65) then
                         next_stick = bit.bor(next_stick,control.bit)
                     end
                 end

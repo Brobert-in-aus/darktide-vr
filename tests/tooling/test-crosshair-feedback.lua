@@ -14,10 +14,10 @@ near(hit.x,-12);near(hit.y,-12);near(hit.c,math.sqrt(.5));near(hit.s,-math.sqrt(
 assert(hit.color[1]==128 and Feedback.quad({style_id='center'},widget)==nil)
 widget.style.hit_top_left.visible=false;assert(Feedback.quad({style_id='hit_top_left'},widget)==nil)
 widget.style.charge_mask_left.size[2]=0;assert(Feedback.quad({style_id='charge_mask_left'},widget)==nil)
-near(Feedback.pixel_scale(10,1),.49/41)
-near(Feedback.pixel_scale(.1,1),.105/41)
-near(Feedback.pixel_scale(100,1),.84/41)
-near(Feedback.pixel_scale(20,2),.98/41)
+near(Feedback.pixel_scale(10,1),.49/41*.7)
+near(Feedback.pixel_scale(.1,1),.105/41*.7)
+near(Feedback.pixel_scale(100,1),.84/41*.7)
+near(Feedback.pixel_scale(20,2),.98/41*.7)
 -- Both eyes consume one world-plane description; no screen-edge coordinate
 -- enters either the scale or stock layout calculation.
 local left,right=Feedback.quad({style_id='charge_left',value_id='charge'},widget),
@@ -64,11 +64,11 @@ local world={}
 hooks.update(owner,0,1,nil,{alpha_multiplier=.5})
 api.draw(world,vec(0,0,0),{})
 assert(created==1 and #draws==1 and visible)
-near(draws[1].tm.position[1],-32*.49/41)
+near(draws[1].tm.position[1],-32*.49/41*.7)
 near(draws[1].tm.position[2],10);near(draws[1].args.color[1],127.5)
 assert(draws[1].args.uv00[1]==1 and draws[1].args.uv11[1]==0)
 point=vec(2,10,0);api.draw(world,vec(0,0,0),{})
-near(draws[2].tm.position[1],2-32*.49/41);assert(created==1)
+near(draws[2].tm.position[1],2-32*.49/41*.7);assert(created==1)
 presentation.mode=5;api.draw(world,vec(0,0,0),{});assert(not visible and #draws==2)
 hooks.destroy(owner);api.destroy();assert(destroyed==1)
 print('Stock charge masks, rotated hit offsets/alpha, reticle scale caps and absent-owner lifetime pass')

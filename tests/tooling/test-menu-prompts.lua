@@ -20,17 +20,17 @@ end
 local function hint(action,service,tint)
     return hooks[Text].localize_with_button_hint(stock_hint,action,"Action",nil,service,tint)
 end
-assert(hint("back")=="[B / Menu] Action")
+assert(hint("back")=="[B\194\160/\194\160Menu] Action")
 for _,action in ipairs({"left_pressed","left_released","left_hold"}) do
-    assert(hint(action)=="[Point + RT] Action")
+    assert(hint(action)=="[Point\194\160+\194\160RT] Action")
 end
-assert(hint("back","View",true)=="<tint>[B / Menu] Action")
+assert(hint("back","View",true)=="<tint>[B\194\160/\194\160Menu] Action")
 assert(hint("confirm_pressed")=="keyboard:confirm_pressed Action")
 assert(hint("gamepad_confirm_pressed")=="keyboard:gamepad_confirm_pressed Action")
 assert(hint("right_pressed")=="keyboard:right_pressed Action")
 secondary=true
 for _,action in ipairs({"right_pressed","right_released","right_hold"}) do
-    assert(hint(action)=="[Point + LT] Action")
+    assert(hint(action)=="[Point\194\160+\194\160LT] Action")
 end
 assert(hint("right_pressed","Ingame")=="keyboard:right_pressed Action")
 secondary=false
@@ -38,7 +38,7 @@ assert(hint("right_pressed")=="keyboard:right_pressed Action","old transport adv
 assert(hint("back_released")=="keyboard:back_released Action")
 assert(hint("back","Ingame")=="keyboard:back Action")
 assert(input("View","back")=="keyboard:back","label leaked outside a known action")
-local a,b,c=hint("back"); assert(a=="[B / Menu] Action" and b==nil and c==9)
+local a,b,c=hint("back"); assert(a=="[B\194\160/\194\160Menu] Action" and b==nil and c==9)
 local legend=hooks.ViewElementInputLegend
 local function widget(self,entry)
     entry.widget.content.text=hint(entry.input_action)
@@ -46,7 +46,7 @@ local function widget(self,entry)
 end
 local entry={input_action="confirm_pressed",widget={content={}},on_pressed_callback=function() end}
 legend._update_widget_text(widget,{},entry)
-assert(entry.widget.content.text=="[Point + RT] Action" and entry.recalcultate_text_width)
+assert(entry.widget.content.text=="[Point\194\160+\194\160RT] Action" and entry.recalcultate_text_width)
 assert(hint("confirm_pressed")=="keyboard:confirm_pressed Action","click scope leaked")
 local readonly={input_action="confirm_pressed",widget={content={}}}
 legend._update_widget_text(widget,{},readonly)
@@ -103,10 +103,10 @@ if arg[3] then
     local format=Text.localize_with_button_hint
     Text.localize_with_button_hint=function(...) return hooks[Text].localize_with_button_hint(format,...) end
     assert(Text.localize_with_button_hint('left_hold','Operate',{target='device'},nil,'%s / %s',true,true)==
-        'Hold <tint>[Point + RT] / Operate device')
+        'Hold <tint>[Point\194\160+\194\160RT] / Operate device')
     assert(Text.localize_with_button_hint('right_released','Remove',nil,'View',nil,true)==
-        'Release [Point + LT] Remove')
-    assert(Text.localize_with_button_hint('back','Back')=='[B / Menu] Back')
+        'Release [Point\194\160+\194\160LT] Remove')
+    assert(Text.localize_with_button_hint('back','Back')=='[B\194\160/\194\160Menu] Back')
     assert(Text.localize_with_button_hint('confirm_pressed','Confirm')==
         'keyboard:stock_alias_confirm_pressed Confirm')
     assert(Text.localize_with_button_hint('left_hold','Attack',nil,'Ingame',nil,true)==
@@ -124,13 +124,13 @@ if arg[3] then
     local entry={input_action='confirm_pressed',display_name='Continue',suffix=' (3)',
         widget={content={}},on_pressed_callback=function() error('Hint formatting activated a button') end}
     legend._update_widget_text(stock_legend._update_widget_text,{},entry)
-    assert(entry.widget.content.text=='[Point + RT]: Continue (3)' and entry.recalcultate_text_width)
+    assert(entry.widget.content.text=='[Point\194\160+\194\160RT]: Continue (3)' and entry.recalcultate_text_width)
     entry.on_pressed_callback=nil
     legend._update_widget_text(stock_legend._update_widget_text,{},entry)
     assert(entry.widget.content.text=='keyboard:stock_alias_confirm_pressed: Continue (3)')
     entry.input_action='right_released'
     legend._update_widget_text(stock_legend._update_widget_text,{},entry)
-    assert(entry.widget.content.text=='Release [Point + LT]: Continue (3)')
+    assert(entry.widget.content.text=='Release [Point\194\160+\194\160LT]: Continue (3)')
     active=false
     legend._update_widget_text(stock_legend._update_widget_text,{},entry)
     assert(entry.widget.content.text=='Release keyboard:stock_alias_right_released: Continue (3)')

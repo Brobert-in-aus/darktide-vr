@@ -9,7 +9,7 @@ package.loaded['scripts/utilities/ui/text']=Text
 package.loaded['scripts/managers/input/input_utils']=utils
 local fit_calls=0
 package.loaded['scripts/managers/ui/ui_renderer']={scaled_font_size_by_width=function(renderer,text,font,size,width)
-    assert(renderer.scale==2 and width==60 and size==20)
+    assert(renderer.scale==2 and width==58 and size==20)
     fit_calls=fit_calls+1
     return 15
 end}
@@ -56,11 +56,11 @@ end
 assert(text('action_one')=='keyboard:action_one','scope leaked outside HUD')
 assert(hooks[Text].localize_with_button_hint(function()
     return text('back','View')
-end,'back','Back')=='[B / Menu]','shared hook lost menu labels')
+end,'back','Back')=='[B\194\160/\194\160Menu]','shared hook lost menu labels')
 assert(text('back','View')=='keyboard:back','menu label leaked out of action context')
 scope('HudElementWieldInfo','_create_entry',function()
     assert(text('action_one')=='[RT]')
-    assert(text('weapon_extra')=='[R Grip]')
+    assert(text('weapon_extra')=='[R\194\160Grip]')
     assert(text('combat_ability')=='[Unbound]')
     assert(text('smart_tag')=='[R3]')
     assert(text('interact')=='[X]' and text('weapon_reload')=='[X]')
@@ -69,7 +69,7 @@ scope('HudElementWieldInfo','_create_entry',function()
     assert(text('action_one','View')=='keyboard:action_one','desktop menu changed')
     assert(text('action_one','Ingame',true)=='<tint>[RT]')
     local a,b,c=scope('HudElementPlayerWeapon','_update_input',function()
-        assert(text('wield_1')=='[Y switch]' and text('wield_2')=='[Y switch]')
+        assert(text('wield_1')=='[Y\194\160switch]' and text('wield_2')=='[Y\194\160switch]')
         assert(text('wield_3')=='[Unbound]')
         return 7,nil,9
     end)
@@ -84,7 +84,7 @@ for id,alias in pairs({pocketable='wield_3',stim='wield_4',device='wield_5',
     settings.vr_bind_right_stick_up=id
     mod.on_setting_changed('vr_bind_right_stick_up')
     scope('HudElementWieldInfo','_create_entry',function()
-        assert(text(alias)=='[RS Up]','Slot binding hint missing')
+        assert(text(alias)=='[RS\194\160Up]','Slot binding hint missing')
         if id=='cycle_pocketables' then
             assert(text('wield_3')=='[Unbound]' and text('wield_4')=='[Unbound]')
         end
@@ -115,7 +115,7 @@ settings.vr_bind_right_grip='combat_ability'
 settings.vr_bind_r3='combat_ability'
 mod.on_setting_changed('vr_bind_right_grip')
 scope('HudElementPlayerAbility','_update_input',function()
-    assert(text('combat_ability')=='[R Grip]')
+    assert(text('combat_ability')=='[R\194\160Grip]')
     assert(text('weapon_extra')=='[Unbound]' and text('smart_tag')=='[Unbound]')
 end)
 -- Reading prompts immediately after a settings change must not consume the
@@ -168,13 +168,13 @@ settings.vr_bind_right_stick_up='combat_ability'
 mod.on_setting_changed('vr_bind_right_stick_up')
 active=true
 scope('HudElementPlayerAbility','_update_input',function()
-    assert(text('combat_ability')=='[RS Up]','directional binding hint missing')
+    assert(text('combat_ability')=='[RS\194\160Up]','directional binding hint missing')
 end)
 print('controller_prompts=pass scoped labels remap aliases unbound cache_refresh errors nil_returns')
 
 bindings.sample(true,0,0,0,true,1,'hub')
 scope('ConstantElementOnboardingHandler','_sync_onboarding_settings',function()
-    assert(text('hotkey_inventory','View')=='[R Grip]','Hub notification missed profile')
+    assert(text('hotkey_inventory','View')=='[R\194\160Grip]','Hub notification missed profile')
     assert(text('right','View')=='keyboard:right','Talent right-click acceptance case changed')
 end)
 assert(text('hotkey_inventory','View')=='keyboard:hotkey_inventory','Notification scope leaked')

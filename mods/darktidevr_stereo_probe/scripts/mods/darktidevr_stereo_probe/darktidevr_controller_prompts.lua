@@ -1,4 +1,8 @@
 local Prompts = {}
+function Prompts.single_line(text)
+    -- Keep each complete binding together in stock rich-text/word wrapping.
+    return (text:gsub('%s','\194\160'))
+end
 local aliases = {
     action_one="primary",action_two="alternate",weapon_extra="special",
     interact="interact",weapon_reload="reload",quick_wield="quick_wield",
@@ -38,12 +42,14 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
             previous={font=style.font_size}; fitted[style]=previous
         end
         local available=enabled()
-        local width=style.size[1]
+        local width=math.max(1,style.size[1]-2)
         if previous.text==text and previous.scale==renderer.scale and
-                previous.width==width and previous.available==available then return end
+                previous.width==width and previous.available==available and
+                previous.applied==style.font_size then return end
         style.font_size=available and UIRenderer.scaled_font_size_by_width(
             renderer,text,style.font_type,previous.font,width) or previous.font
         previous.text,previous.scale,previous.width,previous.available=text,renderer.scale,width,available
+        previous.applied=style.font_size
         widget.dirty=true
     end
     mod:hook(InputUtils,"input_text_for_current_input_device",
@@ -70,7 +76,7 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
             if controls[1] then labels[1]=mod:localize("vr_prompt_"..controls[1]) end
             local text = #labels>0 and table.concat(labels," / ") or mod:localize("vr_action_unbound")
             if switch and #labels>0 then text=text.." "..mod:localize("vr_prompt_switch") end
-            text="["..text.."]"
+            text=Prompts.single_line("["..text.."]")
             if tint then text=InputUtils.apply_color_to_input_text(text,Color.ui_input_color(255,true)) end
             return text
         end)

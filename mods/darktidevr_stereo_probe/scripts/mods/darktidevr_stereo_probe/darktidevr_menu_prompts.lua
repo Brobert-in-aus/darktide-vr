@@ -15,7 +15,7 @@ function Prompts.install(mod, enabled, secondary_enabled)
     -- replaces a same-mod hook handler on duplicate registration.
     function api.input_text(service,alias,tint)
         if not label or service~="View" or not enabled() then return nil end
-        local text="["..mod:localize(label).."]"
+        local text=("["..mod:localize(label).."]"):gsub('%s','\194\160')
         if tint then text=InputUtils.apply_color_to_input_text(text,Color.ui_input_color(255,true)) end
         return text
     end

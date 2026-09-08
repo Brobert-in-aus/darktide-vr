@@ -18,13 +18,14 @@ end
 function Turning.install(mod)
     local state = {armed=false}
     local api = {}
-    function api.sample(enabled, x, usable, generation, recenter, context, t)
+    function api.sample(enabled, x, y, usable, generation, recenter, context, t)
         local mode=mod:get("vr_turn_mode")
         if mode~="off" and mode~="snap45" and mode~="snap90" then mode="smooth" end
         local speed=mod:get("vr_turn_speed")
         if type(speed)~="number" or not (speed>=30 and speed<=180) then speed=90 end
         local valid=enabled==true and usable==true and mode~="off" and
             type(x)=="number" and x>=-1 and x<=1 and
+            type(y)=="number" and y>=-1 and y<=1 and
             type(t)=="number" and t==t and t>-math.huge and t<math.huge
         local changed=state.mode~=mode or state.speed~=speed or
             state.generation~=generation or state.recenter~=recenter or state.context~=context
@@ -36,7 +37,11 @@ function Turning.install(mod)
         if valid and state.t==t and not changed then return 0 end
         state.t=valid and t or nil
         if not valid then return 0 end
-        if math.abs(x)<=0.25 then state.armed=true; return 0 end
+        if math.max(math.abs(x),math.abs(y))<=0.25 then state.armed=true; return 0 end
+        -- Only the horizontal 90-degree sectors turn. Exact diagonals belong
+        -- to vertical shortcuts, so the two routes cannot fire together.
+        -- Moving through up/down does not rearm a snap without neutral.
+        if math.abs(x)<=math.abs(y) or math.abs(x)<=0.25 then return 0 end
         if not state.armed then return 0 end
         local sign=x<0 and -1 or 1
         if mode=="smooth" then
