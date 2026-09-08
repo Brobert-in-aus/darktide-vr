@@ -44,3 +44,14 @@ cannot be caught by Lua pcall. The display now checks presentation readiness
 first and uses stock local_player_safe(1). The startup fixture covers loading,
 an uninitialized connection, and subsequent successful drawing without a latched
 failure. Seven related CTests pass (0.08 s); focused source compiles all 45 chunks.
+
+Retry checkpoint: startup correction is committed as main 75cb39f and focused
+9b53acf, pushed to PR59/60. Default Ready retried after the crash: the first
+runtime creation timed out; the second created VDXR but returned
+XR_ERROR_FORM_FACTOR_UNAVAILABLE / hmd-unavailable. USB remains authorized and
+Quest awake. The corrected preview file has not yet been deployed; the prior
+four-file deployment and explicit enabled startup flag remain installed. No
+runtime restart or game launch was attempted on these failed readiness results.
+The user has been asked to resume Virtual Desktop streaming. Receipts:
+mission-preview-retry-ready-20260908.json and
+mission-preview-retry2-ready-20260908.json under artifacts/unattended.
