@@ -91,4 +91,35 @@ s,b,r,draws=setup()
 assert(s:capture(1,identity,r));s:observe_render(b.world);b.fail_copy=true
 assert(select(2,s:capture(2,identity,r))=='copy_failed' and draws()==1)
 assert(not s:visible(2,identity));s:destroy()
-print('widget_capture_session: first-eye admission, owned bounds, failure cleanup and complete-module lifecycle pass')
+-- Fractional logical bounds need outward pixel alignment at every UI scale.
+for _,case in ipairs({
+    {scale=1,x=1700.25,y=400.75,w=399.5,h=149.5,bx=1700,by=400,bw=400,bh=151},
+    {scale=2,x=-0.1,y=-2.3,w=100,h=40,bx=-0.5,by=-2.5,bw=100.5,bh=40.5},
+    {scale=0.5,x=1,y=1,w=399,h=149,bx=0,by=0,bw=400,bh=150},
+}) do
+    s,b,r,draws,original,pass=setup()
+    r.scale=case.scale;r.settings.scale=case.scale;r.settings.inverse_scale=1/case.scale
+    r.bounds={x=case.x,y=case.y,width=case.w,height=case.h}
+    r.draw=function()
+        pass.data.material=b.renderer
+        assert(b.graph.pivot.world_position[1]==1700-case.bx)
+        assert(b.graph.pivot.world_position[2]==400-case.by)
+    end
+    assert(s:capture(1,identity,r));s:observe_render(b.world)
+    assert(s:capture(2,identity,r))
+    local bounds=s:visible(2,identity).metadata.bounds
+    assert(bounds.x==case.bx and bounds.y==case.by and bounds.width==case.bw and bounds.height==case.bh)
+    assert(r.bounds.x==case.x and r.bounds.width==case.w, 'caller bounds must remain unchanged')
+    s:destroy()
+end
+for _,bounds in ipairs({
+    {x=0.25,y=0,width=512,height=100}, -- 513 pixels after outward alignment.
+    {x=0,y=-0.25,width=100,height=256}, -- 257 pixels with a negative origin.
+    {x=1e308,y=0,width=1e308,height=100}, -- Finite operands, overflowing sum.
+    {x=1e308,y=0,width=1,height=100}, -- Extent lost to floating-point precision.
+}) do
+    s,b,r=setup();r.bounds=bounds
+    assert(select(2,s:capture(1,identity,r))=='invalid_bounds' and b.queues==0)
+    s:destroy()
+end
+print('widget_capture_session: first-eye admission, pixel-aligned bounds, failure cleanup and lifecycle pass')

@@ -43,10 +43,29 @@ function Session:capture(t,identity,request)
         not finite(request.dt) or request.dt<0 or not finite(request.scale) or request.scale<=0 then
         return reject('invalid_input')
     end
-    local b=request.bounds
-    if not finite(b.x) or not finite(b.y) or not finite(b.width) or not finite(b.height) or
-        b.width<=0 or b.height<=0 or b.width*request.scale>self.backend.width or
-        b.height*request.scale>self.backend.height then return reject('invalid_bounds') end
+    local measured=request.bounds
+    if not finite(measured.x) or not finite(measured.y) or not finite(measured.width) or
+        not finite(measured.height) or measured.width<=0 or measured.height<=0 then
+        return reject('invalid_bounds')
+    end
+    -- Translate by whole capture pixels so stock pixel snapping remains in the
+    -- same phase as the source. Round outward before testing target capacity;
+    -- fractional origins can require one more pixel than width*scale suggests.
+    local scale=request.scale
+    local left,top=measured.x*scale,measured.y*scale
+    local right,bottom=(measured.x+measured.width)*scale,(measured.y+measured.height)*scale
+    if not finite(left) or not finite(top) or not finite(right) or not finite(bottom) or
+        right<=left or bottom<=top then return reject('invalid_bounds') end
+    left,top=math.floor(left),math.floor(top)
+    right,bottom=math.ceil(right),math.ceil(bottom)
+    local pixel_width,pixel_height=right-left,bottom-top
+    if pixel_width>self.backend.width or pixel_height>self.backend.height then
+        return reject('invalid_bounds')
+    end
+    local b={x=left/scale,y=top/scale,width=pixel_width/scale,height=pixel_height/scale}
+    if not finite(b.x) or not finite(b.y) or not finite(b.width) or not finite(b.height) then
+        return reject('invalid_bounds')
+    end
     if request.settings.scale~=request.scale or request.settings.inverse_scale~=1/request.scale then
         return reject('inconsistent_scale')
     end

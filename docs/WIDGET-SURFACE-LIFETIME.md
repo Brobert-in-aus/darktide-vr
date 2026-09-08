@@ -56,6 +56,12 @@ owner, detached geometry and image-lifetime controller. It requires supplied
 complete bounds and consistent explicit scale/inverse scale, rejects oversized
 captures, and preserves both positive and negative first-eye admission decisions.
 Bounds are copied into image metadata rather than shared with next-frame layout.
+Supplied logical bounds are rounded outward in capture pixels before capacity
+checks. The translation is therefore a whole number of pixels at the supplied
+scale, preserving stock pixel-snap phase and covering fractional edges. The
+copied metadata uses that same expanded rectangle. Negative origins, scales
+below/above one, overflowing endpoints and extents lost to floating-point
+precision are covered offline; original caller bounds remain unchanged.
 Target changes, hidden state, clock rollback and missing submission hide stale
 content. Draw errors propagate without a second draw; materials are destroyed
 before the renderer, even when material cleanup reports an error.
