@@ -68,7 +68,7 @@ return {
                 },
             },
             mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_turning").widgets(),
-            mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings").widgets(),
+            mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings").widgets(mod),
             {
                 setting_id = "psykhanium_online_rules",
                 type = "checkbox",

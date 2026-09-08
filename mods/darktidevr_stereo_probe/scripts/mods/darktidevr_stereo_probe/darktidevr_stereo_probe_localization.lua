@@ -1,4 +1,5 @@
 return {
+    controller_action_binding_description = {en = "Choose the controller input for this action. Actions can share a control: for example, interact and reload on X. Right-stick left/right actions require turning to be off. Hub overrides apply only in the hub."},
     melee_preview_toggle = {en = "First melee swing preview"},
     melee_preview_toggle_description = {en = "Show or hide the first light attack's direction while holding your melee weapon idle. Starts off each session. This guide does not guarantee a hit."},
     melee_preview_toggle_button = {en = "Toggle preview"},
@@ -39,7 +40,7 @@ return {
     vr_prompt_switch = {en = "switch"},
     controller_bindings = {en = "Combat controller bindings"},
     controller_hub_bindings = {en = "Hub overrides"},
-    controller_hub_bindings_description = {en = "Use different actions in the hub. Same as combat preserves that control's combat binding. Movement, turning and menu controls stay consistent. Release held controls after changing context."},
+    controller_hub_bindings_description = {en = "Choose a different control for an action in the hub, or use Same as combat. Release held controls after changing context."},
     vr_action_inherit = {en = "Same as combat"},
     vr_action_inventory = {en = "Open inventory / talents"},
     vr_action_pocketable = {en = "Equip carried item / supply crate"},
@@ -62,7 +63,7 @@ return {
     vr_hub_bind_right_stick_down = {en = "Hub: right stick down"},
     vr_hub_bind_right_stick_left = {en = "Hub: right stick left (turning off)"},
     vr_hub_bind_right_stick_right = {en = "Hub: right stick right (turning off)"},
-    controller_bindings_description = {en = "Gameplay only; menu select, back and scrolling keep their standard controls. Release buttons and centre the stick after changing a binding. Multiple controls may share an action. Stick diagonals can activate two shortcuts together. Aim hands stay unchanged. Reset settings to restore the original layout."},
+    controller_bindings_description = {en = "Choose a control beside each action. Unbound actions have no controller input. Actions may share a button; saved extra bindings are preserved until you replace them. Release buttons and centre the stick after changes. Menu navigation keeps its standard controls. Reset settings to restore the original layout."},
     vr_bind_right_trigger = {en = "Right trigger"},
     vr_bind_left_trigger = {en = "Left trigger"},
     vr_bind_right_grip = {en = "Right grip"},

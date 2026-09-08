@@ -76,11 +76,15 @@ for _,binding in ipairs(mapper.bindings) do
     end
 end
 local widgets=Bindings.widgets()
-assert(#widgets.sub_widgets==16)
+local action_count=0
+for _,action in ipairs(Bindings.actions) do
+    if action.mask>0 and bit.band(action.mask,action.mask-1)==0 then action_count=action_count+1 end
+end
+assert(#widgets.sub_widgets==action_count+1)
 local used={}
 local function check_widget(widget)
     assert(not used[widget.setting_id]); used[widget.setting_id]=true
-    assert(pcall(string.format,text[widget.setting_id].en))
+    assert(pcall(string.format,text[widget.title or widget.setting_id].en))
     if widget.sub_widgets then
         for _,child in ipairs(widget.sub_widgets) do check_widget(child) end
         return
@@ -300,3 +304,54 @@ grip_request.action='unbound'
 grip_sample(4,0,0,0,true,grip_request) -- Support can hold without requesting ADS.
 grip_sample(0,0,0,0,false,grip_request)
 print('support_grip=pass fresh_press aliases cancellation neutral roles optional_ads')
+
+-- Inverting the menu must preserve every legacy semantic binding, including
+-- combined actions, duplicate aliases and hub overrides.
+local migrated_settings={vr_bind_a='jump_dodge',vr_bind_b='jump',vr_bind_x='interact_reload',
+    vr_bind_right_stick_up='combat_ability',vr_hub_bind_x='inspect_target',vr_turn_mode='smooth'}
+local migrated_mod={get=function(_,key) return migrated_settings[key] end,
+    set=function(_,key,value) migrated_settings[key]=value end,
+    localize=function(_,key) return assert(text[key],key).en end}
+local before=Bindings.install(migrated_mod)
+local expected={}
+for _,mode in ipairs({'combat','hub'}) do
+    before.sample(true,0,0,0,true,1,mode)
+    expected[mode]={}
+    for _,action in ipairs(Bindings.actions) do
+        expected[mode][action.id]=table.concat(before.controls_for_action(action.id),',')
+    end
+end
+local menu=Bindings.widgets(migrated_mod)
+local after=Bindings.install(migrated_mod)
+for _,mode in ipairs({'combat','hub'}) do
+    after.sample(true,0,0,0,true,1,mode)
+    for _,action in ipairs(Bindings.actions) do
+        assert(table.concat(after.controls_for_action(action.id),',')==expected[mode][action.id],mode..':'..action.id)
+    end
+end
+assert(migrated_settings.vr_action_bind_jump==32+64,'Migration dropped an alias')
+assert(migrated_settings.vr_action_bind_interact==8 and migrated_settings.vr_action_bind_reload==8)
+local jump_row
+for _,row in ipairs(menu.sub_widgets) do
+    if row.setting_id=='vr_action_bind_jump' then jump_row=row end
+end
+local found_alias=false
+for _,option in ipairs(jump_row.options) do
+    if option.value==96 then found_alias=option.text:find('A',1,true) and option.text:find('B',1,true) end
+end
+assert(found_alias,'Dropdown does not show preserved aliases')
+after.sample(true,0,0,0,true,1,'combat')
+after.sample(true,32,0,0,true,1,'combat')
+migrated_settings.vr_action_bind_jump=8
+migrated_mod.on_setting_changed('vr_action_bind_jump')
+local p,h,r=after.sample(true,32,0,0,true,1,'combat')
+assert(p==0 and h==0 and r==0,'Action-first remap synthesized an input edge')
+after.sample(true,0,0,0,true,1,'combat')
+p,h,r=after.sample(true,8,0,0,true,1,'combat')
+assert(p==4104+32 and h==p,'Shared-control actions were displaced by reassignment')
+Bindings.widgets(migrated_mod)
+assert(migrated_settings.vr_action_bind_jump==8,'Reopening menu repeated migration')
+migrated_settings.vr_action_bind_jump=0
+migrated_mod.on_setting_changed('vr_action_bind_jump')
+assert(#after.controls_for_action('jump')==0,'Unbound action fell back to a legacy binding')
+print('action_binding_menu=pass migration aliases shared_control remap_neutral hub no_repeat')

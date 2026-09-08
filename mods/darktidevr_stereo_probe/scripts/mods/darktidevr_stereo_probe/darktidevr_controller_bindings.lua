@@ -45,24 +45,77 @@ Bindings.actions = {
     {id="inspect_target", mask=1048576, pressed={"interact_inspect_pressed"}},
 }
 
-function Bindings.widgets()
-    local widgets = {}
-    for _,control in ipairs(Bindings.controls) do
-        local options = {}
-        for _,action in ipairs(Bindings.actions) do
-            options[#options+1] = {text="vr_action_"..action.id,value=action.id}
-        end
-        widgets[#widgets+1] = {setting_id="vr_bind_"..control.id,type="dropdown",
-            default_value=control.default,options=options}
+local function atomic(action)
+    return action.mask>0 and bit.band(action.mask,action.mask-1)==0
+end
+local function action_mask(id)
+    for _,action in ipairs(Bindings.actions) do
+        if action.id==id then return action.mask end
     end
-    local hub = {}
+end
+local function legacy_mask(mod,control,hub)
+    local selected=action_mask(mod and mod:get('vr_bind_'..control.id)) or action_mask(control.default)
+    if hub then
+        local override=mod and mod:get('vr_hub_bind_'..control.id)
+        if override==nil then override=control.id=='right_grip' and 'inventory' or 'inherit' end
+        selected=action_mask(override) or selected
+    end
+    return selected
+end
+local function legacy_controls(mod,action,hub)
+    local controls=0
     for _,control in ipairs(Bindings.controls) do
-        local options = {{text="vr_action_inherit",value="inherit"}}
-        for _,action in ipairs(Bindings.actions) do
-            options[#options+1]={text="vr_action_"..action.id,value=action.id}
+        if bit.band(legacy_mask(mod,control,hub),action.mask)~=0 then controls=bit.bor(controls,control.bit) end
+    end
+    return controls
+end
+local function valid_controls(value)
+    return type(value)=='number' and value>=0 and value<=32767 and value==math.floor(value)
+end
+
+function Bindings.widgets(mod)
+    local widgets,hub={},{}
+    local function label(key) return mod and mod:localize(key) or key end
+    for _,action in ipairs(Bindings.actions) do
+        if atomic(action) then
+            local combat_key='vr_action_bind_'..action.id
+            local combat=mod and mod:get(combat_key)
+            if combat==nil then
+                combat=legacy_controls(mod,action,false)
+                if mod then mod:set(combat_key,combat) end
+            end
+            for _,context in ipairs({'combat','hub'}) do
+                local is_hub=context=='hub'
+                local key=is_hub and 'vr_hub_action_bind_'..action.id or combat_key
+                local current=mod and mod:get(key)
+                if current==nil then
+                    current=is_hub and legacy_controls(mod,action,true) or combat
+                    if is_hub and current==legacy_controls(mod,action,false) then current=-1 end
+                    if mod then mod:set(key,current) end
+                end
+                local options={localize=false,{text=label('vr_action_unbound'),value=0}}
+                if is_hub then options[#options+1]={text=label('vr_action_inherit'),value=-1} end
+                local known={[0]=true,[-1]=true}
+                for _,control in ipairs(Bindings.controls) do
+                    options[#options+1]={text=label('vr_bind_'..control.id),value=control.bit}
+                    known[control.bit]=true
+                end
+                -- Preserve existing aliases without silently dropping a control.
+                -- Picking a single control later intentionally replaces that set.
+                if valid_controls(current) and not known[current] then
+                    local labels={}
+                    for _,control in ipairs(Bindings.controls) do
+                        if bit.band(current,control.bit)~=0 then labels[#labels+1]=label('vr_bind_'..control.id) end
+                    end
+                    options[#options+1]={text=table.concat(labels,' / '),value=current}
+                end
+                local default=legacy_controls(nil,action,is_hub)
+                if is_hub and default==legacy_controls(nil,action,false) then default=-1 end
+                local target=is_hub and hub or widgets
+                target[#target+1]={setting_id=key,title='vr_action_'..action.id,type='dropdown',
+                    tooltip='controller_action_binding_description',default_value=default,options=options}
+            end
         end
-        hub[#hub+1]={setting_id="vr_hub_bind_"..control.id,type="dropdown",
-            default_value=control.id=="right_grip" and "inventory" or "inherit",options=options}
     end
     widgets[#widgets+1]={setting_id="controller_hub_bindings",type="group",sub_widgets=hub}
     return {setting_id="controller_bindings",type="group",sub_widgets=widgets}
@@ -87,19 +140,39 @@ function Bindings.install(mod)
     local previous = mod.on_setting_changed
     mod.on_setting_changed = function(id)
         if previous then previous(id) end
-        if type(id)=="string" and (id:sub(1,8)=="vr_bind_" or id:sub(1,12)=="vr_hub_bind_" or id=="vr_turn_mode") then
+        if type(id)=="string" and (id:sub(1,8)=="vr_bind_" or id:sub(1,12)=="vr_hub_bind_" or
+                id:sub(1,15)=='vr_action_bind_' or id:sub(1,19)=='vr_hub_action_bind_' or id=="vr_turn_mode") then
             dirty=true
             api.revision=api.revision+1
         end
     end
-    local function selection(control)
-        local selected=masks[mod:get("vr_bind_"..control.id)] or masks[control.default]
-        if api.context=="hub" then
-            local override=mod:get("vr_hub_bind_"..control.id)
-            if override==nil then override=control.id=="right_grip" and "inventory" or "inherit" end
-            selected=masks[override] or selected
+    local selection_cache,selection_revision,selection_context={}
+    local function refresh_selection()
+        if selection_revision==api.revision and selection_context==api.context then return end
+        for _,control in ipairs(Bindings.controls) do selection_cache[control.id]=0 end
+        for _,action in ipairs(Bindings.actions) do
+            if atomic(action) then
+                local value=mod:get('vr_action_bind_'..action.id)
+                if api.context=='hub' then
+                    local hub_value=mod:get('vr_hub_action_bind_'..action.id)
+                    if hub_value~=-1 then value=hub_value end
+                end
+                for _,control in ipairs(Bindings.controls) do
+                    local assigned
+                    if value==nil then
+                        assigned=bit.band(legacy_mask(mod,control,api.context=='hub'),action.mask)~=0
+                    else
+                        assigned=valid_controls(value) and bit.band(value,control.bit)~=0
+                    end
+                    if assigned then selection_cache[control.id]=bit.bor(selection_cache[control.id],action.mask) end
+                end
+            end
         end
-        return selected
+        selection_revision,selection_context=api.revision,api.context
+    end
+    local function selection(control)
+        refresh_selection()
+        return selection_cache[control.id]
     end
     function api.controls_for_action(id)
         local wanted, controls = masks[id], {}
