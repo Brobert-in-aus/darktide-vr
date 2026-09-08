@@ -18,12 +18,12 @@ end
 function Turning.install(mod)
     local state = {armed=false}
     local api = {}
-    function api.sample(enabled, x, y, usable, generation, recenter, context, t)
+    function api.sample(enabled, x, y, usable, generation, recenter, context, t, exclusive_stick)
         local mode=mod:get("vr_turn_mode")
         if mode~="off" and mode~="snap45" and mode~="snap90" then mode="smooth" end
         local speed=mod:get("vr_turn_speed")
         if type(speed)~="number" or not (speed>=30 and speed<=180) then speed=90 end
-        local valid=enabled==true and usable==true and mode~="off" and
+        local valid=enabled==true and usable==true and exclusive_stick~=true and mode~="off" and
             type(x)=="number" and x>=-1 and x<=1 and
             type(y)=="number" and y>=-1 and y<=1 and
             type(t)=="number" and t==t and t>-math.huge and t<math.huge

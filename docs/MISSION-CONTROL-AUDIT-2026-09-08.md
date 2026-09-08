@@ -153,6 +153,21 @@ stock gamepad baseline, with no sample/global-mode mutation. Three focused CTest
 pass in 0.10 seconds; the pinned LuaJIT gate compiles 63 chunks. This is offline
 adapter evidence, not a working installed wheel or live communication test.
 
+The binding and turning consumers now accept an optional final `exclusive_stick`
+boolean. An explicit claim cancels all directional shortcuts without synthetic
+attack-release edges and disables smooth/snap turning. Ending the claim requires
+a valid stick sample within the existing turn-neutral radius (0.25 on both axes)
+before any directional shortcut can resume; changing sectors cannot escape that
+rearm. Physical buttons and healthy trigger aliases retain their normal edges.
+Existing callers omit the argument and keep their prior behavior.
+
+Seven focused tests pass in 0.24 seconds, including both snap modes, smooth turn,
+support-grip coexistence and a composed wheel gesture/turn sequence. All 63 Lua
+chunks compile. The actual gameplay adapter still applies turning before binding
+sampling: the future wheel route must determine its claim and pass it to **both**
+consumers before either applies gameplay. The new optional gates are not wired
+into that route or deployed yet; they do not establish a working wheel binding.
+
 ## Tactical overlay hold source candidate, 9 September
 
 The action catalog now has **Hold tactical overlay**, unassigned by default.

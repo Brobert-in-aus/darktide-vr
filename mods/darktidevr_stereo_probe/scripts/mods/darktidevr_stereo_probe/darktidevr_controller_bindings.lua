@@ -130,6 +130,7 @@ function Bindings.install(mod)
     local masks, resolved = {}, {}
     local dirty, blocked, active = true, 0, false
     local stick_held, stick_active = 0, false
+    local stick_rearm = false
     local stick_generation
     for _,action in ipairs(Bindings.actions) do
         masks[action.id] = action.mask
@@ -217,7 +218,7 @@ function Bindings.install(mod)
             end
         end)
     end
-    function api.sample(enabled, physical, stick_x, stick_y, stick_usable, generation, mode, support)
+    function api.sample(enabled, physical, stick_x, stick_y, stick_usable, generation, mode, support, exclusive_stick)
         local context=mode=="hub" and "hub" or "combat"
         local reset_grip=dirty or enabled~=true or not active or
             generation~=stick_generation or context~=api.context
@@ -243,6 +244,13 @@ function Bindings.install(mod)
         local axes_valid = enabled == true and stick_usable == true and
             type(stick_x)=="number" and type(stick_y)=="number" and
             stick_x>=-1 and stick_x<=1 and stick_y>=-1 and stick_y<=1
+        -- An explicit HUD gesture owns every directional channel together.
+        -- Ending/cancelling that claim cannot turn a still-deflected stick into
+        -- a gameplay action, even if it changes sectors before reaching neutral.
+        if exclusive_stick==true then stick_rearm=true end
+        if stick_rearm and exclusive_stick~=true and axes_valid and
+            math.max(math.abs(stick_x),math.abs(stick_y))<=0.25 then stick_rearm=false end
+        axes_valid=axes_valid and not stick_rearm
         local cancelled_axes=0
         if stick_active and not axes_valid then
             for _,control in ipairs(Bindings.controls) do
