@@ -35,6 +35,11 @@ proximity automation was again restored; no game or runtime restart followed.
 Remain offline until streaming state changes rather than retrying unchanged
 conditions. The focused spectator input candidate is PR #120, still undeployed.
 
+The subsequent push-to-talk source integration adds an unassigned physical
+binding and retains stock voice mode/keyboard input. Four focused checks pass
+in 0.13 seconds and 69 Lua chunks compile. No microphone or installed setting
+changed; live voice acceptance remains open.
+
 Read-only comparison of all 49 tracked Lua/mod files against accepted `3341afb`
 finds no content changes: 17 are byte-identical and 32 differ only by CRLF/LF.
 The accepted viewer hash is unchanged. Raw byte hashes and the explicit line-

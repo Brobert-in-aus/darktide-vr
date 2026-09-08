@@ -45,6 +45,7 @@ Bindings.actions = {
     {id="inspect_target", mask=1048576, pressed={"interact_inspect_pressed"}},
     {id="tactical_overlay", mask=2097152},
     {id="communication_wheel", mask=4194304, physical_only=true},
+    {id="push_to_talk", mask=8388608, physical_only=true},
 }
 
 local function atomic(action)

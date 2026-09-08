@@ -413,3 +413,17 @@ conflict_mod.on_setting_changed('vr_action_bind_device')
 local quick_overlap=conflict_mapper.wield_conflicts()
 assert(#quick_overlap==1 and quick_overlap[1].control=='y' and quick_overlap[1].actions[1]=='quick_wield')
 print('wield_binding_conflicts=pass current_profile aliases remap horizontal_gate no_setting_writes')
+local talk_settings={}
+local talk_mod={get=function(_,key)return talk_settings[key]end}
+local talk_mapper=Bindings.install(talk_mod)
+assert(#talk_mapper.controls_for_action('push_to_talk')==0)
+talk_settings.vr_action_bind_push_to_talk=32+2048+8192
+talk_mod.on_setting_changed('vr_action_bind_push_to_talk')
+local talk_controls=talk_mapper.controls_for_action('push_to_talk')
+assert(#talk_controls==1 and talk_controls[1]=='a','PTT accepted a virtual navigation axis')
+talk_mapper.sample(true,0,0,0,true,1,'combat')
+local tp,th=talk_mapper.sample(true,32,0,1,true,1,'combat')
+assert(bit.band(tp,8388608)~=0 and bit.band(th,8388608)~=0)
+local _,_,tr=talk_mapper.sample(true,0,0,1,true,1,'combat')
+assert(bit.band(tr,8388608)~=0,'Axis assignment kept physical PTT release held')
+print('push_to_talk_binding=pass default_unassigned physical-only aliases and release')

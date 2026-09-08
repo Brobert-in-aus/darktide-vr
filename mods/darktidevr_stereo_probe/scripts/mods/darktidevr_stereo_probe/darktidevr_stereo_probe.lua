@@ -5494,6 +5494,11 @@ presentation.communication_input = mod:io_dofile(
 ).install(mod,presentation,controller_observation,{
     mode=active_game_mode_name,world=function()return active_world end,
 })
+presentation.push_to_talk = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_push_to_talk"
+).install(mod,presentation,controller_observation,{
+    mode=active_game_mode_name,world=function()return active_world end,
+})
 
 function presentation.inject_gameplay_input(self, main_t, input)
     if not presentation.gameplay_context.local_input_handler(
@@ -5561,6 +5566,8 @@ function presentation.inject_gameplay_input(self, main_t, input)
     if presentation.gameplay_ui then
         presentation.gameplay_ui.sample(controller_observation.gameplay_input_active, pressed, held)
     end
+    presentation.push_to_talk.sample(self,player_unit,input,
+        controller_observation.gameplay_input_active,held,game_mode_name,active_world)
     controller_observation.gameplay_input_last_sequence =
         tonumber(controller_observation.gameplay_sequence[0])
     -- Still sample/cancel both mappers and UI requests while blocked or after
@@ -5638,6 +5645,7 @@ mod:hook_safe(
             if presentation.two_hand then presentation.two_hand.clear(true) end
             if presentation.gameplay_ui then presentation.gameplay_ui.sample(false, 0) end
             presentation.communication_input.cancel()
+            presentation.push_to_talk.cancel()
             return
         end
         presentation.scan_movement_inventory(self, frame)
@@ -13455,6 +13463,7 @@ end
 
 mod.on_disabled = function()
     pcall(presentation.communication_input.cancel)
+    presentation.push_to_talk.cancel()
     if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
     requested = false
     ui_stereo_requested = false
@@ -13470,6 +13479,7 @@ end
 
 mod.on_unload = function()
     pcall(presentation.communication_input.cancel)
+    presentation.push_to_talk.cancel()
     if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
     requested = false
     ui_stereo_requested = false

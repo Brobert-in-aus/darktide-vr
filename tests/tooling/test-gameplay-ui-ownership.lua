@@ -5,13 +5,14 @@ local source=file:read('*all'); file:close()
 local first=assert(source:find('function presentation.inject_ephemeral_action_names',1,true))
 local last=assert(source:find('\nmod:hook_safe(',first,true))
 local settings={}
-local wheel_hooks={}
+local wheel_hooks,chat_hooks={},{}
 mod={get=function(_,key) return settings[key] end,info=function() end,
     io_dofile=function(_,path)
         return dofile(assert(arg[1]:match('^(.*[/\\])'))..assert(path:match('([^/]+)$'))..'.lua')
     end,
     hook=function(_,class,name,fn)
-        assert(class=='HudElementSmartTagging');wheel_hooks[name]=fn
+        if class=='ChatManager' then chat_hooks[name]=fn
+        else assert(class=='HudElementSmartTagging');wheel_hooks[name]=fn end
     end}
 presentation={mode=1,gameplay_context=dofile(arg[2]),
     is_first_person_body_mode=function(mode) return mode=='hub' end,
@@ -314,3 +315,53 @@ assert(sample(0)[1] and turn_claim==false,'Directional action failed after neutr
 assert(wheel_hooks.update and wheel_hooks.destroy and wheel_hooks._on_com_wheel_stop)
 presentation.controller_bindings.sample=real_sample
 print('communication_production_input=pass real_load preclaim turning mapper and neutral_rearm')
+
+-- PTT reads the real semantic hold after mapping, without touching audio APIs.
+controller_observation.right_stick_y=0
+settings.vr_action_bind_communication_wheel=0
+settings.vr_action_bind_push_to_talk=256
+settings.vr_hub_action_bind_push_to_talk=-1
+mod.on_setting_changed('vr_action_bind_communication_wheel')
+mod.on_setting_changed('vr_action_bind_push_to_talk')
+local keyboard,chat_blocked=false,false
+local chat_source={get=function(_,name)assert(name=='voip_push_to_talk');return keyboard end,
+    has=function(_,name)return name=='voip_push_to_talk'end,is_null_service=function()return chat_blocked end}
+local chat={_input_service=chat_source}
+local function talk()
+    local held=chat_hooks.update(function(self)return self._input_service:get('voip_push_to_talk')end,chat)
+    assert(chat._input_service==chat_source)
+    return held
+end
+sample(256);assert(not talk(),'Remap inherited a held PTT button')
+sample(0);sample(256);assert(talk(),'Production semantic hold never reached stock chat')
+sample(0);assert(not talk(),'Physical release left PTT held')
+sample(256);assert(talk())
+owns=true;assert(not talk(),'UI ownership change between sample and chat update leaked PTT')
+keyboard=true;assert(talk(),'Keyboard PTT was swallowed by VR routing loss');keyboard=false
+sample(256);owns=false;sample(256);assert(not talk(),'UI recovery inherited the hold')
+sample(0);sample(256);assert(talk())
+owns=true;assert(not talk());owns=false
+assert(not talk(),'A previously blocked PTT owner revived without a new sample')
+sample(256);assert(not talk(),'An uninterrupted semantic hold bypassed route-loss rearm')
+sample(0);sample(256);assert(talk())
+Managers.imgui={using_input=function()return true end};assert(not talk())
+Managers.imgui=nil
+controller_observation.last_transport_generation=controller_observation.last_transport_generation+1;assert(not talk())
+sample(256);assert(not talk());sample(0);sample(256);assert(talk())
+mod.on_setting_changed('vr_action_bind_push_to_talk');assert(not talk())
+sample(256);assert(not talk());sample(0);sample(256);assert(talk())
+local retained
+chat_hooks.update(function(self)
+    retained=self._input_service;assert(retained:get('voip_push_to_talk'))
+    sample(0);assert(not retained:get('voip_push_to_talk'),'Old chat sample revived after release')
+end,chat)
+sample(256);assert(talk() and not retained:get('voip_push_to_talk'))
+chat_blocked=true;assert(not talk());chat_blocked=false
+assert(not talk(),'Cached chat service recovery revived a cancelled hold')
+sample(256);assert(not talk());sample(0);sample(256);assert(talk())
+input_service={is_null_service=function()return true end}
+movement(0,0,{0,0,0,0},{0,0,0,0});assert(not talk(),'Fixed null-service cancellation retained PTT')
+input_service={is_null_service=function()return false end}
+sample(256);assert(not talk());sample(0);sample(256);assert(talk())
+presentation.push_to_talk.cancel();assert(not talk())
+print('push_to_talk_production_input=pass semantic hold remap generations UI ImGui fixed cancellation and keyboard coexistence; audio mocked')

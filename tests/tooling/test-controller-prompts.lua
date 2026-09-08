@@ -64,6 +64,7 @@ scope('HudElementWieldInfo','_create_entry',function()
     assert(text('combat_ability')=='[Unbound]')
     assert(text('smart_tag')=='[R3]')
     assert(text('com_wheel')=='[Unbound]')
+    assert(text('voip_push_to_talk')=='[Unbound]')
     assert(text('interact')=='[X]' and text('weapon_reload')=='[X]')
     assert(text('wield_1')=='[Unbound]','direct slot selection pretended to be bound')
     assert(text('unrecognized')=='keyboard:unrecognized')
@@ -86,6 +87,11 @@ mod.on_setting_changed('vr_action_bind_communication_wheel')
 scope('HudElementWieldInfo','_create_entry',function()assert(text('com_wheel')=='[Unbound]')end)
 settings.vr_action_bind_communication_wheel=nil
 mod.on_setting_changed('vr_action_bind_communication_wheel')
+settings.vr_action_bind_push_to_talk=256
+mod.on_setting_changed('vr_action_bind_push_to_talk')
+scope('HudElementWieldInfo','_create_entry',function()assert(text('voip_push_to_talk')=='[R3]')end)
+settings.vr_action_bind_push_to_talk=nil
+mod.on_setting_changed('vr_action_bind_push_to_talk')
 -- Direct slots keep distinct hints; cycling is never advertised as selecting
 -- a particular slot. Defaults remain unbound until the user assigns a control.
 for id,alias in pairs({pocketable='wield_3',stim='wield_4',device='wield_5',

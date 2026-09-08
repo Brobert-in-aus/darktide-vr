@@ -54,6 +54,7 @@ return {
     vr_action_inspect_target = {en = "Inspect operative / pet companion"},
     vr_action_tactical_overlay = {en = "Hold tactical overlay"},
     vr_action_communication_wheel = {en = "Hold communication wheel"},
+    vr_action_push_to_talk = {en = "Hold push-to-talk"},
     vr_hub_bind_right_trigger = {en = "Hub: right trigger"},
     vr_hub_bind_left_trigger = {en = "Hub: left trigger"},
     vr_hub_bind_right_grip = {en = "Hub: right grip"},

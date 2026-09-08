@@ -1,4 +1,4 @@
--- Unloaded candidate for ChatManager's cached Ingame input service.
+-- Scoped input for ChatManager's cached Ingame input service.
 -- Stock owns voice mode and microphone operations; this only contributes an
 -- explicitly held input within one owner/sample-checked update callback.
 local Talk={}
