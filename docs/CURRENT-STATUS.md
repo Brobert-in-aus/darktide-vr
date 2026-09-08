@@ -1,5 +1,12 @@
 # Current status and operation
 
+## 9 September development resumed
+
+The user authorized continued development and a 20-minute heartbeat. Billboarding
+remains first. The initial offline checkpoint separates RGB and alpha-only
+readback changes; see the [resume handoff](handoffs/2026-09-09-resume.md).
+The accepted installed build is preserved. The night shutdown below is historical.
+
 ## Current checkpoint: night of 8 September
 
 The user reports **All checks passed** for tonight's test session. See the

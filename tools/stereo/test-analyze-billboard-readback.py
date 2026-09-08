@@ -21,7 +21,8 @@ with tempfile.TemporaryDirectory(prefix='darktidevr-readback-analysis-') as temp
     source = root / 'source'
     source.mkdir()
     cases = [(26, 0, (15 << 6) | ((16 << 6) << 11) | ((17 << 5) << 22)),
-             (28, 0xff000000, 0xff0000ff), (87, 0xff000000, 0xffff0000)]
+             (28, 0xff000000, 0xff0000ff), (87, 0xff000000, 0xffff0000),
+             (28, 0x000000ff, 0xff0000ff), (87, 0x00ff0000, 0xffff0000)]
     for index, (fmt, before, after) in enumerate(cases, 1):
         stem = f'pair-{index:x}-ff'
         meta = dict(schema_version=1, status='complete', vertex_shader=f'{index:x}', pixel_shader='ff',
@@ -34,11 +35,17 @@ with tempfile.TemporaryDirectory(prefix='darktidevr-readback-analysis-') as temp
                     struct.pack_into('<I', payload, row * 256 + column * 4, word)
             (source / f'{stem}-{which}.bin').write_bytes(payload)
     reports = analysis.analyze(source, root / 'out')
-    assert len(reports) == 3
+    assert len(reports) == 5
     assert all(r['changed_pixels'] == 6 and r['changed_bbox_xyxy'] == [0, 0, 3, 2] and
                r['invalid_pixels'] == 0 for r in reports)
     assert reports[0]['maximum_channel_delta'] == 4
     assert reports[1]['maximum_channel_delta'] == reports[2]['maximum_channel_delta'] == 1
+    assert all(r['rgb_changed_pixels'] == 6 for r in reports[:3])
+    assert reports[0]['alpha_changed_pixels'] is None
+    assert reports[0]['alpha_only_changed_pixels'] is None
+    assert all(r['alpha_changed_pixels'] == 0 for r in reports[1:3])
+    assert all(r['rgb_changed_pixels'] == 0 and r['alpha_changed_pixels'] == 6 and
+               r['alpha_only_changed_pixels'] == 6 for r in reports[3:])
     # A short payload must never produce a completed report.
     (source / 'pair-1-ff-after.bin').write_bytes(b'bad')
     try:

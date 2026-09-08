@@ -76,6 +76,16 @@ def analyze(source: Path, output: Path):
             delta = np.max(np.abs(arrays[1] - arrays[0]), axis=-1)
         delta = np.where(valid, delta, 0)
         changed = delta > 1e-6
+        # Keep attachment-wide evidence, but distinguish color from alpha-only
+        # writes: neither alone establishes ownership of a visible effect.
+        with np.errstate(invalid='ignore'):
+            rgb_delta = np.max(np.abs(arrays[1][:, :, :3] - arrays[0][:, :, :3]), axis=-1)
+        rgb_valid = (np.isfinite(arrays[0][:, :, :3]).all(axis=-1) &
+                     np.isfinite(arrays[1][:, :, :3]).all(axis=-1))
+        rgb_changed = rgb_valid & (rgb_delta > 1e-6)
+        alpha_changed = np.zeros((height, width), dtype=bool)
+        if fmt != 26:
+            alpha_changed = np.abs(arrays[1][:, :, 3] - arrays[0][:, :, 3]) > 1e-6
         ys, xs = np.nonzero(changed)
         maximum = float(delta.max())
         heat = np.round(np.clip(delta / maximum if maximum else delta, 0, 1) * 255).astype(np.uint8)
@@ -86,6 +96,9 @@ def analyze(source: Path, output: Path):
             output / f'{record.stem}-difference-detail.png')
         Image.fromarray((changed * 255).astype(np.uint8)).save(output / f'{record.stem}-changed-mask.png')
         report = dict(data, payload_sha256=hashes, changed_pixels=int(changed.sum()),
+                      rgb_changed_pixels=int(rgb_changed.sum()),
+                      alpha_changed_pixels=int(alpha_changed.sum()) if fmt != 26 else None,
+                      alpha_only_changed_pixels=int((alpha_changed & ~rgb_changed).sum()) if fmt != 26 else None,
                       changed_fraction=float(changed.mean()), invalid_pixels=int((~valid).sum()),
                       maximum_channel_delta=maximum,
                       changed_delta_p99=percentile,
