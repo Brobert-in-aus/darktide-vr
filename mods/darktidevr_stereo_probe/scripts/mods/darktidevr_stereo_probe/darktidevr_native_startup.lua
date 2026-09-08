@@ -20,8 +20,10 @@ function Startup.read(open)
     local dump = present("darktidevr_vertex_shader_dump.flag")
     local diagnostics = present("darktidevr_diagnostic_render_hooks.flag")
     local pass_trace = enabled("darktidevr_performance_pass_trace.flag")
+    local draw_census = enabled("darktidevr_billboard_draw_census.flag")
     return {
-        diagnostic_hooks = diagnostics or dump or pass_trace,
+        diagnostic_hooks = diagnostics or dump or pass_trace or draw_census,
+        draw_census = draw_census,
         vertex_dump = dump,
         substitution = present("darktidevr_billboard_shader_substitution.flag"),
         pixel_probe = enabled("darktidevr_billboard_pixel_shader_probe.flag"),

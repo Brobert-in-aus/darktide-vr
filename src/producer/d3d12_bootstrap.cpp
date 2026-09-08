@@ -190,8 +190,10 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
       (shader_dump_flag_attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
   const auto pass_trace_requested = text_flag_enabled(
       mod_bin_path + L"..\\darktidevr_performance_pass_trace.flag");
+  const auto draw_census_requested = text_flag_enabled(
+      mod_bin_path + L"..\\darktidevr_billboard_draw_census.flag");
   const auto diagnostic_hooks_requested = diagnostic_flag_requested ||
-      vertex_shader_dump_requested || pass_trace_requested;
+      vertex_shader_dump_requested || pass_trace_requested || draw_census_requested;
   const auto pixel_probe_requested = text_flag_enabled(
       mod_bin_path + L"..\\darktidevr_billboard_pixel_shader_probe.flag");
   path = mod_bin_path + L"darktidevr_native_capture.dll";
@@ -256,6 +258,7 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
             "substitution_requested=%d substitution=%d "
             "shader_dump_requested=%d shader_dump=%d "
             "pixel_probe_requested=%d pixel_probe=%d "
+            "draw_census_requested=%d "
             "cluster_trace_requested=%d cluster_trace=%d "
             "cluster_light_fix_requested=%d cluster_light_fix=%d "
             "basis=%d install=%d",
@@ -263,6 +266,7 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
             billboard_shader_substitution_requested ? 1 : 0,
             substitution_result, vertex_shader_dump_requested ? 1 : 0,
             shader_dump_result, pixel_probe_requested ? 1 : 0, pixel_probe_result,
+            draw_census_requested ? 1 : 0,
             cluster_trace_requested ? 1 : 0,
             cluster_trace_result,
             cluster_light_visibility_fix_requested ? 1 : 0,

@@ -1,6 +1,7 @@
 #include "producer/buffer_registry.h"
 #include "producer/pipeline_identity.h"
 #include "producer/object_lifetime.h"
+#include "producer/shader_pair_snapshot.h"
 #include "../isolated_transports.h"
 #include <Windows.h>
 #include <d3d12.h>
@@ -26,6 +27,37 @@ int wmain(int argc, wchar_t** argv) {
     const auto module = LoadLibraryW(argv[1]);
     if (!module) {
       throw std::runtime_error("LoadLibraryW failed");
+    }
+    using darktidevr::producer::ShaderPairSample;
+    using darktidevr::producer::ShaderPairCounts;
+    using darktidevr::producer::copy_shader_pair_snapshot;
+    const auto copy_pairs = reinterpret_cast<unsigned int (*)(ShaderPairSample*, unsigned int)>(
+        GetProcAddress(module, "dtvr_copy_billboard_candidate_pairs"));
+    std::array<ShaderPairSample, 3> samples{};
+    samples[2].count = 777;
+    if (!copy_pairs || copy_pairs(nullptr, 1) != 0 ||
+        copy_pairs(samples.data(), 0) != 0 || copy_pairs(samples.data(), 257) != 0 ||
+        copy_pairs(samples.data(), 3) != 0 || samples[2].count != 777) {
+      throw std::runtime_error("Shader-pair snapshot must reject invalid capacity and preserve empty output");
+    }
+    ShaderPairCounts pair_counts{
+        {{0x123456789abcdef0ULL, 0xfedcba9876543210ULL}, 10},
+        {{0x23456789abcdef01ULL, 0xedcba9876543210fULL}, 10},
+        {{0x3456789abcdef012ULL, 0xdcba9876543210feULL}, 20}};
+    if (copy_shader_pair_snapshot(pair_counts, std::span(samples).first(2)) != 2 ||
+        samples[0].vertex_high != 0x3456789aU || samples[0].vertex_low != 0xbcdef012U ||
+        samples[0].pixel_high != 0xdcba9876U || samples[0].pixel_low != 0x543210feU ||
+        samples[0].count != 20 || samples[1].vertex_high != 0x12345678U ||
+        samples[1].pixel_low != 0x76543210U || samples[1].count != 10 ||
+        samples[2].count != 777) {
+      throw std::runtime_error("Shader-pair snapshot lost tuple identity, ranking, ties or capacity");
+    }
+    pair_counts.begin()->second = 30;
+    if (copy_shader_pair_snapshot(pair_counts, samples) != 3 ||
+        samples[0].vertex_high != 0x12345678U || samples[0].count != 30 ||
+        samples[1].vertex_high != 0x3456789aU || samples[1].count != 20 ||
+        samples[2].vertex_high != 0x23456789U || samples[2].count != 10) {
+      throw std::runtime_error("Shader-pair snapshot did not follow changed ranking coherently");
     }
     const auto install = reinterpret_cast<int (*)()>(
         GetProcAddress(module, "dtvr_install"));

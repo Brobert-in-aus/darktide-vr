@@ -754,6 +754,12 @@ local function ensure_ui_native_hooks()
         int dtvr_set_diagnostic_render_hooks(int enabled);
         int dtvr_set_billboard_shader_substitution(int enabled);
         int dtvr_set_billboard_pixel_shader_probe(int enabled);
+        typedef struct {
+            unsigned int vertex_low, vertex_high, pixel_low, pixel_high;
+            unsigned long long count;
+        } dtvr_billboard_pair_sample;
+        unsigned int dtvr_copy_billboard_candidate_pairs(
+            dtvr_billboard_pair_sample* output, unsigned int capacity);
         unsigned long long dtvr_billboard_pixel_shader_probe_result_count(
             unsigned int kind);
         unsigned long long dtvr_billboard_shader_substitution_count(void);
@@ -3000,6 +3006,7 @@ presentation.native_startup = mod:io_dofile(
 function presentation.refresh_performance_profile_request()
     local startup = presentation.native_startup.read(Mods.lua.io.open)
     diagnostic_render_hooks_requested = startup.diagnostic_hooks
+    billboard_selector_probe_requested = startup.draw_census
     vertex_shader_dump_requested = startup.vertex_dump
     billboard_shader_substitution_requested = startup.substitution
     performance_profile_requested = startup.performance_profile
@@ -3007,14 +3014,15 @@ function presentation.refresh_performance_profile_request()
     presentation.offline_dual_view_requested = startup.offline_dual_view
     presentation.billboard_pixel_shader_probe_requested = startup.pixel_probe
     mod:info(
-        "DARKTIDEVR_PERF profile_enabled=%s pass_trace=%s offline_dual_view=%s pixel_probe=%s diagnostic_hooks=%s vertex_dump=%s substitution=%s",
+        "DARKTIDEVR_PERF profile_enabled=%s pass_trace=%s offline_dual_view=%s pixel_probe=%s diagnostic_hooks=%s vertex_dump=%s substitution=%s draw_census=%s",
         tostring(performance_profile_requested),
         tostring(presentation.performance_pass_trace_requested),
         tostring(presentation.offline_dual_view_requested),
         tostring(presentation.billboard_pixel_shader_probe_requested),
         tostring(diagnostic_render_hooks_requested),
         tostring(vertex_shader_dump_requested),
-        tostring(billboard_shader_substitution_requested))
+        tostring(billboard_shader_substitution_requested),
+        tostring(billboard_selector_probe_requested))
 end
 
 presentation.refresh_performance_profile_request()
@@ -3296,22 +3304,17 @@ local function report_native_observer()
                 table.concat(candidate_shaders, ",")
             )
             local candidate_pairs = {}
-            for rank = 0, 15 do
-                local vertex_low = tonumber(
-                    ui_native_capture.dtvr_billboard_candidate_pair_vertex_low(rank))
-                local vertex_high = tonumber(
-                    ui_native_capture.dtvr_billboard_candidate_pair_vertex_high(rank))
-                local pixel_low = tonumber(
-                    ui_native_capture.dtvr_billboard_candidate_pair_pixel_low(rank))
-                local pixel_high = tonumber(
-                    ui_native_capture.dtvr_billboard_candidate_pair_pixel_high(rank))
-                local count = tonumber(
-                    ui_native_capture.dtvr_billboard_candidate_pair_count(rank))
-                if count > 0 then
-                    candidate_pairs[#candidate_pairs + 1] = string.format(
-                        "%08x%08x/%08x%08x:%d",
-                        vertex_high, vertex_low, pixel_high, pixel_low, count)
-                end
+            presentation.billboard_pair_samples = presentation.billboard_pair_samples or
+                Mods.lua.ffi.new("dtvr_billboard_pair_sample[32]")
+            local samples = presentation.billboard_pair_samples
+            local sample_count = tonumber(
+                ui_native_capture.dtvr_copy_billboard_candidate_pairs(samples, 32))
+            for rank = 0, sample_count - 1 do
+                local sample = samples[rank]
+                candidate_pairs[#candidate_pairs + 1] = string.format(
+                    "%08x%08x/%08x%08x:%d", tonumber(sample.vertex_high),
+                    tonumber(sample.vertex_low), tonumber(sample.pixel_high),
+                    tonumber(sample.pixel_low), tonumber(sample.count))
             end
             mod:info("DARKTIDEVR_STEREO billboard_pairs %s",
                 table.concat(candidate_pairs, ","))

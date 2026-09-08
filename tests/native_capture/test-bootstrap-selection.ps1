@@ -23,17 +23,18 @@ function Invoke-StartupCase([int] $Mask, [string] $Text = 'enabled', [bool] $Ena
     }
     if ($Mask -band 8) { [IO.File]::WriteAllText((Join-Path $modRoot 'darktidevr_billboard_pixel_shader_probe.flag'), $Text) }
     if ($Mask -band 16) { [IO.File]::WriteAllText((Join-Path $modRoot 'darktidevr_performance_pass_trace.flag'), $Text) }
-    $diagnostic = [int]([bool]($Mask -band 3) -or ([bool]($Mask -band 16) -and $Enabled))
+    if ($Mask -band 32) { [IO.File]::WriteAllText((Join-Path $modRoot 'darktidevr_billboard_draw_census.flag'), $Text) }
+    $diagnostic = [int]([bool]($Mask -band 3) -or ([bool]($Mask -band 48) -and $Enabled))
     $dump = [int][bool]($Mask -band 2)
     $substitution = [int][bool]($Mask -band 4)
     $pixel = [int]([bool]($Mask -band 8) -and $Enabled)
     & (Join-Path $binaries 'bootstrap-selection.exe') $caseRoot $diagnostic $dump $substitution $pixel | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Bootstrap selection failed: mask=$Mask case=$caseRoot" }
 }
-for ($mask = 0; $mask -lt 32; $mask++) { Invoke-StartupCase $mask }
-Invoke-StartupCase 24 'disabled' $false
-Invoke-StartupCase 24 " `tENABLED`r`n" $true
-Invoke-StartupCase 24 ('enabled' + (' ' * 24)) $true
-Invoke-StartupCase 24 ('enabled' + (' ' * 25)) $false
-Invoke-StartupCase 24 'enabled extra' $false
+for ($mask = 0; $mask -lt 64; $mask++) { Invoke-StartupCase $mask }
+Invoke-StartupCase 56 'disabled' $false
+Invoke-StartupCase 56 " `tENABLED`r`n" $true
+Invoke-StartupCase 56 ('enabled' + (' ' * 24)) $true
+Invoke-StartupCase 56 ('enabled' + (' ' * 25)) $false
+Invoke-StartupCase 56 'enabled extra' $false
 Write-Output "bootstrap_selection=pass cases=$script:caseCount real_proxy=true game_started=false"
