@@ -5031,6 +5031,9 @@ local function update_stereo(manager)
             presentation.hud_panel.height, 2 * presentation.hud_panel.distance)
     end
     presentation.hud_panel.draw(world, clean_position, clean_rotation, hud_width, hud_center)
+    if presentation.crosshair_feedback then
+        presentation.crosshair_feedback.draw(world,clean_position,clean_rotation)
+    end
 
     ScriptCamera.force_update(world, primary_camera)
     ScriptCamera.force_update(world, right_camera)
@@ -13360,6 +13363,9 @@ presentation.read_desktop_mirror = function()
 end
 presentation.hud_panel.read_mirror = presentation.read_desktop_mirror
 presentation.hud_panel.install(mod)
+presentation.crosshair_feedback = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_crosshair_feedback"
+).install(mod,presentation,controller_observation)
 presentation.gameplay_ui = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gameplay_ui_input"
 ).install(mod, function()
@@ -13391,6 +13397,9 @@ presentation.weapon_stabilization = mod:io_dofile(
 mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_options_layout"
 ).install(mod)
+presentation.weapon_assist = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_weapon_assist"
+).install(mod,presentation,controller_observation)
 presentation.two_hand = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_two_hand_support"
 ).install(mod, presentation, controller_observation)
@@ -13435,6 +13444,7 @@ do
 end
 
 mod.on_disabled = function()
+    if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
     requested = false
     ui_stereo_requested = false
     presentation.melee_preview.enabled = false
@@ -13448,6 +13458,7 @@ mod.on_disabled = function()
 end
 
 mod.on_unload = function()
+    if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
     requested = false
     ui_stereo_requested = false
     presentation.melee_preview.enabled = false

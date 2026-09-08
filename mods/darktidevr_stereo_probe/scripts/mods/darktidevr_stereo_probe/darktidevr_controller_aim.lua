@@ -294,6 +294,7 @@ function controller_aim.install(mod, presentation, state)
         end
         distance = hit and distance or 50
         distance = math.max(0.05, math.min(200, distance or 50))
+        controller_aim.reticle_distance = distance
         controller_aim.reticle_world_point = Vector3Box(position + direction * distance)
         controller_aim.reticle_point_sequence = state.last_sequence
         controller_aim.reticle_point_generation = state.last_transport_generation
@@ -853,6 +854,7 @@ function controller_aim.install(mod, presentation, state)
             end
             if presentation.online_rules and presentation.online_rules.enabled() then
                 local result = func(self, unit, dt, t, ...)
+                if presentation.weapon_assist then presentation.weapon_assist.observe(self,t) end
                 local component = self._first_person_component
                 local position, rotation
                 if presentation.online_reticle then

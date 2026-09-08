@@ -34,6 +34,18 @@ function Layout.install(mod)
             if grid then grid:on_resolution_modified(view._render_scale) end
         end
     end
+    local function update_layout(view)
+        if view._settings_grid_layout and view._settings_header_height and resize(view) then
+            view:_set_options_header_layout(view._settings_header_height,
+                view._settings_header_spacing,view._options_tab_indicator~=nil)
+            refresh(view)
+            if mod.info then mod:info('DARKTIDEVR_OPTIONS layout_bottom=%.1f scale=%.3f',
+                view._settings_grid_layout.bottom,view._render_scale) end
+        end
+    end
+    -- DMF can construct this persistent view before XR changes the render
+    -- extent, without receiving a resolution callback when it opens later.
+    mod:hook_safe('DMFOptionsView','update',update_layout)
     mod:hook('DMFOptionsView','_set_options_header_layout',function(func,self,...)
         local changed=resize(self)
         local result=pack(func(self,...))
@@ -42,11 +54,7 @@ function Layout.install(mod)
     end)
     mod:hook('DMFOptionsView','on_resolution_modified',function(func,self,...)
         local result=pack(func(self,...))
-        if self._settings_grid_layout and self._settings_header_height and resize(self) then
-            self:_set_options_header_layout(self._settings_header_height,
-                self._settings_header_spacing,self._options_tab_indicator~=nil)
-            refresh(self)
-        end
+        update_layout(self)
         return unpack(result,1,result.n)
     end)
 end

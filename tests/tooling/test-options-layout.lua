@@ -4,9 +4,10 @@ local height=1080
 package.loaded['scripts/managers/ui/ui_scenegraph']={size_scaled=function(_,_,scale)
     assert(scale==1.1);return {1920,height}
 end}
-Layout.install({hook=function(_,class,method,fn)
+local function hook(_,class,method,fn)
     assert(class=='DMFOptionsView');assert(not hooks[method]);hooks[method]=fn
-end})
+end
+Layout.install({hook=hook,hook_safe=hook})
 local scene={screen={},background={size={500,774},world_position={0,236}},
     grid_mask={size={516,790}},grid_interaction={size={516,790}},scrollbar={size={10,774}},
     settings_grid_background={size={1000,790}}}
@@ -45,6 +46,10 @@ hooks.on_resolution_modified(function() stock_called=true end,view)
 assert(stock_called);check(1080,268);assert(refreshes==4)
 height=2160
 hooks.on_resolution_modified(function() end,view);check(2160,268)
+height=2400
+hooks.update(view);check(2400,268) -- persistent view opened after XR resize
+local prior=refreshes
+hooks.update(view);assert(refreshes==prior,'unchanged updates must not rebuild grids')
 for _,invalid in ipairs({0,-1,0/0,math.huge}) do assert(not Layout.resize(view,invalid)) end
 assert(not Layout.resize({},2094))
 print('Desktop/tall canvas, both scroll regions, footer clearance, tabs and resolution changes pass')
