@@ -58,3 +58,9 @@ differences, logical/already-scaled inputs, transforms, style alpha, bounded
 storage and expiration, cancellation, unsupported/non-finite inputs, draw-error
 cleanup and logging failures. None of these offline checks establishes a live
 pickup measurement or worn acceptance.
+
+The 97-file `b4baefc8faec-697097e6` development package passes staged and deep
+extracted validation, including all 50 Lua chunks and pinned runtime hashes.
+Its receipt is `artifacts/unattended/marker-metrics-package-receipt-20260908.json`.
+It includes the default-off measurement module but has not been installed as a
+full package. New atlas orientation candidates are excluded from the package.
