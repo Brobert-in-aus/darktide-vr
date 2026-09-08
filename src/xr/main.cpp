@@ -29,6 +29,7 @@
 #include "core/shared_presentation_state.h"
 #include "core/shared_generated_frame_state.h"
 #include "core/generated_frame_cadence.h"
+#include "core/frame_stage_timing.h"
 
 #include <algorithm>
 #include <atomic>
@@ -1141,6 +1142,8 @@ class OpenXrProbe {
     std::uint64_t pair_driven_timeouts{};
     std::uint64_t last_pose_publish_tick{};
     unsigned pose_timing_reports{};
+    darktidevr::core::FrameStageTiming frame_stage_timing;
+    using FrameStage = darktidevr::core::FrameStage;
     auto report_pose_wait = [&](const char* stage, ULONGLONG began) {
       const auto ended = GetTickCount64();
       if (ended - began >= 100 && pose_timing_reports++ < 256) {
@@ -1837,6 +1840,7 @@ class OpenXrProbe {
         }
       }
       const auto pair_wait_tick = GetTickCount64();
+      const auto pair_wait_start = std::chrono::steady_clock::now();
       // Interactive menus retain projection. They must also retain live
       // producer pairs: freezing the last pre-menu image prevents the world
       // from responding to head motion even though OpenXR keeps submitting.
@@ -1914,13 +1918,18 @@ class OpenXrProbe {
       poll_session_events();
       XrFrameWaitInfo wait_info{XR_TYPE_FRAME_WAIT_INFO};
       XrFrameState frame_state{XR_TYPE_FRAME_STATE};
+      frame_stage_timing.elapsed(FrameStage::PairWait, pair_wait_start);
       report_pose_wait("pair_wait", pair_wait_tick);
       const auto runtime_wait_tick = GetTickCount64();
+      const auto runtime_wait_start = std::chrono::steady_clock::now();
       check_xr(xrWaitFrame(session_, &wait_info, &frame_state),
                "xrWaitFrame(theatre)");
+      frame_stage_timing.elapsed(FrameStage::WaitFrame, runtime_wait_start);
       report_pose_wait("xrWaitFrame", runtime_wait_tick);
       XrFrameBeginInfo frame_begin{XR_TYPE_FRAME_BEGIN_INFO};
+      const auto frame_begin_start = std::chrono::steady_clock::now();
       check_xr(xrBeginFrame(session_, &frame_begin), "xrBeginFrame(theatre)");
+      frame_stage_timing.elapsed(FrameStage::BeginFrame, frame_begin_start);
       last_tracking_prediction = frame_state.predictedDisplayTime;
       tracking_period = frame_state.predictedDisplayPeriod;
       last_tracking_prediction_at = std::chrono::steady_clock::now();
@@ -1928,8 +1937,10 @@ class OpenXrProbe {
           std::chrono::nanoseconds(tracking_period);
       darktidevr::math::Pose current_head{};
       bool current_head_valid{};
+      const auto tracking_start = std::chrono::steady_clock::now();
       bool submit_layer = update_tracking(frame_state.predictedDisplayTime,
           frame_state.shouldRender == XR_TRUE, current_head, current_head_valid);
+      frame_stage_timing.elapsed(FrameStage::Tracking, tracking_start);
       bool submitted_shared_pair_this_frame{};
       bool submitted_cached_pair_this_frame{};
       bool submitted_generated_this_frame{};
@@ -1943,6 +1954,7 @@ class OpenXrProbe {
         XrSwapchainImageWaitInfo image_wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
         image_wait.timeout = XR_INFINITE_DURATION;
         for (std::size_t eye = 0; eye < theatre_swapchain_count; ++eye) {
+          const auto acquire_start = std::chrono::steady_clock::now();
           check_xr(xrAcquireSwapchainImage(theatre_swapchains[eye],
                                            &acquire_info,
                                            &image_indices[eye]),
@@ -1950,16 +1962,19 @@ class OpenXrProbe {
           const auto swapchain_eye_tick = GetTickCount64();
           check_xr(xrWaitSwapchainImage(theatre_swapchains[eye], &image_wait),
                    "xrWaitSwapchainImage(theatre)");
+          frame_stage_timing.elapsed(FrameStage::SwapchainAcquireWait, acquire_start);
           report_pose_wait("swapchain_eye", swapchain_eye_tick);
           resources[eye] = theatre_images[eye][image_indices[eye]].texture;
         }
         if (flat_swapchain != XR_NULL_HANDLE) {
+          const auto acquire_start = std::chrono::steady_clock::now();
           check_xr(xrAcquireSwapchainImage(flat_swapchain, &acquire_info,
                                            &flat_image_index),
                    "xrAcquireSwapchainImage(flat capture)");
           const auto swapchain_flat_tick = GetTickCount64();
           check_xr(xrWaitSwapchainImage(flat_swapchain, &image_wait),
                    "xrWaitSwapchainImage(flat capture)");
+          frame_stage_timing.elapsed(FrameStage::SwapchainAcquireWait, acquire_start);
           report_pose_wait("swapchain_flat", swapchain_flat_tick);
           flat_resource = flat_images[flat_image_index].texture;
         }
@@ -2851,8 +2866,10 @@ class OpenXrProbe {
         check(queue->Signal(fence.Get(), signal_value),
               "ID3D12CommandQueue::Signal(theatre)");
         const auto gpu_wait_tick = GetTickCount64();
+        const auto gpu_wait_start = std::chrono::steady_clock::now();
         wait_for_fence(fence.Get(), signal_value, fence_event,
                        "ID3D12Fence::SetEventOnCompletion(theatre)");
+        frame_stage_timing.elapsed(FrameStage::GpuFence, gpu_wait_start);
         report_pose_wait("gpu_fence", gpu_wait_tick);
         if (shared_eye_readback_copied_this_frame) {
           const auto eye_description = opened_eyes->eyes[0]->GetDesc();
@@ -3837,11 +3854,16 @@ class OpenXrProbe {
       frame_end.layerCount = layer_count;
       frame_end.layers = layer_count != 0 ? layers.data() : nullptr;
       const auto xrEndFrame_tick = GetTickCount64();
+      const auto frame_end_start = std::chrono::steady_clock::now();
       check_xr(xrEndFrame(session_, &frame_end), "xrEndFrame(theatre)");
+      frame_stage_timing.elapsed(FrameStage::EndFrame, frame_end_start);
       report_pose_wait("xrEndFrame", xrEndFrame_tick);
       ++processed_frames;
       poll_session_events();
+      frame_stage_timing.elapsed(FrameStage::ActiveLoop, frame_start);
       if ((frame + 1) % 120 == 0) {
+        frame_stage_timing.write(std::cout, processed_frames, frame_state.predictedDisplayPeriod);
+        frame_stage_timing.reset();
         const auto report_time = std::chrono::steady_clock::now();
         const auto live_seconds =
             std::chrono::duration<double>(report_time - start).count();
