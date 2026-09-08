@@ -331,7 +331,7 @@ if (-not $source.Contains('local shared_shadow_cull = true')) {
     throw 'Shared gameplay shadow/light culling must remain production-default with an explicit diagnostic opt-out.'
 }
 if (-not $source.Contains(
-        'darktidevr_offline_dual_view.flag') -or
+        'presentation.offline_dual_view_requested = startup.offline_dual_view') -or
         -not $source.Contains(
             'function presentation.apply_offline_benchmark_spin(rotation)') -or
         -not $source.Contains(

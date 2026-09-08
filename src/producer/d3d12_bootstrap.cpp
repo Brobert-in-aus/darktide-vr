@@ -63,8 +63,11 @@ bool text_flag_enabled(const std::wstring& path) {
   const auto read = ReadFile(file, text.data(),
                              static_cast<DWORD>(text.size() - 1), &bytes_read,
                              nullptr);
+  char extra{};
+  DWORD extra_read{};
+  const auto at_end = ReadFile(file, &extra, 1, &extra_read, nullptr) && extra_read == 0;
   CloseHandle(file);
-  if (!read) {
+  if (!read || !at_end) {
     return false;
   }
   std::size_t begin{};
@@ -171,7 +174,6 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
   // the broad render diagnostics here also activates the first-bind graphics
   // PSO census, which materially stalls renderer startup and invalidates the
   // trace workload before the stereo mod can initialize.
-  const auto diagnostic_hooks_requested = diagnostic_flag_requested;
   const auto substitution_flag_path =
       mod_bin_path + L"darktidevr_billboard_shader_substitution.flag";
   const auto substitution_flag_attributes =
@@ -186,6 +188,12 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
   const auto vertex_shader_dump_requested =
       shader_dump_flag_attributes != INVALID_FILE_ATTRIBUTES &&
       (shader_dump_flag_attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+  const auto pass_trace_requested = text_flag_enabled(
+      mod_bin_path + L"..\\darktidevr_performance_pass_trace.flag");
+  const auto diagnostic_hooks_requested = diagnostic_flag_requested ||
+      vertex_shader_dump_requested || pass_trace_requested;
+  const auto pixel_probe_requested = text_flag_enabled(
+      mod_bin_path + L"..\\darktidevr_billboard_pixel_shader_probe.flag");
   path = mod_bin_path + L"darktidevr_native_capture.dll";
   const auto native = LoadLibraryW(path.c_str());
   if (!native) {
@@ -203,6 +211,8 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
           native, "dtvr_set_billboard_shader_substitution"));
   const auto set_vertex_shader_dump = reinterpret_cast<SetVertexShaderDumpFn>(
       GetProcAddress(native, "dtvr_set_vertex_shader_dump"));
+  const auto set_pixel_probe = reinterpret_cast<SetBillboardShaderSubstitutionFn>(
+      GetProcAddress(native, "dtvr_set_billboard_pixel_shader_probe"));
   const auto enable_cluster_trace = reinterpret_cast<EnableClusterTraceFn>(
       GetProcAddress(native, "dtvr_enable_cluster_trace"));
   const auto set_cluster_light_visibility_fix =
@@ -224,6 +234,8 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
       set_vertex_shader_dump
           ? set_vertex_shader_dump(vertex_shader_dump_requested ? 1 : 0)
           : -1;
+  const auto pixel_probe_result = set_pixel_probe
+      ? set_pixel_probe(pixel_probe_requested ? 1 : 0) : -1;
   const auto cluster_trace_result =
       cluster_trace_requested
           ? (enable_cluster_trace ? enable_cluster_trace() : -1)
@@ -243,19 +255,21 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
             "native_results diagnostic_requested=%d diagnostics=%d "
             "substitution_requested=%d substitution=%d "
             "shader_dump_requested=%d shader_dump=%d "
+            "pixel_probe_requested=%d pixel_probe=%d "
             "cluster_trace_requested=%d cluster_trace=%d "
             "cluster_light_fix_requested=%d cluster_light_fix=%d "
             "basis=%d install=%d",
             diagnostic_hooks_requested ? 1 : 0, diagnostics_result,
             billboard_shader_substitution_requested ? 1 : 0,
             substitution_result, vertex_shader_dump_requested ? 1 : 0,
-            shader_dump_result, cluster_trace_requested ? 1 : 0,
+            shader_dump_result, pixel_probe_requested ? 1 : 0, pixel_probe_result,
+            cluster_trace_requested ? 1 : 0,
             cluster_trace_result,
             cluster_light_visibility_fix_requested ? 1 : 0,
             cluster_light_visibility_fix_result, basis_result, install_result);
   write_bootstrap_log(message);
   return diagnostics_result == 0 && substitution_result == 0 &&
-                  shader_dump_result == 0 && basis_result == 0 &&
+                  shader_dump_result == 0 && pixel_probe_result == 0 && basis_result == 0 &&
                   cluster_trace_result == 0 &&
                   cluster_light_visibility_fix_result == 0 &&
                   install_result == 0

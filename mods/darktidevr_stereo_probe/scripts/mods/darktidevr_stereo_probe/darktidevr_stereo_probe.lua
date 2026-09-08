@@ -2995,52 +2995,26 @@ end
 -- subsequent main-menu and gameplay package loads pass their real PSO and
 -- root-signature creation descriptors through our hooks. Delaying this until
 -- UIWorldSpawner.create_viewport is too late for shader/root localization.
+presentation.native_startup = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_native_startup")
 function presentation.refresh_performance_profile_request()
-    local flag = Mods.lua.io.open(
-        "./../mods/darktidevr_stereo_probe/darktidevr_performance_profile.flag",
-        "r")
-    performance_profile_requested = false
-    if flag then
-        performance_profile_requested = flag:read("*all"):match(
-            "^%s*enabled%s*$") ~= nil
-        flag:close()
-    end
-    local pass_flag = Mods.lua.io.open(
-        "./../mods/darktidevr_stereo_probe/darktidevr_performance_pass_trace.flag",
-        "r")
-    presentation.performance_pass_trace_requested = false
-    if pass_flag then
-        presentation.performance_pass_trace_requested =
-            pass_flag:read("*all"):match("^%s*enabled%s*$") ~= nil
-        pass_flag:close()
-    end
-    if presentation.performance_pass_trace_requested then
-        performance_profile_requested = true
-    end
-    local offline_flag = Mods.lua.io.open(
-        "./../mods/darktidevr_stereo_probe/darktidevr_offline_dual_view.flag",
-        "r")
-    presentation.offline_dual_view_requested = false
-    if offline_flag then
-        presentation.offline_dual_view_requested = offline_flag:read("*all"):match(
-            "^%s*enabled%s*$") ~= nil
-        offline_flag:close()
-    end
-    offline_flag = Mods.lua.io.open(
-        "./../mods/darktidevr_stereo_probe/darktidevr_billboard_pixel_shader_probe.flag",
-        "r")
-    presentation.billboard_pixel_shader_probe_requested = false
-    if offline_flag then
-        presentation.billboard_pixel_shader_probe_requested =
-            offline_flag:read("*all"):match("^%s*enabled%s*$") ~= nil
-        offline_flag:close()
-    end
+    local startup = presentation.native_startup.read(Mods.lua.io.open)
+    diagnostic_render_hooks_requested = startup.diagnostic_hooks
+    vertex_shader_dump_requested = startup.vertex_dump
+    billboard_shader_substitution_requested = startup.substitution
+    performance_profile_requested = startup.performance_profile
+    presentation.performance_pass_trace_requested = startup.pass_trace
+    presentation.offline_dual_view_requested = startup.offline_dual_view
+    presentation.billboard_pixel_shader_probe_requested = startup.pixel_probe
     mod:info(
-        "DARKTIDEVR_PERF profile_enabled=%s pass_trace=%s offline_dual_view=%s pixel_probe=%s",
+        "DARKTIDEVR_PERF profile_enabled=%s pass_trace=%s offline_dual_view=%s pixel_probe=%s diagnostic_hooks=%s vertex_dump=%s substitution=%s",
         tostring(performance_profile_requested),
         tostring(presentation.performance_pass_trace_requested),
         tostring(presentation.offline_dual_view_requested),
-        tostring(presentation.billboard_pixel_shader_probe_requested))
+        tostring(presentation.billboard_pixel_shader_probe_requested),
+        tostring(diagnostic_render_hooks_requested),
+        tostring(vertex_shader_dump_requested),
+        tostring(billboard_shader_substitution_requested))
 end
 
 presentation.refresh_performance_profile_request()

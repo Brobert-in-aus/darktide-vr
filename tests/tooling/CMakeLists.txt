@@ -24,6 +24,9 @@ if(BUILD_TESTING)
   add_test(NAME runtime_package_integrity COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/test-runtime-package.ps1")
   set(LUAJIT_VALIDATOR "${PROJECT_SOURCE_DIR}/build/dependencies/luajit/src/luajit.exe")
+  add_test(NAME native_startup_flags COMMAND "${LUAJIT_VALIDATOR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-native-startup.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_native_startup.lua")
   add_test(NAME luajit_compiler_contract COMMAND "${LUAJIT_VALIDATOR}"
     "${PROJECT_SOURCE_DIR}/tools/lua/test-compiler.lua")
   add_test(NAME projection_math COMMAND "${LUAJIT_VALIDATOR}"
