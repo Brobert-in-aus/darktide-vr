@@ -26,6 +26,16 @@ engine rendering. Complete bounds, retained widget/material migration, display
 material/layer policy and live hook integration remain required. The historical
 8 September description below predates this resource backend.
 
+`darktidevr_widget_scenegraph.lua` now supplies a bounded draw-only snapshot for
+stock UIWidget's `get_size` and `world_position` consumers. It resolves source
+root/fit/aspect sizing at the source scale, owns its size/position arrays and
+translates every node by one logical offset without changing depth. A capture
+viewport therefore cannot re-resolve root sizes. It carries no engine cache or
+child pointers and must never enter scenegraph update/cache APIs. The stock
+draw getters pass 28 cached-source configurations across seven sizing modes and
+four scales. This isolates geometry; it does not measure complete raster bounds,
+copy retained widget state, or admit arbitrary custom logic into capture.
+
 8 September offline checkpoint. The pickup sizing investigation now has a
 tested capture/display lifetime controller in `darktidevr_widget_surface.lua`.
 It is not loaded by the mod, has no engine backend yet, and changes no installed
