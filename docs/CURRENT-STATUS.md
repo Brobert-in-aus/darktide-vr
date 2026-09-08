@@ -12,10 +12,12 @@ Read-only inventory now reports one physical Quest, duplicate transports resolve
 one Virtual Desktop Streamer and Darktide closed. Inventory does not certify Ready
 or alter proximity. Selection requires matching hardware identity and model for
 every alias; distinct headsets and missing/failed identity queries remain gated.
-The full offline Release suite now passes 174/174 in 56.45 seconds, including
-the push-to-talk, popup-display/lifetime and marker-offset follow-ups.
-All 66 Lua chunks compile. Popup/wheel candidates remain unintegrated and
-undeployed. See the
+The latest full offline Release run passed 175/176 in 55.51 seconds. The sole
+failure was the gameplay fixture lacking the new module loader; after extending
+it to exercise actual wheel loading and preclaim order, all five affected input
+checks pass in 0.14 seconds. All 68 Lua chunks compile. The communication wheel
+is integrated in source with an unassigned physical-button binding; popup
+candidates remain unintegrated. Neither is deployed. See the
 resume handoff for the review map and focused, undeployed overlay candidate.
 The subsequent default Ready preflight passes with the accepted viewer and VDXR:
 600/600 frames submitted, zero skipped. Normal Quest proximity automation was

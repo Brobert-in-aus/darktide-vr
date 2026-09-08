@@ -1,4 +1,4 @@
--- Unloaded coordinator. Caller samples a fresh physical hold BEFORE both
+-- Caller samples a fresh physical hold BEFORE both
 -- gameplay stick consumers and supplies exact owner/generation/routing checks.
 -- Stock owns wheel behavior and intentional deferred communication effects.
 local Wheel={}

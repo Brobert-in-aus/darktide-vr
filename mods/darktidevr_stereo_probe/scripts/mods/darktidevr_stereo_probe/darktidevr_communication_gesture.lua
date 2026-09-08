@@ -1,4 +1,4 @@
--- Unloaded candidate: gesture ownership only, with no game or communication API.
+-- Gesture ownership only, with no game or communication API.
 -- Caller supplies one monotonic input frame, local owner, routing eligibility,
 -- physical hold and raw right stick. It must suppress every gameplay stick route
 -- while claim_stick is true, and cancel explicitly if its HUD adapter fails.

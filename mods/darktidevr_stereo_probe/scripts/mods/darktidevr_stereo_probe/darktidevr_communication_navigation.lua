@@ -1,4 +1,4 @@
--- Unloaded candidate: supply an owned wheel gesture to stock presentation.
+-- Supply an owned wheel gesture to stock presentation.
 -- No global gamepad-mode change, button injection, cursor warp or game events.
 local Navigation={}
 local function finite(n)return type(n)=='number' and n==n and math.abs(n)<math.huge end

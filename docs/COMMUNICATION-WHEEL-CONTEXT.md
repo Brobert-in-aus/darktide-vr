@@ -2,11 +2,26 @@
 
 ## Coordinating adapter
 
-The unloaded `darktidevr_communication_wheel.lua` now connects gesture, context
-and navigation ownership around the stock HUD methods. Its future caller must
-sample a physical hold before both gameplay stick consumers, supply exact local
-owner/generation/routing checks, and register callbacks through the game's
-physics-safe queue. No main-module loading or binding is installed yet.
+`darktidevr_communication_wheel.lua` connects gesture, context and navigation
+ownership around the stock HUD methods. Main now loads it through
+`darktidevr_communication_input.lua`, which samples the physical hold before
+turning and virtual stick actions and supplies the same claim to both. The
+adapter registers intentional releases through the game's physics-safe queue.
+This source candidate is not deployed to the accepted installed build.
+
+The new **Hold communication wheel** action starts unassigned. Combat and hub
+profiles share the normal binding system, including physical aliases; navigation
+axes cannot bind the wheel itself. Invalid saved or legacy axis assignments are
+ignored at resolution. Prompts report only usable physical assignments. Preparing
+the profile before gesture sampling keeps its owner revision consistent with the
+following gameplay sample. Remaps, local handler/unit replacement, world/mode,
+transport/recenter generation, tracking loss and blocked input invalidate old
+deferred ownership. Mod disable/unload and fixed-update null input cancel it.
+
+The button remains available to any other actions deliberately assigned to it.
+For an initial worn trial, choose a free button to isolate wheel behavior, then
+check deliberate aliases separately. No default mapping or installed settings
+were changed by this development session.
 
 The adapter admits only an idle local HUD, freezes selection on release, and
 consumes the release token once at deferred execution. It rechecks ownership,
@@ -22,7 +37,16 @@ Validation: five focused CTests (`communication_|exclusive_gameplay_stick`) pass
 in 0.08 seconds and all 67 Lua chunks compile. The optional cached-source run
 executes the game's handle, close and release callback methods with all
 communication effects mocked. This establishes offline lifecycle behavior,
-not worn selection or live input integration.
+not worn selection or live acceptance. The subsequent input fixture also covers
+physical-only bindings, profile preparation, stale ownership, neutral rearm and
+the same claim reaching the real turning/binding modules.
+
+Integrated validation: the full offline suite passed 175/176 in 55.51 seconds;
+the previous gameplay fixture lacked the new module loader. The extended fixture
+loads the actual adapter and checks production call ordering, directional attack
+suppression and neutral rearm. All five affected input checks pass after that
+fixture update (0.14 seconds). All 68 source chunks compile. No installed Lua,
+native binary, settings, headset or game state changed.
 
 ```powershell
 build/dependencies/luajit/src/luajit.exe tests/tooling/test-communication-wheel.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe artifacts/vendor/Darktide-Source-Code
@@ -30,7 +54,7 @@ build/dependencies/luajit/src/luajit.exe tests/tooling/test-communication-wheel.
 
 ## Context primitive
 
-The unloaded `darktidevr_communication_context.lua` isolates a future VR hold
+`darktidevr_communication_context.lua` isolates a VR hold
 from stock pending taps and deferred release state. It does not add a binding,
 hook the HUD or invoke any tag, voice or chat API.
 
@@ -60,11 +84,13 @@ checks cannot infer input routing. An intentional release may create a delayed
 tap: retain ownership until it executes or cancellation clears it. A cleanup
 error requires caller recovery; this module does not retry engine callbacks.
 
-The future integration must establish one gesture/stick claim before turning
-and virtual action sampling, route only its held presentation through private
-navigation vectors, freeze the last selection on release, and cancel on routing
-loss or owner replacement. These pieces remain unloaded. Keyboard/gamepad
-coexistence and worn selection/cursor behavior still require acceptance.
+The integrated candidate establishes one gesture/stick claim before turning
+and virtual action sampling, routes held presentation through private navigation
+vectors, freezes selection on release, and cancels on routing/owner loss.
+Keyboard/gamepad coexistence and worn selection/cursor behavior still require
+live acceptance after fresh Ready and deliberate focused deployment. Check
+opening, selection in every sector, intentional release, cancellation without a
+command, cursor cleanup, pending short taps and neutral return to turning.
 
 Validation, 9 September: four focused CTests (`communication_|exclusive_gameplay_stick`)
 pass in 0.06 seconds and all 64 Lua chunks compile with the pinned LuaJIT gate.

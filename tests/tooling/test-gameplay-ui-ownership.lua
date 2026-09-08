@@ -5,7 +5,14 @@ local source=file:read('*all'); file:close()
 local first=assert(source:find('function presentation.inject_ephemeral_action_names',1,true))
 local last=assert(source:find('\nmod:hook_safe(',first,true))
 local settings={}
-mod={get=function(_,key) return settings[key] end,info=function() end}
+local wheel_hooks={}
+mod={get=function(_,key) return settings[key] end,info=function() end,
+    io_dofile=function(_,path)
+        return dofile(assert(arg[1]:match('^(.*[/\\])'))..assert(path:match('([^/]+)$'))..'.lua')
+    end,
+    hook=function(_,class,name,fn)
+        assert(class=='HudElementSmartTagging');wheel_hooks[name]=fn
+    end}
 presentation={mode=1,gameplay_context=dofile(arg[2]),
     is_first_person_body_mode=function(mode) return mode=='hub' end,
     apply_controller_turning=function() end}
@@ -277,3 +284,33 @@ sample(0)
 assert(sample(512)[1] and support_finished)
 assert(sample(0)[2] and not support_finished)
 print('two_hand_production_input=pass pre_update fixed_cancel stock_cache')
+
+-- Execute the real production pre-update seam with the real wheel adapter.
+-- Its claim must reach turning before the mapper consumes a stick sector.
+presentation.two_hand=nil
+owner._ephemeral_actions={'action_one_pressed','action_one_release','stock_action'}
+settings.vr_action_bind_communication_wheel=256
+settings.vr_hub_action_bind_communication_wheel=-1
+settings.vr_action_bind_primary=1+2048
+settings.vr_hub_action_bind_primary=-1
+mod.on_setting_changed('vr_action_bind_communication_wheel')
+mod.on_setting_changed('vr_action_bind_primary')
+local turn_claim,turn_calls
+presentation.apply_controller_turning=function(_,claim)turn_claim=claim;turn_calls=(turn_calls or 0)+1 end
+local real_sample=presentation.controller_bindings.sample
+presentation.controller_bindings.sample=function(...)
+    assert(turn_calls==1 and select(9,...)==turn_claim,'Production mapper ran before/shared a different claim from turning')
+    turn_calls=0
+    return real_sample(...)
+end
+sample(0);sample(0)
+controller_observation.right_stick_y=1
+assert(not sample(256)[1] and turn_claim==true,'Wheel start also fired a directional action')
+assert(not sample(256)[1] and turn_claim==true)
+assert(not sample(0)[1],'Unadmitted HUD release surrendered a deflected stick')
+controller_observation.right_stick_y=0;sample(0);sample(0)
+controller_observation.right_stick_y=1
+assert(sample(0)[1] and turn_claim==false,'Directional action failed after neutral')
+assert(wheel_hooks.update and wheel_hooks.destroy and wheel_hooks._on_com_wheel_stop)
+presentation.controller_bindings.sample=real_sample
+print('communication_production_input=pass real_load preclaim turning mapper and neutral_rearm')

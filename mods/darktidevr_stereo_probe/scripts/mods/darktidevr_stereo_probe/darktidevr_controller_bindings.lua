@@ -44,6 +44,7 @@ Bindings.actions = {
     {id="cycle_pocketables", mask=524288, pressed={"wield_3_gamepad"}},
     {id="inspect_target", mask=1048576, pressed={"interact_inspect_pressed"}},
     {id="tactical_overlay", mask=2097152},
+    {id="communication_wheel", mask=4194304, physical_only=true},
 }
 
 local function atomic(action)
@@ -66,7 +67,8 @@ end
 local function legacy_controls(mod,action,hub)
     local controls=0
     for _,control in ipairs(Bindings.controls) do
-        if bit.band(legacy_mask(mod,control,hub),action.mask)~=0 then controls=bit.bor(controls,control.bit) end
+        if not (action.physical_only and control.axis) and
+            bit.band(legacy_mask(mod,control,hub),action.mask)~=0 then controls=bit.bor(controls,control.bit) end
     end
     return controls
 end
@@ -98,12 +100,15 @@ function Bindings.widgets(mod)
                 if is_hub then options[#options+1]={text=label('vr_action_inherit'),value=-1} end
                 local known={[0]=true,[-1]=true}
                 for _,control in ipairs(Bindings.controls) do
+                    if not (action.physical_only and control.axis) then
                     options[#options+1]={text=label('vr_bind_'..control.id),value=control.bit}
                     known[control.bit]=true
+                    end
                 end
                 -- Preserve existing aliases without silently dropping a control.
                 -- Picking a single control later intentionally replaces that set.
-                if valid_controls(current) and not known[current] then
+                if valid_controls(current) and not known[current] and
+                    not (action.physical_only and bit.band(current,30720)~=0) then
                     local labels={}
                     for _,control in ipairs(Bindings.controls) do
                         if bit.band(current,control.bit)~=0 then labels[#labels+1]=label('vr_bind_'..control.id) end
@@ -166,7 +171,9 @@ function Bindings.install(mod)
                     else
                         assigned=valid_controls(value) and bit.band(value,control.bit)~=0
                     end
-                    if assigned then selection_cache[control.id]=bit.bor(selection_cache[control.id],action.mask) end
+                    if assigned and not (action.physical_only and control.axis) then
+                        selection_cache[control.id]=bit.bor(selection_cache[control.id],action.mask)
+                    end
                 end
             end
         end
@@ -175,6 +182,25 @@ function Bindings.install(mod)
     local function selection(control)
         refresh_selection()
         return selection_cache[control.id]
+    end
+    -- Prepare the profile before a HUD gesture claims the stick. Both the
+    -- preclaim query and subsequent gameplay sample then share one revision.
+    function api.prepare_context(mode)
+        local context=mode=='hub' and 'hub' or 'combat'
+        if context~=api.context then
+            api.context=context;api.revision=api.revision+1
+            dirty=true;stick_active=false;api.held=0
+        end
+    end
+    function api.physical_hold(id,physical,mode)
+        api.prepare_context(mode)
+        local wanted=masks[id]
+        if not wanted or wanted==0 then return false end
+        for _,control in ipairs(Bindings.controls) do
+            if not control.axis and bit.band(physical or 0,control.bit)~=0 and
+                bit.band(selection(control),wanted)==wanted then return true end
+        end
+        return false
     end
     function api.controls_for_action(id)
         local wanted, controls = masks[id], {}
@@ -219,19 +245,11 @@ function Bindings.install(mod)
         end)
     end
     function api.sample(enabled, physical, stick_x, stick_y, stick_usable, generation, mode, support, exclusive_stick)
-        local context=mode=="hub" and "hub" or "combat"
+        api.prepare_context(mode)
         local reset_grip=dirty or enabled~=true or not active or
-            generation~=stick_generation or context~=api.context
+            generation~=stick_generation
         local grip=api.support_grip
         grip.held,grip.pressed,grip.released,grip.cancelled=false,false,false,false
-        if context~=api.context then
-            api.context=context; api.revision=api.revision+1
-            dirty=true; stick_active=false
-            -- Cancel old context state without synthesizing release edges.
-            -- Stock actions may still react to held=false. Physical inputs
-            -- must return neutral before reuse.
-            api.held=0
-        end
         -- The eleven native channels occupy bits 0..10. Directional channels
         -- exist only here, so native input cannot impersonate a virtual shortcut.
         physical = bit.band(physical or 0,2047)

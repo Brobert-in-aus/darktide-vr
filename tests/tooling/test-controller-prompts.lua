@@ -63,6 +63,7 @@ scope('HudElementWieldInfo','_create_entry',function()
     assert(text('weapon_extra')=='[R\194\160Grip]')
     assert(text('combat_ability')=='[Unbound]')
     assert(text('smart_tag')=='[R3]')
+    assert(text('com_wheel')=='[Unbound]')
     assert(text('interact')=='[X]' and text('weapon_reload')=='[X]')
     assert(text('wield_1')=='[Unbound]','direct slot selection pretended to be bound')
     assert(text('unrecognized')=='keyboard:unrecognized')
@@ -77,6 +78,14 @@ scope('HudElementWieldInfo','_create_entry',function()
     assert(text('wield_1')=='[Unbound]','nested scope context leaked')
 end)
 assert(text('smart_tag')=='keyboard:smart_tag')
+settings.vr_action_bind_communication_wheel=256
+mod.on_setting_changed('vr_action_bind_communication_wheel')
+scope('HudElementWieldInfo','_create_entry',function()assert(text('com_wheel')=='[R3]')end)
+settings.vr_action_bind_communication_wheel=2048
+mod.on_setting_changed('vr_action_bind_communication_wheel')
+scope('HudElementWieldInfo','_create_entry',function()assert(text('com_wheel')=='[Unbound]')end)
+settings.vr_action_bind_communication_wheel=nil
+mod.on_setting_changed('vr_action_bind_communication_wheel')
 -- Direct slots keep distinct hints; cycling is never advertised as selecting
 -- a particular slot. Defaults remain unbound until the user assigns a control.
 for id,alias in pairs({pocketable='wield_3',stim='wield_4',device='wield_5',

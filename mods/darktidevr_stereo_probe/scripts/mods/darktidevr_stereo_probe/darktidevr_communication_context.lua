@@ -1,4 +1,4 @@
--- Unloaded ownership boundary. No input hooks or communication calls.
+-- Ownership boundary. No input hooks or communication calls.
 -- Caller must revoke its gesture/deferred callbacks before cancellation and
 -- must not acquire while another route owns this HUD's wheel or tagging state.
 local Context={}

@@ -5443,13 +5443,13 @@ presentation.turning = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_turning"
 ).install(mod)
 
-function presentation.apply_controller_turning(main_t)
+function presentation.apply_controller_turning(main_t,exclusive_stick)
     local delta = presentation.turning.sample(
         controller_observation.gameplay_input_active and active and active_base_rotation ~= nil,
         controller_observation.right_stick_x, controller_observation.right_stick_y,
         controller_observation.right_aim_usable,
         controller_observation.last_transport_generation,
-        controller_observation.head_recenter_generation, active_world, main_t)
+        controller_observation.head_recenter_generation, active_world, main_t,exclusive_stick)
     if delta ~= 0 and active_base_rotation then
         -- One shared world-up rotation: head, both hands, body-follow translation
         -- and gameplay heading all read this anchor. Never inject mouse motion.
@@ -5489,6 +5489,11 @@ end
 
 -- Observe identity without keeping a retired player/input cache alive.
 presentation.gameplay_input_owner = setmetatable({}, {__mode = "v"})
+presentation.communication_input = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_communication_input"
+).install(mod,presentation,controller_observation,{
+    mode=active_game_mode_name,world=function()return active_world end,
+})
 
 function presentation.inject_gameplay_input(self, main_t, input)
     if not presentation.gameplay_context.local_input_handler(
@@ -5538,7 +5543,10 @@ function presentation.inject_gameplay_input(self, main_t, input)
         controller_observation.gameplay_sequence,
         controller_observation.gameplay_movement)
     controller_observation.gameplay_input_active = active and result == 0
-    presentation.apply_controller_turning(main_t)
+    local exclusive_stick=presentation.communication_input.sample(self,player_unit,input,
+        controller_observation.gameplay_input_active,
+        tonumber(controller_observation.gameplay_held[0]),game_mode_name,active_world)
+    presentation.apply_controller_turning(main_t,exclusive_stick)
     local support_request=presentation.two_hand and presentation.two_hand.sample(
         player_unit,controller_observation.gameplay_input_active,main_t,self)
     local pressed, held, released = presentation.controller_bindings.sample(
@@ -5546,7 +5554,7 @@ function presentation.inject_gameplay_input(self, main_t, input)
         tonumber(controller_observation.gameplay_held[0]),
         controller_observation.right_stick_x,controller_observation.right_stick_y,
         controller_observation.right_aim_usable,
-        controller_observation.last_transport_generation, game_mode_name,support_request)
+        controller_observation.last_transport_generation, game_mode_name,support_request,exclusive_stick)
     if presentation.two_hand then
         presentation.two_hand.finish(presentation.controller_bindings.support_grip)
     end
@@ -5629,6 +5637,7 @@ mod:hook_safe(
                 controller_observation.last_transport_generation, active_game_mode_name())
             if presentation.two_hand then presentation.two_hand.clear(true) end
             if presentation.gameplay_ui then presentation.gameplay_ui.sample(false, 0) end
+            presentation.communication_input.cancel()
             return
         end
         presentation.scan_movement_inventory(self, frame)
@@ -13445,6 +13454,7 @@ do
 end
 
 mod.on_disabled = function()
+    pcall(presentation.communication_input.cancel)
     if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
     requested = false
     ui_stereo_requested = false
@@ -13459,6 +13469,7 @@ mod.on_disabled = function()
 end
 
 mod.on_unload = function()
+    pcall(presentation.communication_input.cancel)
     if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
     requested = false
     ui_stereo_requested = false
