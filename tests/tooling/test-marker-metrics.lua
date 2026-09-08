@@ -1,6 +1,13 @@
 local metrics = dofile(arg[1])
 local messages,commands,calls = {},{},0
-local renderer_class = {}
+local measure_calls=0
+local renderer_class = {text_size=function(self,text,font,font_size,size,options,use_max)
+    measure_calls=measure_calls+1
+    assert(text=='private text' and font=='font' and use_max==true)
+    if options and options.fail then error('measurement failed') end
+    if options and options.invalid then return -1,20,{0,0,0} end
+    return size[1],font_size,{options and options.overhang or 0,-2,0}
+end}
 for _,name in ipairs({'script_draw_bitmap','script_draw_bitmap_uv','script_draw_bitmap_3d',
         'script_draw_text','script_draw_text_3d','draw_rect','draw_rect_rotated',
         'draw_slug_icon','draw_slug_icon_rotated','draw_slug_picture','draw_triangle'}) do
@@ -35,7 +42,7 @@ local function pair(t,width,font,scale)
     metrics.draw(renderer,'interaction',owner,t,2,nil,draw,width or 100,font or 24,40)
 end
 local a,b,c=metrics.draw(renderer,'interaction',owner,0,1,nil,draw,100,24,10)
-assert(a==41 and b==nil and c==43 and #messages==0,'default-off path altered drawing')
+assert(a==41 and b==nil and c==43 and #messages==0 and measure_calls==0,'default-off path altered drawing')
 commands.dtvr_marker_metrics()
 pair(1)
 assert(messages[#messages]:find('left=2 right=2 matched=2 shape=0 font=0 scale=0',1,true))
@@ -159,4 +166,64 @@ for eye=1,2 do
     end)
 end
 assert(messages[#messages-1]:find('shape=2',1,true),'rotation pivot change was missed')
-print('marker_metrics=pass bounded_input_geometry_only=true')
+metrics.start(2)
+for eye=1,2 do
+    metrics.draw(renderer,'markers',owner,21,eye,nil,function()
+        local options={overhang=eye==1 and -3 or -8}
+        renderer:script_draw_text('private text',24,'font',{0,0,0},{100,20,0},nil,options)
+        assert(options.overhang==(eye==1 and -3 or -8), 'observer changed text options')
+    end)
+end
+assert(messages[#messages-1]:find('shape=0 font=0',1,true))
+assert(messages[#messages-1]:find('text_layout=1 text_measured=1',1,true), 'glyph origin change was missed')
+metrics.start(2)
+for eye=1,2 do
+    metrics.draw(renderer,'markers',owner,21.5,eye,nil,function()
+        renderer:script_draw_text_3d('private text',24,'font',{
+            x={x=1,y=0,z=0},z={x=0,y=0,z=1},translation={x=0,y=0,z=0}},
+            {0,0,0},1,{100,20,0},nil,{overhang=-eye})
+    end)
+end
+assert(messages[#messages-1]:find('text_layout=1 text_measured=1',1,true), '3D text options were not measured')
+for _,option in ipairs({'fail','invalid'}) do
+    metrics.start(2)
+    local before=calls
+    for eye=1,2 do
+        metrics.draw(renderer,'markers',owner,22,eye,nil,function()
+            renderer:script_draw_text('private text',24,'font',{0,0,0},{100,20,0},nil,{[option]=true})
+        end)
+    end
+    assert(calls==before+2, 'text measurement failure swallowed actual drawing')
+    assert(messages[#messages-1]:find('incomplete=true',1,true))
+end
+assert(not table.concat(messages):find('private text',1,true))
+print('marker_metrics=pass bounded_input_geometry_only=true text_layout_not_raster=true')
+
+-- Optional source contract: verify final pixel font/box/options reach the stock
+-- max-extents API unchanged and that its origin is returned, not discarded.
+if arg[2] then
+    local path=arg[2]..'/scripts/managers/ui/ui_renderer.lua'
+    local file=assert(io.open(path,'r'));local source=file:read('*a');file:close()
+    local first=assert(source:find('UIRenderer.text_size =',1,true))
+    local last=assert(source:find('\nUIRenderer.styled_text_size =',first,true))
+    local stock,observed={},0
+    local options={shadow=true,line_spacing=1.25,vertical_alignment='center'}
+    local function extents(gui,text,font,font_size,settings)
+        observed=observed+1
+        assert(gui=='owned_gui' and text=='private text' and font=='font_path' and font_size==36)
+        assert(settings.flags==7 and settings.shadow and settings.line_spacing==1.25)
+        assert(settings.optional_size[1]==300 and settings.optional_size[2]==60)
+        return {-4,-9,0},{104,31,0},{10,0,0}
+    end
+    local env=setmetatable({UIRenderer=stock,optional_gui_args={},
+        UIFonts={data_by_type=function(font)assert(font=='font');return {path='font_path',render_flags=7} end},
+        Gui={VerticalAlignCenter='center'},Vector2=function(x,y)return {x,y} end,
+        Vector3={to_elements=function(value)return unpack(value) end},
+        Gui2_slug_text_max_extents=extents,Gui2_slug_text_extents=function()error('must use max extents')end,
+        table={clear=function(value)for key in pairs(value)do value[key]=nil end end}}, {__index=_G})
+    setfenv(assert(loadstring(source:sub(first,last-1),'@'..path)),env)()
+    local width,height,minimum=stock.text_size({gui='owned_gui',scale=1.5},'private text','font',36,{300,60},options,true)
+    assert(width==108 and height==40 and minimum[1]==-4 and minimum[2]==-9 and observed==1)
+    assert(options.flags==nil and options.optional_size==nil, 'stock layout must not mutate supplied options')
+    print('marker_text_layout_stock=pass final pixel scale, options and glyph origin forwarded')
+end

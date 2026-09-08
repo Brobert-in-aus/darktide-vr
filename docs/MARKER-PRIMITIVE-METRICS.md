@@ -27,6 +27,10 @@ The `DARKTIDEVR_MARKER_METRICS` summary includes:
   already-scaled script primitives are not scaled again.
 - The maximum difference in submitted position or transform translation.
   This is expected to be nonzero under stereo reprojection and is not an error.
+- `text_layout` counts matched text calls whose stock max-extents width, height
+  or minimum glyph/layout origin differs; `text_measured` counts matched measured
+  text calls. The query uses the final pixel font size, box and options for 2D
+  and 3D script draws. Font/box equality alone does not establish equal layout.
 - An `incomplete` flag for truncated lists, extraction errors, unsupported
   primitives, unequal counts or mismatched call identity/order.
 
@@ -36,8 +40,9 @@ indicator logic. Triangles, circles and video are explicitly marked unsupported
 if encountered. Transformed draws compare all three components of their X/Z-plane
 basis and translation, including depth. Rotated rectangle/vector-icon calls also
 compare their scaled pivot coordinates;
-they do not reconstruct final rasterized bounds. Optional GUI settings, material
-shader behavior, glyph outlines and pixel snapping are not measured.
+they do not reconstruct final rasterized bounds. Text options are forwarded to
+stock layout measurement, but arbitrary GUI settings, material shader expansion,
+actual glyph outlines/shadows and pixel snapping are not certified by that API.
 
 A complete pair with zero shape/font/scale differences establishes matching
 observed inputs only. It does not prove matching angular sizes or rendered
@@ -47,6 +52,16 @@ fix. This measurement is one input to the [full marker audit](STEREO-MARKER-SIZI
 whose worn and rendered-extent checks remain open.
 
 ## Validation, 8 September
+
+9 September text follow-up: the observer also compares stock maximum text
+layout extents and origin without drawing again, rescaling pixel arguments or
+logging text. Failed/malformed measurements mark extraction incomplete while
+the real draw still runs. The default-off path makes no layout calls. Fixtures
+cover unchanged-font glyph-origin differences and both text signatures; an
+optional cached-source run executes stock `UIRenderer.text_size` to check final
+pixel dimensions, options forwarding and returned negative origin. Two focused
+CTests pass in 0.05 seconds; the pinned LuaJIT gate compiles 61 chunks. No live
+diagnostic was deployed and this does not supply complete popup raster bounds.
 
 9 September follow-up: a failing fixture reproduced omitted depth-axis basis/
 translation changes. Metrics now include these components and rotation pivots;

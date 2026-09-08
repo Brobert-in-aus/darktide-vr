@@ -5,8 +5,8 @@ local specs = {
     script_draw_bitmap = {position=2,size=3,token=1,color=4},
     script_draw_bitmap_uv = {position=2,size=3,token=1,color=5},
     script_draw_bitmap_3d = {position=3,size=5,transform=2,token=1,color=6},
-    script_draw_text = {position=4,size=5,font=2,token=1,secondary=3,color=6},
-    script_draw_text_3d = {position=5,size=7,font=2,transform=4,token=1,secondary=3,color=8},
+    script_draw_text = {position=4,size=5,font=2,token=1,secondary=3,color=6,options=7},
+    script_draw_text_3d = {position=5,size=7,font=2,transform=4,token=1,secondary=3,color=8,options=9},
     draw_rect = {position=1,size=2,logical=true,color=3},
     draw_rect_rotated = {position=2,size=1,angle=3,pivot=4,logical=true,color=5},
     draw_slug_icon = {position=3,size=4,logical=true,token=1,secondary=2,color=5},
@@ -38,6 +38,16 @@ local function capture(name, spec, renderer, ...)
         scale=renderer.scale or 1, alpha=renderer.render_settings and
             renderer.render_settings.alpha_multiplier or 1}
     row.color_alpha=args[spec.color] and component(args[spec.color],1) or 255
+    if spec.font then
+        -- Query stock layout at the final script-call font/box scale, not the
+        -- logical widget size. This is still not proof of final shaded pixels.
+        local width,height,minimum=assert(state.text_size,'text layout API unavailable')(
+            renderer,args[spec.token],args[spec.secondary],args[spec.font],size,args[spec.options],true)
+        assert(type(width)=='number' and type(height)=='number' and width>=0 and height>=0 and
+            minimum and tonumber(minimum[1]) and tonumber(minimum[2]),'invalid text layout')
+        row.text_width,row.text_height=width,height
+        row.text_min_x,row.text_min_y=tonumber(minimum[1]),tonumber(minimum[2])
+    end
     if spec.pivot then
         row.pivot_x=component(args[spec.pivot],1)*scale
         row.pivot_y=component(args[spec.pivot],2)*scale
@@ -64,7 +74,7 @@ local function changed(a,b,key)
     return math.abs((a[key] or 0)-(b[key] or 0)) > 0.001
 end
 local function compare(left,right)
-    local summary = {matched=0,shape=0,font=0,scale=0,alpha=0,color_alpha=0,kind=0,
+    local summary = {matched=0,shape=0,font=0,scale=0,alpha=0,color_alpha=0,kind=0,text_layout=0,text_measured=0,
         maximum_anchor_delta=0,left=left.total,right=right.total,
         incomplete=left.truncated or right.truncated or left.errors>0 or
             right.errors>0 or left.unsupported>0 or right.unsupported>0}
@@ -83,6 +93,13 @@ local function compare(left,right)
             if changed(a,b,'scale') then summary.scale=summary.scale+1 end
             if changed(a,b,'alpha') then summary.alpha=summary.alpha+1 end
             if changed(a,b,'color_alpha') then summary.color_alpha=summary.color_alpha+1 end
+            if a.text_width~=nil and b.text_width~=nil then
+                summary.text_measured=summary.text_measured+1
+                if changed(a,b,'text_width') or changed(a,b,'text_height') or
+                    changed(a,b,'text_min_x') or changed(a,b,'text_min_y') then
+                    summary.text_layout=summary.text_layout+1
+                end
+            end
             summary.maximum_anchor_delta=math.max(summary.maximum_anchor_delta,
                 math.abs(a.x-b.x),math.abs(a.y-b.y),
                 math.abs((a.tx or 0)-(b.tx or 0)),math.abs((a.ty or 0)-(b.ty or 0)),
@@ -133,6 +150,7 @@ function Metrics.draw(renderer,kind,owner,t,eye,wrapper,draw,...)
     return unpack(result,2,result.n)
 end
 function Metrics.install(mod,renderer_class)
+    state.text_size=renderer_class.text_size
     for name,spec in pairs(specs) do
         if renderer_class[name] then
             mod:hook(renderer_class,name,function(func,renderer,...)
@@ -145,9 +163,9 @@ function Metrics.install(mod,renderer_class)
         end
     end
     state.report=function(kind,s)
-        mod:info('DARKTIDEVR_MARKER_METRICS kind=%s left=%d right=%d matched=%d shape=%d font=%d scale=%d alpha=%d color_alpha=%d kind_mismatch=%d max_anchor_delta=%.3f incomplete=%s input_geometry_only=true',
+        mod:info('DARKTIDEVR_MARKER_METRICS kind=%s left=%d right=%d matched=%d shape=%d font=%d scale=%d alpha=%d color_alpha=%d kind_mismatch=%d max_anchor_delta=%.3f incomplete=%s text_layout=%d text_measured=%d input_geometry_only=true',
             kind,s.left,s.right,s.matched,s.shape,s.font,s.scale,s.alpha,s.color_alpha,s.kind,
-            s.maximum_anchor_delta,tostring(s.incomplete))
+            s.maximum_anchor_delta,tostring(s.incomplete),s.text_layout,s.text_measured)
     end
     state.unmatched=function(kind)
         mod:info('DARKTIDEVR_MARKER_METRICS kind=%s unmatched=true input_geometry_only=true',kind)
