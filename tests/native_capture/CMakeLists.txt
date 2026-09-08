@@ -9,6 +9,11 @@ target_compile_options(darktidevr-pipeline-probe-tests PRIVATE /W4 /WX /permissi
 target_compile_definitions(darktidevr-pipeline-probe-tests PRIVATE
   NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 target_link_libraries(darktidevr-pipeline-probe-tests PRIVATE d3d12 d3dcompiler)
+add_executable(darktidevr-billboard-basis-tests billboard_basis.cpp)
+target_compile_options(darktidevr-billboard-basis-tests PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-billboard-basis-tests PRIVATE
+  NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+target_link_libraries(darktidevr-billboard-basis-tests PRIVATE d3d11 d3dcompiler)
 add_executable(darktidevr-diagnostic-append-tests diagnostic_append_log.cpp)
 target_include_directories(darktidevr-diagnostic-append-tests PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_compile_options(darktidevr-diagnostic-append-tests PRIVATE /W4 /WX /permissive-)
@@ -23,6 +28,9 @@ target_link_libraries(darktidevr-native-capture-tests PRIVATE
   d3d12)
 
 if(BUILD_TESTING)
+  add_test(NAME billboard_compiled_basis COMMAND darktidevr-billboard-basis-tests
+    "${CMAKE_CURRENT_SOURCE_DIR}/billboard_basis.cs.hlsl")
+  set_tests_properties(billboard_compiled_basis PROPERTIES TIMEOUT 30 LABELS "billboard;offline")
   add_test(NAME bootstrap_selection COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/test-bootstrap-selection.ps1"
     -Executable $<TARGET_FILE:darktidevr-bootstrap-selection-tests>
