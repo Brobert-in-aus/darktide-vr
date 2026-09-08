@@ -1,5 +1,29 @@
 # Wrist roll and stock melee angle
 
+## Live deployment, 09:44 UTC
+
+After the user authorized restart, the seven changed focused Lua files were
+installed in a backed-up transaction. Ready mode passed (600 rendered XR frames);
+the installed LuaJIT gate passed all 50 chunks. Accepted capture/bootstrap/viewer
+hashes remained unchanged. Fresh native stereo initialization occurred at
+09:43:13, Psykhanium entry passed at 09:44:32, and Light was saved at 09:44:33.
+Melee preview is on. Both startup flags were restored after confirmation.
+
+The harness advanced to shared_ready=747 with an observed interval of 51.19
+fresh plus 51.19 generated pairs per second, zero fallback and pose mismatches.
+Melee input_roll_deg changes and matching first-light ActionSweep starts were
+observed. No feedback_error, assist fallback, input_fallback, preview_error or
+mod ERROR/WARNING appeared in the inspected launch window. These are startup
+and runtime checks; the new wrist/HUD/menu visuals still need worn acceptance.
+The user's pre-restart headset verification referred to the previous build.
+
+Local receipts: artifacts/unattended/wrist-feedback-ready-20260908.json,
+wrist-feedback-deployment-20260908.json, wrist-feedback-session-20260908.log,
+wrist-feedback-startup-restore-receipt-20260908.json and
+wrist-feedback-native-verified-20260908.json. The game remains running for tests.
+
+## Candidate design and offline record
+
 The user reports that twisting a forward-pointing controller makes the guide
 and crosshair jump/disappear. This candidate separates forward-vector yaw/pitch
 from wrist roll. It retains the existing yaw at the vertical pole and the stock

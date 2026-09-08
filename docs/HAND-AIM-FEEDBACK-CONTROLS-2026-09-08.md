@@ -1,5 +1,12 @@
 # Hand-aim feedback and Light assist
 
+Deployment update: installed with the wrist-angle candidate after the user's
+approved restart. Fresh stereo initialization, Psykhanium entry, saved Light
+setting and advancing shared_ready passed at 09:44 UTC. Startup flags restored;
+accepted native/viewer hashes unchanged. See MELEE-WRIST-ANGLE-2026-09-08.md for
+the receipts and runtime sample. The hand feedback and menu-height appearance
+still require the user's observation in this newly loaded build.
+
 The staff charge indicator is part of HudElementCrosshair's dynamic widget,
 which the VR HUD suppresses to avoid a second aiming reticle. It is not an
 independently hidden Custom HUD item. At the user's request, charge bars and
