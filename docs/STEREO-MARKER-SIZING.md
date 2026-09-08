@@ -92,6 +92,11 @@ Do not adopt a partial scalar or texture-only change as the completed fix.
 
 ## Work and acceptance checklist
 
+An offline [shared-plane geometry candidate](SHARED-MARKER-PLANE.md) now passes
+288 eye configurations and 2,304 inverse-projected point checks, preserving
+finite depth and stable shared-center angular size. No engine draw hook is
+enabled; complete primitive/material/layer behavior still needs validation.
+
 - [x] Prepare a bounded, default-off [primitive measurement candidate](MARKER-PRIMITIVE-METRICS.md)
   for marker, popup and tag draws; offline checks pass, live measurements pending.
 - [x] Inventory all 20 registered templates and their primitive families,
