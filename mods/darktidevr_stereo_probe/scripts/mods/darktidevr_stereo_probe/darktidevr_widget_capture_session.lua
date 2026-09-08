@@ -140,7 +140,9 @@ end
 
 function Session:invalidate()
     self.surface:invalidate()
-    self.t=nil;self.identity=nil;self.handled=false;self.reason=nil
+    self.handled=false
+    if self.capturing then self.reason='invalidated'
+    else self.t=nil;self.identity=nil;self.reason=nil end
 end
 
 function Session:destroy()

@@ -10,7 +10,7 @@ end
 
 function Surface.new(backend)
     assert(backend and backend.copy and backend.queue and backend.destroy)
-    return setmetatable({backend=backend, revision=0}, Surface)
+    return setmetatable({backend=backend, revision=0,invalidation_generation=0}, Surface)
 end
 
 -- Identity includes HUD owner, world, target and layout generation. Callers
@@ -27,7 +27,7 @@ function Surface:capture(t, identity, metadata, draw)
         -- The right eye must reuse the first eye's choice without advancing
         -- animations, recopying textures or changing the image identity.
         if self.identity~=identity then return false, 'identity_changed_within_frame' end
-        return true, self.display and 'ready' or 'warming'
+        return self.frame_handled~=false, self.frame_reason or (self.display and 'ready' or 'warming')
     end
     if self.frame_t and t<self.frame_t then self:invalidate() end
     if self.identity~=identity then
@@ -36,6 +36,8 @@ function Surface:capture(t, identity, metadata, draw)
         self.identity=identity
     end
     self.frame_t=t
+    self.frame_handled=nil;self.frame_reason=nil
+    local invalidation=self.invalidation_generation
 
     local pending=self.pending
     if pending and pending.submitted then
@@ -47,6 +49,10 @@ function Surface:capture(t, identity, metadata, draw)
             self.pending=nil
             self.display=nil
             return false, 'copy_failed', detail
+        end
+        if invalidation~=self.invalidation_generation then
+            self.frame_handled=false;self.frame_reason='invalidated'
+            return false,'invalidated'
         end
         self.display={identity=identity, metadata=pending.metadata,
             revision=pending.revision, captured_t=pending.t}
@@ -68,6 +74,12 @@ function Surface:capture(t, identity, metadata, draw)
         self.failed=true
         self.display=nil
         error(queued[2], 0)
+    end
+    if invalidation~=self.invalidation_generation then
+        -- The draw already ran. Keep the pair handled without publishing an
+        -- invalidated image or advancing its animation for the second eye.
+        self.frame_reason='invalidated'
+        return true,'invalidated'
     end
     self.pending={identity=identity, metadata=metadata, revision=revision, t=t}
     return true, self.display and 'ready' or 'warming'
@@ -91,10 +103,13 @@ end
 -- Hidden HUD/interaction, target loss, owner changes and disabling all invalidate
 -- the logical image immediately. Reusing resources must not reuse old content.
 function Surface:invalidate()
+    self.invalidation_generation=self.invalidation_generation+1
     self.pending=nil
     self.display=nil
-    self.frame_t=nil
-    self.identity=nil
+    if not self.capturing then
+        self.frame_t=nil;self.identity=nil
+        self.frame_handled=nil;self.frame_reason=nil
+    end
 end
 
 function Surface:destroy()

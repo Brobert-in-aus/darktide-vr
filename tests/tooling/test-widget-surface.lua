@@ -70,3 +70,23 @@ assert(not ok and tostring(err):find('draw broke',1,true) and attempts==1)
 assert(not s:visible(1,key) and not s:capture(2,key,old_bounds,draw))
 s:destroy();assert(b.destroys==1)
 print('widget_surface: shared-eye image lifetime, submission, identity, failures pass')
+for _,stage in ipairs({'copy','draw'})do
+    b=backend();s=Surface.new(b);local calls=0
+    local function authored()calls=calls+1 end
+    assert(s:capture(1,key,old_bounds,authored));s:submitted(b.revision)
+    if stage=='copy' then
+        local copy=b.copy
+        function b:copy()copy(self);s:invalidate()end
+    end
+    local function invalidating_draw()authored();s:invalidate()end
+    local handled,reason=s:capture(2,key,new_bounds,stage=='draw' and invalidating_draw or authored)
+    assert(handled==(stage=='draw') and reason=='invalidated')
+    assert(calls==(stage=='draw' and 2 or 1) and not s.pending and not s:visible(2,key))
+    s:submitted(b.revision)
+    local again,why=s:capture(2,key,new_bounds,authored)
+    assert(again==handled and why=='invalidated' and calls==(stage=='draw' and 2 or 1))
+    b.copy=backend().copy
+    assert(select(2,s:capture(3,key,new_bounds,authored))=='warming' and not s:visible(3,key))
+    s:destroy()
+end
+print('widget_surface_invalidation=pass active invalidation cannot republish or redraw within an eye pair')

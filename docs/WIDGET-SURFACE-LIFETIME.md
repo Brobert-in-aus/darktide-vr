@@ -199,6 +199,14 @@ widget CTests pass in 0.09 seconds; the additional copy-time retirement fixture
 also passes. All 68 Lua chunks compile. These modules remain unloaded and no
 native resources or live HUD were used by the fixtures.
 
+Active invalidation is now tracked separately from capture revision. If a hide,
+target loss or other callback invalidates during copying, no widget draw starts;
+if it invalidates during drawing, the already handled pair stays hidden. Both
+eyes reuse that `invalidated` outcome, late submission cannot republish it, and
+the next frame warms a fresh image. A regression reproduced stale pending-image
+publication before the generation check. Surface and session copy/draw fixtures
+pass with the seven widget CTests (0.09 seconds); 68 chunks compile.
+
 The existing HUD panel provides a proven starting point for whole-widget capture:
 a dedicated UI world/viewport, a RGBA8 target and a separate completed-copy target.
 It preserves all rasterized text, textures, rectangles and progress indicators.

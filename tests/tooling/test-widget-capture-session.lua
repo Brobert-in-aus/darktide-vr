@@ -209,3 +209,21 @@ local copy=b.copy
 function b:copy()s:destroy();assert(not self.destroyed);copy(self)end
 assert(select(2,s:capture(2,identity,r))=='destroyed' and draws()==1 and b.destroyed,
     'copy-time retirement still advanced widget drawing')
+for _,stage in ipairs({'copy','draw'})do
+    s,b,r,draws,original,pass=setup();assert(s:capture(1,identity,r));s:observe_render(b.world)
+    local authored=r.draw
+    if stage=='copy' then
+        local original_copy=b.copy
+        function b:copy()original_copy(self);s:invalidate()end
+    else
+        r.draw=function(...)authored(...);s:invalidate()end
+    end
+    local handled,reason=s:capture(2,identity,r)
+    assert(handled==(stage=='draw') and reason=='invalidated' and pass.data==original)
+    s:observe_render(b.world);assert(not s:visible(2,identity))
+    assert(s:capture(2,identity,r)==handled and draws()==(stage=='draw' and 2 or 1))
+    r.draw=authored
+    assert(select(2,s:capture(3,identity,r))=='warming' and not s:visible(3,identity))
+    s:destroy()
+end
+print('widget_session_invalidation=pass active cancellation is latched through both eyes without stale publication')
