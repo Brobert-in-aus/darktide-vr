@@ -1,5 +1,38 @@
 # Complete-widget surface lifetime
 
+## Immediate display owner, 9 September
+
+`darktidevr_widget_display.lua` now supplies an unloaded world-GUI owner for one
+capture session. `Display.new(api, world, session, Quad, Plane, layer)` requires
+an explicit layer and a distinct completed display target. It follows the
+accepted HUD's immediate GUI and item-container material binding, sampling only
+that display copy. The white draw color preserves the captured widget's existing
+color/fade rather than applying another implicit opacity policy.
+
+`draw(t, identity, anchor, center, right, up, tangent_per_pixel)` obtains the
+image through the session's visibility gate, checks target extent/revision and
+latches the first pose/geometry decision for the eye pair. Hidden or invalid
+first-eye images cannot become visible on the second call in that frame. A
+changed identity/revision, invalidated session or replaced backend target is not
+drawn. Engine vectors, matrix and bitmap arguments are private to each draw;
+pixel snapping is disabled for world geometry. A failed draw latches failure.
+
+The caller must destroy this display **before** its capture backend or source
+world. Material cleanup precedes GUI destruction, partial construction unwinds,
+all cleanup steps are attempted and repeated destruction cannot release twice.
+The owner never releases the borrowed capture/display textures. This ordering
+still needs to be connected to actual HUD/world lifecycle hooks.
+
+Eight focused CTests (`widget_|marker_plane`) pass in 0.12 seconds and 66 Lua
+chunks compile. The new fixture compares all submitted corners with the shared
+plane and covers pose/revision changes, hidden-frame decisions, target changes,
+construction/draw failures and combined cleanup failures. These use engine
+doubles; native partial-texture rendering, GUI/material behavior, layer/occlusion
+policy and worn pickup sizing are unverified. Complete measured bounds remain a
+prerequisite for redirecting a real popup. No runtime deployment occurred.
+
+## Capture foundations
+
 9 September: an offline engine resource backend now exists in
 `darktidevr_widget_capture.lua`. It creates an owned UI world/overlay viewport,
 two distinct RGBA8 targets and a stock viewport renderer. Handles are allocated
