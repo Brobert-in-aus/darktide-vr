@@ -185,6 +185,38 @@ function Bindings.install(mod)
         end
         return controls
     end
+    -- These selectors share the stock wield input list. Report overlap,
+    -- without changing mappings or claiming equipment-aware fallback ordering.
+    function api.wield_conflicts()
+        local conflicts={}
+        for _,control in ipairs(Bindings.controls) do
+            if control.axis~='x' or mod:get('vr_turn_mode')=='off' then
+                local selected=selection(control)
+                local actions={}
+                for _,id in ipairs({'quick_wield','pocketable','stim','device','cycle_pocketables'}) do
+                    if bit.band(selected,masks[id])~=0 then actions[#actions+1]=id end
+                end
+                if #actions>1 then conflicts[#conflicts+1]={control=control.id,actions=actions} end
+            end
+        end
+        return conflicts
+    end
+    if mod.command and mod.echo then
+        mod:command('dtvr_binding_conflicts','Report overlapping weapon and item selectors in the current binding profile',function()
+            local conflicts=api.wield_conflicts()
+            if #conflicts==0 then
+                mod:echo('No overlapping weapon or item selectors in %s bindings.',api.context)
+            else
+                local function label(key)return mod.localize and mod:localize(key) or key end
+                for _,conflict in ipairs(conflicts) do
+                    local names={}
+                    for _,id in ipairs(conflict.actions) do names[#names+1]=label('vr_action_'..id) end
+                    mod:echo('%s bindings: %s is assigned to %s. Simultaneous wield requests can select only one.',
+                        api.context,label('vr_bind_'..conflict.control),table.concat(names,' / '))
+                end
+            end
+        end)
+    end
     function api.sample(enabled, physical, stick_x, stick_y, stick_usable, generation, mode, support)
         local context=mode=="hub" and "hub" or "combat"
         local reset_grip=dirty or enabled~=true or not active or

@@ -375,3 +375,41 @@ overlay_mapper.sample(false,256)
 overlay_pressed,overlay_held=overlay_mapper.sample(true,256)
 assert(overlay_pressed==0 and overlay_held==0, 'Held overlay reopened after routing loss')
 print('tactical_overlay_binding=pass default_unassigned explicit_hold neutral_rearm')
+
+local conflict_settings={vr_action_bind_device=8,vr_action_bind_cycle_pocketables=8,
+    vr_action_bind_pocketable=0,vr_action_bind_stim=0,vr_turn_mode='smooth'}
+local conflict_commands,conflict_messages={},{}
+local conflict_mod={get=function(_,key)return conflict_settings[key]end,
+    command=function(_,name,_,fn)conflict_commands[name]=fn end,
+    echo=function(_,format,...)conflict_messages[#conflict_messages+1]=string.format(format,...)end,
+    localize=function(_,key)return assert(text[key],key).en end}
+local conflict_mapper=Bindings.install(conflict_mod)
+local overlaps=conflict_mapper.wield_conflicts()
+assert(#overlaps==1 and overlaps[1].control=='x' and #overlaps[1].actions==2)
+assert(overlaps[1].actions[1]=='device' and overlaps[1].actions[2]=='cycle_pocketables')
+overlaps[1].actions[1]='mutated'
+assert(conflict_mapper.wield_conflicts()[1].actions[1]=='device', 'Report exposed mutable cached state')
+conflict_commands.dtvr_binding_conflicts()
+assert(conflict_messages[1]:find('combat bindings:',1,true) and conflict_messages[1]:find('X',1,true))
+assert(conflict_settings.vr_action_bind_device==8 and conflict_settings.vr_action_bind_cycle_pocketables==8)
+conflict_settings.vr_hub_action_bind_device=0
+conflict_settings.vr_hub_action_bind_cycle_pocketables=-1
+conflict_mapper.sample(true,0,0,0,true,1,'hub')
+assert(#conflict_mapper.wield_conflicts()==0, 'Hub override was ignored')
+conflict_commands.dtvr_binding_conflicts()
+assert(conflict_messages[2]:find('No overlapping weapon or item selectors in hub',1,true))
+conflict_settings.vr_action_bind_device=8192
+conflict_settings.vr_action_bind_cycle_pocketables=8192
+conflict_mod.on_setting_changed('vr_action_bind_device')
+conflict_mapper.sample(true,0,0,0,true,1,'combat')
+assert(#conflict_mapper.wield_conflicts()==0, 'Turning-owned horizontal action was reported as usable')
+conflict_settings.vr_turn_mode='off';conflict_mod.on_setting_changed('vr_turn_mode')
+assert(conflict_mapper.wield_conflicts()[1].control=='right_stick_left')
+conflict_settings.vr_action_bind_cycle_pocketables=0
+conflict_mod.on_setting_changed('vr_action_bind_cycle_pocketables')
+assert(#conflict_mapper.wield_conflicts()==0, 'Remapped conflict stayed cached')
+conflict_settings.vr_action_bind_device=16
+conflict_mod.on_setting_changed('vr_action_bind_device')
+local quick_overlap=conflict_mapper.wield_conflicts()
+assert(#quick_overlap==1 and quick_overlap[1].control=='y' and quick_overlap[1].actions[1]=='quick_wield')
+print('wield_binding_conflicts=pass current_profile aliases remap horizontal_gate no_setting_writes')

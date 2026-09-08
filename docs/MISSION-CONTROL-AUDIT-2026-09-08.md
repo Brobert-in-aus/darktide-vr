@@ -48,6 +48,17 @@ one of them no longer apply: both directions and left grip are already assigned.
 Normalized diagnostic extracts stay under ignored `artifacts/unattended/`;
 neither the full settings file nor account data is committed.
 
+The integrated source now offers `/dtvr_binding_conflicts`, a read-only report
+for the mapper's current combat/hub profile. It lists physical controls assigned
+to multiple selectors from stock's common wield list: quick weapon switch,
+carried item, stim, mission device and carried-item cycle. It does not report
+intentional jump/dodge or interact/reload combinations as wield conflicts, and
+excludes horizontal directions owned by turning. Hub overrides and remaps use
+the same resolved mapping as actual input; no settings or input state is changed.
+Running the report offline against the earlier saved snapshot identifies the X
+device/cycle overlap in both profiles. This command is not deployed and is not
+included in the separate focused tactical-overlay port at `8eab44e`.
+
 ## Communication-wheel stock contract checked 9 September
 
 The cached stock `_handle_com_wheel` is now exercised by
