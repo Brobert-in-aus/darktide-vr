@@ -1,4 +1,9 @@
 add_executable(darktidevr-native-capture-tests main.cpp)
+add_executable(darktidevr-billboard-equivalence-tests billboard_shader_equivalence.cpp)
+target_compile_options(darktidevr-billboard-equivalence-tests PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-billboard-equivalence-tests PRIVATE
+  NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+target_link_libraries(darktidevr-billboard-equivalence-tests PRIVATE d3d12 dxgi dxguid)
 add_executable(darktidevr-bootstrap-selection-tests bootstrap_selection.cpp)
 target_compile_options(darktidevr-bootstrap-selection-tests PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-bootstrap-selection-tests PRIVATE

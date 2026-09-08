@@ -66,8 +66,11 @@ cylindrical axes match independent yaw/world-up expectations. All 692 cases
 pass in 0.09 seconds. It does not open XR or interact with Darktide. Logs:
 `artifacts/unattended/atlas-billboard-basis-{build,tests}-20260908.log`.
 
-These checks establish basis math and shader interface, not numerical
-equivalence of every reconstructed operation or visibility ownership. Before
+Later [shader execution checks](BILLBOARD-SHADER-EQUIVALENCE.md) compare all
+declared outputs against the originals in 108 controlled cases per shader on
+WARP and the RTX 4090. Stock agreement and cylindrical pitch/roll invariance
+pass, including negative controls. These are controlled input cases, not full
+numerical coverage of all materials or worn acceptance. Before
 live activation, identify the intended smoke/effect family, perform Ready
 preflight and use a reversible focused deployment. Compare its stock control
 and cylindrical behavior with a specific worn observation. Preserve the
