@@ -135,3 +135,28 @@ mismatch. A nearby 120-loop sample reports 695 poll sleeps averaging 0.991 ms,
 Precise mode is active and failures are zero. Fresh rate is similar to the old
 fresh baseline; sustained recurrence, rather than this initial rate, is the
 next test. This is delivery/initialization evidence, not worn acceptance.
+
+### Foreground interruption, observed 16:40 Brisbane
+
+Both original processes remain alive. Generated delivery stopped at about
+1,330 seconds of accumulated viewer active-loop time, before the earlier
+baseline's slowdown onset. Producer health independently shows evaluations
+stopping when `foreground` becomes zero (health sample 1,323). A brief later
+foreground interval resumes evaluations and generated delivery, then both stop
+again. Saved game settings still enable DLSS frame generation. This correlates
+the interruption with focus; it does not identify which application caused it.
+
+The 5–20 minute active-time bins average 53.77–53.82 original and generated
+pairs/s, approximately 0.994 ms poll sleeps and 0.125–0.127 ms `xrEndFrame`.
+Later background-only bins deliver roughly 77 original pairs/s and zero
+generated pairs; they cannot establish sustained generated-mode performance.
+The observational split is saved in
+`artifacts/unattended/precise-pair-wait-interrupted-trend-20260908.json`.
+Active-loop time excludes logging and is not exact wall-clock elapsed time.
+
+A single focus-restoration attempt at 16:42 returned success but did not
+persist; a subsequent read found a browser foreground and producer evaluations
+still unchanged. Do not repeatedly steal desktop focus. Keep the session
+available, continue offline work, and treat this sustained comparison as
+interrupted until a sufficiently long foreground interval can be observed.
+The precise wait is **not established as a slowdown fix**.
