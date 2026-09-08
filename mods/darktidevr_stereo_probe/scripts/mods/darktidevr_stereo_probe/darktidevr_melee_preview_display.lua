@@ -39,11 +39,13 @@ function Display.install(mod,presentation,tracking)
     end
     local function update()
         if not api.enabled or failed then hide(true); return end
-        local player=Managers.player and Managers.player:local_player(1)
-        local unit=player and player.player_unit
-        if not unit or not Unit.alive(unit) or presentation.mode~=1 or
-                not tracking.authoring_enabled or
+        if presentation.mode~=1 or not tracking.authoring_enabled or
                 presentation.gameplay_context.ui_blocks_gameplay(Managers.ui) then hide(true); return end
+        -- Startup opt-in can precede the network connection. local_player()
+        -- calls Network.peer_id(), whose engine assertion bypasses Lua pcall.
+        local player=Managers.player and Managers.player:local_player_safe(1)
+        local unit=player and player.player_unit
+        if not unit or not Unit.alive(unit) then hide(true); return end
         local side='right'
         if presentation.weapon_hand_roles then side=presentation.weapon_hand_roles.physical('dominant') end
         if side~='left' and side~='right' then hide(true); return end

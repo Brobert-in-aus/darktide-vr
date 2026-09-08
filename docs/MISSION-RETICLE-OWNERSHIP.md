@@ -37,3 +37,10 @@ preflight attempt found zero authorized ADB devices; no deployment or launch
 was attempted on that failed readiness result. The user was asked to reconnect
 the Quest while focused deployment preparation continues. Live/worn acceptance
 must be recorded separately from the offline regression results.
+
+The first preview-enabled relaunch crashed in Network.peer_id during startup:
+local_player(1) was queried before the connection existed, and this engine assert
+cannot be caught by Lua pcall. The display now checks presentation readiness
+first and uses stock local_player_safe(1). The startup fixture covers loading,
+an uninitialized connection, and subsequent successful drawing without a latched
+failure. Seven related CTests pass (0.08 s); focused source compiles all 45 chunks.

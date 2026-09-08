@@ -27,7 +27,7 @@ end} end, command=function(_,name,_,fn) commands[name]=fn end,
     hook_safe=function(_,class,method,callback)
         assert(class=='ActionSweep' and method=='start'); start_hook=callback
     end}
-Managers={player={local_player=function() return {player_unit=unit} end},ui={},
+Managers={player={local_player_safe=function() return {player_unit=unit} end},ui={},
     time={time=function() return 1 end}}
 Unit={alive=function() return true end}
 ScriptUnit={has_extension=function() return extension end}
@@ -45,6 +45,20 @@ Mods={lua={io={open=function()
 end}}}
 local requested_api=Display.install(mod,presentation,tracking)
 assert(requested_api.enabled,'Explicit launch request did not enable preview')
+local ready_player=Managers.player
+local premature_queries=0
+Managers.player={local_player_safe=function()
+    premature_queries=premature_queries+1
+    return nil -- Stock safe lookup while the connection is uninitialized.
+end,local_player=function() error('Network.peer_id before initialization') end}
+presentation.mode=0; requested_api.update()
+assert(premature_queries==0,'Loading preview queried the player manager')
+presentation.mode=1; requested_api.update()
+assert(premature_queries==1 and created==0,'Startup preview did not wait for a player')
+Managers.player=ready_player; requested_api.update()
+assert(visible and requested_api.last_preview,'Startup wait latched a permanent preview failure')
+requested_api.destroy()
+created,destroyed,context_reads=0,0,0
 Mods=nil
 -- Restore callbacks to the default-off instance for the remaining fixture.
 api=Display.install(mod,presentation,tracking)
@@ -66,7 +80,7 @@ assert(visible and created==2 and destroyed==1,'World change retained the old GU
 commands.dtvr_melee_preview_off(); assert(not visible and destroyed==2)
 commands.dtvr_melee_preview_on(); api.update(); assert(visible)
 Managers.player=nil; api.update(); assert(not visible,'Player loss retained the preview')
-Managers.player={local_player=function() error('retiring manager') end}
+Managers.player={local_player_safe=function() error('retiring manager') end}
 api.update(); assert(destroyed==3)
 local previous=context_reads
 api.update(); assert(context_reads==previous,'Failed preview retried each frame')
@@ -99,7 +113,7 @@ Gui.rect_3d=function(_,tm,offset,layer,size,color)
     assert(color[1]==150)
     rectangles[#rectangles+1]={tm=tm,length=size.x}
 end
-Managers.player={local_player=function() return {player_unit=unit} end}
+Managers.player={local_player_safe=function() return {player_unit=unit} end}
 extension._first_person_component.position=Vector3(0,0,0)
 context={action_name='first_light',paths={{{tip={x=0,y=2,z=0}},{tip={x=1,y=2,z=0}},{tip={x=2,y=2,z=0}}}}}
 commands.dtvr_melee_preview_on(); api.update()
