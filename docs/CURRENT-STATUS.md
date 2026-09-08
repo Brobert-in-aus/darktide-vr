@@ -14,6 +14,9 @@ or alter proximity. Selection requires matching hardware identity and model for
 every alias; distinct headsets and missing/failed identity queries remain gated.
 The full offline Release suite passed 165/165 before this focused readiness
 follow-up; see the resume handoff for current validation and live-session status.
+The subsequent default Ready preflight passes with the accepted viewer and VDXR:
+600/600 frames submitted, zero skipped. Normal Quest proximity automation was
+restored afterward; game and viewer are closed. Recheck before a new live session.
 
 ## Current checkpoint: night of 8 September
 
