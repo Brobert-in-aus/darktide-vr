@@ -7,6 +7,32 @@ local controllable = {walking=true, sprinting=true, sliding=true,
 local function finite(value)
     return type(value)=="number" and value==value and math.abs(value)<math.huge
 end
+-- Derive pointing from the forward vector, independent of the Euler branch
+-- chosen for a rolled/upside-down controller. Keep yaw at the vertical pole.
+function Rules.orientation(rotation, previous_yaw)
+    local forward = Quaternion.forward(rotation)
+    local x,y,z = Vector3.x(forward),Vector3.y(forward),Vector3.z(forward)
+    if not finite(x) or not finite(y) or not finite(z) then return end
+    local horizontal = math.sqrt(x*x+y*y)
+    if horizontal*horizontal+z*z < 1e-12 then return end
+    local yaw = horizontal > 1e-5 and math.atan2(-x,y) or previous_yaw
+    if not finite(yaw) then return end
+    local pitch = math.atan2(z,horizontal)
+    local upright = Quaternion.from_yaw_pitch_roll(yaw,pitch,0)
+    local up = Quaternion.up(rotation)
+    local roll = math.atan2(Vector3.dot(up,Quaternion.right(upright)),
+        Vector3.dot(up,Quaternion.up(upright)))
+    if not finite(roll) then return end
+    return yaw,pitch,roll
+end
+function Rules.snap_roll(roll, previous)
+    local step = math.pi/4
+    if previous then
+        local delta = math.atan2(math.sin(roll-previous),math.cos(roll-previous))
+        if math.abs(delta) <= step/2+math.rad(3) then return previous end
+    end
+    return (math.floor(roll/step+.5)*step) % (2*math.pi)
+end
 local function read_difficulty(method)
     local manager = Managers.state.difficulty
     return manager[method](manager)
@@ -20,6 +46,26 @@ function Rules.install(mod, presentation, state, mode_name)
     local instance = {frames=0, failures=0}
     local session_owner, session_mode, selected
     local orientation_owners = setmetatable({}, {__mode="k"})
+    local wrist = {}
+    local function melee_roll(unit, roll)
+        local extension = ScriptUnit.has_extension(unit, "weapon_system")
+        local template = extension and extension.weapon_template and extension:weapon_template()
+        local melee = false
+        for _,keyword in ipairs(template and template.keywords or {}) do
+            if keyword == "melee" then melee = true end
+        end
+        if not melee then wrist = {}; return 0 end
+        local slot = extension._inventory_component and extension._inventory_component.wielded_slot
+        local weapon = extension._weapons and extension._weapons[slot] or template
+        if wrist.unit ~= unit or wrist.weapon ~= weapon or wrist.epoch ~= state.last_transport_generation then
+            wrist = {unit=unit,weapon=weapon,epoch=state.last_transport_generation}
+        end
+        -- Choose while idle and retain that plane through windup/attack/combo.
+        -- The preview reads the same simulated rotation as the stock sweep.
+        local running = extension:running_action_settings()
+        if not running or wrist.roll == nil then wrist.roll = Rules.snap_roll(roll,wrist.roll) end
+        return wrist.roll
+    end
     -- Walking alone does not imply free aim: chainsaw locks, forced look and
     -- sweep stickiness select another orientation object in the same state.
     -- Observe the stock selection that HumanGameplay makes immediately before
@@ -108,11 +154,12 @@ function Rules.install(mod, presentation, state, mode_name)
         if presentation.weapon_aim_target then _, rotation = presentation.weapon_aim_target("dominant")
         else _, rotation = presentation.controller_aim_target() end
         if not rotation then return end
-        local yaw, pitch = Quaternion.yaw(rotation), Quaternion.pitch(rotation)
         local index = handler:_buffer_index(frame)
         local cache, lookup = handler._input_cache, handler._action_lookup
         local old_yaw = cache[handler._yaw_index][index]
+        local yaw, pitch, roll = Rules.orientation(rotation, old_yaw)
         if not finite(yaw) or not finite(pitch) or not finite(old_yaw) then return end
+        roll = melee_roll(unit, roll)
         local limits = require("scripts/settings/player_character/player_orientation_settings").default
         yaw = yaw % (2*math.pi)
         pitch = (pitch+math.pi) % (2*math.pi)-math.pi
@@ -165,7 +212,12 @@ function Rules.install(mod, presentation, state, mode_name)
         cache[lookup.move_forward][index], cache[lookup.move_backward][index] = forward, backward
         cache[handler._yaw_index][index] = yaw
         cache[handler._pitch_index][index] = pitch
-        cache[handler._roll_index][index] = 0
+        cache[handler._roll_index][index] = roll
+        if wrist.roll and instance.last_roll ~= roll then
+            instance.last_roll = roll
+            mod:info("DARKTIDEVR_MELEE input_roll_deg=%.1f source=wrist stock_input=true damage_verified=false",
+                math.deg(roll))
+        elseif not wrist.roll then instance.last_roll = nil end
         if presentation.roomscale then presentation.roomscale.record(frame, automatic) end
         instance.frames = instance.frames + 1
         if instance.frames == 1 then

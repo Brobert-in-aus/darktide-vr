@@ -41,7 +41,9 @@ does not preview heavies, charge transitions or later combo swings.
 
 In stock-input proving mode, the preview uses the action's simulated first-person
 position and rotation. That includes stock yaw/pitch handling and does not add
-raw wrist roll which the server input path does not transmit. In the existing
+raw wrist roll which the original VR adapter zeroes. The stock input protocol
+does include roll; the pending wrist-angle candidate is documented in
+MELEE-WRIST-ANGLE-2026-09-08.md. In the existing
 local hand-aim mode, it uses the same controller rotation as the melee override
 with the stock first-person origin. Neither mode moves damage origin to the
 physical hand. Changing that would be a separate gameplay change.

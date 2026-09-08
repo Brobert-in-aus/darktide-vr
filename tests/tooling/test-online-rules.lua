@@ -18,9 +18,18 @@ Managers={state={game_session={is_server=function() return true end}},
     ui={using_input=function() return owns end}}
 Unit={alive=function(unit) return unit=='local' end}
 ScriptUnit={has_extension=function() return {current_state_name=function() return character end} end}
-Vector3=setmetatable({x=function(v) return v[1] end,y=function(v) return v[2] end},
+Vector3=setmetatable({x=function(v) return v[1] end,y=function(v) return v[2] end,z=function(v) return v[3] end,
+    dot=function(a,b) return a[1]*b[1]+a[2]*b[2]+a[3]*b[3] end},
     {__call=function(_,x,y,z) return {x,y,z} end})
 Quaternion={yaw=function(q) return q.yaw end,pitch=function(q) return q.pitch end,
+    from_yaw_pitch_roll=function(y,p,r) return {yaw=y,pitch=p,roll=r} end,
+    forward=function(q) return {-math.sin(q.yaw)*math.cos(q.pitch),math.cos(q.yaw)*math.cos(q.pitch),math.sin(q.pitch)} end,
+    right=function(q) assert(q.roll==0); return {math.cos(q.yaw),math.sin(q.yaw),0} end,
+    up=function(q)
+        local s,c=math.sin(q.roll or 0),math.cos(q.roll or 0)
+        return {math.cos(q.yaw)*s+math.sin(q.yaw)*math.sin(q.pitch)*c,
+            math.sin(q.yaw)*s-math.cos(q.yaw)*math.sin(q.pitch)*c,math.cos(q.pitch)*c}
+    end,
     inverse=function(q) return -q end,
     rotate=function(q,v) return {math.cos(q)*v[1]-math.sin(q)*v[2],
         math.sin(q)*v[1]+math.cos(q)*v[2],v[3]} end}
@@ -66,7 +75,7 @@ assert(math.abs(h._input_cache[6][1]-.2)<1e-12)
 assert(h._input_cache[1][1]==1 and h._input_cache[3][1]==0)
 -- Stock-origin angle routing never writes the visual camera or live hand pose.
 assert(presentation.camera==nil and hand.yaw==math.pi/2)
-hand={yaw=math.pi,pitch=math.pi/2}
+hand={yaw=math.pi,pitch=math.pi/2-.0001}
 fresh(2,0,1); rules.capture(h,2)
 assert(h._input_cache[4][2]==1 and h._input_cache[5][2]==math.pi)
 assert(h._input_cache[6][2]==math.pi*.45 and h._input_cache[7][2]==0)
@@ -191,4 +200,49 @@ for _,case in ipairs({
     assert(#logs==count,'Difficulty diagnostics repeated on stable frames')
 end
 Managers.state.difficulty=nil
+-- Full wrist turns leave pointing unchanged, including upside-down poses.
+for _,yaw in ipairs({0,.7,math.pi,5.8}) do
+    for _,pitch in ipairs({-1.4,-.3,0,.8,1.4}) do
+        for degrees=-360,360 do
+            local roll=math.rad(degrees)
+            local y,p,r=Rules.orientation({yaw=yaw,pitch=pitch,roll=roll},0)
+            assert(math.abs(math.sin(y-yaw))<1e-10 and math.cos(y-yaw)>.999999)
+            assert(math.abs(p-pitch)<1e-10)
+            assert(math.abs(math.sin(r-roll))<1e-10 and math.cos(r-roll)>.999999)
+        end
+    end
+end
+local y,p=Rules.orientation({yaw=2,pitch=math.pi/2,roll=.7},.4)
+assert(y==.4 and math.abs(p-math.pi/2)<1e-12,'Pole lost prior yaw')
+assert(Rules.orientation({yaw=0/0,pitch=0},0)==nil)
+assert(Rules.snap_roll(math.rad(22),nil)==0)
+assert(Rules.snap_roll(math.rad(24),0)==0,'Boundary noise changed sector')
+assert(Rules.snap_roll(math.rad(26),0)==math.pi/4)
+assert(Rules.snap_roll(math.rad(21),math.pi/4)==math.pi/4)
+assert(Rules.snap_roll(math.rad(18),math.pi/4)==0)
+assert(Rules.snap_roll(math.rad(-1),0)==0,'Wraparound changed sector')
+local template={keywords={'melee'}}
+local running
+local melee_weapon={weapon_template=function() return template end,
+    running_action_settings=function() return running end}
+ScriptUnit.has_extension=function(_,system)
+    if system=='weapon_system' then return melee_weapon end
+    return {current_state_name=function() return 'walking' end}
+end
+hand={yaw=.7,pitch=.2,roll=math.pi/2}
+fresh(40,0,1); rules.capture(h,40)
+assert(h._input_cache[7][40]==math.pi/2,'Melee wrist angle absent from stock input')
+running={kind='windup'}; hand.roll=math.pi
+fresh(41,0,1); rules.capture(h,41)
+assert(h._input_cache[7][41]==math.pi/2,'First swing angle changed during windup')
+running={kind='sweep'}
+fresh(42,0,1); rules.capture(h,42)
+assert(h._input_cache[7][42]==math.pi/2)
+running=nil
+fresh(43,0,1); rules.capture(h,43)
+assert(h._input_cache[7][43]==math.pi,'Idle selection did not resume')
+template={keywords={'ranged','force_staff'}}
+fresh(44,0,1); rules.capture(h,44)
+assert(h._input_cache[7][44]==0,'Melee roll leaked into staff aim')
+assert(math.abs(h._input_cache[5][44]-.7)<1e-12 and math.abs(h._input_cache[6][44]-.2)<1e-12)
 print('PASS: range rules, frame aim, movement basis/packing, pitch limits, stock fallbacks and session setting')

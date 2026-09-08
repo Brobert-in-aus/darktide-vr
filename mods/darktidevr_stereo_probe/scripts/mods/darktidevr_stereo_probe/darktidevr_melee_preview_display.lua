@@ -17,9 +17,17 @@ function Display.install(mod,presentation,tracking)
         world,gui=nil,nil
         api.last_preview=nil
     end
-    local function hide(clear)
+    local visibility_reason
+    local function observe_visibility(reason)
+        if api.enabled and visibility_reason ~= reason then
+            mod:info('DARKTIDEVR_MELEE guide_state=%s',reason)
+            visibility_reason=reason
+        end
+    end
+    local function hide(clear,reason)
         if gui then Gui.set_visible(gui,false) end
         if clear then api.last_preview=nil end
+        observe_visibility(reason or 'inactive')
     end
     local function vector(p) return Vector3(p.x,p.y,p.z) end
     local function line(a,b,eye,color,width)
@@ -49,14 +57,14 @@ function Display.install(mod,presentation,tracking)
         local side='right'
         if presentation.weapon_hand_roles then side=presentation.weapon_hand_roles.physical('dominant') end
         if side~='left' and side~='right' then hide(true); return end
-        if not tracking[side..'_aim_usable'] then hide(true); return end
+        if not tracking[side..'_aim_usable'] then hide(true,'tracking_unavailable'); return end
         local extension=ScriptUnit.has_extension(unit,'weapon_system')
         if not extension then hide(true); return end
         local t=Managers.time:time('gameplay')
         local result,reason=Preview.context(extension,presentation,t)
         if not result then
             local prior=api.last_preview
-            hide(reason~='action_running' or not prior or t<prior.t or t-prior.t>1)
+            hide(reason~='action_running' or not prior or t<prior.t or t-prior.t>1,reason)
             return
         end
         if world~=extension._world then api.destroy(); world=extension._world end
@@ -66,6 +74,7 @@ function Display.install(mod,presentation,tracking)
         api.last_preview={name=result.action_name,t=t,unit=unit,
             weapon=extension._weapons[extension._inventory_component.wielded_slot]}
         Gui.set_visible(gui,true)
+        observe_visibility('visible')
         local eye=extension._first_person_component.position
         for _,path in ipairs(result.paths) do
             local color=Color(150,100,220,255)
