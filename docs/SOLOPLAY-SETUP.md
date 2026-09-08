@@ -66,3 +66,15 @@ passes at 04:49:34 UTC; stock rules, rigid hands and fresh stereo pass. Native,
 bootstrap, Lua, SoloPlay settings and shaders remain unchanged. The viewer adds
 stage-duration reporting to investigate a sustained idle slowdown; it does not
 change frame selection or combat. See [viewer timing](XR-FRAME-STAGE-TIMING.md).
+
+## Current live comparison, 16:00 Brisbane
+
+The earlier timing-only session reproduced the sustained runtime submission
+decline and was saved before closing. SoloPlay settings and game files remain
+unchanged in game PID 84828, started 15:58:54. A focused
+[precise-wait viewer trial](XR-PRECISE-PAIR-WAIT.md) now runs with fresh range,
+stock-rules and rigid-hand initialization and nonzero shared stereo. Its fresh
+delivery is about 54 original + 54 generated pairs/s; sustained and worn checks
+remain pending. No solo mission was launched. Launcher session 94365 has the
+usual approximately 23:58 Brisbane deadline unless the user stops development
+earlier. Use the linked trial document for the exact backup and recovery root.

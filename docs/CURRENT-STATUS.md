@@ -8,21 +8,23 @@ Latest setup, 8 September afternoon: supplied SoloPlay 2.6.2 is installed with
 a normal Uprising mission preset for the user's return. Locally owned missions
 now use stock online-style VR input/combat rules; physical melee stays paused.
 See [SoloPlay setup](SOLOPLAY-SETUP.md). Accepted native/weapon presentation is
-restored after a successful passive billboard readback. Current PID is 120404,
-with fresh Psykhanium stereo and a [timing-only viewer](XR-FRAME-STAGE-TIMING.md)
-to investigate a sustained idle delivery decline. SoloPlay/native/Lua/shaders
-are unchanged; fresh delivery is about 53 original + 53 generated pairs/s.
+restored after a successful passive billboard readback. Game PID **84828** now has
+fresh Psykhanium stereo and a focused
+[precise-wait viewer trial](XR-PRECISE-PAIR-WAIT.md). SoloPlay/native/Lua/shaders
+are unchanged; fresh delivery is about 54 original + 54 generated pairs/s.
 No solo mission or worn mission acceptance yet.
-An [optional precise-wait candidate](XR-PRECISE-PAIR-WAIT.md) now passes its
-offline build/checks. It is undeployed and defaults off; the uninterrupted live
-session still uses the earlier timing-only viewer while awaiting recurrence.
+The optional precise wait passes its offline build/checks and normally defaults
+off; the focused live comparison enables it only in the launch process. The
+prior uninterrupted baseline reproduced the decline and is saved in full.
 A separate [producer cadence correction](PRODUCER-FRAME-CADENCE.md) fixes the
 offline-reproduced estimate when the consumer skips source publications. It is
 also undeployed; the earlier sustained slowdown's cause remains unconfirmed.
 The [runtime trace](VDXR-SUBMISSION-SLOWDOWN.md) now locates the sustained decline
 at VDXR's asynchronous frame-submission wait, with increasing backend
 `OVR_BeginFrame` duration. The underlying backend cause remains open; neither
-viewer candidate is claimed to fix it. Raw-clock trace analysis is validated.
+viewer candidate is claimed to fix it. Raw-clock trace analysis is validated;
+watch the new trial for sustained recurrence. The producer-cadence correction
+is deliberately excluded from this first wait comparison.
 
 Latest follow-ups: after pre-launch TODO work, fix billboarding next. The user
 also reports item-pickup popups shrinking differently between eyes near screen

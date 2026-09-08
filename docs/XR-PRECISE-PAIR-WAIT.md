@@ -1,9 +1,10 @@
 # Optional precise source polling
 
-Status, 8 September 2026: built and checked offline, **not deployed**. The live
-SoloPlay/Psykhanium session retains the timing-only viewer from
-[the stage investigation](XR-FRAME-STAGE-TIMING.md). Preserve its uninterrupted
-run to capture any recurrence of the sustained delivery decline.
+Status, 8 September 2026: built and checked offline, then deployed as a focused
+viewer-only trial at 15:58 Brisbane. The uninterrupted timing-only baseline from
+[the stage investigation](XR-FRAME-STAGE-TIMING.md) reproduced the sustained
+decline and was saved before starting the comparison. The later producer-cadence
+correction is not included in this trial. See the live checkpoint below.
 
 ## Evidence and limits
 
@@ -22,6 +23,14 @@ was changed. They are scheduler observations in a separate process, not a
 controlled in-game speedup or proof of the earlier slowdown's cause. The live
 process loads a runtime and has different scheduling conditions. At about
 31 minutes it still delivers roughly 53 original + 53 generated pairs/s.
+That historical sample subsequently declined; see the
+[runtime trace](VDXR-SUBMISSION-SLOWDOWN.md). Public VDXR
+[initialization](https://github.com/mbucchia/VirtualDesktop-OpenXR/blob/main/virtualdesktop-openxr/instance.cpp)
+calls its [high-precision timer setup](https://github.com/mbucchia/VirtualDesktop-OpenXR/blob/main/virtualdesktop-openxr/utils.h),
+which requests high timer resolution and disables the window-occlusion timer
+throttling policy. This further limits how representative the separate-process
+standard-sleep benchmark is of a VDXR process; installed timing remains the
+authority for this trial, not that isolated comparison.
 
 Microsoft documents that applications without their own timer-resolution
 request may retain the default resolution on recent Windows; Windows 11 also
@@ -84,3 +93,45 @@ and shared-stereo readiness, source/generated delivery, fallback and pose
 mismatches; compare sustained behavior, not just initial FPS. Restore the launch
 process environment afterwards. Worn smoothness and mission acceptance remain
 separate user observations.
+
+## Live trial, 15:58 Brisbane
+
+The original session ended after the sustained decline was captured. Its
+launcher exited zero, restored temporary flags and removed its remaining owned
+flat game process. Complete logs and final analysis are saved under
+`artifacts/unattended/soloplay-sustained-baseline-20260908/`. Both device-health
+collectors completed their 20-minute bounds and their owned logcat children are
+gone. Both ETW sessions were stopped; no trace remains armed.
+
+Default Ready passes in `precise-pair-wait-ready-20260908.json/.log`. Installed
+46 Lua chunks compile, accepted capture/bootstrap hashes are unchanged, and
+only the viewer executable was replaced through the deployment transaction.
+Runtime source is the PR #53 candidate `ba91dcc`; it was built before commit,
+so embedded revision metadata can precede that source commit. Its preserved
+source matches that commit and SHA-256 is
+`71FA143A0ED283934CDBC2526E353C6586D6A967F734345B4CDFBE1355071B53`.
+
+Receipt: `artifacts/unattended/precise-pair-wait-live-deployment-20260908.json`.
+Backup manifest:
+`precise-pair-wait-live-backup-20260908/deployment-2bb666399f3f48c581d4aaddcd9025f2/manifest.json`
+under the same directory. Recovery root is `build/windows-vs2022`. The saved
+baseline executable hash is
+`1A90F97FE597B811EA7A0463E34F0FFB38043CE1EA090B76EF628447CC7DA6D8`.
+
+The usual launcher starts with `-SkipDeploymentSync -EnterPsykhanium
+-EnableHudPanel -DlssGeneratedStereo` and process-local
+`DTVR_XR_PRECISE_PAIR_WAIT=1`, restored in its shell's `finally`. Game PID 84828
+starts 15:58:54, viewer PID 54364 starts 15:58:58, launcher session 94365. Log:
+`artifacts/unattended/soloplay-precise-pair-wait-session-20260908.log`. Its normal
+eight-hour deadline is approximately 23:58 Brisbane, subject to the user's
+explicit stop instruction. No native, Lua, shader, SoloPlay or runtime setting
+changed. No solo mission was launched.
+
+Fresh Psykhanium pass at 05:59:58.383 UTC, stock rules at 05:59:59.058 and both
+rigid hands ready at 05:59:59.340. At shared-ready 907 the viewer delivers
+53.86 original + 53.86 generated pairs/s with zero interval fallback/reuse/pose
+mismatch. A nearby 120-loop sample reports 695 poll sleeps averaging 0.991 ms,
+5.761 ms whole source wait, 2.998 ms GPU-fence wait and 0.118 ms `xrEndFrame`.
+Precise mode is active and failures are zero. Fresh rate is similar to the old
+fresh baseline; sustained recurrence, rather than this initial rate, is the
+next test. This is delivery/initialization evidence, not worn acceptance.
