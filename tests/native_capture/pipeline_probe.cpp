@@ -93,6 +93,17 @@ int wmain(int argc, wchar_t** argv) {
 
     const auto module = LoadLibraryW((directory / L"darktidevr_native_capture.dll").c_str());
     if (!module) throw std::runtime_error("Load native fixture failed");
+    const auto validate = reinterpret_cast<int (*)(const void*, unsigned long long,
+        const void*, unsigned long long)>(GetProcAddress(module, "dtvr_validate_shader_interface"));
+    const char invalid[] = "invalid shader bytes";
+    if (!validate || validate(vs.data(), vs.size(), vs.data(), vs.size()) != 0 ||
+        validate(vs.data(), vs.size(), ps.data(), ps.size()) != 2 ||
+        validate(vs.data(), vs.size(), invalid, sizeof(invalid)) != 2 ||
+        validate(nullptr, vs.size(), vs.data(), vs.size()) != 1 ||
+        validate(vs.data(), 0, vs.data(), vs.size()) != 1 ||
+        validate(vs.data(), 64ULL * 1024 * 1024 + 1, vs.data(), vs.size()) != 1) {
+      throw std::runtime_error("Offline interface export disagrees with strict shader validation");
+    }
     const auto probe = reinterpret_cast<int (*)(int)>(GetProcAddress(module, "dtvr_set_billboard_pixel_shader_probe"));
     const auto install = reinterpret_cast<int (*)()>(GetProcAddress(module, "dtvr_install"));
     const auto counts = reinterpret_cast<unsigned long long (*)(unsigned int)>(

@@ -15305,6 +15305,22 @@ extern "C" __declspec(dllexport) unsigned long long
 dtvr_billboard_shader_substitution_count() {
   return billboard_shader_substitution_count.load(std::memory_order_relaxed);
 }
+// Offline tooling uses the same gate as runtime vertex substitution. This
+// export neither installs hooks nor creates a D3D/OpenXR device.
+extern "C" __declspec(dllexport) int dtvr_validate_shader_interface(
+    const void* original, unsigned long long original_size,
+    const void* replacement, unsigned long long replacement_size) {
+  constexpr unsigned long long maximum_size = 64ULL * 1024ULL * 1024ULL;
+  if (!original || !replacement || original_size == 0 || replacement_size == 0 ||
+      original_size > maximum_size || replacement_size > maximum_size) return 1;
+  try {
+    return compatible_shader_interfaces(
+        {original, static_cast<SIZE_T>(original_size)},
+        {replacement, static_cast<SIZE_T>(replacement_size)}) ? 0 : 2;
+  } catch (...) {
+    return 3;
+  }
+}
 extern "C" __declspec(dllexport) unsigned long long
 dtvr_billboard_shader_substitution_reject_count() {
   return billboard_shader_substitution_reject_count.load(

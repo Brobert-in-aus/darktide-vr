@@ -66,7 +66,9 @@ under `artifacts/unattended/billboard-vertex-analysis-20260908`. Three shaders
 W=1; their companions use the camera view-projection. Reflection identifies
 `r_atlas_index_buffer`. This is evidence of atlas-generation/display families,
 so changing all reflected `c_billboard` shaders identically is inappropriate.
-Reconstructed HLSL has not been compiled into or deployed as a replacement.
+Eight reconstructed VS candidates now compile and pass the unchanged runtime
+interface gate offline. See [interface validation](SHADER-INTERFACE-VALIDATION.md)
+for repairs and limits. None has been deployed as a replacement.
 
 All eight temporary deployment entries were restored through a verified
 transaction after another Ready pass. The accepted preview returned to the
