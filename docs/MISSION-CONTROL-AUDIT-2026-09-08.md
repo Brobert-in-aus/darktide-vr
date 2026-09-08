@@ -70,6 +70,15 @@ keyboard input, and both null-service forms remain blocked. Five focused input
 tests pass in 0.08 seconds; the pinned LuaJIT gate compiles 62 chunks. This source
 fix is undeployed and is not part of the earlier focused overlay port.
 
+The related tag/overlay follow-up binds both HUD proxies to unique handler scopes
+and input samples too. A retained tag proxy previously injected after return;
+an old tactical proxy could revive during another update of the same HUD.
+Nested remote HUD calls now suspend tag injection and restore the outer scope
+afterward. Exceptions, replacement players and newer samples cannot keep an old
+proxy alive; independent keyboard inputs and repeated same-frame tag reads are
+preserved. The five focused input tests and actual stock overlay update fixture
+pass; all 62 Lua chunks compile. This follow-up is also undeployed.
+
 The cached stock `_handle_com_wheel` is now exercised by
 `tests/tooling/test-communication-wheel-stock-contract.lua`. Its input is held
 `com_wheel`, separate from pressed `smart_tag`. It opens after the saved delay

@@ -7,6 +7,7 @@ function Input.install(mod, local_player_unit)
     local api = {}
     local inventory_owner
     local tactical_owner
+    local tag_owner
     local tag_frames = setmetatable({}, {__mode="k"})
 
     local function current_owner()
@@ -40,7 +41,7 @@ function Input.install(mod, local_player_unit)
         if state.active and state.tactical then ok,local_hud=pcall(local_tactical_owner,self) end
         if not tactical_owner and (not ok or not local_hud) then return func(self,...) end
         local previous=tactical_owner
-        tactical_owner=ok and local_hud and self or nil
+        tactical_owner=ok and local_hud and {hud=self,sample=state.sample} or nil
         local function pack(...) return {n=select('#',...),...} end
         local result=pack(pcall(func,self,...))
         tactical_owner=previous
@@ -56,7 +57,7 @@ function Input.install(mod, local_player_unit)
         return setmetatable({get=function(_,action,...)
             local value=source:get(action,...)
             local inject=action=='tactical_overlay_hold' and tactical_owner==scope_owner and
-                state.active and state.tactical and request_owner_current()
+                state.sample==scope_owner.sample and state.active and state.tactical and request_owner_current()
             return inject and true or value
         end},{__index=function(_,key)
             local value=source[key]
@@ -103,6 +104,33 @@ function Input.install(mod, local_player_unit)
         manager:open_view("system_view")
     end
 
+    local function run_tag(func,self,t,renderer,settings,source,pressed)
+        -- Unowned/nested HUD handlers must not inherit an outer injection.
+        -- Keep the ordinary no-request path free of proxy/scope allocation.
+        if not pressed and not tag_owner then return func(self,t,renderer,settings,source) end
+        local previous=tag_owner
+        local scope=pressed and {hud=self,sample=state.sample} or nil
+        tag_owner=scope
+        local input=source
+        if scope then
+            input=setmetatable({get=function(_,name,...)
+                local value=source:get(name,...)
+                local inject=name=='smart_tag' and tag_owner==scope and
+                    state.sample==scope.sample and state.active and request_owner_current()
+                return inject and true or value
+            end},{__index=function(_,name)
+                local value=source[name]
+                if type(value)=='function' then return function(_,...)return value(source,...)end end
+                return value
+            end})
+        end
+        local function pack(...)return {n=select('#',...),...}end
+        local result=pack(pcall(func,self,t,renderer,settings,input))
+        tag_owner=previous
+        if not result[1] then error(result[2],0) end
+        return unpack(result,2,result.n)
+    end
+
     mod:hook("HudElementSmartTagging", "_handle_tagging",
         function(func,self,t,renderer,settings,source)
             local owner = current_owner()
@@ -110,11 +138,12 @@ function Input.install(mod, local_player_unit)
                 state.owner = nil -- Cancel the sample across every HUD, even if an old owner returns.
                 state.tag = false
                 tag_frames[self] = nil
-                return func(self,t,renderer,settings,source)
+                return run_tag(func,self,t,renderer,settings,source,false)
             end
             local local_hud = owner and self._parent and self._parent:player_unit() == owner
-            if not local_hud then return func(self,t,renderer,settings,source) end
-            local blocked = not source or (source.null_service and source == source:null_service())
+            if not local_hud then return run_tag(func,self,t,renderer,settings,source,false) end
+            local blocked = not source or (source.is_null_service and source:is_null_service()) or
+                (source.null_service and source == source:null_service())
             local previous = tag_frames[self]
             local sample
             if previous and previous.t == t and previous.sample == state.sample then
@@ -125,18 +154,7 @@ function Input.install(mod, local_player_unit)
                 tag_frames[self] = {t=t,sample=state.sample,pressed=sample}
             end
             if blocked then tag_frames[self].pressed = false end
-            if not sample or blocked then return func(self,t,renderer,settings,source) end
-            local proxy = setmetatable({get=function(_,name,...)
-                local value = source:get(name,...)
-                return name == "smart_tag" and true or value
-            end},{__index=function(_,name)
-                local value = source[name]
-                if type(value)=="function" then
-                    return function(_,...) return value(source,...) end
-                end
-                return value
-            end})
-            return func(self,t,renderer,settings,proxy)
+            return run_tag(func,self,t,renderer,settings,source,sample and not blocked)
         end)
     return api
 end

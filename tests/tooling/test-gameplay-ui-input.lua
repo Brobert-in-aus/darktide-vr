@@ -57,6 +57,43 @@ keyboard=false
 api.sample(true,256)
 local ok=pcall(hook,function() error('stock failure') end,hud,7,{}, {},source)
 assert(not ok and source:get('smart_tag')==false,'Stock error mutated original input')
+local retained_tag
+api.sample(true,256)
+hook(function(self,t,renderer,settings,input)
+    retained_tag=input
+    assert(input:get('smart_tag'))
+end,hud,7.1,{}, {},source)
+assert(not retained_tag:get('smart_tag'),'Retained tag proxy outlived HUD handler')
+api.sample(true,256)
+hook(function(self,t,renderer,settings,input)
+    assert(not retained_tag:get('smart_tag'),'Old tag proxy revived in a later handler')
+    assert(input:get('smart_tag'))
+    hook(function()
+        assert(not input:get('smart_tag'),'Nested remote HUD inherited tag injection')
+    end,remote,7.2,{}, {},source)
+    assert(input:get('smart_tag'),'Nested HUD did not restore outer tag scope')
+    api.sample(true,256)
+    assert(not input:get('smart_tag'),'Tag proxy borrowed a newer input sample')
+end,hud,7.2,{}, {},source)
+keyboard=true
+assert(retained_tag:get('smart_tag'),'Expired tag proxy suppressed keyboard input')
+keyboard=false
+api.sample(true,256)
+assert(not pcall(hook,function(self,t,renderer,settings,input)
+    retained_tag=input
+    error('tag handler failed')
+end,hud,7.3,{}, {},source))
+assert(not retained_tag:get('smart_tag'),'Failed tag handler left its proxy active')
+api.sample(true,256)
+hook(function(self,t,renderer,settings,input)
+    unit={}
+    assert(not input:get('smart_tag'),'Active tag proxy crossed player replacement')
+end,hud,7.4,{}, {},source)
+api.sample(true,256)
+local predicate_tag_null={get=function()return false end,is_null_service=function()return true end}
+hook(function(self,t,renderer,settings,input)
+    assert(input==predicate_tag_null and not input:get('smart_tag'))
+end,hud,7.5,{}, {},predicate_tag_null)
 print('gameplay_ui_input=pass menu=semantic tag=stock_input inherited_edges=not_replayed')
 
 local inventory_hook=assert(hooks['UIManager._update_view_hotkeys'])
@@ -208,6 +245,14 @@ assert(api.route_ingame_input(overlay_source,'Ingame')==overlay_source, 'Hold le
 local held,empty,value=tactical(overlay_stock,hud)
 assert(held and empty==nil and value==27)
 assert(not retained_proxy:get('tactical_overlay_hold'), 'Retained proxy injected outside its scope')
+local old_tactical_proxy=retained_proxy
+tactical(function(self)
+    assert(not old_tactical_proxy:get('tactical_overlay_hold'),'Old overlay proxy revived in a later HUD scope')
+    local input=api.route_ingame_input(overlay_source,'Ingame')
+    assert(input:get('tactical_overlay_hold'))
+    api.sample(true,0,2097152)
+    assert(not input:get('tactical_overlay_hold'),'Overlay proxy borrowed a newer input sample')
+end,hud)
 assert(not tactical(overlay_stock,remote), 'Another player HUD received hold')
 tactical(function(self)
     assert(api.route_ingame_input(overlay_source,'Ingame'):get('tactical_overlay_hold'))
