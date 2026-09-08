@@ -27,6 +27,12 @@ The `DARKTIDEVR_MARKER_METRICS` summary includes:
   already-scaled script primitives are not scaled again.
 - The maximum difference in submitted position or transform translation.
   This is expected to be nonzero under stereo reprojection and is not an error.
+- `layer` counts differing draw-order inputs; `start_layer` counts differing
+  renderer layer offsets. `max_layer_delta` is the largest raw layer-input
+  difference. 2D calls use position[3], while 3D bitmap/text calls supply a
+  separate scalar. These inputs are not multiplied by XY scale or included in
+  spatial anchor differences. They do not predict final depth/occlusion or
+  primitive-specific clamps (rotated slug icons clamp their layer to one).
 - `text_layout` counts matched text calls whose stock max-extents width, height
   or minimum glyph/layout origin differs; `text_measured` counts matched measured
   text calls. The query uses the final pixel font size, box and options for 2D
@@ -52,6 +58,15 @@ fix. This measurement is one input to the [full marker audit](STEREO-MARKER-SIZI
 whose worn and rendered-extent checks remain open.
 
 ## Validation, 8 September
+
+9 September layer follow-up: a failing fixture reproduced omitted 2D/3D ordering
+inputs. The observer now records those inputs before stock 2D drawing mutates
+position[3], preserving the separate 3D layer argument and renderer offset.
+Non-finite layers mark evidence incomplete without preventing the actual draw.
+Two focused CTests (`marker_metrics|marker_gui`) pass in 0.18 seconds, and all
+61 Lua chunks compile with the pinned LuaJIT gate. The optional cached-source
+fixture also executes actual stock 2D/3D bitmap draws and verifies their final
+layer arguments and return values. No installed runtime or settings changed.
 
 9 September text follow-up: the observer also compares stock maximum text
 layout extents and origin without drawing again, rescaling pixel arguments or

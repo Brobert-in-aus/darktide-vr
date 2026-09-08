@@ -197,6 +197,36 @@ for _,option in ipairs({'fail','invalid'}) do
     assert(messages[#messages-1]:find('incomplete=true',1,true))
 end
 assert(not table.concat(messages):find('private text',1,true))
+-- Layer is an ordering input, not a scaled XY coordinate or a 3D translation.
+metrics.start(2)
+for eye=1,2 do
+    renderer.scale=eye
+    renderer.render_settings.start_layer=eye==1 and 10 or 20
+    metrics.draw(renderer,'markers',owner,23,eye,nil,function()
+        renderer:script_draw_bitmap('material',{0,0,eye},{10,20,0})
+        renderer:script_draw_bitmap_3d('material',{
+            x={x=1,y=0,z=0},z={x=0,y=0,z=1},translation={x=0,y=0,z=0}},
+            {0,0,99},eye*3,{10,20,0})
+        renderer:script_draw_text_3d('private text',24,'font',{
+            x={x=1,y=0,z=0},z={x=0,y=0,z=1},translation={x=0,y=0,z=0}},
+            {0,0,99},eye*4,{100,20,0})
+        renderer:draw_rect({0,0,7},{10/eye,20/eye,0})
+    end)
+end
+assert(messages[#messages-1]:find('layer=3 start_layer=4 max_layer_delta=4.000',1,true),
+    '2D/3D layer inputs or renderer start layer were missed')
+assert(messages[#messages-1]:find('max_anchor_delta=0.000',1,true),
+    'draw ordering must not be reported as a spatial displacement')
+renderer.scale=1;renderer.render_settings.start_layer=nil
+metrics.start(2)
+local before_layer_calls=calls
+for eye=1,2 do
+    metrics.draw(renderer,'markers',owner,24,eye,nil,function()
+        renderer:script_draw_bitmap('material',{0,0,0/0},{10,20,0})
+    end)
+end
+assert(calls==before_layer_calls+2 and messages[#messages-1]:find('incomplete=true',1,true),
+    'invalid layer must mark evidence incomplete without suppressing the draw')
 print('marker_metrics=pass bounded_input_geometry_only=true text_layout_not_raster=true')
 
 -- Optional source contract: verify final pixel font/box/options reach the stock
@@ -226,4 +256,45 @@ if arg[2] then
     assert(width==108 and height==40 and minimum[1]==-4 and minimum[2]==-9 and observed==1)
     assert(options.flags==nil and options.optional_size==nil, 'stock layout must not mutate supplied options')
     print('marker_text_layout_stock=pass final pixel scale, options and glyph origin forwarded')
+
+    -- Execute real stock 2D/3D bitmap methods behind the observer. In 2D stock
+    -- mutates position[3]; in 3D it adjusts a separate scalar, not position.z.
+    local layer_class,native_layers={},{}
+    local layer_env=setmetatable({UIRenderer=layer_class,optional_gui_args={},
+        STRING_IDENTIFIER='string',SNAP_PIXEL_POSITIONS=false,
+        _get_material_flag=function() return 0 end,
+        Gui2_bitmap=function(gui,material,flags,position)
+            native_layers[#native_layers+1]=position[3]
+            return 71
+        end,
+        Gui2_bitmap_3d=function(gui,material,flags,tm,layer,options)
+            assert(options.position_offset[3]==99)
+            native_layers[#native_layers+1]=layer
+            return 73
+        end,
+        table={clear=function(value)for key in pairs(value)do value[key]=nil end end}}, {__index=_G})
+    for _,name in ipairs({'script_draw_bitmap','script_draw_bitmap_3d'}) do
+        local begin=assert(source:find('UIRenderer.'..name..' =',1,true))
+        local finish=assert(source:find('\nUIRenderer.',begin+1,true))
+        setfenv(assert(loadstring(source:sub(begin,finish-1),'@'..path)),layer_env)()
+    end
+    local layer_metrics=dofile(arg[1])
+    layer_metrics.install(mod,layer_class)
+    local stock_instance=setmetatable({scale=2,gui='owned_gui',render_settings={}}, {__index=layer_class})
+    layer_metrics.start(2)
+    for eye=1,2 do
+        stock_instance.render_settings.start_layer=eye*10
+        layer_metrics.draw(stock_instance,'markers',owner,25,eye,nil,function()
+            local position={0,0,eye}
+            assert(stock_instance:script_draw_bitmap('material',position,{10,20,0})==71)
+            assert(position[3]==eye*11,'stock mutation contract changed')
+            assert(stock_instance:script_draw_bitmap_3d('material',{
+                x={x=1,y=0,z=0},z={x=0,y=0,z=1},translation={x=0,y=0,z=0}},
+                {0,0,99},eye*3,{10,20,0})==73)
+        end)
+    end
+    assert(table.concat(native_layers,',')=='11,13,22,26')
+    assert(messages[#messages-1]:find('layer=2 start_layer=2 max_layer_delta=3.000',1,true))
+    assert(messages[#messages-1]:find('max_anchor_delta=0.000 incomplete=false',1,true))
+    print('marker_layer_stock=pass 2D mutation and separate 3D layer preserved')
 end

@@ -4,9 +4,9 @@ local state = {budget=0, pending={}, scope=nil}
 local specs = {
     script_draw_bitmap = {position=2,size=3,token=1,color=4},
     script_draw_bitmap_uv = {position=2,size=3,token=1,color=5},
-    script_draw_bitmap_3d = {position=3,size=5,transform=2,token=1,color=6},
+    script_draw_bitmap_3d = {position=3,size=5,transform=2,token=1,color=6,layer=4},
     script_draw_text = {position=4,size=5,font=2,token=1,secondary=3,color=6,options=7},
-    script_draw_text_3d = {position=5,size=7,font=2,transform=4,token=1,secondary=3,color=8,options=9},
+    script_draw_text_3d = {position=5,size=7,font=2,transform=4,token=1,secondary=3,color=8,options=9,layer=6},
     draw_rect = {position=1,size=2,logical=true,color=3},
     draw_rect_rotated = {position=2,size=1,angle=3,pivot=4,logical=true,color=5},
     draw_slug_icon = {position=3,size=4,logical=true,token=1,secondary=2,color=5},
@@ -38,6 +38,15 @@ local function capture(name, spec, renderer, ...)
         scale=renderer.scale or 1, alpha=renderer.render_settings and
             renderer.render_settings.alpha_multiplier or 1}
     row.color_alpha=args[spec.color] and component(args[spec.color],1) or 255
+    -- Compare ordering inputs separately from geometry. The 3D APIs have an
+    -- explicit layer; position[3] is not their layer. Do not apply XY scale or
+    -- predict primitive-specific clamps/native GUI behavior here.
+    if spec.layer then
+        row.layer=assert(tonumber(args[spec.layer]),'missing explicit GUI layer')
+    else
+        row.layer=component(position,3)
+    end
+    row.start_layer=renderer.render_settings and renderer.render_settings.start_layer or 0
     if spec.font then
         -- Query stock layout at the final script-call font/box scale, not the
         -- logical widget size. This is still not proof of final shaded pixels.
@@ -75,6 +84,7 @@ local function changed(a,b,key)
 end
 local function compare(left,right)
     local summary = {matched=0,shape=0,font=0,scale=0,alpha=0,color_alpha=0,kind=0,text_layout=0,text_measured=0,
+        layer=0,start_layer=0,maximum_layer_delta=0,
         maximum_anchor_delta=0,left=left.total,right=right.total,
         incomplete=left.truncated or right.truncated or left.errors>0 or
             right.errors>0 or left.unsupported>0 or right.unsupported>0}
@@ -93,6 +103,9 @@ local function compare(left,right)
             if changed(a,b,'scale') then summary.scale=summary.scale+1 end
             if changed(a,b,'alpha') then summary.alpha=summary.alpha+1 end
             if changed(a,b,'color_alpha') then summary.color_alpha=summary.color_alpha+1 end
+            if changed(a,b,'layer') then summary.layer=summary.layer+1 end
+            if changed(a,b,'start_layer') then summary.start_layer=summary.start_layer+1 end
+            summary.maximum_layer_delta=math.max(summary.maximum_layer_delta,math.abs(a.layer-b.layer))
             if a.text_width~=nil and b.text_width~=nil then
                 summary.text_measured=summary.text_measured+1
                 if changed(a,b,'text_width') or changed(a,b,'text_height') or
@@ -163,9 +176,10 @@ function Metrics.install(mod,renderer_class)
         end
     end
     state.report=function(kind,s)
-        mod:info('DARKTIDEVR_MARKER_METRICS kind=%s left=%d right=%d matched=%d shape=%d font=%d scale=%d alpha=%d color_alpha=%d kind_mismatch=%d max_anchor_delta=%.3f incomplete=%s text_layout=%d text_measured=%d input_geometry_only=true',
+        mod:info('DARKTIDEVR_MARKER_METRICS kind=%s left=%d right=%d matched=%d shape=%d font=%d scale=%d alpha=%d color_alpha=%d kind_mismatch=%d max_anchor_delta=%.3f incomplete=%s text_layout=%d text_measured=%d layer=%d start_layer=%d max_layer_delta=%.3f input_geometry_only=true',
             kind,s.left,s.right,s.matched,s.shape,s.font,s.scale,s.alpha,s.color_alpha,s.kind,
-            s.maximum_anchor_delta,tostring(s.incomplete),s.text_layout,s.text_measured)
+            s.maximum_anchor_delta,tostring(s.incomplete),s.text_layout,s.text_measured,
+            s.layer,s.start_layer,s.maximum_layer_delta)
     end
     state.unmatched=function(kind)
         mod:info('DARKTIDEVR_MARKER_METRICS kind=%s unmatched=true input_geometry_only=true',kind)
