@@ -10,6 +10,13 @@ target_compile_definitions(darktidevr-pipeline-probe-tests PRIVATE
   NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 target_link_libraries(darktidevr-pipeline-probe-tests PRIVATE d3d12 d3dcompiler)
 add_executable(darktidevr-billboard-basis-tests billboard_basis.cpp)
+add_executable(darktidevr-billboard-readback-tests billboard_draw_readback.cpp
+  "${PROJECT_SOURCE_DIR}/src/producer/billboard_draw_readback.cpp")
+target_include_directories(darktidevr-billboard-readback-tests PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_compile_options(darktidevr-billboard-readback-tests PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-billboard-readback-tests PRIVATE
+  NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+target_link_libraries(darktidevr-billboard-readback-tests PRIVATE d3d12 dxgi dxguid)
 target_compile_options(darktidevr-billboard-basis-tests PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-billboard-basis-tests PRIVATE
   NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
@@ -28,6 +35,8 @@ target_link_libraries(darktidevr-native-capture-tests PRIVATE
   d3d12)
 
 if(BUILD_TESTING)
+  add_test(NAME billboard_draw_readback COMMAND darktidevr-billboard-readback-tests)
+  set_tests_properties(billboard_draw_readback PROPERTIES TIMEOUT 60 LABELS "billboard;offline;d3d12")
   add_test(NAME billboard_compiled_basis COMMAND darktidevr-billboard-basis-tests
     "${CMAKE_CURRENT_SOURCE_DIR}/billboard_basis.cs.hlsl")
   set_tests_properties(billboard_compiled_basis PROPERTIES TIMEOUT 30 LABELS "billboard;offline")
