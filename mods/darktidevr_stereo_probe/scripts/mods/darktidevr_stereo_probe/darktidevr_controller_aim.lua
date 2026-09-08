@@ -833,7 +833,10 @@ function controller_aim.install(mod, presentation, state)
         PlayerUnitSmartTargetingExtension,
         "fixed_update",
         function(func, self, unit, dt, t, ...)
-            if not self._is_local_unit then
+            -- SoloPlay bots are local simulation units too. Their stock
+            -- targeting must run, but only the current human player may
+            -- publish or clear the one shared VR crosshair.
+            if not self._is_local_unit or not is_local_unit(self._unit) then
                 return func(self, unit, dt, t, ...)
             end
             if presentation.online_rules and presentation.online_rules.enabled() then

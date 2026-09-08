@@ -1,4 +1,15 @@
 local Display=dofile(assert(arg[1]))
+assert(not Display.startup_requested(nil))
+local closed=0
+local function startup(contents)
+    return Display.startup_requested({open=function(path,mode)
+        assert(path:find('darktidevr_melee_preview.flag',1,true) and mode=='r')
+        return {read=function(_,n) assert(n==32);return contents end,
+            close=function() closed=closed+1 end}
+    end})
+end
+assert(startup('enabled\n') and not startup('disabled') and not startup('enabled junk'))
+assert(closed==3)
 local commands={}
 local start_hook,logs
 local visible,created,destroyed,draws=false,0,0,0
@@ -29,6 +40,14 @@ local presentation={mode=1,gameplay_context={ui_blocks_gameplay=function() retur
 local tracking={authoring_enabled=true,right_aim_usable=true}
 local api=Display.install(mod,presentation,tracking)
 api.update(); assert(context_reads==0 and created==0,'Disabled preview acquired game state')
+Mods={lua={io={open=function()
+    return {read=function() return 'enabled' end,close=function() end}
+end}}}
+local requested_api=Display.install(mod,presentation,tracking)
+assert(requested_api.enabled,'Explicit launch request did not enable preview')
+Mods=nil
+-- Restore callbacks to the default-off instance for the remaining fixture.
+api=Display.install(mod,presentation,tracking)
 mod.toggle_melee_preview(); assert(api.enabled,'Keyboard/menu toggle did not enable')
 mod.toggle_melee_preview(); assert(not api.enabled,'Keyboard/menu toggle did not disable')
 commands.dtvr_melee_preview_on(); api.update()

@@ -1,5 +1,13 @@
 -- Local, opt-in first-light swing guide. It never runs physics or attacks.
 local Display={}
+function Display.startup_requested(io_api)
+    if not io_api then return false end
+    local flag=io_api.open('./../mods/darktidevr_stereo_probe/darktidevr_melee_preview.flag','r')
+    if not flag then return false end
+    local ok,value=pcall(flag.read,flag,32)
+    flag:close()
+    return ok and type(value)=='string' and value:match('^%s*enabled%s*$')~=nil
+end
 function Display.install(mod,presentation,tracking)
     local Preview=mod:io_dofile('darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_preview')
     local api={enabled=false}
@@ -106,6 +114,9 @@ function Display.install(mod,presentation,tracking)
     mod:command('dtvr_melee_preview_off','Hide the stock swing preview',function()
         set_enabled(false)
     end)
+    local requested_ok,requested=pcall(Display.startup_requested,
+        Mods and Mods.lua and Mods.lua.io)
+    if requested_ok and requested then set_enabled(true) end
     return api
 end
 return Display
