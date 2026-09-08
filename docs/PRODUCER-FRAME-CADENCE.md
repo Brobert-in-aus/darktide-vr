@@ -59,3 +59,15 @@ Keep the precise wait off when isolating this cadence correction. Compare
 producer original rate with ingested/submitted originals, generated ordering,
 poll/runtime/GPU waits and sustained recovery after natural stalls. Worn
 smoothness and in-mission gameplay acceptance remain pending user observation.
+
+## Read-only producer observation
+
+A 60-second reader of the existing original metadata mapping deliberately
+requested 30 ms between reads, without opening an XR session, signaling fences
+or writing transport state. It observed 1,927 new samples: 636 one-sequence gaps,
+1,286 two-sequence gaps and four three-sequence gaps (plus the initial anchor).
+After 16 warmup samples the candidate estimated a mean 18.682 ms source period;
+publication endpoints measured 53.709/s. Thus real coarse producer metadata
+retains the source rate when this separate reader skips publications. This is
+metadata validation, not GPU completion or a deployed viewer speedup. Evidence:
+`artifacts/unattended/producer-cadence-probe-20260908/{capture.log,summary.json}`.
