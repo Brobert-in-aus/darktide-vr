@@ -27,6 +27,13 @@ performance trace followed. Normal Quest proximity automation was restored in
 failure cleanup; no VD restart occurred. Continue offline until streaming is
 renderable, then repeat Ready. The earlier success is historical evidence.
 
+Bringing the existing Virtual Desktop Quest activity forward preserved its
+process and restored HMD availability, but the following smoke submitted 0/600
+frames, with all 600 marked non-renderable. It still failed Ready. Normal
+proximity automation was again restored; no game or runtime restart followed.
+Remain offline until streaming state changes rather than retrying unchanged
+conditions. The focused spectator input candidate is PR #120, still undeployed.
+
 Read-only comparison of all 49 tracked Lua/mod files against accepted `3341afb`
 finds no content changes: 17 are byte-identical and 32 differ only by CRLF/LF.
 The accepted viewer hash is unchanged. Raw byte hashes and the explicit line-
