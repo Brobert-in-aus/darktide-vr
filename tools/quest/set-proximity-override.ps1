@@ -48,20 +48,24 @@ if ($LASTEXITCODE -ne 0 -or $model -notmatch '^Quest') {
 
 switch ($Action) {
     'Disable' {
-        & $adb -s $Device shell am broadcast `
-            -a com.oculus.vrpowermanager.prox_close
-        if ($LASTEXITCODE -ne 0) {
+        $broadcast = @(& $adb -s $Device shell am broadcast `
+            -a com.oculus.vrpowermanager.prox_close)
+        if ($LASTEXITCODE -ne 0 -or
+                ($broadcast -join "`n") -notmatch 'Broadcast completed: result=0(?:\s|$)') {
             throw 'Failed to apply the Quest proximity override'
         }
+        $broadcast
         Write-Output "Quest proximity automation disabled on $model ($Device)."
         Write-Output 'Restore with -Action Enable or by rebooting the headset.'
     }
     'Enable' {
-        & $adb -s $Device shell am broadcast `
-            -a com.oculus.vrpowermanager.automation_disable
-        if ($LASTEXITCODE -ne 0) {
+        $broadcast = @(& $adb -s $Device shell am broadcast `
+            -a com.oculus.vrpowermanager.automation_disable)
+        if ($LASTEXITCODE -ne 0 -or
+                ($broadcast -join "`n") -notmatch 'Broadcast completed: result=0(?:\s|$)') {
             throw 'Failed to restore Quest proximity automation'
         }
+        $broadcast
         Write-Output "Quest proximity automation restored on $model ($Device)."
     }
     'Status' {
@@ -70,6 +74,7 @@ switch ($Action) {
             Select-String -Pattern `
                 'mWakefulness=|mProximityPositive=|mHoldingDisplaySuspendBlocker=' `
                 -CaseSensitive:$false
+        if ($LASTEXITCODE -ne 0) { throw 'Failed to query Quest power state' }
         Write-Output 'Quest does not expose a durable query for the broadcast override; reapply Disable before unattended testing if uncertain.'
     }
 }

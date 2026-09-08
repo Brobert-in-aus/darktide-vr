@@ -122,7 +122,7 @@ if ($deviceSelection -eq 'selected') {
         $broadcast = @(& $adb -s $device shell am broadcast `
             -a com.oculus.vrpowermanager.prox_close)
         if ($LASTEXITCODE -ne 0 -or
-            ($broadcast -join "`n") -notmatch 'Broadcast completed: result=0') {
+            ($broadcast -join "`n") -notmatch 'Broadcast completed: result=0(?:\s|$)') {
             throw 'Failed to apply the Quest proximity override'
         }
         $proximityApplied = $true

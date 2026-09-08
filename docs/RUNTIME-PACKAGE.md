@@ -58,6 +58,9 @@ devices or failed/conflicting identity queries still block Ready. Reports retain
 the connection count and add physical Quest count and duplicate-resolution state;
 hardware identifiers are not included. The proximity helper uses the same default
 resolver, included in the runtime package.
+Proximity apply/restore requires both a successful ADB exit and an explicit
+`Broadcast completed: result=0` receipt. Missing/nonzero results are failures,
+including during watcher cleanup. Status also rejects failed power queries.
 
 Install with `tools/stereo/sync-darktide-vr-dev.ps1 -InitializeInstall
 -UsePrebuiltProductionShader`. Launch with

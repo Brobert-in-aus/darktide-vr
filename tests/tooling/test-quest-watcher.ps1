@@ -32,7 +32,9 @@ if ($args -contains 'broadcast') {
     $global:questFixture.calls.Add("${action}:$($args[1])")
     if (($action -eq 'Enable' -and $args[1] -eq $global:questFixture.failRestore) -or
         ($action -eq 'Disable' -and $global:questFixture.failApply)) { $global:LASTEXITCODE = 1 }
-    'Broadcast completed'
+    if ($action -eq 'Enable' -and $global:questFixture.badRestoreResult) {
+        'Broadcast completed: result=1'
+    } else { 'Broadcast completed: result=0' }
     return
 }
 throw 'Unexpected fixture ADB command'
@@ -54,10 +56,11 @@ throw 'Unexpected fixture ADB command'
     function Start-Sleep { param([int] $Seconds)
         if ($global:questFixture.loopFault) { throw 'fixture loop fault' }
     }
-    foreach ($case in @('normal','disconnected','restore_failure','apply_failure','loop_failure')) {
+    foreach ($case in @('normal','disconnected','restore_failure','restore_result_failure','apply_failure','loop_failure')) {
         $global:questFixture = @{
             polls=0; devices=@('Quest-A'); disconnected=($case -eq 'disconnected')
             failRestore=''; failApply=($case -eq 'apply_failure')
+            badRestoreResult=($case -eq 'restore_result_failure')
             loopFault=($case -eq 'loop_failure')
             calls=(New-Object 'System.Collections.Generic.List[string]')
         }
@@ -68,7 +71,7 @@ throw 'Unexpected fixture ADB command'
         $failed=$false; $failureMessage=''
         try { & $watcher -Until ([datetime]'2000-01-01T00:00:01') -PollSeconds 2 -LogPath $log }
         catch { $failed=$true; $failureMessage=$_.Exception.Message }
-        if ($failed -ne ($case -in @('restore_failure','loop_failure'))) { throw "Unexpected watcher result: $case $failureMessage" }
+        if ($failed -ne ($case -in @('restore_failure','restore_result_failure','loop_failure'))) { throw "Unexpected watcher result: $case $failureMessage" }
         if ($case -eq 'loop_failure' -and $failureMessage -ne 'fixture loop fault') { throw 'Cleanup replaced the original loop fault' }
         foreach ($device in $global:questFixture.devices) {
             if (@($global:questFixture.calls | Where-Object { $_ -eq "Enable:$device" }).Count -ne 1) {
@@ -78,12 +81,13 @@ throw 'Unexpected fixture ADB command'
         $contents = Get-Content -LiteralPath $log -Raw
         if ($case -eq 'restore_failure' -and ($contents -notmatch 'listener=restore_failed device=Quest-B' -or
                 $contents -notmatch 'listener=restored device=Quest-A')) { throw 'Failed cleanup hid another device outcome' }
+        if ($case -eq 'restore_result_failure' -and $contents -notmatch 'listener=restore_failed device=Quest-A') { throw 'Failed broadcast result was reported as restored' }
         if ($case -eq 'disconnected' -and $contents -notmatch 'listener=disconnected') { throw 'Disconnect case did not run' }
         if ($case -eq 'apply_failure' -and $contents -notmatch 'listener=apply_failed') { throw 'Apply failure case did not run' }
         if ($contents -notmatch 'listener=stopped') { throw 'Watcher did not finish cleanup' }
         Remove-Item -LiteralPath $log
     }
-    'quest_watcher=pass normal disconnected ambiguous_apply loop_fault failed_restore isolated_adb'
+    'quest_watcher=pass normal disconnected ambiguous_apply loop_fault failed_restore broadcast_result isolated_adb'
 }
 finally {
     $env:LOCALAPPDATA=$oldLocalAppData

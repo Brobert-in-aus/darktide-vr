@@ -27,6 +27,7 @@ function Invoke-FixtureAdb {
         $script:fixtureModel
     } elseif ($args -contains 'broadcast') {
         $script:broadcasts++
+        if ($script:badBroadcast) { 'Broadcast completed: result=01';return }
         'Broadcast completed: result=0'
     } elseif ($args -contains 'dumpsys') {
         $script:powerQueries++
@@ -52,6 +53,8 @@ foreach ($case in @(
     @{count=1;mode='Ready';reject=$true;fail=$true},
     @{count=1;mode='Ready';reject=$true;device_fail=$true},
     @{count=1;mode='Ready';status='selected';queries=1},
+    @{count=1;mode='Ready';reject=$true;broadcast_bad=$true},
+    @{count=2;mode='Ready';reject=$true;broadcast_bad=$true;same=$true},
     @{count=2;mode='Inventory';smoke=$true;reject=$true}
 )) {
     $script:fixtureCount=$case.count
@@ -61,13 +64,15 @@ foreach ($case in @(
     $script:sameIdentity=$case.ContainsKey('same')
     $script:identityFailure=$case.ContainsKey('identity_fail')
     $script:emptyIdentity=$case.ContainsKey('empty_identity')
+    $script:badBroadcast=$case.ContainsKey('broadcast_bad')
     $script:broadcasts=0; $script:modelQueries=0; $script:powerQueries=0; $script:identityQueries=0
     $Mode=$case.mode; $RunXrSmoke=$case.ContainsKey('smoke'); $SkipProximityApply=$false
     $rejected=$false
     try { . $selection } catch { $rejected=$true }
     if ($rejected -ne $case.ContainsKey('reject')) { throw "Unexpected selection result: $($case | ConvertTo-Json -Compress)" }
     if ($rejected) {
-        if ($script:broadcasts -or $script:powerQueries) { throw 'Rejected target reached device mutation/power query.' }
+        $expectedBroadcasts=if ($script:badBroadcast) { 1 } else { 0 }
+        if ($script:broadcasts -ne $expectedBroadcasts -or $script:powerQueries) { throw 'Rejected target reached unexpected mutation/power query.' }
     } else {
         if ($deviceSelection -ne $case.status -or $script:powerQueries -ne $case.queries) { throw 'Incorrect inventory status.' }
         if ($case.mode -eq 'Inventory' -and ($script:broadcasts -or $proximityApplied)) { throw 'Inventory mutated proximity.' }
@@ -115,4 +120,4 @@ foreach ($identitySpec in @(
         throw 'Rejected identity leaked a selected device.'
     }
 }
-Write-Output 'preflight_device_inventory=pass cases=27 proven_aliases no_ambiguous_selection no_inventory_mutation strict_ready'
+Write-Output 'preflight_device_inventory=pass cases=29 proven_aliases no_ambiguous_selection no_inventory_mutation strict_ready'
