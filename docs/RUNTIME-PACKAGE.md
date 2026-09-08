@@ -7,6 +7,16 @@ candidate, not a worn-accepted release. The manifest records every payload file'
 hash and the source checkout revision/state. Hash checks detect changed files;
 they are not a publisher signature or evidence of gameplay compatibility.
 
+The source revision identifies the **packaging checkout**, not the build source
+of every copied binary. Current manifests explicitly record
+`source_revision_scope=packaging_checkout` and
+`binary_source_provenance=not_recorded`. The packager copies existing native and
+viewer artifacts; it does not rebuild them or establish which source produced
+them. Legacy manifests without these fields have the same limitation. In
+particular, the accepted mixed runtime uses separately based Lua, native and
+viewer versions. Preserve their per-component handoff and hashes; a package's
+checkout revision alone cannot reproduce or certify that accepted combination.
+
 ## Prerequisites
 
 - Windows x64, the Microsoft Visual C++ x64 runtime and Windows Graphics Tools

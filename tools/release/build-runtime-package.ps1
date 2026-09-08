@@ -51,6 +51,7 @@ foreach ($entry in $plan) {
 [ordered]@{
     schema_version=1; platform='windows-x64'; release_state='development_candidate'
     source_revision=$identity.head; source_branch=$identity.branch; source_dirty=$identity.dirty
+    source_revision_scope='packaging_checkout'; binary_source_provenance='not_recorded'
     built_utc=(Get-Date).ToUniversalTime().ToString('o')
     files=@($plan | Select-Object path,bytes,sha256)
 } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $package 'package-manifest.json') -Encoding UTF8
