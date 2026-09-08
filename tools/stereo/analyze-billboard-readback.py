@@ -80,9 +80,16 @@ def analyze(source: Path, output: Path):
         maximum = float(delta.max())
         heat = np.round(np.clip(delta / maximum if maximum else delta, 0, 1) * 255).astype(np.uint8)
         Image.fromarray(heat).save(output / f'{record.stem}-difference.png')
+        percentile = float(np.percentile(delta[changed], 99)) if len(xs) else 0.0
+        detail = np.log1p(delta / percentile * 9) / np.log(10) if percentile else delta
+        Image.fromarray(np.round(np.clip(detail, 0, 1) * 255).astype(np.uint8)).save(
+            output / f'{record.stem}-difference-detail.png')
+        Image.fromarray((changed * 255).astype(np.uint8)).save(output / f'{record.stem}-changed-mask.png')
         report = dict(data, payload_sha256=hashes, changed_pixels=int(changed.sum()),
                       changed_fraction=float(changed.mean()), invalid_pixels=int((~valid).sum()),
                       maximum_channel_delta=maximum,
+                      changed_delta_p99=percentile,
+                      difference_detail_note='Log contrast; white at the 99th percentile of changed-pixel channel deltas. Use numeric receipt for magnitude.',
                       changed_bbox_xyxy=[int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1]
                       if len(xs) else None,
                       preview_note='R11 HDR uses Reinhard plus sRGB for display only; numeric differences use decoded values. RGBA differences include alpha.')

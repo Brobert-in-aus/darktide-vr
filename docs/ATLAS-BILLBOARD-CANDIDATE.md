@@ -5,6 +5,13 @@ have offline stock controls and cylindrical candidates. They are not deployed,
 included in the runtime package, or enabled by a production flag. The smoke
 owner remains unidentified; do not activate all three based on draw counts.
 
+Later 8 September evidence: [passive before/after readback](BILLBOARD-DRAW-READBACK.md)
+now shows `e18a...` and `fe640...` affecting background/floor haze in the
+character-select scene. `c403...` changed no pixels in its earlier sampled draw;
+that does not exclude later draws. The user's specific orientation artifact and
+full numerical equivalence remain unaccepted. No orientation candidate was
+activated for the readback, and the accepted SoloPlay session is restored.
+
 | Display VS | Paired atlas-generation VS | Specific output behavior |
 | --- | --- | --- |
 | `c403cfbf17d9fc49` | `42f73c7d12e99db7` | Authored spin, atlas UVs, world position and fog |

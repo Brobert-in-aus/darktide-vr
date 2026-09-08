@@ -4,6 +4,13 @@ Updated 8 September 2026. This summary supersedes the chronological evidence
 below. Start with the [workday handoff](handoffs/2026-09-08-workday.md) and
 [remaining development](REMAINING-DEVELOPMENT.md).
 
+Latest setup, 8 September afternoon: supplied SoloPlay 2.6.2 is installed with
+a normal Uprising mission preset for the user's return. Locally owned missions
+now use stock online-style VR input/combat rules; physical melee stays paused.
+See [SoloPlay setup](SOLOPLAY-SETUP.md). Accepted native/weapon presentation is
+restored after a successful passive billboard readback; current PID is 1976,
+with fresh Psykhanium stereo. No solo mission or worn mission acceptance yet.
+
 Latest follow-ups: after pre-launch TODO work, fix billboarding next. The user
 also reports item-pickup popups shrinking differently between eyes near screen
 edges; fix that and audit similar prompt/marker behavior. This is active visual

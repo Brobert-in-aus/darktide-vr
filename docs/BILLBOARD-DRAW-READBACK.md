@@ -61,6 +61,35 @@ checks known normal/subnormal values, all formats, row padding and short-file
 rejection. The full integrated Release suite passes 150/150 in 64.00 s; pinned
 LuaJIT compiles all 50 chunks.
 
-This does not yet identify the live smoke owner or accept an orientation fix.
-No readback candidate is deployed. The SoloPlay/accepted-preview session remains
-running while the focused diagnostic build is prepared.
+## Passive character-select result
+
+Focused `5248005` (PR #47) completed a short live capture on PID 114396 after
+Ready. All three pairs exported, with zero nonfinite decoded pixels. The copies
+are 1280x720 R11G11B10_FLOAT from the flat character-select render target, not
+separate stereo eyes. No new shader replacement or synthetic tracking was used.
+
+| Display VS | Source frame | Changed pixels | Fraction | Maximum channel delta |
+| --- | ---: | ---: | ---: | ---: |
+| `c403cfbf17d9fc49` | 4089 | 0 | 0% | 0 |
+| `e18a274cd89282e8` | 4113 | 179,986 | 19.53% | 0.03125 |
+| `fe64037664924d52` | 4113 | 74,388 | 8.07% | 0.015625 |
+
+The two active draw regions cover background/floor haze behind the selected
+character. The image differences include the underlying scene's color and
+lighting through the effect. They establish affected pixels for these draws;
+they do not establish the user's specific roll/pitch artifact or prove that
+the first family's later draws are invisible. The first family was sampled
+24 source frames earlier. No orientation replacement was enabled.
+
+Preserved raw bytes and completed metadata:
+`artifacts/unattended/billboard-readback-raw-20260908/`. Numeric receipts, PNGs,
+changed masks and explicitly labelled logarithmic difference previews:
+`artifacts/unattended/billboard-readback-detail-20260908/`.
+The higher-contrast preview uses the changed-pixel 99th percentile as white;
+the ordinary difference image and numeric deltas remain available.
+
+All nine temporary deployment entries were restored after Ready, recorded in
+`artifacts/unattended/billboard-readback-restoration-receipt-20260908.json`.
+SoloPlay/accepted preview is running again on PID 1976 with fresh Psykhanium
+stereo. Worn orientation acceptance and full reconstructed-shader numerical
+equivalence remain open.

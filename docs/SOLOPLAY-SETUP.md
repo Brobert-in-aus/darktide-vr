@@ -53,5 +53,8 @@ official-server acceptance is claimed.
 Integrated checkpoint `9b7736a`, PR #43; focused accepted-preview counterpart
 `0ff82f7`, PR #44. The focused source compiles 45 chunks; the installed unused
 gun-alignment module accounts for its extra chunk. Native DLL hashes still
-match the accepted preview deployment. Current session: PID 144416, launcher
-session 7180, `artifacts/unattended/soloplay-online-rules-session-20260908.log`.
+match the accepted preview deployment. Initial session was PID 144416, launcher
+7180. After passive billboard diagnostics, the restored current session is
+PID 1976, launcher 15586, started at 13:44:30 Brisbane:
+`artifacts/unattended/soloplay-post-readback-session-20260908.log`. Fresh
+Psykhanium entry, online-rule initialization and stereo pass again.
