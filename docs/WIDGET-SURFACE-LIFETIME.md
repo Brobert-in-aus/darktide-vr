@@ -73,6 +73,9 @@ owner, detached geometry and image-lifetime controller. It requires supplied
 complete bounds and consistent explicit scale/inverse scale, rejects oversized
 captures, and preserves both positive and negative first-eye admission decisions.
 Bounds are copied into image metadata rather than shared with next-frame layout.
+The caller must supply the logical widget `pivot` as well as complete bounds.
+That pivot and the exact integer crop width/height are copied with the image;
+displaying a prior capture must not borrow the next request's pivot or scale.
 Supplied logical bounds are rounded outward in capture pixels before capacity
 checks. The translation is therefore a whole number of pixels at the supplied
 scale, preserving stock pixel-snap phase and covering fractional edges. The
@@ -82,6 +85,22 @@ precision are covered offline; original caller bounds remain unchanged.
 Target changes, hidden state, clock rollback and missing submission hide stale
 content. Draw errors propagate without a second draw; materials are destroyed
 before the renderer, even when material cleanup reports an error.
+
+`darktidevr_widget_quad.lua` now derives a display descriptor from a visible
+image's saved bounds, pivot, scale and pixel crop. It places that crop on the
+existing shared marker plane using one head-center/anchor pose. Its unit axes,
+world dimensions and cropped UVs follow the accepted HUD texture convention:
+reverse facing/X and U together, and invert render-target V. Four capture scales
+and four center/edge/pole anchors verify all texture corners against independent
+plane points. A capture-session fixture changes the next-frame pivot and verifies
+the visible image still uses its own old pivot and crop.
+
+This descriptor is unloaded and allocates no GUI/material. The caller must use
+`Surface:visible()` evidence, latch the shared pose through both eyes, bind the
+matching display target, and deliberately choose draw layer and occlusion policy.
+The mapping has offline geometry coverage, not native partial-texture or worn
+acceptance. Seven focused geometry/capture CTests pass in 0.42 seconds; the pinned
+LuaJIT gate compiles 62 chunks.
 
 This coordinator is still offline and unloaded. The caller must provide the
 actual full-widget raster bounds and preserve source visibility, complete

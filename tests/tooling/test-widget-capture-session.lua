@@ -32,7 +32,7 @@ local function setup()
     local pass={pass_type='texture',value_id='image',data=original}
     local widgets={{passes={pass},style={},content={image='material'}}}
     local draws=0
-    local request={bounds={x=1700,y=400,width=400,height=150},scale=1,dt=0.01,
+    local request={bounds={x=1700,y=400,width=400,height=150},pivot={x=1700,y=400},scale=1,dt=0.01,
         settings={scale=1,inverse_scale=1},widgets=widgets,
         scenegraph={pivot={parent='root',size={400,150},world_position={1700,400,100}}},
         draw=function(renderer)
@@ -50,8 +50,15 @@ assert(not s:capture(1,{},r))
 s:observe_render({});assert(not s:visible(1,identity))
 s:observe_render(b.world)
 r.bounds.width=420
+r.pivot.x=1800
 assert(select(2,s:capture(2,identity,r))=='ready')
 assert(s:visible(2,identity).metadata.bounds.width==400 and draws()==2 and b.copies==1)
+assert(s:visible(2,identity).metadata.pivot.x==1700,'display image borrowed next-frame pivot')
+assert(s:visible(2,identity).metadata.pixel_width==400 and s:visible(2,identity).metadata.pixel_height==150)
+local quad=assert(module('widget_quad').create(module('marker_plane'),s:visible(2,identity),
+    {x=0,y=2,z=0},{x=0,y=0,z=0},{x=1,y=0,z=0},{x=0,y=0,z=1},0.001))
+assert(math.abs(quad.position.x-0.8)<1e-9 and math.abs(quad.position.z)<1e-9,
+    'display quad must use the completed image pivot and crop, not the new request')
 -- One rejected first-eye decision cannot become a second-eye capture.
 r.bounds.width=700
 assert(select(2,s:capture(3,identity,r))=='invalid_bounds')
@@ -76,6 +83,10 @@ r.settings.scale=2
 assert(select(2,s:capture(1,identity,r))=='inconsistent_scale' and b.queues==0)
 r.settings.scale=1;r.widgets[1].passes[1].retained_mode=true
 assert(select(2,s:capture(2,identity,r))=='retained_mode' and b.queues==0)
+s:destroy()
+
+s,b,r=setup();r.pivot=nil
+assert(select(2,s:capture(1,identity,r))=='invalid_pivot' and b.queues==0)
 s:destroy()
 
 s,b,r,draws,original,pass=setup()

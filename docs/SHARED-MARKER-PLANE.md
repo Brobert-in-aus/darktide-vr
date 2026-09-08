@@ -47,6 +47,14 @@ the new test. No headset experiment was used.
 
 ## Drawing-path investigation
 
+9 September display descriptor: `darktidevr_widget_quad.lua` connects a visible
+capture's own crop/pivot metadata to the shared plane. It emits world geometry
+and cropped texture coordinates using the accepted HUD's readable front-face
+convention, with no per-eye resizing. Capture sessions now snapshot the logical
+pivot and integer pixel extent alongside bounds. Seven focused tests pass and
+62 Lua chunks compile. This is still unloaded: complete bounds, GUI/material
+binding, layer/occlusion policy and worn visual checks remain required.
+
 Stock `UIHud` creates its renderer in `level_world`. Stock `UIRenderer` mixes
 `Gui2.bitmap`, `Gui2.slug_text` and `Gui2.rect` with `Gui.slug_icon` and transformed
 `_3d` calls. Material flags, render passes and retained identifiers must remain

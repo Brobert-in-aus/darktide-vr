@@ -44,6 +44,10 @@ function Session:capture(t,identity,request)
         return reject('invalid_input')
     end
     local measured=request.bounds
+    local pivot=request.pivot
+    if type(pivot)~='table' or not finite(pivot.x) or not finite(pivot.y) then
+        return reject('invalid_pivot')
+    end
     if not finite(measured.x) or not finite(measured.y) or not finite(measured.width) or
         not finite(measured.height) or measured.width<=0 or measured.height<=0 then
         return reject('invalid_bounds')
@@ -74,6 +78,7 @@ function Session:capture(t,identity,request)
     local graph,detail=self.Snapshot.create(request.scenegraph,request.scale,-b.x,-b.y,self.get_size)
     if not graph then return reject(detail) end
     local metadata={bounds={x=b.x,y=b.y,width=b.width,height=b.height},scale=request.scale,
+        pivot={x=pivot.x,y=pivot.y},pixel_width=pixel_width,pixel_height=pixel_height,
         capture_width=self.backend.width,capture_height=self.backend.height}
     local ok,handled,status=pcall(self.surface.capture,self.surface,t,identity,metadata,function()
         self.backend:pass(graph,request.input_service,request.dt,request.settings,function(renderer,settings)
