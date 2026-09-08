@@ -334,9 +334,13 @@ function MenuInput.install(mod, presentation)
     end
     mod:hook("UIManager", "input_service", route_service)
     -- Some mission-board, live-event and constant-element controls fetch View
-    -- input directly. Cover them without touching Ingame, chat or ImGui services.
+    -- input directly. Ingame is delegated only to an explicitly scoped HUD
+    -- adapter; chat and ImGui services retain their stock input.
     mod:hook("InputManager", "get_input_service", function(func, self, name, ...)
         local source = func(self, name, ...)
+        if presentation.gameplay_ui then
+            source=presentation.gameplay_ui.route_ingame_input(source,name)
+        end
         if name ~= "View" or not Managers or not Managers.ui then return source end
         local proxy = route_service(function()
             return source, source:null_service(), false

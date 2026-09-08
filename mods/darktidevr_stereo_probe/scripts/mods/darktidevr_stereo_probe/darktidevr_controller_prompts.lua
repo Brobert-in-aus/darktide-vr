@@ -11,6 +11,7 @@ local aliases = {
     weapon_inspect="inspect",menu="menu",
     wield_1=false,wield_2=false,wield_3="pocketable",wield_3_gamepad="cycle_pocketables",
     wield_4="stim",wield_5="device",interact_inspect="inspect_target",com_wheel=false,
+    tactical_overlay="tactical_overlay",
 }
 local scopes = {
     {"HudElementPlayerWeapon","_update_input",true},

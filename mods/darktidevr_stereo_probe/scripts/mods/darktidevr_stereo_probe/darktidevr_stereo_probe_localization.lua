@@ -52,6 +52,7 @@ return {
     vr_action_device = {en = "Equip scanner / mission device"},
     vr_action_cycle_pocketables = {en = "Cycle carried item / stim"},
     vr_action_inspect_target = {en = "Inspect operative / pet companion"},
+    vr_action_tactical_overlay = {en = "Hold tactical overlay"},
     vr_hub_bind_right_trigger = {en = "Hub: right trigger"},
     vr_hub_bind_left_trigger = {en = "Hub: left trigger"},
     vr_hub_bind_right_grip = {en = "Hub: right grip"},

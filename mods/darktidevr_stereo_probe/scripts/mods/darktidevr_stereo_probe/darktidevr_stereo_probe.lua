@@ -5551,7 +5551,7 @@ function presentation.inject_gameplay_input(self, main_t, input)
         presentation.two_hand.finish(presentation.controller_bindings.support_grip)
     end
     if presentation.gameplay_ui then
-        presentation.gameplay_ui.sample(controller_observation.gameplay_input_active, pressed)
+        presentation.gameplay_ui.sample(controller_observation.gameplay_input_active, pressed, held)
     end
     controller_observation.gameplay_input_last_sequence =
         tonumber(controller_observation.gameplay_sequence[0])

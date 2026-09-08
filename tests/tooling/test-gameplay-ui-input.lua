@@ -149,3 +149,81 @@ unit=old_owner
 hook(stock,hud,12,{}, {},source)
 assert(not seen[#seen],'A cached HUD revived a cancelled request when the old owner returned')
 print('ui_request_ownership=pass replacement=cancelled retiring_lookup=cancelled fresh_request=accepted')
+
+local tactical=assert(hooks['HudElementTacticalOverlay.update'])
+assert(not hooks['InputManager.get_input_service'], 'Tactical input duplicated the central service hook')
+local keyboard_overlay=false
+local overlay_source={get=function(_,name)
+    return name=='tactical_overlay_hold' and keyboard_overlay or (name=='unrelated' and 13 or false)
+end,is_null_service=function()return false end,null_service=function()return null end}
+local retained_proxy
+local function overlay_stock(self)
+    local routed=api.route_ingame_input(overlay_source,'Ingame')
+    retained_proxy=routed
+    assert(routed:get('unrelated')==13 and routed:null_service()==null and not routed:is_null_service())
+    assert(api.route_ingame_input(overlay_source,'View')==overlay_source)
+    assert(api.route_ingame_input(null,'Ingame')==null)
+    return routed:get('tactical_overlay_hold'),nil,27
+end
+api.sample(true,0,2097152)
+assert(api.route_ingame_input(overlay_source,'Ingame')==overlay_source, 'Hold leaked outside HUD update')
+local held,empty,value=tactical(overlay_stock,hud)
+assert(held and empty==nil and value==27)
+assert(not retained_proxy:get('tactical_overlay_hold'), 'Retained proxy injected outside its scope')
+assert(not tactical(overlay_stock,remote), 'Another player HUD received hold')
+tactical(function(self)
+    assert(api.route_ingame_input(overlay_source,'Ingame'):get('tactical_overlay_hold'))
+    assert(not tactical(overlay_stock,remote), 'Nested remote HUD inherited local scope')
+    assert(api.route_ingame_input(overlay_source,'Ingame'):get('tactical_overlay_hold'))
+end,hud)
+assert(not pcall(tactical,function()error('overlay update failed')end,hud))
+assert(api.route_ingame_input(overlay_source,'Ingame')==overlay_source, 'Failed update leaked scope')
+api.sample(true,0,0);assert(not tactical(overlay_stock,hud), 'Released overlay remained held')
+api.sample(true,1024,2097152);assert(not tactical(overlay_stock,hud), 'Menu did not take precedence')
+api.sample(false,0,2097152);assert(not tactical(overlay_stock,hud), 'Inactive input remained held')
+keyboard_overlay=true;assert(tactical(overlay_stock,hud), 'Keyboard overlay was suppressed')
+keyboard_overlay=false
+api.sample(true,0,2097152)
+local original_unit=unit;unit={}
+assert(not tactical(overlay_stock,hud), 'Hold crossed player replacement')
+unit=original_unit
+assert(not tactical(overlay_stock,hud), 'Returning player revived old hold')
+api.sample(true,0,2097152);retiring=true
+assert(not tactical(overlay_stock,hud), 'Retiring manager admitted hold')
+retiring=false
+assert(not tactical(overlay_stock,hud), 'Manager recovery revived old hold')
+print('tactical_overlay_input=pass scoped_hold release null owner nested_restore keyboard no_duplicate_hook')
+
+if arg[2] then
+    local path=arg[2]..'/scripts/ui/hud/elements/tactical_overlay/hud_element_tactical_overlay.lua'
+    local file=assert(io.open(path,'r'));local source_text=file:read('*a');file:close()
+    local first=assert(source_text:find('HudElementTacticalOverlay.update =',1,true))
+    local last=assert(source_text:find('\nHudElementTacticalOverlay._update_left_panel_elements =',first,true))
+    local stock_class={super={update=function()end}}
+    local changes={}
+    local blocked_overlay=false
+    null.is_null_service=function()return true end
+    local env=setmetatable({HudElementTacticalOverlay=stock_class,InputDevice={gamepad_active=false},
+        Managers={ui={using_input=function(_,ignore_hud)assert(ignore_hud);return blocked_overlay end},
+            input={get_input_service=function(_,name)return api.route_ingame_input(overlay_source,name)end},
+            event={trigger=function(_,name,active)assert(name=='event_set_tactical_overlay_state');changes[#changes+1]=active end},
+            telemetry_reporters={reporter=function()return {register_event=function()end}end}}}, {__index=_G})
+    setfenv(assert(loadstring(source_text:sub(first,last-1),'@'..path)),env)()
+    local actual={_parent=hud._parent,_active=false,_gamepad_active=false,_game_mode_name='hub'}
+    for _,name in ipairs({'_update_contracts','_update_achievements','_update_live_event',
+        '_update_right_panel_widgets','_sync_mission_info','_sync_circumstance_info',
+        '_update_left_panel_elements','_start_animation','_update_materials_collected',
+        '_update_right_timer_text','_buffs_navigation','_update_visibility'}) do actual[name]=function()end end
+    api.sample(true,0,2097152)
+    tactical(stock_class.update,actual,0.016,1,{}, {},overlay_source)
+    assert(actual._active and #changes==1 and changes[1]==true)
+    tactical(stock_class.update,actual,0.016,2,{}, {},overlay_source)
+    assert(actual._active and #changes==1, 'Holding repeated the stock activation')
+    api.sample(true,0,0)
+    tactical(stock_class.update,actual,0.016,3,{}, {},overlay_source)
+    assert(not actual._active and #changes==2 and changes[2]==false)
+    api.sample(true,0,2097152);blocked_overlay=true
+    tactical(stock_class.update,actual,0.016,4,{}, {},overlay_source)
+    assert(not actual._active and #changes==2, 'Stock menu gate was bypassed')
+    print('tactical_overlay_stock=pass actual_update hold release no_repeated_activation menu_gate')
+end

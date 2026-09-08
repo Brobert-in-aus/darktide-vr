@@ -43,6 +43,7 @@ Bindings.actions = {
     {id="device", mask=262144, pressed={"wield_5"}},
     {id="cycle_pocketables", mask=524288, pressed={"wield_3_gamepad"}},
     {id="inspect_target", mask=1048576, pressed={"interact_inspect_pressed"}},
+    {id="tactical_overlay", mask=2097152},
 }
 
 local function atomic(action)

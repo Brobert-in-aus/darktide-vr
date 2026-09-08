@@ -237,6 +237,14 @@ hotkey(function(self)
     assert(hook(function() return null,null,true end,self)==null)
 end,handler)
 assert(hook(function() return source,null,true end,handler)==source,'Hotkey scope leaked')
+local overlay=gameplay_hooks['HudElementTacticalOverlay.update']
+local local_hud={_parent={player_unit=function()return gameplay_owner end}}
+presentation.gameplay_ui.sample(true,0,2097152)
+overlay(function()
+    local routed=direct_hook(function()return source end,{},'Ingame')
+    assert(routed:get('tactical_overlay_hold'), 'Central InputManager route missed tactical HUD hold')
+end,local_hud)
+assert(direct_hook(function()return source end,{},'Ingame')==source, 'Tactical route leaked outside HUD')
 presentation.gameplay_ui=nil
 print('menu_input: coordinate mapping, button lifecycle, modal handoff, tracking loss, filters and null services passed')
 local view = {_widgets_by_name={play_button={content={visible=true,hotspot={disabled=false}}}}}

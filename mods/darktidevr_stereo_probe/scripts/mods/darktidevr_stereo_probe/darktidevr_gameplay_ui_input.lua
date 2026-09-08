@@ -6,6 +6,7 @@ function Input.install(mod, local_player_unit)
     local state = {sample=0}
     local api = {}
     local inventory_owner
+    local tactical_owner
     local tag_frames = setmetatable({}, {__mode="k"})
 
     local function current_owner()
@@ -19,13 +20,49 @@ function Input.install(mod, local_player_unit)
         return false
     end
 
-    function api.sample(active, pressed)
+    function api.sample(active, pressed, held)
         state.sample = state.sample + 1
         state.active = active == true
         state.menu = state.active and bit.band(pressed or 0,1024) ~= 0
         state.inventory = state.active and not state.menu and bit.band(pressed or 0,32768) ~= 0
         state.tag = state.active and not state.menu and not state.inventory and bit.band(pressed or 0,256) ~= 0
-        state.owner = (state.menu or state.inventory or state.tag) and current_owner() or nil
+        state.tactical = state.active and not state.menu and not state.inventory and bit.band(held or 0,2097152) ~= 0
+        state.owner = (state.menu or state.inventory or state.tag or state.tactical) and current_owner() or nil
+    end
+
+    local function local_tactical_owner(self)
+        return request_owner_current() and self._parent and self._parent:player_unit()==state.owner
+    end
+    -- Stock re-fetches Ingame input inside update. Scope the existing central
+    -- input-manager route; do not install a competing get_input_service hook.
+    mod:hook('HudElementTacticalOverlay','update',function(func,self,...)
+        local ok,local_hud=false,false
+        if state.active and state.tactical then ok,local_hud=pcall(local_tactical_owner,self) end
+        if not tactical_owner and (not ok or not local_hud) then return func(self,...) end
+        local previous=tactical_owner
+        tactical_owner=ok and local_hud and self or nil
+        local function pack(...) return {n=select('#',...),...} end
+        local result=pack(pcall(func,self,...))
+        tactical_owner=previous
+        if not result[1] then error(result[2],0) end
+        return unpack(result,2,result.n)
+    end)
+    function api.route_ingame_input(source,name)
+        if name~='Ingame' or not tactical_owner or not state.active or not state.tactical or
+            not request_owner_current() or not source or
+            (source.is_null_service and source:is_null_service()) or
+            (source.null_service and source==source:null_service()) then return source end
+        local scope_owner=tactical_owner
+        return setmetatable({get=function(_,action,...)
+            local value=source:get(action,...)
+            local inject=action=='tactical_overlay_hold' and tactical_owner==scope_owner and
+                state.active and state.tactical and request_owner_current()
+            return inject and true or value
+        end},{__index=function(_,key)
+            local value=source[key]
+            if type(value)=='function' then return function(_,...)return value(source,...)end end
+            return value
+        end})
     end
 
     -- Feed the stock hotkey owner, preserving its mode whitelist, transitions,

@@ -356,3 +356,22 @@ migrated_settings.vr_action_bind_jump=0
 migrated_mod.on_setting_changed('vr_action_bind_jump')
 assert(#after.controls_for_action('jump')==0,'Unbound action fell back to a legacy binding')
 print('action_binding_menu=pass migration aliases shared_control remap_neutral hub no_repeat')
+
+-- A new HUD action has no default assignment and uses ordinary held/rearm
+-- semantics when deliberately bound. Existing mappings remain independent.
+local overlay_settings={}
+local overlay_mod={get=function(_,key)return overlay_settings[key]end}
+local overlay_mapper=Bindings.install(overlay_mod)
+assert(#overlay_mapper.controls_for_action('tactical_overlay')==0)
+overlay_settings.vr_action_bind_tactical_overlay=256
+overlay_mod.on_setting_changed('vr_action_bind_tactical_overlay')
+overlay_mapper.sample(true,256)
+overlay_mapper.sample(true,0)
+local overlay_pressed,overlay_held=overlay_mapper.sample(true,256)
+assert(bit.band(overlay_pressed,2097152)~=0 and bit.band(overlay_held,2097152)~=0)
+overlay_pressed,overlay_held=overlay_mapper.sample(true,256)
+assert(overlay_pressed==0 and bit.band(overlay_held,2097152)~=0)
+overlay_mapper.sample(false,256)
+overlay_pressed,overlay_held=overlay_mapper.sample(true,256)
+assert(overlay_pressed==0 and overlay_held==0, 'Held overlay reopened after routing loss')
+print('tactical_overlay_binding=pass default_unassigned explicit_hold neutral_rearm')

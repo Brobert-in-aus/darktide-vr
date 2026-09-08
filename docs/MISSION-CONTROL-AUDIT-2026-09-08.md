@@ -101,6 +101,29 @@ state without affecting keyboard/mouse ownership, provide private navigation
 vectors, consume all stick actions and preserve stock action execution. Three
 focused CTests pass and the pinned LuaJIT gate compiles 61 chunks.
 
+## Tactical overlay hold source candidate, 9 September
+
+The action catalog now has **Hold tactical overlay**, unassigned by default.
+It is routed to stock `tactical_overlay_hold` only while the current human HUD's
+`HudElementTacticalOverlay.update` executes. That method fetches Ingame input
+again internally, so routing uses the existing central InputManager hook rather
+than adding a competing hook or injecting a gameplay-cache alias stock never
+reads. Stock owns activation, animation, menu blocking and release.
+
+The hold is cancelled with gameplay routing/tracking loss and player replacement;
+the binding mapper requires neutral before reactivation. Menu/inventory requests
+take precedence. Keyboard input remains available, null services are preserved,
+nested remote HUD updates cannot borrow the local scope, and exceptions restore
+the previous scope. A retained proxy stops injecting outside the owning update.
+The action's prompt alias and option label are included. No saved setting changed.
+
+Seven focused checks pass, all 61 Lua chunks compile, and an optional cached-source
+fixture executes the actual stock update for hold, release, repeated frames and
+menu blocking. This source change is **not deployed**. Worn readability, complete
+overlay navigation/scrolling and interaction with its own input-taking panels
+remain unverified; this supplies hold access, not the entire overlay interaction
+route. Communication-wheel and voice/chat access remain separate work.
+
 ## Historical 8 September audit
 
 This is the **earlier pre-preview-relaunch binding snapshot**, not the final
