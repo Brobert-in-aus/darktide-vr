@@ -33,6 +33,16 @@ or permission to overwrite the user's choice. Stock action precedence and
 equipped-item transitions still need verification. Communication-wheel,
 tactical-overlay and voice/chat controller-route gaps remain as below.
 
+Further offline evidence executes the actual stock parser `_evaluate_input`
+with real mapper output. Both requests are true, and reversing their order in
+the parser's input array reverses which raw request wins. The common wield list
+is populated from `pairs(slot_configuration)`, so there is no documented explicit
+device-over-cycle priority to rely on. This is not an equipment-aware fallback:
+selection occurs before slot eligibility. Separate physical assignments remove
+this raw-input ambiguity in the fixture, but no replacement layout is imposed.
+The optional `test-wield-overlap-stock-contract.lua` passes with both integrated
+and accepted focused mappers. Full action-queue/weapon execution remains untested.
+
 The old recommendations to bind unused stick directions and move ability onto
 one of them no longer apply: both directions and left grip are already assigned.
 Normalized diagnostic extracts stay under ignored `artifacts/unattended/`;
