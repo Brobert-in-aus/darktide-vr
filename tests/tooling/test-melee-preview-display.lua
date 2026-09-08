@@ -12,7 +12,7 @@ local context_reads=0
 local mod={io_dofile=function() return {context=function()
     context_reads=context_reads+1; return context
 end} end, command=function(_,name,_,fn) commands[name]=fn end,
-    info=function(_,...) logs={...} end, warning=function() end,
+    info=function(_,...) logs={...} end, warning=function() end, echo=function() end,
     hook_safe=function(_,class,method,callback)
         assert(class=='ActionSweep' and method=='start'); start_hook=callback
     end}
@@ -29,6 +29,8 @@ local presentation={mode=1,gameplay_context={ui_blocks_gameplay=function() retur
 local tracking={authoring_enabled=true,right_aim_usable=true}
 local api=Display.install(mod,presentation,tracking)
 api.update(); assert(context_reads==0 and created==0,'Disabled preview acquired game state')
+mod.toggle_melee_preview(); assert(api.enabled,'Keyboard/menu toggle did not enable')
+mod.toggle_melee_preview(); assert(not api.enabled,'Keyboard/menu toggle did not disable')
 commands.dtvr_melee_preview_on(); api.update()
 assert(visible and created==1 and context_reads==1)
 blocked=true; api.update(); assert(not visible and context_reads==1)

@@ -7,6 +7,22 @@ return {
     options = {
         widgets = {
             {
+                setting_id = "melee_preview_toggle",
+                type = "button",
+                button_text = "melee_preview_toggle_button",
+                button_trigger = "pressed",
+                function_name = "toggle_melee_preview",
+            },
+            {
+                setting_id = "melee_preview_keybind",
+                type = "keybind",
+                default_value = {"f6"},
+                keybind_trigger = "pressed",
+                keybind_type = "function_call",
+                keybind_global = true,
+                function_name = "toggle_melee_preview",
+            },
+            {
                 setting_id = "vr_gun_pitch",
                 type = "numeric",
                 default_value = -10,

@@ -90,12 +90,21 @@ function Display.install(mod,presentation,tracking)
             tostring(prior.name),tostring(settings.name),tostring(prior.name==settings.name),
             t-prior.t,tostring(action._is_server==true))
     end)
+    local function set_enabled(enabled)
+        failed=nil; api.enabled=enabled
+        if not enabled then api.destroy() end
+        mod:info('DARKTIDEVR_MELEE preview=%s damage=false obstruction_tested=false',
+            enabled and 'on' or 'off')
+    end
+    mod.toggle_melee_preview=function()
+        set_enabled(not api.enabled)
+        mod:echo(api.enabled and 'Melee swing preview on' or 'Melee swing preview off')
+    end
     mod:command('dtvr_melee_preview_on','Show the first stock light swing direction',function()
-        failed=nil; api.enabled=true
-        mod:info('DARKTIDEVR_MELEE preview=on damage=false obstruction_tested=false')
+        set_enabled(true)
     end)
     mod:command('dtvr_melee_preview_off','Hide the stock swing preview',function()
-        api.enabled=false; api.destroy()
+        set_enabled(false)
     end)
     return api
 end

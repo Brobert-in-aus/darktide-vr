@@ -1,4 +1,9 @@
 return {
+    melee_preview_toggle = {en = "First melee swing preview"},
+    melee_preview_toggle_description = {en = "Show or hide the first light attack's direction while holding your melee weapon idle. Starts off each session. This guide does not guarantee a hit."},
+    melee_preview_toggle_button = {en = "Toggle preview"},
+    melee_preview_keybind = {en = "Toggle melee preview shortcut"},
+    melee_preview_keybind_description = {en = "Toggle the swing guide without opening chat. Default: F6."},
     vr_gun_pitch = {en = "Gun pitch angle (degrees)"},
     vr_gun_pitch_description = {en = "Tilt guns relative to the controller. Negative angles lower the barrel; positive angles raise it. Updates gun, hand and aim together. Does not affect staffs."},
     psykhanium_online_rules = {en = "Online combat rules in Psykhanium"},

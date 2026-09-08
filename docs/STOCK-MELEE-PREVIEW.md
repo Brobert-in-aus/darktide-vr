@@ -1,5 +1,18 @@
 # First stock swing preview
 
+Evening access follow-up: the user entered SoloPlay themselves. Chat instructions
+must use the user's configured chat key, not assume the cached stock Enter
+default. The current installed preview still enables through
+`/dtvr_melee_preview_on`. No preview activation has yet been verified.
+
+An offline follow-up adds a configurable F6 toggle and a "Toggle preview" button
+under Darktide VR options. Both share the existing command state and start off
+each session; all gameplay/visibility guards remain. The display fixture passes,
+including toggle on/off, and all 52 integrated Lua chunks compile. This access
+change is **not deployed**; do not tell the user F6 works in the running mission.
+The mission is left unchanged. The separate invisible Mod Options report is not
+resolved by this shortcut candidate.
+
 8 September 2026: the user paused physical melee until server-side stock melee
 is locked in, and requested a preview based on the tracked hand. This candidate
 is local presentation only. Focused PR #11 at `8efdf66`, based on accepted
