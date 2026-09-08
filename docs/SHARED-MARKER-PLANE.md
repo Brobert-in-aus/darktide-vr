@@ -62,6 +62,14 @@ uses identity world GUIs for debug/zone geometry and provides no `Gui.move`
 example. The existing HUD-panel world bitmap of a render target does not prove
 that all direct widget primitives work unchanged.
 
+There is also concrete prior evidence against a blind GUI swap: the 5 September
+HUD-panel capture `hud-facing-20260905/left.png` showed the fixed textured symbol
+only after reversing the plane basis. Colored rectangles had remained visible
+on the opposite face. The accepted HUD panel reverses U while presenting its
+render-target texture to preserve text reading direction. That workaround cannot
+simply be applied to direct text glyphs and vector icons as one generic GUI pose.
+See the [5 September handoff](handoffs/2026-09-05-development-session.md).
+
 Before integration: validate the complete draw API path and transform scale,
 preserve layers and marker-specific occlusion policy, bound/reuse GUI resources,
 and keep the same pose/geometry through both eye submissions. Preserve shared
