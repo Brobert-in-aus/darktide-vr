@@ -16,6 +16,9 @@ No solo mission or worn mission acceptance yet.
 An [optional precise-wait candidate](XR-PRECISE-PAIR-WAIT.md) now passes its
 offline build/checks. It is undeployed and defaults off; the uninterrupted live
 session still uses the earlier timing-only viewer while awaiting recurrence.
+A separate [producer cadence correction](PRODUCER-FRAME-CADENCE.md) fixes the
+offline-reproduced estimate when the consumer skips source publications. It is
+also undeployed; the earlier sustained slowdown's cause remains unconfirmed.
 
 Latest follow-ups: after pre-launch TODO work, fix billboarding next. The user
 also reports item-pickup popups shrinking differently between eyes near screen

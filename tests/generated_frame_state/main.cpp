@@ -43,20 +43,81 @@ int main() {
     focus.clear_window(); focus.observe(false);
     expect(focus.changes == 1, "Window reset must retain the last observed focus");
     darktidevr::core::GeneratedFrameCadence cadence;
-    cadence.observe_source(100'000'000);
-    cadence.observe_source(132'000'000);
+    cadence.observe_source(100, 1);
+    cadence.observe_source(132, 2);
     cadence.generated(140'000'000,8'000'000);
     expect(!cadence.original_ready(148'000'000) && cadence.original_ready(156'000'000),
            "30-ish Hz source at 120-ish Hz display must space distinct images two slots apart");
     cadence = {};
-    cadence.observe_source(100'000'000);
-    cadence.observe_source(116'000'000);
+    cadence.observe_source(100, 1);
+    cadence.observe_source(116, 2);
     cadence.generated(124'000'000,8'000'000);
     expect(cadence.original_ready(132'000'000), "60-ish Hz source should use adjacent display slots");
-    cadence.observe_source(1'000'000'000);
+    cadence.observe_source(1000, 3);
     cadence.generated(1'008'000'000,11'111'111);
     expect(cadence.source_period == 0 && cadence.original_ready(1'019'111'111),
            "A loading gap must reset cadence and use the current runtime period");
+    // A 60 Hz producer remains 60 Hz when the viewer only ingests every second
+    // or third publication. The old viewer-clock estimate would become 30/20 Hz
+    // and unnecessarily delay originals by two/three display slots.
+    for (const std::uint64_t stride : {1ULL, 2ULL, 3ULL}) {
+      cadence = {};
+      for (std::uint64_t sequence=1; sequence<=180; sequence+=stride)
+        cadence.observe_source(1000 + sequence*1000/60, sequence);
+      cadence.generated(10'000'000'000, 8'333'333);
+      expect(cadence.source_period>16'000'000 && cadence.source_period<17'000'000 &&
+             cadence.original_due==10'008'333'333,
+             "Skipped consumer samples must retain adjacent slots for a 60 Hz producer");
+    }
+    cadence = {};
+    for (std::uint64_t sequence=1; sequence<=90; ++sequence)
+      cadence.observe_source(1000 + sequence*1000/30, sequence);
+    cadence.generated(10'000'000'000, 8'333'333);
+    expect(cadence.source_period>33'000'000 && cadence.source_period<34'000'000 &&
+           cadence.original_due==10'016'666'666,
+           "A genuinely slower source must still use two slots at 120 Hz");
+    cadence = {};
+    cadence.observe_source(1000, 1);
+    cadence.observe_source(1000, 2);
+    cadence.observe_source(1032, 3);
+    expect(cadence.source_period==16'000'000,
+           "Equal coarse ticks must not lose intervening sequence intervals");
+    cadence.observe_source(1032, 3);
+    expect(cadence.source_period==16'000'000, "Duplicate metadata must be idempotent");
+    cadence.observe_source(1048, 1);
+    expect(cadence.source_period==0, "Sequence rollback must reset the estimator");
+    cadence.observe_source(1064, 2);
+    expect(cadence.source_period==16'000'000, "Source restart must establish a fresh rate");
+    cadence.observe_source(1000, 3);
+    expect(cadence.source_period==0, "Clock rollback must reset the estimator");
+    cadence.observe_source(0, 4);
+    expect(cadence.last_source_tick==0 && cadence.last_source_sequence==0,
+           "Missing producer time must not become a cadence anchor");
+    // Approximate the 15.625 ms granularity of a coarse Windows uptime clock.
+    // Quantized producer times must still converge without using viewer time.
+    cadence = {};
+    for (std::uint64_t sequence=1; sequence<=180; ++sequence) {
+      const auto source_us=1'000'000 + sequence*1'000'000/60;
+      cadence.observe_source((source_us/15'625)*15'625/1000, sequence);
+    }
+    cadence.generated(10'000'000'000, 8'333'333);
+    expect(cadence.source_period>14'000'000 && cadence.source_period<20'000'000 &&
+           cadence.original_due==10'008'333'333,
+           "Coarse uptime ticks must converge to the adjacent-slot source cadence");
+    cadence = {};
+    std::uint64_t source_tick=1000;
+    for (std::uint64_t sequence=1; sequence<=32; ++sequence) {
+      source_tick += sequence<=16 ? 16 : 32;
+      cadence.observe_source(source_tick, sequence);
+    }
+    expect(cadence.source_period>31'000'000 && cadence.source_period<=32'000'000,
+           "A genuine source slowdown must remain observable after smoothing");
+    for (std::uint64_t sequence=33; sequence<=48; ++sequence) {
+      source_tick += 16;
+      cadence.observe_source(source_tick, sequence);
+    }
+    expect(cadence.source_period>=16'000'000 && cadence.source_period<17'000'000,
+           "Source cadence must recover when production speeds up again");
     using darktidevr::core::SharedGeneratedFrameState;
     using darktidevr::core::SharedGeneratedFrameStateReader;
     using darktidevr::core::SharedGeneratedFrameStateWriter;

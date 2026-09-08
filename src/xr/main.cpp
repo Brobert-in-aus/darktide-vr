@@ -2223,7 +2223,7 @@ class OpenXrProbe {
             destination->ready=original_metadata.sequence; destination->pose=original_metadata.current_pose;
             destination->poses=*original_ring_poses; destination->generation=original_metadata.gameplay_generation;
             destination->tick=GetTickCount64();
-            generated_cadence.observe_source(frame_state.predictedDisplayTime);
+            generated_cadence.observe_source(original_metadata.tick_ms, original_metadata.sequence);
             ingested_original_ready=original_metadata.sequence;
             original_ring_sequence_for_frame=original_metadata.sequence;
             ingested_original_this_frame=true;
