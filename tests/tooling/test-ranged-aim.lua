@@ -272,9 +272,9 @@ aim.publish_reticle=function(ext,position,rotation)
     assert(ext._first_person_component==shared); reticles=reticles+1
 end
 local smart=modules['scripts/extension_systems/smart_targeting/player_unit_smart_targeting_extension']
-smart.fixed_update({_is_local_unit=true,_first_person_component=shared})
+smart.fixed_update({_unit=player,_is_local_unit=true,_first_person_component=shared})
 assert(reticles==1,'Online reticle did not use the stock simulated origin')
-smart.fixed_update({_is_local_unit=false,_first_person_component=shared})
+smart.fixed_update({_unit=remote,_is_local_unit=false,_first_person_component=shared})
 assert(reticles==1,'Changed remote reticle')
 local stock_publisher=aim.publish_reticle
 aim.presentation.online_reticle={pose=function(ext,t)
@@ -285,7 +285,7 @@ aim.publish_reticle=function(ext,position,rotation)
     assert(position==shared.position and rotation==shared.rotation+7,'gun centre preview was ignored')
     assert(ext._first_person_component==shared)
 end
-smart.fixed_update({_is_local_unit=true,_first_person_component=shared},player,1/60,456,42)
+smart.fixed_update({_unit=player,_is_local_unit=true,_first_person_component=shared},player,1/60,456,42)
 aim.presentation.online_reticle=nil; aim.publish_reticle=stock_publisher
 local native_clears=0
 aim.presentation.publish_gameplay_aim_state=function(active,hit,distance)
@@ -296,7 +296,7 @@ for _,online in ipairs({true,false}) do
     aim.presentation.online_rules.enabled=function() return online end
     -- Missing simulation component online, or unavailable hand aim in the
     -- local pose mode, must invalidate convergence and HUD target caches.
-    smart.fixed_update({_is_local_unit=true})
+    smart.fixed_update({_unit=player,_is_local_unit=true})
     assert(aim.reticle_world_point==nil and aim.reticle_hit_unit==nil and aim.reticle_point_owner==nil)
 end
 assert(native_clears==2)
