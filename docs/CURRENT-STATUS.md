@@ -40,6 +40,12 @@ binding and retains stock voice mode/keyboard input. Four focused checks pass
 in 0.13 seconds and 69 Lua chunks compile. No microphone or installed setting
 changed; live voice acceptance remains open.
 
+The focused accepted-Lua-based communication trial candidate is now PR #129,
+`77b1ef5`, extending focused spectator PR #120. All 64 of its registered Lua
+fixtures pass and 56 source chunks compile. It contains wheel/PTT and required
+stick handling, with no popup/native/two-hand/physical-melee port. It remains
+undeployed; see its `docs/COMMUNICATION-INPUT-FOCUSED-2026-09-09.md` handoff.
+
 Read-only comparison of all 49 tracked Lua/mod files against accepted `3341afb`
 finds no content changes: 17 are byte-identical and 32 differ only by CRLF/LF.
 The accepted viewer hash is unchanged. Raw byte hashes and the explicit line-
