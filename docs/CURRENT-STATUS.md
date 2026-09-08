@@ -8,8 +8,11 @@ Latest setup, 8 September afternoon: supplied SoloPlay 2.6.2 is installed with
 a normal Uprising mission preset for the user's return. Locally owned missions
 now use stock online-style VR input/combat rules; physical melee stays paused.
 See [SoloPlay setup](SOLOPLAY-SETUP.md). Accepted native/weapon presentation is
-restored after a successful passive billboard readback; current PID is 1976,
-with fresh Psykhanium stereo. No solo mission or worn mission acceptance yet.
+restored after a successful passive billboard readback. Current PID is 120404,
+with fresh Psykhanium stereo and a [timing-only viewer](XR-FRAME-STAGE-TIMING.md)
+to investigate a sustained idle delivery decline. SoloPlay/native/Lua/shaders
+are unchanged; fresh delivery is about 53 original + 53 generated pairs/s.
+No solo mission or worn mission acceptance yet.
 
 Latest follow-ups: after pre-launch TODO work, fix billboarding next. The user
 also reports item-pickup popups shrinking differently between eyes near screen

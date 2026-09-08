@@ -58,3 +58,11 @@ match the accepted preview deployment. Initial session was PID 144416, launcher
 PID 1976, launcher 15586, started at 13:44:30 Brisbane:
 `artifacts/unattended/soloplay-post-readback-session-20260908.log`. Fresh
 Psykhanium entry, online-rule initialization and stereo pass again.
+
+Current session after a timing-only viewer update: Darktide PID 120404, launcher
+72645, started 14:48:16 Brisbane. Log:
+`artifacts/unattended/soloplay-frame-stage-session-20260908.log`. Psykhanium
+passes at 04:49:34 UTC; stock rules, rigid hands and fresh stereo pass. Native,
+bootstrap, Lua, SoloPlay settings and shaders remain unchanged. The viewer adds
+stage-duration reporting to investigate a sustained idle slowdown; it does not
+change frame selection or combat. See [viewer timing](XR-FRAME-STAGE-TIMING.md).

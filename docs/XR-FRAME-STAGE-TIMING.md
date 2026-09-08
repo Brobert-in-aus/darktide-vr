@@ -43,7 +43,29 @@ window metadata and independent reset. Build/configure logs are
 Source under `src/core`, `src/bridge` and `src/xr` was unchanged from accepted
 `23345e5` before this timing patch. No unrelated viewer change is needed.
 
-Deployment and live trace are pending. Keep SoloPlay, native capture, bootstrap,
-Lua, shaders and accepted weapon presentation intact. Before replacing the
-viewer: close the game gracefully, wait for launcher cleanup, run Ready, and
-save a one-file deployment transaction for the viewer executable.
+## Live timing deployment
+
+At 14:48 Brisbane, after graceful closure of PID 1976 and successful Ready,
+the viewer alone was replaced transactionally. Receipt:
+`artifacts/unattended/xr-frame-stage-deployment-20260908.json`; backup manifest:
+`xr-frame-stage-viewer-backup-20260908/deployment-3e28de8239de4c0daebc5efb96969dfc/manifest.json`
+under the same directory. Recovery root is `build/windows-vs2022`, not the game
+installation. An initial broader-root request was rejected before writing
+because its backup would have been inside that root; the narrower build root
+correctly places the saved backup outside the deployment root.
+
+New Darktide PID 120404, viewer PID 76636, launcher session 72645. Log:
+`artifacts/unattended/soloplay-frame-stage-session-20260908.log`. Game started
+14:48:16 Brisbane; launcher deadline is approximately 22:48 Brisbane. Psykhanium
+passes at 04:49:34 UTC, then stock online-rule and rigid-hand readiness. Installed
+46 Lua chunks compile and native/bootstrap hashes match the accepted deployment.
+SoloPlay settings, Lua and shaders are unchanged.
+
+At about 1,810 shared-ready frames the viewer delivers 53.48 original plus
+53.48 generated pairs/s with zero interval fallback/reuse/pose mismatch. A nearby
+120-loop timing window reports about 9.38 ms active loop, 5.74 ms source wait,
+0.026 ms OpenXR frame wait, 3.20 ms GPU-fence wait and an 8.333 ms latest display
+period. No invalid timing samples. Startup/menu windows are separate conditions.
+This is a fresh-session baseline; restarting improved delivery, but the cause
+of the earlier sustained decline remains undiagnosed. Continue observing for
+recurrence rather than treating this restart or instrumentation as a fix.
