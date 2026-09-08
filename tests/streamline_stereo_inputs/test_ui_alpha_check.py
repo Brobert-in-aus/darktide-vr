@@ -14,6 +14,48 @@ spec.loader.exec_module(module)
 
 
 class AlphaCheck(unittest.TestCase):
+    def test_native_proof_requires_every_role_and_rgba_byte(self):
+        image = np.arange(16, dtype=np.uint8).reshape(2, 2, 4)
+        roles = [f"{eye}-{role}" for eye in ("left", "right") for role in ("scene", "final", "ui")]
+        inputs = {role: image.copy() for role in roles}
+        # Independent fixed native fixture checksum, including alpha.
+        self.assertEqual(module.pixel_hash(image, 4), 8972538887847352181)
+        lines = ["UI_READBACK_MATCH pose=42 owned_ui=1",
+                 "UI_READBACK phase=staged result=0x00000000 image_checksum=rgba_fnv1a64",
+                 "UI_READBACK phase=exported result=0x00000000 image_checksum=rgba_fnv1a64"]
+        lines += [f"UI_READBACK_IMAGE phase=exported role={role} width=2 height=2 rgba_hash=8972538887847352181" for role in roles]
+        with tempfile.TemporaryDirectory() as directory:
+            stem = Path(directory) / "capture"
+            log = stem.with_suffix(".log")
+            log.write_text("\n".join(lines))
+            self.assertEqual(module.verify_native_capture(stem, inputs)["pose"], "42")
+            for role in roles:
+                for channel in (0, 3):
+                    inputs[role][0, 0, channel] ^= 1
+                    with self.assertRaisesRegex(ValueError, "RGBA content mismatch"):
+                        module.verify_native_capture(stem, inputs)
+                    inputs[role][0, 0, channel] ^= 1
+            malformed = [lines[:-1], lines + [lines[-1]],
+                         [line.replace("rgba_fnv1a64", "legacy") for line in lines],
+                         [line.replace("pose=42", "pose=0") for line in lines],
+                         [line.replace("width=2", "width=3") for line in lines],
+                         [line.replace("rgba_hash=8972538887847352181", "rgba_hash=-1") for line in lines]]
+            for broken in malformed:
+                log.write_text("\n".join(broken))
+                with self.assertRaises(ValueError):
+                    module.verify_native_capture(stem, inputs)
+
+    def test_cli_rejects_unverified_native_input_before_output(self):
+        image = np.zeros((2, 3, 4), np.uint8)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "report"
+            with mock.patch.object(module, "read_rgba", return_value=image), \
+                    mock.patch.object(module, "verify_native_capture", side_effect=ValueError("missing proof")), \
+                    mock.patch("sys.argv", ["alpha", "stem", "--verify-native", "--output", str(output)]):
+                with self.assertRaisesRegex(ValueError, "missing proof"):
+                    module.main()
+            self.assertFalse(output.exists())
+
     def test_cli_checks_both_eyes_before_creating_output(self):
         image = np.zeros((2, 3, 4), np.uint8)
         with tempfile.TemporaryDirectory() as directory:

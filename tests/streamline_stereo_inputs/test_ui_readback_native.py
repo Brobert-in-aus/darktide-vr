@@ -16,6 +16,11 @@ with tempfile.TemporaryDirectory(prefix="darktidevr-ui-roundtrip-") as directory
     assert len(logs) == 1
     stem = logs[0].with_suffix("")
     owner = module.records(logs[0], "UI_READBACK_MATCH")[0]
+    all_inputs = {f"{eye}-{role}": module.ui_alpha.read_rgba(f"{stem}-{eye}-{role}.bmp")
+                  for eye in ("left", "right") for role in ("scene", "final", "ui")}
+    proof = module.ui_alpha.verify_native_capture(stem, all_inputs)
+    assert proof["pose"] == owner["pose"]
+    assert proof["content_evidence"] == "six_native_rgba_checksums"
     # Generated output metadata is a fixture; this test exercises native UI
     # export -> BMP decoding -> RGBA checksum, not NGX or live frame matching.
     output = Path(directory) / "generated.bmp"

@@ -179,3 +179,20 @@ Seven Python fixtures cover disjoint neighborhoods, clipped borders, empty
 regions, invalid radii, known residual locations and malformed second-eye
 input. Four focused CTests (`dlss_ui_|ui_readback_native_roundtrip`) pass in
 1.40 seconds. No live capture or installed runtime changed.
+
+### Optional native proof for composition inputs
+
+Use `--verify-native` with the composition checker to require one positive-pose
+owned capture, successful staged/exported records using `rgba_fnv1a64`, and
+exactly one completed checksum/extent record for each of the six eye/role
+images. All RGBA bytes must match before any report output is created. Only
+this successful path sets `capture_identity_verified=true`; visual acceptance
+remains unverified. The default retains explicit unverified analysis for older
+captures. This proves the supplied images match their export records, not that
+they represent a particular runtime setting or the user's reported visual state.
+
+The original pose-8589 log predates these checksums and cannot pass this mode.
+Nine Python fixtures include corruption of RGB and alpha in every role, missing/
+duplicate records, invalid metadata and rejection before output creation. The
+native roundtrip also verifies all six real exported images. Four focused CTests
+pass in 1.49 seconds; no runtime rebuild or deployment was needed.

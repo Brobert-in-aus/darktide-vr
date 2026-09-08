@@ -49,6 +49,44 @@ def coverage_regions(alpha, radius):
             "transparent_near_ui": nearby & ~covered, "transparent_far_ui": ~nearby}
 
 
+def pixel_hash(image, channels):
+    """Native FNV-1a order: top-to-bottom RGB(A), excluding row padding."""
+    value = 14695981039346656037
+    for byte in image[:, :, :channels].tobytes():
+        value = ((value ^ byte) * 1099511628211) & 0xffffffffffffffff
+    return value
+
+
+def verify_native_capture(stem, images):
+    """Require complete native metadata and content hashes for all six inputs."""
+    records = {}
+    for line in Path(f"{stem}.log").read_text().splitlines():
+        fields = line.split()
+        if fields and fields[0] in ("UI_READBACK_MATCH", "UI_READBACK", "UI_READBACK_IMAGE"):
+            records.setdefault(fields[0], []).append(dict(field.split("=", 1) for field in fields[1:]))
+    owners = records.get("UI_READBACK_MATCH", [])
+    if len(owners) != 1 or owners[0].get("owned_ui") != "1" or int(owners[0].get("pose", "0")) <= 0:
+        raise ValueError("One positive-pose owned UI capture is required")
+    for phase in ("staged", "exported"):
+        rows = [row for row in records.get("UI_READBACK", []) if row.get("phase") == phase]
+        if len(rows) != 1 or rows[0].get("result") != "0x00000000" or rows[0].get("image_checksum") != "rgba_fnv1a64":
+            raise ValueError("Complete native RGBA checksum exports are required; legacy logs are unverified")
+    rows = records.get("UI_READBACK_IMAGE", [])
+    if len(rows) != 6 or set(images) != {f"{eye}-{role}" for eye in ("left", "right") for role in ("scene", "final", "ui")}:
+        raise ValueError("Exactly six native image records and inputs are required")
+    for role, image in images.items():
+        matches = [row for row in rows if row.get("role") == role]
+        if len(matches) != 1 or matches[0].get("phase") != "exported":
+            raise ValueError(f"Missing or duplicate completed image: {role}")
+        row = matches[0]
+        if image.dtype != np.uint8 or image.shape != (int(row.get("height", "0")), int(row.get("width", "0")), 4):
+            raise ValueError(f"Native image extent mismatch: {role}")
+        checksum = int(row.get("rgba_hash", "-1"))
+        if not 0 <= checksum < 2**64 or pixel_hash(image, 4) != checksum:
+            raise ValueError(f"Native RGBA content mismatch: {role}")
+    return {"pose": owners[0]["pose"], "content_evidence": "six_native_rgba_checksums"}
+
+
 def compare(scene, final, ui, tolerance=3, near_ui_radius=8):
     if any(image.ndim != 3 or image.shape[2] != 4 or not image.size or image.dtype != np.uint8
            for image in (scene, final, ui)) or scene.shape != final.shape or ui.shape != final.shape:
@@ -105,13 +143,20 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--near-ui-radius", type=int, default=8,
                         help="Transparent-pixel neighborhood in capture pixels (0-64; default 8)")
+    parser.add_argument("--verify-native", action="store_true",
+                        help="Require complete native logs and RGBA hashes for all six images")
     args = parser.parse_args()
     report = {}
     prepared = {}
+    inputs = {f"{eye}-{role}": read_rgba(f"{args.stem}-{eye}-{role}.bmp")
+              for eye in ("left", "right") for role in ("scene", "final", "ui")}
+    identity = verify_native_capture(args.stem, inputs) if args.verify_native else None
     for eye in ("left", "right"):
-        scene, final, ui = [read_rgba(f"{args.stem}-{eye}-{role}.bmp")
+        scene, final, ui = [inputs[f"{eye}-{role}"]
                             for role in ("scene", "final", "ui")]
         result, composed, error = compare(scene, final, ui, near_ui_radius=args.near_ui_radius)
+        if identity:
+            result.update(capture_identity_verified=True, capture_identity=identity)
         report[eye] = result
         prepared[eye] = (ui, composed, error)
     # Check both eyes before creating output. A malformed second eye must not

@@ -96,10 +96,7 @@ def verify_extent(identity, packed):
 def pixel_hash(image, channels):
     # Native probes hash top-to-bottom pixels, excluding D3D12 row padding:
     # RGB for NGX output, RGBA for UI input. BMP decoding has restored RGBA.
-    value = 14695981039346656037
-    for byte in image[:, :, :channels].tobytes():
-        value = ((value ^ byte) * 1099511628211) & 0xffffffffffffffff
-    return value
+    return ui_alpha.pixel_hash(image, channels)
 
 
 def verify_content(identity, packed):
