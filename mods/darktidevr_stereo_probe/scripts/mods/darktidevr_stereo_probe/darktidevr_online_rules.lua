@@ -1,4 +1,4 @@
--- Range proving mode: author only stock input columns. No action pose proxy,
+-- Range and local mission rules: author only stock input columns. No action pose proxy,
 -- origin override, extra movement velocity, damage rule or custom RPC.
 local Rules = {}
 local ranges = {shooting_range=true}
@@ -18,7 +18,7 @@ end
 
 function Rules.install(mod, presentation, state, mode_name)
     local instance = {frames=0, failures=0}
-    local session_owner, selected
+    local session_owner, session_mode, selected
     local orientation_owners = setmetatable({}, {__mode="k"})
     -- Walking alone does not imply free aim: chainsaw locks, forced look and
     -- sweep stickiness select another orientation object in the same state.
@@ -37,21 +37,26 @@ function Rules.install(mod, presentation, state, mode_name)
     end)
     local function enabled()
         local session = Managers and Managers.state and Managers.state.game_session
-        if not ranges[mode_name()] then
-            session_owner, selected = nil, nil
+        local mode = mode_name()
+        local mission = presentation.gameplay_context.local_mission(mode, session)
+        if not ranges[mode] and not mission then
+            session_owner, session_mode, selected = nil, nil, nil
             return false
         end
         if not presentation.gameplay_context.local_authority(session) then
             return false
         end
-        if session ~= session_owner then
-            session_owner = session
+        if session ~= session_owner or mode ~= session_mode then
+            session_owner, session_mode = session, mode
             -- Readiness evidence belongs to this visit. A prior visit's first
             -- success/failure must not suppress diagnostics for a new session.
             instance.frames, instance.failures = 0, 0
             -- Latch on entering a session: switching rules during a charged
             -- attack would mix histories. The setting takes effect next visit.
-            selected = mod:get("psykhanium_online_rules") ~= false
+            -- Local missions always use the stock-server-compatible route.
+            -- The range-only opt-out must never enable hand-origin/action
+            -- proxies in a mission, including a reused manager on transition.
+            selected = mission or mod:get("psykhanium_online_rules") ~= false
             mod:info("DARKTIDEVR_ONLINE_RULES range=%s enabled=%s origins=stock damage=stock",
                 tostring(mode_name()), tostring(selected))
         end

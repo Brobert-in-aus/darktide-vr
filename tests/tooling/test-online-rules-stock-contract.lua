@@ -74,7 +74,7 @@ local rules=dofile(arg[1]).install({get=function() return true end,info=function
     hook=function(_,class,name,callback)
         local original=class[name]; class[name]=function(...) return callback(original,...) end
     end},
-    presentation,{authoring_enabled=true,gameplay_input_active=true},function() return 'shooting_range' end)
+    presentation,{authoring_enabled=true,gameplay_input_active=true},function() return arg[4] or 'shooting_range' end)
 local h={_player=player,_input_cache={{0},{0},{1},{0},{0},{0},{0}},
     _action_lookup={move_right=1,move_left=2,move_forward=3,move_backward=4},
     _pack_unpack_action_to_network_type_index={move_right=1,move_left=1,move_forward=1,move_backward=1},

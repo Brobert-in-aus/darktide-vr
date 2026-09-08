@@ -1,5 +1,11 @@
 # First end-to-end mission test
 
+8 September setup update: the user explicitly requested SoloPlay preparation
+now for their return from work. The [installed setup](SOLOPLAY-SETUP.md) brings
+installation forward and extends stock online-style VR rules to locally owned
+missions. Older installation holds below are historical; worn mission and
+official-server acceptance remain open.
+
 7 September online follow-up: [online mission requirements](ONLINE-MISSION-REQUIREMENTS.md)
 now separates a potential stock-server compatibility mode from the local-server
 candidate below. The stock input stream can represent aim angles; it does not

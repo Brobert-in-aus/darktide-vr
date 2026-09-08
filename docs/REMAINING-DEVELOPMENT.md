@@ -1,5 +1,15 @@
 # Remaining development: melee, HUD and DLSS
 
+**New requested setup, 8 September:** prepare the supplied SoloPlay mod for the
+user's in-mission test when they return home, using the regular online-server
+VR input and combat rules. This brings installation/configuration forward from
+the older late-stage test ordering below. Preserve stock simulation aim, firing
+origins, melee sweeps, damage and movement rules; physical melee remains paused.
+Record setup and initialization separately from worn mission acceptance and
+official online-server compatibility. The supplied SoloPlay 2.6.2 is now
+installed with a normal mission preset; [setup details](SOLOPLAY-SETUP.md) record
+the stock-rules extension and remaining verification. Continue existing work.
+
 **Latest work order, 8 September:** finish the pre-launch TODO work, then make
 fixing billboarding the next task. Do not expand unrelated polish ahead of that
 work. Required worn/live acceptance remains explicitly pending until observed.

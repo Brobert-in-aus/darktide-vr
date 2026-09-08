@@ -26,6 +26,10 @@ function Context.aim_mode(mode, session)
     return missions[mode] == true and Context.local_authority(session)
 end
 
+function Context.local_mission(mode, session)
+    return missions[mode] == true and Context.local_authority(session)
+end
+
 function Context.body_mode(mode, session)
     return mode == "hub" or Context.aim_mode(mode, session)
 end

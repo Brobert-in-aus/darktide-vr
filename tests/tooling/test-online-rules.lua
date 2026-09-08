@@ -117,7 +117,19 @@ fresh(22,0,1); rules.capture(h,22); assert(h._input_cache[5][22]==1)
 option=false; assert(rules.enabled())
 mode='hub'; assert(not rules.enabled())
 mode='shooting_range'; assert(not rules.enabled())
-option=true; mode='coop_complete_objective'; assert(not rules.enabled())
+-- Every admitted local mission uses stock rules even with the range option off.
+-- Reuse the manager to exercise a transition without an intervening hub call.
+for _,mission in ipairs({'coop_complete_objective','survival','expedition','prologue'}) do
+    mode=mission; assert(rules.enabled())
+    fresh(28,0,1); rules.capture(h,28)
+    assert(h._input_cache[5][28]==1 and rules.frames==1)
+    Managers.state.game_session={is_server=function() return false end}
+    assert(not rules.enabled())
+    fresh(29,0,1); rules.capture(h,29); stock(29)
+    Managers.state.game_session={is_server=function() return true end}
+end
+mode='unknown_mission'; assert(not rules.enabled())
+option=true
 mode='training_grounds'; assert(not rules.enabled())
 mode='shooting_range'; assert(rules.enabled())
 assert(rules.frames==0 and rules.failures==0,'Range re-entry retained previous session diagnostics')
