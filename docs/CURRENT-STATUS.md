@@ -19,6 +19,10 @@ session still uses the earlier timing-only viewer while awaiting recurrence.
 A separate [producer cadence correction](PRODUCER-FRAME-CADENCE.md) fixes the
 offline-reproduced estimate when the consumer skips source publications. It is
 also undeployed; the earlier sustained slowdown's cause remains unconfirmed.
+The [runtime trace](VDXR-SUBMISSION-SLOWDOWN.md) now locates the sustained decline
+at VDXR's asynchronous frame-submission wait, with increasing backend
+`OVR_BeginFrame` duration. The underlying backend cause remains open; neither
+viewer candidate is claimed to fix it. Raw-clock trace analysis is validated.
 
 Latest follow-ups: after pre-launch TODO work, fix billboarding next. The user
 also reports item-pickup popups shrinking differently between eyes near screen
