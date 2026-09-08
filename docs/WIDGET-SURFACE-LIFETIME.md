@@ -36,6 +36,21 @@ draw getters pass 28 cached-source configurations across seven sizing modes and
 four scales. This isolates geometry; it does not measure complete raster bounds,
 copy retained widget state, or admit arbitrary custom logic into capture.
 
+`darktidevr_widget_capture_state.lua` isolates GUI-owned pass caches for the
+immediate texture, UV texture, rotated texture, text and rectangle paths. It
+initializes capture-specific data through the stock pass initializer, reuses it
+while the pass remains active, and restores source data even when drawing fails.
+Removed/retyped passes release their cache through the capture renderer. Final
+cleanup must precede capture renderer destruction. Unsupported/custom logic,
+retained draws/IDs, foreign material handles and duplicate pass records are
+rejected before redirection; no partial widget is silently accepted. This initial
+admission policy is not coverage of all 20 marker families.
+
+Offline tests include actual cached stock texture/UV/rotated material creation,
+value replacement and destruction, verifying that source material handles never
+reach capture submission or cleanup. Native GUI rendering, resource-fence behavior
+and whole-widget raster bounds still require live validation.
+
 8 September offline checkpoint. The pickup sizing investigation now has a
 tested capture/display lifetime controller in `darktidevr_widget_surface.lua`.
 It is not loaded by the mod, has no engine backend yet, and changes no installed
