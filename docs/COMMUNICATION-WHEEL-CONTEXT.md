@@ -1,5 +1,35 @@
 # Owned communication-wheel context
 
+## Coordinating adapter
+
+The unloaded `darktidevr_communication_wheel.lua` now connects gesture, context
+and navigation ownership around the stock HUD methods. Its future caller must
+sample a physical hold before both gameplay stick consumers, supply exact local
+owner/generation/routing checks, and register callbacks through the game's
+physics-safe queue. No main-module loading or binding is installed yet.
+
+The adapter admits only an idle local HUD, freezes selection on release, and
+consumes the release token once at deferred execution. It rechecks ownership,
+context and null input there; a regression caught input becoming blocked between
+queueing and execution. Pending short taps retain ownership until they mature or
+are cancelled. Closing retains the stick claim until neutral. Destroy, routing
+loss and callback/update errors retire owned state and restore stock context.
+Unscoped reentrant calls cannot advance the private wheel. Idle keyboard input
+remains stock-owned; during a VR gesture its wheel hold is exclusive, while
+unrelated service inputs and methods still forward to stock.
+
+Validation: five focused CTests (`communication_|exclusive_gameplay_stick`) pass
+in 0.08 seconds and all 67 Lua chunks compile. The optional cached-source run
+executes the game's handle, close and release callback methods with all
+communication effects mocked. This establishes offline lifecycle behavior,
+not worn selection or live input integration.
+
+```powershell
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-communication-wheel.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe artifacts/vendor/Darktide-Source-Code
+```
+
+## Context primitive
+
 The unloaded `darktidevr_communication_context.lua` isolates a future VR hold
 from stock pending taps and deferred release state. It does not add a binding,
 hook the HUD or invoke any tag, voice or chat API.
