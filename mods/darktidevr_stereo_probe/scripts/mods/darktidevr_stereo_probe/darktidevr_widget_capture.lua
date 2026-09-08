@@ -64,6 +64,49 @@ function Capture:queue(draw, metadata, revision)
     self.queued_revision=revision
 end
 
+-- Run widget drawing in the dedicated renderer, never the already-open stock
+-- pass. The caller supplies an owned capture scenegraph; this helper does not
+-- translate or mutate the source element's scenegraph or animation state.
+function Capture:pass(scenegraph, input_service, dt, settings, draw)
+    assert(not self.destroyed and not self.failed,'widget capture unavailable')
+    assert(type(scenegraph)=='table' and type(settings)=='table' and
+        type(draw)=='function','invalid widget capture pass')
+    assert(not self.in_pass,'nested widget capture pass')
+    local renderer=self.renderer
+    local fields={'ui_scenegraph','render_settings','scale','inverse_scale',
+        'input_service','dt','base_render_pass','current_clipping_rect'}
+    local saved={}
+    for _,field in ipairs(fields) do saved[field]=renderer[field] end
+    local queue=renderer.ui_scenegraph_queue
+    local saved_queue={}
+    for key,value in pairs(queue) do saved_queue[key]=value end
+    local owned_settings={}
+    for key,value in pairs(settings) do owned_settings[key]=value end
+    self.in_pass=true
+    local ok,err=pcall(function()
+        self.api.UIRenderer.begin_pass(renderer,scenegraph,input_service,dt,owned_settings)
+        draw(renderer,owned_settings)
+    end)
+    -- Even a partially failed begin must unwind. Preserve the draw error when
+    -- end_pass also fails, then restore fields the stock pass API changes.
+    local ended,end_error=pcall(self.api.UIRenderer.end_pass,renderer)
+    for key in pairs(queue) do queue[key]=nil end
+    for key,value in pairs(saved_queue) do queue[key]=value end
+    renderer.ui_scenegraph_queue=queue
+    for _,field in ipairs(fields) do renderer[field]=saved[field] end
+    self.in_pass=nil
+    if not ok or not ended then
+        self.failed=true
+        self.queued_revision=nil
+        self.submitted_revision=nil
+        if not ok then
+            if not ended then err=tostring(err)..'; end_pass: '..tostring(end_error) end
+            error(err,0)
+        end
+        error(end_error,0)
+    end
+end
+
 -- Call only AFTER a successful render of this exact owned world. The returned
 -- revision may be passed to Surface:submitted; unrelated worlds return nil.
 function Capture:observe_render(world)

@@ -8,8 +8,13 @@ to 4096 per axis and four million pixels per target. The backend is not loaded
 by the mod and no widget is redirected yet.
 
 `queue` clears the capture target and calls the supplied draw with its renderer.
-The integration must provide the independent renderer pass and restore any
-temporary scenegraph changes, including on errors. `observe_render(world)` must
+The backend's `pass` helper opens/closes that independent renderer pass using an
+owned scenegraph and a private top-level render-settings copy. It restores the
+renderer fields and original scenegraph queue after begin/draw/end failures,
+rejects nested capture passes, and preserves both errors if drawing and cleanup
+fail. It does not clone nested settings or translate the source scenegraph; the
+integration must supply an owned capture scenegraph and avoid shared nested
+mutations. `observe_render(world)` must
 run after successful rendering of the owned world; it returns a revision once,
 for forwarding to the lifetime controller. `copy` rejects unsubmitted content.
 Draw/copy failures retire the backend. Destruction removes the viewport before
