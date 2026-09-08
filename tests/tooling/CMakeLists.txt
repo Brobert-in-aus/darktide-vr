@@ -202,6 +202,9 @@ if(BUILD_TESTING)
   add_test(NAME communication_context COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-communication-context.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_communication_context.lua")
+  add_test(NAME push_to_talk_input COMMAND "${LUAJIT_VALIDATOR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-push-to-talk-input.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_push_to_talk_input.lua")
   add_test(NAME exclusive_gameplay_stick COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-exclusive-gameplay-stick.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe")
