@@ -48,6 +48,42 @@ one of them no longer apply: both directions and left grip are already assigned.
 Normalized diagnostic extracts stay under ignored `artifacts/unattended/`;
 neither the full settings file nor account data is committed.
 
+## Communication-wheel stock contract checked 9 September
+
+The cached stock `_handle_com_wheel` is now exercised by
+`tests/tooling/test-communication-wheel-stock-contract.lua`. Its input is held
+`com_wheel`, separate from pressed `smart_tag`. It opens after the saved delay
+(strictly after the threshold), or sooner through stock controller navigation.
+The mouse route pushes a cursor; the controller route reads
+`navigate_controller_right` and retains a 0.15-second close delay.
+
+Release queues a physics-safe callback. Until that callback clears the start
+time, a repeated handler call can queue another stop. A null/blocked input also
+looks like release, rather than cancellation. Pending single-tap location tags
+can mature while input is blocked. The fixture demonstrates these branches with
+mocked side effects; it never calls game, voice, chat or network services.
+
+The future VR route therefore needs all of the following before deployment:
+
+- A hold binding that remains unassigned until deliberately configured, retaining
+  the current R3 tag route and saved layout.
+- Exclusive right-stick ownership from wheel gesture start through closing and
+  neutral rearm, covering horizontal turn and up/down gameplay actions.
+- An owned, fresh navigation vector: the stock presentation mutates its returned
+  vector into screen coordinates, so the shared controller sample cannot be used
+  directly. No global gamepad-mode flip to obtain this behavior.
+- One stock handler update per input frame, with the same decision for both eyes.
+- Explicit cancellation on tracking/player/menu transitions, including stale
+  deferred release and pending tap requests. A false held value alone is not a
+  cancellation contract. Preserve independent keyboard/mouse gestures.
+- Local HUD ownership and stock action selection, physics-safe callback and
+  communication policy. Do not directly emit chat, voice or tag events from the
+  VR mapper.
+
+These are source-backed integration requirements, not a working wheel binding
+or live acceptance. Selection geometry and stock cursor/camera ownership still
+need an isolated adapter before adding the option to the installed runtime.
+
 ## Historical 8 September audit
 
 This is the **earlier pre-preview-relaunch binding snapshot**, not the final
