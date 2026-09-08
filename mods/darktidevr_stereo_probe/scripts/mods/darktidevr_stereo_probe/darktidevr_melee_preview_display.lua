@@ -92,7 +92,9 @@ function Display.install(mod,presentation,tracking)
             mod:warning('DARKTIDEVR_MELEE preview_error=%s damage=false',tostring(err))
         end
     end
-    mod:hook_safe('ActionSweep','start',function(action,settings,t)
+    -- Called after stock start by the existing controller-aim hook. DMF only
+    -- permits one hook registration per mod/function, including hook_safe.
+    function api.on_action_start(action,settings,t)
         local prior=api.last_preview
         if not api.enabled or not prior or action._player_unit~=prior.unit then return end
         api.last_preview=nil
@@ -101,7 +103,7 @@ function Display.install(mod,presentation,tracking)
         mod:info('DARKTIDEVR_MELEE preview_action=%s started_action=%s matched=%s preview_age=%.4f server_process=%s damage_verified=false',
             tostring(prior.name),tostring(settings.name),tostring(prior.name==settings.name),
             t-prior.t,tostring(action._is_server==true))
-    end)
+    end
     local function set_enabled(enabled)
         failed=nil; api.enabled=enabled
         if not enabled then api.destroy() end

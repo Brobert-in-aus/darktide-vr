@@ -24,9 +24,7 @@ local mod={io_dofile=function() return {context=function()
     context_reads=context_reads+1; return context
 end} end, command=function(_,name,_,fn) commands[name]=fn end,
     info=function(_,...) logs={...} end, warning=function() end, echo=function() end,
-    hook_safe=function(_,class,method,callback)
-        assert(class=='ActionSweep' and method=='start'); start_hook=callback
-    end}
+    hook_safe=function() error('Preview registered a duplicate attack hook') end}
 Managers={player={local_player_safe=function() return {player_unit=unit} end},ui={},
     time={time=function() return 1 end}}
 Unit={alive=function() return true end}
@@ -67,6 +65,7 @@ created,destroyed,context_reads=0,0,0
 Mods=nil
 -- Restore callbacks to the default-off instance for the remaining fixture.
 api=Display.install(mod,presentation,tracking)
+start_hook=function(...) return api.on_action_start(...) end
 mod.toggle_melee_preview(); assert(api.enabled,'Keyboard/menu toggle did not enable')
 mod.toggle_melee_preview(); assert(not api.enabled,'Keyboard/menu toggle did not disable')
 commands.dtvr_melee_preview_on(); api.update()
@@ -155,4 +154,41 @@ api.update(); logs=nil
 start_hook(action,{name='first_light'},2.1); assert(not logs,'Expired prediction was compared')
 local prior_draws=draws
 blocked=true; api.update(); assert(not visible and draws==prior_draws and not api.last_preview)
-print('melee_preview_display=pass opt_in UI tracking action_context world_change disable player_loss failure_latch')
+-- Execute the production registration loop with a strict one-hook-per-method
+-- registry. Verify the observer runs once, after stock, and preserves returns.
+local aim_path=arg[1]:gsub('darktidevr_melee_preview_display.lua$','darktidevr_controller_aim.lua')
+local file=assert(io.open(aim_path,'r')); local source=file:read('*all');file:close()
+local first=assert(source:find('    for _, entry in ipairs({\n        {"action_sweep", "start"},',1,true))
+local last=assert(source:find('\n    function controller_aim.with_dominant_aim',first,true))
+local registry,events={},{}
+local stock_calls,observed,warning_count=0,0,0
+local observer={on_action_start=function(self,settings,t)
+    assert(events[#events]=='stock' and self==action and settings.name=='first_light' and t==1.2)
+    observed=observed+1;events[#events+1]='observer'
+end}
+local env={controller_aim={with_melee_aim=function(self,fn,...) return fn(self,...) end},
+    presentation={melee_preview=observer},require=function(path) return path end,
+    packed=function(...) return {n=select('#',...),...} end,
+    mod={hook=function(_,class,method,fn)
+        local key=class..'.'..method;assert(not registry[key],'Duplicate hook registration');registry[key]=fn
+    end,warning=function() warning_count=warning_count+1 end}}
+setmetatable(env,{__index=_G})
+setfenv(assert(loadstring(source:sub(first,last-1))),env)()
+local function stock(self,settings,t,token)
+    assert(self==action and settings.name=='first_light' and t==1.2 and token=='args')
+    stock_calls=stock_calls+1;events[#events+1]='stock'
+    return 'first',nil,'third'
+end
+for key,hook in pairs(registry) do
+    local a,b,c=hook(stock,action,{name='first_light'},1.2,'args')
+    assert(a=='first' and b==nil and c=='third','Observer changed stock returns')
+end
+assert(stock_calls==4 and observed==1,'Observer ran outside sweep start or more than once')
+local hook=registry['scripts/extension_systems/weapon/actions/action_sweep.start']
+observer.on_action_start=function() error('diagnostic failure') end
+local a,b,c=hook(stock,action,{name='first_light'},1.2,'args')
+assert(a=='first' and b==nil and c=='third' and warning_count==1,'Diagnostic failure escaped stock hook')
+env.presentation.melee_preview=nil
+assert(hook(stock,action,{name='first_light'},1.2,'args')=='first')
+assert(not pcall(hook,function() error('stock failure') end,action),'Stock failure was swallowed')
+print('melee_preview_display=pass frame_lifetime startup action_observer single_hook stock_returns failure_isolation')

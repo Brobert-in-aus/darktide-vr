@@ -752,9 +752,21 @@ function controller_aim.install(mod, presentation, state)
         {"action_push", "_push"},
         {"action_melee_explosive", "_find_explosion_position_and_direction"},
     }) do
+        local observe_start = entry[1] == "action_sweep" and entry[2] == "start"
         mod:hook(require("scripts/extension_systems/weapon/actions/" .. entry[1]),
             entry[2], function(func, self, ...)
-                return controller_aim.with_melee_aim(self, func, ...)
+                if not observe_start then
+                    return controller_aim.with_melee_aim(self, func, ...)
+                end
+                local result = packed(controller_aim.with_melee_aim(self, func, ...))
+                local preview = presentation.melee_preview
+                if preview and preview.on_action_start then
+                    local ok, err = pcall(preview.on_action_start, self, ...)
+                    if not ok then
+                        mod:warning("DARKTIDEVR_MELEE comparison_error=%s", tostring(err))
+                    end
+                end
+                return unpack(result, 1, result.n)
             end)
     end
 

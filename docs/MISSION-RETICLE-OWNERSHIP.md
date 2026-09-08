@@ -85,3 +85,21 @@ panel approach, so the engine retires those rectangles each frame. A 120-frame
 moving-pose fixture rejects stale geometry and checks hidden frames and reuse of
 one GUI. The old source fails; the correction passes. Related CTests: 3/3 in
 0.06 s; focused Lua source gate: 45 chunks. Live visual acceptance is pending.
+
+The immediate-GUI fix was deployed after successful Ready (melee-frame-clear-ready-
+20260908.json); 46 installed Lua chunks compiled. The 08:13:00 UTC session logged
+preview=on, Psykhanium entry and nonzero shared_ready. Its startup request flag
+was restored after initialization. Worn confirmation that trails are gone is
+still pending. The three Quest recordings remain available and checksum verified.
+
+Follow-up hook correction: preview exposes on_action_start; the existing
+controller-aim ActionSweep.start hook invokes it once after stock returns.
+Other melee hooks retain direct forwarding. The callback is protected so a
+logging error cannot escape into the stock action; nil-containing stock returns
+and stock errors remain intact. The production-loop fixture rejects duplicate
+registration and tests after-stock ordering, all four melee consumers, missing
+preview and observer failure. Four related CTests pass (0.22 s), focused gate
+45 chunks. This hook correction is staged pending the user's restart timing.
+
+The control audit and new hit-marker stereo report are recorded separately in
+MISSION-CONTROL-AUDIT-2026-09-08.md. Saved controls were not remapped.
