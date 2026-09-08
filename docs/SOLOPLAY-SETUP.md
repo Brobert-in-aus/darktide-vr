@@ -42,5 +42,16 @@ and `.mod` chunks compile with the pinned LuaJIT gate.
 Ready preflight passes. Installation and settings have verified transactional
 backups recorded in `artifacts/unattended/soloplay-install-receipt-20260908.json`.
 The previous game session closed cleanly before settings were written.
-Fresh startup verification is in progress. No mission launch, mission damage,
-objective completion, worn comfort or official-server acceptance is claimed.
+Fresh startup verification passes: SoloPlay hooks load without a mod error;
+Psykhanium entry passes at 03:14:23 UTC and online rules report enabled with
+stock origins/damage. The viewer exceeds 1,022 shared-ready frames at about
+54 original plus 54 generated pairs/s with zero interval fallback, reuse or
+pair-pose mismatch. This is startup evidence, not mission acceptance.
+No mission launch, mission damage, objective completion, worn comfort or
+official-server acceptance is claimed.
+
+Integrated checkpoint `9b7736a`, PR #43; focused accepted-preview counterpart
+`0ff82f7`, PR #44. The focused source compiles 45 chunks; the installed unused
+gun-alignment module accounts for its extra chunk. Native DLL hashes still
+match the accepted preview deployment. Current session: PID 144416, launcher
+session 7180, `artifacts/unattended/soloplay-online-rules-session-20260908.log`.
