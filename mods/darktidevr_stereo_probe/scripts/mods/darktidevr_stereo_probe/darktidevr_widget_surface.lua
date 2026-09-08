@@ -19,6 +19,7 @@ end
 -- scenegraph. It must be an owned snapshot created by the caller.
 function Surface:capture(t, identity, metadata, draw)
     if self.destroyed or self.failed then return false, 'unavailable' end
+    assert(not self.capturing,'nested widget surface capture')
     if not finite(t) or identity==nil or metadata==nil or type(draw)~='function' then
         return false, 'invalid_input'
     end
@@ -38,7 +39,9 @@ function Surface:capture(t, identity, metadata, draw)
 
     local pending=self.pending
     if pending and pending.submitted then
+        self.capturing=true
         local copied, detail=pcall(self.backend.copy, self.backend)
+        self.capturing=nil
         if not copied then
             self.failed=true
             self.pending=nil
@@ -56,7 +59,9 @@ function Surface:capture(t, identity, metadata, draw)
     self.revision=self.revision+1
     local revision=self.revision
     self.pending=nil
+    self.capturing=true
     local queued=pack(pcall(self.backend.queue, self.backend, draw, metadata, revision))
+    self.capturing=nil
     if not queued[1] then
         -- A draw callback can have animation side effects before throwing.
         -- Propagate that error; do not invoke it a second time as a fallback.
@@ -94,6 +99,9 @@ end
 
 function Surface:destroy()
     if self.destroyed then return end
+    -- Sessions defer retirement around their active draw. A standalone caller
+    -- must unwind first; rejecting before retirement keeps cleanup retryable.
+    assert(not self.capturing,'cannot destroy active widget surface')
     self.destroyed=true
     self:invalidate()
     -- Retire before cleanup, so a failure cannot cause double destruction.

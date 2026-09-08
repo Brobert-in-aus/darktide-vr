@@ -114,7 +114,7 @@ assert(next(e.live)==nil,'cleanup stopped after first error')
 local destroyed=e.destroys;c:destroy();assert(e.destroys==destroyed)
 print('widget_capture: partial allocation cleanup, paired submission, distinct copy, failure retirement pass')
 
-for _,failure in ipairs({'none','begin','draw','end','draw_end','nested'}) do
+for _,failure in ipairs({'none','begin','draw','end','draw_end','nested','destroy'}) do
     e=engine();c=Capture.new(e,64,64)
     local renderer=c.renderer
     local old_graph,old_settings,old_input,old_clip={},{},{},{}
@@ -136,6 +136,7 @@ for _,failure in ipairs({'none','begin','draw','end','draw_end','nested'}) do
         r.current_clipping_rect={}
         if failure=='draw' or failure=='draw_end' then error('draw failure') end
         if failure=='nested' then c:pass(graph,{},0.2,settings,function() end) end
+        if failure=='destroy' then c:destroy()end
     end)
     assert(ok==(failure=='none'))
     assert(called==(failure=='begin' and 0 or 1) and e.ends==1)
@@ -150,3 +151,13 @@ for _,failure in ipairs({'none','begin','draw','end','draw_end','nested'}) do
     c:destroy();assert(next(e.live)==nil)
 end
 print('widget_capture: isolated pass restores renderer state through begin/draw/end failures')
+e=engine();c=Capture.new(e,64,64)
+assert(not pcall(c.queue,c,function()c:destroy()end,{},1))
+assert(not c.destroyed and c.failed and not c.queueing and next(e.live)~=nil)
+c:destroy();assert(next(e.live)==nil)
+print('widget_capture_reentrant_destroy=pass active queue/pass cannot release resources before unwind')
+e=engine();c=Capture.new(e,64,64);s=Surface.new(c)
+assert(not pcall(s.capture,s,1,{}, {},function()s:destroy()end))
+assert(s.failed and not s.destroyed and not c.destroyed and next(e.live)~=nil)
+s:destroy();s:destroy();assert(next(e.live)==nil)
+print('widget_surface_reentrant_destroy=pass standalone rejection leaves teardown retryable')

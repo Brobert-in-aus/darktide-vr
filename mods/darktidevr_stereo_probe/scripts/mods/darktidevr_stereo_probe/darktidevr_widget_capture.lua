@@ -48,11 +48,13 @@ end
 
 function Capture:queue(draw, metadata, revision)
     assert(not self.destroyed and not self.failed,'widget capture unavailable')
+    assert(not self.queueing and not self.in_pass,'nested widget capture queue')
     assert(type(draw)=='function' and type(revision)=='number' and
         revision>0 and revision<math.huge and revision==math.floor(revision),
         'invalid widget capture queue')
     self.queued_revision=nil
     self.submitted_revision=nil
+    self.queueing=true
     local ok,err=pcall(function()
         -- Overlay backbuffers retain content unless explicitly cleared.
         self.api.Gui.render_pass(self.gui,0,'to_screen',true)
@@ -60,6 +62,7 @@ function Capture:queue(draw, metadata, revision)
         -- of its widget scenegraph. Never borrow the open stock renderer pass.
         draw(self.renderer,metadata)
     end)
+    self.queueing=nil
     if not ok then self.failed=true;error(err,0) end
     self.queued_revision=revision
 end
@@ -128,6 +131,7 @@ end
 
 function Capture:destroy()
     if self.destroyed then return end
+    assert(not self.in_pass and not self.queueing,'cannot destroy active widget capture')
     self.destroyed=true
     self.queued_revision=nil
     self.submitted_revision=nil

@@ -185,6 +185,20 @@ calling backend cleanup, preventing a second cleanup attempt.
 
 ## Engine integration still required
 
+Reentrant cleanup follow-up, 9 September: a session destruction request from
+inside its draw now hides the image immediately and defers resource destruction
+until private pass and source-cache restoration have unwound. Copy-time
+retirement suppresses the subsequent widget draw. Successful retirement returns
+handled/`destroyed`, preventing a second stock draw after possible animation
+side effects. Original draw and cleanup errors are both preserved. Standalone
+surface/backend destruction rejects an active copy/queue/pass before retirement,
+leaving later cleanup possible; nested captures cannot alter an active writer.
+
+A regression reproduced cleanup under an active draw before this change. Seven
+widget CTests pass in 0.09 seconds; the additional copy-time retirement fixture
+also passes. All 68 Lua chunks compile. These modules remain unloaded and no
+native resources or live HUD were used by the fixtures.
+
 The existing HUD panel provides a proven starting point for whole-widget capture:
 a dedicated UI world/viewport, a RGBA8 target and a separate completed-copy target.
 It preserves all rasterized text, textures, rectangles and progress indicators.

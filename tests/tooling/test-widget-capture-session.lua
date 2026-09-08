@@ -174,3 +174,38 @@ assert(not pcall(s.create_display,s,{new=function()error('construction failed')e
 assert(s.display==nil and not b.destroyed)
 s:destroy()
 print('widget_session_display=pass ordered ownership duplicate rejection combined failures and constructor rollback')
+
+-- HUD destruction can be requested by a callback while its private pass is
+-- active. Retire logically at once, but do not free the GUI under that draw.
+for _,failure in ipairs({'none','draw','cleanup','both'})do
+    s,b,r,draws,original,pass=setup()
+    local original_destroy=b.destroy
+    local destroyed=0
+    function b:destroy()
+        destroyed=destroyed+1;original_destroy(self)
+        if failure=='cleanup' or failure=='both' then error('cleanup failure')end
+    end
+    r.draw=function(renderer)
+        pass.data.material=renderer
+        s:destroy();s:destroy()
+        assert(not b.destroyed and pass.data~=original,'GUI freed under active draw')
+        assert(not s:visible(1,identity))
+        if failure=='draw' or failure=='both' then error('draw failure')end
+    end
+    local ok,handled,status=pcall(s.capture,s,1,identity,r)
+    assert(ok==(failure=='none'))
+    if ok then assert(handled and status=='destroyed')
+    else
+        if failure=='draw' or failure=='both' then assert(tostring(handled):find('draw failure',1,true))end
+        if failure=='cleanup' or failure=='both' then assert(tostring(handled):find('cleanup failure',1,true))end
+    end
+    assert(b.destroyed and destroyed==1 and pass.data==original and next(s.state.entries)==nil)
+    assert(not s:visible(1,identity) and not s:capture(2,identity,r))
+    s:destroy();assert(destroyed==1)
+end
+print('widget_session_reentrant_destroy=pass draw_unwind precedes cleanup and preserves combined failures')
+s,b,r,draws=setup();assert(s:capture(1,identity,r));s:observe_render(b.world)
+local copy=b.copy
+function b:copy()s:destroy();assert(not self.destroyed);copy(self)end
+assert(select(2,s:capture(2,identity,r))=='destroyed' and draws()==1 and b.destroyed,
+    'copy-time retirement still advanced widget drawing')

@@ -29,7 +29,7 @@ function Session.new(backend, pass_types, Surface, State, Snapshot, get_size)
 end
 
 function Session:create_display(Display,api,world,Quad,Plane,layer)
-    assert(not self.destroyed and not self.surface.failed and not self.display,
+    assert(not self.destroyed and not self.destroy_requested and not self.surface.failed and not self.display,
         'widget session display unavailable')
     -- A failed constructor owns its partial cleanup; do not retain it.
     local display=Display.new(api,world,self,Quad,Plane,layer)
@@ -38,7 +38,8 @@ function Session:create_display(Display,api,world,Quad,Plane,layer)
 end
 
 function Session:capture(t,identity,request)
-    if self.destroyed or self.surface.failed then return false,'unavailable' end
+    if self.destroyed or self.destroy_requested or self.surface.failed then return false,'unavailable' end
+    assert(not self.capturing,'nested widget session capture')
     if not finite(t) or identity==nil then self:invalidate();return false,'invalid_input' end
     -- Preserve the first eye's complete acceptance/rejection decision. A second
     -- eye must not switch to capture after the first already drew stock.
@@ -95,7 +96,9 @@ function Session:capture(t,identity,request)
     local metadata={bounds={x=b.x,y=b.y,width=b.width,height=b.height},scale=request.scale,
         pivot={x=pivot.x,y=pivot.y},pixel_width=pixel_width,pixel_height=pixel_height,
         capture_width=self.backend.width,capture_height=self.backend.height}
+    self.capturing=true
     local ok,handled,status=pcall(self.surface.capture,self.surface,t,identity,metadata,function()
+        if self.destroy_requested then return end
         self.backend:pass(graph,request.input_service,request.dt,request.settings,function(renderer,settings)
             local routed,rejection=self.state:draw(request.widgets,settings,request.draw,renderer,settings)
             -- Preflight already admitted the entire widget. Never silently fall
@@ -103,6 +106,19 @@ function Session:capture(t,identity,request)
             assert(routed,'capture admission changed: '..tostring(rejection))
         end)
     end)
+    self.capturing=nil
+    if self.destroy_requested then
+        -- A draw callback may retire its HUD. Wait until pass/cache restoration
+        -- has unwound before freeing their renderer, materials and targets.
+        local cleaned,cleanup=pcall(self.destroy,self)
+        if not ok then
+            if not cleaned then handled=tostring(handled)..'; cleanup: '..tostring(cleanup)end
+            error(handled,0)
+        end
+        if not cleaned then error(cleanup,0)end
+        -- The draw may have had side effects: never request a stock redraw.
+        return true,'destroyed'
+    end
     if not ok then
         self.reason='draw_failed'
         error(handled,0)
@@ -118,7 +134,7 @@ function Session:observe_render(world)
 end
 
 function Session:visible(t,identity)
-    if not self.handled then return nil end
+    if self.destroy_requested or not self.handled then return nil end
     return self.surface:visible(t,identity)
 end
 
@@ -129,6 +145,11 @@ end
 
 function Session:destroy()
     if self.destroyed then return end
+    if self.capturing then
+        self.destroy_requested=true
+        self.handled=false
+        return
+    end
     self.destroyed=true
     self:invalidate()
     self.surface:destroy()
