@@ -26,20 +26,45 @@ Spectator.install(mod,Bindings,Context,function(active)
     samples=samples+1
     return status,active and physical or 0,generation,x,y,usable
 end,function() return enabled end)
-local seen
+local seen,last_input,during_update
 local function step(owner,service,fail)
     seen=nil
-    local result=hooks[Camera].update(function(self,dt,t,orientation,selected)
+    local result,empty,tail=hooks[Camera].update(function(self,dt,t,orientation,selected)
         assert(self==(owner or camera) and dt==.01 and t==10 and orientation=='orientation')
         seen=selected:get('spectate_next') or false
+        last_input=selected
         assert(selected:get('other')=='untouched')
+        if during_update then during_update(selected) end
         if fail then error('stock camera error') end
         return 'target',nil,99
     end,owner or camera,.01,10,'orientation',service or input)
-    assert(result=='target'); return seen
+    assert(result=='target' and empty==nil and tail==99); return seen
 end
 assert(not step()); assert(not step())
 physical=32; assert(step(),'Default A press did not reach camera without a character')
+assert(not last_input:get('spectate_next'),'Retained camera proxy outlived its update')
+local old_proxy=last_input
+physical=0;step();physical=32
+input.identity='original'
+function input:has(name)assert(self==input);return name=='spectate_next' end
+during_update=function(selected)
+    assert(not old_proxy:get('spectate_next'),'old proxy revived during a newer edge')
+    assert(selected.identity=='original' and selected:has('spectate_next'),'stock service members were not forwarded')
+    ui=true;assert(not selected:get('spectate_next'));ui=false
+    null=true;assert(not selected:get('spectate_next'));null=false
+    camera._mode=Modes.first_person;assert(not selected:get('spectate_next'));camera._mode=Modes.observer
+    local original_player=camera._player;camera._player={};assert(not selected:get('spectate_next'));camera._player=original_player
+    hooks[Camera].update(function()
+        assert(not selected:get('spectate_next'),'remote nested update inherited the outer edge')
+    end,{_player={},_mode=Modes.observer},.01,10,'orientation',input)
+    assert(selected:get('spectate_next'),'outer scope was not restored')
+    local nested_ok=pcall(hooks[Camera].update,function()error('nested camera failure')end,
+        {_player={},_mode=Modes.observer},.01,10,'orientation',input)
+    assert(not nested_ok and selected:get('spectate_next'))
+    hooks[Camera].update(function()end,camera,.01,10,'orientation',input)
+    assert(not selected:get('spectate_next'),'new local sample revived an old scoped edge')
+end
+assert(step());during_update=nil
 assert(not step(),'Held button cycled repeatedly')
 assert(original_bindings.held==1,'Camera sampler changed combat mapper')
 local hint=hooks.HudElementSpectatorText._get_cycle_input_text
@@ -88,7 +113,9 @@ usable=false; assert(not step()); usable=true; assert(not step())
 y=0; step(); y=.8; assert(step())
 -- Stock errors propagate without leaving a global input replacement installed.
 y=0; step(); y=.8
-assert(not pcall(step,nil,nil,true)); assert(not step())
+assert(not pcall(step,nil,nil,true))
+assert(not last_input:get('spectate_next'),'failed stock update retained its injected edge')
+assert(not step())
 -- Optional native export: old producer versions remain a stock-only fallback.
 local ffi=require('ffi')
 local missing=Spectator.native_reader(ffi,setmetatable({}, {__index=function() error('missing export') end}))

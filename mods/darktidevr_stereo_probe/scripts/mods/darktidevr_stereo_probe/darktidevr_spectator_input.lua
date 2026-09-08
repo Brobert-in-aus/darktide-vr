@@ -19,6 +19,18 @@ function Spectator.install(mod, Bindings, Context, sample, allowed)
     local owner=setmetatable({}, {__mode='v'})
     local available=false
     local mode
+    local input_scope
+    local sample_serial=0
+    local function pack(...)return {n=select('#',...),...}end
+    local function run(func,self,dt,t,orientation,input,scope)
+        if not input_scope and not scope then return func(self,dt,t,orientation,input) end
+        local previous=input_scope
+        input_scope=scope
+        local result=pack(pcall(func,self,dt,t,orientation,input))
+        input_scope=previous
+        if not result[1] then error(result[2],0) end
+        return unpack(result,2,result.n)
+    end
     local function current(self)
         local player=Managers.player:local_player(1)
         return player and self._player==player and player.camera_handler==self
@@ -34,22 +46,30 @@ function Spectator.install(mod, Bindings, Context, sample, allowed)
     end
     mod:hook(require('scripts/managers/player/player_game_states/camera_handler'),'update',
         function(func,self,dt,t,orientation,input)
-            if not owns(self) then return func(self,dt,t,orientation,input) end
+            if not owns(self) then return run(func,self,dt,t,orientation,input) end
             local enabled=admitted(self,input)
+            sample_serial=sample_serial+1
             local changed=owner[1]~=self or owner[2]~=input or owner[3]~=self._player or mode~=self._mode
             owner[1],owner[2],owner[3],mode=self,input,self._player,self._mode
             local status,physical,generation,x,y,usable=sample(enabled and not changed)
             available=enabled and status==0
             local pressed=bindings.sample(available and not changed,physical,x,y,usable,generation,'combat')
-            if bit.band(pressed,32)==0 then return func(self,dt,t,orientation,input) end
+            if bit.band(pressed,32)==0 then return run(func,self,dt,t,orientation,input) end
             -- Limit the extra edge to this exact stock consumer and service.
             -- Other input calls, including combat, keep their original owner.
-            local proxy={get=function(_,name,...)
+            local scope={mode=self._mode,sample=sample_serial}
+            local proxy=setmetatable({get=function(_,name,...)
                 local value=input:get(name,...)
-                if name=='spectate_next' then return true end
+                if name=='spectate_next' and input_scope==scope and sample_serial==scope.sample and available and
+                    owner[1]==self and owner[2]==input and
+                    self._mode==scope.mode and admitted(self,input) then return true end
                 return value
-            end}
-            return func(self,dt,t,orientation,proxy)
+            end},{__index=function(_,name)
+                local value=input[name]
+                if type(value)=='function' then return function(_,...)return value(input,...)end end
+                return value
+            end})
+            return run(func,self,dt,t,orientation,proxy,scope)
         end)
     local function hint_enabled()
         return available and owner[1] and owner[2] and admitted(owner[1],owner[2])
