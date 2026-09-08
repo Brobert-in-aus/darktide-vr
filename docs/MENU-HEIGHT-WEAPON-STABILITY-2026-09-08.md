@@ -36,7 +36,8 @@ Validation on Windows x64:
   describe isolated tests, not headset acceptance.
 - `tools/stereo/test-darktide-lua-source.ps1`: all 54 main Lua chunks compile.
 
-Deployment is pending the user's completion of testing. The focused deployment
+The user authorized installation and relaunch. Ready preflight currently reports
+HMD unavailable; resume Virtual Desktop streaming before deployment. The focused deployment
 branch receives the same two new modules and only the required installation and
 settings edits; unrelated main-branch features are excluded. Preserve the
 accepted capture DLL, bootstrap and viewer, plus current SoloPlay/user settings.
