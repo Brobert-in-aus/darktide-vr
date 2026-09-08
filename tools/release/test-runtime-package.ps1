@@ -2,7 +2,7 @@
 param([string] $PackageRoot = (Join-Path $PSScriptRoot '..\..'))
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
 $root = (Resolve-Path -LiteralPath $PackageRoot).Path.TrimEnd('\', '/')
 $manifest = Get-Content -LiteralPath (Join-Path $root 'package-manifest.json') -Raw | ConvertFrom-Json
 if ($manifest.schema_version -ne 1 -or $manifest.platform -cne 'windows-x64' -or

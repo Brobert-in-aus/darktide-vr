@@ -2,7 +2,7 @@
 # Process discovery and Lua compilation are fixtures; real Lua has its own gate.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
 $tempBase = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
 $testRoot = Join-Path $tempBase ('darktidevr-sync-test-' + [Guid]::NewGuid().ToString('N'))
 $repo = Join-Path $testRoot 'repository'

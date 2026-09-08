@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
-Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
 . (Join-Path $PSScriptRoot 'validator-hash.ps1')
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $revision = '24c20c94e7db195b640854619577441f9b4bc6be'

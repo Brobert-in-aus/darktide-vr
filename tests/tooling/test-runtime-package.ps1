@@ -2,7 +2,7 @@
 # separately with its pinned compiler and actual production shader.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
 $tempBase = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
 $testRoot = Join-Path $tempBase ('dtvr-pkg-test-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 $luaRelative = 'mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe'
