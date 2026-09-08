@@ -56,23 +56,27 @@ throw 'Unexpected fixture ADB command'
     function Start-Sleep { param([int] $Seconds)
         if ($global:questFixture.loopFault) { throw 'fixture loop fault' }
     }
-    foreach ($case in @('normal','disconnected','restore_failure','restore_result_failure','apply_failure','loop_failure')) {
+    foreach ($case in @('normal','disconnected','restore_failure','restore_result_failure','apply_failure','loop_failure','loop_restore_failure')) {
         $global:questFixture = @{
             polls=0; devices=@('Quest-A'); disconnected=($case -eq 'disconnected')
             failRestore=''; failApply=($case -eq 'apply_failure')
-            badRestoreResult=($case -eq 'restore_result_failure')
-            loopFault=($case -eq 'loop_failure')
+            badRestoreResult=($case -in @('restore_result_failure','loop_restore_failure'))
+            loopFault=($case -in @('loop_failure','loop_restore_failure'))
             calls=(New-Object 'System.Collections.Generic.List[string]')
         }
         if ($case -eq 'restore_failure') {
             $global:questFixture.devices=@('Quest-A','Quest-B')
             $global:questFixture.failRestore='Quest-B'
         }
-        $failed=$false; $failureMessage=''
+        $failed=$false; $failureMessage=''; $failureException=$null
         try { & $watcher -Until ([datetime]'2000-01-01T00:00:01') -PollSeconds 2 -LogPath $log }
-        catch { $failed=$true; $failureMessage=$_.Exception.Message }
-        if ($failed -ne ($case -in @('restore_failure','restore_result_failure','loop_failure'))) { throw "Unexpected watcher result: $case $failureMessage" }
+        catch { $failed=$true; $failureMessage=$_.Exception.Message; $failureException=$_.Exception }
+        if ($failed -ne ($case -in @('restore_failure','restore_result_failure','loop_failure','loop_restore_failure'))) { throw "Unexpected watcher result: $case $failureMessage" }
         if ($case -eq 'loop_failure' -and $failureMessage -ne 'fixture loop fault') { throw 'Cleanup replaced the original loop fault' }
+        if ($case -eq 'loop_restore_failure' -and ($failureMessage -notmatch 'fixture loop fault' -or
+                $failureMessage -notmatch 'restore proximity automation')) { throw "Combined failure lost the loop or restoration error: $failureMessage" }
+        if ($case -eq 'loop_restore_failure' -and ($failureException -isnot [AggregateException] -or
+                $failureException.InnerExceptions.Count -ne 2)) { throw 'Combined failure did not retain both exceptions' }
         foreach ($device in $global:questFixture.devices) {
             if (@($global:questFixture.calls | Where-Object { $_ -eq "Enable:$device" }).Count -ne 1) {
                 throw "Cleanup lost or repeated a device: $case $device"

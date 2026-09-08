@@ -30,6 +30,7 @@ $applied = @{}
 # Keep cleanup responsibility even when a device disappears from a poll.
 $restoreDevices = @{}
 $lastAdb = $null
+$watcherFailure = $null
 
 function Get-AdbCandidates {
     $candidates = @()
@@ -145,6 +146,7 @@ try {
     }
 }
 catch {
+    $watcherFailure = $_.Exception
     Write-WatcherLog "listener=fault error=$($_.Exception.Message)"
     throw
 }
@@ -164,6 +166,12 @@ finally {
     }
     Write-WatcherLog "listener=stopped pid=$PID"
     if ($restoreFailures) {
-        throw "Could not restore proximity automation on $restoreFailures Quest device(s); see $LogPath"
+        $restoreMessage = "Could not restore proximity automation on $restoreFailures Quest device(s); see $LogPath"
+        if ($watcherFailure) {
+            # A cleanup failure must not erase the reason the watcher stopped.
+            throw [AggregateException]::new("Quest watcher failed: $($watcherFailure.Message); additionally, $restoreMessage",
+                [Exception[]]@($watcherFailure,[InvalidOperationException]::new($restoreMessage)))
+        }
+        throw $restoreMessage
     }
 }
