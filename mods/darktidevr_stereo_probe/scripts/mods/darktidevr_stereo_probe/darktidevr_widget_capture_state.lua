@@ -2,7 +2,10 @@
 -- and retained IDs never move between renderers. Not a live hook.
 local State={}
 State.__index=State
-local supported={texture=true,texture_uv=true,rotated_texture=true,text=true,rect=true}
+local supported={texture=true,texture_uv=true,rotated_texture=true,text=true,rect=true,
+    slug_icon=true,slug_picture=true,rotated_slug_icon=true,rotated_rect=true}
+local resource_value={texture=true,texture_uv=true,rotated_texture=true,
+    slug_icon=true,slug_picture=true,rotated_slug_icon=true}
 local function pack(...) return {n=select('#',...),...} end
 
 function State.new(renderer,pass_types)
@@ -33,7 +36,7 @@ function State:admit(widgets,settings)
             local content=pass.content_id and widget.content[pass.content_id] or widget.content
             if type(style)~='table' or type(content)~='table' then return nil,'invalid_pass_input' end
             if style.material~=nil and type(style.material)~='string' then return nil,'foreign_material' end
-            if kind=='texture' or kind=='texture_uv' or kind=='rotated_texture' then
+            if resource_value[kind] then
                 local value=content[pass.value_id or 'value_id']
                 if value~=nil and type(value)~='string' then return nil,'foreign_material' end
             end

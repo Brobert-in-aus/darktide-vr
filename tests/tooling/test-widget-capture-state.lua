@@ -3,7 +3,8 @@ local source_renderer,capture_renderer={},{}
 local materials,created,released={},0,0
 local types={}
 local fail_cleanup=false
-for _,kind in ipairs({'texture','texture_uv','rotated_texture','text','rect'}) do
+for _,kind in ipairs({'texture','texture_uv','rotated_texture','text','rect',
+        'slug_icon','slug_picture','rotated_slug_icon','rotated_rect'}) do
     types[kind]={init=function(pass) return {dirty=true,value_id=pass.value_id} end,
         destroy=function(pass,renderer)
             if pass.data.material then
@@ -90,6 +91,34 @@ local count=released;state:destroy();assert(released==count)
 local live=0;for _ in pairs(materials) do live=live+1 end;assert(live==1)
 print('widget_capture_state: GUI ownership, cached reuse, preflight rejection and failure restoration pass')
 
+for _,kind in ipairs({'slug_icon','slug_picture','rotated_slug_icon','rotated_rect'}) do
+    local p={pass_type=kind,value_id='icon',data={dirty=false},style_id='icon',content_id='nested'}
+    local w={passes={p},style={icon={material='vector_material'}},content={nested={icon='vector_resource'}}}
+    local source_data=p.data
+    local capture=State.new(capture_renderer,types)
+    local drew=0
+    assert(capture:draw({w},{},function()
+        drew=drew+1
+        assert(p.data~=source_data and p.data.dirty)
+    end),'vector/rotated rectangle pass was not admitted')
+    assert(p.data==source_data and not source_data.dirty)
+    w.style.icon.material={foreign=true}
+    assert(not capture:draw({w},{},function()drew=drew+1 end))
+    w.style.icon.material='vector_material'
+    if kind~='rotated_rect' then
+        w.content.nested.icon={foreign=true}
+        assert(not capture:draw({w},{},function()drew=drew+1 end),'foreign vector resource admitted')
+        w.content.nested.icon='vector_resource'
+    end
+    p.data.retained_id=19
+    assert(not capture:draw({w},{},function()drew=drew+1 end))
+    p.data.retained_id=nil
+    assert(drew==1)
+    capture:destroy()
+    assert(p.data==source_data)
+end
+print('widget_capture_state: immediate vector resource admission and source cache isolation pass')
+
 if arg[2] then
     local actual_live={}
     local stock_renderer={
@@ -140,4 +169,43 @@ if arg[2] then
         assert(next(actual_live)==nil)
     end
     print('widget_capture_state: actual stock texture/UV/rotated material creation, replacement and cleanup pass')
+
+    for _,kind in ipairs({'slug_icon','slug_picture','rotated_slug_icon','rotated_rect'}) do
+        local target={scale=1.5,render_settings={}}
+        local p={pass_type=kind,value_id='icon'}
+        p.data=stock[kind].init(p) or {}
+        local source_data=p.data
+        local w={passes={p},content={icon='vector_resource'},style={material='vector_material',
+            draw_index=2,color={255,255,255,255},angle=0.5,pivot={}}}
+        local position,size={100,80,7},{20,30,0}
+        local submitted=0
+        local function check(renderer,resource,index,pos,extent,color,optional_material,...)
+            assert(renderer==target and resource=='vector_resource' and index==2)
+            assert(pos==position and extent==size and color==w.style.color and optional_material=='vector_material')
+            assert(select('#',...)==0,'stock requested retained capture')
+            assert(p.data~=source_data and not p.data.retained_id)
+            submitted=submitted+1
+        end
+        stock_renderer.draw_slug_icon=check
+        stock_renderer.draw_slug_picture=function(renderer,resource,pos,extent,color,optional_material,...)
+            return check(renderer,resource,2,pos,extent,color,optional_material,...)
+        end
+        stock_renderer.draw_slug_icon_rotated=function(renderer,resource,index,extent,pos,angle,pivot,color,optional_material,...)
+            assert(angle==0.5 and pivot[1]==10 and pivot[2]==15)
+            return check(renderer,resource,index,pos,extent,color,optional_material,...)
+        end
+        stock_renderer.draw_rect_rotated=function(renderer,extent,pos,angle,pivot,color,...)
+            assert(angle==0.5 and pivot[1]==10 and pivot[2]==15)
+            return check(renderer,'vector_resource',2,pos,extent,color,'vector_material',...)
+        end
+        stock_renderer.destroy_slug_icon=function()error('immediate capture must not destroy retained source icons')end
+        local capture=State.new(target,stock)
+        assert(capture:draw({w},{},function()
+            stock[kind].draw(p,target,w.style,w.content,position,size)
+        end))
+        assert(submitted==1 and p.data==source_data and not source_data.retained_id)
+        capture:destroy();capture:destroy()
+        assert(p.data==source_data and next(actual_live)==nil)
+    end
+    print('widget_capture_state: actual stock vector/rotated rectangle draw arguments and immediate cleanup pass')
 end

@@ -37,7 +37,8 @@ four scales. This isolates geometry; it does not measure complete raster bounds,
 copy retained widget state, or admit arbitrary custom logic into capture.
 
 `darktidevr_widget_capture_state.lua` isolates GUI-owned pass caches for the
-immediate texture, UV texture, rotated texture, text and rectangle paths. It
+immediate texture, UV texture, rotated texture, text, rectangle, rotated rectangle,
+vector icon, vector picture and rotated vector icon paths. It
 initializes capture-specific data through the stock pass initializer, reuses it
 while the pass remains active, and restores source data even when drawing fails.
 Removed/retyped passes release their cache through the capture renderer. Final
@@ -45,6 +46,22 @@ cleanup must precede capture renderer destruction. Unsupported/custom logic,
 retained draws/IDs, foreign material handles and duplicate pass records are
 rejected before redirection; no partial widget is silently accepted. This initial
 admission policy is not coverage of all 20 marker families.
+
+9 September vector follow-up: beacon-style `slug_icon` passes can now be admitted
+alongside texture/text content. Vector resource and optional material inputs must
+be named strings, retaining the foreign-handle rejection. The stock immediate
+vector paths allocate no retained IDs; their capture cache is still detached
+from source pass data. Rotated icon/rectangle pivot defaults remain stock-owned
+and execute once in the capture draw. Multi-icon passes and arbitrary logic
+remain unsupported, so this is not complete marker-family admission.
+
+The actual cached stock icon, picture, rotated icon and rotated rectangle pass
+functions were executed offline. They forward the capture renderer, resource,
+index, geometry, color, optional material and stock pivot defaults without
+retained requests. Source cache bindings survive drawing and repeated cleanup.
+Five capture/lifetime CTests pass in 0.08 seconds and all 61 Lua chunks compile.
+This extension remains unloaded and does not establish native vector rendering,
+complete bounds, or the user's popup sizing acceptance.
 
 Offline tests include actual cached stock texture/UV/rotated material creation,
 value replacement and destruction, verifying that source material handles never
