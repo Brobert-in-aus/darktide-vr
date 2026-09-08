@@ -61,6 +61,15 @@ included in the separate focused tactical-overlay port at `8eab44e`.
 
 ## Communication-wheel stock contract checked 9 September
 
+9 September inventory follow-up: a regression reproduced a retained inventory
+input proxy continuing to request opening after the stock hotkey handler returned.
+Each request now belongs to a unique handler scope and input sample. A retained
+proxy cannot revive in a later call, cross player replacement, survive routing
+loss, or remain active after an exception. Expiration preserves independent
+keyboard input, and both null-service forms remain blocked. Five focused input
+tests pass in 0.08 seconds; the pinned LuaJIT gate compiles 62 chunks. This source
+fix is undeployed and is not part of the earlier focused overlay port.
+
 The cached stock `_handle_com_wheel` is now exercised by
 `tests/tooling/test-communication-wheel-stock-contract.lua`. Its input is held
 `com_wheel`, separate from pressed `smart_tag`. It opens after the saved delay

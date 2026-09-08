@@ -97,6 +97,44 @@ assert(inventory_hook(stock_hotkeys,ui),'Keyboard inventory suppressed')
 inventory_keyboard=false
 api.sample(true,32768+1024)
 assert(not inventory_hook(stock_hotkeys,ui),'Inventory competed with menu')
+local retained_inventory
+api.sample(true,32768)
+inventory_hook(function(self)
+    retained_inventory=service_hook(get_source,self)
+    assert(retained_inventory:get('hotkey_inventory'))
+end,ui)
+assert(not retained_inventory:get('hotkey_inventory'),'Retained inventory proxy outlived stock scope')
+api.sample(true,32768)
+inventory_hook(function(self)
+    assert(not retained_inventory:get('hotkey_inventory'),'Old proxy revived in a new inventory scope')
+    local fresh=service_hook(get_source,self)
+    assert(fresh:get('hotkey_inventory'))
+    api.sample(true,32768)
+    assert(not fresh:get('hotkey_inventory'),'Proxy borrowed a new active input sample')
+    api.sample(false,0)
+    assert(not fresh:get('hotkey_inventory'),'Proxy ignored routing loss inside the stock handler')
+end,ui)
+api.sample(true,32768)
+assert(not pcall(inventory_hook,function(self)
+    retained_inventory=service_hook(get_source,self)
+    error('stock failure with retained proxy')
+end,ui))
+assert(not retained_inventory:get('hotkey_inventory'),'Failed stock scope left an active proxy')
+api.sample(true,32768)
+inventory_hook(function(self)
+    local input=service_hook(get_source,self)
+    unit={}
+    assert(not input:get('hotkey_inventory'),'Proxy crossed a player replacement inside the handler')
+end,ui)
+inventory_keyboard=true
+assert(retained_inventory:get('hotkey_inventory'),'Expired proxy suppressed independent keyboard input')
+inventory_keyboard=false
+api.sample(true,32768)
+inventory_hook(function(self)
+    local predicate_null={get=function()return false end,is_null_service=function()return true end}
+    assert(api.route_hotkey_input(predicate_null,self,'View')==predicate_null,
+        'Null service predicate bypassed')
+end,ui)
 print('inventory_hotkey=pass stock_gates=preserved no_replay=true')
 
 -- UI requests belong to the player present when input was sampled. The HUD

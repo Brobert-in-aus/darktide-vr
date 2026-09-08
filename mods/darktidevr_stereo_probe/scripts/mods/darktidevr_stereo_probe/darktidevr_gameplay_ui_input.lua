@@ -69,7 +69,8 @@ function Input.install(mod, local_player_unit)
     -- modal gates and view validation. Expire even if stock never reads input.
     mod:hook("UIManager","_update_view_hotkeys",function(func,self,...)
         local previous=inventory_owner
-        inventory_owner=state.active and state.inventory and request_owner_current() and self or nil
+        inventory_owner=state.active and state.inventory and request_owner_current() and
+            {manager=self,sample=state.sample} or nil
         state.inventory=false
         local function pack(...) return {n=select("#",...),...} end
         local result=pack(pcall(func,self,...))
@@ -78,11 +79,15 @@ function Input.install(mod, local_player_unit)
         return unpack(result,2,result.n)
     end)
     function api.route_hotkey_input(source,self,service)
-        if inventory_owner~=self or (service and service~="View") or not source or
+        if not inventory_owner or inventory_owner.manager~=self or (service and service~="View") or not source or
+                (source.is_null_service and source:is_null_service()) or
                 (source.null_service and source==source:null_service()) then return source end
+        local scope=inventory_owner
         return setmetatable({get=function(_,name,...)
             local value=source:get(name,...)
-            return name=="hotkey_inventory" and true or value
+            local inject=name=="hotkey_inventory" and inventory_owner==scope and
+                state.sample==scope.sample and state.active and request_owner_current()
+            return inject and true or value
         end},{__index=function(_,name)
             local value=source[name]
             if type(value)=="function" then return function(_,...) return value(source,...) end end
