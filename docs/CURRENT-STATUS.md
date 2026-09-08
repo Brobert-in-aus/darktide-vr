@@ -21,6 +21,12 @@ The subsequent default Ready preflight passes with the accepted viewer and VDXR:
 600/600 frames submitted, zero skipped. Normal Quest proximity automation was
 restored afterward; game and viewer are closed. Recheck before a new live session.
 
+Latest attempt at 08:43 Brisbane on 9 September failed that fresh Ready gate:
+VDXR reported `hmd-unavailable` and skipped the session. No game launch or new
+performance trace followed. Normal Quest proximity automation was restored in
+failure cleanup; no VD restart occurred. Continue offline until streaming is
+renderable, then repeat Ready. The earlier success is historical evidence.
+
 ## Current checkpoint: night of 8 September
 
 The user reports **All checks passed** for tonight's test session. See the
