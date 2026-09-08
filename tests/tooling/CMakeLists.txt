@@ -39,6 +39,8 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/test-projection-math.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_projection_math.lua")
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME billboard_build_output COMMAND "${Python3_EXECUTABLE}" -B
+    "${PROJECT_SOURCE_DIR}/tools/stereo/test-build-atlas-billboard-candidates.py")
   add_test(NAME xr_disabled_contract COMMAND "${Python3_EXECUTABLE}" -B
     "${CMAKE_CURRENT_SOURCE_DIR}/test-xr-disabled-contract.py"
     "$<TARGET_FILE:darktidevr-xr-harness>")

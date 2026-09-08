@@ -42,6 +42,17 @@ continuity across it is not claimed. Worn behavior still requires observation.
 The builder requires exact original bytecode hashes and checks all six outputs
 with the unchanged runtime interface gate. Use a fresh output directory:
 
+9 September: the destination must now be nonexistent, including after an
+interrupted/failed build. The earlier receipt-only check allowed partial output
+to be overwritten. Creation claims the directory exclusively after original
+validation, rejecting a competing run that created it in the meantime. No
+success receipt is written after compiler failure, and partial evidence remains
+available for inspection. Choose a new destination to retry; do not reuse it.
+Four isolated workflow tests cover existing/partial/validated directories,
+competing creation, failed build/retry and all six fresh outputs. The compiler
+and interface gate are test doubles in these tests; the `billboard_build_output`
+CTest passes in 0.25 seconds. No staged or installed shader was changed.
+
 ```powershell
 python tools/stereo/build-atlas-billboard-candidates.py `
   --dxc 'C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/dxc.exe' `

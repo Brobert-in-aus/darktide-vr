@@ -31,14 +31,16 @@ def main() -> int:
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     source_root = Path(__file__).resolve().parent
-    if (args.output / 'build.json').exists():
-        raise FileExistsError('Choose a fresh output directory; preserve the prior validated receipt')
+    if args.output.exists():
+        raise FileExistsError('Choose a new output directory; preserve prior or partial build evidence')
     # Verify every original before writing any output or invoking compilers.
     for identity, expected in ORIGINALS.items():
         original = args.original_directory / f'vs-{identity}.bin'
         if sha256(original) != expected:
             raise ValueError(f'Captured display shader hash mismatch: {original}')
-    args.output.mkdir(parents=True, exist_ok=True)
+    # Claim the destination exclusively. A competing run can create it after
+    # the early check while originals are being verified; never share outputs.
+    args.output.mkdir(parents=True, exist_ok=False)
     validation = [sys.executable, str(source_root / 'test-shader-interface.py'),
                   '--native-capture', str(args.native_capture),
                   '--reflection-library', str(args.reflection_library),
