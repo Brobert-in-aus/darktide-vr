@@ -60,7 +60,9 @@ function Display.install(mod,presentation,tracking)
             return
         end
         if world~=extension._world then api.destroy(); world=extension._world end
-        if not gui then gui=World.create_world_gui(world,Matrix4x4.identity(),1,1) end
+        -- The path is redrawn at the latest hand pose each frame. Retained
+        -- mode keeps every old rectangle and accumulates a blue trail.
+        if not gui then gui=World.create_world_gui(world,Matrix4x4.identity(),1,1,'immediate') end
         api.last_preview={name=result.action_name,t=t,unit=unit,
             weapon=extension._weapons[extension._inventory_component.wielded_slot]}
         Gui.set_visible(gui,true)

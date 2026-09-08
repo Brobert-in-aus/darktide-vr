@@ -31,7 +31,12 @@ Managers={player={local_player_safe=function() return {player_unit=unit} end},ui
     time={time=function() return 1 end}}
 Unit={alive=function() return true end}
 ScriptUnit={has_extension=function() return extension end}
-World={create_world_gui=function() created=created+1; return {} end,
+local live_gui
+World={create_world_gui=function(_,_,_,_,mode)
+        created=created+1
+        live_gui={mode=mode,rectangles={}}
+        return live_gui
+    end,
     destroy_gui=function() destroyed=destroyed+1; visible=false end}
 Matrix4x4={identity=function() return {} end}
 Gui={set_visible=function(_,value) visible=value end,
@@ -104,7 +109,7 @@ for _,axis in ipairs({'right','up','forward','translation'}) do
     Matrix4x4['set_'..axis]=function(tm,value) tm[axis]=value end
 end
 local rectangles={}
-Gui.rect_3d=function(_,tm,offset,layer,size,color)
+Gui.rect_3d=function(gui,tm,offset,layer,size,color)
     draws=draws+1
     assert(size.x>0 and size.y==.008 and offset.y==-.004 and layer==1)
     for _,axis in ipairs({'right','up','forward'}) do assert(math.abs(Vector3.length(tm[axis])-1)<1e-12) end
@@ -112,6 +117,7 @@ Gui.rect_3d=function(_,tm,offset,layer,size,color)
     assert(Vector3.length(normal-tm.up)<1e-12,'Nonorthogonal world GUI basis')
     assert(color[1]==150)
     rectangles[#rectangles+1]={tm=tm,length=size.x}
+    gui.rectangles[#gui.rectangles+1]={tm=tm,length=size.x}
 end
 Managers.player={local_player_safe=function() return {player_unit=unit} end}
 extension._first_person_component.position=Vector3(0,0,0)
@@ -121,6 +127,22 @@ assert(visible and draws==4,'Path and two arrow wings did not draw')
 assert(rectangles[1].length==1 and rectangles[2].length==1)
 assert(rectangles[3].tm.translation.x==2 and rectangles[4].tm.translation.x==2)
 assert(rectangles[3].tm.right.x<0 and rectangles[4].tm.right.x<0,'Arrow wings face ahead of travel')
+-- Model the engine's frame boundary: immediate primitives expire, retained
+-- ones survive. A moving guide must never contain an earlier frame's path.
+local gui_created=created
+for frame=1,120 do
+    if live_gui.mode=='immediate' then live_gui.rectangles={} end
+    local x=frame*.001
+    context.paths[1][1].tip.x=x
+    api.update()
+    assert(#live_gui.rectangles==4,'Guide accumulated rectangles across frames')
+    assert(live_gui.rectangles[1].tm.translation.x==x,'Guide retained an old hand pose')
+end
+assert(created==gui_created,'Guide recreated its world GUI every frame')
+if live_gui.mode=='immediate' then live_gui.rectangles={} end
+blocked=true; api.update()
+assert(#live_gui.rectangles==0 and not visible,'Hidden guide retained frame geometry')
+blocked=false; api.update()
 logs=nil
 local action={_player_unit=unit,_weapon=extension._weapons.primary,_is_server=true}
 start_hook(action,{name='first_light'},1.2)

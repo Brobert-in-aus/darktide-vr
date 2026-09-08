@@ -72,3 +72,16 @@ because the same mod already has a regular start hook. The existing hook stays
 active; the rejected observer only logs predicted-versus-started action matching,
 not preview drawing. Combine that logging with the existing hook in a subsequent
 patch and validate without interrupting this user test session.
+
+8 September evening worn acceptance: the user confirms the mission crosshair
+works. The melee guide draws but accumulates blue geometry across frames.
+Before edits, the newest three Quest recordings (17:36:02, 17:41:41, 17:53:16)
+were copied to artifacts/quest-recordings/2026-09-08-evening and all SHA256 hashes
+matched the originals. The files remain on the headset.
+
+The guide created a retained world GUI while appending fresh rect_3d primitives
+every update. It now creates an immediate world GUI, matching the existing HUD
+panel approach, so the engine retires those rectangles each frame. A 120-frame
+moving-pose fixture rejects stale geometry and checks hidden frames and reuse of
+one GUI. The old source fails; the correction passes. Related CTests: 3/3 in
+0.06 s; focused Lua source gate: 45 chunks. Live visual acceptance is pending.
