@@ -4,6 +4,15 @@
 fixing billboarding the next task. Do not expand unrelated polish ahead of that
 work. Required worn/live acceptance remains explicitly pending until observed.
 
+**New requested visual correction, 8 September:** the item-pickup popup shrinks
+near a screen edge, producing unequal apparent sizes between eyes. Fix the
+stereo sizing disagreement and audit other prompts/markers with similar
+edge-dependent shrinking or fading behavior. Cover pickups, interaction prompts
+and other shared screen-space marker styles found by the source pass; do not
+limit acceptance to one item. This is an active reported bug, not the older
+post-release allowance for slight extreme-edge marker asymmetry. Verify both
+eyes at the center and near each edge with the user's worn observation.
+
 **Latest 8 September steering:** pause physical melee until server-side stock
 melee is locked in. The requested [first-swing preview](STOCK-MELEE-PREVIEW.md)
 is prepared in PR #10 and as a focused accepted-baseline candidate in PR #11.
@@ -193,7 +202,9 @@ for the smaller set needed before a first end-to-end mission attempt.
    The explicit `-InitializeInstall` path now creates missing VR folders and
    registers the mod in an existing loader/framework setup, with rollback tested
    offline. Saved staged/committed manifests now have a guarded recovery command,
-   including backup of the pre-recovery state. Standalone packaging and live
+   including backup of the pre-recovery state. An explicit 89-file standalone
+   development candidate package now passes extracted file/Lua/shader checks;
+   see [runtime packaging](RUNTIME-PACKAGE.md). Public release and live
    clean-install/recovery acceptance remain pending.
    A verified prebuilt production shader option removes the destination SDK
    compiler requirement; ordinary development sync still rebuilds by default.

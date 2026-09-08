@@ -59,7 +59,9 @@ From a built Windows checkout, use `tools/stereo/sync-darktide-vr-dev.ps1
 -InitializeInstall -GameRoot <installation>` after the required default Ready
 preflight and with Darktide closed. Source compilation, native build artifacts
 and the ordinary shader build requirements still apply. This is a source-tree
-installation path; a standalone release package remains pending.
+installation path. The [standalone development package](RUNTIME-PACKAGE.md) now
+stages the required built files and validation tools; public release and live
+clean-install acceptance remain pending.
 
 For a package prepared with precompiled production shader output, add
 `-UsePrebuiltProductionShader` to sync or the ordinary start/launch scripts.

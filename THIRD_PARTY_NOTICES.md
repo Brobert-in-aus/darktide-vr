@@ -20,3 +20,5 @@ https://github.com/LuaJIT/LuaJIT at commit
 Copyright Mike Pall and contributors; MIT license, retained in the dependency
 checkout's COPYRIGHT file. This validator compiles chunks without running them;
 it is not shipped into Darktide and does not replace the game's Lua runtime.
+Development candidate packages include the validator as a separate launch-time
+validation utility, retaining the upstream COPYRIGHT file alongside it.

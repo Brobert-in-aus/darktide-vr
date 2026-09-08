@@ -4,6 +4,11 @@ Updated 8 September 2026. This summary supersedes the chronological evidence
 below. Start with the [workday handoff](handoffs/2026-09-08-workday.md) and
 [remaining development](REMAINING-DEVELOPMENT.md).
 
+Latest follow-ups: after pre-launch TODO work, fix billboarding next. The user
+also reports item-pickup popups shrinking differently between eyes near screen
+edges; fix that and audit similar prompt/marker behavior. This is active visual
+work and supersedes the older optional edge-asymmetry polish label.
+
 Latest user priority: physical melee is paused until server-side stock melee is
 locked in. The [first-swing preview candidate](STOCK-MELEE-PREVIEW.md) uses stock
 authored geometry and the correct simulated/local aim owner. It remains opt-in,
