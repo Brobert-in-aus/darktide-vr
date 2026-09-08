@@ -58,6 +58,8 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/test-vdxr-trace.py")
   add_test(NAME dlss_ui_detail COMMAND "${Python3_EXECUTABLE}" -B
     "${PROJECT_SOURCE_DIR}/tests/streamline_stereo_inputs/test_ui_detail.py")
+  add_test(NAME dlss_ui_alpha_regions COMMAND "${Python3_EXECUTABLE}" -B
+    "${PROJECT_SOURCE_DIR}/tests/streamline_stereo_inputs/test_ui_alpha_check.py")
   add_test(NAME dlss_ui_capture_identity COMMAND "${Python3_EXECUTABLE}" -B
     "${PROJECT_SOURCE_DIR}/tests/streamline_stereo_inputs/test_generated_ui_check.py")
   add_test(NAME ui_readback_native_roundtrip COMMAND "${Python3_EXECUTABLE}" -B

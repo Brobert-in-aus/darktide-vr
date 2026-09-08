@@ -29,9 +29,31 @@ def read_rgba(path):
     return pixels[:, :, [2, 1, 0, 3]].copy()
 
 
-def compare(scene, final, ui, tolerance=3):
-    if scene.shape != final.shape or ui.shape != final.shape or final.shape[-1] != 4:
+def coverage_regions(alpha, radius):
+    if alpha.ndim != 2 or alpha.dtype != np.uint8 or not alpha.size:
+        raise ValueError("Expected a nonempty UI alpha plane")
+    if not isinstance(radius, int) or isinstance(radius, bool) or not 0 <= radius <= 64:
+        raise ValueError("Near-UI radius must be an integer from 0 to 64 pixels")
+    covered = alpha > 0
+    nearby = covered
+    # Separable box dilation using prefix counts: bounded work per image,
+    # without wraparound at image borders or a quadratic radius-sized kernel.
+    for axis in (1, 0):
+        padding = [(0, 0), (0, 0)]
+        padding[axis] = (radius + 1, radius)
+        prefix = np.cumsum(np.pad(nearby, padding), axis=axis, dtype=np.int64)
+        high, low = [slice(None), slice(None)], [slice(None), slice(None)]
+        high[axis], low[axis] = slice(2 * radius + 1, None), slice(None, -2 * radius - 1)
+        nearby = prefix[tuple(high)] != prefix[tuple(low)]
+    return {"opaque_ui": alpha == 255, "translucent_ui": covered & (alpha < 255),
+            "transparent_near_ui": nearby & ~covered, "transparent_far_ui": ~nearby}
+
+
+def compare(scene, final, ui, tolerance=3, near_ui_radius=8):
+    if any(image.ndim != 3 or image.shape[2] != 4 or not image.size or image.dtype != np.uint8
+           for image in (scene, final, ui)) or scene.shape != final.shape or ui.shape != final.shape:
         raise ValueError("All inputs must have identical RGBA eye extents")
+    regions = coverage_regions(ui[:, :, 3], near_ui_radius)
     colour = ui[:, :, :3].astype(np.float32)
     alpha = ui[:, :, 3:4].astype(np.float32) / 255
     composed = colour + (1 - alpha) * scene[:, :, :3].astype(np.float32)
@@ -45,6 +67,9 @@ def compare(scene, final, ui, tolerance=3):
     invalid_premultiplied = colour.max(axis=2) > ui[:, :, 3].astype(np.float32) + 1
     count = int(relevant.sum())
     report = {
+        "measurement": "premultiplied_source_over_residual",
+        "capture_identity_verified": False,
+        "visual_acceptance": "unverified",
         "extent": [int(final.shape[1]), int(final.shape[0])],
         "changed_pixels": int(changed.sum()),
         "covered_pixels": int(covered.sum()),
@@ -60,6 +85,17 @@ def compare(scene, final, ui, tolerance=3):
             not invalid_premultiplied.any() and not missed.any() and
             count and residual.sum() / count <= 0.01),
     }
+    report["near_ui_radius_pixels"] = near_ui_radius
+    report["near_ui_distance"] = "chebyshev"
+    report["regions"] = {}
+    for name, mask in regions.items():
+        pixels = int(mask.sum())
+        failures = int((residual & mask).sum())
+        report["regions"][name] = {
+            "pixels": pixels, "residual_pixels_over_tolerance": failures,
+            "residual_fraction": failures / pixels if pixels else None,
+            "max_channel_error": float(error[mask].max()) if pixels else None,
+        }
     return report, np.clip(composed, 0, 255).astype(np.uint8), error
 
 
@@ -67,14 +103,21 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stem", type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--near-ui-radius", type=int, default=8,
+                        help="Transparent-pixel neighborhood in capture pixels (0-64; default 8)")
     args = parser.parse_args()
-    args.output.mkdir(parents=True, exist_ok=True)
     report = {}
+    prepared = {}
     for eye in ("left", "right"):
         scene, final, ui = [read_rgba(f"{args.stem}-{eye}-{role}.bmp")
                             for role in ("scene", "final", "ui")]
-        result, composed, error = compare(scene, final, ui)
+        result, composed, error = compare(scene, final, ui, near_ui_radius=args.near_ui_radius)
         report[eye] = result
+        prepared[eye] = (ui, composed, error)
+    # Check both eyes before creating output. A malformed second eye must not
+    # leave a new left-eye result beside older evidence from the other eye.
+    args.output.mkdir(parents=True, exist_ok=True)
+    for eye, (ui, composed, error) in prepared.items():
         Image.fromarray(ui).save(args.output / f"{eye}-ui.png")
         Image.fromarray(ui[:, :, 3]).save(args.output / f"{eye}-alpha.png")
         Image.fromarray(composed).save(args.output / f"{eye}-recomposed.png")

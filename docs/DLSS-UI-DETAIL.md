@@ -150,3 +150,32 @@ Local evidence: `artifacts/diagnostics/hud-alpha-capture-20260906/opaque-detail-
 Unit fixtures cover unchanged contrast, known numerical smoothing, reversed
 edges, insufficient opaque detail and invalid extents/types. Capture identity
 fixtures reject incomplete exports and mismatched calls/resources/poses.
+
+## Composition residual regions: 9 September 2026
+
+`check-dlss-ui-alpha.py` now reports disjoint opaque UI, translucent UI,
+transparent pixels near UI and transparent pixels farther away. The default
+neighborhood is eight capture pixels in Chebyshev distance; use
+`--near-ui-radius 0..64` to change it. This is a measurement neighborhood, not
+an estimated blur radius. Coverage includes every captured UI primitive,
+including world markers; it does not identify individual HUD widgets.
+
+Each region records its pixel count, source-over residual count/fraction and
+maximum channel error. Empty regions have null fractions and maxima. The
+existing composition pass criteria remain unchanged. Both eyes are validated
+before output creation. This standalone checker does not verify capture logs
+or pixel checksums and explicitly reports `capture_identity_verified=false`
+and `visual_acceptance=unverified`.
+
+Reanalysis of the original pose-8589 six-bitmap sample found 44,438 left-eye
+and 43,289 right-eye transparent pixels within eight pixels of coverage. All
+four regions in each eye had zero residuals above the existing three-level
+tolerance. This verifies composition arithmetic for the supplied older static
+images only: it does not measure post-NGX temporal blur, establish sharpness,
+characterize the current UI-input-disabled baseline or resolve the HUD blur.
+Local report: `artifacts/unattended/dlss-near-ui-regions-20260909/alpha-check.json`.
+
+Seven Python fixtures cover disjoint neighborhoods, clipped borders, empty
+regions, invalid radii, known residual locations and malformed second-eye
+input. Four focused CTests (`dlss_ui_|ui_readback_native_roundtrip`) pass in
+1.40 seconds. No live capture or installed runtime changed.
