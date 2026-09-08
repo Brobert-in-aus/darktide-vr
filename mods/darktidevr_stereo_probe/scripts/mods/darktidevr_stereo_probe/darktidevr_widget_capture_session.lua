@@ -11,15 +11,30 @@ function Session.new(backend, pass_types, Surface, State, Snapshot, get_size)
         copy=function() backend:copy() end,
         queue=function(_,draw,metadata,revision) backend:queue(draw,metadata,revision) end,
         destroy=function()
-            local ok,err=pcall(self.state.destroy,self.state)
-            local released,release_error=pcall(backend.destroy,backend)
-            if not ok then
-                if not released then err=tostring(err)..'; backend: '..tostring(release_error) end
-                error(err,0)
+            local errors={}
+            local function release(label,fn,owner)
+                local ok,err=pcall(fn,owner)
+                if not ok then errors[#errors+1]=label..': '..tostring(err) end
             end
-            if not released then error(release_error,0) end
+            local display=self.display
+            self.display=nil
+            -- The display material borrows the completed target. Retire its
+            -- GUI binding before capture caches, renderer and target teardown.
+            if display then release('display',display.destroy,display) end
+            release('state',self.state.destroy,self.state)
+            release('backend',backend.destroy,backend)
+            if #errors>0 then error(table.concat(errors,'; '),0) end
         end})
     return self
+end
+
+function Session:create_display(Display,api,world,Quad,Plane,layer)
+    assert(not self.destroyed and not self.surface.failed and not self.display,
+        'widget session display unavailable')
+    -- A failed constructor owns its partial cleanup; do not retain it.
+    local display=Display.new(api,world,self,Quad,Plane,layer)
+    self.display=display
+    return display
 end
 
 function Session:capture(t,identity,request)

@@ -23,6 +23,15 @@ all cleanup steps are attempted and repeated destruction cannot release twice.
 The owner never releases the borrowed capture/display textures. This ordering
 still needs to be connected to actual HUD/world lifecycle hooks.
 
+The session now provides `create_display(Display, api, world, Quad, Plane, layer)`
+to own that ordering automatically. It rejects a duplicate display and leaves
+failed construction unowned. `Session:destroy()` retires the attached display,
+then capture pass caches, then the backend, attempting every stage and preserving
+all errors. Prefer this factory to a standalone display; the caller still must
+destroy the session before the source world. Seven widget CTests pass in 0.10
+seconds, including combined display/cache/backend failures and one-time cleanup;
+all 66 Lua chunks compile. This does not yet install HUD/world lifecycle hooks.
+
 Eight focused CTests (`widget_|marker_plane`) pass in 0.12 seconds and 66 Lua
 chunks compile. The new fixture compares all submitted corners with the shared
 plane and covers pose/revision changes, hidden-frame decisions, target changes,

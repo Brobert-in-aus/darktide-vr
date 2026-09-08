@@ -134,3 +134,43 @@ for _,bounds in ipairs({
     s:destroy()
 end
 print('widget_capture_session: first-eye admission, pixel-aligned bounds, failure cleanup and lifecycle pass')
+
+-- Session ownership enforces display-before-target teardown, including failures.
+for _,fail in ipairs({false,true})do
+    s,b,r=setup();assert(s:capture(1,identity,r))
+    local order={}
+    local display={destroy=function()
+        assert(not b.destroyed);order[#order+1]='display'
+        if fail then error('display cleanup failed')end
+    end}
+    local Display={new=function(api,world,session,Quad,Plane,layer)
+        assert(api=='api' and world=='world' and session==s and Quad=='quad' and Plane=='plane' and layer==37)
+        return display
+    end}
+    assert(s:create_display(Display,'api','world','quad','plane',37)==display)
+    assert(not pcall(s.create_display,s,Display,'api','world','quad','plane',37),'duplicate display rejected')
+    local state_destroy=s.state.destroy
+    function s.state:destroy()
+        order[#order+1]='state';state_destroy(self)
+        if fail then error('state cleanup failed')end
+    end
+    local backend_destroy=b.destroy
+    function b:destroy()
+        order[#order+1]='backend';backend_destroy(self)
+        if fail then error('backend cleanup failed')end
+    end
+    local ok,err=pcall(s.destroy,s)
+    assert(ok~=fail and table.concat(order,',')=='display,state,backend')
+    if fail then
+        for _,name in ipairs({'display','state','backend'})do
+            assert(tostring(err):find(name..' cleanup failed',1,true))
+        end
+    end
+    s:destroy();assert(#order==3 and s.display==nil)
+    assert(not pcall(s.create_display,s,Display,'api','world','quad','plane',37))
+end
+s,b=setup()
+assert(not pcall(s.create_display,s,{new=function()error('construction failed')end}))
+assert(s.display==nil and not b.destroyed)
+s:destroy()
+print('widget_session_display=pass ordered ownership duplicate rejection combined failures and constructor rollback')
