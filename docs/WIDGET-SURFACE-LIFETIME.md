@@ -51,6 +51,20 @@ value replacement and destruction, verifying that source material handles never
 reach capture submission or cleanup. Native GUI rendering, resource-fence behavior
 and whole-widget raster bounds still require live validation.
 
+`darktidevr_widget_capture_session.lua` connects the resource backend, pass-cache
+owner, detached geometry and image-lifetime controller. It requires supplied
+complete bounds and consistent explicit scale/inverse scale, rejects oversized
+captures, and preserves both positive and negative first-eye admission decisions.
+Bounds are copied into image metadata rather than shared with next-frame layout.
+Target changes, hidden state, clock rollback and missing submission hide stale
+content. Draw errors propagate without a second draw; materials are destroyed
+before the renderer, even when material cleanup reports an error.
+
+This coordinator is still offline and unloaded. The caller must provide the
+actual full-widget raster bounds and preserve source visibility, complete
+primitive admission and display/occlusion policy. A node's size or an arbitrary
+fixed rectangle is not evidence of complete bounds.
+
 8 September offline checkpoint. The pickup sizing investigation now has a
 tested capture/display lifetime controller in `darktidevr_widget_surface.lua`.
 It is not loaded by the mod, has no engine backend yet, and changes no installed
