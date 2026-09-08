@@ -4,6 +4,16 @@ Updated 8 September 2026. This summary supersedes the chronological evidence
 below. Start with the [workday handoff](handoffs/2026-09-08-workday.md) and
 [remaining development](REMAINING-DEVELOPMENT.md).
 
+User home, 8 September 16:49 Brisbane: the 20-minute heartbeat is paused at the
+user's request. Finish the current popup capture-lifetime checkpoint, then stop
+autonomous work. The offline [lifetime controller](WIDGET-SURFACE-LIFETIME.md)
+does not yet have an engine backend and is not deployed. The pickup visual fix
+and worn acceptance remain open. The precise-wait sustained comparison was
+interrupted by loss of game focus after about 22 minutes; background-only
+original-frame delivery is not evidence that the earlier slowdown is fixed.
+SoloPlay remains prepared for the user's mission test. Normal Quest proximity
+automation has been restored with Enable and Status as development ends.
+
 Latest setup, 8 September afternoon: supplied SoloPlay 2.6.2 is installed with
 a normal Uprising mission preset for the user's return. Locally owned missions
 now use stock online-style VR input/combat rules; physical melee stays paused.
@@ -52,10 +62,8 @@ unknown-hand-role rejection and drawing-geometry checks. Full offline CTest
 cached-stock tests also cover all three force-sword input overrides (PR #15)
 and real exported preview spline frames (PR #16). Live deployment is unchanged.
 
-Development is active in the user's requested session, with a 20-minute
-heartbeat, until explicitly told to stop. The user is away at work; continue
-independent offline development when worn observations are needed. Yesterday's
-night-stop instructions are historical.
+The earlier workday instruction to continue with a 20-minute heartbeat is now
+superseded by the user's return and stop instruction above.
 
 Further offline checkpoints add [physical-hand ownership foundations](HANDEDNESS-AUDIT.md)
 for equipment, gun alignment, support calibration and local weapon sound. The

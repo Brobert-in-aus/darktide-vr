@@ -101,6 +101,9 @@ enabled; complete primitive/material/layer behavior still needs validation.
   for marker, popup and tag draws; offline checks pass, live measurements pending.
 - [x] Inventory all 20 registered templates and their primitive families,
   including the separate popup/tag paths and custom damage-number draws.
+- [x] Validate a [complete-widget capture lifetime controller](WIDGET-SURFACE-LIFETIME.md)
+  offline: shared-eye decisions, submitted image/bounds pairing, stale-target
+  invalidation and failure cleanup. Engine backend and draw integration remain open.
 - [ ] Determine whether actual popup primitive extents, projection, or both
   produce the reported asymmetry. Use the existing worn report and passive
   evidence before selecting a correction.
