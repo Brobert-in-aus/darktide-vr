@@ -1,5 +1,26 @@
 # Complete-widget surface lifetime
 
+9 September: an offline engine resource backend now exists in
+`darktidevr_widget_capture.lua`. It creates an owned UI world/overlay viewport,
+two distinct RGBA8 targets and a stock viewport renderer. Handles are allocated
+individually and retired on partial construction failure. Extents are bounded
+to 4096 per axis and four million pixels per target. The backend is not loaded
+by the mod and no widget is redirected yet.
+
+`queue` clears the capture target and calls the supplied draw with its renderer.
+The integration must provide the independent renderer pass and restore any
+temporary scenegraph changes, including on errors. `observe_render(world)` must
+run after successful rendering of the owned world; it returns a revision once,
+for forwarding to the lifetime controller. `copy` rejects unsubmitted content.
+Draw/copy failures retire the backend. Destruction removes the viewport before
+targets, continues cleanup after errors, and cannot double-release on retry.
+
+The engine calls follow the checked stock UI renderer and accepted HUD resource
+path. Offline doubles verify ownership and submission sequencing, not actual
+engine rendering. Complete bounds, retained widget/material migration, display
+material/layer policy and live hook integration remain required. The historical
+8 September description below predates this resource backend.
+
 8 September offline checkpoint. The pickup sizing investigation now has a
 tested capture/display lifetime controller in `darktidevr_widget_surface.lua`.
 It is not loaded by the mod, has no engine backend yet, and changes no installed
