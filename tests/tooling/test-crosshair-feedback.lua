@@ -18,6 +18,10 @@ near(Feedback.pixel_scale(10,1),.49/41*.7)
 near(Feedback.pixel_scale(.1,1),.105/41*.7)
 near(Feedback.pixel_scale(100,1),.84/41*.7)
 near(Feedback.pixel_scale(20,2),.98/41*.7)
+near(Feedback.pixel_scale(10,1,100),.49/41)
+near(Feedback.pixel_scale(10,1,25),.49/41*.25)
+near(Feedback.scale(150),1.5);near(Feedback.scale(0),.25)
+near(Feedback.scale(0/0),.7);near(Feedback.scale(math.huge),.7)
 -- Both eyes consume one world-plane description; no screen-edge coordinate
 -- enters either the scale or stock layout calculation.
 local left,right=Feedback.quad({style_id='charge_left',value_id='charge'},widget),
@@ -71,4 +75,18 @@ point=vec(2,10,0);api.draw(world,vec(0,0,0),{})
 near(draws[2].tm.position[1],2-32*.49/41*.7);assert(created==1)
 presentation.mode=5;api.draw(world,vec(0,0,0),{});assert(not visible and #draws==2)
 hooks.destroy(owner);api.destroy();assert(destroyed==1)
+local percent,writes,callbacks=70,{},0
+Mods={lua={io={open=function(path,mode)
+    assert(path:match('darktidevr_crosshair_scale.flag$') and mode=='w')
+    return {write=function(_,text) writes[#writes+1]=text;return true end,close=function() end}
+end}}}
+local settings_mod={get=function(_,id) assert(id=='vr_crosshair_scale');return percent end,
+    hook_safe=function() end,on_setting_changed=function() callbacks=callbacks+1 end}
+local sized=Feedback.install(settings_mod,presentation,{})
+assert(#writes==1 and writes[1]=='70\n')
+sized.update_scale();assert(#writes==1)
+percent=100;settings_mod.on_setting_changed('vr_crosshair_scale')
+assert(callbacks==1 and #writes==2 and writes[2]=='100\n')
+settings_mod.on_setting_changed('unrelated');assert(callbacks==2 and #writes==2)
+Mods=nil
 print('Stock charge masks, rotated hit offsets/alpha, reticle scale caps and absent-owner lifetime pass')

@@ -1168,6 +1168,12 @@ class OpenXrProbe {
     std::uint64_t projection_resume_ready_value{};
     std::uint64_t projection_resume_gameplay_generation{};
     const auto start = std::chrono::steady_clock::now();
+    wchar_t reticle_scale_file[32768]{};
+    const auto reticle_scale_path_length = GetEnvironmentVariableW(
+        L"DTVR_RETICLE_SCALE_FILE", reticle_scale_file, 32768);
+    if (reticle_scale_path_length >= 32768) reticle_scale_file[0] = L'\0';
+    float reticle_scale = 0.7F;
+    auto next_reticle_scale_poll = start;
     auto last_live_report = start;
     auto next_cached_pair_report = start;
     std::uint32_t last_live_submitted_frames{};
@@ -3795,6 +3801,22 @@ class OpenXrProbe {
       }
       XrCompositionLayerQuad gameplay_reticle_quad{
           XR_TYPE_COMPOSITION_LAYER_QUAD};
+      const auto reticle_scale_now = std::chrono::steady_clock::now();
+      if (enable_gameplay_reticle && reticle_scale_file[0] && reticle_scale_now >= next_reticle_scale_poll) {
+        next_reticle_scale_poll = reticle_scale_now + std::chrono::milliseconds(250);
+        std::ifstream input{std::filesystem::path{reticle_scale_file}};
+        float percent{};
+        char extra{};
+        // Keep the last valid value during missing, partial or invalid writes.
+        if ((input >> percent) && !(input >> extra) && std::isfinite(percent) &&
+            percent >= 25.0F && percent <= 150.0F) {
+          const auto updated = percent / 100.0F;
+          if (updated != reticle_scale) {
+            reticle_scale = updated;
+            std::cout << "openxr.reticle_scale_percent=" << percent << '\n';
+          }
+        }
+      }
       if (gameplay_reticle_pose) {
         constexpr std::int32_t gameplay_reticle_extent = 41;
         // Leave transparent atlas texels outside the submitted rectangle so
@@ -3824,7 +3846,7 @@ class OpenXrProbe {
             gameplay_reticle_pose->position.y,
             gameplay_reticle_pose->position.z};
         const auto angular_size_metres = std::clamp(
-            gameplay_reticle_distance_metres_ * 0.049F, 0.105F, 0.84F) * 0.7F *
+            gameplay_reticle_distance_metres_ * 0.049F, 0.105F, 0.84F) * reticle_scale *
             (static_cast<float>(gameplay_reticle_sample_extent) /
              static_cast<float>(gameplay_reticle_extent));
         gameplay_reticle_quad.size = {angular_size_metres,

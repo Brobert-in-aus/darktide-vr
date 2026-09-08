@@ -25,12 +25,34 @@ function Feedback.quad(pass,widget)
     return {x=cx,y=cy,w=w,h=h,c=c,s=s,layer=offset[3] or 1,
         material=material,uvs=style.uvs or {{0,0},{1,1}},color=style.color or {255,255,255,255}}
 end
-function Feedback.pixel_scale(distance,character_scale)
+function Feedback.scale(percent)
+    if type(percent)~='number' or percent~=percent or math.abs(percent)==math.huge then percent=70 end
+    return math.max(25,math.min(150,percent))/100
+end
+function Feedback.pixel_scale(distance,character_scale,percent)
     -- Match the accepted XR reticle's 41-pixel atlas, including its size caps.
-    return math.max(.105,math.min(.84,distance/character_scale*.049))*character_scale/41*.7
+    return math.max(.105,math.min(.84,distance/character_scale*.049))*character_scale/41*Feedback.scale(percent)
 end
 function Feedback.install(mod,presentation,tracking)
     local api={}
+    local scale_percent,published
+    function api.update_scale()
+        scale_percent=Feedback.scale(mod.get and mod:get('vr_crosshair_scale'))*100
+        if published==scale_percent then return end
+        local io_api=Mods and Mods.lua and Mods.lua.io
+        if not io_api then return end
+        local file=io_api.open('./../mods/darktidevr_stereo_probe/darktidevr_crosshair_scale.flag','w')
+        if not file then return end
+        local ok,result=pcall(file.write,file,string.format('%.0f\n',scale_percent))
+        file:close()
+        if ok and result then published=scale_percent end
+    end
+    local previous_setting_changed=mod.on_setting_changed
+    mod.on_setting_changed=function(id,...)
+        if previous_setting_changed then previous_setting_changed(id,...) end
+        if id=='vr_crosshair_scale' then api.update_scale() end
+    end
+    api.update_scale()
     local source,source_t,alpha,world,gui,failed
     function api.destroy()
         if gui then pcall(World.destroy_gui,world,gui) end
@@ -59,7 +81,7 @@ function Feedback.install(mod,presentation,tracking)
         if not player then hide();return end
         local scale=presentation.calibrated_character_scale(player)
         local distance=presentation.controller_aim.reticle_distance or Vector3.distance(eye,position)
-        local pixels=Feedback.pixel_scale(distance,scale)
+        local pixels=Feedback.pixel_scale(distance,scale,scale_percent)
         if world~=game_world then
             local owner,stamp,opacity=source,source_t,alpha
             api.destroy();world=game_world;source,source_t,alpha=owner,stamp,opacity
@@ -85,6 +107,7 @@ function Feedback.install(mod,presentation,tracking)
         end
     end
     function api.draw(...)
+        if not published then api.update_scale() end
         local ok,err=pcall(draw,...)
         if not ok then
             api.destroy();failed=true

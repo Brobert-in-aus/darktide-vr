@@ -7,6 +7,10 @@ return {
     options = {
         widgets = {
             {
+                setting_id = "vr_crosshair_scale", type = "numeric",
+                default_value = 70, range = {25, 150}, decimals_number = 0, step_size_value = 5,
+            },
+            {
                 setting_id = "vr_aim_stabilization", type = "numeric",
                 default_value = 75, range = {0, 100}, decimals_number = 0, step_size_value = 5,
             },
