@@ -7,11 +7,13 @@ remains first. The initial offline checkpoint separates RGB and alpha-only
 readback changes; see the [resume handoff](handoffs/2026-09-09-resume.md).
 The accepted installed build is preserved. The night shutdown below is historical.
 
-The read-only inventory currently reports two authorized ADB devices and one
-Virtual Desktop Streamer, with Darktide closed. Device selection is ambiguous;
-no Ready certification or proximity change was performed. Offline development
-continues. Inventory now reports missing/ambiguous device states without choosing
-a device; Ready still requires exactly one authorized Quest.
+The two authorized ADB connections were verified as aliases for the same Quest 3.
+Read-only inventory now reports one physical Quest, duplicate transports resolved,
+one Virtual Desktop Streamer and Darktide closed. Inventory does not certify Ready
+or alter proximity. Selection requires matching hardware identity and model for
+every alias; distinct headsets and missing/failed identity queries remain gated.
+The full offline Release suite passed 165/165 before this focused readiness
+follow-up; see the resume handoff for current validation and live-session status.
 
 ## Current checkpoint: night of 8 September
 

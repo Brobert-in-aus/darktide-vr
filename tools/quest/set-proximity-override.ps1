@@ -32,10 +32,13 @@ if (-not $Device) {
                 if ($_ -match '^([^\s]+)\s+device(?:\s|$)') { $Matches[1] }
             }
     )
-    if ($devices.Count -ne 1) {
-        throw "Expected exactly one authorized ADB device; found $($devices.Count). Use -Device explicitly."
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to query authorized ADB devices' }
+    . (Join-Path $PSScriptRoot 'resolve-quest-transport.ps1')
+    $proximityTransportSelection = Resolve-QuestTransport -Adb $adb -AuthorizedTransports $devices
+    if ($proximityTransportSelection.Status -ne 'selected') {
+        throw "Expected exactly one proven authorized Quest; selection status: $($proximityTransportSelection.Status). Use -Device explicitly."
     }
-    $Device = $devices[0]
+    $Device = $proximityTransportSelection.Device
 }
 
 $model = (& $adb -s $Device shell getprop ro.product.model).Trim()

@@ -51,6 +51,13 @@ suspended it. Inventory mode does not certify readiness.
 Inventory can report missing or ambiguous ADB devices without selecting one or
 changing proximity behavior. Its device-selection status and query exit code
 distinguish unavailable observation from Ready certification.
+Multiple authorized connections are treated as one Quest only when all report
+the same non-placeholder hardware identity and Quest model. The resolver prefers
+the direct serial connection, without disconnecting network aliases. Different
+devices or failed/conflicting identity queries still block Ready. Reports retain
+the connection count and add physical Quest count and duplicate-resolution state;
+hardware identifiers are not included. The proximity helper uses the same default
+resolver, included in the runtime package.
 
 Install with `tools/stereo/sync-darktide-vr-dev.ps1 -InitializeInstall
 -UsePrebuiltProductionShader`. Launch with

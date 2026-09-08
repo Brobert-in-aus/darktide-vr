@@ -7,6 +7,7 @@
         'tools/lua/validator-hash.ps1'
         'tools/lua/compile.lua'
         'tools/quest/set-proximity-override.ps1'
+        'tools/quest/resolve-quest-transport.ps1'
         'tools/unattended/invoke-unattended-preflight.ps1'
         'tools/unattended/xr-readiness.ps1'
         'tools/unattended/source-checkout-identity.ps1'

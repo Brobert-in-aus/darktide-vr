@@ -86,6 +86,7 @@ if (-not (Test-Path -LiteralPath $gameExe -PathType Leaf)) {
 }
 
 $adb = Get-AdbPath
+. (Join-Path $repoRoot 'tools/quest/resolve-quest-transport.ps1')
 if ($RunXrSmoke) { $Mode = 'Ready' }
 $authorizedDevices = @(
     & $adb devices |
@@ -97,44 +98,43 @@ $deviceQueryExitCode = $LASTEXITCODE
 if ($deviceQueryExitCode -ne 0 -and $Mode -eq 'Ready') {
     throw 'Failed to query authorized ADB devices'
 }
-if ($authorizedDevices.Count -ne 1 -and $Mode -eq 'Ready') {
-    throw "Expected exactly one authorized ADB device; found $($authorizedDevices.Count)"
-}
-
 $device = $null
 $questModel = $null
-$deviceSelection = if ($deviceQueryExitCode -ne 0) { 'device_query_failed' } `
-    elseif ($authorizedDevices.Count -eq 0) { 'missing' } else { 'ambiguous' }
+$physicalQuestCount = $null
+$duplicateTransports = $false
+$deviceSelection = 'device_query_failed'
+if ($deviceQueryExitCode -eq 0) {
+    $questTransportSelection = Resolve-QuestTransport -Adb $adb -AuthorizedTransports $authorizedDevices
+    $deviceSelection = $questTransportSelection.Status
+    $device = $questTransportSelection.Device
+    $questModel = $questTransportSelection.Model
+    $physicalQuestCount = $questTransportSelection.PhysicalQuestCount
+    $duplicateTransports = $questTransportSelection.DuplicateTransports
+}
+if ($Mode -eq 'Ready' -and $deviceSelection -ne 'selected') {
+    throw "Expected exactly one proven authorized Quest; selection status: $deviceSelection"
+}
 $proximityApplied = $false
 $powerLines = @()
 $powerExitCode = $null
-if ($authorizedDevices.Count -eq 1 -and $deviceQueryExitCode -eq 0) {
-    $device = $authorizedDevices[0]
-    $questModel = (@(& $adb -s $device shell getprop ro.product.model) -join '').Trim()
-    $deviceSelection = if ($LASTEXITCODE -ne 0) { 'model_query_failed' } `
-        elseif ($questModel -notmatch '^Quest') { 'not_quest' } else { 'selected' }
-    if ($Mode -eq 'Ready' -and $deviceSelection -ne 'selected') {
-        throw 'The sole authorized ADB target is not a Meta Quest'
-    }
-    if ($deviceSelection -eq 'selected') {
-        if ($Mode -eq 'Ready' -and -not $SkipProximityApply) {
-            $broadcast = @(& $adb -s $device shell am broadcast `
-                -a com.oculus.vrpowermanager.prox_close)
-            if ($LASTEXITCODE -ne 0 -or
-                ($broadcast -join "`n") -notmatch 'Broadcast completed: result=0') {
-                throw 'Failed to apply the Quest proximity override'
-            }
-            $proximityApplied = $true
+if ($deviceSelection -eq 'selected') {
+    if ($Mode -eq 'Ready' -and -not $SkipProximityApply) {
+        $broadcast = @(& $adb -s $device shell am broadcast `
+            -a com.oculus.vrpowermanager.prox_close)
+        if ($LASTEXITCODE -ne 0 -or
+            ($broadcast -join "`n") -notmatch 'Broadcast completed: result=0') {
+            throw 'Failed to apply the Quest proximity override'
         }
-        $powerLines = @(
-            & $adb -s $device shell dumpsys power |
-                Select-String -Pattern `
-                    'mWakefulness=|mProximityPositive=|mHoldingDisplaySuspendBlocker=' `
-                    -CaseSensitive:$false |
-                ForEach-Object { $_.Line.Trim() }
-        )
-        $powerExitCode = $LASTEXITCODE
+        $proximityApplied = $true
     }
+    $powerLines = @(
+        & $adb -s $device shell dumpsys power |
+            Select-String -Pattern `
+                'mWakefulness=|mProximityPositive=|mHoldingDisplaySuspendBlocker=' `
+                -CaseSensitive:$false |
+            ForEach-Object { $_.Line.Trim() }
+    )
+    $powerExitCode = $LASTEXITCODE
 }
 
 $vdProcesses = @(Get-Process 'VirtualDesktop.Streamer' -ErrorAction SilentlyContinue)
@@ -222,6 +222,8 @@ $report = [ordered]@{
     git = $sourceIdentity
     quest = [ordered]@{
         authorized_device_count = $authorizedDevices.Count
+        authorized_physical_quest_count = $physicalQuestCount
+        duplicate_transports_resolved = $duplicateTransports
         selection = $deviceSelection
         device_query_exit_code = $deviceQueryExitCode
         model = $questModel
