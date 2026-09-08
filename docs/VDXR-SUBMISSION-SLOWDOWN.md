@@ -105,3 +105,20 @@ Evidence under `artifacts/unattended/`:
 
 Raw traces/device reports and generated outputs stay out of Git. Worn smoothness
 and in-mission gameplay acceptance remain pending the user's return.
+
+## Duplicate activity identity exclusion, 9 September
+
+A regression fixture exposed that a second start with the same activity/name
+previously replaced the first timestamp, allowing the following stop to produce
+an artificially shorter duration. The analyzer now discards the pending span
+and quarantines that identity for the remainder of the trace. It counts the
+duplicate start and subsequent ambiguous activity events separately; independent
+activity identities remain measurable. It does not guess which start owns a stop.
+
+Four trace fixtures pass, including the previously failing duplicate/reuse case.
+Both trace and viewer-stage analyzer CTests pass in 0.23 seconds. Reanalysis of
+the saved onset and later raw-QPC XML traces produces reports identical to their
+previous validated reports: neither contains duplicate starts. Local results are
+`artifacts/unattended/vdxr-{onset,later}-ambiguity-20260909.json`. Thus this fixes
+future ambiguous evidence without changing the earlier slowdown findings. No
+new tracing, runtime operation or performance fix is claimed.

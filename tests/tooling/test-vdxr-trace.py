@@ -69,11 +69,20 @@ class VdxrTrace(unittest.TestCase):
                          event(time("0007000"), 1, trace.ZERO_ACTIVITY), event(-1, 1, "{d}"))
         self.assertTrue(result["circular_file"] and result["circular_overwrite_indicated"])
         self.assertEqual(result["trace_header"]["EventsLost"], 0)
-        self.assertEqual(result["activities"]["WaitForAsyncSubmissionIdle"]["samples"], 1)
+        self.assertEqual(result["activities"], {})
         self.assertEqual(result["excluded_activities"], {"stop_without_start": 1, "negative_duration": 1,
-                         "duplicate_start": 1, "start_without_stop": 1,
+                         "duplicate_start": 1, "ambiguous_activity_event": 1, "start_without_stop": 1,
                          "missing_activity_identity": 1, "invalid_timestamp": 1})
         self.assertIsNone(analyze()["retained_event_span_seconds"])
+
+    def test_duplicate_identity_cannot_manufacture_a_shorter_span(self):
+        result = analyze(event(10_000_000, 1), event(19_000_000, 1), event(20_000_000, 2),
+                         event(21_000_000, 1), event(22_000_000, 2),
+                         event(23_000_000, 1, "{healthy}"), event(25_000_000, 2, "{healthy}"))
+        self.assertEqual(result["activities"]["WaitForAsyncSubmissionIdle"]["samples"], 1)
+        self.assertEqual(result["activities"]["WaitForAsyncSubmissionIdle"]["mean_ms"], 200)
+        self.assertEqual(result["excluded_activities"]["ambiguous_activity_event"], 3)
+        self.assertEqual(result["excluded_activities"]["duplicate_start"], 1)
 
 
 if __name__ == "__main__":

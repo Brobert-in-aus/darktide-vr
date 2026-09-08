@@ -34,6 +34,7 @@ def stats(values):
 
 def summarize(source, process_id):
     starts = {}
+    ambiguous = set()
     durations = defaultdict(list)
     groups = defaultdict(list)
     counts, excluded = Counter(), Counter()
@@ -80,9 +81,18 @@ def summarize(source, process_id):
                 raise ValueError("missing_activity_identity")
             key = (name, activity)
             thread = execution.get("ThreadID", "unknown")
+            if key in ambiguous:
+                excluded["ambiguous_activity_event"] += 1
+                continue
             if opcode == "1":
                 if key in starts:
                     excluded["duplicate_start"] += 1
+                    # Neither start has a uniquely attributable stop. Do not
+                    # shorten a wait by replacing its original beginning, or
+                    # trust later reuse of this identity within the same trace.
+                    starts.pop(key)
+                    ambiguous.add(key)
+                    continue
                 starts[key] = (when, thread, data.get("DoRunningStart", "unreported"))
             else:
                 began = starts.pop(key, None)
