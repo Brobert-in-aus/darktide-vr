@@ -5914,6 +5914,7 @@ HRESULT STDMETHODCALLTYPE load_pipeline_hook(
   std::vector<std::uint8_t> replacement_stream;
   D3D12_PIPELINE_STATE_STREAM_DESC replacement_description{};
   bool substituted{};
+  bool pixel_substituted{};
   std::uint64_t original_vertex_shader{};
   const auto* effective_description = description;
   if (description && description->pPipelineStateSubobjectStream &&
@@ -5923,9 +5924,9 @@ HRESULT STDMETHODCALLTYPE load_pipeline_hook(
     replacement_stream.assign(bytes, bytes + description->SizeInBytes);
     original_vertex_shader =
         inspect_pipeline_stream(*description, &replacement_stream,
-                                &substituted)
+                                &substituted, &pixel_substituted)
             .vertex_shader;
-    if (substituted) {
+    if (substituted || pixel_substituted) {
       replacement_description = *description;
       replacement_description.pPipelineStateSubobjectStream =
           replacement_stream.data();
@@ -5933,7 +5934,7 @@ HRESULT STDMETHODCALLTYPE load_pipeline_hook(
     }
   }
   HRESULT result{};
-  if (substituted) {
+  if (substituted || pixel_substituted) {
     ComPtr<ID3D12Device2> device;
     result = FAILED(library->GetDevice(IID_PPV_ARGS(&device)))
                  ? E_NOINTERFACE
@@ -5943,13 +5944,24 @@ HRESULT STDMETHODCALLTYPE load_pipeline_hook(
     result = original_load_pipeline(library, name, effective_description, iid,
                                     output);
   }
-  if (FAILED(result) && substituted) {
-    record_billboard_shader_creation_result(original_vertex_shader, false);
+  if (FAILED(result) && (substituted || pixel_substituted)) {
+    if (substituted) {
+      record_billboard_shader_creation_result(original_vertex_shader, false);
+    }
+    if (pixel_substituted) {
+      billboard_pixel_shader_probe_creation_reject_count.fetch_add(
+          1, std::memory_order_relaxed);
+    }
     result = original_load_pipeline(library, name, description, iid, output);
     substituted = false;
+    pixel_substituted = false;
   }
   if (SUCCEEDED(result) && substituted) {
     record_billboard_shader_creation_result(original_vertex_shader, true);
+  }
+  if (SUCCEEDED(result) && pixel_substituted) {
+    billboard_pixel_shader_probe_applied_count.fetch_add(
+        1, std::memory_order_relaxed);
   }
   if (SUCCEEDED(result) && description && output && *output) {
     auto metadata = inspect_pipeline_stream(*description);
@@ -5957,7 +5969,8 @@ HRESULT STDMETHODCALLTYPE load_pipeline_hook(
                                     substituted);
     ComPtr<ID3D12Device2> ui_device;
     if (needs_world_ui_alpha_pipeline(metadata) && SUCCEEDED(library->GetDevice(IID_PPV_ARGS(&ui_device))))
-      prepare_world_ui_alpha_pipeline(ui_device.Get(), substituted ? *effective_description : *description, metadata);
+      prepare_world_ui_alpha_pipeline(ui_device.Get(),
+          (substituted || pixel_substituted) ? *effective_description : *description, metadata);
     record_pso_shader_mapping_if_requested(
         reinterpret_cast<ID3D12PipelineState*>(*output), metadata);
     std::scoped_lock lock(pso_mutex);

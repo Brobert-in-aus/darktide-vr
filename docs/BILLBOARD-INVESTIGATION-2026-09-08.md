@@ -56,3 +56,27 @@ file is append-only across runs and has no process/run identity; neither it nor
 the shader dump directory alone establishes scene ownership. The current
 focused melee-preview session remains running with its accepted native binary.
 This candidate is not deployed.
+
+## Cached pipeline probe correction
+
+`ID3D12PipelineLibrary1::LoadPipeline` passed only the vertex-replacement flag
+to stream inspection. A pixel-only candidate was copied into a temporary stream
+but that stream was never submitted. The candidate now handles pixel selection,
+direct creation, success/rejection counters and fallback the same way as the
+existing graphics and stream-creation paths. A failed replacement returns to the
+original library entry and original descriptor.
+
+An isolated Windows/D3D12 regression creates a real stock pipeline and library
+entry, then loads the native capture module from its own artifact directory.
+It enables a generated, interface-matching pixel probe and calls the actual
+hooked `LoadPipeline`. Before the correction, both application and fallback
+cases fail with `attempts=1 applied=0 validation=0 creation_rejected=0`.
+Afterward both pass: the valid probe also works with a never-stored cache name;
+a probe requiring an absent root binding is rejected by D3D12 and the cached
+stock pipeline loads successfully. This test neither starts Darktide nor submits
+an XR scene, and does not establish visual ownership of the smoke.
+
+Release native/test builds and all **144 CTests pass in 31.15 s**. Evidence is
+`artifacts/unattended/pipeline-probe-before-20260908.log`,
+`pipeline-probe-after-20260908.log`, and `pipeline-probe-144-20260908.log`.
+The cached-probe candidate remains undeployed.
