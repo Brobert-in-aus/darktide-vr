@@ -12,7 +12,7 @@ No bindings were changed. Account identifiers and the full save are excluded.
 | Right trigger | Primary attack/fire |
 | Left trigger | Block/aim/alternate action |
 | Right grip | Weapon special |
-| Left grip | Blitz; contextual support-grip ownership may consume it while supporting a gun |
+| Left grip | Blitz |
 | X | Interact and reload |
 | Y | Quick weapon switch |
 | A | Jump and dodge; cycle spectator camera when dead/observing |
@@ -67,3 +67,4 @@ base hit/kill widgets in HudElementCrosshair. Those feedback widgets need a
 stereo-aware position/depth audit against the hand-aimed reticle; the working
 crosshair does not establish correct hit-marker presentation. Added to active
 TODO; no hit-marker fix is included in this preview frame-lifetime deployment.
+

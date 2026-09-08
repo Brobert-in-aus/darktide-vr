@@ -34,3 +34,8 @@ Staff charge HUD disappearance is recorded in the active TODO. Stock charge-up
 graphics are part of the crosshair template, while the VR HUD suppresses the
 stock aiming widget. That is a candidate cause, not yet a tested fix. The prior
 hit-marker stereo report remains open too.
+
+Focused deployment preparation keeps the installed mapper's existing input
+semantics; main's separate support-grip changes are not included in that focused
+patch. Its own binding fixture passes against the focused source. The focused
+source gate compiles 45 chunks. No game files or user settings have been changed.
