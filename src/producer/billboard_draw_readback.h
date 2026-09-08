@@ -17,6 +17,7 @@ class BillboardDrawReadback {
   struct Pixels {
     Id id{};
     std::uint64_t vertex_shader{}, pixel_shader{};
+    std::uint64_t source_frame{};
     UINT width{}, height{}, row_pitch{};
     DXGI_FORMAT format{};
     std::vector<std::uint8_t> before, after;
@@ -34,7 +35,8 @@ class BillboardDrawReadback {
   BillboardDrawReadback& operator=(const BillboardDrawReadback&) = delete;
 
   Id begin(ID3D12GraphicsCommandList*, ID3D12Resource*,
-           std::uint64_t vertex_shader, std::uint64_t pixel_shader) noexcept;
+           std::uint64_t vertex_shader, std::uint64_t pixel_shader,
+           std::uint64_t source_frame = 0) noexcept;
   void end(Id, ID3D12GraphicsCommandList*) noexcept;
   // Call before ExecuteCommandLists, then after its return. Successful Reset
   // retires the old recording; failed Reset must leave it retained.

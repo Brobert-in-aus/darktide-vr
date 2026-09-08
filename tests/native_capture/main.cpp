@@ -61,6 +61,11 @@ int wmain(int argc, wchar_t** argv) {
     }
     const auto install = reinterpret_cast<int (*)()>(
         GetProcAddress(module, "dtvr_install"));
+    const auto begin_billboard_readback = reinterpret_cast<int (*)()>(
+        GetProcAddress(module, "dtvr_begin_billboard_draw_readback"));
+    if (!begin_billboard_readback || begin_billboard_readback() != 2) {
+      throw std::runtime_error("Billboard readback must reject missing census/hooks before allocation");
+    }
     const auto set_diagnostic_hooks = reinterpret_cast<int (*)(int)>(
         GetProcAddress(module, "dtvr_set_diagnostic_render_hooks"));
     const auto take_gpu_stage_profile = reinterpret_cast<int (*)(

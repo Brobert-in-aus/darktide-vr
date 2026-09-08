@@ -1,4 +1,5 @@
 #include "producer/billboard_draw_readback.h"
+#include "producer/billboard_resource_state.h"
 #include <dxgi1_6.h>
 #include <d3d12sdklayers.h>
 #include <wrl/client.h>
@@ -147,8 +148,43 @@ void exclusions(bool incomplete, bool multiqueue) {
   hr(f.list->Close()); f.errors();
 }
 
+void resource_states() {
+  using darktidevr::producer::BillboardResourceState;
+  BillboardResourceState state;
+  auto* resource = reinterpret_cast<ID3D12Resource*>(1);
+  check(!state.known_render_target(resource), "Unknown initial state admitted");
+  D3D12_RESOURCE_BARRIER barrier{};
+  barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  barrier.Transition.pResource = resource;
+  barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+  barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+  state.observe(1, &barrier);
+  check(state.known_render_target(resource), "Explicit RT state missing");
+  barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_BEGIN_ONLY; state.observe(1, &barrier);
+  check(!state.known_render_target(resource), "Split transition admitted");
+  barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_END_ONLY; state.observe(1, &barrier);
+  check(!state.known_render_target(resource), "Split end admitted");
+  barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+  barrier.Transition.Subresource = 1; state.observe(1, &barrier);
+  check(!state.known_render_target(resource), "Other subresource admitted");
+  barrier.Transition.Subresource = 0; state.observe(1, &barrier);
+  check(state.known_render_target(resource), "Subresource zero missing");
+  barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_ALIASING; state.observe(1, &barrier);
+  check(!state.known_render_target(resource), "Alias retained stale state");
+  barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+  state.unknown(); state.observe(1, &barrier);
+  check(!state.known_render_target(resource), "Enhanced-barrier exclusion lost");
+  state = {};
+  for (std::uintptr_t i = 1; i <= 129; ++i) {
+    barrier.Transition.pResource = reinterpret_cast<ID3D12Resource*>(i);
+    state.observe(1, &barrier);
+  }
+  check(!state.known_render_target(resource) && state.excluded, "Capacity overflow admitted");
+}
+
 int main() {
   try {
+    resource_states();
     pixels(DXGI_FORMAT_R8G8B8A8_UNORM, 0xff000000, 0xff0000ff);
     pixels(DXGI_FORMAT_B8G8R8A8_UNORM, 0xff000000, 0xffff0000);
     pixels(DXGI_FORMAT_R11G11B10_FLOAT, 0, 15 << 6);

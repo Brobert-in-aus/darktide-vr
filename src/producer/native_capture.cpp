@@ -7,6 +7,12 @@
 #include "producer/ngx_gpu_timing.h"
 #include "producer/ui_capture_blend.h"
 #include "producer/stereo_ui_readback.h"
+#include "producer/billboard_draw_readback.h"
+#include "producer/billboard_resource_state.h"
+#include <filesystem>
+#include <fstream>
+#include <thread>
+#include <sstream>
 #include "core/shared_object_name.h"
 #include <Windows.h>
 #include <d3d12.h>
@@ -1012,6 +1018,11 @@ struct CommandTrace {
 
 std::mutex trace_mutex;
 std::unordered_map<ID3D12GraphicsCommandList*, CommandTrace> command_traces;
+std::unordered_map<ID3D12GraphicsCommandList*, darktidevr::producer::BillboardResourceState>
+    billboard_resource_states;
+std::atomic<darktidevr::producer::BillboardDrawReadback*> billboard_readback{};
+std::atomic<bool> billboard_readback_accepting{};
+std::mutex billboard_readback_start_mutex;
 
 struct ViewportRemapState {
   bool active{};
@@ -6115,6 +6126,11 @@ HRESULT STDMETHODCALLTYPE reset_hook(ID3D12GraphicsCommandList* commands,
     // trace associated with it until a later Reset actually succeeds.
     return reset_result;
   }
+  if (auto* readback = billboard_readback.load(std::memory_order_acquire)) {
+    readback->retired(commands);
+    std::scoped_lock lock(trace_mutex);
+    billboard_resource_states.erase(commands);
+  }
   const auto focused =
       focused_trace_phase.load(std::memory_order_relaxed) != 0;
   darktidevr::producer::observe_ngx_command_reset(commands);
@@ -6203,7 +6219,8 @@ void STDMETHODCALLTYPE begin_render_pass_hook(
     const D3D12_RENDER_PASS_RENDER_TARGET_DESC* render_targets,
     const D3D12_RENDER_PASS_DEPTH_STENCIL_DESC* depth_stencil,
     D3D12_RENDER_PASS_FLAGS flags) {
-  if (world_ui_capture_requested() || marker_log != INVALID_HANDLE_VALUE ||
+  if (billboard_readback_accepting.load(std::memory_order_relaxed) ||
+      world_ui_capture_requested() || marker_log != INVALID_HANDLE_VALUE ||
       menu_direct_capture_enabled.load(std::memory_order_relaxed) ||
       focused_trace_phase.load(std::memory_order_relaxed) != 0) {
     std::scoped_lock lock(trace_mutex);
@@ -6236,7 +6253,8 @@ void STDMETHODCALLTYPE begin_render_pass_hook(
 
 void STDMETHODCALLTYPE end_render_pass_hook(ID3D12GraphicsCommandList4* commands) {
   original_end_render_pass(commands);
-  if (world_ui_capture_requested() || marker_log != INVALID_HANDLE_VALUE ||
+  if (billboard_readback_accepting.load(std::memory_order_relaxed) ||
+      world_ui_capture_requested() || marker_log != INVALID_HANDLE_VALUE ||
       menu_direct_capture_enabled.load(std::memory_order_relaxed) ||
       focused_trace_phase.load(std::memory_order_relaxed) != 0) {
     std::scoped_lock lock(trace_mutex);
@@ -7770,6 +7788,54 @@ void end_world_ui_draw(ID3D12GraphicsCommandList* commands, WorldUiDrawRedirect&
     original_om_set_render_targets(commands, 1, &redirect.original, FALSE, nullptr);
 }
 
+std::uint64_t begin_billboard_draw_readback(ID3D12GraphicsCommandList* commands) {
+  if (!billboard_readback_accepting.load(std::memory_order_acquire) ||
+      commands->GetType() != D3D12_COMMAND_LIST_TYPE_DIRECT) return 0;
+  auto* readback = billboard_readback.load(std::memory_order_acquire);
+  if (!readback) return 0;
+  std::uintptr_t pipeline{};
+  std::uint64_t target{};
+  {
+    std::scoped_lock lock(trace_mutex);
+    const auto trace = command_traces.find(commands);
+    if (trace == command_traces.end() || trace->second.render_pass_active ||
+        trace->second.render_target_count != 1) return 0;
+    pipeline = trace->second.pso;
+    target = trace->second.render_target;
+  }
+  std::uint64_t vs{}, ps{};
+  {
+    std::scoped_lock lock(pso_mutex);
+    const auto found = pso_metadata.find(pipeline);
+    if (found == pso_metadata.end() || found->second.substituted_vertex_shader ||
+        found->second.render_target_count != 1) return 0;
+    vs = found->second.vertex_shader;
+    ps = found->second.pixel_shader;
+  }
+  if (!((vs == 0xc403cfbf17d9fc49ULL && ps == 0xcb7e4e5d3e01d5bdULL) ||
+        (vs == 0xe18a274cd89282e8ULL && ps == 0x0e35f00186a2af32ULL) ||
+        (vs == 0xfe64037664924d52ULL && ps == 0x7c035f0ca3365a04ULL))) return 0;
+  const auto descriptor = descriptor_snapshot(target);
+  if (descriptor.kind != 'R' || !descriptor.resource || descriptor.mip_levels != 1 ||
+      descriptor.depth_or_array_size != 1 || descriptor.width < 512 || descriptor.height < 512)
+    return 0;
+  auto* resource = reinterpret_cast<ID3D12Resource*>(descriptor.resource);
+  {
+    std::scoped_lock lock(trace_mutex);
+    const auto proof = billboard_resource_states.find(commands);
+    if (proof == billboard_resource_states.end() ||
+        !proof->second.known_render_target(resource)) return 0;
+  }
+  // Do not hold the trace mutex across copies: our state-restoring barriers
+  // traverse the same hook and update this recording's state evidence.
+  return readback->begin(commands, resource, vs, ps, present_count.load(std::memory_order_relaxed));
+}
+
+void end_billboard_draw_readback(std::uint64_t id, ID3D12GraphicsCommandList* commands) {
+  if (id) if (auto* readback = billboard_readback.load(std::memory_order_acquire))
+    readback->end(id, commands);
+}
+
 void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
                                            UINT vertex_count,
                                            UINT instance_count,
@@ -7959,8 +8025,10 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
         "MENU_REDIRECT_STAGE\tid=%llu\tstage=before_draw\r\n",
         static_cast<unsigned long long>(menu_redirect.diagnostic_id));
   }
+  const auto readback_id = vertex_count && instance_count ? begin_billboard_draw_readback(commands) : 0;
   original_draw_instanced(commands, vertex_count, instance_count,
                           start_vertex, start_instance);
+  end_billboard_draw_readback(readback_id, commands);
   if (menu_redirect.diagnostic_id != 0 &&
       menu_redirect.diagnostic_id <= 2) {
     write_menu_resource_log(
@@ -8018,9 +8086,11 @@ void STDMETHODCALLTYPE draw_indexed_instanced_hook(
         start_instance);
   }
   const auto billboard_override = apply_billboard_view_basis(commands);
+  const auto readback_id = index_count && submitted_instance_count ? begin_billboard_draw_readback(commands) : 0;
   original_draw_indexed_instanced(commands, index_count,
                                   submitted_instance_count, start_index,
                                   base_vertex, start_instance);
+  end_billboard_draw_readback(readback_id, commands);
   if (world_ui_capture_requested()) {
     std::uintptr_t pipeline{};
     { std::scoped_lock lock(trace_mutex); pipeline = command_traces[commands].pso; }
@@ -8888,7 +8958,8 @@ void STDMETHODCALLTYPE om_set_render_targets_hook(
   }
   const auto focused =
       focused_trace_phase.load(std::memory_order_relaxed) != 0;
-  if (world_ui_capture_requested() || marker_log != INVALID_HANDLE_VALUE ||
+  if (billboard_readback_accepting.load(std::memory_order_relaxed) ||
+      world_ui_capture_requested() || marker_log != INVALID_HANDLE_VALUE ||
       menu_direct_capture_enabled.load(std::memory_order_relaxed) || focused) {
     std::scoped_lock lock(trace_mutex);
     auto& trace = command_traces[commands];
@@ -8962,6 +9033,10 @@ void STDMETHODCALLTYPE clear_depth_stencil_view_hook(
 void STDMETHODCALLTYPE resource_barrier_hook(
     ID3D12GraphicsCommandList* commands, UINT barrier_count,
     const D3D12_RESOURCE_BARRIER* barriers) {
+  if (billboard_readback_accepting.load(std::memory_order_relaxed)) {
+    std::scoped_lock lock(trace_mutex);
+    billboard_resource_states[commands].observe(barrier_count, barriers);
+  }
   if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
     std::scoped_lock lock(trace_mutex);
     command_traces[commands].barrier_count += barrier_count;
@@ -9326,6 +9401,10 @@ void STDMETHODCALLTYPE resource_barrier_hook(
 void STDMETHODCALLTYPE enhanced_barrier_hook(
     ID3D12GraphicsCommandList7* commands, UINT32 group_count,
     const D3D12_BARRIER_GROUP* groups) {
+  if (billboard_readback_accepting.load(std::memory_order_relaxed)) {
+    std::scoped_lock lock(trace_mutex);
+    billboard_resource_states[commands].unknown();
+  }
   if (focused_trace_phase.load(std::memory_order_relaxed) != 0 && groups) {
     std::uint64_t barrier_count{};
     for (UINT32 group_index = 0; group_index < group_count; ++group_index) {
@@ -10766,7 +10845,11 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
           completed_back_buffer.Get(),
           static_cast<unsigned>(completed_source_state), boundary_qpc.QuadPart);
     }
+    auto* readback = billboard_readback.load(std::memory_order_acquire);
+    const auto readback_submission = readback ? readback->submitting(queue, count, lists)
+        : darktidevr::producer::BillboardDrawReadback::Submission{};
     original_execute_command_lists(queue, count, lists);
+    if (readback) readback->submitted(queue, readback_submission);
     darktidevr::producer::signal_ngx_queue_completion(queue, ngx_completion_ticket);
     darktidevr::producer::submit_ngx_gpu_timing(queue, count, lists);
     darktidevr::producer::submit_generated_stereo(queue, count, lists);
@@ -15360,6 +15443,78 @@ extern "C" __declspec(dllexport) int dtvr_set_vertex_shader_dump(int enabled) {
                                      std::memory_order_release);
   return 0;
 }
+extern "C" __declspec(dllexport) int dtvr_begin_billboard_draw_readback() {
+  try {
+    std::scoped_lock lock(billboard_readback_start_mutex);
+    if (billboard_readback.load(std::memory_order_acquire)) return 1;
+    if (!hooks_installed.load(std::memory_order_acquire) ||
+        !kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
+        !billboard_horizon_lock_enabled.load(std::memory_order_relaxed) ||
+        !original_begin_render_pass || !original_end_render_pass || !original_enhanced_barrier)
+      return 2;
+    // The worker and command recordings can outlive a mod reload. Pin code
+    // and retain this bounded diagnostic owner until process termination.
+    HMODULE pinned{};
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+        reinterpret_cast<LPCWSTR>(&dtvr_begin_billboard_draw_readback), &pinned)) return 3;
+    wchar_t temporary[MAX_PATH]{};
+    const auto length = GetTempPathW(MAX_PATH, temporary);
+    if (!length || length >= MAX_PATH) return 3;
+    const auto directory = std::filesystem::path(temporary) /
+        (L"darktidevr-billboard-readback-" + std::to_wstring(GetCurrentProcessId()) +
+         L"-" + std::to_wstring(GetTickCount64()));
+    if (!std::filesystem::create_directory(directory)) return 3;
+    auto owner = std::make_unique<darktidevr::producer::BillboardDrawReadback>();
+    auto* capture = owner.get();
+    // Launch the worker before publication, so thread-allocation failure cannot
+    // leave live draw hooks with an owner that has already been destroyed.
+    std::thread worker([capture, directory] {
+      unsigned exported{};
+      try {
+        for (unsigned attempt = 0; attempt < 480 && exported < 3; ++attempt) {
+          for (auto& pixels : capture->collect()) {
+            std::ostringstream name;
+            name << "pair-" << std::hex << pixels.vertex_shader << '-' << pixels.pixel_shader;
+            const auto stem = name.str();
+            for (const bool after : {false, true}) {
+              const auto& bytes = after ? pixels.after : pixels.before;
+              std::ofstream file(directory / (stem + (after ? "-after.bin" : "-before.bin")),
+                                 std::ios::binary);
+              file.exceptions(std::ios::badbit | std::ios::failbit);
+              file.write(reinterpret_cast<const char*>(bytes.data()),
+                         static_cast<std::streamsize>(bytes.size()));
+              file.close();
+            }
+            // Write metadata last. Its existence certifies both payload writes.
+            std::ofstream meta(directory / (stem + ".json"));
+            meta.exceptions(std::ios::badbit | std::ios::failbit);
+            meta << "{\"schema_version\":1,\"status\":\"complete\",\"vertex_shader\":\""
+                 << std::hex << pixels.vertex_shader << "\",\"pixel_shader\":\""
+                 << pixels.pixel_shader << "\",\"width\":" << std::dec << pixels.width
+                 << ",\"height\":" << pixels.height << ",\"row_pitch\":" << pixels.row_pitch
+                 << ",\"format\":" << static_cast<unsigned>(pixels.format)
+                 << ",\"bytes\":" << pixels.before.size()
+                 << ",\"source_frame\":" << pixels.source_frame << "}";
+            meta.close();
+            ++exported;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+        std::ofstream summary(directory / "session.json");
+        summary << "{\"exported_pairs\":" << exported << ",\"limit\":3,\"deadline_seconds\":120}";
+      } catch (...) {
+        try { std::ofstream(directory / "export-error.txt") << "Readback export failed; incomplete files are not evidence."; }
+        catch (...) {}
+      }
+      billboard_readback_accepting.store(false, std::memory_order_release);
+    });
+    billboard_readback.store(owner.release(), std::memory_order_release);
+    billboard_readback_accepting.store(true, std::memory_order_release);
+    worker.detach();
+    return 0;
+  } catch (...) { return 3; }
+}
+
 extern "C" __declspec(dllexport) int dtvr_set_billboard_view_basis(
     float right_x, float right_y, float right_z, float up_x,
     float up_y, float up_z, int enabled) {

@@ -10,7 +10,7 @@ using Microsoft::WRL::ComPtr;
 struct BillboardDrawReadback::Impl {
   struct Shot {
     Id id{};
-    std::uint64_t vs{}, ps{}, fence_value{};
+    std::uint64_t vs{}, ps{}, fence_value{}, source_frame{};
     ComPtr<ID3D12GraphicsCommandList> commands;
     ComPtr<ID3D12Resource> source, before, after;
     ComPtr<ID3D12CommandQueue> queue;
@@ -50,7 +50,7 @@ BillboardDrawReadback::~BillboardDrawReadback() = default;
 
 BillboardDrawReadback::Id BillboardDrawReadback::begin(
     ID3D12GraphicsCommandList* commands, ID3D12Resource* source,
-    std::uint64_t vs, std::uint64_t ps) noexcept {
+    std::uint64_t vs, std::uint64_t ps, std::uint64_t source_frame) noexcept {
   try {
     if (!commands || !source || !vs || !ps ||
         commands->GetType() != D3D12_COMMAND_LIST_TYPE_DIRECT) return 0;
@@ -100,6 +100,7 @@ BillboardDrawReadback::Id BillboardDrawReadback::begin(
     shot->id = slot + 1;
     shot->vs = vs;
     shot->ps = ps;
+    shot->source_frame = source_frame;
     shot->commands = commands;
     shot->source = source;
     // Store ownership before recording any reference into the command list.
@@ -184,6 +185,7 @@ std::vector<BillboardDrawReadback::Pixels> BillboardDrawReadback::collect() noex
       pixels.id = shot->id;
       pixels.vertex_shader = shot->vs;
       pixels.pixel_shader = shot->ps;
+      pixels.source_frame = shot->source_frame;
       pixels.width = shot->footprint.Footprint.Width;
       pixels.height = shot->footprint.Footprint.Height;
       pixels.row_pitch = shot->footprint.Footprint.RowPitch;

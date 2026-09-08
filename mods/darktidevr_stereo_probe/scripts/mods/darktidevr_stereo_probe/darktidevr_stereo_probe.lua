@@ -753,6 +753,7 @@ local function ensure_ui_native_hooks()
         int dtvr_enable_marker_log(void);
         int dtvr_set_diagnostic_render_hooks(int enabled);
         int dtvr_set_billboard_shader_substitution(int enabled);
+        int dtvr_begin_billboard_draw_readback(void);
         int dtvr_set_billboard_pixel_shader_probe(int enabled);
         typedef struct {
             unsigned int vertex_low, vertex_high, pixel_low, pixel_high;
@@ -968,6 +969,22 @@ local function ensure_ui_native_hooks()
     end
 
     ui_native_capture = library
+    do
+        -- This optional readback does not select startup hooks. It requires the
+        -- separate census mode, whose bootstrap/Lua agreement is already gated.
+        local flag = Mods.lua.io.open(
+            "./../mods/darktidevr_stereo_probe/darktidevr_billboard_readback.flag", "r")
+        if flag then
+            local value = flag:read("*all")
+            flag:close()
+            if type(value) == "string" and #value <= 31 and
+                    value:lower():match("^[ \t\r\n]*enabled[ \t\r\n]*$") then
+                local ok, result = pcall(function() return library.dtvr_begin_billboard_draw_readback() end)
+                mod:info("DARKTIDEVR_BILLBOARD_READBACK startup_ok=%s result=%s",
+                    tostring(ok), tostring(result))
+            end
+        end
+    end
     local target_ok, target_function = pcall(function()
         return library.dtvr_set_gameplay_aim_target
     end)
@@ -13087,6 +13104,12 @@ mod:hook("MainMenuView", "draw", function(func, self, dt, t, input_service, laye
     end
 
     return func(self, dt, t, input_service, layer)
+end)
+
+mod:command("dtvr_billboard_readback", "Capture three candidate billboard draws in census mode", function()
+    local ok, result = pcall(function() return ui_native_capture.dtvr_begin_billboard_draw_readback() end)
+    mod:echo("DARKTIDEVR_BILLBOARD_READBACK ok=%s result=%s (0=armed, 1=already used, 2=census/hooks required)",
+        tostring(ok), tostring(result))
 end)
 
 mod:command(
