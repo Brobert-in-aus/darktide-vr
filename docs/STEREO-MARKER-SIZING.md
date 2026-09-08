@@ -22,6 +22,9 @@ Paths below are relative to its `scripts` directory.
 | Combat, companion and hub-companion nameplates | Distance scale and offscreen representation | Templates switch presentation using `content.is_clamped`. |
 | Generic/party nameplates and chat bubbles | Distance scaling | Include in the common replay check even without a confirmed edge symptom. |
 | Training-ground marker | Clamped-arrow visibility | Include the boundary transition; no top-level distance scaling was found. |
+| Beacon | Vector icon, distance text and clamping | `world_marker_template_beacon.lua` is registered, uses `slug_icon`, and has distance fade plus a clamped edge policy. |
+| Health bar | Rectangles, text, distance fade and culling | `world_marker_template_health_bar.lua` is registered and does not clamp. Preserve its normal disappearance at the shared boundary. |
+| Damage indicator | Animated damage text, bars and custom logic | `world_marker_template_damage_indicator.lua` draws text directly from a `logic` pass. A correction limited to declarative text passes would miss these numbers. |
 
 The VR code already skips stock `_apply_scale` during the second-eye replay.
 That function otherwise eases mutable sizes, offsets and pivots on every draw.
@@ -37,8 +40,60 @@ edge, and the two optical centers differ. This is a geometric explanation to
 investigate, **not a confirmed cause of the user's popup symptom**. Shader-level
 GUI behavior and per-pass geometry still need to be distinguished from it.
 
+## Complete primitive inventory and projection model
+
+The source pass now covers all **20 registered world-marker template files**,
+plus the separate interaction popup and smart-tag prompt. Its local inventory
+is `artifacts/unattended/marker-primitive-inventory-20260908.json`. The template
+passes are `texture`, `texture_uv`, `rotated_texture`, `text`, `rect`,
+`slug_icon`, and `logic`. Damage-indicator logic calls `UIRenderer.draw_text`
+directly. Beacon vector icons, health bars and animated damage numbers expand
+the initial family list above; none is excluded merely because it is not a
+pickup. This is source coverage, not live visual acceptance of all 20 families.
+
+The popup definition combines text, textures, UV textures and rectangles.
+`UIRenderer.draw_texture` and `draw_texture_uv` multiply positions and sizes
+by the renderer scale before passing them to the GUI. Their script draw
+functions apply alpha, layers, material flags and snapping without an explicit
+screen-edge shrink rule. `script_draw_text` likewise forwards the font/extent
+to the GUI without such a rule. Rotated textures use a transform through
+`script_draw_bitmap_3d`. The underlying GUI shader is still an unmeasured part
+of the path; these source facts alone do not establish its output extents.
+
+A projection-only model uses the running session's logged 2496x2688 eye
+extent and runtime FOVs, with the same rotated symmetric projection convention
+as `darktidevr_projection_math.lua`. It compares a hypothetical **100x100 pixel
+square**, not a measured popup. Eye translation, finite depth, clipping and
+actual material/shader behavior are excluded. At zero pitch:
+
+| Shared direction | Left angular width | Right angular width | Left/right width | Left/right height |
+| --- | ---: | ---: | ---: | ---: |
+| Center | 4.892 degrees | 4.892 degrees | 1.000 | 1.000 |
+| 20 degrees right | 3.944 degrees | 4.715 degrees | 0.837 | 0.915 |
+| 35 degrees right | 2.745 degrees | 3.873 degrees | 0.709 | 0.843 |
+| 35 degrees left | 3.873 degrees | 2.745 degrees | 1.411 | 1.187 |
+
+The model inverse-projects the square's edge midpoints into rays and measures
+their included angle. Evidence is
+`artifacts/unattended/marker-angular-size-model-20260908.json`. The source log
+is `melee-preview-post-census-session-20260908.log` in the same directory.
+This quantitatively reproduces the *kind* of symptom, without proving it is
+the whole live cause. Unequal width/height ratios also show why a single
+per-eye scalar cannot generally establish agreement.
+
+There are two distinct geometric requirements: project the full primitive
+into both eyes consistently, and define its intended size away from center.
+Mapping only the anchor satisfies neither. An eye-to-eye homography can align
+the second eye with the first while retaining the first eye's edge shrink.
+A shared tangent-plane representation can define angular size first, then
+project geometry into both eyes; it must preserve finite-depth anchors and
+cover text, rotated/UV textures, bars, icons and direct logic draws together.
+Do not adopt a partial scalar or texture-only change as the completed fix.
+
 ## Work and acceptance checklist
 
+- [x] Inventory all 20 registered templates and their primitive families,
+  including the separate popup/tag paths and custom damage-number draws.
 - [ ] Determine whether actual popup primitive extents, projection, or both
   produce the reported asymmetry. Use the existing worn report and passive
   evidence before selecting a correction.

@@ -14,6 +14,10 @@ post-release allowance for slight extreme-edge marker asymmetry. Verify both
 eyes at the center and near each edge with the user's worn observation.
 The [sizing audit and acceptance checklist](STEREO-MARKER-SIZING.md) records the
 related marker families and separates source findings from unconfirmed causes.
+The source pass covers all 20 registered marker templates, including beacon
+vector icons, health bars and damage numbers drawn through custom logic.
+Projection modeling reproduces unequal angular sizes despite equal pixel
+extents; live primitive measurements and a complete correction remain open.
 
 **Latest 8 September steering:** pause physical melee until server-side stock
 melee is locked in. The requested [first-swing preview](STOCK-MELEE-PREVIEW.md)
