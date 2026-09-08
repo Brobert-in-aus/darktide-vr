@@ -219,6 +219,29 @@ assert(messages[#messages-1]:find('max_anchor_delta=0.000',1,true),
     'draw ordering must not be reported as a spatial displacement')
 renderer.scale=1;renderer.render_settings.start_layer=nil
 metrics.start(2)
+for eye=1,2 do
+    metrics.draw(renderer,'markers',owner,23.5,eye,nil,function()
+        local tm={x={x=1,y=0,z=0},z={x=0,y=0,z=1},translation={x=0,y=0,z=0}}
+        renderer:script_draw_bitmap_3d('material',tm,{0,0,eye*7},5,{10,20,0})
+        renderer:script_draw_text_3d('private text',24,'font',tm,{0,0,eye*3},6,{100,20,0})
+    end)
+end
+assert(messages[#messages-1]:find('offset_depth=2 max_offset_depth_delta=7.000',1,true),
+    '3D position-offset third component was omitted')
+assert(messages[#messages-1]:find('layer=0 start_layer=0 max_layer_delta=0.000',1,true),
+    '3D offset must remain distinct from ordering')
+metrics.start(2)
+local before_offset_calls=calls
+for eye=1,2 do
+    metrics.draw(renderer,'markers',owner,23.75,eye,nil,function()
+        renderer:script_draw_bitmap_3d('material',{
+            x={x=1,y=0,z=0},z={x=0,y=0,z=1},translation={x=0,y=0,z=0}},
+            {0,0,0/0},5,{10,20,0})
+    end)
+end
+assert(calls==before_offset_calls+2 and messages[#messages-1]:find('incomplete=true',1,true),
+    'invalid offset must mark evidence incomplete without suppressing stock drawing')
+metrics.start(2)
 local before_layer_calls=calls
 for eye=1,2 do
     metrics.draw(renderer,'markers',owner,24,eye,nil,function()
@@ -259,7 +282,7 @@ if arg[2] then
 
     -- Execute real stock 2D/3D bitmap methods behind the observer. In 2D stock
     -- mutates position[3]; in 3D it adjusts a separate scalar, not position.z.
-    local layer_class,native_layers={},{}
+    local layer_class,native_layers,native_offsets={},{},{}
     local layer_env=setmetatable({UIRenderer=layer_class,optional_gui_args={},
         STRING_IDENTIFIER='string',SNAP_PIXEL_POSITIONS=false,
         _get_material_flag=function() return 0 end,
@@ -268,7 +291,7 @@ if arg[2] then
             return 71
         end,
         Gui2_bitmap_3d=function(gui,material,flags,tm,layer,options)
-            assert(options.position_offset[3]==99)
+            native_offsets[#native_offsets+1]=options.position_offset[3]
             native_layers[#native_layers+1]=layer
             return 73
         end,
@@ -290,11 +313,13 @@ if arg[2] then
             assert(position[3]==eye*11,'stock mutation contract changed')
             assert(stock_instance:script_draw_bitmap_3d('material',{
                 x={x=1,y=0,z=0},z={x=0,y=0,z=1},translation={x=0,y=0,z=0}},
-                {0,0,99},eye*3,{10,20,0})==73)
+                {0,0,99+eye},eye*3,{10,20,0})==73)
         end)
     end
     assert(table.concat(native_layers,',')=='11,13,22,26')
+    assert(table.concat(native_offsets,',')=='100,101')
     assert(messages[#messages-1]:find('layer=2 start_layer=2 max_layer_delta=3.000',1,true))
     assert(messages[#messages-1]:find('max_anchor_delta=0.000 incomplete=false',1,true))
+    assert(messages[#messages-1]:find('offset_depth=1 max_offset_depth_delta=1.000',1,true))
     print('marker_layer_stock=pass 2D mutation and separate 3D layer preserved')
 end

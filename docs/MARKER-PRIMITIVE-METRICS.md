@@ -59,6 +59,18 @@ whose worn and rendered-extent checks remain open.
 
 ## Validation, 8 September
 
+9 September 3D-offset follow-up: the observer now records the third component
+of bitmap/text `position_offset` separately from the explicit 3D draw layer.
+`offset_depth` counts differing matched inputs and `max_offset_depth_delta`
+reports their largest raw difference. This does not apply XY scale, combine
+the offset with matrix translation or infer a native depth/occlusion effect.
+Non-finite offsets mark extraction incomplete while the stock draw still runs.
+
+A regression failed before the fix. Two focused marker CTests pass in 0.04
+seconds and all 66 Lua chunks compile. The cached stock bitmap fixture confirms
+distinct third-component values reach `Gui2.bitmap_3d` unchanged, independently
+of its start-layer-adjusted layer. No live measurement or sizing fix is claimed.
+
 9 September layer follow-up: a failing fixture reproduced omitted 2D/3D ordering
 inputs. The observer now records those inputs before stock 2D drawing mutates
 position[3], preserving the separate 3D layer argument and renderer offset.

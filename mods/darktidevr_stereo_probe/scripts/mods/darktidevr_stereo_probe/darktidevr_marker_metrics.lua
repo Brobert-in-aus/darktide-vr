@@ -43,6 +43,7 @@ local function capture(name, spec, renderer, ...)
     -- predict primitive-specific clamps/native GUI behavior here.
     if spec.layer then
         row.layer=assert(tonumber(args[spec.layer]),'missing explicit GUI layer')
+        row.offset_depth=component(position,3)
     else
         row.layer=component(position,3)
     end
@@ -84,7 +85,7 @@ local function changed(a,b,key)
 end
 local function compare(left,right)
     local summary = {matched=0,shape=0,font=0,scale=0,alpha=0,color_alpha=0,kind=0,text_layout=0,text_measured=0,
-        layer=0,start_layer=0,maximum_layer_delta=0,
+        layer=0,start_layer=0,maximum_layer_delta=0,offset_depth=0,maximum_offset_depth_delta=0,
         maximum_anchor_delta=0,left=left.total,right=right.total,
         incomplete=left.truncated or right.truncated or left.errors>0 or
             right.errors>0 or left.unsupported>0 or right.unsupported>0}
@@ -105,6 +106,9 @@ local function compare(left,right)
             if changed(a,b,'color_alpha') then summary.color_alpha=summary.color_alpha+1 end
             if changed(a,b,'layer') then summary.layer=summary.layer+1 end
             if changed(a,b,'start_layer') then summary.start_layer=summary.start_layer+1 end
+            if changed(a,b,'offset_depth') then summary.offset_depth=summary.offset_depth+1 end
+            summary.maximum_offset_depth_delta=math.max(summary.maximum_offset_depth_delta,
+                math.abs((a.offset_depth or 0)-(b.offset_depth or 0)))
             summary.maximum_layer_delta=math.max(summary.maximum_layer_delta,math.abs(a.layer-b.layer))
             if a.text_width~=nil and b.text_width~=nil then
                 summary.text_measured=summary.text_measured+1
@@ -176,10 +180,10 @@ function Metrics.install(mod,renderer_class)
         end
     end
     state.report=function(kind,s)
-        mod:info('DARKTIDEVR_MARKER_METRICS kind=%s left=%d right=%d matched=%d shape=%d font=%d scale=%d alpha=%d color_alpha=%d kind_mismatch=%d max_anchor_delta=%.3f incomplete=%s text_layout=%d text_measured=%d layer=%d start_layer=%d max_layer_delta=%.3f input_geometry_only=true',
+        mod:info('DARKTIDEVR_MARKER_METRICS kind=%s left=%d right=%d matched=%d shape=%d font=%d scale=%d alpha=%d color_alpha=%d kind_mismatch=%d max_anchor_delta=%.3f incomplete=%s text_layout=%d text_measured=%d layer=%d start_layer=%d max_layer_delta=%.3f offset_depth=%d max_offset_depth_delta=%.3f input_geometry_only=true',
             kind,s.left,s.right,s.matched,s.shape,s.font,s.scale,s.alpha,s.color_alpha,s.kind,
             s.maximum_anchor_delta,tostring(s.incomplete),s.text_layout,s.text_measured,
-            s.layer,s.start_layer,s.maximum_layer_delta)
+            s.layer,s.start_layer,s.maximum_layer_delta,s.offset_depth,s.maximum_offset_depth_delta)
     end
     state.unmatched=function(kind)
         mod:info('DARKTIDEVR_MARKER_METRICS kind=%s unmatched=true input_geometry_only=true',kind)
