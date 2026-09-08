@@ -1,5 +1,45 @@
 # Mission control audit — 8 September 2026
 
+## Current saved layout checked 9 September
+
+Read-only inspection of the saved action-first settings, resolved through both
+the integrated and accepted focused Lua binding modules, yields this layout.
+No settings changed. Their source hashes differ, but both resolve these settings
+to the same combat and hub control routes.
+
+| Physical control | Current combat action |
+| --- | --- |
+| Right trigger / left trigger | Primary / alternate |
+| Right grip / left grip | Weapon special / combat ability |
+| X | Mission device **and** cycle carried items |
+| Y / B | Crouch / Blitz |
+| A | Jump and dodge |
+| Left stick click / right stick click | Sprint / tag |
+| Right stick up / down | Quick weapon switch / interact and reload |
+| Right stick horizontal | Smooth turn |
+| Menu | System menu |
+
+Hub overrides replace right-grip weapon special with inventory; all other
+listed actions inherit. Direct carried-item and stim selection, weapon inspect
+and target inspect have no assignment. Cycle carried items can route to the
+normal or small pocketable slot under stock equipment rules, so lack of a direct
+stim binding alone does not establish inaccessible stims.
+
+The focused mapper's isolated neutral-to-X test emits both `device` and
+`cycle_pocketables` on the same press. These correspond to stock `wield_5` and
+`wield_3_gamepad`, which select different inventory routes. This is a concrete
+overlap to check with relevant equipment, not proof of a live progression bug
+or permission to overwrite the user's choice. Stock action precedence and
+equipped-item transitions still need verification. Communication-wheel,
+tactical-overlay and voice/chat controller-route gaps remain as below.
+
+The old recommendations to bind unused stick directions and move ability onto
+one of them no longer apply: both directions and left grip are already assigned.
+Normalized diagnostic extracts stay under ignored `artifacts/unattended/`;
+neither the full settings file nor account data is committed.
+
+## Historical 8 September audit
+
 This is the **earlier pre-preview-relaunch binding snapshot**, not the final
 saved layout. Subsequent action-first menu testing changed assignments (the
 user later reported an L Grip ability label). Read current saved settings before
@@ -74,4 +114,3 @@ base hit/kill widgets in HudElementCrosshair. Those feedback widgets need a
 stereo-aware position/depth audit against the hand-aimed reticle; the working
 crosshair does not establish correct hit-marker presentation. Added to active
 TODO; no hit-marker fix is included in this preview frame-lifetime deployment.
-
