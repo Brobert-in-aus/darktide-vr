@@ -6,6 +6,7 @@ local hooks, values, previous_calls = {}, {}, 0
 local mod = {
     hook=function(_, _, name, fn) hooks[name]=fn end,
     get=function(_, name) return values[name] end,
+    set=function(_, name, value) values[name]=value end,
     localize=function(_, name) return name end,
     info=function() end,
     on_setting_changed=function() previous_calls=previous_calls+1 end,

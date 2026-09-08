@@ -7,6 +7,10 @@ return {
     options = {
         widgets = {
             {
+                setting_id = "vr_aim_stabilization", type = "numeric",
+                default_value = 75, range = {0, 100}, decimals_number = 0, step_size_value = 5,
+            },
+            {
                 setting_id = "melee_preview_toggle",
                 type = "button",
                 button_text = "melee_preview_toggle_button",

@@ -24,11 +24,11 @@ multiple aliases, both contexts, live remap cancellation, shared controls,
 explicit Unbound and reopening without another migration. Main LuaJIT source
 gate passes all 52 chunks. No live menu validation or deployment yet.
 
-The user's unused lower-half report is still open. The installed DMF definitions
-already provide a settings grid extending to authored Y=1010 of a 1080-high
-canvas; its header changes can resize the grid. A current menu observation is
-needed to distinguish grid sizing, clipping and unused content. The user was
-asked to leave the menu open when convenient; gameplay was not interrupted.
+The lower-half report is addressed by the subsequent menu-height patch. DMF's
+grid bottom remains at authored Y=1010 even when the fitted VR canvas is much
+taller than 1080. Both grids now follow the actual scaled canvas height while
+preserving footer clearance. See MENU-HEIGHT-WEAPON-STABILITY-2026-09-08.md for
+validation and the remaining worn check.
 
 Staff charge HUD disappearance is recorded in the active TODO. Stock charge-up
 graphics are part of the crosshair template, while the VR HUD suppresses the

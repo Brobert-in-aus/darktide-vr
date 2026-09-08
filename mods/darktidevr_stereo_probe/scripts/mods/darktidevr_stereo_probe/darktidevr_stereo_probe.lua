@@ -13385,6 +13385,12 @@ presentation.ranged_evidence = mod:io_dofile(
 presentation.gun_aim = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gun_aim"
 ).install(mod, presentation)
+presentation.weapon_stabilization = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_weapon_stabilization"
+).install(mod, presentation, controller_observation)
+mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_options_layout"
+).install(mod)
 presentation.two_hand = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_two_hand_support"
 ).install(mod, presentation, controller_observation)

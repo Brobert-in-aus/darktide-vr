@@ -1,4 +1,6 @@
 return {
+    vr_aim_stabilization = {en = "Weapon aim stabilisation (%%)"},
+    vr_aim_stabilization_description = {en = "Damp small aiming tremors while responding faster to deliberate movement. Higher values steady the aim more. Set to zero to disable. Applies to ranged weapons, including staffs."},
     controller_action_binding_description = {en = "Choose the controller input for this action. Actions can share a control: for example, interact and reload on X. Right-stick left/right actions require turning to be off. Hub overrides apply only in the hub."},
     melee_preview_toggle = {en = "First melee swing preview"},
     melee_preview_toggle_description = {en = "Show or hide the first light attack's direction while holding your melee weapon idle. Starts off each session. This guide does not guarantee a hit."},
