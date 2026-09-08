@@ -8,9 +8,9 @@ local specs = {
     script_draw_text = {position=4,size=5,font=2,token=1,secondary=3,color=6},
     script_draw_text_3d = {position=5,size=7,font=2,transform=4,token=1,secondary=3,color=8},
     draw_rect = {position=1,size=2,logical=true,color=3},
-    draw_rect_rotated = {position=2,size=1,angle=3,logical=true,color=5},
+    draw_rect_rotated = {position=2,size=1,angle=3,pivot=4,logical=true,color=5},
     draw_slug_icon = {position=3,size=4,logical=true,token=1,secondary=2,color=5},
-    draw_slug_icon_rotated = {position=4,size=3,angle=5,logical=true,token=1,secondary=2,color=7},
+    draw_slug_icon_rotated = {position=4,size=3,angle=5,pivot=6,logical=true,token=1,secondary=2,color=7},
     draw_slug_picture = {position=2,size=3,logical=true,token=1,color=4},
     draw_triangle = {unsupported=true},
     draw_circle = {unsupported=true},
@@ -38,12 +38,17 @@ local function capture(name, spec, renderer, ...)
         scale=renderer.scale or 1, alpha=renderer.render_settings and
             renderer.render_settings.alpha_multiplier or 1}
     row.color_alpha=args[spec.color] and component(args[spec.color],1) or 255
+    if spec.pivot then
+        row.pivot_x=component(args[spec.pivot],1)*scale
+        row.pivot_y=component(args[spec.pivot],2)*scale
+    end
     if spec.transform and args[spec.transform] then
         local tm = args[spec.transform]
         local x, z = Matrix4x4.x(tm), Matrix4x4.z(tm)
-        row.xx,row.xz,row.zx,row.zz = x.x,x.z,z.x,z.z
+        row.xx,row.xy,row.xz = assert(x.x),assert(x.y),assert(x.z)
+        row.zx,row.zy,row.zz = assert(z.x),assert(z.y),assert(z.z)
         local translation=Matrix4x4.translation(tm)
-        row.tx,row.tz=translation.x,translation.z
+        row.tx,row.ty,row.tz=assert(translation.x),assert(translation.y),assert(translation.z)
     end
     for key,value in pairs(row) do
         if key ~= 'name' and (type(value) ~= 'number' or not finite(value)) then
@@ -71,15 +76,17 @@ local function compare(left,right)
         else
             summary.matched=summary.matched+1
             if changed(a,b,'width') or changed(a,b,'height') or
-                    changed(a,b,'angle') or changed(a,b,'xx') or changed(a,b,'xz') or
-                    changed(a,b,'zx') or changed(a,b,'zz') then summary.shape=summary.shape+1 end
+                    changed(a,b,'angle') or changed(a,b,'pivot_x') or changed(a,b,'pivot_y') or
+                    changed(a,b,'xx') or changed(a,b,'xy') or changed(a,b,'xz') or
+                    changed(a,b,'zx') or changed(a,b,'zy') or changed(a,b,'zz') then summary.shape=summary.shape+1 end
             if changed(a,b,'font') then summary.font=summary.font+1 end
             if changed(a,b,'scale') then summary.scale=summary.scale+1 end
             if changed(a,b,'alpha') then summary.alpha=summary.alpha+1 end
             if changed(a,b,'color_alpha') then summary.color_alpha=summary.color_alpha+1 end
             summary.maximum_anchor_delta=math.max(summary.maximum_anchor_delta,
                 math.abs(a.x-b.x),math.abs(a.y-b.y),
-                math.abs((a.tx or 0)-(b.tx or 0)),math.abs((a.tz or 0)-(b.tz or 0)))
+                math.abs((a.tx or 0)-(b.tx or 0)),math.abs((a.ty or 0)-(b.ty or 0)),
+                math.abs((a.tz or 0)-(b.tz or 0)))
         end
     end
     if left.total ~= right.total then summary.incomplete=true end

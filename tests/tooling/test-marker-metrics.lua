@@ -125,7 +125,7 @@ Matrix4x4={x=function(tm)return tm.x end,z=function(tm)return tm.z end,
 for eye=1,2 do
     metrics.draw(renderer,'markers',owner,16,eye,nil,function()
         renderer:script_draw_bitmap_3d('material',{
-            x={x=eye,z=0},z={x=0,z=1},translation={x=eye*10,z=0}},nil,1,{10,20,0})
+            x={x=eye,y=0,z=0},z={x=0,y=0,z=1},translation={x=eye*10,y=0,z=0}},nil,1,{10,20,0})
     end)
 end
 assert(messages[#messages-1]:find('shape=1',1,true))
@@ -142,4 +142,21 @@ mod.info=function() error('observer logger failure') end
 metrics.start(2)
 pair(18) -- Logging failure must not change successful drawing.
 mod.info=original_info
+metrics.start(4)
+for eye=1,2 do
+    metrics.draw(renderer,'markers',owner,19,eye,nil,function()
+        renderer:script_draw_bitmap_3d('material',{
+            x={x=1,y=eye-1,z=0},z={x=0,y=0,z=1},
+            translation={x=0,y=(eye-1)*12,z=0}},nil,1,{10,20,0})
+    end)
+end
+assert(messages[#messages]:find('shape=1',1,true),'depth basis change was missed')
+assert(messages[#messages]:find('max_anchor_delta=12.000',1,true),'depth translation was missed')
+for eye=1,2 do
+    metrics.draw(renderer,'markers',owner,20,eye,nil,function()
+        renderer:draw_rect_rotated({20,30,0},{0,0,0},0.5,{eye*3,2,0})
+        renderer:draw_slug_icon_rotated('resource',1,{20,30,0},{0,0,0},0.5,{1,eye*2,0})
+    end)
+end
+assert(messages[#messages-1]:find('shape=2',1,true),'rotation pivot change was missed')
 print('marker_metrics=pass bounded_input_geometry_only=true')

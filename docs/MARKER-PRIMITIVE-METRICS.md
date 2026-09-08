@@ -33,7 +33,9 @@ The `DARKTIDEVR_MARKER_METRICS` summary includes:
 Tracked paths cover bitmap/UV/rotated bitmap, text/3D text, rectangles/rotated
 rectangles and vector icons/pictures, including direct text calls inside damage
 indicator logic. Triangles, circles and video are explicitly marked unsupported
-if encountered. Transformed draws compare their X/Z-plane basis and translation;
+if encountered. Transformed draws compare all three components of their X/Z-plane
+basis and translation, including depth. Rotated rectangle/vector-icon calls also
+compare their scaled pivot coordinates;
 they do not reconstruct final rasterized bounds. Optional GUI settings, material
 shader behavior, glyph outlines and pixel snapping are not measured.
 
@@ -45,6 +47,13 @@ fix. This measurement is one input to the [full marker audit](STEREO-MARKER-SIZI
 whose worn and rendered-extent checks remain open.
 
 ## Validation, 8 September
+
+9 September follow-up: a failing fixture reproduced omitted depth-axis basis/
+translation changes. Metrics now include these components and rotation pivots;
+missing transform components mark extraction incomplete. The expanded
+`marker_metrics` and `marker_gui` checks pass 2/2 in 0.04 seconds, and the pinned
+Lua source gate compiles 58 chunks. This remains an offline diagnostic candidate,
+not a deployed measurement or correction of pickup sizing.
 
 The integrated Windows x64 Release suite passes **149/149 in 63.63 seconds**:
 `artifacts/unattended/marker-metrics-149-20260908.log`. Final style-alpha/logger
