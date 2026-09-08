@@ -1,5 +1,13 @@
 # SoloPlay mission test setup
 
+Night update, 8 September: the user successfully entered a solo mission and
+confirmed the mission crosshair. Tonight's final checks passed; a complete
+mission/objective/extraction route and official-server compatibility are still
+unverified. Preserve the user's current preset and bindings: cm_raid below was
+initial setup, not a claim about the latest selection. See the
+[night handoff](handoffs/2026-09-08-night.md) and
+[full next-session list](phase1/todo-2026-09-09.md).
+
 8 September: the user requested preparation now for their return from work.
 This supersedes the earlier hold on installing SoloPlay until all Psykhanium
 acceptance is complete. Mission gameplay and official-server acceptance remain
@@ -26,11 +34,13 @@ mission briefing are off; the mod's normal random side-mission seed remains on.
 SoloPlay's local hosting and built-in workarounds remain; this is not an exact
 dedicated-server simulation and it awards no progression or rewards.
 
-Open the mod options with F4, select Solo Play, then Open; alternatively enter
-`/solo` in chat. The Normal tab holds the prepared mission. Review difficulty
+Open Mod Options with its current configured binding, select Solo Play, then
+Open; alternatively enter `/solo` in chat using the actual saved chat binding.
+Enter is not the user's chat key and F4 is not a direct SoloPlay launcher. The Normal tab holds the prepared mission. Review difficulty
 and select Play when ready. Physical melee remains paused; use stock button
 melee. The optional first-swing preview is available through
-`/dtvr_melee_preview_on` and defaults off.
+`/dtvr_melee_preview_on` or its configured toggle (last F6); it was enabled
+for tonight's test and the temporary startup request was restored.
 
 Validation: gameplay-context and online-rules fixtures pass (2/2); eight related
 aim, reticle, tag and melee fixtures pass. The optional stock source contract

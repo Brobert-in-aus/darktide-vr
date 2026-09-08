@@ -25,7 +25,7 @@ The requested update is installed following the user's "Restart now" reply:
 - VR HUD and menu binding labels use non-breaking spaces, preserving names such
   as L Grip as a single token. Ability badges fit to a width with two logical
   pixels of padding and re-fit if another update changes the applied font size.
-  Font size restores outside VR. New rendering still requires worn acceptance.
+  Font size restores outside VR. The final worn checks are accepted below.
 
 ## Build and validation
 
@@ -84,11 +84,14 @@ advanced to 715, with an observed interval of 44.25 fresh plus 44.25 generated
 pairs/s and zero fallback or pose mismatches. No mod ERROR/WARNING, feedback,
 input, preview or aim-assist fallback errors appeared in the inspected window.
 The scale transport contains 70 and the one-shot preview flag is restored.
-Live appearance/sector feel remain pending the user's worn observations.
+The user subsequently reports "All checks passed", accepting the final worn
+turn/scale/label checks. See the [night handoff](handoffs/2026-09-08-night.md)
+for shutdown and the complete remaining backlog.
 
 ## Relaunch reference
 
-The current game is running for testing. For future approved restarts,
+The game and viewer are now closed. The accepted update is already installed;
+use the night handoff to relaunch it without redeploying. If reinstalling,
 close the current session and wait ten seconds, run the Ready gate,
 back up and transactionally install the eight changed focused Lua files plus the
 isolated candidate viewer at the launcher's expected viewer path. Do not copy
@@ -102,4 +105,4 @@ is already saved and should not need another forced settings request.
 Verify fresh stereo initialization and advancing shared_ready; restore the
 preview startup flag after preview=on. Check the new right-stick sectors,
 crosshair/feedback size and single-line L Grip label in the headset. Record
-the live result before treating this candidate as accepted.
+any new regressions separately from tonight's accepted checks.

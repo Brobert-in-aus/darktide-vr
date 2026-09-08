@@ -1,11 +1,18 @@
 # Mission control audit — 8 September 2026
 
+This is the **earlier pre-preview-relaunch binding snapshot**, not the final
+saved layout. Subsequent action-first menu testing changed assignments (the
+user later reported an L Grip ability label). Read current saved settings before
+changing controls or claiming an action remains unbound. See the
+[next-session control checklist](phase1/todo-2026-09-09.md) for unresolved route
+coverage, and the [night handoff](handoffs/2026-09-08-night.md) for acceptance.
+
 Reviewed before the frame-clear preview relaunch. Sources: saved VR mappings in
 user_settings.config, the installed/focused controller binding, gameplay UI and
 spectator modules, stock Ingame/View aliases, and the local Steam cloud save.
 No bindings were changed. Account identifiers and the full save are excluded.
 
-## Current Quest layout
+## Quest layout at the time of this audit
 
 | Physical control | Mission action |
 | --- | --- |
@@ -26,7 +33,7 @@ Hub overrides inherit the above except right grip opens inventory. Combined
 X and A mappings emit both configured action semantics; they are not separate
 tap/hold shortcuts. They do not reproduce the user's separated keyboard jump.
 
-## Gaps
+## Gaps at the time of this audit
 
 | Action | Status / consequence |
 | --- | --- |

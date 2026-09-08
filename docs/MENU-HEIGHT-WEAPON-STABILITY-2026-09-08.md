@@ -1,5 +1,12 @@
 # Full-height options and weapon aim stabilisation
 
+Final status, 8 September night: deployed changes are accepted for the checks
+performed in tonight's session (user: "All checks passed"). Subsequent corrections
+and the final mixed deployment are recorded in the
+[night handoff](handoffs/2026-09-08-night.md). Earlier candidate, restart and
+pending-acceptance statements below describe the implementation chronology;
+physical melee, remote-server and broader mission acceptance remain separate.
+
 DMF's options lists ended at authored Y=1010, leaving the bottom half empty on
 the taller VR canvas. The stereo mod now obtains the actual fitted screen size
 from UIScenegraph.size_scaled and extends both category and settings grids to

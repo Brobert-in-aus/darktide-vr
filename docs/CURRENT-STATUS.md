@@ -1,5 +1,26 @@
 # Current status and operation
 
+## Current checkpoint: night of 8 September
+
+The user reports **All checks passed** for tonight's test session. See the
+[night handoff](handoffs/2026-09-08-night.md) for accepted source heads, deployment,
+validation and shutdown, and the [full next-session todo](phase1/todo-2026-09-09.md).
+The game/viewer are closed, both heartbeats are paused, and normal Quest proximity
+automation is restored. No overnight work is scheduled.
+
+Tonight's mission crosshair, wrist-controlled melee preview, stereo charge/hit
+feedback, full-height/action-first menus, ranged stabilization/Light adaptation,
+turning sectors, live crosshair scale and non-wrapping labels are accepted for
+checks performed. Billboarding is next; pickup-popup edge sizing remains active.
+Physical melee remains paused; official-server and full mission/family coverage
+are not established. Preserve the mixed accepted deployment described in the
+handoff: main native sources include undeployed candidates.
+
+## Historical checkpoints
+
+Everything below records earlier states. Old live PIDs, restart requests and
+pending labels do not override the night handoff or next-session todo.
+
 Updated 8 September 2026. This summary supersedes the chronological evidence
 below. Start with the [workday handoff](handoffs/2026-09-08-workday.md) and
 [remaining development](REMAINING-DEVELOPMENT.md).

@@ -28,11 +28,11 @@ find a better quality/performance policy across equipment and terrain.
 
 ## Extreme-edge marker symmetry
 
-On 5 September 2026 the user accepted the current marker presentation for the
-initial release. Very slight asymmetry remains at the extreme screen edges and
-requires close inspection to notice. Defer this polish; preserve the accepted
-shared easing and immediate-GUI resource lifecycle while investigating edge
-clamping/projection in a future worn comparison.
+The 5 September allowance for slight extreme-edge polish is superseded by the
+8 September report of pickup popups shrinking differently between eyes. The
+reported defect and similar marker behavior are active work in the
+[9 September todo](phase1/todo-2026-09-09.md). Preserve shared easing and
+immediate-GUI lifetime while correcting complete-widget scale/clamping.
 
 ## Selective smoke-cloud billboard suppression
 

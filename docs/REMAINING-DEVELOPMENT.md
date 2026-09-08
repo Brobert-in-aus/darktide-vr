@@ -1,5 +1,21 @@
 # Remaining development: melee, HUD and DLSS
 
+## Active plan after 8 September evening testing
+
+Use the [full 9 September todo list](phase1/todo-2026-09-09.md) and
+[night handoff](handoffs/2026-09-08-night.md). The user reports all tonight's checks
+passed. Billboarding is the first implementation task, followed by the reported
+pickup-popup stereo sizing correction and related marker pass. The complete
+mission/control, combat, two-hand/handedness, HUD/performance and release backlog
+is consolidated there. Physical melee stays paused. Both heartbeats are paused;
+the game/viewer are closed and normal Quest proximity automation is restored.
+
+## Historical steering and implementation evidence
+
+The dated text below is retained for evidence. Its older continue-work commands,
+active-session claims, pending acceptance and priority order are superseded by
+the active plan above; they are not instructions to restart overnight work.
+
 **New requested setup, 8 September:** prepare the supplied SoloPlay mod for the
 user's in-mission test when they return home, using the regular online-server
 VR input and combat rules. This brings installation/configuration forward from

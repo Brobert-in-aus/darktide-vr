@@ -1,5 +1,12 @@
 # Wrist roll and stock melee angle
 
+Final status, 8 September night: deployed changes are accepted for the checks
+performed in tonight's session (user: "All checks passed"). Subsequent corrections
+and the final mixed deployment are recorded in the
+[night handoff](handoffs/2026-09-08-night.md). Earlier candidate, restart and
+pending-acceptance statements below describe the implementation chronology;
+physical melee, remote-server and broader mission acceptance remain separate.
+
 Worn follow-up: the user reports "Melee aim fixed" after the 09:44 UTC restart.
 The wrist-twist aiming issue is accepted. Server damage and the separate
 feedback/menu appearance are not implied by that observation.

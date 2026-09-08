@@ -4,8 +4,9 @@ Deployment update: installed with the wrist-angle candidate after the user's
 approved restart. Fresh stereo initialization, Psykhanium entry, saved Light
 setting and advancing shared_ready passed at 09:44 UTC. Startup flags restored;
 accepted native/viewer hashes unchanged. See MELEE-WRIST-ANGLE-2026-09-08.md for
-the receipts and runtime sample. The hand feedback and menu-height appearance
-still require the user's observation in this newly loaded build.
+the receipts and runtime sample. The later night-end "All checks passed" report
+accepts the checks performed on hand feedback, menu height and aiming; see the
+[night handoff](handoffs/2026-09-08-night.md).
 
 The staff charge indicator is part of HudElementCrosshair's dynamic widget,
 which the VR HUD suppresses to avoid a second aiming reticle. It is not an
@@ -25,8 +26,8 @@ The first menu-height change missed a persistent DMF view created before the
 XR render extent changed. The user confirmed the lower half remained empty,
 and a read-only desktop observation confirmed it. The options layout now checks
 the fitted canvas during active updates, refreshing only when its height changes.
-A layout diagnostic records the resulting bottom and scale. Worn acceptance is
-still required; passing the sizing fixture is not a visual result.
+A layout diagnostic records the resulting bottom and scale. The user later
+accepted tonight's worn checks; the sizing fixture alone was not visual evidence.
 
 PC aim assist is controller-gated. The VR adapter now uses the stock precision
 target finder and assisted trajectory with Light selected, applying half the
@@ -53,10 +54,9 @@ creation, hide/destroy, bounded correction, stale/foreign targets, weapon and
 tracking changes, duplicate consumers and the one-shot settings save. Main
 LuaJIT gate: 56 chunks; focused gate: 49 chunks. No native/viewer rebuild.
 
-Pending: deployment/restart after the current worn test, fresh stereo init and
-advancing shared_ready, no feedback/assist errors, then user observations of
-staff charge and hit feedback aligned with the hand reticle in both eyes, full
-menu height, and Light assist feeling useful without fighting hand movement.
-Preserve accepted DLLs, viewer and SoloPlay settings. The prior menu/aim patch
-was deployed successfully in the 08:57 UTC launch; generated stereo and nonzero
-shared_ready were observed in the Psykhanium, not measured in a solo mission.
+Final status: deployed and accepted for tonight's checks, with fresh stereo
+initialization and advancing shared_ready recorded in the night handoff.
+Broader staff/weapon-family coverage and matched SoloPlay performance remain
+on the next-session todo. Preserve accepted DLLs and user settings; the later
+scale update changes the viewer and shared feedback scale as documented in
+[turning/scale/labels](TURNING-RETICLE-LABELS-2026-09-08.md).
