@@ -21,6 +21,7 @@ selected by CMake, then build the pinned Lua compiler and project:
 ```powershell
 python -m pip install -r tools/stereo/requirements-analysis.txt
 tools/lua/build-luajit.ps1
+tools/dependencies/get-dxc-runtime.ps1
 cmake --preset windows-vs2022 -DDARKTIDEVR_ENABLE_HEADSET_TESTS=OFF
 cmake --build --preset windows-vs2022-release
 ctest --test-dir build/windows-vs2022 -C Release --output-on-failure

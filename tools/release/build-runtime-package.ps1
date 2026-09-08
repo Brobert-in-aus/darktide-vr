@@ -5,6 +5,8 @@ $ErrorActionPreference = 'Stop'
 Import-Module Microsoft.PowerShell.Utility -ErrorAction Stop
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $spec = Import-PowerShellDataFile -LiteralPath (Join-Path $PSScriptRoot 'runtime-package-files.psd1')
+. (Join-Path $root 'tools/stereo/dxc-runtime.ps1')
+@(Get-VerifiedDxcRuntimeFiles) | Out-Null
 & (Join-Path $root 'tools/stereo/test-darktide-lua-source.ps1')
 . (Join-Path $root 'tools/stereo/production-billboard-shader.ps1')
 Assert-ProductionBillboardShader -ShaderPath (Join-Path $root 'build/generated/billboard_shaders/vs-42e436fb1ef1b392.dxil') `

@@ -9,6 +9,7 @@ $luaRelative = 'mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_prob
 $verifier = (Resolve-Path (Join-Path $PSScriptRoot '..\..\tools\release\test-runtime-package.ps1')).Path
 $global:PackageFixtureLuaGate = 0
 $global:PackageFixtureShaderGate = 0
+$global:PackageFixtureDxcGate = 0
 function Write-Fixture([string] $Relative, [string] $Text) {
     $path = Join-Path $testRoot $Relative
     [IO.Directory]::CreateDirectory((Split-Path -Parent $path)) | Out-Null
@@ -22,6 +23,7 @@ function Assert-Rejected([string] $Message) {
 try {
     Write-Fixture 'tools/stereo/test-darktide-lua-source.ps1' '$global:PackageFixtureLuaGate++'
     Write-Fixture 'tools/stereo/production-billboard-shader.ps1' 'function Assert-ProductionBillboardShader { param($ShaderPath, $SourcePath) $global:PackageFixtureShaderGate++ }'
+    Write-Fixture 'tools/stereo/dxc-runtime.ps1' 'function Get-VerifiedDxcRuntimeFiles { $global:PackageFixtureDxcGate++ }'
     Write-Fixture 'tools/release/runtime-package-files.psd1' "@{ Files = @('native.dll') }"
     Write-Fixture 'native.dll' 'native-fixture'
     Write-Fixture ($luaRelative + '/module.lua') 'return {}'
@@ -33,7 +35,7 @@ try {
     $manifestPath = Join-Path $testRoot 'package-manifest.json'
     $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
     & $verifier -PackageRoot $testRoot | Out-Null
-    if ($global:PackageFixtureLuaGate -ne 1 -or $global:PackageFixtureShaderGate -ne 1) { throw 'Package validation bypassed a gate.' }
+    if ($global:PackageFixtureLuaGate -ne 1 -or $global:PackageFixtureShaderGate -ne 1 -or $global:PackageFixtureDxcGate -ne 1) { throw 'Package validation bypassed a gate.' }
     Write-Fixture 'native.dll' 'damaged-fixture'
     Assert-Rejected 'Runtime package file is missing or changed'
     Write-Fixture 'native.dll' 'native-fixture'
@@ -51,7 +53,7 @@ try {
     Assert-Rejected 'outside its root or duplicated'
     Write-Output 'runtime_package_integrity=pass gates changed missing unlisted duplicate path_escape'
 } finally {
-    Remove-Variable -Scope Global -Name PackageFixtureLuaGate,PackageFixtureShaderGate -ErrorAction SilentlyContinue
+    Remove-Variable -Scope Global -Name PackageFixtureLuaGate,PackageFixtureShaderGate,PackageFixtureDxcGate -ErrorAction SilentlyContinue
     $resolved = [IO.Path]::GetFullPath($testRoot)
     if (-not $resolved.StartsWith($tempBase + '\', [StringComparison]::OrdinalIgnoreCase) -or
             -not (Split-Path -Leaf $resolved).StartsWith('dtvr-pkg-test-')) { throw 'Refusing cleanup outside the temporary test directory.' }

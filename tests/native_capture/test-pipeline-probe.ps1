@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory)][string] $Executable,
     [Parameter(Mandatory)][string] $CaptureLibrary,
+    [Parameter(Mandatory)][string] $ReflectionLibrary,
     [ValidateSet('apply', 'fallback')][string] $Mode = 'apply'
 )
 $ErrorActionPreference = 'Stop'
@@ -15,9 +16,7 @@ $evidenceRoot = Join-Path $repoRoot 'artifacts/unattended/pipeline-probe-tests'
 $testRoot = Join-Path $evidenceRoot ([guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 Copy-Item -LiteralPath $CaptureLibrary -Destination (Join-Path $testRoot 'darktidevr_native_capture.dll')
-foreach ($dependency in 'dxcompiler.dll', 'dxil.dll') {
-    Copy-Item -LiteralPath (Join-Path (Split-Path $dxc) $dependency) -Destination $testRoot
-}
+Copy-Item -LiteralPath $ReflectionLibrary -Destination (Join-Path $testRoot 'dxcompiler.dll')
 foreach ($entry in 'vs_main', 'ps_stock', 'ps_probe', 'ps_invalid') {
     $profile = if ($entry.StartsWith('vs_')) { 'vs_6_0' } else { 'ps_6_0' }
     & $dxc -T $profile -E $entry -Fo (Join-Path $testRoot "$entry.dxil") (Join-Path $PSScriptRoot 'pipeline_probe.hlsl')

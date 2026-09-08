@@ -22,7 +22,8 @@ if(BUILD_TESTING)
     add_test(NAME pipeline_probe_${mode} COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
       "${CMAKE_CURRENT_SOURCE_DIR}/test-pipeline-probe.ps1"
       -Executable $<TARGET_FILE:darktidevr-pipeline-probe-tests>
-      -CaptureLibrary $<TARGET_FILE:darktidevr_native_capture> -Mode ${mode})
+      -CaptureLibrary $<TARGET_FILE:darktidevr_native_capture>
+      -ReflectionLibrary "${PROJECT_SOURCE_DIR}/build/dependencies/dxc-runtime/dxcompiler.dll" -Mode ${mode})
     set_tests_properties(pipeline_probe_${mode} PROPERTIES TIMEOUT 45 LABELS "native;d3d12;offline")
   endforeach()
   add_test(NAME diagnostic_append_log COMMAND darktidevr-diagnostic-append-tests)

@@ -36,9 +36,20 @@ function Assert-Unchanged([hashtable] $Before) {
 }
 try {
     [IO.Directory]::CreateDirectory($tools) | Out-Null
-    foreach ($name in @('sync-darktide-vr-dev.ps1', 'resolve-darktide-game-root.ps1', 'invoke-deployment-transaction.ps1', 'get-vr-mod-load-order.ps1', 'production-billboard-shader.ps1')) {
+    foreach ($name in @('sync-darktide-vr-dev.ps1', 'resolve-darktide-game-root.ps1', 'invoke-deployment-transaction.ps1', 'get-vr-mod-load-order.ps1', 'production-billboard-shader.ps1', 'dxc-runtime.ps1')) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot ('..\..\tools\stereo\' + $name)) -Destination (Join-Path $tools $name)
     }
+    # Keep the real verifier and destination list, with small fixture bytes and
+    # their own pins so transaction rollback can be exercised without real DLLs.
+    $dxcSpec = Import-PowerShellDataFile -LiteralPath (Join-Path $PSScriptRoot '../../tools/dependencies/dxc-runtime.psd1')
+    $dxcRecords = @()
+    foreach ($entry in $dxcSpec.Files) {
+        $path = Join-Path $repo ('build/dependencies/dxc-runtime/' + $entry.Name)
+        Write-Fixture $path ('fixture-' + $entry.Name)
+        $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+        $dxcRecords += "@{ Name='$($entry.Name)'; InstalledName='$($entry.InstalledName)'; SHA256='$hash' }"
+    }
+    Write-Fixture (Join-Path $repo 'tools/dependencies/dxc-runtime.psd1') ("@{ Files = @(`n" + ($dxcRecords -join "`n") + "`n) }")
     Write-Fixture (Join-Path $tools 'test-darktide-lua-source.ps1') @'
 param([string] $SourcePath)
 if (-not (Test-Path -LiteralPath $SourcePath)) { throw 'Missing fixture source.' }
@@ -72,6 +83,10 @@ if ($global:DeploymentFixtureGateFailure) { throw 'fixture syntax gate failed' }
     & $sync -GameRoot $game -BillboardShaderSubstitution:$false | Out-Null
     if ([IO.File]::ReadAllText((Join-Path $game ($luaRelative + '\module.lua'))) -ne 'new-module.lua') { throw 'Module was not deployed.' }
     if ([IO.File]::ReadAllText((Join-Path $game ($modRelative + '\bin\darktidevr_native_capture.dll'))) -ne 'new-darktidevr_native_capture.dll') { throw 'Native module was not deployed.' }
+    foreach ($entry in $dxcSpec.Files) {
+        $installed = Join-Path $game ($modRelative + '\bin\' + $entry.InstalledName)
+        if ([IO.File]::ReadAllText($installed) -cne ('fixture-' + $entry.Name)) { throw 'DXC runtime or notice was not deployed.' }
+    }
     if (Test-Path -LiteralPath $diagnostic) { throw 'Stale magenta shader survived successful sync.' }
     foreach ($pair in @(@('darktidevr_gameplay_input_test.flag', 'enabled'), @('darktidevr_controller_aim_test.flag', 'enabled'),
             @('darktidevr_full_body_experimental.flag', 'disabled'), @('darktidevr_weapon_presentation.flag', 'disabled'))) {
@@ -79,6 +94,14 @@ if ($global:DeploymentFixtureGateFailure) { throw 'fixture syntax gate failed' }
         if ([IO.File]::ReadAllText($path) -cne ($pair[1] + [Environment]::NewLine)) { throw "Runtime flag disagrees: $path" }
     }
     $before = Get-InstallationSnapshot
+    $runtimeDll = Join-Path $repo 'build/dependencies/dxc-runtime/dxcompiler.dll'
+    Write-Fixture $runtimeDll 'changed-runtime'
+    $failed = $false
+    try { & $sync -GameRoot $game -BillboardShaderSubstitution:$false | Out-Null }
+    catch { $failed = $_.Exception.Message.Contains('Pinned DXC runtime file is missing or changed') }
+    if (-not $failed) { throw 'Sync accepted a modified DXC runtime.' }
+    Assert-Unchanged $before
+    Write-Fixture $runtimeDll 'fixture-dxcompiler.dll'
     $global:DeploymentFixtureGateFailure = $true
     $failed = $false
     try { & $sync -GameRoot $game -BillboardShaderSubstitution:$false | Out-Null }

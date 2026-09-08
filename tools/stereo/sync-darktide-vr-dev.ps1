@@ -91,6 +91,16 @@ $destinations = @(
     }
 )
 
+# Native reflection loads this exact app-local DLL even when using prebuilt
+# shaders. Include it and its notices in the same recoverable transaction.
+. (Join-Path $PSScriptRoot 'dxc-runtime.ps1')
+foreach ($runtimeFile in @(Get-VerifiedDxcRuntimeFiles)) {
+    $destinations += [pscustomobject]@{
+        Source = $runtimeFile.Source
+        Destination = Join-Path $modRoot ('bin\' + $runtimeFile.InstalledName)
+    }
+}
+
 # Required Lua modules are separate LuaJIT chunks, which keeps the production
 # probe below its hard local-variable ceiling. Deploy and syntax-check every
 # module alongside the entry chunk so a clean game install cannot retain stale

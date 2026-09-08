@@ -24,6 +24,19 @@ settings, credentials, headset identifiers, logs and other development artifacts
 are excluded. The package's `build/` folders are runtime payload paths, not a
 requirement to compile the project on the destination.
 
+The package includes a pinned x64 DXC reflection library and its upstream
+notices. Native shader-interface validation needs this library even when the
+production shader is prebuilt. Sync installs it beside the capture module in
+the mod's `bin` directory through the same backup/rollback transaction. It does
+not require a destination Windows SDK or compiler executable. Package and sync
+checks reject a missing or modified pinned runtime file before deployment.
+
+For source builds, prepare this dependency with
+`tools/dependencies/get-dxc-runtime.ps1` before building the package or syncing.
+The preparation tool checks Microsoft's published archive digest and extracts
+only the runtime DLL and three notice files. Existing matching files are reused;
+an existing damaged dependency is reported rather than silently overwritten.
+
 ## Validate, install and launch
 
 Extract the complete folder to a writable location. In PowerShell, run

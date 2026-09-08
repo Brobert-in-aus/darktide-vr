@@ -42,6 +42,8 @@ foreach ($file in Get-ChildItem -LiteralPath $luaRoot -Filter '*.lua' -File) {
     if (-not $seen.Contains($file.FullName)) { throw "Unlisted runtime Lua module: $($file.Name)" }
 }
 & (Join-Path $root 'tools/stereo/test-darktide-lua-source.ps1')
+. (Join-Path $root 'tools/stereo/dxc-runtime.ps1')
+@(Get-VerifiedDxcRuntimeFiles) | Out-Null
 . (Join-Path $root 'tools/stereo/production-billboard-shader.ps1')
 Assert-ProductionBillboardShader -ShaderPath (Join-Path $root 'build/generated/billboard_shaders/vs-42e436fb1ef1b392.dxil') `
     -SourcePath (Join-Path $root 'tools/stereo/particle-horizon-lock.vs.hlsl')

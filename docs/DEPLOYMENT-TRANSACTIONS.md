@@ -71,6 +71,12 @@ Diagnostic, modified or stale outputs are rejected before installed writes.
 The shader source remains in the package for identity validation. Ordinary
 development sync continues to compile the production shader by default; the
 prebuilt option avoids requiring DXC on the destination machine.
+The app-local `dxcompiler.dll` reflection library is still required by native
+shader-interface validation. The pinned runtime and its three notices are now
+verified before writes and included in the same install/recovery transaction;
+this is independent of the development compiler executable. Prepare source
+checkouts with `tools/dependencies/get-dxc-runtime.ps1`. Runtime packages carry
+the verified files and need no dependency download at the destination.
 
 Readiness reports tolerate extracted source packages without Git. They mark
 checkout identity unavailable, with unknown revision/dirty status, while still
