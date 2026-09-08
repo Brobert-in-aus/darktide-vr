@@ -69,3 +69,25 @@ period. No invalid timing samples. Startup/menu windows are separate conditions.
 This is a fresh-session baseline; restarting improved delivery, but the cause
 of the earlier sustained decline remains undiagnosed. Continue observing for
 recurrence rather than treating this restart or instrumentation as a fix.
+
+## Saved-log analysis
+
+`tools/stereo/summarize-xr-frame-stages.py LOG --output REPORT.json` records
+individual valid windows and groups matching presentation mode/generation,
+source extent and crop. Windows spanning a presentation change, unknown context,
+frame discontinuity, malformed values, incomplete call counts or invalid source
+samples are excluded explicitly. Counter restarts start a separate epoch.
+Means are weighted by actual call counts, including multiple image waits;
+unobserved calls retain no duration. First/last 60-window summaries can overlap
+in short captures and are not independent controlled trials. The latest display
+period remains available per window without assuming it was constant throughout.
+
+Four Python cases cover weighting, absent calls, mixed presentation, gaps,
+malformed/invalid data and restart separation. Both the analyzer and native
+timing CTests pass (0.17 seconds total). Initial live analysis accounts for 379
+rows: eight unknown/mixed presentation windows excluded, 313 gameplay windows,
+and the remaining windows grouped separately by menu/loading geometry. The
+latest 60 gameplay windows average 9.357 ms active loop, 5.827 ms source wait,
+3.076 ms GPU-fence wait and 0.0455 ms OpenXR frame wait. This is still the fresh
+session baseline, not a recurrence or a diagnosed cause. Report:
+`artifacts/unattended/soloplay-frame-stage-summary-20260908.json`.

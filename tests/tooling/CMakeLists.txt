@@ -46,6 +46,8 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME generated_health_analysis COMMAND "${Python3_EXECUTABLE}" -B
     "${CMAKE_CURRENT_SOURCE_DIR}/test-generated-health.py")
+  add_test(NAME xr_frame_stage_analysis COMMAND "${Python3_EXECUTABLE}" -B
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-xr-frame-stages.py")
   add_test(NAME dlss_ui_detail COMMAND "${Python3_EXECUTABLE}" -B
     "${PROJECT_SOURCE_DIR}/tests/streamline_stereo_inputs/test_ui_detail.py")
   add_test(NAME dlss_ui_capture_identity COMMAND "${Python3_EXECUTABLE}" -B
