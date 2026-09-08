@@ -48,6 +48,9 @@ With Darktide and any previous VR bridge closed, run the default
 `tools/unattended/invoke-unattended-preflight.ps1`. It must pass before deployment
 or a new live session. Resume Virtual Desktop streaming and retry if passthrough
 suspended it. Inventory mode does not certify readiness.
+Inventory can report missing or ambiguous ADB devices without selecting one or
+changing proximity behavior. Its device-selection status and query exit code
+distinguish unavailable observation from Ready certification.
 
 Install with `tools/stereo/sync-darktide-vr-dev.ps1 -InitializeInstall
 -UsePrebuiltProductionShader`. Launch with
