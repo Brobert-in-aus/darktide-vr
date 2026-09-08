@@ -12,10 +12,9 @@ Read-only inventory now reports one physical Quest, duplicate transports resolve
 one Virtual Desktop Streamer and Darktide closed. Inventory does not certify Ready
 or alter proximity. Selection requires matching hardware identity and model for
 every alias; distinct headsets and missing/failed identity queries remain gated.
-The latest full offline Release run passed 175/176 in 55.51 seconds. The sole
-failure was the gameplay fixture lacking the new module loader; after extending
-it to exercise actual wheel loading and preclaim order, all five affected input
-checks pass in 0.14 seconds. All 68 Lua chunks compile. The communication wheel
+The latest full offline Release run passes 176/176 in 53.22 seconds, including
+actual wheel loading/preclaim ordering, independent ImGui cancellation and popup
+reentrant cleanup/invalidation. All 68 Lua chunks compile. The communication wheel
 is integrated in source with an unassigned physical-button binding; popup
 candidates remain unintegrated. Neither is deployed. See the
 resume handoff for the review map and focused, undeployed overlay candidate.
