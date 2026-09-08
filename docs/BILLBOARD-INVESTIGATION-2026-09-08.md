@@ -53,9 +53,8 @@ and test results are recorded in the workday handoff.
 
 Use launcher-scoped identity slices for the next capture. The historical temp
 file is append-only across runs and has no process/run identity; neither it nor
-the shader dump directory alone establishes scene ownership. The current
-focused melee-preview session remains running with its accepted native binary.
-This candidate is not deployed.
+the shader dump directory alone establishes scene ownership. A bounded focused
+capture and restoration have now completed, as recorded below.
 
 ## Cached pipeline probe correction
 
@@ -79,4 +78,29 @@ an XR scene, and does not establish visual ownership of the smoke.
 Release native/test builds and all **144 CTests pass in 31.15 s**. Evidence is
 `artifacts/unattended/pipeline-probe-before-20260908.log`,
 `pipeline-probe-after-20260908.log`, and `pipeline-probe-144-20260908.log`.
-The cached-probe candidate remains undeployed.
+The cached-probe candidate was included in the bounded capture below, then
+restored to the accepted native binary.
+
+## Fresh eager character-select capture
+
+Ready passed 600/600 submitted frames with zero unrendered frames. The focused
+PR #32 candidate was deployed through a seven-file backup transaction, with
+diagnostic and shader-dump flags armed before startup. Native bootstrap and
+Lua both requested diagnostics/dump/substitution, and initialization succeeded.
+The existing character-select presentation is a flat panel; no gameplay
+shared-stereo or worn visual acceptance is inferred from this run.
+
+The final run-scoped slice is
+`artifacts/unattended/billboard-scene-identities/character-select-20260908-113255.tsv`.
+It contains 237 first-bind rows and one target-load-stream row: 201 classified
+rows, 142 unique VS/PS pairs and 131 unique VS files, all available for reflection.
+Eleven billboard rows cover ten shader families. The production raw-particle
+target and the view-basis `f1f1510767c58664` family both occur. This establishes
+their presence in the run, not ownership of visible smoke or draw frequency.
+Full reflection output is `billboard-character-select-final-families-20260908.csv`
+under `artifacts/unattended`.
+
+The game exited with code 0. A subsequent Ready check passed, the complete
+transaction was restored with original hashes, and temporary flags were removed.
+The accepted melee-preview Psykhanium session now has fresh nonzero shared-eye
+delivery. No color probe or synthetic tracking experiment was performed.
