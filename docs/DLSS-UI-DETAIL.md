@@ -1,5 +1,39 @@
 # Matched UI detail measurement
 
+## Blur around HUD items
+
+9 September: the user explicitly reports DLSS blur **around HUD items**.
+Track the surrounding scene and HUD boundary separately from detail inside
+opaque text. The saved opaque contrast measurements below neither measure nor
+exclude that symptom. No cause or visual fix has been established.
+
+For the next user-worn comparison, retain the same scene, pose, per-eye
+resolution, HUD placement and streaming settings. Record the precise SR and
+frame-generation settings independently; "DLSS on" alone is ambiguous. Compare
+HUD visible/hidden with SR off/on while keeping frame generation fixed, then
+vary frame generation separately if the symptom remains relevant. Confirm that
+each requested setting actually took effect before comparing results.
+
+Inspect three regions separately: opaque HUD interiors, translucent boundaries,
+and nearby world pixels outside HUD coverage. Ask whether the surrounding blur
+is present while still, appears during head movement, or persists after motion
+stops. Record duplicated or displaced HUD as a separate observation rather than
+assuming it explains blur. These are planned observations, not completed tests.
+
+For capture analysis, preserve each sample's own pose/resource/call identity
+and checksums. Sequential HUD-visible/hidden captures cannot be assumed to have
+identical world pixels, even at a fixed pose: animation, exposure and temporal
+history can change. Never subtract those images and label every difference a
+HUD artifact. The opaque UI tool cannot use transparent UI RGB as a reference
+for the surrounding scene; that requires independently verified scene evidence.
+Inspect HUDless input ownership and alpha at the actual reconstruction boundary
+before proposing offsets, masks or history changes. Retain worn visual acceptance
+as the final check, including both eyes and moving gameplay.
+
+This investigation does not authorize installing the accumulated native
+candidates. Preserve the accepted mixed build and run Ready preflight before
+any new live session.
+
 ## UI RGBA exporter candidate: 8 September
 
 The one-shot native UI exporter now records a per-image RGBA checksum and
