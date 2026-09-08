@@ -84,6 +84,23 @@ These are source-backed integration requirements, not a working wheel binding
 or live acceptance. Selection geometry and stock cursor/camera ownership still
 need an isolated adapter before adding the option to the installed runtime.
 
+The unloaded `darktidevr_communication_gesture.lua` candidate implements the
+gesture boundary: first neutral acquisition, hold/release state, right-stick
+claim through closing and neutral rearm, immutable copies of the first input
+frame decision, and a generation token for one deferred release. Blocking,
+owner change, invalid stick samples, backwards frames and explicit cancellation
+revoke that token. The adapter must call `take_release` inside the deferred
+callback, and `closed` only after stock cursor/close-delay cleanup. It must also
+cancel on adapter failure or abandoned HUD lifecycle; this pure component cannot
+observe engine callbacks or apply a guessed timeout. A release retains the
+stock's prior hover selection rather than providing a new navigation sample.
+
+This component is not loaded, adds no binding option, and sends no game input.
+The remaining adapter must cancel owned stock wheel context and pending tap
+state without affecting keyboard/mouse ownership, provide private navigation
+vectors, consume all stick actions and preserve stock action execution. Three
+focused CTests pass and the pinned LuaJIT gate compiles 61 chunks.
+
 ## Historical 8 September audit
 
 This is the **earlier pre-preview-relaunch binding snapshot**, not the final
