@@ -130,6 +130,29 @@ state without affecting keyboard/mouse ownership, provide private navigation
 vectors, consume all stick actions and preserve stock action execution. Three
 focused CTests pass and the pinned LuaJIT gate compiles 61 chunks.
 
+The unloaded `darktidevr_communication_navigation.lua` now supplies private
+navigation vectors while a valid held gesture owns the wheel. It maps a raw
+stick sample to stock cursor coordinates for mouse-mode presentation, and
+returns fresh raw vectors for stock gamepad navigation/instant-open reads.
+It never changes `InputDevice.gamepad_active`, warps the OS cursor, injects a
+button, or sends a game/chat/voice event. Existing source methods and unrelated
+inputs remain bound to the stock service.
+
+The proxy copies the sampled coordinates and expires on callback return/error
+or token revocation. The caller must supply a vector factory and a live ownership
+predicate; null services are never overridden. Call this only for an owned,
+held gesture. The future HUD adapter must skip owned presentation on intentional
+release to retain the prior hovered option, cancel deferred/pending tap state
+on invalidation, and suppress gameplay stick actions through neutral rearm.
+Those integration duties and the unassigned hold binding remain unfinished.
+
+Eighty cases execute actual cached stock wheel presentation across two viewport
+sizes, two UI scales, eight outer directions plus center/deadzone samples, and
+both current input modes. Selection, label, angle and highlight agree with the
+stock gamepad baseline, with no sample/global-mode mutation. Three focused CTests
+pass in 0.10 seconds; the pinned LuaJIT gate compiles 63 chunks. This is offline
+adapter evidence, not a working installed wheel or live communication test.
+
 ## Tactical overlay hold source candidate, 9 September
 
 The action catalog now has **Hold tactical overlay**, unassigned by default.
