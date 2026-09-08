@@ -1,5 +1,6 @@
 #include "producer/buffer_registry.h"
 #include "producer/pipeline_identity.h"
+#include "producer/diagnostic_append_log.h"
 #include "producer/resource_handle_trace.h"
 #include "producer/ngx_output_probe.h"
 #include "producer/ngx_gpu_timing.h"
@@ -1421,12 +1422,6 @@ void write_billboard_pso_identity(const char* event, std::uintptr_t key,
   }
   const auto path = std::wstring(temporary_path.data()) +
                     L"darktidevr-billboard-pso-identity.tsv";
-  HANDLE log = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
-                           nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL,
-                           nullptr);
-  if (log == INVALID_HANDLE_VALUE) {
-    return;
-  }
   char line[512]{};
   const auto length = std::snprintf(
       line, sizeof(line),
@@ -1437,11 +1432,16 @@ void write_billboard_pso_identity(const char* event, std::uintptr_t key,
       static_cast<unsigned long long>(metadata.substituted_vertex_shader),
       static_cast<unsigned long long>(metadata.pixel_shader),
       metadata.billboard_shader ? 1U : 0U, metadata.billboard_register);
-  if (length > 0) {
-    DWORD written{};
-    WriteFile(log, line, static_cast<DWORD>(length), &written, nullptr);
+  if (length > 0 && static_cast<std::size_t>(length) < sizeof(line) &&
+      !darktidevr::producer::append_diagnostic_record(
+          path.c_str(), {line, static_cast<std::size_t>(length)})) {
+    // A disk/access failure is different from a capture containing no match.
+    // Report it once without flooding the renderer's debug stream.
+    static std::atomic_flag reported = ATOMIC_FLAG_INIT;
+    if (!reported.test_and_set(std::memory_order_relaxed)) {
+      OutputDebugStringA("DARKTIDEVR billboard identity log write failed\n");
+    }
   }
-  CloseHandle(log);
 }
 std::array<std::atomic<float>, 6> billboard_view_basis{};
 std::atomic<bool> billboard_horizon_lock_enabled{};

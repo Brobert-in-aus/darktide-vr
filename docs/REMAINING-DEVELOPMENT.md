@@ -12,6 +12,8 @@ and other shared screen-space marker styles found by the source pass; do not
 limit acceptance to one item. This is an active reported bug, not the older
 post-release allowance for slight extreme-edge marker asymmetry. Verify both
 eyes at the center and near each edge with the user's worn observation.
+The [sizing audit and acceptance checklist](STEREO-MARKER-SIZING.md) records the
+related marker families and separates source findings from unconfirmed causes.
 
 **Latest 8 September steering:** pause physical melee until server-side stock
 melee is locked in. The requested [first-swing preview](STOCK-MELEE-PREVIEW.md)
