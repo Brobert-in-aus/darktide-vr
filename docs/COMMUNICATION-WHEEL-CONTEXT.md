@@ -17,6 +17,10 @@ the profile before gesture sampling keeps its owner revision consistent with the
 following gameplay sample. Remaps, local handler/unit replacement, world/mode,
 transport/recenter generation, tracking loss and blocked input invalidate old
 deferred ownership. Mod disable/unload and fixed-update null input cancel it.
+The deferred guard also checks ImGui ownership independently of normal UI.
+A reproduced regression admitted a release when ImGui opened after sampling;
+active or retiring ImGui managers now invalidate it. Six focused communication
+and production-input checks pass in 0.10 seconds; all 68 chunks compile.
 
 The button remains available to any other actions deliberately assigned to it.
 For an initial worn trial, choose a free button to isolate wheel behavior, then

@@ -20,7 +20,8 @@ function Input.install(mod,presentation,observation,runtime)
                 owner.input,runtime.mode(),runtime.world()) and
             context.local_input_unit(owner.handler,Managers and Managers.player)==owner.unit and
             context.input_service_enabled(owner.input) and
-            not context.ui_blocks_gameplay(Managers and Managers.ui)
+            not context.ui_blocks_gameplay(Managers and Managers.ui) and
+            (not (Managers and Managers.imgui) or not context.ui_blocks_gameplay(Managers.imgui))
     end
     local wheel=load('communication_wheel').install(mod,{
         Gesture=load('communication_gesture'),Context=load('communication_context'),

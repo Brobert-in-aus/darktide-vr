@@ -4,6 +4,7 @@ local Input=dofile(root..'/darktidevr_communication_input.lua')
 local Bindings=dofile(root..'/darktidevr_controller_bindings.lua')
 local Gesture=dofile(root..'/darktidevr_communication_gesture.lua')
 local Turning=dofile(root..'/darktidevr_turning.lua')
+local GameplayContext=dofile(root..'/darktidevr_gameplay_context.lua')
 local function fixture()
     local f={settings={vr_action_bind_communication_wheel=256,vr_turn_mode='snap45'},
         mode='shooting_range',world={},unit={},handler={},blocked=false,queued={}}
@@ -26,11 +27,12 @@ local function fixture()
         is_first_person_body_mode=function(mode)return mode=='shooting_range' or mode=='hub'end,
         gameplay_context={local_input_unit=function(handler)return handler==f.handler and f.unit end,
             input_service_enabled=function(service)return service.enabled end,
-            ui_blocks_gameplay=function()return f.blocked end}}
+            ui_blocks_gameplay=GameplayContext.ui_blocks_gameplay}}
     local bindings=Bindings.install(mod);presentation.controller_bindings=bindings
     local api=Input.install(mod,presentation,observation,{mode=function()return f.mode end,world=function()return f.world end})
     local turning=Turning.install(mod)
-    Managers={state={game_mode={register_physics_safe_callback=function(_,fn)f.queued[#f.queued+1]=fn end}}}
+    Managers={ui={using_input=function()return f.blocked end},
+        state={game_mode={register_physics_safe_callback=function(_,fn)f.queued[#f.queued+1]=fn end}}}
     RESOLUTION_LOOKUP={width=1920,height=1080};Vector3=function(x,y,z)return {x,y,z}end
     f.api,f.config,f.mod,f.bindings,f.observation,f.presentation,f.input=api,config,mod,bindings,observation,presentation,input
     function f:step(physical,x,y)
@@ -54,10 +56,12 @@ local function fixture()
 end
 local f=fixture();f:open()
 assert(f.config.current(f.presentation.gameplay_input_owner)==false)
-for _,reason in ipairs({'ui','input','unit','handler','mode','world','remap','generation','recenter','tracking','inactive','presentation'})do
+for _,reason in ipairs({'ui','imgui','imgui_retired','input','unit','handler','mode','world','remap','generation','recenter','tracking','inactive','presentation'})do
     f=fixture();f:open();local owner=f.sample.owner
     assert(f.config.current(owner)==true,reason)
     if reason=='ui' then f.blocked=true
+    elseif reason=='imgui' then Managers.imgui={using_input=function()return true end}
+    elseif reason=='imgui_retired' then Managers.imgui={using_input=function()error('retired')end}
     elseif reason=='input' then f.input.enabled=false
     elseif reason=='unit' then f.unit={}
     elseif reason=='handler' then f.handler={}
