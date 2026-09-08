@@ -12,9 +12,9 @@ Read-only inventory now reports one physical Quest, duplicate transports resolve
 one Virtual Desktop Streamer and Darktide closed. Inventory does not certify Ready
 or alter proximity. Selection requires matching hardware identity and model for
 every alias; distinct headsets and missing/failed identity queries remain gated.
-The full offline Release suite now passes 172/172 in 53.03 seconds, including
-the UI residual-region/native-proof and owned wheel-context follow-ups.
-All 64 Lua chunks compile. Popup/wheel candidates remain unintegrated and
+The full offline Release suite now passes 174/174 in 56.45 seconds, including
+the push-to-talk, popup-display/lifetime and marker-offset follow-ups.
+All 66 Lua chunks compile. Popup/wheel candidates remain unintegrated and
 undeployed. See the
 resume handoff for the review map and focused, undeployed overlay candidate.
 The subsequent default Ready preflight passes with the accepted viewer and VDXR:
@@ -26,6 +26,11 @@ VDXR reported `hmd-unavailable` and skipped the session. No game launch or new
 performance trace followed. Normal Quest proximity automation was restored in
 failure cleanup; no VD restart occurred. Continue offline until streaming is
 renderable, then repeat Ready. The earlier success is historical evidence.
+
+Read-only comparison of all 49 tracked Lua/mod files against accepted `3341afb`
+finds no content changes: 17 are byte-identical and 32 differ only by CRLF/LF.
+The accepted viewer hash is unchanged. Raw byte hashes and the explicit line-
+ending comparison remain in the ignored integrity receipt; no files were synced.
 
 ## Current checkpoint: night of 8 September
 
