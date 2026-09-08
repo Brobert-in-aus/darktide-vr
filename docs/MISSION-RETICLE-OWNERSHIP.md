@@ -55,3 +55,20 @@ runtime restart or game launch was attempted on these failed readiness results.
 The user has been asked to resume Virtual Desktop streaming. Receipts:
 mission-preview-retry-ready-20260908.json and
 mission-preview-retry2-ready-20260908.json under artifacts/unattended.
+
+Live retry succeeded after the user resumed Virtual Desktop: default Ready
+mission-preview-retry3-ready-20260908.json has readiness_verified=true. The
+single corrected preview file was deployed transactionally; installed Lua gate
+passed 46 chunks. Launcher mission-reticle-preview-retry-session-20260908.log
+reached Psykhanium at 07:32:05 UTC. Fresh console 07.30.32 records preview=on,
+rigid_hands=ready and native ready counters; harness shared_ready exceeded 1100.
+No preview_error was observed. The startup flag transaction was restored after
+initialization, leaving the current preview enabled and future launches default
+off. F6 remains the direct toggle. Heartbeat remains paused and proximity override
+disabled as requested. Worn mission crosshair and guide visibility remain pending.
+
+Known live warning: DMF rejects the delayed hook_safe ActionSweep.start observer
+because the same mod already has a regular start hook. The existing hook stays
+active; the rejected observer only logs predicted-versus-started action matching,
+not preview drawing. Combine that logging with the existing hook in a subsequent
+patch and validate without interrupting this user test session.
