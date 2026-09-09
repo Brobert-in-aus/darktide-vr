@@ -1,5 +1,23 @@
 # Current status and operation
 
+## 10 September development resumed
+
+The user restarted the 20-minute heartbeat and authorized development until
+explicitly told to stop. This supersedes yesterday's closed-session state.
+Billboarding remains first, pickup sizing next; physical melee and general
+gameplay rechecks remain deferred. Preserve the accepted mixed installation.
+
+Read-only Inventory at 05:35 Brisbane reports the Quest awake, one VD Streamer
+and no game/launcher processes. It does not certify Ready and applies no
+proximity override. Receipt: `artifacts/unattended/new-day-inventory-20260910.json`.
+
+A nine-trial interleaved repeat of yesterday's unresolved pointer-cache result
+finds newest-buffer medians 3.1261/3.1446 ms (baseline/candidate), with overlapping
+ranges. Yesterday's 17.2% newest-buffer regression did not reproduce at that
+magnitude; it is retained in the record rather than erased. Early-buffer and
+cycling medians improve again. No runtime change or game FPS claim. See the
+[native measurement follow-up](NATIVE-HOOK-PERFORMANCE.md#10-september-repeat).
+
 ## Home handoff: 9 September, 17:44 Brisbane
 
 The user is home and requested stop, summary and commit/push. The 20-minute

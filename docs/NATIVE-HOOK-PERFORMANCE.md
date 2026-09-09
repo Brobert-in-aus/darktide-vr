@@ -242,3 +242,28 @@ All counter/completion checks pass. DLL hashes remain those recorded for
 `1DC64B8F57E6A7B590FA47D11CFF8C356B9A0DE7BA93943ABE9A4FB7928B87AD`.
 Receipts: `artifacts/unattended/native-map-interleaved-20260909/comparison.json`
 and `native-map-single-interface-20260909/comparison.json`. No staged bytes change.
+
+## 10 September repeat
+
+The unresolved newest-buffer result justified one longer repeat with the same
+hash-pinned executable and DLLs, nine alternating trials and 36 fresh processes.
+All 108 workload observations pass counter/completion and adapter checks.
+No game or launcher was running in the contemporaneous read-only Inventory.
+
+| Hooked workload, 10,000 pairs | Baseline median | Candidate median |
+| --- | ---: | ---: |
+| First 16 resources | 11.2952 ms | 3.5340 ms |
+| Newest resource | 3.1261 ms | 3.1446 ms |
+| Cycle 1,024 resources | 7.3649 ms | 5.3301 ms |
+
+Newest-buffer ranges overlap (3.0407–5.1169 and 3.1062–3.4094 ms). The prior
+17.2% median regression does not reproduce at that magnitude; this run differs
+by about 0.6%. Early-buffer ranges remain separated, while cycling ranges now
+slightly overlap because of outliers. No code change is justified solely by the
+previous newest-buffer result. This is still diagnostic-mode CPU evidence,
+not an installed optimisation or production frame-time result.
+
+Receipt: `artifacts/unattended/native-map-interleaved-20260910/comparison.json`
+and matching log. The runner command is the prior paired invocation with
+`-Trials 9` and a new output directory. No further repetition is planned without
+a new change or unresolved measurement concern.
