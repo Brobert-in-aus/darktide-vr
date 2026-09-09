@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <span>
 #include <vector>
 
 namespace darktidevr::producer {
@@ -28,7 +30,33 @@ struct BufferResourceInfo {
 // Records disappear with their GPU owner; the registry does not retain owners.
 struct BufferRegistry : std::enable_shared_from_this<BufferRegistry> {
   std::mutex mutex;
-  std::vector<BufferResourceInfo> resources;
+  // Caller holds mutex. Mapping metadata may change; identity/extent changes
+  // go through track. A span prevents callers from bypassing structural expiry.
+  std::span<BufferResourceInfo> records_locked() { return resources; }
+
+  // Caller holds mutex. Cache exact addresses, not ranges: overlapping newer
+  // allocations must retain the reverse-scan winner. Read live metadata by
+  // index so Map/Unmap changes remain visible without caching raw pointers.
+  std::optional<BufferResourceInfo> resolve_locked(std::uint64_t address) {
+    const auto bucket = (address >> 8) ^ (address >> 16) ^
+                        (address >> 24) ^ (address >> 32);
+    auto& cached = lookup_[bucket % lookup_.size()];
+    if (cached.valid && cached.address == address) {
+      return cached.index < resources.size()
+          ? std::optional<BufferResourceInfo>{resources[cached.index]}
+          : std::nullopt;
+    }
+    cached = {address, resources.size(), true};
+    for (std::size_t index = resources.size(); index != 0; --index) {
+      const auto& resource = resources[index - 1];
+      if (address >= resource.gpu_start &&
+          address - resource.gpu_start < resource.size) {
+        cached.index = index - 1;
+        return resource;
+      }
+    }
+    return std::nullopt;
+  }
 
   void track(ID3D12Resource* resource, std::uint64_t address,
              std::uint64_t size, D3D12_HEAP_TYPE type) {
@@ -40,11 +68,22 @@ struct BufferRegistry : std::enable_shared_from_this<BufferRegistry> {
           std::erase_if(registry->resources, [resource](const auto& item) {
             return item.resource == resource;
           });
+          registry->lookup_ = {};
         })) {
       return;
     }
     std::scoped_lock lock(mutex);
     resources.push_back(BufferResourceInfo{resource, address, size, type});
+    lookup_ = {};
   }
+
+ private:
+  std::vector<BufferResourceInfo> resources;
+  struct Lookup {
+    std::uint64_t address{};
+    std::size_t index{};
+    bool valid{};
+  };
+  std::array<Lookup, 64> lookup_{};
 };
 }  // namespace darktidevr::producer

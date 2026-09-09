@@ -96,3 +96,9 @@ target_link_libraries(darktidevr-command-recording-snapshot-tests PRIVATE darkti
 target_compile_options(darktidevr-command-recording-snapshot-tests PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-command-recording-snapshot-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME command_recording_snapshot COMMAND darktidevr-command-recording-snapshot-tests)
+
+add_executable(darktidevr-buffer-address-lookup-tests buffer_address_lookup.cpp)
+target_link_libraries(darktidevr-buffer-address-lookup-tests PRIVATE darktidevr_core d3d12 dxgi dxguid)
+target_compile_options(darktidevr-buffer-address-lookup-tests PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-buffer-address-lookup-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME buffer_address_lookup COMMAND darktidevr-buffer-address-lookup-tests)

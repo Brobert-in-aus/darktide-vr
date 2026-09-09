@@ -1049,7 +1049,6 @@ std::unordered_map<std::uintptr_t, DescriptorHeapInfo> descriptor_heaps;
 std::unordered_map<std::uint64_t, DescriptorInfo> descriptor_metadata;
 const auto buffer_registry = std::make_shared<darktidevr::producer::BufferRegistry>();
 auto& buffer_resource_mutex = buffer_registry->mutex;
-auto& buffer_resources = buffer_registry->resources;
 
 std::unordered_set<std::uint64_t> billboard_tested_cbvs;
 std::unordered_set<std::uint64_t> billboard_staging_tested_cbvs;
@@ -5212,7 +5211,7 @@ HRESULT STDMETHODCALLTYPE resource_map_hook(ID3D12Resource* resource,
   const auto map_stack_count = CaptureStackBackTrace(
       1, static_cast<DWORD>(map_stack.size()), map_stack.data(), nullptr);
   std::scoped_lock lock(buffer_resource_mutex);
-  for (auto it = buffer_resources.rbegin(); it != buffer_resources.rend(); ++it) {
+  for (auto it = buffer_registry->records_locked().rbegin(); it != buffer_registry->records_locked().rend(); ++it) {
     if (it->resource != resource) {
       continue;
     }
@@ -5233,7 +5232,7 @@ void STDMETHODCALLTYPE resource_unmap_hook(ID3D12Resource* resource,
                                            const D3D12_RANGE* written_range) {
   {
     std::scoped_lock lock(buffer_resource_mutex);
-    for (auto it = buffer_resources.rbegin(); it != buffer_resources.rend();
+    for (auto it = buffer_registry->records_locked().rbegin(); it != buffer_registry->records_locked().rend();
          ++it) {
       if (it->resource != resource || !it->mapped ||
           it->mapped_subresource != subresource) {
@@ -5309,7 +5308,7 @@ void stingray_upload_flush_hook(void* allocator) {
           cluster_constant_ring_resources.contains(snapshot.resource);
     }
     std::scoped_lock lock(buffer_resource_mutex);
-    for (auto it = buffer_resources.rbegin(); it != buffer_resources.rend();
+    for (auto it = buffer_registry->records_locked().rbegin(); it != buffer_registry->records_locked().rend();
          ++it) {
       if (it->resource == snapshot.resource) {
         it->staging_base = snapshot.staging_base;
@@ -6238,13 +6237,7 @@ DescriptorInfo descriptor_snapshot(std::uint64_t handle);
 std::optional<BufferResourceInfo> resolve_buffer_resource(
     std::uint64_t gpu_address) {
   std::scoped_lock lock(buffer_resource_mutex);
-  for (auto it = buffer_resources.rbegin(); it != buffer_resources.rend(); ++it) {
-    if (gpu_address >= it->gpu_start &&
-        gpu_address - it->gpu_start < it->size) {
-      return *it;
-    }
-  }
-  return std::nullopt;
+  return buffer_registry->resolve_locked(gpu_address);
 }
 
 bool safe_copy_bytes(void* destination, const void* source,
@@ -6257,7 +6250,7 @@ bool copy_tracked_buffer_bytes(std::uint64_t gpu_address,
                                bool* used_persistent_mapping,
                                bool* used_staging_mapping) {
   std::scoped_lock lock(buffer_resource_mutex);
-  for (auto it = buffer_resources.rbegin(); it != buffer_resources.rend();
+  for (auto it = buffer_registry->records_locked().rbegin(); it != buffer_registry->records_locked().rend();
        ++it) {
     if (gpu_address < it->gpu_start ||
         gpu_address - it->gpu_start + byte_count > it->size) {

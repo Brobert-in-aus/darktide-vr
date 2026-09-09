@@ -602,12 +602,12 @@ int wmain(int argc, wchar_t** argv) {
     for (int refresh = 0; refresh < 2; ++refresh) {
       registry->track(upload_buffer.Get(), upload_buffer->GetGPUVirtualAddress(),
                       upload_buffer->GetDesc().Width, D3D12_HEAP_TYPE_UPLOAD);
-      if (registry->resources.size() != 1) {
+      if (registry->records_locked().size() != 1) {
         throw std::runtime_error("Refreshing a buffer must replace its old registry record");
       }
     }
     upload_buffer.Reset();
-    if (!registry->resources.empty()) {
+    if (!registry->records_locked().empty()) {
       throw std::runtime_error("Destroyed buffers must leave no registry records");
     }
     unsigned long long stage_values[6]{};
