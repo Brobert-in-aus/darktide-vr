@@ -36,7 +36,65 @@ void equal(const ShaderPairSample& a,const ShaderPairSample& b) {
   check(a.vertex_low==b.vertex_low&&a.vertex_high==b.vertex_high&&
     a.pixel_low==b.pixel_low&&a.pixel_high==b.pixel_high&&a.count==b.count);
 }
+__declspec(noinline) std::uint64_t old_shader_value(const ShaderCounts& counts,
+    std::mutex& mutex,unsigned rank,bool count) {
+  ShaderRecords records;
+  {std::scoped_lock lock(mutex);records.assign(counts.begin(),counts.end());}
+  std::sort(records.begin(),records.end(),[](const auto& a,const auto& b){
+    return a.second!=b.second?a.second>b.second:a.first<b.first;
+  });
+  return rank<records.size()?(count?records[rank].second:records[rank].first):0;
+}
+__declspec(noinline) unsigned bulk_shaders(const ShaderCounts& counts,
+    std::mutex& mutex,std::span<ShaderSample> output) {
+  ShaderRecords records;
+  {std::scoped_lock lock(mutex);records.assign(counts.begin(),counts.end());}
+  return copy_shader_snapshot(std::move(records),output);
+}
+void shader_reads() {
+  std::mutex mutex;
+  for(const unsigned size:{0U,8U,32U,128U,1024U}) {
+    ShaderCounts counts;
+    for(unsigned i=0;i<size;++i)counts[0xfedcba9800000000ULL+i]=(i*997)%31;
+    for(const unsigned capacity:{0U,1U,8U,256U,1025U}) {
+      std::vector<ShaderSample> samples(capacity);
+      const auto copied=bulk_shaders(counts,mutex,samples);
+      check(copied==std::min(capacity,size));
+      for(unsigned i=0;i<copied;++i){
+        const auto hash=old_shader_value(counts,mutex,i,false);
+        check(samples[i].hash_low==static_cast<std::uint32_t>(hash)&&
+          samples[i].hash_high==static_cast<std::uint32_t>(hash>>32U)&&
+          samples[i].count==old_shader_value(counts,mutex,i,true));
+      }
+    }
+    if(size==0)continue;
+    for(unsigned trial=0;trial<5;++trial){
+      const auto measure=[&](bool old){
+        const auto begin=std::chrono::steady_clock::now();
+        for(unsigned read=0;read<1000;++read){
+          std::array<ShaderSample,8> output{};
+          if(old)for(unsigned i=0;i<8;++i){
+            output[i]={static_cast<std::uint32_t>(old_shader_value(counts,mutex,i,false)),
+              static_cast<std::uint32_t>(old_shader_value(counts,mutex,i,false)>>32U),
+              old_shader_value(counts,mutex,i,true)};
+          }else check(bulk_shaders(counts,mutex,output)==8);
+          check(output[0].count>0);
+        }
+        return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count();
+      };
+      double before{},after{};
+      if(trial%2){after=measure(false);before=measure(true);}else{before=measure(true);after=measure(false);}
+      std::cout<<"shaders="<<size<<" capacity=8 trial="<<trial<<" reports=1000 old_ms="<<before<<" new_ms="<<after<<'\n';
+    }
+    ShaderRecords records(counts.begin(),counts.end());
+    const auto hash=old_shader_value(counts,mutex,0,false),count=old_shader_value(counts,mutex,0,true);
+    counts.clear();std::array<ShaderSample,1> retained{};
+    check(copy_shader_snapshot(std::move(records),retained)==1);
+    check(retained[0].hash_high==static_cast<std::uint32_t>(hash>>32U)&&retained[0].count==count);
+  }
+}
 int main(){
+  shader_reads();
   std::mutex mutex;
   for(const unsigned size:{0U,8U,32U,128U,1024U,4096U}) {
     ShaderPairCounts counts;

@@ -826,6 +826,12 @@ local function ensure_ui_native_hooks()
         unsigned long long dtvr_diagnostic_compute_pipeline_load_count(void);
         unsigned long long dtvr_diagnostic_stream_pipeline_load_count(void);
         unsigned long long dtvr_billboard_root_b2_candidate_draw_count(void);
+        typedef struct {
+            unsigned int hash_low, hash_high;
+            unsigned long long count;
+        } dtvr_billboard_shader_sample;
+        unsigned int dtvr_copy_billboard_candidate_shaders(
+            dtvr_billboard_shader_sample* output, unsigned int capacity);
         unsigned long long dtvr_billboard_candidate_shader_hash(unsigned int rank);
         unsigned long long dtvr_billboard_candidate_shader_count(unsigned int rank);
         unsigned int dtvr_billboard_candidate_shader_hash_low(unsigned int rank);
@@ -899,6 +905,11 @@ local function ensure_ui_native_hooks()
         mod:error("DARKTIDEVR_STEREO native_capture load_failed error=%s", tostring(library))
         return false
     end
+
+    local snapshot_ok, snapshot = pcall(function()
+        return library.dtvr_copy_billboard_candidate_shaders
+    end)
+    presentation.billboard_shader_snapshot = snapshot_ok and snapshot or false
 
     local diagnostic_result = library.dtvr_set_diagnostic_render_hooks(
         (diagnostic_render_hooks_requested or vertex_shader_dump_requested or
@@ -3303,16 +3314,31 @@ local function report_native_observer()
                 tonumber(ui_native_capture.dtvr_diagnostic_stream_pipeline_load_count())
             )
             local candidate_shaders = {}
-            for rank = 0, 7 do
-                local hash_low = tonumber(
-                    ui_native_capture.dtvr_billboard_candidate_shader_hash_low(rank))
-                local hash_high = tonumber(
-                    ui_native_capture.dtvr_billboard_candidate_shader_hash_high(rank))
-                local count = tonumber(
-                    ui_native_capture.dtvr_billboard_candidate_shader_count(rank))
-                if count > 0 then
-                    candidate_shaders[#candidate_shaders + 1] = string.format(
-                        "%08x%08x:%d", hash_high, hash_low, count)
+            if presentation.billboard_shader_snapshot then
+                presentation.billboard_shader_samples = presentation.billboard_shader_samples or
+                    Mods.lua.ffi.new("dtvr_billboard_shader_sample[8]")
+                local samples = presentation.billboard_shader_samples
+                local count = tonumber(presentation.billboard_shader_snapshot(samples, 8))
+                for rank = 0, count - 1 do
+                    local sample = samples[rank]
+                    if sample.count > 0 then
+                        candidate_shaders[#candidate_shaders + 1] = string.format(
+                            "%08x%08x:%d", tonumber(sample.hash_high),
+                            tonumber(sample.hash_low), tonumber(sample.count))
+                    end
+                end
+            else
+                for rank = 0, 7 do
+                    local hash_low = tonumber(
+                        ui_native_capture.dtvr_billboard_candidate_shader_hash_low(rank))
+                    local hash_high = tonumber(
+                        ui_native_capture.dtvr_billboard_candidate_shader_hash_high(rank))
+                    local count = tonumber(
+                        ui_native_capture.dtvr_billboard_candidate_shader_count(rank))
+                    if count > 0 then
+                        candidate_shaders[#candidate_shaders + 1] = string.format(
+                            "%08x%08x:%d", hash_high, hash_low, count)
+                    end
                 end
             end
             mod:info(

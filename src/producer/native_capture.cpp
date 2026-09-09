@@ -15890,6 +15890,18 @@ dtvr_billboard_candidate_shader_hash(unsigned int rank) {
   });
   return rank < ranked.size() ? ranked[rank].first : 0;
 }
+extern "C" __declspec(dllexport) unsigned int
+dtvr_copy_billboard_candidate_shaders(
+    darktidevr::producer::ShaderSample* output, unsigned int capacity) {
+  if (!output || capacity == 0 || capacity > 256) return 0;
+  darktidevr::producer::ShaderRecords records;
+  {
+    std::scoped_lock lock(billboard_candidate_shader_mutex);
+    records.assign(billboard_candidate_shader_counts.begin(),
+                   billboard_candidate_shader_counts.end());
+  }
+  return darktidevr::producer::copy_shader_snapshot(std::move(records), {output, capacity});
+}
 extern "C" __declspec(dllexport) unsigned long long
 dtvr_billboard_candidate_shader_count(unsigned int rank) {
   std::vector<std::pair<std::uint64_t, std::uint64_t>> ranked;

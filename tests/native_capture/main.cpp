@@ -29,6 +29,17 @@ int wmain(int argc, wchar_t** argv) {
       throw std::runtime_error("LoadLibraryW failed");
     }
     using darktidevr::producer::ShaderPairSample;
+    using darktidevr::producer::ShaderSample;
+    const auto copy_shaders = reinterpret_cast<unsigned int (*)(ShaderSample*, unsigned int)>(
+        GetProcAddress(module, "dtvr_copy_billboard_candidate_shaders"));
+    std::array<ShaderSample, 3> shader_samples{};
+    shader_samples[2].count = 777;
+    if (!copy_shaders || copy_shaders(nullptr, 1) != 0 ||
+        copy_shaders(shader_samples.data(), 0) != 0 ||
+        copy_shaders(shader_samples.data(), 257) != 0 ||
+        copy_shaders(shader_samples.data(), 3) != 0 || shader_samples[2].count != 777) {
+      throw std::runtime_error("Shader snapshot must reject invalid capacity and preserve empty output");
+    }
     using darktidevr::producer::ShaderPairCounts;
     using darktidevr::producer::copy_shader_pair_snapshot;
     const auto copy_pairs = reinterpret_cast<unsigned int (*)(ShaderPairSample*, unsigned int)>(
