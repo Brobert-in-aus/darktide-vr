@@ -308,7 +308,7 @@ substitutes, not live movement or comfort evidence.
 An optional stock grenade check passes:
 
 ```powershell
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-grenade-stock-contract.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_grenade_aim.lua _downloads/Darktide-Source-Code
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-grenade-stock-contract.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_grenade_aim.lua artifacts/vendor/Darktide-Source-Code
 ```
 
 It executes actual aim, trajectory-preview and delayed-release methods with
@@ -323,6 +323,21 @@ Separate stock input-sequence coverage now includes both grenade generator base
 tables, overhand/underhand/cancel and tracking-loss rearming; see
 [ranged input coverage](RANGED-WEAPON-AUDIT.md). A tracking-loss release input
 does not prove cancellation of a committed throw or live collision behavior.
+
+The 9 September follow-up executes the actual stock Ammo helpers and grenade
+finish/current-ammo methods for the one-unit consumption/removal policy used by
+expedition big and artillery grenades. Eight cases cover client/server, one/two
+remaining units and release/pre-release finish. Nothing is spent exactly at the
+stock deadline; a later update spends once, records the usage time and only the
+server requests a projectile spawn. Finish requests slot removal only after the
+last unit was used. The ability-charge counter remains unchanged on this route.
+Main and focused `848b78d` grenade modules pass with pinned LuaJIT; receipts:
+`artifacts/unattended/grenade-ammo-{main,focused}-20260909.log`.
+
+This uses one fixture ammo clip and constructed eligible action settings, with
+superclass finish and physics substituted. It checks the removal request flag,
+not actual inventory teardown or action eligibility with an empty weapon. Safe
+zones, item availability, extra-grenade buffs and live mission use remain open.
 
 The direct-bone audit found optional `spawn_node` branches in stock grenade and
 spawn-projectile actions, but no `spawn_node` assignments in the inspected

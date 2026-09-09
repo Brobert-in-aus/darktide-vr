@@ -15,6 +15,7 @@ local function method(path,first,last)
 end
 method(root..'action_aim_projectile','ActionAimProjectile.fixed_update =','\nActionAimProjectile._existing_unit =')
 method(root..'action_throw_grenade','ActionThrowGrenade.start =','\nActionThrowGrenade.finish =')
+method(root..'action_throw_grenade','ActionThrowGrenade.finish =','\nreturn ActionThrowGrenade')
 method(effects,'AimProjectileEffects._update_trajectory =','\nAimProjectileEffects.update_first_person_mode =')
 local body={position=10,rotation=20}
 local template={keywords={'grenade'}}
@@ -95,5 +96,53 @@ ActionThrowGrenade.fixed_update(action,.01,20.46,.46); assert(#spawns==2 and cha
 action._is_server=false
 ActionThrowGrenade.start(action,action._action_settings,30)
 ActionThrowGrenade.fixed_update(action,.01,30.6,.6); assert(#spawns==2 and charges==3)
+-- Expedition big/artillery grenades consume one unit and request removal when
+-- no usable ammunition remains. Run the real Ammo helpers with one fixture
+-- clip; stock action eligibility and the superclass finish remain outside this
+-- contract. Never force an empty weapon through an assumed eligibility gate.
+package.preload['scripts/settings/dialogue/dialogue_settings']=function()return {}end
+NetworkConstants={ammunition_clip_array={max_size=1},clips_in_use={max_size=1}}
+table.clear=function(t)for key in pairs(t)do t[key]=nil end end
+math.sign=function(value)return value<0 and -1 or (value>0 and 1 or 0)end
+Ammo=dofile(arg[2]..'/scripts/utilities/ammo.lua')
+local finishes=0
+ActionThrowGrenade.super={finish=function()finishes=finishes+1 end}
+action._current_ammo=ActionThrowGrenade._current_ammo
+rewind=0
+local cases=0
+for _,server in ipairs({true,false})do
+    for _,initial in ipairs({1,2})do
+        for _,released in ipairs({true,false})do
+            local slot={current_ammunition_clip={initial},max_ammunition_clip={2},
+                current_ammunition_clips_in_use={true}}
+            action._inventory_slot_component=slot
+            action._is_server=server
+            action._action_settings={kind='throw_grenade',throw_type='throw',spawn_at_time=.22,
+                ammunition_usage=1,remove_item_from_inventory=true,use_ability_charge=false}
+            local before_spawns,before_charges=#spawns,charges
+            ActionThrowGrenade.start(action,action._action_settings,40)
+            local deadline=action._spawn_at_time
+            ActionThrowGrenade.fixed_update(action,.01,deadline,.22)
+            assert(#spawns==before_spawns and Ammo.current_ammo_in_clips(slot)==initial)
+            assert(slot.last_ammunition_usage==nil)
+            if released then
+                ActionThrowGrenade.fixed_update(action,.001,deadline+.001,.221)
+                assert(#spawns==before_spawns+(server and 1 or 0))
+                assert(Ammo.current_ammo_in_clips(slot)==initial-1)
+                assert(slot.last_ammunition_usage==deadline+.001)
+                ActionThrowGrenade.fixed_update(action,.01,deadline+.01,.23)
+                assert(Ammo.current_ammo_in_clips(slot)==initial-1,'ammunition consumed twice')
+                assert(#spawns==before_spawns+(server and 1 or 0),'projectile spawned twice')
+            end
+            ActionThrowGrenade.finish(action,'fixture_end',nil,deadline+.01,.23)
+            assert(not not slot.unequip_slot==(released and initial==1),'incorrect inventory removal request')
+            assert(Ammo.current_ammo_in_clips(slot)==initial-(released and 1 or 0))
+            assert(charges==before_charges,'ammo route also consumed ability charge')
+            cases=cases+1
+        end
+    end
+end
+assert(finishes==cases)
+print('PASS: '..cases..' stock grenade ammunition/finish cases; delay boundary, one consumption, last-charge removal request, pre-release finish and client/server ownership')
 print('PASS: stock grenade aim, online preview/release references, delayed once-only spawn, charge and server ownership')
-print('LIMIT: substituted trajectory/physics, no real collision, networking or worn acceptance')
+print('LIMIT: one fixture ammo clip; eligibility/superclass finish and trajectory/physics substituted, no real collision, inventory teardown, networking or worn acceptance')
