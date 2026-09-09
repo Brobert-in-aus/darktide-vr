@@ -26,6 +26,18 @@ after fresh Ready and deliberate deployment. Text entry remains separate.
 
 ## Stock input primitive
 
+Eligibility probes now protect method lookup and null-service queries. A retiring
+proxy previously threw before the stock update began, including in voice modes
+that did not need PTT input. Failed probes now skip injection and leave stock
+update/cleanup in control. The adapter still propagates errors raised by the
+stock update itself and restores its cached service after scoped injection.
+
+The regression failed before this guard. Three PTT/binding/production-input
+checks pass in 0.06 seconds and all 69 Lua chunks compile. Actual cached
+ChatManager fixtures cover retiring lookup/query in muted, voice-activated and
+PTT modes; stock PTT mute cleanup still runs. Every microphone operation is
+mocked. Port this follow-up to the focused communication candidate before trial.
+
 Stock `ChatManager.init` retains an Ingame input service. Its update queries
 both `has("voip_push_to_talk")` and the held value. Only push-to-talk voice mode
 uses that input to request mute/unmute; the update preserves muted and

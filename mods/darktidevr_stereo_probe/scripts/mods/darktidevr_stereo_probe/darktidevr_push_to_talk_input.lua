@@ -4,10 +4,16 @@
 local Talk={}
 local scopes=setmetatable({},{__mode='k'})
 local function pack(...)return {n=select('#',...),...}end
-local function usable(source)
+local function query_usable(source)
     return source and type(source.get)=='function' and type(source.has)=='function' and
         not (source.is_null_service and source:is_null_service()) and
         not (source.null_service and source==source:null_service())
+end
+local function usable(source)
+    -- Eligibility probing is optional adapter work. A retiring proxy must not
+    -- prevent the stock update from handling its voice mode or microphone state.
+    local ok,result=pcall(query_usable,source)
+    return ok and result==true
 end
 
 function Talk.with_input(manager,held,is_current,update,...)

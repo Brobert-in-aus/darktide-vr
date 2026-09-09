@@ -48,6 +48,21 @@ function null:null_service()return self end
 manager._input_service=null
 Talk.with_input(manager,true,owns,function(self)assert(self._input_service==null)end)
 manager._input_service=source
+-- Adapter-only eligibility probes must not prevent stock update/cleanup when
+-- an input proxy retires. Stock may not use PTT input in its current voice mode.
+for _,method in ipairs({'lookup','is_null_service','null_service'})do
+    local retired={get=function()return false end,has=function()return true end}
+    if method=='lookup' then
+        setmetatable(retired,{__index=function()error('retired lookup')end})
+    else retired[method]=function()error('retired query')end end
+    manager._input_service=retired
+    local updated=0
+    Talk.with_input(manager,true,owns,function(self)
+        updated=updated+1;assert(self._input_service==retired)
+    end)
+    assert(updated==1 and manager._input_service==retired)
+end
+manager._input_service=source
 print('push_to_talk_input=pass scoped hold keyboard availability null replacement failure sparse returns')
 
 if arg[2] then
@@ -78,6 +93,21 @@ if arg[2] then
         mode=setting;local count=#calls;tick(true);tick(false)
         assert(#calls==count,'adapter must not override stock muted/voice-activated modes')
     end
+    for _,method in ipairs({'lookup','is_null_service','null_service'})do
+        local retired={has=function()return true end,get=function()return false end}
+        if method=='lookup' then setmetatable(retired,{__index=function()error('retired stock proxy lookup')end})
+        else retired[method]=function()error('retired stock proxy query')end end
+        manager._input_service=retired
+        for _,setting in ipairs({0,1})do
+            mode=setting;local count=#calls;manager._t=nil;tick(true)
+            assert(manager._t==1 and #calls==count,'adapter stopped the stock non-PTT update')
+        end
+        mode=2;manager._local_audio_info.is_mic_muted=false
+        local count=#calls;tick(true)
+        assert(#calls==count+1 and calls[#calls]==true,'adapter stopped stock PTT release cleanup')
+        assert(manager._input_service==retired)
+    end
+    manager._input_service=source
     mode=nil;tick(true);assert(calls[#calls]==false,'Windows missing setting uses stock PTT default')
     print('push_to_talk_stock=pass actual ChatManager update hold release routing loss keyboard modes; microphone calls mocked')
 end
