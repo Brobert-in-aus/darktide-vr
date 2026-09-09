@@ -5,6 +5,16 @@ $previousAppData = $env:APPDATA
 New-Item -ItemType Directory -Path $fixture | Out-Null
 $modDirectory = Join-Path $fixture 'mods/darktidevr_stereo_probe'
 New-Item -ItemType Directory -Path $modDirectory -Force | Out-Null
+$scriptsDirectory = Join-Path $modDirectory 'scripts'
+$scriptsModsDirectory = Join-Path $scriptsDirectory 'mods'
+$luaDirectory = Join-Path $scriptsModsDirectory 'darktidevr_stereo_probe'
+New-Item -ItemType Directory -Path $luaDirectory -Force | Out-Null
+$luaSource = Join-Path $luaDirectory 'darktidevr_stereo_probe.lua'
+$descriptor = Join-Path $modDirectory 'darktidevr_stereo_probe.mod'
+# Pass installed compilation so this fixture still reaches its intended cache
+# setup failure. These chunks must never execute or start a mod/game session.
+[IO.File]::WriteAllText($luaSource, 'error("Early-failure fixture Lua must only compile")')
+[IO.File]::WriteAllText($descriptor, 'error("Early-failure fixture descriptor must only compile")')
 $binaryDirectory = Join-Path $fixture 'binaries'
 New-Item -ItemType Directory -Path $binaryDirectory | Out-Null
 New-Item -ItemType File -Path (Join-Path $binaryDirectory 'Darktide.exe') | Out-Null
@@ -33,6 +43,11 @@ try {
     # Only remove this exact empty fixture; never recurse through game paths.
     $flag = Join-Path $modDirectory 'darktidevr_enter_psykhanium.flag'
     if (Test-Path $flag) { Remove-Item -LiteralPath $flag }
+    Remove-Item -LiteralPath $luaSource
+    Remove-Item -LiteralPath $descriptor
+    Remove-Item -LiteralPath $luaDirectory
+    Remove-Item -LiteralPath $scriptsModsDirectory
+    Remove-Item -LiteralPath $scriptsDirectory
     Remove-Item -LiteralPath $modDirectory
     Remove-Item -LiteralPath (Join-Path $fixture 'mods')
     Remove-Item -LiteralPath (Join-Path $binaryDirectory 'Darktide.exe')
