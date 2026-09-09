@@ -2,6 +2,8 @@
 -- with real VR binding output. Device algorithms, movement transport, animation,
 -- dodge eligibility and weapon execution are fixtures, not live mission proof.
 local root,bindings_path=assert(arg[1]),assert(arg[2])
+local profile={}
+if arg[3] then profile=dofile(arg[3]);assert(type(profile)=='table','invalid saved binding table') end
 bit=require('bit')
 local path=root..'/scripts/extension_systems/character_state_machine/character_states/player_character_state_minigame.lua'
 local file=assert(io.open(path,'r')); local source=file:read('*a'); file:close()
@@ -14,7 +16,16 @@ local env=setmetatable({PlayerCharacterStateMinigame=State,
     Vector3={zero=function() return {x=0,y=0,z=0} end,
         equal=function(a,b) return a.x==b.x and a.y==b.y and a.z==b.z end}}, {__index=_G})
 setfenv(assert(loadstring(source:sub(first,last-1),'@'..path)),env)()
-local bindings=dofile(bindings_path).install({get=function() end})
+local Bindings=dofile(bindings_path)
+local bindings=Bindings.install({get=function(_,key)return profile[key]end})
+local selected_controls={}
+for _,action in ipairs({'primary','alternate','interact','jump_dodge'}) do
+    local selected=assert(bindings.controls_for_action(action)[1],'unmapped device action '..action)
+    for _,control in ipairs(Bindings.controls)do
+        if control.id==selected then selected_controls[action]=control end
+    end
+    assert(selected_controls[action],'unknown control for '..action)
+end
 local actions,axes,animations,weapon_frames={},{},{},{}
 local wielding,uses_action,uses_axis,blocks,completed=true,true,true,false,false
 local override_escape
@@ -32,9 +43,16 @@ local state=setmetatable({_previous_action_one_hold=false,_previous_interact_hol
     _weapon_extension={update_weapon_actions=function(_,frame) weapon_frames[#weapon_frames+1]=frame end}},
     {__index=State})
 local frame=0
-local function sample(physical,move)
+local function sample(action,move)
     frame=frame+1
-    local pressed,held,released=bindings.sample(true,physical,0,0,true,1,'combat')
+    local physical,x,y=0,0,0
+    if action then
+        local control=assert(selected_controls[action])
+        if control.axis=='x' then x=control.sign
+        elseif control.axis=='y' then y=control.sign
+        else physical=control.bit end
+    end
+    local pressed,held,released=bindings.sample(true,physical,x,y,true,1,'combat')
     local values={move=move or {x=0,y=0,z=0}}
     for _,binding in ipairs(bindings.bindings) do
         for _,pair in ipairs({{binding.pressed,pressed},{binding.held,held},{binding.released,released}}) do
@@ -44,42 +62,46 @@ local function sample(physical,move)
     local input={get=function(_,name) assert(values[name]~=nil,'Unexpected stock read '..name); return values[name] end}
     return state:_update_input(frame*.01,frame,input)
 end
-sample(0)
-for _,control in ipairs({1,8,32}) do
-    assert(not sample(control) and actions[#actions].held,'Device did not receive a mapped action hold')
-    sample(control); assert(actions[#actions].held,'Device action hold was reduced to a press')
-    sample(0); assert(not actions[#actions].held,'Device action failed to release')
+sample()
+for _,action in ipairs({'primary','interact','jump_dodge'}) do
+    assert(not sample(action) and actions[#actions].held,'Device did not receive a mapped action hold')
+    sample(action); assert(actions[#actions].held,'Device action hold was reduced to a press')
+    sample(); assert(not actions[#actions].held,'Device action failed to release')
 end
 dodge=true
-sample(32); assert(not actions[#actions].held,'Jump/dodge bypassed the stock dodge decision')
-sample(0); dodge=false
+sample('jump_dodge'); assert(not actions[#actions].held,'Jump/dodge bypassed the stock dodge decision')
+sample(); dodge=false
 local before=#weapon_frames
-assert(sample(2),'Alternate press did not request stock device cancellation')
+assert(sample('alternate'),'Alternate press did not request stock device cancellation')
 assert(#weapon_frames==before,'Weapon actions ran after device cancellation')
-assert(not sample(2),'Held alternate repeated the pressed cancel action')
-sample(0)
+assert(not sample('alternate'),'Held alternate repeated the pressed cancel action')
+sample()
 override_escape=false
-assert(not sample(2),'Adapter bypassed the device escape policy')
-sample(0); override_escape=nil
+assert(not sample('alternate'),'Adapter bypassed the device escape policy')
+sample(); override_escape=nil
 blocks=true; before=#weapon_frames
-sample(1); assert(#weapon_frames==before,'Device weapon-action block was ignored')
-sample(0); blocks=false
-sample(0,{x=.25,y=-.5,z=0})
+sample('primary'); assert(#weapon_frames==before,'Device weapon-action block was ignored')
+sample(); blocks=false
+sample(nil,{x=.25,y=-.5,z=0})
 assert(axes[#axes].x==.25 and axes[#axes].y==-.5 and animations[#animations]=='knob_turn_up')
-sample(0,{x=-.25,y=-.5,z=0})
+sample(nil,{x=-.25,y=-.5,z=0})
 assert(animations[#animations]=='knob_turn_down')
-completed=true; sample(1)
+completed=true; sample('primary')
 assert(animations[#animations-1]=='button_press' and animations[#animations]=='scan_end')
-sample(0)
+sample()
 wielding=false; local action_count,axis_count=#actions,#axes; before=#weapon_frames
-assert(sample(1) and #actions==action_count and #axes==axis_count and #weapon_frames==before,
+assert(sample('primary') and #actions==action_count and #axes==axis_count and #weapon_frames==before,
     'Lost device ownership still drove device/weapon actions')
-wielding=true; sample(0)
+wielding=true; sample()
 uses_action,uses_axis=false,false
 action_count,axis_count=#actions,#axes
-sample(1,{x=1,y=1,z=0})
+sample('primary',{x=1,y=1,z=0})
 assert(#actions==action_count and #axes==axis_count,'Unsupported device input paths were invoked')
-print('mission_device_stock=pass mapped_hold release dodge cancel escape_policy weapon_block axes completion wield_loss')
+print('mission_device_stock=pass resolved_profile='..(arg[3] and 'supplied' or 'default')..
+    ' mapped_hold release dodge cancel escape_policy weapon_block axes completion wield_loss')
+print('mission_device_controls primary='..selected_controls.primary.id..
+    ' alternate='..selected_controls.alternate.id..' interact='..selected_controls.interact.id..
+    ' jump_dodge='..selected_controls.jump_dodge.id)
 path=root..'/scripts/extension_systems/interaction/interactor_extension.lua'
 file=assert(io.open(path,'r')); source=file:read('*a'); file:close()
 first=assert(source:find('InteractorExtension._check_current_state =',1,true))

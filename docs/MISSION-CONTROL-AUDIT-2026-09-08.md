@@ -18,6 +18,24 @@ and compiling 56 chunks. Its refreshed fifteen-file payload passes copied-instal
 deployment and rollback, preserving all original files and removing additions.
 No live deployment occurred; the older `2dded96` staging is historical evidence.
 
+## Stock mission-device saved inputs, 9 September
+
+The optional mission-device fixture now accepts a reviewed saved-binding Lua
+table as argument 3 after cached source root and mapper path. It resolves primary,
+alternate, interact and jump/dodge physical controls rather than assuming RT/LT/X/A;
+stick sectors are sampled through the real mapper. Main and focused `848b78d`
+pass with both defaults and the 43-key saved profile, whose interact route is
+right-stick-down. Stock device hold/release, dodge exclusion, cancel/escape
+policy, weapon-action blocking, axis input, completion and loss of device
+ownership pass. An unbound interact or non-table supplied profile is rejected.
+
+Receipts: `artifacts/unattended/mission-device-{main,focused}-{default,saved}-20260909.log`
+and separate `mission-device-{unbound,invalid}-20260909.log` negatives. The fixture's
+second interaction-timer/alias section deliberately retains its constructed
+X/right-grip alias layout; it is not a saved-layout test. Device algorithms,
+movement transport, animation, dodge eligibility and weapon execution remain
+doubles. No settings, installed files or live mission state changed.
+
 ## Stock tutorial text contract checked 9 September
 
 The controller-prompt fixture now optionally executes the actual cached
