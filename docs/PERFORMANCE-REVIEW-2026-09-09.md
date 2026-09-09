@@ -14,6 +14,13 @@ offline trials preserve return/error/restoration behavior and reduce default
 LuaJIT median cost from 40.9382 to 26.2258 ms per 100,000 calls. All 69 chunks
 compile. It remains source-only and is outside the staged Lua package.
 
+The [reticle equipment lookup](RETICLE-EQUIPMENT-PERFORMANCE.md) also removes
+temporary attachment-set tables without caching loadout state. The six-slot
+offline miss workload drops from 60.0733 to 42.5600 ms per 100,000 lookups under
+default LuaJIT, with about 50.4 MiB less temporary allocation. Interpreter timing
+ranges overlap. Identity/mutation comparisons and the 69-chunk compiler gate
+pass; this is another source-only change outside the staged Lua package.
+
 ## First focused comparisons
 
 | Candidate | Scope | Evidence | Status |

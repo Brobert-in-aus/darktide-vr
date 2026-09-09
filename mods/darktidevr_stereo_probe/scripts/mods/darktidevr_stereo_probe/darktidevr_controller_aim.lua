@@ -36,6 +36,16 @@ local function is_local_unit(unit)
     return player and player.player_unit == unit
 end
 
+local function attachment_set_contains(attachment_set, unit)
+    if attachment_set == nil then return false end
+    for _, attachments in pairs(attachment_set) do
+        for index = 1, #attachments do
+            if unit == attachments[index] then return true end
+        end
+    end
+    return false
+end
+
 local function is_local_visual_unit(extension, unit)
     local owner = extension and extension._unit
     if not owner or not unit then
@@ -51,23 +61,16 @@ local function is_local_visual_unit(extension, unit)
     if unit == visual._first_person_unit then
         return true
     end
-    for _, slot in pairs(visual._equipment or {}) do
+    local equipment = visual._equipment
+    if not equipment then return false end
+    for _, slot in pairs(equipment) do
         if type(slot) == "table" then
             if unit == slot.unit_1p or unit == slot.unit_3p then
                 return true
             end
-            local attachment_sets = {
-                slot.attachments_by_unit_1p,
-                slot.attachments_by_unit_3p,
-            }
-            for _, attachment_set in pairs(attachment_sets) do
-                for _, attachments in pairs(attachment_set) do
-                    for index = 1, #attachments do
-                        if unit == attachments[index] then
-                            return true
-                        end
-                    end
-                end
+            if attachment_set_contains(slot.attachments_by_unit_1p, unit) or
+                    attachment_set_contains(slot.attachments_by_unit_3p, unit) then
+                return true
             end
         end
     end
