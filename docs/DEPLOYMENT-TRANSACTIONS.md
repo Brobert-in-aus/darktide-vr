@@ -1,5 +1,24 @@
 # Development update recovery
 
+## Selected Lua package validation
+
+`tools/stereo/test-darktide-lua-source.ps1 -SourcePath <selected-main-lua>` now
+compiles the descriptor belonging to that selected mod directory, alongside its
+Lua companions. Previously a focused/installed source path still compiled the
+main checkout's descriptor. A valid checkout descriptor could therefore conceal
+a broken selected descriptor. Missing descriptors now fail without fallback;
+the gate reports the exact source and descriptor paths it compiled.
+
+The regression reproduced acceptance of a broken descriptor before the fix.
+The expanded `luajit_source_path` fixture passes under Windows PowerShell in
+0.55 seconds, covering invalid/missing descriptors, invalid companions and
+compile-only chunks that would throw if executed. Deployment-sync and runtime
+package checks also pass. Direct gates compile 69 chunks in main, 56 in focused
+communication, and 50 in the installed mod, each with its own descriptor.
+This is offline compilation only; no Lua execution or installed file writes.
+
+## Transaction boundary
+
 `tools/stereo/sync-darktide-vr-dev.ps1` now stages its Lua, native libraries,
 shader changes and runtime flags as one update. It retains the closed-game
 requirement and pinned LuaJIT gate. All sources and existing destination bytes

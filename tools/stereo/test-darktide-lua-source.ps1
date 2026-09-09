@@ -7,8 +7,13 @@ if (-not $SourcePath) {
     $SourcePath = Join-Path $repoRoot 'mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_stereo_probe.lua'
 }
 $resolvedSource = (Resolve-Path -LiteralPath $SourcePath).Path
-$chunks = @($resolvedSource) + @(Get-ChildItem (Split-Path $resolvedSource) -Filter '*.lua' |
+$sourceDirectory = Split-Path -Parent $resolvedSource
+# The selected source belongs to <mod>/scripts/mods/darktidevr_stereo_probe.
+# Validate that same package's descriptor, not whichever checkout runs the gate.
+# Missing descriptors must fail rather than borrowing a valid checkout copy.
+$descriptor = (Resolve-Path -LiteralPath (Join-Path $sourceDirectory '../../../darktidevr_stereo_probe.mod')).Path
+$chunks = @($resolvedSource) + @(Get-ChildItem -LiteralPath $sourceDirectory -Filter '*.lua' -File |
     Where-Object FullName -ne $resolvedSource | ForEach-Object FullName)
-$chunks += Join-Path $repoRoot 'mods/darktidevr_stereo_probe/darktidevr_stereo_probe.mod'
+$chunks += $descriptor
 & (Join-Path $repoRoot 'tools/lua/test-lua-syntax.ps1') -SourcePaths $chunks
-Write-Output "lua_source_check=pass compiler=LuaJIT chunks=$($chunks.Count) source=$resolvedSource"
+Write-Output "lua_source_check=pass compiler=LuaJIT chunks=$($chunks.Count) source=$resolvedSource descriptor=$descriptor"
