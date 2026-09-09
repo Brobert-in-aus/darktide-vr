@@ -91,6 +91,17 @@ coarse grid. No native runtime or installed settings changed.
 
 ### Preserve capture inputs when writing a detail report
 
+The simpler `compare-dlss-ui-inputs.py` inspector now decodes and validates both
+scene/final eye pairs before creating an output directory or replacing reports.
+Previously a missing, malformed or differently sized right-eye final image left
+a new left-eye PNG beside stale results. Its four output files also reject links
+to any source bitmap. Three real-BMP CLI tests cover those failures with new and
+existing report directories, hard links, unchanged input bytes and a known
+single-pixel difference. The new `dlss_ui_input_comparison` CTest is registered;
+all four DLSS analysis CTests pass in 3.64 seconds. Full suite count is now 181;
+the last full 180-test result predates this addition. Pixel differences remain
+composition evidence, not recovered alpha or a diagnosis of surrounding-HUD blur.
+
 The detail-report writer now rejects output paths that identify its generated
 image, either submitted UI image, or either metadata log, including hard links.
 Previously a valid analysis could replace one of those inputs with JSON. Ten

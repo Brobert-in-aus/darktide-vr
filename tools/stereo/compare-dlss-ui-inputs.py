@@ -10,14 +10,32 @@ parser = argparse.ArgumentParser()
 parser.add_argument("stem", type=Path)
 parser.add_argument("--output", required=True, type=Path)
 args = parser.parse_args()
+inputs = [Path(f'{args.stem}-{eye}-{role}.bmp')
+          for eye in ('left', 'right') for role in ('scene', 'final')]
+for name in ('left-difference-x4.png', 'right-difference-x4.png',
+             'comparison.png', 'comparison.json'):
+    destination = args.output / name
+    for source in inputs:
+        if destination.resolve() == source.resolve() or (destination.exists() and
+                source.exists() and destination.samefile(source)):
+            raise ValueError('Output must not replace a capture input')
+images = {}
+# Decode and validate both eyes before creating or replacing any report files.
+# A malformed second eye must not leave a new left result beside an old report.
+for eye in ("left", "right"):
+    pair = []
+    for role in ("scene", "final"):
+        with Image.open(f"{args.stem}-{eye}-{role}.bmp") as source:
+            pair.append(source.convert("RGB"))
+    scene_image, final_image = pair
+    if scene_image.size != final_image.size:
+        raise ValueError(f"{eye}: mismatching extents")
+    images[eye] = pair
 args.output.mkdir(parents=True, exist_ok=True)
 report = {}
 panels = []
 for eye in ("left", "right"):
-    scene_image = Image.open(f"{args.stem}-{eye}-scene.bmp").convert("RGB")
-    final_image = Image.open(f"{args.stem}-{eye}-final.bmp").convert("RGB")
-    if scene_image.size != final_image.size:
-        raise ValueError(f"{eye}: mismatching extents")
+    scene_image, final_image = images[eye]
     scene = np.asarray(scene_image).astype(np.int16)
     final = np.asarray(final_image).astype(np.int16)
     difference = np.abs(final - scene)
