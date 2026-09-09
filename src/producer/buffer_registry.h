@@ -68,6 +68,41 @@ struct BufferRegistry : std::enable_shared_from_this<BufferRegistry> {
     return std::nullopt;
   }
 
+  // Caller holds mutex for both lookup and use of the returned metadata.
+  // Cache indices only; the resource's lifetime observer expires every entry.
+  BufferResourceInfo* find_resource_locked(ID3D12Resource* resource) {
+    if (resources.empty()) return nullptr;
+    if (resources.back().resource == resource) return &resources.back();
+    const auto address = reinterpret_cast<std::uintptr_t>(resource);
+    const auto bucket = (address >> 8) ^ (address >> 16) ^
+                        (address >> 24) ^ (address >> 32);
+    auto& cached = resource_lookup_[bucket % resource_lookup_.size()];
+    if (cached.valid && cached.resource == resource)
+      return cached.index < resources.size() ? &resources[cached.index] : nullptr;
+    cached = {resource, resources.size(), true};
+    for (std::size_t index = resources.size() - 1; index != 0; --index) {
+      if (resources[index - 1].resource == resource) {
+        cached.index = index - 1;
+        return &resources[index - 1];
+      }
+    }
+    return nullptr;
+  }
+
+  BufferResourceInfo* find_mapped_resource_locked(ID3D12Resource* resource,
+                                                  UINT subresource) {
+    auto* result = find_resource_locked(resource);
+    if (!result || (result->mapped && result->mapped_subresource == subresource))
+      return result;
+    // Preserve the old filtered reverse scan even if duplicate identity records
+    // exist: a newer unmapped/different-subresource entry must not hide an older
+    // matching mapping. Normal Map/Unmap pairs take the cached path above.
+    for (auto it = resources.rbegin(); it != resources.rend(); ++it)
+      if (it->resource == resource && it->mapped &&
+          it->mapped_subresource == subresource) return &*it;
+    return nullptr;
+  }
+
   void track(ID3D12Resource* resource, std::uint64_t address,
              std::uint64_t size, D3D12_HEAP_TYPE type) {
     static constexpr GUID key =
@@ -80,6 +115,7 @@ struct BufferRegistry : std::enable_shared_from_this<BufferRegistry> {
           });
           registry->lookup_ = {};
           registry->range_lookup_ = {};
+          registry->resource_lookup_ = {};
           if (registry->resources.empty()) {
             registry->minimum_address_ = (std::numeric_limits<std::uint64_t>::max)();
             registry->maximum_end_ = 0;
@@ -95,6 +131,7 @@ struct BufferRegistry : std::enable_shared_from_this<BufferRegistry> {
     maximum_end_ = (std::max)(maximum_end_, end);
     lookup_ = {};
     range_lookup_ = {};
+    resource_lookup_ = {};
   }
 
   // A full-range read can select an older, larger overlapping allocation.
@@ -146,5 +183,11 @@ struct BufferRegistry : std::enable_shared_from_this<BufferRegistry> {
     bool valid{};
   };
   std::array<RangeLookup, 64> range_lookup_{};
+  struct ResourceLookup {
+    ID3D12Resource* resource{};
+    std::size_t index{};
+    bool valid{};
+  };
+  std::array<ResourceLookup, 64> resource_lookup_{};
 };
 }  // namespace darktidevr::producer

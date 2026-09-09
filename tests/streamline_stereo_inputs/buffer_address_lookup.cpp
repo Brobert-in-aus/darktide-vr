@@ -50,6 +50,16 @@ int main() {
   const auto resolve=[&](std::uint64_t address) {
     return cached_lookup(*registry,address);
   };
+  const auto by_resource=[&](ID3D12Resource* value) -> std::optional<BufferResourceInfo> {
+    std::scoped_lock lock(registry->mutex);
+    const auto* found=registry->find_resource_locked(value);
+    return found?std::optional<BufferResourceInfo>(*found):std::nullopt;
+  };
+  const auto by_mapping=[&](ID3D12Resource* value,UINT subresource) -> std::optional<BufferResourceInfo> {
+    std::scoped_lock lock(registry->mutex);
+    const auto* found=registry->find_mapped_resource_locked(value,subresource);
+    return found?std::optional<BufferResourceInfo>(*found):std::nullopt;
+  };
   auto older=create(),newer=create();
   check(!resolve(1000)); // Cached miss must be invalidated by registration.
   registry->track(older.Get(),1000,100,D3D12_HEAP_TYPE_UPLOAD);
@@ -59,7 +69,11 @@ int main() {
   check(!cached_range(*registry,1060,(std::numeric_limits<std::uint64_t>::max)()));
   check(resolve(1000)->resource==older.Get());check(!resolve(1100));
   check(resolve(1060)->resource==older.Get()); // Prime overlapping winner.
+  check(!by_resource(newer.Get()));
   registry->track(newer.Get(),1050,25,D3D12_HEAP_TYPE_UPLOAD);
+  check(by_resource(newer.Get())->gpu_start==1050);
+  check(by_resource(older.Get())->gpu_start==1000);
+  check(!by_mapping(older.Get(),0));
   check(cached_range(*registry,1060,10)->resource==newer.Get());
   check(cached_range(*registry,1060,20)->resource==older.Get());
   check(cached_range(*registry,1060,10)->resource==newer.Get());
@@ -74,6 +88,8 @@ int main() {
     registry->records_locked()[0].staging_base=reinterpret_cast<std::byte*>(0x3000);
     registry->records_locked()[0].staging_size=100;
   }
+  check(by_mapping(older.Get(),0)->mapped_base==reinterpret_cast<std::byte*>(0x2000));
+  check(!by_mapping(older.Get(),1));
   check(cached_range(*registry,1060,20)->mapped_base==reinterpret_cast<std::byte*>(0x2000));
   check(cached_range(*registry,1060,20)->staging_base==reinterpret_cast<std::byte*>(0x3000));
   {
@@ -104,7 +120,10 @@ int main() {
   check(!resolve(1060));check(resolve(2000)->resource==older.Get());
   check(!cached_range(*registry,1060,10));
   check(cached_range(*registry,2000,100)->resource==older.Get());
+  check(by_resource(older.Get())->gpu_start==2000);
+  auto* retired=older.Get();
   older.Reset();check(!resolve(2000));
+  check(!by_resource(retired));
   {
     auto extreme=create();
     const auto maximum=(std::numeric_limits<std::uint64_t>::max)();
@@ -123,6 +142,10 @@ int main() {
     owners.push_back(std::move(resource));
   }
   const auto baseline=[&](std::uint64_t address) {return linear_lookup(*registry,address);};
+  for(unsigned pass=0;pass<3;++pass)
+    for(const auto& owner:owners)
+      check(by_resource(owner.Get())->resource==owner.Get());
+  check(!by_resource(nullptr));
   // Compare across cold lookups, hits, misses, colliding addresses and endpoints.
   for(unsigned repeat=0;repeat<2;++repeat) for(unsigned i=0;i<1024;++i)
     for(const unsigned offset:{0U,128U,255U,256U}) {
@@ -141,7 +164,11 @@ int main() {
   // Deleting an early entry moves later vector indices; cached values must expire.
   check(resolve(0x110000)->resource==owners[1].Get());
   check(cached_range(*registry,0x110000,128)->resource==owners[1].Get());
-  owners[0].Reset();check(resolve(0x110000)->resource==owners[1].Get());
+  check(by_resource(owners[10].Get())->gpu_start==0x100000ULL+10*0x10000ULL);
+  auto* removed=owners[0].Get();
+  owners[0].Reset();
+  check(!by_resource(removed));
+  check(by_resource(owners[10].Get())->gpu_start==0x100000ULL+10*0x10000ULL);check(resolve(0x110000)->resource==owners[1].Get());
   check(cached_range(*registry,0x110000,128)->resource==owners[1].Get());
   check(!cached_range(*registry,0x100000,128));
   for(const unsigned workload:{0U,1U,2U,3U}) {

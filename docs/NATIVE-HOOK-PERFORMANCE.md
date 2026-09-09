@@ -147,3 +147,30 @@ driver integer 9007199255790656. Executable SHA256:
 Receipts: `artifacts/unattended/native-map-benchmark-build-20260909.log` and
 `artifacts/unattended/native-map-hook-measurement-20260909/comparison.json`.
 No runtime code, accepted installation or staged payload was changed.
+
+### Retained focused pointer-cache candidate
+
+Focused candidate `28a5500` (PR #220), based on `516f935`, adds a 64-entry
+resource-pointer cache for Map, Unmap and staging updates. Exact keys retain
+indices into current metadata and expire on registration/destruction. Unmap
+retains the filtered reverse-scan fallback when the newest identity does not
+match the current mapping/subresource. Counters and stack capture are unchanged.
+
+Five hooked and five unhooked processes per DLL run in successive baseline and
+candidate batches, alternating hooked/control order within each batch. Hooked
+medians per 10,000 Map/Unmap pairs are 11.2433 to 3.7986 ms for early allocations,
+3.1519 to 3.1274 ms for newest, and 7.2709 to 5.2627 ms cycling all allocations.
+Newest ranges overlap; early/cycling ranges do not. All 20 processes pass exact
+map/match/unmap counts with unchanged adapter/driver identity. This measures
+constructed mapping workloads, not game frame time or upload-staging speed.
+Receipts: `native-map-buffer-baseline-20260909/comparison.json` and
+`native-map-pointer-candidate-20260909/comparison.json` under
+`artifacts/unattended`.
+
+The same three-file runtime/test delta now applies cleanly to main development.
+Its native DLL and affected executables rebuild; native hooks and buffer lookup
+pass 2/2 in 2.46 seconds, headset tests OFF. Main integration receipts:
+`resource-pointer-main-build-20260909.log` and
+`resource-pointer-main-tests-20260909.log`. The measured DLL remains the focused
+candidate, not the accumulated main binary. Neither is deployed; staged payloads
+remain unchanged.

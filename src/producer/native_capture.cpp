@@ -5201,10 +5201,7 @@ HRESULT STDMETHODCALLTYPE resource_map_hook(ID3D12Resource* resource,
   const auto map_stack_count = CaptureStackBackTrace(
       1, static_cast<DWORD>(map_stack.size()), map_stack.data(), nullptr);
   std::scoped_lock lock(buffer_resource_mutex);
-  for (auto it = buffer_registry->records_locked().rbegin(); it != buffer_registry->records_locked().rend(); ++it) {
-    if (it->resource != resource) {
-      continue;
-    }
+  if (auto* it = buffer_registry->find_resource_locked(resource)) {
     it->mapped_base = static_cast<std::byte*>(*data);
     it->mapped_subresource = subresource;
     it->mapped = true;
@@ -5212,7 +5209,6 @@ HRESULT STDMETHODCALLTYPE resource_map_hook(ID3D12Resource* resource,
     it->last_map_stack_count = map_stack_count;
     billboard_resource_map_match_count.fetch_add(1,
                                                   std::memory_order_relaxed);
-    break;
   }
   return result;
 }
@@ -5222,17 +5218,11 @@ void STDMETHODCALLTYPE resource_unmap_hook(ID3D12Resource* resource,
                                            const D3D12_RANGE* written_range) {
   {
     std::scoped_lock lock(buffer_resource_mutex);
-    for (auto it = buffer_registry->records_locked().rbegin(); it != buffer_registry->records_locked().rend();
-         ++it) {
-      if (it->resource != resource || !it->mapped ||
-          it->mapped_subresource != subresource) {
-        continue;
-      }
+    if (auto* it = buffer_registry->find_mapped_resource_locked(resource, subresource)) {
       it->mapped_base = nullptr;
       it->mapped = false;
       billboard_resource_unmap_count.fetch_add(1,
                                                 std::memory_order_relaxed);
-      break;
     }
   }
   original_resource_unmap(resource, subresource, written_range);
@@ -5298,16 +5288,12 @@ void stingray_upload_flush_hook(void* allocator) {
           cluster_constant_ring_resources.contains(snapshot.resource);
     }
     std::scoped_lock lock(buffer_resource_mutex);
-    for (auto it = buffer_registry->records_locked().rbegin(); it != buffer_registry->records_locked().rend();
-         ++it) {
-      if (it->resource == snapshot.resource) {
-        it->staging_base = snapshot.staging_base;
-        it->staging_size = snapshot.staging_size;
-        matched_tracked_resource = true;
-        billboard_upload_flush_count.fetch_add(1,
-                                                std::memory_order_relaxed);
-        break;
-      }
+    if (auto* it = buffer_registry->find_resource_locked(snapshot.resource)) {
+      it->staging_base = snapshot.staging_base;
+      it->staging_size = snapshot.staging_size;
+      matched_tracked_resource = true;
+      billboard_upload_flush_count.fetch_add(1,
+                                              std::memory_order_relaxed);
     }
   }
   if (cluster_trace_log != INVALID_HANDLE_VALUE && target_ring_known &&

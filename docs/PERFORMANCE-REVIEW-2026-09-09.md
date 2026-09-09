@@ -25,6 +25,14 @@ Compare it against `8b3697a` to isolate the added buffer changes, after the firs
 focused comparison is understood. It excludes later shader, SR, pose and GPU
 profiling edits.
 
+Focused map candidate `28a5500` (PR #220) extends the buffer candidate with the
+measured resource-pointer cache. Focused Lua projection candidate `e6cb46b`
+(PR #217) extends `008e1b0` with the exact-output projection loop optimisation.
+Both are separate source/build candidates and leave staged payloads unchanged.
+Their candidate branches contain focused validation handoffs. The actual
+[mapping measurements](NATIVE-HOOK-PERFORMANCE.md#retained-focused-pointer-cache-candidate)
+remain distinct from game frame-time evidence.
+
 Evaluate each separately against its accepted baseline, restoring that baseline
 between trials. Use the staged hash preconditions and save the transaction and
 rollback receipts. Native UI diagnostics replace the same DLL as native
