@@ -61,6 +61,46 @@ try {
     Assert-Text $extra 'keep-user-file'; Assert-Text $a 'original'
     $receipt = Get-Content -LiteralPath $recovered.recovery_manifest -Raw | ConvertFrom-Json
     Assert-Text $receipt.entries[0].Backup 'later-user-edit'
+    # Change an input after recovery's initial validation but before the real
+    # transaction stages it. The whole recovery must reject, preserving new edits.
+    $raceDeployed=Invoke-DarktideDeploymentTransaction -Root $game -Entries $plan -BackupRoot $backups -CreateDirectories
+    $raceSaved=Get-Content -LiteralPath $raceDeployed.Manifest -Raw|ConvertFrom-Json
+    $transaction=${function:Invoke-DarktideDeploymentTransaction}
+    try {
+        function Invoke-DarktideDeploymentTransaction {
+            param($Root,$Entries,$BackupRoot,[switch]$CreateDirectories)
+            & $beforeStaging
+            & $transaction @PSBoundParameters
+        }
+        foreach($mutation in @('changed','removed','appeared','backup')) {
+            $beforeStaging={
+                switch($mutation) {
+                    changed { [IO.File]::WriteAllText($b,'concurrent-edit') }
+                    removed { Remove-Item -LiteralPath $b }
+                    appeared { [IO.File]::WriteAllText($stale,'concurrent-new-file') }
+                    backup { [IO.File]::WriteAllText($raceSaved.entries[1].Backup,'concurrent-backup-damage') }
+                }
+            }
+            $message=if($mutation -eq 'backup'){'Source hash precondition'}else{'Destination hash precondition'}
+            Assert-Rejected $raceDeployed.Manifest $message
+            Assert-Text $a 'new-a'
+            if($mutation -eq 'changed'){Assert-Text $b 'concurrent-edit'}
+            elseif($mutation -eq 'removed'){if(Test-Path -LiteralPath $b){throw 'Recovery recreated a concurrently removed file.'}}
+            else{Assert-Text $b 'new-b'}
+            if($mutation -eq 'appeared'){Assert-Text $stale 'concurrent-new-file';Remove-Item -LiteralPath $stale}
+            [IO.File]::WriteAllText($b,'new-b')
+            [IO.File]::WriteAllText($raceSaved.entries[1].Backup,'original')
+        }
+        [IO.File]::WriteAllText($b,'reviewed-user-edit')
+        $beforeStaging={ [IO.File]::WriteAllText($b,'later-concurrent-edit') }
+        $rejected=$false
+        try { Restore-DarktideDeploymentTransaction -Root $game -Manifest $raceDeployed.Manifest -BackupRoot $backups -AllowChangedFiles|Out-Null }
+        catch { $rejected=$_.Exception.Message.Contains('Destination hash precondition') }
+        if(-not $rejected){throw 'Explicit recovery accepted a later unreviewed replacement.'}
+        Assert-Text $a 'new-a';Assert-Text $b 'later-concurrent-edit'
+        [IO.File]::WriteAllText($b,'new-b')
+    } finally { Set-Item -Path Function:Invoke-DarktideDeploymentTransaction -Value $transaction }
+    Restore-DarktideDeploymentTransaction -Root $game -Manifest $raceDeployed.Manifest -BackupRoot $backups|Out-Null
     # A damaged original must reject before any destination changes.
     $saved = Get-Content -LiteralPath $deployed.Manifest -Raw | ConvertFrom-Json
     [IO.File]::WriteAllText($saved.entries[1].Backup, 'damaged')

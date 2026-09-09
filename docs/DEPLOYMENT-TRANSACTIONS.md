@@ -56,6 +56,15 @@ partial bytes left by an interrupted write. Recovery always backs up the current
 state in a new transaction, so those changed bytes remain available. A caught
 failure during restoration rolls back to the state before recovery started.
 
+Recovery also pins each original backup hash and the exact installed state it
+validated, including missing files, through transaction staging. A destination
+changed, removed or newly created in that interval rejects the complete recovery
+before writes; a backup damaged after initial validation does too. Even explicit
+`-AllowChangedFiles` permits the observed changed bytes, not a later concurrent
+replacement. Five race fixtures reproduce these intervals using a temporary
+installation. Transaction/sync/recovery/package checks pass 4/4 in 5.20 seconds
+before the additional explicit-override race fixture, which also passes alone.
+
 Newly deployed files are removed, and recorded new directories are removed only
 when empty. Unrelated files in those folders are retained and reported as
 `files_restored_directories_retained`. The new backup contains `recovery.json`

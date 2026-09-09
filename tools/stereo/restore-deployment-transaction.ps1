@@ -54,7 +54,7 @@ function Restore-DarktideDeploymentTransaction {
                     (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash -ne $entry.OriginalHash) {
                 throw "Deployment backup is missing or damaged: $original"
             }
-            $entries += @{ Destination = $destination; Source = $original }
+            $entries += @{ Destination = $destination; Source = $original; ExpectedSourceHash = $entry.OriginalHash }
             $knownHashes += $entry.OriginalHash
         } else {
             $entries += @{ Destination = $destination; Remove = $true }
@@ -64,12 +64,18 @@ function Restore-DarktideDeploymentTransaction {
             if ($entry.ExpectedHash -notmatch '^[0-9a-fA-F]{64}$') { throw 'Missing staged deployment hash.' }
             $knownHashes += $entry.ExpectedHash
         }
-        if (-not $AllowChangedFiles -and (Test-Path -LiteralPath $destination -PathType Leaf)) {
-            $currentHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+        $currentHash = if (Test-Path -LiteralPath $destination -PathType Leaf) {
+            (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+        } else { $null }
+        if (-not $AllowChangedFiles -and $null -ne $currentHash) {
             if ($currentHash -notin $knownHashes) {
                 throw "Installed file changed after this deployment: $destination. Review it before using -AllowChangedFiles."
             }
         }
+        # Bind the exact validated state (including absence) through staging.
+        # AllowChangedFiles permits the observed edit, not a later concurrent
+        # replacement; the transaction still backs up that observed edit.
+        $entries[-1].ExpectedDestinationHash = $currentHash
     }
     if (-not $entries.Count) { throw 'Deployment manifest has no entries.' }
     $directories = @()
