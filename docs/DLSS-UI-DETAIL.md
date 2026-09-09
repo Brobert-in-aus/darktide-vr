@@ -96,8 +96,16 @@ Seven related CTests pass in 3.31 seconds, including WARP diagnostic/tagged/no-U
 capture modes, partial pairs, replay cessation, pause/discard and distinct owned
 textures. Both the recovery test and native DLL build in the isolated tree.
 The fixture rejects presentation intentionally and does not run NVIDIA frame
-generation. No accumulated main-tree DLL was deployed. Prepare a deliberate
-focused native candidate before any live trial, then run fresh Ready.
+generation. No accumulated main-tree DLL was deployed.
+
+The focused native port is now `a4ec84c`, PR #133, based directly on accepted
+`23345e5`, in `D:/Projects/games-xr/Darktide VR UI diagnostics`. Five producer
+source/header files change, with no unrelated rendering/input port. Its DLL
+builds; five recovery/readback tests pass in 2.70 seconds, native hook loading
+passes in 0.50 seconds, and the integrated Python verifier accepts its actual
+six-image RGBA export and rejects altered alpha. See that worktree's
+`docs/UI-READBACK-FOCUSED-2026-09-09.md` for hash and selective trial/rollback.
+The port remains undeployed. Run fresh Ready before any live trial.
 
 The one-shot native UI exporter now records a per-image RGBA checksum and
 extent after a successful BMP write/close. It declares
