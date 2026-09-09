@@ -74,6 +74,32 @@ history ownership require their own attributed observation before a correction.
 
 ### Undeployed SR resource observation
 
+10 September: the optional probe now also records eight temporal inputs for
+each admitted SR call: jitter X/Y, motion-vector scale X/Y, pre-exposure,
+render-subrect width/height and reset. It remains within the same 64-call process
+budget and defaults off. Schema 2 records the float/integer/unsigned getter slots
+14/11/12; each getter is independently checked against the verified runtime owner
+before use. No parameters are written. Failed, unqueried and nonfinite values are
+reported as unavailable rather than zero. These records correlate by call with
+the existing feature/resource identity; they do not establish eye identity alone.
+
+The reader accepts both old resource-only schema 1 and schema 2. It reports
+missing scalars and record completeness independently of successful resource
+queries; complete records do not imply valid values or correct temporal history.
+Duplicate/unknown fields, contradictory validity, nonfinite values and native
+range violations are rejected. The original resource/evaluation completeness
+meaning is preserved. Legacy captures remain readable.
+
+The official pinned NGX interface checks now exercise float and signed-integer
+dispatch and failure preservation, and compile-check all eight parameter names.
+NVIDIA's [D3D helper definitions](https://raw.githubusercontent.com/NVIDIA/DLSS/main/include/nvsdk_ngx_helpers_d3d.h)
+also identify jitter in input-pixel space and reset as a signed integer; these
+semantics guide observation, not an assumed correction. Release DLL build and
+three affected native checks pass (0.49 seconds); nine parser/formatter checks
+pass, including actual native records. Receipts:
+`artifacts/unattended/dlss-sr-temporal-{build,native-tests}-20260910.log`.
+No deployment or worn acceptance has occurred.
+
 The main development candidate adds `observe_sr_inputs=1` under `[probe]` in
 the existing `darktidevr_ngx_output_probe.flag`. It defaults off, retains the
 existing runtime/prologue/parameter-owner verification, and queries only known

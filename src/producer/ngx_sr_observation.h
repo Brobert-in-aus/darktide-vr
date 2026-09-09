@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cmath>
 
 namespace darktidevr::producer {
 // Names from the pinned Streamline v2.7.30 NGX definitions. These are queries,
@@ -10,6 +11,24 @@ namespace darktidevr::producer {
 inline constexpr std::array<const char*, 7> kNgxSrResourceNames{
     "Color", "Output", "Depth", "MotionVectors", "TransparencyMask",
     "ExposureTexture", "DLSS.Input.Bias.Current.Color.Mask"};
+
+inline constexpr std::array<const char*, 5> kNgxSrFloatNames{
+    "Jitter.Offset.X", "Jitter.Offset.Y", "MV.Scale.X", "MV.Scale.Y", "DLSS.Pre.Exposure"};
+inline constexpr std::array<const char*, 2> kNgxSrUnsignedNames{
+    "DLSS.Render.Subrect.Dimensions.Width", "DLSS.Render.Subrect.Dimensions.Height"};
+inline constexpr const char* kNgxSrResetName = "Reset";
+
+inline int format_ngx_sr_scalar(char* output, std::size_t capacity,
+    std::uint64_t call, const char* name, const char* type, bool queried,
+    std::uint32_t result, double value) {
+  char formatted[48] = "unavailable";
+  const bool valid = queried && result == 1 && std::isfinite(value);
+  if (valid) std::snprintf(formatted, sizeof(formatted), "%.17g", value);
+  return std::snprintf(output, capacity,
+      "NGX_SR_SCALAR call=%llu name=%s type=%s queried=%u result=%x valid=%u value=%s\n",
+      static_cast<unsigned long long>(call), name, type, queried ? 1U : 0U,
+      result, valid ? 1U : 0U, formatted);
+}
 
 struct NgxSrResourceRecord {
   std::uint64_t call{}, lifetime{}, batch{}, present{}, first_call{};

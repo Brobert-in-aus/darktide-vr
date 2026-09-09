@@ -43,9 +43,11 @@ class SrObservationReader(unittest.TestCase):
     def test_actual_native_record_formatter(self):
         result = subprocess.run([NATIVE, "--emit-records"], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        report = reader.parse(reader.HEADER.format(gate=1) + "\n" + result.stdout)
+        report = reader.parse(reader.TEMPORAL_HEADER.format(gate=1) + "\n" + result.stdout)
         self.assertEqual(report["complete_calls"], 1)
         observation = report["observations"][0]
+        self.assertTrue(observation["scalar_records_complete"])
+        self.assertEqual(observation["scalars"]["Jitter.Offset.X"]["value"], -0.375)
         self.assertTrue(observation["evaluation_succeeded"])
         self.assertEqual([item["status"] for item in observation["inputs"]],
                          ["described"] * 4 + ["query_failed", "null_resource", "null_resource"])
@@ -109,6 +111,24 @@ class SrObservationReader(unittest.TestCase):
         self.assertEqual(reader.parse(trace(records))["observed_calls"], 64)
         with self.assertRaises(ValueError):
             reader.parse(trace(records + [evaluation(65)]))
+
+    def test_scalar_validation_and_legacy_absence(self):
+        scalar = "NGX_SR_SCALAR call=12 name=Reset type=integer queried=1 result=1 valid=1 value=0"
+        header = reader.TEMPORAL_HEADER.format(gate=1) + "\n"
+        report = reader.parse(header + scalar)
+        self.assertFalse(report["observations"][0]["complete"])
+        self.assertFalse(report["observations"][0]["scalar_records_complete"])
+        for replacement in ("value=nan", "value=2147483648", "value=0.5"):
+            with self.assertRaises(ValueError):
+                reader.parse(header + scalar.replace("value=0", replacement))
+        for invalid in (scalar + "\n" + scalar, scalar.replace("queried=1", "queried=0"),
+                        scalar.replace("result=1", "result=bad"), scalar.replace("type=integer", "type=float")):
+            with self.assertRaises(ValueError): reader.parse(header + invalid)
+        unavailable = scalar.replace("queried=1 result=1 valid=1 value=0", "queried=0 result=0 valid=0 value=unavailable")
+        with self.assertRaises(ValueError):
+            reader.parse(header + scalar.replace("name=Reset type=integer", "name=Jitter.Offset.X type=float").replace("value=0", "value=1e39"))
+        self.assertIsNone(reader.parse(header + unavailable)["observations"][0]["scalars"]["Reset"]["value"])
+        self.assertFalse(reader.parse(trace(inputs() + [evaluation()]))["observations"][0]["scalar_records_complete"])
 
     def test_cli_preserves_source_and_rejects_without_json(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -28,12 +28,22 @@ struct Parameters final : NVSDK_NGX_Parameter {
   NVSDK_NGX_Result Get(const char*, Type*) const override { \
     selected = Id; return NVSDK_NGX_Result_FAIL_InvalidParameter; }
   OTHER_GET(unsigned long long, 10)
-  OTHER_GET(float, 11)
   OTHER_GET(double, 12)
-  OTHER_GET(int, 14)
   OTHER_GET(ID3D11Resource*, 15)
   OTHER_GET(void*, 17)
 #undef OTHER_GET
+  NVSDK_NGX_Result Get(const char*, float* out) const override {
+    selected = 11;
+    if (fail) return NVSDK_NGX_Result_FAIL_InvalidParameter;
+    *out = -0.375f;
+    return NVSDK_NGX_Result_Success;
+  }
+  NVSDK_NGX_Result Get(const char*, int* out) const override {
+    selected = 14;
+    if (fail) return NVSDK_NGX_Result_FAIL_InvalidParameter;
+    *out = -7;
+    return NVSDK_NGX_Result_Success;
+  }
   NVSDK_NGX_Result Get(const char* name, unsigned int* out) const override {
     selected = 13;
     if (fail || std::strcmp(name, "test.uint"))
@@ -65,6 +75,20 @@ int main() {
   static_assert(std::string_view(kNgxSrResourceNames[5]) == NVSDK_NGX_Parameter_ExposureTexture);
   static_assert(std::string_view(kNgxSrResourceNames[6]) == NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask);
   Parameters parameters;
+  static_assert(std::string_view(kNgxSrFloatNames[0]) == NVSDK_NGX_Parameter_Jitter_Offset_X);
+  static_assert(std::string_view(kNgxSrFloatNames[1]) == NVSDK_NGX_Parameter_Jitter_Offset_Y);
+  static_assert(std::string_view(kNgxSrFloatNames[2]) == NVSDK_NGX_Parameter_MV_Scale_X);
+  static_assert(std::string_view(kNgxSrFloatNames[3]) == NVSDK_NGX_Parameter_MV_Scale_Y);
+  static_assert(std::string_view(kNgxSrFloatNames[4]) == NVSDK_NGX_Parameter_DLSS_Pre_Exposure);
+  static_assert(std::string_view(kNgxSrUnsignedNames[0]) == NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Width);
+  static_assert(std::string_view(kNgxSrUnsignedNames[1]) == NVSDK_NGX_Parameter_DLSS_Render_Subrect_Dimensions_Height);
+  static_assert(std::string_view(kNgxSrResetName) == NVSDK_NGX_Parameter_Reset);
+  float scalar{};
+  int integer{};
+  if (ngx::read_float(&parameters, "test.float", &scalar) != ngx::kSuccess ||
+      scalar != -0.375f || parameters.selected != 11) return 5;
+  if (ngx::read_integer(&parameters, "test.integer", &integer) != ngx::kSuccess ||
+      integer != -7 || parameters.selected != 14) return 6;
   // Address identity only: no fabricated COM object is dereferenced.
   std::byte identity{};
   parameters.resource = reinterpret_cast<ID3D12Resource*>(&identity);
@@ -75,11 +99,13 @@ int main() {
   if (ngx::read_unsigned(&parameters, "test.uint", &value) != ngx::kSuccess ||
       parameters.selected != 13 || value != 173) return 2;
   parameters.fail = true;
+  if (ngx::read_float(&parameters, "test.float", &scalar) != NVSDK_NGX_Result_FAIL_InvalidParameter || scalar != -0.375f) return 7;
+  if (ngx::read_integer(&parameters, "test.integer", &integer) != NVSDK_NGX_Result_FAIL_InvalidParameter || integer != -7) return 8;
   output = nullptr;
   if (ngx::read_resource(&parameters, "test.resource", &output) !=
           NVSDK_NGX_Result_FAIL_InvalidParameter || output) return 3;
   value = 42;
   if (ngx::read_unsigned(&parameters, "test.uint", &value) !=
           NVSDK_NGX_Result_FAIL_InvalidParameter || value != 42) return 4;
-  std::cout << "ngx_parameter_abi=pass resource_slot=9 unsigned_slot=12 failure_preserved=1\n";
+  std::cout << "ngx_parameter_abi=pass resource_slot=9 unsigned_slot=12 integer_slot=11 float_slot=14 failure_preserved=1\n";
 }

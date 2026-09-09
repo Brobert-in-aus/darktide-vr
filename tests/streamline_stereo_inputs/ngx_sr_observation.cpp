@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <thread>
 #include <vector>
+#include <limits>
 
 using darktidevr::producer::NgxSrObservationBudget;
 void expect(bool condition) {
@@ -15,6 +16,16 @@ int main(int argc, char** argv) {
     using namespace darktidevr::producer;
     char identity{};
     char line[768]{};
+    for (const auto* name : kNgxSrFloatNames) {
+      expect(format_ngx_sr_scalar(line, sizeof(line), 12, name, "float", true, 1, -0.375) > 0);
+      std::cout << line;
+    }
+    for (const auto* name : kNgxSrUnsignedNames) {
+      expect(format_ngx_sr_scalar(line, sizeof(line), 12, name, "unsigned", true, 1, 1440) > 0);
+      std::cout << line;
+    }
+    expect(format_ngx_sr_scalar(line, sizeof(line), 12, kNgxSrResetName, "integer", true, 1, 0) > 0);
+    std::cout << line;
     for (std::size_t index = 0; index < kNgxSrResourceNames.size(); ++index) {
       NgxSrResourceRecord record{12, 2, 1, 8, 10, &identity, &identity, 7, index,
           1, &identity, true, 3, 1440, 1600, 1, 1, 28, 1};
@@ -35,6 +46,13 @@ int main(int argc, char** argv) {
     return 0;
   }
   NgxSrObservationBudget budget;
+  char scalar_line[384]{};
+  for (const double value : {std::numeric_limits<double>::infinity(),
+                             std::numeric_limits<double>::quiet_NaN()}) {
+    darktidevr::producer::format_ngx_sr_scalar(scalar_line, sizeof(scalar_line), 1,
+        "Jitter.Offset.X", "float", true, 1, value);
+    expect(std::strstr(scalar_line, "valid=0 value=unavailable") != nullptr);
+  }
   // Excluded calls must neither query resources nor consume the later window.
   for (unsigned i = 0; i < 128; ++i) {
     expect(!budget.reserve(false, true, 1, 1, true));

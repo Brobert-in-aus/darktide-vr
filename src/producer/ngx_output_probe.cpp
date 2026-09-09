@@ -116,6 +116,35 @@ void write_line(const char* line, std::size_t length) {
 void record_sr_inputs(std::uint64_t call, void* commands, const void* feature,
                       const void* parameters, std::uint64_t lifetime,
                       const NgxCaptureWindow::Context& window) {
+  const auto write_scalar = [&](const char* name, const char* type, bool queried,
+                                std::uint32_t result, double value) {
+    char line[384]{};
+    const auto length = format_ngx_sr_scalar(line, sizeof(line), call, name, type,
+                                            queried, result, value);
+    if (length > 0 && static_cast<std::size_t>(length) < sizeof(line)) {
+      std::scoped_lock lock(log_mutex);
+      DWORD written{};
+      WriteFile(sr_log, line, static_cast<DWORD>(length), &written, nullptr);
+    }
+  };
+  // Verify each typed getter independently. An unavailable scalar getter must
+  // not suppress the existing resource observation or invent a zero value.
+  const bool float_verified = verified_parameters(parameters, ngx::kGetFloatSlot);
+  for (const auto* name : kNgxSrFloatNames) {
+    float value{};
+    const auto result = float_verified ? ngx::read_float(parameters, name, &value) : 0U;
+    write_scalar(name, "float", float_verified, result, value);
+  }
+  const bool unsigned_verified = verified_parameters(parameters, ngx::kGetUnsignedSlot);
+  for (const auto* name : kNgxSrUnsignedNames) {
+    unsigned value{};
+    const auto result = unsigned_verified ? ngx::read_unsigned(parameters, name, &value) : 0U;
+    write_scalar(name, "unsigned", unsigned_verified, result, value);
+  }
+  const bool integer_verified = verified_parameters(parameters, ngx::kGetIntegerSlot);
+  int reset{};
+  const auto reset_result = integer_verified ? ngx::read_integer(parameters, kNgxSrResetName, &reset) : 0U;
+  write_scalar(kNgxSrResetName, "integer", integer_verified, reset_result, reset);
   // Every pointer is queried and inspected only inside the live callback. No
   // COM reference, GPU copy, state transition or parameter write is performed.
   for (std::size_t index = 0; index < kNgxSrResourceNames.size(); ++index) {
@@ -628,9 +657,10 @@ bool install_ngx_output_probe(HMODULE capture_module) {
     // An unavailable diagnostic destination disables only the optional SR probe.
     observe_sr_inputs = sr_log != INVALID_HANDLE_VALUE;
     if (observe_sr_inputs) {
-      char sr_header[256]{};
+      char sr_header[384]{};
       const auto sr_length = std::snprintf(sr_header, sizeof(sr_header),
-          "ngx_sr_probe=armed schema=1 runtime=32.0.16.1088 resource_get_slot=9 "
+          "ngx_sr_probe=armed schema=2 runtime=32.0.16.1088 resource_get_slot=9 "
+          "float_get_slot=14 integer_get_slot=11 unsigned_get_slot=12 "
           "call_limit=32768 sample_limit=64 wait_for_stereo=%u pixels_captured=0 publication=0\n",
           wait_for_stereo ? 1U : 0U);
       DWORD written{};

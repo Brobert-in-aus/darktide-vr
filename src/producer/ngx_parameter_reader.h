@@ -11,6 +11,8 @@ namespace darktidevr::producer::ngx {
 // MSVC reverses the overload group: declaration order is NOT vtable order.
 inline constexpr std::size_t kGetD3D12ResourceSlot = 9;
 inline constexpr std::size_t kGetUnsignedSlot = 12;
+inline constexpr std::size_t kGetIntegerSlot = 11;
+inline constexpr std::size_t kGetFloatSlot = 14;
 inline constexpr std::uint32_t kSuccess = 1;
 
 template <class Value>
@@ -34,5 +36,11 @@ inline std::uint32_t read_resource(const void* parameters, const char* name,
 inline std::uint32_t read_unsigned(const void* parameters, const char* name,
                                    unsigned int* output) {
   return read_parameter(parameters, name, output, kGetUnsignedSlot);
+}
+inline std::uint32_t read_integer(const void* parameters, const char* name, int* output) {
+  return read_parameter(parameters, name, output, kGetIntegerSlot);
+}
+inline std::uint32_t read_float(const void* parameters, const char* name, float* output) {
+  return read_parameter(parameters, name, output, kGetFloatSlot);
 }
 }  // namespace darktidevr::producer::ngx

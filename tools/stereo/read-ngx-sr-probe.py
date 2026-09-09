@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import sys
@@ -10,6 +11,13 @@ NAMES = ("Color", "Output", "Depth", "MotionVectors", "TransparencyMask",
          "ExposureTexture", "DLSS.Input.Bias.Current.Color.Mask")
 HEADER = ("ngx_sr_probe=armed schema=1 runtime=32.0.16.1088 resource_get_slot=9 "
           "call_limit=32768 sample_limit=64 wait_for_stereo={gate} pixels_captured=0 publication=0")
+TEMPORAL_HEADER = HEADER.replace("schema=1", "schema=2").replace(
+    "call_limit=", "float_get_slot=14 integer_get_slot=11 unsigned_get_slot=12 call_limit=")
+SCALARS = {**dict.fromkeys(("Jitter.Offset.X", "Jitter.Offset.Y", "MV.Scale.X", "MV.Scale.Y",
+                          "DLSS.Pre.Exposure"), "float"),
+           **dict.fromkeys(("DLSS.Render.Subrect.Dimensions.Width",
+                           "DLSS.Render.Subrect.Dimensions.Height"), "unsigned"), "Reset": "integer"}
+SCALAR_FIELDS = {"call", "name", "type", "queried", "result", "valid", "value"}
 IDENTITY = ("feature", "lifetime", "commands", "thread", "batch", "present", "first_call")
 DESCRIPTOR = ("dimension", "width", "height", "depth_or_array", "mips", "format", "samples")
 INPUT_FIELDS = set(IDENTITY + DESCRIPTOR + ("call", "index", "name", "result", "resource",
@@ -41,25 +49,56 @@ def fields(line, expected):
 
 def parse(text):
     lines = text.splitlines()
-    if not lines or lines[0] not in (HEADER.format(gate=0), HEADER.format(gate=1)):
+    headers = {header.format(gate=gate): (gate == 1, version)
+               for header, version in ((HEADER, 1), (TEMPORAL_HEADER, 2)) for gate in (0, 1)}
+    if not lines or lines[0] not in headers:
         raise ValueError("missing or unsupported SR header")
-    gated = lines[0] == HEADER.format(gate=1)
+    gated, version = headers[lines[0]]
     calls = {}
     capture_context = None
     for line in lines[1:]:
         if not line.strip():
             continue
         kind, separator, rest = line.partition(" ")
-        if not separator or kind not in ("NGX_SR_INPUT", "NGX_SR_EVAL"):
+        if not separator or kind not in ("NGX_SR_INPUT", "NGX_SR_EVAL", "NGX_SR_SCALAR"):
             raise ValueError("unexpected SR record")
-        data = fields(rest, INPUT_FIELDS if kind == "NGX_SR_INPUT" else EVAL_FIELDS)
+        data = fields(rest, INPUT_FIELDS if kind == "NGX_SR_INPUT" else
+                      SCALAR_FIELDS if kind == "NGX_SR_SCALAR" else EVAL_FIELDS)
         call = number(data["call"])
-        if not call or data["publication"] != "0":
+        if not call or (kind != "NGX_SR_SCALAR" and data["publication"] != "0"):
             raise ValueError("invalid call or publication claim")
-        observation = calls.setdefault(call, {"call": call, "inputs": {}, "evaluation_result": None})
+        observation = calls.setdefault(call, {"call": call, "inputs": {}, "scalars": {}, "evaluation_result": None})
         if len(calls) > 64:
             raise ValueError("SR sample budget exceeded")
         result = number(data["result"], 32, True)
+        if kind == "NGX_SR_SCALAR":
+            name = data["name"]
+            if version != 2 or name not in SCALARS or data["type"] != SCALARS[name] or name in observation["scalars"]:
+                raise ValueError("unsupported or duplicate scalar")
+            if data["queried"] not in ("0", "1") or data["valid"] not in ("0", "1"):
+                raise ValueError("invalid scalar flags")
+            queried, valid = data["queried"] == "1", data["valid"] == "1"
+            if (not queried and result != 0) or (valid and (not queried or result != 1)):
+                raise ValueError("scalar contradicts query result")
+            value = None
+            if valid:
+                value = float(data["value"])
+                if not math.isfinite(value):
+                    raise ValueError("nonfinite scalar")
+                if data["type"] == "float" and abs(value) > 3.4028234663852886e38:
+                    raise ValueError("scalar exceeds native float range")
+                if data["type"] != "float":
+                    if not re.fullmatch(r"-?[0-9]+", data["value"]):
+                        raise ValueError("invalid integer scalar")
+                    value = int(data["value"])
+                    low, high = (0, 2**32) if data["type"] == "unsigned" else (-2**31, 2**31)
+                    if not low <= value < high:
+                        raise ValueError("scalar exceeds native range")
+            elif data["value"] != "unavailable":
+                raise ValueError("invalid scalar must not report a value")
+            observation["scalars"][name] = {"type": data["type"], "queried": queried,
+                                           "query_result": result, "valid": valid, "value": value}
+            continue
         if kind == "NGX_SR_EVAL":
             if data["gpu_complete"] != "0" or observation["evaluation_result"] is not None:
                 raise ValueError("GPU completion claim or duplicate evaluation")
@@ -108,13 +147,15 @@ def parse(text):
     for call in sorted(calls):
         observation = calls[call]
         observation["missing_indexes"] = [i for i in range(7) if i not in observation["inputs"]]
+        observation["missing_scalars"] = [name for name in SCALARS if name not in observation["scalars"]]
+        observation["scalar_records_complete"] = not observation["missing_scalars"]
         observation["complete"] = (not observation["missing_indexes"] and
                                    observation["evaluation_result"] is not None)
         observation["evaluation_succeeded"] = (None if observation["evaluation_result"] is None
                                                  else observation["evaluation_result"] == 1)
         observation["inputs"] = [observation["inputs"][i] for i in sorted(observation["inputs"])]
         observations.append(observation)
-    return {"schema": 1, "metadata_only": True, "pixels_captured": False,
+    return {"schema": version, "metadata_only": True, "pixels_captured": False,
             "gpu_completion_verified": False, "hud_attribution_verified": False,
             "wait_for_stereo": gated, "observed_calls": len(observations),
             "complete_calls": sum(item["complete"] for item in observations),

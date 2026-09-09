@@ -2,6 +2,12 @@
 
 ## 10 September development resumed
 
+The optional DLSS SR probe now records jitter, motion-vector scale, reset,
+pre-exposure and render size alongside resource identity. Typed ABI and reader
+checks pass; old logs remain readable. This is undeployed evidence-gathering for
+stereo history and HUD blur, not a reconstruction change. See
+[SR observation](DLSS-UI-DETAIL.md#undeployed-sr-resource-observation).
+
 The user's latest performance direction prioritises efficient stereo, improved
 DLSS integration and engine internals over further diagnostic micro-optimisations.
 A [build-specific engine map](STEREO-ENGINE-PERFORMANCE-2026-09-10.md) now locates
