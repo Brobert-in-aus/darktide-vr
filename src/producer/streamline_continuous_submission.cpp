@@ -2,6 +2,7 @@
 #include "producer/generated_stereo.h"
 #include "producer/stereo_ui_readback.h"
 #include "producer/ngx_output_copy_probe.h"
+#include "producer/stereo_input_copy.h"
 #include "core/continuous_frame_trace.h"
 
 namespace darktidevr::producer {
@@ -235,19 +236,15 @@ void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present
   frame.timing_frequencies[eye] = 0;
   if (frame.timing_queries && SUCCEEDED(queue->GetTimestampFrequency(&frame.timing_frequencies[eye])))
     commands->EndQuery(frame.timing_queries.Get(), D3D12_QUERY_TYPE_TIMESTAMP, eye * 2);
+  std::array<StereoInputCopy, 5> copies{};
   for (unsigned role = 0; role < (ui ? 5U : 4U); ++role) {
     const auto& input = role == 4 ? *ui : inputs[role];
     auto* source = static_cast<ID3D12Resource*>(input.native);
     frame.sources[eye][role] = source;
-    D3D12_RESOURCE_BARRIER barrier{};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition = {source, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-        static_cast<D3D12_RESOURCE_STATES>(input.state), D3D12_RESOURCE_STATE_COPY_SOURCE};
-    if (barrier.Transition.StateBefore != barrier.Transition.StateAfter) commands->ResourceBarrier(1, &barrier);
-    commands->CopyResource(frame.textures[eye][role].Get(), source);
-    std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
-    if (barrier.Transition.StateBefore != barrier.Transition.StateAfter) commands->ResourceBarrier(1, &barrier);
+    copies[role] = {source, frame.textures[eye][role].Get(),
+                    static_cast<D3D12_RESOURCE_STATES>(input.state)};
   }
+  record_stereo_input_copies(commands, copies, ui ? 5U : 4U);
   if (frame.timing_queries && frame.timing_frequencies[eye]) {
     commands->EndQuery(frame.timing_queries.Get(), D3D12_QUERY_TYPE_TIMESTAMP, eye * 2 + 1);
     commands->ResolveQueryData(frame.timing_queries.Get(), D3D12_QUERY_TYPE_TIMESTAMP,

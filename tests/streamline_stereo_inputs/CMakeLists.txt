@@ -1,4 +1,10 @@
 add_executable(darktidevr-streamline-stereo-inputs-tests main.cpp)
+add_executable(darktidevr-stereo-input-copy-tests input_copy.cpp)
+target_compile_options(darktidevr-stereo-input-copy-tests PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-stereo-input-copy-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(darktidevr-stereo-input-copy-tests PRIVATE darktidevr_core d3d12 dxgi dxguid)
+add_test(NAME stereo_input_copy COMMAND darktidevr-stereo-input-copy-tests)
+set_tests_properties(stereo_input_copy PROPERTIES LABELS "phase1;streamline;gpu")
 target_compile_options(darktidevr-streamline-stereo-inputs-tests PRIVATE
   /W4 /WX /permissive-)
 target_link_libraries(darktidevr-streamline-stereo-inputs-tests PRIVATE
