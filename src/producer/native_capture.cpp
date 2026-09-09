@@ -1,5 +1,6 @@
 #include "producer/buffer_registry.h"
 #include "producer/guarded_copy.h"
+#include "producer/profile_percentiles.h"
 #include "producer/buffer_copy_address.h"
 #include "producer/pipeline_identity.h"
 #include "producer/diagnostic_append_log.h"
@@ -16058,14 +16059,9 @@ extern "C" __declspec(dllexport) int dtvr_take_gpu_eye_profile(
     gpu_profile_duration_ticks[index].clear();
   }
   // The detached samples no longer need the shared profiling lock.
-  if (!durations.empty()) {
-    std::sort(durations.begin(), durations.end());
-    values[4] = durations[(durations.size() - 1U) / 2U];
-    values[5] = durations[((durations.size() - 1U) * 95U) / 100U];
-  } else {
-    values[4] = 0;
-    values[5] = 0;
-  }
+  const auto percentiles = darktidevr::producer::profile_percentiles(durations);
+  values[4] = percentiles.first;
+  values[5] = percentiles.second;
   return values[3] != 0 ? 0 : 2;
 }
 extern "C" __declspec(dllexport) int dtvr_take_gpu_stage_profile(

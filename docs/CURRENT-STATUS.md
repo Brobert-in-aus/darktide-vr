@@ -2,6 +2,17 @@
 
 ## 10 September development resumed
 
+GPU eye-profile reports now select percentile ranks for larger batches instead
+of sorting every duration. Exact comparison passes 20,485 cases; the native build
+and two affected checks pass. See the
+[offline timing comparison](GPU-PROFILE-PERCENTILE-PERFORMANCE.md). No deployment.
+
+The focused native candidate `b284a2d` combines this morning's diagnostic memory
+corrections and narrower lighting lookup, excluding unrelated mainline changes.
+[PR 240](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/240)
+records its scope and hash. It builds and passes three focused checks; it is
+built-only and does not replace any of the six staged plans.
+
 Lighting patch queuing now requests a 16-byte buffer location instead of a
 200-byte diagnostic/mapping record. Both routes share lookup/expiry logic.
 Offline early-buffer queries improve about 11%; cycling/miss ranges overlap.
