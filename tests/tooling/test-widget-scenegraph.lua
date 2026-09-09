@@ -53,6 +53,21 @@ if arg[3] then
     before,after=run(graph),run(translated)
     assert(before[1]-after[1]==1275 and before[2]-after[2]==300)
     widget.scale=nil
+    -- The actual stock callback runs after callers have measured/admitted the
+    -- widget. A previously local pass can become viewport-relative at draw.
+    widget.passes[1].change_function=function(_,style)style.scenegraph_scale='fit'end
+    assert(widget.style.scenegraph_scale==nil)
+    after=run(translated)
+    assert(after[3]==1920 and after[4]==1080)
+    widget.passes[1].change_function=nil
+    widget.style.scenegraph_scale=nil
+    widget.passes[1].visibility_function=function(_,style)
+        style.scenegraph_scale='fit';return true
+    end
+    after=run(translated)
+    assert(after[3]==1920 and after[4]==1080)
+    widget.passes[1].visibility_function=nil
+    widget.style.scenegraph_scale=nil
     for _,mode in ipairs({'fit','hud_fit','aspect_ratio','fit_width','fit_height'})do
         widget.style.scenegraph_scale=mode
         before,after=run(graph),run(translated)

@@ -72,6 +72,22 @@ for _,mode in ipairs({'fit','hud_fit','aspect_ratio','fit_width','fit_height'}) 
 end
 widget.style.scenegraph_scale=nil
 assert(draw_count==before_transform_draws and pass.data==original and created==first_created)
+-- Stock invokes these callbacks after capture admission. They can change the
+-- measured geometry, introduce viewport transforms or replace resources.
+-- Reject before callbacks/cache changes until their outputs can be frozen.
+for _,field in ipairs({'change_function','visibility_function'}) do
+    local calls=0
+    pass[field]=function(_,style)
+        calls=calls+1;style.scenegraph_scale='fit';return true
+    end
+    admitted,reason=state:draw({widget},{},function()
+        pass[field](widget.content,widget.style);draw()
+    end)
+    assert(not admitted and reason=='unsupported_callback','dynamic pass callback admitted')
+    assert(calls==0 and widget.style.scenegraph_scale==nil)
+    assert(pass.data==original and created==first_created and draw_count==before_transform_draws)
+    pass[field]=nil
+end
 -- A draw failure restores source bindings and retires further capture draws.
 local ok,err=pcall(state.draw,state,{widget},{},function() draw();error('draw failed') end)
 assert(not ok and tostring(err):find('draw failed',1,true))

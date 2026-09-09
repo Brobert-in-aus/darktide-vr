@@ -30,6 +30,13 @@ function State:admit(widgets,settings)
             if #list>=128 then return nil,'too_many_passes' end
             if seen[pass] then return nil,'duplicate_pass' end
             if type(pass)~='table' then return nil,'invalid_pass' end
+            -- Stock executes these after admission and before pass drawing.
+            -- Their arbitrary mutations can invalidate supplied bounds or the
+            -- transform/resource checks below. Keep the stock route until a
+            -- caller can provide frozen callback results without running twice.
+            if pass.change_function or pass.visibility_function then
+                return nil,'unsupported_callback'
+            end
             local kind=pass.pass_type
             if not supported[kind] or not self.pass_types[kind] or
                 type(self.pass_types[kind].init)~='function' then return nil,'unsupported_pass' end

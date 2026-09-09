@@ -57,6 +57,21 @@ do
     assert(select(2,candidate:capture(2,identity,request))=='warming' and count()==1)
     candidate:destroy()
 end
+-- Callback admission is also latched; removing it between eye calls cannot
+-- redirect only the second eye. The next frame may start a clean capture.
+for _,field in ipairs({'change_function','visibility_function'}) do
+    local candidate,target,request,count=setup()
+    local dynamic_pass=request.widgets[1].passes[1]
+    dynamic_pass[field]=function()error('rejected callback ran')end
+    local handled,reason=candidate:capture(1,identity,request)
+    assert(not handled and reason=='unsupported_callback')
+    assert(count()==0 and target.queues==0 and target.copies==0)
+    dynamic_pass[field]=nil
+    handled,reason=candidate:capture(1,identity,request)
+    assert(not handled and reason=='unsupported_callback' and count()==0)
+    assert(select(2,candidate:capture(2,identity,request))=='warming' and count()==1)
+    candidate:destroy()
+end
 assert(select(2,s:capture(1,identity,r))=='warming' and draws()==1)
 assert(pass.data==original and original.material=='source')
 assert(s:capture(1,identity,r) and draws()==1)

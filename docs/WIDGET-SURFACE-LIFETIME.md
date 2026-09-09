@@ -1,5 +1,22 @@
 # Complete-widget surface lifetime
 
+## Dynamic pass admission, 9 September
+
+Capture now rejects pass `change_function` and `visibility_function` callbacks
+before cache changes or drawing. Stock UIWidget invokes them after admission;
+either can change the already measured geometry, introduce viewport transforms,
+or replace resources. Cached stock draw fixtures demonstrate both callbacks
+turning a local pass into a viewport-sized pass. Supporting these later requires
+owned, frozen callback results that preserve stock animation/visibility behavior
+without executing the callback twice. Arbitrary callbacks are not capture-safe
+merely because their pass type is supported.
+
+The regression failed before this guard. Rejection stays latched across both
+eyes, even if the callback disappears before the second eye; a subsequent frame
+can begin capture. The stock interaction popup uses visibility callbacks, so this
+explicitly remains a prerequisite for its complete capture integration. No real
+popup is redirected by these unloaded foundations.
+
 ## Immediate display owner, 9 September
 
 `darktidevr_widget_display.lua` now supplies an unloaded world-GUI owner for one
