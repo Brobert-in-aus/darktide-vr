@@ -1,5 +1,28 @@
 # Billboard investigation, 8 September
 
+## Guarded diagnostic samples, 10 September
+
+Both CBV loggers previously formatted floats directly from borrowed mapped or
+staging memory. They now copy only their bounded sample (at most 33 or 128 floats)
+into local storage using the existing SEH-guarded copy routine, then format that
+copy. A failed copy is discarded; no partial sample is written. Temporary maps
+still unmap on the failure path, and failed attempts consume the existing sample
+reservation rather than introducing retries or changing the logging budget.
+
+The existing guarded-copy implementation moved unchanged into a small shared
+header so its actual code can be exercised independently. A Windows memory test
+uses owned pages with PAGE_NOACCESS protection: exact byte copies at 0/132/512
+bytes, an exact page edge, wholly inaccessible and cross-page sources, and
+recovery to a readable source all pass. Failed destinations may be partially
+modified and must be discarded. This does not guarantee pointer lifetime,
+freshness or a coherent sample during concurrent writes.
+
+Native Release and test executables build. `guarded_diagnostic_copy` and
+`native_capture_hooks` pass 2/2 in 0.44 seconds. Logger cleanup/selection is
+source-reviewed; the fixture does not drive either shader-specific logging path.
+No live capture, shader change or deployment. Receipts:
+`artifacts/unattended/guarded-billboard-sample-{build,tests}-20260910.log`.
+
 ## Target-CBV staging selection follow-up, 10 September
 
 The separate `log_target_billboard_cbv` reader also selected any non-null staging

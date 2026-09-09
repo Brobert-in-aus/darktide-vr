@@ -1,4 +1,8 @@
 add_executable(darktidevr-native-capture-tests main.cpp)
+add_executable(darktidevr-guarded-copy-tests guarded_copy.cpp)
+target_include_directories(darktidevr-guarded-copy-tests PRIVATE "${PROJECT_SOURCE_DIR}/src")
+target_compile_options(darktidevr-guarded-copy-tests PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-guarded-copy-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_executable(darktidevr-billboard-equivalence-tests billboard_shader_equivalence.cpp)
 target_compile_options(darktidevr-billboard-equivalence-tests PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-billboard-equivalence-tests PRIVATE
@@ -79,5 +83,7 @@ add_executable(darktidevr-shader-pair-performance-tests shader_pair_performance.
 target_include_directories(darktidevr-shader-pair-performance-tests PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_compile_options(darktidevr-shader-pair-performance-tests PRIVATE /W4 /WX /permissive-)
 if(BUILD_TESTING)
+  add_test(NAME guarded_diagnostic_copy COMMAND darktidevr-guarded-copy-tests)
+  set_tests_properties(guarded_diagnostic_copy PROPERTIES TIMEOUT 30 LABELS "native;offline")
   add_test(NAME shader_pair_snapshot_performance COMMAND darktidevr-shader-pair-performance-tests)
 endif()

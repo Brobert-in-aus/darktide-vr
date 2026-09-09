@@ -1,4 +1,5 @@
 #include "producer/buffer_registry.h"
+#include "producer/guarded_copy.h"
 #include "producer/buffer_copy_address.h"
 #include "producer/pipeline_identity.h"
 #include "producer/diagnostic_append_log.h"
@@ -5266,15 +5267,7 @@ bool take_stingray_upload_snapshot(void* allocator,
   }
 }
 
-bool safe_copy_bytes(void* destination, const void* source,
-                     std::size_t size) {
-  __try {
-    std::memcpy(destination, source, size);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    return false;
-  }
-}
+using darktidevr::producer::safe_copy_bytes;
 
 void stingray_upload_flush_hook(void* allocator) {
   StingrayUploadSnapshot snapshot{};
@@ -6219,9 +6212,6 @@ std::optional<BufferResourceInfo> resolve_buffer_resource(
   return buffer_registry->resolve_locked(gpu_address);
 }
 
-bool safe_copy_bytes(void* destination, const void* source,
-                     std::size_t size);
-
 bool copy_tracked_buffer_bytes(std::uint64_t gpu_address,
                                std::byte* destination,
                                std::size_t byte_count,
@@ -6364,106 +6354,109 @@ void observe_billboard_cbv(const DescriptorInfo& descriptor) {
                               : billboard_cbv_log_count)
             .fetch_add(1, std::memory_order_relaxed);
     if (sample_index < 32 && readable_size >= sizeof(float)) {
-      std::scoped_lock log_lock(billboard_cbv_log_mutex);
-      std::array<wchar_t, MAX_PATH> temp{};
-      if (GetTempPathW(static_cast<DWORD>(temp.size()), temp.data()) != 0) {
-        std::wstring path(temp.data());
-        path += used_staging_mapping ? L"darktidevr-billboard-staging.tsv"
-                                     : L"darktidevr-billboard-cbv.tsv";
-        const DWORD disposition =
-            (used_staging_mapping ? billboard_staging_log_initialized
-                                  : billboard_cbv_log_initialized)
-                ? OPEN_ALWAYS
-                : CREATE_ALWAYS;
-        HANDLE log = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
-                                 nullptr, disposition, FILE_ATTRIBUTE_NORMAL,
-                                 nullptr);
-        if (log != INVALID_HANDLE_VALUE) {
-          if (used_staging_mapping) {
-            billboard_staging_log_initialized = true;
-          } else {
-            billboard_cbv_log_initialized = true;
-          }
-          std::array<char, 8192> line{};
-          int length = std::snprintf(
-              line.data(), line.size(),
-              "%llu\tgpu=%llu\tbase=%llu\toffset=%llu\tcbv_size=%llu\theap=%u"
-              "\ttracked=%u\tstaging=%u\tcpu=%p",
-              static_cast<unsigned long long>(sample_index),
-              static_cast<unsigned long long>(descriptor.gpu_address),
-              static_cast<unsigned long long>(resource->gpu_start),
-              static_cast<unsigned long long>(resource_offset),
-              static_cast<unsigned long long>(descriptor.width),
-              static_cast<unsigned>(resource->heap_type),
-              used_tracked_mapping ? 1U : 0U,
-              used_staging_mapping ? 1U : 0U,
-              used_staging_mapping
-                  ? static_cast<void*>(resource->staging_base + resource_offset)
-                  : used_tracked_mapping
-                  ? static_cast<void*>(static_cast<std::byte*>(mapped) +
-                                       resource_offset)
-                  : nullptr);
-          if (resource->last_map_stack_count > 0) {
-            billboard_selected_map_stack_count.fetch_add(
-                1, std::memory_order_relaxed);
-          }
-          for (USHORT stack_index = 0;
-               stack_index < resource->last_map_stack_count && length > 0 &&
-               static_cast<std::size_t>(length) < line.size();
-               ++stack_index) {
-            const auto frame = resource->last_map_stack[stack_index];
-            HMODULE module{};
-            std::array<wchar_t, 32768> module_path{};
-            const char* module_label = "unknown";
-            std::array<char, MAX_PATH> module_name{};
-            std::uintptr_t module_offset =
-                reinterpret_cast<std::uintptr_t>(frame);
-            if (GetModuleHandleExW(
-                    GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                        GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                    reinterpret_cast<LPCWSTR>(frame), &module)) {
-              const auto path_length = GetModuleFileNameW(
-                  module, module_path.data(),
-                  static_cast<DWORD>(module_path.size()));
-              if (path_length > 0 && path_length < module_path.size()) {
-                const auto* base_name = module_path.data();
-                for (const auto* cursor = module_path.data(); *cursor; ++cursor) {
-                  if (*cursor == L'\\' || *cursor == L'/') {
-                    base_name = cursor + 1;
+      const auto float_count = (std::min<std::size_t>)(
+          readable_size / sizeof(float), 33);
+      std::array<float, 33> values{};
+      if (safe_copy_bytes(values.data(),
+                          static_cast<const std::byte*>(mapped) + resource_offset,
+                          float_count * sizeof(float))) {
+        std::scoped_lock log_lock(billboard_cbv_log_mutex);
+        std::array<wchar_t, MAX_PATH> temp{};
+        if (GetTempPathW(static_cast<DWORD>(temp.size()), temp.data()) != 0) {
+          std::wstring path(temp.data());
+          path += used_staging_mapping ? L"darktidevr-billboard-staging.tsv"
+                                       : L"darktidevr-billboard-cbv.tsv";
+          const DWORD disposition =
+              (used_staging_mapping ? billboard_staging_log_initialized
+                                    : billboard_cbv_log_initialized)
+                  ? OPEN_ALWAYS
+                  : CREATE_ALWAYS;
+          HANDLE log = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
+                                   nullptr, disposition, FILE_ATTRIBUTE_NORMAL,
+                                   nullptr);
+          if (log != INVALID_HANDLE_VALUE) {
+            if (used_staging_mapping) {
+              billboard_staging_log_initialized = true;
+            } else {
+              billboard_cbv_log_initialized = true;
+            }
+            std::array<char, 8192> line{};
+            int length = std::snprintf(
+                line.data(), line.size(),
+                "%llu\tgpu=%llu\tbase=%llu\toffset=%llu\tcbv_size=%llu\theap=%u"
+                "\ttracked=%u\tstaging=%u\tcpu=%p",
+                static_cast<unsigned long long>(sample_index),
+                static_cast<unsigned long long>(descriptor.gpu_address),
+                static_cast<unsigned long long>(resource->gpu_start),
+                static_cast<unsigned long long>(resource_offset),
+                static_cast<unsigned long long>(descriptor.width),
+                static_cast<unsigned>(resource->heap_type),
+                used_tracked_mapping ? 1U : 0U,
+                used_staging_mapping ? 1U : 0U,
+                used_staging_mapping
+                    ? static_cast<void*>(resource->staging_base + resource_offset)
+                    : used_tracked_mapping
+                    ? static_cast<void*>(static_cast<std::byte*>(mapped) +
+                                         resource_offset)
+                    : nullptr);
+            if (resource->last_map_stack_count > 0) {
+              billboard_selected_map_stack_count.fetch_add(
+                  1, std::memory_order_relaxed);
+            }
+            for (USHORT stack_index = 0;
+                 stack_index < resource->last_map_stack_count && length > 0 &&
+                 static_cast<std::size_t>(length) < line.size();
+                 ++stack_index) {
+              const auto frame = resource->last_map_stack[stack_index];
+              HMODULE module{};
+              std::array<wchar_t, 32768> module_path{};
+              const char* module_label = "unknown";
+              std::array<char, MAX_PATH> module_name{};
+              std::uintptr_t module_offset =
+                  reinterpret_cast<std::uintptr_t>(frame);
+              if (GetModuleHandleExW(
+                      GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                          GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                      reinterpret_cast<LPCWSTR>(frame), &module)) {
+                const auto path_length = GetModuleFileNameW(
+                    module, module_path.data(),
+                    static_cast<DWORD>(module_path.size()));
+                if (path_length > 0 && path_length < module_path.size()) {
+                  const auto* base_name = module_path.data();
+                  for (const auto* cursor = module_path.data(); *cursor; ++cursor) {
+                    if (*cursor == L'\\' || *cursor == L'/') {
+                      base_name = cursor + 1;
+                    }
+                  }
+                  const auto converted = WideCharToMultiByte(
+                      CP_UTF8, 0, base_name, -1, module_name.data(),
+                      static_cast<int>(module_name.size()), nullptr, nullptr);
+                  if (converted > 0) {
+                    module_label = module_name.data();
                   }
                 }
-                const auto converted = WideCharToMultiByte(
-                    CP_UTF8, 0, base_name, -1, module_name.data(),
-                    static_cast<int>(module_name.size()), nullptr, nullptr);
-                if (converted > 0) {
-                  module_label = module_name.data();
-                }
+                module_offset -= reinterpret_cast<std::uintptr_t>(module);
               }
-              module_offset -= reinterpret_cast<std::uintptr_t>(module);
+              length += std::snprintf(
+                  line.data() + length, line.size() - length,
+                  "\tstack%u=%s+0x%llx", static_cast<unsigned>(stack_index),
+                  module_label, static_cast<unsigned long long>(module_offset));
             }
-            length += std::snprintf(
-                line.data() + length, line.size() - length,
-                "\tstack%u=%s+0x%llx", static_cast<unsigned>(stack_index),
-                module_label, static_cast<unsigned long long>(module_offset));
+            for (std::size_t i = 0; i < float_count && length > 0 &&
+                                    static_cast<std::size_t>(length) < line.size();
+                 ++i) {
+              length += std::snprintf(line.data() + length, line.size() - length,
+                                      "\tf%zu=%.9g", i, values[i]);
+            }
+            if (length > 0 && static_cast<std::size_t>(length + 2) < line.size()) {
+              line[length++] = '\r';
+              line[length++] = '\n';
+              DWORD written{};
+              WriteFile(log, line.data(), static_cast<DWORD>(length), &written,
+                        nullptr);
+            }
+            CloseHandle(log);
           }
-          const auto float_count = (std::min<std::size_t>)(
-              readable_size / sizeof(float), 33);
-          const auto* values = reinterpret_cast<const float*>(
-              static_cast<const std::byte*>(mapped) + resource_offset);
-          for (std::size_t i = 0; i < float_count && length > 0 &&
-                                  static_cast<std::size_t>(length) < line.size();
-               ++i) {
-            length += std::snprintf(line.data() + length, line.size() - length,
-                                    "\tf%zu=%.9g", i, values[i]);
-          }
-          if (length > 0 && static_cast<std::size_t>(length + 2) < line.size()) {
-            line[length++] = '\r';
-            line[length++] = '\n';
-            DWORD written{};
-            WriteFile(log, line.data(), static_cast<DWORD>(length), &written,
-                      nullptr);
-          }
-          CloseHandle(log);
         }
       }
     }
@@ -6565,6 +6558,16 @@ void log_target_billboard_cbv(const DescriptorInfo& descriptor) {
   }
   // Use the selected mapping, including fallback when staging is too short.
   const auto* bytes = static_cast<const std::byte*>(mapped) + resource_offset;
+  const auto float_count = (std::min<std::size_t>)(
+      readable_size / sizeof(float), 128);
+  std::array<float, 128> values{};
+  if (!safe_copy_bytes(values.data(), bytes, float_count * sizeof(float))) {
+    if (mapped_for_observation) {
+      const D3D12_RANGE no_writes{0, 0};
+      resource->resource->Unmap(0, &no_writes);
+    }
+    return;
+  }
   std::array<wchar_t, MAX_PATH> temporary_path{};
   if (GetTempPathW(static_cast<DWORD>(temporary_path.size()),
                    temporary_path.data()) != 0) {
@@ -6591,9 +6594,6 @@ void log_target_billboard_cbv(const DescriptorInfo& descriptor) {
           static_cast<unsigned long long>(head_pose.sequence),
           head_pose.pose.orientation.x, head_pose.pose.orientation.y,
           head_pose.pose.orientation.z, head_pose.pose.orientation.w);
-      const auto float_count = (std::min<std::size_t>)(
-          readable_size / sizeof(float), 128);
-      const auto* values = reinterpret_cast<const float*>(bytes);
       for (std::size_t i = 0; i < float_count && length > 0 &&
                               static_cast<std::size_t>(length) < line.size();
            ++i) {

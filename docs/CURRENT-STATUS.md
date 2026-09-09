@@ -2,6 +2,12 @@
 
 ## 10 September development resumed
 
+Both billboard CBV loggers now format bounded local copies instead of directly
+reading borrowed memory. Inaccessible samples are discarded through the existing
+guarded-copy routine. Windows protected-page and native-hook checks pass 2/2;
+no deployment. All six staged plans still match their recorded preconditions at
+07:08 Brisbane (`artifacts/unattended/morning-focused-status-20260910.json`).
+
 Exhausted target-CBV diagnostics now return before buffer lookup and optional
 Map/Unmap work after 2,048 samples. The concurrent reservation gate remains in
 place. Native build/hook check passes; source inspection establishes skipped
