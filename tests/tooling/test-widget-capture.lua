@@ -1,5 +1,19 @@
 local Capture=dofile(arg[1])
 local Surface=dofile(arg[2])
+-- Optional third argument: cached stock ui_renderer.lua. Keep allocation and
+-- faults isolated, but execute the real pass state mutations when supplied.
+local stock_pass
+if arg[3] then
+    local file=assert(io.open(arg[3],'rb'))
+    local source=file:read('*a');file:close()
+    local first=assert(source:find('UIRenderer.clear_scenegraph_queue =',1,true))
+    local last=assert(source:find('UIRenderer.draw_slug_icon =',first,true))
+    stock_pass={}
+    local stock_table=setmetatable({clear=function(t)for key in pairs(t)do t[key]=nil end end},{__index=table})
+    local env=setmetatable({UIRenderer=stock_pass,table=stock_table,
+        RESOLUTION_LOOKUP={scale=1.5,inverse_scale=2/3}},{__index=_G})
+    setfenv(assert(loadstring(source:sub(first,last-1),'stock renderer passes')),env)()
+end
 local function engine(fail_at, nil_failure)
     local e={live={},calls=0,copies=0,clears=0,destroys=0}
     local function allocate(kind)
@@ -34,6 +48,11 @@ local function engine(fail_at, nil_failure)
         end,
         destroy=function(r) free(r.gui);free(r.gui_retained);free(r) end,
         begin_pass=function(r,graph,input,dt,settings)
+            if stock_pass then
+                stock_pass.begin_pass(r,graph,input,dt,settings)
+                if e.fail_begin then error('begin failure') end
+                return
+            end
             r.ui_scenegraph=graph;r.render_settings=settings;r.scale=settings.scale
             r.inverse_scale=settings.inverse_scale;r.dt=dt;r.input_service=input
             r.current_clipping_rect=nil
@@ -42,7 +61,8 @@ local function engine(fail_at, nil_failure)
         end,
         end_pass=function(r)
             e.ends=(e.ends or 0)+1
-            r.ui_scenegraph=nil;r.render_settings=nil;r.scale=nil;r.inverse_scale=nil
+            if stock_pass then stock_pass.end_pass(r)
+            else r.ui_scenegraph=nil;r.render_settings=nil;r.scale=nil;r.inverse_scale=nil end
             if e.fail_end then error('end failure') end
         end}
     e.ScriptWorld={destroy_viewport=function()
@@ -121,6 +141,7 @@ for _,failure in ipairs({'none','begin','draw','end','draw_end','nested','destro
     renderer.ui_scenegraph=old_graph;renderer.render_settings=old_settings
     renderer.input_service=old_input;renderer.current_clipping_rect=old_clip
     renderer.scale=2;renderer.inverse_scale=0.5;renderer.dt=0.1
+    renderer.render_target={};renderer.name='capture_test';renderer.base_render_pass='old_pass'
     renderer.ui_scenegraph_queue[1]=old_graph
     local queue=renderer.ui_scenegraph_queue
     local settings={scale=1,inverse_scale=1,alpha_multiplier=0.8}
@@ -131,6 +152,7 @@ for _,failure in ipairs({'none','begin','draw','end','draw_end','nested','destro
     local ok,err=pcall(c.pass,c,graph,{},0.2,settings,function(r,owned)
         called=called+1
         assert(r==renderer and r.ui_scenegraph==graph and owned~=settings)
+        if stock_pass then assert(r.base_render_pass=='capture_test') end
         owned.alpha_multiplier=0
         r.ui_scenegraph_queue[1]={}
         r.current_clipping_rect={}
@@ -144,6 +166,7 @@ for _,failure in ipairs({'none','begin','draw','end','draw_end','nested','destro
     assert(renderer.ui_scenegraph==old_graph and renderer.render_settings==old_settings)
     assert(renderer.input_service==old_input and renderer.current_clipping_rect==old_clip)
     assert(renderer.scale==2 and renderer.inverse_scale==0.5 and renderer.dt==0.1)
+    assert(renderer.base_render_pass=='old_pass')
     assert(renderer.ui_scenegraph_queue==queue and queue[1]==old_graph and #queue==1)
     if failure=='draw_end' then
         assert(tostring(err):find('draw failure',1,true) and tostring(err):find('end failure',1,true))
@@ -151,6 +174,7 @@ for _,failure in ipairs({'none','begin','draw','end','draw_end','nested','destro
     c:destroy();assert(next(e.live)==nil)
 end
 print('widget_capture: isolated pass restores renderer state through begin/draw/end failures')
+if stock_pass then print('widget_capture: actual cached stock pass state/queue restoration verified; GPU allocation and failures remain mocked') end
 e=engine();c=Capture.new(e,64,64)
 assert(not pcall(c.queue,c,function()c:destroy()end,{},1))
 assert(not c.destroyed and c.failed and not c.queueing and next(e.live)~=nil)

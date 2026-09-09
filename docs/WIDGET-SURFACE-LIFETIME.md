@@ -295,6 +295,21 @@ world-geometry occlusion. Resource extent limits, world/HUD replacement and
 successful capture-world submission must be connected and tested. No generic
 per-marker allocator or engine hook has been added before those decisions.
 
+## Stock renderer pass contract, 9 September
+
+The capture fixture accepts cached `scripts/managers/ui/ui_renderer.lua` as
+an optional third argument after the capture and surface modules. It executes
+the stock clear/begin/end functions through normal completion, partial begin,
+draw and end failures, nested capture and attempted active destruction. The
+saved graph, queue, settings, clipping reference, scale, timing, input and base
+render pass are restored. The stock render-target branch is exercised too.
+Resource allocation and injected faults remain mocked; this does not certify
+GPU ownership or complete popup raster bounds. No production change was needed.
+
+Pinned LuaJIT passes the isolated and actual-stock variants; eight widget/plane
+CTests pass in 0.11 seconds. Receipt:
+`artifacts/unattended/widget-stock-renderer-pass-20260909.log`.
+
 ## Validation
 
 The pinned LuaJIT fixture `test-widget-surface.lua` checks first-frame hiding,
