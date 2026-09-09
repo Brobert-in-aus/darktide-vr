@@ -36,6 +36,40 @@ any new live session.
 
 ## UI RGBA exporter candidate: 8 September
 
+### Source audit and diagnostic request follow-up, 9 September
+
+The accepted native source `23345e5` and current candidate share this frame-
+generation input distinction: depth, motion and HUDless scene are separately
+tagged; the final eye colors fill the presented backbuffer; independent UI tag
+23 is optional. Disabling that optional tag does not remove HUD pixels from the
+final backbuffer. This is a source contract at the FG boundary, not a measured
+cause of blur and not an audit of the separate SR reconstruction boundary.
+
+`stage_stereo_ui_readback` receives owned UI copies only when that optional UI
+path is enabled. With it disabled, diagnostic replay can instead supply two
+observed overlays with matching pose identity. Those exports record
+`owned_ui=0`; they do not arm `arm_ngx_copy_ui_match`. The strict native-proof
+checker intentionally requires `owned_ui=1`. Therefore an observed six-image
+capture is not the same owned-image/NGX match proof as the enabled path. Do not
+enable the UI tag merely to obtain that proof: doing so changes the condition
+being investigated. A diagnostic-only owned UI snapshot independent of tag
+submission remains follow-up work.
+
+The one-shot request now waits when UI capture was explicitly requested but a
+complete matching overlay pair has not arrived. Previously the first attempt
+could consume the request and export four scene/final images, leaving diagnostic
+replay active. Replay now ends when an eligible attempt is consumed, including
+failure before staging; the separate staged flag still reports actual staging.
+An enabled Streamline UI tag continues its normal replay independently.
+
+The missing-overlay regression failed before this fix. Five readback CTests pass
+in 2.80 seconds: missing/stale-pose overlays retain the request, a matching pair
+exports six images without arming owned matching, source failure stops replay
+without claiming staging, and existing content/export-failure/native-roundtrip
+checks pass. Windows x64 `darktidevr_native_capture` also builds successfully in
+the isolated `build/xr-frame-stage-timing` tree. No runtime was deployed; the
+accepted viewer hash and game/streaming/settings state are unchanged.
+
 The one-shot native UI exporter now records a per-image RGBA checksum and
 extent after a successful BMP write/close. It declares
 `image_checksum=rgba_fnv1a64` on its staged/exported status records. Both analysis

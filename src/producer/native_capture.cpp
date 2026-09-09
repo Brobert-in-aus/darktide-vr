@@ -7625,16 +7625,8 @@ bool world_ui_submission_requested() {
   return enabled;
 }
 bool world_ui_capture_requested() {
-  static const bool enabled = [] {
-    wchar_t value[2]{};
-    if (GetEnvironmentVariableW(L"DARKTIDEVR_CAPTURE_UI_ALPHA", value, 2) == 1 && value[0] == L'1') return true;
-    wchar_t directory[MAX_PATH]{};
-    const auto length = GetTempPathW(MAX_PATH, directory);
-    return length && length < MAX_PATH && GetFileAttributesW(
-        (std::wstring(directory) + L"darktidevr-ui-alpha-capture.enabled").c_str()) != INVALID_FILE_ATTRIBUTES;
-  }();
   return world_ui_submission_requested() ||
-      (enabled && !darktidevr::producer::stereo_ui_overlay_readback_staged());
+      darktidevr::producer::stereo_ui_overlay_capture_requested();
 }
 struct WorldUiDrawRedirect {
   std::unique_lock<std::mutex> lock;

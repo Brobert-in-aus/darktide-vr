@@ -34,6 +34,18 @@ std::mutex overlays_mutex;
 std::array<ComPtr<ID3D12Resource>,2> overlays;
 std::array<std::uint64_t,2> overlay_poses{};
 std::atomic<bool> overlay_staged{};
+std::atomic<bool> overlay_capture_consumed{};
+bool overlay_capture_enabled() {
+  static const bool enabled=[] {
+    wchar_t value[2]{};
+    if(GetEnvironmentVariableW(L"DARKTIDEVR_CAPTURE_UI_ALPHA",value,2)==1 && value[0]==L'1') return true;
+    wchar_t directory[MAX_PATH]{};
+    const auto length=GetTempPathW(MAX_PATH,directory);
+    return length && length<MAX_PATH && GetFileAttributesW(
+        (std::wstring(directory)+L"darktidevr-ui-alpha-capture.enabled").c_str())!=INVALID_FILE_ATTRIBUTES;
+  }();
+  return enabled;
+}
 void log(const char* phase, HRESULT result) {
   FILE* file=_wfsopen((probe.stem+L".log").c_str(),L"a",_SH_DENYNO);
   if(!file) return;
@@ -91,6 +103,9 @@ void observe_stereo_ui_readback_overlay(unsigned eye, std::uint64_t pose,
   overlay_poses[eye] = resource ? pose : 0;
 }
 bool stereo_ui_overlay_readback_staged() noexcept { return overlay_staged.load(); }
+bool stereo_ui_overlay_capture_requested() {
+  return overlay_capture_enabled() && !overlay_capture_consumed.load();
+}
 void stage_stereo_ui_readback(ID3D12GraphicsCommandList* commands,
     ID3D12Resource* left_scene, ID3D12Resource* left_final,
     ID3D12Resource* right_scene, ID3D12Resource* right_final, std::uint64_t pose,
@@ -102,11 +117,6 @@ void stage_stereo_ui_readback(ID3D12GraphicsCommandList* commands,
   if(!length || length>=MAX_PATH) return;
   const auto request=std::wstring(directory)+L"darktidevr-ui-readback.request";
   if(GetFileAttributesW(request.c_str())==INVALID_FILE_ATTRIBUTES) return;
-  probe.attempted=true;
-  DeleteFileW(request.c_str());
-  probe.stem=std::wstring(directory)+L"darktidevr-ui-readback-"+std::to_wstring(GetCurrentProcessId());
-  ComPtr<ID3D12Device> device;
-  if(FAILED(commands->GetDevice(IID_PPV_ARGS(&device)))) {log("device_failed",E_FAIL);return;}
   std::array<ComPtr<ID3D12Resource>,2> overlay_sources;
   const bool owned_ui = left_ui && right_ui;
   if (owned_ui) {
@@ -119,6 +129,15 @@ void stage_stereo_ui_readback(ID3D12GraphicsCommandList* commands,
       probe.image_count = 6;
     }
   }
+  // A requested UI diagnostic must not become a four-image scene-only capture
+  // merely because its first eligible Present precedes the matching overlays.
+  if(overlay_capture_enabled() && probe.image_count!=6) return;
+  probe.attempted=true;
+  overlay_capture_consumed.store(true);
+  DeleteFileW(request.c_str());
+  probe.stem=std::wstring(directory)+L"darktidevr-ui-readback-"+std::to_wstring(GetCurrentProcessId());
+  ComPtr<ID3D12Device> device;
+  if(FAILED(commands->GetDevice(IID_PPV_ARGS(&device)))) {log("device_failed",E_FAIL);return;}
   const std::array<ID3D12Resource*,6> sources{left_scene,left_final,right_scene,right_final,
       overlay_sources[0].Get(),overlay_sources[1].Get()};
   for(unsigned i=0;i<probe.image_count;++i) {

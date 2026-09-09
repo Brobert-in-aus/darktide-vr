@@ -40,9 +40,12 @@ std::string read(const fs::path& path) {
   data.resize(count);
   return data;
 }
-int main(int argc,char**) {
+int main(int argc,char** argv) {
   try {
-    const bool failure=argc>1;
+    const std::string mode=argc>1 ? argv[1] : "";
+    const bool failure=mode=="failure";
+    const bool observed=mode=="overlay-wait";
+    const bool source_failure=mode=="source-failure";
     const auto directory=fs::absolute("ui-readback-test-"+std::to_string(GetCurrentProcessId())+"-"+std::to_string(GetTickCount64()));
     fs::create_directories(directory);
     // Process-local TMP prevents this test request from reaching a running game.
@@ -50,6 +53,8 @@ int main(int argc,char**) {
     std::array<wchar_t,MAX_PATH> selected{};
     expect(GetTempPathW(static_cast<DWORD>(selected.size()),selected.data())>0);
     expect(fs::equivalent(directory,fs::path(selected.data())));
+    expect(SetEnvironmentVariableW(L"DARKTIDEVR_CAPTURE_UI_ALPHA",observed || failure || source_failure ? L"1" : nullptr)!=0);
+    expect(darktidevr::producer::stereo_ui_overlay_capture_requested()==(observed || failure || source_failure));
     const auto stem=directory/("darktidevr-ui-readback-"+std::to_string(GetCurrentProcessId()));
     if(failure) fs::create_directory(stem.wstring()+L"-left-ui.bmp");
     { std::ofstream request(directory/"darktidevr-ui-readback.request"); request<<"test\n"; expect(request.good()); }
@@ -86,8 +91,41 @@ int main(int argc,char**) {
     from.pResource=upload.Get(); from.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT; from.PlacedFootprint=footprint;
     to.pResource=source.Get(); to.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
     commands->CopyTextureRegion(&to,0,0,0,&from,nullptr);
-    darktidevr::producer::stage_stereo_ui_readback(commands.Get(),source.Get(),source.Get(),source.Get(),source.Get(),42,source.Get(),source.Get());
-    expect(match_armed && darktidevr::producer::stereo_ui_overlay_readback_staged());
+    ComPtr<ID3D12Resource> overlay;
+    if(observed) {
+      darktidevr::producer::stage_stereo_ui_readback(commands.Get(),source.Get(),source.Get(),source.Get(),source.Get(),42);
+      expect(fs::exists(directory/"darktidevr-ui-readback.request"));
+      expect(darktidevr::producer::stereo_ui_overlay_capture_requested());
+      expect(!match_armed && !darktidevr::producer::stereo_ui_overlay_readback_staged());
+      auto overlay_desc=desc;overlay_desc.Flags=D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+      D3D12_HEAP_PROPERTIES overlay_heap{};overlay_heap.Type=D3D12_HEAP_TYPE_DEFAULT;
+      check(device->CreateCommittedResource(&overlay_heap,D3D12_HEAP_FLAG_NONE,&overlay_desc,
+          D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&overlay)));
+      to.pResource=overlay.Get();commands->CopyTextureRegion(&to,0,0,0,&from,nullptr);
+      D3D12_RESOURCE_BARRIER barrier{};barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+      barrier.Transition={overlay.Get(),D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+          D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_RENDER_TARGET};
+      commands->ResourceBarrier(1,&barrier);
+      darktidevr::producer::observe_stereo_ui_readback_overlay(0,42,overlay.Get());
+      darktidevr::producer::observe_stereo_ui_readback_overlay(1,41,overlay.Get());
+      std::this_thread::sleep_for(std::chrono::milliseconds(1050));
+      darktidevr::producer::stage_stereo_ui_readback(commands.Get(),source.Get(),source.Get(),source.Get(),source.Get(),42);
+      expect(fs::exists(directory/"darktidevr-ui-readback.request"));
+      darktidevr::producer::observe_stereo_ui_readback_overlay(1,42,overlay.Get());
+      std::this_thread::sleep_for(std::chrono::milliseconds(1050));
+    }
+    darktidevr::producer::stage_stereo_ui_readback(commands.Get(),source_failure ? nullptr : source.Get(),source.Get(),source.Get(),source.Get(),42,
+        observed ? nullptr : source.Get(),observed ? nullptr : source.Get());
+    if(source_failure) {
+      expect(!darktidevr::producer::stereo_ui_overlay_capture_requested());
+      expect(!darktidevr::producer::stereo_ui_overlay_readback_staged() && !match_armed);
+      expect(!fs::exists(directory/"darktidevr-ui-readback.request"));
+      expect(read(stem.wstring()+L".log").find("phase=source_missing")!=std::string::npos);
+      std::cout<<"ui_readback=pass source_failure stops_diagnostic_replay_without_claiming_staging\n";
+      return 0;
+    }
+    expect(match_armed!=observed && darktidevr::producer::stereo_ui_overlay_readback_staged());
+    expect(!darktidevr::producer::stereo_ui_overlay_capture_requested());
     // Keep a legitimate monitoring reader open throughout export. The secure
     // CRT's default exclusive write sharing previously lost completion logs.
     const auto observer=CreateFileW((stem.wstring()+L".log").c_str(),GENERIC_READ,
@@ -105,6 +143,7 @@ int main(int argc,char**) {
     } while(std::chrono::steady_clock::now()<deadline);
     CloseHandle(observer);
     expect(log.find(failure ? "UI_READBACK phase=export_failed " : "UI_READBACK phase=exported result=0x00000000")!=std::string::npos);
+    expect(log.find(observed ? "owned_ui=0" : "owned_ui=1")!=std::string::npos);
     for(const auto* role : {"left-scene","left-final","right-scene","right-final","left-ui","right-ui"}) {
       const auto record=std::string("UI_READBACK_IMAGE phase=exported role=")+role+" width=2 height=2 rgba_hash=8972538887847352181";
       if(failure && std::strcmp(role,"left-ui")==0) { expect(log.find(record)==std::string::npos); continue; }

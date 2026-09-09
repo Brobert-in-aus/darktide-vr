@@ -35,4 +35,6 @@ target_link_libraries(darktidevr-ui-readback-tests PRIVATE darktidevr_core d3d12
 if(BUILD_TESTING)
   add_test(NAME ui_readback_content COMMAND darktidevr-ui-readback-tests)
   add_test(NAME ui_readback_failure COMMAND darktidevr-ui-readback-tests failure)
+  add_test(NAME ui_readback_overlay_wait COMMAND darktidevr-ui-readback-tests overlay-wait)
+  add_test(NAME ui_readback_source_failure COMMAND darktidevr-ui-readback-tests source-failure)
 endif()
