@@ -1,9 +1,9 @@
 # Focused diagnostic trials — staged, not deployed
 
-Two independent payloads are staged under ignored `artifacts/focused-trials`.
+Three independent payloads are staged under ignored `artifacts/focused-trials`.
 Each `trial-plan.json` contains relative source/destination paths and exact
 candidate/baseline hash preconditions. They use transaction support from
-`b515e72` (PR #139). Neither payload is an installer or a complete runtime.
+`b515e72` (PR #139). No payload is an installer or a complete runtime.
 The source revision names the reviewed candidate; binary provenance is not
 embedded. Native build evidence remains in the focused source handoff.
 
@@ -11,12 +11,16 @@ embedded. Native build evidence remains in the focused source handoff.
 | --- | --- | --- | --- |
 | `native-ui-a4ec84c` | `a4ec84c`, PR #133 | One native DLL | Existing DLL in `binaries` and in the mod's `bin` directory |
 | `marker-metrics-8178c5f` | `8178c5f`, PR #138 | Main Lua and measurement module | Existing main Lua plus new marker module |
+| `communication-2dded96` | `2dded96`, PR #146 | Fifteen Lua files | Eight existing files plus seven new modules |
 
 The native trial supports owned UI readback while the optional DLSS UI tag
 remains disabled. The marker trial measures inputs to both eyes' draws without
 changing sizing. Keep them separate during initial trials so their effects can
 be attributed. Preserve accepted Lua `3341afb`, native `23345e5`, viewer
 `6688841`, saved bindings and display settings outside the chosen payload.
+The communication candidate includes wheel and push-to-talk ownership guards;
+both new physical bindings remain unassigned. It and the marker candidate both
+replace the main Lua file, so their staged payloads cannot be stacked blindly.
 
 The native candidate hash is
 `3FD7B9100009002F851EB17EBA559EACFB3F378E50F11CBEF35F3F1C49552446`.
@@ -28,7 +32,7 @@ than silently replacing these preconditions with newly observed hashes.
 
 ## Rehearsal evidence
 
-Both plans were applied to separate temporary copies of the relevant installed
+The native and marker plans were applied to separate temporary copies of the relevant installed
 files, then restored through `Restore-DarktideDeploymentTransaction`. Every
 candidate destination matched its payload hash after installation. Both native
 locations and the Lua entry point returned to their exact original hashes;
@@ -39,6 +43,22 @@ Receipt (ignored):
 These are filesystem rehearsals, not live deployment or render acceptance.
 The actual game installation was subsequently checked against all four plan
 preconditions and remains unchanged. The accepted viewer hash is unchanged.
+
+The communication plan was separately rehearsed against a copy of the complete
+installed Lua directory and descriptor. All eight replaced files matched accepted
+`3341afb` after line-ending normalization before staging; all seven additions
+were absent. Installation compiled 57 chunks. Rollback restored all 51 original
+fixture files by hash, removed all seven additions, and compiled 50 chunks.
+The fixture includes an unrelated sentinel and the installation's existing extra
+`darktidevr_gun_alignment.lua`, which the plan preserves. The focused source gate
+compiles 56 chunks; the extra installed module explains the different count.
+All fifteen real-installation preconditions remained unchanged after rehearsal.
+Recovery used the strengthened hash checks from `0b99afd` (PR #141).
+
+Communication receipt (ignored):
+`artifacts/unattended/communication-trial-rehearsal-dd7302238e3b408786e832624590d39d/rehearsal.json`.
+Its focused source passes 64/64 Lua checks in 1.048 seconds, plus cached stock
+wheel/chat contracts with communication and microphone effects mocked.
 
 ## Live trial boundary
 
@@ -52,7 +72,7 @@ Resolve plan source paths under the selected staging directory and destination
 paths under the verified game root, then pass their hash preconditions to the
 transaction helper. Both native destinations belong to one transaction. Retain
 its backup/manifest for rollback; for Lua, rollback must also remove the new
-module. The native diagnostic flags are separate from this file payload and
+modules. The native diagnostic flags are separate from this file payload and
 must retain their own original-state record before any trial.
 
 Require fresh stereo initialization and advancing `shared_ready`. For native

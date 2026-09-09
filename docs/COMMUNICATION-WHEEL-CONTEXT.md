@@ -28,8 +28,10 @@ leaving the owned release queued. Query, lookup and null-proxy failures now
 cancel without firing a communication effect or leaving the wheel context owned.
 The regression failed before the fix. Six communication/production-input CTests
 pass in 0.11 seconds, all 69 chunks compile, and the actual cached stock wheel
-callback fixture passes with every communication effect mocked. This follow-up
-must be ported to focused communication PR #129 before its live trial.
+callback fixture passes with every communication effect mocked. The focused port
+is `90970d5`, PR #144; `2dded96`, PR #146 also includes the PTT retiring-input guard.
+That focused candidate passes 64/64 Lua checks and compiles 56 chunks. Its staged
+payload passes copied-install deployment and rollback; live acceptance is pending.
 
 The button remains available to any other actions deliberately assigned to it.
 For an initial worn trial, choose a free button to isolate wheel behavior, then

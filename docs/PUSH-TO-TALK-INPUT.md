@@ -36,7 +36,9 @@ The regression failed before this guard. Three PTT/binding/production-input
 checks pass in 0.06 seconds and all 69 Lua chunks compile. Actual cached
 ChatManager fixtures cover retiring lookup/query in muted, voice-activated and
 PTT modes; stock PTT mute cleanup still runs. Every microphone operation is
-mocked. Port this follow-up to the focused communication candidate before trial.
+mocked. Focused communication includes this follow-up at `2dded96`, PR #146,
+with 64/64 Lua checks passing and 56 chunks compiled. Its staged selective payload
+also passes copied-install deployment and rollback; no live trial has occurred.
 
 Stock `ChatManager.init` retains an Ingame input service. Its update queries
 both `has("voip_push_to_talk")` and the held value. Only push-to-talk voice mode
