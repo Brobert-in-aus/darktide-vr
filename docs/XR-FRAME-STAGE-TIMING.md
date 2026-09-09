@@ -77,10 +77,19 @@ individual valid windows and groups matching presentation mode/generation,
 source extent and crop. Windows spanning a presentation change, unknown context,
 frame discontinuity, malformed values, incomplete call counts or invalid source
 samples are excluded explicitly. Counter restarts start a separate epoch.
+Malformed rows invalidate continuity without erasing the last observed counter;
+a subsequent restart still separates runs even when their presentation matches.
 Means are weighted by actual call counts, including multiple image waits;
 unobserved calls retain no duration. First/last 60-window summaries can overlap
 in short captures and are not independent controlled trials. The latest display
 period remains available per window without assuming it was constant throughout.
+
+9 September offline follow-up: a malformed row between two matching runs could
+previously hide the counter restart and combine their summaries. The regression
+fails before the fix; all six Python cases and both timing CTests now pass
+(0.17 seconds). Coverage also preserves exclusion of a gap after corruption in
+an advancing run. This changes saved-log analysis only; no viewer or installed
+runtime was changed, and no new live performance result is implied.
 
 Four Python cases cover weighting, absent calls, mixed presentation, gaps,
 malformed/invalid data and restart separation. Both the analyzer and native

@@ -89,6 +89,22 @@ class FrameStages(unittest.TestCase):
         self.assertEqual([r["window_end_frame"] for r in recovery["windows"]], [120, 360])
         self.assertEqual(recovery["excluded_windows"], {"unknown_or_mixed_pair_wait_mode": 1})
 
+    def test_restart_after_malformed_row_keeps_epochs_separate(self):
+        malformed = row(360).replace("wait_frame_mean=0.25", "wait_frame_mean=nan")
+        result = stages.summarize([presentation(), row(), row(240), malformed,
+                                   presentation(), row(), row(240)])
+        self.assertEqual(result["excluded_windows"], {"invalid_number": 1})
+        self.assertEqual([g["epoch"] for g in result["groups"]], [0, 1])
+        self.assertEqual([g["all"]["windows"] for g in result["groups"]], [2, 2])
+
+        # Corruption does not establish continuity in an otherwise advancing run.
+        advancing = stages.summarize([presentation(), row(), malformed,
+                                      row(480), row(600)])
+        self.assertEqual(advancing["excluded_windows"],
+                         {"invalid_number": 1, "frame_discontinuity": 1})
+        self.assertEqual([r["window_end_frame"] for r in advancing["windows"]], [120, 600])
+        self.assertEqual(len(advancing["groups"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

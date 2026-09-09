@@ -89,6 +89,7 @@ def summarize(lines):
     context = None
     contexts = set()
     previous_frame = None
+    last_observed_frame = None
     epoch = 0
     excluded = Counter()
     rows = []
@@ -107,8 +108,11 @@ def summarize(lines):
                 row = parse(line)
                 frame = row["window_end_frame"]
                 expected = (previous_frame or 0) + row["stages"]["active_loop"]["count"]
-                if previous_frame is not None and frame <= previous_frame:
+                # Corrupt rows break continuity, but must not erase evidence
+                # of a later counter restart and merge independent runs.
+                if last_observed_frame is not None and frame <= last_observed_frame:
                     epoch += 1
+                last_observed_frame = frame
                 previous_frame = frame
                 if frame != expected:
                     raise ValueError("frame_discontinuity")
