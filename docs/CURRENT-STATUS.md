@@ -7,6 +7,17 @@ remains first. The initial offline checkpoint separates RGB and alpha-only
 readback changes; see the [resume handoff](handoffs/2026-09-09-resume.md).
 The accepted installed build is preserved. The night shutdown below is historical.
 
+At **12:50 Brisbane, 9 September**, the 20-minute development heartbeat remains
+active. Read-only Inventory finds one physical Quest via two resolved transports,
+one VD Streamer, the Quest asleep, and zero game/launcher processes. Installed
+Lua/native hashes still match the accepted build. No proximity change or fresh
+Ready certification; continue offline. Receipt:
+`artifacts/unattended/report-tools-inventory-20260909.json` (and matching log).
+Latest offline additions cover stock ranged input sequences, stock popup pass
+restoration and capture-preserving diagnostic reports. Four DLSS analysis CTests
+pass in 3.69 seconds; registration is now 181. The full 180-test run below is
+the last full-suite result and predates these additions.
+
 The two authorized ADB connections were verified as aliases for the same Quest 3.
 Read-only inventory now reports one physical Quest, duplicate transports resolved,
 one Virtual Desktop Streamer and Darktide closed. Inventory does not certify Ready
