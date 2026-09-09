@@ -205,3 +205,68 @@ end)
 scope('HudElementPrologueTutorialInfoBox','_get_input_description_text',function()
     assert(text('interact')=='[X]','Tutorial missed shared action binding')
 end)
+
+-- Optional cached-source contract: execute the real tutorial and text utility
+-- through both installed prompt hooks. Rendering/localization/input lookup are
+-- doubles; the stock functions own alias selection and held/released wording.
+if arg[5] and arg[6] then
+    for key in pairs(settings)do settings[key]=nil end
+    mod.on_setting_changed('vr_bind_right_trigger')
+    active=true
+    bindings.sample(true,0,0,0,true,1,'shooting_range')
+    local device={gamepad_active=false}
+    local keys={action_one={},action_two={}}
+    local ui={get_input_alias_key=function(_,action,service)
+        assert(service=='Ingame');return action
+    end,get_action_type=function(_,action)
+        return action=='action_one' and 'held' or 'released'
+    end}
+    local translations={loc_input_legend_text_template='%s %s',
+        loc_input_hold='Hold',loc_input_release='Release',tutorial_action='Attack'}
+    local stock_utils={input_text_for_current_input_device=function(...)
+        return hooks[utils].input_text_for_current_input_device(stock,...)
+    end}
+    local modules={['scripts/managers/input/input_utils']=stock_utils,
+        ['scripts/managers/input/input_device']=device}
+    local environment=setmetatable({Managers={ui=ui},
+        Localize=function(key)return assert(translations[key],key)end,
+        class=function()return {}end,
+        require=function(name)return modules[name] or {}end},{__index=_G})
+    local function load_stock(path)
+        local chunk=assert(loadfile(path));setfenv(chunk,environment);return chunk()
+    end
+    local actual_text=load_stock(arg[6])
+    modules['scripts/utilities/ui/text']={localize_with_button_hint=function(...)
+        return hooks[Text].localize_with_button_hint(actual_text.localize_with_button_hint,...)
+    end}
+    local actual=load_stock(arg[5])
+    local element={_ui_manager=ui,_previous_keys_info={},_input_manager={
+        alias_object=function()return {get_keys_for_alias=function(_,action)return keys[action]end}end}}
+    local info={input_descriptions={{description='tutorial_action',
+        input_action={keyboard='action_one',controller='action_two'}}}}
+    local function description()
+        return scope('HudElementPrologueTutorialInfoBox','_get_input_description_text',
+            actual._get_input_description_text,element,info)
+    end
+    local function refresh()
+        return scope('HudElementPrologueTutorialInfoBox','_should_update_input',
+            actual._should_update_input,element,info)
+    end
+    assert(description()=='Hold [RT] Attack')
+    assert(refresh() and not refresh())
+    settings.vr_action_bind_primary=256
+    mod.on_setting_changed('vr_action_bind_primary')
+    assert(refresh() and not refresh(),'Stock tutorial missed a pure VR remap')
+    assert(description()=='Hold [R3] Attack')
+    active=false
+    assert(refresh() and not refresh())
+    assert(description()=='Hold keyboard:action_one Attack')
+    active=true
+    assert(refresh() and not refresh())
+    assert(description()=='Hold [R3] Attack')
+    device.gamepad_active=true
+    assert(description()=='Release [LT] Attack')
+    assert(device.gamepad_active,'Prompt changed global stock input mode')
+    assert(text('action_two')=='keyboard:action_two','Stock tutorial leaked prompt scope')
+    print('controller_prompts: actual stock tutorial/text preserve remaps, availability, device aliases and action wording')
+end

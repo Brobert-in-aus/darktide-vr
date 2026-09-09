@@ -1,5 +1,28 @@
 # Mission control audit — 8 September 2026
 
+## Stock tutorial text contract checked 9 September
+
+The controller-prompt fixture now optionally executes the actual cached
+`HudElementPrologueTutorialInfoBox._get_input_description_text`,
+`_should_update_input` and `TextUtilities.localize_with_button_hint` through both
+the controller and menu prompt hooks. Pure VR remaps refresh the stock tutorial
+cache; VR loss restores the keyboard hint and recovery restores the remapped
+controller label. Stock keyboard/controller action aliases and held/released
+wording are preserved without changing global input-device mode. The prompt
+scope ends with the tutorial call.
+
+Validation used the pinned `build/dependencies/luajit/src/luajit.exe` with
+`tests/tooling/test-controller-prompts.lua` and its ordinary four module arguments,
+then optional arguments 5/6 pointing to cached
+`scripts/ui/hud/elements/prologue_tutorial_info_box/hud_element_prologue_tutorial_info_box.lua`
+and `scripts/utilities/ui/text.lua`. Cached source revision:
+`0f0cb45991e9305ef4a7b925370792d7d6035f95`. The actual-source contract passes;
+`ctest --test-dir build/xr-frame-stage-timing -C Release --output-on-failure -R
+'^(controller_prompts|menu_prompts|gameplay_ui_input)$'` passes 3/3 in 0.06 seconds.
+Input lookup and localization are doubles; no game, settings, display or input
+mode changed. This verifies the text route, not rendered layout or tutorial
+completion in the headset. No production change was required.
+
 ## Current saved layout checked 9 September
 
 Read-only inspection of the saved action-first settings, resolved through both
