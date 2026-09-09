@@ -106,9 +106,11 @@ function Surface:invalidate()
     self.invalidation_generation=self.invalidation_generation+1
     self.pending=nil
     self.display=nil
-    if not self.capturing then
-        self.frame_t=nil;self.identity=nil
-        self.frame_handled=nil;self.frame_reason=nil
+    if not self.capturing and self.frame_t~=nil then
+        -- Hiding between eyes must not forget that this frame already drew.
+        -- Keep its decision while discarding all image/submission ownership;
+        -- a different frame can warm a fresh capture normally.
+        self.frame_reason='invalidated'
     end
 end
 
@@ -119,6 +121,8 @@ function Surface:destroy()
     assert(not self.capturing,'cannot destroy active widget surface')
     self.destroyed=true
     self:invalidate()
+    self.frame_t=nil;self.identity=nil
+    self.frame_handled=nil;self.frame_reason=nil
     -- Retire before cleanup, so a failure cannot cause double destruction.
     self.backend:destroy()
 end

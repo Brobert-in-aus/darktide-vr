@@ -256,3 +256,24 @@ for _,stage in ipairs({'copy','draw'})do
     s:destroy()
 end
 print('widget_session_invalidation=pass active cancellation is latched through both eyes without stale publication')
+for _,mode in ipairs({'warming','ready','rejected'}) do
+    s,b,r,draws=setup()
+    if mode=='rejected' then r.widgets[1].scale=0.75 end
+    local first=s:capture(1,identity,r)
+    local t=1
+    if mode=='ready' then
+        s:observe_render(b.world);t=2
+        first=s:capture(t,identity,r)
+    end
+    local before_draws,before_copies=draws(),b.copies
+    s:invalidate();s:invalidate();s:observe_render(b.world)
+    r.widgets[1].scale=nil
+    local handled,reason=s:capture(t,identity,r)
+    assert(handled==first and reason=='invalidated' and draws()==before_draws and b.copies==before_copies,
+        'between-eye invalidation changed the first-eye capture decision')
+    assert(not s:visible(t,identity))
+    assert(select(2,s:capture(t+1,identity,r))=='warming' and draws()==before_draws+1)
+    s:destroy()
+    assert(s.identity==nil and s.t==nil and not s.handled)
+end
+print('widget_session_between_eyes=pass invalidation preserves capture/rejection without another stock draw')

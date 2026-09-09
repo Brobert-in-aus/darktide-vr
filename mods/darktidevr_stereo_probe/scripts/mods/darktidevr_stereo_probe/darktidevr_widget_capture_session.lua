@@ -140,9 +140,9 @@ end
 
 function Session:invalidate()
     self.surface:invalidate()
-    self.handled=false
-    if self.capturing then self.reason='invalidated'
-    else self.t=nil;self.identity=nil;self.reason=nil end
+    -- Preserve both admitted and rejected first-eye decisions when cancellation
+    -- arrives between draws. Surface invalidation already hides the image.
+    if self.t~=nil then self.reason='invalidated' end
 end
 
 function Session:destroy()
@@ -154,6 +154,7 @@ function Session:destroy()
     end
     self.destroyed=true
     self:invalidate()
+    self.t=nil;self.identity=nil;self.handled=false;self.reason=nil
     self.surface:destroy()
 end
 

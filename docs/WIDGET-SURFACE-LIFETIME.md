@@ -202,6 +202,19 @@ calling backend cleanup, preventing a second cleanup attempt.
 
 ## Engine integration still required
 
+9 September between-eye cancellation follow-up: invalidation now retires image
+and submission ownership while retaining the current frame's capture/rejection
+decision. Previously a hide between eye calls cleared that decision, allowing a
+second capture and repeated widget side effects in the same frame. The next frame
+still warms a fresh image; late submission cannot revive the cancelled one.
+Destruction clears the retained frame/identity references before backend cleanup.
+
+Both regression fixtures failed before the fix. Warming, ready and rejected
+first-eye routes, repeated cancellation, late submission and next-frame recovery
+pass with eight widget/plane CTests (0.19 seconds); all 69 Lua chunks compile.
+The capture modules remain unloaded. This closes a lifetime defect, not the
+complete-bounds integration or the user's worn popup sizing acceptance.
+
 Capture admission now rejects `widget.scale` and pass-style `scenegraph_scale`
 before cache replacement, copying or drawing. Stock UIWidget scales absolute
 positions for the former, so translating its graph by (-1700, -400) at widget

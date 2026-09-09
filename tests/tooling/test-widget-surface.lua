@@ -90,3 +90,25 @@ for _,stage in ipairs({'copy','draw'})do
     s:destroy()
 end
 print('widget_surface_invalidation=pass active invalidation cannot republish or redraw within an eye pair')
+for _,ready in ipairs({false,true}) do
+    b=backend();s=Surface.new(b)
+    local calls=0
+    local function authored() calls=calls+1 end
+    assert(s:capture(1,key,old_bounds,authored))
+    local t=1
+    if ready then
+        s:submitted(b.revision);t=2
+        assert(select(2,s:capture(t,key,old_bounds,authored))=='ready')
+    end
+    local before_calls,before_copies=calls,b.copies
+    s:invalidate();s:invalidate();s:submitted(b.revision)
+    local handled,reason=s:capture(t,key,old_bounds,authored)
+    assert(handled and reason=='invalidated' and calls==before_calls and b.copies==before_copies,
+        'between-eye invalidation repeated a handled widget draw')
+    assert(not s:visible(t,key) and not s.pending)
+    assert(select(2,s:capture(t+1,key,old_bounds,authored))=='warming')
+    assert(calls==before_calls+1 and b.copies==before_copies)
+    s:destroy()
+    assert(s.identity==nil and s.frame_t==nil)
+end
+print('widget_surface_between_eyes=pass invalidation retains the handled decision until the next frame')
