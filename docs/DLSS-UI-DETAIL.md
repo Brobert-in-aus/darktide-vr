@@ -437,3 +437,49 @@ The baseline is `a7b695c`'s `compare-dlss-generated-ui.py`. Receipt:
 Existing input-comparison and capture/placement checks pass 2/2 in 3.10 seconds;
 `artifacts/unattended/ui-coordinate-memory-tests-20260909.log`. No game, settings
 or installed files changed. The surrounding-HUD blur remains unresolved.
+
+## Optional compiled checksum helper
+
+The three identity-aware analysis tools (`check-dlss-ui-alpha.py`,
+`compare-dlss-generated-ui.py`, `measure-dlss-ui-detail.py`) accept an optional
+`--hash-library <absolute path>` naming the separately built offline helper.
+Without this argument they keep the Python checksum implementation and load no
+helper DLL. An explicitly selected missing, incompatible or incorrect helper
+fails; it does not silently bypass verification or fall back after an error.
+
+Build the Windows x64 Release target `darktidevr-ui-pixel-hash`. In the current
+isolated build the output is
+`build/xr-frame-stage-timing/tests/tooling/Release/darktidevr-ui-pixel-hash.dll`.
+The helper has no graphics calls, game hooks, file I/O or process-state changes.
+It computes the same unsigned 64-bit FNV-1a over the packed RGB(A) bytes, with
+no row padding. The Python adapter checks the ABI version and empty/high-byte/
+overflow checksum examples before using it, and retains the DLL owner for the
+callable lifetime. Existing capture ownership and checksum requirements remain
+mandatory. This is an analysis utility, not a game DLL or deployment payload.
+
+Five alternating numeric-array trials using the actual `pixel_hash` wrapper
+produce identical checksums. Median times include byte packing and the native
+call, but exclude one-time helper configuration/self-checks:
+
+| Input | Bytes | Python ms | Helper ms |
+| --- | ---: | ---: | ---: |
+| Contiguous RGBA | 4,194,304 | 230.1905 | 3.7581 |
+| Packed RGB from RGBA | 3,145,728 | 172.8435 | 8.7306 |
+| Reversed/strided RGBA | 2,097,152 | 114.6080 | 5.8587 |
+
+Run `benchmark-ui-pixel-hash.py <helper DLL>` to repeat the calculation
+benchmark. This changes offline verification cost, not game rendering or the
+unresolved surrounding-HUD blur.
+
+Five helper tests cover channels, strides, Fortran order, empty data, source
+preservation, invalid native arguments, version/checksum failure, explicit
+selection/default Python path, and the existing six-image native proof fixture
+with per-role RGB/alpha corruption and malformed metadata. The helper CTest
+passes 1/1 in 0.41 seconds. The three existing affected analysis CTests pass
+3/3 in 1.46 seconds. Windows x64 Release helper builds.
+DLL SHA256:
+`C1ACA2DBDF04F3852011ADD6410B2C89879EA82CC4D737BCC2C303FE83BDD424`.
+Receipts under ignored `artifacts/unattended`:
+`ui-pixel-hash-{build,final-build,tests,ctest,analysis-tests}-20260909.log` and
+`ui-pixel-hash-benchmark-20260909.json`. No installed files, capture inputs,
+settings or runtime state changed.

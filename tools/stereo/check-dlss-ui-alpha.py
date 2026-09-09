@@ -49,12 +49,52 @@ def coverage_regions(alpha, radius):
             "transparent_near_ui": nearby & ~covered, "transparent_far_ui": ~nearby}
 
 
-def pixel_hash(image, channels):
-    """Native FNV-1a order: top-to-bottom RGB(A), excluding row padding."""
+_pixel_hash_backend = None
+
+
+def _python_pixel_hash(data):
     value = 14695981039346656037
-    for byte in image[:, :, :channels].tobytes():
+    for byte in data:
         value = ((value ^ byte) * 1099511628211) & 0xffffffffffffffff
     return value
+
+
+def configure_pixel_hash(library_path=None):
+    """Opt in to the separately built offline helper; never discover/load one implicitly."""
+    global _pixel_hash_backend
+    if library_path is None:
+        _pixel_hash_backend = None
+        return
+    import ctypes
+    library = ctypes.CDLL(str(Path(library_path).resolve(strict=True)))
+    version = library.dtvr_analysis_hash_version
+    version.argtypes = []
+    version.restype = ctypes.c_uint
+    if version() != 1:
+        raise ValueError("Unsupported pixel hash helper version")
+    compute = library.dtvr_analysis_fnv1a64
+    compute.argtypes = [ctypes.c_char_p, ctypes.c_size_t,
+                        ctypes.POINTER(ctypes.c_uint64)]
+    compute.restype = ctypes.c_int
+
+    def native_hash(data):
+        value = ctypes.c_uint64()
+        if compute(data, len(data), ctypes.byref(value)) != 0:
+            raise ValueError("Pixel hash helper failed")
+        return value.value
+
+    # Validate byte/overflow/empty conventions before accepting this helper.
+    for data in (b"", b"a", b"\x00\xff\x80", bytes(range(256))):
+        if native_hash(data) != _python_pixel_hash(data):
+            raise ValueError("Pixel hash helper checksum mismatch")
+    native_hash.library = library  # Keep the selected DLL owner alive.
+    _pixel_hash_backend = native_hash
+
+
+def pixel_hash(image, channels):
+    """Native FNV-1a order: top-to-bottom RGB(A), excluding row padding."""
+    data = image[:, :, :channels].tobytes()
+    return (_pixel_hash_backend or _python_pixel_hash)(data)
 
 
 def verify_native_capture(stem, images):
@@ -153,7 +193,10 @@ def main():
                         help="Transparent-pixel neighborhood in capture pixels (0-64; default 8)")
     parser.add_argument("--verify-native", action="store_true",
                         help="Require complete native logs and RGBA hashes for all six images")
+    parser.add_argument("--hash-library", type=Path,
+                        help="Optional explicitly selected offline pixel-hash helper DLL")
     args = parser.parse_args()
+    configure_pixel_hash(getattr(args, "hash_library", None))
     source_paths = [Path(f'{args.stem}-{eye}-{role}.bmp') for eye in ('left', 'right')
                     for role in ('scene', 'final', 'ui')] + [Path(f'{args.stem}.log')]
     output_paths = [args.output / f'{eye}-{role}.png' for eye in ('left', 'right')

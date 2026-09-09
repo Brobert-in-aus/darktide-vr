@@ -352,3 +352,12 @@ endif()
 add_test(NAME startup_advance
   COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/test-startup-advance.ps1")
+
+add_library(darktidevr-ui-pixel-hash SHARED "${PROJECT_SOURCE_DIR}/tools/stereo/ui_pixel_hash.cpp")
+target_compile_options(darktidevr-ui-pixel-hash PRIVATE /W4 /WX /permissive-)
+
+if(BUILD_TESTING)
+  add_test(NAME ui_pixel_hash_helper COMMAND "${Python3_EXECUTABLE}" -B
+    "${PROJECT_SOURCE_DIR}/tests/streamline_stereo_inputs/test_ui_pixel_hash.py"
+    "$<TARGET_FILE:darktidevr-ui-pixel-hash>")
+endif()

@@ -189,7 +189,10 @@ def main():
     parser.add_argument("stem", type=Path)
     parser.add_argument("generated", type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--hash-library", type=Path,
+                        help="Optional explicitly selected offline pixel-hash helper DLL")
     args = parser.parse_args()
+    ui_alpha.configure_pixel_hash(getattr(args, "hash_library", None))
     source_paths = [args.generated, args.generated.with_suffix('.log'), Path(f'{args.stem}.log'),
                     Path(f'{args.stem}-left-ui.bmp'), Path(f'{args.stem}-right-ui.bmp')]
     output_paths = [args.output / f'{eye}-{role}.png' for eye in ('left', 'right')
