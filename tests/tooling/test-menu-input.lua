@@ -167,6 +167,8 @@ local service,blocked,gamepad=hook(function() return source,null,true end,handle
 assert(service~=source and blocked==null and gamepad==false)
 assert(service:null_service():get('left_pressed')==false)
 assert(hook(function() return null,null,false end,handler)==null)
+-- Observe neutral after stock's temporary block before new navigation edges.
+hook(function() return source,null,false end,handler)
 assert(not presentation.read_legacy_menu_pointer().primary_pressed)
 assert(consumed.back==1 and consumed.scroll==1)
 p.frame_id,p.scroll_steps,p.back_pressed=21,1,true
@@ -394,3 +396,48 @@ presentation.read_desktop_mirror=function() error('Released desktop retained cur
 local after_mouse=hook(function() return mouse_source,null,false end,handler)
 assert(after_mouse:get('cursor')[1]==p.x*RESOLUTION_LOOKUP.width/p.source_width)
 print('menu_desktop_buttons=pass all_mouse_phases immediate_drag_point single_stock_click release_frame')
+
+-- Stock can temporarily block this same view without replacing its owner.
+-- Requests accumulated while blocked must not become clicks/back/scroll when
+-- the service returns, and the blocked route must not read either pointer.
+presentation.read_desktop_mirror=nil
+local pointer_reads=0
+presentation.read_menu_pointer=function()pointer_reads=pointer_reads+1;return p end
+p.frame_id=3000
+p.primary_down,p.primary_pressed,p.secondary_down,p.secondary_pressed=false,false,false,false
+p.back_pressed,p.scroll_steps=false,0
+hook(function()return mouse_source,null,false end,handler)
+p.frame_id=3001
+p.primary_down,p.primary_pressed,p.secondary_down,p.secondary_pressed=true,true,true,true
+p.back_pressed,p.scroll_steps=true,2
+local before_block_reads=pointer_reads
+assert(hook(function()return null,null,false end,handler)==null)
+assert(pointer_reads==before_block_reads,'Blocked route read controller input')
+p.frame_id=3002
+local recovered=hook(function()return mouse_source,null,false end,handler)
+assert(not recovered:get('left_pressed') and not recovered:get('right_pressed'),
+    'Click made during null input replayed when the same view recovered')
+assert(not recovered:get('left_hold') and not recovered:get('right_hold'))
+assert(not recovered:get('back') and recovered:get('scroll_axis')[2]==0)
+assert(not p.primary_pressed and not p.secondary_pressed and not p.back_pressed and p.scroll_steps==0)
+p.frame_id=3003
+recovered=hook(function()return mouse_source,null,false end,handler)
+assert(not recovered:get('left_hold') and not recovered:get('right_hold'))
+p.frame_id=3004
+p.primary_down,p.secondary_down=false,false
+hook(function()return mouse_source,null,false end,handler)
+p.frame_id=3005
+p.primary_down,p.primary_pressed,p.secondary_down,p.secondary_pressed=true,true,true,true
+recovered=hook(function()return mouse_source,null,false end,handler)
+assert(recovered:get('left_pressed') and recovered:get('right_pressed'),'Fresh released/rearmed controls were blocked')
+-- A directly fetched View service can also block an already-active gesture.
+-- Recovery during that same frame must not inherit the previous sample.
+p.frame_id=3006
+p.primary_pressed,p.secondary_pressed=false,false
+before_block_reads=pointer_reads
+assert(direct_hook(function()return null end,{},'View')==null)
+assert(pointer_reads==before_block_reads)
+recovered=direct_hook(function()return mouse_source end,{},'View')
+assert(not recovered:get('left_hold') and not recovered:get('right_hold'))
+assert(not recovered:get('left_pressed') and not recovered:get('right_pressed'))
+print('menu_null_recovery=pass blocked_requests_drained=true release_required=true no_blocked_pointer_reads=true')

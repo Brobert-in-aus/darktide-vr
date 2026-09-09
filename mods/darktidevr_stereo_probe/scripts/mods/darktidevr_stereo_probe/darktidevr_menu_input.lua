@@ -304,7 +304,14 @@ function MenuInput.install(mod, presentation)
             return source, null_service, gamepad
         end
         -- Respect ImGui, disabled input, and the view handler's own suppression.
-        if source == null_service then return source, null_service, gamepad end
+        if source == null_service then
+            -- A modal/ImGui/input block may leave the same view owner in place.
+            -- Retire its XR gesture without reading blocked input. The first
+            -- recovered sample then drains queued edges and requires release
+            -- before another hold; it cannot replay clicks made while blocked.
+            state = {}
+            return source, null_service, gamepad
+        end
         if proxies[source] then return source, null_service, false end
         local pointer = presentation.read_menu_pointer()
         local handler = self._view_handler

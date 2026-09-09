@@ -1,5 +1,21 @@
 # Menu interaction audit and offline rework
 
+## Null-service recovery, 9 September
+
+A stock input block can retain the same menu owner. Previously the VR sampler
+kept its armed state while the null service bypassed input reads, so queued
+controller presses/back/scroll could replay when the same view recovered.
+The null route now retires the controller gesture without reading blocked input.
+The first recovered sample drains accumulated edges and requires release before
+a new hold. Both manager and direct View-service entry points share this rule.
+
+The regression reproduced the delayed click before the fix. Tests cover both
+primary and secondary buttons, queued back/scroll, held recovery, same-frame
+direct-service recovery and subsequent fresh presses. Existing immediate mouse
+and keyboard checks still pass. Five related menu/prompt/UI checks pass in 0.14
+seconds, and all 69 chunks compile. This source candidate is undeployed; worn
+menu behavior and the focused communication port remain pending.
+
 Latest checkpoint: the user accepted tested menu changes, but requested a broad
 binding-hint pass beyond menu footers. The hub talent-points [I] reminder and
 talent deactivation right-click are acceptance cases; do not patch the latter
