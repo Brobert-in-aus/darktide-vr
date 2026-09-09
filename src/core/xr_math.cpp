@@ -37,6 +37,13 @@ Quaternion hamilton(Quaternion left, Quaternion right) {
           left.z * right.z};
 }
 
+// Internal only: callers already validate and normalize the rotation.
+Vec3 rotate_normalized(Quaternion rotation, Vec3 value) {
+  const Quaternion vector{value.x, value.y, value.z, 0.0F};
+  const auto rotated = hamilton(hamilton(rotation, vector), conjugate(rotation));
+  return {rotated.x, rotated.y, rotated.z};
+}
+
 }  // namespace
 
 Quaternion normalized(Quaternion value) {
@@ -73,10 +80,7 @@ Quaternion from_axis_angle(Vec3 axis, float radians) {
 }
 
 Vec3 rotate(Quaternion rotation, Vec3 value) {
-  rotation = normalized(rotation);
-  const Quaternion vector{value.x, value.y, value.z, 0.0F};
-  const auto rotated = hamilton(hamilton(rotation, vector), conjugate(rotation));
-  return {rotated.x, rotated.y, rotated.z};
+  return rotate_normalized(normalized(rotation), value);
 }
 
 Vec3 openxr_to_darktide(Vec3 value) {
@@ -110,14 +114,14 @@ Pose darktide_to_openxr(Pose value) {
 Pose compose(Pose parent, Pose child) {
   parent.orientation = normalized(parent.orientation);
   child.orientation = normalized(child.orientation);
-  return {multiply(parent.orientation, child.orientation),
-          add(parent.position, rotate(parent.orientation, child.position))};
+  return {normalized(hamilton(parent.orientation, child.orientation)),
+          add(parent.position, rotate_normalized(parent.orientation, child.position))};
 }
 
 Pose inverse(Pose pose) {
   const auto inverse_rotation = conjugate(normalized(pose.orientation));
   return {inverse_rotation,
-          rotate(inverse_rotation, scale(pose.position, -1.0F))};
+          rotate_normalized(inverse_rotation, scale(pose.position, -1.0F))};
 }
 
 Vec3 transform_point(Pose pose, Vec3 point) {
