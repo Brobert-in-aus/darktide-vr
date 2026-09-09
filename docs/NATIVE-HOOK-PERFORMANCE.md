@@ -35,7 +35,35 @@ matches neither. RGBA16F does not match the uninitialised camera output format,
 so no anonymous output is learned. The command-snapshot optimisation is not
 exercised by these barrier-only workloads.
 
-## Recorded results
+## Expanded comparison
+
+The repeatability update records the selected adapter vendor/device and driver
+version, requiring identical identity across runs. The runner accepts an odd
+`-Trials` count from 3 to 31 (default 5), computes its median from that count,
+and saves schema 2 with the trial count and adapter identity.
+
+A 15-trial-per-version comparison selects vendor 4318/device 9860, hardware
+adapter, driver integer 9007199255790656. Local Windows device inventory maps these IDs to NVIDIA GeForce RTX 4090, driver 32.0.16.1088. All 30 processes retain 4,096 matching
+normalized diagnostic lines, with the same digest shown below. Milliseconds
+per 40,000 recorded barriers:
+
+| Workload | Accepted median (min-max) | Candidate median (min-max) |
+| --- | ---: | ---: |
+| Exhausted menu log | 11.0243 (10.5315-11.9635) | 5.1497 (5.0400-5.9920) |
+| Short name matching | 11.0891 (10.7104-15.6105) | 7.0136 (6.8307-10.0426) |
+| Control | 5.1804 (4.9660-6.9289) | 5.1031 (4.9990-5.5423) |
+
+The targeted paths remain faster. Control medians differ by 0.0773 ms with
+overlapping ranges; the earlier small control slowdown does not recur here.
+This is still command-recording CPU time, with no GPU submission or game FPS
+measurement. Both installed DLL hashes remain unchanged.
+
+Receipt: `artifacts/unattended/native-hook-comparison-15-trials-20260909/comparison.json`.
+Build receipt: `artifacts/unattended/hook-performance-repeatability-build-20260909.log`.
+Benchmark executable SHA-256:
+`4B338F71188B2AE0D96EFAE9FFB5967B6240A2CBDA18D283F3313E5321C3449C`.
+
+## Earlier five-trial results
 
 System CPU: AMD Ryzen 7 9800X3D. Windows default D3D12 adapter selection is used;
 its identity was not recorded by this version of the executable. No power,

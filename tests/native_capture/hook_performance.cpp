@@ -1,6 +1,7 @@
 #include "../isolated_transports.h"
 #include <Windows.h>
 #include <d3d12.h>
+#include <dxgi1_4.h>
 #include <wrl/client.h>
 #include <array>
 #include <chrono>
@@ -19,6 +20,18 @@ int wmain(int argc,wchar_t** argv) {
     if(!install||!diagnostics||diagnostics(1)!=0||install()!=0) throw std::runtime_error("Hook installation failed");
     ComPtr<ID3D12Device> device;
     ok(D3D12CreateDevice(nullptr,D3D_FEATURE_LEVEL_12_0,IID_PPV_ARGS(&device)));
+    ComPtr<IDXGIFactory4> factory;
+    ok(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
+    ComPtr<IDXGIAdapter1> adapter;
+    ok(factory->EnumAdapterByLuid(device->GetAdapterLuid(),IID_PPV_ARGS(&adapter)));
+    DXGI_ADAPTER_DESC1 adapter_desc{};
+    ok(adapter->GetDesc1(&adapter_desc));
+    LARGE_INTEGER driver{};
+    ok(adapter->CheckInterfaceSupport(__uuidof(IDXGIDevice),&driver));
+    std::cout << "adapter_vendor=" << adapter_desc.VendorId
+      << " adapter_device=" << adapter_desc.DeviceId
+      << " adapter_software=" << ((adapter_desc.Flags&DXGI_ADAPTER_FLAG_SOFTWARE)!=0)
+      << " driver_version=" << driver.QuadPart << '\n';
     ComPtr<ID3D12CommandAllocator> allocator;
     ok(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,IID_PPV_ARGS(&allocator)));
     ComPtr<ID3D12GraphicsCommandList> commands;

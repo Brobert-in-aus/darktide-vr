@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)][string]$Candidate,
     [Parameter(Mandatory)][ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$BaselineHash,
     [Parameter(Mandatory)][ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$CandidateHash,
-    [Parameter(Mandatory)][string]$OutputDirectory
+    [Parameter(Mandatory)][string]$OutputDirectory,
+    [ValidateRange(3,31)][ValidateScript({ $_ % 2 -eq 1 })][int]$Trials = 5
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -27,10 +28,11 @@ $oldTmp = $env:TMP
 $savedOverrides = @(Get-ChildItem Env: | Where-Object Name -Like 'DARKTIDEVR_*')
 $rows = @()
 $menuDigest = $null
+$adapterIdentity = $null
 $process = $null
 try {
     foreach ($override in $savedOverrides) { [Environment]::SetEnvironmentVariable($override.Name, $null, 'Process') }
-    for ($trial=0; $trial -lt 5; $trial++) {
+    for ($trial=0; $trial -lt $Trials; $trial++) {
         $order = if ($trial % 2 -eq 0) { @(0,1) } else { @(1,0) }
         foreach ($index in $order) {
             $version = $versions[$index]
@@ -52,6 +54,10 @@ try {
             if ($process.ExitCode -ne 0) { throw "Benchmark failed: $run (exit $($process.ExitCode))" }
             $lines = @(Get-Content -LiteralPath $stdout)
             if ($lines -notcontains 'PASS recorded_only=1 gpu_submissions=0') { throw "Missing completion marker: $run" }
+            $adapterLines = @($lines | Where-Object { $_ -match '^adapter_vendor=\d+ adapter_device=\d+ adapter_software=[01] driver_version=\d+$' })
+            if ($adapterLines.Count -ne 1) { throw "Missing or duplicate adapter identity: $run" }
+            if ($adapterIdentity -and $adapterIdentity -ne $adapterLines[0]) { throw 'Adapter or driver changed during comparison.' }
+            $adapterIdentity = $adapterLines[0]
             $seen = @{}
             foreach ($line in $lines) {
                 if ($line -match '^workload=([0-2]) pairs=20000 barriers=40000 record_ms=([0-9.]+)$') {
@@ -86,10 +92,10 @@ try {
     foreach ($workload in 0..2) {
         foreach ($version in $versions) {
             $values = @($rows | Where-Object { $_.workload -eq $workload -and $_.version -eq $version.name } | ForEach-Object record_ms | Sort-Object)
-            $summary += @{workload=$workload;version=$version.name;median_ms=$values[2];minimum_ms=$values[0];maximum_ms=$values[4]}
+            $summary += @{workload=$workload;version=$version.name;median_ms=$values[[int][math]::Floor($Trials/2)];minimum_ms=$values[0];maximum_ms=$values[-1]}
         }
     }
-    $report = @{schema_version=1;status='passed';recorded_only=$true;gpu_submissions=0;baseline_hash=$BaselineHash;candidate_hash=$CandidateHash;executable_hash=$exeHash;diagnostic_entries_per_run=4096;normalized_menu_log_sha256=$menuDigest;rows=$rows;summary=$summary}
+    $report = @{schema_version=2;status='passed';trials_per_version=$Trials;adapter_identity=$adapterIdentity;recorded_only=$true;gpu_submissions=0;baseline_hash=$BaselineHash;candidate_hash=$CandidateHash;executable_hash=$exeHash;diagnostic_entries_per_run=4096;normalized_menu_log_sha256=$menuDigest;rows=$rows;summary=$summary}
     $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outputRoot 'comparison.json') -Encoding utf8
     $report.summary | ForEach-Object { [pscustomobject]$_ } | Format-Table workload,version,median_ms,minimum_ms,maximum_ms
 } finally {
