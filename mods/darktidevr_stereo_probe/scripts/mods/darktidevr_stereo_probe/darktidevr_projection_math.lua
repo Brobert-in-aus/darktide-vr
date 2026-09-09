@@ -1,4 +1,5 @@
 local Projection = {}
+local signs = {-1, 1}
 local function inverse_quaternion(q)
     local x, y, z, w = Quaternion.to_elements(q)
     return Quaternion.from_elements(-x, -y, -z, w)
@@ -45,15 +46,19 @@ function Projection.binocular_visibility_scale(left, right)
     for _, pair in ipairs({{left, right}, {right, left}}) do
         local own, other = pair[1], pair[2]
         local inverse = inverse_quaternion(own.rotation)
-        for _, x in ipairs({-1, 1}) do
-            for _, z in ipairs({-1, 1}) do
+        local other_horizontal = math.tan(other.horizontal_half)
+        local other_vertical = math.tan(other.vertical_fov * 0.5)
+        local own_horizontal = math.tan(own.horizontal_half)
+        local own_vertical = math.tan(own.vertical_fov * 0.5)
+        for _, x in ipairs(signs) do
+            for _, z in ipairs(signs) do
                 local ray = Quaternion.rotate(inverse, Quaternion.rotate(
-                    other.rotation, Vector3(x * math.tan(other.horizontal_half),
-                        1, z * math.tan(other.vertical_fov * 0.5))))
+                    other.rotation, Vector3(x * other_horizontal,
+                        1, z * other_vertical)))
                 if ray.y > 0 then
                     scale = math.max(scale,
-                        math.abs(ray.x / ray.y) / math.tan(own.horizontal_half),
-                        math.abs(ray.z / ray.y) / math.tan(own.vertical_fov * 0.5))
+                        math.abs(ray.x / ray.y) / own_horizontal,
+                        math.abs(ray.z / ray.y) / own_vertical)
                 end
             end
         end
@@ -73,7 +78,7 @@ function Projection.binocular_panel_width(left, right, half_ipd, distance, heigh
         local tangent = math.tan(eye.horizontal_half)
         for _, z in ipairs({-height * 0.5, height * 0.5}) do
             local origin = Quaternion.rotate(inverse, Vector3(-eye_x, distance, z))
-            for _, side in ipairs({-1, 1}) do
+            for _, side in ipairs(signs) do
                 local coefficient = side * x_axis.x - tangent * x_axis.y
                 local bound = tangent * origin.y - side * origin.x
                 if math.abs(coefficient) < 1e-8 then
