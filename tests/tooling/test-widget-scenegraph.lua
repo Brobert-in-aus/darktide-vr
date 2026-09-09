@@ -7,6 +7,66 @@ local function size(graph,name,scale)
     if node.scale=='fit' or not node.parent then return viewport[1]/scale,viewport[2]/scale end
     return node.size[1],node.size[2]
 end
+
+-- Optional actual UIWidget.draw proof: the admitted unscaled/local style is
+-- translation-equivariant, but absolute scaling and viewport-relative sizing
+-- need separate handling. Test widgets contain only a recording rect pass;
+-- actual stock UIWidget owns their transform calculation, with engine APIs mocked.
+if arg[3] then
+    local vector_mt={}
+    vector_mt.__add=function(a,b) return setmetatable({a[1]+b[1],a[2]+b[2],a[3]+b[3]},vector_mt) end
+    Vector3=setmetatable({from_array=function(a)return setmetatable({a[1],a[2],a[3]},vector_mt)end,
+        to_elements=function(a)return unpack(a)end},
+        {__call=function(_,x,y,z)return setmetatable({x,y,z},vector_mt)end})
+    Vector2=function(x,y)return {x,y}end
+    table.clear=function(t)for k in pairs(t)do t[k]=nil end end
+    table.set=function(t)local s={}for _,v in ipairs(t)do s[v]=true end return s end
+    ResourceReferenceContext={push=function()end,pop=function()end}
+    GuiMaterialFlag={GUI_HDR_LAYER=0}
+    local emitted
+    local passes={rect={draw=function(_,_,_,_,position,extent)
+        emitted={position[1],position[2],extent[1],extent[2]}
+    end}}
+    local graph_api={get_size=function(g,id)return unpack(g[id].size)end,
+        world_position=function(g,id)return g[id].world_position end}
+    local modules={['scripts/managers/ui/ui_passes']=passes,
+        ['scripts/managers/ui/ui_scenegraph']=graph_api,
+        ['scripts/managers/input/input_device']={gamepad_active=false}}
+    local original_require=require
+    require=function(name)return modules[name] or {}end
+    local actual=dofile(arg[3])
+    require=original_require
+    RESOLUTION_LOOKUP={width=1920,height=1080}
+    local graph={pivot={size={420,150},world_position={1700,400,100}}}
+    local translated=assert(Snapshot.create(graph,1,-1700,-400,graph_api.get_size))
+    local widget={name='bounds-proof',visible=true,scenegraph_id='pivot',offset={0,0,0},
+        content={},style={},passes={{pass_type='rect',data={}}}}
+    local renderer={name='record-only',ui_scenegraph=graph,scale=1,dt=0.01,render_settings={}}
+    local function run(g)
+        renderer.ui_scenegraph=g;actual.draw(widget,renderer)
+        return emitted
+    end
+    local before,after=run(graph),run(translated)
+    assert(before[1]-after[1]==1700 and before[2]-after[2]==400)
+    assert(before[3]==after[3] and before[4]==after[4])
+    widget.scale=0.75
+    before,after=run(graph),run(translated)
+    assert(before[1]-after[1]==1275 and before[2]-after[2]==300)
+    widget.scale=nil
+    for _,mode in ipairs({'fit','hud_fit','aspect_ratio','fit_width','fit_height'})do
+        widget.style.scenegraph_scale=mode
+        before,after=run(graph),run(translated)
+        -- fit/hud_fit still follow translated coordinates at this resolution;
+        -- their sizes re-resolve globally, unlike frozen node bounds. Keep all
+        -- viewport modes outside the capture contract until explicitly owned.
+        if mode=='fit' or mode=='hud_fit' then
+            assert(after[3]==1920 and after[4]==1080)
+        else
+            assert(before[1]-after[1]~=1700 or before[2]-after[2]~=400)
+        end
+    end
+    print('widget_scenegraph: actual stock draw verifies local translation and unsupported absolute/viewport transforms')
+end
 local source={screen={size={1,1},world_position={0,0,0},scale='fit'},
     pivot={parent='screen',size={0,0},world_position={1800,500,100}},
     text={parent='pivot',size={420,70},world_position={1812,480,102}}}

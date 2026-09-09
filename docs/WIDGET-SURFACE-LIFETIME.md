@@ -185,6 +185,27 @@ calling backend cleanup, preventing a second cleanup attempt.
 
 ## Engine integration still required
 
+Capture admission now rejects `widget.scale` and pass-style `scenegraph_scale`
+before cache replacement, copying or drawing. Stock UIWidget scales absolute
+positions for the former, so translating its graph by (-1700, -400) at widget
+scale 0.75 changes final positions by (-1275, -300), missing the intended crop.
+Viewport style modes re-resolve dimensions or reset axes after graph translation.
+Frozen node sizes alone do not own those transforms. A rejected first eye stays
+on the source route for the entire pair even if the second eye's style changes.
+
+The admission regression failed before the guard. Seven widget checks pass in
+0.09 seconds and all 69 Lua chunks compile. The optional cached UIWidget.draw
+fixture confirms ordinary translation, the scaled-offset mismatch and all five
+viewport modes with engine APIs mocked. Actual popup layout/capture remains open.
+
+The cached interaction definitions also confirm why the background node is not
+a complete crop: frames add 20 units in both dimensions, the progress shadow has
+its own offset and dynamic width, and the event panel extends beyond the normal
+background. Stock updates independently resize description/extra-info nodes and
+animate background height. Text uses slug maximum extents at the final font/box
+scale. These are source-layout facts; material raster expansion and actual glyph
+coverage still require measured evidence. Do not replace them with a fixed crop.
+
 Reentrant cleanup follow-up, 9 September: a session destruction request from
 inside its draw now hides the image immediately and defers resource destruction
 until private pass and source-cache restoration have unwound. Copy-time

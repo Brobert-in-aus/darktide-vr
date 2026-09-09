@@ -58,6 +58,20 @@ assert(not state:draw({widget},{},draw));widget.style.material=nil
 widget.content.image={foreign=true}
 assert(not state:draw({widget},{},draw));widget.content.image='texture'
 assert(not state:draw({widget,widget},{},draw))
+-- Translating the source graph is not equivalent for stock absolute scaling
+-- or viewport-relative styles. Reject before changing caches or drawing.
+local before_transform_draws=draw_count
+widget.scale=0.75
+local admitted,reason=state:draw({widget},{},draw)
+assert(not admitted and reason=='unsupported_transform')
+widget.scale=nil
+for _,mode in ipairs({'fit','hud_fit','aspect_ratio','fit_width','fit_height'}) do
+    widget.style.scenegraph_scale=mode
+    admitted,reason=state:draw({widget},{},draw)
+    assert(not admitted and reason=='unsupported_transform')
+end
+widget.style.scenegraph_scale=nil
+assert(draw_count==before_transform_draws and pass.data==original and created==first_created)
 -- A draw failure restores source bindings and retires further capture draws.
 local ok,err=pcall(state.draw,state,{widget},{},function() draw();error('draw failed') end)
 assert(not ok and tostring(err):find('draw failed',1,true))

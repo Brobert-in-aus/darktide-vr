@@ -43,6 +43,20 @@ local function setup()
 end
 local s,b,r,draws,original,pass=setup()
 local identity={}
+-- Unsupported stock transforms must leave the entire eye pair on its source
+-- route, even if the second eye receives a now-unscaled widget.
+do
+    local candidate,target,request,count=setup()
+    request.widgets[1].scale=0.75
+    local handled,reason=candidate:capture(1,identity,request)
+    assert(not handled and reason=='unsupported_transform')
+    assert(count()==0 and target.queues==0 and target.copies==0)
+    request.widgets[1].scale=nil
+    handled,reason=candidate:capture(1,identity,request)
+    assert(not handled and reason=='unsupported_transform' and count()==0)
+    assert(select(2,candidate:capture(2,identity,request))=='warming' and count()==1)
+    candidate:destroy()
+end
 assert(select(2,s:capture(1,identity,r))=='warming' and draws()==1)
 assert(pass.data==original and original.material=='source')
 assert(s:capture(1,identity,r) and draws()==1)

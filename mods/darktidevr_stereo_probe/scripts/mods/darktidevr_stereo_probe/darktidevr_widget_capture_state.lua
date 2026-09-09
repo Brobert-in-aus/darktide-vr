@@ -22,6 +22,10 @@ function State:admit(widgets,settings)
     for _,widget in ipairs(widgets) do
         if type(widget)~='table' or type(widget.passes)~='table' or
             type(widget.style)~='table' or type(widget.content)~='table' then return nil,'invalid_widget' end
+        -- Stock UIWidget scales absolute positions for widget.scale. A simple
+        -- translated scenegraph then moves by a scaled offset, not the capture
+        -- crop offset. Preserve the stock route until that transform is owned.
+        if widget.scale then return nil,'unsupported_transform' end
         for _,pass in ipairs(widget.passes) do
             if #list>=128 then return nil,'too_many_passes' end
             if seen[pass] then return nil,'duplicate_pass' end
@@ -35,6 +39,9 @@ function State:admit(widgets,settings)
             local style=pass.style_id and widget.style[pass.style_id] or widget.style
             local content=pass.content_id and widget.content[pass.content_id] or widget.content
             if type(style)~='table' or type(content)~='table' then return nil,'invalid_pass_input' end
+            -- These modes resolve against the viewport or reset a position
+            -- axis after graph translation; frozen node sizes cannot fix them.
+            if style.scenegraph_scale then return nil,'unsupported_transform' end
             if style.material~=nil and type(style.material)~='string' then return nil,'foreign_material' end
             if resource_value[kind] then
                 local value=content[pass.value_id or 'value_id']
