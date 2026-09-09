@@ -26,7 +26,6 @@ local scopes = {
     {"ConstantElementOnboardingHandler","_sync_onboarding_settings"},
     {"HudElementPrologueTutorialInfoBox","_get_input_description_text"},
 }
-local function pack(...) return {n=select("#",...),...} end
 
 function Prompts.install(mod, bindings, enabled, menu_prompts)
     local InputUtils = require("scripts/managers/input/input_utils")
@@ -53,6 +52,17 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
         previous.text,previous.scale,previous.width,previous.available=text,renderer.scale,width,available
         previous.applied=style.font_size
         widget.dirty=true
+    end
+    -- Forward results on the Lua stack, including trailing nils, instead of
+    -- allocating a result table for every HUD update and protected scope.
+    local function finish_scope(previous_switch,ok,...)
+        depth=depth-1; weapon_switch=previous_switch
+        if not ok then error((...),0) end
+        return ...
+    end
+    local function finish_update(self,renderer,...)
+        fit_ability_label(self,renderer)
+        return ...
     end
     mod:hook(InputUtils,"input_text_for_current_input_device",
         function(func,service,alias,tint)
@@ -87,10 +97,7 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
         mod:hook(scope[1],scope[2],function(func,...)
             local previous_switch=weapon_switch
             depth=depth+1; weapon_switch=switching
-            local result=pack(pcall(func,...))
-            depth=depth-1; weapon_switch=previous_switch
-            if not result[1] then error(result[2],0) end
-            return unpack(result,2,result.n)
+            return finish_scope(previous_switch,pcall(func,...))
         end)
     end
     -- Stock prologue caching watches keyboard keys and device selection, which
@@ -114,9 +121,7 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
                 revisions[self]=current
                 if wield then self:_reset_current_info() else self:_update_input() end
             end
-            local result=pack(func(self,dt,t,renderer,...))
-            fit_ability_label(self,renderer)
-            return unpack(result,1,result.n)
+            return finish_update(self,renderer,func(self,dt,t,renderer,...))
         end)
     end
 end
