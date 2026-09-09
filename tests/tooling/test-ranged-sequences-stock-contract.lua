@@ -50,12 +50,33 @@ local function template(path)
 end
 local templates={plasma=template('plasma_rifles/plasmagun_p1_m1'),
     shotgun=template('shotguns/shotgun_p1_m1'),staff=template('force_staffs/forcestaff_p4_m1')}
-for _,kind in ipairs({'grenade','grenade_handleless'})do
+local function generated_template(kind)
     local e=setmetatable({base_template={},wield_inputs={},BaseTemplateSettings=base_env.base_template_settings,
         ActionInputHierarchy=Hierarchy},{__index=_G})
     local source=read('settings/equipment/weapon_templates/weapon_template_generators/'..kind..'_weapon_template_generator')
     setfenv(assert(loadstring(section(source,'base_template.action_inputs =','base_template.actions ='))),e)()
-    templates[kind]=e.base_template
+    return e.base_template
+end
+local grenade_scenarios={'grenade','grenade_handleless'}
+for _,kind in ipairs(grenade_scenarios)do templates[kind]=generated_template(kind)end
+for _,variant in ipairs({
+    {'expeditions_big_grenade','grenades/expeditions_big_grenade','weapon_template.breed_anim_state_machine_3p ='},
+    {'expedition_airstrike','pocketables/expedition_grenade_airstrike_pocketable','weapon_template.breed_anim_state_machine_3p ='},
+    {'expedition_artillery','pocketables/expedition_grenade_artillery_strike_pocketable','weapon_template.breed_anim_state_machine_3p ='},
+    {'expedition_valkyrie','pocketables/expedition_grenade_valkyrie_hover_pocketable','local actions = weapon_template.actions'},
+})do
+    local value=generated_template('grenade')
+    local e=setmetatable({weapon_template=value},{__index=_G})
+    local source=read('settings/equipment/weapon_templates/'..variant[2])
+    setfenv(assert(loadstring(section(source,'weapon_template.action_input_hierarchy =',variant[3]))),e)()
+    templates[variant[1]]=value
+    grenade_scenarios[#grenade_scenarios+1]=variant[1]
+end
+templates.quick_flash=generated_template('grenade_handleless')
+do
+    local source=read('settings/equipment/weapon_templates/grenades/quick_flash_grenade')
+    local e=setmetatable({weapon_template=templates.quick_flash},{__index=_G})
+    setfenv(assert(loadstring(section(source,'local auto_input =','weapon_template.smart_targeting_template ='))),e)()
 end
 local steps=0
 local function scenario(name,toggle)
@@ -147,7 +168,7 @@ do
     step(.05,{'alternate'},'charge')
     step(.06,{},'charge_release')
 end
-for _,name in ipairs({'grenade','grenade_handleless'})do
+for _,name in ipairs(grenade_scenarios)do
     -- Stock may not consume the aim input immediately. Cancellation must
     -- replace that pending request, rather than sit behind it in the queue.
     local pending=scenario(name,false)
@@ -177,5 +198,10 @@ for _,name in ipairs({'grenade','grenade_handleless'})do
     step(.05,{'primary'},'aim_hold')
     step(.06,{},'aim_released')
 end
-print('PASS stock combat sequences: '..steps..' observed steps, plasma/shotgun ADS/reload, plasma cancel, staff charge/fire/vent, both grenade generators and tracking-loss rearm')
+for _,enabled in ipairs({true,false})do
+    local step=scenario('quick_flash',false)
+    step(.01,{},'aim_hold',enabled)
+    step(.02,{},'aim_released',enabled)
+end
+print('PASS stock combat sequences: '..steps..' observed steps, ranged weapons, both grenade generators, four expedition hierarchies, quick-flash automatic inputs and tracking-loss rearm')
 print('LIMIT: ranged-only stock input hierarchy/queue; immediate consumption except pending-aim cancellation, no wield arbitration, buffer aging, action execution, damage, networking or live acceptance')
