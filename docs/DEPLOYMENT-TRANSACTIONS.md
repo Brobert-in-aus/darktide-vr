@@ -31,6 +31,9 @@ descriptors were accepted by these prefixes before the change. Tests cover
 skip-sync rejection, repair by sync, broken sync output, settings ordering,
 valid installed packages and Ready versus Inventory. Six related CTests pass in
 5.32 seconds. No real launcher, game, proximity or XR session was run by the tests.
+The full offline Release suite subsequently passes 180/180 in 57.09 seconds at
+`549b385`. The early-launch-failure fixture now supplies a minimal compile-only
+installed package so it still reaches its intended pre-launch cache failure.
 
 ## Transaction boundary
 

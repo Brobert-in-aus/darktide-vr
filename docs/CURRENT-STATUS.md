@@ -12,10 +12,11 @@ Read-only inventory now reports one physical Quest, duplicate transports resolve
 one Virtual Desktop Streamer and Darktide closed. Inventory does not certify Ready
 or alter proximity. Selection requires matching hardware identity and model for
 every alias; distinct headsets and missing/failed identity queries remain gated.
-The latest full offline Release run passes 179/179 in 56.27 seconds at `556f4c6`,
+The latest full offline Release run passes 180/180 in 57.09 seconds at `549b385`,
 including communication/PTT, popup lifetime, owned UI diagnostics, marker log
 analysis, selective deployment/recovery preconditions, retiring-input guards
-and dynamic popup callback admission.
+and dynamic popup callback admission. It also covers selected-package descriptor
+validation and installed Lua gates before launcher/Ready setup.
 All 69 Lua chunks compile. The communication wheel
 is integrated in source with an unassigned physical-button binding; popup
 candidates remain unintegrated. Neither is deployed. See the
