@@ -42,7 +42,7 @@ int main() {
   check(!buffer_copy_contains(64,128,63,1));
   check(!buffer_copy_contains(64,128,192,1));
   check(!buffer_copy_contains(64,128,80,129));
-  // The old delta+length check wraps to 3 and falsely admits this request.
+  // The old delta+length check wraps to 4 and falsely admits this request.
   check(!buffer_copy_contains(0,64,copy_maximum-3,8));
   check(buffer_copy_source_address(0x1000,64,16,84)==0x1050);
   check(!buffer_copy_source_address(0,64,16,84));
