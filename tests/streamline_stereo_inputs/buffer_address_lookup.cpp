@@ -111,6 +111,8 @@ int main() {
     registry->track(extreme.Get(),maximum-16,32,D3D12_HEAP_TYPE_UPLOAD);
     auto recent=create();
     registry->track(recent.Get(),1000,25,D3D12_HEAP_TYPE_UPLOAD);
+    check(resolve(maximum)->resource==extreme.Get());
+    check(!resolve(0));
     check(cached_range(*registry,maximum,1)->resource==extreme.Get());
     check(!cached_range(*registry,0,1));
   }

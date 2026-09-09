@@ -58,3 +58,37 @@ Use Visual Studio 2022 Community bundled CMake/CTest here. Evidence under
 `buffer-lookup-boundary-workloads-20260909.log`, `buffer-lookup-final-tests-20260909.log`.
 No game, installation, settings or headset
 changes. Live workload benefit remains unmeasured and any deployment needs Ready.
+
+## Reuse conservative bounds for point misses
+
+The point resolver now shares the conservative address envelope introduced for
+full-range reads. It checks the newest allocation first, then rejects addresses
+below the minimum start or above the saturated maximum end before hashing or
+scanning. Retired extremes can only permit extra scans. The inclusive upper
+bound preserves an older overflowing extent containing `UINT64_MAX`; a focused
+assertion checks that case with a newer low allocation. Existing registration,
+expiry and empty-registry resets maintain the envelope. Internal gaps still scan.
+
+The existing Windows x64 Release comparison passes all overlap, lifetime,
+metadata and reverse-scan equivalence checks. Five alternating trials of 100,000
+point queries against 1,023 WARP-backed records report these median milliseconds:
+
+| Workload | Original reverse scan | Current cache with bounds |
+| --- | ---: | ---: |
+| Repeated 16 early allocations | 44.3063 | 1.7134 |
+| Newest allocation | 1.2915 | 1.2571 |
+| Cycle every allocation | 21.5423 | 16.7608 |
+| Unique misses above the envelope | 45.4019 | 1.1590 |
+
+This table compares the original scan with the complete current cache, not the
+incremental bounds change alone. The previous unbounded-cache result for unique
+high misses was 46.3814 ms in an earlier run, so it is historical context rather
+than a matched incremental timing comparison. No game hit distribution or FPS
+claim follows from this constructed workload.
+
+Native DLL and both affected test executables build. The lookup executable
+passes directly; `native_capture_hooks` passes 1/1 in 0.47 seconds, headset tests
+OFF. Receipts: `artifacts/unattended/point-buffer-bounds-build-20260909.log`,
+`point-buffer-bounds-benchmark-20260909.log` and
+`point-buffer-bounds-hook-tests-20260909.log`. No deployment or staged payload
+update was made.

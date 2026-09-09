@@ -45,6 +45,9 @@ struct BufferRegistry : std::enable_shared_from_this<BufferRegistry> {
     const auto& newest = resources.back();
     if (address >= newest.gpu_start && address - newest.gpu_start < newest.size)
       return newest;
+    // The same conservative envelope serves point and full-range lookups.
+    // Retain its saturated endpoint: a wrapping extent can contain UINT64_MAX.
+    if (address < minimum_address_ || address > maximum_end_) return std::nullopt;
     const auto bucket = (address >> 8) ^ (address >> 16) ^
                         (address >> 24) ^ (address >> 32);
     auto& cached = lookup_[bucket % lookup_.size()];
