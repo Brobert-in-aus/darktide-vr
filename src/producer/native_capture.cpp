@@ -2,6 +2,7 @@
 #include "producer/pipeline_identity.h"
 #include "producer/diagnostic_append_log.h"
 #include "producer/bounded_diagnostic.h"
+#include "producer/resource_name_match.h"
 #include "producer/shader_pair_snapshot.h"
 #include "producer/resource_handle_trace.h"
 #include "producer/ngx_output_probe.h"
@@ -4989,35 +4990,27 @@ std::string resource_debug_name(ID3D12Resource* resource) {
   return {};
 }
 
-bool is_named_eye_final_resource(ID3D12Resource* resource) {
-  const auto name = resource_debug_name(resource);
-  return name == "0xf91259166b1933b1" || // darktidevr_left_eye_final
-         name == "0x95d78df07ef0d850";   // darktidevr_right_eye_final
+int named_eye_final_index(ID3D12Resource* resource) {
+  return darktidevr::producer::match_resource_name(resource,
+      {"0xf91259166b1933b1", "0x95d78df07ef0d850"},
+      [&] { return resource_debug_name(resource); });
 }
 
-int named_eye_final_index(ID3D12Resource* resource) {
-  const auto name = resource_debug_name(resource);
-  if (name == "0xf91259166b1933b1") {  // darktidevr_left_eye_final
-    return 0;
-  }
-  if (name == "0x95d78df07ef0d850") {  // darktidevr_right_eye_final
-    return 1;
-  }
-  return -1;
+bool is_named_eye_final_resource(ID3D12Resource* resource) {
+  return named_eye_final_index(resource) >= 0;
 }
 
 bool is_named_eye_output_resource(ID3D12Resource* resource) {
-  const auto name = resource_debug_name(resource);
-  return name == "0x388e18bf99514d34" || // darktidevr_left_eye_output
-         name == "0x81442e111aacc90e";   // darktidevr_right_eye_output
+  return darktidevr::producer::match_resource_name(resource,
+      {"0x388e18bf99514d34", "0x81442e111aacc90e"},
+      [&] { return resource_debug_name(resource); }) >= 0;
 }
 
 bool is_named_menu_ui_resource(ID3D12Resource* resource) {
-  // Stingray exposes resource names as MurmurHash64A IDs. This is the exact
-  // hash of the mod-authored `darktidevr_menu_ui` render target; matching the
-  // name rather than dimensions prevents a fullscreen vendor UI or an eye
-  // intermediate from being admitted to the menu transport.
-  return resource_debug_name(resource) == "0xaf0f1409769cf92b";
+  // Exact mod-authored target name, not a dimension-based routing heuristic.
+  return darktidevr::producer::match_resource_name(resource,
+      {"0xaf0f1409769cf92b"},
+      [&] { return resource_debug_name(resource); }) >= 0;
 }
 
 void record_descriptor_heap(ID3D12Device* device,
