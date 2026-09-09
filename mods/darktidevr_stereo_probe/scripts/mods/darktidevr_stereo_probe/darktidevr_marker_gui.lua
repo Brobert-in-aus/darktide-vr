@@ -1,7 +1,13 @@
 local MarkerGui = {}
 local entries = {}
-local function pack(...)
-    return { n = select("#", ...), ... }
+local function finish_draw(renderer, original_gui, entry, ok, ...)
+    renderer.gui = original_gui
+    if not ok then
+        Gui.set_visible(entry.gui, false)
+        entry.visible = false
+        error((...), 0)
+    end
+    return ...
 end
 
 -- UIHud reuses this table for every element, changing scale, alpha and
@@ -26,14 +32,7 @@ function MarkerGui.draw(renderer, draw, ...)
     entry.visible = true
     local original_gui = renderer.gui
     renderer.gui = entry.gui
-    local result = pack(pcall(draw, ...))
-    renderer.gui = original_gui
-    if not result[1] then
-        Gui.set_visible(entry.gui, false)
-        entry.visible = false
-        error(result[2], 0)
-    end
-    return unpack(result, 2, result.n)
+    return finish_draw(renderer, original_gui, entry, pcall(draw, ...))
 end
 
 -- Hidden HUDs do not author a primary marker pass. Never replay its old

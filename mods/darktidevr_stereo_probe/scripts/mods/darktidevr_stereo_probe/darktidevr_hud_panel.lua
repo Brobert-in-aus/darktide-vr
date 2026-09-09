@@ -227,6 +227,18 @@ function HudPanel.editing()
     return state.enabled and custom and custom.is_customizing == true
 end
 
+local function finish_crosshair_draw(self, widget, ok, ...)
+    self._widget = widget
+    if not ok then error((...), 0) end
+    return ...
+end
+
+local function finish_scaled_draw(settings, scale, inverse, ok, ...)
+    settings.scale, settings.inverse_scale = scale, inverse
+    if not ok then error((...), 0) end
+    return ...
+end
+
 function HudPanel.draw_stock_crosshair(func, self, ...)
     if not state.enabled then return func(self, ...) end
     -- The hand-aimed XR reticle replaces only the stock centre aiming widget.
@@ -234,10 +246,7 @@ function HudPanel.draw_stock_crosshair(func, self, ...)
     -- fails, so disabling VR or rebuilding this element retains stock state.
     local widget = self._widget
     self._widget = nil
-    local result = pack(pcall(func, self, ...))
-    self._widget = widget
-    if not result[1] then error(result[2], 0) end
-    return unpack(result, 2, result.n)
+    return finish_crosshair_draw(self, widget, pcall(func, self, ...))
 end
 
 function HudPanel.request_editor()
@@ -497,10 +506,8 @@ local function route_fixed_updates(owner)
                                 self._panel_position = nil
                             end
                         end
-                        local result = pack(pcall(original, self, dt, t, renderer, settings, ...))
-                        settings.scale, settings.inverse_scale = scale, inverse
-                        if not result[1] then error(result[2], 0) end
-                        return unpack(result, 2, result.n)
+                        return finish_scaled_draw(settings, scale, inverse,
+                            pcall(original, self, dt, t, renderer, settings, ...))
                     end
                 end
                 element[name] = record.wrapper
