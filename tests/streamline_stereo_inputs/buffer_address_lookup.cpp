@@ -1,4 +1,5 @@
 #include "producer/buffer_registry.h"
+#include "producer/buffer_copy_address.h"
 #include <dxgi1_6.h>
 #include <wrl/client.h>
 #include <chrono>
@@ -33,6 +34,32 @@ __declspec(noinline) std::optional<BufferResourceInfo> cached_range(
   std::scoped_lock lock(registry.mutex);return registry.resolve_range_locked(address,bytes);
 }
 int main() {
+  using darktidevr::producer::buffer_copy_contains;
+  using darktidevr::producer::buffer_copy_source_address;
+  constexpr auto copy_maximum=(std::numeric_limits<std::uint64_t>::max)();
+  check(buffer_copy_contains(64,128,80,84));
+  check(buffer_copy_contains(64,128,192,0));
+  check(!buffer_copy_contains(64,128,63,1));
+  check(!buffer_copy_contains(64,128,192,1));
+  check(!buffer_copy_contains(64,128,80,129));
+  // The old delta+length check wraps to 3 and falsely admits this request.
+  check(!buffer_copy_contains(0,64,copy_maximum-3,8));
+  check(buffer_copy_source_address(0x1000,64,16,84)==0x1050);
+  check(!buffer_copy_source_address(0,64,16,84));
+  check(!buffer_copy_source_address(copy_maximum-3,4,0,1));
+  check(!buffer_copy_source_address(copy_maximum-3,2,2,1));
+  check(!buffer_copy_source_address(copy_maximum-3,0,0,5));
+  check(buffer_copy_source_address(copy_maximum-3,0,0,4)==copy_maximum-3);
+  check(buffer_copy_source_address(copy_maximum,0,0,0)==copy_maximum);
+  // Normal ranges retain the old predicate and translation exactly.
+  for(std::uint64_t offset=0;offset<160;++offset) {
+    for(std::uint64_t bytes=0;bytes<160;++bytes) {
+      const bool old=offset>=16 && offset-16+bytes<=128;
+      check(buffer_copy_contains(16,128,offset,bytes)==old);
+      if(old) check(buffer_copy_source_address(0x1000,32,offset-16,bytes)==
+                    0x1000+32+offset-16);
+    }
+  }
   // A GPU buffer can be larger than its current CPU staging allocation.
   BufferResourceInfo staged{};
   staged.size=4096;

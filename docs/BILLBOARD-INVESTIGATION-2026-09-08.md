@@ -1,5 +1,29 @@
 # Billboard investigation, 8 September
 
+## Diagnostic copy address correction, 10 September
+
+The recorded-copy lookup used `delta + byte_count <= copy.bytes`, which can
+wrap: a delta of `UINT64_MAX - 3` plus eight bytes becomes four and can falsely
+match a small copy. The source-address calculation then added the GPU base,
+source offset and destination delta without checking representability.
+
+The source candidate uses subtraction-based containment and checked source
+translation, including a nonzero GPU base and representable last requested
+byte. Invalid copies cannot redirect a diagnostic read into another address.
+Newest-copy selection, locking and valid source preference are unchanged.
+This affects cluster diagnostic constant reads, not the actual game buffer copy
+or lighting patch operation. It does not establish that overflow occurred live.
+
+The actual helpers pass 25,600 ordinary range comparisons against the prior
+predicate, valid-address equality and explicit underflow/overflow/end-byte cases.
+Native Release and both affected executables build; buffer lookup/native hooks
+pass 2/2 in 2.41 seconds. The first build caught a shadowed fixture variable,
+corrected before the successful final build. No game, headset or GPU submission
+was used to validate these address calculations. No deployed/staged bytes change.
+Receipts: `artifacts/unattended/copy-address-bounds-final-build-20260910.log`
+and `copy-address-bounds-tests-20260910.log`. Build/test commands are the same
+three native targets and two CTests listed in the staging correction below.
+
 ## Staging bounds correction, 10 September
 
 The diagnostic CBV reader selected staging memory when the requested range fit

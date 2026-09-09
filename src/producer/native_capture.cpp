@@ -1,4 +1,5 @@
 #include "producer/buffer_registry.h"
+#include "producer/buffer_copy_address.h"
 #include "producer/pipeline_identity.h"
 #include "producer/diagnostic_append_log.h"
 #include "producer/bounded_diagnostic.h"
@@ -6263,9 +6264,8 @@ std::optional<ClusterConstantBufferCopy> resolve_cluster_constant_copy(
     const auto& copy =
         cluster_constant_copies[sequence % cluster_constant_copies.size()];
     if (copy.destination == destination &&
-        destination_offset >= copy.destination_offset &&
-        destination_offset - copy.destination_offset + byte_count <=
-            copy.bytes) {
+        darktidevr::producer::buffer_copy_contains(
+            copy.destination_offset, copy.bytes, destination_offset, byte_count)) {
       return copy;
     }
   }
@@ -7303,14 +7303,17 @@ void log_cluster_light_raster_bindings(
           const auto copy = resolve_cluster_constant_copy(
               resource->resource, destination_offset, bytes.size());
           if (copy && copy->source) {
-            copy_source_gpu = copy->source->GetGPUVirtualAddress() +
-                              copy->source_offset +
-                              (destination_offset - copy->destination_offset);
-            BufferResourceInfo source_snapshot{};
-            copied = copy_tracked_buffer_bytes(
-                copy_source_gpu, bytes.data(), bytes.size(), &source_snapshot,
-                &used_persistent_mapping, &used_staging_mapping);
-            used_buffer_copy = copied;
+            const auto address = darktidevr::producer::buffer_copy_source_address(
+                copy->source->GetGPUVirtualAddress(), copy->source_offset,
+                destination_offset - copy->destination_offset, bytes.size());
+            if (address) {
+              copy_source_gpu = *address;
+              BufferResourceInfo source_snapshot{};
+              copied = copy_tracked_buffer_bytes(
+                  copy_source_gpu, bytes.data(), bytes.size(), &source_snapshot,
+                  &used_persistent_mapping, &used_staging_mapping);
+              used_buffer_copy = copied;
+            }
           }
         }
       }

@@ -2,6 +2,13 @@
 
 ## 10 September development resumed
 
+Diagnostic recorded-copy selection and source-address translation now reject
+unsigned wrap instead of potentially reading a different allocation. Ordinary
+ranges retain their prior results across 25,600 comparisons; native build and
+two affected checks pass. This is another source-only diagnostic correction,
+not a live-rendering fix; see the
+[copy address correction](BILLBOARD-INVESTIGATION-2026-09-08.md#diagnostic-copy-address-correction-10-september).
+
 The billboard CBV reader now checks the recorded staging extent instead of the
 GPU allocation size before selecting staging memory. Oversized staging reads
 retain the existing mapping fallback. Native build and both affected checks
