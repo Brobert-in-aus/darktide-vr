@@ -79,3 +79,8 @@ if(DARKTIDEVR_NGX_REFERENCE_INCLUDE_DIR)
   add_test(NAME ngx_abi_reference COMMAND darktidevr-ngx-abi-reference)
   set_tests_properties(ngx_abi_reference PROPERTIES LABELS "phase1;streamline")
 endif()
+
+add_executable(darktidevr-bounded-diagnostic-tests bounded_diagnostic.cpp)
+target_link_libraries(darktidevr-bounded-diagnostic-tests PRIVATE darktidevr_core)
+target_compile_options(darktidevr-bounded-diagnostic-tests PRIVATE /W4 /WX /permissive-)
+add_test(NAME bounded_diagnostic COMMAND darktidevr-bounded-diagnostic-tests)

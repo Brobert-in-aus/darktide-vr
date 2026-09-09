@@ -1,6 +1,7 @@
 #include "producer/buffer_registry.h"
 #include "producer/pipeline_identity.h"
 #include "producer/diagnostic_append_log.h"
+#include "producer/bounded_diagnostic.h"
 #include "producer/shader_pair_snapshot.h"
 #include "producer/resource_handle_trace.h"
 #include "producer/ngx_output_probe.h"
@@ -764,7 +765,7 @@ std::atomic<bool> rich_center_sbs_remap_enabled{};
 HANDLE marker_log{INVALID_HANDLE_VALUE};
 HANDLE menu_resource_log{INVALID_HANDLE_VALUE};
 std::mutex menu_resource_log_mutex;
-std::atomic<std::uint64_t> menu_resource_log_count{};
+darktidevr::producer::BoundedDiagnostic menu_resource_log_budget{4096};
 HANDLE resize_diagnostic_log{INVALID_HANDLE_VALUE};
 std::mutex resize_diagnostic_log_mutex;
 std::atomic<std::uint64_t> resize_diagnostic_log_count{};
@@ -2049,10 +2050,6 @@ void write_boundary_census_log(const char* format, ...) {
 }
 
 void write_menu_resource_log(const char* format, ...) {
-  if (menu_resource_log_count.fetch_add(1, std::memory_order_relaxed) >=
-      4096) {
-    return;
-  }
   std::scoped_lock lock(menu_resource_log_mutex);
   if (menu_resource_log == INVALID_HANDLE_VALUE) {
     wchar_t temporary_path[MAX_PATH]{};
@@ -7988,24 +7985,26 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
         const auto consumer_id =
             consumer_log_count.fetch_add(1, std::memory_order_relaxed) + 1;
         if (consumer_id <= 1024) {
-          const auto output = descriptor_snapshot(routing_trace.render_target);
-          write_menu_resource_log(
-              "MENU_LAYER_CONSUMER\tid=%llu\tframe=%llu\tcommands=%p"
-              "\tsampled=%s\tresource=%p\troot=%u\tdescriptor=%u"
-              "\toutput=%p\toutput_width=%llu\toutput_height=%u"
-              "\toutput_format=%u\tvs=%llu\tps=%llu"
-              "\tvertices=%u\tinstances=%u\r\n",
-              static_cast<unsigned long long>(consumer_id),
-              static_cast<unsigned long long>(
-                  present_count.load(std::memory_order_relaxed)),
-              commands, sampled_layer == alias_layer ? "alias" : "typed",
-              sampled_layer, sampled_root, sampled_descriptor,
-              reinterpret_cast<void*>(output.resource),
-              static_cast<unsigned long long>(output.width), output.height,
-              output.format,
-              static_cast<unsigned long long>(draw_metadata.vertex_shader),
-              static_cast<unsigned long long>(draw_metadata.pixel_shader),
-              vertex_count, instance_count);
+          menu_resource_log_budget.run([&] {
+            const auto output = descriptor_snapshot(routing_trace.render_target);
+            write_menu_resource_log(
+                "MENU_LAYER_CONSUMER\tid=%llu\tframe=%llu\tcommands=%p"
+                "\tsampled=%s\tresource=%p\troot=%u\tdescriptor=%u"
+                "\toutput=%p\toutput_width=%llu\toutput_height=%u"
+                "\toutput_format=%u\tvs=%llu\tps=%llu"
+                "\tvertices=%u\tinstances=%u\r\n",
+                static_cast<unsigned long long>(consumer_id),
+                static_cast<unsigned long long>(
+                    present_count.load(std::memory_order_relaxed)),
+                commands, sampled_layer == alias_layer ? "alias" : "typed",
+                sampled_layer, sampled_root, sampled_descriptor,
+                reinterpret_cast<void*>(output.resource),
+                static_cast<unsigned long long>(output.width), output.height,
+                output.format,
+                static_cast<unsigned long long>(draw_metadata.vertex_shader),
+                static_cast<unsigned long long>(draw_metadata.pixel_shader),
+                vertex_count, instance_count);
+          });
         }
       }
     }
@@ -8013,9 +8012,11 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
   const auto billboard_override = apply_billboard_view_basis(commands);
   if (menu_redirect.diagnostic_id != 0 &&
       menu_redirect.diagnostic_id <= 2) {
-    write_menu_resource_log(
-        "MENU_REDIRECT_STAGE\tid=%llu\tstage=before_draw\r\n",
-        static_cast<unsigned long long>(menu_redirect.diagnostic_id));
+    menu_resource_log_budget.run([&] {
+      write_menu_resource_log(
+          "MENU_REDIRECT_STAGE\tid=%llu\tstage=before_draw\r\n",
+          static_cast<unsigned long long>(menu_redirect.diagnostic_id));
+    });
   }
   const auto readback_id = vertex_count && instance_count ? begin_billboard_draw_readback(commands) : 0;
   original_draw_instanced(commands, vertex_count, instance_count,
@@ -8023,9 +8024,11 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
   end_billboard_draw_readback(readback_id, commands);
   if (menu_redirect.diagnostic_id != 0 &&
       menu_redirect.diagnostic_id <= 2) {
-    write_menu_resource_log(
-        "MENU_REDIRECT_STAGE\tid=%llu\tstage=after_draw\r\n",
-        static_cast<unsigned long long>(menu_redirect.diagnostic_id));
+    menu_resource_log_budget.run([&] {
+      write_menu_resource_log(
+          "MENU_REDIRECT_STAGE\tid=%llu\tstage=after_draw\r\n",
+          static_cast<unsigned long long>(menu_redirect.diagnostic_id));
+    });
   }
   end_stock_menu_draw_redirect(commands, menu_redirect);
   {
@@ -8038,9 +8041,11 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
   end_billboard_binding_override(commands, billboard_override);
   if (menu_redirect.diagnostic_id != 0 &&
       menu_redirect.diagnostic_id <= 2) {
-    write_menu_resource_log(
-        "MENU_REDIRECT_STAGE\tid=%llu\tstage=target_restored\r\n",
-        static_cast<unsigned long long>(menu_redirect.diagnostic_id));
+    menu_resource_log_budget.run([&] {
+      write_menu_resource_log(
+          "MENU_REDIRECT_STAGE\tid=%llu\tstage=target_restored\r\n",
+          static_cast<unsigned long long>(menu_redirect.diagnostic_id));
+    });
   }
 }
 
@@ -9137,18 +9142,20 @@ void STDMETHODCALLTYPE resource_barrier_hook(
           menu_output_resources[commands] = barrier.Transition.pResource;
           menu_output_source_states[commands] =
               barrier.Transition.StateAfter;
-          const auto menu_description =
-              barrier.Transition.pResource->GetDesc();
-          write_menu_resource_log(
-              "MENU_MATCH\tframe=%llu\tCL=%p\tresource=%p\tstate=%u"
-              "\twidth=%llu\theight=%u\tformat=%u\tsource=%s\r\n",
-              frame, commands, barrier.Transition.pResource,
-              static_cast<unsigned>(barrier.Transition.StateAfter),
-              static_cast<unsigned long long>(menu_description.Width),
-              menu_description.Height,
-              static_cast<unsigned>(menu_description.Format),
-              is_options_retained_target_completion ? "options_retained"
-                                                    : "named");
+          menu_resource_log_budget.run([&] {
+            const auto menu_description =
+                barrier.Transition.pResource->GetDesc();
+            write_menu_resource_log(
+                "MENU_MATCH\tframe=%llu\tCL=%p\tresource=%p\tstate=%u"
+                "\twidth=%llu\theight=%u\tformat=%u\tsource=%s\r\n",
+                frame, commands, barrier.Transition.pResource,
+                static_cast<unsigned>(barrier.Transition.StateAfter),
+                static_cast<unsigned long long>(menu_description.Width),
+                menu_description.Height,
+                static_cast<unsigned>(menu_description.Format),
+                is_options_retained_target_completion ? "options_retained"
+                                                      : "named");
+          });
         }
         if (is_swapchain_resource &&
             barrier.Flags != D3D12_RESOURCE_BARRIER_FLAG_BEGIN_ONLY) {
@@ -9175,16 +9182,18 @@ void STDMETHODCALLTYPE resource_barrier_hook(
         const auto description = barrier.Transition.pResource->GetDesc();
         if (description.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D &&
             description.Width == 2112 && description.Height == 1188) {
-          write_menu_resource_log(
-              "MENU_RESOURCE\tframe=%llu\tCL=%p\tresource=%p"
-              "\tbefore=%u\tafter=%u\tflags=%u\tformat=%u\tname=%s\r\n",
-              present_count.load(std::memory_order_relaxed), commands,
-              barrier.Transition.pResource,
-              static_cast<unsigned>(barrier.Transition.StateBefore),
-              static_cast<unsigned>(barrier.Transition.StateAfter),
-              static_cast<unsigned>(barrier.Flags),
-              static_cast<unsigned>(description.Format),
-              resource_debug_name(barrier.Transition.pResource).c_str());
+          menu_resource_log_budget.run([&] {
+            write_menu_resource_log(
+                "MENU_RESOURCE\tframe=%llu\tCL=%p\tresource=%p"
+                "\tbefore=%u\tafter=%u\tflags=%u\tformat=%u\tname=%s\r\n",
+                present_count.load(std::memory_order_relaxed), commands,
+                barrier.Transition.pResource,
+                static_cast<unsigned>(barrier.Transition.StateBefore),
+                static_cast<unsigned>(barrier.Transition.StateAfter),
+                static_cast<unsigned>(barrier.Flags),
+                static_cast<unsigned>(description.Format),
+                resource_debug_name(barrier.Transition.pResource).c_str());
+          });
         }
         DescriptorInfo stage_target{};
         stage_target.width = description.Width;
@@ -10875,13 +10884,15 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
   if (completed_menu_output) {
     const auto menu_result = capture_menu_from_resource(
         queue, completed_menu_output.Get(), completed_menu_source_state);
-    write_menu_resource_log(
-        "MENU_CAPTURE\tframe=%llu\tresource=%p\tstate=%u\tresult=%d"
-        "\tready=%llu\r\n",
-        present_count.load(std::memory_order_relaxed),
-        completed_menu_output.Get(),
-        static_cast<unsigned>(completed_menu_source_state), menu_result,
-        static_cast<unsigned long long>(menu_ready_value));
+    menu_resource_log_budget.run([&] {
+      write_menu_resource_log(
+          "MENU_CAPTURE\tframe=%llu\tresource=%p\tstate=%u\tresult=%d"
+          "\tready=%llu\r\n",
+          present_count.load(std::memory_order_relaxed),
+          completed_menu_output.Get(),
+          static_cast<unsigned>(completed_menu_source_state), menu_result,
+          static_cast<unsigned long long>(menu_ready_value));
+    });
   }
   if (requested_eye >= 0 && completed_back_buffer) {
     end_gpu_eye_profile(requested_eye, queue);
@@ -12611,9 +12622,11 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
         std::scoped_lock lock(state_mutex);
         menu_ready_value = menu_publish_value;
         if (menu_publish_value <= 5 || menu_publish_value % 120 == 0) {
-          write_menu_resource_log(
-              "MENU_DIRECT_RENDER\tframe=%llu\tready=%llu\r\n", present,
-              static_cast<unsigned long long>(menu_publish_value));
+          menu_resource_log_budget.run([&] {
+            write_menu_resource_log(
+                "MENU_DIRECT_RENDER\tframe=%llu\tready=%llu\r\n", present,
+                static_cast<unsigned long long>(menu_publish_value));
+          });
         }
       }
     }
@@ -12647,11 +12660,13 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
             }
             return source.Height;
           }());
-      write_menu_resource_log(
-          "MENU_SWAPCHAIN_CAPTURE\tframe=%llu\tresource=%p\tresult=%d"
-          "\tready=%llu\r\n",
-          present, menu_back_buffer.Get(), menu_result,
-          static_cast<unsigned long long>(menu_ready_value));
+      menu_resource_log_budget.run([&] {
+        write_menu_resource_log(
+            "MENU_SWAPCHAIN_CAPTURE\tframe=%llu\tresource=%p\tresult=%d"
+            "\tready=%llu\r\n",
+            present, menu_back_buffer.Get(), menu_result,
+            static_cast<unsigned long long>(menu_ready_value));
+      });
     }
   }
   }
@@ -12707,10 +12722,12 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                              1, std::memory_order_relaxed) +
                          1;
       if (error <= 20 || error % 120 == 0) {
-        write_menu_resource_log(
-            "DESKTOP_EYE_MIRROR\tframe=%llu\tresult=%d\terror=%llu\r\n",
-            present, mirror_result,
-            static_cast<unsigned long long>(error));
+        menu_resource_log_budget.run([&] {
+          write_menu_resource_log(
+              "DESKTOP_EYE_MIRROR\tframe=%llu\tresult=%d\terror=%llu\r\n",
+              present, mirror_result,
+              static_cast<unsigned long long>(error));
+        });
       }
     }
   }
@@ -13912,36 +13929,40 @@ int ensure_menu_surface(ID3D12Device* device,
     return 0;
   }
   if (matching_surface && !shared_fences_healthy) {
-    write_menu_resource_log(
-        "MENU_SHARED_RECREATE\treason=poisoned_or_missing_fence"
-        "\tready=%llu\tconsumed=%llu\r\n",
-        menu_ready_fence
-            ? static_cast<unsigned long long>(
-                  menu_ready_fence->GetCompletedValue())
-            : 0ULL,
-        menu_consumed_fence
-            ? static_cast<unsigned long long>(
-                  menu_consumed_fence->GetCompletedValue())
-            : 0ULL);
+    menu_resource_log_budget.run([&] {
+      write_menu_resource_log(
+          "MENU_SHARED_RECREATE\treason=poisoned_or_missing_fence"
+          "\tready=%llu\tconsumed=%llu\r\n",
+          menu_ready_fence
+              ? static_cast<unsigned long long>(
+                    menu_ready_fence->GetCompletedValue())
+              : 0ULL,
+          menu_consumed_fence
+              ? static_cast<unsigned long long>(
+                    menu_consumed_fence->GetCompletedValue())
+              : 0ULL);
+    });
   } else if (menu_surface && !matching_surface) {
-    write_menu_resource_log(
-        "MENU_SHARED_RECREATE\treason=description_mismatch"
-        "\tcurrent_width=%llu\tcurrent_height=%u"
-        "\tcurrent_resource_format=%u\tcurrent_rtv_format=%u"
-        "\trequested_width=%llu\trequested_height=%u"
-        "\trequested_source_format=%u\trequested_resource_format=%u"
-        "\trequested_rtv_format=%u"
-        "\thas_heap=%u\thas_handle=%u\r\n",
-        static_cast<unsigned long long>(current_description.Width),
-        current_description.Height,
-        static_cast<unsigned>(current_description.Format),
-        static_cast<unsigned>(menu_rtv_format),
-        static_cast<unsigned long long>(source_description.Width),
-        source_description.Height,
-        static_cast<unsigned>(source_description.Format),
-        static_cast<unsigned>(requested_resource_format),
-        static_cast<unsigned>(requested_rtv_format), menu_rtv_heap ? 1U : 0U,
-        menu_surface_handle ? 1U : 0U);
+    menu_resource_log_budget.run([&] {
+      write_menu_resource_log(
+          "MENU_SHARED_RECREATE\treason=description_mismatch"
+          "\tcurrent_width=%llu\tcurrent_height=%u"
+          "\tcurrent_resource_format=%u\tcurrent_rtv_format=%u"
+          "\trequested_width=%llu\trequested_height=%u"
+          "\trequested_source_format=%u\trequested_resource_format=%u"
+          "\trequested_rtv_format=%u"
+          "\thas_heap=%u\thas_handle=%u\r\n",
+          static_cast<unsigned long long>(current_description.Width),
+          current_description.Height,
+          static_cast<unsigned>(current_description.Format),
+          static_cast<unsigned>(menu_rtv_format),
+          static_cast<unsigned long long>(source_description.Width),
+          source_description.Height,
+          static_cast<unsigned>(source_description.Format),
+          static_cast<unsigned>(requested_resource_format),
+          static_cast<unsigned>(requested_rtv_format), menu_rtv_heap ? 1U : 0U,
+          menu_surface_handle ? 1U : 0U);
+    });
   }
 
   // Recorded command lists retain the current surface through
@@ -13980,13 +14001,15 @@ int ensure_menu_surface(ID3D12Device* device,
                                          IID_PPV_ARGS(&menu_rtv_heap))
           : E_FAIL;
   if (FAILED(resource_result) || FAILED(handle_result) || FAILED(heap_result)) {
-    write_menu_resource_log(
-        "MENU_DIRECT_CREATE_FAILED\tresource=%ld\thandle=%ld\theap=%ld"
-        "\twidth=%llu\theight=%u\tresource_format=%u\trtv_format=%u\r\n",
-        resource_result, handle_result, heap_result,
-        static_cast<unsigned long long>(description.Width), description.Height,
-        static_cast<unsigned>(description.Format),
-        static_cast<unsigned>(render_target_format));
+    menu_resource_log_budget.run([&] {
+      write_menu_resource_log(
+          "MENU_DIRECT_CREATE_FAILED\tresource=%ld\thandle=%ld\theap=%ld"
+          "\twidth=%llu\theight=%u\tresource_format=%u\trtv_format=%u\r\n",
+          resource_result, handle_result, heap_result,
+          static_cast<unsigned long long>(description.Width), description.Height,
+          static_cast<unsigned>(description.Format),
+          static_cast<unsigned>(render_target_format));
+    });
     reset_menu_surface_resources();
     return 90;
   }
@@ -14005,9 +14028,11 @@ int ensure_menu_surface(ID3D12Device* device,
                 kMenuReadyFenceName, &menu_ready_fence_handle)
           : E_FAIL;
   if (FAILED(ready_fence_result) || FAILED(ready_handle_result)) {
-    write_menu_resource_log(
-        "MENU_DIRECT_CREATE_FAILED\tready_fence=%ld\tready_handle=%ld\r\n",
-        ready_fence_result, ready_handle_result);
+    menu_resource_log_budget.run([&] {
+      write_menu_resource_log(
+          "MENU_DIRECT_CREATE_FAILED\tready_fence=%ld\tready_handle=%ld\r\n",
+          ready_fence_result, ready_handle_result);
+    });
     reset_menu_surface_resources();
     return 91;
   }
@@ -14020,19 +14045,23 @@ int ensure_menu_surface(ID3D12Device* device,
                 kMenuConsumedFenceName, &menu_consumed_fence_handle)
           : E_FAIL;
   if (FAILED(consumed_fence_result) || FAILED(consumed_handle_result)) {
-    write_menu_resource_log(
-        "MENU_DIRECT_CREATE_FAILED\tconsumed_fence=%ld"
-        "\tconsumed_handle=%ld\r\n",
-        consumed_fence_result, consumed_handle_result);
+    menu_resource_log_budget.run([&] {
+      write_menu_resource_log(
+          "MENU_DIRECT_CREATE_FAILED\tconsumed_fence=%ld"
+          "\tconsumed_handle=%ld\r\n",
+          consumed_fence_result, consumed_handle_result);
+    });
     reset_menu_surface_resources();
     return 92;
   }
   const auto surface_generation =
       shared_head_pose_reader().advance_menu_surface_generation();
   if (surface_generation != 0) {
-    write_menu_resource_log(
-        "MENU_SHARED_GENERATION\tgeneration=%llu\r\n",
-        static_cast<unsigned long long>(surface_generation));
+    menu_resource_log_budget.run([&] {
+      write_menu_resource_log(
+          "MENU_SHARED_GENERATION\tgeneration=%llu\r\n",
+          static_cast<unsigned long long>(surface_generation));
+    });
   }
   return 0;
 }
@@ -14100,23 +14129,25 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
     const auto candidate_id =
         candidate_log_count.fetch_add(1, std::memory_order_relaxed) + 1;
     if (candidate_id <= 5000) {
-      write_menu_resource_log(
-          "MENU_DRAW_CANDIDATE\tid=%llu\tframe=%llu\tcommands=%p"
-          "\tresource=%p\tresource_format=%u\trtv_format=%u"
-          "\tvs=%llu\tps=%llu\tvertices=%u\tinstances=%u"
-          "\tstream=%s\r\n",
-          static_cast<unsigned long long>(candidate_id),
-          static_cast<unsigned long long>(
-              present_count.load(std::memory_order_relaxed)),
-          commands, original_resource,
-          static_cast<unsigned>(source_description.Format),
-          static_cast<unsigned>(metadata.render_target_format),
-          static_cast<unsigned long long>(metadata.vertex_shader),
-          static_cast<unsigned long long>(metadata.pixel_shader), vertex_count,
-          instance_count,
-          source_description.Format == metadata.render_target_format
-              ? "typed"
-              : "alias");
+      menu_resource_log_budget.run([&] {
+        write_menu_resource_log(
+            "MENU_DRAW_CANDIDATE\tid=%llu\tframe=%llu\tcommands=%p"
+            "\tresource=%p\tresource_format=%u\trtv_format=%u"
+            "\tvs=%llu\tps=%llu\tvertices=%u\tinstances=%u"
+            "\tstream=%s\r\n",
+            static_cast<unsigned long long>(candidate_id),
+            static_cast<unsigned long long>(
+                present_count.load(std::memory_order_relaxed)),
+            commands, original_resource,
+            static_cast<unsigned>(source_description.Format),
+            static_cast<unsigned>(metadata.render_target_format),
+            static_cast<unsigned long long>(metadata.vertex_shader),
+            static_cast<unsigned long long>(metadata.pixel_shader), vertex_count,
+            instance_count,
+            source_description.Format == metadata.render_target_format
+                ? "typed"
+                : "alias");
+      });
     }
     // OptionsView records the settings widgets before its typeless
     // category-layer marker. Those content batches use the exact stock widget
@@ -14153,11 +14184,13 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
       const auto skipped =
           pre_options_skip_count.fetch_add(1, std::memory_order_relaxed) + 1;
       if (skipped <= 4) {
-        write_menu_resource_log(
-            "MENU_REDIRECT_SKIP\treason=before_options_alias"
-            "\tsource_format=%u\trtv_format=%u\r\n",
-            static_cast<unsigned>(source_description.Format),
-            static_cast<unsigned>(metadata.render_target_format));
+        menu_resource_log_budget.run([&] {
+          write_menu_resource_log(
+              "MENU_REDIRECT_SKIP\treason=before_options_alias"
+              "\tsource_format=%u\trtv_format=%u\r\n",
+              static_cast<unsigned>(source_description.Format),
+              static_cast<unsigned>(metadata.render_target_format));
+        });
       }
       return {};
     }
@@ -14165,19 +14198,21 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
     const auto options_stream_id =
         options_stream_log_count.fetch_add(1, std::memory_order_relaxed) + 1;
     if (options_stream_id <= 5000) {
-      write_menu_resource_log(
-          "MENU_OPTIONS_STREAM\tid=%llu\tframe=%llu\tcommands=%p"
-          "\tresource=%p\tresource_format=%u\trtv_format=%u"
-          "\tvs=%llu\tps=%llu\tvertices=%u\tinstances=%u"
-          "\tblend=%u\tstage=%s\r\n",
-          static_cast<unsigned long long>(options_stream_id),
-          static_cast<unsigned long long>(frame), commands, original_resource,
-          static_cast<unsigned>(source_description.Format),
-          static_cast<unsigned>(metadata.render_target_format),
-          static_cast<unsigned long long>(metadata.vertex_shader),
-          static_cast<unsigned long long>(metadata.pixel_shader), vertex_count,
-          instance_count, metadata.blend_enabled ? 1U : 0U,
-          alias_stream ? "alias" : "after_alias");
+      menu_resource_log_budget.run([&] {
+        write_menu_resource_log(
+            "MENU_OPTIONS_STREAM\tid=%llu\tframe=%llu\tcommands=%p"
+            "\tresource=%p\tresource_format=%u\trtv_format=%u"
+            "\tvs=%llu\tps=%llu\tvertices=%u\tinstances=%u"
+            "\tblend=%u\tstage=%s\r\n",
+            static_cast<unsigned long long>(options_stream_id),
+            static_cast<unsigned long long>(frame), commands, original_resource,
+            static_cast<unsigned>(source_description.Format),
+            static_cast<unsigned>(metadata.render_target_format),
+            static_cast<unsigned long long>(metadata.vertex_shader),
+            static_cast<unsigned long long>(metadata.pixel_shader), vertex_count,
+            instance_count, metadata.blend_enabled ? 1U : 0U,
+            alias_stream ? "alias" : "after_alias");
+      });
     }
     if (ensure_menu_surface(device.Get(), source_description,
                             metadata.render_target_format) != 0 ||
@@ -14185,9 +14220,11 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
       return {};
     }
     if (trace_redirect) {
-      write_menu_resource_log(
-          "MENU_REDIRECT_STAGE\tid=%llu\tstage=surface_ready\r\n",
-          static_cast<unsigned long long>(diagnostic_id));
+      menu_resource_log_budget.run([&] {
+        write_menu_resource_log(
+            "MENU_REDIRECT_STAGE\tid=%llu\tstage=surface_ready\r\n",
+            static_cast<unsigned long long>(diagnostic_id));
+      });
     }
     // Never overwrite the one-slot mailbox while OpenXR is sampling it.
     const auto menu_consumed =
@@ -14201,9 +14238,11 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
       direct_menu_ui_stream_frame = frame;
     }
     if (trace_redirect) {
-      write_menu_resource_log(
-          "MENU_REDIRECT_STAGE\tid=%llu\tstage=mailbox_writable\r\n",
-          static_cast<unsigned long long>(diagnostic_id));
+      menu_resource_log_budget.run([&] {
+        write_menu_resource_log(
+            "MENU_REDIRECT_STAGE\tid=%llu\tstage=mailbox_writable\r\n",
+            static_cast<unsigned long long>(diagnostic_id));
+      });
     }
     if (direct_menu_render_lists.find(commands) ==
         direct_menu_render_lists.end()) {
@@ -14215,18 +14254,22 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
       barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
       commands->ResourceBarrier(1, &barrier);
       if (trace_redirect) {
-        write_menu_resource_log(
-            "MENU_REDIRECT_STAGE\tid=%llu\tstage=barrier_recorded\r\n",
-            static_cast<unsigned long long>(diagnostic_id));
+        menu_resource_log_budget.run([&] {
+          write_menu_resource_log(
+              "MENU_REDIRECT_STAGE\tid=%llu\tstage=barrier_recorded\r\n",
+              static_cast<unsigned long long>(diagnostic_id));
+        });
       }
       if (direct_menu_clear_frame != frame) {
         constexpr FLOAT transparent[4]{0.0F, 0.0F, 0.0F, 0.0F};
         commands->ClearRenderTargetView(menu_rtv, transparent, 0, nullptr);
         direct_menu_clear_frame = frame;
         if (trace_redirect) {
-          write_menu_resource_log(
-              "MENU_REDIRECT_STAGE\tid=%llu\tstage=clear_recorded\r\n",
-              static_cast<unsigned long long>(diagnostic_id));
+          menu_resource_log_budget.run([&] {
+            write_menu_resource_log(
+                "MENU_REDIRECT_STAGE\tid=%llu\tstage=clear_recorded\r\n",
+                static_cast<unsigned long long>(diagnostic_id));
+          });
         }
       }
       const auto insertion =
@@ -14239,9 +14282,11 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
                                    std::memory_order_relaxed);
     original_om_set_render_targets(commands, 1, &menu_rtv, FALSE, nullptr);
     if (trace_redirect) {
-      write_menu_resource_log(
-          "MENU_REDIRECT_STAGE\tid=%llu\tstage=target_bound\r\n",
-          static_cast<unsigned long long>(diagnostic_id));
+      menu_resource_log_budget.run([&] {
+        write_menu_resource_log(
+            "MENU_REDIRECT_STAGE\tid=%llu\tstage=target_bound\r\n",
+            static_cast<unsigned long long>(diagnostic_id));
+      });
     }
     MenuDrawRedirect redirect{};
     redirect.active = true;
