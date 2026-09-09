@@ -2,6 +2,13 @@
 
 ## 10 September development resumed
 
+A focused SR-input trial now captures 64 complete successful evaluations across
+two stable feature lifetimes, with matched jitter in 32 adjacent call pairs.
+Ready and fresh stereo delivery passed. Both accepted DLLs and the probe flag
+are restored, proximity automation is restored, and no game/viewer remains.
+See the [capture handoff](handoffs/2026-09-10-sr-input-capture.md) for evidence and
+limits: this is neither independent eye attribution nor a blur/FPS fix.
+
 The optional DLSS SR probe now records jitter, motion-vector scale, reset,
 pre-exposure and render size alongside resource identity. Typed ABI and reader
 checks pass; old logs remain readable. This is undeployed evidence-gathering for
