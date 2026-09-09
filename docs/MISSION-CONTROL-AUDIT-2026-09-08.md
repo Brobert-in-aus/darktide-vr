@@ -38,6 +38,28 @@ X/right-grip alias layout; it is not a saved-layout test. Device algorithms,
 movement transport, animation, dodge eligibility and weapon execution remain
 doubles. No settings, installed files or live mission state changed.
 
+## Stock stim use lifecycle, 9 September
+
+The optional `tests/tooling/test-stim-stock-contract.lua <cached-source-root>`
+executes all five syringe consumers' target validators, their source self/ally
+action settings, and stock `ActionUseSyringe.start/fixed_update/finish/_target_unit`.
+It uses the actual trigger-time and fixed-frame clamp functions with a constructed
+60 Hz session. Forty variant/self/ally/client/server/time-scale cases verify
+application on the trigger frame, no next-frame repeat, role-scoped effect calls,
+charge requests, target clearing and remove-versus-unwield cleanup. Twenty-five
+interruption/missing/disabled/nonplayer/replay cases plus two corruption-health
+guards preserve stock rejection. Post-use replay suppresses cleanup/effects;
+targetless ally use exits only after its minimum time.
+
+The pinned LuaJIT run passes; receipt:
+`artifacts/unattended/stim-stock-lifecycle-20260909.log`. Unit/breed/status/health
+state, effects, notifications, stats, superclass and inventory operations are
+doubles. A charge request is not verified charge persistence. This is separate
+from the mapper/parser input-sequence fixture: input-to-action integration, real
+buffs, inventory changes, networking and worn targeting remain untested. Existing
+gift-transfer/recipient revalidation coverage lives in the optional online-rules
+stock contract and was not duplicated here.
+
 ## Stock tutorial text contract checked 9 September
 
 The controller-prompt fixture now optionally executes the actual cached
