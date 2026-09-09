@@ -90,3 +90,9 @@ target_link_libraries(darktidevr-resource-name-match-tests PRIVATE darktidevr_co
 target_compile_options(darktidevr-resource-name-match-tests PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-resource-name-match-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 add_test(NAME resource_name_match COMMAND darktidevr-resource-name-match-tests)
+
+add_executable(darktidevr-command-recording-snapshot-tests command_recording_snapshot.cpp)
+target_link_libraries(darktidevr-command-recording-snapshot-tests PRIVATE darktidevr_core)
+target_compile_options(darktidevr-command-recording-snapshot-tests PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-command-recording-snapshot-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME command_recording_snapshot COMMAND darktidevr-command-recording-snapshot-tests)

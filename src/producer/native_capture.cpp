@@ -3,6 +3,7 @@
 #include "producer/diagnostic_append_log.h"
 #include "producer/bounded_diagnostic.h"
 #include "producer/resource_name_match.h"
+#include "producer/command_recording_snapshot.h"
 #include "producer/shader_pair_snapshot.h"
 #include "producer/resource_handle_trace.h"
 #include "producer/ngx_output_probe.h"
@@ -974,47 +975,15 @@ struct PassCounts {
   std::uint64_t binding_samples{};
 };
 
-constexpr std::size_t kRootSlotCount = 32;
+constexpr std::size_t kRootSlotCount = darktidevr::producer::kCommandRootSlotCount;
 
-struct CommandTrace {
-  bool render_pass_active{};
-  std::uint64_t recording_generation{};
-  std::uint64_t draw_count{};
-  std::uint64_t indexed_draw_count{};
-  std::uint64_t dispatch_count{};
-  std::uint64_t indirect_count{};
-  std::uint64_t copy_count{};
-  std::uint64_t resolve_count{};
-  std::uint64_t barrier_count{};
-  std::uint64_t render_pass_count{};
-  int eye{-1};
-  std::uintptr_t pso{};
-  bool cluster_light_raster{};
-  std::uintptr_t root_signature{};
-  std::uint64_t render_target{};
-  std::uint64_t depth_target{};
-  UINT render_target_count{};
-  UINT viewport_x{};
-  UINT viewport_y{};
-  UINT viewport_width{};
-  UINT viewport_height{};
-  D3D12_RECT scissor{};
-  D3D12_PRIMITIVE_TOPOLOGY primitive_topology{};
-  D3D12_INDEX_BUFFER_VIEW index_buffer{};
-  std::array<D3D12_VERTEX_BUFFER_VIEW, 8> vertex_buffers{};
-  std::array<std::uint64_t, kRootSlotCount> graphics_tables{};
-  std::array<std::uint64_t, kRootSlotCount> graphics_constants{};
-  std::array<std::uint64_t, kRootSlotCount> graphics_cbvs{};
-  std::array<std::uint64_t, kRootSlotCount> graphics_srvs{};
-  std::array<std::uint64_t, kRootSlotCount> graphics_uavs{};
-  ID3D12DescriptorHeap* graphics_resource_heap{};
-  ID3D12DescriptorHeap* graphics_sampler_heap{};
-  std::uintptr_t compute_root_signature{};
-  std::array<std::uint64_t, kRootSlotCount> compute_tables{};
-  std::array<std::uint64_t, kRootSlotCount> compute_constants{};
-  std::array<std::uint64_t, kRootSlotCount> compute_cbvs{};
-  std::array<std::uint64_t, kRootSlotCount> compute_srvs{};
-  std::array<std::uint64_t, kRootSlotCount> compute_uavs{};
+using CommandRecordingSnapshot = darktidevr::producer::CommandRecordingSnapshot;
+struct CommandTrace : CommandRecordingSnapshot {
+  CommandTrace() = default;
+  CommandTrace(const CommandTrace&) = delete;
+  CommandTrace& operator=(const CommandTrace&) = delete;
+  CommandTrace(CommandTrace&&) = default;
+  CommandTrace& operator=(CommandTrace&&) = default;
   std::unordered_map<PassKey, PassCounts, PassKeyHash> passes;
 };
 
@@ -3583,7 +3552,7 @@ bool is_vendor_menu_widget_shader_pair(const PsoMetadata& metadata) {
 }
 
 
-std::uint64_t graphics_binding_state_hash(const CommandTrace& trace) {
+std::uint64_t graphics_binding_state_hash(const CommandRecordingSnapshot& trace) {
   auto hash = 1469598103934665603ULL;
   for (std::size_t slot = 0; slot < kRootSlotCount; ++slot) {
     hash = mix_u64(hash, slot);
@@ -3647,7 +3616,7 @@ void sample_graphics_bindings(ID3D12GraphicsCommandList* commands) {
   ++pass.binding_samples;
 }
 
-std::uint64_t draw_identity_hash(const CommandTrace& trace,
+std::uint64_t draw_identity_hash(const CommandRecordingSnapshot& trace,
                                  std::uint64_t draw_kind,
                                  std::uint64_t argument0,
                                  std::uint64_t argument1,
@@ -7248,7 +7217,7 @@ BillboardBindingOverride apply_billboard_view_basis(
 }
 
 void log_cluster_light_raster_bindings(
-    ID3D12GraphicsCommandList* commands, const CommandTrace& trace) {
+    ID3D12GraphicsCommandList* commands, const CommandRecordingSnapshot& trace) {
   if (cluster_raster_binding_log_count.fetch_add(
           1, std::memory_order_relaxed) >= 16) {
     return;
@@ -7445,7 +7414,7 @@ void queue_cluster_light_visibility_fov_patches(
   if (!(corrected_fov > 0.0F && corrected_fov < 3.14159265F)) {
     return;
   }
-  CommandTrace trace{};
+  CommandRecordingSnapshot trace{};
   {
     std::scoped_lock lock(trace_mutex);
     const auto found = command_traces.find(commands);
@@ -7514,7 +7483,7 @@ void record_cluster_submission(
               darktidevr::core::SharedPresentationMode::stereo_world)) {
     return;
   }
-  CommandTrace trace{};
+  CommandRecordingSnapshot trace{};
   {
     std::scoped_lock lock(trace_mutex);
     const auto found = command_traces.find(commands);
@@ -7635,7 +7604,7 @@ WorldUiDrawRedirect begin_world_ui_draw(ID3D12GraphicsCommandList* commands,
       metadata.render_target_format != DXGI_FORMAT_R8G8B8A8_UNORM)
     return redirect;
   ++world_ui_capture_stages[1];
-  CommandTrace trace{};
+  CommandRecordingSnapshot trace{};
   {
     std::scoped_lock lock(trace_mutex);
     const auto found = command_traces.find(commands);
@@ -7944,7 +7913,7 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
     const auto typed_layer =
         options_layer_resources[1].load(std::memory_order_acquire);
     if (alias_layer || typed_layer) {
-      CommandTrace routing_trace{};
+      CommandRecordingSnapshot routing_trace{};
       {
         std::scoped_lock lock(trace_mutex);
         const auto found = command_traces.find(commands);
@@ -8269,7 +8238,7 @@ void STDMETHODCALLTYPE dispatch_hook(ID3D12GraphicsCommandList* commands,
       cluster_trace_saw_flat_presentation.store(true,
                                                 std::memory_order_relaxed);
     }
-    CommandTrace trace{};
+    CommandRecordingSnapshot trace{};
     std::string marker{"<none>"};
     {
       std::scoped_lock lock(trace_mutex);
@@ -14079,7 +14048,7 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
     return {};
   }
 
-  CommandTrace trace{};
+  CommandRecordingSnapshot trace{};
   {
     std::scoped_lock lock(trace_mutex);
     const auto found = command_traces.find(commands);
