@@ -10,6 +10,24 @@ outside the selected installation, reparse points below that root, directory
 destinations and, by default, missing parent directories. It checks that each destination
 still matches its staged original before writing, then verifies the result.
 
+Selective trial callers may also pin reviewed bytes on each entry:
+`ExpectedSourceHash` requires a `Source` entry and a 64-digit SHA256 string.
+`ExpectedDestinationHash` requires that existing destination hash; an explicit
+null requires the destination to be absent. Omitting either key retains the
+ordinary transaction behavior. Lowercase hashes are accepted and normalized.
+Malformed preconditions are rejected before staging. Every supplied precondition
+is checked before any installed write, so a later mismatch cannot partially
+install an earlier candidate. The manifest preserves these preconditions
+separately from observed originals and staged hashes.
+
+Pin the candidate hash from its build receipt and each installed hash from the
+reviewed baseline, not from freshly hashing an unexpected replacement at install
+time. These checks protect reviewed file identity; they do not prove which
+source built a binary. Fresh Ready and the closed-game gate remain necessary.
+Native-only trials must cover both existing destinations (`binaries` and the
+mod's `bin` directory) in one transaction, leaving the bootstrap, viewer, Lua
+and settings untouched. Use the saved transaction manifest for verified rollback.
+
 On a caught failure, it restores touched files in reverse order, removes new
 files and verifies the original hashes. A locked file whose failed write left
 its original bytes intact does not need to be rewritten. Backup originals,

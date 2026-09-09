@@ -51,6 +51,20 @@ function Invoke-DarktideDeploymentTransaction {
         $kinds = @('Source', 'Content', 'Bytes', 'Remove' | Where-Object { $entry.ContainsKey($_) })
         if ($kinds.Count -ne 1) { throw 'Each deployment entry requires exactly one Source, Content, Bytes or Remove.' }
         $kind = $kinds[0]
+        $hasSourceHash = $entry.ContainsKey('ExpectedSourceHash')
+        $hasDestinationHash = $entry.ContainsKey('ExpectedDestinationHash')
+        if ($hasSourceHash -and $kind -ne 'Source') { throw 'Source hash precondition requires Source.' }
+        if ($hasSourceHash -and ($entry.ExpectedSourceHash -isnot [string] -or
+                $entry.ExpectedSourceHash -notmatch '^[0-9a-fA-F]{64}$')) {
+            throw 'Invalid source hash precondition.'
+        }
+        # An explicit null means the destination must be absent. Omitting the
+        # key preserves the existing transaction behavior for ordinary syncs.
+        if ($hasDestinationHash -and $null -ne $entry.ExpectedDestinationHash -and
+                ($entry.ExpectedDestinationHash -isnot [string] -or
+                $entry.ExpectedDestinationHash -notmatch '^[0-9a-fA-F]{64}$')) {
+            throw 'Invalid destination hash precondition.'
+        }
         $source = $null
         if ($kind -eq 'Source') {
             if (-not (Test-Path -LiteralPath $entry.Source -PathType Leaf)) { throw "Missing deployment source: $($entry.Source)" }
@@ -64,6 +78,11 @@ function Invoke-DarktideDeploymentTransaction {
             Bytes = if ($kind -eq 'Bytes') { ,$entry.Bytes } else { $null }
             Existed = $false; OriginalHash = $null; ExpectedHash = $null
             Backup = $null; Staged = $null
+            SourcePrecondition = if ($hasSourceHash) { $entry.ExpectedSourceHash.ToUpperInvariant() } else { $null }
+            DestinationPreconditionEnabled = $hasDestinationHash
+            DestinationPrecondition = if ($hasDestinationHash -and $null -ne $entry.ExpectedDestinationHash) {
+                $entry.ExpectedDestinationHash.ToUpperInvariant()
+            } else { $null }
         }
     }
     $backupBase = [IO.Path]::GetFullPath($BackupRoot)
@@ -85,6 +104,12 @@ function Invoke-DarktideDeploymentTransaction {
             $entry.Existed = Test-Path -LiteralPath $entry.Destination -PathType Leaf
             if ($entry.Existed) {
                 $entry.OriginalHash = (Get-FileHash -LiteralPath $entry.Destination -Algorithm SHA256).Hash
+            }
+            if ($entry.DestinationPreconditionEnabled -and
+                    $entry.OriginalHash -ne $entry.DestinationPrecondition) {
+                throw "Destination hash precondition failed: $($entry.Destination)"
+            }
+            if ($entry.Existed) {
                 $entry.Backup = Join-Path $backupDirectory ("original-$index.bin")
                 Copy-Item -LiteralPath $entry.Destination -Destination $entry.Backup
                 if ((Get-FileHash -LiteralPath $entry.Backup -Algorithm SHA256).Hash -ne $entry.OriginalHash) {
@@ -95,6 +120,9 @@ function Invoke-DarktideDeploymentTransaction {
                 $entry.Staged = Join-Path $backupDirectory ("staged-$index.bin")
                 if ($entry.Kind -eq 'Source') {
                     $entry.ExpectedHash = (Get-FileHash -LiteralPath $entry.Source -Algorithm SHA256).Hash
+                    if ($entry.SourcePrecondition -and $entry.ExpectedHash -ne $entry.SourcePrecondition) {
+                        throw "Source hash precondition failed: $($entry.Source)"
+                    }
                     Copy-Item -LiteralPath $entry.Source -Destination $entry.Staged
                     if ((Get-FileHash -LiteralPath $entry.Staged -Algorithm SHA256).Hash -ne $entry.ExpectedHash) {
                         throw "Source changed while staging: $($entry.Source)"

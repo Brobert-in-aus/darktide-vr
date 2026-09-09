@@ -71,6 +71,33 @@ try {
     Assert-Rejected @(@{ Content = 'missing'; Destination = (Join-Path $game 'missing\file') }) 'directory is missing'
     Assert-Rejected @(@{ Source = (Join-Path $sources 'absent'); Destination = $a }) 'Missing deployment source'
     Assert-Text $a 'original-native'
+    # A reviewed selective trial binds both the candidate and installed baseline.
+    # A mismatch in a later entry must fail before the first installed write.
+    $sourceHash = (Get-FileHash -LiteralPath $sourceA -Algorithm SHA256).Hash
+    $originalHash = (Get-FileHash -LiteralPath $a -Algorithm SHA256).Hash
+    $wrongHash = '0' * 64
+    Assert-Rejected @(@{ Source=$sourceA; Destination=$a; ExpectedSourceHash=$wrongHash }) 'Source hash precondition'
+    Assert-Text $a 'original-native'
+    Assert-Rejected @($entries[0], @{Source=$sourceB;Destination=$b;ExpectedDestinationHash=$wrongHash}) 'Destination hash precondition'
+    Assert-Text $a 'original-native';Assert-Text $b 'original-lua'
+    Assert-Rejected @(@{Content='unexpected';Destination=$a;ExpectedDestinationHash=$null}) 'Destination hash precondition'
+    Assert-Rejected @(@{Content='unexpected';Destination=$flag;ExpectedDestinationHash=$originalHash}) 'Destination hash precondition'
+    foreach ($invalid in @('', 'short', @('0' * 64), 123)) {
+        Assert-Rejected @(@{Source=$sourceA;Destination=$a;ExpectedSourceHash=$invalid}) 'Invalid source hash precondition'
+        Assert-Rejected @(@{Source=$sourceA;Destination=$a;ExpectedDestinationHash=$invalid}) 'Invalid destination hash precondition'
+    }
+    Assert-Rejected @(@{Source=$sourceA;Destination=$a;ExpectedSourceHash=$null}) 'Invalid source hash precondition'
+    Assert-Rejected @(@{Content='text';Destination=$a;ExpectedSourceHash=$sourceHash}) 'Source hash precondition requires Source'
+    $pinned = Invoke-DarktideDeploymentTransaction -Root $game -BackupRoot $backup -Entries @(
+        @{Source=$sourceA;Destination=$a;ExpectedSourceHash=$sourceHash.ToLowerInvariant();ExpectedDestinationHash=$originalHash},
+        @{Content='new';Destination=$flag;ExpectedDestinationHash=$null})
+    Assert-Text $a 'new-native';Assert-Text $flag 'new'
+    $pinnedManifest=Get-Content -LiteralPath $pinned.Manifest -Raw|ConvertFrom-Json
+    if (-not $pinnedManifest.entries[1].DestinationPreconditionEnabled -or
+            $null -ne $pinnedManifest.entries[1].DestinationPrecondition -or
+            $pinnedManifest.entries[0].SourcePrecondition -ne $sourceHash) { throw 'Missing pinned trial preconditions.' }
+    [IO.File]::WriteAllText($a,'original-native')
+    Remove-Item -LiteralPath $flag
     $outside = Join-Path $testRoot 'junction-target'
     [IO.Directory]::CreateDirectory($outside) | Out-Null
     $victim = Join-Path $outside 'file'
