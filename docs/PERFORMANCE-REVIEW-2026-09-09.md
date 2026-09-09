@@ -8,6 +8,12 @@ The 20-minute heartbeat remains active. Billboarding and pickup sizing still
 take priority when the user's worn observations become available; physical
 melee remains paused. DLSS blur around HUD items remains open.
 
+The later [scoped aim return change](SCOPED-AIM-RETURN-PERFORMANCE.md) removes
+one temporary result table from each protected pose call. Five alternating
+offline trials preserve return/error/restoration behavior and reduce default
+LuaJIT median cost from 40.9382 to 26.2258 ms per 100,000 calls. All 69 chunks
+compile. It remains source-only and is outside the staged Lua package.
+
 ## First focused comparisons
 
 | Candidate | Scope | Evidence | Status |

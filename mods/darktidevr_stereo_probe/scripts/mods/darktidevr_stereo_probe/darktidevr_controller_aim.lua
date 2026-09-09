@@ -102,6 +102,14 @@ local function simulated_melee_visual_rotation(unit)
     return component and component.rotation
 end
 
+local function finish_first_person_pose(action, component, ok, ...)
+    action._first_person_component = component
+    if not ok then
+        error((...), 0)
+    end
+    return ...
+end
+
 local function with_first_person_pose(action, position, rotation, func, ...)
     local component = action and action._first_person_component
     if not component or not position or not rotation then
@@ -120,12 +128,7 @@ local function with_first_person_pose(action, position, rotation, func, ...)
         end,
     })
     action._first_person_component = proxy
-    local results = packed(pcall(func, action, ...))
-    action._first_person_component = component
-    if not results[1] then
-        error(results[2], 0)
-    end
-    return unpack(results, 2, results.n)
+    return finish_first_person_pose(action, component, pcall(func, action, ...))
 end
 
 function controller_aim.install(mod, presentation, state)
