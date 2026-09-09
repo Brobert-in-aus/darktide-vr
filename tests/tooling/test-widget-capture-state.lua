@@ -89,6 +89,14 @@ for _,field in ipairs({'change_function','visibility_function'}) do
     pass[field]=nil
 end
 -- A draw failure restores source bindings and retires further capture draws.
+local animated=0
+widget.animations={[{}]=true}
+admitted,reason=state:draw({widget},{},function() animated=animated+1;draw() end)
+assert(not admitted and reason=='unsupported_animation','active widget animation admitted')
+assert(animated==0 and pass.data==original and created==first_created)
+widget.animations={}
+assert(state:admit({widget},{}),'empty animation table rejected')
+widget.animations=nil
 local ok,err=pcall(state.draw,state,{widget},{},function() draw();error('draw failed') end)
 assert(not ok and tostring(err):find('draw failed',1,true))
 assert(pass.data==original and original.material==source_material)

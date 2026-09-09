@@ -73,6 +73,17 @@ for _,field in ipairs({'change_function','visibility_function'}) do
     candidate:destroy()
 end
 assert(select(2,s:capture(1,identity,r))=='warming' and draws()==1)
+do
+    local candidate,target,request,count=setup()
+    request.widgets[1].animations={[{}]=true}
+    local handled,reason=candidate:capture(1,identity,request)
+    assert(not handled and reason=='unsupported_animation' and count()==0)
+    request.widgets[1].animations={}
+    handled,reason=candidate:capture(1,identity,request)
+    assert(not handled and reason=='unsupported_animation' and target.queues==0)
+    assert(select(2,candidate:capture(2,identity,request))=='warming' and count()==1)
+    candidate:destroy()
+end
 assert(pass.data==original and original.material=='source')
 assert(s:capture(1,identity,r) and draws()==1)
 assert(not s:capture(1,{},r))

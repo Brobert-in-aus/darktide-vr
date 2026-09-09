@@ -202,6 +202,21 @@ calling backend cleanup, preventing a second cleanup attempt.
 
 ## Engine integration still required
 
+9 September animation admission follow-up: stock UIWidget updates active widget
+animations before evaluating its passes. Those updates can introduce viewport
+transforms or change measured bounds just like pass callbacks. Admission now
+rejects active animation tables before cache swaps/drawing; empty animation tables
+remain eligible. Removing an animation between eyes cannot change the first eye's
+rejected route; the next frame can capture normally.
+
+Both admission regressions failed before the guard. Eight widget/plane CTests pass
+(0.11 seconds), and all 69 Lua chunks compile. The optional cached UIWidget.draw
+fixture executes stock animation dispatch and confirms that an update can turn a
+previously local style into a 1920x1080 viewport pass after measurement. Its engine
+and animation implementation are mocked; this proves ordering and the capture
+contract gap, not actual popup raster bounds. Freeze animation/callback results
+once before admitting those dynamic paths into a future live capture hook.
+
 9 September between-eye cancellation follow-up: invalidation now retires image
 and submission ownership while retaining the current frame's capture/rejection
 decision. Previously a hide between eye calls cleared that decision, allowing a

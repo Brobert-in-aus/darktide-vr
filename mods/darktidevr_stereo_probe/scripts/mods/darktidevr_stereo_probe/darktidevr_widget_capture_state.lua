@@ -26,6 +26,12 @@ function State:admit(widgets,settings)
         -- translated scenegraph then moves by a scaled offset, not the capture
         -- crop offset. Preserve the stock route until that transform is owned.
         if widget.scale then return nil,'unsupported_transform' end
+        -- UIWidget.draw updates these before any pass is evaluated. An active
+        -- animation can replace measured geometry/transforms after admission.
+        -- Empty stock animation tables perform no updates and remain eligible.
+        if widget.animations and (type(widget.animations)~='table' or next(widget.animations)~=nil) then
+            return nil,'unsupported_animation'
+        end
         for _,pass in ipairs(widget.passes) do
             if #list>=128 then return nil,'too_many_passes' end
             if seen[pass] then return nil,'duplicate_pass' end

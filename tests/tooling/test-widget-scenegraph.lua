@@ -29,8 +29,10 @@ if arg[3] then
     end}}
     local graph_api={get_size=function(g,id)return unpack(g[id].size)end,
         world_position=function(g,id)return g[id].world_position end}
+    local animation_api={}
     local modules={['scripts/managers/ui/ui_passes']=passes,
         ['scripts/managers/ui/ui_scenegraph']=graph_api,
+        ['scripts/managers/ui/ui_animation']=animation_api,
         ['scripts/managers/input/input_device']={gamepad_active=false}}
     local original_require=require
     require=function(name)return modules[name] or {}end
@@ -53,6 +55,19 @@ if arg[3] then
     before,after=run(graph),run(translated)
     assert(before[1]-after[1]==1275 and before[2]-after[2]==300)
     widget.scale=nil
+    -- Stock animation updates precede all pass transforms, after the caller's
+    -- capture admission/measurement. Their output must be owned before capture.
+    local animation_calls=0
+    animation_api.update=function(_,dt)
+        assert(dt==0.01);animation_calls=animation_calls+1
+        widget.style.scenegraph_scale='fit'
+    end
+    animation_api.completed=function()return false end
+    widget.animations={[{}]=true}
+    assert(widget.style.scenegraph_scale==nil)
+    after=run(translated)
+    assert(animation_calls==1 and after[3]==1920 and after[4]==1080)
+    widget.animations=nil;widget.style.scenegraph_scale=nil
     -- The actual stock callback runs after callers have measured/admitted the
     -- widget. A previously local pass can become viewport-relative at draw.
     widget.passes[1].change_function=function(_,style)style.scenegraph_scale='fit'end
