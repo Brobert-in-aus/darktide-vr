@@ -7,10 +7,10 @@ this work session. Continue useful development and measured performance work
 until the user says home/stop; the 20-minute heartbeat is active. DLSS blur around
 HUD items remains open in the active todo list. No live changes were made.
 
-Latest read-only Inventory at 15:34 Brisbane finds the Quest asleep, one VD
+Latest read-only Inventory at 16:35 Brisbane finds the Quest asleep, one VD
 Streamer and no game/launcher processes. Accepted installed Lua/native/bootstrap
 hashes remain unchanged; this is not Ready certification. Receipt:
-`artifacts/unattended/performance-late-inventory-20260909.json`.
+`artifacts/unattended/performance-afternoon-inventory-20260909.json`.
 
 Two focused performance packages are now staged separately from accumulated
 mainline development. Native `8b3697a` (PR #189) reduces exhausted diagnostic,

@@ -15,6 +15,16 @@ melee remains paused. DLSS blur around HUD items remains open.
 | Native `8b3697a`, PR #189 | Exhausted menu diagnostics, short resource names, fixed command snapshots | Actual hook recording: 15 processes/version; diagnostic and name paths faster, control medians similar; identical admitted logs | Staged, copied-file rollback passed |
 | Lua `008e1b0`, PR #197 | Prompt/draw result-table removal and HUD follow allocation reduction | Actual module comparisons, preserved error/return/restoration behaviour, exact follow fields; package's 49 chunks compile | Staged, copied-file rollback passed |
 
+A later focused buffer candidate `516f935` (PR #215) builds on `8b3697a` and
+adds the point/range caches and conservative bounds only. It is **built, not
+staged or deployed**; the five staged plans and their hashes remain unchanged.
+Its native DLL and affected executables build; two affected checks pass in
+2.76 seconds. The candidate branch contains
+`docs/BUFFER-PERFORMANCE-FOCUSED-2026-09-09.md` with scope, commands and DLL hash.
+Compare it against `8b3697a` to isolate the added buffer changes, after the first
+focused comparison is understood. It excludes later shader, SR, pose and GPU
+profiling edits.
+
 Evaluate each separately against its accepted baseline, restoring that baseline
 between trials. Use the staged hash preconditions and save the transaction and
 rollback receipts. Native UI diagnostics replace the same DLL as native
@@ -106,3 +116,19 @@ Windows x64 Release native DLL and hook executable build; existing
 `gpu-profile-counter-tests-20260909.log`. This is a source-level reduction in
 synchronization instructions, without a measured frame-time claim or live
 profiling exercise. It remains outside the staged native payload.
+
+## Latest offline checkpoint
+
+At 16:35 Brisbane the read-only Inventory still finds the Quest asleep, one
+Virtual Desktop Streamer and no game or launcher processes. No proximity change
+or Ready certification. Receipt:
+`artifacts/unattended/performance-afternoon-inventory-20260909.json`.
+The 20-minute heartbeat remains active; the user has not said home/stop.
+
+PR #211 updates this review map; #212 narrows the GPU report lock scope;
+#213 removes redundant atomics from mutex-protected profiling counters;
+#214 adds conservative bounds to point lookup; #215 provides the separate
+focused buffer build. All remain undeployed. The latest source audit also
+retains `dtvr_focused_trace_count` attempt counting because it is an exposed
+reporting contract; saturating it as a performance shortcut would change that
+information. No new gameplay fixtures or live captures were added.
