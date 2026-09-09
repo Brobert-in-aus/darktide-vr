@@ -65,12 +65,48 @@ application or an accepted change. No settings were written.
 The limited local receipt is `artifacts/unattended/dlss-settings-audit-20260909.json`
 (ignored); it includes the settings file hash and observation time.
 
-The current native probe reads resource parameters only for feature kind 11
+The installed native probe reads resource parameters only for feature kind 11
 (frame generation). The cached NGX definitions identify SR as kind 1. A kind-1
 `NGX_EVAL` timing/identity line does not contain an SR resource capture: its zero
 resource fields must not be interpreted as missing SR inputs. The current owned
 UI/NGX bitmap match remains FG-boundary evidence; SR color, motion, jitter and
 history ownership require their own attributed observation before a correction.
+
+### Undeployed SR resource observation
+
+The main development candidate adds `observe_sr_inputs=1` under `[probe]` in
+the existing `darktidevr_ngx_output_probe.flag`. It defaults off, retains the
+existing runtime/prologue/parameter-owner verification, and queries only known
+live feature-kind-1 handles inside the existing capture window. Its independent
+atomic budget admits at most 64 evaluations per process, including evaluations
+whose queries fail; subsequent windows or feature lifetimes cannot replenish it.
+`wait_for_stereo=1` retains the existing submission gate. No flag was installed.
+
+The separate temporary `darktidevr-ngx-sr-<pid>.log` records seven inputs per
+admitted call: Color, Output, Depth, MotionVectors, TransparencyMask,
+ExposureTexture and DLSS.Input.Bias.Current.Color.Mask. Each record includes
+call, feature lifetime, command list, thread, capture-window context, query
+result and resource descriptor. Only a successful non-null query is described.
+Window context is timing context, not an eye or pose attribution. Records from
+different threads can interleave; group by call and require all seven indexes.
+The matching `NGX_SR_EVAL` record reports the original CPU evaluation result;
+an absent result leaves the observation incomplete, and success does not
+certify GPU completion.
+Failure or successful null is distinct from a described resource. Header names
+alone do not prove that this installed SR implementation supports every query.
+
+The probe retains no resource reference, copies no pixels, writes no parameters
+and changes no resource state. It does not query jitter/history parameters or
+prove HUD inclusion, mask contents, temporal sharpness, GPU completion, or
+visual acceptance. Existing FG log format and pairing remain unchanged. This
+candidate is not in the accepted installation or a focused deployment package;
+review a minimal native port and obtain Ready before any live trial.
+
+Offline validation uses the hash-pinned official NGX headers to check all seven
+names and the existing MSVC resource getter ABI. A concurrent budget test covers
+disabled/closed/FG/unknown-lifetime/unverified exclusions and exact exhaustion.
+The Windows x64 native DLL builds in `build/xr-frame-stage-timing` only; no
+runtime callback or headset capture has been exercised for this candidate.
 
 ### Placement ties are not displacement evidence
 

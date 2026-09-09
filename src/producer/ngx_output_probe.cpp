@@ -8,6 +8,7 @@
 #include "producer/ngx_output_copy_probe.h"
 #include "producer/generated_stereo.h"
 #include "producer/ngx_gpu_timing.h"
+#include "producer/ngx_sr_observation.h"
 #include <MinHook.h>
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -33,6 +34,7 @@ NgxFeatureRegistry feature_registry;
 HMODULE runtime{};
 HANDLE log_file = INVALID_HANDLE_VALUE;
 HANDLE queue_log = INVALID_HANDLE_VALUE;
+HANDLE sr_log = INVALID_HANDLE_VALUE;
 std::mutex command_mutex;
 NgxCommandObservations command_observations;
 NgxOutputPairState output_pair_state;
@@ -72,6 +74,8 @@ std::atomic<std::uint32_t> samples{};
 std::atomic<unsigned> timing_samples{};
 std::atomic<bool> probe_installed{};
 NgxCaptureWindow capture_window;
+bool observe_sr_inputs{};
+NgxSrObservationBudget sr_observation_budget;
 constexpr std::uint64_t kCallLimit = 32768;
 constexpr std::uint32_t kSampleLimit = 256;
 
@@ -107,6 +111,39 @@ void write_line(const char* line, std::size_t length) {
   std::scoped_lock lock(log_mutex);
   DWORD written{};
   WriteFile(log_file, line, static_cast<DWORD>(length), &written, nullptr);
+}
+
+void record_sr_inputs(std::uint64_t call, void* commands, const void* feature,
+                      const void* parameters, std::uint64_t lifetime,
+                      const NgxCaptureWindow::Context& window) {
+  // Every pointer is queried and inspected only inside the live callback. No
+  // COM reference, GPU copy, state transition or parameter write is performed.
+  for (std::size_t index = 0; index < kNgxSrResourceNames.size(); ++index) {
+    ID3D12Resource* resource{};
+    const auto result = ngx::read_resource(parameters, kNgxSrResourceNames[index], &resource);
+    const bool described = result == ngx::kSuccess && resource;
+    const auto desc = described ? resource->GetDesc() : D3D12_RESOURCE_DESC{};
+    char line[768]{};
+    const auto length = std::snprintf(line, sizeof(line),
+        "NGX_SR_INPUT call=%llu feature=%p lifetime=%llu commands=%p thread=%lu "
+        "batch=%llu present=%llu first_call=%llu index=%zu name=%s result=%x resource=%p described=%u "
+        "dimension=%u width=%llu height=%u depth_or_array=%u mips=%u format=%u samples=%u "
+        "pixels_captured=0 publication=0\n",
+        static_cast<unsigned long long>(call), feature,
+        static_cast<unsigned long long>(lifetime), commands, GetCurrentThreadId(),
+        static_cast<unsigned long long>(window.batch),
+        static_cast<unsigned long long>(window.present),
+        static_cast<unsigned long long>(window.first_call), index, kNgxSrResourceNames[index],
+        result, static_cast<void*>(resource), described ? 1U : 0U,
+        static_cast<unsigned>(desc.Dimension), static_cast<unsigned long long>(desc.Width),
+        desc.Height, static_cast<unsigned>(desc.DepthOrArraySize),
+        static_cast<unsigned>(desc.MipLevels), static_cast<unsigned>(desc.Format), desc.SampleDesc.Count);
+    if (length > 0 && static_cast<std::size_t>(length) < sizeof(line)) {
+      std::scoped_lock lock(log_mutex);
+      DWORD written{};
+      WriteFile(sr_log, line, static_cast<DWORD>(length), &written, nullptr);
+    }
+  }
 }
 
 void record_slow_call(const char* operation, std::uint32_t kind,
@@ -193,6 +230,13 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   const auto call = calls.fetch_add(1, std::memory_order_relaxed) + 1;
   const auto window = capture_window.snapshot(call, kCallLimit);
   const auto identity = feature_registry.lookup(feature);
+  const bool sr_observed = observe_sr_inputs && window.eligible && identity.kind == 1 && identity.lifetime &&
+      !sr_observation_budget.exhausted() &&
+      sr_observation_budget.reserve(true, true, identity.kind, identity.lifetime,
+          verified_parameters(parameters, ngx::kGetD3D12ResourceSlot));
+  if (sr_observed) {
+    record_sr_inputs(call, commands, feature, parameters, identity.lifetime, window);
+  }
   // SR work on other threads can interleave between the two FG evaluations.
   // It must neither invalidate their pair nor count as another eye evaluation.
   static thread_local std::uint64_t fg_evaluation_order{};
@@ -297,6 +341,17 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
       {identity.lifetime,legacy_region[2],legacy_region[3]}) : 0;
   const auto began = GetTickCount64();
   const auto result = original(commands, feature, parameters, callback);
+  if (sr_observed) {
+    char line[192]{};
+    const auto length = std::snprintf(line, sizeof(line),
+        "NGX_SR_EVAL call=%llu result=%x gpu_complete=0 publication=0\n",
+        static_cast<unsigned long long>(call), result);
+    if (length > 0 && static_cast<std::size_t>(length) < sizeof(line)) {
+      std::scoped_lock lock(log_mutex);
+      DWORD written{};
+      WriteFile(sr_log, line, static_cast<DWORD>(length), &written, nullptr);
+    }
+  }
   mark_ngx_gpu_timing(timing, static_cast<ID3D12GraphicsCommandList*>(commands));
   active_evaluation = previous_evaluation;
   if(identity.kind==11)
@@ -530,6 +585,7 @@ bool install_ngx_output_probe(HMODULE capture_module) {
   if (GetFileAttributesW(flag.c_str()) ==
       INVALID_FILE_ATTRIBUTES) return true;
   const bool wait_for_stereo = GetPrivateProfileIntW(L"probe", L"wait_for_stereo", 0, flag.c_str()) != 0;
+  observe_sr_inputs = GetPrivateProfileIntW(L"probe", L"observe_sr_inputs", 0, flag.c_str()) != 0;
   configure_ngx_output_copy(wait_for_stereo &&
       GetPrivateProfileIntW(L"probe", L"copy_output", 0, flag.c_str()) != 0);
   configure_generated_stereo(wait_for_stereo &&
@@ -575,6 +631,24 @@ bool install_ngx_output_probe(HMODULE capture_module) {
     log_file = INVALID_HANDLE_VALUE;
     return false;
   }
+  if (observe_sr_inputs) {
+    const auto sr_output = std::wstring(path.data(), length) + L"darktidevr-ngx-sr-" +
+        std::to_wstring(GetCurrentProcessId()) + L".log";
+    sr_log = CreateFileW(sr_output.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                         CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    // An unavailable diagnostic destination disables only the optional SR probe.
+    observe_sr_inputs = sr_log != INVALID_HANDLE_VALUE;
+    if (observe_sr_inputs) {
+      char sr_header[256]{};
+      const auto sr_length = std::snprintf(sr_header, sizeof(sr_header),
+          "ngx_sr_probe=armed schema=1 runtime=32.0.16.1088 resource_get_slot=9 "
+          "call_limit=32768 sample_limit=64 wait_for_stereo=%u pixels_captured=0 publication=0\n",
+          wait_for_stereo ? 1U : 0U);
+      DWORD written{};
+      if (sr_length > 0 && static_cast<std::size_t>(sr_length) < sizeof(sr_header))
+        WriteFile(sr_log, sr_header, static_cast<DWORD>(sr_length), &written, nullptr);
+    }
+  }
   char header[256]{};
   const auto header_length = std::snprintf(header, sizeof(header),
       "ngx_output_probe=armed schema=6 runtime=32.0.16.1088 "
@@ -589,6 +663,8 @@ bool install_ngx_output_probe(HMODULE capture_module) {
                     reinterpret_cast<void**>(&original_release)) != MH_OK) {
     CloseHandle(log_file);
     CloseHandle(queue_log);
+    if (sr_log != INVALID_HANDLE_VALUE) CloseHandle(sr_log);
+    sr_log = INVALID_HANDLE_VALUE;
     queue_log = INVALID_HANDLE_VALUE;
     log_file = INVALID_HANDLE_VALUE;
     return false;

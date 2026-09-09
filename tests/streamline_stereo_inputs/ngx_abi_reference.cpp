@@ -4,8 +4,10 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <string_view>
 #include <nvsdk_ngx_params.h>
 #include "producer/ngx_parameter_reader.h"
+#include "producer/ngx_sr_observation.h"
 
 namespace ngx = darktidevr::producer::ngx;
 struct Parameters final : NVSDK_NGX_Parameter {
@@ -53,6 +55,15 @@ int main() {
   static_assert(sizeof(void*) == 8);
   static_assert(ngx::kSuccess == NVSDK_NGX_Result_Success);
   static_assert(NVSDK_NGX_Feature_FrameGeneration == 11);
+  static_assert(NVSDK_NGX_Feature_SuperSampling == 1);
+  using namespace darktidevr::producer;
+  static_assert(std::string_view(kNgxSrResourceNames[0]) == NVSDK_NGX_Parameter_Color);
+  static_assert(std::string_view(kNgxSrResourceNames[1]) == NVSDK_NGX_Parameter_Output);
+  static_assert(std::string_view(kNgxSrResourceNames[2]) == NVSDK_NGX_Parameter_Depth);
+  static_assert(std::string_view(kNgxSrResourceNames[3]) == NVSDK_NGX_Parameter_MotionVectors);
+  static_assert(std::string_view(kNgxSrResourceNames[4]) == NVSDK_NGX_Parameter_TransparencyMask);
+  static_assert(std::string_view(kNgxSrResourceNames[5]) == NVSDK_NGX_Parameter_ExposureTexture);
+  static_assert(std::string_view(kNgxSrResourceNames[6]) == NVSDK_NGX_Parameter_DLSS_Input_Bias_Current_Color_Mask);
   Parameters parameters;
   // Address identity only: no fabricated COM object is dereferenced.
   std::byte identity{};

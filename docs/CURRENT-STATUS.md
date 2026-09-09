@@ -14,10 +14,13 @@ Lua/native hashes still match the accepted build. No proximity change or fresh
 Ready certification; continue offline. Receipt:
 `artifacts/unattended/report-tools-inventory-20260909.json` (and matching log).
 Latest offline additions cover stock ranged input sequences, stock popup pass
-restoration and capture-preserving diagnostic reports. Full Windows x64 offline
-Release at `16498cf` passes **181/181 in 62.30 seconds**, headset tests OFF,
+restoration, capture-preserving diagnostic reports and a default-off SR resource
+observation. Full Windows x64 offline Release for that undeployed candidate
+passes **183/183 in 60.93 seconds**, headset tests OFF,
 including the pinned LuaJIT source gate (69 chunks). Receipt:
-`artifacts/unattended/midday-offline-suite-20260909.log`. Optional cached-stock
+`artifacts/unattended/ngx-sr-offline-suite-20260909.log`. Final CPU-result/context
+log fields then rebuild and pass 9/9 focused NGX checks in 1.33 seconds.
+Optional cached-stock
 contracts have separate recorded passes; no live acceptance is implied.
 
 The two authorized ADB connections were verified as aliases for the same Quest 3.
