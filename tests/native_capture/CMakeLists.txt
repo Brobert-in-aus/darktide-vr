@@ -67,3 +67,10 @@ if(BUILD_TESTING)
   set_tests_properties(native_capture_hooks PROPERTIES
     LABELS "phase1;d3d12;native")
 endif()
+
+# Explicit offline benchmark; requires a copied DLL and isolated TEMP per run.
+# Not registered as a CTest because baseline/candidate selection is external.
+add_executable(darktidevr-hook-performance hook_performance.cpp)
+target_compile_options(darktidevr-hook-performance PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-hook-performance PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(darktidevr-hook-performance PRIVATE d3d12)
