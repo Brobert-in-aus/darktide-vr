@@ -34,6 +34,44 @@ This investigation does not authorize installing the accumulated native
 candidates. Preserve the accepted mixed build and run Ready preflight before
 any new live session.
 
+### Keep the comparison controls independent
+
+The cached stock `scripts/settings/options/render_settings.lua` at source
+`0f0cb45991e9305ef4a7b925370792d7d6035f95` defines the master DLSS toggle as a
+compound action: off sets both `dlss=0` and `dlss_g=0`; on sets both to 1 and
+also enables Reflex. Therefore the master toggle cannot isolate SR from FG.
+Use the individual controls and verify their resulting state before comparing.
+
+| Individual control | Stock values relevant to the comparison |
+| --- | --- |
+| `dlss` | 0 off; 1 auto; 2 ultra performance; 3 performance; 4 balanced; 5 quality; 6 native/DLAA |
+| `dlss_g` | 0 off; 1 generates one frame; 2/3 generate two/three frames when supported |
+| `dlss_models` | 0 maps to `dlss_model="default"`; 1 maps to `"e"` in this cached source |
+
+Enabling SR also disables FSR/FSR2/XeSS selections. Enabling FG selects Reflex
+and disables VSync. Record these coupled settings and the actual render extent;
+do not assume an unchanged master label means an unchanged reconstruction path.
+Do not use the historical `set-vr-render-settings.ps1 -Action Apply` to prepare
+this comparison: that broad profile sets `upscaling_quality="ultra_performance"`
+alongside many unrelated scene settings.
+
+A read-only 9 September saved-settings audit found both launcher and in-game
+selectors at `dlss=5`, `dlss_g=1`, with `dlss_enabled=true`,
+`upscaling_quality="quality"`, `dlss_model="default"`,
+`dlss_g_enabled=true`, and `dlss_g_frames_to_generate=1`. Reflex is 1, VSync is
+false, and the alternative upscalers/frame-generation route are disabled in
+the inspected assignments. This is saved configuration, not verified live
+application or an accepted change. No settings were written.
+The limited local receipt is `artifacts/unattended/dlss-settings-audit-20260909.json`
+(ignored); it includes the settings file hash and observation time.
+
+The current native probe reads resource parameters only for feature kind 11
+(frame generation). The cached NGX definitions identify SR as kind 1. A kind-1
+`NGX_EVAL` timing/identity line does not contain an SR resource capture: its zero
+resource fields must not be interpreted as missing SR inputs. The current owned
+UI/NGX bitmap match remains FG-boundary evidence; SR color, motion, jitter and
+history ownership require their own attributed observation before a correction.
+
 ## UI RGBA exporter candidate: 8 September
 
 ### Source audit and diagnostic request follow-up, 9 September

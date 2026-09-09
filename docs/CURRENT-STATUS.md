@@ -12,9 +12,10 @@ Read-only inventory now reports one physical Quest, duplicate transports resolve
 one Virtual Desktop Streamer and Darktide closed. Inventory does not certify Ready
 or alter proximity. Selection requires matching hardware identity and model for
 every alias; distinct headsets and missing/failed identity queries remain gated.
-The latest full offline Release run passes 179/179 in 56.19 seconds at `100959d`,
+The latest full offline Release run passes 179/179 in 56.27 seconds at `556f4c6`,
 including communication/PTT, popup lifetime, owned UI diagnostics, marker log
-analysis and selective deployment/recovery preconditions.
+analysis, selective deployment/recovery preconditions, retiring-input guards
+and dynamic popup callback admission.
 All 69 Lua chunks compile. The communication wheel
 is integrated in source with an unassigned physical-button binding; popup
 candidates remain unintegrated. Neither is deployed. See the
@@ -22,7 +23,8 @@ resume handoff for the review map and focused, undeployed overlay candidate.
 Focused native UI diagnostics are `a4ec84c`, PR #133, based on accepted `23345e5`.
 The isolated DLL builds and six native checks plus the export/checksum roundtrip
 pass. It remains undeployed; live NGX matching and worn blur acceptance are open.
-Focused marker diagnostics are `8178c5f`, PR #138. Native and marker payloads
+Focused communication is `2dded96`, PR #146; marker diagnostics are `8178c5f`,
+PR #138. Native, marker and communication payloads
 are staged separately and install/rollback rehearsals pass in temporary copies;
 see [focused trials](FOCUSED-DIAGNOSTIC-TRIALS-2026-09-09.md). No real deployment.
 The subsequent default Ready preflight passes with the accepted viewer and VDXR:
