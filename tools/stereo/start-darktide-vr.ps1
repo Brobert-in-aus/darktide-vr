@@ -241,10 +241,6 @@ $streamlineStereoSubmitProbeFlagExisted = $false
 $ngxOutputProbeFlagPath = $null
 $ngxOutputProbeFlagOriginal = $null
 
-if ($TuneWorkerThreads -and -not (Get-Process Darktide -ErrorAction SilentlyContinue)) {
-    & (Join-Path $PSScriptRoot 'set-vr-worker-threads.ps1') -Action Apply
-}
-
 if (-not $SkipDeploymentSync) {
     $sync = Join-Path $PSScriptRoot 'sync-darktide-vr-dev.ps1'
     if (-not (Test-Path -LiteralPath $sync -PathType Leaf)) {
@@ -260,6 +256,16 @@ if (-not $SkipDeploymentSync) {
             -ClusterLightTrace:$ClusterLightTrace `
             -ClusterLightVisibilityFix:$ClusterLightVisibilityFix
     }
+}
+
+# The selected installation may differ from this checkout, especially during a
+# focused trial with sync skipped. Compile what the game will actually load,
+# including its descriptor and extra companions, before launch preparation.
+& $luaSourceCheck -SourcePath (Join-Path $GameRoot `
+    'mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_stereo_probe.lua')
+
+if ($TuneWorkerThreads -and -not (Get-Process Darktide -ErrorAction SilentlyContinue)) {
+    & (Join-Path $PSScriptRoot 'set-vr-worker-threads.ps1') -Action Apply
 }
 
 $psykhaniumRequest = $null

@@ -38,6 +38,12 @@ if (-not (Test-Path -LiteralPath $luaSourceCheck -PathType Leaf)) {
     throw "Lua source check not found: $luaSourceCheck"
 }
 & $luaSourceCheck
+if ($Mode -eq 'Ready') {
+    # Inventory remains observation-only; Ready must validate the package that
+    # the selected game installation will load, not only development source.
+    & $luaSourceCheck -SourcePath (Join-Path $modRoot `
+        'scripts/mods/darktidevr_stereo_probe/darktidevr_stereo_probe.lua')
+}
 
 if (-not $OutputPath) {
     $OutputPath = Join-Path $repoRoot "artifacts\unattended\preflight-$timestamp.json"

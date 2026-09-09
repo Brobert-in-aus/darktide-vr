@@ -17,6 +17,21 @@ package checks also pass. Direct gates compile 69 chunks in main, 56 in focused
 communication, and 50 in the installed mod, each with its own descriptor.
 This is offline compilation only; no Lua execution or installed file writes.
 
+The launcher now also calls that gate on the selected installed main Lua after
+its optional sync, including `-SkipDeploymentSync` trials. Worker-thread tuning
+follows this installed gate, before later launch preparation. Ready preflight
+compiles both development and installed packages before proximity/runtime work;
+Inventory retains its existing observation behavior and source gate. Source
+compilation alone does not certify installed Lua or its extra companions.
+
+The `installed_lua_gates` fixture executes only the real launcher/preflight
+prefixes before live setup. The selected repository/game, sync and settings
+effects are isolated fixtures; the pinned compiler is real. Broken installed
+descriptors were accepted by these prefixes before the change. Tests cover
+skip-sync rejection, repair by sync, broken sync output, settings ordering,
+valid installed packages and Ready versus Inventory. Six related CTests pass in
+5.32 seconds. No real launcher, game, proximity or XR session was run by the tests.
+
 ## Transaction boundary
 
 `tools/stereo/sync-darktide-vr-dev.ps1` now stages its Lua, native libraries,

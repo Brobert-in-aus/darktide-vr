@@ -35,6 +35,8 @@ if(BUILD_TESTING)
     "${PROJECT_SOURCE_DIR}/tools/lua/test-compiler.lua")
   add_test(NAME luajit_source_path COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/test-luajit-source-path.ps1")
+  add_test(NAME installed_lua_gates COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-installed-lua-gates.ps1")
   add_test(NAME projection_math COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-projection-math.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_projection_math.lua")
