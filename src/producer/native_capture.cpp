@@ -15934,9 +15934,14 @@ extern "C" __declspec(dllexport) unsigned int
 dtvr_copy_billboard_candidate_pairs(
     darktidevr::producer::ShaderPairSample* output, unsigned int capacity) {
   if (!output || capacity == 0 || capacity > 256) return 0;
-  std::scoped_lock lock(billboard_candidate_shader_mutex);
+  darktidevr::producer::ShaderPairRecords records;
+  {
+    std::scoped_lock lock(billboard_candidate_shader_mutex);
+    records.assign(billboard_candidate_shader_pair_counts.begin(),
+                   billboard_candidate_shader_pair_counts.end());
+  }
   return darktidevr::producer::copy_shader_pair_snapshot(
-      billboard_candidate_shader_pair_counts, {output, capacity});
+      std::move(records), {output, capacity});
 }
 extern "C" __declspec(dllexport) unsigned long long
 dtvr_billboard_candidate_pair_pixel_shader(unsigned int rank) {
