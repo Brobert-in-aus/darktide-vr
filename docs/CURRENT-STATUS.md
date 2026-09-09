@@ -2,6 +2,12 @@
 
 ## 10 September development resumed
 
+Lighting patch queuing now requests a 16-byte buffer location instead of a
+200-byte diagnostic/mapping record. Both routes share lookup/expiry logic.
+Offline early-buffer queries improve about 11%; cycling/miss ranges overlap.
+Native build and two affected checks pass. See the
+[lookup comparison](LIGHTING-BUFFER-LOOKUP-PERFORMANCE.md); no deployment or FPS claim.
+
 The feedback-quad default-table experiment was rejected: the actual-helper
 comparison found no steady LuaJIT allocation reduction. Production is restored
 unchanged; benchmark and candidate patch are retained in the

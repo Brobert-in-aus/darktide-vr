@@ -35,32 +35,51 @@ struct BufferResourceInfo {
 
 // Registry state survives until all object observers have been released.
 // Records disappear with their GPU owner; the registry does not retain owners.
+struct BufferResourceLocation {
+  ID3D12Resource* resource{};
+  std::uint64_t gpu_start{};
+};
+
 struct BufferRegistry : std::enable_shared_from_this<BufferRegistry> {
   std::mutex mutex;
   // Caller holds mutex. Mapping metadata may change; identity/extent changes
   // go through track. A span prevents callers from bypassing structural expiry.
   std::span<BufferResourceInfo> records_locked() { return resources; }
 
+  // Caller holds mutex. Both snapshots use the same winner/cache and neither
+  // extends the GPU owner's lifetime. Only copy fields the consumer needs.
+  std::optional<BufferResourceInfo> resolve_locked(std::uint64_t address) {
+    const auto* found = find_address_locked(address);
+    return found ? std::optional<BufferResourceInfo>(*found) : std::nullopt;
+  }
+
+  std::optional<BufferResourceLocation> resolve_location_locked(std::uint64_t address) {
+    const auto* found = find_address_locked(address);
+    return found ? std::optional<BufferResourceLocation>(
+                       BufferResourceLocation{found->resource, found->gpu_start})
+                 : std::nullopt;
+  }
+
+ private:
   // Caller holds mutex. Cache exact addresses, not ranges: overlapping newer
   // allocations must retain the reverse-scan winner. Read live metadata by
   // index so Map/Unmap changes remain visible without caching raw pointers.
-  std::optional<BufferResourceInfo> resolve_locked(std::uint64_t address) {
-    if (resources.empty()) return std::nullopt;
+  const BufferResourceInfo* find_address_locked(std::uint64_t address) {
+    if (resources.empty()) return nullptr;
     // The reverse scan already finds the newest allocation immediately. Keep
     // that cheap case ahead of hashing and preserve its overlap precedence.
     const auto& newest = resources.back();
     if (address >= newest.gpu_start && address - newest.gpu_start < newest.size)
-      return newest;
+      return &newest;
     // The same conservative envelope serves point and full-range lookups.
     // Retain its saturated endpoint: a wrapping extent can contain UINT64_MAX.
-    if (address < minimum_address_ || address > maximum_end_) return std::nullopt;
+    if (address < minimum_address_ || address > maximum_end_) return nullptr;
     const auto bucket = (address >> 8) ^ (address >> 16) ^
                         (address >> 24) ^ (address >> 32);
     auto& cached = lookup_[bucket % lookup_.size()];
     if (cached.valid && cached.address == address) {
       return cached.index < resources.size()
-          ? std::optional<BufferResourceInfo>{resources[cached.index]}
-          : std::nullopt;
+          ? &resources[cached.index] : nullptr;
     }
     cached = {address, resources.size(), true};
     for (std::size_t index = resources.size() - 1; index != 0; --index) {
@@ -68,12 +87,13 @@ struct BufferRegistry : std::enable_shared_from_this<BufferRegistry> {
       if (address >= resource.gpu_start &&
           address - resource.gpu_start < resource.size) {
         cached.index = index - 1;
-        return resource;
+        return &resource;
       }
     }
-    return std::nullopt;
+    return nullptr;
   }
 
+ public:
   // Caller holds mutex for both lookup and use of the returned metadata.
   // Cache indices only; the resource's lifetime observer expires every entry.
   BufferResourceInfo* find_resource_locked(ID3D12Resource* resource) {

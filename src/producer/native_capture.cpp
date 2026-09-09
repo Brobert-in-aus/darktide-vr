@@ -6212,6 +6212,12 @@ std::optional<BufferResourceInfo> resolve_buffer_resource(
   return buffer_registry->resolve_locked(gpu_address);
 }
 
+std::optional<darktidevr::producer::BufferResourceLocation> resolve_buffer_location(
+    std::uint64_t gpu_address) {
+  std::scoped_lock lock(buffer_resource_mutex);
+  return buffer_registry->resolve_location_locked(gpu_address);
+}
+
 bool copy_tracked_buffer_bytes(std::uint64_t gpu_address,
                                std::byte* destination,
                                std::size_t byte_count,
@@ -7409,7 +7415,7 @@ void queue_cluster_light_visibility_fov_patches(
           1, std::memory_order_relaxed);
       continue;
     }
-    const auto resource = resolve_buffer_resource(gpu_address);
+    const auto resource = resolve_buffer_location(gpu_address);
     if (!resource || !resource->resource) {
       cluster_light_visibility_fix_resource_missing_count.fetch_add(
           1, std::memory_order_relaxed);

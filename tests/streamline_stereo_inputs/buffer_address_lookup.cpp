@@ -22,6 +22,10 @@ __declspec(noinline) std::optional<BufferResourceInfo> linear_lookup(BufferRegis
 __declspec(noinline) std::optional<BufferResourceInfo> cached_lookup(BufferRegistry& registry,std::uint64_t address) {
   std::scoped_lock lock(registry.mutex);return registry.resolve_locked(address);
 }
+__declspec(noinline) std::optional<darktidevr::producer::BufferResourceLocation>
+cached_location(BufferRegistry& registry,std::uint64_t address) {
+  std::scoped_lock lock(registry.mutex);return registry.resolve_location_locked(address);
+}
 __declspec(noinline) std::optional<BufferResourceInfo> linear_range(
     BufferRegistry& registry,std::uint64_t address,std::uint64_t bytes) {
   std::scoped_lock lock(registry.mutex);
@@ -113,8 +117,11 @@ int main() {
   check(!cached_range(*registry,1060,(std::numeric_limits<std::uint64_t>::max)()));
   check(resolve(1000)->resource==older.Get());check(!resolve(1100));
   check(resolve(1060)->resource==older.Get()); // Prime overlapping winner.
+  check(cached_location(*registry,1060)->resource==older.Get());
   check(!by_resource(newer.Get()));
   registry->track(newer.Get(),1050,25,D3D12_HEAP_TYPE_UPLOAD);
+  check(cached_location(*registry,1060)->resource==newer.Get());
+  check(cached_location(*registry,1060)->gpu_start==1050);
   check(by_resource(newer.Get())->gpu_start==1050);
   check(by_resource(older.Get())->gpu_start==1000);
   check(!by_mapping(older.Get(),0));
@@ -215,6 +222,40 @@ int main() {
   check(by_resource(owners[10].Get())->gpu_start==0x100000ULL+10*0x10000ULL);check(resolve(0x110000)->resource==owners[1].Get());
   check(cached_range(*registry,0x110000,128)->resource==owners[1].Get());
   check(!cached_range(*registry,0x100000,128));
+  for(unsigned index=0;index<1024;++index) {
+    for(const auto offset:{0ULL,1ULL,127ULL,255ULL,256ULL,65535ULL}) {
+      const auto address=0x100000ULL+index*0x10000ULL+offset;
+      const auto full=cached_lookup(*registry,address);
+      const auto narrow=cached_location(*registry,address);
+      check(full.has_value()==narrow.has_value());
+      if(full)check(full->resource==narrow->resource && full->gpu_start==narrow->gpu_start);
+    }
+  }
+  std::cout<<"metadata_bytes="<<sizeof(BufferResourceInfo)
+           <<" location_bytes="<<sizeof(darktidevr::producer::BufferResourceLocation)<<'\n';
+  for(const unsigned workload:{0U,1U,2U,3U}) for(unsigned trial=0;trial<5;++trial) {
+    const auto measure=[&](bool narrow) {
+      const auto begin=std::chrono::steady_clock::now();
+      for(unsigned i=0;i<100000;++i) {
+        const auto index=workload==0?1+i%16:workload==1?1023:1+i%1023;
+        const auto address=workload==3?0x100000000ULL+i*256ULL:0x100000ULL+index*0x10000ULL;
+        if(narrow) {
+          const auto result=cached_location(*registry,address);
+          if(workload==3)check(!result);
+          else check(result && result->resource==owners[index].Get() && result->gpu_start==address);
+        } else {
+          const auto result=cached_lookup(*registry,address);
+          if(workload==3)check(!result);
+          else check(result && result->resource==owners[index].Get() && result->gpu_start==address);
+        }
+      }
+      return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count();
+    };
+    double full{},narrow{};
+    if(trial%2){narrow=measure(true);full=measure(false);}else{full=measure(false);narrow=measure(true);}
+    std::cout<<"location_workload="<<workload<<" trial="<<trial
+             <<" queries=100000 full_ms="<<full<<" narrow_ms="<<narrow<<'\n';
+  }
   for(const unsigned workload:{0U,1U,2U,3U}) {
     for(unsigned trial=0;trial<5;++trial) {
       const auto measure=[&](bool old) {
@@ -252,6 +293,7 @@ int main() {
     std::cout<<"range_workload="<<workload<<" trial="<<trial<<" queries=100000 old_ms="<<before<<" new_ms="<<after<<'\n';
   }
   owners.clear();check(registry->records_locked().empty());check(!resolve(0x110000));
+  check(!cached_location(*registry,0x110000));
   check(!cached_range(*registry,0x110000,128));
   std::cout << "PASS overlap, lifecycle, refresh, index shifts, live metadata and reverse-scan equivalence\n";
 }
