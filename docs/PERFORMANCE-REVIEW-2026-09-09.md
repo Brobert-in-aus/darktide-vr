@@ -1,5 +1,16 @@
 # Performance review and trial order
 
+**Session closed at the user's return home on 9 September.** The heartbeat is
+paused. Earlier continuation wording below is historical; see the
+[home handoff](handoffs/2026-09-09-home.md).
+
+The two controller-aim allocation changes are also isolated on accepted Lua in
+focused candidate `069cd2b`, PR #229, extending projection candidate `e6cb46b`.
+All 49 package chunks compile and both actual-helper comparisons pass. It is
+source-only, outside the six staged plans. The final interleaved native mapping
+comparison (PR #230) confirms early-buffer/cycling gains but records a 17.2%
+slower newest-buffer median in that run; do not claim a universal speedup.
+
 The accepted installation is unchanged. These candidates reduce measured
 offline CPU/allocation costs; none establishes a game FPS increase or resolves
 the sustained VDXR submission slowdown. The user's current instruction is to

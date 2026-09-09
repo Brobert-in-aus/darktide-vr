@@ -1,5 +1,15 @@
 # Current status and operation
 
+## Home handoff: 9 September, 17:44 Brisbane
+
+The user is home and requested stop, summary and commit/push. The 20-minute
+heartbeat is **paused**; earlier continuation instructions below are historical.
+Quest proximity automation was restored with Enable, followed by Status.
+Development has stopped after completing the in-progress measurement runner.
+See the [day handoff](handoffs/2026-09-09-home.md) for completed work, validation
+and remaining visual priorities. The accepted game installation is unchanged.
+All six staged plans still match source/baseline preconditions at shutdown.
+
 ## Performance development update
 
 The user's latest instruction removes further basic-gameplay verification from
