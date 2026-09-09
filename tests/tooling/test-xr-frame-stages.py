@@ -1,5 +1,9 @@
 import importlib.util
+import json
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 path = Path(__file__).resolve().parents[2] / "tools/stereo/summarize-xr-frame-stages.py"
@@ -25,6 +29,25 @@ def row(frame=120, gpu_count=120, gpu_mean=1):
 
 
 class FrameStages(unittest.TestCase):
+    def test_cli_preserves_input_and_hardlink_alias(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / 'viewer.log'
+            original = (presentation() + '\n' + row() + '\n').encode()
+            source.write_bytes(original)
+            alias = Path(temporary) / 'alias.log'
+            alias.hardlink_to(source)
+            for output in (source, alias):
+                result = subprocess.run([sys.executable, str(path), str(source),
+                    '--output', str(output)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(source.read_bytes(), original)
+            output = Path(temporary) / 'report.json'
+            result = subprocess.run([sys.executable, str(path), str(source),
+                '--output', str(output)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(output.read_text())['timing_rows'], 1)
+            self.assertEqual(source.read_bytes(), original)
+
     def test_actual_call_weighting_and_absence(self):
         result = stages.summarize([presentation(), row(gpu_count=60), row(240, gpu_mean=3)])
         self.assertEqual(result["excluded_windows"], {})

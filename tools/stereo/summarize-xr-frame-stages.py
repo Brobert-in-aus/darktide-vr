@@ -150,6 +150,9 @@ def main():
     parser.add_argument("log", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if args.output.resolve() == args.log.resolve() or \
+            (args.output.exists() and args.output.samefile(args.log)):
+        parser.error("Output must not replace the input log")
     result = summarize(args.log.read_text(encoding="utf-8").splitlines())
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

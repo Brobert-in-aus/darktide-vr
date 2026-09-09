@@ -72,6 +72,13 @@ recurrence rather than treating this restart or instrumentation as a fix.
 
 ## Saved-log analysis
 
+9 September input-preservation follow-up: the frame-stage and VDXR trace readers
+reject an output path identifying the source file, including a hardlink alias.
+Both CLI regressions reproduced overwriting a temporary input before the fix.
+Twelve Python cases across the two analysis CTests now pass (0.69 seconds),
+including unchanged source bytes and successful reports to separate paths.
+Existing saved captures were not modified.
+
 `tools/stereo/summarize-xr-frame-stages.py LOG --output REPORT.json` records
 individual valid windows and groups matching presentation mode/generation,
 source extent and crop. Windows spanning a presentation change, unknown context,

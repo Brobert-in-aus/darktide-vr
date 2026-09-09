@@ -1,5 +1,11 @@
 # Sustained submission slowdown: runtime trace
 
+9 September offline tooling follow-up: `summarize-vdxr-trace.py` now refuses to
+write its report over the source XML, including another hardlink to that file.
+The CLI regression failed before the fix. Together with the equivalent viewer
+log guard, twelve Python cases pass in two analysis CTests (0.69 seconds).
+This preserves evidence; it does not alter the runtime or diagnose the slowdown.
+
 8 September 2026, timing-only viewer with accepted native capture, focused
 melee preview and SoloPlay rules. The same game/viewer process ran uninterrupted
 from 14:48 Brisbane. No graphics, refresh-rate, runtime, input or shader setting

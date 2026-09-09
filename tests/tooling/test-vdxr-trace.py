@@ -1,6 +1,10 @@
 import importlib.util
 import io
+import json
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 path = Path(__file__).resolve().parents[2] / "tools/stereo/summarize-vdxr-trace.py"
@@ -22,15 +26,38 @@ def time(fraction):
     return 10_000_000 + int(fraction.ljust(7, "0"))
 
 
-def analyze(*items):
+def capture(*items):
     header = f'''<Event xmlns="{trace.NS['e']}"><EventData>
       <Data Name="EventsLost">0</Data><Data Name="StartTime">100</Data>
       <Data Name="BufferSize">1024</Data><Data Name="PerfFreq">10000000</Data>
       <Data Name="ReservedFlags">1</Data></EventData></Event>'''
-    return trace.summarize(io.StringIO("<Events>" + header + "".join(items) + "</Events>"), 10)
+    return "<Events>" + header + "".join(items) + "</Events>"
+
+
+def analyze(*items):
+    return trace.summarize(io.StringIO(capture(*items)), 10)
 
 
 class VdxrTrace(unittest.TestCase):
+    def test_cli_preserves_input_and_hardlink_alias(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / 'trace.xml'
+            original = capture(event(10_000_000, 1), event(10_005_000, 2)).encode()
+            source.write_bytes(original)
+            alias = Path(temporary) / 'alias.xml'
+            alias.hardlink_to(source)
+            for output in (source, alias):
+                result = subprocess.run([sys.executable, str(path), str(source),
+                    '--process-id', '10', '--output', str(output)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(source.read_bytes(), original)
+            output = Path(temporary) / 'report.json'
+            result = subprocess.run([sys.executable, str(path), str(source),
+                '--process-id', '10', '--output', str(output)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(output.read_text())['activities']['WaitForAsyncSubmissionIdle']['mean_ms'], 0.5)
+            self.assertEqual(source.read_bytes(), original)
+
     def test_clock_precision_process_filter_and_mode_groups(self):
         result = analyze(event(time("0000000"), 1),
                          event(time("0005000"), 2),

@@ -128,6 +128,9 @@ def main():
     args = parser.parse_args()
     if args.process_id <= 0:
         parser.error("process ID must be positive")
+    if args.output.resolve() == args.xml.resolve() or \
+            (args.output.exists() and args.output.samefile(args.xml)):
+        parser.error("Output must not replace the input trace")
     try:
         result = summarize(args.xml, args.process_id)
     except ValueError as error:
