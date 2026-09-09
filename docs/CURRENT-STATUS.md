@@ -2,6 +2,12 @@
 
 ## 10 September development resumed
 
+The user's latest performance direction prioritises efficient stereo, improved
+DLSS integration and engine internals over further diagnostic micro-optimisations.
+A [build-specific engine map](STEREO-ENGINE-PERFORMANCE-2026-09-10.md) now locates
+render preparation, sphere/light culling and shadow preparation via 30 label
+references. These are offline investigation ranges, not approved hook addresses.
+
 GPU eye-profile reports now select percentile ranks for larger batches instead
 of sorting every duration. Exact comparison passes 20,485 cases; the native build
 and two affected checks pass. See the
