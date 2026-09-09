@@ -1,6 +1,6 @@
 # Focused diagnostic trials — staged, not deployed
 
-Three independent payloads are staged under ignored `artifacts/focused-trials`.
+Four focused payloads are staged under ignored `artifacts/focused-trials`.
 Each `trial-plan.json` contains relative source/destination paths and exact
 candidate/baseline hash preconditions. They use transaction support from
 `b515e72` (PR #139). No payload is an installer or a complete runtime.
@@ -9,6 +9,7 @@ embedded. Native build evidence remains in the focused source handoff.
 
 | Trial | Reviewed source | Payload | Installation destinations |
 | --- | --- | --- | --- |
+| `native-performance-8b3697a` | `8b3697a`, PR #189 | One native DLL, three CPU optimisations | Existing DLL in `binaries` and mod `bin`; alternative to native UI trial |
 | `native-ui-a4ec84c` | `a4ec84c`, PR #133 | One native DLL | Existing DLL in `binaries` and in the mod's `bin` directory |
 | `marker-metrics-8178c5f` | `8178c5f`, PR #138 | Main Lua and measurement module | Existing main Lua plus new marker module |
 | `communication-848b78d` | `848b78d`, PR #161 | Fifteen Lua files | Eight existing files plus seven new modules |
@@ -119,3 +120,22 @@ Input equality and checksums do not establish a visual fix. Record the user's
 worn result in both eyes, during motion and at screen edges. Stop the observer,
 close the game, restore the transaction and original flags, then verify hashes
 and restore normal proximity automation.
+
+## Focused CPU performance trial
+
+`native-performance-8b3697a` starts directly from accepted native `23345e5` and
+ports only exhausted menu log admission, short resource-name matching and fixed
+command snapshots (PRs #186-188). Native build and 3/3 focused checks pass in
+0.77 seconds. CPU microbenchmarks are documented in the three performance notes;
+none establish live FPS or a fix for sustained VDXR submission delay.
+
+Candidate hash: `63592118307969E087F7EBC849BB011291C4C75708591C5092966F001A74235B`.
+Both destination preconditions remain the accepted native hash. The copied-file
+transaction and rollback pass, both baseline hashes return and an unrelated
+sentinel is preserved. Actual native installation remains unchanged. Receipt:
+`artifacts/unattended/native-performance-rehearsal-c10ba603607d421ba2b0f131a6a6f5e8/rehearsal.json`.
+
+The native UI and performance trials replace the same component; they are
+alternative candidates, not stackable file drops. The user has explicitly said
+basic gameplay verification is unnecessary; continue performance development
+while the outstanding worn visual observation awaits their return.
