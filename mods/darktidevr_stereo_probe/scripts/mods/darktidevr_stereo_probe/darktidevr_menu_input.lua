@@ -1,6 +1,10 @@
 -- Adapt XR to the engine's menu input contract. The engine owns hit geometry,
 -- clipping, control lifetimes and the input/null-service choice for each view.
 local MenuInput = {}
+local function null_reference(input)
+    local method=input and input.null_service
+    return method and method(input)
+end
 local native_views = {options_view=true,player_character_options_view=true,
     custom_settings_view=true,masteries_overview_view=true,
     mastery_view=true,talent_builder_view=true,broker_stimm_builder_view=true}
@@ -251,7 +255,8 @@ function MenuInput.install(mod, presentation)
     -- Bound logs per view lifetime and to the first ten seconds after update.
     local readiness = setmetatable({}, {__mode="k"})
     mod:hook_safe("MainMenuView", "update", function(self, dt, t, input)
-        local null = not input or (input.null_service and input == input:null_service())
+        local observed, reference = pcall(null_reference,input)
+        local null = not input or not observed or input == reference
         if MenuInput.advance_startup(startup, self, null, t) then
             mod:info("DARKTIDEVR_STARTUP character_select=start_requested source=one_shot")
         end
@@ -349,8 +354,15 @@ function MenuInput.install(mod, presentation)
             source=presentation.gameplay_ui.route_ingame_input(source,name)
         end
         if name ~= "View" or not Managers or not Managers.ui then return source end
+        local observed, null_service = pcall(null_reference,source)
+        if not observed or not null_service then
+            -- Stock already returned this service. An optional XR eligibility
+            -- query must not turn that return into an error during retirement.
+            state = {}
+            return source
+        end
         local proxy = route_service(function()
-            return source, source:null_service(), false
+            return source, null_service, false
         end, Managers.ui)
         return proxy
     end)

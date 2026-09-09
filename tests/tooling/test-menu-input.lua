@@ -441,3 +441,23 @@ recovered=direct_hook(function()return mouse_source end,{},'View')
 assert(not recovered:get('left_hold') and not recovered:get('right_hold'))
 assert(not recovered:get('left_pressed') and not recovered:get('right_pressed'))
 print('menu_null_recovery=pass blocked_requests_drained=true release_required=true no_blocked_pointer_reads=true')
+
+for _,failure in ipairs({'lookup','query'}) do
+    local retired={get=function()return false end}
+    if failure=='lookup' then
+        setmetatable(retired,{__index=function()error('retired menu service lookup')end})
+    else
+        retired.null_service=function()error('retired menu null query')end
+    end
+    before_block_reads=pointer_reads
+    assert(direct_hook(function()return retired end,{},'View')==retired,
+        'Retiring service prevented stock direct input return')
+    assert(pointer_reads==before_block_reads,'Retiring service read XR pointer')
+    readiness_hook({},0.01,0,retired) -- Optional observation must not throw.
+    p.frame_id=p.frame_id+1
+    recovered=direct_hook(function()return mouse_source end,{},'View')
+    assert(not recovered:get('left_hold') and not recovered:get('right_hold'))
+end
+local without_null={get=function()return false end}
+assert(direct_hook(function()return without_null end,{},'View')==without_null)
+print('menu_retired_service=pass direct_stock_return_preserved=true readiness_probe_protected=true')
