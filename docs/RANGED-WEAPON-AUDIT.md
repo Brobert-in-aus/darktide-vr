@@ -28,8 +28,9 @@ and `ranged-saved-bindings-recheck-20260909.json` in the same directory.
 The separate optional `tests/tooling/test-ranged-sequences-stock-contract.lua`
 loads the stock formatter, parser, input hierarchy and queue for plasma,
 shotgun and force-staff templates plus both grenade generator base tables,
-four expedition hierarchy overrides and quick flash's automatic-input override.
-Its 177 observed steps cover hold/toggle ADS, reload, plasma charge cancellation,
+four expedition hierarchy overrides, quick flash's automatic-input override,
+and all five cached syringe consumers with their complete generator.
+Its 279 observed steps cover hold/toggle ADS, reload, plasma charge cancellation,
 staff charge/fire/release/vent, grenade overhand/underhand/cancel, and tracking
 loss with neutral rearming. Main and focused `848b78d` pass with both default
 and saved bindings. Run with the pinned LuaJIT executable, cached source root,
@@ -44,8 +45,26 @@ wield route was activated; the separate wield-overlap audit remains open.
 Tracking loss produces the stock grenade `aim_released` input; this is not a
 throw-cancellation guarantee. Safe-zone/action conditions, ammunition, inventory
 removal, buffered action consumption and projectile execution remain outside this fixture.
-Latest receipts: `artifacts/unattended/grenade-sequences-{main,focused}-{default,saved}-overrides-20260909.log`.
+Latest receipts: `artifacts/unattended/stim-sequences-{main,focused}-{default,saved}-final-20260909.log`.
 The earlier `ranged-sequences-*` receipts contain the 47-step ranged-only run.
+The grenade `*-overrides-*` receipts contain the preceding 177-step run.
+
+The four ordinary syringe consumers each add 25 self-use, ally-use, aim release,
+gift-aim/release and tracking-loss/rearm steps. The actual generator creates gift
+actions for those four and omits them for Broker; Broker's consumer enables
+automatic self-use, which satisfies its stock input with neutral or disabled VR
+input. Resource/targeting tables and inherited action bodies are placeholders;
+these runs do not validate recipients, buff application, item transfer, charges
+or action lifecycle. Loss of tracking emits `aim_give_release`, not a proven gift
+cancellation: stock target clearing depends on the action's finish reason, and
+the release can be an ordinary action-chain input. Do not claim that an intended
+or pending gift was cancelled without testing the owned action/target lifecycle.
+
+A supplied profile returning false previously ran all checks with defaults.
+False, nil and other non-table results now fail explicitly before mapper setup.
+The pre-fix false-profile pass and three corrected rejections are recorded under
+`artifacts/unattended/stim-profile-*20260909.log`. This fixes fixture reporting,
+not the installed input implementation.
 
 The cached-source audit finds 17 direct consumers of the two grenade generators.
 Quick flash replaces `aim_hold` and `aim_released` with an input expression that

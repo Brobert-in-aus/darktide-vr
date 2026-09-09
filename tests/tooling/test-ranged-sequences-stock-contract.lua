@@ -1,7 +1,8 @@
 -- Optional cached-source contract: real input formatter, parser, hierarchy and
 -- queue with real VR mapper output. No action execution, networking or rendering.
 local root,bindings_path=assert(arg[1]),assert(arg[2])
-local profile=arg[3] and dofile(arg[3]) or {}
+local profile={}
+if arg[3] then profile=dofile(arg[3]);assert(type(profile)=='table','invalid saved binding table') end
 bit=require('bit')
 local Bindings=dofile(bindings_path)
 local function read(path)
@@ -77,6 +78,31 @@ do
     local source=read('settings/equipment/weapon_templates/grenades/quick_flash_grenade')
     local e=setmetatable({weapon_template=templates.quick_flash},{__index=_G})
     setfenv(assert(loadstring(section(source,'local auto_input =','weapon_template.smart_targeting_template ='))),e)()
+end
+-- Execute the five actual syringe consumers and their complete generator.
+-- Resource/targeting tables are placeholders: only input routing and whether
+-- the generator creates gift actions are inspected, not target eligibility.
+local syringe_base=setmetatable({actions={}},{__index=base_env.base_template_settings})
+local syringe_env=setmetatable({base_template_settings=syringe_base},{__index=_G})
+setfenv(assert(loadstring(section(base_source,'base_template_settings.generate_grenade_ability_chain_actions =',
+    'base_template_settings.generate_action_overrides ='))),syringe_env)()
+modules['scripts/settings/equipment/weapon_templates/base_template_settings']=syringe_base
+modules['scripts/settings/equipment/footstep/footstep_intervals_templates']={}
+modules['scripts/settings/equipment/weapon_templates/pocketables/pockatables_utils']={}
+modules['scripts/settings/equipment/smart_targeting_templates']={}
+modules['scripts/utilities/breed']={}
+modules['scripts/utilities/attack/player_unit_status']={}
+load('settings/equipment/weapon_templates/weapon_template_generators/syringe_pocketable_weapon_template_generator')
+local syringe_names={}
+for _,variant in ipairs({'ability_boost','corruption','power_boost','speed_boost','broker'}) do
+    local name='syringe_'..variant
+    templates[name]=load('settings/equipment/weapon_templates/pocketables/'..name..'_pocketable')
+    if variant~='broker' then
+        syringe_names[#syringe_names+1]=name
+        assert(templates[name].actions.action_aim_give and templates[name].actions.action_give)
+    else
+        assert(not templates[name].actions.action_aim_give and not templates[name].actions.action_give)
+    end
 end
 local steps=0
 local function scenario(name,toggle)
@@ -203,5 +229,44 @@ for _,enabled in ipairs({true,false})do
     step(.01,{},'aim_hold',enabled)
     step(.02,{},'aim_released',enabled)
 end
-print('PASS stock combat sequences: '..steps..' observed steps, ranged weapons, both grenade generators, four expedition hierarchies, quick-flash automatic inputs and tracking-loss rearm')
+for _,name in ipairs(syringe_names) do
+    local step=scenario(name,false)
+    step(.01,{'primary'},'use_self')
+    step(.02,{'primary'},nil)
+    step(.03,{},nil)
+    step=scenario(name,false)
+    step(.01,{'alternate'},'aim')
+    step(.02,{'alternate','primary'},'use_ally')
+    step(.03,{},nil)
+    step=scenario(name,false)
+    step(.01,{'alternate'},'aim')
+    step(.02,{},'aim_release')
+    step=scenario(name,false)
+    step(.01,{'special'},'special_action')
+    step(.02,{'special'},'aim_give')
+    step(.03,{},'aim_give_release')
+    step=scenario(name,false)
+    step(.01,{'alternate'},'aim')
+    step(.02,{'alternate'},'aim_release',false)
+    step(.03,{'alternate'},nil)
+    step(.04,{},nil)
+    step(.05,{'alternate'},'aim')
+    step(.06,{},'aim_release')
+    step=scenario(name,false)
+    step(.01,{'special'},'special_action')
+    step(.02,{'special'},'aim_give')
+    step(.03,{'special'},'aim_give_release',false)
+    step(.04,{'special'},nil)
+    step(.05,{},nil)
+    step(.06,{'special'},'special_action')
+    step(.07,{'special'},'aim_give')
+    step(.08,{},'aim_give_release')
+end
+-- Broker's actual consumer enables automatic self-use. A neutral/disabled VR
+-- source can still satisfy that stock input; no gift action is generated.
+for _,enabled in ipairs({true,false}) do
+    local step=scenario('syringe_broker',false)
+    step(.01,{},'use_self',enabled)
+end
+print('PASS stock combat sequences: '..steps..' observed steps, ranged/grenade variants, five syringe consumers, automatic inputs and tracking-loss rearm')
 print('LIMIT: ranged-only stock input hierarchy/queue; immediate consumption except pending-aim cancellation, no wield arbitration, buffer aging, action execution, damage, networking or live acceptance')
