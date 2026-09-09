@@ -2,6 +2,11 @@
 
 ## 10 September development resumed
 
+The feedback-quad default-table experiment was rejected: the actual-helper
+comparison found no steady LuaJIT allocation reduction. Production is restored
+unchanged; benchmark and candidate patch are retained in the
+[performance review](FEEDBACK-QUAD-PERFORMANCE-REVIEW.md). All 69 chunks compile.
+
 Both billboard CBV loggers now format bounded local copies instead of directly
 reading borrowed memory. Inaccessible samples are discarded through the existing
 guarded-copy routine. Windows protected-page and native-hook checks pass 2/2;

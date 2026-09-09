@@ -1,0 +1,31 @@
+diff --git a/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_crosshair_feedback.lua b/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_crosshair_feedback.lua
+index 275b6b2..e663526 100644
+--- a/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_crosshair_feedback.lua
++++ b/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_crosshair_feedback.lua
+@@ -8,21 +8,21 @@ function Feedback.quad(pass,widget)
+     local content=pass.content_id and widget.content[pass.content_id] or widget.content
+     if not style or not content or style.visible==false or content.visible==false or
+             (pass.visibility_function and not pass.visibility_function(content,style)) then return end
+-    local size,offset=style.size,style.offset or {0,0,0}
++    local size,offset=style.size,style.offset
+     if not size or size[1]<=0 or size[2]<=0 then return end
+     local material=content[pass.value_id or 'value_id'] or pass.value
+     if not material then return end
+     local w,h=size[1],size[2]
+-    local x,y=offset[1] or 0,offset[2] or 0
++    local x,y=offset and offset[1] or 0,offset and offset[2] or 0
+     -- Stock crosshair pivot has zero area; all feedback passes align centrally.
+     x,y=x-w*.5,y-h*.5
+-    local pivot=style.pivot or {w*.5,h*.5}
+-    local px,py=pivot[1] or w*.5,pivot[2] or h*.5
++    local pivot=style.pivot
++    local px,py=pivot and pivot[1] or w*.5,pivot and pivot[2] or h*.5
+     local angle=style.angle or 0
+     local c,s=math.cos(angle),math.sin(angle)
+     local cx=x+px+c*(w*.5-px)-s*(h*.5-py)
+     local cy=y+py+s*(w*.5-px)+c*(h*.5-py)
+-    return {x=cx,y=cy,w=w,h=h,c=c,s=s,layer=offset[3] or 1,
++    return {x=cx,y=cy,w=w,h=h,c=c,s=s,layer=offset and (offset[3] or 1) or 0,
+         material=material,uvs=style.uvs or {{0,0},{1,1}},color=style.color or {255,255,255,255}}
+ end
+ function Feedback.scale(percent)
