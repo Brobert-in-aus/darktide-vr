@@ -9,7 +9,9 @@ that stock result and retires the XR gesture if the query fails or supplies no
 null reference; the readiness observer treats a throwing query as blocked.
 Neither reads XR input on that failed route. Lookup/query regressions pass,
 alongside the five related checks in 0.14 seconds and 69 compiled chunks.
-This follow-up is undeployed and still needs its focused port; `29b30bd` predates it.
+Focused port `848b78d` (PR #161) passes 64/64 Lua checks in 0.833 seconds and
+compiles 56 chunks. Its refreshed payload passes copied-install deployment and
+rollback, restoring all originals and removing additions. This remains undeployed.
 
 A stock input block can retain the same menu owner. Previously the VR sampler
 kept its armed state while the null service bypassed input reads, so queued

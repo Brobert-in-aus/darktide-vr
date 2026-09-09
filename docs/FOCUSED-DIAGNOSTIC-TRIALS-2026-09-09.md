@@ -11,7 +11,7 @@ embedded. Native build evidence remains in the focused source handoff.
 | --- | --- | --- | --- |
 | `native-ui-a4ec84c` | `a4ec84c`, PR #133 | One native DLL | Existing DLL in `binaries` and in the mod's `bin` directory |
 | `marker-metrics-8178c5f` | `8178c5f`, PR #138 | Main Lua and measurement module | Existing main Lua plus new marker module |
-| `communication-29b30bd` | `29b30bd`, PR #158 | Fifteen Lua files | Eight existing files plus seven new modules |
+| `communication-848b78d` | `848b78d`, PR #161 | Fifteen Lua files | Eight existing files plus seven new modules |
 
 The native trial supports owned UI readback while the optional DLSS UI tag
 remains disabled. The marker trial measures inputs to both eyes' draws without
@@ -74,7 +74,7 @@ still unchanged. Its focused source passes 64/64 Lua checks in 1.203 seconds.
 Its receipt (ignored):
 `artifacts/unattended/communication-trial-refresh-e4bd9a80ff834baca290663659d0d007/rehearsal.json`.
 
-The current payload is `communication-29b30bd` (PR #158), adding same-view menu
+The preceding payload is `communication-29b30bd` (PR #158), adding same-view menu
 null-service recovery. Exactly one payload file changes from `96292b4`; all
 accepted destination preconditions are unchanged. The focused suite passes
 64/64 Lua checks in 0.895 seconds and its own package gate compiles 56 chunks.
@@ -84,8 +84,17 @@ rollback, using the corrected source gate on each copied package's descriptor.
 All 51 original fixture files return to their original hashes and all seven new
 modules are removed. Actual installed preconditions remain unchanged. Earlier
 communication payload directories are historical versions, not additional trials.
-Latest receipt (ignored):
+Its receipt (ignored):
 `artifacts/unattended/menu-trial-refresh-32f98d42f6524f51a7aab8e978c43f0d/rehearsal.json`.
+
+Current payload `communication-848b78d` (PR #161) also protects retiring menu
+null-reference queries. Again only menu input changes from the preceding payload;
+the fifteen accepted destination preconditions remain unchanged. The focused
+suite passes 64/64 in 0.833 seconds and compiles 56 chunks with its own descriptor.
+Fresh copied-install deployment/rollback passes with 57/50 compiled chunks, all
+51 original fixture hashes restored, and seven additions removed. The actual
+installed preconditions remain unchanged. Latest receipt (ignored):
+`artifacts/unattended/menu-query-trial-refresh-43881c512dd245e78a6c30607c76661b/rehearsal.json`.
 
 ## Live trial boundary
 
