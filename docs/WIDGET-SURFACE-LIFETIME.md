@@ -1,5 +1,24 @@
 # Complete-widget surface lifetime
 
+## Scaled text-box admission, 9 September
+
+Capture rejects text passes using `box_color` or `debug_draw_box` unless the
+requested renderer scale is explicitly one. Stock `UIPasses.text.draw` scales
+its position before calling `UIRenderer.draw_rect`, which scales it again. A
+100-unit graph translation therefore moves text by 100*scale and its optional
+box by 100*scale*scale. A single translated crop cannot preserve both at other
+scales. Ordinary text remains eligible; source drawing is unchanged.
+
+The admission regression failed before the guard. The optional capture-state
+fixture accepts cached `ui_passes.lua` and `ui_renderer.lua` after the state
+module path and executes both stock functions: eight color/debug-box cases at
+0.75/1/1.5/2 verify this transform difference. Native GUI/vector operations remain
+mocked. Eight widget/plane CTests pass in 0.11 seconds; all 69 Lua chunks compile.
+Receipt: `artifacts/unattended/widget-scaled-text-box-stock-20260909.log`.
+These modules remain unloaded. The inspected interaction definitions contain no
+matched box/debug-box flags; this is not a claimed cause of the user's popup
+symptom, and complete raster bounds and worn acceptance remain open.
+
 ## Dynamic pass admission, 9 September
 
 Capture now rejects pass `change_function` and `visibility_function` callbacks

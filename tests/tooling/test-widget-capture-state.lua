@@ -72,6 +72,23 @@ for _,mode in ipairs({'fit','hud_fit','aspect_ratio','fit_width','fit_height'}) 
 end
 widget.style.scenegraph_scale=nil
 assert(draw_count==before_transform_draws and pass.data==original and created==first_created)
+-- Stock text's optional box calls logical draw_rect with already scaled
+-- coordinates. A common translated crop cannot preserve both at scale ~= 1.
+do
+    local p={pass_type='text',value_id='text',data={}}
+    local w={passes={p},style={},content={text='example'}}
+    for _,field in ipairs({'box_color','debug_draw_box'})do
+        w.style[field]=field=='box_color' and {255,1,1,1} or true
+        for _,scale in ipairs({.75,1,1.5,2})do
+            local accepted,why=state:admit({w},{scale=scale})
+            if scale==1 then assert(accepted,'unit-scale text box rejected')
+            else assert(not accepted and why=='unsupported_transform','scaled text box admitted')end
+        end
+        assert(not state:admit({w},{}),'unknown text-box scale admitted')
+        w.style[field]=nil
+    end
+    assert(state:admit({w},{scale=2}),'ordinary scaled text rejected')
+end
 -- Stock invokes these callbacks after capture admission. They can change the
 -- measured geometry, introduce viewport transforms or replace resources.
 -- Reject before callbacks/cache changes until their outputs can be frozen.
@@ -179,6 +196,9 @@ if arg[2] then
         Material={set_scalar=function(h) assert(actual_live[h]) end},
         require=function(name)
             if name=='scripts/managers/ui/ui_renderer' then return stock_renderer end
+            if name=='scripts/managers/ui/ui_fonts' then
+                return {get_font_options_by_style=function()end}
+            end
             return {}
         end},{__index=_G})
     local chunk=assert(loadfile(arg[2]));setfenv(chunk,env)
@@ -246,4 +266,48 @@ if arg[2] then
         assert(p.data==source_data and next(actual_live)==nil)
     end
     print('widget_capture_state: actual stock vector/rotated rectangle draw arguments and immediate cleanup pass')
+    if arg[3] then
+        local file=assert(io.open(arg[3],'rb'))
+        local source=file:read('*a');file:close()
+        local first=assert(source:find('UIRenderer.draw_rect =',1,true))
+        local last=assert(source:find('UIRenderer.draw_triangle =',first,true))
+        local text_xy,box_xy
+        env.UIRenderer=stock_renderer
+        env.optional_gui_args={}
+        env.table=setmetatable({clear=function(t)for key in pairs(t)do t[key]=nil end end},{__index=table})
+        env.SNAP_PIXEL_POSITIONS=false
+        env.Color=setmetatable({magenta=function()return {255,255,0,255}end},
+            {__call=function(_,...)return {...}end})
+        env.Gui.scale_vector3=function(value,scale)
+            return {value[1]*scale,value[2]*scale,value[3] or 0}
+        end
+        env.Gui2_rect=function(_,position)
+            box_xy={position[1],position[2]}
+        end
+        env.Gui2_update_rect=function()error('unexpected retained box')end
+        setfenv(assert(loadstring(source:sub(first,last-1),'stock draw_rect')),env)()
+        stock_renderer.script_draw_text=function(_,_,_,_,position)
+            text_xy={position[1],position[2]}
+        end
+        local checked=0
+        for _,field in ipairs({'box_color','debug_draw_box'})do
+            for _,scale in ipairs({.75,1,1.5,2})do
+                local target={scale=scale,render_settings={},gui={}}
+                local p={pass_type='text',value_id='text'}
+                p.data=stock.text.init(p)
+                local style={font_type='fixture_font',font_size=20,text_color={255,255,255,255}}
+                style[field]=field=='box_color' and {255,1,1,1} or true
+                stock.text.draw(p,target,style,{text='fixture'}, {100,50,3},{40,20,0})
+                local original_text,original_box=text_xy,box_xy
+                stock.text.draw(p,target,style,{text='fixture'}, {0,0,3},{40,20,0})
+                local text_shift,box_shift=original_text[1]-text_xy[1],original_box[1]-box_xy[1]
+                assert(text_shift==100*scale and box_shift==100*scale*scale)
+                assert((text_shift==box_shift)==(scale==1),'unexpected stock box translation')
+                assert(original_text[2]-text_xy[2]==50*scale)
+                assert(original_box[2]-box_xy[2]==50*scale*scale)
+                checked=checked+1
+            end
+        end
+        print('widget_capture_state: '..checked..' actual stock text/draw_rect cases prove scaled-box translation mismatch; native GUI/vector scaling is mocked')
+    end
 end

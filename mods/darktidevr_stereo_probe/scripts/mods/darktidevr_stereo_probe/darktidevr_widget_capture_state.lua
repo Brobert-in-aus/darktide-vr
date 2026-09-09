@@ -55,6 +55,12 @@ function State:admit(widgets,settings)
             -- These modes resolve against the viewport or reset a position
             -- axis after graph translation; frozen node sizes cannot fix them.
             if style.scenegraph_scale then return nil,'unsupported_transform' end
+            -- Stock text boxes send already scaled coordinates to draw_rect,
+            -- which scales them again. Text and box then translate differently
+            -- under a common crop. Only an explicit unit scale is equivalent.
+            if kind=='text' and (style.box_color or style.debug_draw_box) and settings.scale~=1 then
+                return nil,'unsupported_transform'
+            end
             if style.material~=nil and type(style.material)~='string' then return nil,'foreign_material' end
             if resource_value[kind] then
                 local value=content[pass.value_id or 'value_id']
