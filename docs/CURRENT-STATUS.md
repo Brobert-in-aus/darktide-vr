@@ -2,6 +2,27 @@
 
 ## 10 September development resumed
 
+Stereo copy transitions now have a focused baseline candidate `faac381`
+([PR #250](http://192.168.8.181:3000/robert/warhammer-40k-darktide-vr/pulls/250)).
+It batches distinct sources while preserving all copies, fences and ownership;
+four focused checks including debug-layer WARP pixel readback pass. It is built
+only. The [RTX 4090 comparison](STEREO-COPY-HARDWARE-COMPARISON.md) finds about
+0.5 microseconds less CPU recording per eye but no consistent GPU improvement.
+Treat this as a small candidate, not a frame-rate result.
+
+The [SR context extension](DLSS-SR-EYE-CONTEXT.md) now records pending eye/pose
+and arm/reset counters around bounded SR evaluations. Its native build, three
+native checks and ten parser checks pass; it remains undeployed and does not
+claim GPU eye attribution from a pending tag.
+
+The engine map resolves chained fragments to 12 primary owners, distinguishes
+render/world-update command dispatch, and identifies cascaded-shadow preparation.
+Retail `Profiler.capture` and `Renderer.set_gpu_profiling` bindings are no-ops.
+The [CPU sampling tool](ENGINE-CPU-SAMPLING.md) is prepared, but the later Ready
+check timed out and returned HMD unavailable after Virtual Desktop resume.
+No CPU-trial game launched; proximity automation is restored. Continue offline
+engine work until a new Ready result supports live measurement.
+
 A focused SR-input trial now captures 64 complete successful evaluations across
 two stable feature lifetimes, with matched jitter in 32 adjacent call pairs.
 Ready and fresh stereo delivery passed. Both accepted DLLs and the probe flag

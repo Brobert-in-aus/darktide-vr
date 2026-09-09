@@ -122,6 +122,36 @@ Local evidence: `engine-render-ownership-20260910.json`,
 The [bounded CPU capture](ENGINE-CPU-SAMPLING.md) is prepared, but its live trial
 was deferred after the new Ready checks failed. No engine patch was deployed.
 
+### Queue waits and retail profiling boundaries
+
+The command enqueue routine at `2d7fb0` copies an eight-byte header plus payload
+into temporary storage and calls `2db480`. On a rejected enqueue it can wait on
+queue state or call `2d8390` before retrying. Consequently, time spent in this
+routine would include contention and potentially drained work, not only packet
+preparation. Do not attribute its entire duration to per-eye scene preparation.
+The return paths inspected do not establish a useful returned value; no hook
+ABI has been accepted or implemented from that observation.
+
+The caller of `419910` has profiling label `cascaded_shadow_mapping` at `417f8c`;
+the parent itself references `render cascaded shadows` at `4199e5`. This supports
+the cascaded-shadow classification while leaving live frequency, cost and reuse
+conditions unmeasured.
+
+The installed binary registers `Profiler.capture` at `403103` and
+`Renderer.set_gpu_profiling` at `49a02d`. Following their Lua closure registrations
+at `403112` and `49a03c` resolves **both** to `273210`, whose body is
+`xor eax,eax; ret`. These retail bindings are no-ops. Merely finding callable
+names, or the stock `PerformanceReporter` calling `set_gpu_profiling(true)`, does
+not establish that pass profiling can be enabled through them. This does not
+mean every native profiling path has been removed: native scope begin/end
+implementations and their TLS checks are present.
+
+These observations use the same installed executable SHA-256 as the map above.
+Local evidence: `engine-command-queue-20260910.txt`,
+`engine-preparation-labels-20260910.txt`, `engine-profiler-map-20260910.json`, and
+`engine-profiler-bindings-20260910.txt` under `artifacts/unattended`. No engine
+memory, configuration or executable was modified.
+
 ## Next development targets
 
 1. Follow the preparation/culling call graph and classify mutable world updates,
