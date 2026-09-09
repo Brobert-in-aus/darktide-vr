@@ -1,6 +1,7 @@
 #pragma once
 #include <Windows.h>
 #include <cstdint>
+#include "producer/ngx_sr_eye_context.h"
 struct ID3D12CommandList;
 struct ID3D12CommandQueue;
 struct D3D12_RESOURCE_BARRIER;
@@ -8,7 +9,8 @@ struct D3D12_RESOURCE_BARRIER;
 namespace darktidevr::producer {
 // Optional next-launch diagnostic, registered between MH_Initialize/EnableHook.
 // Observes the NGX runtime export, never the caller-validated feature export.
-bool install_ngx_output_probe(HMODULE capture_module);
+bool install_ngx_output_probe(HMODULE capture_module,
+                              NgxSrEyeContextReader context_reader = nullptr);
 void arm_ngx_output_probe(std::uint64_t batch, std::uint64_t present);
 void observe_ngx_command_reset(void* commands);
 std::uint64_t observe_ngx_queue_submit(ID3D12CommandQueue* queue, unsigned count,

@@ -1,4 +1,5 @@
 #include "producer/ngx_sr_observation.h"
+#include "producer/ngx_sr_eye_context.h"
 #include <atomic>
 #include <cstring>
 #include <iostream>
@@ -16,6 +17,11 @@ int main(int argc, char** argv) {
     using namespace darktidevr::producer;
     char identity{};
     char line[768]{};
+    for (const auto* phase : {"before", "after"}) {
+      expect(format_ngx_sr_eye_context(line, sizeof(line), 12, phase, true,
+                                      {1, 42, 1, 9, 0}) > 0);
+      std::cout << line;
+    }
     for (const auto* name : kNgxSrFloatNames) {
       expect(format_ngx_sr_scalar(line, sizeof(line), 12, name, "float", true, 1, -0.375) > 0);
       std::cout << line;

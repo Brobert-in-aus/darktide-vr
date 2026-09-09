@@ -13417,7 +13417,18 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
   }
   if (MH_Initialize() != MH_OK ||
       !darktidevr::producer::install_resource_handle_trace(native_capture_module) ||
-      !darktidevr::producer::install_ngx_output_probe(native_capture_module) ||
+      !darktidevr::producer::install_ngx_output_probe(native_capture_module, +[] {
+        darktidevr::producer::NgxSrEyeContext context;
+        std::scoped_lock lock(boundary_capture_mutex);
+        context.queued = armed_eye_captures.size();
+        context.arms = boundary_arm_count.load(std::memory_order_relaxed);
+        context.resets = boundary_tag_reset_count.load(std::memory_order_relaxed);
+        if (context.queued == 1) {
+          context.eye = armed_eye_captures.front().eye;
+          context.pose = armed_eye_captures.front().pose_sequence;
+        }
+        return context;
+      }) ||
       (streamline_feature_resolver_target &&
        MH_CreateHook(streamline_feature_resolver_target,
                      &sl_get_feature_function_hook,

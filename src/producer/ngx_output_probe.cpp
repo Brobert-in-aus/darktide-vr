@@ -76,6 +76,7 @@ std::atomic<bool> probe_installed{};
 NgxCaptureWindow capture_window;
 bool observe_sr_inputs{};
 NgxSrObservationBudget sr_observation_budget;
+NgxSrEyeContextReader sr_context_reader{};
 constexpr std::uint64_t kCallLimit = 32768;
 constexpr std::uint32_t kSampleLimit = 256;
 
@@ -111,6 +112,18 @@ void write_line(const char* line, std::size_t length) {
   std::scoped_lock lock(log_mutex);
   DWORD written{};
   WriteFile(log_file, line, static_cast<DWORD>(length), &written, nullptr);
+}
+
+void record_sr_context(std::uint64_t call, const char* phase) {
+  const auto context = sr_context_reader ? sr_context_reader() : NgxSrEyeContext{};
+  char line[320]{};
+  const auto length = format_ngx_sr_eye_context(line, sizeof(line), call, phase,
+                                               sr_context_reader != nullptr, context);
+  if (length > 0 && static_cast<std::size_t>(length) < sizeof(line)) {
+    std::scoped_lock lock(log_mutex);
+    DWORD written{};
+    WriteFile(sr_log, line, static_cast<DWORD>(length), &written, nullptr);
+  }
 }
 
 void record_sr_inputs(std::uint64_t call, void* commands, const void* feature,
@@ -255,6 +268,7 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
       sr_observation_budget.reserve(true, true, identity.kind, identity.lifetime,
           verified_parameters(parameters, ngx::kGetD3D12ResourceSlot));
   if (sr_observed) {
+    record_sr_context(call, "before");
     record_sr_inputs(call, commands, feature, parameters, identity.lifetime, window);
   }
   // SR work on other threads can interleave between the two FG evaluations.
@@ -362,6 +376,7 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   const auto began = GetTickCount64();
   const auto result = original(commands, feature, parameters, callback);
   if (sr_observed) {
+    record_sr_context(call, "after");
     char line[192]{};
     const auto length = format_ngx_sr_evaluation(line, sizeof(line), call, result);
     if (length > 0 && static_cast<std::size_t>(length) < sizeof(line)) {
@@ -591,7 +606,9 @@ void arm_ngx_output_probe(std::uint64_t batch, std::uint64_t present) {
   capture_window.open(batch, present, calls.load(std::memory_order_relaxed));
 }
 
-bool install_ngx_output_probe(HMODULE capture_module) {
+bool install_ngx_output_probe(HMODULE capture_module, NgxSrEyeContextReader context_reader) {
+  // Installation precedes hook enablement; the callback remains immutable.
+  sr_context_reader = context_reader;
   std::array<wchar_t, 32768> path{};
   auto length = GetModuleFileNameW(capture_module, path.data(), static_cast<DWORD>(path.size()));
   if (!length || length >= path.size()) return false;
@@ -659,7 +676,7 @@ bool install_ngx_output_probe(HMODULE capture_module) {
     if (observe_sr_inputs) {
       char sr_header[384]{};
       const auto sr_length = std::snprintf(sr_header, sizeof(sr_header),
-          "ngx_sr_probe=armed schema=2 runtime=32.0.16.1088 resource_get_slot=9 "
+          "ngx_sr_probe=armed schema=3 runtime=32.0.16.1088 resource_get_slot=9 "
           "float_get_slot=14 integer_get_slot=11 unsigned_get_slot=12 "
           "call_limit=32768 sample_limit=64 wait_for_stereo=%u pixels_captured=0 publication=0\n",
           wait_for_stereo ? 1U : 0U);

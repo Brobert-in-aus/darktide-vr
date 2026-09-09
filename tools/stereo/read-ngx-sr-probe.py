@@ -13,6 +13,8 @@ HEADER = ("ngx_sr_probe=armed schema=1 runtime=32.0.16.1088 resource_get_slot=9 
           "call_limit=32768 sample_limit=64 wait_for_stereo={gate} pixels_captured=0 publication=0")
 TEMPORAL_HEADER = HEADER.replace("schema=1", "schema=2").replace(
     "call_limit=", "float_get_slot=14 integer_get_slot=11 unsigned_get_slot=12 call_limit=")
+CONTEXT_HEADER = TEMPORAL_HEADER.replace("schema=2", "schema=3")
+CONTEXT_FIELDS = {"call", "phase", "available", "eye", "pose", "queued", "arms", "resets", "attribution_verified"}
 SCALARS = {**dict.fromkeys(("Jitter.Offset.X", "Jitter.Offset.Y", "MV.Scale.X", "MV.Scale.Y",
                           "DLSS.Pre.Exposure"), "float"),
            **dict.fromkeys(("DLSS.Render.Subrect.Dimensions.Width",
@@ -50,7 +52,7 @@ def fields(line, expected):
 def parse(text):
     lines = text.splitlines()
     headers = {header.format(gate=gate): (gate == 1, version)
-               for header, version in ((HEADER, 1), (TEMPORAL_HEADER, 2)) for gate in (0, 1)}
+               for header, version in ((HEADER, 1), (TEMPORAL_HEADER, 2), (CONTEXT_HEADER, 3)) for gate in (0, 1)}
     if not lines or lines[0] not in headers:
         raise ValueError("missing or unsupported SR header")
     gated, version = headers[lines[0]]
@@ -60,20 +62,35 @@ def parse(text):
         if not line.strip():
             continue
         kind, separator, rest = line.partition(" ")
-        if not separator or kind not in ("NGX_SR_INPUT", "NGX_SR_EVAL", "NGX_SR_SCALAR"):
+        if not separator or kind not in ("NGX_SR_INPUT", "NGX_SR_EVAL", "NGX_SR_SCALAR", "NGX_SR_CONTEXT"):
             raise ValueError("unexpected SR record")
         data = fields(rest, INPUT_FIELDS if kind == "NGX_SR_INPUT" else
+                      CONTEXT_FIELDS if kind == "NGX_SR_CONTEXT" else
                       SCALAR_FIELDS if kind == "NGX_SR_SCALAR" else EVAL_FIELDS)
         call = number(data["call"])
-        if not call or (kind != "NGX_SR_SCALAR" and data["publication"] != "0"):
+        if not call or (kind in ("NGX_SR_INPUT", "NGX_SR_EVAL") and data["publication"] != "0"):
             raise ValueError("invalid call or publication claim")
-        observation = calls.setdefault(call, {"call": call, "inputs": {}, "scalars": {}, "evaluation_result": None})
+        observation = calls.setdefault(call, {"call": call, "inputs": {}, "scalars": {}, "contexts": {}, "evaluation_result": None})
         if len(calls) > 64:
             raise ValueError("SR sample budget exceeded")
+        if kind == "NGX_SR_CONTEXT":
+            phase = data["phase"]
+            if version != 3 or phase not in ("before", "after") or phase in observation["contexts"]:
+                raise ValueError("unsupported or duplicate context")
+            if data["available"] not in ("0", "1") or data["attribution_verified"] != "0" or data["eye"] not in ("-1", "0", "1"):
+                raise ValueError("invalid context flags or attribution claim")
+            context = {name: number(data[name]) for name in ("pose", "queued", "arms", "resets")}
+            context.update(available=data["available"] == "1", eye=int(data["eye"]))
+            if (context["queued"] != 1 and (context["eye"] != -1 or context["pose"] != 0)) or (context["eye"] == -1 and context["pose"] != 0):
+                raise ValueError("ambiguous queue must not report an eye or pose")
+            if not context["available"] and (context["eye"] != -1 or any(context[name] for name in ("pose", "queued", "arms", "resets"))):
+                raise ValueError("unavailable context contains values")
+            observation["contexts"][phase] = context
+            continue
         result = number(data["result"], 32, True)
         if kind == "NGX_SR_SCALAR":
             name = data["name"]
-            if version != 2 or name not in SCALARS or data["type"] != SCALARS[name] or name in observation["scalars"]:
+            if version < 2 or name not in SCALARS or data["type"] != SCALARS[name] or name in observation["scalars"]:
                 raise ValueError("unsupported or duplicate scalar")
             if data["queried"] not in ("0", "1") or data["valid"] not in ("0", "1"):
                 raise ValueError("invalid scalar flags")
@@ -149,6 +166,11 @@ def parse(text):
         observation["missing_indexes"] = [i for i in range(7) if i not in observation["inputs"]]
         observation["missing_scalars"] = [name for name in SCALARS if name not in observation["scalars"]]
         observation["scalar_records_complete"] = not observation["missing_scalars"]
+        before, after = (observation["contexts"].get(phase) for phase in ("before", "after"))
+        observation["context_records_complete"] = before is not None and after is not None
+        observation["stable_pending_eye_tag"] = bool(before and after and before == after
+            and before["available"] and before["queued"] == 1 and before["eye"] in (0, 1)
+            and before["pose"] and before["arms"])
         observation["complete"] = (not observation["missing_indexes"] and
                                    observation["evaluation_result"] is not None)
         observation["evaluation_succeeded"] = (None if observation["evaluation_result"] is None
@@ -157,6 +179,7 @@ def parse(text):
         observations.append(observation)
     return {"schema": version, "metadata_only": True, "pixels_captured": False,
             "gpu_completion_verified": False, "hud_attribution_verified": False,
+            "eye_attribution_verified": False,
             "wait_for_stereo": gated, "observed_calls": len(observations),
             "complete_calls": sum(item["complete"] for item in observations),
             "observations": observations}

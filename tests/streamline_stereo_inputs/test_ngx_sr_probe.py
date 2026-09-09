@@ -43,15 +43,42 @@ class SrObservationReader(unittest.TestCase):
     def test_actual_native_record_formatter(self):
         result = subprocess.run([NATIVE, "--emit-records"], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        report = reader.parse(reader.TEMPORAL_HEADER.format(gate=1) + "\n" + result.stdout)
+        report = reader.parse(reader.CONTEXT_HEADER.format(gate=1) + "\n" + result.stdout)
         self.assertEqual(report["complete_calls"], 1)
         observation = report["observations"][0]
+        self.assertTrue(observation["context_records_complete"])
+        self.assertTrue(observation["stable_pending_eye_tag"])
+        self.assertFalse(report["eye_attribution_verified"])
         self.assertTrue(observation["scalar_records_complete"])
         self.assertEqual(observation["scalars"]["Jitter.Offset.X"]["value"], -0.375)
         self.assertTrue(observation["evaluation_succeeded"])
         self.assertEqual([item["status"] for item in observation["inputs"]],
                          ["described"] * 4 + ["query_failed", "null_resource", "null_resource"])
         self.assertEqual(observation["inputs"][0]["descriptor"]["width"], 1440)
+
+    def test_context_changes_ambiguity_and_missing_end_are_not_stable(self):
+        before = "NGX_SR_CONTEXT call=12 phase=before available=1 eye=0 pose=42 queued=1 arms=9 resets=0 attribution_verified=0"
+        after = before.replace("phase=before", "phase=after")
+        header = reader.CONTEXT_HEADER.format(gate=1) + "\n"
+        for ending in ("", after.replace("eye=0", "eye=1"),
+                       after.replace("pose=42", "pose=43"),
+                       after.replace("arms=9", "arms=10"),
+                       after.replace("resets=0", "resets=1"),
+                       after.replace("eye=0 pose=42 queued=1", "eye=-1 pose=0 queued=2")):
+            with self.subTest(ending=ending):
+                result = reader.parse(header + before + "\n" + ending)
+                self.assertFalse(result["observations"][0]["stable_pending_eye_tag"])
+        unknown = before.replace("available=1 eye=0 pose=42 queued=1 arms=9", "available=0 eye=-1 pose=0 queued=0 arms=0")
+        result = reader.parse(header + unknown + "\n" + unknown.replace("phase=before", "phase=after"))
+        self.assertFalse(result["observations"][0]["stable_pending_eye_tag"])
+        for invalid in (before + "\n" + before, before.replace("queued=1", "queued=2"),
+                        before.replace("available=1", "available=0"),
+                        before.replace("attribution_verified=0", "attribution_verified=1"),
+                        before.replace("eye=0", "eye=2"), before.replace("arms=9", "arms=-1")):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                reader.parse(header + invalid)
+        with self.assertRaises(ValueError):
+            reader.parse(reader.TEMPORAL_HEADER.format(gate=1) + "\n" + before)
 
     def test_interleaved_success_failure_null_and_evaluation_failure(self):
         first = inputs()
