@@ -108,6 +108,25 @@ disabled/closed/FG/unknown-lifetime/unverified exclusions and exact exhaustion.
 The Windows x64 native DLL builds in `build/xr-frame-stage-timing` only; no
 runtime callback or headset capture has been exercised for this candidate.
 
+Read a saved SR log with `python -B tools/stereo/read-ngx-sr-probe.py <log>`.
+The reader prints JSON and the source SHA256 to standard output and writes no
+files. It validates the schema, numeric ranges, query/descriptor consistency,
+capture window, per-call identity, seven named indexes and 64-call budget.
+Interleaved calls are grouped by call identity; missing inputs or CPU results
+remain explicitly incomplete. A complete observation means complete metadata,
+even when the queries or evaluation failed. Query failures, successful null
+resources and described resources remain distinct. An empty armed log proves
+neither successful SR observation nor absence of SR inputs.
+
+Reader tests cover truncated/interleaved traces, failed evaluations, query/null
+distinctions, contradictory identities/descriptors, duplicates, gate/budget
+limits and an actual native formatter roundtrip. The formatter fixture supplies
+constructed metadata; it is not a live NGX call or a GPU resource readback.
+Windows x64 native rebuild and 10/10 focused NGX checks pass in 1.53 seconds,
+including all eight Python reader tests. Receipts:
+`artifacts/unattended/ngx-sr-reader-build-20260909.log` and
+`artifacts/unattended/ngx-sr-reader-tests-20260909.log`.
+
 ### Placement ties are not displacement evidence
 
 The generated-UI placement tool now always includes the current position and

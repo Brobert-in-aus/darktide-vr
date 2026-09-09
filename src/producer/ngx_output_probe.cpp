@@ -124,20 +124,11 @@ void record_sr_inputs(std::uint64_t call, void* commands, const void* feature,
     const bool described = result == ngx::kSuccess && resource;
     const auto desc = described ? resource->GetDesc() : D3D12_RESOURCE_DESC{};
     char line[768]{};
-    const auto length = std::snprintf(line, sizeof(line),
-        "NGX_SR_INPUT call=%llu feature=%p lifetime=%llu commands=%p thread=%lu "
-        "batch=%llu present=%llu first_call=%llu index=%zu name=%s result=%x resource=%p described=%u "
-        "dimension=%u width=%llu height=%u depth_or_array=%u mips=%u format=%u samples=%u "
-        "pixels_captured=0 publication=0\n",
-        static_cast<unsigned long long>(call), feature,
-        static_cast<unsigned long long>(lifetime), commands, GetCurrentThreadId(),
-        static_cast<unsigned long long>(window.batch),
-        static_cast<unsigned long long>(window.present),
-        static_cast<unsigned long long>(window.first_call), index, kNgxSrResourceNames[index],
-        result, static_cast<void*>(resource), described ? 1U : 0U,
-        static_cast<unsigned>(desc.Dimension), static_cast<unsigned long long>(desc.Width),
-        desc.Height, static_cast<unsigned>(desc.DepthOrArraySize),
-        static_cast<unsigned>(desc.MipLevels), static_cast<unsigned>(desc.Format), desc.SampleDesc.Count);
+    const auto length = format_ngx_sr_input(line, sizeof(line),
+        {call, lifetime, window.batch, window.present, window.first_call,
+         feature, commands, GetCurrentThreadId(), index, result, resource, described,
+         static_cast<unsigned>(desc.Dimension), desc.Width, desc.Height,
+         desc.DepthOrArraySize, desc.MipLevels, static_cast<unsigned>(desc.Format), desc.SampleDesc.Count});
     if (length > 0 && static_cast<std::size_t>(length) < sizeof(line)) {
       std::scoped_lock lock(log_mutex);
       DWORD written{};
@@ -343,9 +334,7 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
   const auto result = original(commands, feature, parameters, callback);
   if (sr_observed) {
     char line[192]{};
-    const auto length = std::snprintf(line, sizeof(line),
-        "NGX_SR_EVAL call=%llu result=%x gpu_complete=0 publication=0\n",
-        static_cast<unsigned long long>(call), result);
+    const auto length = format_ngx_sr_evaluation(line, sizeof(line), call, result);
     if (length > 0 && static_cast<std::size_t>(length) < sizeof(line)) {
       std::scoped_lock lock(log_mutex);
       DWORD written{};
