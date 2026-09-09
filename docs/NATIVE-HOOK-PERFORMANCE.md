@@ -105,3 +105,45 @@ Build receipts: `hook-performance-build-20260909.log` and
 `hook-performance-build-final-20260909.log` under `artifacts/unattended`.
 No new CTest was registered. Both actual installed native copies remain unchanged.
 The focused candidate stays staged and requires Ready before real deployment.
+
+## Actual Map/Unmap hook measurement
+
+The explicit hook benchmark now supports `DLL --mapping` and
+`DLL --mapping-control`. Both load the same copied DLL and create 1,024 upload
+buffers on the same adapter; control leaves native hooks uninstalled. Each of
+three workloads warms 1,000 Map/Unmap pairs, then times 10,000 pairs. The hook
+case requires exact deltas of 10,000 maps, matched resources and unmaps; control
+requires all three deltas to remain zero. Buffers are mapped without CPU reads
+or writes. There is no command queue execution, Present, XR session or game.
+Default barrier-recording mode remains unchanged.
+
+`measure-native-map-hooks.ps1` checks the DLL hash, creates fresh process/temp
+isolation, alternates hooked/control order, checks adapter/driver identity and
+completion/counter evidence, preserves input hashes and reports every trial.
+Use explicit `-Executable`, `-Library`, `-LibraryHash`, `-OutputDirectory` and
+optional odd `-Trials` (default five). It does not install a game payload.
+
+Five fresh processes per mode using focused native `8b3697a`, DLL hash
+`63592118307969E087F7EBC849BB011291C4C75708591C5092966F001A74235B`, report these
+median milliseconds per 10,000 pairs:
+
+| Buffer distribution | Unhooked control | Hooked |
+| --- | ---: | ---: |
+| Repeated 16 early allocations | 0.4725 | 11.2978 |
+| Newest allocation | 0.4714 | 3.1865 |
+| Cycle all 1,024 allocations | 0.8311 | 7.1080 |
+
+These results include driver Map/Unmap, stack capture, counters, locking and
+resource-pointer reverse scans. They do not isolate any one component's exact
+cost. The larger early-allocation cost supports reviewing the pointer scans;
+the existing GPU-address caches do not accelerate those scans. Real game map
+frequency and allocation distribution remain unmeasured, so no frame-time
+improvement is claimed.
+
+Windows x64 Release benchmark builds. All ten measurement processes pass their
+counter and completion checks on adapter vendor 4318/device 9860/software 0,
+driver integer 9007199255790656. Executable SHA256:
+`1DC64B8F57E6A7B590FA47D11CFF8C356B9A0DE7BA93943ABE9A4FB7928B87AD`.
+Receipts: `artifacts/unattended/native-map-benchmark-build-20260909.log` and
+`artifacts/unattended/native-map-hook-measurement-20260909/comparison.json`.
+No runtime code, accepted installation or staged payload was changed.
