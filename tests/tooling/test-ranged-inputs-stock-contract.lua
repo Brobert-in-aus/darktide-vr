@@ -78,7 +78,7 @@ for _,binding in ipairs(Bindings.actions) do
         for _,name in ipairs(binding[phase] or {}) do supported[name]=true end
     end
 end
-local template_count,element_count=0,0
+local template_count,element_count,timed_count=0,0,0
 for path in io.lines(manifest) do
     path=path:gsub('\r','')
     local text=read(root..'/'..path)
@@ -103,12 +103,20 @@ for path in io.lines(manifest) do
                         for _,raw in ipairs(raw_cases) do
                             if element.input_setting then raw[element.input_setting.setting]=toggle end
                             local t=element.duration or 0
-                            local failed,done=parser:_evaluate_element(element,raw,{true,1,0},t)
-                            if not failed and done then completed=true; break end
+                            -- At the deadline stock duration elements complete
+                            -- regardless of has_input. First require admission
+                            -- with this real mapper state at interval start.
+                            local initial_failed=element.duration and
+                                parser:_evaluate_element(element,raw,{true,1,0},0)
+                            if not initial_failed then
+                                local failed,done=parser:_evaluate_element(element,raw,{true,1,0},t)
+                                if not failed and done then completed=true; break end
+                            end
                         end
                         assert(completed,path..': no VR transition satisfies '..action_name..'/'..input..' toggle='..tostring(toggle))
                     end
                     element_count=element_count+1
+                    if element.duration and element.duration>0 then timed_count=timed_count+1 end
                 end
             end
         end
@@ -117,4 +125,5 @@ for path in io.lines(manifest) do
 end
 assert(template_count>0)
 print('PASS ranged stock inputs: '..template_count..' actual template tables, '..element_count..' combat input elements, hold/toggle ADS, '..#raw_cases..' real VR transitions, profile='..(arg[4] and 'supplied' or 'defaults'))
+print('ranged_timed_input_admission='..timed_count..' interval_start_and_deadline')
 print('LIMIT: element admission, not full action hierarchy, ammunition/charge availability or live firing')

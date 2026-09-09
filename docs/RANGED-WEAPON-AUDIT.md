@@ -13,12 +13,16 @@ reload controls from an optional saved-binding table, including stick sectors.
 Current saved settings still match the 43-key reviewed snapshot. Both main and
 focused `848b78d` mappers pass all 62 template tables and 530 combat input elements
 with hold/toggle ADS and 256 real mapper transitions, using right-stick-down
-reload. Both also retain the default-profile pass. A supplied unbound reload is
+reload. All 14 duration-based elements now require valid input at interval start
+as well as deadline completion; deadline-only stock evaluation could otherwise
+pass without the input held. This assumes the sampled state stays held between
+those observations and does not simulate a full input sequence. Both mappers
+also retain the default-profile pass. A supplied unbound reload is
 rejected instead of silently using default X. Settings and installed files were
 not changed. These are element-admission checks, not full action hierarchy,
 ammo/charge progression, every alias or live firing acceptance.
 
-Receipts: `artifacts/unattended/ranged-input-{main,focused}-{default,saved}-20260909.log`
+Receipts: `artifacts/unattended/ranged-input-{main,focused}-{default,saved}-timed-20260909.log`
 and `ranged-saved-bindings-recheck-20260909.json` in the same directory.
 
 ## Historical 7 September: online-rules pass while VD is closed
