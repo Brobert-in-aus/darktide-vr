@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WindowsPerformanceRecorder Version="1.0" Author="Darktide VR">
+  <Profiles>
+    <SystemCollector Id="EngineCpuCollector" Name="Darktide VR CPU samples">
+      <BufferSize Value="1024"/>
+      <Buffers Value="128"/>
+    </SystemCollector>
+    <SystemProvider Id="EngineCpuProvider">
+      <Keywords>
+        <Keyword Value="CpuConfig"/>
+        <Keyword Value="ProcessThread"/>
+        <Keyword Value="Loader"/>
+        <Keyword Value="SampledProfile"/>
+      </Keywords>
+      <Stacks><Stack Value="SampledProfile"/></Stacks>
+    </SystemProvider>
+    <Profile Id="EngineCpu.Verbose.Memory" Name="EngineCpu"
+             Description="Bounded sampled CPU stacks for engine preparation analysis"
+             LoggingMode="Memory" DetailLevel="Verbose">
+      <Collectors>
+        <SystemCollectorId Value="EngineCpuCollector">
+          <SystemProviderId Value="EngineCpuProvider"/>
+        </SystemCollectorId>
+      </Collectors>
+    </Profile>
+  </Profiles>
+</WindowsPerformanceRecorder>
