@@ -34,3 +34,10 @@ Virtual Desktop activity followed by another check returned HMD unavailable.
 No game was launched for this trial. Proximity automation was restored.
 
 Receipts remain under `artifacts/unattended/engine-cpu-*-20260910.*`.
+
+On the next continuation, waking/resuming Virtual Desktop progressed to an XR
+session but the runtime completed its frame loop without permitting projection
+submission. The subsequent Quest UI dump showed "Finding position in room" and
+reported that movement tracking was unavailable. No tracking/travel-mode choice
+was made; proximity automation was restored, and Darktide remained closed.
+Receipts use `artifacts/unattended/engine-session-*-20260910.*`.

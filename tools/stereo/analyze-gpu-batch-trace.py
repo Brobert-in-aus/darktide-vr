@@ -10,6 +10,28 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 
+def optional_count(values: dict[str, str], name: str) -> int | None:
+    if name not in values:
+        return None
+    count = int(values[name])
+    if not 0 <= count < 2**64:
+        raise ValueError("GPU work counter must fit an unsigned 64-bit value")
+    return count
+
+
+def known_sum(values) -> int | None:
+    total = 0
+    for value in values:
+        if value is None:
+            return None
+        total += value
+    return total
+
+
+def display_count(value: int | None) -> str:
+    return "unknown" if value is None else str(value)
+
+
 def fields(line: str) -> tuple[list[str], dict[str, str]]:
     parts = line.rstrip("\r\n").split("\t")
     values: dict[str, str] = {}
@@ -115,14 +137,14 @@ def analyze(path: Path) -> dict[str, object]:
                             "cl": values["CL"],
                             "generation": int(values["gen"]),
                             "list_index": int(values["list_index"]) if "list_index" in values else None,
-                            "draws": int(values.get("draws", "0")),
-                            "indexed_draws": int(values.get("indexed", "0")),
-                            "dispatches": int(values.get("dispatches", "0")),
-                            "indirects": int(values.get("indirects", "0")),
-                            "copies": int(values.get("copies", "0")),
-                            "resolves": int(values.get("resolves", "0")),
-                            "barriers": int(values.get("barriers", "0")),
-                            "passes": int(values.get("passes", "0")),
+                            "draws": optional_count(values, "draws"),
+                            "indexed_draws": optional_count(values, "indexed"),
+                            "dispatches": optional_count(values, "dispatches"),
+                            "indirects": optional_count(values, "indirects"),
+                            "copies": optional_count(values, "copies"),
+                            "resolves": optional_count(values, "resolves"),
+                            "barriers": optional_count(values, "barriers"),
+                            "passes": optional_count(values, "passes"),
                         }
                     )
                 else:
@@ -177,28 +199,14 @@ def analyze(path: Path) -> dict[str, object]:
             batch["matched_list_count"] = matched_lists
             batch["pso_bind_count"] = bind_count
             batch["unique_pso_count"] = len(signatures)
-            batch["draw_count"] = sum(
-                int(item["draws"]) + int(item["indexed_draws"])
-                for item in batch["lists"]
-            )
-            batch["dispatch_count"] = sum(
-                int(item["dispatches"]) for item in batch["lists"]
-            )
-            batch["indirect_count"] = sum(
-                int(item["indirects"]) for item in batch["lists"]
-            )
-            batch["copy_count"] = sum(
-                int(item["copies"]) for item in batch["lists"]
-            )
-            batch["resolve_count"] = sum(
-                int(item["resolves"]) for item in batch["lists"]
-            )
-            batch["barrier_count"] = sum(
-                int(item["barriers"]) for item in batch["lists"]
-            )
-            batch["pass_count"] = sum(
-                int(item["passes"]) for item in batch["lists"]
-            )
+            for metric, names in {
+                "draw_count": ("draws", "indexed_draws"),
+                "dispatch_count": ("dispatches",), "indirect_count": ("indirects",),
+                "copy_count": ("copies",), "resolve_count": ("resolves",),
+                "barrier_count": ("barriers",), "pass_count": ("passes",),
+            }.items():
+                batch[metric] = known_sum(item[name] for item in batch["lists"] for name in names
+                    ) if len(batch["lists"]) == batch["declared_list_count"] else None
             if batch["terminal_eye"] < 0 and len(inferred_terminal_eyes) == 1:
                 batch["terminal_eye"] = next(iter(inferred_terminal_eyes))
             if batch["terminal"] and (batch["terminal_eye"] not in (0, 1) or
@@ -222,13 +230,13 @@ def analyze(path: Path) -> dict[str, object]:
         segment_passes = 0
         for batch in eye_batches:
             segment_duration += float(batch["duration_ms"])
-            segment_draws += int(batch["draw_count"])
-            segment_dispatches += int(batch["dispatch_count"])
-            segment_indirects += int(batch["indirect_count"])
-            segment_copies += int(batch["copy_count"])
-            segment_resolves += int(batch["resolve_count"])
-            segment_barriers += int(batch["barrier_count"])
-            segment_passes += int(batch["pass_count"])
+            segment_draws = known_sum((segment_draws, batch["draw_count"]))
+            segment_dispatches = known_sum((segment_dispatches, batch["dispatch_count"]))
+            segment_indirects = known_sum((segment_indirects, batch["indirect_count"]))
+            segment_copies = known_sum((segment_copies, batch["copy_count"]))
+            segment_resolves = known_sum((segment_resolves, batch["resolve_count"]))
+            segment_barriers = known_sum((segment_barriers, batch["barrier_count"]))
+            segment_passes = known_sum((segment_passes, batch["pass_count"]))
             for item in batch["lists"]:
                 segment_psos.update(
                     pso_binds.get((str(item["cl"]), int(item["generation"])), [])
@@ -330,7 +338,8 @@ def analyze(path: Path) -> dict[str, object]:
 
 def markdown(report: dict[str, object]) -> str:
     lines = ["# GPU batch trace", "", f"Source: `{report['source']}`", "",
-             "Durations cover recorded direct-queue work, not whole-frame GPU time or a controlled settings comparison.", ""]
+             "Durations cover recorded direct-queue work, not whole-frame GPU time or a controlled settings comparison.",
+             "Unknown work counts indicate omitted counters or missing command-list records, not zero work.", ""]
     pair = report.get("eye_pair_comparison")
     if pair:
         lines.extend(
@@ -384,10 +393,10 @@ def markdown(report: dict[str, object]) -> str:
             lines.append(
                 f"| {segment['start_batch']}-{segment['end_batch']} | "
                 f"{segment['render_eye']} | {segment['timed_gpu_ms']:.3f} ms | "
-                f"{segment['draw_count']} | {segment['dispatch_count']} | "
-                f"{segment['indirect_count']} | {segment['copy_count']} | "
-                f"{segment['resolve_count']} | "
-                f"{segment['barrier_count']} | {segment['pass_count']} | "
+                f"{display_count(segment['draw_count'])} | {display_count(segment['dispatch_count'])} | "
+                f"{display_count(segment['indirect_count'])} | {display_count(segment['copy_count'])} | "
+                f"{display_count(segment['resolve_count'])} | "
+                f"{display_count(segment['barrier_count'])} | {display_count(segment['pass_count'])} | "
                 f"{segment['pso_bind_count']} | {segment['unique_pso_count']} |"
             )
         for comparison in data["render_segment_comparisons"]:
@@ -416,10 +425,10 @@ def markdown(report: dict[str, object]) -> str:
             lines.append(
                 f"| {batch['ordinal']} | {batch['duration_ms']:.3f} | "
                 f"{len(batch['lists'])} | {batch['matched_list_count']} | "
-                f"{batch['draw_count']} | {batch['dispatch_count']} | "
-                f"{batch['indirect_count']} | {batch['copy_count']} | "
-                f"{batch['resolve_count']} | "
-                f"{batch['barrier_count']} | {batch['pass_count']} | "
+                f"{display_count(batch['draw_count'])} | {display_count(batch['dispatch_count'])} | "
+                f"{display_count(batch['indirect_count'])} | {display_count(batch['copy_count'])} | "
+                f"{display_count(batch['resolve_count'])} | "
+                f"{display_count(batch['barrier_count'])} | {display_count(batch['pass_count'])} | "
                 f"{batch['pso_bind_count']} | {batch['unique_pso_count']} | "
                 f"{'yes' if batch['terminal'] else 'no'} |"
             )

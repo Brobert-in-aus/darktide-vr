@@ -101,6 +101,36 @@ def main() -> None:
         path = Path(directory) / "trace.log"
         path.write_text(trace, encoding="utf-8")
         report = MODULE.analyze(path)
+        counter_names = {"draws", "indexed", "dispatches", "indirects", "copies", "resolves", "barriers", "passes"}
+        legacy = "\n".join("\t".join(part for part in row.split("\t")
+            if part.split("=", 1)[0] not in counter_names) for row in trace.splitlines()) + "\n"
+        path.write_text(legacy, encoding="utf-8")
+        legacy_report = MODULE.analyze(path)
+        legacy_capture = legacy_report["eyes"]["0"]
+        for segment in legacy_capture["render_segments"]:
+            assert segment["draw_count"] is None and segment["dispatch_count"] is None
+        assert "unknown" in MODULE.markdown(legacy_report)
+        assert legacy_capture["render_segment_comparisons"] == report["eyes"]["0"]["render_segment_comparisons"]
+        # A missing indexed-draw counter invalidates only the combined draw count.
+        path.write_text(trace.replace("\tindexed=3", ""), encoding="utf-8")
+        missing = MODULE.analyze(path)["eyes"]["0"]["render_segments"]
+        assert missing[0]["draw_count"] is None and missing[0]["dispatch_count"] == 1
+        assert missing[1]["draw_count"] == 12 and missing[1]["dispatch_count"] == 0
+        # Unknown work in an earlier batch must propagate through its segment.
+        path.write_text(trace.replace("\tdraws=2", "").replace("terminal=1\tterminal_eye=1", "terminal=0\tterminal_eye=1"), encoding="utf-8")
+        combined = MODULE.analyze(path)["eyes"]["0"]["render_segments"]
+        assert len(combined) == 1 and combined[0]["draw_count"] is None
+        assert combined[0]["dispatch_count"] == 1
+        path.write_text(trace.replace("lists=1", "lists=2", 1), encoding="utf-8")
+        assert MODULE.analyze(path)["eyes"]["0"]["render_segments"][0]["dispatch_count"] is None
+        for invalid in ("-1", str(2**64)):
+            path.write_text(trace.replace("draws=2", "draws=" + invalid), encoding="utf-8")
+            try:
+                MODULE.analyze(path)
+            except ValueError as error:
+                assert "counter" in str(error)
+            else:
+                raise AssertionError("Invalid GPU work counter admitted")
         path.write_text(trace.replace("batches=2", "batches=3"), encoding="utf-8")
         partial = MODULE.analyze(path)["eyes"]["0"]
         assert not partial["render_segment_comparisons"], "Incomplete capture produced a timing comparison"
@@ -138,7 +168,9 @@ def main() -> None:
                                "lists=0", "terminal=1", f"terminal_eye={eye}")
             pair_trace += line(1, "GPU_BATCH_COMPLETE", f"eye={eye}", "batches=1", "truncated=0")
         path.write_text(pair_trace, encoding="utf-8")
-        pair = MODULE.analyze(path)["eye_pair_comparison"]
+        empty_report = MODULE.analyze(path)
+        assert empty_report["eyes"]["0"]["render_segments"][0]["draw_count"] == 0
+        pair = empty_report["eye_pair_comparison"]
         assert pair and pair["left_timed_ms"] == 1 and pair["right_timed_ms"] == 2
         assert pair["right_minus_left_ms"] == 1
 
