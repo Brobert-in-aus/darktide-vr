@@ -317,6 +317,12 @@ and release share fresh origin/direction and the stock cached rotation, speed
 and momentum. Stock strict release timing, half-rewind adjustment, once-only
 spawn, ability-charge use and server spawning ownership remain. Trajectory math,
 collision and integration are substituted; this is not physical impact evidence.
+The cached-source contract was rechecked on 9 September and still passes:
+`artifacts/unattended/grenade-delayed-stock-contract-20260909.log`.
+Separate stock input-sequence coverage now includes both grenade generator base
+tables, overhand/underhand/cancel and tracking-loss rearming; see
+[ranged input coverage](RANGED-WEAPON-AUDIT.md). A tracking-loss release input
+does not prove cancellation of a committed throw or live collision behavior.
 
 The direct-bone audit found optional `spawn_node` branches in stock grenade and
 spawn-projectile actions, but no `spawn_node` assignments in the inspected

@@ -50,6 +50,13 @@ local function template(path)
 end
 local templates={plasma=template('plasma_rifles/plasmagun_p1_m1'),
     shotgun=template('shotguns/shotgun_p1_m1'),staff=template('force_staffs/forcestaff_p4_m1')}
+for _,kind in ipairs({'grenade','grenade_handleless'})do
+    local e=setmetatable({base_template={},wield_inputs={},BaseTemplateSettings=base_env.base_template_settings,
+        ActionInputHierarchy=Hierarchy},{__index=_G})
+    local source=read('settings/equipment/weapon_templates/weapon_template_generators/'..kind..'_weapon_template_generator')
+    setfenv(assert(loadstring(section(source,'base_template.action_inputs =','base_template.actions ='))),e)()
+    templates[kind]=e.base_template
+end
 local steps=0
 local function scenario(name,toggle)
     local mapper=Bindings.install({get=function(_,key)return profile[key]end})
@@ -138,5 +145,30 @@ do
     step(.05,{'alternate'},'charge')
     step(.06,{},'charge_release')
 end
-print('PASS ranged stock sequences: '..steps..' observed steps, plasma/shotgun hold-toggle ADS and reload, plasma cancel, staff charge/fire/vent and tracking-loss rearm')
+for _,name in ipairs({'grenade','grenade_handleless'})do
+    local step=scenario(name,false)
+    step(.01,{'primary'},'aim_hold')
+    step(.02,{'primary'},nil)
+    step(.03,{},'aim_released')
+    step=scenario(name,false)
+    step(.01,{'primary'},'aim_hold')
+    step(.02,{'primary','alternate'},'block_cancel')
+    step(.03,{},nil)
+    step(.04,{'primary'},'aim_hold')
+    step(.05,{},'aim_released')
+    step=scenario(name,false)
+    step(.01,{'alternate'},'short_hand_aim_hold')
+    step(.02,{'alternate','primary'},'short_hand_throw')
+    step(.03,{},nil)
+    step(.04,{'alternate'},'short_hand_aim_hold')
+    step(.05,{},'short_hand_aim_released')
+    step=scenario(name,false)
+    step(.01,{'primary'},'aim_hold')
+    step(.02,{'primary'},'aim_released',false)
+    step(.03,{'primary'},nil)
+    step(.04,{},nil)
+    step(.05,{'primary'},'aim_hold')
+    step(.06,{},'aim_released')
+end
+print('PASS stock combat sequences: '..steps..' observed steps, plasma/shotgun ADS/reload, plasma cancel, staff charge/fire/vent, both grenade generators and tracking-loss rearm')
 print('LIMIT: ranged-only stock input hierarchy/queue; immediate fixture consumption, no wield arbitration, buffer aging, action execution, damage, networking or live acceptance')

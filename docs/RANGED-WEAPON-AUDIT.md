@@ -26,9 +26,10 @@ Receipts: `artifacts/unattended/ranged-input-{main,focused}-{default,saved}-time
 and `ranged-saved-bindings-recheck-20260909.json` in the same directory.
 
 The separate optional `tests/tooling/test-ranged-sequences-stock-contract.lua`
-now loads the stock formatter, parser, input hierarchy and queue for plasma,
-shotgun and force-staff templates. Its 47 observed steps cover hold/toggle ADS,
-reload, plasma charge cancellation, staff charge/fire/release/vent, and tracking
+loads the stock formatter, parser, input hierarchy and queue for plasma,
+shotgun and force-staff templates plus both grenade generator base tables.
+Its 85 observed steps cover hold/toggle ADS, reload, plasma charge cancellation,
+staff charge/fire/release/vent, grenade overhand/underhand/cancel, and tracking
 loss with neutral rearming. Main and focused `848b78d` pass with both default
 and saved bindings. Run with the pinned LuaJIT executable, cached source root,
 mapper path and optional saved-table path as its three arguments.
@@ -37,7 +38,11 @@ This fixture consumes inputs immediately. It excludes buffer aging, history
 replay, action execution, damage, networking and live acceptance. Wield inputs
 are excluded from the template environment and every sampled frame asserts no
 wield route was activated; the separate wield-overlap audit remains open.
-Receipts: `artifacts/unattended/ranged-sequences-{main,focused}-{default,saved}-20260909.log`.
+Tracking loss produces the stock grenade `aim_released` input; this is not a
+throw-cancellation guarantee. Final per-grenade generator overrides, buffered
+action consumption and projectile execution remain outside this fixture.
+Latest receipts: `artifacts/unattended/grenade-sequences-{main,focused}-{default,saved}-20260909.log`.
+The earlier `ranged-sequences-*` receipts contain the 47-step ranged-only run.
 
 ## Historical 7 September: online-rules pass while VD is closed
 
