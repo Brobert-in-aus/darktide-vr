@@ -7407,7 +7407,7 @@ void queue_cluster_light_visibility_fov_patches(
   if (!(corrected_fov > 0.0F && corrected_fov < 3.14159265F)) {
     return;
   }
-  CommandRecordingSnapshot trace{};
+  std::array<std::uint64_t, 2> gpu_addresses{};
   {
     std::scoped_lock lock(trace_mutex);
     const auto found = command_traces.find(commands);
@@ -7415,12 +7415,12 @@ void queue_cluster_light_visibility_fov_patches(
         !found->second.cluster_light_raster) {
       return;
     }
-    trace = found->second;
+    gpu_addresses = {found->second.graphics_cbvs[0],
+                     found->second.graphics_cbvs[2]};
   }
   cluster_light_visibility_fix_target_draw_count.fetch_add(
       1, std::memory_order_relaxed);
-  for (const UINT root : {0U, 2U}) {
-    const auto gpu_address = trace.graphics_cbvs[root];
+  for (const auto gpu_address : gpu_addresses) {
     if (gpu_address == 0) {
       cluster_light_visibility_fix_root_missing_count.fetch_add(
           1, std::memory_order_relaxed);
@@ -14041,7 +14041,7 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
     return {};
   }
 
-  CommandRecordingSnapshot trace{};
+  std::uint64_t original_target{};
   {
     std::scoped_lock lock(trace_mutex);
     const auto found = command_traces.find(commands);
@@ -14049,9 +14049,9 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
         found->second.render_target == 0 || found->second.depth_target != 0) {
       return {};
     }
-    trace = found->second;
+    original_target = found->second.render_target;
   }
-  const auto original_descriptor = descriptor_snapshot(trace.render_target);
+  const auto original_descriptor = descriptor_snapshot(original_target);
   auto* original_resource =
       reinterpret_cast<ID3D12Resource*>(original_descriptor.resource);
   if (!original_resource || original_descriptor.width == 0 ||
@@ -14245,7 +14245,7 @@ MenuDrawRedirect begin_stock_menu_draw_redirect(
     }
     MenuDrawRedirect redirect{};
     redirect.active = true;
-    redirect.original_target = {trace.render_target};
+    redirect.original_target = {original_target};
     redirect.capture_target = menu_rtv;
     redirect.original_resource = original_resource;
     redirect.capture_resource = menu_surface;
