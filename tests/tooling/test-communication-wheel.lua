@@ -131,12 +131,17 @@ assert(f.hud._com_wheel_context==previous)
 f.input.keyboard=false;f:sample(false);f:update();assert(f.base_stops==1)
 f.api.cancel()
 
-for _,reason in ipairs({'ineligible','owner','null','deferred_null','destroy'})do
+for _,reason in ipairs({'ineligible','owner','null','deferred_null','deferred_query_error','deferred_lookup_error','deferred_null_error','destroy'})do
     f=fixture();f:open();f:sample(false);f:update();local callback=f.queue[1]
     if reason=='ineligible' then f.eligible=false;assert(not f:sample(false))
     elseif reason=='owner' then f.owner={};f:update()
     elseif reason=='null' then f.input.blocked=true;f:update()
     elseif reason=='deferred_null' then f.input.blocked=true
+    elseif reason=='deferred_query_error' then f.input.is_null_service=function()error('retired input query')end
+    elseif reason=='deferred_lookup_error' then
+        f.input.is_null_service=nil
+        setmetatable(f.input,{__index=function()error('retired input lookup')end})
+    elseif reason=='deferred_null_error' then f.input.null_service=function()error('retired null proxy')end
     else f.hud:destroy()end
     callback();callback()
     assert(f.effects==0 and f.pops==1 and next(f.owned)==nil,'cancelled release escaped: '..reason)

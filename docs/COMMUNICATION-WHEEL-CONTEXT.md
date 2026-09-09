@@ -22,6 +22,15 @@ A reproduced regression admitted a release when ImGui opened after sampling;
 active or retiring ImGui managers now invalidate it. Six focused communication
 and production-input checks pass in 0.10 seconds; all 68 chunks compile.
 
+Deferred release now also protects both lookup and execution of the HUD input's
+null-service queries. A retiring proxy previously threw before cancellation,
+leaving the owned release queued. Query, lookup and null-proxy failures now
+cancel without firing a communication effect or leaving the wheel context owned.
+The regression failed before the fix. Six communication/production-input CTests
+pass in 0.11 seconds, all 69 chunks compile, and the actual cached stock wheel
+callback fixture passes with every communication effect mocked. This follow-up
+must be ported to focused communication PR #129 before its live trial.
+
 The button remains available to any other actions deliberately assigned to it.
 For an initial worn trial, choose a free button to isolate wheel behavior, then
 check deliberate aliases separately. No default mapping or installed settings

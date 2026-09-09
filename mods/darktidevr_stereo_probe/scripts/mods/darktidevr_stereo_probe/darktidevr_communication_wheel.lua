@@ -3,9 +3,15 @@
 -- Stock owns wheel behavior and intentional deferred communication effects.
 local Wheel={}
 local function pack(...)return {n=select('#',...),...}end
-local function usable(input)
+local function query_usable(input)
     return input and not (input.is_null_service and input:is_null_service()) and
         not (input.null_service and input==input:null_service())
+end
+local function usable(input)
+    -- Deferred release can outlive the HUD input proxy. Treat failed method
+    -- lookup/query as lost input ownership so cancellation still runs.
+    local ok,result=pcall(query_usable,input)
+    return ok and result==true
 end
 
 function Wheel.install(mod,config)
