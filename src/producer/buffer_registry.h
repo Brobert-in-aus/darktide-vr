@@ -75,12 +75,43 @@ struct BufferRegistry : std::enable_shared_from_this<BufferRegistry> {
             return item.resource == resource;
           });
           registry->lookup_ = {};
+          registry->range_lookup_ = {};
         })) {
       return;
     }
     std::scoped_lock lock(mutex);
     resources.push_back(BufferResourceInfo{resource, address, size, type});
     lookup_ = {};
+    range_lookup_ = {};
+  }
+
+  // A full-range read can select an older, larger overlapping allocation.
+  // Keep its cache separate from point lookup, with length in the exact key.
+  // Caller holds mutex; return current mapping metadata, not a cached copy.
+  std::optional<BufferResourceInfo> resolve_range_locked(
+      std::uint64_t address, std::uint64_t bytes) {
+    if (resources.empty()) return std::nullopt;
+    const auto contains = [address, bytes](const BufferResourceInfo& resource) {
+      return address >= resource.gpu_start && bytes <= resource.size &&
+             address - resource.gpu_start <= resource.size - bytes;
+    };
+    if (contains(resources.back())) return resources.back();
+    const auto bucket = (address >> 8) ^ (address >> 16) ^
+                        (address >> 24) ^ (address >> 32) ^ bytes;
+    auto& cached = range_lookup_[bucket % range_lookup_.size()];
+    if (cached.valid && cached.address == address && cached.bytes == bytes) {
+      return cached.index < resources.size()
+          ? std::optional<BufferResourceInfo>{resources[cached.index]}
+          : std::nullopt;
+    }
+    cached = {address, bytes, resources.size(), true};
+    for (std::size_t index = resources.size() - 1; index != 0; --index) {
+      if (contains(resources[index - 1])) {
+        cached.index = index - 1;
+        return resources[index - 1];
+      }
+    }
+    return std::nullopt;
   }
 
  private:
@@ -91,5 +122,11 @@ struct BufferRegistry : std::enable_shared_from_this<BufferRegistry> {
     bool valid{};
   };
   std::array<Lookup, 64> lookup_{};
+  struct RangeLookup {
+    std::uint64_t address{}, bytes{};
+    std::size_t index{};
+    bool valid{};
+  };
+  std::array<RangeLookup, 64> range_lookup_{};
 };
 }  // namespace darktidevr::producer

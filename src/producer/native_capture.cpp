@@ -6250,25 +6250,21 @@ bool copy_tracked_buffer_bytes(std::uint64_t gpu_address,
                                bool* used_persistent_mapping,
                                bool* used_staging_mapping) {
   std::scoped_lock lock(buffer_resource_mutex);
-  for (auto it = buffer_registry->records_locked().rbegin(); it != buffer_registry->records_locked().rend();
-       ++it) {
-    if (gpu_address < it->gpu_start ||
-        gpu_address - it->gpu_start + byte_count > it->size) {
-      continue;
-    }
+  const auto resource = buffer_registry->resolve_range_locked(gpu_address, byte_count);
+  if (resource) {
     if (resource_snapshot) {
-      *resource_snapshot = *it;
+      *resource_snapshot = *resource;
     }
-    const auto offset = gpu_address - it->gpu_start;
+    const auto offset = gpu_address - resource->gpu_start;
     const std::byte* source{};
-    if (it->mapped && it->mapped_base) {
-      source = it->mapped_base + offset;
+    if (resource->mapped && resource->mapped_base) {
+      source = resource->mapped_base + offset;
       if (used_persistent_mapping) {
         *used_persistent_mapping = true;
       }
-    } else if (it->staging_base &&
-               offset + byte_count <= it->staging_size) {
-      source = it->staging_base + offset;
+    } else if (resource->staging_base &&
+               offset + byte_count <= resource->staging_size) {
+      source = resource->staging_base + offset;
       if (used_staging_mapping) {
         *used_staging_mapping = true;
       }
