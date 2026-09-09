@@ -41,7 +41,7 @@ class MarkerSummary(unittest.TestCase):
     def test_empty_and_incomplete_never_count_as_matching_evidence(self):
         run = summary.summarize([START, row(left=0, right=0, matched=0, text_measured=0),
             row(incomplete="true"), row(shape=1, font=1),
-            summary.PREFIX + "kind=tag unmatched=true", END])["sessions"][0]
+            summary.PREFIX + "kind=tag unmatched=true input_geometry_only=true", END])["sessions"][0]
         measured = run["kinds"]["interaction"]
         self.assertEqual(measured["empty_pairs"], 1)
         self.assertEqual(measured["incomplete_pairs"], 1)
@@ -79,7 +79,9 @@ class MarkerSummary(unittest.TestCase):
                    summary.PREFIX + "started=false pass_budget=60",
                    summary.PREFIX + "started=true pass_budget=241",
                    summary.PREFIX + "complete=false",
-                   summary.PREFIX + "kind=tag unmatched=false"]
+                   summary.PREFIX + "kind=tag unmatched=false input_geometry_only=true",
+                   summary.PREFIX + "kind=tag unmatched=true",
+                   summary.PREFIX + "kind=tag unmatched=true input_geometry_only=false"]
         for record in invalid:
             with self.subTest(record=record), self.assertRaisesRegex(ValueError, "line 2"):
                 summary.summarize(["noise", record])
@@ -144,12 +146,22 @@ for frame=1,30 do for eye=1,2 do
         end
     end)
 end end
+metrics.start(2)
+mod:info('DARKTIDEVR_MARKER_METRICS started=true pass_budget=2')
+for frame=31,32 do
+    metrics.draw(renderer,'tag',owner,frame,2,nil,function()end)
+end
 assert(file:close())
 ''', encoding="utf-8")
             result = subprocess.run([str(validator), str(fixture), str(module), str(log)],
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            run, = summary.summarize(log.read_text().splitlines())["sessions"]
+            run, unmatched = summary.summarize(log.read_text().splitlines())["sessions"]
+            self.assertEqual(unmatched["termination"], "budget_complete")
+            self.assertEqual(unmatched["minimum_observed_scopes"], 2)
+            self.assertEqual(unmatched["kinds"]["tag"]["unmatched_scopes"], 2)
+            self.assertEqual(unmatched["kinds"]["tag"]["pairs"], 0)
+            self.assertEqual(unmatched["kinds"]["tag"]["matching_input_pairs"], 0)
             self.assertEqual(run["termination"], "budget_complete")
             self.assertEqual(run["minimum_observed_scopes"], 60)
             measured = run["kinds"]["interaction"]

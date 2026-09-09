@@ -24,6 +24,14 @@ and expanded observer/stock/main-renderer checks pass.
 
 ## Offline log summary
 
+9 September unmatched-record correction: the reader now accepts the observer's
+actual `kind=tag unmatched=true input_geometry_only=true` format and requires its
+input-only marker. Previously the real record aborted analysis while an incomplete
+handwritten fixture passed. The pinned LuaJIT roundtrip now emits two orphaned
+second-eye scopes after a normal paired run; they count only as unmatched scopes,
+never matching pairs. Eight Python cases and three marker CTests pass (0.39 seconds).
+Only the offline reader and its tests change; the focused Lua payload is unchanged.
+
 Run `python -B tools/stereo/summarize-marker-metrics.py path/to/game.log
 --output artifacts/marker-summary.json` after saving a diagnostic log. The tool
 does not contact the game or headset. It hashes the input file and emits only

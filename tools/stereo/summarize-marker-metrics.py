@@ -107,7 +107,8 @@ def summarize(lines):
                 raise ValueError("unknown marker kind")
             item = current["kinds"].setdefault(kind, group())
             if "unmatched" in row:
-                if set(row) != {"kind", "unmatched"} or not boolean(row["unmatched"]):
+                if set(row) != {"kind", "unmatched", "input_geometry_only"} or \
+                        not boolean(row["unmatched"]) or not boolean(row["input_geometry_only"]):
                     raise ValueError("invalid unmatched record")
                 item["unmatched_scopes"] += 1
                 current["minimum_observed_scopes"] += 1
