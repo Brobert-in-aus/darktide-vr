@@ -1,4 +1,10 @@
 add_executable(darktidevr-streamline-stereo-inputs-tests main.cpp)
+add_executable(darktidevr-motion-cleanup-benchmark
+  "${PROJECT_SOURCE_DIR}/tools/renderer_probe/benchmark-motion-cleanup.cpp")
+target_compile_options(darktidevr-motion-cleanup-benchmark PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-motion-cleanup-benchmark PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(darktidevr-motion-cleanup-benchmark PRIVATE darktidevr_core d3d12 dxgi dxguid)
+
 add_executable(darktidevr-stereo-input-copy-benchmark
   "${PROJECT_SOURCE_DIR}/tools/renderer_probe/benchmark-stereo-input-copy.cpp")
 target_compile_options(darktidevr-stereo-input-copy-benchmark PRIVATE /W4 /WX /permissive-)
