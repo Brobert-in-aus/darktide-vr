@@ -1,5 +1,31 @@
 # Billboard investigation, 8 September
 
+## Staging bounds correction, 10 September
+
+The diagnostic CBV reader selected staging memory when the requested range fit
+the GPU resource, ignoring the smaller recorded staging extent. For example,
+offset 60 plus 8 bytes fits a 4,096-byte GPU buffer but exceeds a 64-byte staging
+region. Its later float logging reads that selected memory directly.
+
+The source candidate now requires the entire range to fit `staging_size`, using
+subtraction to avoid unsigned wrap. If staging is insufficient it retains the
+existing persistent-mapping or Map fallback. The general tracked-buffer copy
+uses the same predicate while preserving its original mapped-first preference.
+This does not establish pointer lifetime, freshness, allocation ownership or the
+visible cause of the smoke problem; it closes the extent-selection error.
+
+The buffer fixture covers missing pointers, exact edges, an oversized read,
+zero-length endpoints and overflowing ranges. Native Release and affected
+executables build; `buffer_address_lookup` and `native_capture_hooks` pass 2/2
+in 2.43 seconds. These checks do not invoke the live version-gated upload target
+or establish scene ownership. No shader, installed DLL or staged payload changes.
+Receipts: `artifacts/unattended/billboard-staging-bounds-{build,tests}-20260910.log`.
+
+Commands: build `darktidevr_native_capture`,
+`darktidevr-buffer-address-lookup-tests` and `darktidevr-native-capture-tests`
+in `build/xr-frame-stage-timing` Release, then run CTest with
+`-R '^(buffer_address_lookup|native_capture_hooks)$' --output-on-failure`.
+
 The launch/install/package checks are complete offline. Remaining feature and
 worn acceptance checks remain open. The current interpretation of the user's
 ordering is to investigate billboarding next; clarification of whether

@@ -2,6 +2,18 @@
 
 ## 10 September development resumed
 
+The billboard CBV reader now checks the recorded staging extent instead of the
+GPU allocation size before selecting staging memory. Oversized staging reads
+retain the existing mapping fallback. Native build and both affected checks
+pass; this is source-only, not deployed or a visual fix. See the
+[bounds correction](BILLBOARD-INVESTIGATION-2026-09-08.md#staging-bounds-correction-10-september).
+
+Before this fix, the accumulated Release build and six focused native checks
+also passed (5.63 seconds): native hooks, shader-pair snapshots, pose snapshots,
+resource-name matching, command snapshots and buffer lookup. Basic-gameplay
+fixtures were not rerun. Receipts: `new-day-release-build-20260910.log` and
+`new-day-native-regressions-20260910.log` under `artifacts/unattended/`.
+
 The user restarted the 20-minute heartbeat and authorized development until
 explicitly told to stop. This supersedes yesterday's closed-session state.
 Billboarding remains first, pickup sizing next; physical melee and general

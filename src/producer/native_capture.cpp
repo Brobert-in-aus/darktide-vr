@@ -6240,8 +6240,7 @@ bool copy_tracked_buffer_bytes(std::uint64_t gpu_address,
       if (used_persistent_mapping) {
         *used_persistent_mapping = true;
       }
-    } else if (resource->staging_base &&
-               offset + byte_count <= resource->staging_size) {
+    } else if (resource->contains_staging_range(offset, byte_count)) {
       source = resource->staging_base + offset;
       if (used_staging_mapping) {
         *used_staging_mapping = true;
@@ -6296,8 +6295,7 @@ void observe_billboard_cbv(const DescriptorInfo& descriptor) {
       descriptor.width == 0 ? 132 : descriptor.width,
       resource->size - resource_offset);
   const bool used_staging_mapping =
-      resource->staging_base &&
-      resource_offset + readable_size <= resource->size;
+      resource->contains_staging_range(resource_offset, readable_size);
   if (billboard_direct_write_enabled.load(std::memory_order_relaxed) &&
       resource->heap_type == D3D12_HEAP_TYPE_UPLOAD && readable_size >= 8 &&
       original_resource_map && original_resource_unmap) {

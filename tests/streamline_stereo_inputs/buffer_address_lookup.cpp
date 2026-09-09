@@ -33,6 +33,23 @@ __declspec(noinline) std::optional<BufferResourceInfo> cached_range(
   std::scoped_lock lock(registry.mutex);return registry.resolve_range_locked(address,bytes);
 }
 int main() {
+  // A GPU buffer can be larger than its current CPU staging allocation.
+  BufferResourceInfo staged{};
+  staged.size=4096;
+  staged.staging_size=64;
+  check(!staged.contains_staging_range(0,0)); // A size is not a mapping.
+  staged.staging_base=reinterpret_cast<std::byte*>(0x1000);
+  check(staged.contains_staging_range(0,64));
+  check(staged.contains_staging_range(60,4));
+  check(!staged.contains_staging_range(60,8));
+  check(!staged.contains_staging_range(64,1));
+  check(staged.contains_staging_range(64,0));
+  check(!staged.contains_staging_range(65,0));
+  check(!staged.contains_staging_range((std::numeric_limits<std::uint64_t>::max)()-3,8));
+  check(!staged.contains_staging_range(1,(std::numeric_limits<std::uint64_t>::max)()));
+  staged.staging_size=0;
+  check(staged.contains_staging_range(0,0));
+  check(!staged.contains_staging_range(0,1));
   ComPtr<IDXGIFactory4> factory; ok(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
   ComPtr<IDXGIAdapter> warp; ok(factory->EnumWarpAdapter(IID_PPV_ARGS(&warp)));
   ComPtr<ID3D12Device> device; ok(D3D12CreateDevice(warp.Get(),D3D_FEATURE_LEVEL_11_0,IID_PPV_ARGS(&device)));

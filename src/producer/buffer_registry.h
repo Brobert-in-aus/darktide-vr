@@ -25,6 +25,12 @@ struct BufferResourceInfo {
   USHORT last_map_stack_count{};
   std::byte* staging_base{};
   std::uint64_t staging_size{};
+
+  bool contains_staging_range(std::uint64_t offset,
+                              std::uint64_t bytes) const {
+    return staging_base && bytes <= staging_size &&
+           offset <= staging_size - bytes;
+  }
 };
 
 // Registry state survives until all object observers have been released.
