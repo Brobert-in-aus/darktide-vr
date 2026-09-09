@@ -28,8 +28,10 @@ pass with both defaults and the 43-key saved profile, whose interact route is
 right-stick-down. Stock device hold/release, dodge exclusion, cancel/escape
 policy, weapon-action blocking, axis input, completion and loss of device
 ownership pass. An unbound interact or non-table supplied profile is rejected.
+For all three device-action routes, loss of VR input releases the stock hold;
+reconnection while still held remains suppressed until neutral and a fresh press.
 
-Receipts: `artifacts/unattended/mission-device-{main,focused}-{default,saved}-20260909.log`
+Receipts: `artifacts/unattended/mission-device-{main,focused}-{default,saved}-rearm-20260909.log`
 and separate `mission-device-{unbound,invalid}-20260909.log` negatives. The fixture's
 second interaction-timer/alias section deliberately retains its constructed
 X/right-grip alias layout; it is not a saved-layout test. Device algorithms,

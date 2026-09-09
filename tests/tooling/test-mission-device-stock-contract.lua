@@ -43,7 +43,7 @@ local state=setmetatable({_previous_action_one_hold=false,_previous_interact_hol
     _weapon_extension={update_weapon_actions=function(_,frame) weapon_frames[#weapon_frames+1]=frame end}},
     {__index=State})
 local frame=0
-local function sample(action,move)
+local function sample(action,move,enabled)
     frame=frame+1
     local physical,x,y=0,0,0
     if action then
@@ -52,7 +52,7 @@ local function sample(action,move)
         elseif control.axis=='y' then y=control.sign
         else physical=control.bit end
     end
-    local pressed,held,released=bindings.sample(true,physical,x,y,true,1,'combat')
+    local pressed,held,released=bindings.sample(enabled~=false,physical,x,y,true,1,'combat')
     local values={move=move or {x=0,y=0,z=0}}
     for _,binding in ipairs(bindings.bindings) do
         for _,pair in ipairs({{binding.pressed,pressed},{binding.held,held},{binding.released,released}}) do
@@ -67,6 +67,14 @@ for _,action in ipairs({'primary','interact','jump_dodge'}) do
     assert(not sample(action) and actions[#actions].held,'Device did not receive a mapped action hold')
     sample(action); assert(actions[#actions].held,'Device action hold was reduced to a press')
     sample(); assert(not actions[#actions].held,'Device action failed to release')
+end
+for _,action in ipairs({'primary','interact','jump_dodge'}) do
+    sample(action);assert(actions[#actions].held)
+    sample(action,nil,false);assert(not actions[#actions].held,'Device hold survived VR input loss')
+    sample(action);assert(not actions[#actions].held,'Held reconnect resumed device action')
+    sample();assert(not actions[#actions].held)
+    sample(action);assert(actions[#actions].held,'Neutral failed to rearm device action')
+    sample();assert(not actions[#actions].held)
 end
 dodge=true
 sample('jump_dodge'); assert(not actions[#actions].held,'Jump/dodge bypassed the stock dodge decision')
@@ -98,7 +106,7 @@ action_count,axis_count=#actions,#axes
 sample('primary',{x=1,y=1,z=0})
 assert(#actions==action_count and #axes==axis_count,'Unsupported device input paths were invoked')
 print('mission_device_stock=pass resolved_profile='..(arg[3] and 'supplied' or 'default')..
-    ' mapped_hold release dodge cancel escape_policy weapon_block axes completion wield_loss')
+    ' mapped_hold release input_loss held_reconnect neutral_rearm dodge cancel escape_policy weapon_block axes completion wield_loss')
 print('mission_device_controls primary='..selected_controls.primary.id..
     ' alternate='..selected_controls.alternate.id..' interact='..selected_controls.interact.id..
     ' jump_dodge='..selected_controls.jump_dodge.id)
