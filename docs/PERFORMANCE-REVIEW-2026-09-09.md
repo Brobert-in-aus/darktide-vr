@@ -70,3 +70,20 @@ raising its mean to 605,959 versus 3,919 after the first sample. Public runtime
 source suggests a stale accumulator as a hypothesis; the installed binary has
 not been proven to match that source. See [reported statistics](VDXR-REPORTED-STATISTICS.md).
 No new capture, runtime setting change, deployment or gameplay check was made.
+
+## GPU timing report lock scope
+
+The source-only `dtvr_take_gpu_eye_profile` change releases `gpu_profile_mutex`
+after harvesting and detaching the eye samples and snapshotting counters and
+frequency. Sorting, percentile selection and destruction of that private vector
+now run outside the shared lock. The return status uses the captured frequency,
+so it describes the same snapshot as the report. Sample ordering, percentile
+indices, counter resets and invalid-argument behaviour are unchanged.
+
+This reduces work under the lock by inspection; contention and game FPS effects
+have not been measured. No additional allocation or alternate percentile
+algorithm was introduced. Windows x64 Release native DLL and hook test executable
+build; existing `native_capture_hooks` passes 1/1 in 0.43 seconds with headset tests
+OFF. Receipts: `gpu-profile-lock-build-20260909.log` and
+`gpu-profile-lock-tests-20260909.log` under `artifacts/unattended`.
+This change is outside the staged native performance payload.

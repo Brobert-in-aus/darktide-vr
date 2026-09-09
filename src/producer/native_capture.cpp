@@ -16054,18 +16054,22 @@ extern "C" __declspec(dllexport) int dtvr_take_gpu_eye_profile(
   if (eye < 0 || eye > 1 || !values) {
     return 1;
   }
-  std::scoped_lock lock(gpu_profile_mutex);
-  harvest_gpu_profile_samples();
-  const auto index = static_cast<std::size_t>(eye);
-  values[0] = gpu_profile_sample_counts[index].exchange(
-      0, std::memory_order_relaxed);
-  values[1] = gpu_profile_total_ticks[index].exchange(
-      0, std::memory_order_relaxed);
-  values[2] = gpu_profile_max_ticks[index].exchange(
-      0, std::memory_order_relaxed);
-  values[3] = gpu_profile_frequency;
-  auto durations = std::move(gpu_profile_duration_ticks[index]);
-  gpu_profile_duration_ticks[index].clear();
+  std::vector<std::uint64_t> durations;
+  {
+    std::scoped_lock lock(gpu_profile_mutex);
+    harvest_gpu_profile_samples();
+    const auto index = static_cast<std::size_t>(eye);
+    values[0] = gpu_profile_sample_counts[index].exchange(
+        0, std::memory_order_relaxed);
+    values[1] = gpu_profile_total_ticks[index].exchange(
+        0, std::memory_order_relaxed);
+    values[2] = gpu_profile_max_ticks[index].exchange(
+        0, std::memory_order_relaxed);
+    values[3] = gpu_profile_frequency;
+    durations = std::move(gpu_profile_duration_ticks[index]);
+    gpu_profile_duration_ticks[index].clear();
+  }
+  // The detached samples no longer need the shared profiling lock.
   if (!durations.empty()) {
     std::sort(durations.begin(), durations.end());
     values[4] = durations[(durations.size() - 1U) / 2U];
@@ -16074,7 +16078,7 @@ extern "C" __declspec(dllexport) int dtvr_take_gpu_eye_profile(
     values[4] = 0;
     values[5] = 0;
   }
-  return gpu_profile_frequency != 0 ? 0 : 2;
+  return values[3] != 0 ? 0 : 2;
 }
 extern "C" __declspec(dllexport) int dtvr_take_gpu_stage_profile(
     int eye, unsigned long long* values) {
