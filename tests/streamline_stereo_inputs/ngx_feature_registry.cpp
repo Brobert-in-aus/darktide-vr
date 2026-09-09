@@ -11,15 +11,19 @@ int main() {
   expect(!registry.created(nullptr,11,1).lifetime);
   const auto first=registry.created(&handles[0],11,1);
   expect(first.kind==11 && first.lifetime);
-  const auto upscaler=registry.created(&handles[1],1,1);
+  const auto upscaler=registry.created(&handles[1],1,1,{true,1,67});
   expect(upscaler.kind==1 && upscaler.lifetime!=first.lifetime);
+  expect(registry.lookup(&handles[1]).creation_flags.queried);
+  expect(registry.lookup(&handles[1]).creation_flags.value==67);
   registry.releasing(&handles[0]);
   expect(!registry.lookup(&handles[0]).lifetime);
   const auto reused=registry.created(&handles[0],1,1);
   expect(reused.kind==1 && reused.lifetime!=first.lifetime);
+  expect(!reused.creation_flags.queried);
   expect(first.kind==11); // An already captured identity does not change.
   expect(!registry.created(&handles[0],11,1).lifetime);
   expect(!registry.lookup(&handles[0]).lifetime); // Ambiguous duplicate stays unknown.
+  expect(!registry.lookup(&handles[0]).creation_flags.queried);
   registry.releasing(&handles[0]);
   expect(registry.created(&handles[0],11,1).kind==11);
   for (std::size_t i=2;i<128;++i) expect(registry.created(&handles[i],11,1).lifetime!=0);

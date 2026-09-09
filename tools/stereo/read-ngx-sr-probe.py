@@ -14,6 +14,8 @@ HEADER = ("ngx_sr_probe=armed schema=1 runtime=32.0.16.1088 resource_get_slot=9 
 TEMPORAL_HEADER = HEADER.replace("schema=1", "schema=2").replace(
     "call_limit=", "float_get_slot=14 integer_get_slot=11 unsigned_get_slot=12 call_limit=")
 CONTEXT_HEADER = TEMPORAL_HEADER.replace("schema=2", "schema=3")
+CREATION_HEADER = CONTEXT_HEADER.replace("schema=3", "schema=4")
+CREATION_FLAG = "DLSS.Feature.Create.Flags"
 CONTEXT_FIELDS = {"call", "phase", "available", "eye", "pose", "queued", "arms", "resets", "attribution_verified"}
 SCALARS = {**dict.fromkeys(("Jitter.Offset.X", "Jitter.Offset.Y", "MV.Scale.X", "MV.Scale.Y",
                           "DLSS.Pre.Exposure"), "float"),
@@ -52,10 +54,12 @@ def fields(line, expected):
 def parse(text):
     lines = text.splitlines()
     headers = {header.format(gate=gate): (gate == 1, version)
-               for header, version in ((HEADER, 1), (TEMPORAL_HEADER, 2), (CONTEXT_HEADER, 3)) for gate in (0, 1)}
+               for header, version in ((HEADER, 1), (TEMPORAL_HEADER, 2), (CONTEXT_HEADER, 3),
+                                       (CREATION_HEADER, 4)) for gate in (0, 1)}
     if not lines or lines[0] not in headers:
         raise ValueError("missing or unsupported SR header")
     gated, version = headers[lines[0]]
+    scalar_types = {**SCALARS, **({CREATION_FLAG: "integer"} if version >= 4 else {})}
     calls = {}
     capture_context = None
     for line in lines[1:]:
@@ -75,7 +79,7 @@ def parse(text):
             raise ValueError("SR sample budget exceeded")
         if kind == "NGX_SR_CONTEXT":
             phase = data["phase"]
-            if version != 3 or phase not in ("before", "after") or phase in observation["contexts"]:
+            if version < 3 or phase not in ("before", "after") or phase in observation["contexts"]:
                 raise ValueError("unsupported or duplicate context")
             if data["available"] not in ("0", "1") or data["attribution_verified"] != "0" or data["eye"] not in ("-1", "0", "1"):
                 raise ValueError("invalid context flags or attribution claim")
@@ -90,7 +94,7 @@ def parse(text):
         result = number(data["result"], 32, True)
         if kind == "NGX_SR_SCALAR":
             name = data["name"]
-            if version < 2 or name not in SCALARS or data["type"] != SCALARS[name] or name in observation["scalars"]:
+            if version < 2 or name not in scalar_types or data["type"] != scalar_types[name] or name in observation["scalars"]:
                 raise ValueError("unsupported or duplicate scalar")
             if data["queried"] not in ("0", "1") or data["valid"] not in ("0", "1"):
                 raise ValueError("invalid scalar flags")
@@ -161,10 +165,28 @@ def parse(text):
             "descriptor": descriptor if described else None,
         }
     observations = []
+    lifetime_flags = {}
     for call in sorted(calls):
         observation = calls[call]
         observation["missing_indexes"] = [i for i in range(7) if i not in observation["inputs"]]
-        observation["missing_scalars"] = [name for name in SCALARS if name not in observation["scalars"]]
+        observation["missing_scalars"] = [name for name in scalar_types if name not in observation["scalars"]]
+        creation = observation["scalars"].get(CREATION_FLAG)
+        if creation and "identity" in observation:
+            lifetime = observation["identity"]["lifetime"]
+            if lifetime in lifetime_flags and lifetime_flags[lifetime] != creation:
+                raise ValueError("creation flags changed within feature lifetime")
+            lifetime_flags[lifetime] = creation
+        observation["creation_flags"] = None
+        if creation and creation["valid"]:
+            bits = creation["value"] & 0xffffffff
+            observation["creation_flags"] = {
+                "source": "before_feature_creation", "bits": bits,
+                "hdr": bool(bits & 1), "motion_vectors_low_resolution": bool(bits & 2),
+                "motion_vectors_jittered": bool(bits & 4), "depth_inverted": bool(bits & 8),
+                "sharpening": bool(bits & 32), "auto_exposure": bool(bits & 64),
+                "alpha_upscaling": bool(bits & 128), "invalid_flag": bool(bits & 0x80000000),
+                "uninterpreted_bits": bits & ~0x800000ef,
+            }
         observation["scalar_records_complete"] = not observation["missing_scalars"]
         before, after = (observation["contexts"].get(phase) for phase in ("before", "after"))
         observation["context_records_complete"] = before is not None and after is not None

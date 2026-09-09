@@ -39,17 +39,38 @@ def trace(records, gate=1):
 
 
 class SrObservationReader(unittest.TestCase):
+    def test_creation_flags_unknown_reserved_and_lifetime_consistency(self):
+        header = reader.CREATION_HEADER.format(gate=1) + "\n"
+        prefix = "NGX_SR_SCALAR call=12 name=DLSS.Feature.Create.Flags type=integer "
+        for suffix in ("queried=0 result=0 valid=0 value=unavailable",
+                       "queried=1 result=bad00005 valid=0 value=unavailable"):
+            report = reader.parse(header + prefix + suffix)
+            self.assertIsNone(report["observations"][0]["creation_flags"])
+        flag = prefix + "queried=1 result=1 valid=1 value=-2147483632"
+        decoded = reader.parse(header + flag)["observations"][0]["creation_flags"]
+        self.assertTrue(decoded["invalid_flag"])
+        self.assertEqual(decoded["uninterpreted_bits"], 16)
+        with self.assertRaises(ValueError):
+            reader.parse(reader.CONTEXT_HEADER.format(gate=1) + "\n" + flag)
+        first = inputs() + [flag, evaluation()]
+        second = inputs(call="13") + [flag.replace("call=12", "call=13").replace("-2147483632", "67"), evaluation(13)]
+        with self.assertRaisesRegex(ValueError, "changed within feature lifetime"):
+            reader.parse(header + "\n".join(first + second))
+
     @unittest.skipUnless(NATIVE, "pass --native with the built SR observation test")
     def test_actual_native_record_formatter(self):
         result = subprocess.run([NATIVE, "--emit-records"], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        report = reader.parse(reader.CONTEXT_HEADER.format(gate=1) + "\n" + result.stdout)
+        report = reader.parse(reader.CREATION_HEADER.format(gate=1) + "\n" + result.stdout)
         self.assertEqual(report["complete_calls"], 1)
         observation = report["observations"][0]
         self.assertTrue(observation["context_records_complete"])
         self.assertTrue(observation["stable_pending_eye_tag"])
         self.assertFalse(report["eye_attribution_verified"])
         self.assertTrue(observation["scalar_records_complete"])
+        self.assertEqual(observation["creation_flags"]["bits"], 67)
+        self.assertTrue(observation["creation_flags"]["motion_vectors_low_resolution"])
+        self.assertFalse(observation["creation_flags"]["motion_vectors_jittered"])
         self.assertEqual(observation["scalars"]["Jitter.Offset.X"]["value"], -0.375)
         self.assertTrue(observation["evaluation_succeeded"])
         self.assertEqual([item["status"] for item in observation["inputs"]],

@@ -32,6 +32,8 @@ int main(int argc, char** argv) {
     }
     expect(format_ngx_sr_scalar(line, sizeof(line), 12, kNgxSrResetName, "integer", true, 1, 0) > 0);
     std::cout << line;
+    expect(format_ngx_sr_scalar(line, sizeof(line), 12, "DLSS.Feature.Create.Flags", "integer", true, 1, 67) > 0);
+    std::cout << line;
     for (std::size_t index = 0; index < kNgxSrResourceNames.size(); ++index) {
       NgxSrResourceRecord record{12, 2, 1, 8, 10, &identity, &identity, 7, index,
           1, &identity, true, 3, 1440, 1600, 1, 1, 28, 1};

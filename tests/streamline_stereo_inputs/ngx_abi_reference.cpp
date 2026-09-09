@@ -62,6 +62,14 @@ struct Parameters final : NVSDK_NGX_Parameter {
 };
 
 int main() {
+  static_assert(std::string_view(NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags) == "DLSS.Feature.Create.Flags");
+  static_assert(NVSDK_NGX_DLSS_Feature_Flags_IsHDR == 1);
+  static_assert(NVSDK_NGX_DLSS_Feature_Flags_MVLowRes == 2);
+  static_assert(NVSDK_NGX_DLSS_Feature_Flags_MVJittered == 4);
+  static_assert(NVSDK_NGX_DLSS_Feature_Flags_DepthInverted == 8);
+  static_assert(NVSDK_NGX_DLSS_Feature_Flags_DoSharpening == 32);
+  static_assert(NVSDK_NGX_DLSS_Feature_Flags_AutoExposure == 64);
+  static_assert(NVSDK_NGX_DLSS_Feature_Flags_AlphaUpscaling == 128);
   static_assert(sizeof(void*) == 8);
   static_assert(ngx::kSuccess == NVSDK_NGX_Result_Success);
   static_assert(NVSDK_NGX_Feature_FrameGeneration == 11);

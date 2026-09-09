@@ -9,6 +9,7 @@
 #include "producer/generated_stereo.h"
 #include "producer/ngx_gpu_timing.h"
 #include "producer/ngx_sr_observation.h"
+#include "producer/bounded_diagnostic.h"
 #include <MinHook.h>
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -77,6 +78,7 @@ NgxCaptureWindow capture_window;
 bool observe_sr_inputs{};
 NgxSrObservationBudget sr_observation_budget;
 NgxSrEyeContextReader sr_context_reader{};
+BoundedDiagnostic sr_creation_budget{128};
 constexpr std::uint64_t kCallLimit = 32768;
 constexpr std::uint32_t kSampleLimit = 256;
 
@@ -127,7 +129,7 @@ void record_sr_context(std::uint64_t call, const char* phase) {
 }
 
 void record_sr_inputs(std::uint64_t call, void* commands, const void* feature,
-                      const void* parameters, std::uint64_t lifetime,
+                      const void* parameters, const NgxFeatureRegistry::Identity& identity,
                       const NgxCaptureWindow::Context& window) {
   const auto write_scalar = [&](const char* name, const char* type, bool queried,
                                 std::uint32_t result, double value) {
@@ -140,6 +142,8 @@ void record_sr_inputs(std::uint64_t call, void* commands, const void* feature,
       WriteFile(sr_log, line, static_cast<DWORD>(length), &written, nullptr);
     }
   };
+  const auto& flags = identity.creation_flags;
+  write_scalar("DLSS.Feature.Create.Flags", "integer", flags.queried, flags.result, flags.value);
   // Verify each typed getter independently. An unavailable scalar getter must
   // not suppress the existing resource observation or invent a zero value.
   const bool float_verified = verified_parameters(parameters, ngx::kGetFloatSlot);
@@ -167,7 +171,7 @@ void record_sr_inputs(std::uint64_t call, void* commands, const void* feature,
     const auto desc = described ? resource->GetDesc() : D3D12_RESOURCE_DESC{};
     char line[768]{};
     const auto length = format_ngx_sr_input(line, sizeof(line),
-        {call, lifetime, window.batch, window.present, window.first_call,
+        {call, identity.lifetime, window.batch, window.present, window.first_call,
          feature, commands, GetCurrentThreadId(), index, result, resource, described,
          static_cast<unsigned>(desc.Dimension), desc.Width, desc.Height,
          desc.DepthOrArraySize, desc.MipLevels, static_cast<unsigned>(desc.Format), desc.SampleDesc.Count});
@@ -246,11 +250,21 @@ void record_output_barriers(std::uint64_t call, const ActiveEvaluationState& sta
 
 std::uint32_t create_hook(void* commands, std::uint32_t kind,
                            const void* parameters, void** handle) {
+  NgxFeatureRegistry::CreationFlags flags;
+  // Observe before CreateFeature can mutate parameters. Cache only scalar data,
+  // and bind it to the successfully created lifetime; never retain parameters.
+  if (observe_sr_inputs && kind == 1 && !sr_observation_budget.exhausted()) {
+    sr_creation_budget.run([&] {
+      flags.queried = verified_parameters(parameters, ngx::kGetIntegerSlot);
+      if (flags.queried)
+        flags.result = ngx::read_integer(parameters, "DLSS.Feature.Create.Flags", &flags.value);
+    });
+  }
   const auto began = GetTickCount64();
   const auto result = original_create(commands, kind, parameters, handle);
   record_slow_call("create", kind, began);
   if (result == ngx::kSuccess && readable(handle, sizeof(void*)))
-    feature_registry.created(*handle, kind, result);
+    feature_registry.created(*handle, kind, result, flags);
   return result;
 }
 std::uint32_t release_hook(const void* handle) {
@@ -269,7 +283,7 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
           verified_parameters(parameters, ngx::kGetD3D12ResourceSlot));
   if (sr_observed) {
     record_sr_context(call, "before");
-    record_sr_inputs(call, commands, feature, parameters, identity.lifetime, window);
+    record_sr_inputs(call, commands, feature, parameters, identity, window);
   }
   // SR work on other threads can interleave between the two FG evaluations.
   // It must neither invalidate their pair nor count as another eye evaluation.
@@ -676,7 +690,7 @@ bool install_ngx_output_probe(HMODULE capture_module, NgxSrEyeContextReader cont
     if (observe_sr_inputs) {
       char sr_header[384]{};
       const auto sr_length = std::snprintf(sr_header, sizeof(sr_header),
-          "ngx_sr_probe=armed schema=3 runtime=32.0.16.1088 resource_get_slot=9 "
+          "ngx_sr_probe=armed schema=4 runtime=32.0.16.1088 resource_get_slot=9 "
           "float_get_slot=14 integer_get_slot=11 unsigned_get_slot=12 "
           "call_limit=32768 sample_limit=64 wait_for_stereo=%u pixels_captured=0 publication=0\n",
           wait_for_stereo ? 1U : 0U);
