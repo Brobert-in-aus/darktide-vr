@@ -174,3 +174,39 @@ pass 2/2 in 2.46 seconds, headset tests OFF. Main integration receipts:
 `resource-pointer-main-tests-20260909.log`. The measured DLL remains the focused
 candidate, not the accumulated main binary. Neither is deployed; staged payloads
 remain unchanged.
+
+## Hook activation and production upload path
+
+The accepted `23345e5` and current source install Map/Unmap hooks only when
+broad diagnostic hooks or cluster tracing are requested. The mapping benchmark
+explicitly enables diagnostics. Its measured gains therefore apply to those
+instrumented modes, not automatically to a normal production session.
+The upload-staging hook is also eligible for the separately requested cluster
+light-visibility fix, after its engine signature check. The resource-pointer
+cache serves that call site too, but the Map benchmark does not measure it.
+
+A read-only saved-flag audit at 17:08 Brisbane finds diagnostic hooks, cluster
+trace, vertex dump and draw census not requested. Performance/profile-pass files
+are present but do not contain the accepted enabled token. The cluster lighting
+fix presence flag is set. Source-defined paths and their presence/text grammar
+were checked separately; this is saved request state, not live activation or
+Ready certification. Receipt: `artifacts/unattended/performance-hook-flags-20260909.json`.
+No flags were written.
+
+The upload-flush source now checks `cluster_trace_log` before locking
+`cluster_constant_copy_mutex` and querying ring membership. Both resulting
+booleans feed trace-only branches. Snapshot collection, registry/staging metadata
+updates, lighting-patch locking and writes, and the original flush call stay
+unchanged. With tracing inactive, one mutex acquisition and membership lookup
+are avoided per valid upload snapshot. With tracing active at this gate the
+same membership query runs. No timing or game FPS claim is made for this small
+source-level change; trace arming across an in-flight callback is not a measured
+acceptance case.
+
+Windows x64 Release native DLL builds, and the existing native hook check passes
+1/1 in 0.43 seconds, headset tests OFF. That isolated check does not invoke the
+version-gated engine upload-flush target; dependency inspection establishes the
+trace-only scope, while live acceptance remains outstanding. Receipts:
+`artifacts/unattended/upload-trace-lock-build-20260909.log` and
+`upload-trace-lock-tests-20260909.log`. This change remains outside every staged
+payload and the focused map build `28a5500`.

@@ -89,6 +89,16 @@ source suggests a stale accumulator as a hypothesis; the installed binary has
 not been proven to match that source. See [reported statistics](VDXR-REPORTED-STATISTICS.md).
 No new capture, runtime setting change, deployment or gameplay check was made.
 
+## Activation scope
+
+The actual Map/Unmap gains are measured with diagnostic hooks enabled. Source
+gates leave those hooks off when diagnostics and cluster tracing are both off.
+The saved flags audited at 17:08 request the lighting fix, which can use the
+same pointer cache in upload-staging updates; that call site is not timed by
+the Map benchmark. GPU profiling is also opt-in and its saved enabled token is
+currently absent. Keep reductions in instrumented modes distinct from normal
+production frame-time claims. See [activation and upload scope](NATIVE-HOOK-PERFORMANCE.md#hook-activation-and-production-upload-path).
+
 ## GPU timing report lock scope
 
 The source-only `dtvr_take_gpu_eye_profile` change releases `gpu_profile_mutex`

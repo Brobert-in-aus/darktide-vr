@@ -5281,7 +5281,9 @@ void stingray_upload_flush_hook(void* allocator) {
   bool matched_target_ring = false;
   bool matched_tracked_resource = false;
   if (allocator && take_stingray_upload_snapshot(allocator, &snapshot)) {
-    {
+    // Ring membership feeds trace-only records. The production lighting fix
+    // uses the snapshot and its own pending-patch state below.
+    if (cluster_trace_log != INVALID_HANDLE_VALUE) {
       std::scoped_lock lock(cluster_constant_copy_mutex);
       target_ring_known = !cluster_constant_ring_resources.empty();
       matched_target_ring =
