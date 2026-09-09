@@ -87,14 +87,51 @@ outside its unwind fragment. It is not independently callable. Any subsequent
 timing seam must resolve its parent control flow and observe job completion;
 blindly hooking the beginning of that fragment would be incorrect.
 
+### Resolved unwind ownership
+
+The schema-2 mapper follows aligned x64 `UNW_FLAG_CHAININFO` records to their
+primary range, groups all owned fragments, and reports direct calls and callers.
+It rejects truncated, cyclic and conflicting handler/chained records. Five
+isolated decoder checks pass, including odd unwind-code alignment and multiple
+chain levels. Mapping the installed executable still finds 31 references in 18
+label-bearing ranges, now grouped into 12 primary owners.
+
+| Work | Primary RVA | Owned fragments |
+| --- | --- | --- |
+| Render command dispatch, including `RI::render_world` | `2d9a40` | 4 |
+| Render/cull preparation | `384c30` | 1 |
+| Cascaded culling, shadow and rendering preparation | `419910` | 14 |
+| Shadow culling and atlas-related waits | `41f5e0` | 9 |
+| Static/non-static geometry culling | `451940` | 5 |
+
+In particular, both `41d6ce` and `41d951` chain through `419946` and `41993c`
+to `419910`. Their shared parent spans considerably more work than either
+label. Whole-function sampling must not be reported as shadow-only time.
+One direct caller of `419910` is at `418156`, owned by `417f50`; one direct
+caller of `41f5e0` is at `374858`, owned by `3746c0`. Indirect paths remain open.
+
+Manual inspection of the dispatch jump table at `2da96c` maps command 8 to
+`2d9aa0` and command 9 to `2d9a89`. The former builds a render context and calls
+`384c30` at `2d9bfe`; the latter calls `2d5be0`. This connects the separate queue
+packets to distinct dispatch paths. These are static, hash-scoped observations,
+not measured execution frequency or a validated hook ABI.
+
+Local evidence: `engine-render-ownership-20260910.json`,
+`engine-preparation-functions-20260910.txt`, and
+`engine-unwind-tests-20260910.log` under `artifacts/unattended`.
+The [bounded CPU capture](ENGINE-CPU-SAMPLING.md) is prepared, but its live trial
+was deferred after the new Ready checks failed. No engine patch was deployed.
+
 ## Next development targets
 
 1. Follow the preparation/culling call graph and classify mutable world updates,
    per-eye visibility and reusable scene preparation before selecting a bounded
    timing seam. Avoid repeating or suppressing animation/job side effects.
-2. Inspect SR feature lifetime, viewport ownership, jitter, motion-vector scale
-   and reset behaviour independently of FG. The existing optional SR probe
-   captures resource descriptions but not all reconstruction scalars.
+2. Establish SR eye/pose ownership and full motion conventions independently of
+   FG. The [10 September SR capture](handoffs/2026-09-10-sr-input-capture.md)
+   contains complete resource/scalar observations for 64 evaluations: two
+   alternating feature lifetimes, matched pair jitter and no observed resets.
+   Call-order pairing alone does not establish correct per-eye history.
 3. Keep FG's two eye evaluations distinct until independent history and viewport
    requirements are accounted for. A single wide image does not establish that
    one evaluation can replace two without cross-eye temporal contamination.

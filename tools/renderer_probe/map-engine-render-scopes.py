@@ -10,6 +10,7 @@ import bisect
 import hashlib
 import json
 import re
+import struct
 from pathlib import Path
 
 import capstone
@@ -22,6 +23,32 @@ LABELS = re.compile(
     r"stingray::RenderInterface::(?:.*render_world.*|update_world))$"
 )
 RIP = re.compile(r"\[rip ([+-]) (0x[0-9a-f]+)\]")
+
+
+def unwind_chain(pe, entry) -> list[dict]:
+    """Follow x64 CHAININFO records; never treat a fragment as its own entry."""
+    chain, seen = [], set()
+    begin, end, unwind = entry
+    for _ in range(32):
+        if (begin, end, unwind) in seen or begin >= end:
+            raise ValueError("Invalid or cyclic unwind chain")
+        seen.add((begin, end, unwind))
+        header = pe.get_data(unwind, 4)
+        if len(header) != 4 or header[0] & 7 not in (1, 2):
+            raise ValueError("Truncated or unsupported x64 unwind header")
+        flags = header[0] >> 3
+        chain.append({"begin_rva": begin, "end_rva": end, "unwind_rva": unwind})
+        if not flags & 4:
+            return chain
+        if flags & 3:
+            raise ValueError("Chained unwind record also declares an exception handler")
+        # UNWIND_CODE occupies two bytes; the trailing record is DWORD aligned.
+        trailing = unwind + 4 + ((header[2] + 1) & ~1) * 2
+        record = pe.get_data(trailing, 12)
+        if len(record) != 12:
+            raise ValueError("Truncated chained runtime-function record")
+        begin, end, unwind = struct.unpack("<III", record)
+    raise ValueError("Unwind chain exceeds the inspection depth limit")
 
 
 def analyze(path: Path, expected_hash: str) -> dict:
@@ -41,6 +68,16 @@ def analyze(path: Path, expected_hash: str) -> dict:
     ranges = sorted((entry.struct.BeginAddress, entry.struct.EndAddress)
                     for entry in pe.DIRECTORY_ENTRY_EXCEPTION)
     starts = [start for start, _ in ranges]
+    ownership = {(entry.struct.BeginAddress, entry.struct.EndAddress): unwind_chain(
+        pe, (entry.struct.BeginAddress, entry.struct.EndAddress, entry.struct.UnwindData))
+        for entry in pe.DIRECTORY_ENTRY_EXCEPTION}
+
+    def primary_at(rva):
+        index = bisect.bisect_right(starts, rva) - 1
+        if index < 0 or rva >= ranges[index][1]:
+            return None
+        return ownership[ranges[index]][-1]["begin_rva"]
+
     decoder = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
     decoder.skipdata = True
     refs, calls = [], []
@@ -63,22 +100,39 @@ def analyze(path: Path, expected_hash: str) -> dict:
             refs.append({"label": labels[target], "string_rva": target - base,
                          "instruction_rva": rva, "unwind_range": owner})
     scopes = sorted({tuple(ref["unwind_range"]) for ref in refs if ref["unwind_range"]})
+    parents = {ownership[scope][-1]["begin_rva"] for scope in scopes}
+    owned_calls = [(source, target, primary_at(source)) for source, target in calls]
     return {
-        "schema": 1, "sha256": digest, "image_base": base,
+        "schema": 2, "sha256": digest, "image_base": base,
         "method": "linear x64 decode, RIP-relative string references, PE unwind ranges",
         "limitations": [
             "An unwind range may be a chained function fragment, not an entry point.",
             "Linear decoding can encounter embedded data; manually inspect candidates.",
             "Labels and direct calls do not prove live execution, cost or reusable work.",
             "Indirect calls and dynamically hashed labels are not resolved.",
+            "Unwind ownership does not establish a callable ABI or safe hook site.",
         ],
         "references": refs,
         "scopes": [{"begin_rva": begin, "end_rva": end,
+                    "ownership_chain": ownership[(begin, end)],
+                    "primary_begin_rva": ownership[(begin, end)][-1]["begin_rva"],
                     "labels": sorted({ref["label"] for ref in refs
                                       if ref["unwind_range"] == (begin, end)}),
                     "direct_calls": [{"instruction_rva": source, "target_rva": target}
                                      for source, target in calls if begin <= source < end]}
                    for begin, end in scopes],
+        "functions": [{
+            "primary_begin_rva": parent,
+            "ranges": [{"begin_rva": begin, "end_rva": end}
+                       for begin, end in ranges
+                       if ownership[(begin, end)][-1]["begin_rva"] == parent],
+            "labels": sorted({ref["label"] for ref in refs if ref["unwind_range"]
+                              and ownership[tuple(ref["unwind_range"])][-1]["begin_rva"] == parent}),
+            "direct_calls": [{"instruction_rva": source, "target_rva": target}
+                             for source, target, owner in owned_calls if owner == parent],
+            "direct_callers": [{"instruction_rva": source, "primary_begin_rva": owner}
+                               for source, target, owner in owned_calls if target == parent],
+        } for parent in sorted(parents)],
     }
 
 
