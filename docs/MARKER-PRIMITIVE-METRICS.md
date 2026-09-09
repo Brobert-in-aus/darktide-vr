@@ -24,6 +24,12 @@ and expanded observer/stock/main-renderer checks pass.
 
 ## Offline log summary
 
+The report output guard also rejects a hard link to its input log. Resolved path
+comparison alone allowed a differently named link to overwrite the capture with
+JSON. The real CLI regression failed before this correction; eight reader tests
+pass, preserving original bytes for same-path and hard-link attempts while a
+separate report retains the input hash. No observer or focused payload changed.
+
 9 September unmatched-record correction: the reader now accepts the observer's
 actual `kind=tag unmatched=true input_geometry_only=true` format and requires its
 input-only marker. Previously the real record aborted analysis while an incomplete

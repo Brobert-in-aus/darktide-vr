@@ -145,7 +145,8 @@ def main():
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
-        if args.output and args.output.resolve() == args.log.resolve():
+        if args.output and (args.output.resolve() == args.log.resolve() or
+                            (args.output.exists() and args.output.samefile(args.log))):
             raise ValueError("Output must not replace the input log")
         data = args.log.read_bytes()
         report = summarize(data.decode("utf-8-sig").splitlines())

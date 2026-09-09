@@ -13,6 +13,43 @@ spec.loader.exec_module(detail)
 
 
 class UiDetail(unittest.TestCase):
+    def test_report_cannot_replace_any_capture_input(self):
+        ui = np.full((2, 2, 4), 255, dtype=np.uint8)
+        packed = np.concatenate((ui, ui), axis=1)
+        with tempfile.TemporaryDirectory() as directory:
+            stem = Path(directory) / "ui"
+            generated = Path(directory) / "generated.bmp"
+            sources = [generated, generated.with_suffix('.log'), Path(f'{stem}.log'),
+                       Path(f'{stem}-left-ui.bmp'), Path(f'{stem}-right-ui.bmp')]
+            for source in sources:
+                source.write_bytes(b'preserve capture bytes')
+            for source in sources:
+                for alias in (False, True):
+                    with self.subTest(source=source.name, hardlink=alias):
+                        source.write_bytes(b'preserve capture bytes')
+                        destination = source
+                        if alias:
+                            destination = Path(directory) / (source.name + '.alias.json')
+                            destination.hardlink_to(source)
+                        with mock.patch.object(detail.generated_ui, 'read_verified_images',
+                                return_value=({}, packed, {'left': ui, 'right': ui})), \
+                                mock.patch('sys.argv', ['measure', str(stem), str(generated),
+                                    '--output', str(destination)]), mock.patch('builtins.print'):
+                            with self.assertRaisesRegex(ValueError, 'replace.*input'):
+                                detail.main()
+                        self.assertEqual(source.read_bytes(), b'preserve capture bytes')
+                        if alias:
+                            destination.unlink()
+            destination = Path(directory) / 'report.json'
+            with mock.patch.object(detail.generated_ui, 'read_verified_images',
+                    return_value=({}, packed, {'left': ui, 'right': ui})), \
+                    mock.patch('sys.argv', ['measure', str(stem), str(generated),
+                        '--output', str(destination)]), mock.patch('builtins.print'):
+                detail.main()
+            self.assertEqual(detail.json.loads(destination.read_text())['visual_acceptance'], 'unverified')
+            for source in sources:
+                self.assertEqual(source.read_bytes(), b'preserve capture bytes')
+
     def test_cli_rejects_bitmap_extent_before_writing_report(self):
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / "report.json"

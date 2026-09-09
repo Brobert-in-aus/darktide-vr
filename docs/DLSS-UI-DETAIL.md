@@ -89,6 +89,16 @@ The regression failed before the change. Three DLSS analysis CTests pass in
 1.15 seconds, including known shifted detail and radii that omit zero from the
 coarse grid. No native runtime or installed settings changed.
 
+### Preserve capture inputs when writing a detail report
+
+The detail-report writer now rejects output paths that identify its generated
+image, either submitted UI image, or either metadata log, including hard links.
+Previously a valid analysis could replace one of those inputs with JSON. Ten
+same-path/hard-link regressions failed before the guard; all now preserve input
+bytes, and a separate report still writes successfully. The tests substitute
+verified image arrays and exercise real temporary filesystem paths. Seven detail
+tests pass; no actual capture or image-quality result changed.
+
 ## UI RGBA exporter candidate: 8 September
 
 ### Source audit and diagnostic request follow-up, 9 September

@@ -118,6 +118,12 @@ class MarkerSummary(unittest.TestCase):
                 "--output", str(source)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 2)
             self.assertEqual(source.read_bytes(), before)
+            alias = Path(temporary) / "alias.json"
+            alias.hardlink_to(source)
+            result = subprocess.run([sys.executable, "-B", str(SCRIPT), str(source),
+                "--output", str(alias)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(source.read_bytes(), before)
 
     def test_actual_lua_observer_log_roundtrip(self):
         validator = ROOT / "build/dependencies/luajit/src/luajit.exe"

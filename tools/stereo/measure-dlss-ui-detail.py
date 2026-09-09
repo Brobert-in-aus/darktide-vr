@@ -63,6 +63,12 @@ def main():
     parser.add_argument("generated", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
+    inputs = [args.generated, args.generated.with_suffix('.log'), Path(f'{args.stem}.log'),
+              Path(f'{args.stem}-left-ui.bmp'), Path(f'{args.stem}-right-ui.bmp')]
+    for source in inputs:
+        if args.output.resolve() == source.resolve() or (args.output.exists() and
+                source.exists() and args.output.samefile(source)):
+            raise ValueError('Output must not replace a capture input')
     identity, packed, submitted = generated_ui.read_verified_images(args.stem, args.generated)
     width = packed.shape[1] // 2
     report = {"identity": identity, "visual_acceptance": "unverified", "eyes": {}}
