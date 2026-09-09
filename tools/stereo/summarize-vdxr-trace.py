@@ -32,7 +32,7 @@ def stats(values):
             "p95_ms": ordered[(len(values)-1)*95//100], "maximum_ms": ordered[-1]}
 
 
-def summarize(source, process_id):
+def summarize(source, process_id, completed_spans=None):
     starts = {}
     ambiguous = set()
     durations = defaultdict(list)
@@ -104,6 +104,8 @@ def summarize(source, process_id):
                     duration = (when-began[0])/1e6
                     durations[name].append(duration)
                     groups[(name, began[1], thread, began[2])].append(duration)
+                    if completed_spans is not None and name in completed_spans:
+                        completed_spans[name].append((began[0], when, began[1], thread, began[2]))
         except (AttributeError, TypeError, ValueError) as error:
             excluded[str(error)] += 1
     excluded["start_without_stop"] += len(starts)

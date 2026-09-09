@@ -128,3 +128,21 @@ previous validated reports: neither contains duplicate starts. Local results are
 `artifacts/unattended/vdxr-{onset,later}-ambiguity-20260909.json`. Thus this fixes
 future ambiguous evidence without changing the earlier slowdown findings. No
 new tracing, runtime operation or performance fix is claimed.
+
+## Temporal overlap of submission waits, 9 September
+
+`tools/stereo/analyze-vdxr-wait-overlap.py XML --process-id PID --output REPORT.json` reuses the validated raw-QPC parser and retains complete spans only for `OVR_BeginFrame`, `WaitForAsyncSubmissionIdle` and `xrEndFrame`. It unions intervals before intersection, so nested/concurrent intervals cannot inflate overlap above the waiting interval. Running-start and thread groups stay separate. Waits crossing the first/last complete begin-frame envelope are excluded; incomplete activities retain the parser's exclusions.
+
+Reanalysis of the same saved captures gives:
+
+| Activity group | Onset overlap with OVR_BeginFrame | Later overlap with OVR_BeginFrame |
+| --- | ---: | ---: |
+| Submission-idle wait, running-start off | 99.769% (1,860 spans) | 99.878% (376 spans) |
+| Submission-idle wait, running-start on | 85.525% (1,861 spans) | 95.989% (376 spans) |
+| xrEndFrame | 98.060% (1,861 spans) | 99.263% (376 spans) |
+
+For the later running-start-off group, 3,165.634 ms of its 3,169.494 ms union overlaps complete `OVR_BeginFrame` intervals. Two boundary waits are excluded. The onset counterpart overlaps 7,189.038 of 7,205.676 ms, excluding one boundary wait. This is temporal overlap, not frame-ID attribution or proof of causation inside the VD backend. It supports the previously identified runtime submission boundary and does not turn the offline CPU optimisations into a sustained-slowdown fix.
+
+Four new analysis cases pass: union/intersection without double counting, mode/thread/zero-duration/boundary handling, reuse of parser acceptance including ambiguous-start exclusion, and CLI same-file/hardlink input preservation. The existing five trace-parser cases also pass. The normal summarizer output is unchanged when span collection is enabled. No new capture, runtime operation, game launch or settings change occurred.
+
+Reports: `artifacts/unattended/vdxr-{onset,later}-wait-overlap-20260909.json` and matching logs. Validation: `vdxr-wait-overlap-tests-20260909.log`, `vdxr-span-collector-regression-tests-20260909.log`. The circular overwrite and incomplete-activity limits of the earlier captures still apply.
