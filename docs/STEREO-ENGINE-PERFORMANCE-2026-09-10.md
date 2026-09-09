@@ -64,8 +64,28 @@ $env:PYTHONPATH = (Resolve-Path build/dependencies/engine-inspection).Path
 python tools/renderer_probe/map-engine-render-scopes.py PATH_TO_DARKTIDE_EXE --expected-sha256 6fce8db87a77a412b22ef9f33f74fa16ef85126cc0fbb24187d78b85fc7a19d3 --output artifacts/unattended/engine-render-scopes-20260910.json
 ```
 
-The installed binary yields 30 references in 17 unwind ranges; Python compilation
+The installed binary yields 31 references in 18 unwind ranges; Python compilation
 passes. Raw disassembly, binary content and local reports remain ignored.
+
+### Following the Lua render entry
+
+The `render_world` registration sequence points to candidate Lua C entry RVA
+`51f660`. Manual inspection shows four argument checks, lookup of the
+`shadow_cull_camera` viewport key, copying a camera matrix into world-associated
+storage, then calls to `2d5a40` and `2d5740`. The latter references the
+`RenderInterface::render_world` label and queues a 48-byte type-8 command.
+
+`2d5a40` references `RenderInterface::update_world`. It conditionally bypasses
+its preparation/queue path when state counters and a frame comparison pass
+(`2d5b0c–2d5b6a`); otherwise it can queue type 9. This is evidence of an existing
+reuse guard, not proof that both eyes execute or bypass preparation. Do not
+suppress the second update call based only on the two Lua render invocations.
+The render command and world-update command are distinct investigation points.
+
+The shadow-preparation range depends on registers and stack state established
+outside its unwind fragment. It is not independently callable. Any subsequent
+timing seam must resolve its parent control flow and observe job completion;
+blindly hooking the beginning of that fragment would be incorrect.
 
 ## Next development targets
 

@@ -19,7 +19,7 @@ LABELS = re.compile(
     r"^(?:RI::render_world|render_culled_scene|render_kernel_culled|"
     r"prepare rendering work|prepare render shadows|light culling and sort|"
     r"kick sphere culling.*|wait.*culling.*|reset_dlss|render_world|"
-    r"stingray::RenderInterface::.*render_world.*)$"
+    r"stingray::RenderInterface::(?:.*render_world.*|update_world))$"
 )
 RIP = re.compile(r"\[rip ([+-]) (0x[0-9a-f]+)\]")
 
