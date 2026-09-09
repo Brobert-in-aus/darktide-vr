@@ -47,19 +47,29 @@ int main() {
     const darktidevr::producer::StreamlineTagInput ui_input{
         ui_source.Get(),8,4,D3D12_RESOURCE_STATE_COMMON,DXGI_FORMAT_R8G8B8A8_UNORM};
     darktidevr::producer::streamline_2_7_30::Constants constants{};
-    for (const bool with_ui : {false,true}) {
+    for (const unsigned mode : {0U,1U,2U}) {
+    const bool with_ui=mode!=0,tag_ui=mode==1;
     StreamlineContinuousSubmission submission;
     expect(submission.initialize(device.Get(),2,{1,2},descriptions,log_message,true,true,
-                                  with_ui ? &ui_descriptions : nullptr));
+                                  with_ui ? &ui_descriptions : nullptr,tag_ui));
+    expect(submission.ui_tagging_enabled()==tag_ui);
     for(std::uint64_t frame=1;frame<=12;++frame) {
-      submission.capture(0,frame,frame,constants,inputs,queue.Get(),execute,with_ui ? &ui_input : nullptr);
+      const bool left_ui=with_ui && (tag_ui || frame%3!=0);
+      const bool right_ui=with_ui && (tag_ui || frame%3==1);
+      submission.capture(0,frame,frame,constants,inputs,queue.Get(),execute,left_ui ? &ui_input : nullptr);
       expect(submission.pose()==frame && !submission.finished());
+      expect(!submission.readback_ui()[0]);
       // Exercise discarded partial and complete captures, plus repeated pause.
-      if(frame%2==0) submission.capture(1,frame,frame,constants,inputs,queue.Get(),execute,with_ui ? &ui_input : nullptr);
+      if(frame%2==0) submission.capture(1,frame,frame,constants,inputs,queue.Get(),execute,right_ui ? &ui_input : nullptr);
+      const auto captured_ui=submission.readback_ui();
+      expect((captured_ui[0]!=nullptr)==(frame%2==0 && left_ui && right_ui));
+      if(captured_ui[0]) expect(captured_ui[1] && captured_ui[0]!=captured_ui[1] && captured_ui[0]!=ui_source.Get());
+      expect(!submission.finished() && submission.ui_tagging_enabled()==tag_ui);
       submission.before_present(nullptr,queue.Get(),frame+1,{}, {},
           darktidevr::producer::StreamlineSubmission::Tagging::legacy,execute);
       submission.pause(queue.Get(),execute,"editor_open");
       submission.after_present(queue.Get(),nullptr,execute);
+      expect(!submission.readback_ui()[0]);
       expect(!submission.finished() && !submission.staged() && submission.previous_pose()==0);
       const auto rejections=binding_rejections;
       for (unsigned repeat=0;repeat<3;++repeat)

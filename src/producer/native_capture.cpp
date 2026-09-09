@@ -9616,14 +9616,12 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
   if (world_ui_capture_requested()) {
     std::scoped_lock lock(world_ui_capture_mutex);
     const auto& ui = world_ui_capture_eyes[eye];
-    if (world_ui_submission_requested()) {
-      if (ui.pose == pose_sequence && ui.draws && !ui.rejected)
-        ui_source = ui.texture;
-      ui_pair_allocated = world_ui_capture_eyes[0].texture && world_ui_capture_eyes[1].texture;
-      if (ui_pair_allocated)
-        for (unsigned i = 0; i < 2; ++i)
-          ui_descriptions[i] = world_ui_capture_eyes[i].texture->GetDesc();
-    }
+    if (ui.pose == pose_sequence && ui.draws && !ui.rejected)
+      ui_source = ui.texture;
+    ui_pair_allocated = world_ui_capture_eyes[0].texture && world_ui_capture_eyes[1].texture;
+    if (ui_pair_allocated)
+      for (unsigned i = 0; i < 2; ++i)
+        ui_descriptions[i] = world_ui_capture_eyes[i].texture->GetDesc();
     static std::uint64_t next_report{};
     static unsigned stage_reports{};
     if (stage_reports < 32 && present_frame >= next_report) {
@@ -9667,6 +9665,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
     // tag set. The existing incomplete-pair path skips generation for this eye.
     if (world_ui_submission_requested() && (!ui_source || !ui_pair_allocated)) return;
     if (!streamline_continuous.initialized() && !streamline_continuous.finished()) {
+      if (world_ui_capture_requested() && (!ui_source || !ui_pair_allocated)) return;
       // Never consume an unattended test while the user is in another app.
       if (!game_process_foreground()) return;
       ComPtr<ID3D12Device> device;
@@ -9680,7 +9679,7 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
           {state.constants[0].viewport, state.constants[1].viewport}, descriptions,
           write_streamline_probe_log, streamline_persistent_requested.load(),
           gpu_profile_enabled.load(),
-          world_ui_submission_requested() ? &ui_descriptions : nullptr)) return;
+          ui_pair_allocated ? &ui_descriptions : nullptr,world_ui_submission_requested())) return;
       streamline_submission_trace_start.store(present_frame, std::memory_order_relaxed);
     }
     const auto index = static_cast<std::size_t>(eye);

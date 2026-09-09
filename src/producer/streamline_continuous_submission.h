@@ -24,7 +24,8 @@ class StreamlineContinuousSubmission {
                   const std::array<std::uint32_t, 2>& viewports,
                   const std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2>& descriptions,
                   Log log, bool persistent = false, bool profile = false,
-                  const std::array<D3D12_RESOURCE_DESC, 2>* ui = nullptr);
+                  const std::array<D3D12_RESOURCE_DESC, 2>* ui = nullptr,
+                  bool tag_ui = true);
   void capture(unsigned eye, std::uint64_t present, std::uint64_t pose,
                const streamline_2_7_30::Constants& constants,
                const std::array<StreamlineTagInput, 4>& inputs,
@@ -43,6 +44,14 @@ class StreamlineContinuousSubmission {
   std::uint64_t original_ready() const noexcept { return original_ready_; }
   std::uint64_t pose() const noexcept { return frames_[current_ % count_].pose; }
   std::uint64_t previous_pose() const noexcept { return previous_pose_; }
+  bool ui_tagging_enabled() const noexcept { return ui_enabled_; }
+  // Owned current-pose copies, not CPU-completion evidence. before_present
+  // orders its use after both capture fences on the stage queue.
+  std::array<ID3D12Resource*,2> readback_ui() const noexcept {
+    if (!initialized_ || stopped_ || paused_ || frames_[current_%count_].captured_ui!=3) return {};
+    const auto& frame=frames_[current_%count_];
+    return {frame.textures[0][4].Get(),frame.textures[1][4].Get()};
+  }
   std::array<void*,6> inputs() const noexcept {
     std::array<void*,6> result{};
     for(unsigned eye=0;eye<2;++eye) for(unsigned role=0;role<3;++role)
@@ -69,7 +78,7 @@ class StreamlineContinuousSubmission {
     std::array<streamline_2_7_30::Constants, 2> constants;
     std::uint64_t source_present{}, pose{}, present{};
     std::uint64_t submission_id{}, reuse_value{1};
-    unsigned captured{};
+    unsigned captured{},captured_ui{};
     bool presented{};
   };
   void fail(const char* reason);
@@ -85,7 +94,7 @@ class StreamlineContinuousSubmission {
   std::uint32_t width_{}, height_{};
   bool initialized_{}, stopped_{}, staged_{}, cleanup_submitted_{};
   bool persistent_{};
-  bool ui_enabled_{};
+  bool ui_enabled_{},ui_allocated_{};
   std::array<double, 3> timing_totals_{};
   unsigned timing_samples_{};
   bool paused_{}, previous_tags_active_{};

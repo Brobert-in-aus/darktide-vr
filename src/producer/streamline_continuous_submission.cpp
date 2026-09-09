@@ -23,7 +23,7 @@ bool StreamlineContinuousSubmission::make_commands(ID3D12Device* device,
 bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned frames,
     const std::array<std::uint32_t, 2>& viewports,
     const std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2>& descriptions, Log log, bool persistent, bool profile,
-    const std::array<D3D12_RESOURCE_DESC, 2>* ui) {
+    const std::array<D3D12_RESOURCE_DESC, 2>* ui, bool tag_ui) {
   if (initialized_ || stopped_) return false;
   log_ = log;
   if (!device || frames < 2 || frames > frames_.size() || !viewports[0] ||
@@ -36,7 +36,8 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
   viewports_ = viewports;
   count_ = frames;
   persistent_ = persistent;
-  ui_enabled_ = ui != nullptr;
+  ui_allocated_ = ui != nullptr;
+  ui_enabled_ = ui_allocated_ && tag_ui;
   if (ui) for (const auto& description : *ui) {
     if (description.Width != width_ || description.Height != height_ ||
         description.Format != DXGI_FORMAT_R8G8B8A8_UNORM) {
@@ -74,7 +75,7 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
       }
     }
     for (unsigned eye = 0; eye < 2; ++eye) {
-      for (unsigned role = 0; role < (ui_enabled_ ? 5U : 4U); ++role) {
+      for (unsigned role = 0; role < (ui_allocated_ ? 5U : 4U); ++role) {
         const auto& description = role == 4 ? (*ui)[eye] : descriptions[eye][role==3 ? 2 : role];
         if (description.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
             description.MipLevels != 1 || description.DepthOrArraySize != 1 ||
@@ -98,7 +99,7 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
     }
   }
   initialized_ = true;
-  log_("STEREO_CONTINUOUS\tphase=ready\tframes=%u\teye_width=%u\teye_height=%u\tpublication=0\tui_alpha=%u\tframe_trace=%s\r\n", count_, width_, height_, ui_enabled_ ? 1U : 0U,
+  log_("STEREO_CONTINUOUS\tphase=ready\tframes=%u\teye_width=%u\teye_height=%u\tpublication=0\tui_alpha=%u\tui_capture=%u\tframe_trace=%s\r\n", count_, width_, height_, ui_enabled_ ? 1U : 0U,ui_allocated_ ? 1U : 0U,
        persistent_ ? "startup8_then120" : "complete");
   return true;
 }
@@ -151,7 +152,7 @@ bool StreamlineContinuousSubmission::recycle(Frame& frame) {
   if (FAILED(frame.stage_allocator->Reset()) ||
       FAILED(frame.stage_commands->Reset(frame.stage_allocator.Get(), nullptr))) return false;
   ++frame.reuse_value;
-  frame.captured = 0; frame.presented = false;
+  frame.captured = 0; frame.captured_ui = 0; frame.presented = false;
   return true;
 }
 
@@ -197,7 +198,7 @@ bool StreamlineContinuousSubmission::resume_capture() {
       }
     }
     if (frame.captured) ++frame.reuse_value;
-    frame.captured = 0;
+    frame.captured = 0;frame.captured_ui=0;
   }
   paused_ = false;
   log_("STEREO_CONTINUOUS\tphase=resumed\tframe=%u\r\n", current_+1);
@@ -217,11 +218,11 @@ void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present
   if (!pose || (eye == 1 && (frame.source_present != present || frame.pose != pose))) {
     fail("pair_identity"); return;
   }
-  if (ui_enabled_ != (ui != nullptr)) { fail("ui_capture_missing_or_unconfigured"); return; }
+  if ((ui_enabled_ && !ui) || (ui && !ui_allocated_)) { fail("ui_capture_missing_or_unconfigured"); return; }
   if (ui) for (const auto& input : inputs) {
     if (input.native == ui->native) { fail("ui_capture_alias"); return; }
   }
-  for (unsigned role = 0; role < (ui_enabled_ ? 5U : 4U); ++role) {
+  for (unsigned role = 0; role < (ui ? 5U : 4U); ++role) {
     const auto& input = role == 4 ? *ui : inputs[role];
     const auto target = frame.textures[eye][role]->GetDesc();
     if (!input.native || input.state == UINT_MAX || input.width != target.Width ||
@@ -234,7 +235,7 @@ void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present
   frame.timing_frequencies[eye] = 0;
   if (frame.timing_queries && SUCCEEDED(queue->GetTimestampFrequency(&frame.timing_frequencies[eye])))
     commands->EndQuery(frame.timing_queries.Get(), D3D12_QUERY_TYPE_TIMESTAMP, eye * 2);
-  for (unsigned role = 0; role < (ui_enabled_ ? 5U : 4U); ++role) {
+  for (unsigned role = 0; role < (ui ? 5U : 4U); ++role) {
     const auto& input = role == 4 ? *ui : inputs[role];
     auto* source = static_cast<ID3D12Resource*>(input.native);
     frame.sources[eye][role] = source;
@@ -260,6 +261,7 @@ void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present
   frame.source_present = present;
   frame.pose = pose;
   frame.captured |= 1U << eye;
+  if (ui) frame.captured_ui |= 1U << eye;
 }
 
 void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
@@ -338,10 +340,12 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
   commands->ResourceBarrier(1, &destination);
   original_ready_=persistent_ ? stage_original_stereo(commands,backbuffer.Get(),present,frame.pose,generation) : 0;
   if(persistent_) observe_ngx_copy_frame(frame.textures[0][2].Get(),frame.textures[1][2].Get());
-  if(persistent_) stage_stereo_ui_readback(commands,frame.textures[0][2].Get(),frame.textures[0][3].Get(),
+  const auto captured_ui=readback_ui();
+  // Diagnostic ownership is independent of whether tag 23 is enabled. Never
+  // expose a stale/partial optional pair after replay stops or a pose is lost.
+  if(persistent_ && (!ui_allocated_ || captured_ui[0])) stage_stereo_ui_readback(commands,frame.textures[0][2].Get(),frame.textures[0][3].Get(),
       frame.textures[1][2].Get(),frame.textures[1][3].Get(),frame.pose,
-      ui_enabled_ ? frame.textures[0][4].Get() : nullptr,
-      ui_enabled_ ? frame.textures[1][4].Get() : nullptr);
+      captured_ui[0],captured_ui[1]);
   if (!frame.submission.prepare(current_ + 1, width_, height_, viewports_, frame.constants, inputs,
                                  ui_enabled_ ? &ui : nullptr) ||
       !frame.submission.stage(api, reinterpret_cast<void*>(bindings[0].token), commands,

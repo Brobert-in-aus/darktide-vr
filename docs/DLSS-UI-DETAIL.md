@@ -45,15 +45,15 @@ tagged; the final eye colors fill the presented backbuffer; independent UI tag
 final backbuffer. This is a source contract at the FG boundary, not a measured
 cause of blur and not an audit of the separate SR reconstruction boundary.
 
-`stage_stereo_ui_readback` receives owned UI copies only when that optional UI
-path is enabled. With it disabled, diagnostic replay can instead supply two
+In the accepted native source, `stage_stereo_ui_readback` receives owned UI
+copies only when that optional UI path is enabled. With it disabled, diagnostic replay can instead supply two
 observed overlays with matching pose identity. Those exports record
 `owned_ui=0`; they do not arm `arm_ngx_copy_ui_match`. The strict native-proof
 checker intentionally requires `owned_ui=1`. Therefore an observed six-image
 capture is not the same owned-image/NGX match proof as the enabled path. Do not
 enable the UI tag merely to obtain that proof: doing so changes the condition
 being investigated. A diagnostic-only owned UI snapshot independent of tag
-submission remains follow-up work.
+submission is implemented in the subsequent source candidate below.
 
 The one-shot request now waits when UI capture was explicitly requested but a
 complete matching overlay pair has not arrived. Previously the first attempt
@@ -69,6 +69,35 @@ without claiming staging, and existing content/export-failure/native-roundtrip
 checks pass. Windows x64 `darktidevr_native_capture` also builds successfully in
 the isolated `build/xr-frame-stage-timing` tree. No runtime was deployed; the
 accepted viewer hash and game/streaming/settings state are unchanged.
+
+### Owned diagnostic snapshots with the UI tag disabled
+
+The candidate now separates UI snapshot allocation from tag submission.
+`StreamlineContinuousSubmission::initialize` accepts diagnostic UI allocation
+with `tag_ui=false`, keeping `ui_alpha=0` while reporting `ui_capture=1` in its
+ready record. Native capture uses the existing explicit pre-launch diagnostic
+flag to request these resources. Initialization waits for valid captured UI
+resources; this path does not infer empty coverage from missing draws.
+
+Each eye copies valid UI through its ordinary capture list/fence. Only a complete
+current-pose pair reaches readback after the stage queue waits for both capture
+fences. Partial pairs, pauses and discarded frames expose no UI pair. When the
+one-shot request is consumed and replay ends, missing diagnostic UI is permitted
+without stopping generation. Tagged UI remains mandatory whenever UI submission
+was enabled; existing missing/unconfigured/alias rejection stays in place.
+
+The readback now receives owned UI copies and can arm the existing NGX match even
+when the optional UI tag is disabled. The strict proof checker is unchanged.
+Actual live NGX correlation and worn blur comparison are still required; the
+source candidate does not establish a visual fix or complete raster coverage.
+The accepted installed native build does not contain this change.
+
+Seven related CTests pass in 3.31 seconds, including WARP diagnostic/tagged/no-UI
+capture modes, partial pairs, replay cessation, pause/discard and distinct owned
+textures. Both the recovery test and native DLL build in the isolated tree.
+The fixture rejects presentation intentionally and does not run NVIDIA frame
+generation. No accumulated main-tree DLL was deployed. Prepare a deliberate
+focused native candidate before any live trial, then run fresh Ready.
 
 The one-shot native UI exporter now records a per-image RGBA checksum and
 extent after a successful BMP write/close. It declares
