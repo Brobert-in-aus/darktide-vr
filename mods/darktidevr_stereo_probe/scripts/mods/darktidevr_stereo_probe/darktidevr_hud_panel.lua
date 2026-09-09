@@ -7,6 +7,7 @@ HudPanel.height = 1.125 * 0.9 * 2
 HudPanel.distance = 2
 HudPanel.scale = 0.63
 HudPanel.object_scale = 2.08
+local rotation_components = {{"qx","vqx"},{"qy","vqy"},{"qz","vqz"},{"qw","vqw"}}
 
 -- Store scalar poses across frames: engine Vector3/Quaternion temporaries
 -- cannot safely survive the frame that allocated them.
@@ -28,20 +29,24 @@ function HudPanel.follow_pose(previous, target, t)
     local dt = t-previous.t
     -- Translation tracks the current head exactly; only viewing angles lag.
     local result = {t=t,goal=goal,x=target.x,y=target.y,z=target.z}
-    local function spring(key, goal, smooth_time)
-        local omega = 2/smooth_time
-        local change = previous[key]-goal
-        local temp = ((previous["v"..key] or 0)+omega*change)*dt
-        local decay = math.exp(-omega*dt)
-        result[key] = goal+(change+temp)*decay
-        result["v"..key] = ((previous["v"..key] or 0)-omega*temp)*decay
-    end
     local dot = previous.qx*target.qx+previous.qy*target.qy+
         previous.qz*target.qz+previous.qw*target.qw
     local sign = dot < 0 and -1 or 1
-    for _, key in ipairs({"qx","qy","qz","qw"}) do spring(key,target[key]*sign,0.32) end
+    local omega = 2/0.32
+    local decay = math.exp(-omega*dt)
+    for _, component in ipairs(rotation_components) do
+        local key, velocity = component[1], component[2]
+        local goal = target[key]*sign
+        local change = previous[key]-goal
+        local temp = ((previous[velocity] or 0)+omega*change)*dt
+        result[key] = goal+(change+temp)*decay
+        result[velocity] = ((previous[velocity] or 0)-omega*temp)*decay
+    end
     local length = math.sqrt(result.qx^2+result.qy^2+result.qz^2+result.qw^2)
-    for _, key in ipairs({"qx","qy","qz","qw"}) do result[key] = result[key]/length end
+    for _, component in ipairs(rotation_components) do
+        local key = component[1]
+        result[key] = result[key]/length
+    end
     return result
 end
 
