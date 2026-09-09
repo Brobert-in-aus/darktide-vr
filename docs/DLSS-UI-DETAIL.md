@@ -91,6 +91,15 @@ coarse grid. No native runtime or installed settings changed.
 
 ### Preserve capture inputs when writing a detail report
 
+The alpha and generated-frame comparison writers now check every PNG/JSON
+destination against their source bitmaps and metadata logs too. Their shared
+guard runs before analysis/output and rejects same-file aliases, including hard
+links. Both alias regressions failed before the change. Fourteen output-path
+cases now preserve source bytes; separate reports still generate with unchanged
+measurement and exit-status semantics. Ten alpha and twelve generated-image
+tests pass, and the four DLSS analysis CTests pass in 3.69 seconds. Filesystem
+tests substitute image arrays; they do not add live or visual evidence.
+
 The simpler `compare-dlss-ui-inputs.py` inspector now decodes and validates both
 scene/final eye pairs before creating an output directory or replacing reports.
 Previously a missing, malformed or differently sized right-eye final image left

@@ -14,6 +14,42 @@ spec.loader.exec_module(module)
 
 
 class AlphaCheck(unittest.TestCase):
+    def test_report_aliases_preserve_capture_inputs(self):
+        image = np.zeros((2, 3, 4), np.uint8)
+        image[:, :, 3] = 255
+        names = [f'{eye}-{role}.png' for eye in ('left', 'right')
+                 for role in ('ui', 'alpha', 'recomposed', 'error-x8')] + ['alpha-check.json']
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stem, output = root / 'capture', root / 'report'
+            output.mkdir()
+            sources = [Path(f'{stem}-{eye}-{role}.bmp') for eye in ('left', 'right')
+                       for role in ('scene', 'final', 'ui')] + [Path(f'{stem}.log')]
+            for index, name in enumerate(names):
+                source = sources[index % len(sources)]
+                source.write_bytes(b'capture bytes')
+                destination = output / name
+                destination.hardlink_to(source)
+                try:
+                    with mock.patch.object(module, 'read_rgba', return_value=image), \
+                            mock.patch('sys.argv', ['alpha', str(stem), '--output', str(output)]), \
+                            mock.patch('builtins.print'):
+                        with self.assertRaisesRegex(ValueError, 'replace a capture input'):
+                            module.main()
+                    self.assertEqual(source.read_bytes(), b'capture bytes')
+                    self.assertEqual([p.name for p in output.iterdir()], [name])
+                finally:
+                    destination.unlink()
+            with mock.patch.object(module, 'read_rgba', return_value=image), \
+                    mock.patch('sys.argv', ['alpha', str(stem), '--output', str(output)]), \
+                    mock.patch('builtins.print'):
+                # Identical black inputs still produce a report, with the
+                # existing insufficient composition-evidence exit status.
+                self.assertEqual(module.main(), 1)
+            self.assertEqual(sorted(p.name for p in output.iterdir()), sorted(names))
+            for source in sources:
+                self.assertEqual(source.read_bytes(), b'capture bytes')
+
     def test_native_proof_requires_every_role_and_rgba_byte(self):
         image = np.arange(16, dtype=np.uint8).reshape(2, 2, 4)
         roles = [f"{eye}-{role}" for eye in ("left", "right") for role in ("scene", "final", "ui")]

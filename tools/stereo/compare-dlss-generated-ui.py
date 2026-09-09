@@ -188,6 +188,11 @@ def main():
     parser.add_argument("generated", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
+    source_paths = [args.generated, args.generated.with_suffix('.log'), Path(f'{args.stem}.log'),
+                    Path(f'{args.stem}-left-ui.bmp'), Path(f'{args.stem}-right-ui.bmp')]
+    output_paths = [args.output / f'{eye}-{role}.png' for eye in ('left', 'right')
+                    for role in ('generated', 'submitted-ui')]
+    ui_alpha.protect_capture_inputs(source_paths, output_paths + [args.output / 'generated-ui-check.json'])
     identity, generated, submitted = read_verified_images(args.stem, args.generated)
     args.output.mkdir(parents=True, exist_ok=True)
     width = generated.shape[1] // 2

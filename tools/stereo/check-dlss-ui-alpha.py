@@ -137,6 +137,14 @@ def compare(scene, final, ui, tolerance=3, near_ui_radius=8):
     return report, np.clip(composed, 0, 255).astype(np.uint8), error
 
 
+def protect_capture_inputs(inputs, outputs):
+    for destination in outputs:
+        for source in inputs:
+            if destination.resolve() == source.resolve() or (destination.exists() and
+                    source.exists() and destination.samefile(source)):
+                raise ValueError('Output must not replace a capture input')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stem", type=Path)
@@ -146,6 +154,11 @@ def main():
     parser.add_argument("--verify-native", action="store_true",
                         help="Require complete native logs and RGBA hashes for all six images")
     args = parser.parse_args()
+    source_paths = [Path(f'{args.stem}-{eye}-{role}.bmp') for eye in ('left', 'right')
+                    for role in ('scene', 'final', 'ui')] + [Path(f'{args.stem}.log')]
+    output_paths = [args.output / f'{eye}-{role}.png' for eye in ('left', 'right')
+                    for role in ('ui', 'alpha', 'recomposed', 'error-x8')]
+    protect_capture_inputs(source_paths, output_paths + [args.output / 'alpha-check.json'])
     report = {}
     prepared = {}
     inputs = {f"{eye}-{role}": read_rgba(f"{args.stem}-{eye}-{role}.bmp")

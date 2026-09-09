@@ -13,6 +13,41 @@ spec.loader.exec_module(module)
 
 
 class GeneratedUiCheck(unittest.TestCase):
+    def test_report_aliases_preserve_capture_inputs(self):
+        ui = np.zeros((2, 2, 4), np.uint8)
+        packed = np.concatenate((ui, ui), axis=1)
+        names = [f'{eye}-{role}.png' for eye in ('left', 'right')
+                 for role in ('generated', 'submitted-ui')] + ['generated-ui-check.json']
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stem, generated, output = root / 'capture', root / 'generated.bmp', root / 'report'
+            output.mkdir()
+            sources = [generated, generated.with_suffix('.log'), Path(f'{stem}.log'),
+                       Path(f'{stem}-left-ui.bmp'), Path(f'{stem}-right-ui.bmp')]
+            for name, source in zip(names, sources):
+                source.write_bytes(b'capture bytes')
+                destination = output / name
+                destination.hardlink_to(source)
+                try:
+                    with mock.patch.object(module, 'read_verified_images',
+                            return_value=({}, packed, {'left': ui, 'right': ui})), \
+                            mock.patch('sys.argv', ['compare', str(stem), str(generated),
+                                '--output', str(output)]), mock.patch('builtins.print'):
+                        with self.assertRaisesRegex(ValueError, 'replace a capture input'):
+                            module.main()
+                    self.assertEqual(source.read_bytes(), b'capture bytes')
+                    self.assertEqual([p.name for p in output.iterdir()], [name])
+                finally:
+                    destination.unlink()
+            with mock.patch.object(module, 'read_verified_images',
+                    return_value=({}, packed, {'left': ui, 'right': ui})), \
+                    mock.patch('sys.argv', ['compare', str(stem), str(generated),
+                        '--output', str(output)]), mock.patch('builtins.print'):
+                module.main()
+            self.assertEqual(sorted(p.name for p in output.iterdir()), sorted(names))
+            for source in sources:
+                self.assertEqual(source.read_bytes(), b'capture bytes')
+
     def test_cli_checks_both_ui_images_before_output(self):
         ui = np.arange(16, dtype=np.uint8).reshape(2, 2, 4)
         packed = np.concatenate((ui, ui), axis=1)
