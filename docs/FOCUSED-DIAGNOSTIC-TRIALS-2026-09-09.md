@@ -1,6 +1,6 @@
 # Focused diagnostic trials — staged, not deployed
 
-Four focused payloads are staged under ignored `artifacts/focused-trials`.
+Five focused payloads are staged under ignored `artifacts/focused-trials`.
 Each `trial-plan.json` contains relative source/destination paths and exact
 candidate/baseline hash preconditions. They use transaction support from
 `b515e72` (PR #139). No payload is an installer or a complete runtime.
@@ -9,6 +9,7 @@ embedded. Native build evidence remains in the focused source handoff.
 
 | Trial | Reviewed source | Payload | Installation destinations |
 | --- | --- | --- | --- |
+| `lua-performance-008e1b0` | `008e1b0`, PR #197 | Prompt/draw/follow allocation optimisations | Three existing Lua modules; overlaps communication controller prompts |
 | `native-performance-8b3697a` | `8b3697a`, PR #189 | One native DLL, three CPU optimisations | Existing DLL in `binaries` and mod `bin`; alternative to native UI trial |
 | `native-ui-a4ec84c` | `a4ec84c`, PR #133 | One native DLL | Existing DLL in `binaries` and in the mod's `bin` directory |
 | `marker-metrics-8178c5f` | `8178c5f`, PR #138 | Main Lua and measurement module | Existing main Lua plus new marker module |
@@ -32,6 +33,23 @@ requires the new module to be absent. A changed baseline needs review rather
 than silently replacing these preconditions with newly observed hashes.
 
 ## Rehearsal evidence
+
+Latest read-only package status checks all five current plans successfully:
+`artifacts/unattended/focused-trial-status-20260909.json`. Use
+`tools/stereo/get-focused-trial-status.ps1 -PlanPaths <plan paths> -GameRoot <installation>`
+and pipe its returned object to `ConvertTo-Json -Depth 10` to inspect it. The tool
+reads files only, checks exact payload/baseline hashes and required absence,
+rejects escaping/duplicate destinations, and lists cross-plan overlaps. Hash
+matches do not certify XR readiness or compatibility between non-overlapping
+changes. It never applies a plan or refreshes its hash preconditions.
+
+Lua performance copied-file application and rollback pass in
+`artifacts/unattended/lua-performance-rehearsal-77c32c9a735f4c8786a950494c1fafb9/rehearsal.json`.
+All three candidate/restored hashes match, sentinel survives and the actual
+installation remains unchanged. Its 49 source chunks compile and three affected
+existing checks pass. Source checkout line endings differ from installation in
+two modules; normalized contents were checked before pinning actual installed
+bytes. Communication also replaces controller prompts, so do not blindly stack.
 
 The native and marker plans were applied to separate temporary copies of the relevant installed
 files, then restored through `Restore-DarktideDeploymentTransaction`. Every

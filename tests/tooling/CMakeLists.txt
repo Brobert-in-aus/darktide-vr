@@ -17,6 +17,8 @@ if(BUILD_TESTING)
     "${PROJECT_SOURCE_DIR}/tools/stereo/test-darktide-lua-invariants.ps1")
   add_test(NAME deployment_transaction COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/test-deployment-transaction.ps1")
+  add_test(NAME focused_trial_status COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-focused-trial-status.ps1")
   add_test(NAME deployment_sync COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/test-deployment-sync.ps1")
   add_test(NAME vr_mod_load_order COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
