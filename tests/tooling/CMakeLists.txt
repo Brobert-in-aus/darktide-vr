@@ -62,6 +62,8 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/test-vdxr-trace.py")
   add_test(NAME vdxr_wait_overlap_analysis COMMAND "${Python3_EXECUTABLE}" -B
     "${CMAKE_CURRENT_SOURCE_DIR}/test-vdxr-wait-overlap.py")
+  add_test(NAME vdxr_app_statistics_analysis COMMAND "${Python3_EXECUTABLE}" -B
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-vdxr-app-statistics.py")
   add_test(NAME marker_metrics_analysis COMMAND "${Python3_EXECUTABLE}" -B
     "${CMAKE_CURRENT_SOURCE_DIR}/test-marker-metrics-summary.py")
   add_test(NAME dlss_ui_detail COMMAND "${Python3_EXECUTABLE}" -B
