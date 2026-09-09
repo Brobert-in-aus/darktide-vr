@@ -13,8 +13,10 @@ overlay holds or change the independent keyboard route.
 The regression failed before the guard. Three related communication/prompt/UI
 CTests pass in 0.12 seconds, all 69 Lua chunks compile, and the optional cached
 stock tactical update passes. Fixture communication effects remain mocked.
-This source follow-up is undeployed and needs a focused communication port before
-updating its staged payload; the existing `2dded96` payload remains unchanged.
+The focused port is `96292b4` (PR #153), passing 64/64 Lua checks in 1.203 seconds
+and compiling 56 chunks. Its refreshed fifteen-file payload passes copied-install
+deployment and rollback, preserving all original files and removing additions.
+No live deployment occurred; the older `2dded96` staging is historical evidence.
 
 ## Stock tutorial text contract checked 9 September
 

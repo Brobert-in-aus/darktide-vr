@@ -11,7 +11,7 @@ embedded. Native build evidence remains in the focused source handoff.
 | --- | --- | --- | --- |
 | `native-ui-a4ec84c` | `a4ec84c`, PR #133 | One native DLL | Existing DLL in `binaries` and in the mod's `bin` directory |
 | `marker-metrics-8178c5f` | `8178c5f`, PR #138 | Main Lua and measurement module | Existing main Lua plus new marker module |
-| `communication-2dded96` | `2dded96`, PR #146 | Fifteen Lua files | Eight existing files plus seven new modules |
+| `communication-96292b4` | `96292b4`, PR #153 | Fifteen Lua files | Eight existing files plus seven new modules |
 
 The native trial supports owned UI readback while the optional DLSS UI tag
 remains disabled. The marker trial measures inputs to both eyes' draws without
@@ -55,10 +55,24 @@ compiles 56 chunks; the extra installed module explains the different count.
 All fifteen real-installation preconditions remained unchanged after rehearsal.
 Recovery used the strengthened hash checks from `0b99afd` (PR #141).
 
-Communication receipt (ignored):
+Initial communication receipt for `2dded96` (ignored):
 `artifacts/unattended/communication-trial-rehearsal-dd7302238e3b408786e832624590d39d/rehearsal.json`.
 Its focused source passes 64/64 Lua checks in 1.048 seconds, plus cached stock
 wheel/chat contracts with communication and microphone effects mocked.
+
+The current communication payload is `96292b4` (PR #153). It adds the retiring
+inventory/tag/tactical service guard, changing exactly one of the fifteen payload
+files. All destination hash/absence preconditions remain the original accepted
+baseline values. The previous `communication-2dded96` staging is retained as
+historical evidence, not the current trial candidate.
+
+The refreshed copied-install transaction and rollback both pass: 57 candidate
+chunks compile, 50 restored chunks compile, all 51 original fixture hashes match,
+and all seven new modules are removed. These gates compile the copied descriptor
+along with its copied Lua files. The fifteen actual installed preconditions are
+still unchanged. Its focused source passes 64/64 Lua checks in 1.203 seconds.
+Latest receipt (ignored):
+`artifacts/unattended/communication-trial-refresh-e4bd9a80ff834baca290663659d0d007/rehearsal.json`.
 
 ## Live trial boundary
 
