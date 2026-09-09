@@ -87,3 +87,22 @@ build; existing `native_capture_hooks` passes 1/1 in 0.43 seconds with headset t
 OFF. Receipts: `gpu-profile-lock-build-20260909.log` and
 `gpu-profile-lock-tests-20260909.log` under `artifacts/unattended`.
 This change is outside the staged native performance payload.
+
+## GPU profiling counters
+
+The eight per-eye profiling counter arrays now use ordinary unsigned 64-bit
+values under `gpu_profile_mutex`. All accesses were audited: the sole writer is
+`harvest_gpu_profile_samples`, called only by `begin_gpu_eye_profile`,
+`dtvr_take_gpu_eye_profile` and `dtvr_take_gpu_stage_profile`, each holding that
+mutex. The two report readers reset values under the same mutex. Other profiler
+flags remain atomic. Removing the redundant atomic increments, exchanges and
+maximum CAS loops preserves unsigned arithmetic and snapshot/reset semantics.
+Future counter accesses must retain this mutex requirement, documented beside
+the declarations.
+
+Windows x64 Release native DLL and hook executable build; existing
+`native_capture_hooks` passes 1/1 in 0.44 seconds, headset tests OFF. Receipts:
+`artifacts/unattended/gpu-profile-counter-build-20260909.log` and
+`gpu-profile-counter-tests-20260909.log`. This is a source-level reduction in
+synchronization instructions, without a measured frame-time claim or live
+profiling exercise. It remains outside the staged native payload.

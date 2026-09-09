@@ -1335,15 +1335,16 @@ UINT gpu_profile_next_slot{};
 std::array<std::uint64_t, kGpuProfileSlotCount> gpu_profile_slot_fences{};
 std::array<std::optional<GpuProfileSample>, 2> gpu_profile_active;
 std::deque<GpuProfileSample> gpu_profile_pending;
-std::array<std::atomic<std::uint64_t>, 2> gpu_profile_sample_counts{};
-std::array<std::atomic<std::uint64_t>, 2> gpu_profile_total_ticks{};
-std::array<std::atomic<std::uint64_t>, 2> gpu_profile_max_ticks{};
+// Harvesting and report resets hold gpu_profile_mutex.
+std::array<std::uint64_t, 2> gpu_profile_sample_counts{};
+std::array<std::uint64_t, 2> gpu_profile_total_ticks{};
+std::array<std::uint64_t, 2> gpu_profile_max_ticks{};
 std::array<std::vector<std::uint64_t>, 2> gpu_profile_duration_ticks{};
-std::array<std::atomic<std::uint64_t>, 2> gpu_profile_stage_sample_counts{};
-std::array<std::atomic<std::uint64_t>, 2> gpu_profile_world_total_ticks{};
-std::array<std::atomic<std::uint64_t>, 2> gpu_profile_world_max_ticks{};
-std::array<std::atomic<std::uint64_t>, 2> gpu_profile_output_total_ticks{};
-std::array<std::atomic<std::uint64_t>, 2> gpu_profile_output_max_ticks{};
+std::array<std::uint64_t, 2> gpu_profile_stage_sample_counts{};
+std::array<std::uint64_t, 2> gpu_profile_world_total_ticks{};
+std::array<std::uint64_t, 2> gpu_profile_world_max_ticks{};
+std::array<std::uint64_t, 2> gpu_profile_output_total_ticks{};
+std::array<std::uint64_t, 2> gpu_profile_output_max_ticks{};
 std::array<std::atomic<bool>, 2> gpu_profile_pass_trace_claimed{};
 std::atomic<bool> gpu_profile_enabled{};
 // Per-draw/root/PSO/descriptor hooks are useful for bounded renderer
@@ -1549,15 +1550,6 @@ void write_cluster_trace_log(const char* format, ...) {
   }
 }
 
-void update_atomic_max(std::atomic<std::uint64_t>& destination,
-                       std::uint64_t value) {
-  auto current = destination.load(std::memory_order_relaxed);
-  while (current < value &&
-         !destination.compare_exchange_weak(current, value,
-                                            std::memory_order_relaxed)) {
-  }
-}
-
 void reset_gpu_profiler_resources() {
   gpu_profile_active = {};
   gpu_profile_pending.clear();
@@ -1646,24 +1638,22 @@ bool harvest_gpu_profile_samples() {
     if (sample.eye >= 0 && sample.eye <= 1 && end >= start) {
       const auto duration = end - start;
       const auto index = static_cast<std::size_t>(sample.eye);
-      gpu_profile_sample_counts[index].fetch_add(1,
-                                                  std::memory_order_relaxed);
-      gpu_profile_total_ticks[index].fetch_add(duration,
-                                                std::memory_order_relaxed);
-      update_atomic_max(gpu_profile_max_ticks[index], duration);
+      gpu_profile_sample_counts[index] += 1;
+      gpu_profile_total_ticks[index] += duration;
+      gpu_profile_max_ticks[index] =
+          std::max(gpu_profile_max_ticks[index], duration);
       gpu_profile_duration_ticks[index].push_back(duration);
       if (sample.stage_boundary_recorded && boundary >= start &&
           end >= boundary) {
         const auto world_duration = boundary - start;
         const auto output_duration = end - boundary;
-        gpu_profile_stage_sample_counts[index].fetch_add(
-            1, std::memory_order_relaxed);
-        gpu_profile_world_total_ticks[index].fetch_add(
-            world_duration, std::memory_order_relaxed);
-        gpu_profile_output_total_ticks[index].fetch_add(
-            output_duration, std::memory_order_relaxed);
-        update_atomic_max(gpu_profile_world_max_ticks[index], world_duration);
-        update_atomic_max(gpu_profile_output_max_ticks[index], output_duration);
+        gpu_profile_stage_sample_counts[index] += 1;
+        gpu_profile_world_total_ticks[index] += world_duration;
+        gpu_profile_output_total_ticks[index] += output_duration;
+        gpu_profile_world_max_ticks[index] =
+            std::max(gpu_profile_world_max_ticks[index], world_duration);
+        gpu_profile_output_max_ticks[index] =
+            std::max(gpu_profile_output_max_ticks[index], output_duration);
       }
       if (sample.pass_trace_enabled && sample.pass_trace_batch_count > 0 &&
           gpu_profile_frequency != 0) {
@@ -16059,12 +16049,9 @@ extern "C" __declspec(dllexport) int dtvr_take_gpu_eye_profile(
     std::scoped_lock lock(gpu_profile_mutex);
     harvest_gpu_profile_samples();
     const auto index = static_cast<std::size_t>(eye);
-    values[0] = gpu_profile_sample_counts[index].exchange(
-        0, std::memory_order_relaxed);
-    values[1] = gpu_profile_total_ticks[index].exchange(
-        0, std::memory_order_relaxed);
-    values[2] = gpu_profile_max_ticks[index].exchange(
-        0, std::memory_order_relaxed);
+    values[0] = std::exchange(gpu_profile_sample_counts[index], 0);
+    values[1] = std::exchange(gpu_profile_total_ticks[index], 0);
+    values[2] = std::exchange(gpu_profile_max_ticks[index], 0);
     values[3] = gpu_profile_frequency;
     durations = std::move(gpu_profile_duration_ticks[index]);
     gpu_profile_duration_ticks[index].clear();
@@ -16088,16 +16075,11 @@ extern "C" __declspec(dllexport) int dtvr_take_gpu_stage_profile(
   std::scoped_lock lock(gpu_profile_mutex);
   harvest_gpu_profile_samples();
   const auto index = static_cast<std::size_t>(eye);
-  values[0] = gpu_profile_stage_sample_counts[index].exchange(
-      0, std::memory_order_relaxed);
-  values[1] = gpu_profile_world_total_ticks[index].exchange(
-      0, std::memory_order_relaxed);
-  values[2] = gpu_profile_world_max_ticks[index].exchange(
-      0, std::memory_order_relaxed);
-  values[3] = gpu_profile_output_total_ticks[index].exchange(
-      0, std::memory_order_relaxed);
-  values[4] = gpu_profile_output_max_ticks[index].exchange(
-      0, std::memory_order_relaxed);
+  values[0] = std::exchange(gpu_profile_stage_sample_counts[index], 0);
+  values[1] = std::exchange(gpu_profile_world_total_ticks[index], 0);
+  values[2] = std::exchange(gpu_profile_world_max_ticks[index], 0);
+  values[3] = std::exchange(gpu_profile_output_total_ticks[index], 0);
+  values[4] = std::exchange(gpu_profile_output_max_ticks[index], 0);
   values[5] = gpu_profile_frequency;
   return gpu_profile_frequency != 0 ? 0 : 2;
 }
