@@ -105,6 +105,15 @@ int main() {
   check(!cached_range(*registry,1060,10));
   check(cached_range(*registry,2000,100)->resource==older.Get());
   older.Reset();check(!resolve(2000));
+  {
+    auto extreme=create();
+    const auto maximum=(std::numeric_limits<std::uint64_t>::max)();
+    registry->track(extreme.Get(),maximum-16,32,D3D12_HEAP_TYPE_UPLOAD);
+    auto recent=create();
+    registry->track(recent.Get(),1000,25,D3D12_HEAP_TYPE_UPLOAD);
+    check(cached_range(*registry,maximum,1)->resource==extreme.Get());
+    check(!cached_range(*registry,0,1));
+  }
   std::vector<ComPtr<ID3D12Resource>> owners;
   for(unsigned i=0;i<1024;++i) {
     auto resource=create();
@@ -132,6 +141,7 @@ int main() {
   check(cached_range(*registry,0x110000,128)->resource==owners[1].Get());
   owners[0].Reset();check(resolve(0x110000)->resource==owners[1].Get());
   check(cached_range(*registry,0x110000,128)->resource==owners[1].Get());
+  check(!cached_range(*registry,0x100000,128));
   for(const unsigned workload:{0U,1U,2U,3U}) {
     for(unsigned trial=0;trial<5;++trial) {
       const auto measure=[&](bool old) {
@@ -151,14 +161,16 @@ int main() {
       std::cout << "workload=" << workload << " trial=" << trial << " resources=1023 queries=100000 old_ms=" << before << " new_ms=" << after << '\n';
     }
   }
-  for(const unsigned workload:{0U,1U,2U,3U}) for(unsigned trial=0;trial<5;++trial) {
+  for(const unsigned workload:{0U,1U,2U,3U,4U}) for(unsigned trial=0;trial<5;++trial) {
     const auto measure=[&](bool old) {
       const auto begin=std::chrono::steady_clock::now();
       for(unsigned i=0;i<100000;++i) {
         const auto index=workload==0?1+i%16:workload==1?1023:1+i%1023;
-        const auto address=workload==3?0x100000000ULL+i*256ULL:0x100000ULL+index*0x10000ULL;
+        const auto address=workload==3?0x100000000ULL+i*256ULL:
+            workload==4?0x100000ULL+(1+i%1022)*0x10000ULL+512+(i/1022)*256ULL:
+            0x100000ULL+index*0x10000ULL;
         const auto result=old?linear_range(*registry,address,128):cached_range(*registry,address,128);
-        if(workload==3)check(!result);else check(result&&result->resource==owners[index].Get());
+        if(workload>=3)check(!result);else check(result&&result->resource==owners[index].Get());
       }
       return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count();
     };
