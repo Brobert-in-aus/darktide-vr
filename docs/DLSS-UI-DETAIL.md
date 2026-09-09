@@ -408,3 +408,32 @@ Nine Python fixtures include corruption of RGB and alpha in every role, missing/
 duplicate records, invalid metadata and rejection before output creation. The
 native roundtrip also verifies all six real exported images. Four focused CTests
 pass in 1.49 seconds; no runtime rebuild or deployment was needed.
+
+## Offline coordinate allocation reduction
+
+The input-comparison bounds calculation now finds occupied rows and columns
+instead of allocating two coordinates for every changed pixel. A dense
+2048-by-2048 mask therefore needs 4,096 coordinate entries rather than 8,388,608;
+changed-pixel counts, fractions, RGB differences and bounds retain their meaning.
+
+The generated-UI placement comparison now keeps one row-major flat index per
+opaque pixel, then expands only its existing maximum 4,096 sampled indexes into
+X/Y coordinates. This preserves the exact sample order and translation scoring.
+It releases the full flat index array before scoring. No capture identity,
+output protection, alpha threshold, search radius or tie policy changed.
+
+`benchmark-ui-coordinate-memory.py BASELINE CANDIDATE` loads the actual
+`compare` function bodies and compares empty, sparse and dense 2048-by-2048
+numeric arrays at radius zero. All reports match, including all five alternating
+trials. With tracemalloc enabled, the dense case's median peak allocation falls
+from 71,402,968 to 37,882,592 bytes; median wall time is 65.23 versus 54.06 ms.
+Empty and sparse cases retain the same 12,583,889-byte peak, dominated by mask
+construction. These arrays are calculation fixtures, not images submitted to
+a renderer or evidence about HUD blur. The benchmark covers placement analysis,
+not image decoding, output encoding or the separate input-bounds calculation.
+
+The baseline is `a7b695c`'s `compare-dlss-generated-ui.py`. Receipt:
+`artifacts/unattended/ui-coordinate-memory-benchmark-20260909.json`.
+Existing input-comparison and capture/placement checks pass 2/2 in 3.10 seconds;
+`artifacts/unattended/ui-coordinate-memory-tests-20260909.log`. No game, settings
+or installed files changed. The surrounding-HUD blur remains unresolved.

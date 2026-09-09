@@ -134,12 +134,14 @@ def compare(ui, generated, radius=64):
     if ui.shape != generated.shape or ui.ndim != 3 or ui.shape[2] != 4:
         raise ValueError("Generated output must match the UI eye extent")
     mask = (ui[:, :, 3] >= 254) & (ui[:, :, :3].max(axis=2) >= 30)
-    y, x = np.nonzero(mask)
-    if len(x) < 32:
-        return {"opaque_pixels": len(x), "placement_check": "insufficient_opaque_UI"}
-    # Fixed evenly distributed sample, bounded independently of headset size.
-    sample = np.linspace(0, len(x) - 1, min(len(x), 4096), dtype=int)
-    x, y = x[sample], y[sample]
+    flat = np.flatnonzero(mask)
+    if len(flat) < 32:
+        return {"opaque_pixels": len(flat), "placement_check": "insufficient_opaque_UI"}
+    # Flat indices retain nonzero's row-major ordering without storing both
+    # coordinates for every opaque pixel. Expand only the bounded sample.
+    sample = np.linspace(0, len(flat) - 1, min(len(flat), 4096), dtype=int)
+    y, x = np.divmod(flat[sample], mask.shape[1])
+    del flat
     expected = ui[y, x, :3].astype(np.int16)
 
     def score(dx, dy):

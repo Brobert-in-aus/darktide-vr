@@ -41,7 +41,9 @@ for eye in ("left", "right"):
     difference = np.abs(final - scene)
     magnitude = difference.max(axis=2)
     changed = magnitude > 2
-    ys, xs = np.nonzero(changed)
+    # Bounds need occupied rows/columns, not coordinates for every changed pixel.
+    ys = np.flatnonzero(changed.any(axis=1))
+    xs = np.flatnonzero(changed.any(axis=0))
     report[eye] = {
         "extent": list(scene_image.size),
         "changed_pixels_over_2": int(changed.sum()),
