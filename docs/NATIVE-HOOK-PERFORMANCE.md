@@ -211,3 +211,34 @@ trace-only scope, while live acceptance remains outstanding. Receipts:
 `upload-trace-lock-tests-20260909.log`. The independent focused extension
 `24687ff` now includes this guard and is staged separately; the measured map
 build `28a5500` remains preserved as its earlier comparison baseline.
+# Interleaved mapping comparison at session close
+
+9 September: the runner now accepts optional `-ComparisonLibrary` and
+`-ComparisonLibraryHash` together. It alternates library and hook/control order
+each trial, retains fresh isolated processes, verifies both source/copy hashes
+and adapter identity, and emits schema 2 with a library label per observation.
+Single-library invocation retains schema 1; a three-trial invocation passes.
+
+Five interleaved trials compare focused buffer `516f935` with preserved pointer
+candidate `28a5500` (20 processes, 60 workload observations):
+
+| 10,000 Map/Unmap pairs, hooks enabled | Baseline median | Candidate median |
+| --- | ---: | ---: |
+| Repeated first 16 resources | 11.2929 ms | 3.6309 ms |
+| Newest resource | 3.1737 ms | 3.7194 ms |
+| Cycle all 1,024 resources | 7.4291 ms | 5.4128 ms |
+
+The newest-resource result is **17.2% slower** in this run; its ranges narrowly
+overlap (3.0693–3.2804 versus 3.2642–3.8605 ms). Earlier successive batches showed
+similar newest-resource medians. Keep this unresolved tradeoff visible: the
+cache is not an across-the-board timing win. Early/cycling ranges remain
+separated. Control medians are 0.6820/0.4755, 0.5016/0.4729 and 0.7932/0.7854 ms
+(baseline/candidate), with overlapping ranges and notable early-control noise.
+Actual game distribution and frame-time impact remain unmeasured. These hooks
+are diagnostic-mode paths, and no GPU work, game or XR session ran.
+
+All counter/completion checks pass. DLL hashes remain those recorded for
+`516f935` and `28a5500`; executable hash is
+`1DC64B8F57E6A7B590FA47D11CFF8C356B9A0DE7BA93943ABE9A4FB7928B87AD`.
+Receipts: `artifacts/unattended/native-map-interleaved-20260909/comparison.json`
+and `native-map-single-interface-20260909/comparison.json`. No staged bytes change.
