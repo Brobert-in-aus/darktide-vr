@@ -153,9 +153,12 @@ def main():
     if args.output.resolve() == args.log.resolve() or \
             (args.output.exists() and args.output.samefile(args.log)):
         parser.error("Output must not replace the input log")
-    result = summarize(args.log.read_text(encoding="utf-8").splitlines())
+    with args.log.open(encoding="utf-8") as source:
+        result = summarize(source)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    with args.output.open("w", encoding="utf-8") as output:
+        json.dump(result, output, indent=2)
+        output.write("\n")
     print(json.dumps({k: v for k, v in result.items() if k != "windows"}, indent=2))
 
 

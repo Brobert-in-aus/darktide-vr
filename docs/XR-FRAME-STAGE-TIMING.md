@@ -107,3 +107,11 @@ latest 60 gameplay windows average 9.357 ms active loop, 5.827 ms source wait,
 3.076 ms GPU-fence wait and 0.0455 ms OpenXR frame wait. This is still the fresh
 session baseline, not a recurrence or a diagnosed cause. Report:
 `artifacts/unattended/soloplay-frame-stage-summary-20260908.json`.
+
+## Streaming analysis memory
+
+The CLI now iterates input lines and streams JSON output instead of holding an additional complete input string, split-line list and serialized report string. It still retains valid windows because they are part of the report. Existing grouping, exclusions and same-file/hardlink input protection are unchanged.
+
+`tools/stereo/benchmark-frame-log-reader.py LOG` compares eager and streamed reads using the actual summarizer, checks every report for equality and verifies the input hash before/after. On saved `soloplay-frame-stage-session-20260908.log` (4,823,669 bytes; 3,387 timing rows, 3,378 valid windows), five alternating trials reduce typical peak Python allocation from 15,269,144 to 9,657,385 bytes. These tracemalloc-instrumented timings are similar: median 405.3786 ms eager and 404.7689 ms streamed, with overlapping ranges. This is an analysis-memory improvement, not game performance. JSON output streaming is not included in that benchmark.
+
+The existing frame-stage analysis CTest passes (0.30 seconds total). A full streamed CLI report was written separately and the saved input remains unchanged, SHA-256 `48446b0514eb1702f255f33e023a1a86bae39720662337af358e7e341054b8dc`. Receipts: `artifacts/unattended/frame-log-streaming-{benchmark,tests}-20260909.log` and `frame-log-streamed-summary-20260909.json`. No live capture or deployment.
