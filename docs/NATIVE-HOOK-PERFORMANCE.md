@@ -208,5 +208,6 @@ Windows x64 Release native DLL builds, and the existing native hook check passes
 version-gated engine upload-flush target; dependency inspection establishes the
 trace-only scope, while live acceptance remains outstanding. Receipts:
 `artifacts/unattended/upload-trace-lock-build-20260909.log` and
-`upload-trace-lock-tests-20260909.log`. This change remains outside every staged
-payload and the focused map build `28a5500`.
+`upload-trace-lock-tests-20260909.log`. The independent focused extension
+`24687ff` now includes this guard and is staged separately; the measured map
+build `28a5500` remains preserved as its earlier comparison baseline.

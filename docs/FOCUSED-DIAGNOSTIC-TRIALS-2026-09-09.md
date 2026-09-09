@@ -1,6 +1,6 @@
 # Focused diagnostic trials — staged, not deployed
 
-Five focused payloads are staged under ignored `artifacts/focused-trials`.
+Six focused payloads are staged under ignored `artifacts/focused-trials`.
 Each `trial-plan.json` contains relative source/destination paths and exact
 candidate/baseline hash preconditions. They use transaction support from
 `b515e72` (PR #139). No payload is an installer or a complete runtime.
@@ -9,13 +9,14 @@ embedded. Native build evidence remains in the focused source handoff.
 
 | Trial | Reviewed source | Payload | Installation destinations |
 | --- | --- | --- | --- |
+| `native-upload-performance-24687ff` | `24687ff`, PR #224 | Earlier native CPU changes, buffer caches and trace-only upload lock guard | Both existing DLL locations; cumulative alternative to the smaller native trial |
 | `lua-performance-008e1b0` | `008e1b0`, PR #197 | Prompt/draw/follow allocation optimisations | Three existing Lua modules; overlaps communication controller prompts |
 | `native-performance-8b3697a` | `8b3697a`, PR #189 | One native DLL, three CPU optimisations | Existing DLL in `binaries` and mod `bin`; alternative to native UI trial |
 | `native-ui-a4ec84c` | `a4ec84c`, PR #133 | One native DLL | Existing DLL in `binaries` and in the mod's `bin` directory |
 | `marker-metrics-8178c5f` | `8178c5f`, PR #138 | Main Lua and measurement module | Existing main Lua plus new marker module |
 | `communication-848b78d` | `848b78d`, PR #161 | Fifteen Lua files | Eight existing files plus seven new modules |
 
-The native trial supports owned UI readback while the optional DLSS UI tag
+The native UI trial supports owned UI readback while the optional DLSS UI tag
 remains disabled. The marker trial measures inputs to both eyes' draws without
 changing sizing. Keep them separate during initial trials so their effects can
 be attributed. Preserve accepted Lua `3341afb`, native `23345e5`, viewer
@@ -24,7 +25,7 @@ The communication candidate includes wheel and push-to-talk ownership guards;
 both new physical bindings remain unassigned. It and the marker candidate both
 replace the main Lua file, so their staged payloads cannot be stacked blindly.
 
-The native candidate hash is
+The native UI candidate hash is
 `3FD7B9100009002F851EB17EBA559EACFB3F378E50F11CBEF35F3F1C49552446`.
 Both installed native copies still hash to
 `FCCDD0DE699F9D50D2BD316792829D4EE5700843D925D194BE4DF1F3EEB02369`.
@@ -32,10 +33,35 @@ The marker plan requires the installed main Lua's observed baseline hash and
 requires the new module to be absent. A changed baseline needs review rather
 than silently replacing these preconditions with newly observed hashes.
 
+## Extended native performance plan
+
+`native-upload-performance-24687ff` contains DLL SHA256
+`693AEDDC78360BE3A3AB79B22EC76F2D8F1EE0E8630FD9C4044D00C827C04578`.
+Its two destination preconditions remain the accepted native hash above.
+This plan compares accepted `23345e5` with the cumulative focused CPU changes;
+it does not isolate just the final upload guard. The smaller `8b3697a` trial
+remains staged unchanged for the first focused comparison. Do not refresh these
+preconditions automatically after deploying another candidate.
+
+The extended plan has no newer mainline shader reports, SR/UI observations,
+pose arithmetic, profiler edits or Lua changes. Map/Unmap gains were measured
+with diagnostic hooks enabled; upload-staging timing remains unmeasured.
+See [performance scope](NATIVE-HOOK-PERFORMANCE.md#hook-activation-and-production-upload-path).
+The candidate branch has `docs/UPLOAD-PERFORMANCE-FOCUSED-2026-09-09.md` with
+build, source-chain and validation details. It is staged, not deployed.
+
+Copied-file application and rollback pass for both DLL destinations. Candidate
+and restored hashes match, an unrelated sentinel survives, and both actual
+installed DLLs remain unchanged. Receipt:
+`artifacts/unattended/native-upload-rehearsal-13419d75e1ac4c95a2ee5ad52c185899/rehearsal.json`.
+The six-plan report still lists four overlapping destinations; both native DLL
+locations are now shared by three alternative plans. Overlap does not permit
+stacking, and hash matches do not establish Ready or behavioural compatibility.
+
 ## Rehearsal evidence
 
-Latest read-only package status checks all five current plans successfully:
-`artifacts/unattended/focused-trial-status-20260909.json`. Use
+Latest read-only package status checks all six current plans successfully:
+`artifacts/unattended/focused-trial-status-latest-20260909.json`. Use
 `tools/stereo/get-focused-trial-status.ps1 -PlanPaths <plan paths> -GameRoot <installation>`
 and pipe its returned object to `ConvertTo-Json -Depth 10` to inspect it. The tool
 reads files only, checks exact payload/baseline hashes and required absence,

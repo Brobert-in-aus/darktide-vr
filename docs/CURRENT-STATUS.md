@@ -12,17 +12,22 @@ Streamer and no game/launcher processes. Accepted installed Lua/native/bootstrap
 hashes remain unchanged; this is not Ready certification. Receipt:
 `artifacts/unattended/performance-afternoon-inventory-20260909.json`.
 
-Two focused performance packages are now staged separately from accumulated
-mainline development. Native `8b3697a` (PR #189) reduces exhausted diagnostic,
-resource-name and command-snapshot CPU costs. Lua `008e1b0` (PR #197) removes
-prompt/draw result tables and HUD-follow temporary helpers in three modules.
-Both copied-file application/rollback rehearsals pass. The Lua package's 49
-chunks compile and its three affected existing checks pass. Performance results
-are isolated CPU/allocation measurements, not game FPS or worn acceptance.
-See the [resume handoff](handoffs/2026-09-09-resume.md) for receipts and candidate
-compatibility. Later buffer-lookup and pose-math changes remain outside the
-focused native payload. The [performance review map](PERFORMANCE-REVIEW-2026-09-09.md)
-separates staged packages, later source changes and saved-trace findings.
+Three focused performance packages are staged separately from accumulated
+mainline development. Native `8b3697a` (PR #189) contains the original three CPU
+optimisations. Native extension `24687ff` (PR #224) adds buffer caches and the
+trace-only upload lock guard. Lua `008e1b0` (PR #197) reduces prompt/draw/follow
+allocations in three modules. All three copied-file apply/rollback rehearsals
+pass. The original smaller trials remain available; the extended native plan
+compares cumulative changes against accepted native `23345e5`.
+
+All six staged diagnostic/performance plans have matching source and baseline
+preconditions. The latest receipt is
+`artifacts/unattended/focused-trial-status-latest-20260909.json`. No live change
+or new visual acceptance. Map/Unmap gains were measured with diagnostic hooks
+enabled; the saved flags leave that mode off and request the lighting fix,
+whose staging update cost remains unmeasured. Performance results are offline
+CPU/allocation evidence, not game FPS. See the [performance review map](PERFORMANCE-REVIEW-2026-09-09.md)
+and [staged plans](FOCUSED-DIAGNOSTIC-TRIALS-2026-09-09.md) for scope and receipts.
 The older suite totals below are historical checkpoints.
 ## 9 September development resumed
 

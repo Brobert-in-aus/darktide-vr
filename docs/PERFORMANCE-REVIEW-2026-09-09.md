@@ -17,7 +17,7 @@ melee remains paused. DLSS blur around HUD items remains open.
 
 A later focused buffer candidate `516f935` (PR #215) builds on `8b3697a` and
 adds the point/range caches and conservative bounds only. It is **built, not
-staged or deployed**; the five staged plans and their hashes remain unchanged.
+staged or deployed**; the original staged plans and their hashes remain unchanged.
 Its native DLL and affected executables build; two affected checks pass in
 2.76 seconds. The candidate branch contains
 `docs/BUFFER-PERFORMANCE-FOCUSED-2026-09-09.md` with scope, commands and DLL hash.
@@ -32,6 +32,13 @@ Both are separate source/build candidates and leave staged payloads unchanged.
 Their candidate branches contain focused validation handoffs. The actual
 [mapping measurements](NATIVE-HOOK-PERFORMANCE.md#retained-focused-pointer-cache-candidate)
 remain distinct from game frame-time evidence.
+
+The cumulative native extension `24687ff` (PR #224) adds the trace-only upload
+lock guard to `28a5500` and is now staged separately as
+`native-upload-performance-24687ff`. Its copied-file rollback passes and all
+six plans' file preconditions match. Its baseline is accepted native `23345e5`,
+so that plan measures the cumulative changes. The original smaller native and
+Lua plans remain unchanged. See the [current staged plans](FOCUSED-DIAGNOSTIC-TRIALS-2026-09-09.md).
 
 Evaluate each separately against its accepted baseline, restoring that baseline
 between trials. Use the staged hash preconditions and save the transaction and
