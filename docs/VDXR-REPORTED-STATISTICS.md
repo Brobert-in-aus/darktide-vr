@@ -40,7 +40,7 @@ basis for locating the sustained wait. This reported-statistics caveat neither
 changes that evidence nor establishes a backend cause or fix.
 
 Three Python cases pass: first-sample preservation and separate views; fields,
-threads/processes, duplicate frames and counter restarts; invalid/zero/unsigned
+processes, duplicate frames and counter restarts; invalid/zero/unsigned
 limits; CLI source/hardlink preservation. Reports are
 `artifacts/unattended/vdxr-{onset,later}-app-statistics-20260909.json` with matching
 logs. Validation: `vdxr-app-statistics-tests-20260909.log`. No new capture,

@@ -7,10 +7,10 @@ this work session. Continue useful development and measured performance work
 until the user says home/stop; the 20-minute heartbeat is active. DLSS blur around
 HUD items remains open in the active todo list. No live changes were made.
 
-Latest read-only Inventory at 14:58 Brisbane finds the Quest asleep, one VD
+Latest read-only Inventory at 15:34 Brisbane finds the Quest asleep, one VD
 Streamer and no game/launcher processes. Accepted installed Lua/native/bootstrap
 hashes remain unchanged; this is not Ready certification. Receipt:
-`artifacts/unattended/performance-inventory-20260909.json`.
+`artifacts/unattended/performance-late-inventory-20260909.json`.
 
 Two focused performance packages are now staged separately from accumulated
 mainline development. Native `8b3697a` (PR #189) reduces exhausted diagnostic,
@@ -21,7 +21,9 @@ chunks compile and its three affected existing checks pass. Performance results
 are isolated CPU/allocation measurements, not game FPS or worn acceptance.
 See the [resume handoff](handoffs/2026-09-09-resume.md) for receipts and candidate
 compatibility. Later buffer-lookup and pose-math changes remain outside the
-focused native payload. The older suite totals below are historical checkpoints.
+focused native payload. The [performance review map](PERFORMANCE-REVIEW-2026-09-09.md)
+separates staged packages, later source changes and saved-trace findings.
+The older suite totals below are historical checkpoints.
 ## 9 September development resumed
 
 The user authorized continued development and a 20-minute heartbeat. Billboarding

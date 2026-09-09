@@ -39,6 +39,8 @@ they are not GPU timings or display latency. No worn acceptance is inferred.
 | Projection signs/tangents | PR #199, [measurements](PROJECTION-LOOP-PERFORMANCE.md) | Engine value doubles limit timing interpretation |
 | Narrow native state copies | PR #202, [measurements](NARROW-COMMAND-SNAPSHOT-PERFORMANCE.md) | Isolated CPU pattern; actual call frequency unmeasured |
 | Full-range cache and bounds | PR #204, [measurements](BUFFER-RANGE-PERFORMANCE.md) | Internal gaps still scan; actual hit distribution unmeasured |
+| Billboard pair snapshot sorting | PR #207, [measurements](BILLBOARD-SNAPSHOT-PERFORMANCE.md) | Actual candidate counts and lock contention unmeasured |
+| Optional bulk shader snapshot | PR #208, [measurements](BILLBOARD-SHADER-SNAPSHOT-PERFORMANCE.md) | Requires new native export for faster path; older DLL keeps legacy reporting |
 
 Do not deploy accumulated mainline binaries to obtain these changes. Port and
 validate a focused candidate first, then compare it separately. Retain the staged
@@ -54,3 +56,17 @@ unchanged. See the [hand-pose review](TWO-HAND-ROTATION-PERFORMANCE-REVIEW.md).
 The existing stage timing and [VDXR analysis](VDXR-SUBMISSION-SLOWDOWN.md) remain
 the route to investigating the sustained submission delay. A fresh-session
 restart and these microbenchmarks are not evidence of a fix.
+
+## Saved runtime trace findings
+
+PR #209 measures temporal overlap from the existing raw-QPC captures. The
+non-running-start async idle wait overlaps completed `OVR_BeginFrame` spans
+by 99.77% at onset and 99.88% later. This supports the existing runtime-boundary
+finding; overlap alone does not identify a backend cause or pair frame IDs.
+
+PR #210 preserves raw runtime statistics and reports both all-sample and
+after-first views. The later capture starts with render-CPU value 227,574,800,
+raising its mean to 605,959 versus 3,919 after the first sample. Public runtime
+source suggests a stale accumulator as a hypothesis; the installed binary has
+not been proven to match that source. See [reported statistics](VDXR-REPORTED-STATISTICS.md).
+No new capture, runtime setting change, deployment or gameplay check was made.
