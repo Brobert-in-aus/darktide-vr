@@ -1,5 +1,23 @@
 # Offline native hook comparison
 
+## Exhausted target-CBV logger, 10 September
+
+The target billboard diagnostic now returns immediately after its 2,048-sample
+limit is exhausted. Previously it still incremented the attempt counter,
+resolved the buffer under the registry lock and could call Map/Unmap before
+rejecting the sample. Rejected calls now need one relaxed counter read.
+
+Every admitted sample already consumes an attempt, so both 2,048-entry streams
+are exhausted at this point. Neither counter resets or is exported. The later
+atomic reservation remains authoritative for concurrent last-sample callers;
+in-flight work and admitted formatting/cleanup are unchanged. This is a source
+inspection result, not a measured FPS or logger timing gain.
+
+Native Release builds and `native_capture_hooks` passes (0.44 seconds). That
+fixture does not directly exhaust this shader-specific logger. No new gameplay
+fixtures, live diagnostic, deployment or staged-byte changes. Receipts:
+`artifacts/unattended/exhausted-target-cbv-{build,tests}-20260910.log`.
+
 9 September 2026. This benchmark compares the accepted native DLL against the
 focused three-optimisation payload through their actual Direct3D12 hooks.
 It records command lists only: no queue execution, Present, OpenXR session,

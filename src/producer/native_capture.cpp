@@ -6478,6 +6478,12 @@ void observe_billboard_cbv(const DescriptorInfo& descriptor) {
 }
 
 void log_target_billboard_cbv(const DescriptorInfo& descriptor) {
+  // Each admitted sample already consumed an attempt. At this limit both
+  // streams are exhausted; avoid resource lookup and Map/Unmap just to reject.
+  // Keep the later fetch_add gate for callers racing to reserve the last sample.
+  if (billboard_target_cbv_log_count.load(std::memory_order_relaxed) >= 2048) {
+    return;
+  }
   const auto attempt = billboard_target_cbv_attempt_count.fetch_add(
       1, std::memory_order_relaxed);
   if (attempt < 2048) {

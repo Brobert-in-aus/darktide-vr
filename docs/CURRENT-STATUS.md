@@ -2,6 +2,11 @@
 
 ## 10 September development resumed
 
+Exhausted target-CBV diagnostics now return before buffer lookup and optional
+Map/Unmap work after 2,048 samples. The concurrent reservation gate remains in
+place. Native build/hook check passes; source inspection establishes skipped
+work, not measured frame-time savings. This remains undeployed.
+
 The separate target-CBV billboard logger now also validates the staging extent
 and uses the selected fallback mapping consistently. Native build and existing
 boundary/hook checks pass (2.44 seconds); target logger routing is source-reviewed,
