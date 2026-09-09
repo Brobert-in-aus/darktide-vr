@@ -107,8 +107,9 @@ a new left-eye PNG beside stale results. Its four output files also reject links
 to any source bitmap. Three real-BMP CLI tests cover those failures with new and
 existing report directories, hard links, unchanged input bytes and a known
 single-pixel difference. The new `dlss_ui_input_comparison` CTest is registered;
-all four DLSS analysis CTests pass in 3.64 seconds. Full suite count is now 181;
-the last full 180-test result predates this addition. Pixel differences remain
+all four DLSS analysis CTests pass in 3.64 seconds. The subsequent full offline
+Release run at `16498cf` passes 181/181 in 62.30 seconds with headset tests OFF;
+see `artifacts/unattended/midday-offline-suite-20260909.log`. Pixel differences remain
 composition evidence, not recovered alpha or a diagnosis of surrounding-HUD blur.
 
 The detail-report writer now rejects output paths that identify its generated

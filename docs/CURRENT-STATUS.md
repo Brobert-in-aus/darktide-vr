@@ -14,16 +14,18 @@ Lua/native hashes still match the accepted build. No proximity change or fresh
 Ready certification; continue offline. Receipt:
 `artifacts/unattended/report-tools-inventory-20260909.json` (and matching log).
 Latest offline additions cover stock ranged input sequences, stock popup pass
-restoration and capture-preserving diagnostic reports. Four DLSS analysis CTests
-pass in 3.69 seconds; registration is now 181. The full 180-test run below is
-the last full-suite result and predates these additions.
+restoration and capture-preserving diagnostic reports. Full Windows x64 offline
+Release at `16498cf` passes **181/181 in 62.30 seconds**, headset tests OFF,
+including the pinned LuaJIT source gate (69 chunks). Receipt:
+`artifacts/unattended/midday-offline-suite-20260909.log`. Optional cached-stock
+contracts have separate recorded passes; no live acceptance is implied.
 
 The two authorized ADB connections were verified as aliases for the same Quest 3.
 Read-only inventory now reports one physical Quest, duplicate transports resolved,
 one Virtual Desktop Streamer and Darktide closed. Inventory does not certify Ready
 or alter proximity. Selection requires matching hardware identity and model for
 every alias; distinct headsets and missing/failed identity queries remain gated.
-The latest full offline Release run passes 180/180 in 58.15 seconds at `8e723b1`,
+The earlier full offline Release run passes 180/180 in 58.15 seconds at `8e723b1`,
 including communication/PTT, popup lifetime, owned UI diagnostics, marker log
 analysis, selective deployment/recovery preconditions, retiring-input guards
 and dynamic popup callback admission. It also covers selected-package descriptor
