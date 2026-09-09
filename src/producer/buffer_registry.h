@@ -38,6 +38,12 @@ struct BufferRegistry : std::enable_shared_from_this<BufferRegistry> {
   // allocations must retain the reverse-scan winner. Read live metadata by
   // index so Map/Unmap changes remain visible without caching raw pointers.
   std::optional<BufferResourceInfo> resolve_locked(std::uint64_t address) {
+    if (resources.empty()) return std::nullopt;
+    // The reverse scan already finds the newest allocation immediately. Keep
+    // that cheap case ahead of hashing and preserve its overlap precedence.
+    const auto& newest = resources.back();
+    if (address >= newest.gpu_start && address - newest.gpu_start < newest.size)
+      return newest;
     const auto bucket = (address >> 8) ^ (address >> 16) ^
                         (address >> 24) ^ (address >> 32);
     auto& cached = lookup_[bucket % lookup_.size()];
@@ -47,7 +53,7 @@ struct BufferRegistry : std::enable_shared_from_this<BufferRegistry> {
           : std::nullopt;
     }
     cached = {address, resources.size(), true};
-    for (std::size_t index = resources.size(); index != 0; --index) {
+    for (std::size_t index = resources.size() - 1; index != 0; --index) {
       const auto& resource = resources[index - 1];
       if (address >= resource.gpu_start &&
           address - resource.gpu_start < resource.size) {
