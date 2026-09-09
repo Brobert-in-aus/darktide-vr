@@ -25,6 +25,20 @@ ammo/charge progression, every alias or live firing acceptance.
 Receipts: `artifacts/unattended/ranged-input-{main,focused}-{default,saved}-timed-20260909.log`
 and `ranged-saved-bindings-recheck-20260909.json` in the same directory.
 
+The separate optional `tests/tooling/test-ranged-sequences-stock-contract.lua`
+now loads the stock formatter, parser, input hierarchy and queue for plasma,
+shotgun and force-staff templates. Its 47 observed steps cover hold/toggle ADS,
+reload, plasma charge cancellation, staff charge/fire/release/vent, and tracking
+loss with neutral rearming. Main and focused `848b78d` pass with both default
+and saved bindings. Run with the pinned LuaJIT executable, cached source root,
+mapper path and optional saved-table path as its three arguments.
+
+This fixture consumes inputs immediately. It excludes buffer aging, history
+replay, action execution, damage, networking and live acceptance. Wield inputs
+are excluded from the template environment and every sampled frame asserts no
+wield route was activated; the separate wield-overlap audit remains open.
+Receipts: `artifacts/unattended/ranged-sequences-{main,focused}-{default,saved}-20260909.log`.
+
 ## Historical 7 September: online-rules pass while VD is closed
 
 The [ranged reticle candidate](RANGED-ONLINE-RETICLE.md) fixes two newly confirmed
