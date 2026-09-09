@@ -1,5 +1,12 @@
 # Ranged reticle and firing-input pass
 
+9 September: preserve the accepted mixed deployment in the
+[night handoff](handoffs/2026-09-08-night.md). The 7 September migration and trial
+status below are historical. Current input verification also covers the saved
+right-stick reload route across all 62 templates; see the
+[ranged audit](RANGED-WEAPON-AUDIT.md). Broader worn weapon-family acceptance
+remains open; this document is not an instruction to deploy accumulated main code.
+
 Implemented offline on 7 September 2026 after the roomscale chase at `72831bd`.
 The combined candidate is now deployed with fresh stereo and target transport
 readiness. The user is testing staff/gun alignment; ranged visual acceptance is
@@ -32,8 +39,10 @@ clears the older target. A new Lua file with an old capture DLL clears the
 online target rather than displaying an incorrect reconstructed ray.
 
 This changes shared gameplay-aim transport from **v3 to v4** and adds
-`dtvr_set_gameplay_aim_target`. Deploy **Lua, capture DLL and XR harness together**
-after Ready passes. The existing distance-only export remains available for
+`dtvr_set_gameplay_aim_target`. That migration required **Lua, capture DLL and XR
+harness together** after Ready. The accepted current deployment already includes
+its later reviewed updates; follow the night handoff for preservation. The
+existing distance-only export remains available for
 legacy local-pose and isolated synthetic fixtures. Native startup now reports
 `DARKTIDEVR_ONLINE_RETICLE target_transport=ready` when the new export is present.
 

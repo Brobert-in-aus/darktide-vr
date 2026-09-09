@@ -1,6 +1,27 @@
 # Ranged weapon aim audit
 
-## Latest: online-rules pass while VD is closed
+## 9 September: preserve acceptance and check saved input routes
+
+The [8 September night handoff](handoffs/2026-09-08-night.md) owns the accepted
+mixed installation and tested reticle/feedback/stabilization changes. The dated
+candidate and deployment wording below is historical; do not rebuild or deploy
+main native sources to repeat it. Full weapon-family and mission acceptance
+remain open in the [active todo](phase1/todo-2026-09-09.md).
+
+The stock input fixture now resolves representative primary/alternate/special/
+reload controls from an optional saved-binding table, including stick sectors.
+Current saved settings still match the 43-key reviewed snapshot. Both main and
+focused `848b78d` mappers pass all 62 template tables and 530 combat input elements
+with hold/toggle ADS and 256 real mapper transitions, using right-stick-down
+reload. Both also retain the default-profile pass. A supplied unbound reload is
+rejected instead of silently using default X. Settings and installed files were
+not changed. These are element-admission checks, not full action hierarchy,
+ammo/charge progression, every alias or live firing acceptance.
+
+Receipts: `artifacts/unattended/ranged-input-{main,focused}-{default,saved}-20260909.log`
+and `ranged-saved-bindings-recheck-20260909.json` in the same directory.
+
+## Historical 7 September: online-rules pass while VD is closed
 
 The [ranged reticle candidate](RANGED-ONLINE-RETICLE.md) fixes two newly confirmed
 online mismatches: missing gun recoil/sway in the reticle ray and distance-only
