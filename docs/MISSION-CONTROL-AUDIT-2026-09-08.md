@@ -84,6 +84,26 @@ this raw-input ambiguity in the fixture, but no replacement layout is imposed.
 The optional `test-wield-overlap-stock-contract.lua` passes with both integrated
 and accepted focused mappers. Full action-queue/weapon execution remains untested.
 
+The extended optional fixture now executes the actual stock slot resolver,
+unwield condition and weapon/visual-loadout/ability `can_wield` methods. Thirty-two
+cases combine eight valid carried-item ownership layouts, device present/absent,
+and both selector orders. From a weapon, cycle chooses the large pocketable when
+present, otherwise the small slot when present. From either pocketable, its
+configured next slot is the other pocketable even when that slot is empty.
+The selected slot then passes through weapon, visual-loadout and ability gates;
+rejection at this condition does not retry the other simultaneously pressed
+selector. Missing/non-wieldable weapon templates, already-wielded slots and
+depleted-ability policy retain their stock checks.
+
+Both main and focused `848b78d` mappers pass, using the existing fixture's X/X
+overlap and separate-button comparison. Receipts:
+`artifacts/unattended/wield-slots-{main,focused}-20260909.log`.
+Inventory/weapon/ability state and `can_use_ability` results are constructed.
+Three independent dispatch-veto cases also verify short-circuit order. This
+extends slot/condition evidence, not full queue consumption, inventory mutation,
+live mission progression or a confirmed failure of the user's saved bindings.
+No settings or production code changed.
+
 The old recommendations to bind unused stick directions and move ability onto
 one of them no longer apply: both directions and left grip are already assigned.
 Normalized diagnostic extracts stay under ignored `artifacts/unattended/`;

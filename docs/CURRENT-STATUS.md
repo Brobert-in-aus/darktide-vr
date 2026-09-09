@@ -7,12 +7,12 @@ remains first. The initial offline checkpoint separates RGB and alpha-only
 readback changes; see the [resume handoff](handoffs/2026-09-09-resume.md).
 The accepted installed build is preserved. The night shutdown below is historical.
 
-At **12:50 Brisbane, 9 September**, the 20-minute development heartbeat remains
+At **13:44 Brisbane, 9 September**, the 20-minute development heartbeat remains
 active. Read-only Inventory finds one physical Quest via two resolved transports,
 one VD Streamer, the Quest asleep, and zero game/launcher processes. Installed
 Lua/native hashes still match the accepted build. No proximity change or fresh
 Ready certification; continue offline. Receipt:
-`artifacts/unattended/report-tools-inventory-20260909.json` (and matching log).
+`artifacts/unattended/sr-wield-inventory-20260909.json` (and matching log).
 Latest offline additions cover stock ranged input sequences, stock popup pass
 restoration, capture-preserving diagnostic reports and a default-off SR resource
 observation. Full Windows x64 offline Release for that undeployed candidate
