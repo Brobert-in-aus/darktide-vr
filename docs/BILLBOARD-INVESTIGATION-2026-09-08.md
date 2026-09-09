@@ -1,5 +1,21 @@
 # Billboard investigation, 8 September
 
+## Target-CBV staging selection follow-up, 10 September
+
+The separate `log_target_billboard_cbv` reader also selected any non-null staging
+pointer without checking its recorded extent. It now uses the same complete-range
+predicate as the general reader. Its later byte pointer comes from the selected
+mapping, so a short staging region cannot override the persistent/temporary Map
+fallback. Staging remains preferred when it contains the request; sample limits,
+formatting and temporary-map cleanup are unchanged.
+
+Native Release builds; existing staging-boundary and native-hook checks pass
+2/2 in 2.44 seconds. The target logger's fallback selection is reviewed in source,
+not directly driven by these fixtures, and no live diagnostic was run. Receipts:
+`artifacts/unattended/target-cbv-staging-{build,tests}-20260910.log`.
+No installed/staged files or shader behaviour changed. Pointer lifetime and
+concurrent mapping validity remain separate from these extent checks.
+
 ## Diagnostic copy address correction, 10 September
 
 The recorded-copy lookup used `delta + byte_count <= copy.bytes`, which can

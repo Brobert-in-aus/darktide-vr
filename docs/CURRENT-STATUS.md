@@ -2,6 +2,11 @@
 
 ## 10 September development resumed
 
+The separate target-CBV billboard logger now also validates the staging extent
+and uses the selected fallback mapping consistently. Native build and existing
+boundary/hook checks pass (2.44 seconds); target logger routing is source-reviewed,
+not live-tested. This source-only follow-up preserves installed/staged files.
+
 Diagnostic recorded-copy selection and source-address translation now reject
 unsigned wrap instead of potentially reading a different allocation. Ordinary
 ranges retain their prior results across 25,600 comparisons; native build and

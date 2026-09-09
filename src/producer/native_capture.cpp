@@ -6523,7 +6523,9 @@ void log_target_billboard_cbv(const DescriptorInfo& descriptor) {
   const auto readable_size = (std::min<std::uint64_t>)(
       descriptor.width == 0 ? 512 : descriptor.width,
       resource->size - resource_offset);
-  void* mapped = resource->staging_base
+  const bool used_staging_mapping =
+      resource->contains_staging_range(resource_offset, readable_size);
+  void* mapped = used_staging_mapping
                      ? resource->staging_base
                      : resource->mapped && resource->mapped_subresource == 0
                            ? resource->mapped_base
@@ -6555,10 +6557,8 @@ void log_target_billboard_cbv(const DescriptorInfo& descriptor) {
     }
     return;
   }
-  const auto* bytes = resource->staging_base
-                          ? resource->staging_base + resource_offset
-                          : static_cast<const std::byte*>(mapped) +
-                                resource_offset;
+  // Use the selected mapping, including fallback when staging is too short.
+  const auto* bytes = static_cast<const std::byte*>(mapped) + resource_offset;
   std::array<wchar_t, MAX_PATH> temporary_path{};
   if (GetTempPathW(static_cast<DWORD>(temporary_path.size()),
                    temporary_path.data()) != 0) {
