@@ -13462,6 +13462,7 @@ do
 end
 
 mod.on_disabled = function()
+    presentation.marker_metrics.stop()
     pcall(presentation.communication_input.cancel)
     presentation.push_to_talk.cancel()
     if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
@@ -13478,6 +13479,7 @@ mod.on_disabled = function()
 end
 
 mod.on_unload = function()
+    presentation.marker_metrics.stop()
     pcall(presentation.communication_input.cancel)
     presentation.push_to_talk.cancel()
     if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end

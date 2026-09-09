@@ -117,7 +117,44 @@ completed=#messages
 pair(14)
 assert(#messages==completed)
 assert(calls>260)
+-- Stop/restart during a draw must not publish the old scope into the new run.
+-- A real draw error still propagates, without consuming the new run's pair.
+for _,fail in ipairs({false,true}) do
+    metrics.start(4)
+    local before_messages=#messages
+    local success,problem=pcall(metrics.draw,renderer,'markers',owner,14.5,1,nil,function()
+        metrics.stop();metrics.start(4)
+        renderer:script_draw_bitmap('old',{0,0,0},{10,20,0})
+        if fail then error('retired draw failure')end
+    end)
+    assert(success~=fail and (not fail or problem:find('retired draw failure',1,true)))
+    metrics.draw(renderer,'markers',owner,14.5,2,nil,function()
+        renderer:script_draw_bitmap('old',{0,0,0},{10,20,0})
+    end)
+    assert(#messages==before_messages+1 and messages[#messages]:find('unmatched=true',1,true),
+        'retired scope was published into the restarted measurement')
+end
 -- Reordered/different resources must not be silently paired by ordinal.
+for _,fail in ipairs({false,true})do
+    metrics.start(4)
+    local before_messages=#messages
+    local success=pcall(metrics.draw,renderer,'markers',owner,14.75,1,nil,function()
+        metrics.start(4)
+        metrics.draw(renderer,'markers',owner,14.75,1,nil,function()
+            renderer:script_draw_bitmap('new',{0,0,0},{10,20,0})
+        end)
+        local before_measure=measure_calls
+        renderer:script_draw_text('private text',24,'font',{0,0,0},{100,20,0})
+        assert(measure_calls==before_measure,'retired outer draw still measured text')
+        if fail then error('old failure')end
+    end)
+    assert(success~=fail)
+    metrics.draw(renderer,'markers',owner,14.75,2,nil,function()
+        renderer:script_draw_bitmap('new',{0,0,0},{10,20,0})
+    end)
+    assert(#messages==before_messages+1 and messages[#messages]:find('left=1 right=1 matched=1',1,true),
+        'retired outer draw overwrote or cleared the new primary scope')
+end
 metrics.start(4)
 metrics.draw(renderer,'markers',owner,15,1,nil,function()
     renderer:script_draw_bitmap('first',{0,0,0},{10,20,0})

@@ -6,6 +6,21 @@ opt-in measurement scope around primary/replay marker, interaction-popup and
 smart-tag draws. It changes no size, position, font, color or GUI ownership.
 The accepted live preview has not been updated with this candidate.
 
+The separate focused port `89bd88d`, PR #136, starts at accepted Lua `3341afb`
+in `D:/Projects/games-xr/Darktide VR marker metrics`. It contains only this
+observer and the main draw-scope wiring. All 50 chunks compile; observer/GUI,
+renderer lifetime, crosshair feedback and source-invariant checks pass, along
+with actual cached stock text/layer contracts. It remains undeployed.
+
+The subsequent integrated lifecycle fix gives each measurement run a generation.
+Stop/restart during a draw retires the old scope, including its remaining text
+queries; unwinding it cannot publish over or clear a new nested primary record.
+Stock draw failures still propagate. Disable and unload explicitly stop the
+observer. A regression failed before the guard; expanded nested success/failure
+fixtures pass. Three observer/GUI/source-invariant CTests pass in 0.50 seconds,
+two main renderer/input checks pass in 0.04 seconds and all 69 chunks compile.
+Port this follow-up before using the focused candidate.
+
 When the candidate is deployed, `/dtvr_marker_metrics` measures the next 60
 scoped draws and stops automatically. `/dtvr_marker_metrics_off` cancels it.
 These are draw passes, not 60 frames: a frame can contain several HUD elements

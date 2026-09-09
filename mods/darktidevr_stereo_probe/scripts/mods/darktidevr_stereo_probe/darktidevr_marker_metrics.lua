@@ -1,6 +1,6 @@
 -- Bounded, opt-in comparison of GUI input geometry, not rendered pixel extents.
 local Metrics = {}
-local state = {budget=0, pending={}, scope=nil}
+local state = {budget=0, pending={}, scope=nil, generation=0}
 local specs = {
     script_draw_bitmap = {position=2,size=3,token=1,color=4},
     script_draw_bitmap_uv = {position=2,size=3,token=1,color=5},
@@ -131,20 +131,30 @@ local function invoke(wrapper, renderer, draw, ...)
     return draw(...)
 end
 function Metrics.start(budget)
+    state.generation=state.generation+1
     budget=tonumber(budget) or 60
     if not finite(budget) then budget=60 end
     state.budget=math.min(240,math.max(2,math.floor(budget)))
     state.pending={}
 end
-function Metrics.stop() state.budget=0; state.pending={} end
+function Metrics.stop()
+    state.generation=state.generation+1
+    state.budget=0;state.pending={}
+end
 function Metrics.draw(renderer,kind,owner,t,eye,wrapper,draw,...)
     if state.budget <= 0 then return invoke(wrapper,renderer,draw,...) end
     state.budget=state.budget-1
     local previous=state.scope
-    local scope={renderer=renderer,rows={},total=0,errors=0,unsupported=0}
+    local scope={renderer=renderer,rows={},total=0,errors=0,unsupported=0,generation=state.generation}
     state.scope=scope
     local result=pack(pcall(invoke,wrapper,renderer,draw,...))
     state.scope=previous
+    -- Disable or a new diagnostic command can run during a callback. Never
+    -- publish its previous owner's partial scope into the new measurement.
+    if scope.generation~=state.generation then
+        if not result[1] then error(result[2],0) end
+        return unpack(result,2,result.n)
+    end
     if not result[1] then
         state.pending[owner]=nil
         if state.budget==0 then state.pending={} end
@@ -160,7 +170,7 @@ function Metrics.draw(renderer,kind,owner,t,eye,wrapper,draw,...)
             if state.report then pcall(state.report,kind,summary) end
         elseif state.unmatched then pcall(state.unmatched,kind) end
     end
-    if state.budget==0 then
+    if scope.generation==state.generation and state.budget==0 then
         state.pending={}
         if state.finished then pcall(state.finished) end
     end
@@ -171,7 +181,7 @@ function Metrics.install(mod,renderer_class)
     for name,spec in pairs(specs) do
         if renderer_class[name] then
             mod:hook(renderer_class,name,function(func,renderer,...)
-                if state.scope and state.scope.renderer==renderer then
+                if state.scope and state.scope.generation==state.generation and state.scope.renderer==renderer then
                     local ok=pcall(capture,name,spec,renderer,...)
                     if not ok then state.scope.errors=state.scope.errors+1 end
                 end
