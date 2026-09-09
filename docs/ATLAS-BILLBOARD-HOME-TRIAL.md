@@ -1,5 +1,20 @@
 # Focused smoke comparison preparation
 
+9 September offline refresh: the apply helper now passes the reviewed source
+SHA-256 and an explicit absent-destination requirement into the transaction.
+The checks therefore remain enforced after Ready and during transaction staging,
+instead of relying only on earlier observations. This needs transaction source
+`b515e72` or later. Both profiles pass current-installation `-ValidateOnly`.
+
+Both two-shader profiles were separately committed and restored in owned fake
+installation roots. The staged shader hashes matched; recovery removed both
+additions and preserved the copied production particle shader and an unrelated
+sentinel by hash. Receipt:
+`artifacts/unattended/atlas-trial-rehearsal-fcdade7e25bd44c987e99eca03a0a27d/rehearsal.json`.
+It binds the refreshed local helper hash and retains both transaction/recovery
+manifests. No real apply/restore path, Ready session or visual experiment ran.
+The current game is closed; the live-session wording below describes 8 September.
+
 8 September 2026. **Staged only; no shader has been installed by this work.**
 The live SoloPlay/accepted preview session remains available. The two
 pixel-confirmed background/floor haze families, `e18a274cd89282e8` and
