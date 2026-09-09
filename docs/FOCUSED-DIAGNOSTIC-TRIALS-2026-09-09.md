@@ -11,7 +11,7 @@ embedded. Native build evidence remains in the focused source handoff.
 | --- | --- | --- | --- |
 | `native-ui-a4ec84c` | `a4ec84c`, PR #133 | One native DLL | Existing DLL in `binaries` and in the mod's `bin` directory |
 | `marker-metrics-8178c5f` | `8178c5f`, PR #138 | Main Lua and measurement module | Existing main Lua plus new marker module |
-| `communication-96292b4` | `96292b4`, PR #153 | Fifteen Lua files | Eight existing files plus seven new modules |
+| `communication-29b30bd` | `29b30bd`, PR #158 | Fifteen Lua files | Eight existing files plus seven new modules |
 
 The native trial supports owned UI readback while the optional DLSS UI tag
 remains disabled. The marker trial measures inputs to both eyes' draws without
@@ -60,7 +60,7 @@ Initial communication receipt for `2dded96` (ignored):
 Its focused source passes 64/64 Lua checks in 1.048 seconds, plus cached stock
 wheel/chat contracts with communication and microphone effects mocked.
 
-The current communication payload is `96292b4` (PR #153). It adds the retiring
+The preceding communication payload is `96292b4` (PR #153). It adds the retiring
 inventory/tag/tactical service guard, changing exactly one of the fifteen payload
 files. All destination hash/absence preconditions remain the original accepted
 baseline values. The previous `communication-2dded96` staging is retained as
@@ -71,8 +71,21 @@ chunks compile, 50 restored chunks compile, all 51 original fixture hashes match
 and all seven new modules are removed. These gates compile the copied descriptor
 along with its copied Lua files. The fifteen actual installed preconditions are
 still unchanged. Its focused source passes 64/64 Lua checks in 1.203 seconds.
-Latest receipt (ignored):
+Its receipt (ignored):
 `artifacts/unattended/communication-trial-refresh-e4bd9a80ff834baca290663659d0d007/rehearsal.json`.
+
+The current payload is `communication-29b30bd` (PR #158), adding same-view menu
+null-service recovery. Exactly one payload file changes from `96292b4`; all
+accepted destination preconditions are unchanged. The focused suite passes
+64/64 Lua checks in 0.895 seconds and its own package gate compiles 56 chunks.
+
+Its fresh copied-install rehearsal passes with 57 chunks installed and 50 after
+rollback, using the corrected source gate on each copied package's descriptor.
+All 51 original fixture files return to their original hashes and all seven new
+modules are removed. Actual installed preconditions remain unchanged. Earlier
+communication payload directories are historical versions, not additional trials.
+Latest receipt (ignored):
+`artifacts/unattended/menu-trial-refresh-32f98d42f6524f51a7aab8e978c43f0d/rehearsal.json`.
 
 ## Live trial boundary
 

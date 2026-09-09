@@ -24,7 +24,7 @@ resume handoff for the review map and focused, undeployed overlay candidate.
 Focused native UI diagnostics are `a4ec84c`, PR #133, based on accepted `23345e5`.
 The isolated DLL builds and six native checks plus the export/checksum roundtrip
 pass. It remains undeployed; live NGX matching and worn blur acceptance are open.
-Focused communication is `96292b4`, PR #153; marker diagnostics are `8178c5f`,
+Focused communication is `29b30bd`, PR #158; marker diagnostics are `8178c5f`,
 PR #138. Native, marker and communication payloads
 are staged separately and install/rollback rehearsals pass in temporary copies;
 see [focused trials](FOCUSED-DIAGNOSTIC-TRIALS-2026-09-09.md). No real deployment.

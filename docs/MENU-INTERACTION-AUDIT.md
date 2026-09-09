@@ -13,8 +13,10 @@ The regression reproduced the delayed click before the fix. Tests cover both
 primary and secondary buttons, queued back/scroll, held recovery, same-frame
 direct-service recovery and subsequent fresh presses. Existing immediate mouse
 and keyboard checks still pass. Five related menu/prompt/UI checks pass in 0.14
-seconds, and all 69 chunks compile. This source candidate is undeployed; worn
-menu behavior and the focused communication port remain pending.
+seconds, and all 69 chunks compile. Focused port `29b30bd` (PR #158) passes all
+64 Lua checks in 0.895 seconds and compiles 56 chunks. Its staged fifteen-file
+payload passes copied-install deployment and rollback, preserving original files
+and removing additions. No real deployment occurred; worn menu behavior is open.
 
 Latest checkpoint: the user accepted tested menu changes, but requested a broad
 binding-hint pass beyond menu footers. The hub talent-points [I] reminder and
