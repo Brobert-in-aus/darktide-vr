@@ -19,7 +19,40 @@ Stock draw failures still propagate. Disable and unload explicitly stop the
 observer. A regression failed before the guard; expanded nested success/failure
 fixtures pass. Three observer/GUI/source-invariant CTests pass in 0.50 seconds,
 two main renderer/input checks pass in 0.04 seconds and all 69 chunks compile.
-Port this follow-up before using the focused candidate.
+The focused follow-up is now `8178c5f`, PR #138, extending PR #136; its 50 chunks
+and expanded observer/stock/main-renderer checks pass.
+
+## Offline log summary
+
+Run `python -B tools/stereo/summarize-marker-metrics.py path/to/game.log
+--output artifacts/marker-summary.json` after saving a diagnostic log. The tool
+does not contact the game or headset. It hashes the input file and emits only
+summary counts, maxima and line locations; unrelated log text is omitted.
+
+Runs are split at observed starts/completions. An interrupted run remains
+`new_start`; a run with no completion record is `log_end`, which does not mean
+the observer is still running. Stop/disable, a crash or an incomplete log can
+also produce that result. A missing start is explicit. Completion records mean
+the bounded pass budget ended, not that every measurement or visual check passed.
+
+Each marker kind retains pair totals, empty/incomplete pairs, unmatched scopes,
+all mismatch counts and separate position/layer/depth maxima. A nonempty complete
+pair with zero measured input differences counts as `matching_input_pairs`.
+Normal stereo anchor differences are retained without making that count fail.
+Empty pairs supply no sizing evidence. Truncation and failed extraction preserve
+partial counters while withholding the matching-input classification.
+
+The log contains no unique per-frame IDs, so the tool cannot certify frame
+identity or deduplicate copied records. It checks the observed minimum scope
+count against any declared budget, not a reconstructed frame count. Malformed,
+duplicate, missing, non-finite or impossible fields reject analysis before the
+output is written. The current complete field format is required; older formats
+must not silently acquire zero values for measurements they did not record.
+
+Eight Python fixtures pass, including a real Lua observer-to-log roundtrip
+with 15 matching nonempty pairs and 15 empty pairs. Three observer/GUI/analysis
+CTests pass in 0.36 seconds. The engine drawing in that fixture is mocked; no
+rendered bounds, worn equality or live popup result is established.
 
 When the candidate is deployed, `/dtvr_marker_metrics` measures the next 60
 scoped draws and stops automatically. `/dtvr_marker_metrics_off` cancels it.
