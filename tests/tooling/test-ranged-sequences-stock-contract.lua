@@ -70,7 +70,7 @@ local function scenario(name,toggle)
     local raw={}
     parser._input_extension={get=function(_,key)return raw[key] or false end}
     local previous_t=0
-    return function(t,actions,expected,enabled)
+    return function(t,actions,expected,enabled,consume)
         local physical,x,y=0,0,0
         for _,action in ipairs(actions or {})do
             local selected=assert(mapper.controls_for_action(action)[1],'unmapped '..action)
@@ -95,8 +95,10 @@ local function scenario(name,toggle)
         previous_t=t
         local result=parser:peek_next_input()
         assert(result==expected,name..' t='..t..' expected='..tostring(expected)..' got='..tostring(result))
-        if result then parser:consume_next_input(t)end
-        assert(parser:peek_next_input()==nil,'unexpected additional queued input')
+        if consume~=false then
+            if result then parser:consume_next_input(t)end
+            assert(parser:peek_next_input()==nil,'unexpected additional queued input')
+        end
         steps=steps+1
     end
 end
@@ -146,6 +148,11 @@ do
     step(.06,{},'charge_release')
 end
 for _,name in ipairs({'grenade','grenade_handleless'})do
+    -- Stock may not consume the aim input immediately. Cancellation must
+    -- replace that pending request, rather than sit behind it in the queue.
+    local pending=scenario(name,false)
+    pending(.01,{'primary'},'aim_hold',true,false)
+    pending(.02,{'primary','alternate'},'block_cancel')
     local step=scenario(name,false)
     step(.01,{'primary'},'aim_hold')
     step(.02,{'primary'},nil)
@@ -171,4 +178,4 @@ for _,name in ipairs({'grenade','grenade_handleless'})do
     step(.06,{},'aim_released')
 end
 print('PASS stock combat sequences: '..steps..' observed steps, plasma/shotgun ADS/reload, plasma cancel, staff charge/fire/vent, both grenade generators and tracking-loss rearm')
-print('LIMIT: ranged-only stock input hierarchy/queue; immediate fixture consumption, no wield arbitration, buffer aging, action execution, damage, networking or live acceptance')
+print('LIMIT: ranged-only stock input hierarchy/queue; immediate consumption except pending-aim cancellation, no wield arbitration, buffer aging, action execution, damage, networking or live acceptance')
