@@ -129,6 +129,8 @@ def read_verified_images(stem, generated):
 
 
 def compare(ui, generated, radius=64):
+    if type(radius) is not int or radius < 0:
+        raise ValueError("Translation radius must be a nonnegative integer")
     if ui.shape != generated.shape or ui.ndim != 3 or ui.shape[2] != 4:
         raise ValueError("Generated output must match the UI eye extent")
     mask = (ui[:, :, 3] >= 254) & (ui[:, :, :3].max(axis=2) >= 30)
@@ -148,15 +150,24 @@ def compare(ui, generated, radius=64):
         error = np.abs(generated[yy[valid], xx[valid], :3].astype(np.int16) - expected[valid]).max(axis=1)
         return float(np.mean(np.minimum(error, 64))), float(np.mean(error <= 3))
 
-    candidates = [(score(dx, dy)[0], dx, dy)
+    # Always include the current position, even when radius is not a multiple
+    # of the coarse step. Prefer the smallest displacement on exact score ties;
+    # flat/missing detail supplies no reason to recommend an arbitrary shift.
+    candidates = {(dx, dy): score(dx, dy)
                   for dy in range(-radius, radius + 1, 8)
-                  for dx in range(-radius, radius + 1, 8)]
-    _, cx, cy = min(candidates)
-    candidates += [(score(dx, dy)[0], dx, dy)
-                   for dy in range(max(-radius, cy-7), min(radius, cy+7)+1)
-                   for dx in range(max(-radius, cx-7), min(radius, cx+7)+1)]
-    _, dx, dy = min(candidates)
-    current, best = score(0, 0), score(dx, dy)
+                  for dx in range(-radius, radius + 1, 8)}
+    candidates[(0, 0)] = score(0, 0)
+    def rank(position):
+        dx, dy = position
+        return candidates[position][0], dx*dx + dy*dy, dx, dy
+    cx, cy = min(candidates, key=rank)
+    for dy in range(max(-radius, cy-7), min(radius, cy+7)+1):
+        for dx in range(max(-radius, cx-7), min(radius, cx+7)+1):
+            if (dx, dy) not in candidates:
+                candidates[(dx, dy)] = score(dx, dy)
+    dx, dy = min(candidates, key=rank)
+    current, best = candidates[(0, 0)], candidates[(dx, dy)]
+    tied = sum(value[0] == best[0] for value in candidates.values())
     return {
         "opaque_pixels": int(mask.sum()), "sample_pixels": len(x),
         "current_position_clipped_mean_error": current[0],
@@ -164,6 +175,9 @@ def compare(ui, generated, radius=64):
         "best_translation_pixels": [dx, dy],
         "best_translation_clipped_mean_error": best[0],
         "best_translation_fraction_within_3": best[1],
+        "translation_search": "coarse_grid_then_local_refinement",
+        "translation_search_ambiguous": tied > 1,
+        "equal_best_sampled_translations": tied,
         "placement_check": "measurement_only",
     }
 

@@ -88,12 +88,30 @@ class GeneratedUiCheck(unittest.TestCase):
         result = module.compare(self.ui, output, radius=16)
         self.assertEqual(result["best_translation_pixels"], [-8, 8])
         self.assertEqual(result["best_translation_fraction_within_3"], 1)
+        self.assertFalse(result["translation_search_ambiguous"])
+        self.assertEqual(result["equal_best_sampled_translations"], 1)
         self.assertLess(result["current_position_fraction_within_3"], 0.01)
 
     def test_missing_ui_is_not_a_placement_pass(self):
         result = module.compare(self.ui, np.zeros_like(self.ui), radius=16)
         self.assertEqual(result["best_translation_fraction_within_3"], 0)
         self.assertEqual(result["placement_check"], "measurement_only")
+        self.assertEqual(result["best_translation_pixels"], [0, 0])
+        self.assertTrue(result["translation_search_ambiguous"])
+
+    def test_flat_colour_ties_do_not_invent_displacement(self):
+        ui = np.zeros_like(self.ui)
+        ui[40:80, 40:80] = 255
+        for radius in (0, 1, 10, 16):
+            result = module.compare(ui, np.full_like(ui, 255), radius=radius)
+            self.assertEqual(result["best_translation_pixels"], [0, 0])
+            self.assertEqual(result["best_translation_fraction_within_3"], 1)
+            self.assertEqual(result["translation_search_ambiguous"], radius > 0)
+
+    def test_radius_validation(self):
+        for radius in (-1, 1.5, float("inf"), True):
+            with self.assertRaises(ValueError):
+                module.compare(self.ui, self.ui, radius=radius)
 
     def test_translucent_pixels_cannot_establish_expected_colour(self):
         self.ui[:, :, 3] = 100

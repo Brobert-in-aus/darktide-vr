@@ -72,6 +72,23 @@ resource fields must not be interpreted as missing SR inputs. The current owned
 UI/NGX bitmap match remains FG-boundary evidence; SR color, motion, jitter and
 history ownership require their own attributed observation before a correction.
 
+### Placement ties are not displacement evidence
+
+The generated-UI placement tool now always includes the current position and
+prefers the smallest displacement when sampled scores tie exactly. A missing-UI
+fixture previously returned `[-16,-16]` solely from iteration order. It now
+returns `[0,0]` and flags the tied search, preserving the measured zero match
+fraction. Flat matching color also flags ties without inventing displacement.
+
+`equal_best_sampled_translations` counts distinct tested offsets; the
+`translation_search_ambiguous` flag describes only those sampled candidates.
+The reported search is coarse-grid then local refinement, so a single sampled
+best is not proof of a globally unique alignment. All results remain measurement
+only, and this opaque-pixel comparison does not diagnose surrounding-world blur.
+The regression failed before the change. Three DLSS analysis CTests pass in
+1.15 seconds, including known shifted detail and radii that omit zero from the
+coarse grid. No native runtime or installed settings changed.
+
 ## UI RGBA exporter candidate: 8 September
 
 ### Source audit and diagnostic request follow-up, 9 September
