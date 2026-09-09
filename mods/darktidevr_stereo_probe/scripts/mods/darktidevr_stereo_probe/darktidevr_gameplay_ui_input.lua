@@ -1,6 +1,16 @@
 -- Complete the native mapper's UI actions through stock semantics. No keys,
 -- cursor warps, retained menu requests or direct tag/network calls.
 local Input = {}
+local function query_usable(source)
+    return source~=nil and not (source.is_null_service and source:is_null_service()) and
+        not (source.null_service and source==source:null_service())
+end
+local function usable(source)
+    -- Eligibility is optional VR work. A retiring service may throw even during
+    -- method lookup; skip injection so the stock consumer still owns its update.
+    local ok,result=pcall(query_usable,source)
+    return ok and result==true
+end
 
 function Input.install(mod, local_player_unit)
     local state = {sample=0}
@@ -50,9 +60,7 @@ function Input.install(mod, local_player_unit)
     end)
     function api.route_ingame_input(source,name)
         if name~='Ingame' or not tactical_owner or not state.active or not state.tactical or
-            not request_owner_current() or not source or
-            (source.is_null_service and source:is_null_service()) or
-            (source.null_service and source==source:null_service()) then return source end
+            not request_owner_current() or not usable(source) then return source end
         local scope_owner=tactical_owner
         return setmetatable({get=function(_,action,...)
             local value=source:get(action,...)
@@ -80,9 +88,8 @@ function Input.install(mod, local_player_unit)
         return unpack(result,2,result.n)
     end)
     function api.route_hotkey_input(source,self,service)
-        if not inventory_owner or inventory_owner.manager~=self or (service and service~="View") or not source or
-                (source.is_null_service and source:is_null_service()) or
-                (source.null_service and source==source:null_service()) then return source end
+        if not inventory_owner or inventory_owner.manager~=self or (service and service~="View") or
+                not usable(source) then return source end
         local scope=inventory_owner
         return setmetatable({get=function(_,name,...)
             local value=source:get(name,...)
@@ -142,8 +149,7 @@ function Input.install(mod, local_player_unit)
             end
             local local_hud = owner and self._parent and self._parent:player_unit() == owner
             if not local_hud then return run_tag(func,self,t,renderer,settings,source,false) end
-            local blocked = not source or (source.is_null_service and source:is_null_service()) or
-                (source.null_service and source == source:null_service())
+            local blocked = not usable(source)
             local previous = tag_frames[self]
             local sample
             if previous and previous.t == t and previous.sample == state.sample then

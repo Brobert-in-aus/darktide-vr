@@ -1,5 +1,21 @@
 # Mission control audit — 8 September 2026
 
+## Retiring UI input services, 9 September
+
+Inventory, smart-tag and tactical-overlay eligibility now protect both method
+lookup and execution of the input service's optional null queries. A retiring
+service previously threw before the stock consumer ran. Failed probes now pass
+the original service through without VR injection. Stock errors still propagate;
+tag rejection remains latched across both eyes and inventory edges expire with
+their hotkey scope. This does not add a release-before-rearm rule to tactical
+overlay holds or change the independent keyboard route.
+
+The regression failed before the guard. Three related communication/prompt/UI
+CTests pass in 0.12 seconds, all 69 Lua chunks compile, and the optional cached
+stock tactical update passes. Fixture communication effects remain mocked.
+This source follow-up is undeployed and needs a focused communication port before
+updating its staged payload; the existing `2dded96` payload remains unchanged.
+
 ## Stock tutorial text contract checked 9 September
 
 The controller-prompt fixture now optionally executes the actual cached

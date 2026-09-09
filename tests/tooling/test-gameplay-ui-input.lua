@@ -277,6 +277,40 @@ retiring=false
 assert(not tactical(overlay_stock,hud), 'Manager recovery revived old hold')
 print('tactical_overlay_input=pass scoped_hold release null owner nested_restore keyboard no_duplicate_hook')
 
+for _,failure in ipairs({'lookup','predicate','null_proxy'}) do
+    local retired={get=function()return false end}
+    if failure=='lookup' then
+        setmetatable(retired,{__index=function()error('retired service lookup')end})
+    elseif failure=='predicate' then
+        retired.is_null_service=function()error('retired null predicate')end
+    else
+        retired.null_service=function()error('retired null proxy')end
+    end
+    api.sample(true,256)
+    local called=0
+    local first,second,last=hook(function(self,t,renderer,settings,input)
+        called=called+1;assert(input==retired and not input:get('smart_tag'))
+        return 8,nil,10
+    end,hud,30,{}, {},retired)
+    assert(called==1 and first==8 and second==nil and last==10)
+    hook(stock,hud,30,{}, {},source)
+    assert(not seen[#seen],'Retired tag request revived during the other eye')
+    api.sample(true,32768)
+    inventory_hook(function(self)
+        assert(api.route_hotkey_input(retired,self,'View')==retired)
+    end,ui)
+    assert(not inventory_hook(stock_hotkeys,ui),'Retired inventory request replayed')
+    api.sample(true,0,2097152)
+    local held,empty,last=tactical(function()
+        local input=api.route_ingame_input(retired,'Ingame')
+        assert(input==retired);return input:get('tactical_overlay_hold'),nil,41
+    end,hud)
+    assert(not held and empty==nil and last==41)
+    api.sample(true,0,0)
+    assert(not tactical(overlay_stock,hud),'Released overlay request survived failed probe')
+end
+print('gameplay_ui_retired_service=pass optional probes preserve stock handlers and expire edge requests')
+
 if arg[2] then
     local path=arg[2]..'/scripts/ui/hud/elements/tactical_overlay/hud_element_tactical_overlay.lua'
     local file=assert(io.open(path,'r'));local source_text=file:read('*a');file:close()
