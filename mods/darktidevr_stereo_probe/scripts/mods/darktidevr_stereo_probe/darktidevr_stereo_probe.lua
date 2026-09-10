@@ -3395,9 +3395,13 @@ do
     if flag then flag:close() end
     presentation.cpu_render_timing_requested = #value < 32 and value:match("^%s*enabled%s*$") ~= nil
     if presentation.cpu_render_timing_requested then
-        local ffi = require("ffi")
-        ffi.cdef("uint32_t GetCurrentThreadId(void);")
-        presentation.cpu_render_timing_kernel = ffi.load("kernel32")
+        local ok, kernel = pcall(function()
+            local ffi = Mods.lua.ffi
+            ffi.cdef("uint32_t GetCurrentThreadId(void);")
+            return ffi.load("kernel32")
+        end)
+        if ok then presentation.cpu_render_timing_kernel = kernel
+        else mod:warning("DARKTIDEVR_PERF render_caller_thread=unavailable") end
         mod:info("DARKTIDEVR_PERF cpu_render_timing=true gpu_profile=%s", tostring(performance_profile_requested))
     end
 end
