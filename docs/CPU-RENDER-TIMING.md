@@ -23,3 +23,18 @@ package gate passes with 51 installed chunks. The focused source is `c0b64ba`
 on the startup-census baseline. The 30-second diagnostic uses the original
 native benchmark DLL `B052535...` to isolate the profiling change. Its FPS is
 diagnostic output, not a new uninstrumented control.
+
+The completed mission diagnostic produced six 240-sample gameplay batches.
+Left means ranged 0.034–0.097 ms, right means were 0.003 ms, and pair means
+0.044–0.144 ms. Pair p95 ranged 0.054–0.129 ms; one maximum reached 13.628 ms.
+The timings bracket the Lua render calls and work between them, ending before
+the post-right-eye capture handling. They do not encompass the whole engine
+frame, render-worker work or GPU execution. Lua native-sync waits are disabled
+in this source. These small typical durations do not locate the engine's
+remaining bottleneck.
+
+The diagnostic delivered 72.73 native pairs/s over 21.45 analyzed seconds.
+CPU timing was enabled with GPU profiling disabled, fresh stereo initialization
+and shared readiness were present, and clean shutdown and exact restoration
+passed. The uninstrumented mission control was 72.85 pairs/s; a single short
+comparison is not sufficient to quantify instrumentation overhead.
