@@ -1,5 +1,6 @@
 #include "../isolated_transports.h"
 #include "producer/native_original_ring.h"
+#include "xr/packed_original_copy.h"
 #include "bridge/shared_eye_surfaces.h"
 #include "core/shared_generated_frame_state.h"
 #include "core/shared_object_name.h"
@@ -9,10 +10,14 @@
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
+#include <source_location>
 
 using Microsoft::WRL::ComPtr;
 using Ring = darktidevr::producer::NativeOriginalRing;
-void check(HRESULT value) { if (FAILED(value)) throw std::runtime_error("D3D12 operation failed"); }
+void check(HRESULT value, const std::source_location location = std::source_location::current()) {
+  if (FAILED(value)) throw std::runtime_error("D3D12 operation failed at line " +
+      std::to_string(location.line()) + ": " + std::to_string(static_cast<long>(value)));
+}
 void expect(bool value, const char* message) { if (!value) throw std::runtime_error(message); }
 void STDMETHODCALLTYPE execute(ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists) {
   queue->ExecuteCommandLists(count, lists);
@@ -161,6 +166,86 @@ int main(int argc, char** argv) {
     }
     const D3D12_RANGE no_writes{0, 0}; readback->Unmap(0, &no_writes);
     expect(correct, "Ring pixels lost eye identity or unconsumed content");
+
+    // Exercise the viewer's direct path on actual GPU resources, including
+    // stacked/separate XR outputs, repeat caches and optional eye readbacks.
+    for (const bool separate : {false, true}) {
+      auto eye_desc = packed_description;
+      eye_desc.Width = 4;
+      std::array<ComPtr<ID3D12Resource>, 2> outputs, caches, eye_readbacks;
+      D3D12_PLACED_SUBRESOURCE_FOOTPRINT eye_footprint{};
+      UINT64 eye_bytes{};
+      device->GetCopyableFootprints(&eye_desc, 0, 1, 0, &eye_footprint,
+          nullptr, nullptr, &eye_bytes);
+      auto eye_buffer = buffer;
+      eye_buffer.Width = eye_bytes;
+      for (unsigned eye = 0; eye < 2; ++eye) {
+        auto output_desc = eye_desc;
+        if (!separate) output_desc.Height *= 2;
+        check(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &output_desc,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&outputs[eye])));
+        check(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &eye_desc,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&caches[eye])));
+        check(device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &eye_buffer,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&eye_readbacks[eye])));
+      }
+      check(allocator->Reset()); check(commands->Reset(allocator.Get(), nullptr));
+      xr::copy_packed_original(commands.Get(), opened.textures[1].Get(), 4, 4,
+          {outputs[0].Get(), outputs[1].Get()}, separate,
+          {caches[0].Get(), caches[1].Get()},
+          {eye_readbacks[0].Get(), eye_readbacks[1].Get()}, eye_footprint);
+      check(commands->Close()); execute(queue.Get(), 1, lists); flush();
+      const auto inspect = [&](ID3D12Resource* pixels_resource,
+          D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout, UINT height,
+          unsigned expected_eye, bool stacked) {
+        void* data{};
+        const D3D12_RANGE reading{0, SIZE_T(layout.Offset +
+            layout.Footprint.RowPitch * (height - 1) + 4 * 4)};
+        check(pixels_resource->Map(0, &reading, &data));
+        bool valid = true;
+        for (UINT y = 0; y < height; ++y) for (UINT x = 0; x < 4; ++x) {
+          const auto which = stacked ? y / 4 : expected_eye;
+          const auto* pixel = static_cast<const unsigned char*>(data) + layout.Offset +
+              y * layout.Footprint.RowPitch + x * 4;
+          valid = valid && pixel[0] == (which == 0 ? 2 : 0) &&
+              pixel[1] == (which == 1 ? 12 : 0) && pixel[2] == 255 && pixel[3] == 255;
+        }
+        pixels_resource->Unmap(0, &no_writes);
+        expect(valid, "Direct original copy corrupted eye, cache, output or readback pixels");
+      };
+      const auto inspect_texture = [&](ID3D12Resource* texture, unsigned eye, bool stacked) {
+        const auto desc = texture->GetDesc();
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout{};
+        UINT64 size{};
+        device->GetCopyableFootprints(&desc, 0, 1, 0, &layout, nullptr, nullptr, &size);
+        auto desc_buffer = buffer; desc_buffer.Width = size;
+        ComPtr<ID3D12Resource> pixels_resource;
+        check(device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &desc_buffer,
+            D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&pixels_resource)));
+        check(allocator->Reset()); check(commands->Reset(allocator.Get(), nullptr));
+        D3D12_RESOURCE_BARRIER transition{};
+        transition.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        transition.Transition = {texture, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE};
+        commands->ResourceBarrier(1, &transition);
+        D3D12_TEXTURE_COPY_LOCATION source_texture{}, destination_buffer{};
+        source_texture.pResource = texture;
+        source_texture.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        destination_buffer.pResource = pixels_resource.Get();
+        destination_buffer.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        destination_buffer.PlacedFootprint = layout;
+        commands->CopyTextureRegion(&destination_buffer, 0, 0, 0, &source_texture, nullptr);
+        std::swap(transition.Transition.StateBefore, transition.Transition.StateAfter);
+        commands->ResourceBarrier(1, &transition);
+        check(commands->Close()); execute(queue.Get(), 1, lists); flush();
+        inspect(pixels_resource.Get(), layout, desc.Height, eye, stacked);
+      };
+      for (unsigned eye = 0; eye < 2; ++eye) {
+        inspect(eye_readbacks[eye].Get(), eye_footprint, 4, eye, false);
+        inspect_texture(caches[eye].Get(), eye, false);
+        if (separate || eye == 0) inspect_texture(outputs[eye].Get(), eye, !separate);
+      }
+    }
 
     // Hold the GPU: a second left eye must not reset an in-flight allocator.
     check(opened.consumed_fence->Signal(2));

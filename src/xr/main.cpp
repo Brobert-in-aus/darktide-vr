@@ -33,6 +33,7 @@
 #include "core/frame_stage_timing.h"
 #include "core/delivery_cadence.h"
 #include "pair_poll_wait.h"
+#include "packed_original_copy.h"
 
 #include <algorithm>
 #include <atomic>
@@ -1112,6 +1113,12 @@ class OpenXrProbe {
       std::uint64_t ready{},pose{},generation{},tick{};
     };
     std::array<PendingOriginal,3> pending_originals;
+    wchar_t direct_original_value[2]{};
+    const bool direct_original_requested = GetEnvironmentVariableW(
+        L"DTVR_XR_NATIVE_ORIGINAL_DIRECT", direct_original_value, 2) == 1 &&
+        direct_original_value[0] == L'1';
+    std::uint64_t direct_original_submitted{};
+    std::cout << "openxr.native_original_direct requested=" << direct_original_requested << '\n';
     std::uint64_t ingested_original_ready{};
     std::array<XrPosef,2> submitted_original_view_poses{};
     std::uint64_t rendered_pair_pose_sequence{};
@@ -2169,6 +2176,7 @@ class OpenXrProbe {
         bool ingested_original_this_frame{};
         std::uint64_t original_ring_sequence_for_frame{};
         PendingOriginal* selected_original{};
+        PendingOriginal direct_original;
         const std::array<XrPosef,2>* original_ring_poses{};
         darktidevr::core::SharedGeneratedFrameSlot original_metadata{};
         bool original_ring_recent{};
@@ -2205,7 +2213,23 @@ class OpenXrProbe {
             }
           }
         }
-        if(original_surfaces && generated_world && original_ring_poses && projection_pair_settled) {
+        const bool direct_original_this_frame = direct_original_requested &&
+            !generated_surfaces && original_surfaces && generated_world &&
+            original_ring_poses && projection_pair_settled;
+        if (direct_original_this_frame) {
+          // A native image is displayed immediately; it need not be retained
+          // for interpolation. Keep the shared slot owned until the existing
+          // queue wait/copy/consumed sequence completes below.
+          direct_original.ready = original_metadata.sequence;
+          direct_original.pose = original_metadata.current_pose;
+          direct_original.poses = *original_ring_poses;
+          direct_original.generation = original_metadata.gameplay_generation;
+          direct_original.tick = GetTickCount64();
+          selected_original = &direct_original;
+          ingested_original_ready = original_metadata.sequence;
+          original_ring_sequence_for_frame = original_metadata.sequence;
+          ingested_original_this_frame = true;
+        } else if(original_surfaces && generated_world && original_ring_poses && projection_pair_settled) {
           PendingOriginal* destination{};
           for(auto& original:pending_originals)
             if((!original.ready || original.ready!=generated_displayed_before_original) &&
@@ -2244,7 +2268,7 @@ class OpenXrProbe {
         for(auto& original:pending_originals) {
           if(!generated_world || original.generation!=committed_gameplay_generation || original.ready<=last_original_ready)
             original.ready=0;
-          if(original.ready && original.ready==generated_displayed_before_original) selected_original=&original;
+          if(!direct_original_this_frame && original.ready && original.ready==generated_displayed_before_original) selected_original=&original;
         }
         if (generated_surfaces && selected_original) ++generated_reserved_original_frames;
         if (generated_surfaces && !selected_original) {
@@ -2656,53 +2680,73 @@ class OpenXrProbe {
           } else {
             ++reused_shared_frames;
           }
-          const auto& original_eyes=use_queued_original ? selected_original->eyes : opened_eyes->eyes;
-          for (std::size_t eye = 0; eye < original_eyes.size(); ++eye) {
-            D3D12_RESOURCE_BARRIER eye_barrier{};
-            eye_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-            eye_barrier.Transition.pResource = original_eyes[eye].Get();
-            eye_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
-            eye_barrier.Transition.StateAfter =
-                D3D12_RESOURCE_STATE_COPY_SOURCE;
-            eye_barrier.Transition.Subresource =
-                D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-            command_list->ResourceBarrier(1, &eye_barrier);
-            D3D12_TEXTURE_COPY_LOCATION destination{};
-            destination.pResource =
-                resources[separate_shared_eye_swapchains ? eye : 0U];
-            destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-            D3D12_TEXTURE_COPY_LOCATION source{};
-            source.pResource = original_eyes[eye].Get();
-            source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-            command_list->CopyTextureRegion(
-                &destination, 0,
-                separate_shared_eye_swapchains
-                    ? 0U
-                    : static_cast<UINT>(eye * shared_eye_height),
-                0, &source, nullptr);
-            D3D12_TEXTURE_COPY_LOCATION cached_destination{};
-            cached_destination.pResource = cached_eye_resources[eye].Get();
-            cached_destination.Type =
-                D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-            command_list->CopyTextureRegion(&cached_destination, 0, 0, 0,
-                                            &source, nullptr);
-            if (shared_eye_readback_requested &&
-                shared_eye_readbacks[eye]) {
-              D3D12_TEXTURE_COPY_LOCATION readback_destination{};
-              readback_destination.pResource =
-                  shared_eye_readbacks[eye].Get();
-              readback_destination.Type =
-                  D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-              readback_destination.PlacedFootprint =
-                  shared_eye_readback_footprint;
-              command_list->CopyTextureRegion(&readback_destination, 0, 0, 0,
-                                              &source, nullptr);
-              shared_eye_readback_copied_this_frame = true;
+          if (direct_original_this_frame) {
+            std::array<ID3D12Resource*, 2> readbacks{};
+            if (shared_eye_readback_requested) {
+              for (unsigned eye = 0; eye < 2; ++eye)
+                readbacks[eye] = shared_eye_readbacks[eye].Get();
+              shared_eye_readback_copied_this_frame = readbacks[0] && readbacks[1];
             }
-            std::swap(eye_barrier.Transition.StateBefore,
-                      eye_barrier.Transition.StateAfter);
-            command_list->ResourceBarrier(1, &eye_barrier);
-          }
+            darktidevr::xr::copy_packed_original(command_list.Get(),
+                original_surfaces->textures[darktidevr::core::generated_frame_slot(
+                    original_ring_sequence_for_frame)].Get(),
+                shared_eye_width, shared_eye_height,
+                {resources[0], resources[separate_shared_eye_swapchains ? 1 : 0]},
+                separate_shared_eye_swapchains,
+                {cached_eye_resources[0].Get(), cached_eye_resources[1].Get()},
+                readbacks, shared_eye_readback_footprint);
+            if (++direct_original_submitted <= 4 || direct_original_submitted % 600 == 0)
+              std::cout << "openxr.native_original_direct submitted=" << direct_original_submitted
+                        << " sequence=" << original_ring_sequence_for_frame << '\n';
+          } else {
+            const auto& original_eyes=use_queued_original ? selected_original->eyes : opened_eyes->eyes;
+            for (std::size_t eye = 0; eye < original_eyes.size(); ++eye) {
+              D3D12_RESOURCE_BARRIER eye_barrier{};
+              eye_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+              eye_barrier.Transition.pResource = original_eyes[eye].Get();
+              eye_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+              eye_barrier.Transition.StateAfter =
+                  D3D12_RESOURCE_STATE_COPY_SOURCE;
+              eye_barrier.Transition.Subresource =
+                  D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+              command_list->ResourceBarrier(1, &eye_barrier);
+              D3D12_TEXTURE_COPY_LOCATION destination{};
+              destination.pResource =
+                  resources[separate_shared_eye_swapchains ? eye : 0U];
+              destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+              D3D12_TEXTURE_COPY_LOCATION source{};
+              source.pResource = original_eyes[eye].Get();
+              source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+              command_list->CopyTextureRegion(
+                  &destination, 0,
+                  separate_shared_eye_swapchains
+                      ? 0U
+                      : static_cast<UINT>(eye * shared_eye_height),
+                  0, &source, nullptr);
+              D3D12_TEXTURE_COPY_LOCATION cached_destination{};
+              cached_destination.pResource = cached_eye_resources[eye].Get();
+              cached_destination.Type =
+                  D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+              command_list->CopyTextureRegion(&cached_destination, 0, 0, 0,
+                                              &source, nullptr);
+              if (shared_eye_readback_requested &&
+                  shared_eye_readbacks[eye]) {
+                D3D12_TEXTURE_COPY_LOCATION readback_destination{};
+                readback_destination.pResource =
+                    shared_eye_readbacks[eye].Get();
+                readback_destination.Type =
+                    D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+                readback_destination.PlacedFootprint =
+                    shared_eye_readback_footprint;
+                command_list->CopyTextureRegion(&readback_destination, 0, 0, 0,
+                                                &source, nullptr);
+                shared_eye_readback_copied_this_frame = true;
+              }
+              std::swap(eye_barrier.Transition.StateBefore,
+                        eye_barrier.Transition.StateAfter);
+              command_list->ResourceBarrier(1, &eye_barrier);
+            }
+            }
           for (auto& barrier : cached_eye_barriers) {
             std::swap(barrier.Transition.StateBefore,
                       barrier.Transition.StateAfter);
