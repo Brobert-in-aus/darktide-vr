@@ -82,3 +82,35 @@ sampled foreground observations in Darktide. GPU samples averaged 79.1% and
 332.2 W; zero pose mismatches and exact restoration passed. This differs in HUD
 and analysis duration from Native A above, so wait for the matching HUD-on control
 before assigning the entire native recovery to background streaming.
+
+
+## Completed longer native controls
+
+All three used idle desktop encoding, 120-second runs and 30-second warm-up.
+
+| DLSS | HUD | Native FPS | Mean sampled GPU utilisation | Mean sampled board power |
+|---|---|---:|---:|---:|
+| Quality | Off | 76.88 | 79.1% | 332.2 W |
+| Quality | On | 77.00 | 82.6% | 329.0 W |
+| Performance | On | 75.82 | 69.8% | 274.7 W |
+
+All 90/89/89 foreground observations respectively belong to Darktide. Every run
+closed cleanly, restored files and reported zero pose mismatches. GPU means use
+17/17/18 samples respectively. Performance reduces GPU work and power without a
+native throughput gain here; Quality remains the accepted default. The matched
+HUD pair shows no material cost. No exact CPU function cost is established by
+this comparison, but the existing render-dispatch CPU investigation remains
+relevant after eliminating the background streaming confounder.
+
+The initial active-encoding native run used a shorter analysis window, so its
+51.89-to-77 difference is not a fully matched effect estimate. The FG active/idle
+controls do use matched windows and show approximately 97.4 versus 115.9 distinct
+FPS. Active desktop encoding was not successfully reinstated; therefore call it
+a strong measured association after the sleep intervention, not a completed
+reversal or proof of the specific driver/encoder mechanism. This is benchmark
+hygiene, not a mod optimisation or a promise of 116 FPS on the physical headset.
+
+All synthetic sessions are now closed; installed native hashes and simulator
+runtime were restored, and normal Quest proximity automation was re-enabled.
+Next development: stop unused desktop fallback capture during physical stereo,
+validate lifecycle/recovery, and measure a separate physical-viewer candidate.
