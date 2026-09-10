@@ -24,7 +24,8 @@ tools/stereo/run-synthetic-framegen-benchmark.ps1 -FrameGeneration On -FrameRate
 
 Repeat with `Off`, using a new output directory. Keep the native DLL, consumer,
 runtime, eye resolution, cap policy and other settings identical. Use repeated
-on/off runs in alternating order before deciding whether a difference persists.
+on/off runs in alternating or balanced ABBA order before deciding whether a
+difference persists.
 `FrameRateLimit` defaults to `Preserve`; `Unlimited` explicitly sets both active
 Reflex cap fields to zero for that run. The saved cap was 120 FPS, so the initial
 capped checks are not an uncapped measure of rendering overhead. The cached
@@ -81,6 +82,29 @@ and all twelve saved files were restored. The focused fix is a tested simulator
 candidate, not a newly accepted physical-headset deployment.
 
 ## Reports
+
+Initial uncapped comparison used Off A, On A, On B, then Off B, with 120-second
+workloads and the first ten seconds of each gameplay generation excluded. The
+first three completed runs were:
+
+| Run | Measured seconds | Fresh pairs/s | Generated pairs/s | Distinct pairs/s | Cached repeats/s |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Off A | 110.20 | 81.67 | 0 | 81.67 | 0 |
+| On A | 108.07 | 33.85 | 33.84 | 67.69 | 22.25 |
+| On B | 110.67 | 33.60 | 33.60 | 67.20 | 22.80 |
+
+All three completed cleanly with zero reported pose mismatches and verified
+file restoration. The On repeats submitted 4,031 and 3,994 generated frames in
+total. These results establish generation, but currently show fewer distinct
+submitted frames than the first Off control. They do not isolate DLSS GPU cost
+from consumer selection and pacing. Native health records and consumer counters
+must remain separate; the legacy shared-slot rate is not engine FPS.
+
+Both settings used native hash `D2D84673...0180F`, simulator `FB154E44...02AA6`
+and consumer SHA-256
+`ABA30C4E091FC2EFC6D14EDABBFFF0C36A1B6FCD44E56D9D05C951FB7C8AA1D1`.
+Full hashes are recorded in each local configuration receipt. Off B and
+selection diagnostics are the next checks before a performance decision.
 
 Run `tools/stereo/analyze-synthetic-framegen.py RUN_DIRECTORY` to write
 `summary.json`. It excludes startup and a per-generation warmup, weights rates
