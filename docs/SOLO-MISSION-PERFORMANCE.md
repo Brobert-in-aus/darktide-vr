@@ -39,4 +39,13 @@ were no pose mismatches. The 110-second board telemetry window averaged
 75.54% GPU busy time and 287.26 W, with complete coverage. The mission identity
 and difficulty matched, and clean shutdown and exact restoration passed.
 This reaches approximately 120 FPS in the stationary mission-start workload;
-the native-only comparison and combat workload remain to be measured.
+combat workload remains to be measured.
+
+The matching native-only Unlimited trial delivered 72.85 original pairs/s over
+112.00 analyzed seconds, with no generated frames, cached repeats or pose
+mismatches. Its 110-second board window averaged 61.03% GPU busy time and
+266.26 W, with complete coverage; shutdown and restoration passed. This is
+one trial per setting. Local simulation, bots and mission timing may vary;
+these averages do not establish deterministic combat performance. The low
+native-only GPU busy fraction motivates investigating CPU and synchronization
+costs before assuming shader work is the sole limit.
