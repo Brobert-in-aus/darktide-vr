@@ -409,7 +409,7 @@ if (Test-Path -LiteralPath $launchPath) {
             }
         } elseif(-not $failure) { $failure = 'World census has no launch-selected console log.' }
     }
-    $gamePidMatch = [regex]::Match($launchText,'Authenticated Darktide process started(?: during launcher transition)?: PID (\d+)\.')
+    $gamePidMatch = [regex]::Match($launchText,'Authenticated Darktide process started(?: during (?:launcher transition|Play activation|Play retry))?: PID (\d+)\.')
     if ($gamePidMatch.Success) {
         $gamePidText = $gamePidMatch.Groups[1].Value
         foreach ($name in @("darktidevr-generated-stereo-$gamePidText.log",

@@ -11,7 +11,7 @@ $GameExe = (Resolve-Path -LiteralPath $GameExe).Path
 if ((Get-FileHash -LiteralPath $GameExe).Hash -ne $ExpectedGameSha256) { throw 'Game hash mismatch.' }
 $launch = Get-Content -LiteralPath (Join-Path $BenchmarkDirectory 'launch.log') -Raw
 if ($launch -notmatch 'offline_benchmark.started_utc=' -or $launch -match 'Offline dual-view benchmark completed') { throw 'Requires an active ready benchmark.' }
-$match = [regex]::Match($launch,'Authenticated Darktide process started: PID (\d+)\.')
+$match = [regex]::Match($launch,'Authenticated Darktide process started(?: during (?:launcher transition|Play activation|Play retry))?: PID (\d+)\.')
 if (-not $match.Success) { throw 'No run-owned PID.' }
 $gameId = [int]$match.Groups[1].Value
 $game = Get-Process -Id $gameId

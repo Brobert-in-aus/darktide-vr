@@ -21,7 +21,7 @@ $launch = Get-Content -LiteralPath (Join-Path $BenchmarkDirectory 'launch.log') 
 if ($launch -notmatch 'offline_benchmark.started_utc=' -or $launch -match 'Offline dual-view benchmark completed') {
     throw 'Requires an active, ready, isolated benchmark workload.'
 }
-$pidMatch = [regex]::Match($launch,'Authenticated Darktide process started: PID (\d+)\.')
+$pidMatch = [regex]::Match($launch,'Authenticated Darktide process started(?: during (?:launcher transition|Play activation|Play retry))?: PID (\d+)\.')
 if (-not $pidMatch.Success) { throw 'No run-owned game PID.' }
 $gameId = [int]$pidMatch.Groups[1].Value
 $gameProcess = Get-Process -Id $gameId

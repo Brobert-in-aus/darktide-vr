@@ -11,7 +11,7 @@ spec.loader.exec_module(module)
 
 class TimingEvidenceTests(unittest.TestCase):
     def test_launcher_transition_identity(self):
-        for suffix in ('', ' during launcher transition'):
+        for suffix in ('', ' during launcher transition', ' during Play activation', ' during Play retry'):
             with tempfile.TemporaryDirectory() as root:
                 directory = Path(root)
                 (directory / 'configuration.json').write_text(json.dumps({'gpu_profile': True}))

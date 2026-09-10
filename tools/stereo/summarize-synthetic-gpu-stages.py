@@ -51,7 +51,7 @@ def summarize(directory, skip=5):
     if configuration.get('gpu_profile') is not True:
         raise ValueError('Run did not explicitly request GPU profiling')
     launch = (directory / 'launch.log').read_text(encoding='utf-8-sig')
-    match = re.search(r'Authenticated Darktide process started(?: during launcher transition)?: PID (\d+)\.', launch)
+    match = re.search(r'Authenticated Darktide process started(?: during (?:launcher transition|Play activation|Play retry))?: PID (\d+)\.', launch)
     if not match:
         raise ValueError('Missing run-owned process identity')
     ngx_path = directory / f'darktidevr-ngx-gpu-timing-{match[1]}.log'
