@@ -281,6 +281,10 @@ try {
         -ArgumentList $consumerArguments `
         -RedirectStandardOutput (Join-Path $OutputDirectory 'consumer.log') `
         -RedirectStandardError (Join-Path $OutputDirectory 'consumer-error.log')
+    # Retain the process handle before Refresh/HasExited polling. Windows
+    # PowerShell 5.1 otherwise can lose ExitCode after the process exits, even
+    # when WaitForExit succeeds. Null is not evidence of a successful exit.
+    $null = $consumer.Handle
     $consumerReadyDeadline = (Get-Date).AddSeconds(15)
     do {
         Start-Sleep -Milliseconds 100
