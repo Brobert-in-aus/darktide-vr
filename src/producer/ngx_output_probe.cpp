@@ -281,6 +281,17 @@ void record_output_barriers(std::uint64_t call, const ActiveEvaluationState& sta
 
 std::uint32_t create_hook(void* commands, std::uint32_t kind,
                            const void* parameters, void** handle) {
+  static std::atomic<unsigned> fg_creation_samples{};
+  const bool fg_record = kind == 11 && fg_creation_samples.load(std::memory_order_relaxed) < 16 &&
+      fg_creation_samples.fetch_add(1, std::memory_order_relaxed) < 16;
+  const bool fg_queried = fg_record && verified_parameters(parameters, ngx::kGetUnsignedSlot);
+  std::array<unsigned, 4> fg_dimensions{};
+  std::array<std::uint32_t, 4> fg_results{};
+  if (fg_queried) {
+    constexpr std::array<const char*, 4> keys{"Width", "Height", "OutWidth", "OutHeight"};
+    for (unsigned i = 0; i < keys.size(); ++i)
+      fg_results[i] = ngx::read_unsigned(parameters, keys[i], &fg_dimensions[i]);
+  }
   NgxFeatureRegistry::CreationFlags flags;
   // Observe before CreateFeature can mutate parameters. Cache only scalar data,
   // and bind it to the successfully created lifetime; never retain parameters.
@@ -296,6 +307,17 @@ std::uint32_t create_hook(void* commands, std::uint32_t kind,
   record_slow_call("create", kind, began);
   if (result == ngx::kSuccess && readable(handle, sizeof(void*)))
     feature_registry.created(*handle, kind, result, flags);
+  if (fg_record) {
+    const auto lifetime = result == ngx::kSuccess && readable(handle, sizeof(void*))
+        ? feature_registry.lookup(*handle).lifetime : 0;
+    char line[384]{};
+    const auto length = std::snprintf(line, sizeof(line),
+        "NGX_FG_CREATE result=%x lifetime=%llu queried=%u width=%u height=%u out_width=%u out_height=%u get_results=%x,%x,%x,%x\n",
+        result, static_cast<unsigned long long>(lifetime), fg_queried ? 1U : 0U,
+        fg_dimensions[0], fg_dimensions[1], fg_dimensions[2], fg_dimensions[3],
+        fg_results[0], fg_results[1], fg_results[2], fg_results[3]);
+    if (length > 0 && static_cast<std::size_t>(length) < sizeof(line)) write_line(line, length);
+  }
   return result;
 }
 std::uint32_t release_hook(const void* handle) {
