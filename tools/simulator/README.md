@@ -65,6 +65,43 @@ frame-generation settings. Simulator submission rate is not headset latency or
 a measurement of Virtual Desktop SSW. Neither `XR_EXT_frame_synthesis` nor
 `XR_FB_space_warp` was advertised by this runtime in the smoke test.
 
+## Optional display prediction experiment
+
+Apply `openxr-simulator-v1.5.0-display-prediction.patch` after the shutdown and
+refresh patches. Use `git apply --check --ignore-space-change` followed by
+`git apply --ignore-space-change` when the extracted source uses CRLF endings.
+The experiment is opt-in: `DTVR_SIMULATOR_FIXED_DISPLAY_CLOCK=1` predicts the
+next fixed-refresh slot and skips missed slots after a host stall. Otherwise
+the previous wake-time-plus-period prediction remains active.
+
+The benchmark exposes `-SimulatorDisplayClock Legacy|Fixed` (default Legacy),
+records the selection, restores the prior environment value, and requires the
+runtime's `fixed_refresh` confirmation before launching a Fixed run. The local
+experimental DLL SHA-256 is
+`f3c9b45f932227c86dbf8a49503bbeacd628ee27d4d547966a67dd53190e5dba`.
+The patched viewer passes its strict 120-frame DirectX validation smoke check
+with this runtime. Simulator timeline
+changes do not establish engine performance gains or physical display latency.
+The viewer also uses predicted display time for original-frame reservation.
+Compare Legacy and Fixed on the same viewer build: the experiment can change
+selection timing, not just the cadence report's gap values.
+
+The first Fixed 120 Hz/cap120 stationary SoloPlay FG run delivered 119.66
+distinct pairs/s, split equally between original and generated frames. Across
+110.32 analyzed seconds it recorded no repeats or clock breaks, but the largest
+predicted-time gap was 25 ms. Missed runtime slots can therefore exist even
+without repeated submitted images. The run exited cleanly with zero pose
+mismatches and exact file restoration.
+Evidence: ignored `synthetic-solo-fixed-clock-120-a-20260910` artifacts.
+
+The matched Legacy control on the same viewer and experimental runtime binary
+delivered 118.87 distinct pairs/s and 1.13 cached repeats/s. Its 110.00-second
+analysis window contains 124 repeats, a longest repeat run of two, no clock
+breaks and a maximum predicted gap of 23.40 ms. Clean exit, zero pose mismatches
+and exact restoration pass. Evidence: `synthetic-solo-legacy-clock-120-a-20260910`.
+The normal runtime DLL was restored after both runs. These are single captures,
+not a repeatability or physical-runtime benefit claim; retain Legacy as default.
+
 [Meta XR Simulator](https://developers.meta.com/horizon/documentation/native/xrsim-intro/)
 is another documented Windows D3D12 option. It has not been installed or tested
 for this project. The selected open-source simulator allows the full existing

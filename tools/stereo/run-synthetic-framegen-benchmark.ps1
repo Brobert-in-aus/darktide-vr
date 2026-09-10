@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)] [ValidateSet('On','Off')] [string] $FrameGeneration,
     [ValidateSet('Preserve','Unlimited','30','40','60','72','90','120')] [string] $FrameRateLimit = 'Preserve',
     [ValidateSet(90,120,144)] [int] $SimulatorRefreshRate = 90,
+    [ValidateSet('Legacy','Fixed')] [string] $SimulatorDisplayClock = 'Legacy',
     [ValidateRange(0,16)] [int] $WorkerThreads = 0,
     [ValidateSet('Preserve','Quality','Performance')] [string] $DlssQuality = 'Preserve',
     [ValidateSet('Preserve','On','Off')] [string] $Reflex = 'Preserve',
@@ -97,6 +98,7 @@ $failure = $null
 $priorRuntime = $env:XR_RUNTIME_JSON
 $priorPairWait = $env:DTVR_XR_PRECISE_PAIR_WAIT
 $priorSimulatorRefresh = $env:DTVR_SIMULATOR_REFRESH_HZ
+$priorSimulatorClock = $env:DTVR_SIMULATOR_FIXED_DISPLAY_CLOCK
 $systemRuntime = Get-ItemPropertyValue 'HKLM:/SOFTWARE/Khronos/OpenXR/1' -Name ActiveRuntime
 $stopFile = Join-Path $OutputDirectory 'consumer.stop'
 function Save-BenchmarkFile([string] $Path) {
@@ -201,6 +203,7 @@ try {
     $env:XR_RUNTIME_JSON = $RuntimeJson
     $env:DTVR_XR_PRECISE_PAIR_WAIT = '1'
     $env:DTVR_SIMULATOR_REFRESH_HZ = [string]$SimulatorRefreshRate
+    $env:DTVR_SIMULATOR_FIXED_DISPLAY_CLOCK = if ($SimulatorDisplayClock -eq 'Fixed') { '1' } else { '0' }
     $receipt = [ordered]@{
         frame_generation=$FrameGeneration; frames_to_generate=1
         frame_rate_limit=$FrameRateLimit
@@ -220,6 +223,7 @@ try {
         eye_width=$EyeWidth; eye_height=$EyeHeight; ssw='not_applicable_simulator'
         runtime_json=$RuntimeJson; runtime_sha256=$RuntimeSha256
         harness_sha256=(Get-FileHash $HarnessPath -Algorithm SHA256).Hash
+        simulator_display_clock=$SimulatorDisplayClock
         native_sha256=(Get-FileHash (Join-Path $GameRoot 'binaries/darktidevr_native_capture.dll') -Algorithm SHA256).Hash
         duration_seconds=$DurationSeconds; preview_fps=0; physical_xr_ready=$false
         cluster_trace=(Test-Path -LiteralPath $clusterTraceFlag)
@@ -253,6 +257,9 @@ try {
             $initialLog -match 'openxr.render_projection=recentered-symmetric' -and $displayPeriod.Success
     } while (-not $consumerReady -and (Get-Date) -lt $consumerReadyDeadline)
     if (-not $consumerReady) { throw 'Expected simulator session did not become active.' }
+    if ($SimulatorDisplayClock -eq 'Fixed' -and $initialLog -notmatch 'openxr.simulator_display_clock=fixed_refresh') {
+        throw 'Simulator did not confirm the requested fixed display clock.'
+    }
     $observedPeriod = [double]::Parse($displayPeriod.Groups[1].Value,[Globalization.CultureInfo]::InvariantCulture)
     if ([math]::Abs($observedPeriod - 1000.0/$SimulatorRefreshRate) -gt 0.02) {
         throw 'Simulator display period does not match the requested refresh rate; use the patched runtime.'
@@ -303,6 +310,7 @@ finally {
     $env:XR_RUNTIME_JSON = $priorRuntime
     $env:DTVR_XR_PRECISE_PAIR_WAIT = $priorPairWait
     $env:DTVR_SIMULATOR_REFRESH_HZ = $priorSimulatorRefresh
+    $env:DTVR_SIMULATOR_FIXED_DISPLAY_CLOCK = $priorSimulatorClock
     if ($ownsMutex) { $mutex.ReleaseMutex() }
     $mutex.Dispose()
 }

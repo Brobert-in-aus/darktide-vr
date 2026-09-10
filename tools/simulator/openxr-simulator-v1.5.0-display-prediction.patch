@@ -1,0 +1,47 @@
+--- a/src/runtime.cpp
++++ b/src/runtime.cpp
+@@ -4113,6 +4113,13 @@
+     }();
+     static long long periodNs = (long long)(periodSec * 1e9);
+     static double nextTick = [](){ LARGE_INTEGER t; QueryPerformanceCounter(&t); return (double)t.QuadPart; }();
++    static const bool fixedDisplayClock = []() {
++        wchar_t value[2]{};
++        const bool fixed = GetEnvironmentVariableW(L"DTVR_SIMULATOR_FIXED_DISPLAY_CLOCK", value, 2) == 1 && value[0] == L'1';
++        printf("openxr.simulator_display_clock=%s\n", fixed ? "fixed_refresh" : "legacy_wake");
++        fflush(stdout);
++        return fixed;
++    }();
+     
+     // Handle WASD keyboard input for movement (relative to head orientation).
+     //
+@@ -4523,14 +4530,22 @@
+     }
+     nextTick += periodSec * (double)freq.QuadPart;
+     LARGE_INTEGER now; QueryPerformanceCounter(&now);
+-    // After a stall, re-base instead of letting the app run uncapped while
+-    // nextTick catches up one period per call.
+-    if ((double)now.QuadPart - nextTick > periodSec * (double)freq.QuadPart) {
+-        nextTick = (double)now.QuadPart;
+-    }
+-    // Convert QPC to nanoseconds using double to avoid overflow on MSVC
+-    XrTime nowTime = (XrTime)((double)now.QuadPart * 1000000000.0 / (double)freq.QuadPart);
+-    s->type = XR_TYPE_FRAME_STATE; s->shouldRender = XR_TRUE; s->predictedDisplayPeriod = periodNs; s->predictedDisplayTime = nowTime + periodNs;
++    XrTime displayTime{};
++    if (fixedDisplayClock) {
++        // Predict a fixed-refresh slot and skip missed slots after a stall.
++        const double periodTicks = periodSec * (double)freq.QuadPart;
++        if (nextTick <= (double)now.QuadPart) {
++            nextTick += (floor(((double)now.QuadPart - nextTick) / periodTicks) + 1.0) * periodTicks;
++        }
++        displayTime = (XrTime)(nextTick * 1000000000.0 / (double)freq.QuadPart);
++    } else {
++        // Preserve the preceding simulator clock for controlled comparisons.
++        if ((double)now.QuadPart - nextTick > periodSec * (double)freq.QuadPart) {
++            nextTick = (double)now.QuadPart;
++        }
++        displayTime = (XrTime)((double)now.QuadPart * 1000000000.0 / (double)freq.QuadPart) + periodNs;
++    }
++    s->type = XR_TYPE_FRAME_STATE; s->shouldRender = XR_TRUE; s->predictedDisplayPeriod = periodNs; s->predictedDisplayTime = displayTime;
+     return XR_SUCCESS;
+ }
+ static XrResult XRAPI_PTR xrBeginFrame_runtime(XrSession, const XrFrameBeginInfo*) { return XR_SUCCESS; }
