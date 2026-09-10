@@ -7,6 +7,7 @@
 #include "producer/diagnostic_append_log.h"
 #include "producer/bounded_diagnostic.h"
 #include "producer/present_cpu_profile.h"
+#include "producer/render_api_cpu_profile.h"
 #include "producer/resource_name_match.h"
 #include "producer/command_recording_snapshot.h"
 #include "producer/shader_pair_snapshot.h"
@@ -7825,6 +7826,8 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
                                            UINT instance_count,
                                            UINT start_vertex,
                                            UINT start_instance) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::draw);
   record_cluster_submission(commands, "draw", vertex_count, instance_count,
                             start_vertex, start_instance, 0);
   if (kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
@@ -8047,6 +8050,8 @@ void STDMETHODCALLTYPE draw_instanced_hook(ID3D12GraphicsCommandList* commands,
 void STDMETHODCALLTYPE draw_indexed_instanced_hook(
     ID3D12GraphicsCommandList* commands, UINT index_count, UINT instance_count,
     UINT start_index, INT base_vertex, UINT start_instance) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::draw);
   queue_cluster_light_visibility_fov_patches(commands);
   record_cluster_submission(
       commands, "draw_indexed", index_count, instance_count, start_index,
@@ -8106,6 +8111,8 @@ void STDMETHODCALLTYPE execute_indirect_hook(
     ID3D12CommandSignature* command_signature, UINT max_command_count,
     ID3D12Resource* argument_buffer, UINT64 argument_buffer_offset,
     ID3D12Resource* count_buffer, UINT64 count_buffer_offset) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::draw);
   record_cluster_submission(
       commands, "execute_indirect", max_command_count,
       reinterpret_cast<std::uintptr_t>(argument_buffer),
@@ -8213,6 +8220,8 @@ void STDMETHODCALLTYPE resolve_subresource_hook(
 
 void STDMETHODCALLTYPE dispatch_hook(ID3D12GraphicsCommandList* commands,
                                      UINT x, UINT y, UINT z) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::dispatch);
   if (focused_trace_phase.load(std::memory_order_relaxed) != 0) {
     std::scoped_lock lock(trace_mutex);
     command_traces[commands].dispatch_count++;
@@ -8529,6 +8538,8 @@ void STDMETHODCALLTYPE ia_set_vertex_buffers_hook(
 
 void STDMETHODCALLTYPE set_pipeline_state_hook(
     ID3D12GraphicsCommandList* commands, ID3D12PipelineState* state) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::pipeline);
   dump_pipeline_blob_if_requested(state);
   PsoMetadata first_bound_metadata{};
   bool log_first_billboard_bind{};
@@ -8608,6 +8619,8 @@ void STDMETHODCALLTYPE set_pipeline_state_hook(
 void STDMETHODCALLTYPE set_descriptor_heaps_hook(
     ID3D12GraphicsCommandList* commands, UINT heap_count,
     ID3D12DescriptorHeap* const* heaps) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::binding);
   // This hook exists only in the diagnostic renderer set. Stingray can bind a
   // long-lived heap before Lua enables a particular probe, so provenance must
   // be retained from the first intercepted SetDescriptorHeaps call.
@@ -8638,6 +8651,8 @@ void STDMETHODCALLTYPE set_descriptor_heaps_hook(
 
 void STDMETHODCALLTYPE set_graphics_root_signature_hook(
     ID3D12GraphicsCommandList* commands, ID3D12RootSignature* signature) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::binding);
   const auto signature_address = reinterpret_cast<std::uintptr_t>(signature);
   if (marker_log != INVALID_HANDLE_VALUE ||
       cluster_trace_log != INVALID_HANDLE_VALUE ||
@@ -8684,6 +8699,8 @@ void STDMETHODCALLTYPE set_graphics_root_signature_hook(
 
 void STDMETHODCALLTYPE set_compute_root_signature_hook(
     ID3D12GraphicsCommandList* commands, ID3D12RootSignature* signature) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::binding);
   if (marker_log != INVALID_HANDLE_VALUE ||
       cluster_trace_log != INVALID_HANDLE_VALUE ||
       focused_trace_phase.load(std::memory_order_relaxed) != 0) {
@@ -8702,6 +8719,8 @@ void STDMETHODCALLTYPE set_compute_root_signature_hook(
 void STDMETHODCALLTYPE set_graphics_root_descriptor_table_hook(
     ID3D12GraphicsCommandList* commands, UINT root_index,
     D3D12_GPU_DESCRIPTOR_HANDLE table) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::binding);
   if ((marker_log != INVALID_HANDLE_VALUE ||
        cluster_trace_log != INVALID_HANDLE_VALUE ||
        billboard_horizon_lock_enabled.load(std::memory_order_relaxed)) &&
@@ -8721,6 +8740,8 @@ void STDMETHODCALLTYPE set_graphics_root_descriptor_table_hook(
 void STDMETHODCALLTYPE set_compute_root_descriptor_table_hook(
     ID3D12GraphicsCommandList* commands, UINT root_index,
     D3D12_GPU_DESCRIPTOR_HANDLE table) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::binding);
   if ((marker_log != INVALID_HANDLE_VALUE ||
        cluster_trace_log != INVALID_HANDLE_VALUE) &&
       root_index < kRootSlotCount) {
@@ -8733,6 +8754,8 @@ void STDMETHODCALLTYPE set_compute_root_descriptor_table_hook(
 void STDMETHODCALLTYPE set_graphics_root_32bit_constant_hook(
     ID3D12GraphicsCommandList* commands, UINT root_index, UINT value,
     UINT destination_offset) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::binding);
   if (marker_log != INVALID_HANDLE_VALUE && root_index < kRootSlotCount) {
     std::scoped_lock lock(trace_mutex);
     auto& state = command_traces[commands].graphics_constants[root_index];
@@ -8746,6 +8769,8 @@ void STDMETHODCALLTYPE set_graphics_root_32bit_constant_hook(
 void STDMETHODCALLTYPE set_compute_root_32bit_constant_hook(
     ID3D12GraphicsCommandList* commands, UINT root_index, UINT value,
     UINT destination_offset) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::binding);
   if ((marker_log != INVALID_HANDLE_VALUE ||
        cluster_trace_log != INVALID_HANDLE_VALUE) &&
       root_index < kRootSlotCount) {
@@ -8761,6 +8786,8 @@ void STDMETHODCALLTYPE set_compute_root_32bit_constant_hook(
 void STDMETHODCALLTYPE set_graphics_root_32bit_constants_hook(
     ID3D12GraphicsCommandList* commands, UINT root_index, UINT value_count,
     const void* values, UINT destination_offset) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::binding);
   if (marker_log != INVALID_HANDLE_VALUE && root_index < kRootSlotCount) {
     std::scoped_lock lock(trace_mutex);
     auto& state = command_traces[commands].graphics_constants[root_index];
@@ -8777,6 +8804,8 @@ void STDMETHODCALLTYPE set_graphics_root_32bit_constants_hook(
 void STDMETHODCALLTYPE set_compute_root_32bit_constants_hook(
     ID3D12GraphicsCommandList* commands, UINT root_index, UINT value_count,
     const void* values, UINT destination_offset) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::binding);
   if ((marker_log != INVALID_HANDLE_VALUE ||
        cluster_trace_log != INVALID_HANDLE_VALUE) &&
       root_index < kRootSlotCount) {
@@ -8821,6 +8850,8 @@ void set_compute_root_gpu_address(
 void STDMETHODCALLTYPE set_graphics_root_constant_buffer_view_hook(
     ID3D12GraphicsCommandList* commands, UINT root_index,
     D3D12_GPU_VIRTUAL_ADDRESS address) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::binding);
   set_graphics_root_gpu_address(commands, root_index, address,
                                 &CommandTrace::graphics_cbvs);
   original_set_graphics_root_constant_buffer_view(commands, root_index,
@@ -8848,6 +8879,8 @@ void STDMETHODCALLTYPE set_graphics_root_unordered_access_view_hook(
 void STDMETHODCALLTYPE set_compute_root_constant_buffer_view_hook(
     ID3D12GraphicsCommandList* commands, UINT root_index,
     D3D12_GPU_VIRTUAL_ADDRESS address) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::binding);
   set_compute_root_gpu_address(commands, root_index, address,
                                &CommandTrace::compute_cbvs);
   original_set_compute_root_constant_buffer_view(commands, root_index, address);
@@ -9069,6 +9102,8 @@ void STDMETHODCALLTYPE clear_unordered_access_view_float_hook(ID3D12GraphicsComm
 void STDMETHODCALLTYPE resource_barrier_hook(
     ID3D12GraphicsCommandList* commands, UINT barrier_count,
     const D3D12_RESOURCE_BARRIER* barriers) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::barrier);
   if (billboard_readback_accepting.load(std::memory_order_relaxed)) {
     std::scoped_lock lock(trace_mutex);
     billboard_resource_states[commands].observe(barrier_count, barriers);
@@ -9451,6 +9486,8 @@ void STDMETHODCALLTYPE resource_barrier_hook(
 void STDMETHODCALLTYPE enhanced_barrier_hook(
     ID3D12GraphicsCommandList7* commands, UINT32 group_count,
     const D3D12_BARRIER_GROUP* groups) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::barrier);
   if (billboard_readback_accepting.load(std::memory_order_relaxed)) {
     std::scoped_lock lock(trace_mutex);
     billboard_resource_states[commands].unknown();
@@ -10621,6 +10658,8 @@ bool trace_streamline_submission_images() {
 
 void STDMETHODCALLTYPE execute_command_lists_hook(
     ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists) {
+  darktidevr::producer::RenderApiCpuProfile::Scope api_cpu(
+      darktidevr::producer::RenderApiCpuProfile::execute);
   const auto ngx_completion_ticket =
       darktidevr::producer::observe_ngx_queue_submit(queue, count, lists);
   StreamlineExecuteSnapshot* streamline_snapshot{};
@@ -12434,6 +12473,8 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
 HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                                        UINT interval, UINT flags) {
   darktidevr::producer::PresentCpuProfile cpu_profile(native_capture_module,
+      current_gameplay_generation.load(std::memory_order_relaxed));
+  darktidevr::producer::RenderApiCpuProfile api_profile(native_capture_module,
       current_gameplay_generation.load(std::memory_order_relaxed));
   darktidevr::producer::poll_ngx_queue_completion();
   // Legacy resource tags are global. During this explicit one-shot test, keep
