@@ -814,6 +814,7 @@ if ($offlineNoHeadset) {
     $benchmarkLog = $null
     $benchmarkText = ''
     $game = $null
+    $observedBenchmarkGameId = $null
     $ready = $false
     do {
         $game = Get-Process Darktide -ErrorAction SilentlyContinue |
@@ -829,6 +830,15 @@ if ($offlineNoHeadset) {
                 }
             } |
             Select-Object -First 1
+        if ($game) {
+            if ($null -ne $observedBenchmarkGameId -and $game.Id -ne $observedBenchmarkGameId) {
+                throw 'The benchmark game process changed before readiness.'
+            }
+            $observedBenchmarkGameId = $game.Id
+        }
+        elseif ($null -ne $observedBenchmarkGameId) {
+            throw 'The benchmark game exited before workload readiness.'
+        }
         $benchmarkLog = Get-ChildItem -LiteralPath $consoleLogRoot `
                 -Filter '*.log' -ErrorAction SilentlyContinue |
             Where-Object LastWriteTime -ge $launchStarted |
@@ -837,6 +847,9 @@ if ($offlineNoHeadset) {
         if ($game -and $benchmarkLog) {
             $benchmarkText = Get-Content -LiteralPath $benchmarkLog.FullName `
                 -Raw -ErrorAction SilentlyContinue
+            if ($benchmarkText -match '\[MOD\]\[darktidevr_stereo_probe\]\[ERROR\].*mod_script.*initialization') {
+                throw 'The stereo mod failed initialization; inspect the launch console log.'
+            }
             $ready = if ($OfflineDualViewBenchmark) {
                 ($benchmarkText -match 'StateGameplay:on_enter\(\): hub_ship' -and -not $OfflineSoloMission -or
                     $OfflineSoloMission -and $benchmarkText -match
