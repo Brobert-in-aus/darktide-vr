@@ -8,6 +8,7 @@
 #include <array>
 #include <iostream>
 #include <stdexcept>
+#include <string_view>
 
 using Microsoft::WRL::ComPtr;
 using Ring = darktidevr::producer::NativeOriginalRing;
@@ -16,8 +17,9 @@ void expect(bool value, const char* message) { if (!value) throw std::runtime_er
 void STDMETHODCALLTYPE execute(ID3D12CommandQueue* queue, UINT count, ID3D12CommandList* const* lists) {
   queue->ExecuteCommandLists(count, lists);
 }
-int main() {
+int main(int argc, char** argv) {
   try {
+    const bool typeless = argc == 2 && std::string_view(argv[1]) == "typeless";
     darktidevr::tests::isolate_transports();
     ComPtr<IDXGIFactory4> factory;
     check(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
@@ -46,7 +48,7 @@ int main() {
     description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     description.Width = 4; description.Height = 4;
     description.DepthOrArraySize = 1; description.MipLevels = 1;
-    description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    description.Format = typeless ? DXGI_FORMAT_R8G8B8A8_TYPELESS : DXGI_FORMAT_R8G8B8A8_UNORM;
     description.SampleDesc.Count = 1;
     description.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
     std::array<ComPtr<ID3D12Resource>, 2> eyes;
@@ -60,7 +62,10 @@ int main() {
       check(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &description,
           D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&eyes[eye])));
       const D3D12_CPU_DESCRIPTOR_HANDLE handle{rtvs->GetCPUDescriptorHandleForHeapStart().ptr + SIZE_T(eye) * increment};
-      device->CreateRenderTargetView(eyes[eye].Get(), nullptr, handle);
+      D3D12_RENDER_TARGET_VIEW_DESC view{};
+      view.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+      view.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+      device->CreateRenderTargetView(eyes[eye].Get(), &view, handle);
     }
     ComPtr<ID3D12CommandAllocator> allocator;
     ComPtr<ID3D12GraphicsCommandList> commands;

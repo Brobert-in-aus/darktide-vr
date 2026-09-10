@@ -5,6 +5,7 @@ target_compile_definitions(darktidevr-native-original-ring-tests PRIVATE NOMINMA
 target_link_libraries(darktidevr-native-original-ring-tests PRIVATE darktidevr_core darktidevr_bridge d3d12 dxgi)
 if(BUILD_TESTING)
   add_test(NAME native_original_ring COMMAND darktidevr-native-original-ring-tests)
+  add_test(NAME native_original_ring_typeless COMMAND darktidevr-native-original-ring-tests typeless)
   set_tests_properties(native_original_ring PROPERTIES TIMEOUT 45 LABELS "d3d12;transport;offline")
 endif()
 target_compile_options(darktidevr-original-stereo-ring-tests PRIVATE /W4 /WX /permissive-)

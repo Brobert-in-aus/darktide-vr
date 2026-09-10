@@ -1,8 +1,11 @@
 #include "producer/native_original_ring.h"
 #include "core/shared_generated_frame_state.h"
 #include "core/shared_object_name.h"
+#include "core/shared_surface_policy.h"
 #include <wrl/client.h>
 #include <array>
+#include <atomic>
+#include <cstdio>
 #include <mutex>
 #include <string>
 
@@ -32,8 +35,22 @@ struct NativeOriginalRing::Impl {
   std::uint64_t sequence{}, work_sequence{};
   Tag pending_tag{};
   bool pending{}, failed{};
+  HANDLE log{INVALID_HANDLE_VALUE};
+  std::atomic<unsigned> reports{};
+
+  Impl() {
+    wchar_t temporary[MAX_PATH]{};
+    const auto length = GetTempPathW(MAX_PATH, temporary);
+    if (length && length < MAX_PATH) {
+      const auto path = std::wstring(temporary) + L"darktidevr-native-original-ring-" +
+                        std::to_wstring(GetCurrentProcessId()) + L".log";
+      log = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, nullptr,
+                        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    }
+  }
 
   ~Impl() {
+    if (log != INVALID_HANDLE_VALUE) CloseHandle(log);
     for (auto& slot : slots) if (slot.handle) CloseHandle(slot.handle);
     if (ready_handle) CloseHandle(ready_handle);
     if (consumed_handle) CloseHandle(consumed_handle);
@@ -45,9 +62,10 @@ struct NativeOriginalRing::Impl {
     queue = selected_queue;
     width = static_cast<UINT>(input.Width);
     height = input.Height;
-    format = input.Format;
+    format = static_cast<DXGI_FORMAT>(core::canonical_shared_copy_format(input.Format));
     auto output = input;
     output.Width *= 2;
+    output.Format = format;
     output.Flags = D3D12_RESOURCE_FLAG_NONE;
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -88,7 +106,10 @@ struct NativeOriginalRing::Impl {
         !input.Width || input.Width > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION / 2 ||
         !input.Height || input.Height > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
         input.DepthOrArraySize != 1 || input.MipLevels != 1 ||
-        input.SampleDesc.Count != 1 || input.Format != DXGI_FORMAT_R8G8B8A8_UNORM)
+        input.SampleDesc.Count != 1 ||
+        (input.Format != DXGI_FORMAT_R8G8B8A8_UNORM &&
+         input.Format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB &&
+         input.Format != DXGI_FORMAT_R8G8B8A8_TYPELESS))
       return Result::invalid;
     if (!writer) {
       if (eye != 0) return Result::invalid;
@@ -98,7 +119,8 @@ struct NativeOriginalRing::Impl {
       }
     }
     if (selected_queue != queue.Get() || input.Width != width || input.Height != height ||
-        input.Format != format) return Result::invalid;
+        core::canonical_shared_copy_format(input.Format) != static_cast<std::uint32_t>(format))
+      return Result::invalid;
     const auto done = work_done->GetCompletedValue();
     const auto acknowledged = consumed->GetCompletedValue();
     if (done == UINT64_MAX || acknowledged == UINT64_MAX ||
@@ -183,6 +205,23 @@ NativeOriginalRing::~NativeOriginalRing() = default;
 NativeOriginalRing::Result NativeOriginalRing::capture(ID3D12CommandQueue* queue,
     Execute execute, ID3D12Resource* source, D3D12_RESOURCE_STATES state,
     unsigned eye, Tag tag) {
-  return impl_->capture(queue, execute, source, state, eye, tag);
+  const auto result = impl_->capture(queue, execute, source, state, eye, tag);
+  // Startup-only evidence; exhaustion avoids formatting/resource queries.
+  if (impl_->reports.load(std::memory_order_relaxed) < 32 &&
+      impl_->reports.fetch_add(1, std::memory_order_relaxed) < 32 &&
+      impl_->log != INVALID_HANDLE_VALUE) {
+    const auto description = source ? source->GetDesc() : D3D12_RESOURCE_DESC{};
+    char line[256]{};
+    const auto length = std::snprintf(line, sizeof(line),
+        "eye=%u present=%llu pose=%llu generation=%llu result=%u width=%llu height=%u format=%u state=%u\n",
+        eye, static_cast<unsigned long long>(tag.present), static_cast<unsigned long long>(tag.pose),
+        static_cast<unsigned long long>(tag.generation), static_cast<unsigned>(result),
+        static_cast<unsigned long long>(description.Width), description.Height,
+        static_cast<unsigned>(description.Format), static_cast<unsigned>(state));
+    DWORD written{};
+    if (length > 0 && length < static_cast<int>(sizeof(line)))
+      WriteFile(impl_->log, line, static_cast<DWORD>(length), &written, nullptr);
+  }
+  return result;
 }
 }  // namespace darktidevr::producer
