@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import unittest
 
@@ -14,6 +15,37 @@ def record(ready, dt=2, fresh=30, generated=30, generation=1):
             f'interval_cached_pair_fps={90-fresh-generated}')
 
 class AnalysisTests(unittest.TestCase):
+    def test_gpu_engines_are_separate_and_unknown_is_not_idle(self):
+        row = dict(schema=1, utc='2026-09-11T00:00:00Z', status='sampled',
+                   processes=[dict(id=7, name='VirtualDesktop.Streamer')], engines=[])
+        for index in (0, 1):
+            row['engines'].append(dict(process_id=7, process_name='VirtualDesktop.Streamer',
+                instance=f'pid_7_eng_{index}_engtype_VideoEncode', type='VideoEncode', valid=True, percent=43.0))
+        report = module.summarize_gpu_engine_activity(json.dumps(row))
+        process = report['processes']['VirtualDesktop.Streamer']
+        self.assertEqual(process['busy_samples'], 1)
+        self.assertEqual(process['activity'], 'observed')
+        self.assertEqual([e['maximum_percent'] for e in process['engines'].values()], [43.0, 43.0])
+        unavailable = dict(schema=1, utc=row['utc'], status='unavailable')
+        self.assertEqual(module.summarize_gpu_engine_activity(json.dumps(unavailable))['status'], 'unavailable')
+        self.assertEqual(module.summarize_gpu_engine_activity('')['status'], 'unavailable')
+        row['engines'] = []
+        self.assertEqual(module.summarize_gpu_engine_activity(json.dumps(row))['processes']
+                         ['VirtualDesktop.Streamer']['activity'], 'none_above_threshold_observed')
+        mixed = module.summarize_gpu_engine_activity(json.dumps(row)+'\n'+json.dumps(unavailable))
+        self.assertEqual(mixed['processes']['VirtualDesktop.Streamer']['activity'], 'unknown_incomplete_counter_coverage')
+        row['engines'] = [dict(process_id=7, process_name='VirtualDesktop.Streamer',
+            instance='engine', type='3D', valid=False, percent=None)]
+        self.assertEqual(module.summarize_gpu_engine_activity(json.dumps(row))['processes']
+                         ['VirtualDesktop.Streamer']['invalid_engine_samples'], 1)
+        row['engines'][0]['valid'] = True
+        for bad in (None, -1, float('nan'), float('inf')):
+            row['engines'][0]['percent'] = bad
+            with self.assertRaises(ValueError): module.summarize_gpu_engine_activity(json.dumps(row))
+        row['engines'][0]['percent'] = 10
+        row['engines'][0]['process_id'] = 8
+        with self.assertRaises(ValueError): module.summarize_gpu_engine_activity(json.dumps(row))
+
     def test_weighted_rates_separate_cached(self):
         report = module.summarize('\n'.join([record(1), record(61), record(181,4,20,20)]),0)
         self.assertEqual(report['sample_seconds'],6)

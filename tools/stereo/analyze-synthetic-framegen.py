@@ -7,6 +7,58 @@ import re
 from pathlib import Path
 
 
+def summarize_gpu_engine_activity(text):
+    """Keep engine percentages separate; missing observations are never idle."""
+    rows = [json.loads(line) for line in text.splitlines() if line.strip()]
+    sampled = unavailable = 0
+    processes = {}
+    for row in rows:
+        if row.get('schema') != 1 or row.get('status') not in ('sampled', 'unavailable'):
+            raise ValueError('Unsupported GPU engine activity record')
+        if row['status'] == 'unavailable':
+            unavailable += 1
+            continue
+        sampled += 1
+        names = {p['id']: p['name'] for p in row['processes']}
+        for name in set(names.values()):
+            process = processes.setdefault(name, {'present_samples': 0, 'busy_samples': 0,
+                                                  'invalid_engine_samples': 0, 'engines': {}})
+            process['present_samples'] += 1
+        busy = set()
+        for engine in row['engines']:
+            name = engine['process_name']
+            if names.get(engine['process_id']) != name:
+                raise ValueError('GPU engine lacks matching process identity')
+            process = processes[name]
+            if not engine['valid']:
+                if engine['percent'] is not None:
+                    raise ValueError('Invalid engine sample carries a percentage')
+                process['invalid_engine_samples'] += 1
+                continue
+            value = engine['percent']
+            if not isinstance(value, (float, int)) or not math.isfinite(value) or value < 0:
+                raise ValueError('Invalid GPU engine percentage')
+            detail = process['engines'].setdefault(engine['instance'],
+                {'type': engine['type'], 'samples': 0, 'busy_samples': 0, 'maximum_percent': 0.0})
+            if detail['type'] != engine['type']:
+                raise ValueError('GPU engine type changed within an instance')
+            detail['samples'] += 1
+            detail['maximum_percent'] = max(detail['maximum_percent'], value)
+            if value > 0.1:
+                detail['busy_samples'] += 1
+                busy.add(name)
+        for name in busy:
+            processes[name]['busy_samples'] += 1
+    for process in processes.values():
+        process['activity'] = ('observed' if process['busy_samples'] else
+            'unknown_incomplete_counter_coverage' if process['invalid_engine_samples'] or unavailable else
+            'none_above_threshold_observed')
+    return {'scope': 'whole run including startup; not the selected FPS window or board utilisation',
+            'threshold_percent': 0.1, 'sampled_records': sampled, 'unavailable_records': unavailable,
+            'status': 'sampled' if sampled else 'unavailable', 'processes': processes,
+            'first_utc': rows[0]['utc'] if rows else None, 'last_utc': rows[-1]['utc'] if rows else None}
+
+
 def summarize_selection(text, warmup_seconds):
     outcomes = ('reserved_original', 'unavailable', 'no_new', 'metadata_rejected',
                 'original_missing', 'order_rejected', 'history_missing', 'selected')
@@ -148,6 +200,9 @@ def main():
         parser.error('warmup must be finite and nonnegative')
     result = summarize((args.directory / 'consumer.log').read_text(encoding='utf-8-sig'), args.warmup_seconds)
     result['configuration'] = json.loads((args.directory / 'configuration.json').read_text(encoding='utf-8-sig'))
+    gpu_activity = args.directory / 'gpu-engine-activity.jsonl'
+    result['gpu_engine_activity'] = (summarize_gpu_engine_activity(gpu_activity.read_text(encoding='utf-8-sig'))
+                                     if gpu_activity.exists() else {'status': 'not_recorded'})
     restoration = args.directory / 'restoration.json'
     result['files_restored'] = (all(item['restored'] for item in json.loads(restoration.read_text(encoding='utf-8-sig')))
                                 if restoration.exists() else None)

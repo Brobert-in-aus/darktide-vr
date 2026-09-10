@@ -21,6 +21,7 @@ param(
     [switch] $GpuProfile,
     [switch] $RenderApiCpuProfile,
     [switch] $ObserveDlssSrInputs,
+    [switch] $ObserveGpuEngineActivity,
     [string] $RenderWorldCensusSourcePath,
     [string] $CpuRenderTimingSourcePath,
     [ValidateRange(0,600)] [int] $RenderWorldCensusWarmupFrames = 120,
@@ -105,6 +106,8 @@ $mutex = [Threading.Mutex]::new($false,'Local\DarktideVR-synthetic-framegen-benc
 $ownsMutex = $false
 $saved = @{}
 $consumer = $null
+$gpuActivityJob = $null
+$gpuActivityStop = Join-Path $OutputDirectory 'gpu-engine-activity.stop'
 $failure = $null
 $priorRuntime = $env:XR_RUNTIME_JSON
 $priorPairWait = $env:DTVR_XR_PRECISE_PAIR_WAIT
@@ -262,7 +265,12 @@ try {
         render_world_census_warmup=$RenderWorldCensusWarmupFrames
         lua_sha256=(Get-FileHash (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash
     }
+    $receipt['gpu_engine_activity_observed'] = [bool]$ObserveGpuEngineActivity
     $receipt | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'configuration.json') -Encoding utf8
+    if ($ObserveGpuEngineActivity) {
+        $gpuActivityJob = Start-Job -FilePath (Join-Path $PSScriptRoot 'capture-gpu-engine-activity.ps1') `
+            -ArgumentList (Join-Path $OutputDirectory 'gpu-engine-activity.jsonl'),$gpuActivityStop,($StartupTimeoutSeconds+$DurationSeconds+60),5
+    }
     # This consumer is also the sole synthetic head publisher. Do not launch
     # SyntheticRuntimeFrusta beside it: two writers would race on pose metadata.
     $consumerArguments = @('--flush-log','--shared-eyes','--require-rendering','--enable-gameplay-reticle',
@@ -302,6 +310,16 @@ try {
         *> (Join-Path $OutputDirectory 'launch.log')
 } catch { $failure = $_ }
 finally {
+    if ($gpuActivityJob) {
+        try {
+            Set-Content -LiteralPath $gpuActivityStop -Value 'stop' -Encoding ascii
+            $null = Wait-Job -Job $gpuActivityJob -Timeout 7
+            if ($gpuActivityJob.State -eq 'Running') { Stop-Job -Job $gpuActivityJob }
+            Receive-Job -Job $gpuActivityJob -ErrorAction Continue *> (Join-Path $OutputDirectory 'gpu-engine-activity-job.log')
+        } catch {
+            $_ | Out-String | Set-Content (Join-Path $OutputDirectory 'gpu-engine-activity-job.log')
+        } finally { Remove-Job -Job $gpuActivityJob -Force -ErrorAction SilentlyContinue }
+    }
     $consumerStopped = $true
     if ($consumer) {
         $consumerStopped = $false
