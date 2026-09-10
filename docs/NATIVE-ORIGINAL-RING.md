@@ -51,7 +51,27 @@ ctest --test-dir build/xr-window-capture-demand -C Release -R '^(native_original
 The first trial (`ring-a`, original SHA `083B5BC0...`) did not attach an original
 ring; it continued through the legacy mailbox. The initial publisher accepted
 only typed RGBA8, while game resources also use typeless RGBA8. The expanded
-format handling and bounded startup outcomes are under test in `ring-b`.
-Offline pixel tests do not
+format handling succeeded in `ring-b` and `ring-c`; startup records confirm
+typeless format 27 and matching eye tags.
+
+Matched stationary `cm_archives` controls at 2496x2688 per eye, DLSS Quality,
+FG Off, 120 Hz, 13 workers and stereo HUD enabled:
+
+| Trial | Distinct native FPS | Clean exit / restored | Pose mismatches |
+| --- | ---: | --- | ---: |
+| Ring B | 89.56705 | yes / yes | 0 |
+| Accepted control A4 | 76.47432 | yes / yes | 0 |
+| Ring C | 89.34302 | yes / yes | 0 |
+
+The combined descriptor/ring candidate gains about 17% against the fresh
+accepted control. These are delivered original pairs, with no generated frames
+or repeats, not simulator title-bar submission counts. Ring C's legacy mailbox
+still publishes only 54.02 pairs/sec, confirming why counting that mailbox alone
+understates delivery once the original ring is active. GPU counters recorded no
+busy VD Streamer samples, but incomplete per-process engine coverage remains
+unknown rather than proof of zero activity. Evidence is under
+`artifacts/unattended/synthetic-descriptor-demand-{ring-b,a4,ring-c}-20260911`.
+
+This is a stationary simulator result. Offline pixel tests do not
 establish world-space HUD appearance or worn acceptance. Do not promote this
 publisher until live transport results and required visual checks are recorded.
