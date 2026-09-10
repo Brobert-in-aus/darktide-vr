@@ -20,6 +20,10 @@ struct Sample {
   DWORD64 rip{}, rsp{};
   std::array<DWORD64, 32> stack{};
   bool stack_read{};
+  bool layout_read{};
+  DWORD workers{}, commands{}, weighted_commands{}, history_commands{};
+  BYTE weighted_enabled{};
+  double history_cost{};
 };
 std::uint64_t filetime(FILETIME value) {
   return (std::uint64_t(value.dwHighDateTime) << 32) | value.dwLowDateTime;
@@ -28,7 +32,8 @@ void require(bool condition, const char* message) {
   if (!condition) throw std::runtime_error(message);
 }
 void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
-             const wchar_t* expected_path, std::uint64_t expected_created) {
+             const wchar_t* expected_path, std::uint64_t expected_created,
+             std::uint64_t engine_base = 0) {
   Handle process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ | SYNCHRONIZE, FALSE, pid)};
   require(process.value != nullptr, "OpenProcess failed");
   wchar_t path[32768]{};
@@ -53,7 +58,7 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
   for (unsigned i = 0; i < count; ++i) {
     if (WaitForSingleObject(process.value, 0) != WAIT_TIMEOUT) { failure = ERROR_PROCESS_ABORTED; break; }
     CONTEXT context{};
-    context.ContextFlags = CONTEXT_CONTROL;
+    context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
     Sample sample{};
     LARGE_INTEGER before{}, after{};
     QueryPerformanceCounter(&before);
@@ -66,6 +71,25 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
     if (retrieved) {
       sample.stack_read = ReadProcessMemory(process.value, reinterpret_cast<const void*>(context.Rsp),
           sample.stack.data(), sizeof(sample.stack), &bytes) != FALSE && bytes == sizeof(sample.stack);
+    }
+    // Optional, exact-build layout observation at the verified nested wait.
+    // The wrapper gates this to the known executable hash. All reads are bounded.
+    if (engine_base && sample.stack_read && context.Rip >= engine_base + 0x6f77c4 &&
+        context.Rip < engine_base + 0x6f77df && sample.stack[5] == engine_base + 0x6f9542 &&
+        sample.stack[23] == engine_base + 0x7ac4aa) {
+      const auto read = [&](DWORD64 address, void* output, SIZE_T size) {
+        SIZE_T got{};
+        return ReadProcessMemory(process.value, reinterpret_cast<const void*>(address), output, size, &got) && got == size;
+      };
+      // R13 is preserved by both wait helpers. The leaf saves its caller's RBP
+      // at RSP+0x38; the list helper's active branch leaves that register intact.
+      const auto frame = sample.stack[7];
+      sample.layout_read = read(context.Rsi + 0xd0, &sample.workers, sizeof(sample.workers)) &&
+          read(frame - 0x80, &sample.commands, sizeof(sample.commands)) &&
+          read(frame - 0x38, &sample.weighted_commands, sizeof(sample.weighted_commands)) &&
+          read(context.R13 + 0xf8, &sample.history_cost, sizeof(sample.history_cost)) &&
+          read(context.R13 + 0x100, &sample.history_commands, sizeof(sample.history_commands)) &&
+          read(context.R13 + 0x104, &sample.weighted_enabled, sizeof(sample.weighted_enabled));
     }
     // Exactly undo our increment, including a pre-existing suspension. Do not
     // drain someone else's suspend count or perform logging before this call.
@@ -86,12 +110,14 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
       pid, tid, static_cast<unsigned long long>(expected_created), frequency.QuadPart, count, samples.size(), interval, failure);
   std::printf("qpc,rip,pause_us,rsp,stack_read");
   for (unsigned i = 0; i < 32; ++i) std::printf(",s%u", i);
-  std::puts("");
+  std::puts(",layout_read,workers,commands,weighted_commands,history_commands,weighted_enabled,history_cost");
   for (const auto& sample : samples) {
     std::printf("%lld,0x%llx,%.3f,0x%llx,%u", sample.qpc, sample.rip,
                 double(sample.pause_ticks) * 1000000 / frequency.QuadPart, sample.rsp, unsigned(sample.stack_read));
     for (const auto value : sample.stack) std::printf(",0x%llx", value);
-    std::puts("");
+    std::printf(",%u,%lu,%lu,%lu,%lu,%u,%.9g\n", unsigned(sample.layout_read), sample.workers,
+        sample.commands, sample.weighted_commands, sample.history_commands,
+        unsigned(sample.weighted_enabled), sample.history_cost);
   }
   require(failure == ERROR_SUCCESS && samples.size() == count, "Incomplete residency capture; inspect failure code");
 }
@@ -120,7 +146,7 @@ int wmain(int argc, wchar_t** argv) {
       stop.store(true); worker.join();
       return 0;
     }
-    require(argc == 7, "Expected PID TID sample-count interval-ms exact-exe-path creation-filetime");
+    require(argc == 7 || argc == 8, "Expected PID TID sample-count interval-ms exact-exe-path creation-filetime [verified-engine-base]");
     const auto pid = std::wcstoul(argv[1], nullptr, 10);
     const auto tid = std::wcstoul(argv[2], nullptr, 10);
     const auto count = std::wcstoul(argv[3], nullptr, 10);
@@ -128,7 +154,7 @@ int wmain(int argc, wchar_t** argv) {
     const auto created = _wcstoui64(argv[6], nullptr, 10);
     require(pid && tid && count >= 10 && count <= 2000 && interval >= 5 && interval <= 50 && count * interval <= 30000,
             "Invalid or unbounded capture arguments");
-    capture(pid, tid, count, interval, argv[5], created);
+    capture(pid, tid, count, interval, argv[5], created, argc == 8 ? _wcstoui64(argv[7], nullptr, 0) : 0);
     return 0;
   } catch (const std::exception& error) {
     std::fprintf(stderr, "%s (Windows error %lu)\n", error.what(), GetLastError());

@@ -27,3 +27,10 @@ with complete coverage. Both had no generated frames, repeats or pose
 mismatches and passed shutdown/restoration. The difference is below 1% in one
 trial per setting, so no worker-count recommendation is changed. The saved
 thirteen-worker setting remains restored.
+## Later engine-count observation
+
+Read-only engine mapping and a bounded live diagnostic subsequently found six
+workers in the relevant pool with the configured value of 13. Initialization
+also applies a CPU-derived bound and an upper clamp of 12. The earlier 8/13
+rows describe requested settings and must not be interpreted as proof of two
+different effective pools. See [dispatcher layout](ENGINE-DISPATCH-JOB-LAYOUT.md).

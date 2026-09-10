@@ -58,6 +58,7 @@ def analyze(directory: Path) -> dict:
         return hex(mapper.unwind_chain(pe, entries[i])[-1]["begin_rva"])
     counts, owners, locations, callers = (collections.Counter() for _ in range(4))
     parents = collections.Counter()
+    layouts = []
     pauses, qpcs = [], []
     wait_samples = stack_samples = rejected_callers = 0
     known_wait = digest == KNOWN_ENGINE and pe.get_data(0x6F7760, 4) == bytes.fromhex("4883ec28")
@@ -97,6 +98,12 @@ def analyze(directory: Path) -> dict:
                     parent_call = pe.get_data(parent_return - 5, 5) if 5 <= parent_return < engine["size"] else b""
                     if len(parent_call) == 5 and parent_call[0] == 0xE8 and parent_return + struct.unpack("<i", parent_call[1:])[0] == 0x6F94D0:
                         parents[(hex(parent_return - 5), owner(parent_return - 5))] += 1
+                        if parent_return == 0x7AC4AA and row.get("layout_read") == "1" and receipt.get("observe_dispatch_layout"):
+                            layout = {key: int(row[key]) for key in ("workers", "commands", "weighted_commands", "history_commands", "weighted_enabled")}
+                            layout["history_cost_raw"] = float(row["history_cost"])
+                            if not 0 <= layout["workers"] <= 64 or layout["weighted_enabled"] not in (0, 1) or any(not 0 <= layout[key] <= 10000000 for key in ("commands", "weighted_commands", "history_commands")) or not math.isfinite(layout["history_cost_raw"]):
+                                raise ValueError("Implausible dispatcher layout; do not interpret field offsets")
+                            layouts.append(layout)
                     else:
                         parents[("unverified", "unverified")] += 1
             else:
@@ -111,6 +118,13 @@ def analyze(directory: Path) -> dict:
                          for (call, primary), n in callers.most_common()],
         "list_wait_parents": [{"call_rva": call, "primary_rva": primary, "samples": n}
                               for (call, primary), n in parents.most_common()],
+        "dispatch_layout": {
+            "samples": len(layouts),
+            "workers": dict(collections.Counter(x["workers"] for x in layouts)),
+            "weighted_enabled": dict(collections.Counter(x["weighted_enabled"] for x in layouts)),
+            "ranges": {key: [min(x[key] for x in layouts), max(x[key] for x in layouts)]
+                       for key in ("commands", "weighted_commands", "history_commands", "history_cost_raw")} if layouts else {},
+        },
         "pause_mean_us": statistics.mean(pauses),
         "pause_p95_us": sorted(pauses)[math.ceil(len(pauses) * .95) - 1], "pause_max_us": max(pauses),
         "source_sha256": {name: hashlib.sha256((directory / name).read_bytes()).hexdigest()
