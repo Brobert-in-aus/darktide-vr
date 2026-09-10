@@ -3532,6 +3532,9 @@ local function record_render_timings(label, left_ticks, right_ticks, pair_ticks)
         if presentation.cpu_render_timing_kernel then
             mod:info("DARKTIDEVR_PERF render_caller_thread=%d target=%s samples=%d",
                 tonumber(presentation.cpu_render_timing_kernel.GetCurrentThreadId()), label, render_timing_samples)
+            local ok, render_time, gpu_time = pcall(Application.get_frame_times)
+            mod:info("DARKTIDEVR_PERF engine_frame_times_read=%s render_value=%s gpu_value=%s gpu_profile_requested=%s",
+                tostring(ok), tostring(render_time), tostring(gpu_time), tostring(performance_profile_requested))
         end
         local to_ms = 1000 / render_timing_frequency
         table.sort(presentation.render_timing_left_samples)
