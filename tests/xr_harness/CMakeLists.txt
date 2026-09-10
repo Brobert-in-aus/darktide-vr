@@ -32,6 +32,11 @@ target_link_libraries(darktidevr-synthetic-head-publisher PRIVATE
   darktidevr_core)
 
 if(BUILD_TESTING)
+  add_executable(darktidevr-capture-worker-tests capture_worker_tests.cpp)
+  target_compile_options(darktidevr-capture-worker-tests PRIVATE /W4 /WX /permissive-)
+  target_include_directories(darktidevr-capture-worker-tests PRIVATE "${PROJECT_SOURCE_DIR}/src/xr")
+  add_test(NAME capture_worker COMMAND darktidevr-capture-worker-tests)
+  set_tests_properties(capture_worker PROPERTIES TIMEOUT 10)
   add_executable(darktidevr-pair-poll-wait-tests pair_poll_wait_tests.cpp)
   target_compile_options(darktidevr-pair-poll-wait-tests PRIVATE /W4 /WX /permissive-)
   target_compile_definitions(darktidevr-pair-poll-wait-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)

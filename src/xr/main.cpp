@@ -15,6 +15,7 @@
 #include "synthetic_head_path.h"
 #include "tracked_cuff_renderer.h"
 #include "window_capture.h"
+#include "capture_worker.h"
 #include "bridge/shared_eye_surfaces.h"
 #include "core/head_tracking.h"
 #include "core/menu_pointer_input.h"
@@ -848,7 +849,9 @@ class OpenXrProbe {
     std::atomic<std::shared_ptr<const std::string>> capture_error;
     std::atomic<std::uint64_t> capture_failures_total{0};
     std::shared_ptr<const CapturePixels> consumed_capture;
-    std::jthread capture_thread;
+    std::atomic<std::uint64_t> capture_attempts{0};
+    bool capture_requested = true;
+    std::unique_ptr<darktidevr::harness::CaptureWorker> capture_worker;
     if (capture_title) {
       window_capture = std::make_unique<darktidevr::harness::WindowCapture>(
           *capture_title, flat_capture_width, flat_capture_height);
@@ -879,7 +882,8 @@ class OpenXrProbe {
             "ID3D12Resource::Map(theatre upload)");
 
       const auto capture_rgba =
-          [&window_capture, flat_capture_width, flat_capture_height] {
+          [&window_capture, &capture_attempts, flat_capture_width, flat_capture_height] {
+        capture_attempts.fetch_add(1, std::memory_order_relaxed);
         const auto captured = window_capture->capture();
         auto converted = std::make_shared<CapturePixels>(
             static_cast<std::size_t>(flat_capture_width) *
@@ -901,26 +905,19 @@ class OpenXrProbe {
         return std::shared_ptr<const CapturePixels>(std::move(converted));
       };
       latest_capture.store(capture_rgba(), std::memory_order_release);
-      capture_thread = std::jthread(
-          [capture_rgba, &latest_capture,
-           &capture_error,
-           &capture_failures_total](std::stop_token stop_token) {
-            auto next_capture = std::chrono::steady_clock::now();
-            while (!stop_token.stop_requested()) {
-              next_capture += std::chrono::milliseconds(33);
-              try {
-                latest_capture.store(capture_rgba(),
-                                     std::memory_order_release);
-                capture_error.store(nullptr, std::memory_order_release);
-              } catch (const std::exception& error) {
-                capture_failures_total.fetch_add(1, std::memory_order_relaxed);
-                capture_error.store(
-                    std::make_shared<const std::string>(error.what()),
-                    std::memory_order_release);
-              }
-              std::this_thread::sleep_until(next_capture);
+      capture_worker = std::make_unique<darktidevr::harness::CaptureWorker>(
+          [capture_rgba, &latest_capture, &capture_error, &capture_failures_total] {
+            try {
+              latest_capture.store(capture_rgba(), std::memory_order_release);
+              capture_error.store(nullptr, std::memory_order_release);
+            } catch (const std::exception& error) {
+              capture_failures_total.fetch_add(1, std::memory_order_relaxed);
+              capture_error.store(std::make_shared<const std::string>(error.what()),
+                                  std::memory_order_release);
             }
           });
+      capture_worker->set_enabled(true);
+      std::cout << "openxr.theatre_capture_policy=on_demand\n";
     }
 
     std::optional<darktidevr::bridge::OpenedEyeSurfaces> opened_eyes;
@@ -2411,6 +2408,15 @@ class OpenXrProbe {
         const bool use_flat_capture =
             use_shared_menu || use_window_flat_capture;
         submitted_flat_fallback_this_frame = use_flat_capture;
+        // Stereo and native UI already supply their own images. The gameplay
+        // reticle is painted independently below, so it does not need captures.
+        // Keep source_window_alive() running even while this worker sleeps.
+        if (capture_worker && capture_requested != use_window_flat_capture) {
+          capture_requested = use_window_flat_capture;
+          capture_worker->set_enabled(capture_requested);
+          std::cout << "openxr.theatre_capture_active=" << (capture_requested ? 1 : 0)
+                    << " attempts=" << capture_attempts.load(std::memory_order_relaxed) << '\n';
+        }
         if (window_capture) {
           const auto flat_presentation_changed =
               use_flat_capture && presentation_sequence != 0 &&
@@ -4022,10 +4028,7 @@ class OpenXrProbe {
 
     const auto elapsed = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - start);
-    if (capture_thread.joinable()) {
-      capture_thread.request_stop();
-      capture_thread.join();
-    }
+    capture_worker.reset();
     if (menu_input_injector) {
       for (const auto& event : menu_pointer_state.update({})) {
         ++menu_input_events;
@@ -4057,6 +4060,8 @@ class OpenXrProbe {
                                         : "diagnostic-pattern"))
               << '\n'
               << "openxr.theatre_capture_updates=" << capture_updates << '\n'
+              << "openxr.theatre_capture_attempts="
+              << capture_attempts.load(std::memory_order_relaxed) << '\n'
               << "openxr.theatre_capture_failures="
               << capture_failures_total.load(std::memory_order_relaxed) << '\n'
               << "openxr.theatre_stale_frames=" << capture_stale_frames
