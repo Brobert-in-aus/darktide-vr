@@ -1,4 +1,5 @@
 #include "producer/stereo_input_copy.h"
+#include "producer/stereo_color_pack.h"
 #include <d3d12sdklayers.h>
 #include <dxgi1_4.h>
 #include <wrl/client.h>
@@ -18,6 +19,10 @@ struct CountedCommands {
   }
   void CopyResource(ID3D12Resource* target, ID3D12Resource* source) {
     ++copies; commands->CopyResource(target, source);
+  }
+  void CopyTextureRegion(const D3D12_TEXTURE_COPY_LOCATION* target, UINT x, UINT y, UINT z,
+      const D3D12_TEXTURE_COPY_LOCATION* source, const D3D12_BOX* box) {
+    ++copies; commands->CopyTextureRegion(target, x, y, z, source, box);
   }
 };
 int main() {
@@ -104,6 +109,30 @@ int main() {
     }
     readbacks.push_back(readback);
   }
+  ComPtr<ID3D12Resource> packed, packed_readback;
+  heap.Type = D3D12_HEAP_TYPE_DEFAULT; texture.Width = 8;
+  ok(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &texture,
+      D3D12_RESOURCE_STATE_PRESENT, nullptr, IID_PPV_ARGS(&packed)));
+  heap.Type = D3D12_HEAP_TYPE_READBACK;
+  ok(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &buffer,
+      D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&packed_readback)));
+  for (unsigned trial = 0; trial < 2; ++trial) {
+    CountedCommands counted{commands.Get()};
+    record_stereo_color_pack(&counted, packed.Get(),
+        {targets[0].Get(), targets[trial == 0 ? 1 : 0].Get()}, 4);
+    check(counted.barriers == 2 && counted.copies == 2);
+    D3D12_RESOURCE_BARRIER barrier{}; barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition = {packed.Get(), D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+        D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_SOURCE};
+    commands->ResourceBarrier(1, &barrier);
+    D3D12_TEXTURE_COPY_LOCATION from{}, to{};
+    from.pResource = packed.Get(); from.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    to.pResource = packed_readback.Get(); to.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    to.PlacedFootprint = {trial * 512ULL, {texture.Format, 8, 1, 1, 256}};
+    commands->CopyTextureRegion(&to, 0, 0, 0, &from, nullptr);
+    std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+    commands->ResourceBarrier(1, &barrier);
+  }
   ok(commands->Close()); ID3D12CommandList* lists[]{commands.Get()}; queue->ExecuteCommandLists(1, lists);
   ComPtr<ID3D12Fence> fence; ok(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)));
   ok(queue->Signal(fence.Get(), 1)); HANDLE event = CreateEventW(nullptr, FALSE, FALSE, nullptr); check(event != nullptr);
@@ -116,6 +145,12 @@ int main() {
         check(static_cast<unsigned char*>(mapped)[i * 512 + byte] == 30 + (trial == 2 && i == 4 ? 0 : i));
     readbacks[trial]->Unmap(0, &none);
   }
+  D3D12_RANGE packed_range{0, 1024}; ok(packed_readback->Map(0, &packed_range, &mapped));
+  for (unsigned trial = 0; trial < 2; ++trial)
+    for (unsigned byte = 0; byte < 32; ++byte)
+      check(static_cast<unsigned char*>(mapped)[trial * 512 + byte] ==
+          30 + (trial == 0 && byte >= 16 ? 1 : 0));
+  packed_readback->Unmap(0, &none);
   for (UINT64 i = 0; i < info->GetNumStoredMessages(); ++i) {
     SIZE_T length{}; ok(info->GetMessage(i, nullptr, &length)); std::vector<char> bytes(length);
     auto* message = reinterpret_cast<D3D12_MESSAGE*>(bytes.data()); ok(info->GetMessage(i, message, &length));

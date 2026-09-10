@@ -3,6 +3,7 @@
 #include "producer/stereo_ui_readback.h"
 #include "producer/ngx_output_copy_probe.h"
 #include "producer/stereo_input_copy.h"
+#include "producer/stereo_color_pack.h"
 #include "core/continuous_frame_trace.h"
 
 namespace darktidevr::producer {
@@ -313,28 +314,8 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
           source.Height, D3D12_RESOURCE_STATE_COPY_DEST, static_cast<unsigned>(source.Format)};
     }
   }
-  D3D12_RESOURCE_BARRIER destination{};
-  destination.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-  destination.Transition = {backbuffer.Get(), D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                            D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST};
-  commands->ResourceBarrier(1, &destination);
-  for (unsigned eye = 0; eye < 2; ++eye) {
-    D3D12_RESOURCE_BARRIER source{};
-    source.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    source.Transition = {frame.textures[eye][3].Get(), D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                         D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE};
-    commands->ResourceBarrier(1, &source);
-    D3D12_TEXTURE_COPY_LOCATION from{}, to{};
-    from.pResource = frame.textures[eye][3].Get();
-    from.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-    to.pResource = backbuffer.Get();
-    to.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-    commands->CopyTextureRegion(&to, eye * width_, 0, 0, &from, nullptr);
-    std::swap(source.Transition.StateBefore, source.Transition.StateAfter);
-    commands->ResourceBarrier(1, &source);
-  }
-  std::swap(destination.Transition.StateBefore, destination.Transition.StateAfter);
-  commands->ResourceBarrier(1, &destination);
+  record_stereo_color_pack(commands, backbuffer.Get(),
+      {frame.textures[0][3].Get(), frame.textures[1][3].Get()}, width_);
   original_ready_=persistent_ ? stage_original_stereo(commands,backbuffer.Get(),present,frame.pose,generation) : 0;
   if(persistent_) observe_ngx_copy_frame(frame.textures[0][2].Get(),frame.textures[1][2].Get());
   const auto captured_ui=readback_ui();
