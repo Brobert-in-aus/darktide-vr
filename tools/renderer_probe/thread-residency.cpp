@@ -24,6 +24,10 @@ struct Sample {
   DWORD workers{}, commands{}, weighted_commands{}, history_commands{};
   BYTE weighted_enabled{};
   double history_cost{};
+  struct Category { double cost{}; DWORD records{}, padding{}; };
+  static_assert(sizeof(Category) == 16);
+  std::array<Category, 4> categories{};
+  bool categories_read{};
 };
 std::uint64_t filetime(FILETIME value) {
   return (std::uint64_t(value.dwHighDateTime) << 32) | value.dwLowDateTime;
@@ -90,6 +94,15 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
           read(context.R13 + 0xf8, &sample.history_cost, sizeof(sample.history_cost)) &&
           read(context.R13 + 0x100, &sample.history_commands, sizeof(sample.history_commands)) &&
           read(context.R13 + 0x104, &sample.weighted_enabled, sizeof(sample.weighted_enabled));
+      // The merge routine at 7a5d20 accumulates four 16-byte category records
+      // through dispatcher+b0's array at +8. Workers own separate records;
+      // this aggregate is merged by the paused caller only after the wait.
+      DWORD category_count{};
+      DWORD64 category_data{};
+      sample.categories_read = sample.layout_read &&
+          read(context.R13 + 0xb0, &category_count, sizeof(category_count)) && category_count == 4 &&
+          read(context.R13 + 0xb8, &category_data, sizeof(category_data)) && category_data &&
+          read(category_data, sample.categories.data(), sizeof(sample.categories));
     }
     // Exactly undo our increment, including a pre-existing suspension. Do not
     // drain someone else's suspend count or perform logging before this call.
@@ -110,14 +123,18 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
       pid, tid, static_cast<unsigned long long>(expected_created), frequency.QuadPart, count, samples.size(), interval, failure);
   std::printf("qpc,rip,pause_us,rsp,stack_read");
   for (unsigned i = 0; i < 32; ++i) std::printf(",s%u", i);
-  std::puts(",layout_read,workers,commands,weighted_commands,history_commands,weighted_enabled,history_cost");
+  std::printf(",layout_read,workers,commands,weighted_commands,history_commands,weighted_enabled,history_cost,categories_read");
+  for (unsigned i = 0; i < 4; ++i) std::printf(",category%u_cost,category%u_records", i, i);
+  std::puts("");
   for (const auto& sample : samples) {
     std::printf("%lld,0x%llx,%.3f,0x%llx,%u", sample.qpc, sample.rip,
                 double(sample.pause_ticks) * 1000000 / frequency.QuadPart, sample.rsp, unsigned(sample.stack_read));
     for (const auto value : sample.stack) std::printf(",0x%llx", value);
-    std::printf(",%u,%lu,%lu,%lu,%lu,%u,%.9g\n", unsigned(sample.layout_read), sample.workers,
+    std::printf(",%u,%lu,%lu,%lu,%lu,%u,%.9g,%u", unsigned(sample.layout_read), sample.workers,
         sample.commands, sample.weighted_commands, sample.history_commands,
-        unsigned(sample.weighted_enabled), sample.history_cost);
+        unsigned(sample.weighted_enabled), sample.history_cost, unsigned(sample.categories_read));
+    for (const auto& category : sample.categories) std::printf(",%.9g,%lu", category.cost, category.records);
+    std::puts("");
   }
   require(failure == ERROR_SUCCESS && samples.size() == count, "Incomplete residency capture; inspect failure code");
 }

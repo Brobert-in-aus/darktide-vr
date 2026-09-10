@@ -59,6 +59,7 @@ def analyze(directory: Path) -> dict:
     counts, owners, locations, callers = (collections.Counter() for _ in range(4))
     parents = collections.Counter()
     layouts = []
+    categories = []
     pauses, qpcs = [], []
     wait_samples = stack_samples = rejected_callers = 0
     known_wait = digest == KNOWN_ENGINE and pe.get_data(0x6F7760, 4) == bytes.fromhex("4883ec28")
@@ -104,6 +105,13 @@ def analyze(directory: Path) -> dict:
                             if not 0 <= layout["workers"] <= 64 or layout["weighted_enabled"] not in (0, 1) or any(not 0 <= layout[key] <= 10000000 for key in ("commands", "weighted_commands", "history_commands")) or not math.isfinite(layout["history_cost_raw"]):
                                 raise ValueError("Implausible dispatcher layout; do not interpret field offsets")
                             layouts.append(layout)
+                            if row.get("categories_read") == "1":
+                                values = [{"cost_raw": float(row[f"category{i}_cost"]),
+                                           "records": int(row.get(f"category{i}_records", row.get(f"category{i}_commands")))} for i in range(4)]
+                                if any(not math.isfinite(x["cost_raw"]) or x["cost_raw"] < 0 or
+                                       not 0 <= x["records"] <= 10000000 for x in values):
+                                    raise ValueError("Implausible category history; do not interpret field offsets")
+                                categories.append(values)
                     else:
                         parents[("unverified", "unverified")] += 1
             else:
@@ -126,6 +134,14 @@ def analyze(directory: Path) -> dict:
                        for key in ("commands", "weighted_commands", "history_commands", "history_cost_raw")} if layouts else {},
         },
         "pause_mean_us": statistics.mean(pauses),
+        "dispatch_category_history": {
+            "samples": len(categories),
+            "scope": "existing aggregate history at sampled waits; repeated snapshots, not per-frame timings",
+            "categories": [{"index": i,
+                            "cost_raw_range": [min(x[i]["cost_raw"] for x in categories), max(x[i]["cost_raw"] for x in categories)],
+                            "records_range": [min(x[i]["records"] for x in categories), max(x[i]["records"] for x in categories)]}
+                           for i in range(4)] if categories else [],
+        },
         "pause_p95_us": sorted(pauses)[math.ceil(len(pauses) * .95) - 1], "pause_max_us": max(pauses),
         "source_sha256": {name: hashlib.sha256((directory / name).read_bytes()).hexdigest()
                           for name in ("receipt.json", "modules.json", "samples.csv")},
