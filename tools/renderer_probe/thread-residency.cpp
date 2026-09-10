@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <atomic>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cwchar>
@@ -8,13 +9,18 @@
 #include <vector>
 
 // Debugger-style instruction-pointer residency, not an ETW CPU-time profile.
-// While suspended, perform only GetThreadContext followed immediately by one
-// ResumeThread. No target-process allocation, locking, I/O or waits occur.
+// While suspended, read context and a bounded stack excerpt, then immediately
+// ResumeThread. No target-process allocation, locking, file I/O or waits occur.
 struct Handle {
   HANDLE value{};
   ~Handle() { if (value && value != INVALID_HANDLE_VALUE) CloseHandle(value); }
 };
-struct Sample { LONGLONG qpc{}, pause_ticks{}; DWORD64 rip{}; };
+struct Sample {
+  LONGLONG qpc{}, pause_ticks{};
+  DWORD64 rip{}, rsp{};
+  std::array<DWORD64, 32> stack{};
+  bool stack_read{};
+};
 std::uint64_t filetime(FILETIME value) {
   return (std::uint64_t(value.dwHighDateTime) << 32) | value.dwLowDateTime;
 }
@@ -23,7 +29,7 @@ void require(bool condition, const char* message) {
 }
 void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
              const wchar_t* expected_path, std::uint64_t expected_created) {
-  Handle process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, pid)};
+  Handle process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ | SYNCHRONIZE, FALSE, pid)};
   require(process.value != nullptr, "OpenProcess failed");
   wchar_t path[32768]{};
   DWORD length = 32768;
@@ -48,6 +54,7 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
     if (WaitForSingleObject(process.value, 0) != WAIT_TIMEOUT) { failure = ERROR_PROCESS_ABORTED; break; }
     CONTEXT context{};
     context.ContextFlags = CONTEXT_CONTROL;
+    Sample sample{};
     LARGE_INTEGER before{}, after{};
     QueryPerformanceCounter(&before);
     if (before.QuadPart - started.QuadPart > frequency.QuadPart * 30) { failure = ERROR_TIMEOUT; break; }
@@ -55,6 +62,11 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
     if (previous == DWORD(-1)) { failure = GetLastError(); break; }
     const auto retrieved = GetThreadContext(thread.value, &context);
     const auto context_error = retrieved ? ERROR_SUCCESS : GetLastError();
+    SIZE_T bytes{};
+    if (retrieved) {
+      sample.stack_read = ReadProcessMemory(process.value, reinterpret_cast<const void*>(context.Rsp),
+          sample.stack.data(), sizeof(sample.stack), &bytes) != FALSE && bytes == sizeof(sample.stack);
+    }
     // Exactly undo our increment, including a pre-existing suspension. Do not
     // drain someone else's suspend count or perform logging before this call.
     const auto resumed = ResumeThread(thread.value);
@@ -63,15 +75,23 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
     if (resume_error) { failure = resume_error; break; }
     if (previous != 0 || resumed != previous + 1) { failure = ERROR_BUSY; break; }
     if (context_error) { failure = context_error; break; }
-    samples.push_back({before.QuadPart, after.QuadPart - before.QuadPart, context.Rip});
+    sample.qpc = before.QuadPart;
+    sample.pause_ticks = after.QuadPart - before.QuadPart;
+    sample.rip = context.Rip;
+    sample.rsp = context.Rsp;
+    samples.push_back(sample);
     Sleep(interval);
   }
   std::printf("RESIDENCY_BEGIN pid=%lu thread=%lu created=%llu frequency=%lld requested=%u samples=%zu interval_ms=%u failure=%lu\n",
       pid, tid, static_cast<unsigned long long>(expected_created), frequency.QuadPart, count, samples.size(), interval, failure);
-  std::puts("qpc,rip,pause_us");
+  std::printf("qpc,rip,pause_us,rsp,stack_read");
+  for (unsigned i = 0; i < 32; ++i) std::printf(",s%u", i);
+  std::puts("");
   for (const auto& sample : samples) {
-    std::printf("%lld,0x%llx,%.3f\n", sample.qpc, sample.rip,
-                double(sample.pause_ticks) * 1000000 / frequency.QuadPart);
+    std::printf("%lld,0x%llx,%.3f,0x%llx,%u", sample.qpc, sample.rip,
+                double(sample.pause_ticks) * 1000000 / frequency.QuadPart, sample.rsp, unsigned(sample.stack_read));
+    for (const auto value : sample.stack) std::printf(",0x%llx", value);
+    std::puts("");
   }
   require(failure == ERROR_SUCCESS && samples.size() == count, "Incomplete residency capture; inspect failure code");
 }
