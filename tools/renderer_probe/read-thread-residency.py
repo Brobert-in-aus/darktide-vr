@@ -57,6 +57,7 @@ def analyze(directory: Path) -> dict:
             return "unmapped"
         return hex(mapper.unwind_chain(pe, entries[i])[-1]["begin_rva"])
     counts, owners, locations, callers = (collections.Counter() for _ in range(4))
+    module_locations = collections.Counter()
     parents = collections.Counter()
     layouts = []
     categories = []
@@ -76,6 +77,7 @@ def analyze(directory: Path) -> dict:
             continue
         module = modules[i]
         counts[module["name"]] += 1
+        module_locations[(module["name"], hex(ip - module["base_address"]))] += 1
         if module is not engine:
             continue
         rva = ip - module["base_address"]
@@ -120,6 +122,8 @@ def analyze(directory: Path) -> dict:
         "scope": "instruction-pointer residency including waits; not CPU-time shares",
         "samples": len(rows), "sample_span_seconds": (qpcs[-1] - qpcs[0]) / int(header["frequency"]),
         "modules": dict(counts.most_common()), "engine_primary_owners": dict(owners.most_common()),
+        "top_module_rvas": [{"module": name, "rva": rva, "samples": n}
+                            for (name, rva), n in module_locations.most_common(30)],
         "top_engine_rvas": dict(locations.most_common(30)), "wait_loop_samples": wait_samples,
         "wait_stack_samples": stack_samples, "rejected_wait_callers": rejected_callers,
         "wait_callers": [{"call_rva": call, "primary_rva": primary, "samples": n}

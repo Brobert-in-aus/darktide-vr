@@ -6,6 +6,7 @@ param(
     [ValidateRange(10,2000)] [int] $Samples = 1000,
     [ValidateRange(5,50)] [int] $IntervalMilliseconds = 11,
     [switch] $ObserveDispatchLayout,
+    [ValidateRange(0,2147483647)] [int] $ThreadId = 0,
     [string] $SamplerPath = (Join-Path $PSScriptRoot '../../build/xr-frame-stage-timing/tests/native_capture/Release/darktidevr-thread-residency.exe')
 )
 Set-StrictMode -Version Latest
@@ -32,8 +33,11 @@ if ($profile -notmatch "(?m)^PRESENT_CPU_BEGIN pid=$gameId ") { throw 'Present p
 $threadIds = @([regex]::Matches($profile,'(?m)^PRESENT_CPU sample=\d+ thread=(\d+) ') |
     ForEach-Object { [int]$_.Groups[1].Value } | Sort-Object -Unique)
 if ($threadIds.Count -ne 1) { throw 'Requires one observed Present thread.' }
-$threadId = $threadIds[0]
-$output = Join-Path $BenchmarkDirectory 'thread-residency'
+$presentThreadId = $threadIds[0]
+if ($ThreadId -eq 0) { $ThreadId = $presentThreadId }
+if ($ObserveDispatchLayout -and $ThreadId -ne $presentThreadId) { throw 'Dispatcher layout requires the observed Present thread.' }
+$outputName = if ($ThreadId -eq $presentThreadId) { 'thread-residency' } else { "thread-residency-$ThreadId" }
+$output = Join-Path $BenchmarkDirectory $outputName
 if (Test-Path -LiteralPath $output) { throw 'Use a fresh residency output directory.' }
 $modules = @($gameProcess.Modules | ForEach-Object {
     [pscustomobject]@{name=$_.ModuleName;path=$_.FileName;base_address=$_.BaseAddress.ToInt64();size=$_.ModuleMemorySize}
@@ -58,7 +62,7 @@ $end = [DateTime]::UtcNow
 $gameProcess.Refresh()
 $threadAfter = $gameProcess.Threads | Where-Object Id -eq $threadId
 @{
-    pid=$gameId; thread=$threadId; process_started_utc=$started.ToString('o')
+    pid=$gameId; thread=$threadId; present_thread=$presentThreadId; process_started_utc=$started.ToString('o')
     start_utc=$begin.ToString('o'); end_utc=$end.ToString('o'); exit_code=$result
     game_sha256=$ExpectedGameSha256; sampler_sha256=(Get-FileHash $SamplerPath).Hash
     observe_dispatch_layout=$ObserveDispatchLayout.IsPresent

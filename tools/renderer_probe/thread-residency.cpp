@@ -18,7 +18,7 @@ struct Handle {
 struct Sample {
   LONGLONG qpc{}, pause_ticks{};
   DWORD64 rip{}, rsp{};
-  std::array<DWORD64, 32> stack{};
+  std::array<DWORD64, 64> stack{};
   bool stack_read{};
   bool layout_read{};
   DWORD workers{}, commands{}, weighted_commands{}, history_commands{};
@@ -122,7 +122,7 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
   std::printf("RESIDENCY_BEGIN pid=%lu thread=%lu created=%llu frequency=%lld requested=%u samples=%zu interval_ms=%u failure=%lu\n",
       pid, tid, static_cast<unsigned long long>(expected_created), frequency.QuadPart, count, samples.size(), interval, failure);
   std::printf("qpc,rip,pause_us,rsp,stack_read");
-  for (unsigned i = 0; i < 32; ++i) std::printf(",s%u", i);
+  for (unsigned i = 0; i < 64; ++i) std::printf(",s%u", i);
   std::printf(",layout_read,workers,commands,weighted_commands,history_commands,weighted_enabled,history_cost,categories_read");
   for (unsigned i = 0; i < 4; ++i) std::printf(",category%u_cost,category%u_records", i, i);
   std::puts("");
