@@ -62,11 +62,28 @@ def analyze(directory: Path) -> dict:
     layouts = []
     categories = []
     queues = []
+    peer_locations, dispatch_peer_locations = collections.Counter(), collections.Counter()
+    peer_thread = receipt.get("peer_thread", 0)
+    def peer_location(row):
+        if not peer_thread:
+            return None
+        if int(row.get("peer_thread", 0)) != peer_thread or row.get("peer_read") != "1":
+            raise ValueError("Peer identity or context missing")
+        ip = int(row["peer_rip"], 16)
+        i = bisect.bisect_right(bases, ip) - 1
+        if i < 0 or ip >= bases[i] + modules[i]["size"]:
+            return ("unmapped", hex(ip), "unmapped")
+        module = modules[i]
+        rva = ip - module["base_address"]
+        return (module["name"], hex(rva), owner(rva) if module is engine else "unresolved")
     pauses, qpcs = [], []
     wait_samples = stack_samples = rejected_callers = 0
     known_wait = digest == KNOWN_ENGINE and pe.get_data(0x6F7760, 4) == bytes.fromhex("4883ec28")
     known_parent = known_wait and pe.get_data(0x6F94D9, 11) == bytes.fromhex("488bc4415441574883ec78")
     for row in rows:
+        peer = peer_location(row)
+        if peer is not None:
+            peer_locations[peer] += 1
         ip, qpc, pause = int(row["rip"], 16), int(row["qpc"]), float(row["pause_us"])
         if not math.isfinite(pause) or pause < 0 or (qpcs and qpc <= qpcs[-1]):
             raise ValueError("Invalid sample timing")
@@ -108,6 +125,8 @@ def analyze(directory: Path) -> dict:
                             if not 0 <= layout["workers"] <= 64 or layout["weighted_enabled"] not in (0, 1) or any(not 0 <= layout[key] <= 10000000 for key in ("commands", "weighted_commands", "history_commands")) or not math.isfinite(layout["history_cost_raw"]):
                                 raise ValueError("Implausible dispatcher layout; do not interpret field offsets")
                             layouts.append(layout)
+                            if peer is not None:
+                                dispatch_peer_locations[peer] += 1
                             if row.get("queues_read") == "1":
                                 depths = (int(row["queue_a"]), int(row["queue_b"]))
                                 if any(not 0 <= x <= 1000000 for x in depths):
@@ -144,6 +163,16 @@ def analyze(directory: Path) -> dict:
                        for key in ("commands", "weighted_commands", "history_commands", "history_cost_raw")} if layouts else {},
         },
         "pause_mean_us": statistics.mean(pauses),
+        "paired_residency": {
+            "thread": peer_thread or None,
+            "scope": "peer paused after primary; perturbed overlap, not atomic running-state or CPU-time shares",
+            "all_samples": sum(peer_locations.values()),
+            "dispatch_wait_samples": sum(dispatch_peer_locations.values()),
+            "all_locations": [{"module": m, "rva": r, "primary_rva": p, "samples": n}
+                              for (m, r, p), n in peer_locations.most_common(30)],
+            "during_dispatch_wait": [{"module": m, "rva": r, "primary_rva": p, "samples": n}
+                                     for (m, r, p), n in dispatch_peer_locations.most_common(30)],
+        },
         "dispatch_queues": {
             "samples": len(queues),
             "scope": "sequential reads while workers run; zero depths do not imply all jobs complete",

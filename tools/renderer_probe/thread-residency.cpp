@@ -30,6 +30,9 @@ struct Sample {
   bool categories_read{};
   DWORD queue_a{}, queue_b{};
   bool queues_read{};
+  DWORD64 peer_rip{}, peer_rsp{};
+  std::array<DWORD64, 64> peer_stack{};
+  bool peer_read{}, peer_stack_read{};
 };
 std::uint64_t filetime(FILETIME value) {
   return (std::uint64_t(value.dwHighDateTime) << 32) | value.dwLowDateTime;
@@ -39,7 +42,7 @@ void require(bool condition, const char* message) {
 }
 void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
              const wchar_t* expected_path, std::uint64_t expected_created,
-             std::uint64_t engine_base = 0) {
+             std::uint64_t engine_base = 0, DWORD peer_tid = 0) {
   Handle process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ | SYNCHRONIZE, FALSE, pid)};
   require(process.value != nullptr, "OpenProcess failed");
   wchar_t path[32768]{};
@@ -54,6 +57,13 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
   require(thread.value != nullptr, "OpenThread failed");
   require(GetProcessIdOfThread(thread.value) == pid, "Thread belongs to another process");
   require(GetThreadId(thread.value) != GetCurrentThreadId(), "Cannot sample calling thread");
+  Handle peer{};
+  if (peer_tid) {
+    require(peer_tid != tid && peer_tid != GetCurrentThreadId(), "Peer must be a separate target thread");
+    peer.value = OpenThread(THREAD_GET_CONTEXT | THREAD_SUSPEND_RESUME | THREAD_QUERY_LIMITED_INFORMATION,
+                           FALSE, peer_tid);
+    require(peer.value && GetProcessIdOfThread(peer.value) == pid, "Peer thread ownership mismatch");
+  }
   LARGE_INTEGER frequency{};
   require(QueryPerformanceFrequency(&frequency) != FALSE, "QPC unavailable");
   std::vector<Sample> samples;
@@ -112,6 +122,30 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
           read(context.Rsi + 0x104, &sample.queue_a, sizeof(sample.queue_a)) &&
           read(context.Rsi + 0x12c, &sample.queue_b, sizeof(sample.queue_b));
     }
+    // Bounded paired observation: primary stays paused while the peer is read.
+    // This is a perturbed overlap, not an atomic snapshot of a running engine.
+    DWORD peer_error{};
+    if (peer.value && previous == 0 && retrieved) {
+      const auto peer_previous = SuspendThread(peer.value);
+      if (peer_previous == DWORD(-1)) { peer_error = GetLastError(); }
+      else {
+        CONTEXT peer_context{};
+        peer_context.ContextFlags = CONTEXT_CONTROL;
+        sample.peer_read = GetThreadContext(peer.value, &peer_context) != FALSE;
+        if (!sample.peer_read) peer_error = GetLastError();
+        if (sample.peer_read) {
+          sample.peer_rip = peer_context.Rip;
+          sample.peer_rsp = peer_context.Rsp;
+          SIZE_T got{};
+          sample.peer_stack_read = ReadProcessMemory(process.value,
+              reinterpret_cast<const void*>(peer_context.Rsp), sample.peer_stack.data(),
+              sizeof(sample.peer_stack), &got) && got == sizeof(sample.peer_stack);
+        }
+        const auto peer_resumed = ResumeThread(peer.value);
+        if (peer_resumed == DWORD(-1)) peer_error = GetLastError();
+        else if (peer_previous != 0 || peer_resumed != peer_previous + 1) peer_error = ERROR_BUSY;
+      }
+    }
     // Exactly undo our increment, including a pre-existing suspension. Do not
     // drain someone else's suspend count or perform logging before this call.
     const auto resumed = ResumeThread(thread.value);
@@ -120,6 +154,7 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
     if (resume_error) { failure = resume_error; break; }
     if (previous != 0 || resumed != previous + 1) { failure = ERROR_BUSY; break; }
     if (context_error) { failure = context_error; break; }
+    if (peer_error) { failure = peer_error; break; }
     sample.qpc = before.QuadPart;
     sample.pause_ticks = after.QuadPart - before.QuadPart;
     sample.rip = context.Rip;
@@ -134,6 +169,10 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
   std::printf(",layout_read,workers,commands,weighted_commands,history_commands,weighted_enabled,history_cost,categories_read");
   for (unsigned i = 0; i < 4; ++i) std::printf(",category%u_cost,category%u_records", i, i);
   std::printf(",queues_read,queue_a,queue_b");
+  if (peer_tid) {
+    std::printf(",peer_thread,peer_read,peer_rip,peer_rsp,peer_stack_read");
+    for (unsigned i = 0; i < 64; ++i) std::printf(",peer_s%u", i);
+  }
   std::puts("");
   for (const auto& sample : samples) {
     std::printf("%lld,0x%llx,%.3f,0x%llx,%u", sample.qpc, sample.rip,
@@ -144,6 +183,11 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
         unsigned(sample.weighted_enabled), sample.history_cost, unsigned(sample.categories_read));
     for (const auto& category : sample.categories) std::printf(",%.9g,%lu", category.cost, category.records);
     std::printf(",%u,%lu,%lu", unsigned(sample.queues_read), sample.queue_a, sample.queue_b);
+    if (peer_tid) {
+      std::printf(",%lu,%u,0x%llx,0x%llx,%u", peer_tid, unsigned(sample.peer_read),
+          sample.peer_rip, sample.peer_rsp, unsigned(sample.peer_stack_read));
+      for (const auto value : sample.peer_stack) std::printf(",0x%llx", value);
+    }
     std::puts("");
   }
   require(failure == ERROR_SUCCESS && samples.size() == count, "Incomplete residency capture; inspect failure code");
@@ -157,10 +201,20 @@ int wmain(int argc, wchar_t** argv) {
       require(GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user) != FALSE, "Self lifetime unavailable");
       std::atomic<bool> stop{};
       std::atomic<DWORD> tid{};
+      std::atomic<DWORD> peer_tid{};
       std::thread worker([&] { tid.store(GetCurrentThreadId()); while (!stop.load()) YieldProcessor(); });
-      while (!tid.load()) Sleep(1);
+      std::thread peer_worker([&] { peer_tid.store(GetCurrentThreadId()); while (!stop.load()) YieldProcessor(); });
+      while (!tid.load() || !peer_tid.load()) Sleep(1);
       try {
         capture(GetCurrentProcessId(), tid.load(), 10, 5, path, filetime(created));
+        capture(GetCurrentProcessId(), tid.load(), 10, 5, path, filetime(created), 0, peer_tid.load());
+        const auto peer_handle = static_cast<HANDLE>(peer_worker.native_handle());
+        require(SuspendThread(peer_handle) == 0, "Peer pre-suspension failed");
+        bool peer_rejected{};
+        try { capture(GetCurrentProcessId(), tid.load(), 10, 5, path, filetime(created), 0, peer_tid.load()); }
+        catch (const std::exception&) { peer_rejected = true; }
+        const auto peer_restored = ResumeThread(peer_handle);
+        require(peer_rejected && peer_restored == 1, "Did not preserve peer suspension");
         const auto handle = static_cast<HANDLE>(worker.native_handle());
         require(SuspendThread(handle) == 0, "Self-test pre-suspension failed");
         bool rejected{};
@@ -169,11 +223,11 @@ int wmain(int argc, wchar_t** argv) {
         const auto restored = ResumeThread(handle);
         require(rejected && restored == 1, "Did not preserve pre-existing suspension");
       }
-      catch (...) { stop.store(true); worker.join(); throw; }
-      stop.store(true); worker.join();
+      catch (...) { stop.store(true); worker.join(); peer_worker.join(); throw; }
+      stop.store(true); worker.join(); peer_worker.join();
       return 0;
     }
-    require(argc == 7 || argc == 8, "Expected PID TID sample-count interval-ms exact-exe-path creation-filetime [verified-engine-base]");
+    require(argc >= 7 && argc <= 9, "Expected PID TID sample-count interval-ms exact-exe-path creation-filetime [verified-engine-base [peer-thread]]");
     const auto pid = std::wcstoul(argv[1], nullptr, 10);
     const auto tid = std::wcstoul(argv[2], nullptr, 10);
     const auto count = std::wcstoul(argv[3], nullptr, 10);
@@ -181,7 +235,8 @@ int wmain(int argc, wchar_t** argv) {
     const auto created = _wcstoui64(argv[6], nullptr, 10);
     require(pid && tid && count >= 10 && count <= 2000 && interval >= 5 && interval <= 50 && count * interval <= 30000,
             "Invalid or unbounded capture arguments");
-    capture(pid, tid, count, interval, argv[5], created, argc == 8 ? _wcstoui64(argv[7], nullptr, 0) : 0);
+    capture(pid, tid, count, interval, argv[5], created, argc >= 8 ? _wcstoui64(argv[7], nullptr, 0) : 0,
+            argc == 9 ? std::wcstoul(argv[8], nullptr, 10) : 0);
     return 0;
   } catch (const std::exception& error) {
     std::fprintf(stderr, "%s (Windows error %lu)\n", error.what(), GetLastError());
