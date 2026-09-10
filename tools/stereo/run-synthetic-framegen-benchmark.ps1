@@ -10,6 +10,7 @@ param(
     [string] $ExpectedInstalledSoloSha256,
     [switch] $ClusterLightTrace,
     [switch] $PresentCpuProfile,
+    [switch] $RenderApiCpuProfile,
     [switch] $ObserveDlssSrInputs,
     [string] $RenderWorldCensusSourcePath,
     [string] $CpuRenderTimingSourcePath,
@@ -31,6 +32,7 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ($RenderApiCpuProfile) { $PresentCpuProfile = [switch]$true }
 . (Join-Path $PSScriptRoot 'resolve-darktide-game-root.ps1')
 . (Join-Path $PSScriptRoot 'synthetic-framegen-settings.ps1')
 $GameRoot = Resolve-DarktideGameRoot -GameRoot $GameRoot
@@ -219,6 +221,7 @@ try {
         render_world_census=[bool]$RenderWorldCensusSourcePath
         cpu_render_timing=[bool]$CpuRenderTimingSourcePath
         present_cpu_profile=$PresentCpuProfile.IsPresent
+        render_api_cpu_profile=$RenderApiCpuProfile.IsPresent
         render_world_census_warmup=$RenderWorldCensusWarmupFrames
         lua_sha256=(Get-FileHash (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash
     }
@@ -342,6 +345,7 @@ if (Test-Path -LiteralPath $launchPath) {
         $gamePidText = $gamePidMatch.Groups[1].Value
         foreach ($name in @("darktidevr-generated-stereo-$gamePidText.log",
             "darktidevr-present-cpu-$gamePidText.log",
+            "darktidevr-render-api-cpu-$gamePidText.log",
             "darktidevr-ngx-sr-$gamePidText.log",
             "darktidevr-ngx-output-$gamePidText.log", "darktidevr-ngx-timing-$gamePidText.log",
             "darktidevr-ngx-gpu-timing-$gamePidText.log",'darktidevr-streamline-probe.tsv',
@@ -363,6 +367,12 @@ if ($PresentCpuProfile -and -not $failure) {
     $cpuLogs = @(Get-ChildItem -LiteralPath $OutputDirectory -Filter 'darktidevr-present-cpu-*.log' -File)
     if ($cpuLogs.Count -ne 1 -or [regex]::Matches([IO.File]::ReadAllText($cpuLogs[0].FullName),'(?m)^PRESENT_CPU sample=').Count -ne 240) {
         $failure = 'Presentation CPU profile lacks its complete bounded sample window.'
+    }
+}
+if ($RenderApiCpuProfile -and -not $failure) {
+    $apiLogs = @(Get-ChildItem -LiteralPath $OutputDirectory -Filter 'darktidevr-render-api-cpu-*.log' -File)
+    if ($apiLogs.Count -ne 1 -or [regex]::Matches([IO.File]::ReadAllText($apiLogs[0].FullName),'(?m)^RENDER_API_CPU sample=').Count -ne 1440) {
+        $failure = 'Render API CPU profile lacks its complete 240-frame, six-category window.'
     }
 }
 if($ObserveDlssSrInputs -and -not $failure) {
