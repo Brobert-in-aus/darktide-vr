@@ -15132,7 +15132,23 @@ bool publish_gameplay_aim_state(float distance_metres, bool active, bool hit,
 
 }  // namespace
 
-extern "C" __declspec(dllexport) int dtvr_install() { return install_hooks(); }
+extern "C" __declspec(dllexport) int dtvr_install() {
+  // Offline startup defers the bootstrap and reaches this Lua entry instead.
+  // Honor the same explicit trace flag before choosing the installed hooks.
+  if(!hooks_installed.load(std::memory_order_acquire)) {
+    auto flag=module_path(native_capture_module);
+    const auto separator=flag.find_last_of(L"\\/");
+    if(separator!=std::wstring::npos) {
+      flag.resize(separator+1); flag+=L"darktidevr_cluster_trace.flag";
+      const auto attributes=GetFileAttributesW(flag.c_str());
+      if(attributes!=INVALID_FILE_ATTRIBUTES && !(attributes&FILE_ATTRIBUTE_DIRECTORY)) {
+        const auto result=dtvr_enable_cluster_trace();
+        if(result!=0) return result;
+      }
+    }
+  }
+  return install_hooks();
+}
 extern "C" __declspec(dllexport) int dtvr_set_gameplay_aim_state(
     int active, int hit, float distance_metres) {
   if (active != 0 && active != 1) {
@@ -16953,6 +16969,16 @@ extern "C" __declspec(dllexport) int dtvr_enable_cluster_trace() {
   cluster_trace_log =
       CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if(cluster_trace_log!=INVALID_HANDLE_VALUE) {
+    char header[64]{};
+    const auto length=std::snprintf(header,sizeof(header),"CLUSTER_TRACE_BEGIN\tpid=%lu\r\n",GetCurrentProcessId());
+    DWORD written{};
+    if(length<=0 || !WriteFile(cluster_trace_log,header,static_cast<DWORD>(length),&written,nullptr) ||
+        written!=static_cast<DWORD>(length)) {
+      CloseHandle(cluster_trace_log); cluster_trace_log=INVALID_HANDLE_VALUE;
+      return 43;
+    }
+  }
   cluster_trace_count.store(0, std::memory_order_relaxed);
   cluster_trace_saw_flat_presentation.store(false, std::memory_order_relaxed);
   cluster_linked_list_resource.store(0, std::memory_order_relaxed);
