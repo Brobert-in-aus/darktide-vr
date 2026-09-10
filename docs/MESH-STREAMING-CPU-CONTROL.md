@@ -48,6 +48,14 @@ lead in one stationary scene, not evidence about traversal stalls, combat,
 visual equivalence, or smaller GPUs. Keep the accepted streaming setting.
 All three runs exit cleanly and report exact file restoration.
 
+The disabled-streaming FG On/cap 120 follow-up delivers 119.07 distinct FPS
+(59.53 original + 59.54 generated), with 0.94 cached pairs per second, 74.79%
+GPU busy, 287.33 W and 11,200 MiB board memory. This does not improve on the
+earlier normal-streaming 119.51 FPS/286.38 W control at the same cap. The benefit
+is native throughput headroom in this scene, not a demonstrated FG pacing gain.
+The follow-up also exits cleanly and restores all files; evidence is
+`synthetic-solo-mesh-disabled-fg-20260910` and its matching GPU CSV.
+
 Local evidence: `synthetic-solo-mesh-disabled-a-20260910`,
 `synthetic-solo-mesh-default-a-20260910`, and
 `synthetic-solo-mesh-disabled-b-20260910` under `artifacts/unattended`, with
