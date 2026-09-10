@@ -2221,23 +2221,26 @@ class OpenXrProbe {
                 (!destination || original.ready<destination->ready)) destination=&original;
           if(destination && destination->eyes[0] && destination->eyes[1]) {
             auto* packed_original=original_surfaces->textures[darktidevr::core::generated_frame_slot(original_metadata.sequence)].Get();
-            for(unsigned eye=0;eye<2;++eye) {
-              std::array<D3D12_RESOURCE_BARRIER,2> barriers{};
-              for(auto& barrier:barriers) barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-              barriers[0].Transition={packed_original,D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                  D3D12_RESOURCE_STATE_COMMON,D3D12_RESOURCE_STATE_COPY_SOURCE};
-              barriers[1].Transition={destination->eyes[eye].Get(),D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+            // Both eye regions share one source. Keep it in COPY_SOURCE until
+            // both copies finish, then restore all three resources together.
+            std::array<D3D12_RESOURCE_BARRIER,3> barriers{};
+            for(auto& barrier:barriers) barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[0].Transition={packed_original,D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                D3D12_RESOURCE_STATE_COMMON,D3D12_RESOURCE_STATE_COPY_SOURCE};
+            for(unsigned eye=0;eye<2;++eye)
+              barriers[eye+1].Transition={destination->eyes[eye].Get(),D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
                   D3D12_RESOURCE_STATE_COMMON,D3D12_RESOURCE_STATE_COPY_DEST};
-              command_list->ResourceBarrier(2,barriers.data());
+            command_list->ResourceBarrier(static_cast<UINT>(barriers.size()),barriers.data());
+            for(unsigned eye=0;eye<2;++eye) {
               D3D12_TEXTURE_COPY_LOCATION source{}; source.pResource=packed_original;
               source.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
               D3D12_TEXTURE_COPY_LOCATION target{}; target.pResource=destination->eyes[eye].Get();
               target.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
               const D3D12_BOX box{eye*shared_eye_width,0,0,(eye+1)*shared_eye_width,shared_eye_height,1};
               command_list->CopyTextureRegion(&target,0,0,0,&source,&box);
-              for(auto& barrier:barriers) std::swap(barrier.Transition.StateBefore,barrier.Transition.StateAfter);
-              command_list->ResourceBarrier(2,barriers.data());
             }
+            for(auto& barrier:barriers) std::swap(barrier.Transition.StateBefore,barrier.Transition.StateAfter);
+            command_list->ResourceBarrier(static_cast<UINT>(barriers.size()),barriers.data());
             destination->ready=original_metadata.sequence; destination->pose=original_metadata.current_pose;
             destination->poses=*original_ring_poses; destination->generation=original_metadata.gameplay_generation;
             destination->tick=GetTickCount64();
