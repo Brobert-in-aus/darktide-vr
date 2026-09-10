@@ -18,7 +18,8 @@ local mod = {
     error = function() errors = errors + 1 end,
 }
 local function classify(world) return world == gameplay and "gameplay" or "other" end
-for _, text in ipairs({ "", "disabled", "enabled" .. string.rep(" ", 25) }) do
+for _, text in ipairs({ "", "disabled", "enabled" .. string.rep(" ", 25),
+                       "enabled\nwarmup=601", "enabled\nwarmup=-1", "enabled\nwarmup=1.5" }) do
     flag_text = text
     assert(module.install(mod, classify) == nil and hook == nil)
 end
@@ -46,4 +47,10 @@ for _ = 1, 121 do state.observe(gameplay) end
 World.get_data = function() error("invalid metadata") end
 hook(render, portrait, "camera", target, nil, 42)
 assert(calls == 72 and state.complete and errors == 1)
+flag_text = "enabled\nwarmup=0\n"
+state = assert(module.install(mod, classify))
+state.observe(gameplay)
+World.get_data = function(_, key) if key == "name" then return "startup" end return {} end
+hook(render, portrait, "camera", target, nil, 42)
+assert(calls == 73 and state.records == 1)
 print("render_world_census=pass forwarding=72 bounded=64 metadata_failure=contained")

@@ -6,10 +6,14 @@ function Census.install(mod, classify)
     if not flag then return nil end
     local text = flag:read(32)
     flag:close()
-    if type(text) ~= "string" or #text > 31 or
-            not text:lower():match("^[ \t\r\n]*enabled[ \t\r\n]*$") then
-        return nil
-    end
+    if type(text) ~= "string" or #text > 31 then return nil end
+    local warmup = text:lower():match("^[ \t\r\n]*enabled[ \t\r\n]+warmup=(%d+)[ \t\r\n]*$")
+    if warmup then
+        warmup = tonumber(warmup)
+        if not warmup or warmup > 600 then return nil end
+    elseif text:lower():match("^[ \t\r\n]*enabled[ \t\r\n]*$") then
+        warmup = 120
+    else return nil end
 
     local state = { frame = 0, records = 0, complete = false }
     function state.observe(world)
@@ -34,7 +38,7 @@ function Census.install(mod, classify)
         end
     end
     mod:hook(Application, "render_world", function(func, world, camera, target, ...)
-        if not state.complete and state.frame > 120 then
+        if not state.complete and state.frame > warmup then
             local ok, err = pcall(record, world, target)
             if not ok then
                 state.complete = true
@@ -43,7 +47,7 @@ function Census.install(mod, classify)
         end
         return func(world, camera, target, ...)
     end)
-    mod:info("DARKTIDEVR_WORLD_CENSUS armed warmup=120 limit=64")
+    mod:info("DARKTIDEVR_WORLD_CENSUS armed warmup=%d limit=64", warmup)
     return state
 end
 

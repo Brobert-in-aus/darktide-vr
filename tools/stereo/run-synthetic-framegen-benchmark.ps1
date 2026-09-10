@@ -5,6 +5,7 @@ param(
     [switch] $ClusterLightTrace,
     [switch] $ObserveDlssSrInputs,
     [string] $RenderWorldCensusSourcePath,
+    [ValidateRange(0,600)] [int] $RenderWorldCensusWarmupFrames = 120,
     [string] $ExpectedInstalledLuaSha256,
     [Parameter(Mandatory)] [string] $RuntimeJson,
     [Parameter(Mandatory)] [ValidatePattern('^[a-fA-F0-9]{64}$')] [string] $RuntimeSha256,
@@ -48,6 +49,9 @@ $modPath = Join-Path $GameRoot 'mods/darktidevr_stereo_probe'
 $luaDirectory = Join-Path $modPath 'scripts/mods/darktidevr_stereo_probe'
 $censusFlag = Join-Path $modPath 'darktidevr_render_world_census.flag'
 $luaTrialFiles = @{}
+if($RenderWorldCensusWarmupFrames -ne 120 -and -not $RenderWorldCensusSourcePath) {
+    throw 'A custom census warm-up requires the focused census Lua source.'
+}
 if($RenderWorldCensusSourcePath -or $ExpectedInstalledLuaSha256) {
     if(-not $RenderWorldCensusSourcePath -or $ExpectedInstalledLuaSha256 -notmatch '^[a-fA-F0-9]{64}$') {
         throw 'A census Lua trial requires a source path and the installed main Lua hash.'
@@ -122,7 +126,7 @@ try {
     }
     if($RenderWorldCensusSourcePath) {
         foreach($path in $luaTrialFiles.Keys) { [IO.File]::WriteAllBytes($path,$luaTrialFiles[$path]) }
-        [IO.File]::WriteAllText($censusFlag,"enabled`r`n")
+        [IO.File]::WriteAllText($censusFlag,"enabled`r`nwarmup=$RenderWorldCensusWarmupFrames`r`n")
         & (Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1') -SourcePath (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')
     }
     [IO.File]::WriteAllText($SettingsPath,$settings,[Text.UTF8Encoding]::new($false))
@@ -160,6 +164,7 @@ try {
         cluster_trace=(Test-Path -LiteralPath $clusterTraceFlag)
         observe_dlss_sr_inputs=$ObserveDlssSrInputs.IsPresent
         render_world_census=(Test-Path -LiteralPath $censusFlag)
+        render_world_census_warmup=$RenderWorldCensusWarmupFrames
         lua_sha256=(Get-FileHash (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash
     }
     $receipt | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'configuration.json') -Encoding utf8
