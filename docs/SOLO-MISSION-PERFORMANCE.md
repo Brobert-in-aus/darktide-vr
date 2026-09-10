@@ -25,7 +25,9 @@ change is required. The source fixture checks blocked startup, one-shot
 execution and rejection of readiness in another mission or a non-solo session.
 
 The selected simulator has a 120 Hz process-local clock, Quest 3 frusta,
-2112x2304 eyes and no preview copies. FG on uses one generated frame and stock
+2112x2304 eyes and no preview copies. Before launching the game the runner
+checks the consumer's reported display period against the requested clock;
+an older runtime ignoring the refresh selection fails this check. FG on uses one generated frame and stock
 cap 120; FG off uses Unlimited. NVIDIA board telemetry records the same bounded
 workload window. Mission results are recorded after clean completion and
 restoration, under `artifacts/unattended/synthetic-solo-*`.

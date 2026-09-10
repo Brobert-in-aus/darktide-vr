@@ -213,10 +213,15 @@ try {
         $consumer.Refresh()
         if ($consumer.HasExited) { throw 'Simulator consumer failed before launch; inspect consumer-error.log.' }
         $initialLog = Get-Content (Join-Path $OutputDirectory 'consumer.log') -Raw
+        $displayPeriod = [regex]::Match($initialLog,'last_display_period_ms=([0-9.]+)')
         $consumerReady = $initialLog -match 'openxr.runtime_name=OpenXR Simulator Runtime' -and
-            $initialLog -match 'openxr.render_projection=recentered-symmetric'
+            $initialLog -match 'openxr.render_projection=recentered-symmetric' -and $displayPeriod.Success
     } while (-not $consumerReady -and (Get-Date) -lt $consumerReadyDeadline)
     if (-not $consumerReady) { throw 'Expected simulator session did not become active.' }
+    $observedPeriod = [double]::Parse($displayPeriod.Groups[1].Value,[Globalization.CultureInfo]::InvariantCulture)
+    if ([math]::Abs($observedPeriod - 1000.0/$SimulatorRefreshRate) -gt 0.02) {
+        throw 'Simulator display period does not match the requested refresh rate; use the patched runtime.'
+    }
     & (Join-Path $PSScriptRoot 'start-darktide-vr.ps1') -GameRoot $GameRoot `
         -OfflineDualViewBenchmark -SkipDeploymentSync -DlssGeneratedStereo:$enabled `
         -OfflineSoloMission $SoloMission `
