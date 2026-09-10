@@ -62,4 +62,23 @@ class AnalysisTests(unittest.TestCase):
     def test_missing_selection_is_unknown(self):
         self.assertIsNone(module.summarize_selection('', 0)['outcomes'])
 
+    def test_cadence_preserves_missing_and_uses_same_warmup(self):
+        fields = (' cadence_distinct=118 cadence_repeats=2 repeat_runs_ended=1 '
+                  'distinct_gap_samples=118 cadence_clock_breaks=0 '
+                  'repeat_run_peak=2 distinct_gap_max_ms=25')
+        report = module.summarize('\n'.join([record(1), record(61)+fields,
+                                           record(121)+fields, record(181)]), 2)
+        cadence = report['delivery_cadence']
+        self.assertEqual(cadence['sample_seconds'], 2)
+        self.assertEqual(cadence['counts']['cadence_repeats'], 2)
+        self.assertEqual(cadence['longest_repeat_run'], 2)
+        self.assertEqual(cadence['maximum_distinct_gap_ms'], 25)
+        self.assertIsNone(module.summarize('\n'.join([record(1), record(61)]), 0)
+                          ['delivery_cadence']['maximum_distinct_gap_ms'])
+        for bad in (fields.replace('distinct_gap_max_ms=25', 'distinct_gap_max_ms=nan'),
+                    fields.replace('distinct_gap_samples=118', 'distinct_gap_samples=0'),
+                    ' repeat_run_peak=2'):
+            with self.assertRaises(ValueError):
+                module.summarize('\n'.join([record(1), record(61)+bad]), 0)
+
 if __name__ == '__main__': unittest.main()

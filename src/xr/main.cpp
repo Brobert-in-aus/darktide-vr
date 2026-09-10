@@ -30,6 +30,7 @@
 #include "core/shared_generated_frame_state.h"
 #include "core/generated_frame_cadence.h"
 #include "core/frame_stage_timing.h"
+#include "core/delivery_cadence.h"
 #include "pair_poll_wait.h"
 
 #include <algorithm>
@@ -1148,6 +1149,8 @@ class OpenXrProbe {
     std::uint64_t last_pose_publish_tick{};
     unsigned pose_timing_reports{};
     darktidevr::core::FrameStageTiming frame_stage_timing;
+    darktidevr::core::DeliveryCadence delivery_cadence;
+    std::uint64_t cadence_distinct_total{}, cadence_generation{};
     wchar_t precise_pair_wait_value[2]{};
     const bool precise_pair_wait_requested = GetEnvironmentVariableW(
         L"DTVR_XR_PRECISE_PAIR_WAIT", precise_pair_wait_value, 2) == 1 &&
@@ -3920,6 +3923,15 @@ class OpenXrProbe {
       const auto xrEndFrame_tick = GetTickCount64();
       const auto frame_end_start = std::chrono::steady_clock::now();
       check_xr(xrEndFrame(session_, &frame_end), "xrEndFrame(theatre)");
+      const auto distinct_total = fresh_shared_pairs + generated_submitted;
+      if (cadence_generation != rendered_pair_gameplay_generation) {
+        delivery_cadence.break_continuity();
+        cadence_generation = rendered_pair_gameplay_generation;
+      }
+      delivery_cadence.observe(frame_state.predictedDisplayTime,
+          submitted_shared_pair_this_frame && stereo && layer_count != 0,
+          distinct_total != cadence_distinct_total);
+      cadence_distinct_total = distinct_total;
       frame_stage_timing.elapsed(FrameStage::EndFrame, frame_end_start);
       report_pose_wait("xrEndFrame", xrEndFrame_tick);
       ++processed_frames;
@@ -3959,6 +3971,13 @@ class OpenXrProbe {
                   << " interval_generated_pair_fps=" << interval_generated_pairs/interval_seconds
                   << " interval_distinct_pair_fps=" << (interval_fresh_pairs+interval_generated_pairs)/interval_seconds
                   << " interval_cached_pair_fps=" << (cached_original_submissions-last_live_cached_original_submissions)/interval_seconds
+                  << " cadence_distinct=" << delivery_cadence.window().distinct
+                  << " cadence_repeats=" << delivery_cadence.window().repeats
+                  << " repeat_run_peak=" << delivery_cadence.window().repeat_run_peak
+                  << " repeat_runs_ended=" << delivery_cadence.window().ended_repeat_runs
+                  << " distinct_gap_samples=" << delivery_cadence.window().gaps
+                  << " distinct_gap_max_ms=" << delivery_cadence.window().maximum_gap_ns/1.0e6
+                  << " cadence_clock_breaks=" << delivery_cadence.window().clock_breaks
                   << " source_period_ms=" << generated_cadence.source_period/1.0e6
                   << " interval_fallback_fps="
                   << interval_fallback_frames / interval_seconds
@@ -3970,6 +3989,7 @@ class OpenXrProbe {
                   << " rendered_tag_ready="
                   << rendered_pair_pose_ready_value
                   << std::endl;
+        delivery_cadence.reset_window();
         if(generated_surfaces) {
           std::cout << "openxr.generated_selection gameplay_generation=" << rendered_pair_gameplay_generation
                     << " interval_seconds=" << interval_seconds

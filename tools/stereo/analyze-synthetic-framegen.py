@@ -62,6 +62,11 @@ def summarize(text, warmup_seconds=10.0):
     source_count = 0
     previous = None
     generation_elapsed = 0.0
+    cadence_counts = dict.fromkeys(('cadence_distinct', 'cadence_repeats', 'repeat_runs_ended',
+                                  'distinct_gap_samples', 'cadence_clock_breaks'), 0)
+    cadence_seconds = 0.0
+    repeat_peak = 0
+    gap_max = 0.0
     for line in text.splitlines():
         if not line.startswith('openxr.live.submission_fps='):
             continue
@@ -92,6 +97,21 @@ def summarize(text, warmup_seconds=10.0):
             raise ValueError('Distinct-frame accounting mismatch')
         for key in metrics:
             totals[key] += values[key] * dt
+        cadence_keys = (*cadence_counts, 'repeat_run_peak', 'distinct_gap_max_ms')
+        if any(key in fields for key in cadence_keys):
+            if not all(key in fields for key in cadence_keys):
+                raise ValueError('Incomplete delivery cadence record')
+            counts = {key: int(fields[key]) for key in (*cadence_counts, 'repeat_run_peak')}
+            gap = float(fields['distinct_gap_max_ms'])
+            if any(value < 0 for value in counts.values()) or not math.isfinite(gap) or gap < 0:
+                raise ValueError('Invalid delivery cadence record')
+            if not counts['distinct_gap_samples'] and gap:
+                raise ValueError('Delivery gap without observed interval')
+            for key in cadence_counts:
+                cadence_counts[key] += counts[key]
+            repeat_peak = max(repeat_peak, counts['repeat_run_peak'])
+            gap_max = max(gap_max, gap)
+            cadence_seconds += dt
         source_count += ready - previous[1]
         previous = (generation, ready)
         seconds += dt
@@ -109,6 +129,13 @@ def summarize(text, warmup_seconds=10.0):
         'clean_exit': 'openxr.lifecycle=stopped' in text and 'result=pass' in text,
         'scope': 'simulator consumer; not physical headset latency or SSW',
         'selection': summarize_selection(text, warmup_seconds),
+        'delivery_cadence': {
+            'scope': 'submitted images on runtime timeline; not photon latency or percentiles',
+            'sample_seconds': cadence_seconds,
+            'counts': cadence_counts if cadence_seconds else None,
+            'longest_repeat_run': repeat_peak if cadence_seconds else None,
+            'maximum_distinct_gap_ms': gap_max if cadence_counts['distinct_gap_samples'] else None,
+        },
     }
 
 
