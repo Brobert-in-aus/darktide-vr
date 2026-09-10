@@ -84,12 +84,12 @@ def analyze(directory: Path) -> dict:
         raise ValueError("Only x64 captures are supported")
     entries = sorted((e.struct.BeginAddress, e.struct.EndAddress, e.struct.UnwindData)
                      for e in pe.DIRECTORY_ENTRY_EXCEPTION)
-    starts = [e[0] for e in entries]
+    unwind_starts = [e[0] for e in entries]
     spec = importlib.util.spec_from_file_location("engine_mapper", Path(__file__).with_name("map-engine-render-scopes.py"))
     mapper = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mapper)
     def owner(rva: int) -> str:
-        i = bisect.bisect_right(starts, rva) - 1
+        i = bisect.bisect_right(unwind_starts, rva) - 1
         if i < 0 or rva >= entries[i][1]:
             return "unmapped"
         return hex(mapper.unwind_chain(pe, entries[i])[-1]["begin_rva"])
@@ -172,11 +172,11 @@ def analyze(directory: Path) -> dict:
                                 count = int(row["chunk_count"])
                                 if not 1 <= count <= 32 or int(row["boundary_count"]) != count:
                                     raise ValueError("Implausible chunk count")
-                                starts = [int(row[f"chunk_start{i}"]) for i in range(count)]
+                                chunk_starts = [int(row[f"chunk_start{i}"]) for i in range(count)]
                                 end = layout["weighted_commands"]
-                                if starts[0] != 0 or any(a >= b for a, b in zip(starts, starts[1:])) or starts[-1] >= end:
+                                if chunk_starts[0] != 0 or any(a >= b for a, b in zip(chunk_starts, chunk_starts[1:])) or chunk_starts[-1] >= end:
                                     raise ValueError("Invalid weighted chunk boundaries")
-                                sizes = [b - a for a, b in zip(starts, starts[1:] + [end])]
+                                sizes = [b - a for a, b in zip(chunk_starts, chunk_starts[1:] + [end])]
                                 chunks.append({"count": count, "sizes": sizes})
                             if peer is not None:
                                 dispatch_peer_locations[peer] += 1
