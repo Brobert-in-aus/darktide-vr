@@ -45,3 +45,18 @@ Mean debugger pause was 50.79 microseconds and maximum 295.5 microseconds.
 The capture is diagnostic, not uninstrumented throughput evidence. Native build,
 self-test, wrapper parsing and reader checks pass. Exact restoration passed.
 Evidence: `synthetic-solo-dispatch-layout-a-20260910` in ignored artifacts.
+
+## Four-worker control
+
+An uninstrumented 120-second trial with a requested value of 4 delivered
+74.18 native pairs/s over 110.01 analyzed seconds, with 61.68% GPU busy time and
+269.11 W board power. The preceding matching Quality control delivered 74.12
+pairs/s and 267.83 W. There is no measured throughput improvement.
+
+A separate 300-sample diagnostic verified four workers in all 16 observations
+at the dispatcher wait, with weighted splitting enabled. The active settings
+file still contained 4 while its detected-settings cache remained 13. Thus this
+control really changed the pool size, unlike a comparison above its effective
+limit. The accepted setting remains unchanged. Both runs restored exactly.
+Evidence: `synthetic-solo-workers4-a-20260910` and
+`synthetic-solo-dispatch-workers4-a-20260910` in ignored artifacts.
