@@ -1,5 +1,6 @@
 #include "producer/buffer_registry.h"
 #include "producer/guarded_copy.h"
+#include "producer/deferred_function_lookup.h"
 #include "producer/profile_percentiles.h"
 #include "producer/buffer_copy_address.h"
 #include "producer/pipeline_identity.h"
@@ -2677,6 +2678,33 @@ int sl_dlssg_set_options_hook(const void* viewport, const void* options) {
             : 0);
   }
   return result;
+}
+
+bool ensure_dlssg_completion_api() {
+  if (original_sl_dlssg_get_state.load(std::memory_order_acquire)) return true;
+  std::scoped_lock api_lock(streamline_feature_api_mutex);
+  if (original_sl_dlssg_get_state.load(std::memory_order_acquire)) return true;
+  if (!original_sl_get_feature_function) return false;
+  static darktidevr::producer::DeferredFunctionLookup lookup;
+  const auto previous_attempts = lookup.attempts();
+  int result = -1;
+  const auto address = lookup.resolve(GetTickCount64(), [&]() {
+    void* resolved{};
+    result = original_sl_get_feature_function(
+        darktidevr::producer::streamline_2_7_30::kFeatureDlssG,
+        "slDLSSGGetState", &resolved);
+    return darktidevr::producer::DeferredFunctionLookup::Result{result, resolved};
+  });
+  if (lookup.attempts() != previous_attempts)
+    write_streamline_probe_log("DLSSG_STATE_RESOLVE\tattempt=%u\tresult=%d\tavailable=%u\r\n",
+        lookup.attempts(), result, address ? 1U : 0U);
+  if (address && address != reinterpret_cast<void*>(&sl_dlssg_get_state_hook)) {
+    SlDlssGGetStateFn expected{};
+    original_sl_dlssg_get_state.compare_exchange_strong(expected,
+        reinterpret_cast<SlDlssGGetStateFn>(address), std::memory_order_release,
+        std::memory_order_relaxed);
+  }
+  return original_sl_dlssg_get_state.load(std::memory_order_acquire) != nullptr;
 }
 
 int sl_get_feature_function_hook(std::uint32_t feature, const char* name,
@@ -12621,6 +12649,10 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
   }
   bool packed_submission = false;
   if (candidate && present_queue && streamline_continuous_requested.load(std::memory_order_acquire)) {
+    // Resolve before tagging any input. Some startup paths never call the
+    // game's state getter, so observing its resolver is not sufficient.
+    const bool completion_api_ready = presentation_mode ==
+        darktidevr::core::SharedPresentationMode::stereo_world && ensure_dlssg_completion_api();
     std::scoped_lock lock(streamline_input_snapshot_mutex);
     const auto tagging_modes = streamline_tagging_api_modes.load(std::memory_order_relaxed);
     if (tagging_modes == 1 || tagging_modes == 2) {
@@ -12630,7 +12662,7 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
         streamline_continuous.cancel("foreground_lost");
       if (presentation_mode != darktidevr::core::SharedPresentationMode::stereo_world)
         streamline_continuous.pause(present_queue.Get(), original_execute_command_lists, "non_world_presentation");
-      else streamline_continuous.before_present(candidate.Get(), present_queue.Get(), present,
+      else if (completion_api_ready) streamline_continuous.before_present(candidate.Get(), present_queue.Get(), present,
           streamline_present_bindings(), api,
           tagging_modes == 1 ? darktidevr::producer::StreamlineSubmission::Tagging::legacy
                              : darktidevr::producer::StreamlineSubmission::Tagging::frame_based,
