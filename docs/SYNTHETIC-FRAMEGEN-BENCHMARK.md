@@ -85,26 +85,27 @@ candidate, not a newly accepted physical-headset deployment.
 
 Initial uncapped comparison used Off A, On A, On B, then Off B, with 120-second
 workloads and the first ten seconds of each gameplay generation excluded. The
-first three completed runs were:
+four completed runs were:
 
 | Run | Measured seconds | Fresh pairs/s | Generated pairs/s | Distinct pairs/s | Cached repeats/s |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Off A | 110.20 | 81.67 | 0 | 81.67 | 0 |
 | On A | 108.07 | 33.85 | 33.84 | 67.69 | 22.25 |
 | On B | 110.67 | 33.60 | 33.60 | 67.20 | 22.80 |
+| Off B | 109.69 | 83.15 | 0 | 83.15 | 0 |
 
-All three completed cleanly with zero reported pose mismatches and verified
+All four completed cleanly with zero reported pose mismatches and verified
 file restoration. The On repeats submitted 4,031 and 3,994 generated frames in
 total. These results establish generation, but currently show fewer distinct
-submitted frames than the first Off control. They do not isolate DLSS GPU cost
+submitted frames than either Off control. They do not isolate DLSS GPU cost
 from consumer selection and pacing. Native health records and consumer counters
 must remain separate; the legacy shared-slot rate is not engine FPS.
 
 Both settings used native hash `D2D84673...0180F`, simulator `FB154E44...02AA6`
 and consumer SHA-256
 `ABA30C4E091FC2EFC6D14EDABBFFF0C36A1B6FCD44E56D9D05C951FB7C8AA1D1`.
-Full hashes are recorded in each local configuration receipt. Off B and
-selection diagnostics are the next checks before a performance decision.
+Full hashes are recorded in each local configuration receipt. Selection
+diagnostics are the next check before a performance decision.
 
 Run `tools/stereo/analyze-synthetic-framegen.py RUN_DIRECTORY` to write
 `summary.json`. It excludes startup and a per-generation warmup, weights rates
@@ -114,6 +115,34 @@ differences. That slot can be throttled independently of the original-frame
 ring; it must not be reported as engine or source rendering FPS. Native health
 records report engine and original-ring rates separately.
 Missing interval data stays unknown. Compare only matching configurations.
+
+Diagnostic consumers additionally emit `openxr.generated_selection` once per
+report interval. Each frame with a generated ring records either a reserved
+original or one generated-candidate outcome: unavailable transport, no new
+completed image, invalid/stale metadata, missing matching original, rejected
+temporal order, missing endpoint history, or selection. The counters observe
+the existing decisions without relaxing them. The analyzer reports these counts
+and original/generated ring publication rates separately. Publication rate
+includes frames skipped by the consumer and is not a displayed-frame rate.
+Logs predating these counters report selection data as unknown.
+
+The 60-second diagnostic run used consumer
+`6D96B934CA9C2CCF18161B4E42280BF9ADE4733317E66B3F6509D14B1367691A`.
+Its 48.00 measured seconds contained 1,608 selected generated frames and 2,712
+frames reserved for their originals, with zero unavailable, missing, stale,
+ordering or history rejections. Only 1,608 fresh originals were displayed in
+that interval: the other 1,104 reserved frames repeated the cached image while
+waiting for the original deadline. Distinct rate was 67.00/s, original-ring
+publication 83.88/s and generated-ring publication 73.73/s. Restoration and
+clean exit passed, with zero reported pose mismatches.
+
+The selected simulator computes each prediction as actual wake time plus one
+period (`xrWaitFrame_runtime`), so successive predictions carry scheduler
+jitter. The consumer compares the next prediction to an exact one-period
+deadline; a slightly early prediction can defer an original by an entire
+additional display frame. This explains the observed reservation losses and
+motivates testing a nearest-display-slot boundary. It does not establish that
+the physical runtime has the same jitter or performance loss.
 
 Build validation includes the settings-selection test (active fields, preserved
 cache, explicit cap control, missing/duplicate rejection), analyzer tests and

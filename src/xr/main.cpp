@@ -1114,6 +1114,9 @@ class OpenXrProbe {
     std::uint64_t generated_last_consumed{}, generated_submitted{}, last_original_ready{}, last_original_pose{};
     std::uint64_t generated_displayed_before_original{};
     darktidevr::core::GeneratedFrameCadence generated_cadence;
+    // Per-report selection outcomes; observation only, no scheduling changes.
+    std::array<std::uint64_t,7> generated_selection_outcomes{};
+    std::uint64_t generated_reserved_original_frames{};
     struct PendingOriginal {
       std::array<ComPtr<ID3D12Resource>,2> eyes;
       std::array<XrPosef,2> poses{};
@@ -2249,13 +2252,16 @@ class OpenXrProbe {
             original.ready=0;
           if(original.ready && original.ready==generated_displayed_before_original) selected_original=&original;
         }
+        if (generated_surfaces && selected_original) ++generated_reserved_original_frames;
         if (generated_surfaces && !selected_original) {
+          unsigned selection_outcome{}; // unavailable reader/fence
           // Poll once. Waiting here stalls the entire OpenXR submission loop.
           do {
             if (!generated_reader.read(generated_state)) break;
             const auto available = generated_surfaces->ready_fence->GetCompletedValue();
             if (available == UINT64_MAX) break;
             const auto latest = std::min(available,generated_state.latest_sequence);
+            selection_outcome=1; // no new completed generated image
             if (latest > generated_last_consumed) {
               const auto& generated = generated_state.slots[darktidevr::core::generated_frame_slot(latest)];
               const auto now_ms = GetTickCount64();
@@ -2263,6 +2269,16 @@ class OpenXrProbe {
               for(auto& original:pending_originals)
                 if(original.ready && original.ready==generated.rendered_ready && original.pose==generated.current_pose)
                   matching=&original;
+              if(generated.sequence!=latest || !generated_world ||
+                  generated.gameplay_generation!=committed_gameplay_generation ||
+                  generated.tick_ms>now_ms || now_ms-generated.tick_ms>=250 ||
+                  generated_state.width!=shared_eye_width*2 || generated_state.height!=shared_eye_height)
+                selection_outcome=2;
+              else if(!matching) selection_outcome=3;
+              else if(generated.rendered_ready<=last_original_ready ||
+                  generated.previous_pose<last_original_pose || last_original_pose==0)
+                selection_outcome=4;
+              else selection_outcome=5; // valid candidate, missing endpoint history
               if (generated.sequence == latest && generated_world &&
                   matching &&
                   generated.rendered_ready > last_original_ready &&
@@ -2295,6 +2311,7 @@ class OpenXrProbe {
                   }
                   generated_sequence_for_frame=latest;
                   selected_original=matching;
+                  selection_outcome=6;
                   break;
                 }
               }
@@ -2307,6 +2324,7 @@ class OpenXrProbe {
               }
             }
           } while (false);
+          ++generated_selection_outcomes[selection_outcome];
         }
         const bool use_generated_pair = generated_sequence_for_frame != 0;
         const auto generated_tick=generated_state.slots[
@@ -3949,6 +3967,25 @@ class OpenXrProbe {
                   << " rendered_tag_ready="
                   << rendered_pair_pose_ready_value
                   << std::endl;
+        if(generated_surfaces) {
+          std::cout << "openxr.generated_selection gameplay_generation=" << rendered_pair_gameplay_generation
+                    << " interval_seconds=" << interval_seconds
+                    << " reserved_original=" << generated_reserved_original_frames
+                    << " unavailable=" << generated_selection_outcomes[0]
+                    << " no_new=" << generated_selection_outcomes[1]
+                    << " metadata_rejected=" << generated_selection_outcomes[2]
+                    << " original_missing=" << generated_selection_outcomes[3]
+                    << " order_rejected=" << generated_selection_outcomes[4]
+                    << " history_missing=" << generated_selection_outcomes[5]
+                    << " selected=" << generated_selection_outcomes[6]
+                    << " original_latest=" << original_state.latest_sequence
+                    << " original_ingested=" << ingested_original_ready
+                    << " original_displayed=" << last_original_ready
+                    << " generated_latest=" << generated_state.latest_sequence
+                    << " generated_consumed=" << generated_last_consumed << '\n';
+        }
+        generated_selection_outcomes={};
+        generated_reserved_original_frames=0;
         if (synthetic_roomscale_path) {
           std::cout << "openxr.synthetic_roomscale frame="
                     << synthetic_roomscale_frames << " camera="

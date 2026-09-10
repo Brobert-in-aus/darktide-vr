@@ -36,4 +36,30 @@ class AnalysisTests(unittest.TestCase):
     def test_invalid_interval_rejected(self):
         with self.assertRaises(ValueError): module.summarize(record(1,dt=float('nan')))
 
+    def test_selection_counts_and_publication_rates(self):
+        def selection(original, generated, generation=1):
+            return (f'openxr.generated_selection gameplay_generation={generation} interval_seconds=2 '
+                    f'original_latest={original} generated_latest={generated} '
+                    'reserved_original=60 unavailable=0 no_new=30 metadata_rejected=0 '
+                    'original_missing=20 order_rejected=10 history_missing=0 selected=60')
+        report = module.summarize_selection('\n'.join([
+            selection(1, 1), selection(161, 141), selection(321, 281)]), 0)
+        self.assertEqual(report['original_ring_publication_fps'], 80)
+        self.assertEqual(report['generated_ring_publication_fps'], 70)
+        self.assertEqual(sum(report['outcomes'].values()), 360)
+        self.assertEqual(report['outcomes_per_second']['selected'], 30)
+        restarted = module.summarize_selection('\n'.join([
+            selection(100, 100), selection(1, 1, 2), selection(161, 141, 2)]), 0)
+        self.assertEqual(restarted['original_ring_publication_fps'], 80)
+        rollback = module.summarize_selection('\n'.join([
+            selection(100, 100), selection(1, 1), selection(161, 141)]), 0)
+        self.assertEqual(rollback['original_ring_publication_fps'], 80)
+        with self.assertRaises(ValueError):
+            module.summarize_selection(selection(1, 1).replace('interval_seconds=2', 'interval_seconds=nan'), 0)
+        with self.assertRaises(ValueError):
+            module.summarize_selection(selection(1, 1).replace('no_new=30', 'no_new=-1'), 0)
+
+    def test_missing_selection_is_unknown(self):
+        self.assertIsNone(module.summarize_selection('', 0)['outcomes'])
+
 if __name__ == '__main__': unittest.main()

@@ -7,6 +7,51 @@ import re
 from pathlib import Path
 
 
+def summarize_selection(text, warmup_seconds):
+    outcomes = ('reserved_original', 'unavailable', 'no_new', 'metadata_rejected',
+                'original_missing', 'order_rejected', 'history_missing', 'selected')
+    totals = dict.fromkeys(outcomes, 0)
+    previous = None
+    elapsed = seconds = 0.0
+    source_count = generated_count = 0
+    for line in text.splitlines():
+        if not line.startswith('openxr.generated_selection '):
+            continue
+        fields = dict(part.split('=', 1) for part in line.split() if '=' in part)
+        required = (*outcomes, 'gameplay_generation', 'interval_seconds',
+                    'original_latest', 'generated_latest')
+        if any(key not in fields for key in required):
+            continue
+        dt = float(fields['interval_seconds'])
+        values = {key: int(fields[key]) for key in required if key != 'interval_seconds'}
+        if not math.isfinite(dt) or dt <= 0 or any(value < 0 for value in values.values()):
+            raise ValueError('Invalid selection record')
+        current = (values['gameplay_generation'], values['original_latest'], values['generated_latest'])
+        if not current[0]:
+            previous = None
+            elapsed = 0
+            continue
+        if previous is None or current[0] != previous[0] or any(current[i] < previous[i] for i in (1, 2)):
+            previous = current
+            elapsed = 0
+            continue
+        elapsed += dt
+        if elapsed > warmup_seconds:
+            for key in outcomes:
+                totals[key] += values[key]
+            seconds += dt
+            source_count += current[1] - previous[1]
+            generated_count += current[2] - previous[2]
+        previous = current
+    return {
+        'sample_seconds': seconds,
+        'outcomes': totals if seconds else None,
+        'outcomes_per_second': {key: value / seconds for key, value in totals.items()} if seconds else None,
+        'original_ring_publication_fps': source_count / seconds if seconds else None,
+        'generated_ring_publication_fps': generated_count / seconds if seconds else None,
+    }
+
+
 def summarize(text, warmup_seconds=10.0):
     metrics = ('interval_submission_fps', 'interval_fresh_pair_fps',
                'interval_generated_pair_fps', 'interval_distinct_pair_fps',
@@ -63,6 +108,7 @@ def summarize(text, warmup_seconds=10.0):
         'pose_mismatches_total': final('pair_pose_mismatches'),
         'clean_exit': 'openxr.lifecycle=stopped' in text and 'result=pass' in text,
         'scope': 'simulator consumer; not physical headset latency or SSW',
+        'selection': summarize_selection(text, warmup_seconds),
     }
 
 
