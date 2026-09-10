@@ -1,7 +1,8 @@
 function ConvertTo-SyntheticFramegenSettings {
     param([Parameter(Mandatory)] [string] $Settings, [Parameter(Mandatory)] [bool] $Enabled,
         [ValidateSet('Preserve','Unlimited','30','40','60','72','90','120')] [string] $FrameRateLimit = 'Preserve',
-        [ValidateRange(0,16)] [int] $WorkerThreads = 0)
+        [ValidateRange(0,16)] [int] $WorkerThreads = 0,
+        [ValidateSet('Preserve','Quality','Performance')] [string] $DlssQuality = 'Preserve')
     # One-tab fields belong to active settings; detected-user caches use two.
     foreach ($change in @(
         @('(?m)^(\tdlss_g[ \t]*=[ \t]*)[0-9]+(?=[ \t]*\r?$)', [string][int]$Enabled),
@@ -27,6 +28,25 @@ function ConvertTo-SyntheticFramegenSettings {
         $workerPattern = '(?m)^(max_worker_threads[ \t]*=[ \t]*)[0-9]+(?=[ \t]*\r?$)'
         if ([regex]::Matches($Settings,$workerPattern).Count -ne 1) { throw 'Expected one active worker-thread setting.' }
         $Settings = [regex]::Replace($Settings,$workerPattern,'${1}'+[string]$WorkerThreads)
+    }
+    if ($DlssQuality -ne 'Preserve') {
+        # Require an already enabled DLSS configuration; do not switch upscalers.
+        foreach ($required in @(
+            '(?m)^\tdlss_enabled[ \t]*=[ \t]*true[ \t]*\r?$',
+            '(?m)^\tdlss_master[ \t]*=[ \t]*"on"[ \t]*\r?$',
+            '(?m)^\tupscaling_mode[ \t]*=[ \t]*"dlss"[ \t]*\r?$'
+        )) {
+            if ([regex]::Matches($Settings,$required).Count -ne 1) { throw 'DLSS quality trial requires active DLSS.' }
+        }
+        # Stock render_settings.lua maps Performance to selection 3, Quality to 5.
+        $selection = if ($DlssQuality -eq 'Quality') { '5' } else { '3' }
+        foreach ($change in @(
+            @('(?m)^(\tdlss[ \t]*=[ \t]*)[0-9]+(?=[ \t]*\r?$)', $selection),
+            @('(?m)^(\tupscaling_quality[ \t]*=[ \t]*)"[^"]+"(?=[ \t]*\r?$)', ('"'+$DlssQuality.ToLowerInvariant()+'"'))
+        )) {
+            if ([regex]::Matches($Settings,$change[0]).Count -ne 1) { throw 'Expected one active DLSS quality setting.' }
+            $Settings = [regex]::Replace($Settings,$change[0],'${1}'+$change[1])
+        }
     }
     return $Settings
 }

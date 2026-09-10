@@ -4,6 +4,7 @@ param(
     [ValidateSet('Preserve','Unlimited','30','40','60','72','90','120')] [string] $FrameRateLimit = 'Preserve',
     [ValidateSet(90,120,144)] [int] $SimulatorRefreshRate = 90,
     [ValidateRange(0,16)] [int] $WorkerThreads = 0,
+    [ValidateSet('Preserve','Quality','Performance')] [string] $DlssQuality = 'Preserve',
     [ValidateSet('','cm_archives')] [string] $SoloMission = '',
     [ValidateRange(1,5)] [int] $SoloDifficulty = 3,
     [string] $ExpectedInstalledSoloSha256,
@@ -137,7 +138,7 @@ try {
     }
     $settings = [IO.File]::ReadAllText($SettingsPath)
     $enabled = $FrameGeneration -eq 'On'
-    $settings = ConvertTo-SyntheticFramegenSettings -Settings $settings -Enabled $enabled -FrameRateLimit $FrameRateLimit -WorkerThreads $WorkerThreads
+    $settings = ConvertTo-SyntheticFramegenSettings -Settings $settings -Enabled $enabled -FrameRateLimit $FrameRateLimit -WorkerThreads $WorkerThreads -DlssQuality $DlssQuality
     $recovery = Join-Path $OutputDirectory 'recovery'
     New-Item -ItemType Directory -Path $recovery | Out-Null
     $recoveryIndex = 0
@@ -200,6 +201,8 @@ try {
         frame_rate_limit=$FrameRateLimit
         simulator_refresh_hz=$SimulatorRefreshRate
         worker_threads_override=$WorkerThreads
+        dlss_quality_override=$DlssQuality
+        dlss_quality_setting=[regex]::Match($settings,'(?m)^\tupscaling_quality[ \t]*=[ \t]*"([^"]+)"').Groups[1].Value
         worker_threads_setting=[regex]::Match($settings,'(?m)^max_worker_threads[ \t]*=[ \t]*([0-9]+)').Groups[1].Value
         workload=$(if($SoloMission){'mission_start_stationary'}else{'hub_spin'})
         solo_mission=$SoloMission; solo_difficulty=$(if($SoloMission){$SoloDifficulty}else{$null})

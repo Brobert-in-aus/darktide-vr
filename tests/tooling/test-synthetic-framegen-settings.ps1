@@ -36,3 +36,17 @@ foreach ($invalid in @($source,($workers+"max_worker_threads = 8`r`n"))) {
     if (-not $rejected) { throw 'Ambiguous/missing worker setting accepted.' }
 }
 'synthetic_worker_settings=pass'
+$dlssSource = $source + "`tdlss_enabled = true`r`n`tdlss_master = `"on`"`r`n`tupscaling_mode = `"dlss`"`r`n`tupscaling_quality = `"quality`"`r`n`t`tdlss = 5`r`n`t`tupscaling_quality = `"quality`"`r`n"
+$performance = ConvertTo-SyntheticFramegenSettings -Settings $dlssSource -Enabled $false -DlssQuality Performance
+if ($performance -notmatch '(?m)^\tdlss = 3\r?$' -or
+    $performance -notmatch '(?m)^\tupscaling_quality = "performance"\r?$' -or
+    $performance -notmatch '(?m)^\t\tdlss = 5\r?$' -or
+    $performance -notmatch '(?m)^\t\tupscaling_quality = "quality"\r?$') { throw 'DLSS selection or cache preservation failed.' }
+$quality = ConvertTo-SyntheticFramegenSettings -Settings $performance -Enabled $false -DlssQuality Quality
+if ($quality -notmatch '(?m)^\tdlss = 5\r?$' -or $quality -notmatch '(?m)^\tupscaling_quality = "quality"\r?$') { throw 'Quality restore failed.' }
+foreach ($invalid in @($source, $dlssSource.Replace('dlss_enabled = true','dlss_enabled = false'), ($dlssSource+"`tdlss = 3`r`n"))) {
+    $rejected = $false
+    try { ConvertTo-SyntheticFramegenSettings -Settings $invalid -Enabled $false -DlssQuality Performance | Out-Null } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Invalid or ambiguous DLSS configuration accepted.' }
+}
+'synthetic_dlss_quality_settings=pass'
