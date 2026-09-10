@@ -116,3 +116,9 @@ mismatches. It returned 73.30 native FPS; this is an instrumented run, not an
 optimization result. There were 21 valid GPU activity samples with no observed
 busy Streamer engine and one unavailable sample. Physical readiness remained
 unavailable. Evidence: `artifacts/unattended/synthetic-compute-stages-20260911`.
+
+The [descriptor-guard A/B/A follow-up](RING-CPU-DIAGNOSIS-2026-09-11.md)
+subsequently reduced total observed binding from 7.673 to 1.857 microseconds;
+the original-build reversal returned 7.503. Descriptor-stage means were
+4.451 / 0.510 / 4.225 microseconds. This supports the metadata-lock optimisation;
+it does not justify altering the engine's default-descriptor initialization.
