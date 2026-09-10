@@ -1,5 +1,9 @@
 # Simulator/physical launch parity
 
+**Superseding repeat:** the [matched clean-launch controls](CLEAN-LAUNCH-DIAGNOSTICS-2026-09-10.md)
+show 89.11 FPS with debug validation and 88.43 without. The provisional debug
+attribution below is not supported; retain it only as investigation history.
+
 The physical shared-eye runner unconditionally passed `--debug-layer`; normal
 synthetic controls did not. It also starts a desktop fallback capture thread,
 which calls the existing PrintWindow/rescale/pixel-conversion path every 33 ms

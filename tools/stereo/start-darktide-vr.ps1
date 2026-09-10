@@ -56,6 +56,7 @@ param(
     [switch] $EnableMenuInput,
 
     [switch] $XrDebugLayer,
+    [switch] $PreserveDiagnosticFlags,
 
     [switch] $EnableMenuTestControls,
 
@@ -375,10 +376,20 @@ if ($CaptureBillboardPsoIdentities) {
 }
 $launchStarted = Get-Date
 $launchFailure = $null
+$cleanLaunchSaved = @{}
+. (Join-Path $PSScriptRoot 'clean-launch-diagnostics.ps1')
 $advanceProcess = $null
 $characterStartFlag = Join-Path $GameRoot 'mods\darktidevr_stereo_probe\darktidevr_start_character.flag'
 try {
 $gameAlreadyRunning = [bool](Get-Process Darktide -ErrorAction SilentlyContinue)
+if (-not $gameAlreadyRunning -and -not $PreserveDiagnosticFlags) {
+    Set-CleanLaunchDiagnostics -ModRoot (Join-Path $GameRoot 'mods/darktidevr_stereo_probe') `
+        -Saved $cleanLaunchSaved -CopyProbe $StreamlineCopyProbe.IsPresent `
+        -TransportProbe $StreamlineTransportProbe.IsPresent `
+        -PerformanceProfile $EnablePerformanceProfile.IsPresent `
+        -PerformancePassTrace $EnablePerformancePassTrace.IsPresent
+    Write-Output "launch.optional_diagnostics=clean suppressed_files=$($cleanLaunchSaved.Count)"
+}
 if ($EnterPsykhanium -and $gameAlreadyRunning) {
     throw 'Psykhanium entry must be armed before Darktide starts; close the game and retry.'
 }
@@ -919,6 +930,9 @@ catch { $launchFailure = $_; throw }
 finally {
     # Attempt every independent owner even if an earlier restoration fails.
     $cleanupSteps = @(
+    {
+        Restore-CleanLaunchDiagnostics -Saved $cleanLaunchSaved
+    }
     {
         if (Test-Path -LiteralPath $characterStartFlag -PathType Leaf) {
             Remove-Item -LiteralPath $characterStartFlag -Force

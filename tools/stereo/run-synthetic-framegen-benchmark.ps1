@@ -14,6 +14,7 @@ param(
     [switch] $ClusterLightTrace,
     [switch] $PresentCpuProfile,
     [switch] $DebugLayer,
+    [switch] $PreserveDiagnosticFlags,
     [bool] $EnableHudPanel = $true,
     [ValidateSet(0,30,60,90,120)] [int] $SimulatorPreviewFps = 0,
     [switch] $GpuProfile,
@@ -244,6 +245,7 @@ try {
         duration_seconds=$DurationSeconds; preview_fps=$SimulatorPreviewFps; physical_xr_ready=$false
         hud_panel_enabled=$EnableHudPanel; preview_mode='both'; preview_layout='side_by_side'
         menu_input_enabled=$true; desktop_window_capture=$false
+        optional_diagnostics_clean=(-not $PreserveDiagnosticFlags.IsPresent)
         cluster_trace=(Test-Path -LiteralPath $clusterTraceFlag)
         observe_dlss_sr_inputs=$ObserveDlssSrInputs.IsPresent
         render_world_census=[bool]$RenderWorldCensusSourcePath
@@ -287,6 +289,7 @@ try {
         -OfflineDualViewBenchmark -SkipDeploymentSync -DlssGeneratedStereo:$enabled `
         -EnablePerformanceProfile:$GpuProfile `
         -EnableHudPanel:$EnableHudPanel `
+        -PreserveDiagnosticFlags:$PreserveDiagnosticFlags `
         -OfflineSoloMission $SoloMission `
         -ObserveDlssSrInputs:$ObserveDlssSrInputs `
         -DurationSeconds $DurationSeconds -GameStartTimeoutSeconds $StartupTimeoutSeconds `
