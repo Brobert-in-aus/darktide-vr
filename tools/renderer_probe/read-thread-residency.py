@@ -62,6 +62,7 @@ def analyze(directory: Path) -> dict:
     layouts = []
     categories = []
     queues = []
+    chunks = []
     peer_locations, dispatch_peer_locations = collections.Counter(), collections.Counter()
     peer_thread = receipt.get("peer_thread", 0)
     def peer_location(row):
@@ -125,6 +126,16 @@ def analyze(directory: Path) -> dict:
                             if not 0 <= layout["workers"] <= 64 or layout["weighted_enabled"] not in (0, 1) or any(not 0 <= layout[key] <= 10000000 for key in ("commands", "weighted_commands", "history_commands")) or not math.isfinite(layout["history_cost_raw"]):
                                 raise ValueError("Implausible dispatcher layout; do not interpret field offsets")
                             layouts.append(layout)
+                            if row.get("chunks_read") == "1":
+                                count = int(row["chunk_count"])
+                                if not 1 <= count <= 32 or int(row["boundary_count"]) != count:
+                                    raise ValueError("Implausible chunk count")
+                                starts = [int(row[f"chunk_start{i}"]) for i in range(count)]
+                                end = layout["weighted_commands"]
+                                if starts[0] != 0 or any(a >= b for a, b in zip(starts, starts[1:])) or starts[-1] >= end:
+                                    raise ValueError("Invalid weighted chunk boundaries")
+                                sizes = [b - a for a, b in zip(starts, starts[1:] + [end])]
+                                chunks.append({"count": count, "sizes": sizes})
                             if peer is not None:
                                 dispatch_peer_locations[peer] += 1
                             if row.get("queues_read") == "1":
@@ -163,6 +174,14 @@ def analyze(directory: Path) -> dict:
                        for key in ("commands", "weighted_commands", "history_commands", "history_cost_raw")} if layouts else {},
         },
         "pause_mean_us": statistics.mean(pauses),
+        "dispatch_chunks": {
+            "samples": len(chunks),
+            "scope": "repeated weighted bundle partitions at waits; bundle count is not CPU cost",
+            "counts": dict(collections.Counter(x["count"] for x in chunks)),
+            "bundle_size_range": [min(min(x["sizes"]) for x in chunks), max(max(x["sizes"]) for x in chunks)] if chunks else None,
+            "observed_partitions": [{"bundle_sizes": list(sizes), "samples": n}
+                                    for sizes, n in collections.Counter(tuple(x["sizes"]) for x in chunks).most_common(20)],
+        },
         "paired_residency": {
             "thread": peer_thread or None,
             "scope": "peer paused after primary; perturbed overlap, not atomic running-state or CPU-time shares",

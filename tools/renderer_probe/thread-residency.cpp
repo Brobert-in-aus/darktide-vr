@@ -30,6 +30,9 @@ struct Sample {
   bool categories_read{};
   DWORD queue_a{}, queue_b{};
   bool queues_read{};
+  DWORD chunk_count{}, boundary_count{};
+  std::array<DWORD, 32> chunk_starts{};
+  bool chunks_read{};
   DWORD64 peer_rip{}, peer_rsp{};
   std::array<DWORD64, 64> peer_stack{};
   bool peer_read{}, peer_stack_read{};
@@ -121,6 +124,17 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
       sample.queues_read = sample.layout_read &&
           read(context.Rsi + 0x104, &sample.queue_a, sizeof(sample.queue_a)) &&
           read(context.Rsi + 0x12c, &sample.queue_b, sizeof(sample.queue_b));
+      // 7aa1c0 sets RBP=RSP+100 after its prolog. The splitter keeps
+      // job count at RSP+64 and its boundary array at RSP+68/+70 until
+      // cleanup after this wait. Read only a bounded weighted array.
+      DWORD64 boundaries{};
+      sample.chunks_read = sample.layout_read && sample.weighted_enabled &&
+          read(frame - 0x9c, &sample.chunk_count, sizeof(sample.chunk_count)) &&
+          read(frame - 0x98, &sample.boundary_count, sizeof(sample.boundary_count)) &&
+          sample.boundary_count > 0 && sample.boundary_count <= sample.chunk_starts.size() &&
+          sample.chunk_count == sample.boundary_count &&
+          read(frame - 0x90, &boundaries, sizeof(boundaries)) && boundaries &&
+          read(boundaries, sample.chunk_starts.data(), sample.boundary_count * sizeof(DWORD));
     }
     // Bounded paired observation: primary stays paused while the peer is read.
     // This is a perturbed overlap, not an atomic snapshot of a running engine.
@@ -169,6 +183,8 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
   std::printf(",layout_read,workers,commands,weighted_commands,history_commands,weighted_enabled,history_cost,categories_read");
   for (unsigned i = 0; i < 4; ++i) std::printf(",category%u_cost,category%u_records", i, i);
   std::printf(",queues_read,queue_a,queue_b");
+  std::printf(",chunks_read,chunk_count,boundary_count");
+  for (unsigned i = 0; i < 32; ++i) std::printf(",chunk_start%u", i);
   if (peer_tid) {
     std::printf(",peer_thread,peer_read,peer_rip,peer_rsp,peer_stack_read");
     for (unsigned i = 0; i < 64; ++i) std::printf(",peer_s%u", i);
@@ -183,6 +199,8 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
         unsigned(sample.weighted_enabled), sample.history_cost, unsigned(sample.categories_read));
     for (const auto& category : sample.categories) std::printf(",%.9g,%lu", category.cost, category.records);
     std::printf(",%u,%lu,%lu", unsigned(sample.queues_read), sample.queue_a, sample.queue_b);
+    std::printf(",%u,%lu,%lu", unsigned(sample.chunks_read), sample.chunk_count, sample.boundary_count);
+    for (const auto value : sample.chunk_starts) std::printf(",%lu", value);
     if (peer_tid) {
       std::printf(",%lu,%u,0x%llx,0x%llx,%u", peer_tid, unsigned(sample.peer_read),
           sample.peer_rip, sample.peer_rsp, unsigned(sample.peer_stack_read));
