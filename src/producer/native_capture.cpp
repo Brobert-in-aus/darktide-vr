@@ -6,6 +6,7 @@
 #include "producer/pipeline_identity.h"
 #include "producer/diagnostic_append_log.h"
 #include "producer/bounded_diagnostic.h"
+#include "producer/present_cpu_profile.h"
 #include "producer/resource_name_match.h"
 #include "producer/command_recording_snapshot.h"
 #include "producer/shader_pair_snapshot.h"
@@ -12432,6 +12433,8 @@ HRESULT STDMETHODCALLTYPE streamline_native_present_hook(
 
 HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
                                        UINT interval, UINT flags) {
+  darktidevr::producer::PresentCpuProfile cpu_profile(native_capture_module,
+      current_gameplay_generation.load(std::memory_order_relaxed));
   darktidevr::producer::poll_ngx_queue_completion();
   // Legacy resource tags are global. During this explicit one-shot test, keep
   // the game's next tag calls outside our stage/Present/null-tag transaction.
