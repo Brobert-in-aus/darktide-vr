@@ -73,3 +73,22 @@ This corrects evidence collection and does not change game rendering.
 Local receipts: `artifacts/unattended/resolution-cause-{low-a,high-a,gpu-low,gpu-high,native-low,native-high}-20260910`.
 See each configuration, summary and restoration receipt for full provenance.
 No raw logs, settings or binaries are committed.
+
+## Physical mission follow-up
+
+After the user resumed streaming, fresh Ready passed at 2496x2688. Launched the
+same SoloPlay mission/difficulty with the same native and viewer builds, Quality,
+FG, cap 120 and precise polling. Mission identity and fresh stereo passed.
+The early settled intervals deliver approximately 45.8–46.3 original plus the
+same generated rate (91.5–92.6 distinct FPS). This is below the simulator's 112.68
+at the same resolution. It is a live observation, not a finished stationary
+controlled capture: actual head pose/frusta, input, scene visibility, compositor
+and streaming still differ.
+
+At a 91.88 FPS interval, mean viewer loop time is 10.882 ms: source wait 6.722 ms,
+GPU fence 3.654 ms and xrEndFrame 0.137 ms. GPU snapshot: 94%, 309 W. No prolonged
+xrEndFrame blocking is apparent. One cumulative pose mismatch was recorded during
+startup and remained at one in these later samples; this run is not a zero-mismatch
+acceptance pass. The session remains running for the user's comparison.
+Logs: `physical-matched-launch.log`, `physical-matched-ready.json`, and the
+temporary launch/recovery directory under ignored `artifacts/unattended`.
