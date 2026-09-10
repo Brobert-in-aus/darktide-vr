@@ -23,6 +23,7 @@ LABELS = re.compile(
     r"stingray::RenderInterface::(?:.*render_world.*|update_world))$"
 )
 RIP = re.compile(r"\[rip ([+-]) (0x[0-9a-f]+)\]")
+DLSS_LABELS = re.compile(r".*(?:DLSS|dlss|NVSDK_NGX|NGX).*")
 
 
 def unwind_chain(pe, entry) -> list[dict]:
@@ -51,7 +52,10 @@ def unwind_chain(pe, entry) -> list[dict]:
     raise ValueError("Unwind chain exceeds the inspection depth limit")
 
 
-def analyze(path: Path, expected_hash: str) -> dict:
+def analyze(path: Path, expected_hash: str, scope_family: str = "render") -> dict:
+    if scope_family not in ("render", "dlss"):
+        raise ValueError("Unsupported scope family")
+    selected_labels = LABELS if scope_family == "render" else DLSS_LABELS
     data = path.read_bytes()
     digest = hashlib.sha256(data).hexdigest()
     if digest != expected_hash.lower():
@@ -63,7 +67,7 @@ def analyze(path: Path, expected_hash: str) -> dict:
     labels = {}
     for match in re.finditer(rb"[ -~]{5,}\x00", data):
         value = match.group()[:-1].decode("ascii")
-        if LABELS.fullmatch(value):
+        if selected_labels.fullmatch(value):
             labels[base + pe.get_rva_from_offset(match.start())] = value
     ranges = sorted((entry.struct.BeginAddress, entry.struct.EndAddress)
                     for entry in pe.DIRECTORY_ENTRY_EXCEPTION)
@@ -104,6 +108,7 @@ def analyze(path: Path, expected_hash: str) -> dict:
     owned_calls = [(source, target, primary_at(source)) for source, target in calls]
     return {
         "schema": 2, "sha256": digest, "image_base": base,
+        "scope_family": scope_family,
         "method": "linear x64 decode, RIP-relative string references, PE unwind ranges",
         "limitations": [
             "An unwind range may be a chained function fragment, not an entry point.",
@@ -141,13 +146,14 @@ def main() -> None:
     parser.add_argument("executable", type=Path)
     parser.add_argument("--expected-sha256", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--scope-family", choices=("render", "dlss"), default="render")
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9a-fA-F]{64}", args.expected_sha256):
         parser.error("Expected SHA-256 must contain 64 hexadecimal characters")
     if args.output.resolve() == args.executable.resolve() or (
             args.output.exists() and args.output.samefile(args.executable)):
         parser.error("Output must not overwrite the executable")
-    report = analyze(args.executable, args.expected_sha256)
+    report = analyze(args.executable, args.expected_sha256, args.scope_family)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(f"Mapped {len(report['references'])} references in {len(report['scopes'])} unwind ranges")
