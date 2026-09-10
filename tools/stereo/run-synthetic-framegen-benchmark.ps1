@@ -16,6 +16,7 @@ param(
     [switch] $DebugLayer,
     [switch] $PreserveDiagnosticFlags,
     [bool] $EnableHudPanel = $true,
+    [bool] $EnableMenuInput = $true,
     [ValidateSet(0,30,60,90,120)] [int] $SimulatorPreviewFps = 0,
     [switch] $GpuProfile,
     [switch] $RenderApiCpuProfile,
@@ -140,7 +141,7 @@ try {
         'stereo_swapchain_probe','stereo_stage_probe','stereo_submit_probe') |
         ForEach-Object { "darktidevr_streamline_$_.flag" }
     $flagNames += 'darktidevr_ngx_output_probe.flag'
-    if ($EnableHudPanel) { $flagNames += 'darktidevr_hud_panel.flag' }
+    $flagNames += 'darktidevr_hud_panel.flag'
     if ($GpuProfile) { $flagNames += 'darktidevr_performance_profile.flag' }
     foreach ($name in $flagNames) { Save-BenchmarkFile (Join-Path $modPath $name) }
     $clusterTraceFlag = Join-Path $modPath 'bin/darktidevr_cluster_trace.flag'
@@ -190,6 +191,10 @@ try {
         & (Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1') -SourcePath (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')
     }
     [IO.File]::WriteAllText($SettingsPath,$settings,[Text.UTF8Encoding]::new($false))
+    # Make both control states explicit; a false switch must not inherit a
+    # previously enabled HUD from the installed flag. Restore exact bytes later.
+    [IO.File]::WriteAllText((Join-Path $modPath 'darktidevr_hud_panel.flag'),
+        $(if ($EnableHudPanel) { "enable`r`n" } else { "disable`r`n" }))
     if ($GpuProfile) { [IO.File]::WriteAllText((Join-Path $modPath 'darktidevr_performance_profile.flag'),"enabled`r`n") }
     if($ClusterLightTrace) { [IO.File]::WriteAllText($clusterTraceFlag,"enabled=1`r`n") }
     if($PresentCpuProfile) { [IO.File]::WriteAllText($presentCpuFlag,"[probe]`r`nenabled=1`r`n") }
@@ -244,7 +249,7 @@ try {
         native_sha256=(Get-FileHash (Join-Path $GameRoot 'binaries/darktidevr_native_capture.dll') -Algorithm SHA256).Hash
         duration_seconds=$DurationSeconds; preview_fps=$SimulatorPreviewFps; physical_xr_ready=$false
         hud_panel_enabled=$EnableHudPanel; preview_mode='both'; preview_layout='side_by_side'
-        menu_input_enabled=$true; desktop_window_capture=$false
+        menu_input_enabled=$EnableMenuInput; desktop_window_capture=$false
         optional_diagnostics_clean=(-not $PreserveDiagnosticFlags.IsPresent)
         cluster_trace=(Test-Path -LiteralPath $clusterTraceFlag)
         observe_dlss_sr_inputs=$ObserveDlssSrInputs.IsPresent
@@ -260,8 +265,9 @@ try {
     $receipt | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'configuration.json') -Encoding utf8
     # This consumer is also the sole synthetic head publisher. Do not launch
     # SyntheticRuntimeFrusta beside it: two writers would race on pose metadata.
-    $consumerArguments = @('--flush-log','--shared-eyes','--require-rendering','--enable-gameplay-reticle','--enable-menu-input',
+    $consumerArguments = @('--flush-log','--shared-eyes','--require-rendering','--enable-gameplay-reticle',
         '--xr-seconds',($StartupTimeoutSeconds+$DurationSeconds+60), '--stop-file',('"'+$stopFile+'"'))
+    if ($EnableMenuInput) { $consumerArguments += '--enable-menu-input' }
     if ($DebugLayer) { $consumerArguments += '--debug-layer' }
     $consumer = Start-Process -FilePath $HarnessPath -WindowStyle Hidden -PassThru `
         -ArgumentList $consumerArguments `
@@ -272,7 +278,7 @@ try {
         Start-Sleep -Milliseconds 100
         $consumer.Refresh()
         if ($consumer.HasExited) { throw 'Simulator consumer failed before launch; inspect consumer-error.log.' }
-        $initialLog = Get-Content (Join-Path $OutputDirectory 'consumer.log') -Raw
+        $initialLog = [string](Get-Content (Join-Path $OutputDirectory 'consumer.log') -Raw)
         $displayPeriod = [regex]::Match($initialLog,'last_display_period_ms=([0-9.]+)')
         $consumerReady = $initialLog -match 'openxr.runtime_name=OpenXR Simulator Runtime' -and
             $initialLog -match 'openxr.render_projection=recentered-symmetric' -and $displayPeriod.Success
@@ -345,18 +351,17 @@ if ((Get-ItemPropertyValue 'HKLM:/SOFTWARE/Khronos/OpenXR/1' -Name ActiveRuntime
 $launchPath = Join-Path $OutputDirectory 'launch.log'
 if (Test-Path -LiteralPath $launchPath) {
     $launchText = [IO.File]::ReadAllText($launchPath)
-    if ($EnableHudPanel) {
-        $hudConsole = [regex]::Match($launchText,'(?m)^Offline dual-view benchmark started; log=([^\r\n]+)')
-        if ($hudConsole.Success -and (Test-Path -LiteralPath $hudConsole.Groups[1].Value)) {
-            $hudText = [IO.File]::ReadAllText($hudConsole.Groups[1].Value)
-            @($hudText -split "`n" | Where-Object { $_ -match 'DARKTIDEVR_HUD' }) |
-                Set-Content (Join-Path $OutputDirectory 'hud-panel.log') -Encoding utf8
-            if (($hudText -notmatch 'DARKTIDEVR_HUD enabled=true source=flag' -or
-                 $hudText -notmatch "DARKTIDEVR_HUD target_created width=$EyeWidth ") -and -not $failure) {
-                $failure = 'Requested world-space HUD did not report enabled and create the expected-width target.'
-            }
-        } elseif (-not $failure) { $failure = 'HUD validation has no launch-selected console log.' }
-    }
+    $hudConsole = [regex]::Match($launchText,'(?m)^Offline dual-view benchmark started; log=([^\r\n]+)')
+    if ($hudConsole.Success -and (Test-Path -LiteralPath $hudConsole.Groups[1].Value)) {
+        $hudText = [IO.File]::ReadAllText($hudConsole.Groups[1].Value)
+        @($hudText -split "`n" | Where-Object { $_ -match 'DARKTIDEVR_HUD' }) |
+            Set-Content (Join-Path $OutputDirectory 'hud-panel.log') -Encoding utf8
+        $expectedHudState = $EnableHudPanel.ToString().ToLowerInvariant()
+        if (($hudText -notmatch "DARKTIDEVR_HUD enabled=$expectedHudState source=flag" -or
+             ($EnableHudPanel -and $hudText -notmatch "DARKTIDEVR_HUD target_created width=$EyeWidth ")) -and -not $failure) {
+            $failure = 'World-space HUD did not confirm its requested state or expected-width target.'
+        }
+    } elseif (-not $failure) { $failure = 'HUD validation has no launch-selected console log.' }
     if ($GpuProfile) {
         $gpuConsole = [regex]::Match($launchText,'(?m)^Offline dual-view benchmark started; log=([^\r\n]+)')
         if ($gpuConsole.Success -and (Test-Path -LiteralPath $gpuConsole.Groups[1].Value)) {
