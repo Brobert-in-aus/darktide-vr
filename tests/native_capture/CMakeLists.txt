@@ -1,5 +1,8 @@
 add_executable(darktidevr-native-capture-tests main.cpp)
 add_executable(darktidevr-thread-residency "${PROJECT_SOURCE_DIR}/tools/renderer_probe/thread-residency.cpp")
+add_executable(darktidevr-dispatch-bundle-probe-tests dispatch_bundle_probe.cpp)
+target_compile_options(darktidevr-dispatch-bundle-probe-tests PRIVATE /W4 /WX /permissive-)
+add_test(NAME dispatch_bundle_probe COMMAND darktidevr-dispatch-bundle-probe-tests)
 target_compile_options(darktidevr-thread-residency PRIVATE /W4 /WX /permissive-)
 target_compile_definitions(darktidevr-thread-residency PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 if(BUILD_TESTING)

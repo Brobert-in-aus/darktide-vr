@@ -16,6 +16,43 @@ import pefile
 
 KNOWN_ENGINE = "6fce8db87a77a412b22ef9f33f74fa16ef85126cc0fbb24187d78b85fc7a19d3"
 
+def kernel_route(flags, kernel_flags):
+    if kernel_flags is None:
+        return "unknown"
+    if kernel_flags & 1 or (flags & 0x20 and not kernel_flags & 4):
+        return "compute_async_queue_candidate" if kernel_flags & 2 else "compute_graphics_queue_candidate"
+    if flags & 0x20:
+        return "ray_dispatch_candidate"
+    return "instancer_candidate" if flags & 0x80000000 else "direct_draw_candidate"
+
+def read_bundle_samples(row, count):
+    attempted = int(row.get("bundle_attempted", 0))
+    if attempted == 0:
+        return 0, []
+    if not 1 <= count <= 10000000 or attempted != min(count, 8):
+        raise ValueError("Invalid bounded bundle sample count")
+    result = []
+    for i in range(attempted):
+        valid = row[f"bundle{i}_valid"]
+        index, flags, opcode = (int(row[f"bundle{i}_{key}"]) for key in ("index", "flags", "opcode"))
+        expected = i * (count - 1) // (attempted - 1) if attempted > 1 else 0
+        if valid not in ("0", "1") or index != expected or not 0 <= flags <= 0xffffffff or not 0 <= opcode <= 0xffff:
+            raise ValueError("Invalid bundle position, flags or opcode")
+        if valid == "0":
+            if flags or opcode or row.get(f"bundle{i}_kernel_valid", "0") != "0" or int(row.get(f"bundle{i}_kernel_flags", "0")):
+                raise ValueError("Unreadable bundle contains command metadata")
+            continue
+        category = 3 if flags & 0x80000000 else 2 if flags & 0x20 else 1 if flags & 4 else 0
+        kernel_valid = row.get(f"bundle{i}_kernel_valid", "0")
+        kernel_flags = int(row.get(f"bundle{i}_kernel_flags", "0"))
+        if kernel_valid not in ("0", "1") or not 0 <= kernel_flags <= 0xffffffff:
+            raise ValueError("Invalid kernel flags")
+        if (kernel_valid == "1" and opcode != 0x23) or (kernel_valid == "0" and kernel_flags):
+            raise ValueError("Kernel flags lack an eligible command")
+        kernel_flags = kernel_flags if kernel_valid == "1" else None
+        result.append((category, flags, opcode, kernel_flags, kernel_route(flags, kernel_flags)))
+    return attempted, result
+
 def analyze(directory: Path) -> dict:
     receipt = json.loads((directory / "receipt.json").read_text(encoding="utf-8-sig"))
     modules = json.loads((directory / "modules.json").read_text(encoding="utf-8-sig"))
@@ -63,6 +100,8 @@ def analyze(directory: Path) -> dict:
     categories = []
     queues = []
     chunks = []
+    bundle_attempted = 0
+    bundle_observations = collections.Counter()
     peer_locations, dispatch_peer_locations = collections.Counter(), collections.Counter()
     peer_thread = receipt.get("peer_thread", 0)
     def peer_location(row):
@@ -126,6 +165,9 @@ def analyze(directory: Path) -> dict:
                             if not 0 <= layout["workers"] <= 64 or layout["weighted_enabled"] not in (0, 1) or any(not 0 <= layout[key] <= 10000000 for key in ("commands", "weighted_commands", "history_commands")) or not math.isfinite(layout["history_cost_raw"]):
                                 raise ValueError("Implausible dispatcher layout; do not interpret field offsets")
                             layouts.append(layout)
+                            attempted, observed = read_bundle_samples(row, layout["weighted_commands"])
+                            bundle_attempted += attempted
+                            bundle_observations.update(observed)
                             if row.get("chunks_read") == "1":
                                 count = int(row["chunk_count"])
                                 if not 1 <= count <= 32 or int(row["boundary_count"]) != count:
@@ -181,6 +223,14 @@ def analyze(directory: Path) -> dict:
             "bundle_size_range": [min(min(x["sizes"]) for x in chunks), max(max(x["sizes"]) for x in chunks)] if chunks else None,
             "observed_partitions": [{"bundle_sizes": list(sizes), "samples": n}
                                     for sizes, n in collections.Counter(tuple(x["sizes"]) for x in chunks).most_common(20)],
+        },
+        "dispatch_bundle_commands": {
+            "scope": "eight evenly spaced sorted bundles per wait; first opcode only; repeated observations, not workload or CPU shares",
+            "attempted": bundle_attempted,
+            "valid": sum(bundle_observations.values()),
+            "observed": [{"category": category, "flags": hex(flags), "first_opcode": hex(opcode),
+                          "kernel_flags": hex(kernel) if kernel is not None else None, "candidate_route": route, "samples": n}
+                         for (category, flags, opcode, kernel, route), n in bundle_observations.most_common()],
         },
         "paired_residency": {
             "thread": peer_thread or None,

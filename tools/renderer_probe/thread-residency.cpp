@@ -1,4 +1,5 @@
 #include <Windows.h>
+#include "dispatch-bundle-probe.h"
 #include <atomic>
 #include <array>
 #include <cstdint>
@@ -33,6 +34,7 @@ struct Sample {
   DWORD chunk_count{}, boundary_count{};
   std::array<DWORD, 32> chunk_starts{};
   bool chunks_read{};
+  darktidevr::diagnostics::DispatchBundleProbe bundles;
   DWORD64 peer_rip{}, peer_rsp{};
   std::array<DWORD64, 64> peer_stack{};
   bool peer_read{}, peer_stack_read{};
@@ -135,6 +137,12 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
           sample.chunk_count == sample.boundary_count &&
           read(frame - 0x90, &boundaries, sizeof(boundaries)) && boundaries &&
           read(boundaries, sample.chunk_starts.data(), sample.boundary_count * sizeof(DWORD));
+      // Sorted descriptors at RBP-30 are retained until dispatch completion.
+      // Their +8 owner and +10/+14 byte range feed 7cb490's command loop.
+      DWORD64 bundle_data{};
+      if (sample.layout_read && read(frame - 0x30, &bundle_data, sizeof(bundle_data)))
+        sample.bundles = darktidevr::diagnostics::probe_dispatch_bundles(
+            bundle_data, sample.weighted_commands, read);
     }
     // Bounded paired observation: primary stays paused while the peer is read.
     // This is a perturbed overlap, not an atomic snapshot of a running engine.
@@ -185,6 +193,8 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
   std::printf(",queues_read,queue_a,queue_b");
   std::printf(",chunks_read,chunk_count,boundary_count");
   for (unsigned i = 0; i < 32; ++i) std::printf(",chunk_start%u", i);
+  std::printf(",bundle_attempted");
+  for (unsigned i = 0; i < 8; ++i) std::printf(",bundle%u_valid,bundle%u_index,bundle%u_flags,bundle%u_opcode,bundle%u_kernel_valid,bundle%u_kernel_flags", i, i, i, i, i, i);
   if (peer_tid) {
     std::printf(",peer_thread,peer_read,peer_rip,peer_rsp,peer_stack_read");
     for (unsigned i = 0; i < 64; ++i) std::printf(",peer_s%u", i);
@@ -201,6 +211,10 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
     std::printf(",%u,%lu,%lu", unsigned(sample.queues_read), sample.queue_a, sample.queue_b);
     std::printf(",%u,%lu,%lu", unsigned(sample.chunks_read), sample.chunk_count, sample.boundary_count);
     for (const auto value : sample.chunk_starts) std::printf(",%lu", value);
+    std::printf(",%u", sample.bundles.attempted);
+    for (const auto& bundle : sample.bundles.samples)
+      std::printf(",%u,%u,%u,%u,%u,%u", unsigned(bundle.valid), bundle.index, bundle.flags, bundle.opcode,
+          unsigned(bundle.kernel_flags_valid), bundle.kernel_flags);
     if (peer_tid) {
       std::printf(",%lu,%u,0x%llx,0x%llx,%u", peer_tid, unsigned(sample.peer_read),
           sample.peer_rip, sample.peer_rsp, unsigned(sample.peer_stack_read));
