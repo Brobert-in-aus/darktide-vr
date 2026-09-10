@@ -1,6 +1,7 @@
 #include "producer/ngx_sr_observation.h"
 #include "producer/ngx_sr_eye_context.h"
 #include "producer/ngx_sr_streamline_context.h"
+#include "producer/streamline_native_identity.h"
 #include <atomic>
 #include <cstring>
 #include <iostream>
@@ -20,6 +21,9 @@ int main(int argc, char** argv) {
     char line[768]{};
     expect(format_ngx_sr_streamline_context(line, sizeof(line), 12,
         {true, 3, 17, &identity, &identity}) > 0);
+    std::cout << line;
+    expect(format_streamline_native_identity(line, sizeof(line), 12,
+        {true, 0, reinterpret_cast<std::uintptr_t>(&identity)}) > 0);
     std::cout << line;
     for (const auto* phase : {"before", "after"}) {
       expect(format_ngx_sr_eye_context(line, sizeof(line), 12, phase, true,

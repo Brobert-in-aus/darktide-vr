@@ -16,6 +16,8 @@ TEMPORAL_HEADER = HEADER.replace("schema=1", "schema=2").replace(
 CONTEXT_HEADER = TEMPORAL_HEADER.replace("schema=2", "schema=3")
 CREATION_HEADER = CONTEXT_HEADER.replace("schema=3", "schema=4")
 STREAMLINE_HEADER = CREATION_HEADER.replace("schema=4", "schema=5")
+COMMAND_HEADER = STREAMLINE_HEADER.replace("schema=5", "schema=6")
+COMMAND_FIELDS = {"call", "queried", "result", "native", "attribution_verified"}
 STREAMLINE_FIELDS = {"call", "available", "sl_call", "viewport", "frame", "commands", "attribution_verified"}
 CREATION_FLAG = "DLSS.Feature.Create.Flags"
 CONTEXT_FIELDS = {"call", "phase", "available", "eye", "pose", "queued", "arms", "resets", "attribution_verified"}
@@ -57,7 +59,8 @@ def parse(text):
     lines = text.splitlines()
     headers = {header.format(gate=gate): (gate == 1, version)
                for header, version in ((HEADER, 1), (TEMPORAL_HEADER, 2), (CONTEXT_HEADER, 3),
-                                       (CREATION_HEADER, 4), (STREAMLINE_HEADER, 5)) for gate in (0, 1)}
+                                       (CREATION_HEADER, 4), (STREAMLINE_HEADER, 5),
+                                       (COMMAND_HEADER, 6)) for gate in (0, 1)}
     if not lines or lines[0] not in headers:
         raise ValueError("missing or unsupported SR header")
     gated, version = headers[lines[0]]
@@ -68,9 +71,10 @@ def parse(text):
         if not line.strip():
             continue
         kind, separator, rest = line.partition(" ")
-        if not separator or kind not in ("NGX_SR_INPUT", "NGX_SR_EVAL", "NGX_SR_SCALAR", "NGX_SR_CONTEXT", "NGX_SR_STREAMLINE"):
+        if not separator or kind not in ("NGX_SR_INPUT", "NGX_SR_EVAL", "NGX_SR_SCALAR", "NGX_SR_CONTEXT", "NGX_SR_STREAMLINE", "NGX_SR_COMMAND_IDENTITY"):
             raise ValueError("unexpected SR record")
         data = fields(rest, INPUT_FIELDS if kind == "NGX_SR_INPUT" else
+                      COMMAND_FIELDS if kind == "NGX_SR_COMMAND_IDENTITY" else
                       STREAMLINE_FIELDS if kind == "NGX_SR_STREAMLINE" else
                       CONTEXT_FIELDS if kind == "NGX_SR_CONTEXT" else
                       SCALAR_FIELDS if kind == "NGX_SR_SCALAR" else EVAL_FIELDS)
@@ -80,7 +84,21 @@ def parse(text):
         observation = calls.setdefault(call, {"call": call, "inputs": {}, "scalars": {}, "contexts": {}, "evaluation_result": None})
         if len(calls) > 64:
             raise ValueError("SR sample budget exceeded")
-        if kind == "NGX_SR_STREAMLINE":
+        if kind == "NGX_SR_COMMAND_IDENTITY":
+            if version < 6 or "command_identity" in observation:
+                raise ValueError("unsupported or duplicate command identity")
+            if data["queried"] not in ("0", "1") or data["attribution_verified"] != "0":
+                raise ValueError("invalid command identity or attribution claim")
+            identity = {"queried": data["queried"] == "1",
+                        "result": number(data["result"], 32, hexadecimal=True),
+                        "native": number(data["native"], hexadecimal=True)}
+            if not identity["queried"] and (identity["result"] or identity["native"]):
+                raise ValueError("unqueried command identity contains a result")
+            if identity["result"] & 0x80000000 and identity["native"]:
+                raise ValueError("failed command query contains a native identity")
+            observation["command_identity"] = identity
+            continue
+        elif kind == "NGX_SR_STREAMLINE":
             if version < 5 or "streamline" in observation:
                 raise ValueError("unsupported or duplicate Streamline context")
             if data["available"] not in ("0", "1") or data["attribution_verified"] != "0":
@@ -214,6 +232,13 @@ def parse(text):
         observation["synchronous_streamline_command_match"] = bool(
             streamline and streamline["available"] and "identity" in observation and
             streamline["commands"] == observation["identity"]["commands"])
+        command_identity = observation.get("command_identity")
+        if command_identity and command_identity["queried"] and not (streamline and streamline["available"]):
+            raise ValueError("native command query lacks a live Streamline context")
+        observation["synchronous_native_command_match"] = (
+            command_identity["native"] == observation["identity"]["commands"]
+            if command_identity and command_identity["queried"] and command_identity["native"]
+            and "identity" in observation else None)
         observation["stable_pending_eye_tag"] = bool(before and after and before == after
             and before["available"] and before["queued"] == 1 and before["eye"] in (0, 1)
             and before["pose"] and before["arms"])

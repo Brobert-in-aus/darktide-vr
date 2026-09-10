@@ -10,6 +10,7 @@
 #include "producer/ngx_gpu_timing.h"
 #include "producer/ngx_sr_observation.h"
 #include "producer/ngx_sr_streamline_context.h"
+#include "producer/streamline_native_identity.h"
 #include "producer/streamline_abi_2_7_30.h"
 #include "producer/guarded_copy.h"
 #include "producer/bounded_diagnostic.h"
@@ -341,6 +342,14 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
       std::scoped_lock lock(log_mutex);
       DWORD written{};
       WriteFile(sr_log, line, static_cast<DWORD>(length), &written, nullptr);
+    }
+    const auto native_identity = observe_streamline_native_identity(
+        active_sr_streamline.available ? static_cast<IUnknown*>(active_sr_streamline.commands) : nullptr);
+    const auto identity_length = format_streamline_native_identity(line, sizeof(line), call, native_identity);
+    if (identity_length > 0 && static_cast<std::size_t>(identity_length) < sizeof(line)) {
+      std::scoped_lock lock(log_mutex);
+      DWORD written{};
+      WriteFile(sr_log, line, static_cast<DWORD>(identity_length), &written, nullptr);
     }
     record_sr_context(call, "before");
     record_sr_inputs(call, commands, feature, parameters, identity, window);
@@ -750,7 +759,7 @@ bool install_ngx_output_probe(HMODULE capture_module, NgxSrEyeContextReader cont
     if (observe_sr_inputs) {
       char sr_header[384]{};
       const auto sr_length = std::snprintf(sr_header, sizeof(sr_header),
-          "ngx_sr_probe=armed schema=5 runtime=32.0.16.1088 resource_get_slot=9 "
+          "ngx_sr_probe=armed schema=6 runtime=32.0.16.1088 resource_get_slot=9 "
           "float_get_slot=14 integer_get_slot=11 unsigned_get_slot=12 "
           "call_limit=32768 sample_limit=64 wait_for_stereo=%u pixels_captured=0 publication=0\n",
           wait_for_stereo ? 1U : 0U);

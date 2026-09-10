@@ -39,6 +39,31 @@ def trace(records, gate=1):
 
 
 class SrObservationReader(unittest.TestCase):
+    def test_native_command_identity_unknown_mismatch_and_invalid(self):
+        header = reader.COMMAND_HEADER.format(gate=1) + "\n"
+        context = "NGX_SR_STREAMLINE call=12 available=1 sl_call=9 viewport=0 frame=1234 commands=abcd attribution_verified=0\n"
+        record = "NGX_SR_COMMAND_IDENTITY call=12 queried=1 result=00000000 native=5678 attribution_verified=0"
+        suffix = "\n" + "\n".join(inputs() + [evaluation()])
+        report = reader.parse(header + context + record + suffix)
+        self.assertTrue(report["observations"][0]["synchronous_native_command_match"])
+        self.assertFalse(report["observations"][0]["synchronous_streamline_command_match"])
+        for name in ("eye_attribution_verified", "gpu_completion_verified", "hud_attribution_verified"):
+            self.assertFalse(report[name])
+        mismatch = reader.parse(header + context + record.replace("native=5678", "native=9999") + suffix)
+        self.assertFalse(mismatch["observations"][0]["synchronous_native_command_match"])
+        for unknown in ("", record.replace("native=5678", "native=0"),
+                        record.replace("native=5678", "native=0").replace("00000000", "80004002"),
+                        record.replace("native=5678", "native=0").replace("queried=1", "queried=0")):
+            self.assertIsNone(reader.parse(header + context + unknown + suffix)["observations"][0]["synchronous_native_command_match"])
+        for invalid in (record.replace("00000000", "80004002"),
+                        record.replace("queried=1", "queried=0"),
+                        record.replace("attribution_verified=0", "attribution_verified=1"),
+                        record + "\n" + record):
+            with self.assertRaises(ValueError): reader.parse(header + context + invalid + suffix)
+        with self.assertRaises(ValueError): reader.parse(header + record + suffix)
+        with self.assertRaises(ValueError):
+            reader.parse(reader.STREAMLINE_HEADER.format(gate=1) + "\n" + context + record + suffix)
+
     def test_streamline_context_missing_mismatch_and_invalid_records(self):
         header = reader.STREAMLINE_HEADER.format(gate=1) + "\n"
         record = "NGX_SR_STREAMLINE call=12 available=1 sl_call=9 viewport=0 frame=1234 commands=5678 attribution_verified=0"
@@ -82,7 +107,7 @@ class SrObservationReader(unittest.TestCase):
     def test_actual_native_record_formatter(self):
         result = subprocess.run([NATIVE, "--emit-records"], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        report = reader.parse(reader.STREAMLINE_HEADER.format(gate=1) + "\n" + result.stdout)
+        report = reader.parse(reader.COMMAND_HEADER.format(gate=1) + "\n" + result.stdout)
         self.assertEqual(report["complete_calls"], 1)
         observation = report["observations"][0]
         self.assertTrue(observation["context_records_complete"])
@@ -90,6 +115,7 @@ class SrObservationReader(unittest.TestCase):
         self.assertFalse(report["eye_attribution_verified"])
         self.assertTrue(observation["scalar_records_complete"])
         self.assertTrue(observation["synchronous_streamline_command_match"])
+        self.assertTrue(observation["synchronous_native_command_match"])
         self.assertEqual(observation["streamline"]["viewport"], 3)
         self.assertEqual(observation["creation_flags"]["bits"], 67)
         self.assertTrue(observation["creation_flags"]["motion_vectors_low_resolution"])
