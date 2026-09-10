@@ -24,6 +24,7 @@ LABELS = re.compile(
 )
 RIP = re.compile(r"\[rip ([+-]) (0x[0-9a-f]+)\]")
 DLSS_LABELS = re.compile(r".*(?:DLSS|dlss|NVSDK_NGX|NGX).*")
+PARTICLE_LABELS = re.compile(r"(?:ParticleSystem|GPUVisualizer)(?::.*)?|gpu_visalizer_.*")
 
 
 def unwind_chain(pe, entry) -> list[dict]:
@@ -53,9 +54,10 @@ def unwind_chain(pe, entry) -> list[dict]:
 
 
 def analyze(path: Path, expected_hash: str, scope_family: str = "render") -> dict:
-    if scope_family not in ("render", "dlss"):
+    if scope_family not in ("render", "dlss", "particles"):
         raise ValueError("Unsupported scope family")
-    selected_labels = LABELS if scope_family == "render" else DLSS_LABELS
+    selected_labels = {"render": LABELS, "dlss": DLSS_LABELS,
+                       "particles": PARTICLE_LABELS}[scope_family]
     data = path.read_bytes()
     digest = hashlib.sha256(data).hexdigest()
     if digest != expected_hash.lower():
@@ -146,7 +148,7 @@ def main() -> None:
     parser.add_argument("executable", type=Path)
     parser.add_argument("--expected-sha256", required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--scope-family", choices=("render", "dlss"), default="render")
+    parser.add_argument("--scope-family", choices=("render", "dlss", "particles"), default="render")
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9a-fA-F]{64}", args.expected_sha256):
         parser.error("Expected SHA-256 must contain 64 hexadecimal characters")
