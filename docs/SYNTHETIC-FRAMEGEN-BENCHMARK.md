@@ -231,3 +231,18 @@ bytes and removal of the temporary module/flag. Evidence is in
 `artifacts/unattended/synthetic-world-census-20260910`. The census trace was
 extracted from the launcher-selected console after this first run; the wrapper
 now performs that extraction and requires the completion marker automatically.
+
+## SR convention observation
+
+`-ObserveDlssSrInputs` passes the same explicit option through the launcher and
+adds `observe_sr_inputs=1` to its temporary NGX flag. It uses the existing
+stereo-submission gate and does not request output readback. The flag retains
+the requested frame-generation mode, and the wrapper's byte restoration still
+applies. This is a diagnostic workload, not an uninstrumented FPS control.
+
+Use a focused native candidate containing schema-4 SR observation; FG On also
+needs the completion resolver fix. The wrapper preserves the process-specific
+SR log and requires 64 successful evaluation records. Run
+`tools/stereo/read-ngx-sr-probe.py` on that log for strict schema, resource,
+scalar and context validation. Successful evaluations alone do not establish
+eye ownership, pixel correctness, GPU completion or HUD quality.

@@ -44,3 +44,29 @@ Built only. No Lua, game settings or accepted installation changes, and no basic
 gameplay checks. A focused baseline build and successful Ready preflight remain
 required for a new capture. This supplies evidence for DLSS implementation work;
 it makes no quality or performance claim.
+
+## Simulator observation
+
+A 30-second simulator trial subsequently used focused native `16e656f` (SR
+baseline `601e100` plus the FG completion resolver), DLL SHA-256
+`2B13DC61D70B7C8F345B89BB6C499304B5A67DB21C282FBBAD262BF93A0E9750`.
+The strict reader accepted all 64 schema-4 evaluations with complete scalar and
+context records. Lifetimes 2 and 3 each contributed 32 observations. Every
+creation flags query succeeded with value 99 (`0x63`): HDR, low-resolution
+motion vectors, sharpening and automatic exposure enabled; jittered motion,
+inverted depth and alpha upscaling disabled. No unknown or invalid bits appeared.
+
+Colour/depth/motion were 1408x1536, output 2112x2304. Motion scale was
+(-1408,-1536), pre-exposure one and all sampled reset values zero. Transparency,
+exposure and bias-current-colour inputs were successful null queries. These are
+the SR feature's own declared conventions, not values inferred from FG. They
+still require comparison with the actual input pixels before alleging or fixing
+a convention mismatch.
+
+The run submitted 1,286 fresh and 1,268 generated stereo pairs, reported zero
+pose mismatches and exited cleanly. All saved files were restored, including
+both accepted native DLLs; installed Lua was unchanged. Windows Release build,
+five focused native tests and all eleven parser tests (including native output)
+passed. Evidence: `artifacts/unattended/synthetic-sr-conventions-20260910`.
+This was a simulator diagnostic; physical-runtime performance and visual
+acceptance are not established.

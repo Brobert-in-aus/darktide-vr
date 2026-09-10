@@ -37,6 +37,8 @@ param(
 
     [switch] $NgxOutputProbe,
 
+    [switch] $ObserveDlssSrInputs,
+
     [switch] $NgxOutputProbeAtStereoSubmit,
 
     [switch] $NgxOutputCopyProbe,
@@ -159,6 +161,9 @@ if ($DlssGeneratedStereo) {
     $NgxOutputProbeAtStereoSubmit = $true
     $StreamlineContinuousSubmitProbe = $true
     $StreamlineStereoSubmitFrames = 8
+}
+if ($ObserveDlssSrInputs) {
+    $NgxOutputProbeAtStereoSubmit = $true
 }
 if ($NgxOutputCopyProbe) {
     $NgxOutputProbeAtStereoSubmit = $true
@@ -506,7 +511,8 @@ if ($NgxOutputProbe) {
     $ngxWaitForStereo = if ($NgxOutputProbeAtStereoSubmit) { 1 } else { 0 }
     $ngxCopyOutput = if ($NgxOutputCopyProbe) { 1 } else { 0 }
     Set-Content -LiteralPath $ngxOutputProbeFlagPath `
-        -Value "[probe]`nwait_for_stereo=$ngxWaitForStereo`ncopy_output=$ngxCopyOutput`ngenerated_stereo=$([int]$DlssGeneratedStereo.IsPresent)" -Encoding ascii
+        -Value "[probe]`nwait_for_stereo=$ngxWaitForStereo`ncopy_output=$ngxCopyOutput`ngenerated_stereo=$([int]$DlssGeneratedStereo.IsPresent)`nobserve_sr_inputs=$([int]$ObserveDlssSrInputs.IsPresent)" -Encoding ascii
+    if ($ObserveDlssSrInputs) { Write-Output 'Bounded DLSS SR input observation enabled.' }
     if ($DlssGeneratedStereo) { Write-Output 'Experimental sustained generated stereo publication enabled.' }
     else { Write-Output 'Bounded NGX output identity observation enabled; no generated XR publication.' }
     if ($NgxOutputCopyProbe) { Write-Output 'One private generated stereo output copy/readback armed.' }

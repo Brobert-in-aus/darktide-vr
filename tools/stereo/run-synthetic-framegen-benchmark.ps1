@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)] [ValidateSet('On','Off')] [string] $FrameGeneration,
     [ValidateSet('Preserve','Unlimited')] [string] $FrameRateLimit = 'Preserve',
     [switch] $ClusterLightTrace,
+    [switch] $ObserveDlssSrInputs,
     [string] $RenderWorldCensusSourcePath,
     [string] $ExpectedInstalledLuaSha256,
     [Parameter(Mandatory)] [string] $RuntimeJson,
@@ -157,6 +158,7 @@ try {
         native_sha256=(Get-FileHash (Join-Path $GameRoot 'binaries/darktidevr_native_capture.dll') -Algorithm SHA256).Hash
         duration_seconds=$DurationSeconds; preview_fps=0; physical_xr_ready=$false
         cluster_trace=(Test-Path -LiteralPath $clusterTraceFlag)
+        observe_dlss_sr_inputs=$ObserveDlssSrInputs.IsPresent
         render_world_census=(Test-Path -LiteralPath $censusFlag)
         lua_sha256=(Get-FileHash (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash
     }
@@ -180,6 +182,7 @@ try {
     if (-not $consumerReady) { throw 'Expected simulator session did not become active.' }
     & (Join-Path $PSScriptRoot 'start-darktide-vr.ps1') -GameRoot $GameRoot `
         -OfflineDualViewBenchmark -SkipDeploymentSync -DlssGeneratedStereo:$enabled `
+        -ObserveDlssSrInputs:$ObserveDlssSrInputs `
         -DurationSeconds $DurationSeconds -GameStartTimeoutSeconds $StartupTimeoutSeconds `
         *> (Join-Path $OutputDirectory 'launch.log')
 } catch { $failure = $_ }
@@ -247,6 +250,7 @@ if (Test-Path -LiteralPath $launchPath) {
     if ($gamePidMatch.Success) {
         $gamePidText = $gamePidMatch.Groups[1].Value
         foreach ($name in @("darktidevr-generated-stereo-$gamePidText.log",
+            "darktidevr-ngx-sr-$gamePidText.log",
             "darktidevr-ngx-output-$gamePidText.log", "darktidevr-ngx-timing-$gamePidText.log",
             "darktidevr-ngx-gpu-timing-$gamePidText.log",'darktidevr-streamline-probe.tsv',
             'darktidevr-cluster-trace.log')) {
@@ -262,6 +266,13 @@ if (Test-Path -LiteralPath $launchPath) {
 }
 if($ClusterLightTrace -and -not (Test-Path (Join-Path $OutputDirectory 'darktidevr-cluster-trace.log')) -and -not $failure) {
     $failure = 'No cluster trace belongs to this game process; stale logs were rejected.'
+}
+if($ObserveDlssSrInputs -and -not $failure) {
+    $srLogs = @(Get-ChildItem -LiteralPath $OutputDirectory -Filter 'darktidevr-ngx-sr-*.log' -File)
+    if($srLogs.Count -ne 1 -or [regex]::Matches(
+        [IO.File]::ReadAllText($srLogs[0].FullName),'(?m)^NGX_SR_EVAL call=\d+ result=1 ').Count -ne 64) {
+        $failure = 'The requested SR capture lacks 64 successful evaluations; inspect it with read-ngx-sr-probe.py.'
+    }
 }
 if (Test-Path -LiteralPath (Join-Path $OutputDirectory 'recovery/manifest.json')) {
     $restoration = foreach ($entry in (Get-Content (Join-Path $OutputDirectory 'recovery/manifest.json') -Raw | ConvertFrom-Json)) {

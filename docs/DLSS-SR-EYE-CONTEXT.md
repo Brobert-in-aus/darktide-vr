@@ -33,3 +33,14 @@ checks were made.
 Receipts: `artifacts/unattended/dlss-sr-eye-context-*-20260910.log`.
 This change is built only. The accepted installation remains restored; a new
 Ready result and a focused baseline build are required before a live trial.
+
+## Simulator result
+
+The schema-4 simulator capture in `synthetic-sr-conventions-20260910` completed
+all 64 before/after context records. None qualified as a stable single pending
+eye tag: before-evaluation queue sizes were two (12 observations), three (32)
+or four (20). Two feature lifetimes still alternated with 32 samples each, but
+the queue's asynchronous backlog does not identify which eye owns either one.
+No eye label is inferred from call order or the front of an ambiguous queue.
+Further attribution needs a render-command or camera linkage; repeating this
+same queue-only probe would not resolve ownership.
