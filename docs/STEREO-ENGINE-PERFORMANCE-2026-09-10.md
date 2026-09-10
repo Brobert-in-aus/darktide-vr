@@ -154,6 +154,17 @@ memory, configuration or executable was modified.
 
 ## Next development targets
 
+Later mission work narrows the CPU investigation. [DLSS Quality/Performance
+controls](DLSS-QUALITY-PERFORMANCE-TRIALS.md) leave native throughput near 74 FPS
+despite lower GPU work. [Thread residency](ENGINE-THREAD-RESIDENCY.md) resolves
+the largest observed active-wait caller to parallel D3D12 dispatch. The
+[live dispatcher layout](ENGINE-DISPATCH-JOB-LAYOUT.md) confirms six effective
+workers with a requested setting of 13, and existing weighted splitting for
+roughly 5,000-command batches. A verified four-worker control also stays near
+74 FPS. Investigate command-building job balance and dependencies before changing
+the pool size or adding an already-existing weighted splitter. Residency includes
+waits and its counts are not CPU-time shares.
+
 1. Follow the preparation/culling call graph and classify mutable world updates,
    per-eye visibility and reusable scene preparation before selecting a bounded
    timing seam. Avoid repeating or suppressing animation/job side effects.

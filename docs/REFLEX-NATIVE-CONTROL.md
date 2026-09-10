@@ -16,3 +16,11 @@ fields, and incompatible FG/Warp rejection. The runner parses successfully.
 Compare the unchanged native baseline at the same mission start, DLSS Quality,
 worker setting, unlimited cap and 120 Hz simulator. Throughput alone will not
 establish input latency or justify changing the accepted default.
+
+The completed 120-second Reflex-off trial delivered 73.94 native pairs/s over
+110.36 analyzed seconds, with 63.00% GPU busy time and 269.08 W board power.
+The preceding matching Reflex-on Quality control delivered 74.12 pairs/s,
+63.05% and 267.83 W. This comparison shows no throughput benefit from disabling
+Reflex. The live settings file confirmed mode off during the trial. Fresh
+readiness, clean exit and exact restoration passed; Reflex on remains accepted.
+Evidence: `synthetic-solo-reflex-off-a-20260910` in ignored unattended artifacts.
