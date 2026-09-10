@@ -14,6 +14,8 @@ param(
     [switch] $ClusterLightTrace,
     [switch] $PresentCpuProfile,
     [switch] $DebugLayer,
+    [bool] $EnableHudPanel = $true,
+    [ValidateSet(0,30,60,90,120)] [int] $SimulatorPreviewFps = 0,
     [switch] $GpuProfile,
     [switch] $RenderApiCpuProfile,
     [switch] $ObserveDlssSrInputs,
@@ -137,6 +139,7 @@ try {
         'stereo_swapchain_probe','stereo_stage_probe','stereo_submit_probe') |
         ForEach-Object { "darktidevr_streamline_$_.flag" }
     $flagNames += 'darktidevr_ngx_output_probe.flag'
+    if ($EnableHudPanel) { $flagNames += 'darktidevr_hud_panel.flag' }
     if ($GpuProfile) { $flagNames += 'darktidevr_performance_profile.flag' }
     foreach ($name in $flagNames) { Save-BenchmarkFile (Join-Path $modPath $name) }
     $clusterTraceFlag = Join-Path $modPath 'bin/darktidevr_cluster_trace.flag'
@@ -207,7 +210,9 @@ try {
     $simSettings['ipd_mm']=64
     $simSettings['render_width']=$EyeWidth
     $simSettings['render_height']=$EyeHeight
-    $simSettings['preview_fps']=0
+    $simSettings['preview_fps']=$SimulatorPreviewFps
+    $simSettings['view_mode']='both'
+    $simSettings['layout']='side_by_side'
     $simSettings | ConvertTo-Json | Set-Content -LiteralPath $simulatorSettings -Encoding utf8
     $env:XR_RUNTIME_JSON = $RuntimeJson
     $env:DTVR_XR_PRECISE_PAIR_WAIT = '1'
@@ -236,7 +241,9 @@ try {
         harness_sha256=(Get-FileHash $HarnessPath -Algorithm SHA256).Hash
         simulator_display_clock=$SimulatorDisplayClock
         native_sha256=(Get-FileHash (Join-Path $GameRoot 'binaries/darktidevr_native_capture.dll') -Algorithm SHA256).Hash
-        duration_seconds=$DurationSeconds; preview_fps=0; physical_xr_ready=$false
+        duration_seconds=$DurationSeconds; preview_fps=$SimulatorPreviewFps; physical_xr_ready=$false
+        hud_panel_enabled=$EnableHudPanel; preview_mode='both'; preview_layout='side_by_side'
+        menu_input_enabled=$true; desktop_window_capture=$false
         cluster_trace=(Test-Path -LiteralPath $clusterTraceFlag)
         observe_dlss_sr_inputs=$ObserveDlssSrInputs.IsPresent
         render_world_census=[bool]$RenderWorldCensusSourcePath
@@ -251,7 +258,7 @@ try {
     $receipt | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'configuration.json') -Encoding utf8
     # This consumer is also the sole synthetic head publisher. Do not launch
     # SyntheticRuntimeFrusta beside it: two writers would race on pose metadata.
-    $consumerArguments = @('--flush-log','--shared-eyes','--require-rendering','--enable-gameplay-reticle',
+    $consumerArguments = @('--flush-log','--shared-eyes','--require-rendering','--enable-gameplay-reticle','--enable-menu-input',
         '--xr-seconds',($StartupTimeoutSeconds+$DurationSeconds+60), '--stop-file',('"'+$stopFile+'"'))
     if ($DebugLayer) { $consumerArguments += '--debug-layer' }
     $consumer = Start-Process -FilePath $HarnessPath -WindowStyle Hidden -PassThru `
@@ -279,6 +286,7 @@ try {
     & (Join-Path $PSScriptRoot 'start-darktide-vr.ps1') -GameRoot $GameRoot `
         -OfflineDualViewBenchmark -SkipDeploymentSync -DlssGeneratedStereo:$enabled `
         -EnablePerformanceProfile:$GpuProfile `
+        -EnableHudPanel:$EnableHudPanel `
         -OfflineSoloMission $SoloMission `
         -ObserveDlssSrInputs:$ObserveDlssSrInputs `
         -DurationSeconds $DurationSeconds -GameStartTimeoutSeconds $StartupTimeoutSeconds `
@@ -334,6 +342,18 @@ if ((Get-ItemPropertyValue 'HKLM:/SOFTWARE/Khronos/OpenXR/1' -Name ActiveRuntime
 $launchPath = Join-Path $OutputDirectory 'launch.log'
 if (Test-Path -LiteralPath $launchPath) {
     $launchText = [IO.File]::ReadAllText($launchPath)
+    if ($EnableHudPanel) {
+        $hudConsole = [regex]::Match($launchText,'(?m)^Offline dual-view benchmark started; log=([^\r\n]+)')
+        if ($hudConsole.Success -and (Test-Path -LiteralPath $hudConsole.Groups[1].Value)) {
+            $hudText = [IO.File]::ReadAllText($hudConsole.Groups[1].Value)
+            @($hudText -split "`n" | Where-Object { $_ -match 'DARKTIDEVR_HUD' }) |
+                Set-Content (Join-Path $OutputDirectory 'hud-panel.log') -Encoding utf8
+            if (($hudText -notmatch 'DARKTIDEVR_HUD enabled=true source=flag' -or
+                 $hudText -notmatch "DARKTIDEVR_HUD target_created width=$EyeWidth ") -and -not $failure) {
+                $failure = 'Requested world-space HUD did not report enabled and create the expected-width target.'
+            }
+        } elseif (-not $failure) { $failure = 'HUD validation has no launch-selected console log.' }
+    }
     if ($GpuProfile) {
         $gpuConsole = [regex]::Match($launchText,'(?m)^Offline dual-view benchmark started; log=([^\r\n]+)')
         if ($gpuConsole.Success -and (Test-Path -LiteralPath $gpuConsole.Groups[1].Value)) {

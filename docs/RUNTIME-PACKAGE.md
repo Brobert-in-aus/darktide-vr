@@ -19,8 +19,11 @@ checkout revision alone cannot reproduce or certify that accepted combination.
 
 ## Prerequisites
 
-- Windows x64, the Microsoft Visual C++ x64 runtime and Windows Graphics Tools
-  (the current bridge/preflight request the D3D12 debug layer).
+- Windows x64 and the Microsoft Visual C++ x64 runtime. Windows Graphics Tools
+  remains required for the current readiness validation and optional D3D12 debug
+  layer; ordinary viewer launches now leave validation off. Use `-XrDebugLayer`
+  on the launcher/start script (or `-DebugLayer` on the direct shared-eye runner)
+  for an explicit validation run, separately from performance comparisons.
 - Steam Darktide with the project's currently supported guarded executable
   preparation, plus the Darktide Mod Loader and Framework already installed.
   This package contains no game executable, loader patch or game content and

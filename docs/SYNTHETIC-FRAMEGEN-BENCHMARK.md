@@ -266,6 +266,18 @@ scalar and context validation. Successful evaluations alone do not establish
 eye ownership, pixel correctness, GPU completion or HUD quality.
 # Resolution matching (10 September update)
 
+The simulator now enables the accepted world-space HUD panel and menu input.
+The HUD flag is backed up/restored with other run-owned flags. A deliberate older
+HUD-off control can use `-EnableHudPanel:$false`; do not mix those results with
+the accepted HUD configuration.
+
+For visible inspection use `-SimulatorPreviewFps 30` (also 60/90/120 supported).
+The runner sets both eyes side by side and records the preview rate. Zero remains
+the performance default: a black simulator preview at zero is intentional, not
+proof that stereo submission failed. Preview rendering adds work, so compare only
+equal preview settings. Runtime, FOV, tracking and desktop-window capture still
+differ from physical VR; these settings alone do not make the environments identical.
+
 Supply `-VdxrReadinessPath <successful-ready.json>` to use the effective eye
 resolution reported by Virtual Desktop/VDXR. Refresh that receipt after changing
 VD quality/resolution; receipts older than 24 hours are rejected. No fixed eye

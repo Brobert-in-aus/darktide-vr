@@ -11,6 +11,8 @@ param(
 
     [switch] $EnableMenuInput,
 
+    [switch] $DebugLayer,
+
     [switch] $RequireSharedStereo,
 
     [switch] $EnableMenuTestControls,
@@ -132,12 +134,13 @@ if (-not (Test-Path -LiteralPath $harnessPath -PathType Leaf)) {
 
 $arguments = @(
     '--frames', '30',
-    '--debug-layer',
     '--require-rendering',
     '--xr-seconds', $DurationSeconds,
     '--shared-eyes',
     '--capture-window-title', 'Warhammer 40,000: Darktide'
 )
+if ($DebugLayer) { $arguments += '--debug-layer' }
+Write-Output "xr.debug_layer=$($DebugLayer.IsPresent.ToString().ToLowerInvariant())"
 if ($EnableMenuInput) {
     $arguments += '--enable-menu-input'
 }

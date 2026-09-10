@@ -4,7 +4,8 @@ param(
     [int] $DurationSeconds = 28800,
 
     [string] $GameRoot,
-    [switch] $UsePrebuiltProductionShader
+    [switch] $UsePrebuiltProductionShader,
+    [switch] $XrDebugLayer
 )
 
 Set-StrictMode -Version Latest
@@ -34,6 +35,7 @@ try {
         DurationSeconds = $DurationSeconds
         GameStartTimeoutSeconds = 1800
         EnableMenuInput = $true
+        XrDebugLayer = $XrDebugLayer.IsPresent
         UsePrebuiltProductionShader = $UsePrebuiltProductionShader
     }
     if ($GameRoot) { $startArguments.GameRoot = $GameRoot }

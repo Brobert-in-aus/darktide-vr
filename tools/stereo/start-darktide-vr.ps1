@@ -55,6 +55,8 @@ param(
 
     [switch] $EnableMenuInput,
 
+    [switch] $XrDebugLayer,
+
     [switch] $EnableMenuTestControls,
 
     [switch] $SyntheticControllerPath,
@@ -753,6 +755,7 @@ $runnerArguments = @{
     ProjectionTranslationScale = $ProjectionTranslationScale
     GameExe = Join-Path $GameRoot 'binaries\Darktide.exe'
     RequireSharedStereo = [bool]($AutoEnterHub -or $EnterPsykhanium)
+    DebugLayer = $XrDebugLayer.IsPresent
 }
 if ($EnableMenuInput) {
     $runnerArguments.EnableMenuInput = $true
