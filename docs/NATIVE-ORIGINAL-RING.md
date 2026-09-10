@@ -75,3 +75,16 @@ unknown rather than proof of zero activity. Evidence is under
 This is a stationary simulator result. Offline pixel tests do not
 establish world-space HUD appearance or worn acceptance. Do not promote this
 publisher until live transport results and required visual checks are recorded.
+
+## Remaining rendering cost
+
+A subsequent same-build, same-output-size run changing only DLSS to Performance
+delivered 95.80115 native FPS, approximately 7% above the repeated Quality runs.
+It exited cleanly, restored saved files and reported zero pose mismatches.
+There were 27 valid GPU activity samples and one missing, with no observed
+busy Streamer sample. This single sensitivity control establishes neither a
+pure GPU bottleneck nor a maximum achievable rate. Quality remains the default.
+Evidence: `artifacts/unattended/synthetic-descriptor-demand-ring-performance-20260911`.
+
+The next isolated comparison adds the previously tested CPU hook savings from
+`8b3697a` to the focused ring source. See [hook-cost comparison](RING-HOOK-COST-2026-09-11.md).

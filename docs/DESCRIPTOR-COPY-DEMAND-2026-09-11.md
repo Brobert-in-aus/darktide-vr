@@ -119,5 +119,7 @@ does not establish an FG gain. The 144 Hz run increases submission rate, not
 distinct output to 144 FPS. These are idle-encoding simulator controls, not a
 physical Quest 144 Hz result. Evidence labels: `fga2`, `fgb`, `fga144`, `fgb144`.
 
-The [native original ring](NATIVE-ORIGINAL-RING.md) is the next isolated delivery
-candidate; the descriptor change alone remains unpromoted.
+The [native original ring](NATIVE-ORIGINAL-RING.md) subsequently restored delivery
+to 89.57/89.34 native FPS versus a fresh accepted 76.47 FPS control. That is the
+combined descriptor/ring candidate; the descriptor change alone remains
+unpromoted. Physical performance and worn acceptance are still outstanding.
