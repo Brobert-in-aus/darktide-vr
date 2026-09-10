@@ -96,3 +96,28 @@ already has a separate original-frame ring and should be measured independently.
 The first A1 run was excluded because the runner could not recover the process
 exit code. See [exit-status recovery](SIMULATOR-EXIT-STATUS-2026-09-11.md).
 Local mission evidence: `artifacts/unattended/synthetic-descriptor-demand-{a2,b1,a3}-20260911`.
+
+## FG controls and 144 Hz stretch
+
+The accepted `23345e5` FG control stopped with `missing_state_api`; the runner
+rejected it because sustained generated stereo was absent. Saved files restored.
+Use the existing FG-tested baseline `37e2cde` / `FB244186...`, which includes the
+completion-API initialization fix. Its matched descriptor candidate is focused
+commit `90e00b0`, SHA-256
+`EE317801E5016E256DC05C873CD9BFFCA25051EF643807737DFD94C724F4AC30`.
+
+| Refresh | FG baseline distinct FPS | FG candidate distinct FPS | Candidate repeats/sec |
+| --- | ---: | ---: | ---: |
+| 120 Hz | 119.30 | 119.62 | 0.37 |
+| 144 Hz | 119.79 | 120.05 | 23.38 |
+
+Original/generated rates remained approximately equal. All four admitted runs
+exited cleanly with restored files and zero pose mismatches. No busy Streamer
+engine was observed. The 120 Hz candidate had 27 valid GPU samples plus one
+missing; the other runs had 28 valid samples. The tiny between-build difference
+does not establish an FG gain. The 144 Hz run increases submission rate, not
+distinct output to 144 FPS. These are idle-encoding simulator controls, not a
+physical Quest 144 Hz result. Evidence labels: `fga2`, `fgb`, `fga144`, `fgb144`.
+
+The [native original ring](NATIVE-ORIGINAL-RING.md) is the next isolated delivery
+candidate; the descriptor change alone remains unpromoted.
