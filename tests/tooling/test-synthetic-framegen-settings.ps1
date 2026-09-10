@@ -18,4 +18,10 @@ if ($unlimited -notmatch '(?m)^\tnv_reflex_framerate_cap = 0\r?$' -or
     $unlimited -notmatch '(?m)^\tnv_framerate_cap = 0\r?$' -or
     $unlimited -notmatch '(?m)^\t\tnv_reflex_framerate_cap = 6\r?$') { throw 'Unlimited altered the wrong cap.' }
 if ((ConvertTo-SyntheticFramegenSettings -Settings $capped -Enabled $false) -notmatch 'nv_framerate_cap = 120') { throw 'Default did not preserve cap.' }
+foreach($selection in @(@('30',1),@('40',2),@('60',3),@('72',4),@('90',5),@('120',6))) {
+    $limited = ConvertTo-SyntheticFramegenSettings -Settings $capped -Enabled $true -FrameRateLimit $selection[0]
+    if($limited -notmatch ('(?m)^\tnv_reflex_framerate_cap = '+$selection[1]+'\r?$') -or
+       $limited -notmatch ('(?m)^\tnv_framerate_cap = '+$selection[0]+'\r?$') -or
+       $limited -notmatch '(?m)^\t\tnv_reflex_framerate_cap = 6\r?$') { throw 'Explicit cap mapping failed.' }
+}
 'synthetic_framegen_settings=pass cache_preserved=1 unrelated_preserved=1 invalid_rejected=2 explicit_cap_control=1'

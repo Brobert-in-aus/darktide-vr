@@ -861,6 +861,7 @@ if ($offlineNoHeadset) {
     }
     if ($OfflineDualViewBenchmark) {
         Write-Output "Offline dual-view benchmark started; log=$($benchmarkLog.FullName)"
+        Write-Output "offline_benchmark.started_utc=$([DateTime]::UtcNow.ToString('o'))"
     }
     elseif ($OfflineCharacterSelectCapture) {
         Write-Output "Offline character-select capture started; log=$($benchmarkLog.FullName)"

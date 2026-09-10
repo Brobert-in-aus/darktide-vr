@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [ValidateSet('On','Off')] [string] $FrameGeneration,
-    [ValidateSet('Preserve','Unlimited')] [string] $FrameRateLimit = 'Preserve',
+    [ValidateSet('Preserve','Unlimited','30','40','60','72','90','120')] [string] $FrameRateLimit = 'Preserve',
     [switch] $ClusterLightTrace,
     [switch] $ObserveDlssSrInputs,
     [string] $RenderWorldCensusSourcePath,

@@ -50,6 +50,8 @@ if(BUILD_TESTING)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   add_test(NAME stereo_camera_coherence COMMAND "${Python3_EXECUTABLE}" -B
     "${CMAKE_CURRENT_SOURCE_DIR}/test-stereo-camera-coherence.py")
+  add_test(NAME synthetic_gpu_load COMMAND "${Python3_EXECUTABLE}" -B
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-synthetic-gpu-load.py")
   add_test(NAME cluster_list_initialization COMMAND "${Python3_EXECUTABLE}" -B
     "${CMAKE_CURRENT_SOURCE_DIR}/test-cluster-list-initialization.py")
   add_test(NAME synthetic_framegen_analysis COMMAND "${Python3_EXECUTABLE}" -B
