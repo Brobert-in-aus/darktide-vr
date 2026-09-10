@@ -50,3 +50,15 @@ foreach ($invalid in @($source, $dlssSource.Replace('dlss_enabled = true','dlss_
     if (-not $rejected) { throw 'Invalid or ambiguous DLSS configuration accepted.' }
 }
 'synthetic_dlss_quality_settings=pass'
+$reflexSource = $source + "`tnv_reflex_low_latency = 1`r`n`tnv_low_latency_mode = true`r`n`tnv_low_latency_boost = false`r`n`treflex_warp_enabled = false`r`n`t`tnv_reflex_low_latency = 1`r`n"
+$reflexOff = ConvertTo-SyntheticFramegenSettings -Settings $reflexSource -Enabled $false -Reflex Off
+if ($reflexOff -notmatch '(?m)^\tnv_reflex_low_latency = 0\r?$' -or $reflexOff -notmatch 'nv_low_latency_mode = false' -or
+    $reflexOff -notmatch '(?m)^\t\tnv_reflex_low_latency = 1\r?$') { throw 'Reflex Off mapping or cache preservation failed.' }
+$reflexOn = ConvertTo-SyntheticFramegenSettings -Settings $reflexOff -Enabled $false -Reflex On
+if ($reflexOn -notmatch '(?m)^\tnv_reflex_low_latency = 1\r?$' -or $reflexOn -notmatch 'nv_low_latency_mode = true') { throw 'Reflex On failed.' }
+foreach ($trial in @(@($reflexSource,$true),@($source,$false),@($reflexSource.Replace('reflex_warp_enabled = false','reflex_warp_enabled = true'),$false),@(($reflexSource+"`tnv_low_latency_mode = true`r`n"),$false))) {
+    $rejected = $false
+    try { ConvertTo-SyntheticFramegenSettings -Settings $trial[0] -Enabled $trial[1] -Reflex Off | Out-Null } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Incompatible or ambiguous Reflex trial accepted.' }
+}
+'synthetic_reflex_settings=pass'

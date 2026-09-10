@@ -5,6 +5,7 @@ param(
     [ValidateSet(90,120,144)] [int] $SimulatorRefreshRate = 90,
     [ValidateRange(0,16)] [int] $WorkerThreads = 0,
     [ValidateSet('Preserve','Quality','Performance')] [string] $DlssQuality = 'Preserve',
+    [ValidateSet('Preserve','On','Off')] [string] $Reflex = 'Preserve',
     [ValidateSet('','cm_archives')] [string] $SoloMission = '',
     [ValidateRange(1,5)] [int] $SoloDifficulty = 3,
     [string] $ExpectedInstalledSoloSha256,
@@ -140,7 +141,7 @@ try {
     }
     $settings = [IO.File]::ReadAllText($SettingsPath)
     $enabled = $FrameGeneration -eq 'On'
-    $settings = ConvertTo-SyntheticFramegenSettings -Settings $settings -Enabled $enabled -FrameRateLimit $FrameRateLimit -WorkerThreads $WorkerThreads -DlssQuality $DlssQuality
+    $settings = ConvertTo-SyntheticFramegenSettings -Settings $settings -Enabled $enabled -FrameRateLimit $FrameRateLimit -WorkerThreads $WorkerThreads -DlssQuality $DlssQuality -Reflex $Reflex
     $recovery = Join-Path $OutputDirectory 'recovery'
     New-Item -ItemType Directory -Path $recovery | Out-Null
     $recoveryIndex = 0
@@ -204,6 +205,8 @@ try {
         simulator_refresh_hz=$SimulatorRefreshRate
         worker_threads_override=$WorkerThreads
         dlss_quality_override=$DlssQuality
+        reflex_override=$Reflex
+        reflex_mode_setting=[regex]::Match($settings,'(?m)^\tnv_low_latency_mode[ \t]*=[ \t]*(true|false)').Groups[1].Value
         dlss_quality_setting=[regex]::Match($settings,'(?m)^\tupscaling_quality[ \t]*=[ \t]*"([^"]+)"').Groups[1].Value
         worker_threads_setting=[regex]::Match($settings,'(?m)^max_worker_threads[ \t]*=[ \t]*([0-9]+)').Groups[1].Value
         workload=$(if($SoloMission){'mission_start_stationary'}else{'hub_spin'})

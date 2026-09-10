@@ -2,7 +2,9 @@ function ConvertTo-SyntheticFramegenSettings {
     param([Parameter(Mandatory)] [string] $Settings, [Parameter(Mandatory)] [bool] $Enabled,
         [ValidateSet('Preserve','Unlimited','30','40','60','72','90','120')] [string] $FrameRateLimit = 'Preserve',
         [ValidateRange(0,16)] [int] $WorkerThreads = 0,
-        [ValidateSet('Preserve','Quality','Performance')] [string] $DlssQuality = 'Preserve')
+        [ValidateSet('Preserve','Quality','Performance')] [string] $DlssQuality = 'Preserve',
+        [ValidateSet('Preserve','On','Off')] [string] $Reflex = 'Preserve')
+    if ($Enabled -and $Reflex -eq 'Off') { throw 'The Reflex-off control requires frame generation off.' }
     # One-tab fields belong to active settings; detected-user caches use two.
     foreach ($change in @(
         @('(?m)^(\tdlss_g[ \t]*=[ \t]*)[0-9]+(?=[ \t]*\r?$)', [string][int]$Enabled),
@@ -45,6 +47,20 @@ function ConvertTo-SyntheticFramegenSettings {
             @('(?m)^(\tupscaling_quality[ \t]*=[ \t]*)"[^"]+"(?=[ \t]*\r?$)', ('"'+$DlssQuality.ToLowerInvariant()+'"'))
         )) {
             if ([regex]::Matches($Settings,$change[0]).Count -ne 1) { throw 'Expected one active DLSS quality setting.' }
+            $Settings = [regex]::Replace($Settings,$change[0],'${1}'+$change[1])
+        }
+    }
+    if ($Reflex -ne 'Preserve') {
+        if ($Reflex -eq 'Off' -and [regex]::Matches($Settings,'(?m)^\treflex_warp_enabled[ \t]*=[ \t]*false[ \t]*\r?$').Count -ne 1) {
+            throw 'The Reflex-off control requires Reflex Warp already disabled.'
+        }
+        $on = $Reflex -eq 'On'
+        foreach ($change in @(
+            @('(?m)^(\tnv_reflex_low_latency[ \t]*=[ \t]*)[0-9]+(?=[ \t]*\r?$)', [string][int]$on),
+            @('(?m)^(\tnv_low_latency_mode[ \t]*=[ \t]*)(true|false)(?=[ \t]*\r?$)', $on.ToString().ToLowerInvariant()),
+            @('(?m)^(\tnv_low_latency_boost[ \t]*=[ \t]*)(true|false)(?=[ \t]*\r?$)', 'false')
+        )) {
+            if ([regex]::Matches($Settings,$change[0]).Count -ne 1) { throw 'Expected one active Reflex setting.' }
             $Settings = [regex]::Replace($Settings,$change[0],'${1}'+$change[1])
         }
     }
