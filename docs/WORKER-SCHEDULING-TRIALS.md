@@ -19,3 +19,11 @@ workload. Use native `FB244186...` and simulator `3C3F41C...` throughout this
 comparison. CPU/GPU profiler flags are disabled. Repeated comparisons are
 needed before changing a recommendation; no permanent worker setting is
 installed by these trials.
+
+The eight-worker trial delivered 74.90 native pairs/s over 112.15 analyzed
+seconds; thirteen delivered 74.19 over 111.60 seconds. Their 110-second board
+windows averaged 62.59% / 62.13% busy time and 270.43 / 268.40 W respectively,
+with complete coverage. Both had no generated frames, repeats or pose
+mismatches and passed shutdown/restoration. The difference is below 1% in one
+trial per setting, so no worker-count recommendation is changed. The saved
+thirteen-worker setting remains restored.
