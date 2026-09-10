@@ -8,6 +8,7 @@
 #include "producer/bounded_diagnostic.h"
 #include "producer/present_cpu_profile.h"
 #include "producer/particle_submission_probe.h"
+#include "producer/compute_dispatch_probe.h"
 #include "producer/render_api_cpu_profile.h"
 #include "producer/resource_name_match.h"
 #include "producer/command_recording_snapshot.h"
@@ -13570,6 +13571,9 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
     }
   }
   if (MH_Initialize() != MH_OK ||
+      !darktidevr::producer::install_compute_dispatch_probe(native_capture_module, +[] {
+        return present_count.load(std::memory_order_relaxed);
+      }) ||
       !darktidevr::producer::install_particle_submission_probe(native_capture_module, +[] {
         darktidevr::producer::ParticleEyeContext context;
         context.present = present_count.load(std::memory_order_relaxed);

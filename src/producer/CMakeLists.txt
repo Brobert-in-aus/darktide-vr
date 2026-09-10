@@ -1,5 +1,6 @@
 add_library(darktidevr_native_capture SHARED native_capture.cpp resource_handle_trace.cpp ngx_output_probe.cpp ngx_output_copy_probe.cpp generated_stereo.cpp streamline_continuous_submission.cpp stereo_ui_readback.cpp ngx_gpu_timing.cpp billboard_draw_readback.cpp)
 target_sources(darktidevr_native_capture PRIVATE particle_submission_probe.cpp)
+target_sources(darktidevr_native_capture PRIVATE compute_dispatch_probe.cpp)
 target_compile_options(darktidevr_native_capture PRIVATE
   /W4 /WX /permissive-)
 target_compile_definitions(darktidevr_native_capture PRIVATE
