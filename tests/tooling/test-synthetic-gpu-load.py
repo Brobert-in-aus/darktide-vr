@@ -11,6 +11,14 @@ HEADER = "timestamp, index, utilization.gpu [%], power.draw [W], clocks.current.
 
 
 class LoadTests(unittest.TestCase):
+    def test_optional_memory(self):
+        header = HEADER.rstrip() + ", memory.used [MiB]\n"
+        row = "2026/09/10 12:00:00.000, 0, 50 %, 200 W, 2000 MHz, 10000 MHz, 8000 MiB\n"
+        start = datetime(2026,9,10,2,tzinfo=timezone.utc)
+        result = tool.summarize(header+row+row.replace("12:00:00", "12:00:01"),start,start+timedelta(seconds=1),10)
+        self.assertEqual(result["metrics"]["memory.used [MiB]"]["time_weighted_sample_mean"],8000)
+        with self.assertRaises(ValueError): tool.summarize(header+row.replace("8000 MiB", "8 GiB"),start,start+timedelta(seconds=1),10)
+
     def test_window_unknown_and_timezone(self):
         text = HEADER + "2026/09/10 12:00:00.000, 0, 100 %, 400 W, 2000 MHz, 10000 MHz\n" + \
             "2026/09/10 12:00:01.000, 0, 50 %, N/A, 2000 MHz, 10000 MHz\n" + \

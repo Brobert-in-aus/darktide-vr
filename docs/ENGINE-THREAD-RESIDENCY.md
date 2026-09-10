@@ -71,3 +71,12 @@ suspend-count preservation check. PowerShell parses successfully. The Python
 reader successfully maps the live receipts. Evidence is under
 `synthetic-solo-thread-residency-{a,b,c}-20260910` in ignored unattended artifacts.
 No engine code was patched and no physical or worn visual acceptance is claimed.
+
+Validation commands (Visual Studio 2022 bundled CMake/CTest and pinned Python
+dependencies under `build/dependencies/engine-inspection`):
+
+```powershell
+cmake --build build/xr-frame-stage-timing --config Release --target darktidevr-thread-residency
+ctest --test-dir build/xr-frame-stage-timing -C Release -R '^thread_residency_self$' --output-on-failure
+python tools/renderer_probe/read-thread-residency.py artifacts/unattended/synthetic-solo-thread-residency-c-20260910/thread-residency
+```

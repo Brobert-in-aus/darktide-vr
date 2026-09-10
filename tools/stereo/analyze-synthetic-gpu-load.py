@@ -11,6 +11,7 @@ import re
 
 METRICS = {"utilization.gpu [%]": "%", "power.draw [W]": "W",
            "clocks.current.graphics [MHz]": "MHz", "clocks.current.memory [MHz]": "MHz"}
+OPTIONAL_METRICS = {"memory.used [MiB]": "MiB"}
 
 
 def reading(value, unit):
@@ -27,16 +28,17 @@ def reading(value, unit):
 def summarize(text, start, end, offset_hours, gpu=0):
     if end <= start or not -14 <= offset_hours <= 14: raise ValueError("invalid measurement window")
     local_zone = timezone(timedelta(hours=offset_hours))
-    totals = {name: {"weighted_sum": 0, "known_seconds": 0, "samples": 0} for name in METRICS}
     previous = None
     intervals = 0
     reader = csv.DictReader(io.StringIO(text), skipinitialspace=True)
     if not reader.fieldnames or not {"timestamp", "index", *METRICS}.issubset(reader.fieldnames):
         raise ValueError("missing telemetry columns")
+    metrics = METRICS | {name: unit for name, unit in OPTIONAL_METRICS.items() if name in reader.fieldnames}
+    totals = {name: {"weighted_sum": 0, "known_seconds": 0, "samples": 0} for name in metrics}
     for row in reader:
         if int(row["index"]) != gpu: continue
         stamp = datetime.strptime(row["timestamp"], "%Y/%m/%d %H:%M:%S.%f").replace(tzinfo=local_zone).astimezone(timezone.utc)
-        values = {name: reading(row[name], unit) for name, unit in METRICS.items()}
+        values = {name: reading(row[name], unit) for name, unit in metrics.items()}
         if previous is not None:
             if stamp <= previous: raise ValueError("non-increasing telemetry time")
             # Do not smear one reading across a missing stretch of samples.

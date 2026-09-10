@@ -3,7 +3,8 @@ function ConvertTo-SyntheticFramegenSettings {
         [ValidateSet('Preserve','Unlimited','30','40','60','72','90','120')] [string] $FrameRateLimit = 'Preserve',
         [ValidateRange(0,16)] [int] $WorkerThreads = 0,
         [ValidateSet('Preserve','Quality','Performance')] [string] $DlssQuality = 'Preserve',
-        [ValidateSet('Preserve','On','Off')] [string] $Reflex = 'Preserve')
+        [ValidateSet('Preserve','On','Off')] [string] $Reflex = 'Preserve',
+        [ValidateSet('Preserve','Disabled')] [string] $MeshStreaming = 'Preserve')
     if ($Enabled -and $Reflex -eq 'Off') { throw 'The Reflex-off control requires frame generation off.' }
     # One-tab fields belong to active settings; detected-user caches use two.
     foreach ($change in @(
@@ -63,6 +64,18 @@ function ConvertTo-SyntheticFramegenSettings {
             if ([regex]::Matches($Settings,$change[0]).Count -ne 1) { throw 'Expected one active Reflex setting.' }
             $Settings = [regex]::Replace($Settings,$change[0],'${1}'+$change[1])
         }
+    }
+    if ($MeshStreaming -eq 'Disabled') {
+        $sections = [regex]::Matches($Settings,'(?m)^mesh_streamer_settings[ \t]*=[ \t]*\{(?<body>[^{}]*)\}')
+        if ($sections.Count -ne 1) { throw 'Expected one flat mesh-streamer section.' }
+        $section = $sections[0]
+        $body = $section.Groups['body'].Value
+        $pattern = '(?m)^([ \t]*disable[ \t]*=[ \t]*)(true|false)(?=[ \t]*\r?$)'
+        $fields = [regex]::Matches($body,$pattern)
+        if ($fields.Count -gt 1 -or ($body -match '\bdisable\s*=' -and $fields.Count -ne 1)) { throw 'Ambiguous mesh-streaming override.' }
+        if ($fields.Count) { $body = [regex]::Replace($body,$pattern,'${1}true') }
+        else { $body += "`r`n`tdisable = true`r`n" }
+        $Settings = $Settings.Remove($section.Groups['body'].Index,$section.Groups['body'].Length).Insert($section.Groups['body'].Index,$body)
     }
     return $Settings
 }

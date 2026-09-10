@@ -62,3 +62,14 @@ foreach ($trial in @(@($reflexSource,$true),@($source,$false),@($reflexSource.Re
     if (-not $rejected) { throw 'Incompatible or ambiguous Reflex trial accepted.' }
 }
 'synthetic_reflex_settings=pass'
+foreach ($body in @('', "`r`n`tdisable = false`r`n", "`r`n`tdisable = true`r`n")) {
+    $meshSource = $source+"mesh_streamer_settings = {$body}`r`n"
+    $meshDisabled = ConvertTo-SyntheticFramegenSettings -Settings $meshSource -Enabled $false -MeshStreaming Disabled
+    if ([regex]::Matches($meshDisabled,'(?m)^\tdisable = true\r?$').Count -ne 1 -or $meshDisabled -notmatch '(?m)^\tdlss = 5\r?$') { throw 'Mesh diagnostic mapping failed.' }
+}
+foreach ($invalid in @($source, ($source+"mesh_streamer_settings = {`r`n`tdisable = maybe`r`n}`r`n"), ($source+"mesh_streamer_settings = {`r`n`tdisable = true`r`n`tdisable = false`r`n}`r`n"))) {
+    $rejected = $false
+    try { ConvertTo-SyntheticFramegenSettings -Settings $invalid -Enabled $false -MeshStreaming Disabled | Out-Null } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Ambiguous mesh settings accepted.' }
+}
+'synthetic_mesh_streaming_settings=pass'
