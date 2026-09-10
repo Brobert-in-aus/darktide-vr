@@ -43,6 +43,31 @@ int main() {
     focus.clear_window(); focus.observe(false);
     expect(focus.changes == 1, "Window reset must retain the last observed focus");
     darktidevr::core::GeneratedFrameCadence cadence;
+    constexpr std::int64_t display_period = 11'111'111;
+    constexpr std::int64_t generated_time = 10'000'000'000;
+    cadence.generated(generated_time, display_period);
+    expect(!cadence.original_ready(generated_time),
+           "A generated frame's own display slot cannot also show its original");
+    expect(cadence.original_ready(generated_time+display_period-100'000),
+           "A slightly early next prediction must not add a whole repeated frame");
+    expect(!cadence.original_ready(generated_time+display_period/2-1) &&
+           cadence.original_ready(generated_time+display_period),
+           "The nearest-slot boundary must retain the preceding slot");
+    cadence.source_period=4*display_period;
+    cadence.generated(generated_time, display_period);
+    expect(!cadence.original_ready(generated_time+display_period+100'000) &&
+           cadence.original_ready(generated_time+2*display_period-100'000),
+           "A two-slot source spacing must survive prediction jitter without collapsing");
+    for (const std::int64_t jitter : {-100'000LL, -1LL, 0LL, 1LL, 100'000LL}) {
+      cadence = {};
+      for (std::int64_t frame=0; frame<120; frame+=2) {
+        const auto prediction=generated_time+frame*display_period;
+        cadence.generated(prediction,display_period);
+        expect(cadence.original_ready(prediction+display_period+jitter),
+               "Stable alternating delivery must survive early and late next-slot predictions");
+      }
+    }
+    cadence = {};
     cadence.observe_source(100, 1);
     cadence.observe_source(132, 2);
     cadence.generated(140'000'000,8'000'000);

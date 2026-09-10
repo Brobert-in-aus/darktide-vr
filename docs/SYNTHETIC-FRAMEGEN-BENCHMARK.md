@@ -144,6 +144,35 @@ additional display frame. This explains the observed reservation losses and
 motivates testing a nearest-display-slot boundary. It does not establish that
 the physical runtime has the same jitter or performance loss.
 
+The next consumer candidate retains the nominal original deadline but accepts
+predictions from the nearest display slot, using the midpoint between that
+slot and its predecessor. This permits small prediction jitter without placing
+the original in the generated frame's own slot or collapsing a two-slot wait
+to one. Source-rate estimation, generated-frame matching and buffer completion
+rules are unchanged. Focused tests cover early/late predictions and one/two-slot
+spacing, including repeated early/late next-slot predictions.
+
+Its first 120-second run used consumer
+`69A584521C102D8EBCEBBABEE777FE90125773DE1C0BB30B6C4EC420B1E74ABA`
+with the same native/runtime/settings. Over 109.33 measured seconds it delivered
+89.96 distinct pairs/s (44.98 original + 44.98 generated), with 0.037 cached
+repeats/s. The measured interval had only four excess original reservations,
+versus 1,104 in the 48-second diagnostic control. Original/generated publication
+rates were 80.06/79.69 per second. The run submitted 5,391 generated frames in
+total, exited cleanly, restored files and reported zero pose mismatches.
+
+The second 120-second run confirmed 90.00 distinct pairs/s (45.00 original +
+45.00 generated) over 108.00 measured seconds, with zero cached repeats and
+4,860 selections matched by exactly 4,860 original reservations. Original and
+generated publication rates were 81.94/81.25 per second. All 5,345 generated
+submissions completed with zero reported pose mismatches; clean shutdown and
+file restoration passed. Both runs used the same consumer hash above.
+
+This supports retaining frame generation for further development: the initial
+67-pair delivery ceiling was largely a deadline issue, not proof of excessive
+stereo generation cost. These are simulator delivery results; physical-runtime
+benefit, latency, image quality and comparison with SSW remain unmeasured.
+
 Build validation includes the settings-selection test (active fields, preserved
 cache, explicit cap control, missing/duplicate rejection), analyzer tests and
 native resolver tests. Simulator smoke tests require submitted frames and clean

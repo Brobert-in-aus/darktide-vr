@@ -8,7 +8,7 @@ namespace darktidevr::core {
 // Skipped publications must not turn viewer ingestion cadence into source rate.
 struct GeneratedFrameCadence {
   std::uint64_t last_source_tick{}, last_source_sequence{};
-  std::int64_t source_period{}, original_due{};
+  std::int64_t source_period{}, original_due{}, original_slot_tolerance{};
   void observe_source(std::uint64_t tick_ms, std::uint64_t sequence) {
     if (!tick_ms || !sequence) {
       last_source_tick = last_source_sequence = 0;
@@ -37,7 +37,13 @@ struct GeneratedFrameCadence {
     // Select the nearest display slot rather than always rounding upward.
     const auto slots = std::max<std::int64_t>(1, (half_source + period / 2) / period);
     original_due = time + slots * period;
+    // Predictions for successive display slots can jitter around the nominal
+    // period. Use the midpoint between slots: a slightly early prediction must
+    // not turn one requested slot into two, while the preceding slot still waits.
+    original_slot_tolerance = period / 2;
   }
-  bool original_ready(std::int64_t time) const { return time >= original_due; }
+  bool original_ready(std::int64_t time) const {
+    return time >= original_due - original_slot_tolerance;
+  }
 };
 }
