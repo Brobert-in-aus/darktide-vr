@@ -42,4 +42,43 @@ Both native tests and all 13 reader tests passed. Coverage includes unsupported
 queries, malformed null success, malformed failure with a returned reference,
 balanced reference counts, actual native record formatting, mismatches,
 unknowns, duplicate records and rejected attribution claims. `git diff --check`
-passed. Focused simulator capture is pending; no visual or performance claim.
+passed.
+
+## Focused simulator result
+
+Focused commit `e54ee36` extends `c58b94e` with this diagnostic only. Native DLL
+SHA-256 `DA2E51BDBCC3FC0ABBE68B9AEBFC818995DE36A248FEED9FF85E32F033CE6219`.
+Five focused native tests and all 13 reader tests passed. Two test executables
+were initially missing; after building those targets the five-test run passed.
+
+Physical Ready failed with rendering unavailable, so the authorised isolated
+simulator fallback was used with saved 2496×2688 eye dimensions, Quality DLSS,
+FG on, 120 Hz/cap, workers 13, Reflex on, HUD/menu on and preview/debug off.
+The closed-game SoloPlay launch entered cm_archives at difficulty 3. The capture
+lasted 30 seconds after readiness; it is diagnostic, not a matched performance
+comparison against the FB244186 baseline.
+
+All 64 admitted SR evaluations completed successfully. Every special query
+returned S_OK and a native address identical to that evaluation's NGX command
+list. All 64 raw Streamline/NGX address comparisons still differed. Thus the
+earlier mismatch is explained by the Streamline proxy for this sampled path.
+Lifetime 2 remained in viewport 1460506473 and lifetime 3 in viewport 277090740,
+32 observations each. Viewport IDs are run-local, not persistent eye numbers.
+
+The existing camera-coherence analyzer found 14 paired records from present
+2164 onward. Assigning those viewports to eyes 0 and 1 respectively produced
+64 mm separation within 5 micrometres, corrected orientation differences below
+0.000006 degrees and baseline alignment within 0.000010 degrees. Swapping the
+assignment produced about 28 degrees of corrected forward disagreement. This
+extends the metadata chain; it still does not inspect GPU history or pixels.
+
+The consumer delivered 1,729 fresh and 1,723 generated submissions with zero
+reported pose mismatches and clean exit. Exact restoration passed, the simulator
+DLL was restored, and normal proximity handling was restored. Accepted native,
+Lua and viewer defaults were not promoted or replaced permanently.
+
+Evidence: `artifacts/unattended/synthetic-sr-native-identity-20260911/`, including
+`sr-report.json`, `camera-coherence.json`, original logs and `restoration.json`.
+Physical readiness receipt: `sr-native-identity-ready-20260911.json`.
+The remaining HUD blur investigation needs resource/pixel or worn evidence;
+this result gives no reason to change eye history, jitter or reset policy.

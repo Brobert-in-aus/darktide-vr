@@ -84,3 +84,7 @@ The consumer submitted 1,309 fresh and 1,279 generated pairs with zero reported
 pose mismatches, stopped cleanly and restored all saved files. Five focused
 native checks and all twelve reader tests passed with the focused formatter.
 Evidence: `artifacts/unattended/synthetic-sr-streamline-context-20260910`.
+
+The [11 September native-interface follow-up](DLSS-SR-NATIVE-COMMAND-IDENTITY.md)
+resolved the proxy/native mismatch in all 64 sampled calls through the SDK's
+documented QueryInterface mechanism. No rendering behavior was changed.
