@@ -9,6 +9,7 @@
 #include "producer/present_cpu_profile.h"
 #include "producer/particle_submission_probe.h"
 #include "producer/compute_dispatch_probe.h"
+#include "producer/native_original_ring.h"
 #include "producer/render_api_cpu_profile.h"
 #include "producer/resource_name_match.h"
 #include "producer/command_recording_snapshot.h"
@@ -99,6 +100,8 @@ using SlDlssGGetStateFn = int (*)(const void*, void*, const void*);
 using SlDlssGSetOptionsFn = int (*)(const void*, const void*);
 
 HMODULE native_capture_module{};
+// Created only before hook enablement for an explicit native-only ring trial.
+std::unique_ptr<darktidevr::producer::NativeOriginalRing> native_original_ring;
 INIT_ONCE dxc_reflection_once = INIT_ONCE_STATIC_INIT;
 HMODULE dxcompiler_module{};
 DxcCreateInstanceProc dxc_create_instance{};
@@ -11011,6 +11014,18 @@ void STDMETHODCALLTYPE execute_command_lists_hook(
   }
   if (requested_eye >= 0 && completed_back_buffer) {
     end_gpu_eye_profile(requested_eye, queue);
+    if (native_original_ring &&
+        !darktidevr::producer::generated_stereo_enabled() &&
+        current_presentation_mode.load(std::memory_order_relaxed) == 1 &&
+        named_eye_final_index(completed_back_buffer.Get()) == requested_eye) {
+      // This publication is independent of the legacy single-slot admission.
+      // Retain that channel for dimensions, menu transitions and fallback.
+      (void)native_original_ring->capture(queue, original_execute_command_lists,
+          completed_back_buffer.Get(), completed_source_state,
+          static_cast<unsigned>(requested_eye),
+          {present_count.load(std::memory_order_relaxed), requested_pose_sequence,
+           current_gameplay_generation.load(std::memory_order_acquire)});
+    }
     std::uint64_t ready_before{};
     {
       std::scoped_lock lock(state_mutex);
@@ -13566,6 +13581,17 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
       cluster_light_visibility_fix_requested.load(std::memory_order_relaxed);
   initialize_streamline_probe(swapchain_vtable[8],
                               streamline_native_present);
+  if (!native_original_ring && !streamline_persistent_requested.load(std::memory_order_acquire)) {
+    auto ring_flag = module_path(native_capture_module);
+    const auto separator = ring_flag.find_last_of(L"\\/");
+    if (separator != std::wstring::npos) {
+      ring_flag.resize(separator + 1);
+      ring_flag += L"darktidevr_native_original_ring.flag";
+      if (GetPrivateProfileIntW(L"probe", L"enabled", 0, ring_flag.c_str()) != 0) {
+        native_original_ring = std::make_unique<darktidevr::producer::NativeOriginalRing>();
+      }
+    }
+  }
   const auto install_pso_substitution_hooks =
       kInstallDiagnosticRenderHooks.load(std::memory_order_relaxed) ||
       kStockMenuDirectRenderEnabled ||
