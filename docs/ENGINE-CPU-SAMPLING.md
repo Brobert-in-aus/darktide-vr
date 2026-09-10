@@ -41,3 +41,19 @@ submission. The subsequent Quest UI dump showed "Finding position in room" and
 reported that movement tracking was unavailable. No tracking/travel-mode choice
 was made; proximity automation was restored, and Darktide remained closed.
 Receipts use `artifacts/unattended/engine-session-*-20260910.*`.
+
+The existing `-OfflineDualViewBenchmark -SyntheticRuntimeFrusta` fallback
+subsequently completed a 120-second production dual-view hub-spin run with
+`-SkipDeploymentSync`. It needs no OpenXR consumer and does not certify physical
+XR readiness or worn visual acceptance. Both Lua source gates passed, and the
+launcher stopped its owned game and synthetic publisher and restored the flag.
+
+Starting the CPU recorder during that run failed before recording with
+`0xc5585011`: "Failed to enable the policy to profile system performance."
+`wpr -status` then confirmed that WPR was not recording. Profile-description
+validation therefore does not establish recording permission. No Windows policy
+was changed. The next diagnostic uses the existing native performance-pass trace
+in the same offline mode; its instrumentation overhead must be considered.
+
+Receipts: `artifacts/unattended/synthetic-engine-baseline-launch-20260910.log`
+and `synthetic-engine-cpu-20260910.log`.

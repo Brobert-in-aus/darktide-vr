@@ -729,7 +729,12 @@ if (-not $ManualStartup -and ($AutoEnterHub -or $AutoAdvanceSplash)) {
     }
 }
 
-Write-Output 'Waiting for the Darktide splash window; XR will start as soon as it exists.'
+if ($offlineNoHeadset) {
+    Write-Output 'Waiting for the offline Darktide workload to become ready.'
+}
+else {
+    Write-Output 'Waiting for the Darktide splash window; XR will start as soon as it exists.'
+}
 $runnerArguments = @{
     DurationSeconds = $DurationSeconds
     WaitForGameSeconds = $GameStartTimeoutSeconds
