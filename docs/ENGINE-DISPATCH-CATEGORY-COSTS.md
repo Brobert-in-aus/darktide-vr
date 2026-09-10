@@ -33,6 +33,11 @@ for categories 0–3. Corresponding bundle-count ranges were 0–1,801, 0–706,
 not independent frame measurements or CPU-time shares. Do not name a rendering
 pass from these flag values without tracing the descriptor producer.
 
+The [11 September command/branch follow-up](ENGINE-DISPATCH-BUNDLE-COMMANDS.md)
+identifies compute-command preparation on the graphics queue for all 121
+sampled category-2 first commands. This narrows the target without converting
+the historical aggregate costs into per-frame or CPU-time shares.
+
 Mean sampler pause was 53.33 microseconds, p95 115.7 and maximum 300.0.
 The simulator mission run exited cleanly and restored all files. Native build
 and `thread_residency_self` passed, including preservation of a pre-existing

@@ -47,7 +47,7 @@ The existing exact-build dispatch-wait sampler now reads eight evenly spaced
 positions in the sorted descriptor array at dispatcher RBP−30. It follows each
 descriptor's owner only far enough to validate the buffer bounds and read the
 first command header, plus the one branch flag word for opcode 23. At most 32
-extra reads occur at an admitted wait; failed reads remain absent. No GPU
+reads plus the descriptor-array pointer occur at an admitted wait; failed reads remain absent. No GPU
 resources or target state are modified. Other workers continue running, so
 these are sequential observations. A candidate branch is not proof that its
 GPU command executed successfully.
@@ -82,10 +82,37 @@ The mission exited cleanly, reported zero pose mismatches and restored files.
 Its background sampler collected 31 valid and three unavailable records. No
 sampled Streamer engine exceeded 0.1%; coverage is explicitly incomplete.
 
-The branch-flag follow-up is pending. Local static evidence is under `artifacts/unattended`:
+The branch-flag follow-up (sampler SHA-256
+`E3ADB0622FFC9C89DE7111F9E945BA4FC1ABFDBE9F78C1B86E6A9CAF9BC22FDA`)
+completed 1,000 samples and 704 valid descriptor observations at 88 waits:
+
+| Category | Sampled first-command route | Observations |
+| --- | --- | ---: |
+| 2 | Opcode 23, payload flags 1: compute on graphics queue | 121 |
+| 3 | Opcode 23, payload flags 0: instancer candidate | 266 |
+| 1 | Opcode 23, payload flags 0: direct draw candidate | 40 |
+| 0 | Other first opcodes; no kernel-route claim | 277 |
+
+All sampled category-2 entries used the compute branch, not the ray branch.
+Neither ray dispatch nor the alternate compute queue was selected by these
+sampled first commands. This is not an exhaustive census of every command or
+proof of disabled ray tracing throughout the game. The next useful target is
+compute-command preparation/binding within `7c8410`, and the identity of those
+compute kernels, before changing queue policy or sharing work between eyes.
+
+Mean pause was 57.73 microseconds, maximum 682.2. The 60-second mission diagnostic
+used the saved higher resolution, native rendering with Quality DLSS, accepted
+Lua, focused Present-CPU DLL E87B739 and benchmark viewer 216E3F76. Exit was
+clean, pose mismatches were zero, saved files restored, and normal proximity
+handling was restored. Background GPU recording returned 21 valid and one
+unavailable sample; no sampled Streamer engine exceeded the threshold. This is
+instrumented evidence, not an uninstrumented FPS comparison.
+
+Local static evidence is under `artifacts/unattended`:
 `engine-bundle-writer-5c6bf0-20260911.txt`,
 `engine-bundle-writer-5c63c1-20260911.txt`,
 `engine-bundle-writer-5c65c4-20260911.txt`,
 `engine-category-7d0040-20260911.txt`, and
 `engine-dispatch-strings-20260911.txt`.
 Live evidence: `synthetic-dispatch-bundles-20260911/thread-residency/`.
+Follow-up: `synthetic-dispatch-routes-20260911/thread-residency/`.
