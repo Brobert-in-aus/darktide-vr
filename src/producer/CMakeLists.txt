@@ -2,6 +2,7 @@ add_library(darktidevr_native_capture SHARED native_capture.cpp resource_handle_
 target_sources(darktidevr_native_capture PRIVATE particle_submission_probe.cpp)
 target_sources(darktidevr_native_capture PRIVATE compute_dispatch_probe.cpp)
 target_sources(darktidevr_native_capture PRIVATE native_original_ring.cpp)
+target_sources(darktidevr_native_capture PRIVATE engine_preparation_probe.cpp)
 target_compile_options(darktidevr_native_capture PRIVATE
   /W4 /WX /permissive-)
 target_compile_definitions(darktidevr_native_capture PRIVATE
