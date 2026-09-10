@@ -3,6 +3,9 @@ param(
     [Parameter(Mandatory)] [ValidateSet('On','Off')] [string] $FrameGeneration,
     [ValidateSet('Preserve','Unlimited','30','40','60','72','90','120')] [string] $FrameRateLimit = 'Preserve',
     [ValidateSet(90,120)] [int] $SimulatorRefreshRate = 90,
+    [ValidateSet('','cm_archives')] [string] $SoloMission = '',
+    [ValidateRange(1,5)] [int] $SoloDifficulty = 3,
+    [string] $ExpectedInstalledSoloSha256,
     [switch] $ClusterLightTrace,
     [switch] $ObserveDlssSrInputs,
     [string] $RenderWorldCensusSourcePath,
@@ -50,6 +53,15 @@ $modPath = Join-Path $GameRoot 'mods/darktidevr_stereo_probe'
 $luaDirectory = Join-Path $modPath 'scripts/mods/darktidevr_stereo_probe'
 $censusFlag = Join-Path $modPath 'darktidevr_render_world_census.flag'
 $luaTrialFiles = @{}
+$soloSource = Join-Path $GameRoot 'mods/SoloPlay/scripts/mods/SoloPlay/SoloPlay.lua'
+$soloModule = Join-Path (Split-Path $soloSource) 'dtvr_mission_benchmark.lua'
+if ($SoloMission) {
+    if ($ExpectedInstalledSoloSha256 -notmatch '^[a-fA-F0-9]{64}$' -or
+        (Get-FileHash -LiteralPath $soloSource).Hash -ne $ExpectedInstalledSoloSha256) {
+        throw 'Solo mission benchmark requires the exact installed SoloPlay source hash.'
+    }
+    & (Join-Path $PSScriptRoot '../lua/test-lua-syntax.ps1') -SourcePaths (Join-Path $PSScriptRoot 'solo-mission-benchmark.lua')
+}
 if($RenderWorldCensusWarmupFrames -ne 120 -and -not $RenderWorldCensusSourcePath) {
     throw 'A custom census warm-up requires the focused census Lua source.'
 }
@@ -86,6 +98,10 @@ try {
     New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
     Save-BenchmarkFile $SettingsPath
     Save-BenchmarkFile $simulatorSettings
+    if ($SoloMission) {
+        Save-BenchmarkFile $soloSource
+        Save-BenchmarkFile $soloModule
+    }
     if($RenderWorldCensusSourcePath) {
         if((Get-FileHash (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash -ne $ExpectedInstalledLuaSha256) {
             throw 'Installed Lua baseline changed.'
@@ -123,6 +139,13 @@ try {
         [pscustomobject]@{path=$path;existed=($null -ne $saved[$path]);backup=$backup}
     }
     $recoveryManifest | ConvertTo-Json | Set-Content (Join-Path $recovery 'manifest.json') -Encoding utf8
+    if ($SoloMission) {
+        [IO.File]::WriteAllBytes($soloModule, [IO.File]::ReadAllBytes((Join-Path $PSScriptRoot 'solo-mission-benchmark.lua')))
+        $soloText = [Text.Encoding]::UTF8.GetString($saved[$soloSource])
+        $soloText += "`r`nmod:io_dofile('SoloPlay/scripts/mods/SoloPlay/dtvr_mission_benchmark')(mod, '$SoloMission', $SoloDifficulty)`r`n"
+        [IO.File]::WriteAllText($soloSource, $soloText, [Text.UTF8Encoding]::new($false))
+        & (Join-Path $PSScriptRoot '../lua/test-lua-syntax.ps1') -SourcePaths @($soloSource,$soloModule)
+    }
     if ($NativeDllPath) {
         foreach ($path in $nativeTargets) { [IO.File]::WriteAllBytes($path,[IO.File]::ReadAllBytes($NativeDllPath)) }
     }
@@ -160,6 +183,11 @@ try {
         frame_generation=$FrameGeneration; frames_to_generate=1
         frame_rate_limit=$FrameRateLimit
         simulator_refresh_hz=$SimulatorRefreshRate
+        workload=$(if($SoloMission){'mission_start_stationary'}else{'hub_spin'})
+        solo_mission=$SoloMission; solo_difficulty=$(if($SoloMission){$SoloDifficulty}else{$null})
+        solo_baseline_sha256=$ExpectedInstalledSoloSha256
+        solo_trial_sha256=$(if($SoloMission){(Get-FileHash -LiteralPath $soloSource).Hash}else{$null})
+        solo_module_sha256=$(if($SoloMission){(Get-FileHash -LiteralPath $soloModule).Hash}else{$null})
         eye_width=$EyeWidth; eye_height=$EyeHeight; ssw='not_applicable_simulator'
         runtime_json=$RuntimeJson; runtime_sha256=$RuntimeSha256
         harness_sha256=(Get-FileHash $HarnessPath -Algorithm SHA256).Hash
@@ -191,6 +219,7 @@ try {
     if (-not $consumerReady) { throw 'Expected simulator session did not become active.' }
     & (Join-Path $PSScriptRoot 'start-darktide-vr.ps1') -GameRoot $GameRoot `
         -OfflineDualViewBenchmark -SkipDeploymentSync -DlssGeneratedStereo:$enabled `
+        -OfflineSoloMission $SoloMission `
         -ObserveDlssSrInputs:$ObserveDlssSrInputs `
         -DurationSeconds $DurationSeconds -GameStartTimeoutSeconds $StartupTimeoutSeconds `
         *> (Join-Path $OutputDirectory 'launch.log')
@@ -244,6 +273,17 @@ if ((Get-ItemPropertyValue 'HKLM:/SOFTWARE/Khronos/OpenXR/1' -Name ActiveRuntime
 $launchPath = Join-Path $OutputDirectory 'launch.log'
 if (Test-Path -LiteralPath $launchPath) {
     $launchText = [IO.File]::ReadAllText($launchPath)
+    if ($SoloMission) {
+        $missionConsole = [regex]::Match($launchText,'(?m)^Offline dual-view benchmark started; log=([^\r\n]+)')
+        if ($missionConsole.Success -and (Test-Path -LiteralPath $missionConsole.Groups[1].Value)) {
+            $missionText = [IO.File]::ReadAllText($missionConsole.Groups[1].Value)
+            @($missionText -split "`n" | Where-Object { $_ -match 'DARKTIDEVR_SOLO_BENCHMARK' }) |
+                Set-Content (Join-Path $OutputDirectory 'solo-mission.log') -Encoding utf8
+            if ($missionText -notmatch "DARKTIDEVR_SOLO_BENCHMARK ready mission=$SoloMission difficulty=$SoloDifficulty host=singleplay" -and -not $failure) {
+                $failure = 'Solo mission identity or difficulty evidence is missing.'
+            }
+        } elseif (-not $failure) { $failure = 'Solo mission has no launch-selected console log.' }
+    }
     if($RenderWorldCensusSourcePath) {
         $consoleMatch = [regex]::Match($launchText,'(?m)^Offline dual-view benchmark started; log=([^\r\n]+)')
         if($consoleMatch.Success -and (Test-Path -LiteralPath $consoleMatch.Groups[1].Value)) {

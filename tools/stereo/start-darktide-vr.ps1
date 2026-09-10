@@ -78,6 +78,7 @@ param(
     [switch] $EnablePerformancePassTrace,
 
     [switch] $OfflineDualViewBenchmark,
+    [ValidateSet('','cm_archives')] [string] $OfflineSoloMission = '',
 
     [switch] $SyntheticRuntimeFrusta,
 
@@ -151,11 +152,16 @@ if ($EnablePerformancePassTrace) {
 }
 if ($OfflineDualViewBenchmark) {
     # The game still creates and sequentially renders the exact production
-    # left/right gameplay viewports. Only the OpenXR consumer is omitted.
+    # left/right gameplay viewports. This launcher omits its own OpenXR consumer;
+    # the simulator wrapper can supply one in a separate process.
     # Keep this baseline uninstrumented unless profiling was explicitly
     # requested: the native GPU profiler injects additional command lists and
     # submissions, so enabling it here changes the workload being measured.
-    $AutoEnterHub = $true
+    $AutoEnterHub = -not [bool]$OfflineSoloMission
+    if ($OfflineSoloMission) { $AutoAdvanceSplash = $true }
+}
+if ($OfflineSoloMission -and -not $OfflineDualViewBenchmark) {
+    throw '-OfflineSoloMission requires the isolated dual-view benchmark.'
 }
 if ($DlssGeneratedStereo) {
     $NgxOutputProbeAtStereoSubmit = $true
@@ -646,7 +652,7 @@ if ($offlineNoHeadset) {
     Set-Content -LiteralPath $offlineDualViewFlagPath -Value 'enabled' `
         -Encoding ascii
     if ($OfflineDualViewBenchmark) {
-        Write-Output 'Offline dual-view hub-spin benchmark enabled for this run.'
+        Write-Output "Offline dual-view benchmark enabled; solo_mission=$OfflineSoloMission (empty means hub spin)."
     }
     elseif ($OfflineCharacterSelectCapture) {
         Write-Output 'Offline character-select identity capture enabled for this run.'
@@ -832,7 +838,9 @@ if ($offlineNoHeadset) {
             $benchmarkText = Get-Content -LiteralPath $benchmarkLog.FullName `
                 -Raw -ErrorAction SilentlyContinue
             $ready = if ($OfflineDualViewBenchmark) {
-                $benchmarkText -match 'StateGameplay:on_enter\(\): hub_ship' -and
+                ($benchmarkText -match 'StateGameplay:on_enter\(\): hub_ship' -and -not $OfflineSoloMission -or
+                    $OfflineSoloMission -and $benchmarkText -match
+                        "DARKTIDEVR_SOLO_BENCHMARK ready mission=$OfflineSoloMission difficulty=[1-5] host=singleplay") -and
                     $benchmarkText -match
                         'DARKTIDEVR_STEREO active mode=synchronized_sequential'
             }
@@ -852,7 +860,7 @@ if ($offlineNoHeadset) {
     } while ((Get-Date) -lt $readyDeadline)
     if (-not $game -or -not $benchmarkLog -or -not $ready) {
         if ($OfflineDualViewBenchmark) {
-            throw 'Timed out waiting for the offline dual-view hub benchmark.'
+            throw 'Timed out waiting for the selected offline dual-view workload.'
         }
         if ($OfflineCharacterSelectCapture) {
             throw 'Timed out waiting for the offline character-select identity capture.'

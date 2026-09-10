@@ -52,6 +52,12 @@ complete coverage. There were no pose mismatches, shutdown was clean and exact
 restoration passed. Runtime `C08DA027...` includes the optional refresh patch;
 all other listed binaries and eye settings match the 90 Hz trials.
 
+The first uncapped FG-off control at 120 Hz delivered 90.26 original pairs/s
+across 107.69 seconds, with no generated submissions or cached repeats. GPU
+busy time averaged 74.86% and board power 307.34 W over 110 seconds, with full
+coverage. Shutdown and restoration passed. These first trials favor paced FG
+for the hub target, while actual mission and combat workloads remain separate.
+
 Validation: all six stock cap mappings preserve unrelated and cached settings;
 telemetry tests cover timezone conversion, clipped windows, missing readings,
 gaps and invalid data. PowerShell parsing and diff checks passed. Evidence is
