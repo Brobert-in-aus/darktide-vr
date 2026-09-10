@@ -47,6 +47,8 @@ int main() {
   invoke_dynamic(); invoke_links();
   check(streams[0].admitted == 0 && streams[1].admitted == 0);
   armed = true;
+  for (unsigned i = 0; i < 63; ++i) invoke_dynamic();
+  check(streams[0].admitted == 0);
   invoke_dynamic(); invoke_links();
   check(streams[0].completed == 1 && streams[1].completed == 1);
   check(streams[0].records[0].description_valid && streams[0].records[0].description == descriptor);
@@ -71,12 +73,12 @@ int main() {
   std::array<std::thread, 8> workers;
   for (auto& worker : workers) worker = std::thread([] {
     for (unsigned i = 0; i < 512; ++i) {
-      invoke_dynamic();
+      for (unsigned j = 0; j < 64; ++j) invoke_dynamic();
       if (i < 64) invoke_links();
     }
   });
   for (auto& worker : workers) worker.join();
-  check(dynamic_calls == 4099 && link_calls == 515);
+  check(dynamic_calls == 66 + 4096 * 64 && link_calls == 515);
   for (unsigned kind = 0; kind < 2; ++kind) {
     const auto& stream = streams[kind];
     check(stream.admitted == limits[kind] && stream.completed == limits[kind] && stream.output == INVALID_HANDLE_VALUE);

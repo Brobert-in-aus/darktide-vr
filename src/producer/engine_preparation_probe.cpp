@@ -36,6 +36,7 @@ std::atomic<ULONGLONG> next_poll{};
 std::wstring flag;
 LONGLONG frequency{};
 thread_local std::array<bool, 2> observing{};
+thread_local unsigned dynamic_position{};
 
 bool read_at(void* base, std::uint64_t offset, void* destination, std::size_t bytes) {
   const auto address = reinterpret_cast<std::uintptr_t>(base);
@@ -78,6 +79,9 @@ Record* reserve(unsigned kind) {
       armed.store(true, std::memory_order_release);
     if (!armed.load(std::memory_order_acquire)) return nullptr;
   }
+  // Dynamic updates are tiny and numerous. Spread the bounded capture over
+  // several frames without adding a shared write to every unsampled call.
+  if (kind == 0 && (++dynamic_position & 63U) != 0) return nullptr;
   auto index = stream.admitted.load(std::memory_order_relaxed);
   while (index < limits[kind]) {
     if (stream.admitted.compare_exchange_weak(index, index + 1, std::memory_order_relaxed)) {
@@ -199,8 +203,8 @@ bool install_engine_preparation_probe(HMODULE module, PreparationPresentReader r
         CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     char header[256]{};
     const auto n = std::snprintf(header, sizeof(header),
-        "PREPARATION_BEGIN schema=1 pid=%lu kind=%u rva=%llu frequency=%lld limit=%u\n",
-        GetCurrentProcessId(), i, static_cast<unsigned long long>(targets[i]), frequency, limits[i]);
+        "PREPARATION_BEGIN schema=1 pid=%lu kind=%u rva=%llu frequency=%lld limit=%u stride=%u\n",
+        GetCurrentProcessId(), i, static_cast<unsigned long long>(targets[i]), frequency, limits[i], i == 0 ? 64U : 1U);
     DWORD written{};
     if (streams[i].output == INVALID_HANDLE_VALUE || n <= 0 || n >= static_cast<int>(sizeof(header)) ||
         !WriteFile(streams[i].output, header, static_cast<DWORD>(n), &written, nullptr) || written != static_cast<DWORD>(n)) {

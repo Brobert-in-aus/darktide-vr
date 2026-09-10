@@ -21,6 +21,8 @@ def analyze(text):
             header.get('frequency', 0) <= 0 or header.get('limit') != (4096, 512)[kind] or
             header.get('rva') != (0x796370, 0x398870)[kind]):
         raise ValueError('Unsupported preparation identity')
+    if header.get('stride', 1) not in ((1, 64) if kind == 0 else (1,)):
+        raise ValueError('Unsupported sampling stride')
     rows = [fields(line) for line in lines[1:] if line.startswith('PREPARATION sample=')]
     if (len(rows) != header['limit'] or
             lines[-1] != f"PREPARATION_COMPLETE kind={kind} samples={header['limit']}" or
@@ -68,6 +70,7 @@ def analyze(text):
             'limitations': ['Instrumented function wall time, not isolated CPU execution or GPU time.',
                 'Worker intervals overlap; aggregate duration is not a frame-time share.',
                 'Each function has its own bounded sample window with partial boundary frames.',
+                'Stride sampling is periodic per thread, not random sampling or complete call accounting.',
                 'Repeated context/Present IDs do not establish duplicated work or eye identity.',
                 'An unchanged link count does not mean unchanged linked transforms.']}
 

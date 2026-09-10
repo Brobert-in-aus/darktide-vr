@@ -30,6 +30,8 @@ class PreparationReaderTests(unittest.TestCase):
         dynamic = reader.analyze(capture(0))
         self.assertEqual(dynamic['valid_descriptions'], 4096)
         self.assertEqual(dynamic['type10_format_indices'], {7: 4096})
+        sampled = reader.analyze(capture(0).replace('limit=4096', 'limit=4096 stride=64', 1))
+        self.assertEqual(sampled['header']['stride'], 64)
         self.assertAlmostEqual(dynamic['timing']['mean_ms'], .003)
         links = reader.analyze(capture(1))
         self.assertEqual(links['links']['unchanged_count'], 512)
