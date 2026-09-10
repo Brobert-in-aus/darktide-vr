@@ -3,6 +3,8 @@
 Experimental Windows x64 PCVR work for Warhammer 40,000: Darktide, using a
 native D3D12 producer, a Lua mod, and a separate OpenXR viewer.
 
+For the proposed first tester release, see [very early alpha readiness](docs/EARLY-ALPHA-READINESS.md).
+
 Start with [current status and operation](docs/CURRENT-STATUS.md),
 [working agreements](AGENTS.md), and the
 [maintenance implementation plan](docs/maintenance-plan-2026-09-05.md).
