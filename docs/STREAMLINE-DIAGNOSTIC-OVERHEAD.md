@@ -29,3 +29,10 @@ The prior DLL is preserved locally as
 Mission trials retain the same 120 Hz clock, resolution, cap and SoloPlay
 settings. Throughput or power differences require comparison evidence; simply
 skipping work does not establish a measurable frame-rate gain.
+
+The first focused 120-second mission FG trial delivered 119.51 distinct pairs/s
+over 110.00 analyzed seconds, with 0.491 cached repeats/s. Board busy time was
+74.41% and power 286.38 W over the 110-second telemetry window with full
+coverage. FG continued, no pose mismatches occurred, shutdown was clean and
+exact restoration passed. Against baseline 119.41 pairs/s and 287.26 W, this
+single comparison establishes no measurable speed or power gain.
