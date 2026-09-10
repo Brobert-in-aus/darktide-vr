@@ -2054,6 +2054,11 @@ void write_menu_resource_log(const char* format, ...) {
 
 bool trace_streamline_submission_images();
 
+bool streamline_diagnostics_available(bool transaction = false) {
+  return streamline_probe_log_count.load(std::memory_order_relaxed) < 16384 &&
+      (transaction || streamline_probe_background_log_count.load(std::memory_order_relaxed) < 8192);
+}
+
 void write_streamline_probe_log(const char* format, ...) {
   // Startup can remain in character selection indefinitely. Reserve half the
   // bounded log for the one-shot input/submission transaction so periodic
@@ -2068,16 +2073,18 @@ void write_streamline_probe_log(const char* format, ...) {
         std::strncmp(format, "SET_CONSTANTS", 13) == 0)) ||
       std::strncmp(format, "ISOLATED_EYE_CAPTURE", sizeof("ISOLATED_EYE_CAPTURE") - 1) == 0;
   if (!transaction_record &&
-      streamline_probe_background_log_count.fetch_add(
-          1, std::memory_order_relaxed) >= 8192) return;
+      (streamline_probe_background_log_count.load(std::memory_order_relaxed) >= 8192 ||
+       streamline_probe_background_log_count.fetch_add(
+          1, std::memory_order_relaxed) >= 8192)) return;
   const bool terminal_submission_record=std::strncmp(format,"UI_ALPHA_",9)==0 ||
       (std::strncmp(format,"STEREO_CONTINUOUS",17)==0 &&
       (std::strstr(format,"phase=failed") || std::strstr(format,"phase=stopped") ||
        std::strstr(format,"phase=paused") || std::strstr(format,"phase=resumed") ||
        std::strstr(format,"phase=binding_rejection") || std::strstr(format,"phase=timing")));
   if (streamline_probe_log == INVALID_HANDLE_VALUE ||
-      (!terminal_submission_record && streamline_probe_log_count.fetch_add(1, std::memory_order_relaxed) >=
-          16384)) {
+      (!terminal_submission_record &&
+       (streamline_probe_log_count.load(std::memory_order_relaxed) >= 16384 ||
+        streamline_probe_log_count.fetch_add(1, std::memory_order_relaxed) >= 16384))) {
     return;
   }
   char line[1600]{};
@@ -2164,8 +2171,9 @@ int sl_set_constants_hook(const void* constants, const void* frame,
     const auto* constants_state = static_cast<const Constants*>(constants);
     const auto* viewport_state = static_cast<const
         ViewportHandle*>(viewport);
+    const bool log_constants = streamline_diagnostics_available(trace_streamline_submission_images());
     LARGE_INTEGER qpc{};
-    QueryPerformanceCounter(&qpc);
+    if (log_constants) QueryPerformanceCounter(&qpc);
     std::uint64_t frame_token_call{};
     std::uint32_t frame_index{UINT_MAX};
     for (std::size_t slot = 0; slot < kStreamlineFrameTokenHistorySize;
@@ -2202,7 +2210,7 @@ int sl_set_constants_hook(const void* constants, const void* frame,
         }
       }
     }
-    write_streamline_probe_log(
+    if (log_constants) write_streamline_probe_log(
         "SET_CONSTANTS\tcall=%llu\tpresent_frame=%llu\tthread=%lu"
         "\tqpc=%lld\tresult=%d\ttoken=%p\tframe_token_call=%llu"
         "\tframe_index=%u\tviewport=%u\tconstants=%p"
@@ -2284,6 +2292,7 @@ int sl_set_constants_hook(const void* constants, const void* frame,
         observation.viewport = viewport_state ? viewport_state->value : 0;
       }
       const auto log_matrix = [&](const char* name, const Float4x4& matrix) {
+        if (!log_constants) return;
         write_streamline_probe_log(
             "SET_CONSTANTS_MATRIX\tcall=%llu\tviewport=%u\ttoken=%p"
             "\tname=%s\tvalues=%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,"
@@ -2347,11 +2356,14 @@ void log_streamline_resource_tags(
     const void* viewport, const void* tags, std::uint32_t count,
     void* command_buffer) {
   using namespace darktidevr::producer::streamline_2_7_30;
+  const bool log_tags = streamline_diagnostics_available();
+  const bool capture_inputs = streamline_input_snapshot_probe_requested.load(std::memory_order_acquire);
+  if (!log_tags && !capture_inputs) return;
   const auto* viewport_state = static_cast<const ViewportHandle*>(viewport);
   const auto* resource_tags = static_cast<const ResourceTag*>(tags);
   const auto logged_count = (std::min)(count, 32U);
   LARGE_INTEGER qpc{};
-  QueryPerformanceCounter(&qpc);
+  if (log_tags) QueryPerformanceCounter(&qpc);
   const auto present_frame = present_count.load(std::memory_order_relaxed);
   int armed_eye = -1;
   std::uint64_t armed_pose{};
@@ -2367,6 +2379,7 @@ void log_streamline_resource_tags(
     }
   }
   if (!resource_tags || logged_count == 0) {
+    if (!log_tags) return;
     write_streamline_probe_log(
         "RESOURCE_TAG_CALL\tapi=%s\tcall=%llu\tthread=%lu\tresult=%d"
         "\tframe=%p\tviewport=%u\ttags=%u\tcommand_buffer=%p"
@@ -2381,6 +2394,9 @@ void log_streamline_resource_tags(
   }
   for (std::uint32_t index = 0; index < logged_count; ++index) {
     const auto& tag = resource_tags[index];
+    const bool capture_tag = capture_inputs && result == 0 &&
+        tag.type < kStreamlineInputCount && armed_eye >= 0 && armed_eye <= 1;
+    if (!log_tags && !capture_tag) continue;
     const auto* resource = tag.resource;
     D3D12_RESOURCE_DESC description{};
     bool d3d12_resource{};
@@ -2389,12 +2405,9 @@ void log_streamline_resource_tags(
       ComPtr<ID3D12Resource> texture;
       if (SUCCEEDED(static_cast<IUnknown*>(resource->native)
                         ->QueryInterface(IID_PPV_ARGS(&texture)))) {
-        description = texture->GetDesc();
+        if (log_tags) description = texture->GetDesc();
         d3d12_resource = true;
-        if (streamline_input_snapshot_probe_requested.load(
-                std::memory_order_acquire) &&
-            result == 0 && tag.type < kStreamlineInputCount &&
-            armed_eye >= 0 && armed_eye <= 1) {
+        if (capture_tag) {
           std::scoped_lock lock(streamline_input_snapshot_mutex);
           auto& observed =
               streamline_tagged_inputs[static_cast<std::size_t>(armed_eye)]
@@ -2407,7 +2420,7 @@ void log_streamline_resource_tags(
         }
       }
     }
-    write_streamline_probe_log(
+    if (log_tags) write_streamline_probe_log(
         "RESOURCE_TAG\tapi=%s\tcall=%llu\tthread=%lu\tresult=%d"
         "\tframe=%p\tviewport=%u\tindex=%u\tcount=%u\ttype=%u"
         "\ttype_name=%s\tlifecycle=%u\textent=%u,%u,%u,%u"
