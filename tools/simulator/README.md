@@ -43,14 +43,21 @@ Rebuilt binary hashes can differ; the benchmark requires the explicitly chosen
 DLL's hash rather than accepting any runtime manifest silently.
 
 The optional `openxr-simulator-v1.5.0-refresh.patch`, applied after the shutdown
-patch, adds a process-local `DTVR_SIMULATOR_REFRESH_HZ=120` clock selection.
+patch, adds process-local `DTVR_SIMULATOR_REFRESH_HZ=120` and `144` clock selections.
 Unset or other values preserve upstream 90 Hz. The wrapper exposes this as
-`-SimulatorRefreshRate 90|120`, records it and restores the previous environment
+`-SimulatorRefreshRate 90|120|144`, records it and restores the previous environment
 value. Use the patched runtime for 120 Hz; older binaries ignore this setting.
 The rebuilt DLL SHA-256 was
 `c08da02708dcb68d450409118936034478cc98e3810b19d2788f5946ad618309`.
 Its 120-frame smoke test rendered every frame, exited cleanly and passed;
 elapsed time was 992.77 ms (the first frame does not wait a full period).
+
+The later 144 Hz extension built DLL SHA-256
+`3c3f41c34414ab9782d9a9e0dc8710bbe5b8af636722dcb0ac26a33681d133a1`.
+Its smoke test rendered 144/144 frames in 994.218 ms and exited cleanly.
+The wrapper verifies the runtime-reported frame period before launching the
+game. This simulator clock does not establish physical Quest support for an
+experimental refresh mode.
 
 The simulator defaults to a 90 Hz frame clock. The benchmark disables desktop preview
 copies and fixes Quest 3, 64 mm IPD and the requested eye resolution for both

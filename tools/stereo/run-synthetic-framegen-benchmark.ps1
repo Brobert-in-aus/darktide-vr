@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory)] [ValidateSet('On','Off')] [string] $FrameGeneration,
     [ValidateSet('Preserve','Unlimited','30','40','60','72','90','120')] [string] $FrameRateLimit = 'Preserve',
-    [ValidateSet(90,120)] [int] $SimulatorRefreshRate = 90,
+    [ValidateSet(90,120,144)] [int] $SimulatorRefreshRate = 90,
     [ValidateSet('','cm_archives')] [string] $SoloMission = '',
     [ValidateRange(1,5)] [int] $SoloDifficulty = 3,
     [string] $ExpectedInstalledSoloSha256,
