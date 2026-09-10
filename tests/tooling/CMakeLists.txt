@@ -51,6 +51,8 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/test-projection-math.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_projection_math.lua")
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME particle_submission_reader COMMAND "${Python3_EXECUTABLE}" -B
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-particle-submissions.py")
   add_test(NAME stereo_camera_coherence COMMAND "${Python3_EXECUTABLE}" -B
     "${CMAKE_CURRENT_SOURCE_DIR}/test-stereo-camera-coherence.py")
   add_test(NAME synthetic_gpu_load COMMAND "${Python3_EXECUTABLE}" -B

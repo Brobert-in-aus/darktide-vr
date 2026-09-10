@@ -52,5 +52,50 @@ source mutation, unarmed/exhausted forwarding, preservation of stack float bits
 and LastError, and eight concurrent callers filling the bound with one complete
 output. This does not establish the engine ABI through a live run or a speedup.
 
-Live simulator validation and analysis are the next step. Accepted native/viewer
-defaults remain unchanged.
+## First live capture
+
+Focused accepted-baseline branch `codex/focused-particle-observer-2026-09-11`,
+commit `9042fca`, built DLL SHA-256
+`796515A86F36658E57BD8D2CAE97D656F8F721168ED1E94BFB3CA2BF120EB7EA`.
+The isolated Quality/native mission capture completed with 1,024 readable
+snapshots. Calls came from seven renderer threads:
+
+| Batch | Calls | Mean original-helper duration |
+| --- | ---: | ---: |
+| `gpu_visalizer_emit` | 470 | 1.588 microseconds |
+| `gpu_visalizer_sim` | 471 | 1.390 microseconds |
+| `gpu_visalizer_render` | 83 | 3.128 microseconds |
+
+This is command preparation, not compute dispatch execution or GPU cost. The
+bounded sample spans only three observed Present counters, with partial edges;
+worker durations overlap and must not be added as a render-thread frame cost.
+
+No emit/sim object/resource/batch/update-counter combination repeated in these
+941 compute preparation records. One render combination repeated with the
+update-needed flag changing from one to zero. This gives no evidence for a
+safe duplicate-simulation removal in this sample, and is not a whole-frame
+census or proof that simulation never repeats.
+
+There were 708 unchanged pending-eye contexts, all labelled eye 1; the other
+316 calls had two queued eyes. No strict cross-eye pair could be formed. The
+seven-thread preparation explains why application queue tags cannot serve as
+view attribution here. A future eye-specific observation needs engine view
+identity or command metadata, rather than assigning these workers to the
+currently pending capture tag.
+
+The first collector attempt failed to read the actively written launch log
+because of incompatible file sharing. No records were admitted in that run;
+the reader was corrected and a fresh run completed. Both game sessions exited
+cleanly and restored saved files. The successful run had zero pose mismatches;
+normal proximity handling and the two temporary probe flags were restored.
+
+Virtual Desktop was actively encoding in all 21 valid GPU activity samples
+(one additional sample unavailable). This run's roughly 50 native FPS is not
+comparable to the earlier idle-encoding baseline. No performance gain or
+regression is attributed to this observer.
+
+Analyze a complete log with `tools/renderer_probe/read-particle-submissions.py
+<capture.log> --output <summary.json>`. Three Python reader tests cover complete
+capture validation, changed inputs, ambiguous tags and duplicate groups.
+Local evidence: `artifacts/unattended/synthetic-particle-submissions-b-20260911`.
+Accepted native/viewer defaults remain unchanged.
