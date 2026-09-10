@@ -31,3 +31,12 @@ an older runtime ignoring the refresh selection fails this check. FG on uses one
 cap 120; FG off uses Unlimited. NVIDIA board telemetry records the same bounded
 workload window. Mission results are recorded after clean completion and
 restoration, under `artifacts/unattended/synthetic-solo-*`.
+
+The first 120-second FG-on trial delivered 119.41 distinct pairs/s over 108.01
+analyzed seconds: 59.71 original and 59.71 generated, with 0.574 cached
+repeats/s. Producer publication averaged 59.96 pairs/s for each type. There
+were no pose mismatches. The 110-second board telemetry window averaged
+75.54% GPU busy time and 287.26 W, with complete coverage. The mission identity
+and difficulty matched, and clean shutdown and exact restoration passed.
+This reaches approximately 120 FPS in the stationary mission-start workload;
+the native-only comparison and combat workload remain to be measured.
