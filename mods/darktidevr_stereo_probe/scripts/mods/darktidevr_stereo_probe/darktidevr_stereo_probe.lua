@@ -12746,6 +12746,7 @@ end
 -- the final primary pose at the last reliable boundary before the world is
 -- submitted, so the duplicate cannot lag or remain at its creation pose.
 mod:hook(ScriptWorld, "render", function(func, world, ...)
+    if presentation.render_world_census then presentation.render_world_census.observe(world) end
     if presentation.hud_panel then presentation.hud_panel.observe_render(world) end
     if world == ui_stereo_world and ui_stereo_spawner then
         update_ui_alternating_full()
@@ -13322,6 +13323,14 @@ mod:command(
         )
     end
 )
+
+presentation.render_world_census = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_render_world_census"
+).install(mod, function(world)
+    if world == active_world and active then return "gameplay" end
+    if world == ui_stereo_world and ui_stereo_spawner then return "stereo_ui" end
+    return "other"
+end)
 
 mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_calibration"
