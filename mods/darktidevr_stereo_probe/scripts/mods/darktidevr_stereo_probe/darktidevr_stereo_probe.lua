@@ -3389,8 +3389,18 @@ local function report_native_capture_result(result)
     end
 end
 
+do
+    local flag = Mods.lua.io.open("./../mods/darktidevr_stereo_probe/darktidevr_cpu_render_timing.flag", "r")
+    local value = flag and flag:read(32) or ""
+    if flag then flag:close() end
+    presentation.cpu_render_timing_requested = #value < 32 and value:match("^%s*enabled%s*$") ~= nil
+    if presentation.cpu_render_timing_requested then
+        mod:info("DARKTIDEVR_PERF cpu_render_timing=true gpu_profile=%s", tostring(performance_profile_requested))
+    end
+end
+
 local function performance_tick()
-    if not performance_profile_requested or not ui_native_capture then
+    if not (performance_profile_requested or presentation.cpu_render_timing_requested) or not ui_native_capture then
         return nil
     end
     local value = tonumber(ui_native_capture.dtvr_qpc_ticks())
