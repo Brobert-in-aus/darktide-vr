@@ -11,11 +11,38 @@ thread_local std::array<std::byte, 0x300> test_context{};
 thread_local std::array<std::byte, 0x100> test_payload{};
 std::atomic<unsigned> dispatch_calls{}, bind_calls{};
 void check(bool value) { if (!value) throw std::runtime_error("compute forwarding mismatch"); }
+bool mock_resource_stage(void* a, void* b, void* c, void* d, void* e,
+                         std::uint8_t f, std::uint8_t g, std::uint32_t h, void* i) {
+  check(a == test_payload.data() && b == test_context.data() && c == a && d == b && e == a &&
+        f == 0xa5 && g <= 1 && h == 0xfedcba98 && i == b && GetLastError() == 0x1234);
+  SetLastError(0x2345);
+  return g != 0;
+}
+void mock_data_stage(void* a, void* b, void* c, void* d, void* e,
+                     std::uint8_t f, std::uint8_t g, std::uint32_t h, void* i) {
+  mock_resource_stage(a, b, c, d, e, f, g, h, i);
+}
+void mock_table_stage(void* a, void* b, std::uintptr_t unused, void* root, std::uint8_t secondary) {
+  check(a == test_payload.data() && b == test_context.data() && root == a &&
+        unused == 0xaabbccdd11223344ULL && secondary == 0xa5 && GetLastError() == 0x1234);
+  SetLastError(0x2345);
+}
 bool mock_bind(void* a, void* b, void* c, void* d, bool alternate, bool secondary,
                std::uint32_t stage, void* root) {
   check(a == test_payload.data() && b == test_context.data() && c == a && d == b &&
         alternate && stage == 0xfedcba98 && root == a && GetLastError() == 0x1234);
   ++bind_calls;
+  check(resources_hook(a, b, c, d, a, 0xa5, secondary ? 1U : 0U, stage, b) == secondary);
+  check(GetLastError() == 0x2345);
+  SetLastError(0x1234);
+  constants_hook(a, b, c, d, a, 0xa5, secondary ? 1U : 0U, stage, b);
+  check(GetLastError() == 0x2345);
+  SetLastError(0x1234);
+  descriptors_hook(a, b, c, d, a, 0xa5, secondary ? 1U : 0U, stage, b);
+  check(GetLastError() == 0x2345);
+  SetLastError(0x1234);
+  tables_hook(a, b, 0xaabbccdd11223344ULL, a, 0xa5);
+  check(GetLastError() == 0x2345);
   SetLastError(0x2345);
   return secondary;
 }
@@ -37,6 +64,10 @@ int main() {
   using namespace darktidevr::producer::compute_probe;
   dispatch_original = mock_dispatch;
   bind_original = mock_bind;
+  resources_original = mock_resource_stage;
+  constants_original = mock_data_stage;
+  descriptors_original = mock_data_stage;
+  tables_original = mock_table_stage;
   present_reader = +[] { return std::uint64_t{77}; };
   next_poll = ~ULONGLONG{};
   const auto invoke = [] {
@@ -53,6 +84,9 @@ int main() {
   check(r.metadata_valid && r.flags_valid && r.root_before_valid && r.root_after_valid &&
       r.root_before == 789 && r.root_after == 789 && r.present == 77 && r.binding_calls == 2 &&
       r.binding_successes == 1 && r.binding_ticks >= 0 && r.end - r.begin >= r.binding_ticks);
+  LONGLONG stage_ticks{};
+  for (const auto& stage : r.stages) { check(stage.calls == 2); stage_ticks += stage.ticks; }
+  check(stage_ticks <= r.binding_ticks && r.stages[0].successes == 1 && r.stages[1].successes == 0);
   admitted = record_limit;
   invoke();
   check(dispatch_calls == 3 && bind_calls == 6 && completed == 1);

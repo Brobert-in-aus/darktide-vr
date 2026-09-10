@@ -75,3 +75,23 @@ particle observer build and is not a matched performance comparison.
 Local evidence: `artifacts/unattended/synthetic-compute-dispatch-20260911`.
 The reader is `tools/renderer_probe/read-compute-dispatch.py`; two Python tests
 cover complete-record validation, nested timings and unknown metadata.
+
+## Optional binding stages
+
+Set `stages=1` in the opt-in file before launch to install four additional,
+exact-prologue-checked hooks at `7dec60`, `7db0a0`, `7e0fe0`, and `7dc320`.
+Schema 2 records each stage's wall ticks and call count inside admitted binding
+calls only. Stage zero also records its boolean result; the other returns are
+unused. The first three forward nine arguments; the final helper forwards five,
+including its unused third register slot. Byte flags retain all eight bits.
+
+A thread-local depth guard prevents nested stages being counted twice. The
+reader checks that their summed time fits within the measured binding interval
+and still accepts schema 1. Additional timers perturb the binding measurement;
+compare stage contributions within this instrumented run rather than treating
+its absolute durations as a clean-launch benchmark.
+
+The updated forwarding test exercises all stage argument/return/error paths and
+the concurrent capture bound. Three reader tests cover schema compatibility,
+disabled-stage records and impossible nested timings. Live stage validation is
+pending.

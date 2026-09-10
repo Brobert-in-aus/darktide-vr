@@ -11,6 +11,7 @@ BOOL = {'metadata_valid', 'flags_valid', 'root_before_valid', 'root_after_valid'
 FIELDS = HEX | BOOL | {'sample', 'thread', 'present', 'begin', 'end', 'binding_ticks',
                       'binding_calls', 'binding_successes'}
 DWORD = {'thread', 'object', 'batch', 'handle', 'flags', 'caller_flags', 'binding_calls', 'binding_successes'}
+STAGE_FIELDS = {f'stage{i}_{field}' for i in range(4) for field in ('ticks', 'calls', 'successes')}
 
 
 def fields(line):
@@ -28,9 +29,10 @@ def parse(text):
     if not lines or not lines[0].startswith('COMPUTE_BEGIN '):
         raise ValueError('Missing header')
     header = fields(lines[0])
-    expected = {'schema': '1', 'limit': '4096', 'dispatch_rva': '7c8410',
+    expected = {'limit': '4096', 'dispatch_rva': '7c8410',
                 'binding_rva': '7e21b0', 'gpu_timing': '0'}
-    if any(header.get(k) != v for k, v in expected.items()):
+    if (any(header.get(k) != v for k, v in expected.items()) or header.get('schema') not in ('1', '2') or
+            (header['schema'] == '2' and header.get('stages') not in ('0', '1'))):
         raise ValueError('Unsupported probe contract')
     frequency = int(header['frequency'])
     if frequency <= 0 or int(header['pid']) <= 0:
@@ -42,7 +44,7 @@ def parse(text):
         if not line.startswith('COMPUTE '):
             raise ValueError('Unknown record')
         raw = fields(line)
-        if set(raw) != FIELDS:
+        if set(raw) != FIELDS | (STAGE_FIELDS if header['schema'] == '2' else set()):
             raise ValueError('Missing or unknown fields')
         r = {k: int(v, 16 if k in HEX else 10) for k, v in raw.items()}
         if (r['sample'] != index or not r['thread'] or r['begin'] <= 0 or r['end'] < r['begin'] or
@@ -50,6 +52,12 @@ def parse(text):
                 any(r[k] not in (0, 1) for k in BOOL) or
                 any(not 0 <= v < 2**(32 if k in DWORD else 64) for k, v in r.items())):
             raise ValueError('Invalid observation')
+        if header['schema'] == '2':
+            if (sum(r[f'stage{i}_ticks'] for i in range(4)) > r['binding_ticks'] or
+                    any(r[f'stage{i}_successes'] > r[f'stage{i}_calls'] for i in range(4)) or
+                    any(r[f'stage{i}_successes'] != 0 for i in range(1, 4)) or
+                    (header['stages'] == '0' and any(r[k] for k in STAGE_FIELDS))):
+                raise ValueError('Invalid nested stage observation')
         rows.append(r)
     return header, rows, frequency
 
@@ -76,6 +84,12 @@ def analyze(rows, frequency):
         'binding': durations([r['binding_ticks'] for r in rows], frequency),
         'binding_calls': sum(r['binding_calls'] for r in rows),
         'binding_successes': sum(r['binding_successes'] for r in rows),
+        'stages': [{'index': i, 'rva': hex(rva),
+                    'calls': sum(r.get(f'stage{i}_calls', 0) for r in rows),
+                    'boolean_successes': sum(r.get(f'stage{i}_successes', 0) for r in rows) if i == 0 else None,
+                    'per_timed_dispatch': durations([r[f'stage{i}_ticks'] for r in rows
+                        if r.get(f'stage{i}_calls', 0)], frequency)}
+                   for i, rva in enumerate((0x7dec60, 0x7db0a0, 0x7e0fe0, 0x7dc320))],
         'root_cache_comparable': sum(r['root_before_valid'] and r['root_after_valid'] for r in rows),
         'root_cache_changed': sum(r['root_before_valid'] and r['root_after_valid'] and
                                   r['root_before'] != r['root_after'] for r in rows),

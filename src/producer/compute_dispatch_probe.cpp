@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <sstream>
 #include <string>
+#include <type_traits>
 
 namespace darktidevr::producer {
 namespace compute_probe {
@@ -14,6 +15,13 @@ using Dispatch = void (*)(void*, void*, std::uint64_t, bool, std::uint32_t);
 using Bind = bool (*)(void*, void*, void*, void*, bool, bool, std::uint32_t, void*);
 Dispatch dispatch_original{};
 Bind bind_original{};
+using ResourceStage = bool (*)(void*, void*, void*, void*, void*, std::uint8_t, std::uint8_t, std::uint32_t, void*);
+using DataStage = void (*)(void*, void*, void*, void*, void*, std::uint8_t, std::uint8_t, std::uint32_t, void*);
+using TableStage = void (*)(void*, void*, std::uintptr_t, void*, std::uint8_t);
+ResourceStage resources_original{};
+DataStage constants_original{}, descriptors_original{};
+TableStage tables_original{};
+bool stages_enabled{};
 ComputePresentReader present_reader{};
 constexpr unsigned record_limit = 4096;
 struct Metadata {
@@ -28,6 +36,8 @@ struct Record {
   DWORD thread{};
   std::uint32_t flags{}, caller_flags{}, binding_calls{}, binding_successes{};
   bool metadata_valid{}, flags_valid{}, root_before_valid{}, root_after_valid{}, alternate_queue{};
+  struct Stage { LONGLONG ticks{}; unsigned calls{}, successes{}; };
+  std::array<Stage, 4> stages{};
 };
 std::array<Record, record_limit> records{};
 std::atomic<unsigned> admitted{}, completed{};
@@ -35,6 +45,7 @@ std::atomic<bool> armed{};
 std::atomic<ULONGLONG> next_poll{};
 thread_local Record* current{};
 thread_local bool binding_active{};
+thread_local unsigned stage_depth{};
 std::wstring flag;
 HANDLE output = INVALID_HANDLE_VALUE;
 LONGLONG frequency{};
@@ -60,7 +71,12 @@ void emit() {
          << " object=" << r.metadata.object << " batch=" << r.metadata.batch
          << " handle=" << r.metadata.handle << " sort=" << r.sort << " flags=" << r.flags
          << " caller_flags=" << r.caller_flags << " root_before=" << r.root_before
-         << " root_after=" << r.root_after << std::dec << '\n';
+         << " root_after=" << r.root_after << std::dec;
+    for (unsigned stage = 0; stage < r.stages.size(); ++stage)
+      text << " stage" << stage << "_ticks=" << r.stages[stage].ticks
+           << " stage" << stage << "_calls=" << r.stages[stage].calls
+           << " stage" << stage << "_successes=" << r.stages[stage].successes;
+    text << '\n';
   }
   text << "COMPUTE_COMPLETE samples=4096\n";
   const auto bytes = text.str();
@@ -68,6 +84,52 @@ void emit() {
   WriteFile(output, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr);
   CloseHandle(output);
   output = INVALID_HANDLE_VALUE;
+}
+
+template<unsigned Index, class Function, class... Args>
+auto time_stage(Function function, Args... args) -> std::invoke_result_t<Function, Args...> {
+  auto* record = current;
+  if (!record || !binding_active || stage_depth) return function(args...);
+  struct Scope {
+    Scope() { ++stage_depth; }
+    ~Scope() { --stage_depth; }
+  } scope;
+  const DWORD entry_error = GetLastError();
+  LARGE_INTEGER begin{}, end{};
+  QueryPerformanceCounter(&begin);
+  SetLastError(entry_error);
+  const auto finish = [&](bool succeeded) {
+    const DWORD exit_error = GetLastError();
+    QueryPerformanceCounter(&end);
+    auto& stage = record->stages[Index];
+    stage.ticks += end.QuadPart - begin.QuadPart;
+    ++stage.calls;
+    stage.successes += succeeded ? 1U : 0U;
+    SetLastError(exit_error);
+  };
+  if constexpr (std::is_void_v<std::invoke_result_t<Function, Args...>>) {
+    function(args...);
+    finish(false); // Only stage zero has a meaningful boolean result.
+  } else {
+    const auto result = function(args...);
+    finish(result);
+    return result;
+  }
+}
+bool resources_hook(void* a, void* b, void* c, void* d, void* e,
+                    std::uint8_t f, std::uint8_t g, std::uint32_t h, void* i) {
+  return time_stage<0>(resources_original, a, b, c, d, e, f, g, h, i);
+}
+void constants_hook(void* a, void* b, void* c, void* d, void* e,
+                    std::uint8_t f, std::uint8_t g, std::uint32_t h, void* i) {
+  time_stage<1>(constants_original, a, b, c, d, e, f, g, h, i);
+}
+void descriptors_hook(void* a, void* b, void* c, void* d, void* e,
+                      std::uint8_t f, std::uint8_t g, std::uint32_t h, void* i) {
+  time_stage<2>(descriptors_original, a, b, c, d, e, f, g, h, i);
+}
+void tables_hook(void* a, void* b, std::uintptr_t unused, void* root, std::uint8_t secondary) {
+  time_stage<3>(tables_original, a, b, unused, root, secondary);
 }
 
 bool bind_hook(void* layout, void* context, void* resources, void* parameters,
@@ -159,6 +221,7 @@ bool install_compute_dispatch_probe(HMODULE module, ComputePresentReader reader)
   flag.resize(separator + 1);
   flag += L"darktidevr_compute_dispatch.flag";
   if (GetPrivateProfileIntW(L"probe", L"enabled", 0, flag.c_str()) != 1) return true;
+  stages_enabled = GetPrivateProfileIntW(L"probe", L"stages", 0, flag.c_str()) == 1;
   if (!reader) return false;
   size = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
   if (!size || size >= path.size()) return false;
@@ -174,6 +237,17 @@ bool install_compute_dispatch_probe(HMODULE module, ComputePresentReader reader)
   std::array<unsigned char, 20> actual{};
   if (!safe_copy_bytes(actual.data(), base + 0x7c8410, actual.size()) || actual != dispatch_signature ||
       !safe_copy_bytes(actual.data(), base + 0x7e21b0, actual.size()) || actual != bind_signature) return false;
+  constexpr std::array<std::uintptr_t, 4> stage_rvas{0x7dec60, 0x7db0a0, 0x7e0fe0, 0x7dc320};
+  constexpr std::array<std::array<unsigned char, 20>, 4> stage_signatures{{
+    {0x4c,0x89,0x4c,0x24,0x20,0x4c,0x89,0x44,0x24,0x18,0x48,0x89,0x54,0x24,0x10,0x48,0x89,0x4c,0x24,0x08},
+    {0x48,0x8b,0xc4,0x4c,0x89,0x48,0x20,0x4c,0x89,0x40,0x18,0x48,0x89,0x50,0x10,0x48,0x89,0x48,0x08,0x55},
+    {0x4c,0x89,0x4c,0x24,0x20,0x4c,0x89,0x44,0x24,0x18,0x48,0x89,0x54,0x24,0x10,0x48,0x89,0x4c,0x24,0x08},
+    {0x41,0x55,0x41,0x56,0x48,0x83,0xec,0x28,0x48,0x89,0x6c,0x24,0x48,0x4c,0x8d,0x05,0x3c,0x48,0x7b,0x00},
+  }};
+  if (stages_enabled) {
+    for (unsigned i = 0; i < stage_rvas.size(); ++i)
+      if (!safe_copy_bytes(actual.data(), base + stage_rvas[i], actual.size()) || actual != stage_signatures[i]) return false;
+  }
   LARGE_INTEGER value{};
   if (!QueryPerformanceFrequency(&value) || value.QuadPart <= 0) return false;
   frequency = value.QuadPart;
@@ -187,14 +261,19 @@ bool install_compute_dispatch_probe(HMODULE module, ComputePresentReader reader)
   if (output == INVALID_HANDLE_VALUE) return false;
   char header[256]{};
   const auto n = std::snprintf(header, sizeof(header),
-      "COMPUTE_BEGIN schema=1 pid=%lu frequency=%lld limit=4096 dispatch_rva=7c8410 binding_rva=7e21b0 gpu_timing=0\n",
-      GetCurrentProcessId(), frequency);
+      "COMPUTE_BEGIN schema=2 pid=%lu frequency=%lld limit=4096 dispatch_rva=7c8410 binding_rva=7e21b0 gpu_timing=0 stages=%u\n",
+      GetCurrentProcessId(), frequency, stages_enabled ? 1U : 0U);
   DWORD written{};
   present_reader = reader;
   if (n <= 0 || n >= static_cast<int>(sizeof(header)) ||
       !WriteFile(output, header, static_cast<DWORD>(n), &written, nullptr) || written != static_cast<DWORD>(n) ||
       MH_CreateHook(base + 0x7c8410, &dispatch_hook, reinterpret_cast<void**>(&dispatch_original)) != MH_OK ||
-      MH_CreateHook(base + 0x7e21b0, &bind_hook, reinterpret_cast<void**>(&bind_original)) != MH_OK) {
+      MH_CreateHook(base + 0x7e21b0, &bind_hook, reinterpret_cast<void**>(&bind_original)) != MH_OK ||
+      (stages_enabled && (
+       MH_CreateHook(base + stage_rvas[0], &resources_hook, reinterpret_cast<void**>(&resources_original)) != MH_OK ||
+       MH_CreateHook(base + stage_rvas[1], &constants_hook, reinterpret_cast<void**>(&constants_original)) != MH_OK ||
+       MH_CreateHook(base + stage_rvas[2], &descriptors_hook, reinterpret_cast<void**>(&descriptors_original)) != MH_OK ||
+       MH_CreateHook(base + stage_rvas[3], &tables_hook, reinterpret_cast<void**>(&tables_original)) != MH_OK))) {
     CloseHandle(output);
     output = INVALID_HANDLE_VALUE;
     return false;

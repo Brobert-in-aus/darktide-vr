@@ -37,12 +37,28 @@ class ComputeReaderTests(unittest.TestCase):
     def test_complete_contract_and_invalid_timings(self):
         capture = self.capture()
         self.assertEqual(len(reader.parse(capture)[1]), 4096)
-        for bad in [capture.rsplit('\n', 1)[0], capture.replace('binding_ticks=10 ', 'binding_ticks=21 ', 1),
-                    capture.replace('binding_successes=1 ', 'binding_successes=2 ', 1),
-                    capture.replace('sample=1 ', 'sample=0 ', 1),
+        for bad in [capture.rsplit('\n', 1)[0], capture.replace('binding_ticks=10', 'binding_ticks=21', 1),
+                    capture.replace('binding_successes=1', 'binding_successes=2', 1),
+                    capture.replace('sample=1', 'sample=0', 1),
                     capture.replace('gpu_timing=0', 'gpu_timing=1'),
-                    capture.replace('thread=1 ', 'thread=1 thread=2 ', 1),
-                    capture.replace('flags_valid=1 ', 'flags_valid=2 ', 1)]:
+                    capture.replace('thread=1', 'thread=1 thread=2', 1),
+                    capture.replace('flags_valid=1', 'flags_valid=2', 1)]:
+            with self.assertRaises(ValueError): reader.parse(bad)
+
+    def test_optional_stage_schema(self):
+        lines = self.capture().replace('schema=1', 'schema=2').splitlines()
+        lines[0] += ' stages=1'
+        extra = ' '.join(f'stage{i}_{field}={1 if field == "calls" or (i == 0 and field == "successes") else 2 if field == "ticks" else 0}'
+                         for i in range(4) for field in ('ticks', 'calls', 'successes'))
+        for i in range(1, len(lines) - 1): lines[i] += ' ' + extra
+        capture = '\n'.join(lines)
+        _, rows, frequency = reader.parse(capture)
+        result = reader.analyze(rows, frequency)
+        self.assertEqual(result['stages'][0]['calls'], 4096)
+        self.assertEqual(result['stages'][1]['boolean_successes'], None)
+        for bad in [capture.replace('stages=1', 'stages=0'),
+                    capture.replace('stage0_ticks=2', 'stage0_ticks=9', 1),
+                    capture.replace('stage1_successes=0', 'stage1_successes=1', 1)]:
             with self.assertRaises(ValueError): reader.parse(bad)
 
 
