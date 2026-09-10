@@ -9,8 +9,8 @@ Start with [current status and operation](docs/CURRENT-STATUS.md),
 [working agreements](AGENTS.md), and the
 [maintenance implementation plan](docs/maintenance-plan-2026-09-05.md).
 For the next development session, read the
-[night handover](docs/handoffs/2026-09-08-night.md) and the
-[full 9 September todo list](docs/phase1/todo-2026-09-09.md).
+[11 September handover](docs/handoffs/2026-09-11.md) and the
+[11 September todo list](docs/phase1/todo-2026-09-11.md).
 The game integration is build-specific and used with EAC inactive. The project
 contains no anti-cheat bypass implementation.
 
