@@ -77,3 +77,35 @@ observed busy Streamer sample.
 Evidence directories: `synthetic-compute-stages-20260911`,
 `synthetic-compute-descriptor-cost-20260911`, and
 `synthetic-compute-stages-recheck-20260911`, under `artifacts/unattended`.
+
+## Broader residency on the improved build
+
+The existing bounded sampler captured 1,000 observations over about 15.6 seconds
+on the Present thread, using the ring plus Present observer (`83E4D445...`).
+It briefly pauses the thread, so residency includes waits and is not a CPU-time
+partition. Mean pause was 62.13 microseconds, maximum 375.2.
+
+There were 112 active-wait samples; 40 resolved to the dispatcher completion
+wait at `7ac4a5`. The earlier original-build identity capture had 92 dispatch
+layout observations. This is consistent with reduced dispatch waiting, but the
+sample counts do not measure the wait's exact time or prove a proportional gain.
+Other resolved wait parents include culled-scene rendering, shadow preparation
+and command sorting. High thread CPU usage therefore includes active waiting.
+
+Module observations included 567 in the engine, 116 in the NVIDIA driver, 175
+in ntdll and four in the native mod. Static inspection identifies remaining
+engine leads: `796370` is `d3d12_resource_context::update_dynamic`, `398870`
+contains the `update_links` profiling label, and `626780` contains
+`build_indirection_preserve_ndc_extents(remove_not_visible)`. These are leads,
+not permission to skip resource updates, linked transforms or visibility work.
+
+The run delivered 89.37 native FPS as diagnostic output, exited cleanly,
+restored files and reported zero pose mismatches. There were 26 valid GPU
+activity records and one missing, with no observed busy Streamer sample.
+Evidence: `synthetic-descriptor-demand-ring-residency-20260911/thread-residency`
+under `artifacts/unattended`; sampler SHA-256
+`0C23557AA4A800F8139E1287CF26408E47B25AECB85F7B1E5A8068BB2BF8B077`.
+
+A proposed 144 Hz FG-on/Reflex-off control was rejected by the settings gate
+before game launch. FG requires Reflex; no result exists for that combination.
+The wrapper restored the temporary flags/runtime and normal proximity handling.
