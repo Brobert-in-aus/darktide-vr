@@ -545,6 +545,12 @@ using ClearRenderTargetViewFn = void(STDMETHODCALLTYPE*)(
 using ClearDepthStencilViewFn = void(STDMETHODCALLTYPE*)(
     ID3D12GraphicsCommandList*, D3D12_CPU_DESCRIPTOR_HANDLE,
     D3D12_CLEAR_FLAGS, FLOAT, UINT8, UINT, const D3D12_RECT*);
+using ClearUnorderedAccessViewUintFn = void(STDMETHODCALLTYPE*)(
+    ID3D12GraphicsCommandList*, D3D12_GPU_DESCRIPTOR_HANDLE,
+    D3D12_CPU_DESCRIPTOR_HANDLE, ID3D12Resource*, const UINT[4], UINT, const D3D12_RECT*);
+using ClearUnorderedAccessViewFloatFn = void(STDMETHODCALLTYPE*)(
+    ID3D12GraphicsCommandList*, D3D12_GPU_DESCRIPTOR_HANDLE,
+    D3D12_CPU_DESCRIPTOR_HANDLE, ID3D12Resource*, const FLOAT[4], UINT, const D3D12_RECT*);
 using ResourceBarrierFn = void(STDMETHODCALLTYPE*)(
     ID3D12GraphicsCommandList*, UINT, const D3D12_RESOURCE_BARRIER*);
 using EnhancedBarrierFn = void(STDMETHODCALLTYPE*)(
@@ -622,6 +628,8 @@ LoadComputePipelineFn original_load_compute_pipeline{};
 LoadPipelineFn original_load_pipeline{};
 ClearRenderTargetViewFn original_clear_render_target_view{};
 ClearDepthStencilViewFn original_clear_depth_stencil_view{};
+ClearUnorderedAccessViewUintFn original_clear_unordered_access_view_uint{};
+ClearUnorderedAccessViewFloatFn original_clear_unordered_access_view_float{};
 ResourceBarrierFn original_resource_barrier{};
 EnhancedBarrierFn original_enhanced_barrier{};
 std::mutex state_mutex;
@@ -804,6 +812,7 @@ std::atomic<std::uint64_t> cluster_linked_list_learned_frame{};
 std::atomic<std::uint64_t> cluster_generic_dispatch_log_count{};
 std::atomic<std::uint64_t> cluster_target_dispatch_log_count{};
 std::atomic<std::uint64_t> cluster_barrier_log_count{};
+std::atomic<std::uint64_t> cluster_clear_log_count{};
 std::atomic<std::uint64_t> cluster_raster_binding_log_count{};
 std::atomic<std::uint64_t> cluster_constant_copy_log_count{};
 std::atomic<std::uint64_t> cluster_upload_flush_log_count{};
@@ -4933,7 +4942,8 @@ DescriptorInfo describe_resource(char kind, ID3D12Resource* resource) {
     info.depth_or_array_size = description.DepthOrArraySize;
     info.mip_levels = description.MipLevels;
     info.format = description.Format;
-    info.gpu_address = resource->GetGPUVirtualAddress();
+    if(description.Dimension==D3D12_RESOURCE_DIMENSION_BUFFER)
+      info.gpu_address = resource->GetGPUVirtualAddress();
   }
   return info;
 }
@@ -8998,6 +9008,50 @@ void STDMETHODCALLTYPE clear_depth_stencil_view_hook(
                                     stencil, rect_count, rects);
 }
 
+void record_cluster_uav_clear(ID3D12GraphicsCommandList* commands,
+    D3D12_GPU_DESCRIPTOR_HANDLE gpu, D3D12_CPU_DESCRIPTOR_HANDLE cpu,
+    ID3D12Resource* resource, const void* values, UINT rect_count, const char* kind) {
+  if(cluster_trace_log==INVALID_HANDLE_VALUE || !resource ||
+      cluster_clear_log_count.load(std::memory_order_relaxed)>=64 ||
+      !cluster_trace_saw_flat_presentation.load(std::memory_order_relaxed) ||
+      current_presentation_mode.load(std::memory_order_relaxed)!=static_cast<unsigned>(
+          darktidevr::core::SharedPresentationMode::stereo_world)) return;
+  const auto desc=resource->GetDesc();
+  // Size identifies a candidate only. The grid SRV independently identifies
+  // the live linked-list resource, and the CPU descriptor records view bounds.
+  if(desc.Dimension!=D3D12_RESOURCE_DIMENSION_BUFFER || desc.Width!=16'777'216 ||
+      cluster_clear_log_count.fetch_add(1,std::memory_order_relaxed)>=64) return;
+  const auto descriptor=descriptor_snapshot(cpu.ptr);
+  std::array<UINT,4> bits{};
+  if(values) std::memcpy(bits.data(),values,sizeof(bits));
+  write_cluster_trace_log(
+      "frame=%llu\tCLUSTER_UAV_CLEAR\tCL=%p\tkind=%s\tresource=%p\tbytes=%llu"
+      "\tlearned_match=%u\tcpu=%llu\tgpu=%llu\tdescriptor_kind=%c\tdescriptor_resource=%p"
+      "\tfirst=%llu\telements=%u\tformat=%u\trects=%u\tvalues_valid=%u"
+      "\tbits=%08x,%08x,%08x,%08x\r\n",
+      static_cast<unsigned long long>(present_count.load(std::memory_order_relaxed)),
+      commands,kind,resource,static_cast<unsigned long long>(desc.Width),
+      cluster_linked_list_resource.load(std::memory_order_relaxed)==reinterpret_cast<std::uintptr_t>(resource)?1U:0U,
+      static_cast<unsigned long long>(cpu.ptr),static_cast<unsigned long long>(gpu.ptr),
+      descriptor.kind,reinterpret_cast<void*>(descriptor.resource),
+      static_cast<unsigned long long>(descriptor.first_element),descriptor.element_count,descriptor.format,
+      rect_count,values?1U:0U,bits[0],bits[1],bits[2],bits[3]);
+}
+
+void STDMETHODCALLTYPE clear_unordered_access_view_uint_hook(ID3D12GraphicsCommandList* commands,
+    D3D12_GPU_DESCRIPTOR_HANDLE gpu,D3D12_CPU_DESCRIPTOR_HANDLE cpu,ID3D12Resource* resource,
+    const UINT values[4],UINT rect_count,const D3D12_RECT* rects) {
+  record_cluster_uav_clear(commands,gpu,cpu,resource,values,rect_count,"uint");
+  original_clear_unordered_access_view_uint(commands,gpu,cpu,resource,values,rect_count,rects);
+}
+
+void STDMETHODCALLTYPE clear_unordered_access_view_float_hook(ID3D12GraphicsCommandList* commands,
+    D3D12_GPU_DESCRIPTOR_HANDLE gpu,D3D12_CPU_DESCRIPTOR_HANDLE cpu,ID3D12Resource* resource,
+    const FLOAT values[4],UINT rect_count,const D3D12_RECT* rects) {
+  record_cluster_uav_clear(commands,gpu,cpu,resource,values,rect_count,"float");
+  original_clear_unordered_access_view_float(commands,gpu,cpu,resource,values,rect_count,rects);
+}
+
 void STDMETHODCALLTYPE resource_barrier_hook(
     ID3D12GraphicsCommandList* commands, UINT barrier_count,
     const D3D12_RESOURCE_BARRIER* barriers) {
@@ -9029,25 +9083,35 @@ void STDMETHODCALLTYPE resource_barrier_hook(
               1, std::memory_order_relaxed) < 256) {
         write_cluster_trace_log(
             "frame=%llu\tCLUSTER_BARRIER\tCL=%p\tpso=%p\ttype=transition"
-            "\tindex=%u\tflags=%u\tbefore=%u\tafter=%u\tsubresource=%u\r\n",
+            "\tindex=%u\tflags=%u\tbefore=%u\tafter=%u\tsubresource=%u\tresource=%p\r\n",
             static_cast<unsigned long long>(
                 present_count.load(std::memory_order_relaxed)),
             commands, reinterpret_cast<void*>(pso), index,
             static_cast<unsigned>(barrier.Flags),
             static_cast<unsigned>(barrier.Transition.StateBefore),
             static_cast<unsigned>(barrier.Transition.StateAfter),
-            barrier.Transition.Subresource);
+            barrier.Transition.Subresource,cluster_resource);
       } else if (barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_UAV &&
-                 barrier.UAV.pResource == cluster_resource &&
+                 (!barrier.UAV.pResource || barrier.UAV.pResource == cluster_resource) &&
                  cluster_barrier_log_count.fetch_add(
                      1, std::memory_order_relaxed) < 256) {
         write_cluster_trace_log(
             "frame=%llu\tCLUSTER_BARRIER\tCL=%p\tpso=%p\ttype=uav"
-            "\tindex=%u\tflags=%u\r\n",
+            "\tindex=%u\tflags=%u\tglobal=%u\ttracked_resource=%p\r\n",
             static_cast<unsigned long long>(
                 present_count.load(std::memory_order_relaxed)),
             commands, reinterpret_cast<void*>(pso), index,
-            static_cast<unsigned>(barrier.Flags));
+            static_cast<unsigned>(barrier.Flags),barrier.UAV.pResource?0U:1U,cluster_resource);
+      } else if(barrier.Type==D3D12_RESOURCE_BARRIER_TYPE_ALIASING &&
+          (barrier.Aliasing.pResourceBefore==cluster_resource ||
+           barrier.Aliasing.pResourceAfter==cluster_resource ||
+           (!barrier.Aliasing.pResourceBefore && !barrier.Aliasing.pResourceAfter)) &&
+          cluster_barrier_log_count.fetch_add(1,std::memory_order_relaxed)<256) {
+        write_cluster_trace_log(
+            "frame=%llu\tCLUSTER_BARRIER\tCL=%p\ttype=aliasing\tindex=%u\tflags=%u\tbefore=%p\tafter=%p\r\n",
+            static_cast<unsigned long long>(present_count.load(std::memory_order_relaxed)),
+            commands,index,static_cast<unsigned>(barrier.Flags),
+            barrier.Aliasing.pResourceBefore,barrier.Aliasing.pResourceAfter);
       }
     }
   }
@@ -13756,6 +13820,12 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
        MH_CreateHook(command_list_vtable[48], &clear_render_target_view_hook,
                     reinterpret_cast<void**>(
                         &original_clear_render_target_view)) != MH_OK) ||
+      (install_cluster_trace_hooks &&
+       MH_CreateHook(command_list_vtable[49], &clear_unordered_access_view_uint_hook,
+                    reinterpret_cast<void**>(&original_clear_unordered_access_view_uint)) != MH_OK) ||
+      (install_cluster_trace_hooks &&
+       MH_CreateHook(command_list_vtable[50], &clear_unordered_access_view_float_hook,
+                    reinterpret_cast<void**>(&original_clear_unordered_access_view_float)) != MH_OK) ||
       MH_CreateHook(queue_vtable[10], &execute_command_lists_hook,
                     reinterpret_cast<void**>(&original_execute_command_lists)) !=
           MH_OK ||
@@ -16890,6 +16960,7 @@ extern "C" __declspec(dllexport) int dtvr_enable_cluster_trace() {
   cluster_generic_dispatch_log_count.store(0, std::memory_order_relaxed);
   cluster_target_dispatch_log_count.store(0, std::memory_order_relaxed);
   cluster_barrier_log_count.store(0, std::memory_order_relaxed);
+  cluster_clear_log_count.store(0, std::memory_order_relaxed);
   cluster_raster_binding_log_count.store(0, std::memory_order_relaxed);
   cluster_constant_copy_log_count.store(0, std::memory_order_relaxed);
   cluster_upload_flush_log_count.store(0, std::memory_order_relaxed);
