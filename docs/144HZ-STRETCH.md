@@ -5,6 +5,13 @@ comparison follows the 120 Hz mission trials and the diagnostic fixes. It uses
 a process-local 144 Hz simulator clock; it does not establish that a physical
 Quest or its current runtime exposes that experimental mode.
 
+A later Ready recheck on 10 September still reports
+`openxr.system=hmd-unavailable` from VirtualDesktopXR, with session creation
+skipped. Physical 144 Hz remains pending. Proximity automation was restored
+after that check; no runtime restart or refresh-rate change was attempted.
+The local receipt is `physical-144-readiness-recheck-20260910.json` under
+ignored `artifacts/unattended`.
+
 The runtime extension preserves the 90 Hz default and 120 Hz option. Its
 144-frame smoke test rendered every frame in 994.218 ms, with a clean session
 exit and pass result. The benchmark also checks the reported display period

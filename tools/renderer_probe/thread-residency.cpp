@@ -28,6 +28,8 @@ struct Sample {
   static_assert(sizeof(Category) == 16);
   std::array<Category, 4> categories{};
   bool categories_read{};
+  DWORD queue_a{}, queue_b{};
+  bool queues_read{};
 };
 std::uint64_t filetime(FILETIME value) {
   return (std::uint64_t(value.dwHighDateTime) << 32) | value.dwLowDateTime;
@@ -103,6 +105,12 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
           read(context.R13 + 0xb0, &category_count, sizeof(category_count)) && category_count == 4 &&
           read(context.R13 + 0xb8, &category_data, sizeof(category_data)) && category_data &&
           read(category_data, sample.categories.data(), sizeof(sample.categories));
+      // 6f7690 assists from pool+110 and pool+e8; 6f7820 reads each
+      // queue's count at +1c. Other workers remain running, so these are
+      // sequential observations, not a mutually consistent queue snapshot.
+      sample.queues_read = sample.layout_read &&
+          read(context.Rsi + 0x104, &sample.queue_a, sizeof(sample.queue_a)) &&
+          read(context.Rsi + 0x12c, &sample.queue_b, sizeof(sample.queue_b));
     }
     // Exactly undo our increment, including a pre-existing suspension. Do not
     // drain someone else's suspend count or perform logging before this call.
@@ -125,6 +133,7 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
   for (unsigned i = 0; i < 64; ++i) std::printf(",s%u", i);
   std::printf(",layout_read,workers,commands,weighted_commands,history_commands,weighted_enabled,history_cost,categories_read");
   for (unsigned i = 0; i < 4; ++i) std::printf(",category%u_cost,category%u_records", i, i);
+  std::printf(",queues_read,queue_a,queue_b");
   std::puts("");
   for (const auto& sample : samples) {
     std::printf("%lld,0x%llx,%.3f,0x%llx,%u", sample.qpc, sample.rip,
@@ -134,6 +143,7 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
         sample.commands, sample.weighted_commands, sample.history_commands,
         unsigned(sample.weighted_enabled), sample.history_cost, unsigned(sample.categories_read));
     for (const auto& category : sample.categories) std::printf(",%.9g,%lu", category.cost, category.records);
+    std::printf(",%u,%lu,%lu", unsigned(sample.queues_read), sample.queue_a, sample.queue_b);
     std::puts("");
   }
   require(failure == ERROR_SUCCESS && samples.size() == count, "Incomplete residency capture; inspect failure code");
