@@ -68,6 +68,11 @@ all reachable nodes are freshly written. Removing the clear could change
 overflow behavior even if ordinary frames appear correct. No clear, shader or
 engine setting was changed, and no performance gain is claimed.
 
+The subsequent [initialization contract](CLUSTER-LIST-INITIALIZATION-CONTRACT.md)
+identifies both normal-list writers and verifies fresh-prefix behavior on the
+GPU, including overflow, with poisoned prior contents. The isolated clear costs
+about 11–12 microseconds; live resource aliases and ordering remain unverified.
+
 Ignored evidence under `artifacts/unattended`: `engine-shader-groups-20260910`,
 `decoded-engine-shaders-20260910/manifest.json`,
 `engine-shader-library-names-20260910.json`, and
