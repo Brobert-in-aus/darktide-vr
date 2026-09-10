@@ -28,3 +28,45 @@ python tests/tooling/test-synthetic-gpu-load.py
 Settings checks pass for inherited/false/true overrides and malformed/duplicate
 rejection. All three GPU-reader tests pass, including optional memory units and
 backward compatibility. The benchmark runner parses successfully.
+
+## Stationary SoloPlay results, 10 September 2026
+
+Matching 120-second mission-start trials use cm_archives difficulty 3, simulator
+120 Hz, DLSS Quality, Reflex On, FG Off, unlimited cap, and 13 configured
+workers (six effective in the separately observed engine pool). The native
+diagnostic-cleanup build is unchanged. Analysis excludes the first ten seconds.
+
+| Mesh streaming | Distinct native FPS | GPU busy | Board power | Board memory |
+| --- | ---: | ---: | ---: | ---: |
+| Disabled A | 79.08 | 66.04% | 280.65 W | 9,212 MiB |
+| Normal matching control | 74.76 | 62.76% | 270.12 W | 7,436 MiB |
+| Disabled B | 79.88 | 66.69% | 282.08 W | 9,225 MiB |
+
+Both disabled runs improve native throughput by approximately 6–7% against the
+matching control, using about 1.7 GiB more board memory. This is a repeatable
+lead in one stationary scene, not evidence about traversal stalls, combat,
+visual equivalence, or smaller GPUs. Keep the accepted streaming setting.
+All three runs exit cleanly and report exact file restoration.
+
+Local evidence: `synthetic-solo-mesh-disabled-a-20260910`,
+`synthetic-solo-mesh-default-a-20260910`, and
+`synthetic-solo-mesh-disabled-b-20260910` under `artifacts/unattended`, with
+matching `solo-mesh-*-gpu-20260910.csv` telemetry. These machine-local captures
+are excluded from Git.
+
+## Budget override boundary
+
+On engine SHA-256
+`6fce8db87a77a412b22ef9f33f74fa16ef85126cc0fbb24187d78b85fc7a19d3`,
+startup owner `285ee0` reads the user settings object at application `+148`
+for `mesh_streamer_settings.disable` (`2871ac` onward), overriding the
+application-settings default. The constructor at `2ccf30` reads budget,
+eviction and limits from the separate application-settings object at `+140`
+(`2cdcc4` onward), choosing its `win32` section when present. The budget accepts
+float or integer values and converts milliseconds to seconds before storage.
+
+This inspected path does not establish a user-settings override for the numeric
+budget. Do not add a purported user-budget benchmark variable based only on the
+shared section name. Captures are in `mesh-streamer-settings-parser-20260910.txt`,
+`mesh-streamer-parser-labels-20260910.txt`, and
+`mesh-streamer-user-config-20260910.txt` under the local artifact directory.
