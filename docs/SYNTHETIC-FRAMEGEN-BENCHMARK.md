@@ -264,3 +264,13 @@ SR log and requires 64 successful evaluation records. Run
 `tools/stereo/read-ngx-sr-probe.py` on that log for strict schema, resource,
 scalar and context validation. Successful evaluations alone do not establish
 eye ownership, pixel correctness, GPU completion or HUD quality.
+# Resolution matching (10 September update)
+
+Supply `-VdxrReadinessPath <successful-ready.json>` to use the effective eye
+resolution reported by Virtual Desktop/VDXR. Refresh that receipt after changing
+VD quality/resolution; receipts older than 24 hours are rejected. No fixed eye
+size is assumed anymore. For a deliberate historical control, supply both
+`-EyeWidth 2112 -EyeHeight 2304`; it is labelled `explicit_control` in the receipt.
+Do not run a second XR preflight during a worn game session. See the
+[hub comparison](HUB-PERFORMANCE-2026-09-10.md) for the discovered mismatch and
+remaining differences. Historical commands below require one of these inputs.

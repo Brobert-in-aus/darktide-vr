@@ -32,8 +32,9 @@ param(
     [string] $ExpectedInstalledNativeSha256,
     [ValidateRange(30,600)] [int] $DurationSeconds = 120,
     [ValidateRange(60,600)] [int] $StartupTimeoutSeconds = 300,
-    [ValidateRange(512,4096)] [int] $EyeWidth = 2112,
-    [ValidateRange(512,4096)] [int] $EyeHeight = 2304
+    [string] $VdxrReadinessPath,
+    [ValidateRange(0,4096)] [int] $EyeWidth = 0,
+    [ValidateRange(0,4096)] [int] $EyeHeight = 0
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -41,6 +42,10 @@ if ($RenderApiCpuProfile) { $PresentCpuProfile = [switch]$true }
 if ($GpuProfile -and $CpuRenderTimingSourcePath) { throw 'GPU profiling cannot be combined with the CPU-only timing control.' }
 . (Join-Path $PSScriptRoot 'resolve-darktide-game-root.ps1')
 . (Join-Path $PSScriptRoot 'synthetic-framegen-settings.ps1')
+. (Join-Path $PSScriptRoot 'resolve-synthetic-eye-size.ps1')
+$eyeSize = Resolve-SyntheticEyeSize -VdxrReadinessPath $VdxrReadinessPath -EyeWidth $EyeWidth -EyeHeight $EyeHeight
+$EyeWidth = $eyeSize.width
+$EyeHeight = $eyeSize.height
 $GameRoot = Resolve-DarktideGameRoot -GameRoot $GameRoot
 if (Get-Process Darktide,darktidevr-xr-harness,darktidevr-synthetic-head-publisher -ErrorAction SilentlyContinue) {
     throw 'Close the game and other XR/synthetic consumers before this isolated benchmark.'
@@ -225,6 +230,8 @@ try {
         solo_trial_sha256=$(if($SoloMission){(Get-FileHash -LiteralPath $soloSource).Hash}else{$null})
         solo_module_sha256=$(if($SoloMission){(Get-FileHash -LiteralPath $soloModule).Hash}else{$null})
         eye_width=$EyeWidth; eye_height=$EyeHeight; ssw='not_applicable_simulator'
+        eye_size_source=$eyeSize.source; eye_size_receipt_sha256=$eyeSize.receipt_sha256
+        eye_size_captured_utc=$eyeSize.captured_utc
         runtime_json=$RuntimeJson; runtime_sha256=$RuntimeSha256
         harness_sha256=(Get-FileHash $HarnessPath -Algorithm SHA256).Hash
         simulator_display_clock=$SimulatorDisplayClock
