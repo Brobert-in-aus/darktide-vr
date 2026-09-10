@@ -34,7 +34,44 @@ restore the exact original flag state and deployed files.
 
 Windows x64 Release build and `compute_dispatch_forwarding` test pass. The test
 checks five/eight-argument forwarding, both boolean return values, LastError,
-unarmed/exhausted paths, nested timing and invalid address rejection. The
-underlying particle recorder's concurrent-bound test also remains available,
-but does not itself establish this probe's live engine ABI. Live validation is
-pending. Do not deploy the accumulated development DLL; use a focused build.
+unarmed/exhausted paths, nested timing and invalid address rejection. Eight
+concurrent test callers also fill the 4,096-record bound and verify one complete
+output. These tests do not establish this probe's live engine ABI. Live validation is
+recorded below. Do not deploy the accumulated development DLL; use a focused build.
+
+## First live result
+
+Focused branch `codex/focused-compute-observer-2026-09-11`, commit `653dec4`,
+DLL SHA-256 `0BEE5B5EF2052B9D97937E272077A50867316FA2B6CC871020FF9A25AB08C0A6`.
+The high-resolution Quality/native simulator mission completed all 4,096
+observations across eight threads. Every metadata read and binding succeeded.
+All observed commands selected the graphics command list.
+
+Mean outer duration was 7.733 microseconds; mean nested binding duration was
+7.144 microseconds. Across the recorded intervals, binding occupied 29.2628 of
+31.6755 milliseconds of aggregate worker wall time (about 92.4%). This fraction
+identifies the binding path as the next target; it is not a frame-time share,
+unperturbed CPU cost or predicted speedup. The maximum outer duration was
+356.2 microseconds, so scheduling/outliers also affect the mean.
+
+The sample includes 1,879 particle-emission and 1,816 particle-simulation calls.
+Their mean binding durations were 7.090 and 7.070 microseconds respectively.
+The cached root identity changed in 1,348 of 4,096 calls. Unchanged roots do
+not justify skipping resource binding, transitions or UAV ordering.
+
+Static inspection splits `7e21b0` into calls to `7dec60`, `7db0a0`, `7e0fe0`
+and `7dc320`. These routines include resource validation/resolution, constants
+and descriptor-table work. Chained unwind records must be included: the entry
+ranges of `7db0a0` and `7dc320` contain only prologues. Stage-level timing is the
+next diagnostic before considering a narrower caching or binding change.
+
+The mission exited cleanly, restored installed files and probe flags, and
+reported zero pose mismatches. Physical readiness was unavailable. The Quest
+was placed in standby for this simulator control; 23 valid GPU activity samples
+showed no busy Streamer engine, with one unavailable sample. Approximately
+74.73 native FPS returned under idle encoding. This differs from the previous
+particle observer build and is not a matched performance comparison.
+
+Local evidence: `artifacts/unattended/synthetic-compute-dispatch-20260911`.
+The reader is `tools/renderer_probe/read-compute-dispatch.py`; two Python tests
+cover complete-record validation, nested timings and unknown metadata.

@@ -2,12 +2,14 @@
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
+#include <fstream>
 
 namespace {
 using namespace darktidevr::producer::compute_probe;
-std::array<std::byte, 0x300> test_context{};
-std::array<std::byte, 0x100> test_payload{};
-unsigned dispatch_calls{}, bind_calls{};
+thread_local std::array<std::byte, 0x300> test_context{};
+thread_local std::array<std::byte, 0x100> test_payload{};
+std::atomic<unsigned> dispatch_calls{}, bind_calls{};
 void check(bool value) { if (!value) throw std::runtime_error("compute forwarding mismatch"); }
 bool mock_bind(void* a, void* b, void* c, void* d, bool alternate, bool secondary,
                std::uint32_t stage, void* root) {
@@ -57,5 +59,26 @@ int main() {
   std::uint32_t value{};
   check(!read_at(reinterpret_cast<void*>(~std::uintptr_t{}), 4, &value, 4));
   check(!read_at(nullptr, 4, &value, 4));
-  std::cout << "PASS five/eight argument forwarding, bool returns, errors, nested timing and bounds\n";
+  wchar_t directory[MAX_PATH]{}, file[MAX_PATH]{};
+  check(GetTempPathW(MAX_PATH, directory) != 0);
+  check(GetTempFileNameW(directory, L"dvc", 0, file) != 0);
+  output = CreateFileW(file, GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+      CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  check(output != INVALID_HANDLE_VALUE);
+  admitted = 1;
+  std::array<std::thread, 8> workers;
+  for (auto& worker : workers) worker = std::thread([&] {
+    for (unsigned i = 0; i < 512; ++i) invoke();
+  });
+  for (auto& worker : workers) worker.join();
+  check(dispatch_calls == 4099 && bind_calls == 8198 && completed == record_limit && output == INVALID_HANDLE_VALUE);
+  std::ifstream stream(file, std::ios::binary);
+  const std::string text((std::istreambuf_iterator<char>(stream)), {});
+  stream.close();
+  check(DeleteFileW(file) != 0);
+  check(text.ends_with("COMPUTE_COMPLETE samples=4096\n"));
+  unsigned lines{};
+  for (std::size_t pos = 0; (pos = text.find("COMPUTE sample=", pos)) != std::string::npos; ++pos) ++lines;
+  check(lines == record_limit);
+  std::cout << "PASS forwarding, bool/error preservation, nested timing, concurrent bounds and output\n";
 }
