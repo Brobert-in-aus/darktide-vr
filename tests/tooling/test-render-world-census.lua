@@ -53,4 +53,4 @@ state.observe(gameplay)
 World.get_data = function(_, key) if key == "name" then return "startup" end return {} end
 hook(render, portrait, "camera", target, nil, 42)
 assert(calls == 73 and state.records == 1)
-print("render_world_census=pass forwarding=72 bounded=64 metadata_failure=contained")
+print("render_world_census=pass forwarding=73 bounded=64 metadata_failure=contained startup_window=pass")

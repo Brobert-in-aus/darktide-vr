@@ -232,6 +232,24 @@ bytes and removal of the temporary module/flag. Evidence is in
 extracted from the launcher-selected console after this first run; the wrapper
 now performs that extraction and requires the completion marker automatically.
 
+`-RenderWorldCensusWarmupFrames 0` selects the first gameplay submissions instead
+of the default 120-visit warm-up; the allowed range is 0–600. The bounded flag
+grammar accepts `enabled` alone for the original default, or an explicit
+`warmup=N` line. Other values are rejected. The combined startup census and
+native clear trial (`synthetic-startup-world-clear-20260910`) used focused Lua
+`af3baac` and the previously validated native clear candidate. It captured an
+additional `portrait_world` / `portrait_viewport` submission during startup.
+Stock UI setup gives that world a 140x160 `default_with_alpha` viewport, and the
+icon generator pauses the world when its requests finish. This explains why a
+later census can omit that 3D world. It is a plausible owner of the small-light
+pass, not direct GPU attribution.
+
+The same process produced 64 full-size clear records, with three clears in each
+of 20 complete captured frame values. Shader identities remain unavailable.
+All 64 world records completed, 2,061 fresh pairs and zero generated pairs were
+submitted, reported pose mismatches were zero, and clean shutdown plus exact
+restoration passed. No portrait, world or clear was suppressed.
+
 ## SR convention observation
 
 `-ObserveDlssSrInputs` passes the same explicit option through the launcher and

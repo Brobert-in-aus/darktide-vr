@@ -132,6 +132,14 @@ the decoded renderer configuration. Because this was a separate run after a
 120-gameplay-call warm-up, it does not map the earlier startup clear records to
 worlds. The third clear remains unresolved; no render suppression follows.
 
+A same-process startup census subsequently found `portrait_world`, an extra
+140x160 `default_with_alpha` render that the warmed-up census had missed. Its
+stock icon-generator lifetime is request-driven. The native trace again has
+three clears in 20 complete frame values. This provides a plausible 3D owner
+for the small-light pass; it is not shader/resource attribution. Treating the
+third clear as a redundant gameplay view is unsupported. See the startup
+census result in `SYNTHETIC-FRAMEGEN-BENCHMARK.md`.
+
 Evidence: `synthetic-cluster-clear-deferred-20260910`,
 `uav-clear-native-fixture-20260910` and `uav-clear-deferred-fixture-20260910` under
 `artifacts/unattended`. The initial failed trace selection is separately marked
