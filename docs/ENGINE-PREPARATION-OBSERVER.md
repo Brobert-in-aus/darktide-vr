@@ -46,8 +46,41 @@ python tests/tooling/test-engine-preparation.py
 ```
 
 Build receipts are `artifacts/unattended/{focused-,}engine-preparation-*-20260911.log`.
-The first mission capture is in progress at
+The first mission capture completed at
 `artifacts/unattended/synthetic-descriptor-demand-engine-preparation-20260911`.
 The wrapper preserves both flag locations and uses the normal transactional
 benchmark launcher with Quality, 2496x2688, 13 workers, HUD/menu on and FG off.
 Physical readiness remains unavailable; this is an authorised simulator trial.
+
+## Mission results and sample spread
+
+The initial dynamic stream filled all 4,096 records during one Present ID:
+0.3434 milliseconds elapsed across seven contexts. Its mean duration was
+0.045 microseconds, with median zero and p95 0.1 microseconds. These tiny
+durations are near the QPC tick granularity, and the single-frame burst does
+not establish representative cost across gameplay.
+
+Root `2ca1435` / focused `43ba098` samples every 64th dynamic invocation per
+thread, without a shared counter write on unsampled calls. The header records
+`stride=64`; old captures remain readable. Linked updates retain stride one.
+Forwarding/stride-bound checks and reader checks pass; the focused native smoke
+test also passes. DLL SHA-256:
+`52FAB41DFC27C977AC89BEEAAC78BA48F6506301AFC4648FB53798E7710E42E7`.
+The earlier DLL is preserved as `artifacts/native-baselines/3B57E255-engine-preparation.dll`.
+
+The second dynamic capture spans Present IDs 2547–2573, 0.2855 seconds and
+197 contexts. Mean is 0.053 microseconds, median zero, p95 0.1 and maximum 0.4.
+Periodic sampling is not random sampling or complete call accounting. It
+supports treating this as a small per-call operation, not a new dominant cost.
+
+Linked-update means were 14.323 and 14.439 microseconds; medians 0.200 and 0.150,
+and p95 69.9 and 72.5. Each 512-record stream covers about 40 Present IDs and
+seven contexts; list counts range from zero to 1,326/1,330. Counts remain equal
+before/after in 512/512 and 511/512 calls. This does not establish unchanged
+transforms and does not justify skipping a second-eye update.
+
+Both runs exit cleanly, restore files and report zero pose mismatches. Their
+diagnostic native rates are 88.95 and 88.63 FPS. GPU activity records: 32 valid
+plus two missing, then 27 valid plus one missing; no observed busy Streamer
+samples. Evidence suffixes: `engine-preparation` and `engine-preparation-stride`
+under `artifacts/unattended/synthetic-descriptor-demand-*-20260911`.

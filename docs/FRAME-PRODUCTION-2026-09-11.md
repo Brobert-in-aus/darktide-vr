@@ -112,5 +112,9 @@ hygiene, not a mod optimisation or a promise of 116 FPS on the physical headset.
 
 All synthetic sessions are now closed; installed native hashes and simulator
 runtime were restored, and normal Quest proximity automation was re-enabled.
-Next development: stop unused desktop fallback capture during physical stereo,
-validate lifecycle/recovery, and measure a separate physical-viewer candidate.
+Subsequent development: the [descriptor/ring candidate](NATIVE-ORIGINAL-RING.md)
+delivered repeated 89.57/89.34 native FPS against a fresh accepted 76.47 FPS
+control, about 17% faster. Its DLSS Performance control reached 95.80 FPS.
+Matched FG controls reached about 119–120 distinct FPS at both 120/144 Hz;
+144 Hz added repeats. The physical on-demand viewer comparison still awaits
+resumed VD streaming. See the [current handover](handoffs/2026-09-11.md).
