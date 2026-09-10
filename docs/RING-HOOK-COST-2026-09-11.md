@@ -25,6 +25,16 @@ The first smoke-test invocation lacked its executable; building that target
 and rerunning all four checks passed. Receipts:
 `artifacts/unattended/ring-hook-cost-{build,tests-build,smoke-build,tests}-20260911.log`.
 
-The Quality mission comparison is in progress. Earlier microbenchmark savings
-are not evidence of a live FPS gain. Keep the candidate isolated and restore
-accepted installed files after each trial.
+The Quality mission comparison delivered 89.58637 native FPS, with no generated
+frames or repeats, zero pose mismatches, clean exit and restored files. The
+preceding ring-only Quality trials delivered 89.56705 and 89.34302 FPS. This
+does not demonstrate a live gain from these extra changes; keep them separate
+from the repeated descriptor/ring improvement. There were 27 valid GPU activity
+samples and two missing, with no observed busy Streamer sample (incomplete
+engine coverage remains unknown). Evidence:
+`artifacts/unattended/synthetic-descriptor-demand-ring-hooks-a-20260911`.
+
+The preserved combined DLL is now
+`artifacts/native-baselines/DAA51105-ring-hook-cost.dll`. The build directory
+may be reused for subsequent focused diagnostics; use the hash-pinned artifact
+when repeating this comparison.
