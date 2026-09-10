@@ -7,6 +7,7 @@
 #include "producer/diagnostic_append_log.h"
 #include "producer/bounded_diagnostic.h"
 #include "producer/present_cpu_profile.h"
+#include "producer/particle_submission_probe.h"
 #include "producer/render_api_cpu_profile.h"
 #include "producer/resource_name_match.h"
 #include "producer/command_recording_snapshot.h"
@@ -13569,6 +13570,19 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
     }
   }
   if (MH_Initialize() != MH_OK ||
+      !darktidevr::producer::install_particle_submission_probe(native_capture_module, +[] {
+        darktidevr::producer::ParticleEyeContext context;
+        context.present = present_count.load(std::memory_order_relaxed);
+        std::scoped_lock lock(boundary_capture_mutex);
+        context.queued = armed_eye_captures.size();
+        context.arms = boundary_arm_count.load(std::memory_order_relaxed);
+        context.resets = boundary_tag_reset_count.load(std::memory_order_relaxed);
+        if (context.queued == 1) {
+          context.eye = armed_eye_captures.front().eye;
+          context.pose = armed_eye_captures.front().pose_sequence;
+        }
+        return context;
+      }) ||
       !darktidevr::producer::install_resource_handle_trace(native_capture_module) ||
       !darktidevr::producer::install_ngx_output_probe(native_capture_module, +[] {
         darktidevr::producer::NgxSrEyeContext context;
