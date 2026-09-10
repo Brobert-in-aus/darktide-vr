@@ -3395,6 +3395,9 @@ do
     if flag then flag:close() end
     presentation.cpu_render_timing_requested = #value < 32 and value:match("^%s*enabled%s*$") ~= nil
     if presentation.cpu_render_timing_requested then
+        local ffi = require("ffi")
+        ffi.cdef("uint32_t GetCurrentThreadId(void);")
+        presentation.cpu_render_timing_kernel = ffi.load("kernel32")
         mod:info("DARKTIDEVR_PERF cpu_render_timing=true gpu_profile=%s", tostring(performance_profile_requested))
     end
 end
@@ -3526,6 +3529,10 @@ local function record_render_timings(label, left_ticks, right_ticks, pair_ticks)
     table.insert(presentation.render_timing_right_samples, right_ticks)
     table.insert(presentation.render_timing_pair_samples, pair_ticks)
     if render_timing_samples >= 240 then
+        if presentation.cpu_render_timing_kernel then
+            mod:info("DARKTIDEVR_PERF render_caller_thread=%d target=%s samples=%d",
+                tonumber(presentation.cpu_render_timing_kernel.GetCurrentThreadId()), label, render_timing_samples)
+        end
         local to_ms = 1000 / render_timing_frequency
         table.sort(presentation.render_timing_left_samples)
         table.sort(presentation.render_timing_right_samples)
