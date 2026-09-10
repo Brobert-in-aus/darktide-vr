@@ -15,6 +15,8 @@ TEMPORAL_HEADER = HEADER.replace("schema=1", "schema=2").replace(
     "call_limit=", "float_get_slot=14 integer_get_slot=11 unsigned_get_slot=12 call_limit=")
 CONTEXT_HEADER = TEMPORAL_HEADER.replace("schema=2", "schema=3")
 CREATION_HEADER = CONTEXT_HEADER.replace("schema=3", "schema=4")
+STREAMLINE_HEADER = CREATION_HEADER.replace("schema=4", "schema=5")
+STREAMLINE_FIELDS = {"call", "available", "sl_call", "viewport", "frame", "commands", "attribution_verified"}
 CREATION_FLAG = "DLSS.Feature.Create.Flags"
 CONTEXT_FIELDS = {"call", "phase", "available", "eye", "pose", "queued", "arms", "resets", "attribution_verified"}
 SCALARS = {**dict.fromkeys(("Jitter.Offset.X", "Jitter.Offset.Y", "MV.Scale.X", "MV.Scale.Y",
@@ -55,7 +57,7 @@ def parse(text):
     lines = text.splitlines()
     headers = {header.format(gate=gate): (gate == 1, version)
                for header, version in ((HEADER, 1), (TEMPORAL_HEADER, 2), (CONTEXT_HEADER, 3),
-                                       (CREATION_HEADER, 4)) for gate in (0, 1)}
+                                       (CREATION_HEADER, 4), (STREAMLINE_HEADER, 5)) for gate in (0, 1)}
     if not lines or lines[0] not in headers:
         raise ValueError("missing or unsupported SR header")
     gated, version = headers[lines[0]]
@@ -66,9 +68,10 @@ def parse(text):
         if not line.strip():
             continue
         kind, separator, rest = line.partition(" ")
-        if not separator or kind not in ("NGX_SR_INPUT", "NGX_SR_EVAL", "NGX_SR_SCALAR", "NGX_SR_CONTEXT"):
+        if not separator or kind not in ("NGX_SR_INPUT", "NGX_SR_EVAL", "NGX_SR_SCALAR", "NGX_SR_CONTEXT", "NGX_SR_STREAMLINE"):
             raise ValueError("unexpected SR record")
         data = fields(rest, INPUT_FIELDS if kind == "NGX_SR_INPUT" else
+                      STREAMLINE_FIELDS if kind == "NGX_SR_STREAMLINE" else
                       CONTEXT_FIELDS if kind == "NGX_SR_CONTEXT" else
                       SCALAR_FIELDS if kind == "NGX_SR_SCALAR" else EVAL_FIELDS)
         call = number(data["call"])
@@ -77,7 +80,23 @@ def parse(text):
         observation = calls.setdefault(call, {"call": call, "inputs": {}, "scalars": {}, "contexts": {}, "evaluation_result": None})
         if len(calls) > 64:
             raise ValueError("SR sample budget exceeded")
-        if kind == "NGX_SR_CONTEXT":
+        if kind == "NGX_SR_STREAMLINE":
+            if version < 5 or "streamline" in observation:
+                raise ValueError("unsupported or duplicate Streamline context")
+            if data["available"] not in ("0", "1") or data["attribution_verified"] != "0":
+                raise ValueError("invalid Streamline context or attribution claim")
+            context = {"available": data["available"] == "1",
+                       "call": number(data["sl_call"]), "viewport": number(data["viewport"], 32),
+                       "frame": number(data["frame"], hexadecimal=True),
+                       "commands": number(data["commands"], hexadecimal=True)}
+            if context["available"]:
+                if not context["call"] or not context["frame"] or not context["commands"]:
+                    raise ValueError("incomplete available Streamline context")
+            elif any(context[name] for name in ("call", "viewport", "frame", "commands")):
+                raise ValueError("unavailable Streamline context contains identity")
+            observation["streamline"] = context
+            continue
+        elif kind == "NGX_SR_CONTEXT":
             phase = data["phase"]
             if version < 3 or phase not in ("before", "after") or phase in observation["contexts"]:
                 raise ValueError("unsupported or duplicate context")
@@ -190,6 +209,11 @@ def parse(text):
         observation["scalar_records_complete"] = not observation["missing_scalars"]
         before, after = (observation["contexts"].get(phase) for phase in ("before", "after"))
         observation["context_records_complete"] = before is not None and after is not None
+        streamline = observation.get("streamline")
+        observation["streamline_context_record_present"] = streamline is not None
+        observation["synchronous_streamline_command_match"] = bool(
+            streamline and streamline["available"] and "identity" in observation and
+            streamline["commands"] == observation["identity"]["commands"])
         observation["stable_pending_eye_tag"] = bool(before and after and before == after
             and before["available"] and before["queued"] == 1 and before["eye"] in (0, 1)
             and before["pose"] and before["arms"])

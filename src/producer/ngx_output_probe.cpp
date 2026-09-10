@@ -9,6 +9,9 @@
 #include "producer/generated_stereo.h"
 #include "producer/ngx_gpu_timing.h"
 #include "producer/ngx_sr_observation.h"
+#include "producer/ngx_sr_streamline_context.h"
+#include "producer/streamline_abi_2_7_30.h"
+#include "producer/guarded_copy.h"
 #include "producer/bounded_diagnostic.h"
 #include <MinHook.h>
 #include <d3d12.h>
@@ -31,6 +34,10 @@ using Create = std::uint32_t (*)(void*, std::uint32_t, const void*, void**);
 using Release = std::uint32_t (*)(const void*);
 Create original_create{};
 Release original_release{};
+using SlEvaluate = int (*)(std::uint32_t, const void*, const void* const*, std::uint32_t, void*);
+SlEvaluate original_sl_evaluate{};
+thread_local NgxSrStreamlineContext active_sr_streamline;
+std::atomic<std::uint64_t> sl_evaluation_calls{};
 NgxFeatureRegistry feature_registry;
 HMODULE runtime{};
 HANDLE log_file = INVALID_HANDLE_VALUE;
@@ -108,6 +115,30 @@ bool verified_parameters(const void* parameters, std::size_t slot) {
   return getter && GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
       GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
       reinterpret_cast<LPCWSTR>(getter), &owner) && owner == runtime;
+}
+
+int sl_evaluate_hook(std::uint32_t feature, const void* frame,
+                     const void* const* inputs, std::uint32_t count, void* commands) {
+  if (sr_observation_budget.exhausted())
+    return original_sl_evaluate(feature, frame, inputs, count, commands);
+  NgxSrStreamlineContext next;
+  const auto call = sl_evaluation_calls.fetch_add(1, std::memory_order_relaxed) + 1;
+  // Only the observed one-viewport SR form is labelled. No chained structures
+  // are followed, and unknown/nested feature calls cannot inherit an SR label.
+  if (feature == 0 && call <= kCallLimit && count == 1 && frame && commands) {
+    const void* input{};
+    streamline_2_7_30::ViewportHandle viewport{};
+    constexpr streamline_2_7_30::StructType viewport_type{
+        0x171b6435, 0x9b3c, 0x4fc8, {0x99,0x94,0xfb,0xe5,0x25,0x69,0xaa,0xa4}};
+    if (inputs && safe_copy_bytes(&input, inputs, sizeof(input)) && input &&
+        safe_copy_bytes(&viewport, input, sizeof(viewport)) &&
+        viewport.base.struct_version == 1 &&
+        std::memcmp(&viewport.base.struct_type, &viewport_type, sizeof(viewport_type)) == 0) {
+      next = {true, viewport.value, call, frame, commands};
+    }
+  }
+  NgxSrStreamlineScope scope(active_sr_streamline, next);
+  return original_sl_evaluate(feature, frame, inputs, count, commands);
 }
 
 void write_line(const char* line, std::size_t length) {
@@ -282,6 +313,13 @@ std::uint32_t evaluate_hook(void* commands, const void* feature,
       sr_observation_budget.reserve(true, true, identity.kind, identity.lifetime,
           verified_parameters(parameters, ngx::kGetD3D12ResourceSlot));
   if (sr_observed) {
+    char line[384]{};
+    const auto length = format_ngx_sr_streamline_context(line, sizeof(line), call, active_sr_streamline);
+    if (length > 0 && static_cast<std::size_t>(length) < sizeof(line)) {
+      std::scoped_lock lock(log_mutex);
+      DWORD written{};
+      WriteFile(sr_log, line, static_cast<DWORD>(length), &written, nullptr);
+    }
     record_sr_context(call, "before");
     record_sr_inputs(call, commands, feature, parameters, identity, window);
   }
@@ -690,7 +728,7 @@ bool install_ngx_output_probe(HMODULE capture_module, NgxSrEyeContextReader cont
     if (observe_sr_inputs) {
       char sr_header[384]{};
       const auto sr_length = std::snprintf(sr_header, sizeof(sr_header),
-          "ngx_sr_probe=armed schema=4 runtime=32.0.16.1088 resource_get_slot=9 "
+          "ngx_sr_probe=armed schema=5 runtime=32.0.16.1088 resource_get_slot=9 "
           "float_get_slot=14 integer_get_slot=11 unsigned_get_slot=12 "
           "call_limit=32768 sample_limit=64 wait_for_stereo=%u pixels_captured=0 publication=0\n",
           wait_for_stereo ? 1U : 0U);
@@ -720,6 +758,14 @@ bool install_ngx_output_probe(HMODULE capture_module, NgxSrEyeContextReader cont
     return false;
   }
   probe_installed.store(true, std::memory_order_release);
+  if (observe_sr_inputs) {
+    const auto interposer = GetModuleHandleW(L"sl.interposer.dll");
+    const auto sl_target = interposer ? GetProcAddress(interposer, "slEvaluateFeature") : nullptr;
+    // Failure leaves the optional context explicitly unavailable. It must not
+    // disable existing NGX capture or change rendering behaviour.
+    if (sl_target) MH_CreateHook(reinterpret_cast<void*>(sl_target), &sl_evaluate_hook,
+                                reinterpret_cast<void**>(&original_sl_evaluate));
+  }
   return true;
 }
 }  // namespace darktidevr::producer

@@ -39,6 +39,27 @@ def trace(records, gate=1):
 
 
 class SrObservationReader(unittest.TestCase):
+    def test_streamline_context_missing_mismatch_and_invalid_records(self):
+        header = reader.STREAMLINE_HEADER.format(gate=1) + "\n"
+        record = "NGX_SR_STREAMLINE call=12 available=1 sl_call=9 viewport=0 frame=1234 commands=5678 attribution_verified=0"
+        suffix = "\n" + "\n".join(inputs() + [evaluation()])
+        matched = reader.parse(header + record + suffix)["observations"][0]
+        self.assertTrue(matched["synchronous_streamline_command_match"])
+        mismatched = reader.parse(header + record.replace("commands=5678", "commands=abcd") + suffix)["observations"][0]
+        self.assertFalse(mismatched["synchronous_streamline_command_match"])
+        missing = reader.parse(header + suffix)["observations"][0]
+        self.assertFalse(missing["streamline_context_record_present"])
+        unavailable = "NGX_SR_STREAMLINE call=12 available=0 sl_call=0 viewport=0 frame=0 commands=0 attribution_verified=0"
+        self.assertFalse(reader.parse(header + unavailable + suffix)["observations"][0]["synchronous_streamline_command_match"])
+        for invalid in (record.replace("attribution_verified=0", "attribution_verified=1"),
+                        record.replace("available=1", "available=0"),
+                        record.replace("frame=1234", "frame=0"),
+                        record.replace("viewport=0", "viewport=4294967296"),
+                        record + "\n" + record):
+            with self.assertRaises(ValueError): reader.parse(header + invalid + suffix)
+        with self.assertRaises(ValueError):
+            reader.parse(reader.CREATION_HEADER.format(gate=1) + "\n" + record)
+
     def test_creation_flags_unknown_reserved_and_lifetime_consistency(self):
         header = reader.CREATION_HEADER.format(gate=1) + "\n"
         prefix = "NGX_SR_SCALAR call=12 name=DLSS.Feature.Create.Flags type=integer "
@@ -61,13 +82,15 @@ class SrObservationReader(unittest.TestCase):
     def test_actual_native_record_formatter(self):
         result = subprocess.run([NATIVE, "--emit-records"], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        report = reader.parse(reader.CREATION_HEADER.format(gate=1) + "\n" + result.stdout)
+        report = reader.parse(reader.STREAMLINE_HEADER.format(gate=1) + "\n" + result.stdout)
         self.assertEqual(report["complete_calls"], 1)
         observation = report["observations"][0]
         self.assertTrue(observation["context_records_complete"])
         self.assertTrue(observation["stable_pending_eye_tag"])
         self.assertFalse(report["eye_attribution_verified"])
         self.assertTrue(observation["scalar_records_complete"])
+        self.assertTrue(observation["synchronous_streamline_command_match"])
+        self.assertEqual(observation["streamline"]["viewport"], 3)
         self.assertEqual(observation["creation_flags"]["bits"], 67)
         self.assertTrue(observation["creation_flags"]["motion_vectors_low_resolution"])
         self.assertFalse(observation["creation_flags"]["motion_vectors_jittered"])

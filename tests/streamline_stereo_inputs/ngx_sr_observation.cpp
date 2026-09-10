@@ -1,5 +1,6 @@
 #include "producer/ngx_sr_observation.h"
 #include "producer/ngx_sr_eye_context.h"
+#include "producer/ngx_sr_streamline_context.h"
 #include <atomic>
 #include <cstring>
 #include <iostream>
@@ -17,6 +18,9 @@ int main(int argc, char** argv) {
     using namespace darktidevr::producer;
     char identity{};
     char line[768]{};
+    expect(format_ngx_sr_streamline_context(line, sizeof(line), 12,
+        {true, 3, 17, &identity, &identity}) > 0);
+    std::cout << line;
     for (const auto* phase : {"before", "after"}) {
       expect(format_ngx_sr_eye_context(line, sizeof(line), 12, phase, true,
                                       {1, 42, 1, 9, 0}) > 0);
@@ -61,6 +65,20 @@ int main(int argc, char** argv) {
         "Jitter.Offset.X", "float", true, 1, value);
     expect(std::strstr(scalar_line, "valid=0 value=unavailable") != nullptr);
   }
+  // Nested unrelated scopes and exceptions cannot leak the outer viewport.
+  darktidevr::producer::NgxSrStreamlineContext current;
+  char frame{}, commands{};
+  {
+    darktidevr::producer::NgxSrStreamlineScope outer(current, {true, 7, 1, &frame, &commands});
+    expect(current.available && current.viewport == 7);
+    try {
+      darktidevr::producer::NgxSrStreamlineScope nested(current, {});
+      expect(!current.available && current.commands == nullptr);
+      throw std::runtime_error("test unwind");
+    } catch (const std::runtime_error&) {}
+    expect(current.available && current.viewport == 7 && current.commands == &commands);
+  }
+  expect(!current.available && current.call == 0);
   // Excluded calls must neither query resources nor consume the later window.
   for (unsigned i = 0; i < 128; ++i) {
     expect(!budget.reserve(false, true, 1, 1, true));
