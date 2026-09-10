@@ -9,6 +9,9 @@ struct DispatchBundleSample {
   bool valid{};
   std::uint32_t kernel_flags{};
   bool kernel_flags_valid{};
+  std::uint64_t resource_tag{};
+  std::uint32_t object_tag{}, batch_tag{}, kernel_handle{};
+  bool kernel_identity_valid{};
 };
 struct DispatchBundleProbe {
   std::uint32_t attempted{};
@@ -58,6 +61,21 @@ DispatchBundleProbe probe_dispatch_bundles(std::uint64_t data, std::uint32_t cou
       sample.kernel_flags_valid = read(buffer.data + bundle.offset + command.payload + 0x1c,
           &sample.kernel_flags, sizeof(sample.kernel_flags));
     if (!sample.kernel_flags_valid) sample.kernel_flags = 0;
+    // Metadata consumed by the engine's resource/object/batch diagnostic tags
+    // and its compute-kernel lookup. Never follow the resource handle here.
+    struct KernelIdentity {
+      std::uint64_t resource;
+      std::uint32_t object, batch, ignored[3], handle;
+    } identity{};
+    static_assert(sizeof(KernelIdentity) == 32);
+    if (command.opcode == 0x23 && command.bytes - command.payload >= 0x78 &&
+        read(buffer.data + bundle.offset + command.payload + 0x58, &identity, sizeof(identity))) {
+      sample.resource_tag = identity.resource;
+      sample.object_tag = identity.object;
+      sample.batch_tag = identity.batch;
+      sample.kernel_handle = identity.handle;
+      sample.kernel_identity_valid = true;
+    }
   }
   return result;
 }

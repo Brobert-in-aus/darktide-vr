@@ -46,6 +46,15 @@ int main() {
   write(0x202c, std::uint32_t(3));
   const auto kernel = probe_dispatch_bundles(0x10000, 1, read);
   expect(kernel.samples[0].kernel_flags_valid && kernel.samples[0].kernel_flags == 3);
+  expect(!kernel.samples[0].kernel_identity_valid);
+  write(0x2004, std::uint32_t(144));
+  write(0x2068, std::uint64_t(0x123456789abcdef0));
+  write(0x2070, std::uint32_t(7));
+  write(0x2074, std::uint32_t(8));
+  write(0x2084, std::uint32_t(9));
+  const auto identity = probe_dispatch_bundles(0x10000, 1, read);
+  expect(identity.samples[0].kernel_identity_valid && identity.samples[0].resource_tag == 0x123456789abcdef0 &&
+         identity.samples[0].object_tag == 7 && identity.samples[0].batch_tag == 8 && identity.samples[0].kernel_handle == 9);
   write(0x2004, std::uint32_t(16));
   write(16, std::uint32_t(250)); // Bundle extends beyond used bytes.
   expect(!probe_dispatch_bundles(0x10000, 16, read).samples[0].valid);

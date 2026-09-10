@@ -39,7 +39,7 @@ def read_bundle_samples(row, count):
         if valid not in ("0", "1") or index != expected or not 0 <= flags <= 0xffffffff or not 0 <= opcode <= 0xffff:
             raise ValueError("Invalid bundle position, flags or opcode")
         if valid == "0":
-            if flags or opcode or row.get(f"bundle{i}_kernel_valid", "0") != "0" or int(row.get(f"bundle{i}_kernel_flags", "0")):
+            if flags or opcode or row.get(f"bundle{i}_kernel_valid", "0") != "0" or int(row.get(f"bundle{i}_kernel_flags", "0")) or row.get(f"bundle{i}_identity_valid", "0") != "0":
                 raise ValueError("Unreadable bundle contains command metadata")
             continue
         category = 3 if flags & 0x80000000 else 2 if flags & 0x20 else 1 if flags & 4 else 0
@@ -50,7 +50,14 @@ def read_bundle_samples(row, count):
         if (kernel_valid == "1" and opcode != 0x23) or (kernel_valid == "0" and kernel_flags):
             raise ValueError("Kernel flags lack an eligible command")
         kernel_flags = kernel_flags if kernel_valid == "1" else None
-        result.append((category, flags, opcode, kernel_flags, kernel_route(flags, kernel_flags)))
+        identity_valid = row.get(f"bundle{i}_identity_valid", "0")
+        resource = int(row.get(f"bundle{i}_resource_tag", "0"), 16)
+        identity = (resource, *(int(row.get(f"bundle{i}_{key}", "0")) for key in ("object_tag", "batch_tag", "kernel_handle")))
+        if identity_valid not in ("0", "1") or not 0 <= resource <= 0xffffffffffffffff or any(not 0 <= x <= 0xffffffff for x in identity[1:]):
+            raise ValueError("Invalid kernel identity")
+        if (identity_valid == "1" and opcode != 0x23) or (identity_valid == "0" and any(identity)):
+            raise ValueError("Kernel identity lacks an eligible command")
+        result.append((category, flags, opcode, kernel_flags, kernel_route(flags, kernel_flags), identity if identity_valid == "1" else None))
     return attempted, result
 
 def analyze(directory: Path) -> dict:
@@ -102,6 +109,7 @@ def analyze(directory: Path) -> dict:
     chunks = []
     bundle_attempted = 0
     bundle_observations = collections.Counter()
+    kernel_identities = collections.Counter()
     peer_locations, dispatch_peer_locations = collections.Counter(), collections.Counter()
     peer_thread = receipt.get("peer_thread", 0)
     def peer_location(row):
@@ -167,7 +175,8 @@ def analyze(directory: Path) -> dict:
                             layouts.append(layout)
                             attempted, observed = read_bundle_samples(row, layout["weighted_commands"])
                             bundle_attempted += attempted
-                            bundle_observations.update(observed)
+                            bundle_observations.update(x[:5] for x in observed)
+                            kernel_identities.update((x[0], x[4], *x[5]) for x in observed if x[5] is not None)
                             if row.get("chunks_read") == "1":
                                 count = int(row["chunk_count"])
                                 if not 1 <= count <= 32 or int(row["boundary_count"]) != count:
@@ -231,6 +240,12 @@ def analyze(directory: Path) -> dict:
             "observed": [{"category": category, "flags": hex(flags), "first_opcode": hex(opcode),
                           "kernel_flags": hex(kernel) if kernel is not None else None, "candidate_route": route, "samples": n}
                          for (category, flags, opcode, kernel, route), n in bundle_observations.most_common()],
+        },
+        "dispatch_kernel_identities": {
+            "scope": "run-local kernel handles and diagnostic tags; no name, GPU completion or timing attribution inferred",
+            "observed": [{"category": category, "candidate_route": route, "resource_tag": hex(resource),
+                          "object_tag": hex(obj), "batch_tag": hex(batch), "kernel_handle": handle, "samples": n}
+                         for (category, route, resource, obj, batch, handle), n in kernel_identities.most_common()],
         },
         "paired_residency": {
             "thread": peer_thread or None,

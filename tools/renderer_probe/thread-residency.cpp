@@ -194,7 +194,10 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
   std::printf(",chunks_read,chunk_count,boundary_count");
   for (unsigned i = 0; i < 32; ++i) std::printf(",chunk_start%u", i);
   std::printf(",bundle_attempted");
-  for (unsigned i = 0; i < 8; ++i) std::printf(",bundle%u_valid,bundle%u_index,bundle%u_flags,bundle%u_opcode,bundle%u_kernel_valid,bundle%u_kernel_flags", i, i, i, i, i, i);
+  for (unsigned i = 0; i < 8; ++i) {
+    std::printf(",bundle%u_valid,bundle%u_index,bundle%u_flags,bundle%u_opcode,bundle%u_kernel_valid,bundle%u_kernel_flags", i, i, i, i, i, i);
+    std::printf(",bundle%u_identity_valid,bundle%u_resource_tag,bundle%u_object_tag,bundle%u_batch_tag,bundle%u_kernel_handle", i, i, i, i, i);
+  }
   if (peer_tid) {
     std::printf(",peer_thread,peer_read,peer_rip,peer_rsp,peer_stack_read");
     for (unsigned i = 0; i < 64; ++i) std::printf(",peer_s%u", i);
@@ -212,9 +215,12 @@ void capture(DWORD pid, DWORD tid, unsigned count, unsigned interval,
     std::printf(",%u,%lu,%lu", unsigned(sample.chunks_read), sample.chunk_count, sample.boundary_count);
     for (const auto value : sample.chunk_starts) std::printf(",%lu", value);
     std::printf(",%u", sample.bundles.attempted);
-    for (const auto& bundle : sample.bundles.samples)
+    for (const auto& bundle : sample.bundles.samples) {
       std::printf(",%u,%u,%u,%u,%u,%u", unsigned(bundle.valid), bundle.index, bundle.flags, bundle.opcode,
           unsigned(bundle.kernel_flags_valid), bundle.kernel_flags);
+      std::printf(",%u,0x%llx,%u,%u,%u", unsigned(bundle.kernel_identity_valid),
+          static_cast<unsigned long long>(bundle.resource_tag), bundle.object_tag, bundle.batch_tag, bundle.kernel_handle);
+    }
     if (peer_tid) {
       std::printf(",%lu,%u,0x%llx,0x%llx,%u", peer_tid, unsigned(sample.peer_read),
           sample.peer_rip, sample.peer_rsp, unsigned(sample.peer_stack_read));

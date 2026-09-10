@@ -47,7 +47,7 @@ The existing exact-build dispatch-wait sampler now reads eight evenly spaced
 positions in the sorted descriptor array at dispatcher RBP−30. It follows each
 descriptor's owner only far enough to validate the buffer bounds and read the
 first command header, plus the one branch flag word for opcode 23. At most 32
-reads plus the descriptor-array pointer occur at an admitted wait; failed reads remain absent. No GPU
+reads plus the descriptor-array pointer occur at an admitted wait in the branch-flag version; failed reads remain absent. No GPU
 resources or target state are modified. Other workers continue running, so
 these are sequential observations. A candidate branch is not proof that its
 GPU command executed successfully.
@@ -116,3 +116,54 @@ Local static evidence is under `artifacts/unattended`:
 `engine-dispatch-strings-20260911.txt`.
 Live evidence: `synthetic-dispatch-bundles-20260911/thread-residency/`.
 Follow-up: `synthetic-dispatch-routes-20260911/thread-residency/`.
+
+## Compute identities — 11 September follow-up
+
+The identity extension reads a further 32 bytes at opcode-23 payload +58:
+resource tag (64 bits), object and batch tags (32 bits each), three uninterpreted
+words, and the runtime kernel handle at +74. These are the fields consumed by
+the engine diagnostics and compute lookup. It does not follow that handle or
+read shader resources. The bound is now 40 reads plus the array pointer per
+admitted wait. Older captures retain unknown identities.
+
+`synthetic-dispatch-identities-20260911/thread-residency/` completed 1,000 samples,
+with 736 valid descriptors at 92 admitted waits. Mean pause was 58.74 microseconds,
+maximum 441.9. The sampler SHA-256 was
+`0C23557AA4A800F8139E1287CF26408E47B25AECB85F7B1E5A8068BB2BF8B077`.
+Category-2 compute observations contained 20 distinct resource tags. The two
+batch tags resolve as follows, retaining the engine's spelling:
+
+| Batch tag | Engine label |
+| --- | --- |
+| `2765d852` | `gpu_visalizer_sim` |
+| `372353f4` | `gpu_visalizer_emit` |
+
+The identification uses Stingray's upper 32 bits of MurmurHash64A with seed zero,
+checked against 44 independently known shader-library path hashes. A search of
+243,172 local executable/source candidate tokens found these two matching batch
+labels, but no names for the 20 resource tags. A hash match alone is not a unique
+name guarantee; the static references provide additional evidence: initializers
+at RVA 19ef20/19efa0 store emit/sim hashes at 12dc7f0/12dc7dc, and the particle
+batch builder at 563770 consumes those globals at 563df2/563e20. All RVAs refer
+to the exact executable hash specified above in this document.
+
+This identifies sampled particle emission/simulation work, not its time share
+or a duplicate-per-eye count. Builder 563770 gates the two batches on object
+byte +514; its caller at 46df7b also selects between paths. Establishing the
+lifetime of that flag and how the caller runs across views is the next step.
+No simulation suppression or queue-policy change is justified yet.
+
+The mission used Quality DLSS, FG off, unlimited native cap, saved 2496x2688
+per-eye resolution, 120 Hz, HUD/menu on, preview/debug off and the focused
+Present CPU profiler. It exited cleanly, restored saved files, and recorded
+zero pose mismatches. Physical readiness was unavailable; this was the
+authorized simulator fallback. GPU recording returned 21 valid and one
+unavailable sample with no sampled Streamer engine above the busy threshold;
+coverage remains incomplete. Normal proximity handling was restored.
+
+Validation: Windows x64 Release build; CTest `dispatch_bundle_probe` and
+`thread_residency_self` (2/2); five bundle-reader tests and the unwind-index
+regression passed. Local supporting records include
+`dispatch-identity-name-candidates-20260911.json`,
+`engine-particle-batch-construction-20260911.txt` and
+`engine-particle-batch-caller-20260911.txt` under `artifacts/unattended`.

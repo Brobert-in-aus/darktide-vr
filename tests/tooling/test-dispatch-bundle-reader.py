@@ -47,8 +47,19 @@ class BundleReaderTests(unittest.TestCase):
         self.assertEqual(reader.kernel_route(4, 0), 'direct_draw_candidate')
         row = self.row()
         row.update(bundle2_kernel_valid='1', bundle2_kernel_flags='3')
-        self.assertEqual(reader.read_bundle_samples(row, 4)[1][2][-1], 'compute_async_queue_candidate')
+        self.assertEqual(reader.read_bundle_samples(row, 4)[1][2][4], 'compute_async_queue_candidate')
         row['bundle2_opcode'] = '6'
         with self.assertRaises(ValueError): reader.read_bundle_samples(row, 4)
+
+    def test_kernel_identity_unknown_and_bounds(self):
+        row = self.row()
+        self.assertIsNone(reader.read_bundle_samples(row, 4)[1][2][5])
+        row.update(bundle2_identity_valid='1', bundle2_resource_tag='0x123456789abcdef0',
+                   bundle2_object_tag='7', bundle2_batch_tag='8', bundle2_kernel_handle='9')
+        self.assertEqual(reader.read_bundle_samples(row, 4)[1][2][5], (0x123456789abcdef0, 7, 8, 9))
+        for key, value in [('bundle2_identity_valid', '0'), ('bundle2_resource_tag', '0x10000000000000000'),
+                           ('bundle2_kernel_handle', '-1'), ('bundle2_object_tag', '4294967296'),
+                           ('bundle2_opcode', '6')]:
+            with self.assertRaises(ValueError): reader.read_bundle_samples({**row, key:value}, 4)
 
 if __name__ == '__main__': unittest.main()
