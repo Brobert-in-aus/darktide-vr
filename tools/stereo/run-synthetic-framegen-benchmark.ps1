@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)] [ValidateSet('On','Off')] [string] $FrameGeneration,
     [ValidateSet('Preserve','Unlimited')] [string] $FrameRateLimit = 'Preserve',
+    [switch] $ClusterLightTrace,
     [Parameter(Mandatory)] [string] $RuntimeJson,
     [Parameter(Mandatory)] [ValidatePattern('^[a-fA-F0-9]{64}$')] [string] $RuntimeSha256,
     [Parameter(Mandatory)] [string] $OutputDirectory,
@@ -69,6 +70,8 @@ try {
         ForEach-Object { "darktidevr_streamline_$_.flag" }
     $flagNames += 'darktidevr_ngx_output_probe.flag'
     foreach ($name in $flagNames) { Save-BenchmarkFile (Join-Path $modPath $name) }
+    $clusterTraceFlag = Join-Path $modPath 'bin/darktidevr_cluster_trace.flag'
+    if($ClusterLightTrace) { Save-BenchmarkFile $clusterTraceFlag }
     $nativeTargets = @((Join-Path $GameRoot 'binaries/darktidevr_native_capture.dll'),
         (Join-Path $modPath 'bin/darktidevr_native_capture.dll'))
     if ($NativeDllPath) {
@@ -94,6 +97,7 @@ try {
         foreach ($path in $nativeTargets) { [IO.File]::WriteAllBytes($path,[IO.File]::ReadAllBytes($NativeDllPath)) }
     }
     [IO.File]::WriteAllText($SettingsPath,$settings,[Text.UTF8Encoding]::new($false))
+    if($ClusterLightTrace) { [IO.File]::WriteAllText($clusterTraceFlag,"enabled=1`r`n") }
     if (-not $enabled) {
         foreach ($name in @('darktidevr_streamline_stereo_submit_probe.flag',
             'darktidevr_streamline_stereo_stage_probe.flag','darktidevr_ngx_output_probe.flag')) {
@@ -124,6 +128,7 @@ try {
         harness_sha256=(Get-FileHash $HarnessPath -Algorithm SHA256).Hash
         native_sha256=(Get-FileHash (Join-Path $GameRoot 'binaries/darktidevr_native_capture.dll') -Algorithm SHA256).Hash
         duration_seconds=$DurationSeconds; preview_fps=0; physical_xr_ready=$false
+        cluster_trace=(Test-Path -LiteralPath $clusterTraceFlag)
     }
     $receipt | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'configuration.json') -Encoding utf8
     # This consumer is also the sole synthetic head publisher. Do not launch
@@ -201,13 +206,20 @@ if (Test-Path -LiteralPath $launchPath) {
         $gamePidText = $gamePidMatch.Groups[1].Value
         foreach ($name in @("darktidevr-generated-stereo-$gamePidText.log",
             "darktidevr-ngx-output-$gamePidText.log", "darktidevr-ngx-timing-$gamePidText.log",
-            "darktidevr-ngx-gpu-timing-$gamePidText.log",'darktidevr-streamline-probe.tsv')) {
+            "darktidevr-ngx-gpu-timing-$gamePidText.log",'darktidevr-streamline-probe.tsv',
+            'darktidevr-cluster-trace.log')) {
             $path = Join-Path $env:TEMP $name
             if (Test-Path -LiteralPath $path) {
-                [IO.File]::WriteAllText((Join-Path $OutputDirectory $name),[IO.File]::ReadAllText($path))
+                $logText = [IO.File]::ReadAllText($path)
+                if($name -eq 'darktidevr-cluster-trace.log' -and
+                    $logText -notmatch "(?m)^CLUSTER_TRACE_BEGIN`tpid=$gamePidText`r?$") { continue }
+                [IO.File]::WriteAllText((Join-Path $OutputDirectory $name),$logText)
             }
         }
     }
+}
+if($ClusterLightTrace -and -not (Test-Path (Join-Path $OutputDirectory 'darktidevr-cluster-trace.log')) -and -not $failure) {
+    $failure = 'No cluster trace belongs to this game process; stale logs were rejected.'
 }
 if (Test-Path -LiteralPath (Join-Path $OutputDirectory 'recovery/manifest.json')) {
     $restoration = foreach ($entry in (Get-Content (Join-Path $OutputDirectory 'recovery/manifest.json') -Raw | ConvertFrom-Json)) {

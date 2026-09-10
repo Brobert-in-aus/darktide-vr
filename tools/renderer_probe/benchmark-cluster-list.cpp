@@ -22,19 +22,22 @@ struct Event {
   ~Event() { if(value) CloseHandle(value); }
 };
 int wmain(int argc,wchar_t** argv) try {
-  bool debug{},buffer_input{};
-  std::filesystem::path shader_path;
+  bool debug{},buffer_input{},deferred_trace{};
+  std::filesystem::path shader_path,native_path;
   for(int i=1;i<argc;++i) {
     const std::wstring_view argument=argv[i];
     if(argument==L"--debug") debug=true;
     else if(argument==L"--buffer-input") buffer_input=true;
+    else if(argument==L"--deferred-trace") deferred_trace=true;
+    else if(argument==L"--native-dll" && i+1<argc) native_path=argv[++i];
     else if(!shader_path.empty() || argument.starts_with(L"--")) throw std::runtime_error("Unknown argument");
     else shader_path=argv[i];
   }
   if(shader_path.empty()) {
-    std::cerr << "Usage: benchmark-cluster-list [--debug] [--buffer-input] decoded-writer.dxbc\n";
+    std::cerr << "Usage: benchmark-cluster-list [--debug] [--buffer-input] [--native-dll PATH [--deferred-trace]] decoded-writer.dxbc\n";
     return 2;
   }
+  if(deferred_trace && native_path.empty()) throw std::runtime_error("Deferred trace requires a native DLL and its trace flag");
   if(debug) { ComPtr<ID3D12Debug> layer; ok(D3D12GetDebugInterface(IID_PPV_ARGS(&layer))); layer->EnableDebugLayer(); }
   ComPtr<IDXGIFactory6> factory; ok(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
   ComPtr<IDXGIAdapter1> adapter;
@@ -43,6 +46,22 @@ int wmain(int argc,wchar_t** argv) try {
   if(adapter_desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) throw std::runtime_error("Hardware required");
   std::wcout << L"adapter=" << adapter_desc.Description << L'\n';
   ComPtr<ID3D12Device> device; ok(D3D12CreateDevice(adapter.Get(),D3D_FEATURE_LEVEL_11_0,IID_PPV_ARGS(&device)));
+  int (*set_projection)(int){};
+  if(!native_path.empty()) {
+    if(!SetEnvironmentVariableW(L"DARKTIDEVR_TEST_TRANSPORTS",L"1")) throw std::runtime_error("Transport isolation failed");
+    // Hooks remain installed until process exit; do not unload their module.
+    const auto module=LoadLibraryW(std::filesystem::absolute(native_path).c_str());
+    if(!module) throw std::runtime_error("Native fixture DLL unavailable");
+    const auto enable=reinterpret_cast<int(*)()>(GetProcAddress(module,"dtvr_enable_cluster_trace"));
+    const auto install=reinterpret_cast<int(*)(ID3D12Device*)>(GetProcAddress(module,"dtvr_install_for_device"));
+    const auto deferred=reinterpret_cast<int(*)()>(GetProcAddress(module,"dtvr_install"));
+    set_projection=reinterpret_cast<int(*)(int)>(GetProcAddress(module,"dtvr_set_projection_active"));
+    if(!enable || !install || !deferred || !set_projection)
+      throw std::runtime_error("Native fixture exports unavailable");
+    const auto result=deferred_trace?deferred():(enable()==0?install(device.Get()):43);
+    if(result!=0 || set_projection(1)!=0)
+      throw std::runtime_error("Native trace installation failed");
+  }
   std::ifstream input(shader_path,std::ios::binary);
   if(!input) throw std::runtime_error("Shader unavailable");
   std::vector<char> shader((std::istreambuf_iterator<char>(input)),{});
@@ -168,6 +187,7 @@ int wmain(int argc,wchar_t** argv) try {
   for(unsigned light_count:{1U,128U,129U,500U}) for(unsigned iteration=0;iteration<4;++iteration) {
     const bool clear=(iteration%2)==0;
     ok(allocator->Reset()); ok(commands->Reset(allocator.Get(),pipeline.Get()));
+    commands->SetPipelineState(pipeline.Get());
     ID3D12DescriptorHeap* heaps[]{visible.Get()}; commands->SetDescriptorHeaps(1,heaps);
     commands->SetComputeRootSignature(root.Get()); commands->SetComputeRootDescriptorTable(0,gpu_handle(0));
     commands->SetComputeRootDescriptorTable(1,gpu_handle(1)); commands->SetComputeRootConstantBufferView(2,constants->GetGPUVirtualAddress());
@@ -176,7 +196,18 @@ int wmain(int argc,wchar_t** argv) try {
     transition(buffers[3].Get(),D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     const UINT zero[4]{},ones[4]{0xffffffffU,0xffffffffU,0xffffffffU,0xffffffffU};
     for(unsigned i=0;i<3;++i) commands->ClearUnorderedAccessViewUint(gpu_handle(i+1),cpu_handle(i,false),buffers[i].Get(),i?zero:ones,0,nullptr);
-    uav_barrier(); commands->EndQuery(queries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,0);
+    uav_barrier();
+    if(set_projection && light_count==1 && iteration==0) {
+      if(set_projection(0)!=0) throw std::runtime_error("Flat trace arm failed");
+      commands->Dispatch(1,1,1);
+      if(set_projection(1)!=0) throw std::runtime_error("World trace arm failed");
+      uav_barrier();
+      // Retire the arm dispatch and reset its heads/counters. Its short node
+      // prefix is overwritten by the first measured full-grid dispatch.
+      for(unsigned i=0;i<3;++i) commands->ClearUnorderedAccessViewUint(gpu_handle(i+1),cpu_handle(i,false),buffers[i].Get(),i?zero:ones,0,nullptr);
+      uav_barrier();
+    }
+    commands->EndQuery(queries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,0);
     if(clear) commands->ClearUnorderedAccessViewUint(gpu_handle(4),cpu_handle(3,false),buffers[3].Get(),ones,0,nullptr);
     uav_barrier(); commands->EndQuery(queries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,1);
     commands->Dispatch(4,3,light_count); uav_barrier(); commands->EndQuery(queries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,2);
@@ -212,6 +243,31 @@ int wmain(int argc,wchar_t** argv) try {
               << " iteration=" << iteration << " clear_us=" << clear_us << " writer_us=" << writer_us
               << " initialized_prefix=" << prefix << " contract=pass\n";
   }
+  // Exercise float forwarding too, using a correctly typed R32_FLOAT view.
+  // This is outside timed trials. Native mode exceeds the trace cap and checks
+  // the last clear's exact bits, establishing continued forwarding after it.
+  D3D12_UNORDERED_ACCESS_VIEW_DESC float_view{}; float_view.Format=DXGI_FORMAT_R32_FLOAT;
+  float_view.ViewDimension=D3D12_UAV_DIMENSION_BUFFER; float_view.Buffer.NumElements=capacity;
+  device->CreateUnorderedAccessView(buffers[3].Get(),nullptr,&float_view,cpu_handle(3,false));
+  device->CreateUnorderedAccessView(buffers[3].Get(),nullptr,&float_view,cpu_handle(4,true));
+  ok(allocator->Reset()); ok(commands->Reset(allocator.Get(),nullptr));
+  ID3D12DescriptorHeap* final_heaps[]{visible.Get()}; commands->SetDescriptorHeaps(1,final_heaps);
+  FLOAT final_value{};
+  for(unsigned repeat=0;repeat<(native_path.empty()?1U:70U);++repeat) {
+    final_value=1.5F+static_cast<FLOAT>(repeat);
+    const FLOAT float_values[4]{final_value,0,0,0};
+    commands->ClearUnorderedAccessViewFloat(gpu_handle(4),cpu_handle(3,false),buffers[3].Get(),float_values,0,nullptr);
+    uav_barrier();
+  }
+  transition(buffers[3].Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_SOURCE);
+  commands->CopyResource(readbacks[3].Get(),buffers[3].Get()); submit();
+  D3D12_RANGE float_range{0,SIZE_T(capacity)*4}; ok(readbacks[3]->Map(0,&float_range,&mapped));
+  const auto* float_bits=static_cast<const UINT*>(mapped);
+  UINT expected_bits{}; std::memcpy(&expected_bits,&final_value,sizeof(expected_bits));
+  const bool float_valid=std::all_of(float_bits,float_bits+capacity,[&](UINT value) { return value==expected_bits; });
+  D3D12_RANGE no_write{}; readbacks[3]->Unmap(0,&no_write);
+  if(!float_valid) throw std::runtime_error("Float clear forwarding failed");
+  std::cout << "float_clear=pass native_hooks=" << !native_path.empty() << '\n';
   if(debug) {
     ComPtr<ID3D12InfoQueue> info; ok(device.As(&info));
     for(UINT64 i=0;i<info->GetNumStoredMessagesAllowedByRetrievalFilter();++i) {

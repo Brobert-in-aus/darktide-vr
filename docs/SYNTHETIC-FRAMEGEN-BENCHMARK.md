@@ -51,6 +51,12 @@ match the expected baseline; both are restored after the simulator run. The
 default performs no native deployment and always skips blanket deployment sync.
 The simulator run does not certify physical XR readiness or worn acceptance.
 
+`-ClusterLightTrace` is an explicit diagnostic option. It temporarily owns the
+bootstrap trace flag, requires a fresh trace header matching the launched game
+PID, and restores the flag afterward. This requires the native deferred-trace
+selection fix; older native builds can leave the flag unconsumed in offline
+mode. Keep trace-enabled captures separate from performance controls.
+
 ## Functionality evidence, 10 September 2026
 
 The first simulator control delivered 2,407 fresh stereo pairs with zero pose

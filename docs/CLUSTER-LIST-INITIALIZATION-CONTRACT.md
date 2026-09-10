@@ -77,6 +77,59 @@ larger stereo delivery work. Local logs are `cluster-list-*-20260910.log` under
 
 ## Remaining work
 
+The capture candidate adds integer/float clear hooks only when cluster tracing
+is explicitly enabled. After a flat-to-world transition it records at most 64
+16 MiB buffer candidates, including CPU/GPU handles, descriptor resource/range,
+clear-value bits and rectangle count. `learned_match` distinguishes the resource
+independently identified by the grid shader's SRV from a size-only candidate.
+The existing bounded barrier stream now includes global UAV and relevant alias
+barriers. These are recording-order observations, not GPU completion times.
+
+The manual fixture's optional `--native-dll PATH` installs the capture hooks in
+process-isolated transports. Use a private TEMP/TMP directory to retain its
+logs. It verifies integer clears through both overflow boundaries, typed float
+clears, exactly 64 capture records, and continued forwarding after that limit.
+The debug layer passed after fixing an existing metadata query that requested
+a buffer address from textures. No clear arguments or execution are changed.
+
+The simulator wrapper accepts `-ClusterLightTrace`, backs up the bootstrap trace
+flag in `bin`, restores its exact previous state and copies the trace into the
+run directory. It skips blanket sync. A focused capture-only candidate based
+on the previously tested native completion fix is being used for attribution;
+trace-enabled runs are not uninstrumented performance comparisons.
+
+The first simulator attempt found that the offline bootstrap returns before
+reading the trace flag. Its inherited September 2 log was rejected and marked
+stale; settings and DLL restoration passed. The native Lua installation entry
+now honors that same explicit flag before installing hooks. Each trace begins
+with its process ID, and the wrapper rejects logs belonging to another process.
+The fixture's `--deferred-trace` mode tests this entry with a trace flag beside
+an isolated copy of the DLL, without calling the enable export first. It passed
+the debug layer, all writer checks, typed float forwarding and the 64-record cap.
+
+The retry used focused native `0214f7d`, DLL SHA-256
+`B052535F7B0085823989514B44D025E38BC51460A1F2978B8BAE86CCF31F8677`.
+Its fresh process-owned trace recorded 64 full 16 MiB raw-UAV integer clears to
+all ones: descriptor offset zero, 4,194,304 elements, no rectangle restriction.
+Twenty consecutive complete recorded frame values contained three such clears
+each, all naming the same resource. The run delivered 2,104 fresh stereo pairs,
+reported zero pose mismatches, exited cleanly and restored all saved files.
+This trace-enabled run is not a performance control.
+
+All `learned_match` values remained zero. Deferred installation missed earlier
+PSO/root-signature creation, leaving compute hashes and resolved root tables
+unknown. Dispatches matching the expected grid dimensions were observed, but
+dimensions alone do not identify a shader. The fixture's cached pipeline blobs
+were 2,606 bytes with no embedded DXBC container, so the existing cached-bytecode
+fallback cannot recover their source identity. No alias/order proof or clear
+suppression follows from this capture. The three-pass observation motivates a
+separate census of world render calls before further clear-specific work.
+
+Evidence: `synthetic-cluster-clear-deferred-20260910`,
+`uav-clear-native-fixture-20260910` and `uav-clear-deferred-fixture-20260910` under
+`artifacts/unattended`. The initial failed trace selection is separately marked
+in `synthetic-cluster-clear-20260910/trace-validation.json`.
+
 Attribute the live clear, shader bindings and barriers to the exact resource.
 Removing an
 engine clear must retain required UAV/alias ordering; changing a config boolean
