@@ -5532,12 +5532,36 @@ void stingray_upload_flush_hook(void* allocator) {
   original_stingray_upload_flush(allocator);
 }
 
+bool descriptor_copy_metadata_required(D3D12_DESCRIPTOR_HEAP_TYPE type) {
+  // Hook targets are fixed before MH_EnableHook. Follow the installed writers,
+  // not runtime menu state: a menu may open after descriptors were copied.
+  // Clean launches populate RTV metadata only; shader copies cannot add useful
+  // entries and must not contend on descriptor_mutex with render workers.
+  switch (type) {
+    case D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV:
+      return original_create_constant_buffer_view ||
+             original_create_shader_resource_view ||
+             original_create_unordered_access_view;
+    case D3D12_DESCRIPTOR_HEAP_TYPE_RTV:
+      return original_create_render_target_view != nullptr;
+    case D3D12_DESCRIPTOR_HEAP_TYPE_DSV:
+      return original_create_depth_stencil_view != nullptr;
+    case D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER:
+      return false;  // No sampler metadata writer exists.
+    default:
+      return true;
+  }
+}
+
 void STDMETHODCALLTYPE copy_descriptors_simple_hook(
     ID3D12Device* device, UINT descriptor_count,
     D3D12_CPU_DESCRIPTOR_HANDLE destination,
     D3D12_CPU_DESCRIPTOR_HANDLE source, D3D12_DESCRIPTOR_HEAP_TYPE type) {
   original_copy_descriptors_simple(device, descriptor_count, destination,
                                    source, type);
+  if (!descriptor_copy_metadata_required(type)) {
+    return;
+  }
   const auto increment = device->GetDescriptorHandleIncrementSize(type);
   std::scoped_lock lock(descriptor_mutex);
   for (UINT i = 0; i < descriptor_count; ++i) {
@@ -5564,7 +5588,8 @@ void STDMETHODCALLTYPE copy_descriptors_hook(
       device, destination_range_count, destination_range_starts,
       destination_range_sizes, source_range_count, source_range_starts,
       source_range_sizes, type);
-  if (!destination_range_starts || !source_range_starts) {
+  if (!descriptor_copy_metadata_required(type) ||
+      !destination_range_starts || !source_range_starts) {
     return;
   }
   const auto increment = device->GetDescriptorHandleIncrementSize(type);
