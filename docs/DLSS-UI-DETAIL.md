@@ -34,6 +34,36 @@ This investigation does not authorize installing the accumulated native
 candidates. Preserve the accepted mixed build and run Ready preflight before
 any new live session.
 
+### 11 September: trace the active HUD material before changing it
+
+The normal panel creates a separate UI world and overlay viewport, renders into
+its owned capture target, then copies the completed target to a separate display
+resource. The world-space bitmap samples that display resource through
+`item_container_square`, with local UVs and a one-cell atlas. It does not sample
+the capture target while that target is being authored.
+
+The resource renderer does create a material named
+`ui_render_target_straight_blur`, but its name is not evidence that the normal
+panel invokes a blur pass. In the cached stock `ui_renderer.lua`, creation binds
+and stores that material; it does not draw it automatically. The mod's explicit
+draw of this material is guarded by `not state.capture_target`, which is the
+separate same-world diagnostic path. Normal operation owns `capture_target`
+and clears the named-pass fields instead. Do not replace the material based
+only on its name or reintroduce the previously rejected live-target alias.
+
+The cached stock `ui_widget.lua` computes `material_flags_w_hdr` but never uses
+that local. This is not evidence that the world panel is composed after SR.
+The Lua draw path establishes authored geometry and resource ownership; it does
+not establish the native material's actual GPU pass, motion vectors, or location
+relative to reconstruction. Source inspection therefore gives no supported blur
+fix yet. Trace the actual panel draw and SR color input before changing masks,
+history or shader blending; retain the planned worn boundary/motion comparison.
+
+Inspected sources: the mod's `darktidevr_hud_panel.lua` resource creation,
+fixed-HUD draw hook and `HudPanel.draw`; cached stock
+`scripts/managers/ui/ui_renderer.lua` and `ui_widget.lua` at the source revision
+listed below. This was a read-only audit, with no Lua or visual setting changes.
+
 ### Keep the comparison controls independent
 
 The cached stock `scripts/settings/options/render_settings.lua` at source

@@ -39,10 +39,15 @@ described as such rather than presented as a mission-playable alpha.
 
 Keep 120 Hz / approximately 60 original + 60 generated FPS as the preferred target,
 with DLSS Quality as the tested starting point on the current RTX 4090 system.
-Today's simulator mission-start result was approximately 119.4–119.5 distinct
-images/s with FG and 73–75 FPS native. Neither establishes a minimum GPU nor a
-combat guarantee. The 144 Hz simulator result (141.85 distinct images/s) is a
-stretch result; physical 144 Hz is not a release gate.
+The 10 September simulator mission-start results were approximately 119.4–119.5
+distinct images/s with FG and 73–75 FPS native. Updated 11 September controls at
+2496x2688 per eye deliver 89.57/89.34 native FPS with the opt-in descriptor and
+native-ring candidate versus a fresh 76.47 FPS accepted-build control. Matched
+FG controls deliver approximately 120 distinct images/s at both 120 and 144 Hz;
+the higher refresh adds repeats. The older 141.85 result is not a matched control
+for this batch. Neither establishes a minimum GPU, combat guarantee or physical
+headset performance. Physical 144 Hz is not a release gate. See the
+[native-ring evidence and acceptance limits](NATIVE-ORIGINAL-RING.md).
 
 Before publishing settings guidance, measure a supported mission segment and the
 sustained session on the exact candidate. Separate original FPS, generated FPS,
