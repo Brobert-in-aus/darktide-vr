@@ -14,6 +14,7 @@ param(
     [switch] $ClusterLightTrace,
     [switch] $PresentCpuProfile,
     [switch] $DebugLayer,
+    [switch] $GpuProfile,
     [switch] $RenderApiCpuProfile,
     [switch] $ObserveDlssSrInputs,
     [string] $RenderWorldCensusSourcePath,
@@ -37,6 +38,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if ($RenderApiCpuProfile) { $PresentCpuProfile = [switch]$true }
+if ($GpuProfile -and $CpuRenderTimingSourcePath) { throw 'GPU profiling cannot be combined with the CPU-only timing control.' }
 . (Join-Path $PSScriptRoot 'resolve-darktide-game-root.ps1')
 . (Join-Path $PSScriptRoot 'synthetic-framegen-settings.ps1')
 $GameRoot = Resolve-DarktideGameRoot -GameRoot $GameRoot
@@ -130,6 +132,7 @@ try {
         'stereo_swapchain_probe','stereo_stage_probe','stereo_submit_probe') |
         ForEach-Object { "darktidevr_streamline_$_.flag" }
     $flagNames += 'darktidevr_ngx_output_probe.flag'
+    if ($GpuProfile) { $flagNames += 'darktidevr_performance_profile.flag' }
     foreach ($name in $flagNames) { Save-BenchmarkFile (Join-Path $modPath $name) }
     $clusterTraceFlag = Join-Path $modPath 'bin/darktidevr_cluster_trace.flag'
     $presentCpuFlag = Join-Path $modPath 'bin/darktidevr_present_cpu_profile.flag'
@@ -178,6 +181,7 @@ try {
         & (Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1') -SourcePath (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')
     }
     [IO.File]::WriteAllText($SettingsPath,$settings,[Text.UTF8Encoding]::new($false))
+    if ($GpuProfile) { [IO.File]::WriteAllText((Join-Path $modPath 'darktidevr_performance_profile.flag'),"enabled`r`n") }
     if($ClusterLightTrace) { [IO.File]::WriteAllText($clusterTraceFlag,"enabled=1`r`n") }
     if($PresentCpuProfile) { [IO.File]::WriteAllText($presentCpuFlag,"[probe]`r`nenabled=1`r`n") }
     if (-not $enabled) {
@@ -232,6 +236,7 @@ try {
         cpu_render_timing=[bool]$CpuRenderTimingSourcePath
         present_cpu_profile=$PresentCpuProfile.IsPresent
         debug_layer=$DebugLayer.IsPresent
+        gpu_profile=$GpuProfile.IsPresent
         render_api_cpu_profile=$RenderApiCpuProfile.IsPresent
         render_world_census_warmup=$RenderWorldCensusWarmupFrames
         lua_sha256=(Get-FileHash (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash
@@ -266,6 +271,7 @@ try {
     }
     & (Join-Path $PSScriptRoot 'start-darktide-vr.ps1') -GameRoot $GameRoot `
         -OfflineDualViewBenchmark -SkipDeploymentSync -DlssGeneratedStereo:$enabled `
+        -EnablePerformanceProfile:$GpuProfile `
         -OfflineSoloMission $SoloMission `
         -ObserveDlssSrInputs:$ObserveDlssSrInputs `
         -DurationSeconds $DurationSeconds -GameStartTimeoutSeconds $StartupTimeoutSeconds `
@@ -321,6 +327,17 @@ if ((Get-ItemPropertyValue 'HKLM:/SOFTWARE/Khronos/OpenXR/1' -Name ActiveRuntime
 $launchPath = Join-Path $OutputDirectory 'launch.log'
 if (Test-Path -LiteralPath $launchPath) {
     $launchText = [IO.File]::ReadAllText($launchPath)
+    if ($GpuProfile) {
+        $gpuConsole = [regex]::Match($launchText,'(?m)^Offline dual-view benchmark started; log=([^\r\n]+)')
+        if ($gpuConsole.Success -and (Test-Path -LiteralPath $gpuConsole.Groups[1].Value)) {
+            $gpuText = [IO.File]::ReadAllText($gpuConsole.Groups[1].Value)
+            @($gpuText -split "`n" | Where-Object { $_ -match 'DARKTIDEVR_(PERF|GPU_PERF|GPU_STAGE)' }) |
+                Set-Content (Join-Path $OutputDirectory 'gpu-profile.log') -Encoding utf8
+            if ($gpuText -notmatch 'DARKTIDEVR_GPU_PERF target=' -and -not $failure) {
+                $failure = 'Requested GPU profiling produced no eye timing evidence.'
+            }
+        } elseif (-not $failure) { $failure = 'GPU profiling has no launch-selected console log.' }
+    }
     if ($CpuRenderTimingSourcePath) {
         $timingConsole = [regex]::Match($launchText,'(?m)^Offline dual-view benchmark started; log=([^\r\n]+)')
         if ($timingConsole.Success -and (Test-Path -LiteralPath $timingConsole.Groups[1].Value)) {
