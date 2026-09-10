@@ -107,6 +107,14 @@ target_link_libraries(darktidevr-bounded-diagnostic-tests PRIVATE darktidevr_cor
 target_compile_options(darktidevr-bounded-diagnostic-tests PRIVATE /W4 /WX /permissive-)
 add_test(NAME bounded_diagnostic COMMAND darktidevr-bounded-diagnostic-tests)
 
+add_executable(darktidevr-present-cpu-profile-tests present_cpu_profile.cpp)
+target_link_libraries(darktidevr-present-cpu-profile-tests PRIVATE darktidevr_core)
+target_compile_options(darktidevr-present-cpu-profile-tests PRIVATE /W4 /WX /permissive-)
+target_compile_definitions(darktidevr-present-cpu-profile-tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+add_test(NAME present_cpu_profile_off COMMAND darktidevr-present-cpu-profile-tests)
+add_test(NAME present_cpu_profile_on COMMAND darktidevr-present-cpu-profile-tests enabled)
+set_tests_properties(present_cpu_profile_off present_cpu_profile_on PROPERTIES RUN_SERIAL TRUE)
+
 add_executable(darktidevr-resource-name-match-tests resource_name_match.cpp)
 target_link_libraries(darktidevr-resource-name-match-tests PRIVATE darktidevr_core d3d12 dxgi dxguid)
 target_compile_options(darktidevr-resource-name-match-tests PRIVATE /W4 /WX /permissive-)

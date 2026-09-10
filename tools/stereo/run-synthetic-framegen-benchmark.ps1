@@ -7,6 +7,7 @@ param(
     [ValidateRange(1,5)] [int] $SoloDifficulty = 3,
     [string] $ExpectedInstalledSoloSha256,
     [switch] $ClusterLightTrace,
+    [switch] $PresentCpuProfile,
     [switch] $ObserveDlssSrInputs,
     [string] $RenderWorldCensusSourcePath,
     [string] $CpuRenderTimingSourcePath,
@@ -122,6 +123,8 @@ try {
     $flagNames += 'darktidevr_ngx_output_probe.flag'
     foreach ($name in $flagNames) { Save-BenchmarkFile (Join-Path $modPath $name) }
     $clusterTraceFlag = Join-Path $modPath 'bin/darktidevr_cluster_trace.flag'
+    $presentCpuFlag = Join-Path $modPath 'bin/darktidevr_present_cpu_profile.flag'
+    if ($PresentCpuProfile) { Save-BenchmarkFile $presentCpuFlag }
     if($ClusterLightTrace) { Save-BenchmarkFile $clusterTraceFlag }
     $nativeTargets = @((Join-Path $GameRoot 'binaries/darktidevr_native_capture.dll'),
         (Join-Path $modPath 'bin/darktidevr_native_capture.dll'))
@@ -167,6 +170,7 @@ try {
     }
     [IO.File]::WriteAllText($SettingsPath,$settings,[Text.UTF8Encoding]::new($false))
     if($ClusterLightTrace) { [IO.File]::WriteAllText($clusterTraceFlag,"enabled=1`r`n") }
+    if($PresentCpuProfile) { [IO.File]::WriteAllText($presentCpuFlag,"[probe]`r`nenabled=1`r`n") }
     if (-not $enabled) {
         foreach ($name in @('darktidevr_streamline_stereo_submit_probe.flag',
             'darktidevr_streamline_stereo_stage_probe.flag','darktidevr_ngx_output_probe.flag')) {
@@ -208,6 +212,7 @@ try {
         observe_dlss_sr_inputs=$ObserveDlssSrInputs.IsPresent
         render_world_census=[bool]$RenderWorldCensusSourcePath
         cpu_render_timing=[bool]$CpuRenderTimingSourcePath
+        present_cpu_profile=$PresentCpuProfile.IsPresent
         render_world_census_warmup=$RenderWorldCensusWarmupFrames
         lua_sha256=(Get-FileHash (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash
     }
@@ -330,6 +335,7 @@ if (Test-Path -LiteralPath $launchPath) {
     if ($gamePidMatch.Success) {
         $gamePidText = $gamePidMatch.Groups[1].Value
         foreach ($name in @("darktidevr-generated-stereo-$gamePidText.log",
+            "darktidevr-present-cpu-$gamePidText.log",
             "darktidevr-ngx-sr-$gamePidText.log",
             "darktidevr-ngx-output-$gamePidText.log", "darktidevr-ngx-timing-$gamePidText.log",
             "darktidevr-ngx-gpu-timing-$gamePidText.log",'darktidevr-streamline-probe.tsv',
@@ -346,6 +352,12 @@ if (Test-Path -LiteralPath $launchPath) {
 }
 if($ClusterLightTrace -and -not (Test-Path (Join-Path $OutputDirectory 'darktidevr-cluster-trace.log')) -and -not $failure) {
     $failure = 'No cluster trace belongs to this game process; stale logs were rejected.'
+}
+if ($PresentCpuProfile -and -not $failure) {
+    $cpuLogs = @(Get-ChildItem -LiteralPath $OutputDirectory -Filter 'darktidevr-present-cpu-*.log' -File)
+    if ($cpuLogs.Count -ne 1 -or [regex]::Matches([IO.File]::ReadAllText($cpuLogs[0].FullName),'(?m)^PRESENT_CPU sample=').Count -ne 240) {
+        $failure = 'Presentation CPU profile lacks its complete bounded sample window.'
+    }
 }
 if($ObserveDlssSrInputs -and -not $failure) {
     $srLogs = @(Get-ChildItem -LiteralPath $OutputDirectory -Filter 'darktidevr-ngx-sr-*.log' -File)
