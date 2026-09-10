@@ -92,3 +92,17 @@ startup and remained at one in these later samples; this run is not a zero-misma
 acceptance pass. The session remains running for the user's comparison.
 Logs: `physical-matched-launch.log`, `physical-matched-ready.json`, and the
 temporary launch/recovery directory under ignored `artifacts/unattended`.
+
+## HUD launch correction
+
+The user reported a flat HUD in the physical comparison. The temporary launcher
+omitted the accepted `-EnableHudPanel` option. At 08:00:52 UTC the existing live
+HUD flag enabled the panel; the game logged `enabled=true source=flag` and created
+a 2496x1404 display-copy target. No code or game restart was needed. Worn visual
+confirmation belongs to the user; target creation alone does not establish it.
+
+The prepared physical launcher now includes `-EnableHudPanel`. Earlier samples
+in this document precede that correction. The synthetic runner also did not
+request the panel, so those controls do not represent the full accepted HUD
+workload. Future accepted-configuration comparisons must explicitly match HUD
+mode as well as resolution, polling and FG. Keep pre/post-enable results separate.
