@@ -12,6 +12,7 @@ param(
     [string] $ExpectedInstalledSoloSha256,
     [switch] $ClusterLightTrace,
     [switch] $PresentCpuProfile,
+    [switch] $DebugLayer,
     [switch] $RenderApiCpuProfile,
     [switch] $ObserveDlssSrInputs,
     [string] $RenderWorldCensusSourcePath,
@@ -226,6 +227,7 @@ try {
         render_world_census=[bool]$RenderWorldCensusSourcePath
         cpu_render_timing=[bool]$CpuRenderTimingSourcePath
         present_cpu_profile=$PresentCpuProfile.IsPresent
+        debug_layer=$DebugLayer.IsPresent
         render_api_cpu_profile=$RenderApiCpuProfile.IsPresent
         render_world_census_warmup=$RenderWorldCensusWarmupFrames
         lua_sha256=(Get-FileHash (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash
@@ -233,9 +235,11 @@ try {
     $receipt | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'configuration.json') -Encoding utf8
     # This consumer is also the sole synthetic head publisher. Do not launch
     # SyntheticRuntimeFrusta beside it: two writers would race on pose metadata.
+    $consumerArguments = @('--flush-log','--shared-eyes','--require-rendering','--enable-gameplay-reticle',
+        '--xr-seconds',($StartupTimeoutSeconds+$DurationSeconds+60), '--stop-file',('"'+$stopFile+'"'))
+    if ($DebugLayer) { $consumerArguments += '--debug-layer' }
     $consumer = Start-Process -FilePath $HarnessPath -WindowStyle Hidden -PassThru `
-        -ArgumentList @('--flush-log','--shared-eyes','--require-rendering','--enable-gameplay-reticle',
-            '--xr-seconds',($StartupTimeoutSeconds+$DurationSeconds+60), '--stop-file',('"'+$stopFile+'"')) `
+        -ArgumentList $consumerArguments `
         -RedirectStandardOutput (Join-Path $OutputDirectory 'consumer.log') `
         -RedirectStandardError (Join-Path $OutputDirectory 'consumer-error.log')
     $consumerReadyDeadline = (Get-Date).AddSeconds(15)

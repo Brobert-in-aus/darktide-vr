@@ -517,20 +517,16 @@ class OpenXrProbe {
                    "xrWaitSwapchainImage");
 
           auto* resource = swapchain_images_[eye][acquired_indices[eye]].texture;
-          D3D12_RESOURCE_BARRIER to_render{};
-          to_render.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-          to_render.Transition.pResource = resource;
-          to_render.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
-          to_render.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-          to_render.Transition.Subresource =
-              D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-          command_list->ResourceBarrier(1, &to_render);
-
+          // XR_KHR_D3D12_enable acquires and releases color images in
+          // RENDER_TARGET. Direct rendering needs no state transition.
           scene.record(command_list.Get(), eye, acquired_indices[eye],
                        located_views[eye], frame);
 
           if (eye == 0 && billboard_capture_label) {
-            D3D12_RESOURCE_BARRIER to_copy = to_render;
+            D3D12_RESOURCE_BARRIER to_copy{};
+            to_copy.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            to_copy.Transition.pResource = resource;
+            to_copy.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             to_copy.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
             to_copy.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
             command_list->ResourceBarrier(1, &to_copy);
@@ -546,12 +542,7 @@ class OpenXrProbe {
                                             nullptr);
             std::swap(to_copy.Transition.StateBefore,
                       to_copy.Transition.StateAfter);
-            to_copy.Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
             command_list->ResourceBarrier(1, &to_copy);
-          } else {
-            std::swap(to_render.Transition.StateBefore,
-                      to_render.Transition.StateAfter);
-            command_list->ResourceBarrier(1, &to_render);
           }
 
           projection_views[eye] = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
@@ -2471,7 +2462,7 @@ class OpenXrProbe {
           auto& barrier = destination_barriers[eye];
           barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
           barrier.Transition.pResource = resources[eye];
-          barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+          barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
           // The theatre image is a copy destination only when an eye pair is
           // actually copied this frame. Merely having a producer or window
           // capture object attached is insufficient: during startup, stale
@@ -2484,9 +2475,11 @@ class OpenXrProbe {
           barrier.Transition.Subresource =
               D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
         }
-        command_list->ResourceBarrier(
-            static_cast<UINT>(destination_barriers.size()),
-            destination_barriers.data());
+        if (use_shared_pair || use_cached_pair || use_generated_pair) {
+          command_list->ResourceBarrier(
+              static_cast<UINT>(destination_barriers.size()),
+              destination_barriers.data());
+        }
         std::array<D3D12_RESOURCE_BARRIER, 2> cached_eye_barriers{};
         if (use_shared_pair || use_cached_pair || use_generated_pair) {
           for (std::size_t eye = 0; eye < cached_eye_resources.size(); ++eye) {
@@ -2510,7 +2503,7 @@ class OpenXrProbe {
           D3D12_RESOURCE_BARRIER flat_barrier{};
           flat_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
           flat_barrier.Transition.pResource = flat_resource;
-          flat_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+          flat_barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
           flat_barrier.Transition.StateAfter =
               D3D12_RESOURCE_STATE_COPY_DEST;
           flat_barrier.Transition.Subresource =
@@ -2808,16 +2801,14 @@ class OpenXrProbe {
               }
             }
           }
-          for (auto& barrier : destination_barriers) {
-            barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            barrier.Transition.StateAfter =
-                capture_projected_eyes ? D3D12_RESOURCE_STATE_COPY_SOURCE
-                                       : D3D12_RESOURCE_STATE_COMMON;
-          }
-          command_list->ResourceBarrier(
-              static_cast<UINT>(destination_barriers.size()),
-              destination_barriers.data());
           if (capture_projected_eyes) {
+            for (auto& barrier : destination_barriers) {
+              barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+              barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+            }
+            command_list->ResourceBarrier(
+                static_cast<UINT>(destination_barriers.size()),
+                destination_barriers.data());
             for (std::size_t eye = 0; eye < theatre_swapchain_count; ++eye) {
               D3D12_TEXTURE_COPY_LOCATION source{};
               source.pResource = resources[eye];
@@ -2832,7 +2823,7 @@ class OpenXrProbe {
             }
             for (auto& barrier : destination_barriers) {
               barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
-              barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
+              barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
             }
             command_list->ResourceBarrier(
                 static_cast<UINT>(destination_barriers.size()),
@@ -2845,7 +2836,8 @@ class OpenXrProbe {
             tracked_cuff_draws += frame_cuff_draws;
           }
         }
-        if (!rendered_tracked_cuffs) {
+        if (!rendered_tracked_cuffs &&
+            (use_shared_pair || use_cached_pair || use_generated_pair)) {
           for (auto& barrier : destination_barriers) {
             std::swap(barrier.Transition.StateBefore,
                       barrier.Transition.StateAfter);
