@@ -9,6 +9,7 @@ param(
     [switch] $ClusterLightTrace,
     [switch] $ObserveDlssSrInputs,
     [string] $RenderWorldCensusSourcePath,
+    [string] $CpuRenderTimingSourcePath,
     [ValidateRange(0,600)] [int] $RenderWorldCensusWarmupFrames = 120,
     [string] $ExpectedInstalledLuaSha256,
     [Parameter(Mandatory)] [string] $RuntimeJson,
@@ -52,6 +53,7 @@ if (Test-Path -LiteralPath $OutputDirectory) { throw 'Use a new output directory
 $modPath = Join-Path $GameRoot 'mods/darktidevr_stereo_probe'
 $luaDirectory = Join-Path $modPath 'scripts/mods/darktidevr_stereo_probe'
 $censusFlag = Join-Path $modPath 'darktidevr_render_world_census.flag'
+$cpuTimingFlag = Join-Path $modPath 'darktidevr_cpu_render_timing.flag'
 $luaTrialFiles = @{}
 $soloSource = Join-Path $GameRoot 'mods/SoloPlay/scripts/mods/SoloPlay/SoloPlay.lua'
 $soloModule = Join-Path (Split-Path $soloSource) 'dtvr_mission_benchmark.lua'
@@ -65,15 +67,17 @@ if ($SoloMission) {
 if($RenderWorldCensusWarmupFrames -ne 120 -and -not $RenderWorldCensusSourcePath) {
     throw 'A custom census warm-up requires the focused census Lua source.'
 }
-if($RenderWorldCensusSourcePath -or $ExpectedInstalledLuaSha256) {
-    if(-not $RenderWorldCensusSourcePath -or $ExpectedInstalledLuaSha256 -notmatch '^[a-fA-F0-9]{64}$') {
-        throw 'A census Lua trial requires a source path and the installed main Lua hash.'
+if ($RenderWorldCensusSourcePath -and $CpuRenderTimingSourcePath) { throw 'Choose one diagnostic Lua trial per run.' }
+$diagnosticLuaSource = if($CpuRenderTimingSourcePath){$CpuRenderTimingSourcePath}else{$RenderWorldCensusSourcePath}
+if($diagnosticLuaSource -or $ExpectedInstalledLuaSha256) {
+    if(-not $diagnosticLuaSource -or $ExpectedInstalledLuaSha256 -notmatch '^[a-fA-F0-9]{64}$') {
+        throw 'A diagnostic Lua trial requires a source path and the installed main Lua hash.'
     }
-    $RenderWorldCensusSourcePath = (Resolve-Path -LiteralPath $RenderWorldCensusSourcePath).Path
-    & (Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1') -SourcePath $RenderWorldCensusSourcePath
+    $diagnosticLuaSource = (Resolve-Path -LiteralPath $diagnosticLuaSource).Path
+    & (Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1') -SourcePath $diagnosticLuaSource
     foreach($name in @('darktidevr_stereo_probe.lua','darktidevr_render_world_census.lua')) {
         $luaTrialFiles[(Join-Path $luaDirectory $name)] = [IO.File]::ReadAllBytes(
-            (Join-Path (Split-Path $RenderWorldCensusSourcePath) $name))
+            (Join-Path (Split-Path $diagnosticLuaSource) $name))
     }
 }
 $simulatorSettings = Join-Path $env:LOCALAPPDATA 'OpenXR-Simulator/settings.json'
@@ -102,12 +106,13 @@ try {
         Save-BenchmarkFile $soloSource
         Save-BenchmarkFile $soloModule
     }
-    if($RenderWorldCensusSourcePath) {
+    if($diagnosticLuaSource) {
         if((Get-FileHash (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash -ne $ExpectedInstalledLuaSha256) {
             throw 'Installed Lua baseline changed.'
         }
         foreach($path in $luaTrialFiles.Keys) { Save-BenchmarkFile $path }
         Save-BenchmarkFile $censusFlag
+        Save-BenchmarkFile $cpuTimingFlag
     }
     # The launcher temporarily owns these flags too. The outer byte backups
     # preserve even a pre-existing malformed/legacy file exactly after the run.
@@ -149,9 +154,15 @@ try {
     if ($NativeDllPath) {
         foreach ($path in $nativeTargets) { [IO.File]::WriteAllBytes($path,[IO.File]::ReadAllBytes($NativeDllPath)) }
     }
-    if($RenderWorldCensusSourcePath) {
+    if($diagnosticLuaSource) {
         foreach($path in $luaTrialFiles.Keys) { [IO.File]::WriteAllBytes($path,$luaTrialFiles[$path]) }
-        [IO.File]::WriteAllText($censusFlag,"enabled`r`nwarmup=$RenderWorldCensusWarmupFrames`r`n")
+        if ($CpuRenderTimingSourcePath) {
+            [IO.File]::WriteAllText($cpuTimingFlag,"enabled`r`n")
+            [IO.File]::WriteAllText($censusFlag,"disabled`r`n")
+        } else {
+            [IO.File]::WriteAllText($cpuTimingFlag,"disabled`r`n")
+            [IO.File]::WriteAllText($censusFlag,"enabled`r`nwarmup=$RenderWorldCensusWarmupFrames`r`n")
+        }
         & (Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1') -SourcePath (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')
     }
     [IO.File]::WriteAllText($SettingsPath,$settings,[Text.UTF8Encoding]::new($false))
@@ -195,7 +206,8 @@ try {
         duration_seconds=$DurationSeconds; preview_fps=0; physical_xr_ready=$false
         cluster_trace=(Test-Path -LiteralPath $clusterTraceFlag)
         observe_dlss_sr_inputs=$ObserveDlssSrInputs.IsPresent
-        render_world_census=(Test-Path -LiteralPath $censusFlag)
+        render_world_census=[bool]$RenderWorldCensusSourcePath
+        cpu_render_timing=[bool]$CpuRenderTimingSourcePath
         render_world_census_warmup=$RenderWorldCensusWarmupFrames
         lua_sha256=(Get-FileHash (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash
     }
@@ -278,6 +290,19 @@ if ((Get-ItemPropertyValue 'HKLM:/SOFTWARE/Khronos/OpenXR/1' -Name ActiveRuntime
 $launchPath = Join-Path $OutputDirectory 'launch.log'
 if (Test-Path -LiteralPath $launchPath) {
     $launchText = [IO.File]::ReadAllText($launchPath)
+    if ($CpuRenderTimingSourcePath) {
+        $timingConsole = [regex]::Match($launchText,'(?m)^Offline dual-view benchmark started; log=([^\r\n]+)')
+        if ($timingConsole.Success -and (Test-Path -LiteralPath $timingConsole.Groups[1].Value)) {
+            $timingText = [IO.File]::ReadAllText($timingConsole.Groups[1].Value)
+            @($timingText -split "`n" | Where-Object { $_ -match 'DARKTIDEVR_(PERF|GPU_PERF|GPU_STAGE)' }) |
+                Set-Content (Join-Path $OutputDirectory 'cpu-render-timing.log') -Encoding utf8
+            if (($timingText -notmatch 'cpu_render_timing=true gpu_profile=false' -or
+                 $timingText -notmatch 'DARKTIDEVR_PERF target=.+ samples=240 ' -or
+                 $timingText -match 'DARKTIDEVR_GPU_PERF target=') -and -not $failure) {
+                $failure = 'CPU-only render timing evidence is missing or GPU profiling was enabled.'
+            }
+        } elseif (-not $failure) { $failure = 'CPU render timing has no launch-selected console log.' }
+    }
     if ($SoloMission) {
         $missionConsole = [regex]::Match($launchText,'(?m)^Offline dual-view benchmark started; log=([^\r\n]+)')
         if ($missionConsole.Success -and (Test-Path -LiteralPath $missionConsole.Groups[1].Value)) {
