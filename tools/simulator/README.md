@@ -42,7 +42,17 @@ The locally built DLL tested on 10 September 2026 had SHA-256
 Rebuilt binary hashes can differ; the benchmark requires the explicitly chosen
 DLL's hash rather than accepting any runtime manifest silently.
 
-The simulator uses a 90 Hz frame clock. The benchmark disables desktop preview
+The optional `openxr-simulator-v1.5.0-refresh.patch`, applied after the shutdown
+patch, adds a process-local `DTVR_SIMULATOR_REFRESH_HZ=120` clock selection.
+Unset or other values preserve upstream 90 Hz. The wrapper exposes this as
+`-SimulatorRefreshRate 90|120`, records it and restores the previous environment
+value. Use the patched runtime for 120 Hz; older binaries ignore this setting.
+The rebuilt DLL SHA-256 was
+`c08da02708dcb68d450409118936034478cc98e3810b19d2788f5946ad618309`.
+Its 120-frame smoke test rendered every frame, exited cleanly and passed;
+elapsed time was 992.77 ms (the first frame does not wait a full period).
+
+The simulator defaults to a 90 Hz frame clock. The benchmark disables desktop preview
 copies and fixes Quest 3, 64 mm IPD and the requested eye resolution for both
 frame-generation settings. Simulator submission rate is not headset latency or
 a measurement of Virtual Desktop SSW. Neither `XR_EXT_frame_synthesis` nor

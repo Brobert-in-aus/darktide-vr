@@ -1,0 +1,14 @@
+--- a/src/runtime.cpp
++++ b/src/runtime.cpp
+@@ -4103,3 +4103,10 @@
+     static LARGE_INTEGER freq = [](){ LARGE_INTEGER f; QueryPerformanceFrequency(&f); return f; }();
+-    static double periodSec = 1.0 / 90.0;
++    static double periodSec = []() {
++        // Process-local benchmark clock; preserve upstream 90 Hz by default.
++        wchar_t requested[8]{};
++        const DWORD length = GetEnvironmentVariableW(L"DTVR_SIMULATOR_REFRESH_HZ", requested, 8);
++        const bool use120 = length == 3 && requested[0] == L'1' &&
++            requested[1] == L'2' && requested[2] == L'0';
++        return 1.0 / (use120 ? 120.0 : 90.0);
++    }();
+     static long long periodNs = (long long)(periodSec * 1e9);

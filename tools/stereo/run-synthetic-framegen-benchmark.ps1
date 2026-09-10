@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)] [ValidateSet('On','Off')] [string] $FrameGeneration,
     [ValidateSet('Preserve','Unlimited','30','40','60','72','90','120')] [string] $FrameRateLimit = 'Preserve',
+    [ValidateSet(90,120)] [int] $SimulatorRefreshRate = 90,
     [switch] $ClusterLightTrace,
     [switch] $ObserveDlssSrInputs,
     [string] $RenderWorldCensusSourcePath,
@@ -71,6 +72,7 @@ $consumer = $null
 $failure = $null
 $priorRuntime = $env:XR_RUNTIME_JSON
 $priorPairWait = $env:DTVR_XR_PRECISE_PAIR_WAIT
+$priorSimulatorRefresh = $env:DTVR_SIMULATOR_REFRESH_HZ
 $systemRuntime = Get-ItemPropertyValue 'HKLM:/SOFTWARE/Khronos/OpenXR/1' -Name ActiveRuntime
 $stopFile = Join-Path $OutputDirectory 'consumer.stop'
 function Save-BenchmarkFile([string] $Path) {
@@ -153,9 +155,11 @@ try {
     $simSettings | ConvertTo-Json | Set-Content -LiteralPath $simulatorSettings -Encoding utf8
     $env:XR_RUNTIME_JSON = $RuntimeJson
     $env:DTVR_XR_PRECISE_PAIR_WAIT = '1'
+    $env:DTVR_SIMULATOR_REFRESH_HZ = [string]$SimulatorRefreshRate
     $receipt = [ordered]@{
         frame_generation=$FrameGeneration; frames_to_generate=1
         frame_rate_limit=$FrameRateLimit
+        simulator_refresh_hz=$SimulatorRefreshRate
         eye_width=$EyeWidth; eye_height=$EyeHeight; ssw='not_applicable_simulator'
         runtime_json=$RuntimeJson; runtime_sha256=$RuntimeSha256
         harness_sha256=(Get-FileHash $HarnessPath -Algorithm SHA256).Hash
@@ -229,6 +233,7 @@ finally {
     }
     $env:XR_RUNTIME_JSON = $priorRuntime
     $env:DTVR_XR_PRECISE_PAIR_WAIT = $priorPairWait
+    $env:DTVR_SIMULATOR_REFRESH_HZ = $priorSimulatorRefresh
     if ($ownsMutex) { $mutex.ReleaseMutex() }
     $mutex.Dispose()
 }
