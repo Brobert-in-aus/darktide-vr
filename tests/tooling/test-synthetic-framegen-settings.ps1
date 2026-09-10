@@ -25,3 +25,14 @@ foreach($selection in @(@('30',1),@('40',2),@('60',3),@('72',4),@('90',5),@('120
        $limited -notmatch '(?m)^\t\tnv_reflex_framerate_cap = 6\r?$') { throw 'Explicit cap mapping failed.' }
 }
 'synthetic_framegen_settings=pass cache_preserved=1 unrelated_preserved=1 invalid_rejected=2 explicit_cap_control=1'
+$workers = $source + "max_worker_threads = 13`r`n`tmax_worker_threads = 13`r`n"
+$limitedWorkers = ConvertTo-SyntheticFramegenSettings -Settings $workers -Enabled $false -WorkerThreads 8
+if ($limitedWorkers -notmatch '(?m)^max_worker_threads = 8\r?$' -or
+    $limitedWorkers -notmatch '(?m)^\tmax_worker_threads = 13\r?$') { throw 'Worker trial changed the detected cache or failed.' }
+if ((ConvertTo-SyntheticFramegenSettings -Settings $workers -Enabled $false) -notmatch '(?m)^max_worker_threads = 13\r?$') { throw 'Worker default was not preserved.' }
+foreach ($invalid in @($source,($workers+"max_worker_threads = 8`r`n"))) {
+    $rejected = $false
+    try { ConvertTo-SyntheticFramegenSettings -Settings $invalid -Enabled $false -WorkerThreads 8 | Out-Null } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Ambiguous/missing worker setting accepted.' }
+}
+'synthetic_worker_settings=pass'

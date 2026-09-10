@@ -1,6 +1,7 @@
 function ConvertTo-SyntheticFramegenSettings {
     param([Parameter(Mandatory)] [string] $Settings, [Parameter(Mandatory)] [bool] $Enabled,
-        [ValidateSet('Preserve','Unlimited','30','40','60','72','90','120')] [string] $FrameRateLimit = 'Preserve')
+        [ValidateSet('Preserve','Unlimited','30','40','60','72','90','120')] [string] $FrameRateLimit = 'Preserve',
+        [ValidateRange(0,16)] [int] $WorkerThreads = 0)
     # One-tab fields belong to active settings; detected-user caches use two.
     foreach ($change in @(
         @('(?m)^(\tdlss_g[ \t]*=[ \t]*)[0-9]+(?=[ \t]*\r?$)', [string][int]$Enabled),
@@ -20,6 +21,12 @@ function ConvertTo-SyntheticFramegenSettings {
                 elseif($FrameRateLimit -eq 'Unlimited') { 0 } else { [int]$FrameRateLimit }
             $Settings = [regex]::Replace($Settings,$pattern,'${1}'+[string]$value)
         }
+    }
+    if ($WorkerThreads -gt 0) {
+        # The active worker count is top-level; preserve detected-user cache.
+        $workerPattern = '(?m)^(max_worker_threads[ \t]*=[ \t]*)[0-9]+(?=[ \t]*\r?$)'
+        if ([regex]::Matches($Settings,$workerPattern).Count -ne 1) { throw 'Expected one active worker-thread setting.' }
+        $Settings = [regex]::Replace($Settings,$workerPattern,'${1}'+[string]$WorkerThreads)
     }
     return $Settings
 }
