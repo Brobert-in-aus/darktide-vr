@@ -3,6 +3,8 @@ param(
     [Parameter(Mandatory)] [ValidateSet('On','Off')] [string] $FrameGeneration,
     [ValidateSet('Preserve','Unlimited')] [string] $FrameRateLimit = 'Preserve',
     [switch] $ClusterLightTrace,
+    [string] $RenderWorldCensusSourcePath,
+    [string] $ExpectedInstalledLuaSha256,
     [Parameter(Mandatory)] [string] $RuntimeJson,
     [Parameter(Mandatory)] [ValidatePattern('^[a-fA-F0-9]{64}$')] [string] $RuntimeSha256,
     [Parameter(Mandatory)] [string] $OutputDirectory,
@@ -42,6 +44,20 @@ $SettingsPath = (Resolve-Path -LiteralPath $SettingsPath).Path
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $OutputDirectory) { throw 'Use a new output directory for each run.' }
 $modPath = Join-Path $GameRoot 'mods/darktidevr_stereo_probe'
+$luaDirectory = Join-Path $modPath 'scripts/mods/darktidevr_stereo_probe'
+$censusFlag = Join-Path $modPath 'darktidevr_render_world_census.flag'
+$luaTrialFiles = @{}
+if($RenderWorldCensusSourcePath -or $ExpectedInstalledLuaSha256) {
+    if(-not $RenderWorldCensusSourcePath -or $ExpectedInstalledLuaSha256 -notmatch '^[a-fA-F0-9]{64}$') {
+        throw 'A census Lua trial requires a source path and the installed main Lua hash.'
+    }
+    $RenderWorldCensusSourcePath = (Resolve-Path -LiteralPath $RenderWorldCensusSourcePath).Path
+    & (Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1') -SourcePath $RenderWorldCensusSourcePath
+    foreach($name in @('darktidevr_stereo_probe.lua','darktidevr_render_world_census.lua')) {
+        $luaTrialFiles[(Join-Path $luaDirectory $name)] = [IO.File]::ReadAllBytes(
+            (Join-Path (Split-Path $RenderWorldCensusSourcePath) $name))
+    }
+}
 $simulatorSettings = Join-Path $env:LOCALAPPDATA 'OpenXR-Simulator/settings.json'
 $mutex = [Threading.Mutex]::new($false,'Local\DarktideVR-synthetic-framegen-benchmark')
 $ownsMutex = $false
@@ -63,6 +79,13 @@ try {
     New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
     Save-BenchmarkFile $SettingsPath
     Save-BenchmarkFile $simulatorSettings
+    if($RenderWorldCensusSourcePath) {
+        if((Get-FileHash (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash -ne $ExpectedInstalledLuaSha256) {
+            throw 'Installed Lua baseline changed.'
+        }
+        foreach($path in $luaTrialFiles.Keys) { Save-BenchmarkFile $path }
+        Save-BenchmarkFile $censusFlag
+    }
     # The launcher temporarily owns these flags too. The outer byte backups
     # preserve even a pre-existing malformed/legacy file exactly after the run.
     $flagNames = @('probe','input_snapshot_probe','target_token_probe','eye_target_probe',
@@ -95,6 +118,11 @@ try {
     $recoveryManifest | ConvertTo-Json | Set-Content (Join-Path $recovery 'manifest.json') -Encoding utf8
     if ($NativeDllPath) {
         foreach ($path in $nativeTargets) { [IO.File]::WriteAllBytes($path,[IO.File]::ReadAllBytes($NativeDllPath)) }
+    }
+    if($RenderWorldCensusSourcePath) {
+        foreach($path in $luaTrialFiles.Keys) { [IO.File]::WriteAllBytes($path,$luaTrialFiles[$path]) }
+        [IO.File]::WriteAllText($censusFlag,"enabled`r`n")
+        & (Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1') -SourcePath (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')
     }
     [IO.File]::WriteAllText($SettingsPath,$settings,[Text.UTF8Encoding]::new($false))
     if($ClusterLightTrace) { [IO.File]::WriteAllText($clusterTraceFlag,"enabled=1`r`n") }
@@ -129,6 +157,8 @@ try {
         native_sha256=(Get-FileHash (Join-Path $GameRoot 'binaries/darktidevr_native_capture.dll') -Algorithm SHA256).Hash
         duration_seconds=$DurationSeconds; preview_fps=0; physical_xr_ready=$false
         cluster_trace=(Test-Path -LiteralPath $clusterTraceFlag)
+        render_world_census=(Test-Path -LiteralPath $censusFlag)
+        lua_sha256=(Get-FileHash (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash
     }
     $receipt | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'configuration.json') -Encoding utf8
     # This consumer is also the sole synthetic head publisher. Do not launch
@@ -201,6 +231,18 @@ if ((Get-ItemPropertyValue 'HKLM:/SOFTWARE/Khronos/OpenXR/1' -Name ActiveRuntime
 $launchPath = Join-Path $OutputDirectory 'launch.log'
 if (Test-Path -LiteralPath $launchPath) {
     $launchText = [IO.File]::ReadAllText($launchPath)
+    if($RenderWorldCensusSourcePath) {
+        $consoleMatch = [regex]::Match($launchText,'(?m)^Offline dual-view benchmark started; log=([^\r\n]+)')
+        if($consoleMatch.Success -and (Test-Path -LiteralPath $consoleMatch.Groups[1].Value)) {
+            $consoleText = [IO.File]::ReadAllText($consoleMatch.Groups[1].Value)
+            $censusLines = @($consoleText -split "`n" | Where-Object { $_ -match 'DARKTIDEVR_WORLD_CENSUS' })
+            $censusLines | Set-Content (Join-Path $OutputDirectory 'render-world-census.log') -Encoding utf8
+            if(($consoleText -notmatch 'DARKTIDEVR_WORLD_CENSUS complete records=64' -or
+                $consoleText -match 'DARKTIDEVR_WORLD_CENSUS failed') -and -not $failure) {
+                $failure = 'World census did not complete successfully.'
+            }
+        } elseif(-not $failure) { $failure = 'World census has no launch-selected console log.' }
+    }
     $gamePidMatch = [regex]::Match($launchText,'Authenticated Darktide process started: PID (\d+)\.')
     if ($gamePidMatch.Success) {
         $gamePidText = $gamePidMatch.Groups[1].Value

@@ -125,6 +125,13 @@ fallback cannot recover their source identity. No alias/order proof or clear
 suppression follows from this capture. The three-pass observation motivates a
 separate census of world render calls before further clear-specific work.
 
+The subsequent bounded Lua census found two gameplay submissions and three
+overlay UI submissions per complete sampled boundary. It did not find a third
+gameplay view. The overlay template has no explicit clustered-shading stage in
+the decoded renderer configuration. Because this was a separate run after a
+120-gameplay-call warm-up, it does not map the earlier startup clear records to
+worlds. The third clear remains unresolved; no render suppression follows.
+
 Evidence: `synthetic-cluster-clear-deferred-20260910`,
 `uav-clear-native-fixture-20260910` and `uav-clear-deferred-fixture-20260910` under
 `artifacts/unattended`. The initial failed trace selection is separately marked

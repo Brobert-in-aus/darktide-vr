@@ -187,3 +187,47 @@ On requires at least 30 generated submissions, while Off requires none.
 
 Local evidence is under `artifacts/unattended/synthetic-framegen-*`. Raw game
 assets, simulator binaries, native logs and settings backups remain outside Git.
+
+## Bounded world submission census
+
+`-RenderWorldCensusSourcePath <focused-main-lua>` together with
+`-ExpectedInstalledLuaSha256 <installed-main-hash>` temporarily installs only
+the selected main Lua chunk and its adjacent `darktidevr_render_world_census.lua`
+module. The source package and installed package pass the pinned LuaJIT gate.
+Both files and the enabling flag have byte backups in the normal recovery
+manifest and are restored after shutdown. Use a focused candidate based on the
+installed Lua revision; this option does not synchronize other modules.
+
+The explicit flag enables an `Application.render_world` hook. After 120 gameplay
+world visits it logs at most 64 actual submissions, recording world name,
+classification, target viewport name and current render queue size. A direct
+prepared right-eye submission is counted too. The frame field advances at the
+gameplay `ScriptWorld.render` boundary; worlds rendered before that boundary
+retain the previous index. It is not a GPU frame identifier or a timing metric.
+Unmapped targets are reported explicitly. Metadata errors end tracing while
+the original render call still executes, with arguments and returns preserved.
+
+The isolated contract test covers the disabled flag, warm-up, bounded logging,
+render forwarding with nil arguments/returns and a metadata failure. These logs
+identify submission owners; they do not prove which shader or clear each world
+executes and do not justify suppressing a world by themselves.
+
+The first 30-second Off census used focused Lua `845118a` on installed baseline
+`3341afb`, with the accepted native DLL unchanged. All 64 records completed.
+Each complete sampled gameplay boundary had five submissions: `level_world`
+to `player1` and `darktidevr_right_eye`, followed by `ui_world`,
+`HudElementTacticalOverlay_ui_tactical_overlay_world` and
+`UIConstantElements_ui_world`. Each queue contained one active viewport.
+There was no third gameplay submission in this sample. Cached stock Lua creates
+the three UI viewports with the `overlay` template; its decoded layer config
+has no explicit clustered-shading stage. This does not assign the earlier third
+clear to a UI world, especially because the two traces sampled different runs
+and different startup windows.
+
+Fresh synchronized stereo initialization was present; the consumer submitted
+2,406 fresh pairs, zero generated pairs and zero reported pose mismatches,
+then stopped cleanly. All 13 saved files were restored, including exact Lua
+bytes and removal of the temporary module/flag. Evidence is in
+`artifacts/unattended/synthetic-world-census-20260910`. The census trace was
+extracted from the launcher-selected console after this first run; the wrapper
+now performs that extraction and requires the completion marker automatically.
