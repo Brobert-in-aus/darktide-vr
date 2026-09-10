@@ -93,5 +93,26 @@ its absolute durations as a clean-launch benchmark.
 
 The updated forwarding test exercises all stage argument/return/error paths and
 the concurrent capture bound. Three reader tests cover schema compatibility,
-disabled-stage records and impossible nested timings. Live stage validation is
-pending.
+disabled-stage records and impossible nested timings.
+
+### Live stage result
+
+Focused commit `0f53d13`, DLL SHA-256
+`56A5A0861969DD6EB095658063D8C04670174011C59A658F30B359F06F13E721`,
+completed 4,096 valid observations across eight threads. Mean outer/binding
+durations were 8.318/7.673 microseconds. Stage means were 2.039 (`7dec60`),
+0.991 (`7db0a0`), 4.451 (`7e0fe0`) and 0.049 (`7dc320`) microseconds.
+The descriptor-binding stage `7e0fe0` occupied about 58% of aggregate binding
+wall time. These nested, instrumented worker intervals are not frame-time shares.
+
+Its allocator `7c6150` initializes descriptors individually through
+`CopyDescriptorsSimple`, followed by a range `CopyDescriptors` in the caller.
+Both APIs currently enter our metadata hooks even with diagnostics disabled,
+because stock-menu render-target tracking installs them. Establish the required
+heap types and bookkeeping cost before changing engine initialization.
+
+The run exited cleanly with all runner-managed files restored and zero pose
+mismatches. It returned 73.30 native FPS; this is an instrumented run, not an
+optimization result. There were 21 valid GPU activity samples with no observed
+busy Streamer engine and one unavailable sample. Physical readiness remained
+unavailable. Evidence: `artifacts/unattended/synthetic-compute-stages-20260911`.
