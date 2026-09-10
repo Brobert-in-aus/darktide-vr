@@ -38,3 +38,35 @@ CPU timing was enabled with GPU profiling disabled, fresh stereo initialization
 and shared readiness were present, and clean shutdown and exact restoration
 passed. The uninstrumented mission control was 72.85 pairs/s; a single short
 comparison is not sufficient to quantify instrumentation overhead.
+
+## Calling-thread identification
+
+CPU-only timing now records the Windows thread ID executing each completed
+render-call batch. Comparing this with the same process's optional Present CPU
+log distinguishes Lua render callers from the presentation thread. IDs are
+process-local observations and must not be compared across launches.
+
+The diagnostic also reads existing `Application.get_frame_times()` values under
+`pcall`, without requesting GPU profiling. Values are logged as raw engine
+values; a successful read does not establish that GPU timing is populated.
+
+The first identification trial failed mod initialization because the game mod
+loader cannot resolve `require("ffi")`. The corrected source uses the existing
+`Mods.lua.ffi` provider and contains optional library-load failures. The failed
+trial supplies no performance evidence; every changed file was restored.
+Both source packages pass the pinned LuaJIT compiler, and a standalone Windows
+FFI check confirms the thread-ID declaration and library export.
+
+The offline launcher now aborts promptly on a selected-console mod initialization
+failure or when the observed game process exits or is replaced before readiness.
+The initialization matcher was checked against the failed trial's console log.
+
+The corrected 30-second mission trial completed with CPU-only timing, fresh
+stereo readiness, clean shutdown and exact file restoration. It delivered
+74.21 native pairs/s over 19.40 analyzed seconds. All render-call batches used
+one thread; the 240 Present samples used another thread in the same process.
+Thus the saturated Present caller identified in the preceding experiment is
+distinct from the Lua render caller. This narrows the investigation toward
+engine render-side work between Present calls, without identifying a specific
+engine function. `Application.get_frame_times` is absent in this game build;
+the protected reads failed and supplied no engine timing evidence.
