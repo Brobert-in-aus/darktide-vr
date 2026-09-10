@@ -1,0 +1,37 @@
+--- a/src/runtime.cpp
++++ b/src/runtime.cpp
+@@ -424,6 +424,7 @@
+ struct Session {
+     XrSession handle{(XrSession)1};
+     XrSessionState state{XR_SESSION_STATE_IDLE};
++    bool exitRequested{false};
+     ComPtr<ID3D11Device> d3d11Device;
+     ComPtr<ID3D11DeviceContext> d3d11Context;
+     // DX12 support
+@@ -4077,8 +4078,24 @@
+     rt::PushState(s, XR_SESSION_STATE_FOCUSED);
+     return XR_SUCCESS; 
+ }
+-static XrResult XRAPI_PTR xrEndSession_runtime(XrSession s) { Log("[SimXR] xrEndSession"); rt::PushState(s, XR_SESSION_STATE_STOPPING); rt::PushState(s, XR_SESSION_STATE_IDLE); return XR_SUCCESS; }
+-static XrResult XRAPI_PTR xrRequestExitSession_runtime(XrSession s) { rt::PushState(s, XR_SESSION_STATE_EXITING); return XR_SUCCESS; }
++static XrResult XRAPI_PTR xrEndSession_runtime(XrSession s) {
++    if (s != rt::g_session.handle) return XR_ERROR_HANDLE_INVALID;
++    if (rt::g_session.state != XR_SESSION_STATE_STOPPING) return XR_ERROR_SESSION_NOT_STOPPING;
++    rt::PushState(s, XR_SESSION_STATE_IDLE);
++    if (rt::g_session.exitRequested) {
++        rt::g_session.exitRequested = false;
++        rt::PushState(s, XR_SESSION_STATE_EXITING);
++    }
++    return XR_SUCCESS;
++}
++static XrResult XRAPI_PTR xrRequestExitSession_runtime(XrSession s) {
++    if (s != rt::g_session.handle) return XR_ERROR_HANDLE_INVALID;
++    if (rt::g_session.state < XR_SESSION_STATE_SYNCHRONIZED ||
++        rt::g_session.state > XR_SESSION_STATE_FOCUSED) return XR_ERROR_SESSION_NOT_RUNNING;
++    rt::g_session.exitRequested = true;
++    rt::PushState(s, XR_SESSION_STATE_STOPPING);
++    return XR_SUCCESS;
++}
+ static XrResult XRAPI_PTR xrWaitFrame_runtime(XrSession, const XrFrameWaitInfo*, XrFrameState* s) {
+     if (!s) return XR_ERROR_VALIDATION_FAILURE;
+     // Message pump so the preview window stays responsive

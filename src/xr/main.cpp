@@ -684,7 +684,8 @@ class OpenXrProbe {
                                bool synthetic_neck_pivot_path,
                                bool synthetic_roomscale_path,
                                bool synthetic_crouch_path,
-                               float projection_translation_scale) {
+                               float projection_translation_scale,
+                               const std::optional<std::wstring>& stop_file) {
     if (session_ == XR_NULL_HANDLE || view_space_ == XR_NULL_HANDLE) {
       throw std::runtime_error("OpenXR theatre loop requires a session and VIEW space");
     }
@@ -1501,9 +1502,17 @@ class OpenXrProbe {
       }
       return submit_layer;
     };
+    auto next_stop_file_poll = start;
     for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
       if (duration && std::chrono::steady_clock::now() - start >= *duration) {
         break;
+      }
+      if (stop_file && std::chrono::steady_clock::now() >= next_stop_file_poll) {
+        next_stop_file_poll = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
+        if (GetFileAttributesW(stop_file->c_str()) != INVALID_FILE_ATTRIBUTES) {
+          std::cout << "openxr.stop_file=requested\n";
+          break;
+        }
       }
       if (window_capture && !window_capture->source_window_alive()) {
         std::cout << "openxr.capture_window=closed session_exit=clean\n";
@@ -3920,6 +3929,8 @@ class OpenXrProbe {
         std::cout << "openxr.live.submission_fps="
                   << submitted_frames / live_seconds
                   << " fresh_pair_fps=" << fresh_shared_pairs / live_seconds
+                  << " interval_seconds=" << interval_seconds
+                  << " gameplay_generation=" << rendered_pair_gameplay_generation
                   << " interval_submission_fps="
                   << interval_submissions / interval_seconds
                   << " interval_fresh_pair_fps="
@@ -4003,6 +4014,7 @@ class OpenXrProbe {
               << "openxr.flat_fallback_transitions="
               << flat_fallback_transitions << '\n'
               << "openxr.fresh_shared_pairs=" << fresh_shared_pairs << '\n'
+              << "openxr.generated_submitted_frames=" << generated_submitted << '\n'
               << "openxr.reused_shared_frames=" << reused_shared_frames
               << '\n'
               << "openxr.tracked_cuff_frames=" << tracked_cuff_frames << '\n'
@@ -5131,7 +5143,7 @@ class Harness {
 
 void usage() {
   std::cout << "DarktideVR Phase 0 synthetic graphics harness\n\n"
-            << "Usage: darktidevr-xr-harness [--frames N] [--show] "
+            << "Usage: darktidevr-xr-harness [--frames N] [--show] [--flush-log] [--stop-file PATH (shared eyes only)] "
                "[--debug-layer] [--runtime-d3d11-diagnostics] [--probe-shared-import-adapters] [--no-openxr | --require-openxr] [--require-rendering] "
                "[--xr-frames N | --xr-seconds N] [--theatre] "
                "[--stereo-sbs] [--stereo-tb] "
@@ -5204,6 +5216,7 @@ int wmain(int argc, wchar_t** argv) {
     std::optional<std::wstring> capture_window_title;
     std::uint32_t xr_frames{};
     std::optional<std::chrono::seconds> xr_duration;
+    std::optional<std::wstring> stop_file;
     std::optional<UINT> resize_at;
     for (int index = 1; index < argc; ++index) {
       const std::wstring argument = argv[index];
@@ -5213,6 +5226,11 @@ int wmain(int argc, wchar_t** argv) {
       }
       if (argument == L"--show") {
         show = true;
+      } else if (argument == L"--flush-log") {
+        std::cout << std::unitbuf;
+        std::wcout << std::unitbuf;
+      } else if (argument == L"--stop-file" && index + 1 < argc) {
+        stop_file = argv[++index];
       } else if (argument == L"--debug-layer") {
         debug_layer = true;
       } else if (argument == L"--runtime-d3d11-diagnostics") {
@@ -5303,6 +5321,9 @@ int wmain(int argc, wchar_t** argv) {
       } else {
         throw std::invalid_argument("Unknown or incomplete argument");
       }
+    }
+    if (stop_file && (!shared_eyes || stop_file->empty())) {
+      throw std::invalid_argument("--stop-file requires shared eyes and a nonempty path");
     }
     if (no_openxr && (require_openxr || xr_frames > 0 || xr_duration ||
                       synthetic_billboard_sweep || runtime_d3d11_diagnostics)) {
@@ -5445,7 +5466,7 @@ int wmain(int argc, wchar_t** argv) {
                                      synthetic_neck_pivot_path,
                                      synthetic_roomscale_path,
                                      synthetic_crouch_path,
-                                     projection_translation_scale);
+                                     projection_translation_scale, stop_file);
       } else {
         openxr.run_frame_lifecycle(xr_frames, harness.device(), harness.queue(),
                                    require_rendering,
