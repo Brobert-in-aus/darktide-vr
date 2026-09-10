@@ -102,6 +102,27 @@ and exact restoration pass. Evidence: `synthetic-solo-legacy-clock-120-a-2026091
 The normal runtime DLL was restored after both runs. These are single captures,
 not a repeatability or physical-runtime benefit claim; retain Legacy as default.
 
+## Disabled-preview focus
+
+The optional `openxr-simulator-v1.5.0-preview-focus.patch`, applied after the
+shutdown and refresh patches, prevents a disabled preview (`preview_fps=0`)
+from activating its window. The earlier runtime could take focus after the game
+reached its title screen, causing the correctly foreground-gated startup helper
+to wait indefinitely until focus was returned. Enabled previews retain their
+activation behaviour, and disabled previews can still be clicked by the user.
+
+The locally built DLL SHA-256 is
+`cb8b520236bfcdbe03e57b46bd14f505c21a39c1cbe00b658d267f0aea121689`.
+The strict 120-frame DirectX rendering check passes with preview disabled.
+The 30-second unattended SoloPlay FG validation advanced into the mission
+without focus recovery, exited cleanly with zero pose mismatches and restored
+the installation and settings exactly. The normal simulator DLL and source
+were restored afterward. Evidence: ignored `synthetic-solo-preview-focus-120-a-20260910`
+and `simulator-preview-focus-smoke-20260910` artifacts. This patch changes
+window behaviour, not the simulator display clock or rendering work. Both
+forward application on the normal source and combination with the optional
+display-prediction patch pass their patch checks.
+
 [Meta XR Simulator](https://developers.meta.com/horizon/documentation/native/xrsim-intro/)
 is another documented Windows D3D12 option. It has not been installed or tested
 for this project. The selected open-source simulator allows the full existing

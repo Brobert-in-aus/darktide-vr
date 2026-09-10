@@ -1,0 +1,43 @@
+--- a/src/runtime.cpp
++++ b/src/runtime.cpp
+@@ -1804,13 +1804,13 @@
+     if (s.hwnd) return;
+     WNDCLASSW wc{}; wc.lpfnWndProc = WndProc; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"OpenXR Simulator";
+     RegisterClassW(&wc);
+-    s.hwnd = CreateWindowExW(0, wc.lpszClassName, L"OpenXR Simulator", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
++    s.hwnd = CreateWindowExW(0, wc.lpszClassName, L"OpenXR Simulator", WS_OVERLAPPEDWINDOW,
+                              CW_USEDEFAULT, CW_USEDEFAULT, (int)s.previewWidth, (int)s.previewHeight, nullptr, nullptr, wc.hInstance, nullptr);
+     Logf("[SimXR] ensurePreview: hwnd=%p size=%ux%u usesD3D12=%d", s.hwnd, s.previewWidth, s.previewHeight, s.usesD3D12);
+ 
+     // Make sure window is shown and updated
+     if (s.hwnd) {
+-        ShowWindow(s.hwnd, SW_SHOW);
++        ShowWindow(s.hwnd, ui::g_uiState.previewFps > 0 ? SW_SHOW : SW_SHOWNOACTIVATE);
+         UpdateWindow(s.hwnd);
+ 
+         // Check if window has focus
+@@ -4563,7 +4563,7 @@
+             SetWindowLongPtrW(s.hwnd, GWLP_WNDPROC, (LONG_PTR)rt::WndProc);
+             Log("[SimXR] Updated window WndProc to new DLL address");
+             ui::ApplyDarkTheme(s.hwnd);
+-            ShowWindow(s.hwnd, SW_SHOW);
++            ShowWindow(s.hwnd, ui::g_uiState.previewFps > 0 ? SW_SHOW : SW_SHOWNOACTIVATE);
+             UpdateWindow(s.hwnd);
+             // Seed clientWidth/Height from the actual current client area
+             RECT cr{};
+@@ -4588,10 +4588,12 @@
+         Log("[SimXR] Failed to create preview window!");
+         return;
+     }
+-    ShowWindow(s.hwnd, SW_SHOW);
++    ShowWindow(s.hwnd, ui::g_uiState.previewFps > 0 ? SW_SHOW : SW_SHOWNOACTIVATE);
+     UpdateWindow(s.hwnd);
+-    SetForegroundWindow(s.hwnd);
+-    SetWindowPos(s.hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
++    // A disabled benchmark preview must not take focus from the game.
++    if (ui::g_uiState.previewFps > 0) SetForegroundWindow(s.hwnd);
++    SetWindowPos(s.hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW |
++        (ui::g_uiState.previewFps > 0 ? 0 : SWP_NOACTIVATE));
+     Logf("[SimXR] Created new preview window: hwnd=%p clientSize=%ux%u",
+          s.hwnd, initialClientW, initialClientH);
+ 
