@@ -42,7 +42,9 @@ class StreamlineContinuousSubmission {
   bool finished() const noexcept { return stopped_; }
   bool staged() const noexcept { return staged_; }
   std::uint64_t original_ready() const noexcept { return original_ready_; }
-  std::uint64_t pose() const noexcept { return frames_[current_ % count_].pose; }
+  std::uint64_t pose() const noexcept {
+    return count_ ? frames_[current_ % count_].pose : 0;
+  }
   std::uint64_t previous_pose() const noexcept { return previous_pose_; }
   bool ui_tagging_enabled() const noexcept { return ui_enabled_; }
   // Owned current-pose copies, not CPU-completion evidence. before_present
@@ -54,6 +56,7 @@ class StreamlineContinuousSubmission {
   }
   std::array<void*,6> inputs() const noexcept {
     std::array<void*,6> result{};
+    if (!count_) return result;
     for(unsigned eye=0;eye<2;++eye) for(unsigned role=0;role<3;++role)
       result[eye*3+role]=frames_[current_%count_].textures[eye][role].Get();
     return result;

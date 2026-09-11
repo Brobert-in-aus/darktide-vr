@@ -188,10 +188,12 @@ struct NativeOriginalRing::Impl {
       return Result::staged;
     }
     pending = false;
-    if (FAILED(selected_queue->Signal(ready.Get(), next)) ||
-        !writer->publish(next, tag.present, 0, width * 2, height,
+    // Metadata precedes the GPU-ready signal, as in generated_stereo.cpp:
+    // a reader that selects by ready value must find the matching record.
+    if (!writer->publish(next, tag.present, 0, width * 2, height,
             static_cast<std::uint32_t>(format), tag.pose, tag.pose,
-            tag.generation, GetTickCount64(), next)) {
+            tag.generation, GetTickCount64(), next) ||
+        FAILED(selected_queue->Signal(ready.Get(), next))) {
       failed = true;
       return Result::failed;
     }

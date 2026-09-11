@@ -1502,6 +1502,26 @@ std::atomic<std::uint64_t> billboard_selected_size{};
 
 constexpr UINT kBillboardShadowConstantCapacity = 131072;
 constexpr UINT kBillboardShadowDescriptorCapacity = 524288;
+
+// Shadow slots are consumed by every patched billboard submission, so a
+// monotonic cursor exhausts the pool within a minute of gameplay. Treat the
+// pools as rings: the capacities give hundreds of frames of headroom before a
+// slot is reused, far beyond the queued frame depth. A range that would cross
+// the end of the pool is skipped rather than split.
+inline UINT allocate_shadow_ring_range(std::atomic<UINT>& cursor, UINT count,
+                                       UINT capacity) {
+  if (count == 0 || count > capacity) return capacity;
+  UINT start = cursor.load(std::memory_order_relaxed);
+  for (;;) {
+    const UINT begin = start % capacity;
+    const UINT wrapped_begin = begin + count > capacity ? 0U : begin;
+    const UINT next = wrapped_begin + count;
+    if (cursor.compare_exchange_weak(start, next,
+                                     std::memory_order_relaxed)) {
+      return wrapped_begin;
+    }
+  }
+}
 std::mutex billboard_shadow_mutex;
 ComPtr<ID3D12Device> billboard_shadow_device;
 ComPtr<ID3D12DescriptorHeap> billboard_shadow_heap;
@@ -6864,10 +6884,11 @@ BillboardBindingOverride begin_billboard_binding_override(
       !ensure_billboard_shadow_resources(device.Get())) {
     return fail(5);
   }
-  const UINT constant_index =
-      billboard_shadow_constant_cursor.fetch_add(1, std::memory_order_relaxed);
-  const UINT descriptor_start = billboard_shadow_descriptor_cursor.fetch_add(
-      descriptor_count, std::memory_order_relaxed);
+  const UINT constant_index = allocate_shadow_ring_range(
+      billboard_shadow_constant_cursor, 1, kBillboardShadowConstantCapacity);
+  const UINT descriptor_start = allocate_shadow_ring_range(
+      billboard_shadow_descriptor_cursor, descriptor_count,
+      kBillboardShadowDescriptorCapacity);
   if (constant_index >= kBillboardShadowConstantCapacity ||
       descriptor_start > kBillboardShadowDescriptorCapacity - descriptor_count) {
     return fail(6);
@@ -7015,8 +7036,8 @@ bool apply_billboard_in_place_descriptor_override(
       !ensure_billboard_shadow_resources(device.Get())) {
     return fail(5);
   }
-  const UINT constant_index =
-      billboard_shadow_constant_cursor.fetch_add(1, std::memory_order_relaxed);
+  const UINT constant_index = allocate_shadow_ring_range(
+      billboard_shadow_constant_cursor, 1, kBillboardShadowConstantCapacity);
   if (constant_index >= kBillboardShadowConstantCapacity) {
     return fail(6);
   }
@@ -14012,14 +14033,16 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
       MH_CreateHook(swapchain_vtable[39], &resize_buffers1_hook,
                     reinterpret_cast<void**>(&original_resize_buffers1)) !=
           MH_OK ||
+      // ID3D12GraphicsCommandList slots (d3d12.h 10.0.26100): 55 SetPredication,
+      // 56 SetMarker, 57 BeginEvent, 58 EndEvent, 59 ExecuteIndirect.
       (kInstallDiagnosticRenderHooks &&
-       MH_CreateHook(command_list_vtable[55], &set_marker_hook,
+       MH_CreateHook(command_list_vtable[56], &set_marker_hook,
                      reinterpret_cast<void**>(&original_set_marker)) != MH_OK) ||
       ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
-       MH_CreateHook(command_list_vtable[56], &begin_event_hook,
+       MH_CreateHook(command_list_vtable[57], &begin_event_hook,
                      reinterpret_cast<void**>(&original_begin_event)) != MH_OK) ||
       ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
-       MH_CreateHook(command_list_vtable[57], &end_event_hook,
+       MH_CreateHook(command_list_vtable[58], &end_event_hook,
                      reinterpret_cast<void**>(&original_end_event)) != MH_OK) ||
       ((kInstallDiagnosticRenderHooks || install_cluster_trace_hooks) &&
        MH_CreateHook(command_list_vtable[59], &execute_indirect_hook,

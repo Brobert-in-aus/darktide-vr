@@ -120,7 +120,10 @@ Function resolve_real(const char* name) {
   return reinterpret_cast<Function>(GetProcAddress(real_d3d12, name));
 }
 
-BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
+BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID parameter, PVOID*) {
+  // The device arrives as the InitOnce parameter; a global handoff could be
+  // overwritten by a second concurrent D3D12CreateDevice caller.
+  first_device = static_cast<ID3D12Device*>(parameter);
   std::array<wchar_t, 32768> module_path{};
   const auto length = GetModuleFileNameW(
       proxy_module, module_path.data(), static_cast<DWORD>(module_path.size()));
@@ -282,16 +285,16 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
 }
 
 void install_native_capture(IUnknown* returned_device) {
-  if (!returned_device || first_device) {
+  static LONG install_claimed = 0;
+  if (!returned_device || InterlockedExchange(&install_claimed, 1) != 0) {
     return;
   }
   ComPtr<ID3D12Device> device;
   if (FAILED(returned_device->QueryInterface(IID_PPV_ARGS(&device)))) {
     return;
   }
-  first_device = device.Get();
-  InitOnceExecuteOnce(&native_capture_once, initialize_native_capture, nullptr,
-                      nullptr);
+  InitOnceExecuteOnce(&native_capture_once, initialize_native_capture,
+                      device.Get(), nullptr);
   first_device = nullptr;
 }
 
