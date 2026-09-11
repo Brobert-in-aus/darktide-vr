@@ -22,6 +22,8 @@ param(
     [switch] $RenderApiCpuProfile,
     [switch] $ObserveDlssSrInputs,
     [switch] $ObserveGpuEngineActivity,
+    [switch] $DisableGameplayMirror,
+    [switch] $GameplayMirrorMetrics,
     [string] $RenderWorldCensusSourcePath,
     [string] $CpuRenderTimingSourcePath,
     [ValidateRange(0,600)] [int] $RenderWorldCensusWarmupFrames = 120,
@@ -153,6 +155,10 @@ try {
     if($ClusterLightTrace) { Save-BenchmarkFile $clusterTraceFlag }
     $nativeTargets = @((Join-Path $GameRoot 'binaries/darktidevr_native_capture.dll'),
         (Join-Path $modPath 'bin/darktidevr_native_capture.dll'))
+    $mirrorFlags = @($nativeTargets | ForEach-Object {
+        Join-Path (Split-Path $_) 'darktidevr_gameplay_mirror.flag'
+    })
+    foreach ($path in $mirrorFlags) { Save-BenchmarkFile $path }
     if ($NativeDllPath) {
         foreach ($path in $nativeTargets) {
             if ((Get-FileHash $path -Algorithm SHA256).Hash -ne $ExpectedInstalledNativeSha256) { throw 'Installed native baseline changed.' }
@@ -172,6 +178,10 @@ try {
         [pscustomobject]@{path=$path;existed=($null -ne $saved[$path]);backup=$backup}
     }
     $recoveryManifest | ConvertTo-Json | Set-Content (Join-Path $recovery 'manifest.json') -Encoding utf8
+    foreach ($path in $mirrorFlags) {
+        [IO.File]::WriteAllText($path,
+            "[probe]`r`ndisabled=$([int]$DisableGameplayMirror.IsPresent)`r`nmetrics=$([int]$GameplayMirrorMetrics.IsPresent)`r`n")
+    }
     if ($SoloMission) {
         [IO.File]::WriteAllBytes($soloModule, [IO.File]::ReadAllBytes((Join-Path $PSScriptRoot 'solo-mission-benchmark.lua')))
         $soloText = [Text.Encoding]::UTF8.GetString($saved[$soloSource])
@@ -253,6 +263,8 @@ try {
         duration_seconds=$DurationSeconds; preview_fps=$SimulatorPreviewFps; physical_xr_ready=$false
         hud_panel_enabled=$EnableHudPanel; preview_mode='both'; preview_layout='side_by_side'
         menu_input_enabled=$EnableMenuInput; desktop_window_capture=$false
+        gameplay_mirror_copy_suppression=$DisableGameplayMirror.IsPresent
+        gameplay_mirror_metrics=$GameplayMirrorMetrics.IsPresent
         optional_diagnostics_clean=(-not $PreserveDiagnosticFlags.IsPresent)
         cluster_trace=(Test-Path -LiteralPath $clusterTraceFlag)
         observe_dlss_sr_inputs=$ObserveDlssSrInputs.IsPresent

@@ -667,23 +667,14 @@ std::uint64_t desktop_mirror_fence_value{};
 std::atomic<bool> desktop_mirror_ready{};
 std::atomic<std::uint64_t> gameplay_mirror_copies_recorded{};
 std::atomic<std::uint64_t> gameplay_mirror_blits_attempted{};
+std::atomic<bool> gameplay_mirror_metrics_enabled{};
+std::atomic<bool> gameplay_mirror_suppression_enabled{};
 bool gameplay_mirror_metrics_requested() {
-  static const bool requested = [] {
-    wchar_t value[2]{};
-    return GetEnvironmentVariableW(L"DTVR_GAMEPLAY_MIRROR_METRICS", value, 2) == 1 &&
-           value[0] == L'1';
-  }();
-  return requested;
+  return gameplay_mirror_metrics_enabled.load(std::memory_order_relaxed);
 }
 bool gameplay_mirror_suppression_requested() {
-  static const bool requested = [] {
-    wchar_t value[2]{};
-    return GetEnvironmentVariableW(L"DTVR_DISABLE_GAMEPLAY_MIRROR", value, 2) == 1 &&
-           value[0] == L'1';
-  }();
-  return requested;
-}
-std::atomic<std::uint64_t> desktop_mirror_error_count{};
+  return gameplay_mirror_suppression_enabled.load(std::memory_order_relaxed);
+}std::atomic<std::uint64_t> desktop_mirror_error_count{};
 ComPtr<ID3D12Fence> ready_fence;
 ComPtr<ID3D12Fence> consumed_fence;
 std::array<HANDLE, 2> eye_handles{};
@@ -13607,6 +13598,18 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
       cluster_light_visibility_fix_requested.load(std::memory_order_relaxed);
   initialize_streamline_probe(swapchain_vtable[8],
                               streamline_native_present);
+  {
+    auto flag = module_path(native_capture_module);
+    const auto separator = flag.find_last_of(L"\\/");
+    if (separator != std::wstring::npos) {
+      flag.resize(separator + 1);
+      flag += L"darktidevr_gameplay_mirror.flag";
+      gameplay_mirror_metrics_enabled.store(
+          GetPrivateProfileIntW(L"probe", L"metrics", 0, flag.c_str()) == 1);
+      gameplay_mirror_suppression_enabled.store(
+          GetPrivateProfileIntW(L"probe", L"disabled", 0, flag.c_str()) == 1);
+    }
+  }
   if (!native_original_ring && !streamline_persistent_requested.load(std::memory_order_acquire)) {
     auto ring_flag = module_path(native_capture_module);
     const auto separator = ring_flag.find_last_of(L"\\/");
