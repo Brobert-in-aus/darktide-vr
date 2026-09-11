@@ -24,8 +24,9 @@ DXGI presentation, or Virtual Desktop encoding.
 
 ## Controlled tests still required
 
-The initial native control now reads `DTVR_DISABLE_GAMEPLAY_MIRROR=1` once
-per process (unset/default preserves current behavior). It suppresses the
+The native control reads `[probe] disabled=1` from
+`darktidevr_gameplay_mirror.flag` alongside the loaded DLL (default preserves
+current behavior). The benchmark saves and restores both flag paths. It suppresses the
 completed-left-eye mirror copy and desktop mirror blit only in `stereo_world`.
 Flat and world-anchored menu modes retain their existing path. This does not
 suppress engine rendering, DXGI Present, or packed FG presentation, so label
@@ -36,9 +37,52 @@ Windows x64 Release native build and `stereo_color_resample` test pass using
 darktidevr_native_capture darktidevr-stereo-color-resample-tests` and
 `ctest --test-dir build/xr-window-capture-demand -C Release -R
 '^stereo_color_resample$' --output-on-failure`. Mode coverage includes all eight
-presentation modes with suppression enabled and disabled. Live counters,
-focused benchmark build, A/B measurements and menu recovery remain pending;
-the accumulated development DLL has not been deployed.
+presentation modes with suppression enabled and disabled. Opt-in `[probe] metrics=1` emits cumulative mirror copy/blit counters every
+600 Presents. An initial environment-only attempt did not activate metrics
+through the Steam launch path and is excluded from the controlled comparison.
+The corrected runner uses `-DisableGameplayMirror` and `-GameplayMirrorMetrics`.
+The focused native build and A/B/A measurements below are complete. Menu
+recovery and physical visual acceptance remain pending; the accumulated
+development DLL has not been deployed.
+
+## 11 September controlled result
+
+Focused source `7a62226` adds mirror controls to stacked native `2f2bed3`.
+DLL SHA-256: `2250B200F395C85FC508505329B4BC58F974AD53F9E483EA437AEC6DCA2EA012`.
+Build directory: `build/focused-gameplay-mirror-control`; native Release build
+and `stereo_color_resample` pass (1/1). The benchmark viewer is unchanged
+`216E3F760D1CC9BE5489376EF5DDB0A473F49990F144F0227F8CF87178E429F5`.
+
+Same DLL, 2496x2688 per eye, Quality DLSS, FG off, unlimited cap, 120 Hz,
+13 configured workers, stationary `cm_archives` difficulty 3, HUD/menu enabled,
+preview and viewer desktop capture disabled. Ninety seconds after workload
+readiness, excluding ten seconds warmup:
+
+| Run | Mirror copies | Distinct native FPS | Analysed seconds |
+| --- | --- | ---: | ---: |
+| mirror-a2 | normal | 89.09399 | 80.81353 |
+| mirror-b | suppressed | 89.52077 | 80.42827 |
+| mirror-a3 | normal | 89.05575 | 79.50077 |
+
+Approximately 0.5% above the bracketing controls, with only one suppressed
+run: a small local signal, not a substantial or established general gain.
+At Present 9000, gameplay copy/blit counters were 4544/7570, 0/0 and
+4621/7540 respectively. This confirms suppression of the instrumented paths;
+it does not establish no desktop rendering or window independence.
+All runs exited cleanly, restored every tracked file and had zero pose
+mismatches. GPU sampled/unavailable records were 26/2, 27/1 and 27/0.
+No Streamer activity was observed, but its engine-counter coverage was
+incomplete; do not equate missing samples with proven absence of encoding.
+Physical Ready failed before each launch; these are authorized simulator
+fallback measurements, not headset results. Proximity automation was restored.
+
+Ignored evidence: `artifacts/unattended/synthetic-descriptor-demand-mirror-{a2,b,a3}-20260911`
+and `mirror-{a2,b,a3}-counters-20260911.log`. The earlier `mirror-a` run used
+the ineffective environment control and is excluded. Accepted native SHA
+`FCCDD0DE699F9D50D2BD316792829D4EE5700843D925D194BE4DF1F3EEB02369`
+was rechecked at both installed locations after the final run. Default remains
+normal mirror behavior. No FG, resize, hidden-window or absent-window result
+is claimed.
 
 1. Compare normal versus suppressed gameplay mirror copies with the same
    native binary and explicit logged switch. Retain actual Present, shared-eye
