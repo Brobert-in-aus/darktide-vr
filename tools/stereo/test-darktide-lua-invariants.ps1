@@ -1050,12 +1050,13 @@ if ($controllerAimSource.Contains('component.position = position') -or
 $hudPanelSource = Get-Content -LiteralPath (
     Join-Path (Split-Path -Parent $resolvedSource) `
         'darktidevr_hud_panel.lua') -Raw
-if (-not $hudPanelSource.Contains('enabled = false') -or
+if (-not $hudPanelSource.Contains('enabled = true,') -or
+        -not $hudPanelSource.Contains('HudPanel.set_enabled(command ~= "disable")') -or
         -not $hudPanelSource.Contains(
             'transfer_fixed_records(state.owner, state.resource_renderer,') -or
         $hudPanelSource.Contains('begin_immediate_replay') -or
         $hudPanelSource.Contains('pass.retained_mode = false')) {
-    throw 'Fixed HUD world rendering must remain opt-in and must not replay or mutate retained widget modes.'
+    throw 'Fixed HUD world rendering is the play default with a flag-file override, and must not replay or mutate retained widget modes.'
 }
 if (-not $source.Contains(
         'presentation.read_head_pose() ~= 0 then') -or

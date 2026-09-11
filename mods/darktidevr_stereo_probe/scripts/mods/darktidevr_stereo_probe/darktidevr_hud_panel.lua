@@ -73,7 +73,9 @@ local function pack(...)
 end
 
 local state = {
-    enabled = false,
+    -- The fixed HUD panel is part of the accepted play configuration; the flag
+    -- file remains a diagnostic override.
+    enabled = true,
     diagnostic = false,
     symbol_probe = false,
     same_world_probe = false,

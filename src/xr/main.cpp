@@ -1147,10 +1147,12 @@ class OpenXrProbe {
       std::uint64_t ready{},pose{},generation{},tick{};
     };
     std::array<PendingOriginal,3> pending_originals;
+    // Play defaults: direct native originals and the precise pair wait are on
+    // unless the environment sets the variable to 0 (a development override).
     wchar_t direct_original_value[2]{};
-    const bool direct_original_requested = GetEnvironmentVariableW(
+    const bool direct_original_requested = !(GetEnvironmentVariableW(
         L"DTVR_XR_NATIVE_ORIGINAL_DIRECT", direct_original_value, 2) == 1 &&
-        direct_original_value[0] == L'1';
+        direct_original_value[0] == L'0');
     std::uint64_t direct_original_submitted{};
     std::cout << "openxr.native_original_direct requested=" << direct_original_requested << '\n';
     std::uint64_t ingested_original_ready{};
@@ -1181,9 +1183,9 @@ class OpenXrProbe {
     darktidevr::core::DeliveryCadence delivery_cadence;
     std::uint64_t cadence_distinct_total{}, cadence_generation{};
     wchar_t precise_pair_wait_value[2]{};
-    const bool precise_pair_wait_requested = GetEnvironmentVariableW(
+    const bool precise_pair_wait_requested = !(GetEnvironmentVariableW(
         L"DTVR_XR_PRECISE_PAIR_WAIT", precise_pair_wait_value, 2) == 1 &&
-        precise_pair_wait_value[0] == L'1';
+        precise_pair_wait_value[0] == L'0');
     darktidevr::xr::PairPollWait pair_poll_wait(precise_pair_wait_requested);
     auto previous_pair_wait_failures = pair_poll_wait.failures();
     std::cout << "openxr.pair_poll_wait requested=" << precise_pair_wait_requested
@@ -1208,6 +1210,24 @@ class OpenXrProbe {
     const auto reticle_scale_path_length = GetEnvironmentVariableW(
         L"DTVR_RETICLE_SCALE_FILE", reticle_scale_file, 32768);
     if (reticle_scale_path_length >= 32768) reticle_scale_file[0] = L'\0';
+    if (reticle_scale_path_length == 0) {
+      // Installed beside the mod's bin directory: the Lua crosshair feedback
+      // writes the scale one level above this executable.
+      std::wstring executable_directory(32768, L'\0');
+      const auto executable_length = GetModuleFileNameW(
+          nullptr, executable_directory.data(), 32768);
+      const auto separator = executable_length != 0 && executable_length < 32768
+          ? executable_directory.find_last_of(L"\\/") : std::wstring::npos;
+      if (separator != std::wstring::npos) {
+        executable_directory.resize(separator + 1);
+        const auto candidate = executable_directory +
+            L"..\\darktidevr_crosshair_scale.flag";
+        if (candidate.size() < 32768) {
+          std::copy(candidate.begin(), candidate.end(), reticle_scale_file);
+          reticle_scale_file[candidate.size()] = L'\0';
+        }
+      }
+    }
     float reticle_scale = 0.7F;
     auto next_reticle_scale_poll = start;
     auto last_live_report = start;

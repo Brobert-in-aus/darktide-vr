@@ -88,8 +88,35 @@ $destinations = @(
     [pscustomobject]@{
         Source = $sourceD3D12Bootstrap
         Destination = Join-Path $gameRootPath 'binaries\d3d12.dll'
+    },
+    # The mode switch reinstalls the proxy from this copy, and the native
+    # module starts the viewer beside itself.
+    [pscustomobject]@{
+        Source = $sourceD3D12Bootstrap
+        Destination = Join-Path $modRoot 'bin\d3d12.dll'
     }
 )
+# The mode switch and the executable patch tool live in the installed mod
+# folder so that a package user can switch between VR and flat play.
+foreach ($switchFile in @(
+        @{ Source = Join-Path $repoRoot 'mods\darktidevr_stereo_probe\darktidevr-mode.ps1'; Destination = 'darktidevr-mode.ps1' },
+        @{ Source = Join-Path $repoRoot 'mods\darktidevr_stereo_probe\Darktide VR Mode.bat'; Destination = 'Darktide VR Mode.bat' },
+        @{ Source = Join-Path $PSScriptRoot 'set-skinner-assert-patch.ps1'; Destination = 'tools\set-skinner-assert-patch.ps1' })) {
+    $destinations += [pscustomobject]@{
+        Source = $switchFile.Source
+        Destination = Join-Path $modRoot $switchFile.Destination
+    }
+}
+$viewerRoot = Join-Path $repoRoot "build\windows-vs2022\tests\xr_harness\$Configuration"
+foreach ($viewerFile in @('darktidevr-xr-harness.exe', 'openxr_loader.dll', 'OPENXR-LICENSE.txt')) {
+    $viewerSource = Join-Path $viewerRoot $viewerFile
+    if (Test-Path -LiteralPath $viewerSource -PathType Leaf) {
+        $destinations += [pscustomobject]@{
+            Source = $viewerSource
+            Destination = Join-Path $modRoot ('bin\' + $viewerFile)
+        }
+    }
+}
 
 # Native reflection loads this exact app-local DLL even when using prebuilt
 # shaders. Include it and its notices in the same recoverable transaction.
@@ -152,6 +179,11 @@ if ($ParticleDiagnosticMagenta) {
     }
 }
 
+# The switch's tools folder is new inside an existing install; create it under
+# the installed mod root, which must already exist.
+if (Test-Path -LiteralPath $modRoot -PathType Container) {
+    New-Item -ItemType Directory -Path (Join-Path $modRoot 'tools') -Force | Out-Null
+}
 foreach ($entry in $destinations) {
     if (-not (Test-Path -LiteralPath $entry.Source -PathType Leaf)) {
         throw "Development source file not found: $($entry.Source)"

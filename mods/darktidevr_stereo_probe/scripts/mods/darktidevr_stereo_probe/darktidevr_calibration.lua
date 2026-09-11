@@ -174,22 +174,32 @@ function calibration.install(mod, controller_state, get_head_pose,
                 "dtvr_calibration_button",
                 { original_text = "VR CALIBRATION" })
     end)
+    local function open_calibration_view()
+        if not Managers.ui:view_instance("darktidevr_calibration_view") then
+            Managers.ui:open_view(
+                "darktidevr_calibration_view", nil, nil, nil, nil, {})
+        end
+    end
+
+    -- First run: with nothing saved yet, the character-select screen opens the
+    -- calibration once per session so a new player sets height and arm span
+    -- before their first character is created.
+    local first_run_offered = false
     mod:hook_safe(MainMenuView, "on_enter", function(self)
         local widget = self._widgets_by_name and
             self._widgets_by_name.dtvr_calibration_button
         if widget and widget.content and widget.content.hotspot then
-            widget.content.hotspot.pressed_callback = function()
-                if not Managers.ui:view_instance(
-                        "darktidevr_calibration_view") then
-                    Managers.ui:open_view(
-                        "darktidevr_calibration_view", nil, nil, nil, nil,
-                        {})
-                end
-            end
+            widget.content.hotspot.pressed_callback = open_calibration_view
+        end
+        local first_run = mod:get("vr_calibration_v1") == nil and
+            not first_run_offered
+        if first_run then
+            first_run_offered = true
+            open_calibration_view()
         end
         mod:info(
-            "DARKTIDEVR_CALIBRATION main_menu_entry widget=%s",
-            tostring(widget ~= nil))
+            "DARKTIDEVR_CALIBRATION main_menu_entry widget=%s first_run=%s",
+            tostring(widget ~= nil), tostring(first_run))
     end)
 
     mod:command("dtvr_calibration", "Open VR body calibration", function()

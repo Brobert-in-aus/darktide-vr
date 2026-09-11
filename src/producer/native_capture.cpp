@@ -24,6 +24,7 @@
 #include "producer/stereo_ui_readback.h"
 #include "producer/billboard_draw_readback.h"
 #include "producer/billboard_resource_state.h"
+#include "producer/viewer_process.h"
 #include <filesystem>
 #include <fstream>
 #include <thread>
@@ -2813,6 +2814,25 @@ int sl_get_feature_function_hook(std::uint32_t feature, const char* name,
   return result;
 }
 
+// The accepted play configuration is the default when a flag file is absent, so
+// a plain install needs no launcher-written flags. A present file still
+// decides: "disabled" or "0" turns the feature off, anything else turns it on.
+bool play_default_flag(const std::wstring& path, bool default_value) {
+  if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) {
+    return default_value;
+  }
+  std::ifstream stream(path);
+  std::string content((std::istreambuf_iterator<char>(stream)),
+                      std::istreambuf_iterator<char>());
+  const auto first = content.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos) {
+    return true;
+  }
+  const auto last = content.find_last_not_of(" \t\r\n");
+  content = content.substr(first, last - first + 1);
+  return content != "disabled" && content != "0";
+}
+
 void initialize_streamline_probe(void* present_target,
                                  void* native_present_target) {
   auto flag_path = module_path(native_capture_module);
@@ -2823,7 +2843,7 @@ void initialize_streamline_probe(void* present_target,
   flag_path.resize(separator + 1);
   const auto flag_directory = flag_path;
   flag_path += L"..\\darktidevr_streamline_probe.flag";
-  if (GetFileAttributesW(flag_path.c_str()) == INVALID_FILE_ATTRIBUTES) {
+  if (!play_default_flag(flag_path, true)) {
     return;
   }
   wchar_t temporary_path[MAX_PATH]{};
@@ -2841,7 +2861,7 @@ void initialize_streamline_probe(void* present_target,
   const auto eye_target_flag_path =
       flag_directory + L"..\\darktidevr_streamline_eye_target_probe.flag";
   streamline_eye_target_probe_requested.store(
-      GetFileAttributesW(eye_target_flag_path.c_str()) != INVALID_FILE_ATTRIBUTES,
+      play_default_flag(eye_target_flag_path, true),
       std::memory_order_release);
   if (streamline_eye_target_probe_requested.load(std::memory_order_acquire)) {
     write_streamline_probe_log("ISOLATED_EYE_POLICY\tenabled=1\r\n");
@@ -2860,44 +2880,42 @@ void initialize_streamline_probe(void* present_target,
   const auto input_snapshot_flag_path =
       flag_directory + L"..\\darktidevr_streamline_input_snapshot_probe.flag";
   streamline_input_snapshot_probe_requested.store(
-      GetFileAttributesW(input_snapshot_flag_path.c_str()) !=
-          INVALID_FILE_ATTRIBUTES,
+      play_default_flag(input_snapshot_flag_path, true),
       std::memory_order_release);
   const auto target_token_flag_path =
       flag_directory + L"..\\darktidevr_streamline_target_token_probe.flag";
   streamline_target_token_probe_requested.store(
-      GetFileAttributesW(target_token_flag_path.c_str()) !=
-          INVALID_FILE_ATTRIBUTES,
+      play_default_flag(target_token_flag_path, true),
       std::memory_order_release);
   const auto stereo_swapchain_flag_path =
       flag_directory + L"..\\darktidevr_streamline_stereo_swapchain_probe.flag";
   streamline_stereo_swapchain_probe_requested.store(
-      GetFileAttributesW(stereo_swapchain_flag_path.c_str()) !=
-          INVALID_FILE_ATTRIBUTES,
+      play_default_flag(stereo_swapchain_flag_path, true),
       std::memory_order_release);
   const auto stereo_stage_flag_path =
       flag_directory + L"..\\darktidevr_streamline_stereo_stage_probe.flag";
   streamline_stereo_stage_probe_requested.store(
-      GetFileAttributesW(stereo_stage_flag_path.c_str()) !=
-          INVALID_FILE_ATTRIBUTES,
+      play_default_flag(stereo_stage_flag_path, true),
       std::memory_order_release);
   const auto interposer = GetModuleHandleW(L"sl.interposer.dll");
   const auto stereo_submit_flag_path =
       flag_directory + L"..\\darktidevr_streamline_stereo_submit_probe.flag";
+  // Play default: eight reusable input owners submitted continuously and kept
+  // across presentation changes. An explicit file may still narrow this.
   streamline_stereo_submit_probe_requested.store(
-      GetFileAttributesW(stereo_submit_flag_path.c_str()) != INVALID_FILE_ATTRIBUTES,
+      play_default_flag(stereo_submit_flag_path, true),
       std::memory_order_release);
   const auto submission_limit = GetPrivateProfileIntW(
-      L"probe", L"frames", 1, stereo_submit_flag_path.c_str());
+      L"probe", L"frames", 8, stereo_submit_flag_path.c_str());
   streamline_input_snapshot_state.submission_limit =
       submission_limit >= 1 && submission_limit <= 8 ? submission_limit : 1;
   streamline_continuous_requested.store(
-      GetPrivateProfileIntW(L"probe", L"continuous", 0, stereo_submit_flag_path.c_str()) == 1 &&
+      GetPrivateProfileIntW(L"probe", L"continuous", 1, stereo_submit_flag_path.c_str()) == 1 &&
       submission_limit >= 2 && submission_limit <= 8 &&
       streamline_stereo_submit_probe_requested.load(std::memory_order_relaxed),
       std::memory_order_release);
   streamline_persistent_requested.store(
-      GetPrivateProfileIntW(L"probe",L"persistent",0,stereo_submit_flag_path.c_str()) == 1);
+      GetPrivateProfileIntW(L"probe",L"persistent",1,stereo_submit_flag_path.c_str()) == 1);
   write_streamline_probe_log("STEREO_SUBMISSION_PROBE\tenabled=%u\tframes=%u\r\n",
       streamline_stereo_submit_probe_requested.load(std::memory_order_relaxed) ? 1U : 0U,
       streamline_input_snapshot_state.submission_limit);
@@ -15463,9 +15481,19 @@ extern "C" __declspec(dllexport) int dtvr_commit_gameplay_generation(
              ? 0
              : 2;
 }
+// Set once the d3d12 bootstrap has installed the hooks for a device; Lua uses
+// it to tell a VR-mode install from a flat one that merely loaded the module.
+std::atomic<int> bootstrap_install_state{0};
 extern "C" __declspec(dllexport) int
 dtvr_install_for_device(ID3D12Device* device) {
-  return device ? install_hooks(device) : 20;
+  const auto result = device ? install_hooks(device) : 20;
+  if (result == 0) {
+    bootstrap_install_state.store(1, std::memory_order_release);
+  }
+  return result;
+}
+extern "C" __declspec(dllexport) int dtvr_bootstrap_state() {
+  return bootstrap_install_state.load(std::memory_order_acquire);
 }
 extern "C" __declspec(dllexport) int dtvr_set_projection_active(int enabled) {
   const auto event = shared_projection_active_event();
@@ -16646,6 +16674,14 @@ extern "C" __declspec(dllexport) int dtvr_read_mirror_cursor(int* values,
   values[3] = client.bottom - client.top;
   values[4] = GetForegroundWindow() == window ? 1 : 0;
   return 0;
+}
+
+extern "C" __declspec(dllexport) int dtvr_viewer_control(int enabled) {
+  return darktidevr::producer::viewer::control(enabled != 0);
+}
+extern "C" __declspec(dllexport) int dtvr_viewer_state(int* values,
+                                                        unsigned int count) {
+  return darktidevr::producer::viewer::state(values, count);
 }
 
 extern "C" __declspec(dllexport) int dtvr_set_mirror_client_extent(

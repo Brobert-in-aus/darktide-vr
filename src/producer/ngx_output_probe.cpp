@@ -699,21 +699,41 @@ bool install_ngx_output_probe(HMODULE capture_module, NgxSrEyeContextReader cont
   const auto separator = directory.find_last_of(L"\\/");
   if (separator == std::wstring::npos) return false;
   directory.resize(separator + 1);
+  // Play default when the flag is absent: publish generated stereo at stereo
+  // submit with no output copy and no SR observation. A present file decides.
   const auto flag = directory + L"..\\darktidevr_ngx_output_probe.flag";
-  if (GetFileAttributesW(flag.c_str()) ==
-      INVALID_FILE_ATTRIBUTES) return true;
-  const bool wait_for_stereo = GetPrivateProfileIntW(L"probe", L"wait_for_stereo", 0, flag.c_str()) != 0;
+  // An explicit flag keeps the strict contract (an unknown or missing NGX
+  // runtime fails the install); the play default tolerates a machine without
+  // DLSS by leaving generated stereo uninstalled.
+  const bool explicit_flag = GetFileAttributesW(flag.c_str()) != INVALID_FILE_ATTRIBUTES;
+  const bool wait_for_stereo = GetPrivateProfileIntW(L"probe", L"wait_for_stereo", 1, flag.c_str()) != 0;
   observe_sr_inputs = GetPrivateProfileIntW(L"probe", L"observe_sr_inputs", 0, flag.c_str()) != 0;
   configure_ngx_output_copy(wait_for_stereo &&
       GetPrivateProfileIntW(L"probe", L"copy_output", 0, flag.c_str()) != 0);
   configure_generated_stereo(wait_for_stereo &&
-      GetPrivateProfileIntW(L"probe", L"generated_stereo", 0, flag.c_str()) != 0);
+      GetPrivateProfileIntW(L"probe", L"generated_stereo", 1, flag.c_str()) != 0);
   capture_window.configure(wait_for_stereo);
   runtime = GetModuleHandleW(L"_nvngx.dll");
-  if (!runtime) return false;
-  length = GetModuleFileNameW(runtime, path.data(), static_cast<DWORD>(path.size()));
-  if (!length || length >= path.size() || !verified_runtime(std::wstring(path.data(), length)))
+  if (!runtime) {
+    if (!explicit_flag) {
+      configure_ngx_output_copy(false);
+      configure_generated_stereo(false);
+      capture_window.configure(false);
+      return true;
+    }
     return false;
+  }
+  length = GetModuleFileNameW(runtime, path.data(), static_cast<DWORD>(path.size()));
+  if (!length || length >= path.size() || !verified_runtime(std::wstring(path.data(), length))) {
+    if (!explicit_flag) {
+      runtime = nullptr;
+      configure_ngx_output_copy(false);
+      configure_generated_stereo(false);
+      capture_window.configure(false);
+      return true;
+    }
+    return false;
+  }
   const auto target = GetProcAddress(runtime, "NVSDK_NGX_D3D12_EvaluateFeature");
   const auto create_target = GetProcAddress(runtime, "NVSDK_NGX_D3D12_CreateFeature");
   const auto release_target = GetProcAddress(runtime, "NVSDK_NGX_D3D12_ReleaseFeature");

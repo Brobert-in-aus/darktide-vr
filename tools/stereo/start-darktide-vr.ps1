@@ -591,6 +591,32 @@ if ($StreamlineStereoSubmitProbe) {
     if ($DlssGeneratedStereo) { Write-Output 'Sustained stereo tags enabled with eight reusable input owners.' }
     else { Write-Output "Stereo tag submission enabled for $StreamlineStereoSubmitFrames batches; generated XR publication remains disabled." }
 }
+# The native module and the Lua mod default to the accepted play configuration
+# when one of these flags is absent. A development launch that did not request
+# a probe must therefore say so explicitly, and the file goes away afterwards.
+$playDefaultOffFlags = @()
+foreach ($playDefault in @(
+        @{ Requested = [bool] $streamlineProbeFlagPath; Name = 'darktidevr_streamline_probe.flag'; Value = 'disabled' },
+        @{ Requested = [bool] $streamlineInputSnapshotProbeFlagPath; Name = 'darktidevr_streamline_input_snapshot_probe.flag'; Value = 'disabled' },
+        @{ Requested = [bool] $streamlineTargetTokenProbeFlagPath; Name = 'darktidevr_streamline_target_token_probe.flag'; Value = 'disabled' },
+        @{ Requested = [bool] $streamlineEyeTargetProbeFlagPath; Name = 'darktidevr_streamline_eye_target_probe.flag'; Value = 'disabled' },
+        @{ Requested = [bool] $streamlineStereoSwapchainProbeFlagPath; Name = 'darktidevr_streamline_stereo_swapchain_probe.flag'; Value = 'disabled' },
+        @{ Requested = [bool] $streamlineStereoStageProbeFlagPath; Name = 'darktidevr_streamline_stereo_stage_probe.flag'; Value = 'disabled' },
+        @{ Requested = [bool] $ngxOutputProbeFlagPath; Name = 'darktidevr_ngx_output_probe.flag'; Value = "[probe]`nwait_for_stereo=0`ncopy_output=0`ngenerated_stereo=0`nobserve_sr_inputs=0" },
+        @{ Requested = [bool] $streamlineStereoSubmitProbeFlagPath; Name = 'darktidevr_streamline_stereo_submit_probe.flag'; Value = "[probe]`nframes=1`ncontinuous=0`npersistent=0" })) {
+    if ($playDefault.Requested) { continue }
+    $playDefaultPath = Join-Path $GameRoot (Join-Path 'mods\darktidevr_stereo_probe' $playDefault.Name)
+    $playDefaultExisted = Test-Path -LiteralPath $playDefaultPath -PathType Leaf
+    $playDefaultOffFlags += [pscustomobject]@{
+        Path = $playDefaultPath
+        Existed = $playDefaultExisted
+        Original = if ($playDefaultExisted) { [IO.File]::ReadAllBytes($playDefaultPath) } else { $null }
+    }
+    Set-Content -LiteralPath $playDefaultPath -Value $playDefault.Value -Encoding ascii
+}
+if ($playDefaultOffFlags.Count -gt 0) {
+    Write-Output "Play defaults explicitly off for this run: $($playDefaultOffFlags.Count) flag(s)."
+}
 if ($SyntheticRuntimeFrusta) {
     $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
     $syntheticHeadPublisherPath = Join-Path $repositoryRoot `
@@ -653,10 +679,13 @@ if ($EnableGameplayReticle -and -not $offlineNoHeadset) {
 if ($EnableHudPanel) {
     $candidateHudPanelFlagPath = Join-Path $GameRoot `
         'mods\darktidevr_stereo_probe\darktidevr_hud_panel.flag'
-    if (-not (Test-Path -LiteralPath $candidateHudPanelFlagPath -PathType Leaf)) {
-        throw "HUD-panel test flag not found: $candidateHudPanelFlagPath"
+    # The panel is on by default; an absent flag is restored to 'disabled',
+    # which the panel ignores, so the run's 'enable' command stays one-shot.
+    $hudPanelFlagOriginal = if (Test-Path -LiteralPath $candidateHudPanelFlagPath -PathType Leaf) {
+        [IO.File]::ReadAllBytes($candidateHudPanelFlagPath)
+    } else {
+        [Text.Encoding]::ASCII.GetBytes("disabled`r`n")
     }
-    $hudPanelFlagOriginal = [IO.File]::ReadAllBytes($candidateHudPanelFlagPath)
     $hudPanelFlagPath = $candidateHudPanelFlagPath
     Set-Content -LiteralPath $hudPanelFlagPath -Value 'enable' `
         -Encoding ascii
@@ -969,6 +998,18 @@ finally {
     $cleanupSteps = @(
     {
         Restore-CleanLaunchDiagnostics -Saved $cleanLaunchSaved
+    }
+    {
+        if (Test-Path -LiteralPath variable:playDefaultOffFlags) {
+            foreach ($playDefaultFlag in $playDefaultOffFlags) {
+                if ($playDefaultFlag.Existed) {
+                    Restore-FlagOriginal -LiteralPath $playDefaultFlag.Path -Original $playDefaultFlag.Original
+                }
+                elseif (Test-Path -LiteralPath $playDefaultFlag.Path -PathType Leaf) {
+                    Remove-Item -LiteralPath $playDefaultFlag.Path -Force
+                }
+            }
+        }
     }
     {
         if (Test-Path -LiteralPath $characterStartFlag -PathType Leaf) {

@@ -719,6 +719,9 @@ local function ensure_ui_native_hooks()
         int dtvr_enable_boundary_census(void);
         int dtvr_set_mirror_client_extent(unsigned int width, unsigned int height);
         int dtvr_read_mirror_cursor(int* values, unsigned int count);
+        int dtvr_viewer_control(int enabled);
+        int dtvr_viewer_state(int* values, unsigned int count);
+        int dtvr_bootstrap_state(void);
         int dtvr_set_virtual_client_extent(int enabled);
         int dtvr_set_virtual_size_message(int enabled);
         int dtvr_lock_swapchain_client_extent(int enabled);
@@ -5276,7 +5279,8 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         local flag_path =
             "./../mods/darktidevr_stereo_probe/darktidevr_controller_aim_test.flag"
         local flag = Mods.lua.io.open(flag_path, "r")
-        local enabled = false
+        -- Play default when the flag is absent; a present file decides.
+        local enabled = true
         if flag then
             enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
             flag:close()
@@ -5657,7 +5661,8 @@ function presentation.inject_gameplay_input(self, main_t, input)
         local flag = Mods.lua.io.open(
             "./../mods/darktidevr_stereo_probe/darktidevr_gameplay_input_test.flag",
             "r")
-        local requested = false
+        -- Play default when the flag is absent; a present file decides.
+        local requested = true
         if flag then
             local value = flag:read("*all")
             flag:close()
@@ -13547,6 +13552,9 @@ presentation.melee_preview = mod:io_dofile(
 
 mod.update = function()
     presentation.melee_preview.update()
+    if presentation.viewer then
+        presentation.viewer.update()
+    end
 end
 
 presentation.hud_panel = mod:io_dofile(
@@ -13624,22 +13632,32 @@ presentation.visual_settings = mod:io_dofile(
 presentation.visual_settings.install(mod)
 
 do
+    -- Isolated gameplay eye targets are the play default; a present flag
+    -- still decides, matching the native module's reading of the same file.
     local flag = Mods.lua.io.open(
         "./../mods/darktidevr_stereo_probe/darktidevr_streamline_eye_target_probe.flag", "r")
+    local enabled = true
     if flag then
-        local enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
+        enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
         flag:close()
-        if enabled then
-            mod:io_dofile(
-                "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_eye_targets"
-            ).install(mod, ScriptWorld, function()
-                assert(ensure_ui_native_hooks() and refresh_xr_render_extent(),
-                    "isolated gameplay targets require a current XR render extent")
-                return ui_eye_target_width, ui_eye_target_height
-            end)
-        end
+    end
+    if enabled then
+        mod:io_dofile(
+            "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_eye_targets"
+        ).install(mod, ScriptWorld, function()
+            assert(ensure_ui_native_hooks() and refresh_xr_render_extent(),
+                "isolated gameplay targets require a current XR render extent")
+            return ui_eye_target_width, ui_eye_target_height
+        end)
     end
 end
+
+presentation.viewer = mod:io_dofile(
+    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_viewer"
+)
+presentation.viewer.install(mod, function()
+    return ensure_ui_native_hooks() and ui_native_capture or nil
+end)
 
 mod.on_disabled = function()
     presentation.marker_metrics.stop()
