@@ -128,15 +128,49 @@ nor disproved worn. What took foreground is not in the logs (the viewer
 does no foreground operations; the launcher's focus handling runs only at
 start-up).
 
+## Physical check 2 (11 September, about 20:05 to 20:15): passed
+
+Same wrapper, same native, game window kept foreground (`foreground=1`
+across both switches, `focus_changes=0` until exit). The user reports that
+frame generation kept working through the switch. Logs
+(`home-fg-quality-switch-20260911/`, `attempt-1/` holds the first run):
+
+| Switch | Ring | Viewer |
+| --- | --- | --- |
+| Quality to Performance, present 3931 | `paused` (options menu), migrated both eyes, `reallocated` 1056x1152, `resumed` at the same present, two single-present binding rejections while the new handles settled, then steady | generated pairs back within seconds, 100 to 114 distinct FPS |
+| Performance to Quality, present 4731 | same sequence, `reallocated` 1408x1536, one binding rejection, steady | same |
+
+Health `complete`, `paired` and `published` rise together after each switch;
+context misses grew by a handful per switch, not per frame. The worn defect
+the user reported this morning does not reproduce with this native.
+
+## Observed in the same session, outside this fix
+
+- **Remote-server mission (`mission_km_station`, dedicated mission server,
+  from present 8888):** the engine registered new viewport handles again on
+  the mission load; migration and resume ran, but every following present
+  was a `binding_rejection` with `bindings_match=0` and matching pose, so the
+  ring paused and resumed each present while health `context_misses` and
+  `unmapped` climbed (42 to 315 and 57 to 340 in about 40 s) and the viewer
+  delivered no generated pairs. Not analysed further here; missions have not
+  been an FG test scene, and the binding check's options requirement
+  (`options_present == constants_present`, `mode == 1`) is the first thing to
+  inspect. Recorded on the todo.
+- **No tracked hands, weapons or controller input in that mission:** the mod
+  logged `DARKTIDEVR_IK presentation_blocked reason=not_first_person_body_mode
+  mode=coop_complete_objective` while the viewer tracked both controllers
+  throughout. This is the documented remote-mission gate
+  (`darktidevr_gameplay_context.lua`: mission modes admit body, input and
+  hand aim only when the local process is the server), see
+  [MISSION-READINESS.md](MISSION-READINESS.md) and
+  [MISSION-AUTHORITY-AUDIT.md](MISSION-AUTHORITY-AUDIT.md); not a regression.
+
 ## Limits
 
-- Offline-verified; the worn check above is inconclusive because of the
-  foreground loss. Repeat it keeping the game window foregrounded (make the
-  quality change from inside the headset without touching desktop windows),
-  and confirm the health log shows `foreground=1` across the switch. The
-  build from this branch, `BF8ED0A1...`, compiles and passes the WARP test
-  but cannot be verified offline because this lineage still fails FG at
-  launch in the simulator (`missing_state_api`, see the todo).
+- The build from this branch, `BF8ED0A1...`, compiles and passes the WARP
+  test but cannot be verified offline because this lineage still fails FG at
+  launch in the simulator (`missing_state_api`, see the todo); the worn pass
+  above is for `F5799F85` (FG-tested baseline lineage plus this fix).
 - Only DLSS quality changes were exercised. Other render-settings changes
   that rebuild the eye targets (resolution scale, DLSS off and on) go
   through the same path in principle and are untested.
