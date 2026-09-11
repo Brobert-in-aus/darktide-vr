@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param([string] $OutputDirectory = (Join-Path $PSScriptRoot '..\..\artifacts\packages'))
+param([string] $OutputDirectory = (Join-Path $PSScriptRoot '..\..\artifacts\packages'),
+      [string] $ComponentProvenancePath,
+      [switch] $RequireComponentProvenance)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
@@ -35,6 +37,14 @@ foreach ($relative in $relativeFiles) {
     $plan += [pscustomobject]@{ path=$relative; source=$source; bytes=(Get-Item -LiteralPath $source).Length;
         sha256=(Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash }
 }
+$provenance = $null
+if ($ComponentProvenancePath) {
+    . (Join-Path $PSScriptRoot 'component-provenance.ps1')
+    $provenance = Get-Content -LiteralPath $ComponentProvenancePath -Raw | ConvertFrom-Json
+    Assert-ComponentProvenance -Receipt $provenance -Files $plan
+} elseif ($RequireComponentProvenance) {
+    throw 'Component build records are required before packaging.'
+}
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 $name = 'darktidevr-candidate-' + $identity.head.Substring(0, 12) + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
 $package = Join-Path $output $name
@@ -51,10 +61,12 @@ foreach ($entry in $plan) {
 [ordered]@{
     schema_version=1; platform='windows-x64'; release_state='development_candidate'
     source_revision=$identity.head; source_branch=$identity.branch; source_dirty=$identity.dirty
-    source_revision_scope='packaging_checkout'; binary_source_provenance='not_recorded'
+    source_revision_scope='packaging_checkout'
+    binary_source_provenance=$(if ($provenance) { 'recorded_hash_matched_claims' } else { 'not_recorded' })
+    component_provenance=$provenance
     built_utc=(Get-Date).ToUniversalTime().ToString('o')
     files=@($plan | Select-Object path,bytes,sha256)
-} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $package 'package-manifest.json') -Encoding UTF8
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $package 'package-manifest.json') -Encoding UTF8
 & (Join-Path $package 'tools/release/test-runtime-package.ps1') -PackageRoot $package
 $archive = Join-Path $output ($name + '.zip')
 Compress-Archive -LiteralPath $package -DestinationPath $archive -CompressionLevel Optimal

@@ -30,6 +30,16 @@ foreach ($entry in $manifest.files) {
     }
 }
 if ($seen.Count -lt 1) { throw 'Runtime package manifest is empty.' }
+if ($manifest.PSObject.Properties['binary_source_provenance'] -and
+        $manifest.binary_source_provenance -cne 'not_recorded') {
+    if ($manifest.binary_source_provenance -cne 'recorded_hash_matched_claims') {
+        throw 'Unsupported binary provenance status.'
+    }
+    . (Join-Path $PSScriptRoot 'component-provenance.ps1')
+    Assert-ComponentProvenance -Receipt $manifest.component_provenance -Files @($manifest.files)
+} elseif ($manifest.PSObject.Properties['component_provenance'] -and $null -ne $manifest.component_provenance) {
+    throw 'Component provenance conflicts with its declared status.'
+}
 $spec = Import-PowerShellDataFile -LiteralPath (Join-Path $root 'tools/release/runtime-package-files.psd1')
 foreach ($required in $spec.Files) {
     if (-not $seen.Contains([IO.Path]::GetFullPath((Join-Path $root $required)))) {

@@ -10,12 +10,38 @@ they are not a publisher signature or evidence of gameplay compatibility.
 The source revision identifies the **packaging checkout**, not the build source
 of every copied binary. Current manifests explicitly record
 `source_revision_scope=packaging_checkout` and
-`binary_source_provenance=not_recorded`. The packager copies existing native and
+`binary_source_provenance=not_recorded` by default. The packager copies existing native and
 viewer artifacts; it does not rebuild them or establish which source produced
 them. Legacy manifests without these fields have the same limitation. In
 particular, the accepted mixed runtime uses separately based Lua, native and
 viewer versions. Preserve their per-component handoff and hashes; a package's
 checkout revision alone cannot reproduce or certify that accepted combination.
+
+### Component build records
+
+For an intentionally selected candidate, pass `-ComponentProvenancePath <json>`
+and `-RequireComponentProvenance` to `build-runtime-package.ps1`. The JSON has
+`schema_version: 1`, `kind: "component_build_records"` and a `components` array.
+Each component contains a short `name`, full `source_revision`, boolean
+`source_dirty: false`, and nonempty strings `build_command`, `toolchain`,
+`build_options` and `dependencies`. Record exact tool/dependency versions and
+build options, using portable commands without workstation paths or credentials.
+Its `files` array lists package-relative `path` and `sha256` for each output.
+Use separate components when source revisions differ.
+
+The packager requires coverage of the native capture DLL, D3D12 bridge DLL and
+viewer executable, rejects duplicates/unknown payloads or hash mismatches, and
+embeds the receipt. Extracted-package validation repeats the checks. The manifest
+labels this `recorded_hash_matched_claims`: hashes bind the supplied build records
+to these files, but do not prove that the commands produced them. Capture records
+during clean source builds; do not invent provenance for existing binaries.
+Third-party binaries retain their separate pinned dependency checks. No receipt
+changes the development-candidate status or substitutes for release acceptance.
+
+Validation on 11 September: 12 isolated provenance cases and the package integrity
+fixture pass in PowerShell 7 and Windows PowerShell 5.1. The latter exercises
+legacy manifests, receipt validation, contradictory status and existing payload
+and Lua/shader/dependency gates. No runtime archive was promoted or deployed.
 
 ## Prerequisites
 

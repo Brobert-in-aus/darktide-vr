@@ -36,6 +36,22 @@ try {
     $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
     & $verifier -PackageRoot $testRoot | Out-Null
     if ($global:PackageFixtureLuaGate -ne 1 -or $global:PackageFixtureShaderGate -ne 1 -or $global:PackageFixtureDxcGate -ne 1) { throw 'Package validation bypassed a gate.' }
+    $manifest.binary_source_provenance = 'recorded_hash_matched_claims'
+    $manifest.component_provenance = @{schema_version=1;kind='component_build_records';components=@(
+        @{name='fixture';source_revision=('1' * 40);source_dirty=$false
+          build_command='fixture';toolchain='fixture';build_options='fixture';dependencies='fixture'
+          files=@($files | Where-Object path -eq 'native.dll')}
+    )}
+    $manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+    & $verifier -PackageRoot $testRoot | Out-Null
+    $manifest.component_provenance.components[0].source_dirty=$true
+    $manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+    Assert-Rejected 'clean source revision'
+    $manifest.binary_source_provenance='not_recorded'
+    $manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+    Assert-Rejected 'conflicts with its declared status'
+    $manifest.Remove('component_provenance')
+    $manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
     Write-Fixture 'native.dll' 'damaged-fixture'
     Assert-Rejected 'Runtime package file is missing or changed'
     Write-Fixture 'native.dll' 'native-fixture'
@@ -51,7 +67,7 @@ try {
     $manifest.files = @([pscustomobject]@{path='../outside';bytes=0;sha256='none'})
     $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
     Assert-Rejected 'outside its root or duplicated'
-    Write-Output 'runtime_package_integrity=pass gates changed missing unlisted duplicate path_escape'
+    Write-Output 'runtime_package_integrity=pass gates provenance changed missing unlisted duplicate path_escape'
 } finally {
     Remove-Variable -Scope Global -Name PackageFixtureLuaGate,PackageFixtureShaderGate,PackageFixtureDxcGate -ErrorAction SilentlyContinue
     $resolved = [IO.Path]::GetFullPath($testRoot)

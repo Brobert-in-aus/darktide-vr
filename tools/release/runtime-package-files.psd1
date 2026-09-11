@@ -35,6 +35,7 @@
         'tools/stereo/particle-horizon-lock.vs.hlsl'
         'tools/stereo/install-darktide-vr-shortcut.ps1'
         'tools/release/test-runtime-package.ps1'
+        'tools/release/component-provenance.ps1'
         'tools/release/runtime-package-files.psd1'
         'build/dependencies/luajit/src/luajit.exe'
         'build/dependencies/luajit/validator.json'
