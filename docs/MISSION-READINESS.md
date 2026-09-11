@@ -40,6 +40,15 @@ tests pass; this is undeployed and has no mission/worn acceptance. Remote-server
 missions remain excluded because local pose hooks do not supply independent
 hand aim/origin to their authoritative action. SoloPlay remains the later test stage.
 
+12 September: SoloPlay missions were confirmed worn on 11 September, and
+remote (dedicated-server) missions are now admitted through the same
+stock-input route by [REMOTE-MISSION-ADMISSION-2026-09-12.md](REMOTE-MISSION-ADMISSION-2026-09-12.md):
+presentation and stock input by `body_mode`, hand aim by the online rules
+under either established authority, local-authority overrides still local
+only, a `remote_mission_input` setting to withdraw it. Offline tests and the
+optional stock fixtures pass; worn acceptance on a real mission server is
+the open step.
+
 The following describes the original blocker before that candidate:
 
 `presentation.is_first_person_body_mode` in the main stereo Lua module accepts

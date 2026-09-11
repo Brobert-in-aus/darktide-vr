@@ -1081,7 +1081,10 @@ finally {
         }
     }
     {
-        foreach ($ringFlag in $nativeOriginalRingFlags) {
+        # The cleanup continuation can run before the ring flags were touched.
+        $ringFlags = @()
+        if (Test-Path -LiteralPath variable:nativeOriginalRingFlags) { $ringFlags = @($nativeOriginalRingFlags) }
+        foreach ($ringFlag in $ringFlags) {
             if ($ringFlag.Existed) {
                 Restore-FlagOriginal -LiteralPath $ringFlag.Path -Original $ringFlag.Original
             }
@@ -1089,7 +1092,7 @@ finally {
                 Remove-Item -LiteralPath $ringFlag.Path -Force
             }
         }
-        if ($nativeOriginalRingFlags.Count -gt 0) {
+        if ($ringFlags.Count -gt 0) {
             Write-Output 'Restored the prior native original ring flags.'
         }
     }

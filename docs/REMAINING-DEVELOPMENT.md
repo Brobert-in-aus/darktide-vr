@@ -125,6 +125,12 @@ for the smaller set needed before a first end-to-end mission attempt.
 2. **Enable mission gameplay and verify transition stability.** Extend the explicit
    hub/range-only VR input/body and range-only hand-aim gates with appropriate
    mission ownership/replication handling; removing guards alone is insufficient.
+   12 September: SoloPlay missions were confirmed worn on 11 September; remote
+   dedicated-server missions are now admitted through the stock-input route
+   ([REMOTE-MISSION-ADMISSION-2026-09-12.md](REMOTE-MISSION-ADMISSION-2026-09-12.md)),
+   with a `remote_mission_input` setting to withdraw it. Worn acceptance on a
+   real mission server, the lifecycle checks and the traversal-aim policy
+   remain open.
    Verify the selected loadout and essential objective/team interactions, then
    launch/loading, extraction/results and return to hub. Manual hub-to-Psykhanium, menu/popup close,
    loading and Custom HUD editor transitions need a focused regression check.

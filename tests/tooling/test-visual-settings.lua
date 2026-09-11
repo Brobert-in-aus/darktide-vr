@@ -49,6 +49,7 @@ if arg[2] then
         visual_settings=module, begin_menu_pointer_frame=noop,
         reconcile_fullscreen_views=noop, update_system_menu_test=noop,
         update_vendor_menu_test=noop, update_psykhanium=noop,
+        update_dlss_quality_test=noop,
     }
     assert(loadstring(source:sub(first,last-1)))()
     assert(ui.update({}, .01, 1) == 'updated')

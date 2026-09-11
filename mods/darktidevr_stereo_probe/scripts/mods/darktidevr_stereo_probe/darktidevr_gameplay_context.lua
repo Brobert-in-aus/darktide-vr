@@ -11,9 +11,31 @@ local function query_owner(owner, name)
     if type(method) == "function" then return method(owner) end
 end
 
-function Context.local_authority(session)
+-- Established authority of the live session: true when this process owns the
+-- simulation, false when a remote server does, nil when the session is
+-- missing, retiring, or answers with anything but a boolean. Only the two
+-- established answers admit anything; nil admits nothing.
+function Context.authority(session)
     local ok, server = pcall(query_owner, session, "is_server")
-    return ok and server == true
+    if not ok or type(server) ~= "boolean" then return nil end
+    return server
+end
+
+function Context.local_authority(session)
+    return Context.authority(session) == true
+end
+
+-- The owner installs its setting reader here; without one, remote missions
+-- are admitted. A failing reader admits nothing.
+function Context.remote_missions_allowed() return true end
+
+-- A mission whose simulation a remote (dedicated) server owns. The client
+-- keeps stock input, presentation and the stock-input aim route; it never
+-- gets the local-authority action-pose overrides or aim-field writes.
+function Context.remote_mission(mode, session)
+    if missions[mode] ~= true or Context.authority(session) ~= false then return false end
+    local ok, allowed = pcall(Context.remote_missions_allowed)
+    return ok and allowed == true
 end
 
 function Context.game_mode_name(game_mode)
@@ -30,8 +52,11 @@ function Context.local_mission(mode, session)
     return missions[mode] == true and Context.local_authority(session)
 end
 
+-- Presentation and stock input: the hub, ranges, local missions, and remote
+-- missions (whose hand aim then travels only through the stock-input route).
 function Context.body_mode(mode, session)
-    return mode == "hub" or Context.aim_mode(mode, session)
+    return mode == "hub" or Context.aim_mode(mode, session) or
+        Context.remote_mission(mode, session)
 end
 
 function Context.ui_blocks_gameplay(ui)

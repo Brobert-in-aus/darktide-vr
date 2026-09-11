@@ -91,9 +91,20 @@ if arg[2] then
     Managers.state.game_session.is_server=function() return true end
     Unit={alive=function(unit) return unit=='local' end}
     ScriptUnit={has_extension=function() return {current_state_name=function() return character end} end}
-    Vector3=setmetatable({x=function(v) return v[1] end,y=function(v) return v[2] end},
+    Vector3=setmetatable({x=function(v) return v[1] end,y=function(v) return v[2] end,z=function(v) return v[3] end,
+        dot=function(a,b) return a[1]*b[1]+a[2]*b[2]+a[3]*b[3] end},
         {__call=function(_,x,y,z) return {x,y,z} end})
+    -- The adapter derives yaw/pitch/roll from the forward and up vectors of a
+    -- yaw/pitch/roll rotation; stub the same three axes as the policy test.
     Quaternion={yaw=function(q) return q.yaw end,pitch=function(q) return q.pitch end,
+        from_yaw_pitch_roll=function(y,p,r) return {yaw=y,pitch=p,roll=r} end,
+        forward=function(q) return {-math.sin(q.yaw)*math.cos(q.pitch),math.cos(q.yaw)*math.cos(q.pitch),math.sin(q.pitch)} end,
+        right=function(q) assert(q.roll==0); return {math.cos(q.yaw),math.sin(q.yaw),0} end,
+        up=function(q)
+            local s,c=math.sin(q.roll or 0),math.cos(q.roll or 0)
+            return {math.cos(q.yaw)*s+math.sin(q.yaw)*math.sin(q.pitch)*c,
+                math.sin(q.yaw)*s-math.cos(q.yaw)*math.sin(q.pitch)*c,math.cos(q.pitch)*c}
+        end,
         inverse=function(q) return -q end,
         rotate=function(q,v) return {math.cos(q)*v[1]-math.sin(q)*v[2],
             math.sin(q)*v[1]+math.cos(q)*v[2],v[3]} end}

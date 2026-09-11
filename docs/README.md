@@ -10,12 +10,15 @@ anything with a date in its name as history unless a current note links to it.
 - [Current status and operation](CURRENT-STATUS.md)
 - [Working agreements](../AGENTS.md) and [project infrastructure](PROJECT-INFRASTRUCTURE.md)
 - [Maintenance implementation plan](maintenance-plan-2026-09-05.md)
-- Latest handover: [11 September end of day](handoffs/2026-09-11-end-of-day.md);
+- Latest handover: [12 September](handoffs/2026-09-12.md) (after
+  [11 September end of day](handoffs/2026-09-11-end-of-day.md));
   latest todo: [11 September](phase1/todo-2026-09-11.md)
 - [Very early alpha readiness](EARLY-ALPHA-READINESS.md) and [runtime package](RUNTIME-PACKAGE.md)
 - [Whole-project code review, 11 September](CODE-REVIEW-2026-09-11.md)
 - [Performance bundle, 11 September](PERFORMANCE-BUNDLE-2026-09-11.md): the
   day's optimisations as the deployed baseline, launcher defaults, controls
+- [Remote-server mission admission, 12 September](REMOTE-MISSION-ADMISSION-2026-09-12.md):
+  stock-input route in dedicated-server missions, setting, worn check
 
 ## Contracts that govern changes
 

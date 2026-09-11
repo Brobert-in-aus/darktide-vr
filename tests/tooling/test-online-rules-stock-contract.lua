@@ -10,6 +10,7 @@ vector_meta.__mul=function(a,b)
     return Vector3(a[1]*b,a[2]*b,a[3]*b)
 end
 Vector3.x=function(v) return v[1] end; Vector3.y=function(v) return v[2] end
+Vector3.z=function(v) return v[3] end
 Vector3.to_elements=function(v) return unpack(v) end
 Vector3.dot=function(a,b) return a[1]*b[1]+a[2]*b[2]+a[3]*b[3] end
 Vector3.length_squared=function(v) return Vector3.dot(v,v) end
@@ -20,7 +21,16 @@ Vector3.up=function() return Vector3(0,0,1) end
 Quaternion={from_yaw_pitch_roll=function(y,p,r) return {yaw=y,pitch=p,roll=r} end,
     yaw=function(q) return q.yaw end,pitch=function(q) return q.pitch end,
     inverse=function(q) return {yaw=-q.yaw,pitch=0,roll=0} end,
-    forward=function(q) return Vector3(-math.sin(q.yaw),math.cos(q.yaw),0) end,
+    -- The adapter derives yaw/pitch/roll from the forward and up vectors of a
+    -- yaw/pitch/roll rotation; stub the same three axes as the policy test.
+    forward=function(q) return Vector3(-math.sin(q.yaw)*math.cos(q.pitch or 0),math.cos(q.yaw)*math.cos(q.pitch or 0),math.sin(q.pitch or 0)) end,
+    right=function(q) assert((q.roll or 0)==0); return Vector3(math.cos(q.yaw),math.sin(q.yaw),0) end,
+    up=function(q)
+        local s,c=math.sin(q.roll or 0),math.cos(q.roll or 0)
+        local p=q.pitch or 0
+        return Vector3(math.cos(q.yaw)*s+math.sin(q.yaw)*math.sin(p)*c,
+            math.sin(q.yaw)*s-math.cos(q.yaw)*math.sin(p)*c,math.cos(p)*c)
+    end,
     look=function(v) return {yaw=math.atan2(-v[1],v[2]),pitch=0,roll=0} end,
     rotate=function(q,v) return Vector3(math.cos(q.yaw)*v[1]-math.sin(q.yaw)*v[2],
         math.sin(q.yaw)*v[1]+math.cos(q.yaw)*v[2],v[3]) end}
@@ -830,8 +840,9 @@ do
             rays=rays+1
             assert(world=='physics' and position==component.position and range==12 and unused==nil)
             assert(filter=='filter_player_character_shooting_raycast' and rewind==37)
-            assert(math.abs(direction[1]+math.sin(component.rotation.yaw))<1e-12 and
-                math.abs(direction[2]-math.cos(component.rotation.yaw))<1e-12)
+            local forward=Quaternion.forward(component.rotation)
+            assert(math.abs(direction[1]-forward[1])<1e-12 and
+                math.abs(direction[2]-forward[2])<1e-12)
             return hits
         end}
         local function hit(unit,zone)
@@ -938,7 +949,9 @@ do
         return {update_precision_target=function(_,unit,settings,origin,forward,right,up,out,frame)
             calls[#calls+1]=kind
             assert(unit=='local' and settings==template and origin==component.position)
-            assert(math.abs(forward[1]+math.sin(component.rotation.yaw+.07))<1e-12)
+            -- Stock passes the pitched forward (yaw offset by .07 rad) with
+            -- right/up taken from the flattened first-person rotation.
+            assert(math.abs(forward[1]+math.sin(component.rotation.yaw+.07)*math.cos(component.rotation.pitch))<1e-12)
             assert(math.abs(right[1]-math.cos(component.rotation.yaw))<1e-12 and up[3]==1)
             out.unit=selected
         end}

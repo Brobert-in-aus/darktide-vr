@@ -5443,6 +5443,12 @@ end
 
 presentation.gameplay_context = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gameplay_context")
+-- Remote (dedicated-server) missions admit stock input, presentation and the
+-- stock-input aim route unless the user turns the setting off; the switch is
+-- read per query so it applies without a relaunch.
+presentation.gameplay_context.remote_missions_allowed = function()
+    return mod:get("remote_mission_input") ~= false
+end
 -- Foundation only: keep the accepted right-dominant presentation until weapon
 -- attachments/effects and input rearming support a complete handedness option.
 presentation.weapon_hand_roles = mod:io_dofile(

@@ -83,6 +83,11 @@ return {
                 default_value = true,
             },
             {
+                setting_id = "remote_mission_input",
+                type = "checkbox",
+                default_value = true,
+            },
+            {
                 setting_id = "movement_reference",
                 type = "dropdown",
                 default_value = "head",

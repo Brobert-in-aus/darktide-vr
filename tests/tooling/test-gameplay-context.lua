@@ -11,14 +11,33 @@ for _,session in ipairs({server,client,missing,broken,invalid}) do
         assert(context.body_mode(range,session) and context.aim_mode(range,session))
     end
     for _,mode in ipairs({"coop_complete_objective","survival","expedition","prologue"}) do
-        assert(context.body_mode(mode,session)==(session==server))
+        -- Presentation and stock input admit both established authorities;
+        -- the local-authority aim route admits only the owning process.
+        assert(context.body_mode(mode,session)==(session==server or session==client))
         assert(context.aim_mode(mode,session)==(session==server))
+        assert(context.local_mission(mode,session)==(session==server))
+        assert(context.remote_mission(mode,session)==(session==client))
     end
+    local expected_authority = nil
+    if session==server then expected_authority = true elseif session==client then expected_authority = false end
+    assert(context.authority(session)==expected_authority)
+    assert(not context.remote_mission("hub",session) and not context.remote_mission("shooting_range",session))
     for _,mode in ipairs({"default","unknown","loading","prologue_hub","hub_singleplay"}) do
         assert(not context.body_mode(mode,session) and not context.aim_mode(mode,session))
     end
 end
 assert(not context.aim_mode(nil,server) and not context.body_mode(nil,server))
+-- The owner's setting reader can withdraw remote admission at any query; a
+-- failing or non-boolean reader admits nothing, and never touches local modes.
+for _,reader in ipairs({function() return false end,function() error('retiring settings') end,
+        function() return 'true' end}) do
+    context.remote_missions_allowed=reader
+    assert(not context.remote_mission("coop_complete_objective",client))
+    assert(not context.body_mode("coop_complete_objective",client))
+    assert(context.body_mode("coop_complete_objective",server) and context.body_mode("hub",client))
+end
+context.remote_missions_allowed=function() return true end
+assert(context.remote_mission("coop_complete_objective",client))
 assert(not context.aim_mode("coop_complete_objective",nil))
 assert(context.input_service_enabled({is_null_service=function() return false end}))
 assert(not context.input_service_enabled({is_null_service=function() return true end}))

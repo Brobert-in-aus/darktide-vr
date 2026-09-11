@@ -84,12 +84,19 @@ function Rules.install(mod, presentation, state, mode_name)
     local function enabled()
         local session = Managers and Managers.state and Managers.state.game_session
         local mode = mode_name()
-        local mission = presentation.gameplay_context.local_mission(mode, session)
+        local context = presentation.gameplay_context
+        -- Missions use this stock-input route under either established
+        -- authority: a local server (SoloPlay) or a remote dedicated server,
+        -- where the authored columns travel through the stock input RPC and
+        -- the server keeps its own origins, actions and damage. Missing,
+        -- retiring or invalid sessions admit nothing.
+        local mission = context.local_mission(mode, session) or
+            context.remote_mission(mode, session)
         if not ranges[mode] and not mission then
             session_owner, session_mode, selected = nil, nil, nil
             return false
         end
-        if not presentation.gameplay_context.local_authority(session) then
+        if not mission and not context.local_authority(session) then
             return false
         end
         if session ~= session_owner or mode ~= session_mode then
@@ -103,8 +110,9 @@ function Rules.install(mod, presentation, state, mode_name)
             -- The range-only opt-out must never enable hand-origin/action
             -- proxies in a mission, including a reused manager on transition.
             selected = mission or mod:get("psykhanium_online_rules") ~= false
-            mod:info("DARKTIDEVR_ONLINE_RULES range=%s enabled=%s origins=stock damage=stock",
-                tostring(mode_name()), tostring(selected))
+            mod:info("DARKTIDEVR_ONLINE_RULES range=%s enabled=%s authority=%s origins=stock damage=stock",
+                tostring(mode_name()), tostring(selected),
+                context.local_authority(session) and "local" or "remote")
         end
         return selected
     end
