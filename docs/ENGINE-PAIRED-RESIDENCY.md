@@ -47,3 +47,46 @@ debugger sampling is not an optimisation result.
 Local evidence: ignored `synthetic-solo-paired-residency-a-20260910`, its two
 `thread-residency-peer-*` directories and thread inventory. No raw machine
 artifacts or binaries are committed.
+
+## 11 September, after descriptor and native-ring improvement
+
+A new 1,000-sample capture uses the preserved ring/Present-CPU diagnostic
+`83E4D445...`, the unchanged sampler `0C23557A...`, Quality DLSS at 2496x2688,
+FG off and the same stationary mission. A fresh one-second thread inventory
+selected `wt_0`, the busiest observed named worker (593.75 ms CPU in that
+inventory). This is a selected worker, not a representative whole-pool sample.
+
+The capture spans 15.56325 seconds, with mean primary pause 85.636 us,
+p95 171.4 us and maximum 650.2 us. It identifies 40 render-dispatch waits;
+25 coincide with the peer's verified idle-worker chain. Across all samples,
+691 match that complete idle chain, out of 698 at the Windows wait instruction.
+The remaining seven are not classified from the instruction pointer alone.
+
+The current Windows implementation has different offsets from the older
+capture. Fresh inspection resolves ntdll `a298e` through its chained unwind
+entry to exported `RtlSleepConditionVariableSRW` at `a27b0`. Its five pushes
+and 0x70-byte allocation establish the next return slot. The current chain is:
+
+| Stack word | Return location |
+| --- | --- |
+| 0 | ntdll `a298e`, after `NtWaitForAlertByThreadId` |
+| 20 | KernelBase `22a58`, condition-variable wrapper |
+| 28 | MSVCP140 `176ea`, C++ condition-variable wait |
+| 34 | engine `70f2bf`, wait-on-value helper |
+| 40 | engine `6f6eae`, worker loop after checking both queues |
+
+KernelBase and MSVCP prologs establish the intervening eight-word and six-word
+steps. The exact engine build is unchanged from the prior worker-loop analysis.
+Current module hashes and chain counts are saved in `worker-wait-chain.json`;
+the local disassembly is `ring-paired-wait-windows-20260911.txt`.
+
+Idle overlap therefore persists after the descriptor improvement, making work
+availability and dispatch tail balance useful leads. Sequential suspension can
+allow the worker to finish before observation. These counts do not prove all
+workers are idle, quantify wasted frame time or justify adding workers.
+
+The diagnostic run delivered 89.55375 native FPS, exited cleanly, restored files
+and reported zero pose mismatches. There were 27 valid GPU observations and one
+missing, with no Streamer activity in valid records. This is not a clean speed
+comparison. Evidence: `synthetic-descriptor-demand-ring-paired-20260911`, including
+its paired capture directory, selected-peer record and thread inventory.
