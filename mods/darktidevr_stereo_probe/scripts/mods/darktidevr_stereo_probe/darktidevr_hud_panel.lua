@@ -9,6 +9,24 @@ HudPanel.scale = 0.63
 HudPanel.object_scale = 2.08
 local rotation_components = {{"qx","vqx"},{"qy","vqy"},{"qz","vqz"},{"qw","vqw"}}
 
+-- Level the panel to the horizon. Looking straight up or down leaves no
+-- horizontal forward for Quaternion.look, so keep the last levelled heading
+-- instead of storing a degenerate rotation in the follow pose.
+function HudPanel.level_rotation(rotation, state)
+    local forward = Quaternion.forward(rotation)
+    local horizontal = math.sqrt(forward.x * forward.x + forward.y * forward.y)
+    if horizontal < 0.05 then
+        local pose = state and state.follow_pose
+        if pose and pose.qx == pose.qx then
+            return Quaternion.from_elements(pose.qx, pose.qy, pose.qz, pose.qw)
+        end
+        return rotation
+    end
+    return Quaternion.look(
+        Vector3(forward.x / horizontal, forward.y / horizontal, 0),
+        Vector3.up())
+end
+
 -- Store scalar poses across frames: engine Vector3/Quaternion temporaries
 -- cannot safely survive the frame that allocated them.
 function HudPanel.follow_pose(previous, target, t)
@@ -1007,7 +1025,7 @@ function HudPanel.draw(world, position, rotation, overlap_width, overlap_center)
         return
     end
     -- Keep the panel level: head roll must not tilt its readable surface.
-    rotation = Quaternion.look(Quaternion.forward(rotation), Vector3.up())
+    rotation = HudPanel.level_rotation(rotation, state)
     local now = Managers and Managers.time and Managers.time:time("main")
     if now then
         local qx,qy,qz,qw = Quaternion.to_elements(rotation)
@@ -1016,7 +1034,7 @@ function HudPanel.draw(world, position, rotation, overlap_width, overlap_center)
         local pose = state.follow_pose
         rotation = Quaternion.from_elements(pose.qx,pose.qy,pose.qz,pose.qw)
     end
-    rotation = Quaternion.look(Quaternion.forward(rotation), Vector3.up())
+    rotation = HudPanel.level_rotation(rotation, state)
     local forward = Quaternion.forward(rotation)
     local tm = Matrix4x4.identity()
     -- Textured world GUI culls the back face; colored rectangles do not.
@@ -1028,8 +1046,8 @@ function HudPanel.draw(world, position, rotation, overlap_width, overlap_center)
         Quaternion.right(rotation) * (overlap_center or 0))
     local width = (overlap_width or HudPanel.distance) * HudPanel.scale
     local height = HudPanel.height * HudPanel.scale
-    state.panel_aspect = width / height
     if width <= 0 then return end
+    state.panel_aspect = width / height
     if state.diagnostic then
         -- Outline leaves the bitmap test unobscured even if world-GUI depth
         -- ordering differs from screen-GUI layer ordering.

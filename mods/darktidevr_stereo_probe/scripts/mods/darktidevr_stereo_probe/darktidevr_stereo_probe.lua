@@ -656,6 +656,23 @@ mod:info(
     type(rawget(_G, "OpenVR"))
 )
 
+-- Indexing an FFI namespace never yields nil: a missing symbol raises. Probe
+-- optional exports through pcall once and remember the answer.
+function presentation.native_export(library, name)
+    local cache = presentation.native_export_cache
+    if not cache then
+        cache = {}
+        presentation.native_export_cache = cache
+    end
+    local known = cache[name]
+    if known == nil then
+        local ok, symbol = pcall(function() return library[name] end)
+        known = ok and symbol ~= nil
+        cache[name] = known
+    end
+    return known
+end
+
 local function ensure_ui_native_hooks()
     if ui_native_capture then
         return true
@@ -1168,7 +1185,7 @@ function presentation.publish_mode(mode, reason)
     -- stereo or loading scenes. The retained UI shader set is shared with
     -- title/character-select rendering; leaving the redirect globally enabled
     -- can preserve one of those old targets and replay it during hub Presents.
-    if ui_native_capture.dtvr_set_menu_direct_capture then
+    if presentation.native_export(ui_native_capture, "dtvr_set_menu_direct_capture") then
         ui_native_capture.dtvr_set_menu_direct_capture(
             direct_menu_target and 1 or 0)
     end
@@ -1644,7 +1661,7 @@ function presentation.on_view_open(manager, view_name)
                 presentation.vendor_resource_enabled = false
                 ui_native_capture.dtvr_set_vendor_menu_widget_capture(0)
                 presentation.vendor_widget_scope_enabled = false
-                if ui_native_capture.dtvr_set_menu_direct_capture then
+                if presentation.native_export(ui_native_capture, "dtvr_set_menu_direct_capture") then
                     ui_native_capture.dtvr_set_menu_direct_capture(0)
                 end
                 presentation.world_menu_anchor = nil
@@ -1661,7 +1678,7 @@ function presentation.on_view_open(manager, view_name)
                 presentation.vendor_resource_enabled = false
                 presentation.world_menu_anchor = nil
                 presentation.world_menu_draw_logged = false
-                if ui_native_capture.dtvr_set_menu_direct_capture then
+                if presentation.native_export(ui_native_capture, "dtvr_set_menu_direct_capture") then
                     ui_native_capture.dtvr_set_menu_direct_capture(0)
                 end
                 mod:info(
@@ -1706,7 +1723,7 @@ function presentation.on_view_close(manager, view_name)
             presentation.menu_resource_renderer ~= nil
         ui_native_capture.dtvr_set_vendor_menu_widget_capture(0)
         presentation.vendor_widget_scope_enabled = false
-        if ui_native_capture.dtvr_set_menu_direct_capture then
+        if presentation.native_export(ui_native_capture, "dtvr_set_menu_direct_capture") then
             ui_native_capture.dtvr_set_menu_direct_capture(0)
         end
         if not base_active then
@@ -2145,10 +2162,10 @@ function presentation.update_vendor_menu_test(manager)
         end
         presentation.vendor_widget_scope_enabled = false
         if ensure_ui_native_hooks() then
-            if ui_native_capture.dtvr_set_vendor_menu_widget_capture then
+            if presentation.native_export(ui_native_capture, "dtvr_set_vendor_menu_widget_capture") then
                 ui_native_capture.dtvr_set_vendor_menu_widget_capture(0)
             end
-            if ui_native_capture.dtvr_set_menu_direct_capture then
+            if presentation.native_export(ui_native_capture, "dtvr_set_menu_direct_capture") then
                 ui_native_capture.dtvr_set_menu_direct_capture(0)
             end
         end
@@ -2565,7 +2582,10 @@ local function refresh_xr_render_extent()
 
     local width = math.floor(tonumber(head_pose_values[17]) + 0.5)
     local height = math.floor(tonumber(head_pose_values[18]) + 0.5)
-    if width < 640 or width > 7680 or height < 640 or height > 7680 then
+    -- NaN compares false against every range bound; reject it explicitly so
+    -- it cannot replace the eye target extent.
+    if width ~= width or height ~= height or
+            width < 640 or width > 7680 or height < 640 or height > 7680 then
         return false
     end
 
@@ -6313,6 +6333,15 @@ function presentation.scan_body_rig(self, fixed_frame)
             not Mods or not Mods.lua or not Mods.lua.io then
         return
     end
+    if not fixed_frame then
+        -- Callers without a fixed frame still get at most one flag read per
+        -- second instead of one per rendered frame.
+        local now = os.time()
+        if controller_observation.body_rig_inventory_last_check_time == now then
+            return
+        end
+        controller_observation.body_rig_inventory_last_check_time = now
+    end
     controller_observation.body_rig_inventory_last_check_frame =
         fixed_frame or 0
     local flag_path =
@@ -10045,16 +10074,28 @@ presentation.player_unit_visual_loadout_extension = require(
 -- unit is built: the mission's force-third-person answer is overridden, then
 -- the stock first-person extension initializes normally. Do the same here
 -- instead of repairing an already-created extension every frame.
+-- Called from per-unit first-person hooks every fixed and render update, so
+-- the flag file is re-read at most once per second rather than per call.
+local hub_first_person_flag_value = false
+local hub_first_person_flag_polled_at = nil
 function presentation.hub_first_person_requested()
+    local now = os.time()
+    if hub_first_person_flag_polled_at == now then
+        return hub_first_person_flag_value
+    end
+    hub_first_person_flag_polled_at = now
     local path =
         "./../mods/darktidevr_stereo_probe/darktidevr_headless_body.flag"
     local flag = Mods and Mods.lua and Mods.lua.io and Mods.lua.io.open(path, "r")
     if not flag then
+        hub_first_person_flag_value = false
         return false
     end
-    local enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
+    local text = flag:read("*all")
     flag:close()
-    return enabled
+    hub_first_person_flag_value = text ~= nil and
+        text:match("^%s*enabled%s*$") ~= nil
+    return hub_first_person_flag_value
 end
 
 -- Bounded diagnostic at the actual two-eye submission boundaries. This
@@ -12851,6 +12892,9 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
                 end
             )
             if not marker_ok then
+                -- A failed replay must not leave later normal draws routed
+                -- through the reprojection path.
+                world_marker_reprojecting = false
                 stereo_world_markers_requested = false
                 mod:error(
                     "DARKTIDEVR_STEREO marker_reprojection_failed error=%s",

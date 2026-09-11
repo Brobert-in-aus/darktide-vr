@@ -14,7 +14,12 @@ function Assist.install(mod,presentation,tracking)
     local pending=false
     local flag=Mods and Mods.lua and Mods.lua.io and Mods.lua.io.open(
         './../mods/darktidevr_stereo_probe/darktidevr_aim_assist_light.flag','r')
-    if flag then pending=flag:read(32):match('^%s*enabled%s*$')~=nil;flag:close() end
+    if flag then
+        -- An empty flag file reads nil; never index it during mod load.
+        local text=flag:read(32)
+        pending=text~=nil and text:match('^%s*enabled%s*$')~=nil
+        flag:close()
+    end
     function api.observe(extension,t)
         observed,observed_t=extension,t
         observed_weapon=extension._weapon_extension and extension._weapon_extension:weapon_template()

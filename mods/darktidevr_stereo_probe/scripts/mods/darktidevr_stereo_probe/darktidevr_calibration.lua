@@ -110,8 +110,11 @@ function calibration.install(mod, controller_state, get_head_pose,
             right_tracked = state.right_grip_tracking_live == true,
             left_trigger = tonumber(state.left_trigger) or 0,
             right_trigger = tonumber(state.right_trigger) or 0,
+            -- Grip samples arrive in Darktide's Z-up body basis (x right,
+            -- y forward, z up). The head values are raw OpenXR (y up, z back),
+            -- so forward is the negated z component.
             head = {
-                tonumber(head[0]), tonumber(head[2]), tonumber(head[1]),
+                tonumber(head[0]), -tonumber(head[2]), tonumber(head[1]),
             },
             floor_eye_height = tonumber(head[24]) or 0,
         }
