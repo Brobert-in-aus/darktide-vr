@@ -60,3 +60,9 @@ control really changed the pool size, unlike a comparison above its effective
 limit. The accepted setting remains unchanged. Both runs restored exactly.
 Evidence: `synthetic-solo-workers4-a-20260910` and
 `synthetic-solo-dispatch-workers4-a-20260910` in ignored artifacts.
+
+The repeated four-worker control after the 11 September descriptor/ring changes
+returned 88.14 native FPS versus about 89.5 at the existing configured count of
+13 (effective six). It again shows no throughput improvement. The clean run
+restored files and had zero pose mismatches; evidence is under
+`synthetic-descriptor-demand-ring-workers4-20260911`. Keep the existing setting.

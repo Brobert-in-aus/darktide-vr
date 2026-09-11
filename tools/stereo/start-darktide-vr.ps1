@@ -123,6 +123,19 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+function Test-DarktideOfflineWorkloadReady {
+    param([string] $ConsoleText, [string] $SoloMission = '')
+    if ($ConsoleText -notmatch 'DARKTIDEVR_STEREO active mode=synchronized_sequential') {
+        return $false
+    }
+    if ($SoloMission) {
+        $missionPattern = [regex]::Escape($SoloMission)
+        return $ConsoleText -match "DARKTIDEVR_SOLO_BENCHMARK ready mission=$missionPattern difficulty=[1-5] host=singleplay"
+    }
+    return $ConsoleText -match 'StateGameplay:on_enter\(\): hub_ship'
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 . (Join-Path $PSScriptRoot 'resolve-darktide-game-root.ps1')
 $GameRoot = Resolve-DarktideGameRoot -GameRoot $GameRoot
@@ -865,11 +878,7 @@ if ($offlineNoHeadset) {
                 throw 'The stereo mod failed initialization; inspect the launch console log.'
             }
             $ready = if ($OfflineDualViewBenchmark) {
-                ($benchmarkText -match 'StateGameplay:on_enter\(\): hub_ship' -and -not $OfflineSoloMission -or
-                    $OfflineSoloMission -and $benchmarkText -match
-                        "DARKTIDEVR_SOLO_BENCHMARK ready mission=$OfflineSoloMission difficulty=[1-5] host=singleplay") -and
-                    $benchmarkText -match
-                        'DARKTIDEVR_STEREO active mode=synchronized_sequential'
+                Test-DarktideOfflineWorkloadReady -ConsoleText $benchmarkText -SoloMission $OfflineSoloMission
             }
             elseif ($OfflineCharacterSelectCapture) {
                 $benchmarkText -match 'Entering Game State StateMainMenu' -and

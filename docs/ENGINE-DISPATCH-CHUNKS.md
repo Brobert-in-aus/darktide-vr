@@ -46,3 +46,17 @@ completed; mission exit, zero pose mismatches and exact restoration passed.
 
 Ignored evidence: `synthetic-solo-dispatch-chunks-a-20260910/thread-residency`
 and `engine-dispatch-splitter-20260910.txt`. No engine state is modified.
+
+## After the descriptor guard and native ring, 11 September
+
+The existing `synthetic-descriptor-demand-ring-residency-20260911` capture has
+40 valid partitions: 24 contain seven chunks and 16 contain eight. All have six
+workers, so none of these observations has fewer chunks than the seven available
+workers/assisting callers. Bundle sizes range from 76 to 1,625. These remain
+repeated wait observations, not independent frames or equal-cost partitions.
+
+The earlier low-chunk-count symptom is absent in this sample after the
+descriptor-copy guard. It does not justify a new minimum-chunk patch or extra
+workers. The engine already estimates weights from category history; this
+observation does not prove the guard alone caused the partition change. Use
+measured stage costs and dependency evidence before altering engine scheduling.
