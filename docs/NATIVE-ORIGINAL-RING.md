@@ -26,6 +26,8 @@ legacy transport immediately. At 2496x2688, its three producer textures occupy
 about 154 MiB, with approximately another 154 MiB for the viewer's queued originals.
 Allocator/driver overhead is additional. A resize or queue change falls back to
 legacy delivery rather than recreating the live ring; restart the trial to reset.
+The [legacy dependency audit](NATIVE-RING-LEGACY-DEPENDENCIES.md) identifies the
+metadata, settling and fallback work required before removing duplicate copies.
 
 Root commits `3507a93`, `41dade8`; focused commit `10550a4` on descriptor candidate `87ed0d0`.
 Focused DLL SHA-256:
