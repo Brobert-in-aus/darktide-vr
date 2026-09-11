@@ -42,9 +42,15 @@ development checkout into the game (91 files, including the root's stale
 evening did exactly that; the game was stopped, the transaction
 `artifacts/deployment-backups/deployment-78e2d36d...` was restored, and the
 accepted hashes were re-verified before relaunching.
-`-DlssGeneratedStereo` is the accepted FG-on configuration. For Session A's
-FG-off arm, omit it **and** set `dlss_g` to 0 in the game's options before
-launching (the stock master DLSS toggle switches SR and FG together, so use
+`-DlssGeneratedStereo` is the accepted FG-on configuration; it also enables
+the isolated gameplay eye targets implicitly. Any FG-off launch that should
+exercise the native ring must pass `-StreamlineEyeTargetProbe` explicitly:
+the ring captures only named eye finals, and the first ring trial this
+evening omitted the switch, so the ring never attached and delivery fell to
+about 50 FPS (the descriptor-demand-alone case). Its log is archived as
+`home-ring-trial-20260911/launch-attempt1-no-eye-targets.log`. For Session A's
+FG-off arm, omit `-DlssGeneratedStereo` **and** set `dlss_g` to 0 in the
+game's options before launching (the stock master DLSS toggle switches SR and FG together, so use
 the individual controls). Verify the applied state in the console log
 before comparing. Close the game gracefully between arms and let the launcher
 finish its cleanup so the flags and settings are restored.
