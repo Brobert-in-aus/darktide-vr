@@ -71,9 +71,10 @@ void UiProjectionLayer::record(ID3D12GraphicsCommandList* commands,
     std::uint32_t index{};
     const XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
     check(xrAcquireSwapchainImage(swapchains_[eye], &acquire, &index), "Acquire UI projection image");
+    // Ownership starts at acquire; a failed wait must still release the image.
+    acquired_[eye] = true;
     const XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO, nullptr, XR_INFINITE_DURATION};
     check(xrWaitSwapchainImage(swapchains_[eye], &wait), "Wait UI projection image");
-    acquired_[eye] = true;
     if (index >= images_[eye].size()) throw std::runtime_error("UI projection image index");
     auto* target = images_[eye][index].texture;
     std::array<D3D12_RESOURCE_BARRIER, 2> barriers{};

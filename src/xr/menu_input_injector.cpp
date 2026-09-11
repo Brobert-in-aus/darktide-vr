@@ -41,8 +41,29 @@ BOOL CALLBACK find_window(HWND window, LPARAM parameter) {
 
 std::optional<HWND> unique_window(const std::wstring& title_substring) {
   SearchContext context{lowercase(title_substring), {}};
-  if (!EnumWindows(find_window, reinterpret_cast<LPARAM>(&context)) ||
-      context.matches.size() != 1) {
+  if (!EnumWindows(find_window, reinterpret_cast<LPARAM>(&context))) {
+    return std::nullopt;
+  }
+  if (context.matches.size() > 1) {
+    // Another window whose title merely contains the game name (a browser
+    // tab, an explorer window) must not disable menu input; prefer the
+    // exact title like WindowCapture does.
+    std::vector<HWND> exact;
+    for (const auto window : context.matches) {
+      std::wstring title(
+          static_cast<std::size_t>(GetWindowTextLengthW(window)) + 1, L'\0');
+      const auto length =
+          GetWindowTextW(window, title.data(), static_cast<int>(title.size()));
+      title.resize(static_cast<std::size_t>(std::max(0, length)));
+      if (lowercase(std::move(title)) == context.needle) {
+        exact.push_back(window);
+      }
+    }
+    if (exact.size() == 1) {
+      context.matches = std::move(exact);
+    }
+  }
+  if (context.matches.size() != 1) {
     return std::nullopt;
   }
   return context.matches.front();

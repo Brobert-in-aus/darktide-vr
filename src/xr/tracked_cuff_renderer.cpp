@@ -145,7 +145,9 @@ TrackedCuffRenderer::TrackedCuffRenderer(
   pipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
   pipeline.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
   pipeline.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
-  pipeline.RasterizerState.FrontCounterClockwise = FALSE;
+  // tracked_cuff_mesh_tests enforces counter-clockwise outward winding, so
+  // counter-clockwise triangles are the front faces.
+  pipeline.RasterizerState.FrontCounterClockwise = TRUE;
   pipeline.RasterizerState.DepthClipEnable = TRUE;
   pipeline.BlendState.RenderTarget[0].RenderTargetWriteMask =
       D3D12_COLOR_WRITE_ENABLE_ALL;

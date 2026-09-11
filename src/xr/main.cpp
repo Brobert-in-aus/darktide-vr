@@ -956,6 +956,7 @@ class OpenXrProbe {
 
     std::optional<darktidevr::bridge::OpenedEyeSurfaces> opened_eyes;
     std::optional<darktidevr::bridge::OpenedSharedTexture> opened_menu;
+    bool shared_menu_unavailable_logged = false;
     // Interactive UI is an additional compositor layer over uninterrupted
     // stereo projection. It never replaces either eye and therefore cannot
     // turn the world mono, freeze it, or expose the desktop behind the game.
@@ -1553,6 +1554,13 @@ class OpenXrProbe {
         std::cout << "openxr.capture_window=closed session_exit=clean\n";
         break;
       }
+      // A runtime-initiated stop must end the loop through the normal
+      // cleanup instead of failing the next frame call.
+      if (runtime_exit_requested_) {
+        std::cout << "openxr.session_exit=runtime state="
+                  << static_cast<int>(session_state_) << '\n';
+        break;
+      }
       if (acquire_capture_source && !window_capture &&
           std::chrono::steady_clock::now() >= next_capture_source_poll) {
         next_capture_source_poll =
@@ -1847,8 +1855,17 @@ class OpenXrProbe {
                              old_consumed, frame_start);
         }
       }
+      // The shared menu is presented through the flat capture swapchain,
+      // which exists only with a capture window title. Without it the menu
+      // must stay detached rather than submit a null swapchain.
       if (shared_menu_projection_enabled && interactive_menu_projection &&
-          !opened_menu &&
+          !opened_menu && flat_swapchain == XR_NULL_HANDLE &&
+          !shared_menu_unavailable_logged) {
+        shared_menu_unavailable_logged = true;
+        std::cout << "openxr.shared_menu=unavailable reason=no_flat_swapchain\n";
+      }
+      if (shared_menu_projection_enabled && interactive_menu_projection &&
+          !opened_menu && flat_swapchain != XR_NULL_HANDLE &&
           frame_start >= next_menu_open_attempt) {
         next_menu_open_attempt = frame_start + std::chrono::milliseconds(250);
         try {
@@ -2177,7 +2194,9 @@ class OpenXrProbe {
                  projection_resume_gameplay_generation &&
              rendered_pair_gameplay_generation ==
                  committed_gameplay_generation);
-        if (!original_surfaces && std::chrono::steady_clock::now() >= next_generated_open) {
+        // Queued originals are copied from the shared-eye resources, so the
+        // ring can only attach in shared-eye mode.
+        if (shared_eyes && !original_surfaces && std::chrono::steady_clock::now() >= next_generated_open) {
           next_generated_open = std::chrono::steady_clock::now() + std::chrono::seconds(1);
           if (original_reader.read(original_state) &&
               original_state.width==shared_eye_width*2 && original_state.height==shared_eye_height) {
@@ -3938,7 +3957,10 @@ class OpenXrProbe {
           }
         }
       }
-      if (gameplay_reticle_pose) {
+      // The reticle sprite lives in the flat capture atlas, which is painted
+      // only while a capture window exists.
+      if (gameplay_reticle_pose && window_capture &&
+          flat_swapchain != XR_NULL_HANDLE) {
         constexpr std::int32_t gameplay_reticle_extent = 41;
         // Leave transparent atlas texels outside the submitted rectangle so
         // compositor filtering cannot sample the adjacent opaque capture.
@@ -4846,6 +4868,11 @@ class OpenXrProbe {
           session_state_ = changed->state;
           std::cout << "openxr.session_state="
                     << static_cast<int>(session_state_) << '\n';
+          if (session_state_ == XR_SESSION_STATE_STOPPING ||
+              session_state_ == XR_SESSION_STATE_EXITING ||
+              session_state_ == XR_SESSION_STATE_LOSS_PENDING) {
+            runtime_exit_requested_ = true;
+          }
         }
       } else if (event.type ==
                  XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING) {
@@ -4880,7 +4907,9 @@ class OpenXrProbe {
     if (!session_running_) {
       return;
     }
-    check_xr(xrRequestExitSession(session_), "xrRequestExitSession");
+    if (session_state_ != XR_SESSION_STATE_STOPPING) {
+      check_xr(xrRequestExitSession(session_), "xrRequestExitSession");
+    }
     const auto deadline = std::chrono::steady_clock::now() +
                           std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < deadline) {
@@ -4966,6 +4995,7 @@ class OpenXrProbe {
   XrEnvironmentBlendMode environment_blend_mode_{XR_ENVIRONMENT_BLEND_MODE_OPAQUE};
   XrSessionState session_state_{XR_SESSION_STATE_UNKNOWN};
   bool session_running_{};
+  bool runtime_exit_requested_{};
 };
 
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam,
@@ -5590,6 +5620,10 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (xr_duration && xr_duration->count() == 0) {
       throw std::invalid_argument("--xr-seconds must be greater than zero");
+    }
+    if (stereo_top_bottom && shared_eyes) {
+      throw std::invalid_argument(
+          "--stereo-tb cannot be combined with --shared-eyes");
     }
     if ((capture_window_deferred || capture_window_always) &&
         !capture_window_title) {
