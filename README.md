@@ -9,8 +9,11 @@ Start with [current status and operation](docs/CURRENT-STATUS.md),
 [working agreements](AGENTS.md), and the
 [maintenance implementation plan](docs/maintenance-plan-2026-09-05.md).
 For the next development session, read the
-[11 September handover](docs/handoffs/2026-09-11.md) and the
-[11 September todo list](docs/phase1/todo-2026-09-11.md).
+[11 September end-of-day handover](docs/handoffs/2026-09-11-end-of-day.md),
+whose "Next priorities" section names the current focus (DLSS frame-generation
+blur around HUD objects, then cylindrical billboarding), and the
+[11 September todo list](docs/phase1/todo-2026-09-11.md). The
+[docs index](docs/README.md) lists the maintained entry points.
 The game integration is build-specific and used with EAC inactive. The project
 contains no anti-cheat bypass implementation.
 
