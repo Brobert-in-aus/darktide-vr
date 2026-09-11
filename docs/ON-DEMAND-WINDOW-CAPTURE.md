@@ -34,6 +34,10 @@ checks capture/recovery content and lifetime behavior. No game Lua changed.
 
 Candidate viewer SHA-256:
 `8957F0AD0E71808846445ED6C44A5C99ACAFCFCF0C7E29A13014CEB9F1E0AFD1`.
+This records the original build, not a permanently reserved output path. Later
+11 September direct-copy development rebuilt `build/xr-window-capture-demand`;
+rebuild the focused `9856e00` source and verify its identity before the pending
+physical comparison. Do not substitute that directory's current executable.
 The benchmark viewer's source revision `a8061e8` and the pre-change HEAD have no
 differences under src/core, src/bridge or src/xr; the new viewer change is isolated
 to capture scheduling and counters.

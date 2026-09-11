@@ -42,3 +42,38 @@ Validation commands:
 cmake --build build/xr-window-capture-demand --config Release --target darktidevr-xr-harness darktidevr-native-original-ring-tests
 ctest --test-dir build/xr-window-capture-demand -C Release -R '^native_original_ring(_typeless)?$' --output-on-failure
 ```
+
+## Focused comparison build
+
+Focused revision `d8cafb3` ports only the viewer change and its copy helper onto
+benchmark viewer revision `a8061e8`. Its Release executable is built under
+`build/focused-direct-original-viewer`, SHA-256
+`972CD7A5A8108FA039A5661B96DE9C61FDB6E254F8D14D11741B7EBBDC279D5E`.
+The comparison uses the same executable with the process option off/on, native
+ring DLL `D4AB131A`, saved 2496x2688 eye resolution, Quality DLSS, FG Off and the
+same stationary SoloPlay mission. It excludes the separate on-demand desktop
+capture candidate. The physical Ready check still failed with Quest asleep;
+the explicitly authorised isolated simulator fallback is used.
+
+## Native off/on/off result
+
+| Run | Direct copy | Distinct native FPS | Viewer GPU-completion wait, ms |
+| --- | --- | ---: | ---: |
+| A | Off | 88.07088 | 1.57865 |
+| B | On | 90.02198 | 1.45487 |
+| A2 | Off | 89.68635 | 1.56349 |
+
+FPS uses the existing ten-second warm-up exclusion. Wait figures are the final
+60 accepted world-mode timing windows, not the identical FPS interval. They are
+CPU-observed waits for GPU completion, including dependencies, not GPU timestamp
+measurements of the copy itself. The reduced wait is consistent across the
+reversal, but B exceeds A2 by only 0.37%; a reliable throughput gain is not
+established. Keep the option disabled by default.
+
+All runs exit cleanly, restore files and report zero pose mismatches. There are
+30/27/27 valid GPU activity records respectively, plus one unavailable record
+per run; no Streamer busy sample was observed. Coverage remains incomplete.
+Consumer records confirm direct submissions only in B. Evidence is under
+`artifacts/unattended/synthetic-descriptor-demand-direct-viewer-{a,b,a2}-20260911`,
+including `summary.json` and `viewer-stages.json`. FG-path compatibility is the
+next check; physical performance and worn acceptance remain pending.
