@@ -289,6 +289,10 @@ bool SharedHeadPoseReader::ensure_open() {
   if (view_) {
     return true;
   }
+  std::scoped_lock lock(open_mutex_);
+  if (view_) {
+    return true;
+  }
   mapping_ = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE,
                               shared_object_name(kSharedHeadPoseName).c_str());
   if (!mapping_) {

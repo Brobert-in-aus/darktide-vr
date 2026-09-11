@@ -33,6 +33,14 @@ std::optional<PanelPointerMapping> map_pointer_to_panel(
     return std::nullopt;
   }
 
+  const auto& q = panel_pose.orientation;
+  const auto orientation_norm = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+  if (!std::isfinite(orientation_norm) || orientation_norm < 1.0e-6F ||
+      !std::isfinite(panel_pose.position.x) ||
+      !std::isfinite(panel_pose.position.y) ||
+      !std::isfinite(panel_pose.position.z)) {
+    return std::nullopt;
+  }
   const auto inverse_panel = math::inverse(panel_pose);
   const auto local_origin = math::transform_point(inverse_panel, ray.origin);
   const auto local_direction =

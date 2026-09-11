@@ -32,7 +32,10 @@ bool PoseSnapshot::publish(const PosePacket& packet) {
   }
 
   const auto writing_epoch = epoch_.load(std::memory_order_relaxed) + 1;
-  epoch_.store(writing_epoch, std::memory_order_release);
+  epoch_.store(writing_epoch, std::memory_order_relaxed);
+  // The odd epoch must become visible before any field store; a release
+  // store alone lets later relaxed stores move ahead of it.
+  std::atomic_thread_fence(std::memory_order_release);
   received_time_ns_.store(packet.received_time_ns, std::memory_order_relaxed);
   source_id_.store(packet.source_id, std::memory_order_relaxed);
   position_x_.store(packet.pose.position.x, std::memory_order_relaxed);
@@ -71,7 +74,9 @@ PoseRead PoseSnapshot::read(std::uint64_t now_ns,
     packet.vertical_fov_rad =
         vertical_fov_rad_.load(std::memory_order_relaxed);
 
-    const auto after = epoch_.load(std::memory_order_acquire);
+    // The field loads must complete before the closing epoch check.
+    std::atomic_thread_fence(std::memory_order_acquire);
+    const auto after = epoch_.load(std::memory_order_relaxed);
     if (before != after || (after & 1U) != 0U) {
       continue;
     }

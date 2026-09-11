@@ -3,6 +3,7 @@
 #include "core/xr_math.h"
 
 #include <cstdint>
+#include <mutex>
 
 namespace darktidevr::core {
 
@@ -101,6 +102,8 @@ class SharedHeadPoseReader {
 
  private:
   bool ensure_open();
+  // The producer shares one reader between the Lua and render threads.
+  std::mutex open_mutex_;
 
   void* mapping_{};
   void* view_{};
