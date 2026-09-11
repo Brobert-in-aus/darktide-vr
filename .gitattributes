@@ -1,1 +1,16 @@
+# Normalize text files to LF in the repository and check them out with CRLF
+# on Windows, so mixed endings cannot accumulate inside one file again.
+* text=auto eol=crlf
+
+# Scripts and data that other tools read byte-for-byte keep LF.
+*.sh text eol=lf
+*.py text eol=lf
+
+# Binary payloads.
 *.pdf binary
+*.png binary
+*.jpg binary
+*.dll binary
+*.exe binary
+*.dxil binary
+*.bin binary

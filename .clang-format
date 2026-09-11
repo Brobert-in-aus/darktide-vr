@@ -1,0 +1,12 @@
+# Matches the prevailing two-space, 80-column Google-derived style in src/.
+# Existing files are not reformatted wholesale; apply to new or touched code.
+BasedOnStyle: Google
+Standard: c++20
+IndentWidth: 2
+ColumnLimit: 80
+DerivePointerAlignment: false
+PointerAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
+IncludeBlocks: Preserve
+SortIncludes: false
