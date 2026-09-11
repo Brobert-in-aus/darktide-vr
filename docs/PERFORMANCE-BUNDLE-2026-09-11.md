@@ -120,7 +120,18 @@ failures, 6 context misses. The mission thrash therefore cannot recur while
 the engine has generation off, and the in-game FG toggle no longer costs
 two texture copies per frame while off.
 
+**Worn check (11 September, about 21:38 to 21:45, `home-mission-fg-diag-20260911/`,
+attempt 2, installed native `5B7D5B9B`):** the user reports FG held through
+a dedicated-server mission. Logs: one binding rejection at the mission
+load, one pause, the viewport migration to the mission handles, then the
+`generation_off` hold through the intro (48 bounded gate lines, no
+capture/resume cycles), one resume, no failures; health in the mission at
+63 to 67 engine FPS with about 125 evaluations and 62 published pairs per
+second and 7 context misses for the whole session. Hands, weapons and
+controller input remain absent in remote missions by the documented gate.
+
 ## Open
 
-- Worn acceptance of the bundle as the baseline (the user's normal launch).
+- Worn acceptance of the bundle in ordinary hub play (the mission and the
+  quality switches are now confirmed worn).
 - The unattributed Present-hook CPU spikes above.
