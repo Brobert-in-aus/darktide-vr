@@ -33,9 +33,15 @@ capture options are deployed, and nothing here deploys them.
 From the repository root in Windows PowerShell:
 
 ```powershell
-tools/stereo/start-darktide-vr.ps1 -EnableHudPanel -EnableMenuInput -DlssGeneratedStereo -AutoEnterHub
+tools/stereo/start-darktide-vr.ps1 -SkipDeploymentSync -EnableHudPanel -EnableMenuInput -DlssGeneratedStereo -AutoEnterHub
 ```
 
+`-SkipDeploymentSync` is required: without it the launcher commits the
+development checkout into the game (91 files, including the root's stale
+8 September native build and today's unaccepted Lua). The first launch this
+evening did exactly that; the game was stopped, the transaction
+`artifacts/deployment-backups/deployment-78e2d36d...` was restored, and the
+accepted hashes were re-verified before relaunching.
 `-DlssGeneratedStereo` is the accepted FG-on configuration. For Session A's
 FG-off arm, omit it **and** set `dlss_g` to 0 in the game's options before
 launching (the stock master DLSS toggle switches SR and FG together, so use
