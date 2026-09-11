@@ -11,6 +11,7 @@
 #include "producer/compute_dispatch_probe.h"
 #include "producer/native_original_ring.h"
 #include "producer/engine_preparation_probe.h"
+#include "producer/cascade_stage_probe.h"
 #include "producer/render_api_cpu_profile.h"
 #include "producer/resource_name_match.h"
 #include "producer/command_recording_snapshot.h"
@@ -13623,6 +13624,10 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
     }
   }
   if (MH_Initialize() != MH_OK ||
+      !darktidevr::producer::install_cascade_stage_probe(native_capture_module, +[](std::uint64_t* present, std::uint64_t* generation) {
+        *present = present_count.load(std::memory_order_relaxed);
+        *generation = current_gameplay_generation.load(std::memory_order_acquire);
+      }) ||
       !darktidevr::producer::install_engine_preparation_probe(native_capture_module, +[] {
         return present_count.load(std::memory_order_relaxed);
       }) ||
