@@ -78,3 +78,31 @@ JSONL and an analysis receipt. No physical session was closed for this capture.
 The user has been asked to switch to DLSS Performance for the next capture.
 Await their readiness; do not silently substitute a different scene or toggle
 settings during a measured interval.
+
+## DLSS mode-change failure: Performance control excluded
+
+The user changed to Performance and reported approximately 43–50 FPS focused,
+70 unfocused, with generated frames apparently absent. Settings still contain
+`dlss_g=1`, `dlss_g_enabled=true` and one generated frame. The viewer reports
+zero generated delivery. Thus this was not a clean FG-enabled Performance run.
+
+Fresh producer counters while focused show approximately 49–51 engine FPS,
+about two evaluations per original frame, but `complete=17482`, `paired=8741`,
+`published=8739` and `contexts=19042` remain fixed. Original-ring publication
+is zero and the legacy feed continues. After losing focus, evaluations stop
+at 22974 and engine FPS rises to 62–67 in the observed samples. This is
+consistent with paying for evaluations without usable stereo output while
+focused; it is not a measurement of pure rendering or encoding overhead.
+
+Source inspection points to the continuous submission/input lifecycle and
+output validation as the next investigation: the capture path retains input
+owners and has stop/failure guards, while NGX completeness requires valid
+packed output dimensions and subregions. The bounded detailed logs contain
+earlier evaluations and do not identify which condition failed at the switch.
+Do not claim an exact failing guard from stale bounded logs or bypass it.
+
+Record as a DLSS quality-change recovery defect. A fresh Performance launch
+with explicit generated-stereo support is needed for the resolution control;
+verify growing original/generated publication before comparing FPS. Preserve
+the separate valid foreground Quality finding (87.95 distinct FPS).
+Ignored snapshots ending `after-quality-switch` preserve the failure evidence.
