@@ -657,6 +657,8 @@ class OpenXrProbe {
                               bool require_rendering,
                               std::optional<std::chrono::seconds> duration,
                               const std::optional<std::wstring>& capture_title,
+                              bool capture_window_deferred,
+                              bool capture_window_always,
                                bool stereo_sbs, bool stereo_top_bottom,
                                bool shared_eyes,
                                std::int64_t shared_pose_sequence_offset,
@@ -853,9 +855,12 @@ class OpenXrProbe {
     std::atomic<std::uint64_t> capture_attempts{0};
     bool capture_requested = true;
     std::unique_ptr<darktidevr::harness::CaptureWorker> capture_worker;
+    // The on-demand policy pauses captures while stereo or native UI supplies
+    // the image. The explicit always policy keeps the legacy 30 Hz capture
+    // loop running for controlled cost comparisons only.
+    const bool capture_on_demand = !capture_window_always;
+    std::function<void()> acquire_capture_source;
     if (capture_title) {
-      window_capture = std::make_unique<darktidevr::harness::WindowCapture>(
-          *capture_title, flat_capture_width, flat_capture_height);
       const auto texture_description = flat_images.front().texture->GetDesc();
       UINT64 upload_bytes{};
       device->GetCopyableFootprints(&texture_description, 0, 1, 0,
@@ -905,20 +910,48 @@ class OpenXrProbe {
         }
         return std::shared_ptr<const CapturePixels>(std::move(converted));
       };
-      latest_capture.store(capture_rgba(), std::memory_order_release);
-      capture_worker = std::make_unique<darktidevr::harness::CaptureWorker>(
-          [capture_rgba, &latest_capture, &capture_error, &capture_failures_total] {
-            try {
-              latest_capture.store(capture_rgba(), std::memory_order_release);
-              capture_error.store(nullptr, std::memory_order_release);
-            } catch (const std::exception& error) {
-              capture_failures_total.fetch_add(1, std::memory_order_relaxed);
-              capture_error.store(std::make_shared<const std::string>(error.what()),
-                                  std::memory_order_release);
-            }
-          });
-      capture_worker->set_enabled(true);
-      std::cout << "openxr.theatre_capture_policy=on_demand\n";
+      acquire_capture_source = [&window_capture, &capture_worker, &latest_capture,
+                                &capture_error, &capture_failures_total, capture_rgba,
+                                &capture_title, flat_capture_width, flat_capture_height,
+                                capture_on_demand] {
+        try {
+          window_capture = std::make_unique<darktidevr::harness::WindowCapture>(
+              *capture_title, flat_capture_width, flat_capture_height);
+          latest_capture.store(capture_rgba(), std::memory_order_release);
+          capture_worker = std::make_unique<darktidevr::harness::CaptureWorker>(
+              [capture_rgba, &latest_capture, &capture_error, &capture_failures_total] {
+                try {
+                  latest_capture.store(capture_rgba(), std::memory_order_release);
+                  capture_error.store(nullptr, std::memory_order_release);
+                } catch (const std::exception& error) {
+                  capture_failures_total.fetch_add(1, std::memory_order_relaxed);
+                  capture_error.store(std::make_shared<const std::string>(error.what()),
+                                      std::memory_order_release);
+                }
+              });
+          capture_worker->set_enabled(true);
+        } catch (...) {
+          // A partially acquired source must not survive a failed attempt. The
+          // worker joins before the window object it captures from is released.
+          capture_worker.reset();
+          window_capture.reset();
+          throw;
+        }
+        std::cout << "openxr.theatre_capture_policy="
+                  << (capture_on_demand ? "on_demand" : "always") << '\n';
+      };
+      if (!capture_window_deferred) {
+        acquire_capture_source();
+      } else {
+        try {
+          acquire_capture_source();
+        } catch (const std::exception& error) {
+          // The simulator benchmark starts this consumer before the game window
+          // exists. Keep the session running and retry from the frame loop.
+          std::cout << "openxr.capture_window=pending reason=" << error.what()
+                    << '\n';
+        }
+      }
     }
 
     std::optional<darktidevr::bridge::OpenedEyeSurfaces> opened_eyes;
@@ -1504,6 +1537,7 @@ class OpenXrProbe {
       return submit_layer;
     };
     auto next_stop_file_poll = start;
+    auto next_capture_source_poll = start;
     for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
       if (duration && std::chrono::steady_clock::now() - start >= *duration) {
         break;
@@ -1518,6 +1552,17 @@ class OpenXrProbe {
       if (window_capture && !window_capture->source_window_alive()) {
         std::cout << "openxr.capture_window=closed session_exit=clean\n";
         break;
+      }
+      if (acquire_capture_source && !window_capture &&
+          std::chrono::steady_clock::now() >= next_capture_source_poll) {
+        next_capture_source_poll =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+        try {
+          acquire_capture_source();
+          std::cout << "openxr.capture_window=acquired frame=" << frame << '\n';
+        } catch (const std::exception&) {
+          // Still pending; the next poll retries without repeating the log.
+        }
       }
       const auto frame_start = std::chrono::steady_clock::now();
       if (frame_start >= next_menu_readback_request_poll) {
@@ -2435,7 +2480,8 @@ class OpenXrProbe {
         // Stereo and native UI already supply their own images. The gameplay
         // reticle is painted independently below, so it does not need captures.
         // Keep source_window_alive() running even while this worker sleeps.
-        if (capture_worker && capture_requested != use_window_flat_capture) {
+        if (capture_worker && capture_on_demand &&
+            capture_requested != use_window_flat_capture) {
           capture_requested = use_window_flat_capture;
           capture_worker->set_enabled(capture_requested);
           std::cout << "openxr.theatre_capture_active=" << (capture_requested ? 1 : 0)
@@ -4108,6 +4154,10 @@ class OpenXrProbe {
               << capture_attempts.load(std::memory_order_relaxed) << '\n'
               << "openxr.theatre_capture_failures="
               << capture_failures_total.load(std::memory_order_relaxed) << '\n'
+              << "openxr.theatre_capture_window="
+              << (window_capture ? "acquired"
+                                 : (capture_title ? "pending" : "none"))
+              << '\n'
               << "openxr.theatre_stale_frames=" << capture_stale_frames
               << '\n'
               << "openxr.flat_fallback_frames=" << flat_fallback_frames
@@ -5248,7 +5298,8 @@ void usage() {
                "[--debug-layer] [--runtime-d3d11-diagnostics] [--probe-shared-import-adapters] [--no-openxr | --require-openxr] [--require-rendering] "
                "[--xr-frames N | --xr-seconds N] [--theatre] "
                "[--stereo-sbs] [--stereo-tb] "
-                "[--capture-window-title TEXT] [--shared-eyes] "
+                "[--capture-window-title TEXT [--capture-window-deferred] "
+                "[--capture-window-policy on_demand|always]] [--shared-eyes] "
                 "[--enable-menu-input [--menu-input-window-title TEXT]] "
                 "[--menu-aim-stabilization] "
                 "[--synthetic-controller-path] "
@@ -5315,6 +5366,8 @@ int wmain(int argc, wchar_t** argv) {
     float projection_translation_scale = 1.0F;
     std::wstring menu_input_title = L"Warhammer 40,000: Darktide";
     std::optional<std::wstring> capture_window_title;
+    bool capture_window_deferred = false;
+    bool capture_window_always = false;
     std::uint32_t xr_frames{};
     std::optional<std::chrono::seconds> xr_duration;
     std::optional<std::wstring> stop_file;
@@ -5365,6 +5418,18 @@ int wmain(int argc, wchar_t** argv) {
         require_openxr = true;
         theatre = true;
         capture_window_title = argv[++index];
+      } else if (argument == L"--capture-window-deferred") {
+        capture_window_deferred = true;
+      } else if (argument == L"--capture-window-policy" && index + 1 < argc) {
+        const std::wstring policy = argv[++index];
+        if (policy == L"always") {
+          capture_window_always = true;
+        } else if (policy == L"on_demand") {
+          capture_window_always = false;
+        } else {
+          throw std::invalid_argument(
+              "--capture-window-policy accepts on_demand or always");
+        }
       } else if (argument == L"--enable-menu-input") {
         enable_menu_input = true;
       } else if (argument == L"--enable-menu-test-controls") {
@@ -5526,6 +5591,12 @@ int wmain(int argc, wchar_t** argv) {
     if (xr_duration && xr_duration->count() == 0) {
       throw std::invalid_argument("--xr-seconds must be greater than zero");
     }
+    if ((capture_window_deferred || capture_window_always) &&
+        !capture_window_title) {
+      throw std::invalid_argument(
+          "--capture-window-deferred and --capture-window-policy require "
+          "--capture-window-title");
+    }
     pair_driven_shared = shared_eyes && pair_driven_shared;
 
     darktidevr::xr::RuntimeD3D11Diagnostics runtime_diagnostics(
@@ -5547,7 +5618,9 @@ int wmain(int argc, wchar_t** argv) {
                                          : xr_frames,
                                      harness.device(), harness.queue(),
                                      require_rendering, xr_duration,
-                                     capture_window_title, stereo_sbs,
+                                     capture_window_title,
+                                     capture_window_deferred,
+                                     capture_window_always, stereo_sbs,
                                      stereo_top_bottom, shared_eyes,
                                      shared_pose_sequence_offset,
                                      pair_driven_shared,

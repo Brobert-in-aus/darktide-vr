@@ -18,6 +18,7 @@ param(
     [bool] $EnableHudPanel = $true,
     [bool] $EnableMenuInput = $true,
     [ValidateSet(0,30,60,90,120)] [int] $SimulatorPreviewFps = 0,
+    [ValidateSet('Off','OnDemand','Always')] [string] $DesktopWindowCapture = 'Off',
     [switch] $GpuProfile,
     [switch] $RenderApiCpuProfile,
     [switch] $ObserveDlssSrInputs,
@@ -262,7 +263,8 @@ try {
         native_sha256=(Get-FileHash (Join-Path $GameRoot 'binaries/darktidevr_native_capture.dll') -Algorithm SHA256).Hash
         duration_seconds=$DurationSeconds; preview_fps=$SimulatorPreviewFps; physical_xr_ready=$false
         hud_panel_enabled=$EnableHudPanel; preview_mode='both'; preview_layout='side_by_side'
-        menu_input_enabled=$EnableMenuInput; desktop_window_capture=$false
+        menu_input_enabled=$EnableMenuInput; desktop_window_capture=($DesktopWindowCapture -ne 'Off')
+        desktop_window_capture_policy=$DesktopWindowCapture
         gameplay_mirror_copy_suppression=$DisableGameplayMirror.IsPresent
         gameplay_mirror_metrics=$GameplayMirrorMetrics.IsPresent
         optional_diagnostics_clean=(-not $PreserveDiagnosticFlags.IsPresent)
@@ -289,6 +291,14 @@ try {
         '--xr-seconds',($StartupTimeoutSeconds+$DurationSeconds+60), '--stop-file',('"'+$stopFile+'"'))
     if ($EnableMenuInput) { $consumerArguments += '--enable-menu-input' }
     if ($DebugLayer) { $consumerArguments += '--debug-layer' }
+    if ($DesktopWindowCapture -ne 'Off') {
+        # The consumer starts before the game window exists, so acquisition is
+        # deferred. The policy selects the legacy continuous capture loop or
+        # the on-demand worker for a same-binary viewer capture comparison.
+        $consumerArguments += @('--capture-window-title','"Warhammer 40,000: Darktide"',
+            '--capture-window-deferred','--capture-window-policy',
+            $(if ($DesktopWindowCapture -eq 'Always') { 'always' } else { 'on_demand' }))
+    }
     $consumer = Start-Process -FilePath $HarnessPath -WindowStyle Hidden -PassThru `
         -ArgumentList $consumerArguments `
         -RedirectStandardOutput (Join-Path $OutputDirectory 'consumer.log') `
@@ -511,4 +521,14 @@ $generatedCount = if ($generatedFinal.Success) { [uint64]$generatedFinal.Groups[
     elseif ($generated.Count) { [uint64]$generated[-1].Groups[1].Value } else { 0 }
 if ($FrameGeneration -eq 'On' -and $generatedCount -lt 30) { throw 'Frame generation was requested but sustained generated stereo submission was not established.' }
 if ($FrameGeneration -eq 'Off' -and $generatedCount -gt 0) { throw 'Generated stereo frames appeared in the Off control.' }
+if ($DesktopWindowCapture -ne 'Off') {
+    $expectedPolicy = if ($DesktopWindowCapture -eq 'Always') { 'always' } else { 'on_demand' }
+    if ($consumerText -notmatch "(?m)^openxr\.theatre_capture_policy=$expectedPolicy\r?$" -or
+        $consumerText -notmatch '(?m)^openxr\.capture_window=acquired frame=\d+\r?$' -or
+        $consumerText -notmatch '(?m)^openxr\.theatre_capture_window=acquired\r?$') {
+        throw 'Requested desktop window capture did not acquire the game window with the requested policy.'
+    }
+} elseif ($consumerText -match 'openxr\.theatre_capture_policy=') {
+    throw 'Desktop window capture ran in a control that requested none.'
+}
 Write-Output "synthetic_benchmark.completed frame_generation=$FrameGeneration output=$OutputDirectory"

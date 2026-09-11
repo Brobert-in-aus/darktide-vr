@@ -191,6 +191,31 @@ def summarize(text, warmup_seconds=10.0):
     }
 
 
+def summarize_window_capture(text):
+    """Report viewer desktop-capture counters; they are not frame-rate gains."""
+    policy = re.findall(r'^openxr\.theatre_capture_policy=(\S+)$', text, re.M)
+    if not policy:
+        return {'status': 'not_requested'}
+
+    def final(name):
+        matches = re.findall(r'^openxr\.' + re.escape(name) + r'=(\d+)$', text, re.M)
+        return int(matches[-1]) if matches else None
+    window = re.findall(r'^openxr\.theatre_capture_window=(\S+)$', text, re.M)
+    acquired = re.findall(r'^openxr\.capture_window=acquired frame=(\d+)$', text, re.M)
+    active = re.findall(r'^openxr\.theatre_capture_active=([01]) attempts=(\d+)$', text, re.M)
+    return {
+        'status': 'requested',
+        'policy': policy[-1],
+        'window': window[-1] if window else None,
+        'acquired_frame': int(acquired[0]) if acquired else None,
+        'attempts_total': final('theatre_capture_attempts'),
+        'failures_total': final('theatre_capture_failures'),
+        'updates_total': final('theatre_capture_updates'),
+        'active_transitions': len(active),
+        'scope': 'viewer window-capture work; not game mirror rendering or VD encoding',
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('directory', type=Path)
@@ -200,6 +225,8 @@ def main():
         parser.error('warmup must be finite and nonnegative')
     result = summarize((args.directory / 'consumer.log').read_text(encoding='utf-8-sig'), args.warmup_seconds)
     result['configuration'] = json.loads((args.directory / 'configuration.json').read_text(encoding='utf-8-sig'))
+    result['desktop_window_capture'] = summarize_window_capture(
+        (args.directory / 'consumer.log').read_text(encoding='utf-8-sig'))
     gpu_activity = args.directory / 'gpu-engine-activity.jsonl'
     result['gpu_engine_activity'] = (summarize_gpu_engine_activity(gpu_activity.read_text(encoding='utf-8-sig'))
                                      if gpu_activity.exists() else {'status': 'not_recorded'})
