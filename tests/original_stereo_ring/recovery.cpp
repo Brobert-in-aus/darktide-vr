@@ -86,6 +86,52 @@ int main() {
       invalid.capture(0,1,1,constants,inputs,queue.Get(),execute,configured ? nullptr : &ui_input);
       expect(invalid.finished()); // Never silently omit an expected alpha plane.
     }
+    // A DLSS quality change registers new viewport handles and re-creates the
+    // depth and motion inputs at another internal resolution. The ring must
+    // follow both without failing: migrate the handles once its tags are
+    // cleared, and rebuild its textures once every frame is idle.
+    {
+      D3D12_RESOURCE_DESC reduced=desc; reduced.Width=4; reduced.Height=2;
+      ComPtr<ID3D12Resource> small_source;
+      check(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&reduced,
+          D3D12_RESOURCE_STATE_COMMON,nullptr,IID_PPV_ARGS(&small_source)));
+      auto rebuilt=descriptions;
+      for(auto& eye:rebuilt) { eye[0]=reduced; eye[1]=reduced; }
+      auto small_inputs=inputs;
+      for(unsigned role=0;role<2;++role)
+        small_inputs[role]={small_source.Get(),4,2,D3D12_RESOURCE_STATE_COMMON,DXGI_FORMAT_R8G8B8A8_UNORM};
+      StreamlineContinuousSubmission ring;
+      expect(ring.initialize(device.Get(),2,{1,2},descriptions,log_message,true));
+      // Idle ring, no tags installed: the handles change without a pause.
+      expect(ring.migrate_viewports({3,4},queue.Get(),execute) && ring.viewports()==std::array<std::uint32_t,2>{3,4});
+      expect(!ring.migrate_viewports({3,3},queue.Get(),execute)); // Distinct handles required.
+      expect(!ring.reallocate(device.Get(),rebuilt)); // Only while paused.
+      expect(!ring.finished() && !ring.paused());
+      ring.capture(0,1,1,constants,inputs,queue.Get(),execute);
+      ring.capture(1,1,1,constants,inputs,queue.Get(),execute);
+      expect(ring.accepts(0,inputs) && ring.accepts(1,inputs) && !ring.accepts(0,small_inputs));
+      // An unmatched present rejects the captured pair and pauses the ring.
+      ring.before_present(nullptr,queue.Get(),3,{}, {},
+          darktidevr::producer::StreamlineSubmission::Tagging::legacy,execute);
+      expect(ring.paused() && !ring.finished());
+      expect(ring.migrate_viewports({5,6},queue.Get(),execute) && ring.viewports()==std::array<std::uint32_t,2>{5,6});
+      // Reallocation waits for the pause fence and the discarded captures.
+      drain();
+      expect(ring.reallocate(device.Get(),rebuilt));
+      expect(ring.paused() && !ring.finished());
+      expect(ring.accepts(0,small_inputs) && !ring.accepts(0,inputs));
+      ring.capture(0,4,4,constants,small_inputs,queue.Get(),execute);
+      ring.capture(1,4,4,constants,small_inputs,queue.Get(),execute);
+      expect(!ring.paused() && !ring.finished() && ring.pose()==4);
+      // The rebuilt ring keeps the fail-closed extent check for stale inputs.
+      ring.before_present(nullptr,queue.Get(),6,{}, {},
+          darktidevr::producer::StreamlineSubmission::Tagging::legacy,execute);
+      expect(ring.paused());
+      drain();
+      ring.capture(0,7,7,constants,inputs,queue.Get(),execute);
+      expect(ring.finished());
+      drain();
+    }
     // Bounded diagnostic probes intentionally retain their fail-closed policy.
     StreamlineContinuousSubmission bounded;
     expect(bounded.initialize(device.Get(),2,{1,2},descriptions,log_message,false));

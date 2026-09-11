@@ -21,7 +21,8 @@ anything with a date in its name as history unless a current note links to it.
   [XR swapchain resource state](XR-SWAPCHAIN-RESOURCE-STATE.md),
   [XR delivery cadence](XR-DELIVERY-CADENCE.md),
   [native original ring](NATIVE-ORIGINAL-RING.md) and its
-  [legacy dependencies](NATIVE-RING-LEGACY-DEPENDENCIES.md)
+  [legacy dependencies](NATIVE-RING-LEGACY-DEPENDENCIES.md),
+  [FG recovery after a DLSS quality change](FG-QUALITY-SWITCH-RECOVERY-2026-09-11.md)
 - Desktop and capture: [desktop mirror performance contract](DESKTOP-MIRROR-PERFORMANCE-CONTRACT.md),
   [on-demand window capture](ON-DEMAND-WINDOW-CAPTURE.md),
   [simulator window capture control](SIMULATOR-WINDOW-CAPTURE-2026-09-11.md)

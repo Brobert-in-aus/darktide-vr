@@ -40,6 +40,23 @@ class StreamlineContinuousSubmission {
   void pause(ID3D12CommandQueue* queue, Execute execute, const char* reason);
   bool initialized() const noexcept { return initialized_; }
   bool finished() const noexcept { return stopped_; }
+  bool paused() const noexcept { return paused_; }
+  // Adopt the engine's replacement per-eye viewport handles (a render-settings
+  // rebuild registers new ones). Tags on the previous handles are cleared by a
+  // pause first; refused while a frame is staged for Present.
+  bool migrate_viewports(const std::array<std::uint32_t, 2>& viewports,
+                         ID3D12CommandQueue* queue, Execute execute);
+  const std::array<std::uint32_t, 2>& viewports() const noexcept { return viewports_; }
+  // True when this eye's inputs match the ring textures' extents and formats.
+  bool accepts(unsigned eye, const std::array<StreamlineTagInput, 4>& inputs,
+               const StreamlineTagInput* ui = nullptr) const noexcept;
+  // Rebuild the ring textures for new input extents (a DLSS quality change
+  // re-creates depth and motion at another internal resolution). Only while
+  // paused, once every frame's GPU work and Streamline ownership completed;
+  // the pause already cleared the tags. False means try again next present.
+  bool reallocate(ID3D12Device* device,
+                  const std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2>& descriptions,
+                  const std::array<D3D12_RESOURCE_DESC, 2>* ui = nullptr);
   bool staged() const noexcept { return staged_; }
   std::uint64_t original_ready() const noexcept { return original_ready_; }
   std::uint64_t pose() const noexcept {
@@ -85,6 +102,11 @@ class StreamlineContinuousSubmission {
     bool presented{};
   };
   void fail(const char* reason);
+  static bool input_fits(unsigned role, const StreamlineTagInput& input,
+                         const D3D12_RESOURCE_DESC& target) noexcept;
+  bool allocate_textures(ID3D12Device* device,
+                         const std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2>& descriptions,
+                         const std::array<D3D12_RESOURCE_DESC, 2>* ui);
   void clear_bindings(ID3D12CommandQueue* queue, Execute execute);
   bool recycle(Frame& frame);
   void harvest_timing(Frame& frame);

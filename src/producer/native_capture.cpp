@@ -1181,6 +1181,11 @@ struct ArmedEyeCapture {
   float aspect_ratio{};
 };
 std::deque<ArmedEyeCapture> armed_eye_captures;
+// Capture-gate rejections logged while the continuous submission is paused,
+// bounded per session; they name the identity check a paused ring waits on.
+std::atomic<unsigned> streamline_gate_reject_reports{};
+// Presents spent waiting for the ring to become idle for an input rebuild.
+unsigned streamline_reallocate_attempts{};
 std::unordered_set<ID3D12Resource*> swapchain_back_buffers;
 std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES>
     swapchain_back_buffer_states;
@@ -9832,13 +9837,55 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
     }
     const auto index = static_cast<std::size_t>(eye);
     const auto& constants = streamline_constants_observations[index];
+    const auto reject = [&](const char* why, std::size_t role) {
+      if (!streamline_continuous.paused() ||
+          streamline_gate_reject_reports.fetch_add(1, std::memory_order_relaxed) >= 48) return;
+      const auto& source = streamline_tagged_inputs[index][role];
+      write_streamline_probe_log(
+          "STEREO_CONTINUOUS\tphase=gate_reject\twhy=%s\teye=%d\tpresent=%llu\tpose=%llu"
+          "\tconstants_valid=%u\tconstants_present=%llu\tconstants_pose=%llu\tconstants_viewport=%u"
+          "\tstate_viewport=%u\tfinal=%p\trole=%zu\ttag_resource=%p\ttag_present=%llu\ttag_pose=%llu\r\n",
+          why, eye, static_cast<unsigned long long>(present_frame), static_cast<unsigned long long>(pose_sequence),
+          constants.valid ? 1U : 0U, static_cast<unsigned long long>(constants.present_frame),
+          static_cast<unsigned long long>(constants.pose_sequence), constants.viewport,
+          state.constants[index].viewport, static_cast<void*>(final_color), role,
+          static_cast<void*>(source.resource.Get()), static_cast<unsigned long long>(source.present_frame),
+          static_cast<unsigned long long>(source.pose_sequence));
+    };
+    if (constants.valid && constants.present_frame == present_frame &&
+        constants.pose_sequence == pose_sequence && constants.viewport &&
+        constants.viewport != state.constants[index].viewport) {
+      // The engine registered a replacement viewport for this eye (a DLSS
+      // quality change rebuilds them). Follow it: the startup handle receives
+      // no further constants or tags, so the ring would otherwise never resume.
+      const auto previous = state.constants[index].viewport;
+      if (streamline_continuous.initialized() && !streamline_continuous.finished()) {
+        auto viewports = streamline_continuous.viewports();
+        viewports[index] = constants.viewport;
+        if (!streamline_continuous.migrate_viewports(viewports, queue, original_execute_command_lists)) {
+          reject("viewport_migration", 0); return;
+        }
+      }
+      state.constants[index].viewport = constants.viewport;
+      // Release the retired handle's DLSS-G options slot; the table is finite.
+      for (auto& options : streamline_options_observations)
+        if (options.valid && options.viewport == previous) options = {};
+      write_streamline_probe_log(
+          "STEREO_CONTINUOUS\tphase=viewport_migration\teye=%d\tpresent=%llu\tpose=%llu\tprevious=%u\tcurrent=%u\r\n",
+          eye, static_cast<unsigned long long>(present_frame), static_cast<unsigned long long>(pose_sequence),
+          previous, constants.viewport);
+    }
     if (!constants.valid || constants.present_frame != present_frame ||
-        constants.pose_sequence != pose_sequence || constants.viewport != state.constants[index].viewport) return;
-    if(!final_color) return;
+        constants.pose_sequence != pose_sequence || constants.viewport != state.constants[index].viewport) {
+      reject("constants", 0); return;
+    }
+    if(!final_color) { reject("final", 0); return; }
     std::array<darktidevr::producer::StreamlineTagInput, 4> inputs{};
     for (std::size_t role = 0; role < 3; ++role) {
       const auto& source = streamline_tagged_inputs[index][role];
-      if (!source.resource || source.present_frame != present_frame || source.pose_sequence != pose_sequence) return;
+      if (!source.resource || source.present_frame != present_frame || source.pose_sequence != pose_sequence) {
+        reject("tag", role); return;
+      }
       const auto description = source.resource->GetDesc();
       inputs[role] = {source.resource.Get(), static_cast<unsigned>(description.Width),
           description.Height, static_cast<unsigned>(source.state), static_cast<unsigned>(description.Format)};
@@ -9851,6 +9898,37 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
       const auto description = ui_source->GetDesc();
       ui_input = {ui_source.Get(), static_cast<unsigned>(description.Width), description.Height,
           D3D12_RESOURCE_STATE_RENDER_TARGET, static_cast<unsigned>(description.Format)};
+    }
+    if (!streamline_continuous.accepts(static_cast<unsigned>(eye), inputs, ui_source ? &ui_input : nullptr)) {
+      // The engine changed its render extents (a DLSS quality change). Rebuild
+      // the ring textures once it is paused and idle; a captured pair that can
+      // no longer present is discarded by the pause.
+      if (!streamline_continuous.paused()) {
+        streamline_continuous.pause(queue, original_execute_command_lists, "input_extent");
+        if (!streamline_continuous.paused()) { reject("extent_pause", 0); return; }
+      }
+      std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2> descriptions{};
+      for (std::size_t source_eye = 0; source_eye < 2; ++source_eye) {
+        for (std::size_t role = 0; role < 3; ++role) {
+          const auto& source = streamline_tagged_inputs[source_eye][role];
+          // Both eyes must have been tagged since the change; the other eye's
+          // observation may be one present old.
+          if (!source.resource || source.present_frame + 1 < present_frame) { reject("extent_inputs", role); return; }
+          descriptions[source_eye][role] = source.resource->GetDesc();
+        }
+      }
+      ComPtr<ID3D12Device> device;
+      if (FAILED(queue->GetDevice(IID_PPV_ARGS(&device)))) return;
+      if (!streamline_continuous.reallocate(device.Get(), descriptions,
+              ui_pair_allocated ? &ui_descriptions : nullptr)) {
+        if (++streamline_reallocate_attempts > 240) streamline_continuous.cancel("reallocation_timeout");
+        reject("reallocate", 0); return;
+      }
+      streamline_reallocate_attempts = 0;
+      write_streamline_probe_log(
+          "STEREO_CONTINUOUS\tphase=input_extent\teye=%d\tpresent=%llu\tpose=%llu\tdepth=%ux%u\tmotion=%ux%u\tcolor=%ux%u\r\n",
+          eye, static_cast<unsigned long long>(present_frame), static_cast<unsigned long long>(pose_sequence),
+          inputs[0].width, inputs[0].height, inputs[1].width, inputs[1].height, inputs[2].width, inputs[2].height);
     }
     streamline_continuous.capture(static_cast<unsigned>(eye), present_frame, pose_sequence,
         constants.constants, inputs, queue, original_execute_command_lists,

@@ -1941,6 +1941,60 @@ function presentation.update_psykhanium(manager, t)
     end
 end
 
+-- Test-only: apply a DLSS quality change the way the options menu does, from
+-- a flag file, so the live quality-change FG failure can be reproduced in the
+-- simulator. Mirrors scripts/settings/options/settings_utils.lua without
+-- saving user settings to disk.
+function presentation.update_dlss_quality_test()
+    if not Mods or not Mods.lua or not Mods.lua.io then
+        return
+    end
+    presentation.dlss_quality_test_poll_updates =
+        (presentation.dlss_quality_test_poll_updates or 0) + 1
+    if presentation.dlss_quality_test_poll_updates < 15 then
+        return
+    end
+    presentation.dlss_quality_test_poll_updates = 0
+
+    local flag_path =
+        "./../mods/darktidevr_stereo_probe/darktidevr_set_dlss_quality.flag"
+    local flag = Mods.lua.io.open(flag_path, "r")
+    if not flag then
+        return
+    end
+    local request = flag:read("*all")
+    flag:close()
+    local quality = string.match(request or "", "^%s*([%a_]+)")
+    local allowed = {
+        auto = true, ultra_performance = true, performance = true,
+        balanced = true, quality = true, dlaa = true,
+    }
+    if not quality or not allowed[quality] then
+        return
+    end
+    local consumed = Mods.lua.io.open(flag_path, "w")
+    if consumed then
+        consumed:write("consumed\n")
+        consumed:close()
+    end
+
+    local ok, error_message = pcall(function()
+        Application.set_user_setting("render_settings", "dlss_enabled", true)
+        Application.set_render_setting("dlss_enabled", "true")
+        Application.set_user_setting("render_settings", "upscaling_quality", quality)
+        Application.set_render_setting("upscaling_quality", quality)
+        Application.apply_user_settings()
+        Renderer.bake_static_shadows()
+        if Managers and Managers.event then
+            Managers.event:trigger("event_on_render_settings_applied")
+        end
+    end)
+    mod:info(
+        "DARKTIDEVR_STEREO dlss_quality_change value=%s result=%s",
+        quality, ok and "applied" or tostring(error_message)
+    )
+end
+
 function presentation.update_system_menu_test(manager)
     if not Mods or not Mods.lua or not Mods.lua.io then
         return
@@ -5137,6 +5191,7 @@ mod:hook(
     local result = func(self, dt, t, ...)
     presentation.reconcile_fullscreen_views(self)
     presentation.update_system_menu_test(self)
+    presentation.update_dlss_quality_test()
     if presentation.gameplay_ui then presentation.gameplay_ui.update_menu(self) end
     presentation.update_vendor_menu_test(self)
     presentation.update_psykhanium(self, t or 0)

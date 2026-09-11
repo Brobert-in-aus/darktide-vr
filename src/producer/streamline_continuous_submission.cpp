@@ -51,8 +51,6 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
       FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pause_fence_)))) {
     fail("pause_allocation"); return false;
   }
-  D3D12_HEAP_PROPERTIES heap{};
-  heap.Type = D3D12_HEAP_TYPE_DEFAULT;
   for (unsigned i = 0; i < count_; ++i) {
     auto& frame = frames_[i];
     if (profile) {
@@ -77,17 +75,6 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
       }
     }
     for (unsigned eye = 0; eye < 2; ++eye) {
-      for (unsigned role = 0; role < (ui_allocated_ ? 5U : 4U); ++role) {
-        const auto& description = role == 4 ? (*ui)[eye] : descriptions[eye][role==3 ? 2 : role];
-        if (description.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
-            description.MipLevels != 1 || description.DepthOrArraySize != 1 ||
-            description.SampleDesc.Count != 1 ||
-            FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
-                &description, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-                IID_PPV_ARGS(&frame.textures[eye][role])))) {
-          fail("input_allocation"); return false;
-        }
-      }
       if (!make_commands(device, frame.capture_allocators[eye], frame.capture_commands[eye]) ||
           FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
                                      IID_PPV_ARGS(&frame.capture_fences[eye])))) {
@@ -100,9 +87,102 @@ bool StreamlineContinuousSubmission::initialize(ID3D12Device* device, unsigned f
       fail("present_allocation"); return false;
     }
   }
+  if (!allocate_textures(device, descriptions, ui)) { fail("input_allocation"); return false; }
   initialized_ = true;
   log_("STEREO_CONTINUOUS\tphase=ready\tframes=%u\teye_width=%u\teye_height=%u\tpublication=0\tui_alpha=%u\tui_capture=%u\tframe_trace=%s\r\n", count_, width_, height_, ui_enabled_ ? 1U : 0U,ui_allocated_ ? 1U : 0U,
        persistent_ ? "startup8_then120" : "complete");
+  return true;
+}
+
+bool StreamlineContinuousSubmission::allocate_textures(ID3D12Device* device,
+    const std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2>& descriptions,
+    const std::array<D3D12_RESOURCE_DESC, 2>* ui) {
+  D3D12_HEAP_PROPERTIES heap{};
+  heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+  for (unsigned i = 0; i < count_; ++i) {
+    auto& frame = frames_[i];
+    for (unsigned eye = 0; eye < 2; ++eye) {
+      for (unsigned role = 0; role < (ui_allocated_ ? 5U : 4U); ++role) {
+        const auto& description = role == 4 ? (*ui)[eye] : descriptions[eye][role==3 ? 2 : role];
+        ComPtr<ID3D12Resource> texture;
+        if (description.Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D ||
+            description.MipLevels != 1 || description.DepthOrArraySize != 1 ||
+            description.SampleDesc.Count != 1 ||
+            FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
+                &description, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                IID_PPV_ARGS(&texture)))) return false;
+        frame.textures[eye][role] = texture;
+        frame.sources[eye][role].Reset();
+      }
+    }
+  }
+  return true;
+}
+
+bool StreamlineContinuousSubmission::input_fits(unsigned role, const StreamlineTagInput& input,
+    const D3D12_RESOURCE_DESC& target) noexcept {
+  return input.native && input.state != UINT_MAX && input.width == target.Width &&
+      input.height == target.Height && (input.format == static_cast<unsigned>(target.Format) ||
+      (role==3 && target.Format==DXGI_FORMAT_R8G8B8A8_TYPELESS && input.format==DXGI_FORMAT_R8G8B8A8_UNORM));
+}
+
+bool StreamlineContinuousSubmission::accepts(unsigned eye, const std::array<StreamlineTagInput, 4>& inputs,
+    const StreamlineTagInput* ui) const noexcept {
+  if (!initialized_ || eye > 1 || (ui_enabled_ && !ui) || (ui && !ui_allocated_)) return false;
+  const auto& frame = frames_[current_ % count_];
+  for (unsigned role = 0; role < (ui ? 5U : 4U); ++role) {
+    if (!input_fits(role, role == 4 ? *ui : inputs[role], frame.textures[eye][role]->GetDesc())) return false;
+  }
+  return true;
+}
+
+bool StreamlineContinuousSubmission::reallocate(ID3D12Device* device,
+    const std::array<std::array<D3D12_RESOURCE_DESC, 3>, 2>& descriptions,
+    const std::array<D3D12_RESOURCE_DESC, 2>* ui) {
+  if (!initialized_ || stopped_ || staged_ || !paused_ || !device) return false;
+  if (ui_allocated_ != (ui != nullptr)) { fail("reallocate_ui_mismatch"); return false; }
+  const auto completed = pause_fence_->GetCompletedValue();
+  if (completed == UINT64_MAX) { fail("pause_device_removed"); return false; }
+  if (completed < pause_value_) return false;
+  const auto width = static_cast<std::uint32_t>(descriptions[0][2].Width);
+  const auto height = descriptions[0][2].Height;
+  if (!width || width > UINT_MAX / 2 || !height || descriptions[0][2].Width != width ||
+      descriptions[1][2].Width != width || descriptions[1][2].Height != height) {
+    fail("reallocate_eye_extent"); return false;
+  }
+  if (ui) for (const auto& description : *ui) {
+    if (description.Width != width || description.Height != height ||
+        description.Format != DXGI_FORMAT_R8G8B8A8_UNORM) { fail("reallocate_ui_extent"); return false; }
+  }
+  // Every frame must be idle before its textures are released: presented
+  // frames retire through their completion tickets, captured-but-unpresented
+  // frames through their capture fences.
+  for (unsigned i = 0; i < count_; ++i) {
+    auto& frame = frames_[i];
+    if (frame.presented) { if (!recycle(frame)) return false; continue; }
+    if (!frame.captured) continue;
+    for (unsigned eye = 0; eye < 2; ++eye) if (frame.captured & (1U << eye)) {
+      const auto captured = frame.capture_fences[eye]->GetCompletedValue();
+      if (captured == UINT64_MAX) { fail("capture_device_removed"); return false; }
+      if (captured < frame.reuse_value) return false;
+    }
+    for (unsigned eye = 0; eye < 2; ++eye) if (frame.captured & (1U << eye)) {
+      if (FAILED(frame.capture_allocators[eye]->Reset()) ||
+          FAILED(frame.capture_commands[eye]->Reset(frame.capture_allocators[eye].Get(), nullptr))) {
+        fail("capture_discard_reset"); return false;
+      }
+    }
+    ++frame.reuse_value;
+    frame.captured = 0; frame.captured_ui = 0;
+  }
+  const auto previous_width = width_, previous_height = height_;
+  if (!allocate_textures(device, descriptions, ui)) { fail("input_reallocation"); return false; }
+  width_ = width; height_ = height;
+  log_("STEREO_CONTINUOUS\tphase=reallocated\tframe=%u\teye_width=%u\teye_height=%u\tdepth=%llux%u\tmotion=%llux%u"
+       "\tprevious_eye_width=%u\tprevious_eye_height=%u\r\n",
+       current_ + 1, width_, height_, static_cast<unsigned long long>(descriptions[0][0].Width),
+       descriptions[0][0].Height, static_cast<unsigned long long>(descriptions[0][1].Width),
+       descriptions[0][1].Height, previous_width, previous_height);
   return true;
 }
 
@@ -207,6 +287,19 @@ bool StreamlineContinuousSubmission::resume_capture() {
   return true;
 }
 
+bool StreamlineContinuousSubmission::migrate_viewports(
+    const std::array<std::uint32_t, 2>& viewports, ID3D12CommandQueue* queue, Execute execute) {
+  if (!initialized_ || stopped_ || staged_) return false;
+  if (!viewports[0] || !viewports[1] || viewports[0] == viewports[1]) return false;
+  if (viewports == viewports_) return true;
+  if (!paused_ && previous_tags_active_) pause(queue, execute, "viewport_migration");
+  if (stopped_ || (!paused_ && previous_tags_active_)) return false;
+  log_("STEREO_CONTINUOUS\tphase=viewports\tframe=%u\tleft=%u\tright=%u\tprevious_left=%u\tprevious_right=%u\r\n",
+       current_ + 1, viewports[0], viewports[1], viewports_[0], viewports_[1]);
+  viewports_ = viewports;
+  return true;
+}
+
 void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present,
     std::uint64_t pose, const sl::Constants& constants,
     const std::array<StreamlineTagInput, 4>& inputs,
@@ -225,11 +318,7 @@ void StreamlineContinuousSubmission::capture(unsigned eye, std::uint64_t present
     if (input.native == ui->native) { fail("ui_capture_alias"); return; }
   }
   for (unsigned role = 0; role < (ui ? 5U : 4U); ++role) {
-    const auto& input = role == 4 ? *ui : inputs[role];
-    const auto target = frame.textures[eye][role]->GetDesc();
-    if (!input.native || input.state == UINT_MAX || input.width != target.Width ||
-        input.height != target.Height || (input.format != static_cast<unsigned>(target.Format) &&
-        !(role==3 && target.Format==DXGI_FORMAT_R8G8B8A8_TYPELESS && input.format==DXGI_FORMAT_R8G8B8A8_UNORM))) {
+    if (!input_fits(role, role == 4 ? *ui : inputs[role], frame.textures[eye][role]->GetDesc())) {
       fail("capture_extent"); return;
     }
   }
