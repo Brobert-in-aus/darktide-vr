@@ -7516,6 +7516,8 @@ function presentation.apply_calibrated_arm_length(world, unit)
         source_reach * height_scale - shoulder_width * 0.5)
     local forward_required = 0
     local forward_count = 0
+    -- Calibration schema 4 no longer captures an arms-forward pose; only
+    -- older schema 3 results carry forward_pose, so this stays optional.
     if result.forward_pose and result.forward_pose.head and
             controller_observation.body_anchor_qw then
         local model_eye = presentation.body_camera_anchor(unit)

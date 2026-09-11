@@ -481,10 +481,11 @@ if (-not $calibrationSource.Contains(
 $calibrationViewSource = Get-Content -LiteralPath (
     Join-Path (Split-Path -Parent $resolvedSource) `
         'darktidevr_calibration_view.lua') -Raw
-if (-not $calibrationViewSource.Contains('schema = 3') -or
-        -not $calibrationViewSource.Contains('capture_forward') -or
-        -not $calibrationViewSource.Contains('result.forward_reach')) {
-    throw 'Calibration must retain a stable forward-reach capture after T-pose and neutral poses.'
+if (-not $calibrationViewSource.Contains('schema = 4') -or
+        -not $calibrationViewSource.Contains('capture_t_pose') -or
+        -not $calibrationViewSource.Contains('capture_sides') -or
+        $calibrationViewSource.Contains('capture_forward')) {
+    throw 'Calibration must capture exactly the T-pose and arms-at-sides poses (schema 4); the forward-reach stage was retired with the third-person body.'
 }
 $controllerAimSource = Get-Content -LiteralPath (
     Join-Path (Split-Path -Parent $resolvedSource) `
