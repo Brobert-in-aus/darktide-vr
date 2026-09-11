@@ -14,6 +14,8 @@ anything with a date in its name as history unless a current note links to it.
   latest todo: [11 September](phase1/todo-2026-09-11.md)
 - [Very early alpha readiness](EARLY-ALPHA-READINESS.md) and [runtime package](RUNTIME-PACKAGE.md)
 - [Whole-project code review, 11 September](CODE-REVIEW-2026-09-11.md)
+- [Performance bundle, 11 September](PERFORMANCE-BUNDLE-2026-09-11.md): the
+  day's optimisations as the deployed baseline, launcher defaults, controls
 
 ## Contracts that govern changes
 

@@ -2124,7 +2124,7 @@ void write_streamline_probe_log(const char* format, ...) {
       (std::strncmp(format,"STEREO_CONTINUOUS",17)==0 &&
       (std::strstr(format,"phase=failed") || std::strstr(format,"phase=stopped") ||
        std::strstr(format,"phase=paused") || std::strstr(format,"phase=resumed") ||
-       std::strstr(format,"phase=binding_rejection") || std::strstr(format,"phase=timing")));
+       std::strstr(format,"phase=binding_rejection") || std::strstr(format,"phase=binding_detail") || std::strstr(format,"phase=timing")));
   if (streamline_probe_log == INVALID_HANDLE_VALUE ||
       (!terminal_submission_record &&
        (streamline_probe_log_count.load(std::memory_order_relaxed) >= 16384 ||

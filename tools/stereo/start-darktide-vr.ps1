@@ -118,7 +118,18 @@ param(
 
     [switch] $DoNotOpenLauncher,
 
-    [switch] $ManualLauncherPlay
+    [switch] $ManualLauncherPlay,
+
+    # The viewer's measured 11 September timing defaults: high-resolution pair
+    # polling and direct native original copies (the latter applies only when
+    # frame generation is not published). This switch restores the earlier
+    # viewer behaviour for a comparison run.
+    [switch] $LegacyViewerTiming,
+
+    # Native stereo launches (no -DlssGeneratedStereo) publish originals through
+    # the three-slot native ring by default since the 11 September bundle. This
+    # switch keeps the legacy single-slot handoff for a comparison run.
+    [switch] $NoNativeOriginalRing
 )
 
 Set-StrictMode -Version Latest
@@ -258,6 +269,11 @@ $streamlineTargetTokenProbeFlagPath = $null
 $streamlineTargetTokenProbeFlagOriginal = $null
 $streamlineTargetTokenProbeFlagExisted = $false
 if ($StreamlineStereoSwapchainProbe) { $StreamlineEyeTargetProbe = $true }
+# The native original ring publishes only identified eye finals, so a native
+# stereo launch that uses it also isolates the gameplay eye targets.
+$nativeOriginalRingDefault = -not $DlssGeneratedStereo -and -not $NoNativeOriginalRing
+if ($nativeOriginalRingDefault) { $StreamlineEyeTargetProbe = $true }
+$nativeOriginalRingFlags = @()
 $streamlineEyeTargetProbeFlagPath = $null
 $streamlineEyeTargetProbeFlagOriginal = $null
 $streamlineEyeTargetProbeFlagExisted = $false
@@ -506,6 +522,22 @@ if ($StreamlineEyeTargetProbe) {
     Set-Content -LiteralPath $streamlineEyeTargetProbeFlagPath `
         -Value 'enabled' -Encoding ascii
     Write-Output 'Isolated gameplay eye targets enabled for this diagnostic.'
+}
+if ($nativeOriginalRingDefault) {
+    # The native module reads the flag beside the DLL it was loaded from; both
+    # installed copies get one. Persistent FG launches publish originals through
+    # the continuous submission and never construct this ring.
+    foreach ($ringDirectory in @('mods\darktidevr_stereo_probe\bin', 'binaries')) {
+        $ringFlagPath = Join-Path $GameRoot (Join-Path $ringDirectory 'darktidevr_native_original_ring.flag')
+        $ringFlagExisted = Test-Path -LiteralPath $ringFlagPath -PathType Leaf
+        $nativeOriginalRingFlags += [pscustomobject]@{
+            Path = $ringFlagPath
+            Existed = $ringFlagExisted
+            Original = if ($ringFlagExisted) { [IO.File]::ReadAllBytes($ringFlagPath) } else { $null }
+        }
+        Set-Content -LiteralPath $ringFlagPath -Value "[probe]`r`nenabled=1" -Encoding ascii
+    }
+    Write-Output 'Native original ring enabled for this native stereo run.'
 }
 if ($StreamlineStereoSwapchainProbe) {
     $streamlineStereoSwapchainProbeFlagPath = Join-Path $GameRoot `
@@ -762,6 +794,13 @@ if ($offlineNoHeadset) {
 }
 else {
     Write-Output 'Waiting for the Darktide splash window; XR will start as soon as it exists.'
+}
+if (-not $LegacyViewerTiming) {
+    # Inherited by the viewer started below. Both were part of the 11 September
+    # performance bundle; see docs/PERFORMANCE-BUNDLE-2026-09-11.md.
+    $env:DTVR_XR_PRECISE_PAIR_WAIT = '1'
+    $env:DTVR_XR_NATIVE_ORIGINAL_DIRECT = '1'
+    Write-Output 'Viewer timing defaults: precise pair wait and direct native originals.'
 }
 $runnerArguments = @{
     DurationSeconds = $DurationSeconds
@@ -1039,6 +1078,19 @@ finally {
                     -Force
             }
             Write-Output 'Restored the prior Streamline eye-target flag.'
+        }
+    }
+    {
+        foreach ($ringFlag in $nativeOriginalRingFlags) {
+            if ($ringFlag.Existed) {
+                Restore-FlagOriginal -LiteralPath $ringFlag.Path -Original $ringFlag.Original
+            }
+            elseif (Test-Path -LiteralPath $ringFlag.Path -PathType Leaf) {
+                Remove-Item -LiteralPath $ringFlag.Path -Force
+            }
+        }
+        if ($nativeOriginalRingFlags.Count -gt 0) {
+            Write-Output 'Restored the prior native original ring flags.'
         }
     }
     {

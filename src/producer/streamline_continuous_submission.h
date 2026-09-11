@@ -123,6 +123,7 @@ class StreamlineContinuousSubmission {
   std::array<double, 3> timing_totals_{};
   unsigned timing_samples_{};
   bool paused_{}, previous_tags_active_{};
+  unsigned binding_detail_logged_{};
   ComPtr<ID3D12CommandAllocator> pause_allocator_;
   ComPtr<ID3D12GraphicsCommandList> pause_commands_;
   ComPtr<ID3D12Fence> pause_fence_;

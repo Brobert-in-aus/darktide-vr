@@ -366,6 +366,19 @@ void StreamlineContinuousSubmission::before_present(IDXGISwapChain3* swapchain,
     log_("STEREO_CONTINUOUS\tphase=binding_rejection\tcaptured=%u\tsource_present=%llu\tpresent=%llu\tprevious_present=%llu\tpose=%llu\tbound_pose=%llu\tbindings_match=%u\r\n",
         frame.captured,frame.source_present,present,current_ ? frames_[(current_-1)%count_].present : 0,
         frame.pose,bindings[0].pose,core::streamline_present_binding_matches(present,viewports_,bindings) ? 1U : 0U);
+    // Name the rejected identity: each eye's observed constants/options against
+    // the ring's viewports and this Present. Bounded per session; these lines
+    // bypass the background log budget like the rejection itself.
+    for (unsigned eye = 0; eye < 2 && binding_detail_logged_ < 64; ++eye, ++binding_detail_logged_) {
+      const auto& binding = bindings[eye];
+      log_("STEREO_CONTINUOUS\tphase=binding_detail\teye=%u\tring_viewport=%u\tconstants_valid=%u\ttoken=%llx\ttoken_call=%llu"
+           "\tframe_index=%u\tconstants_present=%llu\tpose=%llu\tviewport=%u\toptions_valid=%u\tmode=%u\toptions_present=%llu\r\n",
+           eye, viewports_[eye], binding.constants_valid ? 1U : 0U,
+           static_cast<unsigned long long>(binding.token), static_cast<unsigned long long>(binding.token_call),
+           binding.frame_index, static_cast<unsigned long long>(binding.constants_present),
+           static_cast<unsigned long long>(binding.pose), binding.viewport, binding.options_valid ? 1U : 0U,
+           binding.mode, static_cast<unsigned long long>(binding.options_present));
+    }
     pause(queue, execute, "present_binding_or_gap"); return;
   }
   ComPtr<ID3D12Resource> backbuffer;

@@ -14,7 +14,10 @@ capture options are deployed, and nothing here deploys them.
   because streaming is suspended.
 - Installed files verified: native `FCCDD0DE...` at both locations, Lua
   `7B03E9E1...`, bootstrap `d3d12.dll` `7FA7FE77...`; no game or viewer
-  process was running.
+  process was running. Superseded at about 21:00 by the deployed
+  [performance bundle](../PERFORMANCE-BUNDLE-2026-09-11.md): native
+  `CAF9E0DF...`, bootstrap `E7ED3929...`, Lua `D3E733CD...` (transaction
+  `deployment-f6350854edec4ce299d69aa1002cd721`).
 - Eight stale presence-gated probe flags (seven `darktidevr_streamline_*_probe`
   files and `darktidevr_ngx_output_probe.flag`) were found in the installed mod
   root and would have activated diagnostics on every launch. They are backed
