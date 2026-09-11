@@ -14,6 +14,7 @@
 #include "producer/cascade_stage_probe.h"
 #include "producer/render_api_cpu_profile.h"
 #include "producer/resource_name_match.h"
+#include "producer/enhanced_barrier_interest.h"
 #include "producer/command_recording_snapshot.h"
 #include "producer/shader_pair_snapshot.h"
 #include "producer/resource_handle_trace.h"
@@ -9570,18 +9571,8 @@ void STDMETHODCALLTYPE enhanced_barrier_hook(
   }
   const bool log_resources = boundary_census_log != INVALID_HANDLE_VALUE ||
                              enhanced_barrier_log != INVALID_HANDLE_VALUE;
-  bool has_texture_barriers{};
-  if (groups) {
-    for (UINT32 group_index = 0; group_index < group_count; ++group_index) {
-      const auto& group = groups[group_index];
-      if (group.Type == D3D12_BARRIER_TYPE_TEXTURE &&
-          group.pTextureBarriers && group.NumBarriers != 0) {
-        has_texture_barriers = true;
-        break;
-      }
-    }
-  }
-  if (has_texture_barriers) {
+  if (darktidevr::producer::enhanced_barriers_need_capture_lock(
+          group_count, groups, log_resources)) {
     std::scoped_lock lock(boundary_capture_mutex);
     for (UINT32 group_index = 0; group_index < group_count; ++group_index) {
       const auto& group = groups[group_index];
