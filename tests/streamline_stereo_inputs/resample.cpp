@@ -10,6 +10,14 @@ void ok(HRESULT result) { if (FAILED(result)) throw std::runtime_error("GPU oper
 void check(bool value) { if (!value) throw std::runtime_error("resample mismatch"); }
 int main() {
   using Mode = darktidevr::core::SharedPresentationMode;
+  for (const auto mode : {Mode::disabled, Mode::stereo_world,
+                          Mode::flat_loading_or_cinematic, Mode::world_anchored_menu,
+                          Mode::flat_menu, Mode::flat_interactive,
+                          Mode::flat_interactive_native_aspect, Mode::error}) {
+    check(!darktidevr::producer::suppress_gameplay_mirror(false, mode));
+    check(darktidevr::producer::suppress_gameplay_mirror(true, mode) ==
+          (mode == Mode::stereo_world));
+  }
   for (const auto mode : {Mode::flat_loading_or_cinematic, Mode::flat_interactive,
                           Mode::flat_interactive_native_aspect}) {
     check(darktidevr::producer::engine_flat_mirror_required(true, mode));

@@ -7,6 +7,11 @@
 #include <utility>
 
 namespace darktidevr::producer {
+inline constexpr bool suppress_gameplay_mirror(
+    bool requested, core::SharedPresentationMode mode) {
+  return requested && mode == core::SharedPresentationMode::stereo_world;
+}
+
 inline constexpr bool engine_flat_mirror_required(
     bool private_engine_backbuffer, core::SharedPresentationMode mode) {
   return private_engine_backbuffer &&

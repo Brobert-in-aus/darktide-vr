@@ -665,6 +665,14 @@ ComPtr<ID3D12Resource> desktop_mirror_surface;
 ComPtr<ID3D12Fence> desktop_mirror_fence;
 std::uint64_t desktop_mirror_fence_value{};
 std::atomic<bool> desktop_mirror_ready{};
+bool gameplay_mirror_suppression_requested() {
+  static const bool requested = [] {
+    wchar_t value[2]{};
+    return GetEnvironmentVariableW(L"DTVR_DISABLE_GAMEPLAY_MIRROR", value, 2) == 1 &&
+           value[0] == L'1';
+  }();
+  return requested;
+}
 std::atomic<std::uint64_t> desktop_mirror_error_count{};
 ComPtr<ID3D12Fence> ready_fence;
 ComPtr<ID3D12Fence> consumed_fence;
@@ -12840,7 +12848,9 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
   const bool engine_flat_mirror = darktidevr::producer::engine_flat_mirror_required(
       streamline_stereo_swapchain_probe_requested.load(std::memory_order_acquire),
       presentation_mode);
-  if ((engine_flat_mirror || (presentation_mode !=
+  if (!darktidevr::producer::suppress_gameplay_mirror(
+          gameplay_mirror_suppression_requested(), presentation_mode) &&
+      (engine_flat_mirror || (presentation_mode !=
           darktidevr::core::SharedPresentationMode::flat_loading_or_cinematic &&
       !darktidevr::core::flat_interactive_active(presentation_mode))) &&
       candidate && present_queue &&
@@ -14838,7 +14848,10 @@ int capture_eye_from_resource(int eye, ID3D12CommandQueue* supplied_queue,
       return 37;
     }
     eye_surface = eye_surfaces[static_cast<std::size_t>(eye)];
-    if (eye == 1) {
+    if (eye == 1 && !darktidevr::producer::suppress_gameplay_mirror(
+            gameplay_mirror_suppression_requested(),
+            static_cast<darktidevr::core::SharedPresentationMode>(
+                current_presentation_mode.load(std::memory_order_acquire)))) {
       mirror_surface = desktop_mirror_surface;
       mirror_source = eye_surfaces[0];
     }
