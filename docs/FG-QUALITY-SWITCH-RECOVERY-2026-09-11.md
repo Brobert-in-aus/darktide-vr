@@ -100,16 +100,43 @@ paused and only after the fences complete, capture after reallocation, and the
 retained `capture_extent` failure for stale inputs. It passes on both
 branches.
 
+## Physical check 1 (11 September, about 19:54 to 20:00): inconclusive
+
+`artifacts/unattended/home-fg-quality-switch-20260911/launch.ps1` installed
+`F5799F85` with FG on (2112x2304 per eye, hub); the user reported that FG
+appeared to break on the switch to Performance. The copied logs say:
+
+- The mod-side recovery worked on the headset. Each of the three
+  render-settings applies (Performance at present 13934, Quality at 16799, a
+  third apply at 17549) went `paused` (the options menu is non-world
+  presentation) or `binding_rejection`, then `viewports`,
+  `viewport_migration` for both eyes, `reallocated` (1056x1152, then
+  1408x1536 depth and motion), `input_extent`, `resumed`; no `phase=failed`
+  in the session (`ring-phases.log`).
+- Generated output had already stopped before the first switch. The DLSS-G
+  completion ticket froze at ring frame 9480 (`value=12269`) and health
+  `evaluations` froze at 18,840 with `foreground=0` and `focus_changes=1`,
+  about 25 s before the menu pause at ring frame 10739. From then on the
+  viewer received native frames only (`interval_generated_pair_fps=0`,
+  native 75 to 85 FPS in Performance), which is the known unfocused
+  behaviour: the game stops DLSS-G evaluation while its window is not the
+  foreground window. Focus returned only in the last seconds of the session.
+
+So the worn outcome was decided by the window losing foreground, not by the
+identity or extent failure this change fixes; the fix is neither confirmed
+nor disproved worn. What took foreground is not in the logs (the viewer
+does no foreground operations; the launcher's focus handling runs only at
+start-up).
+
 ## Limits
 
-- Verified offline only. The physical (headset) quality switch is the next
-  check: `artifacts/unattended/home-fg-quality-switch-20260911/launch.ps1`
-  installs `F5799F85` (the offline-verified binary, FG-tested baseline
-  lineage) with FG on; change the DLSS quality in the options menu and
-  confirm the worn image keeps generated frames. The build from this branch,
-  `BF8ED0A1...`, compiles and passes the WARP test but cannot be verified
-  offline because this lineage still fails FG at launch in the simulator
-  (`missing_state_api`, see the todo).
+- Offline-verified; the worn check above is inconclusive because of the
+  foreground loss. Repeat it keeping the game window foregrounded (make the
+  quality change from inside the headset without touching desktop windows),
+  and confirm the health log shows `foreground=1` across the switch. The
+  build from this branch, `BF8ED0A1...`, compiles and passes the WARP test
+  but cannot be verified offline because this lineage still fails FG at
+  launch in the simulator (`missing_state_api`, see the todo).
 - Only DLSS quality changes were exercised. Other render-settings changes
   that rebuild the eye targets (resolution scale, DLSS off and on) go
   through the same path in principle and are untested.
