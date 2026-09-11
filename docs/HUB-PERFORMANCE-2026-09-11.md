@@ -34,3 +34,34 @@ Validation: `tests/tooling/test-offline-workload-readiness.ps1` under both shell
 registered CTest `offline_workload_readiness`, and `git diff --check`. A fresh
 timed hub control is next. The physical headset remains unavailable; simulator
 fallback does not establish physical streaming performance or worn acceptance.
+
+## Completed controls
+
+| Workload/configuration | Native DLL | Original FPS | Generated FPS | Distinct FPS |
+| --- | --- | ---: | ---: | ---: |
+| Hub sweep, native | D4AB131A | 92.58248 | 0 | 92.58248 |
+| Hub sweep, FG/cap120 | FB244186 | 58.66892 | 58.68142 | 117.35029 |
+
+The FG run submits 119.88544 frames/sec, including 2.53508 repeated images/sec.
+The matching mission configurations previously delivered about 89.5 native
+(D4AB131A) and 119.3 distinct FG (FB244186). Compare scenes within each native
+build; subtracting these native and FG rows does not isolate FG overhead because
+the native modules differ. Both hub controls use the unchanged benchmark viewer.
+
+The native control analyzes 80.36 seconds after warm-up; the FG control analyzes
+80.08 seconds. Both timed launches pass the corrected readiness gate, exit
+cleanly, restore files and report zero pose mismatches. GPU recording contains
+32/31 valid records with zero/one unavailable respectively, and no observed
+Streamer busy sample. This is sampled activity evidence, not a physical VR
+encoding workload or proof of complete counter coverage. The registered
+readiness CTest also passes in 0.87 seconds.
+
+These saved-resolution simulator controls do not reproduce the user's earlier
+approximately 40 original / 80 displayed hub result. They weaken a claim that
+the resolution or hub scene alone explains it under current settings. They do
+not close the physical-runtime gap: headset streaming, exact scene/population,
+pose and physical viewer conditions still need a matched comparison. Do not
+equate an idle desktop encoder with the physical VR encoder's workload.
+
+Evidence: `synthetic-descriptor-demand-hub-quality2-20260911` and
+`synthetic-descriptor-demand-hub-fg-20260911` under ignored unattended artifacts.
