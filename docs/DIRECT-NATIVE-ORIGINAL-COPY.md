@@ -77,3 +77,16 @@ Consumer records confirm direct submissions only in B. Evidence is under
 `artifacts/unattended/synthetic-descriptor-demand-direct-viewer-{a,b,a2}-20260911`,
 including `summary.json` and `viewer-stages.json`. FG-path compatibility is the
 next check; physical performance and worn acceptance remain pending.
+
+## FG compatibility result
+
+With the option requested, the FG-tested `FB244186` native baseline, Quality
+DLSS, 120 Hz and a 120 FPS cap, the viewer delivered 119.60083 distinct FPS:
+59.79410 original plus 59.80676 generated, with 0.39238 repeats/sec. One direct
+original was submitted during startup before generated surfaces attached; no
+further direct submissions were logged. FG continued through the queued path.
+
+The run exited cleanly, restored files and reported zero pose mismatches. GPU
+recording returned 26 valid and two unavailable records, with no observed busy
+Streamer sample. This checks mode compatibility, not a new FG speedup or worn
+acceptance. Evidence: `synthetic-descriptor-demand-direct-viewer-fg-20260911`.
