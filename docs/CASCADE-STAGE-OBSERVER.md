@@ -15,8 +15,15 @@ A fresh byte scan found that direct call and no absolute pointer to the entry;
 this is not a complete proof about possible indirect calls. Installation requires
 the exact executable hash and all 20 entry bytes before creating the hook.
 
-Arm `[probe] enabled=1, capture=0` in `darktidevr_cascade_stage.flag` beside the
-native DLL before launch. Set `capture=1` only after the workload settles. No
+Create `darktidevr_cascade_stage.flag` beside the native DLL before launch:
+
+```ini
+[probe]
+enabled=1
+capture=0
+```
+
+Set `capture=1` only after the workload settles. No
 enabled flag means no hook. Admission requires nonzero Present and gameplay
 generation, is limited to 256 calls per process, and excludes same-thread
 reentry. After exhaustion the hook forwards without further observations.
@@ -54,6 +61,40 @@ python tests/tooling/test-cascade-stage.py --native build/xr-window-capture-dema
 ```
 
 Static receipt: ignored `artifacts/unattended/cascade-entry-contract-20260911.json`.
-Live timing, complete reuse inputs and worn acceptance remain unestablished.
+Complete reuse inputs and worn acceptance remain unestablished.
 Use a focused native build for any authorized diagnostic; do not deploy the
 accumulated native development DLL.
+
+Focused revision `753fd4a` adds this observer and its unchanged guarded-copy
+dependency to native ring source `10550a4`. Release DLL SHA-256:
+`2617AC9C109D1C06E3B19313A6B24593C5D37EBFC0DBB0CB3BD9425DAFC57509`.
+Build directory: `build/focused-cascade-stage`. Focused forwarding/hook checks
+pass 2/2, and all four reader checks pass with that build's formatter. Root
+CTest including the reader passes 3/3 in 0.58 seconds. The focused diagnostic
+uses the same Quality, native-only stationary mission and saved eye dimensions;
+its timings are diagnostic evidence, not a clean performance comparison.
+
+## Settled mission capture
+
+The focused simulator capture completed with 256 records on one thread and
+generation 84, spanning 1.435059 seconds and observed Presents 3042–3170.
+There are 127 complete two-call groups and two single-call boundary groups.
+Every complete pair has matching six argument addresses and matching selected
+settings, light and view snapshots. All guarded reads succeeded; all light
+vectors are finite. These are chronological pairs, not established eye labels.
+
+Mean CPU duration is 0.20542 ms per call (median 0.19765, p95 0.2713,
+maximum 0.4298). First and second calls in complete pairs average 0.20067 and
+0.20972 ms. This suggests only a modest possible CPU saving even if a safe
+reuse contract can be established. GPU shadow cost remains unknown.
+
+The diagnostic run delivered 88.65965 native FPS, exited cleanly, restored
+temporary files and reported zero pose mismatches. GPU observation has 29 valid
+samples and two unavailable samples, with no Streamer activity in valid samples.
+The explicit cascade observer means this is not an uninstrumented control,
+despite the generic launcher suppressing its standard optional diagnostics.
+
+Local evidence: `artifacts/unattended/synthetic-descriptor-demand-cascade-mission-20260911/`
+contains the arm receipt, complete log, strict-reader summary, paired analysis,
+benchmark configuration and restoration receipt. Capture SHA-256:
+`d36888d4d8df2c9a22cfad1b48d23281116f18b07bf74db208c37872573397ac`.

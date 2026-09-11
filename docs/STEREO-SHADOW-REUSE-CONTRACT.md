@@ -42,10 +42,12 @@ allocation and command ordering must show whether the atlas can survive the
 second eye, including transient aliasing and intervening writers. A cache would
 also need explicit invalidation on any changed input or interrupted pair.
 
-No cascade hook ABI, cache key or resource lifetime guarantee is established
-yet. No engine calls, shadow passes, settings or render resources were modified.
-Current Quest tracking loss prevents a Ready live capture; offline analysis
-does not demonstrate a frame-time improvement or worn visual acceptance.
+The exact-build six-pointer cascade ABI and a bounded observer are now validated;
+see [the 11 September capture](CASCADE-STAGE-OBSERVER.md). Its 127 complete
+two-call groups match all six addresses and selected input snapshots, averaging
+about 0.21 ms CPU per call. This does not establish eye identity, the complete
+cache key, GPU cost or a resource lifetime guarantee. No shadow work is skipped.
+Physical readiness and worn visual acceptance remain pending.
 
 Local receipts are under `artifacts/unattended/current-renderer-config-20260910`
 and `engine-preparation-callers-20260910.txt`. Extracted game assets remain out
