@@ -23,6 +23,17 @@ log `openxr.theatre_capture_active` and the attempt count; the final
 `openxr.theatre_capture_attempts` lets a live test check that captures stop during
 sustained stereo and resume for actual window fallback.
 
+## Shutdown correction, 11 September
+
+The worker loop in `9856e00` treated the predicate result of the stop-token
+condition wait as its loop condition, so a worker that was still enabled when
+the session ended never observed the stop request and the viewer hung on join.
+Stereo had always paused the worker before the game window closed in physical
+runs, which hid the defect. The [simulator capture control](SIMULATOR-WINDOW-CAPTURE-2026-09-11.md)
+exposed it, and the loop now checks the stop token; `capture_worker_tests`
+covers enabled shutdown. Rebuild from that branch rather than `9856e00` before
+the pending physical comparison.
+
 ## Validation and deployment status
 
 Windows x64 Release build succeeds for the viewer and focused tests in

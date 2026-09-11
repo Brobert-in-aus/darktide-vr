@@ -41,7 +41,12 @@ class CaptureWorker {
 
   void run(std::stop_token stop) {
     std::unique_lock lock(mutex_);
-    while (condition_.wait(lock, stop, [this] { return enabled_; })) {
+    // The predicate waits return the predicate, not the stop state: an enabled
+    // worker would otherwise keep capturing after a stop request and the
+    // joining destructor would never return.
+    while (!stop.stop_requested()) {
+      condition_.wait(lock, stop, [this] { return enabled_; });
+      if (stop.stop_requested()) break;
       // Schedule from this attempt, without a catch-up burst after a slow capture.
       const auto next = std::chrono::steady_clock::now() + interval_;
       lock.unlock();
