@@ -9,7 +9,8 @@ if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
     throw "Darktide VR launcher not found: $launcher"
 }
 if ($GameRoot) {
-    $GameRoot = (Resolve-Path -LiteralPath $GameRoot).Path
+    # A trailing separator would become \" inside the quoted shortcut argument.
+    $GameRoot = (Resolve-Path -LiteralPath $GameRoot).Path.TrimEnd('', '/')
     if (-not (Test-Path -LiteralPath (Join-Path $GameRoot 'binaries\Darktide.exe') -PathType Leaf)) {
         throw 'The selected game folder does not contain binaries\Darktide.exe.'
     }

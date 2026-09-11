@@ -11,8 +11,9 @@ if (Get-Process Darktide -ErrorAction SilentlyContinue) {
 $text = [IO.File]::ReadAllText($SettingsPath)
 # Match active and detected settings. Startup uses the desktop mirror extent;
 # the mod establishes the independent headset render extent after loading.
-$modePattern = '(?m)^(?<indent>[\t ]*)screen_mode[\t ]*=.*$'
-$fullscreenPattern = '(?m)^(?<indent>[\t ]*)fullscreen[\t ]*=.*$'
+# [^\r\n] keeps CRLF files intact; '.' would consume the carriage return.
+$modePattern = '(?m)^(?<indent>[\t ]*)screen_mode[\t ]*=[^\r\n]*$'
+$fullscreenPattern = '(?m)^(?<indent>[\t ]*)fullscreen[\t ]*=[^\r\n]*$'
 if (-not [regex]::IsMatch($text, $modePattern) -or
     -not [regex]::IsMatch($text, $fullscreenPattern)) {
     throw 'Display mode settings were not found; refusing an unverified launch.'

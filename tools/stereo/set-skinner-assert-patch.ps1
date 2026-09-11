@@ -24,7 +24,8 @@ $patches = @(
 function Get-BytesSha256([byte[]] $Bytes) {
     $sha = [Security.Cryptography.SHA256]::Create()
     try {
-        return [Convert]::ToHexString($sha.ComputeHash($Bytes)).ToLowerInvariant()
+        # [Convert]::ToHexString is absent from .NET Framework (Windows PowerShell 5.1).
+        return ([BitConverter]::ToString($sha.ComputeHash($Bytes)) -replace '-', '').ToLowerInvariant()
     }
     finally {
         $sha.Dispose()

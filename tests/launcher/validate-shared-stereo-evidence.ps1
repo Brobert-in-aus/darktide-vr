@@ -50,6 +50,17 @@ $assignment = $tree.Find({ param($node)
 }, $true)
 $argumentsBlock = [ScriptBlock]::Create($assignment.Extent.Text)
 $DurationSeconds=5; $GameStartTimeoutSeconds=10; $ProjectionTranslationScale=1.0; $GameRoot=$repo
+# Launcher switches referenced by the arguments block default to absent, as
+# they would in a launch that did not pass them.
+foreach ($variable in $assignment.FindAll({ param($node)
+    $node -is [Management.Automation.Language.VariableExpressionAst]
+}, $true)) {
+    $name = $variable.VariablePath.UserPath
+    if ($name -notin @('null','true','false','_','runnerArguments') -and
+            -not (Get-Variable -Name $name -ErrorAction SilentlyContinue)) {
+        Set-Variable -Name $name -Value ([switch]::new($false))
+    }
+}
 foreach ($AutoEnterHub in @($false,$true)) {
     foreach ($EnterPsykhanium in @($false,$true)) {
         . $argumentsBlock

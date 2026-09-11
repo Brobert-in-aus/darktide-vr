@@ -237,6 +237,11 @@ if ($CaptureBillboardPsoIdentities) {
 # runs the unrelated graphics-PSO census and can stall renderer startup.
 $offlineNoHeadset = $OfflineDualViewBenchmark -or
     $OfflineCharacterSelectCapture -or $OfflineTitleCapture
+# Flag files are restored byte-exact from their captured contents; tests
+# override this function to observe restores without touching the disk.
+function Restore-FlagOriginal([string] $LiteralPath, $Original) {
+    [IO.File]::WriteAllBytes($LiteralPath, [byte[]]$Original)
+}
 $streamlineProbeFlagPath = $null
 $streamlineProbeFlagOriginal = $null
 $streamlineProbeFlagExisted = $false
@@ -434,8 +439,7 @@ if ($StreamlineProbe -or $StreamlineCopyProbe -or
     $streamlineProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineProbeFlagPath -PathType Leaf
     if ($streamlineProbeFlagExisted) {
-        $streamlineProbeFlagOriginal = Get-Content -LiteralPath `
-            $streamlineProbeFlagPath -Raw
+        $streamlineProbeFlagOriginal = [IO.File]::ReadAllBytes($streamlineProbeFlagPath)
     }
     Set-Content -LiteralPath $streamlineProbeFlagPath -Value 'enabled' `
         -Encoding ascii
@@ -448,8 +452,7 @@ if ($StreamlineCopyProbe) {
     $streamlineCopyProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineCopyProbeFlagPath -PathType Leaf
     if ($streamlineCopyProbeFlagExisted) {
-        $streamlineCopyProbeFlagOriginal = Get-Content -LiteralPath `
-            $streamlineCopyProbeFlagPath -Raw
+        $streamlineCopyProbeFlagOriginal = [IO.File]::ReadAllBytes($streamlineCopyProbeFlagPath)
     }
     Set-Content -LiteralPath $streamlineCopyProbeFlagPath -Value 'enabled' `
         -Encoding ascii
@@ -462,8 +465,7 @@ if ($StreamlineTransportProbe) {
     $streamlineTransportProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineTransportProbeFlagPath -PathType Leaf
     if ($streamlineTransportProbeFlagExisted) {
-        $streamlineTransportProbeFlagOriginal = Get-Content -LiteralPath `
-            $streamlineTransportProbeFlagPath -Raw
+        $streamlineTransportProbeFlagOriginal = [IO.File]::ReadAllBytes($streamlineTransportProbeFlagPath)
     }
     Set-Content -LiteralPath $streamlineTransportProbeFlagPath `
         -Value 'enabled' -Encoding ascii
@@ -475,8 +477,7 @@ if ($StreamlineInputSnapshotProbe -or $StreamlineTargetTokenProbe) {
     $streamlineInputSnapshotProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineInputSnapshotProbeFlagPath -PathType Leaf
     if ($streamlineInputSnapshotProbeFlagExisted) {
-        $streamlineInputSnapshotProbeFlagOriginal = Get-Content -LiteralPath `
-            $streamlineInputSnapshotProbeFlagPath -Raw
+        $streamlineInputSnapshotProbeFlagOriginal = [IO.File]::ReadAllBytes($streamlineInputSnapshotProbeFlagPath)
     }
     Set-Content -LiteralPath $streamlineInputSnapshotProbeFlagPath `
         -Value 'enabled' -Encoding ascii
@@ -488,8 +489,7 @@ if ($StreamlineTargetTokenProbe) {
     $streamlineTargetTokenProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineTargetTokenProbeFlagPath -PathType Leaf
     if ($streamlineTargetTokenProbeFlagExisted) {
-        $streamlineTargetTokenProbeFlagOriginal = Get-Content -LiteralPath `
-            $streamlineTargetTokenProbeFlagPath -Raw
+        $streamlineTargetTokenProbeFlagOriginal = [IO.File]::ReadAllBytes($streamlineTargetTokenProbeFlagPath)
     }
     Set-Content -LiteralPath $streamlineTargetTokenProbeFlagPath `
         -Value 'enabled' -Encoding ascii
@@ -501,8 +501,7 @@ if ($StreamlineEyeTargetProbe) {
     $streamlineEyeTargetProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineEyeTargetProbeFlagPath -PathType Leaf
     if ($streamlineEyeTargetProbeFlagExisted) {
-        $streamlineEyeTargetProbeFlagOriginal = Get-Content -LiteralPath `
-            $streamlineEyeTargetProbeFlagPath -Raw
+        $streamlineEyeTargetProbeFlagOriginal = [IO.File]::ReadAllBytes($streamlineEyeTargetProbeFlagPath)
     }
     Set-Content -LiteralPath $streamlineEyeTargetProbeFlagPath `
         -Value 'enabled' -Encoding ascii
@@ -514,8 +513,7 @@ if ($StreamlineStereoSwapchainProbe) {
     $streamlineStereoSwapchainProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineStereoSwapchainProbeFlagPath -PathType Leaf
     if ($streamlineStereoSwapchainProbeFlagExisted) {
-        $streamlineStereoSwapchainProbeFlagOriginal = Get-Content -LiteralPath `
-            $streamlineStereoSwapchainProbeFlagPath -Raw
+        $streamlineStereoSwapchainProbeFlagOriginal = [IO.File]::ReadAllBytes($streamlineStereoSwapchainProbeFlagPath)
     }
     Set-Content -LiteralPath $streamlineStereoSwapchainProbeFlagPath `
         -Value 'enabled' -Encoding ascii
@@ -527,8 +525,7 @@ if ($StreamlineStereoStageProbe) {
     $streamlineStereoStageProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineStereoStageProbeFlagPath -PathType Leaf
     if ($streamlineStereoStageProbeFlagExisted) {
-        $streamlineStereoStageProbeFlagOriginal = Get-Content -LiteralPath `
-            $streamlineStereoStageProbeFlagPath -Raw
+        $streamlineStereoStageProbeFlagOriginal = [IO.File]::ReadAllBytes($streamlineStereoStageProbeFlagPath)
     }
     Set-Content -LiteralPath $streamlineStereoStageProbeFlagPath `
         -Value 'enabled' -Encoding ascii
@@ -555,8 +552,7 @@ if ($StreamlineStereoSubmitProbe) {
     $streamlineStereoSubmitProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineStereoSubmitProbeFlagPath -PathType Leaf
     if ($streamlineStereoSubmitProbeFlagExisted) {
-        $streamlineStereoSubmitProbeFlagOriginal = Get-Content -LiteralPath `
-            $streamlineStereoSubmitProbeFlagPath -Raw
+        $streamlineStereoSubmitProbeFlagOriginal = [IO.File]::ReadAllBytes($streamlineStereoSubmitProbeFlagPath)
     }
     Set-Content -LiteralPath $streamlineStereoSubmitProbeFlagPath `
         -Value "[probe]`nframes=$StreamlineStereoSubmitFrames`ncontinuous=$([int]$StreamlineContinuousSubmitProbe.IsPresent)`npersistent=$([int]$DlssGeneratedStereo.IsPresent)" -Encoding ascii
@@ -603,8 +599,7 @@ if ($BillboardPixelShaderProbeHash) {
     $billboardPixelProbeFlagExisted = Test-Path -LiteralPath `
         $billboardPixelProbeFlagPath -PathType Leaf
     if ($billboardPixelProbeFlagExisted) {
-        $billboardPixelProbeFlagOriginal = Get-Content -LiteralPath `
-            $billboardPixelProbeFlagPath -Raw
+        $billboardPixelProbeFlagOriginal = [IO.File]::ReadAllBytes($billboardPixelProbeFlagPath)
     }
     Set-Content -LiteralPath $billboardPixelProbeFlagPath -Value 'enabled' `
         -Encoding ascii
@@ -617,8 +612,7 @@ if ($EnableGameplayReticle -and -not $offlineNoHeadset) {
     if (-not (Test-Path -LiteralPath $candidateControllerAimFlagPath -PathType Leaf)) {
         throw "Controller-aim test flag not found: $candidateControllerAimFlagPath"
     }
-    $controllerAimFlagOriginal = Get-Content -LiteralPath `
-        $candidateControllerAimFlagPath -Raw
+    $controllerAimFlagOriginal = [IO.File]::ReadAllBytes($candidateControllerAimFlagPath)
     $controllerAimFlagPath = $candidateControllerAimFlagPath
     Set-Content -LiteralPath $controllerAimFlagPath -Value 'enabled' `
         -Encoding ascii
@@ -630,8 +624,7 @@ if ($EnableHudPanel) {
     if (-not (Test-Path -LiteralPath $candidateHudPanelFlagPath -PathType Leaf)) {
         throw "HUD-panel test flag not found: $candidateHudPanelFlagPath"
     }
-    $hudPanelFlagOriginal = Get-Content -LiteralPath `
-        $candidateHudPanelFlagPath -Raw
+    $hudPanelFlagOriginal = [IO.File]::ReadAllBytes($candidateHudPanelFlagPath)
     $hudPanelFlagPath = $candidateHudPanelFlagPath
     Set-Content -LiteralPath $hudPanelFlagPath -Value 'enable' `
         -Encoding ascii
@@ -644,8 +637,7 @@ if ($EnablePerformanceProfile) {
             $candidatePerformanceProfileFlagPath -PathType Leaf)) {
         throw "Performance-profile flag not found: $candidatePerformanceProfileFlagPath"
     }
-    $performanceProfileFlagOriginal = Get-Content -LiteralPath `
-        $candidatePerformanceProfileFlagPath -Raw
+    $performanceProfileFlagOriginal = [IO.File]::ReadAllBytes($candidatePerformanceProfileFlagPath)
     $performanceProfileFlagPath = $candidatePerformanceProfileFlagPath
     Set-Content -LiteralPath $performanceProfileFlagPath -Value 'enabled' `
         -Encoding ascii
@@ -658,8 +650,7 @@ if ($EnablePerformancePassTrace) {
             $candidatePerformancePassTraceFlagPath -PathType Leaf)) {
         throw "Performance-pass trace flag not found: $candidatePerformancePassTraceFlagPath"
     }
-    $performancePassTraceFlagOriginal = Get-Content -LiteralPath `
-        $candidatePerformancePassTraceFlagPath -Raw
+    $performancePassTraceFlagOriginal = [IO.File]::ReadAllBytes($candidatePerformancePassTraceFlagPath)
     $performancePassTraceFlagPath = $candidatePerformancePassTraceFlagPath
     Set-Content -LiteralPath $performancePassTraceFlagPath -Value 'enabled' `
         -Encoding ascii
@@ -671,8 +662,7 @@ if ($offlineNoHeadset) {
     $offlineDualViewFlagExisted = Test-Path -LiteralPath `
         $candidateOfflineDualViewFlagPath -PathType Leaf
     if ($offlineDualViewFlagExisted) {
-        $offlineDualViewFlagOriginal = Get-Content -LiteralPath `
-            $candidateOfflineDualViewFlagPath -Raw
+        $offlineDualViewFlagOriginal = [IO.File]::ReadAllBytes($candidateOfflineDualViewFlagPath)
     }
     $offlineDualViewFlagPath = $candidateOfflineDualViewFlagPath
     Set-Content -LiteralPath $offlineDualViewFlagPath -Value 'enabled' `
@@ -799,8 +789,7 @@ if ($SyntheticGameplayInput) {
     if (-not (Test-Path -LiteralPath $candidateGameplayInputFlagPath -PathType Leaf)) {
         throw "Gameplay-input test flag not found: $candidateGameplayInputFlagPath"
     }
-    $gameplayInputFlagOriginal = Get-Content -LiteralPath `
-        $candidateGameplayInputFlagPath -Raw
+    $gameplayInputFlagOriginal = [IO.File]::ReadAllBytes($candidateGameplayInputFlagPath)
     $gameplayInputFlagPath = $candidateGameplayInputFlagPath
     Set-Content -LiteralPath $gameplayInputFlagPath -Value 'enabled' `
         -Encoding ascii
@@ -960,7 +949,7 @@ finally {
     {
         if ($ngxOutputProbeFlagPath) {
             if ($null -ne $ngxOutputProbeFlagOriginal) {
-                [IO.File]::WriteAllBytes($ngxOutputProbeFlagPath, $ngxOutputProbeFlagOriginal)
+                Restore-FlagOriginal -LiteralPath $ngxOutputProbeFlagPath -Original $ngxOutputProbeFlagOriginal
             }
             elseif (Test-Path -LiteralPath $ngxOutputProbeFlagPath -PathType Leaf) {
                 Remove-Item -LiteralPath $ngxOutputProbeFlagPath -Force
@@ -970,8 +959,7 @@ finally {
     {
         if ($streamlineStereoSubmitProbeFlagPath) {
             if ($streamlineStereoSubmitProbeFlagExisted) {
-                Set-Content -LiteralPath $streamlineStereoSubmitProbeFlagPath `
-                    -Value $streamlineStereoSubmitProbeFlagOriginal.Trim() -Encoding ascii
+                Restore-FlagOriginal -LiteralPath $streamlineStereoSubmitProbeFlagPath -Original $streamlineStereoSubmitProbeFlagOriginal
             }
             elseif (Test-Path -LiteralPath $streamlineStereoSubmitProbeFlagPath -PathType Leaf) {
                 Remove-Item -LiteralPath $streamlineStereoSubmitProbeFlagPath -Force
@@ -981,8 +969,7 @@ finally {
     {
         if ($streamlineProbeFlagPath) {
             if ($streamlineProbeFlagExisted) {
-                Set-Content -LiteralPath $streamlineProbeFlagPath `
-                    -Value $streamlineProbeFlagOriginal.Trim() -Encoding ascii
+                Restore-FlagOriginal -LiteralPath $streamlineProbeFlagPath -Original $streamlineProbeFlagOriginal
             }
             elseif (Test-Path -LiteralPath $streamlineProbeFlagPath `
                     -PathType Leaf) {
@@ -994,8 +981,7 @@ finally {
     {
         if ($streamlineCopyProbeFlagPath) {
             if ($streamlineCopyProbeFlagExisted) {
-                Set-Content -LiteralPath $streamlineCopyProbeFlagPath `
-                    -Value $streamlineCopyProbeFlagOriginal.Trim() -Encoding ascii
+                Restore-FlagOriginal -LiteralPath $streamlineCopyProbeFlagPath -Original $streamlineCopyProbeFlagOriginal
             }
             elseif (Test-Path -LiteralPath $streamlineCopyProbeFlagPath `
                     -PathType Leaf) {
@@ -1007,9 +993,7 @@ finally {
     {
         if ($streamlineTransportProbeFlagPath) {
             if ($streamlineTransportProbeFlagExisted) {
-                Set-Content -LiteralPath $streamlineTransportProbeFlagPath `
-                    -Value $streamlineTransportProbeFlagOriginal.Trim() `
-                    -Encoding ascii
+                Restore-FlagOriginal -LiteralPath $streamlineTransportProbeFlagPath -Original $streamlineTransportProbeFlagOriginal
             }
             elseif (Test-Path -LiteralPath $streamlineTransportProbeFlagPath `
                     -PathType Leaf) {
@@ -1021,9 +1005,7 @@ finally {
     {
         if ($streamlineInputSnapshotProbeFlagPath) {
             if ($streamlineInputSnapshotProbeFlagExisted) {
-                Set-Content -LiteralPath $streamlineInputSnapshotProbeFlagPath `
-                    -Value $streamlineInputSnapshotProbeFlagOriginal.Trim() `
-                    -Encoding ascii
+                Restore-FlagOriginal -LiteralPath $streamlineInputSnapshotProbeFlagPath -Original $streamlineInputSnapshotProbeFlagOriginal
             }
             elseif (Test-Path -LiteralPath $streamlineInputSnapshotProbeFlagPath `
                     -PathType Leaf) {
@@ -1036,9 +1018,7 @@ finally {
     {
         if ($streamlineTargetTokenProbeFlagPath) {
             if ($streamlineTargetTokenProbeFlagExisted) {
-                Set-Content -LiteralPath $streamlineTargetTokenProbeFlagPath `
-                    -Value $streamlineTargetTokenProbeFlagOriginal.Trim() `
-                    -Encoding ascii
+                Restore-FlagOriginal -LiteralPath $streamlineTargetTokenProbeFlagPath -Original $streamlineTargetTokenProbeFlagOriginal
             }
             elseif (Test-Path -LiteralPath $streamlineTargetTokenProbeFlagPath `
                     -PathType Leaf) {
@@ -1051,9 +1031,7 @@ finally {
     {
         if ($streamlineEyeTargetProbeFlagPath) {
             if ($streamlineEyeTargetProbeFlagExisted) {
-                Set-Content -LiteralPath $streamlineEyeTargetProbeFlagPath `
-                    -Value $streamlineEyeTargetProbeFlagOriginal.Trim() `
-                    -Encoding ascii
+                Restore-FlagOriginal -LiteralPath $streamlineEyeTargetProbeFlagPath -Original $streamlineEyeTargetProbeFlagOriginal
             }
             elseif (Test-Path -LiteralPath $streamlineEyeTargetProbeFlagPath `
                     -PathType Leaf) {
@@ -1066,9 +1044,7 @@ finally {
     {
         if ($streamlineStereoSwapchainProbeFlagPath) {
             if ($streamlineStereoSwapchainProbeFlagExisted) {
-                Set-Content -LiteralPath $streamlineStereoSwapchainProbeFlagPath `
-                    -Value $streamlineStereoSwapchainProbeFlagOriginal.Trim() `
-                    -Encoding ascii
+                Restore-FlagOriginal -LiteralPath $streamlineStereoSwapchainProbeFlagPath -Original $streamlineStereoSwapchainProbeFlagOriginal
             }
             elseif (Test-Path -LiteralPath $streamlineStereoSwapchainProbeFlagPath `
                     -PathType Leaf) {
@@ -1081,9 +1057,7 @@ finally {
     {
         if ($streamlineStereoStageProbeFlagPath) {
             if ($streamlineStereoStageProbeFlagExisted) {
-                Set-Content -LiteralPath $streamlineStereoStageProbeFlagPath `
-                    -Value $streamlineStereoStageProbeFlagOriginal.Trim() `
-                    -Encoding ascii
+                Restore-FlagOriginal -LiteralPath $streamlineStereoStageProbeFlagPath -Original $streamlineStereoStageProbeFlagOriginal
             }
             elseif (Test-Path -LiteralPath $streamlineStereoStageProbeFlagPath `
                     -PathType Leaf) {
@@ -1104,8 +1078,7 @@ finally {
     {
         if ($billboardPixelProbeFlagPath) {
             if ($billboardPixelProbeFlagExisted) {
-                Set-Content -LiteralPath $billboardPixelProbeFlagPath `
-                    -Value $billboardPixelProbeFlagOriginal.Trim() -Encoding ascii
+                Restore-FlagOriginal -LiteralPath $billboardPixelProbeFlagPath -Original $billboardPixelProbeFlagOriginal
             }
             elseif (Test-Path -LiteralPath $billboardPixelProbeFlagPath -PathType Leaf) {
                 Remove-Item -LiteralPath $billboardPixelProbeFlagPath -Force
@@ -1128,8 +1101,7 @@ finally {
     {
         if ($offlineDualViewFlagPath) {
             if ($offlineDualViewFlagExisted) {
-                Set-Content -LiteralPath $offlineDualViewFlagPath `
-                    -Value $offlineDualViewFlagOriginal.Trim() -Encoding ascii
+                Restore-FlagOriginal -LiteralPath $offlineDualViewFlagPath -Original $offlineDualViewFlagOriginal
             }
             elseif (Test-Path -LiteralPath $offlineDualViewFlagPath -PathType Leaf) {
                 Remove-Item -LiteralPath $offlineDualViewFlagPath -Force
@@ -1139,36 +1111,31 @@ finally {
     }
     {
         if ($performancePassTraceFlagPath) {
-            Set-Content -LiteralPath $performancePassTraceFlagPath `
-                -Value $performancePassTraceFlagOriginal.Trim() -Encoding ascii
+            Restore-FlagOriginal -LiteralPath $performancePassTraceFlagPath -Original $performancePassTraceFlagOriginal
             Write-Output 'Restored the prior performance-pass trace flag.'
         }
     }
     {
         if ($performanceProfileFlagPath) {
-            Set-Content -LiteralPath $performanceProfileFlagPath `
-                -Value $performanceProfileFlagOriginal.Trim() -Encoding ascii
+            Restore-FlagOriginal -LiteralPath $performanceProfileFlagPath -Original $performanceProfileFlagOriginal
             Write-Output 'Restored the prior performance-profile flag.'
         }
     }
     {
         if ($controllerAimFlagPath) {
-            Set-Content -LiteralPath $controllerAimFlagPath `
-                -Value $controllerAimFlagOriginal.Trim() -Encoding ascii
+            Restore-FlagOriginal -LiteralPath $controllerAimFlagPath -Original $controllerAimFlagOriginal
             Write-Output 'Restored the prior controller-aim test flag.'
         }
     }
     {
         if ($hudPanelFlagPath) {
-            Set-Content -LiteralPath $hudPanelFlagPath `
-                -Value $hudPanelFlagOriginal.Trim() -Encoding ascii
+            Restore-FlagOriginal -LiteralPath $hudPanelFlagPath -Original $hudPanelFlagOriginal
             Write-Output 'Restored the prior HUD-panel test flag.'
         }
     }
     {
         if ($gameplayInputFlagPath) {
-            Set-Content -LiteralPath $gameplayInputFlagPath `
-                -Value $gameplayInputFlagOriginal.Trim() -Encoding ascii
+            Restore-FlagOriginal -LiteralPath $gameplayInputFlagPath -Original $gameplayInputFlagOriginal
             Write-Output 'Restored the prior gameplay-input test flag.'
         }
     }

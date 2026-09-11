@@ -32,6 +32,21 @@ $restoreDevices = @{}
 $lastAdb = $null
 $watcherFailure = $null
 
+# Under a fail-closed preference, Windows PowerShell turns every native stderr
+# line behind 2>&1 into a terminating error. Merge the streams with the
+# preference relaxed and return the text with the exit code.
+function Invoke-NativeMerged([scriptblock] $Command) {
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $lines = @(& $Command 2>&1 | ForEach-Object { "$_" })
+        [pscustomobject]@{ Output = $lines; ExitCode = $LASTEXITCODE }
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
 function Get-AdbCandidates {
     $candidates = @()
     try {
@@ -112,14 +127,18 @@ try {
 
                 if (-not $applied.ContainsKey($device)) {
                     try {
-                        $model = (& $activeAdb -s $device shell getprop `
-                            ro.product.model 2>&1).Trim()
-                        if ($LASTEXITCODE -eq 0 -and $model -match '^Quest') {
+                        $modelQuery = Invoke-NativeMerged {
+                            & $activeAdb -s $device shell getprop ro.product.model
+                        }
+                        $model = ($modelQuery.Output -join "`n").Trim()
+                        if ($modelQuery.ExitCode -eq 0 -and $model -match '^Quest') {
                             $restoreDevices[$device] = $activeAdb
-                            $result = & $proximityScript `
-                                -Action Disable -Device $device `
-                                -AdbPath $activeAdb 2>&1
-                            if ($LASTEXITCODE -ne 0) {
+                            $applyResult = Invoke-NativeMerged {
+                                & $proximityScript -Action Disable -Device $device `
+                                    -AdbPath $activeAdb
+                            }
+                            $result = $applyResult.Output
+                            if ($applyResult.ExitCode -ne 0) {
                                 throw ($result -join ' ')
                             }
                             $applied[$device] = $true
@@ -154,9 +173,12 @@ finally {
     $restoreFailures = 0
     foreach ($device in @($restoreDevices.Keys)) {
         try {
-            $result = & $proximityScript -Action Enable -Device $device `
-                -AdbPath $restoreDevices[$device] 2>&1
-            if ($LASTEXITCODE -ne 0) { throw ($result -join ' ') }
+            $restoreResult = Invoke-NativeMerged {
+                & $proximityScript -Action Enable -Device $device `
+                    -AdbPath $restoreDevices[$device]
+            }
+            $result = $restoreResult.Output
+            if ($restoreResult.ExitCode -ne 0) { throw ($result -join ' ') }
             Write-WatcherLog "listener=restored device=$device result=$($result -join ' ')"
         }
         catch {

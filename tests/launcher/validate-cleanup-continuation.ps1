@@ -30,6 +30,9 @@ function Remove-Item { param($LiteralPath,[switch]$Force)
     $script:events.Add('remove-start')
 }
 function Set-Content { param($LiteralPath,$Value,$Encoding) $script:events.Add("restore:$LiteralPath=$Value") }
+function Restore-FlagOriginal { param($LiteralPath,$Original)
+    $script:events.Add("restore:$LiteralPath=$([Text.Encoding]::ASCII.GetString([byte[]]$Original))")
+}
 function Get-Process { param($Name,$ErrorAction)
     return @([pscustomobject]@{Id=90;Path='C:\fixture\Darktide.exe'},
         [pscustomobject]@{Id=91;Path='C:\fixture\Darktide.exe'},
@@ -42,8 +45,10 @@ function Stop-Process { [CmdletBinding()]param([Parameter(ValueFromPipeline)]$In
     }
 }
 function Clear-PsykhaniumLaunchRequest { param($Request) $script:events.Add('retire-request') }
+# Dot-sourced by the launcher at load; the extracted finally block only sees mocks.
+function Restore-CleanLaunchDiagnostics { param($Saved) $script:events.Add('restore-diagnostics') }
 $characterStartFlag='locked-start-request'
-$gameplayInputFlagPath='gameplay-flag'; $gameplayInputFlagOriginal='enabled'
+$gameplayInputFlagPath='gameplay-flag'; $gameplayInputFlagOriginal=[Text.Encoding]::ASCII.GetBytes('enabled')
 $xrLaunchOwnsGame=$true; $xrRunnerStarted=$true; $offlineNoHeadset=$false
 $preLaunchGameProcessIds=[Collections.Generic.HashSet[int]]::new(); [void]$preLaunchGameProcessIds.Add(90)
 $expectedGamePath='C:\fixture\Darktide.exe'

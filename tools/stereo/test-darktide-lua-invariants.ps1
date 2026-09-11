@@ -935,10 +935,12 @@ if (-not $nativeCaptureSource.Contains(
             'named_camera_outputs_ready_hint.store(false, std::memory_order_release);')) {
     throw 'Production RTV binding inspection must stop after explicit eye outputs are learned and resume after resize.'
 }
+# The enhanced-barrier interest test moved into enhanced_barrier_interest.h
+# (7dfa753); the legacy hook keeps its own transition-only gate.
 if (-not $nativeCaptureSource.Contains('bool has_transition_barrier{};') -or
         -not $nativeCaptureSource.Contains('if (has_transition_barrier) {') -or
-        -not $nativeCaptureSource.Contains('bool has_texture_barriers{};') -or
-        -not $nativeCaptureSource.Contains('if (has_texture_barriers) {')) {
+        -not $nativeCaptureSource.Contains('#include "producer/enhanced_barrier_interest.h"') -or
+        -not $nativeCaptureSource.Contains('enhanced_barriers_need_capture_lock(')) {
     throw 'Native barrier hooks must avoid the shared capture mutex for legacy non-transition and enhanced non-texture-only batches.'
 }
 if (-not $nativeCaptureSource.Contains(

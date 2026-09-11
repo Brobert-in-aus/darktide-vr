@@ -14,6 +14,14 @@ METRICS = {"utilization.gpu [%]": "%", "power.draw [W]": "W",
 OPTIONAL_METRICS = {"memory.used [MiB]": "MiB"}
 
 
+
+def read_launch_text(path):
+    """PowerShell 5.1 writes redirected launch logs as UTF-16; newer runs are UTF-8."""
+    data = path.read_bytes()
+    if data.startswith(b'\xff\xfe') or data.startswith(b'\xfe\xff'):
+        return data.decode('utf-16')
+    return data.decode('utf-8-sig')
+
 def reading(value, unit):
     value = value.strip()
     if value in ("N/A", "[N/A]"): return None
@@ -67,7 +75,7 @@ def main():
     parser.add_argument("--utc-offset-hours", type=float, required=True)
     parser.add_argument("--warmup-seconds", type=float, default=10)
     args = parser.parse_args()
-    launch = (args.run/"launch.log").read_text(encoding="utf-8-sig")
+    launch = read_launch_text(args.run/"launch.log")
     stamps = re.findall(r"(?m)^offline_benchmark.started_utc=([^\r\n]+)", launch)
     if len(stamps) != 1: raise ValueError("missing or ambiguous workload start")
     beginning = datetime.fromisoformat(stamps[0].replace("Z", "+00:00"))

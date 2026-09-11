@@ -134,7 +134,7 @@ try {
         Save-BenchmarkFile $soloModule
     }
     if($diagnosticLuaSource) {
-        if((Get-FileHash (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash -ne $ExpectedInstalledLuaSha256) {
+        if((Get-FileHash -LiteralPath (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash -ne $ExpectedInstalledLuaSha256) {
             throw 'Installed Lua baseline changed.'
         }
         foreach($path in $luaTrialFiles.Keys) { Save-BenchmarkFile $path }
@@ -222,7 +222,8 @@ try {
     New-Item -ItemType Directory -Path (Split-Path $simulatorSettings) -Force | Out-Null
     $simSettings = @{}
     if ($null -ne $saved[$simulatorSettings]) {
-        $priorSimSettings = [Text.Encoding]::UTF8.GetString($saved[$simulatorSettings]) | ConvertFrom-Json
+        # Windows PowerShell writes a BOM that its own ConvertFrom-Json rejects.
+        $priorSimSettings = [Text.Encoding]::UTF8.GetString($saved[$simulatorSettings]).TrimStart([char]0xFEFF) | ConvertFrom-Json
         foreach ($property in $priorSimSettings.PSObject.Properties) { $simSettings[$property.Name] = $property.Value }
     }
     $simSettings['headset_profile']='quest3'
@@ -260,7 +261,7 @@ try {
         runtime_json=$RuntimeJson; runtime_sha256=$RuntimeSha256
         harness_sha256=(Get-FileHash $HarnessPath -Algorithm SHA256).Hash
         simulator_display_clock=$SimulatorDisplayClock
-        native_sha256=(Get-FileHash (Join-Path $GameRoot 'binaries/darktidevr_native_capture.dll') -Algorithm SHA256).Hash
+        native_sha256=(Get-FileHash -LiteralPath (Join-Path $GameRoot 'binaries/darktidevr_native_capture.dll') -Algorithm SHA256).Hash
         duration_seconds=$DurationSeconds; preview_fps=$SimulatorPreviewFps; physical_xr_ready=$false
         hud_panel_enabled=$EnableHudPanel; preview_mode='both'; preview_layout='side_by_side'
         menu_input_enabled=$EnableMenuInput; desktop_window_capture=($DesktopWindowCapture -ne 'Off')
@@ -277,7 +278,7 @@ try {
         gpu_profile=$GpuProfile.IsPresent
         render_api_cpu_profile=$RenderApiCpuProfile.IsPresent
         render_world_census_warmup=$RenderWorldCensusWarmupFrames
-        lua_sha256=(Get-FileHash (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash
+        lua_sha256=(Get-FileHash -LiteralPath (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash
     }
     $receipt['gpu_engine_activity_observed'] = [bool]$ObserveGpuEngineActivity
     $receipt | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'configuration.json') -Encoding utf8
@@ -312,7 +313,7 @@ try {
         Start-Sleep -Milliseconds 100
         $consumer.Refresh()
         if ($consumer.HasExited) { throw 'Simulator consumer failed before launch; inspect consumer-error.log.' }
-        $initialLog = [string](Get-Content (Join-Path $OutputDirectory 'consumer.log') -Raw)
+        $initialLog = [string](Get-Content -LiteralPath (Join-Path $OutputDirectory 'consumer.log') -Raw)
         $displayPeriod = [regex]::Match($initialLog,'last_display_period_ms=([0-9.]+)')
         $consumerReady = $initialLog -match 'openxr.runtime_name=OpenXR Simulator Runtime' -and
             $initialLog -match 'openxr.render_projection=recentered-symmetric' -and $displayPeriod.Success
@@ -325,6 +326,13 @@ try {
     if ([math]::Abs($observedPeriod - 1000.0/$SimulatorRefreshRate) -gt 0.02) {
         throw 'Simulator display period does not match the requested refresh rate; use the patched runtime.'
     }
+    # The consumer has read its runtime and pacing settings. Restore the
+    # environment before the Steam launch so a Steam client started by the
+    # protocol handler cannot inherit the simulator runtime for its lifetime.
+    $env:XR_RUNTIME_JSON = $priorRuntime
+    $env:DTVR_XR_PRECISE_PAIR_WAIT = $priorPairWait
+    $env:DTVR_SIMULATOR_REFRESH_HZ = $priorSimulatorRefresh
+    $env:DTVR_SIMULATOR_FIXED_DISPLAY_CLOCK = $priorSimulatorClock
     & (Join-Path $PSScriptRoot 'start-darktide-vr.ps1') -GameRoot $GameRoot `
         -OfflineDualViewBenchmark -SkipDeploymentSync -DlssGeneratedStereo:$enabled `
         -EnablePerformanceProfile:$GpuProfile `
@@ -333,7 +341,7 @@ try {
         -OfflineSoloMission $SoloMission `
         -ObserveDlssSrInputs:$ObserveDlssSrInputs `
         -DurationSeconds $DurationSeconds -GameStartTimeoutSeconds $StartupTimeoutSeconds `
-        *> (Join-Path $OutputDirectory 'launch.log')
+        *>&1 | Out-File -LiteralPath (Join-Path $OutputDirectory 'launch.log') -Encoding utf8
 } catch { $failure = $_ }
 finally {
     if ($gpuActivityJob) {
@@ -473,7 +481,7 @@ if (Test-Path -LiteralPath $launchPath) {
         }
     }
 }
-if($ClusterLightTrace -and -not (Test-Path (Join-Path $OutputDirectory 'darktidevr-cluster-trace.log')) -and -not $failure) {
+if($ClusterLightTrace -and -not (Test-Path -LiteralPath (Join-Path $OutputDirectory 'darktidevr-cluster-trace.log')) -and -not $failure) {
     $failure = 'No cluster trace belongs to this game process; stale logs were rejected.'
 }
 if ($PresentCpuProfile -and -not $failure) {
@@ -496,7 +504,7 @@ if($ObserveDlssSrInputs -and -not $failure) {
     }
 }
 if (Test-Path -LiteralPath (Join-Path $OutputDirectory 'recovery/manifest.json')) {
-    $restoration = foreach ($entry in (Get-Content (Join-Path $OutputDirectory 'recovery/manifest.json') -Raw | ConvertFrom-Json)) {
+    $restoration = foreach ($entry in (Get-Content -LiteralPath (Join-Path $OutputDirectory 'recovery/manifest.json') -Raw | ConvertFrom-Json)) {
         $restored = if ($entry.existed) {
             (Test-Path -LiteralPath $entry.path -PathType Leaf) -and
             ((Get-FileHash -LiteralPath $entry.path).Hash -eq (Get-FileHash -LiteralPath $entry.backup).Hash)
@@ -509,7 +517,7 @@ if (Test-Path -LiteralPath (Join-Path $OutputDirectory 'recovery/manifest.json')
     }
 }
 if ($failure) { throw $failure }
-$consumerText = Get-Content (Join-Path $OutputDirectory 'consumer.log') -Raw
+$consumerText = Get-Content -LiteralPath (Join-Path $OutputDirectory 'consumer.log') -Raw
 if ($consumerText -notmatch 'openxr.lifecycle=stopped' -or $consumerText -notmatch 'result=pass') {
     throw 'Consumer completion evidence is missing.'
 }

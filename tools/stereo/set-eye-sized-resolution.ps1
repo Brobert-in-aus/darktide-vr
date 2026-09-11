@@ -43,7 +43,7 @@ if ($Action -eq 'Inspect') {
     ).Value
     [regex]::Matches(
         $text,
-        '(?m)^\s*(screen_mode|fullscreen)\s*=.*$'
+        '(?m)^\s*(screen_mode|fullscreen)\s*=[^\r\n]*$'
     ).Value
     exit 0
 }
@@ -65,12 +65,12 @@ $replacement = '${indent}${name} = [' + "`r`n" + '${indent}' +
 $text = [regex]::Replace($text, $resolutionPattern, $replacement)
 $text = [regex]::Replace(
     $text,
-    '(?m)^(?<indent>\s*)screen_mode\s*=.*$',
+    '(?m)^(?<indent>\s*)screen_mode\s*=[^\r\n]*$',
     '${indent}screen_mode = "window"'
 )
 $text = [regex]::Replace(
     $text,
-    '(?m)^(?<indent>\s*)fullscreen\s*=.*$',
+    '(?m)^(?<indent>\s*)fullscreen\s*=[^\r\n]*$',
     '${indent}fullscreen = false'
 )
 [System.IO.File]::WriteAllText(

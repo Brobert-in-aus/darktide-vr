@@ -8,6 +8,14 @@ from pathlib import Path
 import re
 
 
+
+def read_launch_text(path):
+    """PowerShell 5.1 writes redirected launch logs as UTF-16; newer runs are UTF-8."""
+    data = path.read_bytes()
+    if data.startswith(b'\xff\xfe') or data.startswith(b'\xfe\xff'):
+        return data.decode('utf-16')
+    return data.decode('utf-8-sig')
+
 def records(text, prefix, metrics):
     result = []
     for line in text.splitlines():
@@ -50,7 +58,7 @@ def summarize(directory, skip=5):
     configuration = json.loads((directory / 'configuration.json').read_text(encoding='utf-8-sig'))
     if configuration.get('gpu_profile') is not True:
         raise ValueError('Run did not explicitly request GPU profiling')
-    launch = (directory / 'launch.log').read_text(encoding='utf-8-sig')
+    launch = read_launch_text(directory / 'launch.log')
     match = re.search(r'Authenticated Darktide process started(?: during (?:launcher transition|Play activation|Play retry))?: PID (\d+)\.', launch)
     if not match:
         raise ValueError('Missing run-owned process identity')
