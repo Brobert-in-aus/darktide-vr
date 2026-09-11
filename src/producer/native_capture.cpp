@@ -665,6 +665,16 @@ ComPtr<ID3D12Resource> desktop_mirror_surface;
 ComPtr<ID3D12Fence> desktop_mirror_fence;
 std::uint64_t desktop_mirror_fence_value{};
 std::atomic<bool> desktop_mirror_ready{};
+std::atomic<std::uint64_t> gameplay_mirror_copies_recorded{};
+std::atomic<std::uint64_t> gameplay_mirror_blits_attempted{};
+bool gameplay_mirror_metrics_requested() {
+  static const bool requested = [] {
+    wchar_t value[2]{};
+    return GetEnvironmentVariableW(L"DTVR_GAMEPLAY_MIRROR_METRICS", value, 2) == 1 &&
+           value[0] == L'1';
+  }();
+  return requested;
+}
 bool gameplay_mirror_suppression_requested() {
   static const bool requested = [] {
     wchar_t value[2]{};
@@ -12842,6 +12852,15 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
     }
   }
   streamline_packed_mirror_active.store(packed_submission);
+  if (gameplay_mirror_metrics_requested() && present % 600 == 0) {
+    write_menu_resource_log(
+        "GAMEPLAY_MIRROR_CONTROL\tframe=%llu\tdisabled=%u\tmode=%u"
+        "\tpacked=%u\tcopies_recorded=%llu\tblits_attempted=%llu\r\n",
+        present, gameplay_mirror_suppression_requested() ? 1U : 0U,
+        static_cast<unsigned>(presentation_mode), packed_submission ? 1U : 0U,
+        static_cast<unsigned long long>(gameplay_mirror_copies_recorded.load()),
+        static_cast<unsigned long long>(gameplay_mirror_blits_attempted.load()));
+  }
   // Packed rendering gives the engine a private backbuffer. Flat menus and
   // loading screens must reach DXGI from that current buffer too; otherwise
   // skipping the eye mirror leaves the last world image on the desktop.
@@ -12858,6 +12877,10 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
       (engine_flat_mirror || desktop_mirror_ready.load(std::memory_order_acquire))) {
     const auto mirror_result =
         present_desktop_eye_mirror(candidate.Get(), present_queue.Get(), engine_flat_mirror);
+    if (gameplay_mirror_metrics_requested() && presentation_mode ==
+        darktidevr::core::SharedPresentationMode::stereo_world) {
+      gameplay_mirror_blits_attempted.fetch_add(1, std::memory_order_relaxed);
+    }
     if (mirror_result != 0) {
       const auto error = desktop_mirror_error_count.fetch_add(
                              1, std::memory_order_relaxed) +
@@ -14944,6 +14967,10 @@ int capture_eye_from_resource(int eye, ID3D12CommandQueue* supplied_queue,
     mirror_left_eye.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
     pending.commands->CopyTextureRegion(&mirror_destination, 0, 0, 0,
                                         &mirror_left_eye, nullptr);
+    if (gameplay_mirror_metrics_requested() && current_presentation_mode.load() ==
+        static_cast<unsigned>(darktidevr::core::SharedPresentationMode::stereo_world)) {
+      gameplay_mirror_copies_recorded.fetch_add(1, std::memory_order_relaxed);
+    }
     for (auto& mirror_barrier : mirror_barriers) {
       std::swap(mirror_barrier.Transition.StateBefore,
                 mirror_barrier.Transition.StateAfter);
