@@ -12,6 +12,26 @@ The upstream `LICENSE` file is copied beside each built harness executable as
 `OPENXR-LICENSE.txt`. No prebuilt third-party binary is committed to this
 repository.
 
+## MinHook
+
+The native capture module installs its D3D12, DXGI and Streamline hooks with
+MinHook, fetched and built from https://github.com/TsudaKageyu/minhook at
+commit `c3fcafdc10146beb5919319d0683e44e3c30d537` and statically linked into
+`darktidevr_native_capture.dll`. Copyright Tsuda Kageyu and contributors;
+BSD 2-Clause "Simplified" License. The upstream `LICENSE.txt` applies; the
+hooks are installed only inside the game process that loads the module and
+never system-wide.
+
+## NVIDIA Streamline ABI
+
+The module interposes the game's own NVIDIA Streamline 2.7.30 calls (DLSS
+Frame Generation tagging, constants and options). It ships no Streamline or
+DLSS binary and no NVIDIA header; `src/producer/streamline_abi_2_7_30.h` is
+the project's own declaration of the structures and function signatures
+needed to read and forward those calls. NVIDIA DLSS, Streamline and Reflex
+are trademarks of NVIDIA Corporation; the game's installed Streamline
+plugins remain under NVIDIA's terms.
+
 ## LuaJIT source validator
 
 The development-only syntax/compiler gate builds LuaJIT from

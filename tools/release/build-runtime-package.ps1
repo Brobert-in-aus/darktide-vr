@@ -1,7 +1,11 @@
 [CmdletBinding()]
 param([string] $OutputDirectory = (Join-Path $PSScriptRoot '..\..\artifacts\packages'),
       [string] $ComponentProvenancePath,
-      [switch] $RequireComponentProvenance)
+      [switch] $RequireComponentProvenance,
+      # Public version label for a release archive (for example 0.1.0-alpha.1).
+      # Recorded in the manifest and used in the archive name; the source
+      # revision is recorded regardless.
+      [ValidatePattern('^$|^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$')][string] $ReleaseVersion)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
@@ -46,7 +50,8 @@ if ($ComponentProvenancePath) {
     throw 'Component build records are required before packaging.'
 }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
-$name = 'darktidevr-candidate-' + $identity.head.Substring(0, 12) + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
+$name = if ($ReleaseVersion) { 'darktidevr-' + $ReleaseVersion + '-' + $identity.head.Substring(0, 12) }
+        else { 'darktidevr-candidate-' + $identity.head.Substring(0, 12) + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8) }
 $package = Join-Path $output $name
 if (Test-Path -LiteralPath $package) { throw 'Package destination already exists.' }
 [IO.Directory]::CreateDirectory($package) | Out-Null
@@ -60,6 +65,7 @@ foreach ($entry in $plan) {
 }
 [ordered]@{
     schema_version=1; platform='windows-x64'; release_state='development_candidate'
+    release_version=$(if ($ReleaseVersion) { $ReleaseVersion } else { $null })
     source_revision=$identity.head; source_branch=$identity.branch; source_dirty=$identity.dirty
     source_revision_scope='packaging_checkout'
     binary_source_provenance=$(if ($provenance) { 'recorded_hash_matched_claims' } else { 'not_recorded' })

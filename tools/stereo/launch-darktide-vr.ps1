@@ -31,10 +31,16 @@ try {
     # Retain the ordinary Steam -> Fatshark launcher -> Darktide authentication
     # path. start-darktide-vr.ps1 invokes the launcher's normal Play control and
     # the bridge attaches automatically when the resulting game process starts.
+    # The accepted play configuration: menu pointer input, the fixed HUD panel
+    # and the sustained generated-stereo publication that frame generation
+    # needs (harmless when FG is off in the game's settings). Character select
+    # is left to the player, so a new character can be created.
     $startArguments = @{
         DurationSeconds = $DurationSeconds
         GameStartTimeoutSeconds = 1800
         EnableMenuInput = $true
+        EnableHudPanel = $true
+        DlssGeneratedStereo = $true
         XrDebugLayer = $XrDebugLayer.IsPresent
         UsePrebuiltProductionShader = $UsePrebuiltProductionShader
     }

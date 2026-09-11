@@ -4,14 +4,24 @@ param(
     [ValidateSet('Inspect', 'Apply', 'Restore')]
     [string] $Action,
 
-    [string] $GameExe =
-        'D:\SteamLibrary\steamapps\common\Warhammer 40,000 DARKTIDE\binaries\Darktide.exe',
+    # Resolved from the Steam installation when neither is given; -GameRoot
+    # selects among several copies the same way the launcher does.
+    [string] $GameExe,
 
-    [string] $Backup = 'artifacts\phase1\Darktide.exe.pre-skinner-assert-patch'
+    [string] $GameRoot,
+
+    # Outside the game folder and outside any repository: a package user needs
+    # a writable, discoverable place for the pristine executable.
+    [string] $Backup = (Join-Path $env:LOCALAPPDATA 'DarktideVR\Darktide.exe.pre-skinner-assert-patch')
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if (-not $GameExe) {
+    . (Join-Path $PSScriptRoot 'resolve-darktide-game-root.ps1')
+    $GameExe = Join-Path (Resolve-DarktideGameRoot -GameRoot $GameRoot) 'binaries\Darktide.exe'
+}
+New-Item -ItemType Directory -Path (Split-Path -Parent $Backup) -Force | Out-Null
 
 $originalSha256 =
     'e0f581d2c63b692c7d9f328e3edeb39c0f484956905569d38ba27bbb3fcc0aae'
@@ -73,12 +83,13 @@ $state = Get-PatchState $bytes
 $sha256 = Get-BytesSha256 $bytes
 
 if ($Action -eq 'Inspect') {
-    [pscustomobject]@{
-        Path = $gamePath
-        State = $state
-        Sha256 = $sha256
-        PatchedOffsets = ($patches.Offset | ForEach-Object { '0x{0:x}' -f $_ }) -join ','
-    }
+    # Plain lines: object output can be dropped when the host exits right
+    # after emitting it, and installers parse these values.
+    Write-Output "path=$gamePath"
+    Write-Output "state=$state"
+    Write-Output "sha256=$sha256"
+    Write-Output ("patched.offsets=" + (($patches.Offset | ForEach-Object { '0x{0:x}' -f $_ }) -join ','))
+    Write-Output "backup=$backupPath backup.present=$(Test-Path -LiteralPath $backupPath -PathType Leaf)"
     exit 0
 }
 

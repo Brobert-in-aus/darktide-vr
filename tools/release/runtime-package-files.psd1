@@ -16,6 +16,7 @@
         'tools/stereo/clean-launch-diagnostics.ps1'
         'tools/stereo/run-darktide-shared-eyes.ps1'
         'tools/stereo/resolve-darktide-game-root.ps1'
+        'tools/stereo/set-skinner-assert-patch.ps1'
         'tools/stereo/psykhanium-launch-request.ps1'
         'tools/stereo/darktide-process-result.ps1'
         'tools/stereo/shared-stereo-evidence.ps1'

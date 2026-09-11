@@ -258,6 +258,11 @@ foreach ($diagnosticFlagName in $disabledDiagnosticFlags) {
     $deploymentEntries += @{ Destination = $diagnosticFlagPath; Content = 'disabled' + [Environment]::NewLine }
 }
 
+# The launcher enables the fixed HUD panel for each run and restores the file
+# afterwards, but it refuses to launch when the file is absent. A fresh
+# install must therefore leave it present and disabled.
+$deploymentEntries += @{ Destination = (Join-Path $modRoot 'darktidevr_hud_panel.flag'); Content = 'disabled' + [Environment]::NewLine }
+
 if ($InitializeInstall) {
     . (Join-Path $PSScriptRoot 'get-vr-mod-load-order.ps1')
     $orderPath = Join-Path $gameRootPath 'mods\mod_load_order.txt'
