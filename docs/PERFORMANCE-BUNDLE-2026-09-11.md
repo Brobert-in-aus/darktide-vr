@@ -88,12 +88,39 @@ if a worn session rejects the bundle. The normal launch is unchanged:
 tools/stereo/start-darktide-vr.ps1 -SkipDeploymentSync -EnableHudPanel -EnableMenuInput -DlssGeneratedStereo -AutoEnterHub
 ```
 
+## Generation-off hold (second deployment, about 21:20)
+
+The worn diagnostic run (`home-mission-fg-diag-20260911/`, bundle native, a
+regular dedicated-server mission) showed what the mission rejection loop
+is: after the mission load every rejected Present binding carried DLSS-G
+`options mode=0`, so the engine itself had generation off during the
+mission intro, and the ring captured a pair, rejected it at Present, paused
+and resumed every frame until the engine turned generation on, after which
+FG published normally in the mission (the user saw a solid 120). The same
+thrash applies whenever the in-game FG setting is off in a persistent
+launch. The capture gate now holds the ring paused (`reason=generation_off`)
+while the viewport's DLSS-G options report mode 0 and lets the ordinary
+resume path take over when they report mode 1.
+
+Second sync: transaction
+`artifacts/deployment-backups/deployment-2d3e6bfc2f174649bc7b17ce0ec7747e`,
+native `5B7D5B9BDD662125A14A64D9C16FA5C332B19D9A03E96BF34597D0DCF9510564`,
+Lua `50B1F10F...` (the test flag action now also accepts `fg_off` and
+`fg_on`, applied the way the options menu's `dlss_g` entry does).
+Verification (`synthetic-fg-toggle-a-20260911`, simulator hub, FG on, the
+test action turned FG off 30 s into the window and on again 30 s later):
+the FG-off apply re-registered the viewport handles; the ring paused once
+on the binding rejection, migrated the handles, and then sat paused with
+`gate_reject why=generation_off` for the whole FG-off period (no
+capture/resume cycles, evaluations 0, engine 73 to 103 FPS native); the
+FG-on apply migrated the handles again and the ring `resumed` at once, with
+evaluations back at 120/s and publication at 60 pairs/s for the rest of the
+run. Totals for the session: 1 pause, 1 resume, 1 binding rejection, 0
+failures, 6 context misses. The mission thrash therefore cannot recur while
+the engine has generation off, and the in-game FG toggle no longer costs
+two texture copies per frame while off.
+
 ## Open
 
 - Worn acceptance of the bundle as the baseline (the user's normal launch).
-- The remote-server mission FG rejection loop (todo): reproduce worn with
-  `artifacts/unattended/home-mission-fg-diag-20260911/launch.ps1`; the
-  offline hub-to-range reproduction crashes on a stock husk-locomotion Lua
-  error before the range loads (twice), and the SoloPlay path has no live-ring
-  level transition.
 - The unattributed Present-hook CPU spikes above.

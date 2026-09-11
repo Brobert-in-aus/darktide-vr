@@ -9880,6 +9880,20 @@ void schedule_streamline_input_snapshot(int eye, std::uint64_t present_frame,
       reject("constants", 0); return;
     }
     if(!final_color) { reject("final", 0); return; }
+    // The Present binding requires DLSS-G mode 1 for this viewport. While the
+    // engine reports generation off (mission intro cinematics, the in-game FG
+    // toggle) a capture can only be rejected at Present, which would pause and
+    // resume the ring every frame with two texture copies each time. Hold it
+    // paused until the options say generation is on again.
+    for (const auto& options : streamline_options_observations) {
+      if (!options.valid || options.viewport != constants.viewport) continue;
+      if (options.mode == 1) break;
+      if (streamline_continuous.initialized() && !streamline_continuous.finished() &&
+          !streamline_continuous.paused())
+        streamline_continuous.pause(queue, original_execute_command_lists, "generation_off");
+      reject("generation_off", 0);
+      return;
+    }
     std::array<darktidevr::producer::StreamlineTagInput, 4> inputs{};
     for (std::size_t role = 0; role < 3; ++role) {
       const auto& source = streamline_tagged_inputs[index][role];

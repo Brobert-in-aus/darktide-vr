@@ -1968,6 +1968,9 @@ function presentation.update_dlss_quality_test()
     local allowed = {
         auto = true, ultra_performance = true, performance = true,
         balanced = true, quality = true, dlaa = true,
+        -- Frame-generation toggle, applied the way the options menu's
+        -- dlss_g entry does (test only, same flag).
+        fg_off = true, fg_on = true,
     }
     if not quality or not allowed[quality] then
         return
@@ -1979,10 +1982,21 @@ function presentation.update_dlss_quality_test()
     end
 
     local ok, error_message = pcall(function()
-        Application.set_user_setting("render_settings", "dlss_enabled", true)
-        Application.set_render_setting("dlss_enabled", "true")
-        Application.set_user_setting("render_settings", "upscaling_quality", quality)
-        Application.set_render_setting("upscaling_quality", quality)
+        if quality == "fg_off" or quality == "fg_on" then
+            local enabled = quality == "fg_on"
+            Application.set_user_setting("master_render_settings", "dlss_g", enabled and 1 or 0)
+            Application.set_user_setting("render_settings", "dlss_g_enabled", enabled)
+            Application.set_render_setting("dlss_g_enabled", enabled and "true" or "false")
+            if enabled then
+                Application.set_user_setting("render_settings", "dlss_g_frames_to_generate", 1)
+                Application.set_render_setting("dlss_g_frames_to_generate", "1")
+            end
+        else
+            Application.set_user_setting("render_settings", "dlss_enabled", true)
+            Application.set_render_setting("dlss_enabled", "true")
+            Application.set_user_setting("render_settings", "upscaling_quality", quality)
+            Application.set_render_setting("upscaling_quality", quality)
+        end
         Application.apply_user_settings()
         Renderer.bake_static_shadows()
         if Managers and Managers.event then
