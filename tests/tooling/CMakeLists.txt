@@ -386,4 +386,25 @@ if(BUILD_TESTING)
   add_test(NAME ui_pixel_hash_helper COMMAND "${Python3_EXECUTABLE}" -B
     "${PROJECT_SOURCE_DIR}/tests/streamline_stereo_inputs/test_ui_pixel_hash.py"
     "$<TARGET_FILE:darktidevr-ui-pixel-hash>")
+  # Analysis and reader suites that were present but never registered.
+  add_test(NAME engine_preparation_reader COMMAND "${Python3_EXECUTABLE}" -B
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-engine-preparation.py")
+  execute_process(COMMAND "${Python3_EXECUTABLE}" -c "import capstone; import pefile"
+    RESULT_VARIABLE DARKTIDEVR_ENGINE_INSPECTION_IMPORT_RESULT OUTPUT_QUIET ERROR_QUIET)
+  if(DARKTIDEVR_ENGINE_INSPECTION_IMPORT_RESULT EQUAL 0)
+    add_test(NAME engine_unwind_ownership COMMAND "${Python3_EXECUTABLE}" -B
+      "${CMAKE_CURRENT_SOURCE_DIR}/test-engine-unwind-ownership.py")
+  else()
+    message(STATUS "engine_unwind_ownership skipped: capstone/pefile are not importable by ${Python3_EXECUTABLE}")
+  endif()
+  add_test(NAME packed_shader_groups COMMAND "${Python3_EXECUTABLE}" -B
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-packed-shader-groups.py")
+  add_test(NAME dispatch_bundle_reader COMMAND "${Python3_EXECUTABLE}" -B
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-dispatch-bundle-reader.py")
+  add_test(NAME residency_unwind_index COMMAND "${Python3_EXECUTABLE}" -B
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-residency-unwind-index.py")
+  add_test(NAME billboard_readback_analysis COMMAND "${Python3_EXECUTABLE}" -B
+    "${PROJECT_SOURCE_DIR}/tools/stereo/test-analyze-billboard-readback.py")
+  add_test(NAME synthetic_gpu_stage_summary COMMAND "${Python3_EXECUTABLE}" -B
+    "${PROJECT_SOURCE_DIR}/tools/stereo/test-summarize-synthetic-gpu-stages.py")
 endif()

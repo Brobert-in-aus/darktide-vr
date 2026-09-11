@@ -212,6 +212,8 @@ local v3meta = {__add=function(a,b) return Vector3(a[1]+b[1],a[2]+b[2],a[3]+b[3]
 Vector3 = setmetatable({up=function() return Vector3(0,0,1) end},
     {__call=function(_,x,y,z) return setmetatable({x,y,z,kind="v3"},v3meta) end})
 v3meta.__mul=function(v,s) return Vector3(v[1]*s,v[2]*s,v[3]*s) end
+-- Engine vectors expose x/y/z fields as well as indices.
+v3meta.__index=function(v,k) if k=='x' then return v[1] elseif k=='y' then return v[2] elseif k=='z' then return v[3] end end
 v3meta.__unm=function(v) return Vector3(-v[1],-v[2],-v[3]) end
 Vector2 = function(x,y) return {x,y,kind="v2"} end
 Quaternion = {look=function() return {} end,forward=function() return Vector3(0,1,0) end,

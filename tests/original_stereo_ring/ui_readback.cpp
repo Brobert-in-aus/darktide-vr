@@ -158,5 +158,7 @@ int main(int argc,char** argv) {
       }
     }
     std::cout<<"ui_readback=pass rgba_hash row_padding bmp_channels "<<(failure ? "failed_export" : "complete_export")<<'\n';
+    // The Python round-trip verifier reads these logs afterwards and asks to keep them.
+    if(!GetEnvironmentVariableW(L"DARKTIDEVR_UI_READBACK_KEEP",nullptr,0)) { std::error_code cleanup; fs::remove_all(directory,cleanup); }
   } catch(const std::exception& error) { std::cerr<<error.what()<<'\n'; return 1; }
 }

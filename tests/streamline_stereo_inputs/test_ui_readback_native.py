@@ -1,5 +1,6 @@
 """Read actual isolated native BMP/log outputs through the Python verifier."""
 import importlib.util
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -11,7 +12,8 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 with tempfile.TemporaryDirectory(prefix="darktidevr-ui-roundtrip-") as directory:
-    subprocess.run([str(Path(sys.argv[1]).resolve())], cwd=directory, check=True, timeout=15)
+    subprocess.run([str(Path(sys.argv[1]).resolve())], cwd=directory, check=True, timeout=15,
+                   env={**os.environ, "DARKTIDEVR_UI_READBACK_KEEP": "1"})
     logs = list(Path(directory).glob("ui-readback-test-*/*.log"))
     assert len(logs) == 1
     stem = logs[0].with_suffix("")

@@ -25,3 +25,5 @@ foreach ($entry in 'vs_main', 'ps_stock', 'ps_probe', 'ps_invalid') {
 # Retain isolated binaries as evidence. No running game/module path is used.
 & $Executable $testRoot $Mode
 if ($LASTEXITCODE -ne 0) { throw "Pipeline probe regression failed ($Mode): $testRoot" }
+# Evidence is only worth keeping for a failing run.
+Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue

@@ -38,3 +38,5 @@ Invoke-StartupCase 56 ('enabled' + (' ' * 24)) $true
 Invoke-StartupCase 56 ('enabled' + (' ' * 25)) $false
 Invoke-StartupCase 56 'enabled extra' $false
 Write-Output "bootstrap_selection=pass cases=$script:caseCount real_proxy=true game_started=false"
+# Evidence is only worth keeping for a failing run.
+Remove-Item -LiteralPath $evidenceRoot -Recurse -Force -ErrorAction SilentlyContinue

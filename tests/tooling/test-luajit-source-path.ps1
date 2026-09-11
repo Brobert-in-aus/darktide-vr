@@ -1,9 +1,9 @@
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $gate = Join-Path $repo 'tools/lua/test-lua-syntax.ps1'
-$fixture = Join-Path ([IO.Path]::GetTempPath()) ('darktidevr-lua-path-' + [guid]::NewGuid().ToString('N'))
+$fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('darktidevr-lua-path-' + [guid]::NewGuid().ToString('N'))
+$fixture = $fixtureRoot
 while ($fixture.Length -lt 280) { $fixture = Join-Path $fixture ('nested-' + ('x' * 48)) }
-# Retain this process-owned fixture as evidence; no recursive cleanup.
 [IO.Directory]::CreateDirectory('\\?\' + $fixture) | Out-Null
 $valid = Join-Path $fixture 'valid chunk.lua'
 $invalid = Join-Path $fixture 'invalid chunk.lua'
@@ -50,3 +50,6 @@ try { & $packageGate -SourcePath $entry 2>&1 | Out-Null }
 catch { $rejected = $true }
 if (-not $rejected) { throw 'Missing package descriptor fell back to checkout state.' }
 Write-Output 'luajit_package_source=pass selected_descriptor=true missing_descriptor_rejected=true compile_only=true'
+# Long-path fixtures are awkward to delete by hand; remove them on success.
+try { [IO.Directory]::Delete('\\?\' + $fixtureRoot, $true) } catch { }
+try { [IO.Directory]::Delete($packageRoot, $true) } catch { }
