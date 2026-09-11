@@ -114,7 +114,27 @@ without touching files.
 - Nothing here changes what the server validates; damage, spread, recoil and
   weapon statistics stay stock.
 
-## Worn check
+## Worn check: passed (12 September, 22:54 to 22:59)
+
+`home-remote-mission-20260912/`: a dedicated mission server
+(`host_type(mission_server)`, `mission_fm_resurgence`,
+`coop_complete_objective`). The user reports that hands and controls worked
+in the mission. Logs: `DARKTIDEVR_ONLINE_RULES range=coop_complete_objective
+enabled=true authority=remote origins=stock damage=stock`, then
+`input_frame=31244 aim=dominant_hand movement=stock_packed
+replay=stock_history challenge=2 resistance=2`; 166 gameplay deliveries
+(fire, release, sprint, wield, and others), 5 melee wrist-roll records, 0
+`presentation_blocked`, 0 `input_fallback`; the ring paused and resumed
+around the mission load and again on the return to the hub, no failures,
+FG published in the mission (5048 pairs by the end). The exit code 1 during
+the hub reload is the user's force-quit key (Super+F4), not a crash; no
+crash record exists.
+Rubber-banding was not reported. Per-action-family coverage (throws,
+interactions, downing, rescue, spectating, extraction) and the
+traversal-aim policy remain the later checks in
+[MISSION-READINESS.md](MISSION-READINESS.md).
+
+### Procedure
 
 `artifacts/unattended/home-remote-mission-20260912/launch.ps1` runs the
 normal session and, after exit, keeps the console lines that decide the
