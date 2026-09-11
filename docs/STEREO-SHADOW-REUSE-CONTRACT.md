@@ -48,6 +48,8 @@ two-call groups match all six addresses and selected input snapshots, averaging
 about 0.21 ms CPU per call. This does not establish eye identity, the complete
 cache key, GPU cost or a resource lifetime guarantee. No shadow work is skipped.
 Physical readiness and worn visual acceptance remain pending.
+The [next atlas capture contract](SHADOW-ATLAS-CAPTURE-CONTRACT.md) records the
+existing trace gaps and required resource/queue coverage before implementation.
 
 Local receipts are under `artifacts/unattended/current-renderer-config-20260910`
 and `engine-preparation-callers-20260910.txt`. Extracted game assets remain out
