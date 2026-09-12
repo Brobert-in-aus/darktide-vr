@@ -58,11 +58,11 @@ end
 assert(text('action_one')=='[RT]','gameplay prompt outside a HUD scope kept a keyboard key')
 assert(hooks[Text].localize_with_button_hint(function()
     return text('back','View')
-end,'back','Back')=='[B\194\160/\194\160Menu]','shared hook lost menu labels')
+end,'back','Back')=='[B]','shared hook lost menu labels')
 -- Menu prompts outside the button-hint context answer with the VR adapter's
 -- routes: back is B/Menu, pointed widgets take the click, unrouted aliases
 -- read Unbound rather than a keyboard key. Hub hotkeys keep their keyboard hint.
-assert(text('back','View')=='[B\194\160/\194\160Menu]','menu back outside the hint context kept a keyboard key')
+assert(text('back','View')=='[B]','menu back outside the hint context kept a keyboard key')
 local point='[Point\194\160+\194\160RT]'
 assert(text('confirm_pressed','View')==point and text('navigate_primary_right_pressed','View')==point)
 assert(text('notification_option_a','View')=='[Unbound]','vote prompt must not show a keyboard key')

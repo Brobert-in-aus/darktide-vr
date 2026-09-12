@@ -3728,13 +3728,15 @@ class OpenXrProbe {
         input.time_seconds =
             std::chrono::duration<double>(frame_start - start).count();
         if (latest_controller_sample_) {
-          const auto& left = latest_controller_sample_->hands[0];
           const auto& right = latest_controller_sample_->hands[1];
           input.trigger = right.trigger;
           input.thumbstick_y = right.thumbstick_y;
+          // Back is the right secondary button only. The left menu button
+          // used to double as back, but Virtual Desktop takes a double tap
+          // of it to switch between the VR and desktop views, and the first
+          // tap was closing the menu the user was in.
           input.back =
-              (right.buttons & darktidevr::core::controller_secondary) != 0 ||
-              (left.buttons & darktidevr::core::controller_menu) != 0;
+              (right.buttons & darktidevr::core::controller_secondary) != 0;
         }
         for (const auto& event : menu_pointer_state.update(input)) {
           ++menu_input_events;
@@ -3814,8 +3816,7 @@ class OpenXrProbe {
               (right.buttons & darktidevr::core::controller_primary) != 0;
           shared_pointer.secondary_down = left.trigger >= 0.55F;
           shared_pointer.back_down =
-              (right.buttons & darktidevr::core::controller_secondary) != 0 ||
-              (left.buttons & darktidevr::core::controller_menu) != 0;
+              (right.buttons & darktidevr::core::controller_secondary) != 0;
         }
         shared_pointer.back_down =
             shared_pointer.back_down || shared_menu_back_down;

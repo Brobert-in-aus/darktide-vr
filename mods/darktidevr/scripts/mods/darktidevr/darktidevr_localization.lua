@@ -25,7 +25,7 @@ return {
     stereo_cinematics_description = {en = "Watch in-engine cutscenes in the world: the cinematic camera moves and turns you, your head adds its own look, and subtitles are shown on the HUD panel. Off shows cutscenes on the flat panel. Cinematic cameras cut and shake; turn this off if that is uncomfortable."},
     psykhanium_online_rules = {en = "Online combat rules in Psykhanium"},
     psykhanium_online_rules_description = {en = "Aim with the right hand using normal firing positions, button melee and movement rules. Room movement stays visual and training aids remain. Applies on your next visit to Psykhanium; online missions are still under development."},
-    vr_menu_back = {en = "B / Menu"},
+    vr_menu_back = {en = "B"},
     vr_menu_point_select = {en = "Point + RT"},
     vr_menu_point_secondary = {en = "Point + LT"},
     vr_turning = {en = "VR turning"},

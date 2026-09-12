@@ -20,11 +20,11 @@ end
 local function hint(action,service,tint)
     return hooks[Text].localize_with_button_hint(stock_hint,action,"Action",nil,service,tint)
 end
-assert(hint("back")=="[B\194\160/\194\160Menu] Action")
+assert(hint("back")=="[B] Action")
 for _,action in ipairs({"left_pressed","left_released","left_hold"}) do
     assert(hint(action)=="[Point\194\160+\194\160RT] Action")
 end
-assert(hint("back","View",true)=="<tint>[B\194\160/\194\160Menu] Action")
+assert(hint("back","View",true)=="<tint>[B] Action")
 assert(hint("confirm_pressed")=="keyboard:confirm_pressed Action")
 assert(hint("gamepad_confirm_pressed")=="keyboard:gamepad_confirm_pressed Action")
 assert(hint("right_pressed")=="keyboard:right_pressed Action")
@@ -38,7 +38,7 @@ assert(hint("right_pressed")=="keyboard:right_pressed Action","old transport adv
 assert(hint("back_released")=="keyboard:back_released Action")
 assert(hint("back","Ingame")=="keyboard:back Action")
 assert(input("View","back")=="keyboard:back","label leaked outside a known action")
-local a,b,c=hint("back"); assert(a=="[B\194\160/\194\160Menu] Action" and b==nil and c==9)
+local a,b,c=hint("back"); assert(a=="[B] Action" and b==nil and c==9)
 local legend=hooks.ViewElementInputLegend
 local function widget(self,entry)
     entry.widget.content.text=hint(entry.input_action)
@@ -106,7 +106,7 @@ if arg[3] then
         'Hold <tint>[Point\194\160+\194\160RT] / Operate device')
     assert(Text.localize_with_button_hint('right_released','Remove',nil,'View',nil,true)==
         'Release [Point\194\160+\194\160LT] Remove')
-    assert(Text.localize_with_button_hint('back','Back')=='[B\194\160/\194\160Menu] Back')
+    assert(Text.localize_with_button_hint('back','Back')=='[B] Back')
     assert(Text.localize_with_button_hint('confirm_pressed','Confirm')==
         'keyboard:stock_alias_confirm_pressed Confirm')
     assert(Text.localize_with_button_hint('left_hold','Attack',nil,'Ingame',nil,true)==
