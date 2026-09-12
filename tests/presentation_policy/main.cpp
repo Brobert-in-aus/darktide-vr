@@ -29,6 +29,22 @@ int main() {
     expect(atlas[21 * 48 * 4 + 21 * 4 + 3] == std::byte{171}, "Reticle alpha must be restored");
     expect(atlas[0] == std::byte{99} && atlas.back() == std::byte{99},
            "Atlas repaint must preserve neighboring capture pixels");
+    std::array<std::byte, 48 * 4 * 48> target;
+    target.fill(std::byte{99});
+    paint_pointer_target(target.data(), 48 * 4);
+    const auto texel = [&](int x, int y) { return target.data() + (y * 48 + x) * 4; };
+    expect(texel(24, 24)[0] == std::byte{255} && texel(24, 24)[3] == std::byte{255},
+           "Pointer target centre must be white");
+    expect(texel(24, 35)[0] == std::byte{255} && texel(24, 35)[1] == std::byte{255},
+           "Pointer target cross arm must be white");
+    expect(texel(40, 24)[0] == std::byte{255} && texel(40, 24)[1] == std::byte{220} &&
+               texel(40, 24)[2] == std::byte{0} && texel(40, 24)[3] == std::byte{255},
+           "Pointer target ring must be cyan");
+    expect(texel(43, 24)[0] == std::byte{0} && texel(43, 24)[3] == std::byte{255},
+           "Pointer target ring must have a black edge");
+    expect(texel(24, 37)[3] == std::byte{0} && texel(0, 0)[3] == std::byte{0} &&
+               texel(47, 47)[3] == std::byte{0},
+           "Pointer target must be transparent between the cross and ring and at the gutters");
     auto decision = choose_presentation_mode(
         false, true, GamePresentationState::gameplay, PoseReadState::fresh);
     expect(decision.mode == PresentationMode::mono_projection &&

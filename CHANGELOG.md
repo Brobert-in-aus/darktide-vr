@@ -80,8 +80,10 @@ Desktop (VDXR), Darktide with the Darktide Mod Framework.
   "summoned to the strategium" notice) now get the pointer.
 - Loading screens and video cutscenes are shown at their true shape
   instead of squashed.
-- The menu laser reaches halfway to the panel and no longer draws a dot
-  at the hit; the board's own cursor marks the point.
+- The menu laser reaches halfway to the panel. The hit is marked by one
+  target (cyan ring and cross) on every menu, popup and loading board;
+  the earlier green square, and the target the title and character
+  screens painted into their own image, are gone.
 
 Known limits of this alpha are listed in the user guide: right-hand
 dominant presentation, no independent weapon origins on mission servers,

@@ -259,41 +259,8 @@ CapturedWindowFrame WindowCapture::capture() {
     pixel[2] = red;
     pixel[3] = alpha;
   };
-  const auto pointer_normalized =
-      pointer_normalized_.load(std::memory_order_acquire);
-  if (pointer_normalized != UINT64_MAX) {
-    const auto normalized_x =
-        static_cast<std::uint32_t>(pointer_normalized & 0xffffffffULL);
-    const auto normalized_y =
-        static_cast<std::uint32_t>(pointer_normalized >> 32U);
-    const auto centre_x = static_cast<int>(
-        (static_cast<std::int64_t>(normalized_x) * (width_ - 1) + 32767) /
-        65535);
-    const auto centre_y = static_cast<int>(
-        (static_cast<std::int64_t>(normalized_y) * (height_ - 1) + 32767) /
-        65535);
-    // Draw a high-contrast reticle directly into the captured menu
-    // image. It therefore follows the exact source-space coordinate consumed
-    // by Darktide's hotspots and remains visible in both the headset panel and
-    // diagnostic capture, independently of the OS cursor.
-    for (int y = -20; y <= 20; ++y) {
-      for (int x = -20; x <= 20; ++x) {
-        const auto distance_squared = x * x + y * y;
-        if (distance_squared <= 400 && distance_squared >= 324) {
-          set_pixel(centre_x + x, centre_y + y, std::byte{0},
-                    std::byte{0}, std::byte{0}, std::byte{255});
-        } else if (distance_squared < 324 && distance_squared >= 196) {
-          set_pixel(centre_x + x, centre_y + y, std::byte{255},
-                    std::byte{220}, std::byte{0}, std::byte{255});
-        } else if (distance_squared < 36 ||
-                   (std::abs(x) <= 2 && std::abs(y) <= 12) ||
-                   (std::abs(y) <= 2 && std::abs(x) <= 12)) {
-          set_pixel(centre_x + x, centre_y + y, std::byte{255},
-                    std::byte{255}, std::byte{255}, std::byte{255});
-        }
-      }
-    }
-  }
+  // The menu pointer's target is a viewer quad over every panel; the capture
+  // no longer paints a cursor into the image.
   // This sprite shares storage with the window capture, so it must only exist
   // while that texture is used as an atlas in immersive gameplay. Painting it
   // unconditionally exposes the sprite itself in the bottom-right corner when
@@ -366,62 +333,6 @@ void WindowCapture::set_source_crop(std::uint32_t source_width,
       (static_cast<std::uint64_t>(normalize(crop_height, source_height))
        << 48U);
   source_crop_normalized_.store(packed, std::memory_order_release);
-}
-
-void WindowCapture::set_pointer_overlay(
-    std::optional<std::pair<std::uint32_t, std::uint32_t>> source_position,
-    std::uint32_t source_width, std::uint32_t source_height) {
-  if (!source_position || source_width <= 1 || source_height <= 1 ||
-      source_position->first >= source_width ||
-      source_position->second >= source_height) {
-    pointer_normalized_.store(UINT64_MAX, std::memory_order_release);
-    return;
-  }
-  const auto packed_crop =
-      source_crop_normalized_.load(std::memory_order_acquire);
-  const auto normalized_crop_x =
-      static_cast<std::uint32_t>(packed_crop & 0xffffULL);
-  const auto normalized_crop_y =
-      static_cast<std::uint32_t>((packed_crop >> 16U) & 0xffffULL);
-  const auto normalized_crop_width =
-      static_cast<std::uint32_t>((packed_crop >> 32U) & 0xffffULL);
-  const auto normalized_crop_height =
-      static_cast<std::uint32_t>((packed_crop >> 48U) & 0xffffULL);
-  const auto normalize = [](std::uint32_t value, std::uint32_t extent) {
-    if (extent <= 1) {
-      return 32767;  // The only source pixel maps to the panel centre.
-    }
-    return static_cast<int>((static_cast<std::uint64_t>(value) * 65535 +
-                             (extent - 1) / 2) /
-                            (extent - 1));
-  };
-  const auto crop_x = static_cast<std::uint32_t>(
-      (static_cast<std::uint64_t>(normalized_crop_x) * source_width + 32767) /
-      65535);
-  const auto crop_y = static_cast<std::uint32_t>(
-      (static_cast<std::uint64_t>(normalized_crop_y) * source_height + 32767) /
-      65535);
-  const auto crop_width = std::max<std::uint32_t>(
-      1, (static_cast<std::uint64_t>(normalized_crop_width) * source_width +
-          32767) /
-             65535);
-  const auto crop_height = std::max<std::uint32_t>(
-      1, (static_cast<std::uint64_t>(normalized_crop_height) * source_height +
-          32767) /
-             65535);
-  if (source_position->first < crop_x || source_position->second < crop_y ||
-      source_position->first >= crop_x + crop_width ||
-      source_position->second >= crop_y + crop_height) {
-    pointer_normalized_.store(UINT64_MAX, std::memory_order_release);
-    return;
-  }
-  const auto normalized_x = static_cast<std::uint32_t>(normalize(
-      source_position->first - crop_x, crop_width));
-  const auto normalized_y = static_cast<std::uint32_t>(normalize(
-      source_position->second - crop_y, crop_height));
-  pointer_normalized_.store(
-      (static_cast<std::uint64_t>(normalized_y) << 32U) | normalized_x,
-      std::memory_order_release);
 }
 
 void WindowCapture::set_gameplay_reticle_atlas_enabled(bool enabled) noexcept {

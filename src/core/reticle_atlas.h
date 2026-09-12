@@ -23,6 +23,39 @@ inline void paint_reticle_atlas(std::byte* pixels, std::uint32_t row_pitch) {
   }
 }
 
+// Paint the 48x48 menu pointer target: a black-edged cyan ring with a white
+// centre dot and cross, transparent elsewhere (4 texel gutters for filtering).
+// The viewer shows it as a quad at the laser's hit on every menu panel.
+constexpr int kPointerTargetExtent = 48;
+inline void paint_pointer_target(std::byte* pixels, std::uint32_t row_pitch) {
+  for (int y = 0; y < kPointerTargetExtent; ++y) {
+    for (int x = 0; x < kPointerTargetExtent; ++x) {
+      const float dx = static_cast<float>(x) + 0.5F - 24.0F;
+      const float dy = static_cast<float>(y) + 0.5F - 24.0F;
+      const float r2 = dx * dx + dy * dy;
+      const float ax = dx < 0.0F ? -dx : dx;
+      const float ay = dy < 0.0F ? -dy : dy;
+      auto* p = pixels + y * row_pitch + x * 4;
+      std::byte blue{0}, green{0}, red{0}, alpha{0};
+      if (r2 < 36.0F || (ax <= 2.5F && ay <= 12.5F) ||
+          (ay <= 2.5F && ax <= 12.5F)) {
+        blue = green = red = std::byte{255};
+        alpha = std::byte{255};
+      } else if (r2 >= 196.0F && r2 < 324.0F) {
+        blue = std::byte{255};
+        green = std::byte{220};
+        alpha = std::byte{255};
+      } else if (r2 >= 324.0F && r2 < 400.0F) {
+        alpha = std::byte{255};
+      }
+      p[0] = blue;
+      p[1] = green;
+      p[2] = red;
+      p[3] = alpha;
+    }
+  }
+}
+
 // Paint the 64x64 aim-down-sights vignette sprite: black, transparent at the
 // centre, darkening towards the edge. strength (0..1) scales the whole alpha
 // so the viewer can ease it in and out by repainting.

@@ -786,13 +786,22 @@ class OpenXrProbe {
                 "xrEnumerateSwapchainImages(flat capture list)");
     }
 
-    // The laser and cursor quads show one fixed colour. A quad layer can only
-    // sample a swapchain image, and the flat texture is rewritten on every
-    // menu update, so the pointer owns a static swapchain that is filled once
-    // and never written again: no capture or canvas pixel can tint or hide it.
+    // The laser strips and the hit target sample one static swapchain. A
+    // quad layer can only sample a swapchain image, and the flat texture is
+    // rewritten on every menu update, so the pointer owns a swapchain that
+    // is filled once and never written again: no capture or canvas pixel can
+    // tint or hide it. Layout of the 64x64 image: a solid dark green block
+    // in the top-left 16x16 (the strips sample its 8x8 interior so filtering
+    // never reaches another texel) and the 48x48 target sprite at (16,16).
     XrSwapchain pointer_swapchain{XR_NULL_HANDLE};
     std::vector<XrSwapchainImageD3D12KHR> pointer_images;
-    constexpr std::uint32_t pointer_swatch_extent = 16;
+    constexpr std::uint32_t pointer_swatch_extent = 64;
+    constexpr std::uint32_t pointer_ray_block_extent = 16;
+    constexpr XrRect2Di pointer_ray_texels{{4, 4}, {8, 8}};
+    constexpr XrRect2Di pointer_target_texels{
+        {16, 16},
+        {darktidevr::core::kPointerTargetExtent,
+         darktidevr::core::kPointerTargetExtent}};
     if (capture_title) {
       auto pointer_swapchain_info = swapchain_info;
       pointer_swapchain_info.createFlags |=
@@ -2663,9 +2672,9 @@ class OpenXrProbe {
         }
         if (pointer_swapchain != XR_NULL_HANDLE && !pointer_swatch_uploaded) {
           // A static swapchain is acquired exactly once. Stage the dark green
-          // swatch in the upload buffer's corner (the next capture repaints
-          // that corner), copy it in, and release after this frame's command
-          // list has been executed.
+          // block and the target sprite in the upload buffer's corner (the
+          // next capture repaints that corner), copy them in, and release
+          // after this frame's command list has been executed.
           std::uint32_t pointer_image_index{};
           check_xr(xrAcquireSwapchainImage(pointer_swapchain, &acquire_info,
                                            &pointer_image_index),
@@ -2680,12 +2689,24 @@ class OpenXrProbe {
                         static_cast<std::size_t>(
                             flat_capture_width - pointer_swatch_extent) * 4;
             for (std::uint32_t x = 0; x < pointer_swatch_extent; ++x) {
-              row[x * 4 + 0] = std::byte{0};    // blue
-              row[x * 4 + 1] = std::byte{100};  // green
-              row[x * 4 + 2] = std::byte{0};    // red
-              row[x * 4 + 3] = std::byte{255};
+              const bool ray_block = x < pointer_ray_block_extent &&
+                                     y < pointer_ray_block_extent;
+              row[x * 4 + 0] = std::byte{0};                          // blue
+              row[x * 4 + 1] = ray_block ? std::byte{100} : std::byte{0};  // green
+              row[x * 4 + 2] = std::byte{0};                          // red
+              row[x * 4 + 3] = ray_block ? std::byte{255} : std::byte{0};
             }
           }
+          darktidevr::core::paint_pointer_target(
+              upload_pixels + upload_footprint.Offset +
+                  static_cast<std::size_t>(
+                      flat_capture_height - pointer_swatch_extent +
+                      pointer_target_texels.offset.y) *
+                      upload_footprint.Footprint.RowPitch +
+                  static_cast<std::size_t>(
+                      flat_capture_width - pointer_swatch_extent +
+                      pointer_target_texels.offset.x) * 4,
+              upload_footprint.Footprint.RowPitch);
           consumed_capture.reset();
           auto* pointer_resource = pointer_images[pointer_image_index].texture;
           D3D12_RESOURCE_BARRIER swatch_barrier{};
@@ -3706,11 +3727,6 @@ class OpenXrProbe {
         input.source_position = menu_pointer_position;
         input.time_seconds =
             std::chrono::duration<double>(frame_start - start).count();
-        if (window_capture) {
-          window_capture->set_pointer_overlay(
-              input.active ? menu_pointer_position : std::nullopt,
-              menu_input_source_width, menu_input_source_height);
-        }
         if (latest_controller_sample_) {
           const auto& left = latest_controller_sample_->hands[0];
           const auto& right = latest_controller_sample_->hands[1];
@@ -4019,7 +4035,8 @@ class OpenXrProbe {
           }
         }
       }
-      std::array<XrCompositionLayerQuad, 2> pointer_quads{{
+      std::array<XrCompositionLayerQuad, 3> pointer_quads{{
+          {XR_TYPE_COMPOSITION_LAYER_QUAD},
           {XR_TYPE_COMPOSITION_LAYER_QUAD},
           {XR_TYPE_COMPOSITION_LAYER_QUAD},
       }};
@@ -4028,16 +4045,14 @@ class OpenXrProbe {
           !pointer_swatch_release_pending) {
         const auto configure_pointer_quad =
             [&](XrCompositionLayerQuad& quad,
-                darktidevr::math::Pose pose, XrExtent2Df size) {
+                darktidevr::math::Pose pose, XrExtent2Df size,
+                XrRect2Di texels) {
               quad.layerFlags =
                   XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
               quad.space = local_space_;
               quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
               quad.subImage.swapchain = pointer_swapchain;
-              quad.subImage.imageRect.offset = {0, 0};
-              quad.subImage.imageRect.extent = {
-                  static_cast<std::int32_t>(pointer_swatch_extent),
-                  static_cast<std::int32_t>(pointer_swatch_extent)};
+              quad.subImage.imageRect = texels;
               quad.pose.orientation = {pose.orientation.x,
                                        pose.orientation.y,
                                        pose.orientation.z,
@@ -4046,10 +4061,11 @@ class OpenXrProbe {
                                     pose.position.z};
               quad.size = size;
             };
-        // The ray reaches halfway to the panel: the board draws its own
-        // cursor at the hit, so a full-length beam and a hit dot only hid
-        // what it pointed at. Two crossed strips make it visible from any
-        // angle.
+        // The ray reaches halfway to the panel so the beam never covers
+        // what it points at; two crossed strips make it visible from any
+        // angle. The hit is marked by the target sprite (cyan ring and
+        // cross), the one cursor for every menu: no capture path paints a
+        // cursor of its own and the game only ever shows the Windows one.
         const auto ray_direction = darktidevr::math::rotate(
             controller_pointer_pose->orientation, {0.0F, 0.0F, -1.0F});
         const auto distance = controller_pointer_hit->distance_metres * 0.5F;
@@ -4067,7 +4083,7 @@ class OpenXrProbe {
                 {1.0F, 0.0F, 0.0F}, -half_pi));
         configure_pointer_quad(
             pointer_quads[0], {ray_orientation, ray_midpoint},
-            {0.008F, distance});
+            {0.008F, distance}, pointer_ray_texels);
         configure_pointer_quad(
             pointer_quads[1],
             {darktidevr::math::multiply(
@@ -4075,7 +4091,26 @@ class OpenXrProbe {
                  darktidevr::math::from_axis_angle(
                      {0.0F, 1.0F, 0.0F}, half_pi)),
              ray_midpoint},
-            {0.008F, distance});
+            {0.008F, distance}, pointer_ray_texels);
+        const auto full_distance = controller_pointer_hit->distance_metres;
+        const darktidevr::math::Vec3 hit_position{
+            controller_pointer_pose->position.x +
+                ray_direction.x * full_distance,
+            controller_pointer_pose->position.y +
+                ray_direction.y * full_distance,
+            controller_pointer_pose->position.z +
+                ray_direction.z * full_distance};
+        const auto panel_normal = darktidevr::math::rotate(
+            panel_pose.orientation, {0.0F, 0.0F, 1.0F});
+        // 48 texels at 4.5 cm: the ring spans about 4 cm, the size the
+        // capture-painted reticle had on a 2 m panel.
+        configure_pointer_quad(
+            pointer_quads[2],
+            {panel_pose.orientation,
+             {hit_position.x + panel_normal.x * 0.004F,
+              hit_position.y + panel_normal.y * 0.004F,
+              hit_position.z + panel_normal.z * 0.004F}},
+            {0.045F, 0.045F}, pointer_target_texels);
       }
       XrCompositionLayerQuad gameplay_reticle_quad{
           XR_TYPE_COMPOSITION_LAYER_QUAD};

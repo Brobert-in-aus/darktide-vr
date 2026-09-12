@@ -167,33 +167,19 @@ int wmain() {
     for (const auto crop : {std::pair{1U, 90U}, std::pair{160U, 1U},
                             std::pair{1U, 1U}}) {
       capture.set_source_crop(320, 180, 0, 0, crop.first, crop.second);
-      capture.set_pointer_overlay(std::pair{0U, 0U}, 320, 180);
       expect(capture.capture().bgra_pixels != nullptr,
-             "A one-pixel crop must remain renderable with a pointer");
+             "A one-pixel crop must remain renderable");
     }
+    // The pointer's target is a viewer quad; the capture paints no cursor
+    // and no laser swatch into the menu image.
     capture.set_source_crop(320, 180, 0, 0, 160, 90);
-    capture.set_pointer_overlay(std::pair{80U, 45U}, 320, 180);
-    const auto with_pointer = capture.capture();
-    const auto centre = with_pointer.bgra_pixels +
-                        (static_cast<std::size_t>(45) * 160 + 80) * 4;
-    expect(centre[0] == std::byte{255} && centre[1] == std::byte{255} &&
-               centre[2] == std::byte{255},
-           "Pointer overlay was not visible at the mapped source position");
-    const auto cyan_ring = with_pointer.bgra_pixels +
-                           (static_cast<std::size_t>(45) * 160 + 95) * 4;
-    expect(cyan_ring[0] == std::byte{255} &&
-               cyan_ring[1] == std::byte{220} &&
-               cyan_ring[2] == std::byte{0},
-           "Pointer overlay ring did not use its high-contrast colour");
-    // The laser's colour lives in the viewer's own static swapchain; the
-    // capture must not paint a swatch into the menu image any more.
-    const auto laser_swatch = with_pointer.bgra_pixels +
-                              (static_cast<std::size_t>(89) * 160 + 159) * 4;
-    expect(!(laser_swatch[0] == std::byte{255} &&
-               laser_swatch[1] == std::byte{255} &&
-               laser_swatch[2] == std::byte{0}),
-           "Pointer overlay painted a laser swatch into the capture");
-    capture.set_pointer_overlay(std::nullopt, 160, 90);
+    const auto plain = capture.capture();
+    const auto plain_centre = plain.bgra_pixels +
+                              (static_cast<std::size_t>(45) * 160 + 80) * 4;
+    expect(plain_centre[0] == std::byte{126} &&
+               plain_centre[1] == std::byte{72} &&
+               plain_centre[2] == std::byte{18},
+           "Capture painted a cursor over the client surface");
 
     const auto loading_capture = capture.capture();
     const auto loading_corner = loading_capture.bgra_pixels +
