@@ -5015,6 +5015,11 @@ local function update_stereo(manager)
         mod:info("DARKTIDEVR_STEREO cinematic=%s camera=%s",
             cinematic_stereo and "stereo" or "off",
             cinematic_stereo and "game_translation_yaw" or "anchor")
+        -- The viewer's reticle follows the published scale; zero hides it
+        -- for the cinematic and the setting returns afterwards.
+        if presentation.crosshair_feedback and presentation.crosshair_feedback.set_hidden then
+            presentation.crosshair_feedback.set_hidden(cinematic_stereo)
+        end
     end
     -- Keep Darktide's genuine 3P camera tree active so its skinned-local-player
     -- submission policy remains active, but replace the tree's final render
@@ -6689,7 +6694,10 @@ function presentation.update_body_visibility_gate(frame)
         enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
         flag:close()
     end
-    if enabled and presentation.hub_third_person_active() then
+    if enabled and (presentation.hub_third_person_active() or
+            presentation.cinematic_stereo_active()) then
+        -- Stock third-person hub, or a stereo cinematic: no tracked hands,
+        -- weapons or headless body over the game's own presentation.
         enabled = false
     end
     local full_body_path =
@@ -8056,7 +8064,8 @@ function presentation.update_body_ik_presentation_gate(fixed_frame)
     -- tracked-hand IK would pose its arms against it.
     enabled = enabled and
         not controller_observation.body_ik_presentation_faulted and
-        not presentation.hub_third_person_active()
+        not presentation.hub_third_person_active() and
+        not presentation.cinematic_stereo_active()
     if enabled ~= controller_observation.body_ik_presentation_enabled then
         controller_observation.body_ik_presentation_enabled = enabled
         controller_observation.body_ik_presentation_block_reason = nil
@@ -13942,6 +13951,17 @@ mod:hook_safe(
 mod:hook(
     require("scripts/ui/hud/elements/cutscene_overlay/hud_element_cutscene_overlay"),
     "_draw_widgets",
+    function(func, self, ...)
+        if presentation.cinematic_stereo_active() then
+            return
+        end
+        return func(self, ...)
+    end)
+-- The scene-to-scene fade is a HUD element as well; on the panel it would
+-- fade only the HUD layer, so it stands down in a stereo cinematic.
+mod:hook(
+    require("scripts/ui/hud/elements/cutscene_fading/hud_element_cutscene_fading"),
+    "draw",
     function(func, self, ...)
         if presentation.cinematic_stereo_active() then
             return

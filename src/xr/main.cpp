@@ -3977,8 +3977,9 @@ class OpenXrProbe {
         float percent{};
         char extra{};
         // Keep the last valid value during missing, partial or invalid writes.
+        // Zero hides the reticle (a stereo cinematic publishes it).
         if ((input >> percent) && !(input >> extra) && std::isfinite(percent) &&
-            percent >= 25.0F && percent <= 150.0F) {
+            (percent == 0.0F || (percent >= 25.0F && percent <= 150.0F))) {
           const auto updated = percent / 100.0F;
           if (updated != reticle_scale) {
             reticle_scale = updated;
@@ -4048,7 +4049,7 @@ class OpenXrProbe {
                     &pointer_quad);
           }
         }
-        if (gameplay_reticle_pose) {
+        if (gameplay_reticle_pose && reticle_scale > 0.0F) {
           layers[layer_count++] =
               reinterpret_cast<const XrCompositionLayerBaseHeader*>(
                   &gameplay_reticle_quad);

@@ -35,9 +35,11 @@ function Feedback.pixel_scale(distance,character_scale,percent)
 end
 function Feedback.install(mod,presentation,tracking)
     local api={}
-    local scale_percent,published
+    local scale_percent,published,hidden
     function api.update_scale()
         scale_percent=Feedback.scale(mod.get and mod:get('vr_crosshair_scale'))*100
+        -- A stereo cinematic publishes zero so the viewer draws no reticle.
+        if hidden then scale_percent=0 end
         if published==scale_percent then return end
         local io_api=Mods and Mods.lua and Mods.lua.io
         if not io_api then return end
@@ -51,6 +53,10 @@ function Feedback.install(mod,presentation,tracking)
     mod.on_setting_changed=function(id,...)
         if previous_setting_changed then previous_setting_changed(id,...) end
         if id=='vr_crosshair_scale' then api.update_scale() end
+    end
+    function api.set_hidden(value)
+        hidden=value==true
+        api.update_scale()
     end
     api.update_scale()
     local source,source_t,alpha,world,gui,failed
