@@ -63,11 +63,14 @@ what ships.
 
 ## 3. Repository and source
 
-- [ ] Decide where the source lives publicly. The origin is a private
-  Forgejo instance; the Nexus page's Source section expects a link. Either
-  push a public mirror (GitHub) at the release commit and tag it
-  `v0.1.0-alpha.1`, or drop the Source section and say the source is
-  available on request.
+- [ ] Decide where the source lives publicly. A private GitHub mirror
+  exists (https://github.com/Brobert-in-aus/darktide-vr, remote
+  `github`, pushed 12 September). Either make it public at the release
+  commit and tag `v0.1.0-alpha.1`, or drop the Source section and say
+  the source is available on request.
+- [ ] Decide whether `main` should be fast-forwarded to the release
+  commit before tagging (it is still the bootstrap commit on both
+  remotes; all work is on the codex branch).
 - [ ] Tag the release commit in the origin repository as well.
 - [ ] The dev launcher, sync script and benchmark tooling stay in the
   repository, not in the package; the package's `tools/` folder holds only
