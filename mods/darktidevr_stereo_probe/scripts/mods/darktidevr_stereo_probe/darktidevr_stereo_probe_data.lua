@@ -7,6 +7,21 @@ return {
     options = {
         widgets = {
             {
+                setting_id = "movement_reference",
+                type = "dropdown",
+                default_value = "head",
+                options = {
+                    {
+                        text = "movement_reference_head",
+                        value = "head",
+                    },
+                    {
+                        text = "movement_reference_left_hand",
+                        value = "left_hand",
+                    },
+                },
+            },
+            {
                 setting_id = "vr_crosshair_scale", type = "numeric",
                 default_value = 70, range = {25, 150}, decimals_number = 0, step_size_value = 5,
             },
@@ -80,38 +95,29 @@ return {
                     },
                 },
             },
-            mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_turning").widgets(),
-            mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings").widgets(mod),
             {
-                setting_id = "hub_third_person",
-                type = "checkbox",
-                default_value = false,
-            },
-            {
-                setting_id = "psykhanium_online_rules",
-                type = "checkbox",
-                default_value = true,
-            },
-            {
-                setting_id = "remote_mission_input",
-                type = "checkbox",
-                default_value = true,
-            },
-            {
-                setting_id = "movement_reference",
-                type = "dropdown",
-                default_value = "head",
-                options = {
+                setting_id = "mode_options",
+                type = "group",
+                sub_widgets = {
                     {
-                        text = "movement_reference_head",
-                        value = "head",
+                        setting_id = "hub_third_person",
+                        type = "checkbox",
+                        default_value = false,
                     },
                     {
-                        text = "movement_reference_left_hand",
-                        value = "left_hand",
+                        setting_id = "psykhanium_online_rules",
+                        type = "checkbox",
+                        default_value = true,
+                    },
+                    {
+                        setting_id = "remote_mission_input",
+                        type = "checkbox",
+                        default_value = true,
                     },
                 },
             },
+            mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_turning").widgets(),
+            mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings").widgets(mod),
         },
     },
 }
