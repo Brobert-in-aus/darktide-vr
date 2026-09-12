@@ -6723,6 +6723,10 @@ presentation.headless_body_slots = {
     "slot_gear_head"
 }
 
+presentation.companion_gear_slots = {
+    slot_companion_gear_full = true,
+    slot_companion_body_skin_color = true,
+}
 presentation.headless_body_hidden_slot_lookup = {
     slot_body_face = true,
     slot_body_face_tattoo = true,
@@ -6985,9 +6989,17 @@ function presentation.apply_body_visibility(self, frame, force)
                     local garment = slot_name == "slot_gear_upperbody"
                     local proxy_hidden = presentation.body_proxy and
                         presentation.body_proxy.hides_source_slot(slot_name)
-                    local show = (slot_name == "slot_body_arms" or
+                    -- The companion's cosmetic body and skin colour are items
+                    -- in the owner's equipment (slot_companion_*), attached to
+                    -- the companion unit, not body parts: hiding them with the
+                    -- body made the owner's servo-skull invisible (its
+                    -- particle candles stayed). Keep them visible.
+                    local companion_gear =
+                        presentation.companion_gear_slots[slot_name] == true
+                    local show = companion_gear or
+                        ((slot_name == "slot_body_arms" or
                         slot_name == inventory.wielded_slot) and
-                        not slot.hidden_3p and not proxy_hidden
+                        not slot.hidden_3p and not proxy_hidden)
                     Unit.flow_event(
                         slot_unit_3p, show and "lua_visible" or "lua_hidden")
                     Unit.set_unit_visibility(slot_unit_3p, show, true)
@@ -14185,7 +14197,39 @@ end)
 
 -- The local player's companion units (the Skitarii servo-skull): alive,
 -- distance from the player and mesh visibility, for the invisible-skull report.
-mod:command("dtvr_companion", "Log the local player's companion units", function()
+local function companion_trace_arm()
+    if mod.companion_trace_armed then return end
+    mod.companion_trace_armed = true
+    local function watched(unit)
+        local spawn = Managers.state and Managers.state.player_unit_spawn
+        local player = Managers.player and Managers.player:local_player(1)
+        if not spawn or not player or not unit then return false end
+        local ok, owner = pcall(spawn.owner, spawn, unit)
+        return ok and owner == player and unit ~= player.player_unit
+    end
+    for _, name in ipairs({"set_unit_visibility", "set_visibility",
+            "set_mesh_visibility", "flow_event"}) do
+        local original = Unit[name]
+        if type(original) == "function" then
+            Unit[name] = function(unit, ...)
+                if watched(unit) then
+                    local args = {}
+                    for i = 1, select("#", ...) do args[i] = tostring((select(i, ...))) end
+                    mod:info("DARKTIDEVR_COMPANION trace Unit.%s(%s)\n%s", name,
+                        table.concat(args, ", "), debug.traceback())
+                end
+                return original(unit, ...)
+            end
+        end
+    end
+    mod:info("DARKTIDEVR_COMPANION trace armed")
+end
+
+mod:command("dtvr_companion", "Log the local player's companion units (add show, trace)", function(action)
+    if action == "trace" then
+        companion_trace_arm()
+        mod:echo("DARKTIDEVR_COMPANION trace armed: visibility calls on your companions are logged with tracebacks")
+    end
     local player = Managers.player and Managers.player:local_player(1)
     local unit = player and player.player_unit
     local spawner = unit and Unit.alive(unit) and
@@ -14195,6 +14239,20 @@ mod:command("dtvr_companion", "Log the local player's companion units", function
         mod:echo("DARKTIDEVR_COMPANION none")
         mod:info("DARKTIDEVR_COMPANION none")
         return
+    end
+    if action == "show" then
+        for i = 1, #units do
+            local companion = units[i]
+            if companion and Unit.alive(companion) then
+                local a = pcall(Unit.set_unit_visibility, companion, true, true)
+                local b = pcall(Unit.set_visibility, companion, "main", true)
+                local c = pcall(Unit.flow_event, companion, "lua_visible")
+                local line = string.format("DARKTIDEVR_COMPANION show %d unit_visibility=%s group_main=%s flow_visible=%s",
+                    i, tostring(a), tostring(b), tostring(c))
+                mod:echo(line)
+                mod:info(line)
+            end
+        end
     end
     local origin = Unit.world_position(unit, 1)
     local visibility = ScriptUnit.has_extension(unit, "player_visibility_system")
@@ -14206,22 +14264,18 @@ mod:command("dtvr_companion", "Log the local player's companion units", function
         local companion = units[i]
         local alive = companion and Unit.alive(companion)
         local distance = alive and Vector3.distance(Unit.world_position(companion, 1), origin)
-        local meshes, visible = 0, 0
+        local meshes = -1
+        local group_main = "n/a"
         if alive then
             local ok, count = pcall(Unit.num_meshes, companion)
             meshes = ok and count or -1
-            for m = 0, (ok and count or 0) - 1 do
-                local ok_mesh, mesh = pcall(Unit.mesh, companion, m)
-                local ok_visible, shown = pcall(function()
-                    return Mesh and Mesh.is_visible and Mesh.is_visible(mesh)
-                end)
-                if ok_mesh and ok_visible and shown == true then visible = visible + 1 end
-            end
+            local ok_group, has_group = pcall(Unit.has_visibility_group, companion, "main")
+            group_main = ok_group and tostring(has_group) or "n/a"
         end
         local line = string.format(
-            "DARKTIDEVR_COMPANION %d/%d alive=%s distance=%s meshes=%d visible_meshes=%d player_visible=%s first_person=%s",
+            "DARKTIDEVR_COMPANION %d/%d alive=%s distance=%s meshes=%d visibility_group_main=%s player_visible=%s first_person=%s",
             i, #units, tostring(alive), distance and string.format("%.2f", distance) or "nil",
-            meshes, visible, tostring(visibility and visibility:visible()),
+            meshes, group_main, tostring(visibility and visibility:visible()),
             tostring(ok_fp and in_first_person))
         mod:echo(line)
         mod:info(line)

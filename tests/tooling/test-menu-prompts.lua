@@ -26,6 +26,7 @@ for _,action in ipairs({"left_pressed","left_released","left_hold"}) do
 end
 assert(hint("back","View",true)=="<tint>[B] Action")
 assert(hint("confirm_pressed")=="keyboard:confirm_pressed Action")
+assert(hint("skip_cinematic_hold")=="[Hold\194\160RT] Action")
 assert(hint("gamepad_confirm_pressed")=="keyboard:gamepad_confirm_pressed Action")
 assert(hint("right_pressed")=="keyboard:right_pressed Action")
 secondary=true

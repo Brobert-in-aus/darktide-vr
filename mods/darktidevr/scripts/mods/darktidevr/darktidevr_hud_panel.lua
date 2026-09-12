@@ -888,6 +888,60 @@ function HudPanel.install(mod)
                 setting_id == "hud_internal_scale" or
                 setting_id == "focus_warning" then HudPanel.read_settings(mod) end
     end
+    -- Constant elements (chat, notification feed, mission buffs, voice
+    -- chat, onboarding tutorial popups, group finder and havoc status)
+    -- draw on the desktop overlay through the UI manager's own renderer,
+    -- which the headset never shows. Draw the listed ones onto the HUD
+    -- panel as well, into the panel pass this frame's HUD already queued.
+    -- Popups are a flat interactive panel and subtitles are mirrored, so
+    -- both stay off this list, as do the watermark, loading and cursor.
+    local panel_constant_elements = {
+        ConstantElementChat = true,
+        ConstantElementNotificationFeed = true,
+        ConstantElementMissionBuffs = true,
+        ConstantElementVoiceChat = true,
+        ConstantElementOnboardingHandler = true,
+        ConstantGroupFinderStatus = true,
+        ConstantElementHavocStatus = true,
+        ConstantElementExpeditionContinue = true,
+    }
+    mod:hook("UIConstantElements", "draw", function(func, self, dt, t, input_service)
+        func(self, dt, t, input_service)
+        local renderer = state.resource_renderer
+        if not state.enabled or not renderer or state.last_authored_t == nil or
+                math.abs(state.last_authored_t - t) > 0.05 then
+            return
+        end
+        local render_settings = self._render_settings
+        local elements = self._elements_array
+        if not render_settings or type(elements) ~= "table" then return end
+        local using_input = self:using_input()
+        local drawn = 0
+        for i = 1, #elements do
+            local element = elements[i]
+            local name = element and element.__class_name
+            if panel_constant_elements[name] and element.should_draw and
+                    element:should_draw() then
+                local handle_input = not using_input or
+                    (element.using_input and element:using_input())
+                local ok, err = pcall(element.draw, element, dt, t, renderer,
+                    render_settings,
+                    handle_input and input_service or input_service:null_service())
+                if ok then
+                    drawn = drawn + 1
+                elseif not state.constant_error_logged then
+                    state.constant_error_logged = true
+                    mod:warning("DARKTIDEVR_HUD constant_element_draw_failed element=%s error=%s",
+                        tostring(name), tostring(err))
+                end
+            end
+        end
+        if drawn > 0 and not state.constant_logged then
+            state.constant_logged = true
+            mod:info("DARKTIDEVR_HUD constant_elements_on_panel=%d", drawn)
+        end
+    end)
+
     mod:hook("UIHud", "update", function(func, self, dt, t, input_service)
         update_enabled_flag(mod, t or 0)
         HudPanel.poll_window_focus(t or 0)

@@ -2,7 +2,10 @@
 -- mouse click, not a keyboard/gamepad confirmation action.
 local Prompts = {}
 local direct = {back="vr_menu_back",left_pressed="vr_menu_point_select",
-    left_released="vr_menu_point_select",left_hold="vr_menu_point_select"}
+    left_released="vr_menu_point_select",left_hold="vr_menu_point_select",
+    -- The cutscene and video legends carry a press callback, which would
+    -- read as a pointed click; the skip needs no pointing, only the trigger.
+    skip_cinematic="vr_menu_hold_skip",skip_cinematic_hold="vr_menu_hold_skip"}
 local function pack(...) return {n=select("#",...),...} end
 
 function Prompts.install(mod, enabled, secondary_enabled)
