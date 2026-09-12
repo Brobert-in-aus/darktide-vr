@@ -68,20 +68,72 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
         fit_ability_label(self,renderer)
         return ...
     end
+    -- Menu (View service) prompts outside the input legend and button-hint
+    -- helpers: what the VR menu adapter actually offers. Pointed widgets
+    -- (tabs, continue, confirm) take the pointer click; back takes B/Menu;
+    -- routes the adapter does not provide read Unbound rather than a
+    -- keyboard key. Unlisted aliases are logged once so they can be added.
+    local view_aliases = {
+        back="vr_menu_back", close="vr_menu_back", cancel="vr_menu_back",
+        confirm_pressed="vr_menu_point_select", left_pressed="vr_menu_point_select",
+        left_released="vr_menu_point_select", left_hold="vr_menu_point_select",
+        continue="vr_menu_point_select",
+        navigate_primary_left_pressed="vr_menu_point_select",
+        navigate_primary_right_pressed="vr_menu_point_select",
+        navigate_secondary_left_pressed="vr_menu_point_select",
+        navigate_secondary_right_pressed="vr_menu_point_select",
+        next_hint=false, notification_option_a=false, notification_option_b=false,
+    }
+    local secondary_aliases = {right=true, right_pressed=true, right_released=true, right_hold=true}
+    local logged_view_aliases = {}
+    local function view_text(alias,tint)
+        local label = view_aliases[alias]
+        if secondary_aliases[alias] then
+            label = menu_prompts and menu_prompts.secondary_available and
+                menu_prompts.secondary_available() and "vr_menu_point_secondary" or false
+        end
+        local text
+        if label then
+            text = "["..mod:localize(label).."]"
+        else
+            if label == nil and not logged_view_aliases[alias] and mod.info then
+                logged_view_aliases[alias] = true
+                mod:info("DARKTIDEVR_PROMPTS view_alias=%s route=none label=unbound", tostring(alias))
+            end
+            text = "["..mod:localize("vr_action_unbound").."]"
+        end
+        text = Prompts.single_line(text)
+        if tint then text=InputUtils.apply_color_to_input_text(text,Color.ui_input_color(255,true)) end
+        return text
+    end
     mod:hook(InputUtils,"input_text_for_current_input_device",
         function(func,service,alias,tint)
             if menu_prompts then
                 local menu_text=menu_prompts.input_text(service,alias,tint)
                 if menu_text then return menu_text end
             end
+            if not enabled() then return func(service,alias,tint) end
             local action = aliases[alias]
             local inventory=service=="View" and alias=="hotkey_inventory" and bindings.context=="hub"
             if inventory then action="inventory" end
-            if depth==0 or not enabled() or (service~="Ingame" and not inventory) or action==nil then
-                return func(service,alias,tint)
+            if service=="View" and not inventory then
+                if type(alias)~="string" then return func(service,alias,tint) end
+                -- Hub hotkeys stay accurate keyboard hints; everything else
+                -- in a menu is answered by the VR adapter or is unbound.
+                if alias:find("^hotkey_") then return func(service,alias,tint) end
+                return view_text(alias,tint)
             end
+            if service~="Ingame" and not inventory then return func(service,alias,tint) end
+            if action==nil then return func(service,alias,tint) end
             local switch = weapon_switch and (alias=="wield_1" or alias=="wield_2")
             if switch then action="quick_wield" end
+            if action==false then
+                -- Direct weapon slots have no control of their own outside
+                -- the switch badge; never advertise a keyboard number.
+                local text=Prompts.single_line("["..mod:localize("vr_action_unbound").."]")
+                if tint then text=InputUtils.apply_color_to_input_text(text,Color.ui_input_color(255,true)) end
+                return text
+            end
             local controls = bindings.controls_for_action(action)
             -- The default layout reaches carried items through the cycle
             -- control rather than one button per slot. A prompt for an

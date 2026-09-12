@@ -4752,6 +4752,21 @@ end
 -- midpoint once in the character root's coordinates, then move that stable
 -- offset only with the locomotion/root transform. OpenXR supplies all motion
 -- of the real viewer relative to this neutral model-eye origin.
+-- The eye offsets are measured once per unit and then held. A unit that
+-- spawns hanging at a respawn point (hogtied) or lies knocked down carries
+-- its eyes far from where they sit standing; measuring there lowered the
+-- view for the rest of the mission after a rescue. Measure only in ordinary
+-- upright locomotion states; until then the first-person fallback serves.
+local upright_states = {walking=true, sprinting=true, sliding=true, jumping=true,
+    falling=true, dodging=true, interacting=true, minigame=true, lunging=true,
+    stunned=true, exploding=true}
+function presentation.body_upright_state(unit)
+    local extension = unit and ScriptUnit.has_extension(unit, "character_state_machine_system")
+    if not extension then return true end
+    local ok, name = pcall(extension.current_state_name, extension)
+    return ok and upright_states[name] == true
+end
+
 function presentation.body_stable_eye_anchor(unit)
     if not unit or not Unit.alive(unit) then
         return nil, "unit_unavailable"
@@ -4759,6 +4774,9 @@ function presentation.body_stable_eye_anchor(unit)
     local observation = controller_observation
     local needs_capture = observation.body_eye_anchor_unit ~= unit or
         observation.body_eye_anchor_local_x == nil
+    if needs_capture and not presentation.body_upright_state(unit) then
+        return nil, "state_not_upright"
+    end
     local measured_eye = nil
     local measured_source = observation.body_eye_anchor_source
     local measured_left = nil
@@ -4814,7 +4832,8 @@ function presentation.body_camera_anchor(unit)
     local observation = controller_observation
     if observation.body_camera_eye_offset_unit ~= unit or
             observation.body_camera_eye_offset_x == nil then
-        if not model_eye or not active_base_rotation then
+        if not model_eye or not active_base_rotation or
+                not presentation.body_upright_state(unit) then
             return head_position + Vector3.up() * 0.05,
                 "first_person_fallback", left_eye, right_eye, captured
         end
@@ -14052,6 +14071,122 @@ mod:io_dofile(
 presentation.ranged_evidence = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_ranged_evidence"
 ).install(mod, presentation)
+-- Dead or hogtied and watching a teammate, stock shows that player's own
+-- first-person camera. In VR that is another person's head on yours; the
+-- stock observer camera instead follows the watched unit in third person
+-- when first-person spectating is off, with the orientation from the local
+-- player's own look input as in the hub.
+mod:hook_require("scripts/managers/player/player_game_states/camera_handler", function(class)
+    mod:hook_safe(class, "init", function(self)
+        if presentation.gameplay_context.game_mode_name(Managers and Managers.state and
+                Managers.state.game_mode) ~= "hub" and
+                mod:get("spectate_third_person") ~= false then
+            self._first_person_spectating_mode = false
+            mod:info("DARKTIDEVR_CAMERA spectating=third_person source=option")
+        end
+    end)
+end)
+
+-- The scanner display view (auspex scans, generator and decode minigames)
+-- links its screen texture to the auspex unit it was opened for, the
+-- first-person device model. The mod hides first-person units and shows the
+-- third-person ones, whose screen therefore stayed blank. Link the same
+-- texture to every third-person unit of the equipped slots that carries the
+-- display mesh, and unlink with the view. Logged so the next worn run shows
+-- which unit the view was given and how many third-person screens exist.
+mod:hook_require("scripts/ui/views/scanner_display_view/scanner_display_view", function(class)
+    local slots = {"slot_device", "slot_pocketable", "slot_pocketable_small",
+        "slot_primary", "slot_secondary"}
+    local function display_material(unit)
+        if not unit or not Unit.alive(unit) then return nil end
+        local ok, mesh = pcall(Unit.mesh, unit, "auspex_scanner_display")
+        if not ok or not mesh then return nil end
+        local material_ok, material = pcall(Mesh.material, mesh, "auspex_scanner_display")
+        return material_ok and material or nil
+    end
+    local function third_person_displays(self)
+        local found = {}
+        local player = Managers and Managers.player and Managers.player:local_player(1)
+        local unit = player and player.player_unit
+        local loadout = unit and Unit.alive(unit) and
+            ScriptUnit.has_extension(unit, "visual_loadout_system")
+        if not loadout then return found end
+        for _, slot_name in ipairs(slots) do
+            local ok, unit_3p = pcall(loadout.unit_3p_from_slot, loadout, slot_name)
+            if ok and unit_3p then
+                local candidates = {unit_3p}
+                local slot = loadout._equipment and loadout._equipment[slot_name]
+                local attachments = slot and slot.attachments_by_unit_3p and
+                    slot.attachments_by_unit_3p[unit_3p]
+                for i = 1, #(attachments or {}) do candidates[#candidates + 1] = attachments[i] end
+                for _, candidate in ipairs(candidates) do
+                    if candidate ~= self._auspex_unit and display_material(candidate) then
+                        found[#found + 1] = candidate
+                    end
+                end
+            end
+        end
+        return found
+    end
+    mod:hook_safe(class, "_link_material", function(self)
+        local renderer = self._offscreen_ui_renderer
+        local render_target = renderer and renderer.render_target
+        if not render_target then return end
+        self._darktidevr_linked_3p = self._darktidevr_linked_3p or {}
+        local units = third_person_displays(self)
+        for _, unit in ipairs(units) do
+            if not self._darktidevr_linked_3p[unit] then
+                local ok, err = pcall(Material.set_resource, display_material(unit), "source", render_target)
+                if ok then self._darktidevr_linked_3p[unit] = true end
+                mod:info("DARKTIDEVR_SCANNER link_3p unit=%s ok=%s%s", tostring(unit),
+                    tostring(ok), ok and "" or (" error=" .. tostring(err)))
+            end
+        end
+        if not self._darktidevr_scanner_logged then
+            self._darktidevr_scanner_logged = true
+            mod:info("DARKTIDEVR_SCANNER view=%s auspex_unit=%s third_person_displays=%d",
+                tostring(self.view_name), tostring(self._auspex_unit), #units)
+        end
+    end)
+    mod:hook_safe(class, "_unlink_material", function(self)
+        for unit in pairs(self._darktidevr_linked_3p or {}) do
+            local material = display_material(unit)
+            if material then pcall(Material.set_texture, material, "source", nil) end
+        end
+        self._darktidevr_linked_3p = nil
+    end)
+    mod.toggle_scanner_test = function()
+                local manager = Managers and Managers.ui
+                if not manager then return end
+                if manager:view_active("scanner_display_view") then
+                    manager:close_view("scanner_display_view")
+                    mod:echo("Scanner display closed.")
+                    return
+                end
+                local player = Managers.player and Managers.player:local_player(1)
+                local unit = player and player.player_unit
+                local loadout = unit and Unit.alive(unit) and
+                    ScriptUnit.has_extension(unit, "visual_loadout_system")
+                local slot = loadout and loadout._equipment and loadout._equipment.slot_device
+                local auspex = slot and (slot.unit_1p or slot.unit_3p)
+                if not auspex then
+                    mod:echo("No device in slot_device; wield the auspex where the game gives one.")
+                    return
+                end
+                local world = Managers.world and Managers.world:world("level_world")
+                local ok, err = pcall(manager.open_view, manager, "scanner_display_view", nil, nil, nil, nil, {
+                    device_owner_unit = unit, minigame_type = "none", minigame_extension = nil,
+                    auspex_unit = auspex, wwise_world = world and Managers.world:wwise_world(world)})
+                mod:echo(ok and "Scanner display opened on the first-person device unit; the third-person screen should show it."
+                    or ("Scanner display failed: " .. tostring(err)))
+    end
+    if mod.command then
+        mod:command("dtvr_scanner_test",
+            "Open or close the scanner display on the equipped device (also on the F7 keybind)",
+            function() mod.toggle_scanner_test() end)
+    end
+end)
+
 presentation.gun_aim = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_gun_aim"
 ).install(mod, presentation)
@@ -14103,8 +14238,17 @@ do
         mod:io_dofile(
             "darktidevr/scripts/mods/darktidevr/darktidevr_eye_targets"
         ).install(mod, ScriptWorld, function()
-            assert(ensure_ui_native_hooks() and refresh_xr_render_extent(),
-                "isolated gameplay targets require a current XR render extent")
+            -- Between a mission server exit and the hub the head-pose
+            -- transport can be silent for the frame that creates the new
+            -- player viewport. The eye extent does not change within a
+            -- session, so the last known one serves; asserting here was a
+            -- Lua crash on the way back to the hub.
+            local refreshed = ensure_ui_native_hooks() and refresh_xr_render_extent()
+            if not refreshed and not presentation.eye_extent_stale_logged then
+                presentation.eye_extent_stale_logged = true
+                mod:info("DARKTIDEVR_STEREO eye_targets extent=last_known %dx%d reason=refresh_unavailable",
+                    ui_eye_target_width, ui_eye_target_height)
+            end
             return ui_eye_target_width, ui_eye_target_height
         end)
     end

@@ -53,11 +53,21 @@ end
 local function scope(class,method,fn,...)
     return hooks[class][method](fn,...)
 end
-assert(text('action_one')=='keyboard:action_one','scope leaked outside HUD')
+-- Gameplay prompts carry controller badges wherever the game asks for them,
+-- not only inside the scoped HUD elements (voting, notifications, tutorials).
+assert(text('action_one')=='[RT]','gameplay prompt outside a HUD scope kept a keyboard key')
 assert(hooks[Text].localize_with_button_hint(function()
     return text('back','View')
 end,'back','Back')=='[B\194\160/\194\160Menu]','shared hook lost menu labels')
-assert(text('back','View')=='keyboard:back','menu label leaked out of action context')
+-- Menu prompts outside the button-hint context answer with the VR adapter's
+-- routes: back is B/Menu, pointed widgets take the click, unrouted aliases
+-- read Unbound rather than a keyboard key. Hub hotkeys keep their keyboard hint.
+assert(text('back','View')=='[B\194\160/\194\160Menu]','menu back outside the hint context kept a keyboard key')
+local point='[Point\194\160+\194\160RT]'
+assert(text('confirm_pressed','View')==point and text('navigate_primary_right_pressed','View')==point)
+assert(text('notification_option_a','View')=='[Unbound]','vote prompt must not show a keyboard key')
+assert(text('some_new_alias','View')=='[Unbound]','unrouted menu alias must read Unbound')
+assert(text('hotkey_inventory','View')=='keyboard:hotkey_inventory','hub hotkey hint must stay keyboard')
 scope('HudElementWieldInfo','_create_entry',function()
     assert(text('action_one')=='[RT]')
     assert(text('weapon_extra')=='[R\194\160Grip]')
@@ -68,7 +78,7 @@ scope('HudElementWieldInfo','_create_entry',function()
     assert(text('interact')=='[RS\194\160Down]' and text('weapon_reload')=='[RS\194\160Down]')
     assert(text('wield_1')=='[Unbound]','direct slot selection pretended to be bound')
     assert(text('unrecognized')=='keyboard:unrecognized')
-    assert(text('action_one','View')=='keyboard:action_one','desktop menu changed')
+    assert(text('action_one','View')=='[Unbound]','an Ingame alias asked of the View service has no VR route')
     assert(text('action_one','Ingame',true)=='<tint>[RT]')
     local a,b,c=scope('HudElementPlayerWeapon','_update_input',function()
         assert(text('wield_1')=='[RS\194\160Up]' and text('wield_2')=='[RS\194\160Up]','switch badge must show only the control')
@@ -79,7 +89,7 @@ scope('HudElementWieldInfo','_create_entry',function()
     assert(a==7 and b==nil and c==9)
     assert(text('wield_1')=='[Unbound]','nested scope context leaked')
 end)
-assert(text('smart_tag')=='keyboard:smart_tag')
+assert(text('smart_tag')=='[R3]','gameplay prompt outside a HUD scope kept a keyboard key')
 settings.vr_action_bind_communication_wheel=256
 mod.on_setting_changed('vr_action_bind_communication_wheel')
 scope('HudElementWieldInfo','_create_entry',function()assert(text('com_wheel')=='[R3]')end)
@@ -130,7 +140,7 @@ local ok,err=pcall(function()
     scope('HudElementInteraction','_setup_interaction_information',function() error('stock failure') end)
 end)
 assert(not ok and err:find('stock failure'))
-assert(text('action_one')=='keyboard:action_one','error leaked HUD scope')
+assert(text('action_one')=='[RT]','error left the prompt hook broken')
 
 settings.vr_bind_right_grip='combat_ability'
 settings.vr_bind_r3='combat_ability'
@@ -198,9 +208,9 @@ print('controller_prompts=pass scoped labels remap aliases unbound cache_refresh
 bindings.sample(true,0,0,0,true,1,'hub')
 scope('ConstantElementOnboardingHandler','_sync_onboarding_settings',function()
     assert(text('hotkey_inventory','View')=='[R\194\160Grip]','Hub notification missed profile')
-    assert(text('right','View')=='keyboard:right','Talent right-click acceptance case changed')
+    assert(text('right','View')=='[Unbound]','right click without a secondary pointer must read Unbound')
 end)
-assert(text('hotkey_inventory','View')=='keyboard:hotkey_inventory','Notification scope leaked')
+assert(text('hotkey_inventory','View')=='[R\194\160Grip]','a bound hub hotkey shows its VR control everywhere')
 settings.vr_hub_bind_right_grip='unbound'
 mod.on_setting_changed('vr_hub_bind_right_grip')
 scope('ConstantElementOnboardingHandler','_sync_onboarding_settings',function()
@@ -275,7 +285,7 @@ if arg[5] and arg[6] then
     device.gamepad_active=true
     assert(description()=='Release [LT] Attack')
     assert(device.gamepad_active,'Prompt changed global stock input mode')
-    assert(text('action_two')=='keyboard:action_two','Stock tutorial leaked prompt scope')
+    assert(text('action_two')=='[LT]','gameplay prompt outside the tutorial scope kept a keyboard key')
     print('controller_prompts: actual stock tutorial/text preserve remaps, availability, device aliases and action wording')
 end
 

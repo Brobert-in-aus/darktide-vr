@@ -13,6 +13,9 @@ function Prompts.install(mod, enabled, secondary_enabled)
     local api={}
     -- The gameplay prompt module owns the single DMF hook on InputUtils. DMF
     -- replaces a same-mod hook handler on duplicate registration.
+    function api.secondary_available()
+        return secondary_enabled ~= nil and secondary_enabled() == true
+    end
     function api.input_text(service,alias,tint)
         if not label or service~="View" or not enabled() then return nil end
         local text=("["..mod:localize(label).."]"):gsub('%s','\194\160')

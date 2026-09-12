@@ -51,6 +51,15 @@ return {
                 function_name = "toggle_melee_preview",
             },
             {
+                setting_id = "scanner_test_keybind",
+                type = "keybind",
+                default_value = {"f7"},
+                keybind_trigger = "pressed",
+                keybind_type = "function_call",
+                keybind_global = true,
+                function_name = "toggle_scanner_test",
+            },
+            {
                 setting_id = "vr_gun_pitch",
                 type = "numeric",
                 default_value = -10,
@@ -108,6 +117,11 @@ return {
                         setting_id = "hub_third_person",
                         type = "checkbox",
                         default_value = false,
+                    },
+                    {
+                        setting_id = "spectate_third_person",
+                        type = "checkbox",
+                        default_value = true,
                     },
                     {
                         setting_id = "stereo_cinematics",

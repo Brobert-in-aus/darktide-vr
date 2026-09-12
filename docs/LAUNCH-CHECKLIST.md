@@ -44,9 +44,17 @@ here, in the handover and on the Nexus page draft.
   state (no mod settings, no profile directory), archive extracted, batch
   choice 1. Done 12 September 14:24; backup of the previous state kept
   under `%LOCALAPPDATA%`.
-- [ ] From that fresh install: launch through Steam and the launcher,
+- [x] From that fresh install: launch through Steam and the launcher,
   calibration prompt appears, defaults in place, one full mission;
-  capture the page's screenshots and video on the way.
+  capture the page's screenshots and video on the way. Done 12 September;
+  media in `artifacts/media/2026-09-12/`. Found: device screens blank,
+  view lowered after rescue, keyboard prompts in menus, first-person
+  spectating, crash returning to the hub. All addressed in the evening
+  commits; worn checks below.
+- [ ] Worn on the evening fixes: device screen (F7 in the Psykhanium,
+  then a real scan), view height after a rescue, third-person
+  spectating, prompts in votes and end-of-round tabs, hub return after
+  a mission.
 
 ## 2. Documents inside the package
 

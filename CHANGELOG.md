@@ -63,7 +63,19 @@ Desktop (VDXR), Darktide with the Darktide Mod Framework.
   their colour from the menu image and no longer vanish over popups.
 - Entering the Psykhanium a second time in one session no longer crashes
   the game, and exiting while an onboarding tutorial is active no longer
-  reports a crash.
+  reports a crash. Returning to the hub after a mission no longer
+  crashes when the headset transport is briefly silent.
+- Device screens (auspex scans, generator and decode minigames) show on
+  the third-person device model. F7 opens the scanner display on the
+  equipped device for a quick check.
+- The view no longer stays lowered after a rescue: the body's eye
+  offsets are measured standing, not hanging or knocked down.
+- Every prompt the game shows, in menus, notifications and tutorials,
+  carries the controller badge or reads Unbound; keyboard keys no longer
+  appear. Vote notifications read Unbound: votes cannot be answered in
+  VR yet.
+- Spectating a teammate after death uses the third-person camera
+  (option, on by default).
 
 Known limits of this alpha are listed in the user guide: right-hand
 dominant presentation, no independent weapon origins on mission servers,

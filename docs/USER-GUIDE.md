@@ -127,6 +127,8 @@ patch needs an update from us.
 - The desktop window must stay focused (see above).
 - Movement speed follows the aim direction, not where you look: sprinting
   and the slow backward walk are judged against the hand's aim.
+- Votes (kick a player, mission flow) cannot be answered in VR yet; their
+  prompts read Unbound.
 - Only one setup has been tested: an RTX 4090, a Quest 3 and Virtual
   Desktop.
 

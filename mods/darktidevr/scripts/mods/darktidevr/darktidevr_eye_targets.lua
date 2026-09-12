@@ -44,10 +44,19 @@ function EyeTargets.install(mod, script_world, extent)
         else
             width, height = extent()
         end
-        assert(type(width) == "number" and type(height) == "number" and
-            width >= 640 and height >= 640 and width <= 7680 and height <= 7680 and
-            width == math.floor(width) and height == math.floor(height),
-            "gameplay eye extent is unavailable or invalid")
+        if not (type(width) == "number" and type(height) == "number" and
+                width >= 640 and height >= 640 and width <= 7680 and height <= 7680 and
+                width == math.floor(width) and height == math.floor(height)) then
+            -- No usable extent: stock owns this viewport rather than the
+            -- game crashing. Logged once per install.
+            if not names.extent_missing_logged then
+                names.extent_missing_logged = true
+                mod:info("DARKTIDEVR_STEREO eye_targets viewport=%s action=stock reason=extent_invalid",
+                    tostring(name))
+            end
+            return func(world, name, template, layer, camera_unit, position,
+                rotation, shadow, shading, callback, mood, targets)
+        end
         local entry = { width = width, height = height }
         entry.back_buffer = create("darktidevr_" .. side .. "_eye_final", width, height)
         -- The frame-generation colour allocation otherwise follows the real
