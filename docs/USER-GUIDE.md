@@ -71,8 +71,11 @@ patch needs an update from us.
 - On the character-select screen the **VR calibration** opens by itself the
   first time. Stand or sit as you will play, follow the two poses (arms out
   in a T, then arms at your sides) and save. Your official character height
-  is set from it. Repeat it any time from the same screen's button or with
+  is set from it, and a character you create or pick later is brought to
+  that height when you select it (the creation slider does not stick).
+  Repeat the calibration any time from the same screen's button or with
   the chat command `/dtvr_calibration`.
+- Cutscenes and videos: hold the right trigger to skip.
 - Menus use the right controller as a pointer. Trigger selects, the sticks
   scroll. Text entry needs a physical keyboard; the character-name Randomize
   button works with the pointer.

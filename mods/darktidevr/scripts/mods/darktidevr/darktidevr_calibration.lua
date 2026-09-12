@@ -84,6 +84,60 @@ function calibration.install(mod, controller_state, get_head_pose,
         return true, "pending"
     end
 
+    -- A character created or picked after the calibration keeps the height
+    -- its creation slider set, so its stock first-person height and mover
+    -- disagree with the calibrated body. Bring it to the calibrated height
+    -- when the character-select screen selects it, as saving a calibration
+    -- would (same breed range and rounding as apply_official_character_height).
+    function runtime:reconcile_selected_profile_height(profile)
+        local result = self.result or mod:get("vr_calibration_v1")
+        if not result or result.seated or
+                not tonumber(result.floor_eye_height) then
+            return false, "standing_height_unavailable"
+        end
+        if not profile or not profile.personal or not profile.character_id then
+            return false, "profile_unavailable"
+        end
+        local archetype = profile.archetype
+        local breed = archetype and Breeds[archetype.breed]
+        local height_range = breed and breed.size_variation_range
+        local authored_eye_height = breed and breed.heights and
+            tonumber(breed.heights.default)
+        if not height_range or not authored_eye_height or
+                authored_eye_height <= 0 then
+            return false, "breed_height_unavailable"
+        end
+        local target_scale = math.max(height_range[1], math.min(
+            height_range[2], tonumber(result.floor_eye_height) /
+                authored_eye_height))
+        target_scale = tonumber(string.format("%.3f", target_scale))
+        local current = tonumber(profile.personal.character_height)
+        if current and math.abs(current - target_scale) < 0.0005 then
+            return true, "already_current"
+        end
+        local service = Managers.data_service and
+            Managers.data_service.profiles
+        if not service or not service.set_character_height then
+            return false, "service_unavailable"
+        end
+        local character_id = profile.character_id
+        mod:info(
+            "DARKTIDEVR_CALIBRATION profile_height reconcile character=%s current=%s requested=%.3f archetype=%s",
+            tostring(character_id), tostring(current), target_scale,
+            tostring(archetype.name or archetype.breed))
+        service:set_character_height(character_id, target_scale):next(function()
+            profile.personal.character_height = target_scale
+            mod:info(
+                "DARKTIDEVR_CALIBRATION profile_height reconciled character=%s requested=%.3f",
+                tostring(character_id), target_scale)
+        end):catch(function()
+            mod:warning(
+                "DARKTIDEVR_CALIBRATION profile_height reconcile_rejected character=%s requested=%.3f",
+                tostring(character_id), target_scale)
+        end)
+        return true, "pending"
+    end
+
     function runtime:sample(request)
         local state = self.controller_state
         if self.refresh_controller_state and
@@ -201,6 +255,11 @@ function calibration.install(mod, controller_state, get_head_pose,
             "DARKTIDEVR_CALIBRATION main_menu_entry widget=%s first_run=%s",
             tostring(widget ~= nil), tostring(first_run))
     end)
+
+    mod:hook_safe(MainMenuView, "_event_selected_profile_changed",
+        function(self, profile)
+            runtime:reconcile_selected_profile_height(profile)
+        end)
 
     mod:command("dtvr_calibration", "Open VR body calibration", function()
         if not Managers.ui:view_instance("darktidevr_calibration_view") then

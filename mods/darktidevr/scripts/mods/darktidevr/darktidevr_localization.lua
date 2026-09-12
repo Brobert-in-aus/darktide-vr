@@ -26,6 +26,7 @@ return {
     psykhanium_online_rules = {en = "Online combat rules in Psykhanium"},
     psykhanium_online_rules_description = {en = "Aim with the right hand using normal firing positions, button melee and movement rules. Room movement stays visual and training aids remain. Applies on your next visit to Psykhanium; online missions are still under development."},
     vr_menu_back = {en = "B"},
+    vr_menu_hold_skip = {en = "Hold RT"},
     vr_menu_point_select = {en = "Point + RT"},
     vr_menu_point_secondary = {en = "Point + LT"},
     vr_turning = {en = "VR turning"},

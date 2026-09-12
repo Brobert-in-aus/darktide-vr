@@ -795,6 +795,13 @@ class OpenXrProbe {
     // never reaches another texel) and the 48x48 target sprite at (16,16).
     XrSwapchain pointer_swapchain{XR_NULL_HANDLE};
     std::vector<XrSwapchainImageD3D12KHR> pointer_images;
+    // The sprite is staged in its own upload buffer. Staging it in a corner
+    // of the flat capture's upload buffer raced the window-capture memcpy
+    // that runs later in the same frame, before the command list executes,
+    // so the swapchain received captured title-screen pixels instead.
+    ComPtr<ID3D12Resource> pointer_upload;
+    std::byte* pointer_upload_pixels{};
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT pointer_upload_footprint{};
     constexpr std::uint32_t pointer_swatch_extent = 64;
     constexpr std::uint32_t pointer_ray_block_extent = 16;
     constexpr XrRect2Di pointer_ray_texels{{4, 4}, {8, 8}};
@@ -822,6 +829,33 @@ class OpenXrProbe {
                    reinterpret_cast<XrSwapchainImageBaseHeader*>(
                        pointer_images.data())),
                "xrEnumerateSwapchainImages(pointer swatch list)");
+      const auto pointer_description =
+          pointer_images.front().texture->GetDesc();
+      UINT64 pointer_upload_bytes{};
+      device->GetCopyableFootprints(&pointer_description, 0, 1, 0,
+                                    &pointer_upload_footprint, nullptr,
+                                    nullptr, &pointer_upload_bytes);
+      D3D12_HEAP_PROPERTIES pointer_heap{};
+      pointer_heap.Type = D3D12_HEAP_TYPE_UPLOAD;
+      pointer_heap.CreationNodeMask = 1;
+      pointer_heap.VisibleNodeMask = 1;
+      D3D12_RESOURCE_DESC pointer_upload_description{};
+      pointer_upload_description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+      pointer_upload_description.Width = pointer_upload_bytes;
+      pointer_upload_description.Height = 1;
+      pointer_upload_description.DepthOrArraySize = 1;
+      pointer_upload_description.MipLevels = 1;
+      pointer_upload_description.SampleDesc.Count = 1;
+      pointer_upload_description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+      check(device->CreateCommittedResource(
+                &pointer_heap, D3D12_HEAP_FLAG_NONE,
+                &pointer_upload_description,
+                D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                IID_PPV_ARGS(&pointer_upload)),
+            "ID3D12Device::CreateCommittedResource(pointer upload)");
+      check(pointer_upload->Map(
+                0, nullptr, reinterpret_cast<void**>(&pointer_upload_pixels)),
+            "ID3D12Resource::Map(pointer upload)");
     }
 
     // Preserve the last complete stereo pair independently of the producer's
@@ -2670,11 +2704,12 @@ class OpenXrProbe {
               static_cast<UINT>(cached_eye_barriers.size()),
               cached_eye_barriers.data());
         }
-        if (pointer_swapchain != XR_NULL_HANDLE && !pointer_swatch_uploaded) {
+        if (pointer_swapchain != XR_NULL_HANDLE && pointer_upload_pixels &&
+            !pointer_swatch_uploaded) {
           // A static swapchain is acquired exactly once. Stage the dark green
-          // block and the target sprite in the upload buffer's corner (the
-          // next capture repaints that corner), copy them in, and release
-          // after this frame's command list has been executed.
+          // block and the target sprite in the pointer's own upload buffer,
+          // copy them in, and release after this frame's command list has
+          // been executed. Nothing else writes that buffer.
           std::uint32_t pointer_image_index{};
           check_xr(xrAcquireSwapchainImage(pointer_swapchain, &acquire_info,
                                            &pointer_image_index),
@@ -2682,12 +2717,10 @@ class OpenXrProbe {
           check_xr(xrWaitSwapchainImage(pointer_swapchain, &image_wait),
                    "xrWaitSwapchainImage(pointer swatch)");
           for (std::uint32_t y = 0; y < pointer_swatch_extent; ++y) {
-            auto* row = upload_pixels + upload_footprint.Offset +
-                        static_cast<std::size_t>(
-                            flat_capture_height - pointer_swatch_extent + y) *
-                            upload_footprint.Footprint.RowPitch +
-                        static_cast<std::size_t>(
-                            flat_capture_width - pointer_swatch_extent) * 4;
+            auto* row = pointer_upload_pixels +
+                        pointer_upload_footprint.Offset +
+                        static_cast<std::size_t>(y) *
+                            pointer_upload_footprint.Footprint.RowPitch;
             for (std::uint32_t x = 0; x < pointer_swatch_extent; ++x) {
               const bool ray_block = x < pointer_ray_block_extent &&
                                      y < pointer_ray_block_extent;
@@ -2698,16 +2731,11 @@ class OpenXrProbe {
             }
           }
           darktidevr::core::paint_pointer_target(
-              upload_pixels + upload_footprint.Offset +
-                  static_cast<std::size_t>(
-                      flat_capture_height - pointer_swatch_extent +
-                      pointer_target_texels.offset.y) *
-                      upload_footprint.Footprint.RowPitch +
-                  static_cast<std::size_t>(
-                      flat_capture_width - pointer_swatch_extent +
-                      pointer_target_texels.offset.x) * 4,
-              upload_footprint.Footprint.RowPitch);
-          consumed_capture.reset();
+              pointer_upload_pixels + pointer_upload_footprint.Offset +
+                  static_cast<std::size_t>(pointer_target_texels.offset.y) *
+                      pointer_upload_footprint.Footprint.RowPitch +
+                  static_cast<std::size_t>(pointer_target_texels.offset.x) * 4,
+              pointer_upload_footprint.Footprint.RowPitch);
           auto* pointer_resource = pointer_images[pointer_image_index].texture;
           D3D12_RESOURCE_BARRIER swatch_barrier{};
           swatch_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -2719,19 +2747,15 @@ class OpenXrProbe {
               D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
           command_list->ResourceBarrier(1, &swatch_barrier);
           D3D12_TEXTURE_COPY_LOCATION swatch_source{};
-          swatch_source.pResource = upload.Get();
+          swatch_source.pResource = pointer_upload.Get();
           swatch_source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-          swatch_source.PlacedFootprint = upload_footprint;
+          swatch_source.PlacedFootprint = pointer_upload_footprint;
           D3D12_TEXTURE_COPY_LOCATION swatch_destination{};
           swatch_destination.pResource = pointer_resource;
           swatch_destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
           swatch_destination.SubresourceIndex = 0;
-          const D3D12_BOX swatch_box{
-              flat_capture_width - pointer_swatch_extent,
-              flat_capture_height - pointer_swatch_extent, 0,
-              flat_capture_width, flat_capture_height, 1};
           command_list->CopyTextureRegion(&swatch_destination, 0, 0, 0,
-                                          &swatch_source, &swatch_box);
+                                          &swatch_source, nullptr);
           std::swap(swatch_barrier.Transition.StateBefore,
                     swatch_barrier.Transition.StateAfter);
           command_list->ResourceBarrier(1, &swatch_barrier);

@@ -66,6 +66,7 @@ assert(text('back','View')=='[B]','menu back outside the hint context kept a key
 local point='[Point\194\160+\194\160RT]'
 assert(text('confirm_pressed','View')==point and text('navigate_primary_right_pressed','View')==point)
 assert(text('notification_option_a','View')=='[Unbound]','vote prompt must not show a keyboard key')
+assert(text('skip_cinematic_hold','View')=='[Hold\194\160RT]','cutscene skip legend must read Hold RT')
 assert(text('some_new_alias','View')=='[Unbound]','unrouted menu alias must read Unbound')
 assert(text('hotkey_inventory','View')=='keyboard:hotkey_inventory','hub hotkey hint must stay keyboard')
 scope('HudElementWieldInfo','_create_entry',function()

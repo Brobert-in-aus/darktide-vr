@@ -6858,6 +6858,25 @@ function presentation.apply_body_visibility(self, frame, force)
         return
     end
     controller_observation.body_visibility_last_apply_frame = frame
+    -- A cutscene hides the real players through the player visibility
+    -- extension (snapshot, hide, restore) and its own characters stand in
+    -- for them. Forcing the 3P body visible below put the player in the
+    -- scene twice. While the extension says hidden, keep the body hidden
+    -- and touch nothing else; the stock restore and the next pass bring it
+    -- back.
+    local stock_visibility = self._unit and Unit.alive(self._unit) and
+        ScriptUnit.has_extension(self._unit, "player_visibility_system")
+    if stock_visibility and not stock_visibility:visible() then
+        if not controller_observation.body_visibility_stock_hidden then
+            controller_observation.body_visibility_stock_hidden = true
+            mod:info("DARKTIDEVR_BODY stock_hidden=true body_left_hidden=true")
+        end
+        Unit.set_unit_visibility(self._unit, false, true)
+        return
+    elseif controller_observation.body_visibility_stock_hidden then
+        controller_observation.body_visibility_stock_hidden = false
+        mod:info("DARKTIDEVR_BODY stock_hidden=false body_reapplied=true")
+    end
 
     local EquipmentComponent = require(
         "scripts/extension_systems/visual_loadout/equipment_component")
@@ -14099,6 +14118,116 @@ end)
 -- texture to every third-person unit of the equipped slots that carries the
 -- display mesh, and unlink with the view. Logged so the next worn run shows
 -- which unit the view was given and how many third-person screens exist.
+-- Cutscenes and videos skip on a held right trigger. The stock views take
+-- `skip_cinematic_hold` (Space, gamepad A) for half a second after
+-- `on_skip_pressed`; in VR neither key reaches them. The trigger arms the
+-- press on its rising edge and answers the hold while it stays down. The
+-- legend's badge reads Hold RT through the prompt aliases.
+local cinematic_skip = {down = false}
+function presentation.cinematic_skip_trigger()
+    local trigger = tonumber(controller_observation.right_trigger)
+    if not trigger then
+        cinematic_skip.down = false
+        return nil, false
+    end
+    local down = trigger >= 0.55
+    local pressed = down and not cinematic_skip.down
+    cinematic_skip.down = down
+    return down, pressed
+end
+local function cinematic_skip_input(input_service, down)
+    if not down or not input_service then return input_service end
+    local proxy = {}
+    function proxy:get(action)
+        if action == "skip_cinematic_hold" or action == "skip_cinematic" then
+            return true
+        end
+        return input_service:get(action)
+    end
+    return setmetatable(proxy, {__index = function(_, key)
+        local value = input_service[key]
+        if type(value) == "function" then
+            return function(_, ...) return value(input_service, ...) end
+        end
+        return value
+    end})
+end
+mod:hook_require("scripts/ui/views/cutscene_view/cutscene_view", function(class)
+    mod:hook_safe(class, "on_enter", function() cinematic_skip.down = false end)
+    mod:hook(class, "update", function(func, self, dt, t, input_service, ...)
+        local down, pressed = presentation.cinematic_skip_trigger()
+        if down == nil then return func(self, dt, t, input_service, ...) end
+        if pressed and self.on_skip_pressed then
+            self:on_skip_pressed()
+            mod:info("DARKTIDEVR_CINEMATIC skip_pressed view=cutscene")
+        end
+        return func(self, dt, t, cinematic_skip_input(input_service, down), ...)
+    end)
+end)
+mod:hook_require("scripts/ui/views/video_view/video_view", function(class)
+    mod:hook_safe(class, "on_enter", function() cinematic_skip.down = false end)
+    mod:hook(class, "update", function(func, self, dt, t, input_service, ...)
+        local down, pressed = presentation.cinematic_skip_trigger()
+        if down == nil then return func(self, dt, t, input_service, ...) end
+        if pressed then
+            -- The stock legend appears on the first key or mouse press and the
+            -- hold then counts; the trigger does both.
+            local context = self._context
+            if context and context.allow_skip_input then
+                self._show_skip = true
+            end
+            self._skip_pressed = true
+            mod:info("DARKTIDEVR_CINEMATIC skip_pressed view=video")
+        end
+        return func(self, dt, t, cinematic_skip_input(input_service, down), ...)
+    end)
+end)
+
+-- The local player's companion units (the Skitarii servo-skull): alive,
+-- distance from the player and mesh visibility, for the invisible-skull report.
+mod:command("dtvr_companion", "Log the local player's companion units", function()
+    local player = Managers.player and Managers.player:local_player(1)
+    local unit = player and player.player_unit
+    local spawner = unit and Unit.alive(unit) and
+        ScriptUnit.has_extension(unit, "companion_spawner_system")
+    local units = spawner and spawner.companion_units and spawner:companion_units()
+    if not units or #units == 0 then
+        mod:echo("DARKTIDEVR_COMPANION none")
+        mod:info("DARKTIDEVR_COMPANION none")
+        return
+    end
+    local origin = Unit.world_position(unit, 1)
+    local visibility = ScriptUnit.has_extension(unit, "player_visibility_system")
+    local first_person = ScriptUnit.has_extension(unit, "first_person_system")
+    local ok_fp, in_first_person = pcall(function()
+        return first_person and first_person:is_in_first_person_mode()
+    end)
+    for i = 1, #units do
+        local companion = units[i]
+        local alive = companion and Unit.alive(companion)
+        local distance = alive and Vector3.distance(Unit.world_position(companion, 1), origin)
+        local meshes, visible = 0, 0
+        if alive then
+            local ok, count = pcall(Unit.num_meshes, companion)
+            meshes = ok and count or -1
+            for m = 0, (ok and count or 0) - 1 do
+                local ok_mesh, mesh = pcall(Unit.mesh, companion, m)
+                local ok_visible, shown = pcall(function()
+                    return Mesh and Mesh.is_visible and Mesh.is_visible(mesh)
+                end)
+                if ok_mesh and ok_visible and shown == true then visible = visible + 1 end
+            end
+        end
+        local line = string.format(
+            "DARKTIDEVR_COMPANION %d/%d alive=%s distance=%s meshes=%d visible_meshes=%d player_visible=%s first_person=%s",
+            i, #units, tostring(alive), distance and string.format("%.2f", distance) or "nil",
+            meshes, visible, tostring(visibility and visibility:visible()),
+            tostring(ok_fp and in_first_person))
+        mod:echo(line)
+        mod:info(line)
+    end
+end)
+
 mod:hook_require("scripts/ui/views/scanner_display_view/scanner_display_view", function(class)
     local slots = {"slot_device", "slot_pocketable", "slot_pocketable_small",
         "slot_primary", "slot_secondary"}

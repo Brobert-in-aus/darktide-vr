@@ -87,6 +87,7 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
         navigate_secondary_left_pressed="vr_menu_point_select",
         navigate_secondary_right_pressed="vr_menu_point_select",
         next_hint=false, notification_option_a=false, notification_option_b=false,
+        skip_cinematic="vr_menu_hold_skip", skip_cinematic_hold="vr_menu_hold_skip",
     }
     local secondary_aliases = {right=true, right_pressed=true, right_released=true, right_hold=true}
     local logged_view_aliases = {}
