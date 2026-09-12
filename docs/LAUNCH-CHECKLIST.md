@@ -25,8 +25,9 @@ here, in the handover and on the Nexus page draft.
   headset and can be answered with the pointer. Passed 12 September
   (gun placement, popup with laser and cursor, medicrate badge, marker
   step).
-- [ ] Enter the Psykhanium twice in one session and exit the game from
-  the onboarding normally (the two crash guards in 4efe666).
+- [x] Enter the Psykhanium twice in one session and exit the game from
+  the onboarding normally (the two crash guards in 4efe666). Passed 12
+  September evening; neither guard fired in that run.
 - [ ] Aim-down-sights focus: vignette, tighter reticle, steadier aim while
   the sight is held; releases cleanly.
 - [ ] Block pose on a melee weapon (shovel or sword).
