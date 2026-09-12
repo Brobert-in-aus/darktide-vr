@@ -76,7 +76,10 @@ local options=assert(groups.hud_options, 'missing HUD settings')
 assert(groups.vr_turning and groups.vr_turning.type=='group')
 assert(groups.controller_bindings and groups.controller_bindings.type=='group')
 assert(options.setting_id=='hud_options' and options.type=='group')
-assert(#options.sub_widgets==4)
+assert(#options.sub_widgets==5)
+assert(options.sub_widgets[5].setting_id=='focus_warning' and
+    options.sub_widgets[5].type=='checkbox' and options.sub_widgets[5].default_value==true)
+assert(text.focus_warning.en and text.focus_warning_description.en and text.hud_focus_notice.en)
 for _,widget in ipairs(options.sub_widgets) do
     if widget.type == 'numeric' then
     assert(widget.type=='numeric' and widget.default_value>=widget.range[1] and

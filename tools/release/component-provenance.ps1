@@ -2,7 +2,10 @@
 function Assert-ComponentProvenance {
     [CmdletBinding()]
     param([Parameter(Mandatory)] $Receipt,
-          [Parameter(Mandatory)][object[]] $Files)
+          [Parameter(Mandatory)][object[]] $Files,
+          # Package-relative paths of project-built payloads; every one must be
+          # covered. The default matches the project binaries by file name.
+          [string[]] $ProjectBinaries)
     if ($Receipt.schema_version -ne 1 -or $Receipt.kind -cne 'component_build_records') {
         throw 'Unsupported component provenance receipt.'
     }
@@ -34,8 +37,9 @@ function Assert-ComponentProvenance {
     # These are project-built payloads. Third-party binaries have their own
     # pinned dependency checks; they must not inherit the packaging revision.
     foreach ($file in $Files) {
-        if ($file.path -match '(^|[\\/])(darktidevr_native_capture\.dll|d3d12\.dll|darktidevr-xr-harness\.exe)$' -and
-                -not $covered.Contains([string]$file.path)) {
+        $isProjectBinary = if ($ProjectBinaries) { $ProjectBinaries -icontains [string]$file.path }
+            else { $file.path -match '(^|[\\/])(darktidevr_native_capture\.dll|d3d12\.dll|darktidevr-xr-harness\.exe)$' }
+        if ($isProjectBinary -and -not $covered.Contains([string]$file.path)) {
             throw "Project binary lacks a component build record: $($file.path)"
         }
     }

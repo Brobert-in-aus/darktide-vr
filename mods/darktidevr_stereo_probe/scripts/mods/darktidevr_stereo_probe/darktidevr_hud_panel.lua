@@ -76,6 +76,9 @@ local state = {
     -- The fixed HUD panel is part of the accepted play configuration; the flag
     -- file remains a diagnostic override.
     enabled = true,
+    focus_warning = true,
+    focus_poll_t = 0,
+    window_focused = nil,
     diagnostic = false,
     symbol_probe = false,
     same_world_probe = false,
@@ -135,6 +138,7 @@ end
 
 function HudPanel.read_settings(mod)
     local function value(name) return mod.get and mod:get(name) end
+    state.focus_warning = value("focus_warning") ~= false
     return HudPanel.apply_settings(value("hud_size"), value("hud_distance"),
         value("hud_internal_scale"))
 end
@@ -306,20 +310,46 @@ function HudPanel.update_editor_request(owner)
     custom:toggle_hud_customization()
 end
 
-function HudPanel.draw_editor_notice(renderer)
-    if not HudPanel.editing() then return end
+local function draw_notice(renderer, text, vertical_fraction, background)
     local width, height = state.target_width, state.target_height
     if not width or not height then return end
     -- Author into the shared HUD texture so both eyes receive identical text.
     -- A separate renderer facade preserves the stock pass's cleared scale state.
     local notice_renderer = setmetatable({scale=1,render_settings=false},{__index=renderer})
     local size, margin = width / 1920 * 34, width * 0.035
-    UIRenderer.draw_rect(notice_renderer,Vector3(margin,height*.88,19000),
-        Vector3(width-2*margin,size*2,0),Color(235,12,16,20))
-    UIRenderer.draw_text(notice_renderer,state.mod:localize("hud_editor_notice"),
-        size,"proxima_nova_bold",Vector3(margin,height*.88,19001),
+    UIRenderer.draw_rect(notice_renderer,Vector3(margin,height*vertical_fraction,19000),
+        Vector3(width-2*margin,size*2,0),background)
+    UIRenderer.draw_text(notice_renderer,text,
+        size,"proxima_nova_bold",Vector3(margin,height*vertical_fraction,19001),
         Vector3(width-2*margin,size*2,0),Color(255,230,245,240),
         {horizontal_alignment="center",vertical_alignment="center"})
+end
+
+function HudPanel.draw_editor_notice(renderer)
+    if HudPanel.editing() then
+        draw_notice(renderer, state.mod:localize("hud_editor_notice"), 0.88,
+            Color(235,12,16,20))
+    end
+    -- Losing the OS foreground stops frame generation and controller input
+    -- reaching the game; the headset otherwise shows a silently frozen world.
+    if state.focus_warning and state.window_focused == false then
+        draw_notice(renderer, state.mod:localize("hud_focus_notice"), 0.12,
+            Color(235,90,20,10))
+    end
+end
+
+-- Polled from the HUD update at a low rate; nil (unknown) never warns.
+function HudPanel.poll_window_focus(t)
+    if not state.focus_warning or t < state.focus_poll_t + 0.5 then return end
+    state.focus_poll_t = t
+    local reader = HudPanel.read_mirror
+    if not reader then return end
+    local _, _, _, _, foreground = reader()
+    local focused = foreground == nil and nil or foreground == true
+    if focused ~= state.window_focused then
+        state.window_focused = focused
+        state.mod:info("DARKTIDEVR_HUD window_focused=%s", tostring(focused))
+    end
 end
 
 function HudPanel.editor_rect(width, height, capture_width, capture_height, panel_aspect, mirror_width, mirror_height)
@@ -834,10 +864,12 @@ function HudPanel.install(mod)
     mod.on_setting_changed = function(setting_id)
         if previous_setting_changed then previous_setting_changed(setting_id) end
         if setting_id == "hud_size" or setting_id == "hud_distance" or
-                setting_id == "hud_internal_scale" then HudPanel.read_settings(mod) end
+                setting_id == "hud_internal_scale" or
+                setting_id == "focus_warning" then HudPanel.read_settings(mod) end
     end
     mod:hook("UIHud", "update", function(func, self, dt, t, input_service)
         update_enabled_flag(mod, t or 0)
+        HudPanel.poll_window_focus(t or 0)
         HudPanel.update_editor_request(self)
         local editor = self._elements and self._elements.HudElementCustomizer
         if state.enabled and editor and not editor._setup_complete then

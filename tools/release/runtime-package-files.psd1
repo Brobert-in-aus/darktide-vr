@@ -1,57 +1,41 @@
 @{
+    # Each entry copies a repository file (Source, relative to the repository
+    # root) to a path inside the release archive (Destination, relative to the
+    # archive root). The archive is shaped like the game folder: extract it
+    # over the Darktide installation so that mods\darktidevr_stereo_probe lands
+    # beside the other mods, then run "Darktide VR Mode.bat" inside it.
     Files = @(
-        'THIRD_PARTY_NOTICES.md'
-        'docs/RUNTIME-PACKAGE.md'
-        'mods/darktidevr_stereo_probe/darktidevr_stereo_probe.mod'
-        'tools/lua/test-lua-syntax.ps1'
-        'tools/lua/validator-hash.ps1'
-        'tools/lua/compile.lua'
-        'tools/quest/set-proximity-override.ps1'
-        'tools/quest/resolve-quest-transport.ps1'
-        'tools/unattended/invoke-unattended-preflight.ps1'
-        'tools/unattended/xr-readiness.ps1'
-        'tools/unattended/source-checkout-identity.ps1'
-        'tools/stereo/launch-darktide-vr.ps1'
-        'tools/stereo/start-darktide-vr.ps1'
-        'tools/stereo/clean-launch-diagnostics.ps1'
-        'tools/stereo/run-darktide-shared-eyes.ps1'
-        'tools/stereo/resolve-darktide-game-root.ps1'
-        'tools/stereo/set-skinner-assert-patch.ps1'
-        'tools/stereo/psykhanium-launch-request.ps1'
-        'tools/stereo/darktide-process-result.ps1'
-        'tools/stereo/shared-stereo-evidence.ps1'
-        'tools/stereo/advance-darktide-to-hub.ps1'
-        'tools/stereo/invoke-darktide-launcher-play.ps1'
-        'tools/stereo/set-darktide-windowed.ps1'
-        'tools/stereo/set-vr-worker-threads.ps1'
-        'tools/stereo/test-darktide-lua-source.ps1'
-        'tools/stereo/sync-darktide-vr-dev.ps1'
-        'tools/stereo/invoke-deployment-transaction.ps1'
-        'tools/stereo/restore-deployment-transaction.ps1'
-        'tools/stereo/restore-darktide-vr-deployment.ps1'
-        'tools/stereo/get-vr-mod-load-order.ps1'
-        'tools/stereo/production-billboard-shader.ps1'
-        'tools/stereo/dxc-runtime.ps1'
-        'tools/dependencies/dxc-runtime.psd1'
-        'tools/stereo/particle-horizon-lock.vs.hlsl'
-        'tools/stereo/install-darktide-vr-shortcut.ps1'
-        'tools/release/test-runtime-package.ps1'
-        'tools/release/component-provenance.ps1'
-        'tools/release/runtime-package-files.psd1'
-        'build/dependencies/luajit/src/luajit.exe'
-        'build/dependencies/luajit/validator.json'
-        'build/dependencies/luajit/COPYRIGHT'
-        'build/dependencies/dxc-runtime/dxcompiler.dll'
-        'build/dependencies/dxc-runtime/LICENSE-LLVM.txt'
-        'build/dependencies/dxc-runtime/LICENSE-MIT.txt'
-        'build/dependencies/dxc-runtime/LICENSE-MS.txt'
-        'build/generated/billboard_shaders/vs-42e436fb1ef1b392.dxil'
-        'build/generated/billboard_shaders/production-shader.json'
-        'build/windows-vs2022/src/producer/Release/darktidevr_native_capture.dll'
-        'build/windows-vs2022/src/producer/Release/d3d12.dll'
-        'build/windows-vs2022/tests/xr_harness/Release/darktidevr-xr-harness.exe'
-        'build/windows-vs2022/tests/xr_harness/Release/openxr_loader.dll'
-        'build/windows-vs2022/tests/xr_harness/Release/OPENXR-LICENSE.txt'
+        @{ Source = 'tools/release/package-README.txt'; Destination = 'README.txt' }
+        @{ Source = 'LICENSE'; Destination = 'LICENSE' }
+        @{ Source = 'THIRD_PARTY_NOTICES.md'; Destination = 'THIRD_PARTY_NOTICES.md' }
+        @{ Source = 'CHANGELOG.md'; Destination = 'CHANGELOG.md' }
+        @{ Source = 'docs/USER-GUIDE.md'; Destination = 'USER-GUIDE.md' }
+        @{ Source = 'mods/darktidevr_stereo_probe/darktidevr_stereo_probe.mod'; Destination = 'mods/darktidevr_stereo_probe/darktidevr_stereo_probe.mod' }
+        @{ Source = 'mods/darktidevr_stereo_probe/Darktide VR Mode.bat'; Destination = 'mods/darktidevr_stereo_probe/Darktide VR Mode.bat' }
+        @{ Source = 'mods/darktidevr_stereo_probe/darktidevr-mode.ps1'; Destination = 'mods/darktidevr_stereo_probe/darktidevr-mode.ps1' }
+        @{ Source = 'tools/stereo/set-skinner-assert-patch.ps1'; Destination = 'mods/darktidevr_stereo_probe/tools/set-skinner-assert-patch.ps1' }
+        @{ Source = 'build/windows-vs2022/src/producer/Release/d3d12.dll'; Destination = 'mods/darktidevr_stereo_probe/bin/d3d12.dll' }
+        @{ Source = 'build/windows-vs2022/src/producer/Release/darktidevr_native_capture.dll'; Destination = 'mods/darktidevr_stereo_probe/bin/darktidevr_native_capture.dll' }
+        @{ Source = 'build/windows-vs2022/tests/xr_harness/Release/darktidevr-xr-harness.exe'; Destination = 'mods/darktidevr_stereo_probe/bin/darktidevr-xr-harness.exe' }
+        @{ Source = 'build/windows-vs2022/tests/xr_harness/Release/openxr_loader.dll'; Destination = 'mods/darktidevr_stereo_probe/bin/openxr_loader.dll' }
+        @{ Source = 'build/windows-vs2022/tests/xr_harness/Release/OPENXR-LICENSE.txt'; Destination = 'mods/darktidevr_stereo_probe/bin/OPENXR-LICENSE.txt' }
+        @{ Source = 'build/dependencies/dxc-runtime/dxcompiler.dll'; Destination = 'mods/darktidevr_stereo_probe/bin/dxcompiler.dll' }
+        @{ Source = 'build/dependencies/dxc-runtime/LICENSE-LLVM.txt'; Destination = 'mods/darktidevr_stereo_probe/bin/DXC-LICENSE-LLVM.txt' }
+        @{ Source = 'build/dependencies/dxc-runtime/LICENSE-MIT.txt'; Destination = 'mods/darktidevr_stereo_probe/bin/DXC-LICENSE-MIT.txt' }
+        @{ Source = 'build/dependencies/dxc-runtime/LICENSE-MS.txt'; Destination = 'mods/darktidevr_stereo_probe/bin/DXC-LICENSE-MS.txt' }
+        @{ Source = 'build/generated/billboard_shaders/vs-42e436fb1ef1b392.dxil'; Destination = 'mods/darktidevr_stereo_probe/bin/billboard_shaders/vs-42e436fb1ef1b392.dxil' }
+        # Presence-gated bootstrap options that are part of the play configuration.
+        @{ Source = 'tools/release/package-files/bin/darktidevr_billboard_shader_substitution.flag'; Destination = 'mods/darktidevr_stereo_probe/bin/darktidevr_billboard_shader_substitution.flag' }
+        @{ Source = 'tools/release/package-files/bin/darktidevr_cluster_light_visibility_fix.flag'; Destination = 'mods/darktidevr_stereo_probe/bin/darktidevr_cluster_light_visibility_fix.flag' }
     )
+    # Every Lua module in this repository directory is copied to the
+    # destination directory; the .mod descriptor lists the entry chunk.
     LuaDirectory = 'mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe'
+    LuaDestination = 'mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe'
+    # Project-built payloads that a component build record must cover.
+    ProjectBinaries = @(
+        'mods/darktidevr_stereo_probe/bin/d3d12.dll'
+        'mods/darktidevr_stereo_probe/bin/darktidevr_native_capture.dll'
+        'mods/darktidevr_stereo_probe/bin/darktidevr-xr-harness.exe'
+    )
 }

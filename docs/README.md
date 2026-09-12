@@ -13,7 +13,7 @@ anything with a date in its name as history unless a current note links to it.
 - Latest handover: [12 September](handoffs/2026-09-12.md) (after
   [11 September end of day](handoffs/2026-09-11-end-of-day.md));
   latest todo: [11 September](phase1/todo-2026-09-11.md)
-- [Very early alpha readiness](EARLY-ALPHA-READINESS.md) and [runtime package](RUNTIME-PACKAGE.md)
+- [User guide](USER-GUIDE.md) (ships in the package), [very early alpha readiness](EARLY-ALPHA-READINESS.md) and [release package](RUNTIME-PACKAGE.md)
 - [Whole-project code review, 11 September](CODE-REVIEW-2026-09-11.md)
 - [Performance bundle, 11 September](PERFORMANCE-BUNDLE-2026-09-11.md): the
   day's optimisations as the deployed baseline, launcher defaults, controls

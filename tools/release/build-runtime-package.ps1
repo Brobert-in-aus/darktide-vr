@@ -11,6 +11,8 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $spec = Import-PowerShellDataFile -LiteralPath (Join-Path $PSScriptRoot 'runtime-package-files.psd1')
+# Repository-side gates: the pinned reflection runtime, every Lua chunk and the
+# production shader identity are checked here, before anything is staged.
 . (Join-Path $root 'tools/stereo/dxc-runtime.ps1')
 @(Get-VerifiedDxcRuntimeFiles) | Out-Null
 & (Join-Path $root 'tools/stereo/test-darktide-lua-source.ps1')
@@ -20,32 +22,37 @@ Assert-ProductionBillboardShader -ShaderPath (Join-Path $root 'build/generated/b
 . (Join-Path $root 'tools/unattended/source-checkout-identity.ps1')
 $identity = Get-SourceCheckoutIdentity -Root $root
 if (-not $identity.available) { throw 'Build the package from its source checkout to record its revision.' }
-$relativeFiles = @($spec.Files)
+$entries = @()
+foreach ($file in $spec.Files) { $entries += [pscustomobject]@{ source = [string]$file.Source; path = [string]$file.Destination } }
 foreach ($file in Get-ChildItem -LiteralPath (Join-Path $root $spec.LuaDirectory) -Filter '*.lua' -File) {
-    $relativeFiles += $spec.LuaDirectory + '/' + $file.Name
+    $entries += [pscustomobject]@{ source = $spec.LuaDirectory + '/' + $file.Name; path = $spec.LuaDestination + '/' + $file.Name }
 }
 $plan = @()
-$seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-foreach ($relative in $relativeFiles) {
-    $source = [IO.Path]::GetFullPath((Join-Path $root $relative))
-    if ([IO.Path]::IsPathRooted($relative) -or -not $source.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase) -or
-            -not $seen.Add($source)) { throw 'Invalid or duplicate package source path.' }
-    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Package input is missing: $relative" }
+$seenSources = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$seenDestinations = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($entry in $entries) {
+    $source = [IO.Path]::GetFullPath((Join-Path $root $entry.source))
+    if ([IO.Path]::IsPathRooted($entry.source) -or [IO.Path]::IsPathRooted($entry.path) -or
+            -not $source.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase) -or
+            $entry.path -match '(^|/)\.\.(/|$)' -or -not $seenSources.Add($source) -or -not $seenDestinations.Add($entry.path)) {
+        throw "Invalid or duplicate package entry: $($entry.source) -> $($entry.path)"
+    }
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Package input is missing: $($entry.source)" }
     $cursor = $source
     while ($cursor -ne $root) {
         if ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
-            throw "Package input contains a reparse point: $relative"
+            throw "Package input contains a reparse point: $($entry.source)"
         }
         $cursor = Split-Path -Parent $cursor
     }
-    $plan += [pscustomobject]@{ path=$relative; source=$source; bytes=(Get-Item -LiteralPath $source).Length;
+    $plan += [pscustomobject]@{ path=$entry.path; source=$source; bytes=(Get-Item -LiteralPath $source).Length;
         sha256=(Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash }
 }
 $provenance = $null
 if ($ComponentProvenancePath) {
     . (Join-Path $PSScriptRoot 'component-provenance.ps1')
     $provenance = Get-Content -LiteralPath $ComponentProvenancePath -Raw | ConvertFrom-Json
-    Assert-ComponentProvenance -Receipt $provenance -Files $plan
+    Assert-ComponentProvenance -Receipt $provenance -Files $plan -ProjectBinaries @($spec.ProjectBinaries)
 } elseif ($RequireComponentProvenance) {
     throw 'Component build records are required before packaging.'
 }
@@ -64,16 +71,22 @@ foreach ($entry in $plan) {
     }
 }
 [ordered]@{
-    schema_version=1; platform='windows-x64'; release_state='development_candidate'
+    schema_version=2; platform='windows-x64'
+    release_state=$(if ($ReleaseVersion) { 'release_candidate' } else { 'development_candidate' })
     release_version=$(if ($ReleaseVersion) { $ReleaseVersion } else { $null })
+    layout='game_folder'
     source_revision=$identity.head; source_branch=$identity.branch; source_dirty=$identity.dirty
     source_revision_scope='packaging_checkout'
     binary_source_provenance=$(if ($provenance) { 'recorded_hash_matched_claims' } else { 'not_recorded' })
     component_provenance=$provenance
+    project_binaries=@($spec.ProjectBinaries)
+    lua_directory=$spec.LuaDestination
     built_utc=(Get-Date).ToUniversalTime().ToString('o')
     files=@($plan | Select-Object path,bytes,sha256)
 } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $package 'package-manifest.json') -Encoding UTF8
-& (Join-Path $package 'tools/release/test-runtime-package.ps1') -PackageRoot $package
+& (Join-Path $PSScriptRoot 'test-runtime-package.ps1') -PackageRoot $package
 $archive = Join-Path $output ($name + '.zip')
-Compress-Archive -LiteralPath $package -DestinationPath $archive -CompressionLevel Optimal
+# Archive the contents, not the folder, so extracting into the game folder
+# places mods\darktidevr_stereo_probe directly.
+Compress-Archive -Path (Join-Path $package '*') -DestinationPath $archive -CompressionLevel Optimal
 [pscustomobject]@{ PackageRoot=$package; Archive=$archive; SHA256=(Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash }

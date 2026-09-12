@@ -33,6 +33,45 @@ if (-not (Test-Path -LiteralPath $patchTool -PathType Leaf)) {
     $patchTool = Join-Path (Split-Path -Parent (Split-Path -Parent $modRoot)) 'tools\stereo\set-skinner-assert-patch.ps1'
 }
 
+# Separate settings per mode: the game keeps video, audio, input bindings and
+# the rest in one file, so the switch keeps one copy per mode and swaps them.
+# The first switch into a mode starts that mode's copy from the current file.
+$settingsDirectory = Join-Path $env:APPDATA 'Fatshark\Darktide'
+$settingsPath = Join-Path $settingsDirectory 'user_settings.config'
+$profileDirectory = Join-Path $env:LOCALAPPDATA 'DarktideVR'
+$profileMarker = Join-Path $profileDirectory 'settings-profile.txt'
+
+function Get-SettingsProfile {
+    if (Test-Path -LiteralPath $profileMarker -PathType Leaf) {
+        $value = (Get-Content -LiteralPath $profileMarker -Raw).Trim()
+        if ($value -in @('vr', 'flat')) { return $value }
+    }
+    return 'flat'
+}
+
+function Switch-SettingsProfile([string] $Target) {
+    $current = Get-SettingsProfile
+    if ($current -eq $Target) {
+        Write-Output "Settings: already the $Target profile."
+        return
+    }
+    if (-not (Test-Path -LiteralPath $settingsPath -PathType Leaf)) {
+        Write-Output "Settings: no user_settings.config yet; nothing to swap."
+        return
+    }
+    New-Item -ItemType Directory -Path $profileDirectory -Force | Out-Null
+    $savedCurrent = Join-Path $profileDirectory "user_settings.$current.config"
+    $savedTarget = Join-Path $profileDirectory "user_settings.$Target.config"
+    Copy-Item -LiteralPath $settingsPath -Destination $savedCurrent -Force
+    if (Test-Path -LiteralPath $savedTarget -PathType Leaf) {
+        Copy-Item -LiteralPath $savedTarget -Destination $settingsPath -Force
+        Write-Output "Settings: $current profile saved, $Target profile restored."
+    } else {
+        Write-Output "Settings: $current profile saved; the $Target profile starts from the current settings."
+    }
+    Set-Content -LiteralPath $profileMarker -Value $Target -Encoding ascii
+}
+
 function Get-FileSha256([string] $Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -72,6 +111,7 @@ function Write-Status {
     Write-Output "viewer=$(if (Test-Path -LiteralPath $viewerPath -PathType Leaf) { 'present' } else { 'missing' })"
     Write-Output "native=$(if (Test-Path -LiteralPath $nativePath -PathType Leaf) { 'present' } else { 'missing' })"
     Write-Output "dmf=$(if (Test-Path -LiteralPath (Join-Path $GameRoot 'mods\dmf') -PathType Container) { 'present' } else { 'missing' })"
+    Write-Output "settings_profile=$(Get-SettingsProfile)"
 }
 
 if (-not (Test-Path -LiteralPath $gameExe -PathType Leaf)) {
@@ -129,6 +169,7 @@ if ($Mode -eq 'vr') {
         [IO.File]::WriteAllText($loadOrderPath, $content + $modName + "`r`n")
         Write-Output 'Load order: added.'
     }
+    Switch-SettingsProfile 'vr'
     Write-Output 'VR mode is on. Launch Darktide through Steam as usual.'
     Write-Status
     exit 0
@@ -155,5 +196,6 @@ if ((Get-LoadOrderState) -eq 'listed') {
 } else {
     Write-Output 'Load order: not listed.'
 }
+Switch-SettingsProfile 'flat'
 Write-Output 'Flat mode is on. Other mods and the mod folder are untouched.'
 Write-Status

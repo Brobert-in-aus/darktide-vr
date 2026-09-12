@@ -114,6 +114,9 @@ return {
     hud_editor_close_menu = {en = "Close the menus to toggle HUD layout editing in the desktop view."},
     hud_editor_cancelled = {en = "HUD layout editor request cancelled."},
     hud_editor_notice = {en = "Use the desktop view to edit your HUD layout."},
+    hud_focus_notice = {en = "Game window not focused: click the Darktide window on the desktop (frame generation and controls pause)."},
+    focus_warning = {en = "Warn when the game window loses focus"},
+    focus_warning_description = {en = "Show a notice on the VR HUD while another window has the desktop focus. Frame generation and controller input stop until the Darktide window is focused again."},
     hud_options = {en = "HUD"},
     hud_size = {en = "HUD size (%%)"},
     hud_size_description = {

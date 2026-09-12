@@ -73,6 +73,11 @@ return {
                         decimals_number = 0,
                         step_size_value = 5,
                     },
+                    {
+                        setting_id = "focus_warning",
+                        type = "checkbox",
+                        default_value = true,
+                    },
                 },
             },
             mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_turning").widgets(),

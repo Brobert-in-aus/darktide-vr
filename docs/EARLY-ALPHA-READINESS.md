@@ -1,5 +1,16 @@
 # Very early alpha readiness
 
+Update 12 September 2026: the installation path changed to an ordinary mod
+install (extract, one batch file, launch through Steam; see
+[USER-GUIDE.md](USER-GUIDE.md) and [RUNTIME-PACKAGE.md](RUNTIME-PACKAGE.md)).
+The game starts the viewer itself; the launcher chain, its exact-hash runner,
+the ADB/VDXR preflight and the automated Play press are development tools
+only. EAC is confirmed absent from the installed game (no EAC files, the
+Fatshark launcher passes `-eac-untrusted`). The licence is MIT. The
+"usable installation path" and "supportable distribution" rows below are
+addressed by that change; the clean-install rehearsal and the worn checks on
+the packaged build are recorded in the 12 September handoff as they happen.
+
 Investigated 10 September 2026. This is a proposed release scope and evidence
 checklist, not a release approval or a request to resume general gameplay testing.
 The user's instruction to skip basic gameplay verification remains in force.
