@@ -72,7 +72,8 @@ like any other Darktide mod and is launched through Steam as usual.
   Streamer with VDXR as the runtime, Quest 3.
 - NVIDIA RTX 40-series or newer for frame generation (the mod runs without
   it at the native frame rate; other GPUs untested).
-- Optional: Custom HUD, for HUD layout editing.
+- Optional: Custom HUD (continued), for HUD layout editing (tested with
+  2.1.6; the original Custom HUD is untested).
 
 ## Installation
 

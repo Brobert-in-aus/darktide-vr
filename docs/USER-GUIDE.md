@@ -23,8 +23,11 @@ have rough edges on yours. Read the "Known limits" section before you judge it.
   runtimes and headsets are untested; controllers other than Touch fall back
   to the basic OpenXR profile (select and menu only) until their bindings
   are added.
-- Optional: the Custom HUD mod, which the VR mod uses for HUD layout
-  editing. Everything else works without it.
+- Optional: Custom HUD (continued), the maintained fork of Custom HUD,
+  which the VR mod uses for HUD layout editing. That is the version the
+  integration was built and tested against (2.1.6); the original Custom
+  HUD uses the same mod id and may work but is untested. Everything else
+  works without it.
 
 ## Install
 
@@ -100,8 +103,8 @@ patch needs an update from us.
 - The hub is first person by default; "Third-person body in the hub" shows
   the stock character instead, with the right stick orbiting the camera.
 - The HUD sits on a fixed panel in front of you; size, distance and text
-  scale are in the options. With Custom HUD installed, the layout editor
-  opens in the desktop window from the same options group.
+  scale are in the options. With Custom HUD (continued) installed, the
+  layout editor opens in the desktop window from the same options group.
 - The game window must keep the desktop focus. If another window takes it,
   frame generation and controller input stop and the HUD shows a warning
   (it can be turned off in the HUD options). Click the Darktide window to

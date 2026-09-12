@@ -80,7 +80,9 @@ what ships.
 - [ ] `CHANGELOG.md`: the alpha.1 entry is complete (reviewed; the
   marker entry corrected, the stale 120 Hz line replaced). The heading
   still says "(unreleased)": replace it with the release date on the
-  day you publish, rebuild, and update the archive identity here.
+  day you publish, rebuild, and update the archive identity here. That
+  rebuild also carries the user guide's Custom HUD (continued) wording,
+  which postdates the 8f860f6 archive.
 - [x] `LICENSE` (MIT) and `THIRD_PARTY_NOTICES.md` present; notices cover
   the OpenXR loader, MinHook, the Streamline ABI, the LuaJIT validator
   and DirectXShaderCompiler, with the DXC licence texts shipped beside
@@ -116,7 +118,8 @@ Draft text is in `docs/NEXUS-PAGE.md`; copy from there, do not retype.
   **very early alpha** in the first line.
 - [ ] Requirements: Darktide Mod Loader, Darktide Mod Framework (link both
   Nexus pages), Virtual Desktop with VDXR, Quest 3, NVIDIA RTX for frame
-  generation. Optional: Custom HUD.
+  generation. Optional: Custom HUD (continued), linked to its Nexus
+  page, not the original.
 - [ ] Installation section matches the package README word for word.
 - [ ] Known limits list matches the user guide.
 - [ ] Planned section is on the page (from the draft), so requests for
