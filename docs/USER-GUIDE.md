@@ -49,9 +49,12 @@ patch needs an update from us.
 
 ## First run
 
-- The mod forces the game into a window. Leave it that way; the window size
-  does not change what the headset renders. Fullscreen is switched off at
-  every start while VR mode is on.
+- The mod forces the game into a window and leaves its size to you; the
+  headset renders at the headset's resolution regardless, and in-game menus
+  are taken from the game's own canvas rather than the window. Only the
+  character-select and title screens still come from the window, so keep
+  it at least 1280x720 for readable text there. Fullscreen is switched off
+  at every start while VR mode is on.
 - On the character-select screen the **VR calibration** opens by itself the
   first time. Stand or sit as you will play, follow the two poses (arms out
   in a T, then arms at your sides) and save. Your official character height
@@ -89,7 +92,11 @@ patch needs an update from us.
 - Weapons on mission servers fire from the game's own firing position, not
   from an independent hand origin.
 - Ledge discovery follows hand aim.
-- Text entry needs a physical keyboard.
+- Text entry needs a physical keyboard, including the character name on
+  creation (the Randomize button works with the pointer).
+- The prologue's opening cinematic shows black in the headset with the
+  subtitles piling up; the game continues normally after it. Under
+  investigation.
 - The two onboarding hub missions after the prologue force third person and
   are not yet VR-admitted; the prologue itself is.
 - The desktop window must stay focused (see above).
