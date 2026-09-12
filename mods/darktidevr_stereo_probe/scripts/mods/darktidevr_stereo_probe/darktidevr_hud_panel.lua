@@ -320,8 +320,10 @@ local function draw_notice(renderer, text, centre_fraction, background)
     local notice_renderer = setmetatable({scale=1,render_settings=false},{__index=renderer})
     local size, margin = width / 1920 * 34, width * 0.035
     local top = height * centre_fraction - size
-    UIRenderer.draw_rect(notice_renderer,Vector3(margin,top,19000),
-        Vector3(width-2*margin,size*2,0),background)
+    if background then
+        UIRenderer.draw_rect(notice_renderer,Vector3(margin,top,19000),
+            Vector3(width-2*margin,size*2,0),background)
+    end
     UIRenderer.draw_text(notice_renderer,text,
         size,"proxima_nova_bold",Vector3(margin,top,19001),
         Vector3(width-2*margin,size*2,0),Color(255,230,245,240),
@@ -342,8 +344,9 @@ function HudPanel.draw_editor_notice(renderer)
         draw_notice(renderer, state.mod:localize("hud_editor_notice"), 0.91,
             Color(235,12,16,20))
     end
+    -- Cinematic subtitles: bottom edge of the panel, no background box.
     if state.subtitle_text then
-        draw_notice(renderer, state.subtitle_text, 0.86, Color(200,0,0,0))
+        draw_notice(renderer, state.subtitle_text, 0.95, nil)
     end
     -- Losing the OS foreground stops frame generation and controller input
     -- reaching the game; the headset otherwise shows a silently frozen world.

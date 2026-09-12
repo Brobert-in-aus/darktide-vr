@@ -13900,9 +13900,28 @@ mod:hook_safe(
         if secondary_text ~= "" then
             text = text ~= "" and (text .. "\n" .. secondary_text) or secondary_text
         end
+        local stereo = presentation.cinematic_stereo_active()
+        -- In stereo the stock lines and their background boxes would land
+        -- on the HUD panel mid-height; hide them and draw the mirrored text
+        -- at the panel's bottom edge with no box. Restore when it ends.
+        for _, widget in ipairs({widgets and widgets.subtitles, widgets and widgets.secondary_subtitles}) do
+            if widget then
+                if stereo then
+                    widget.visible = false
+                    if widget.content then widget.content.visible = false end
+                    widget.darktidevr_hidden = true
+                elseif widget.darktidevr_hidden then
+                    widget.visible = true
+                    if widget.content then widget.content.visible = true end
+                    widget.darktidevr_hidden = nil
+                end
+            end
+        end
+        if stereo then
+            self._draw_letterbox = false
+        end
         if presentation.hud_panel then
-            presentation.hud_panel.set_subtitle(
-                presentation.cinematic_stereo_active() and text ~= "" and text or nil)
+            presentation.hud_panel.set_subtitle(stereo and text ~= "" and text or nil)
         end
     end)
 
