@@ -22,4 +22,29 @@ inline void paint_reticle_atlas(std::byte* pixels, std::uint32_t row_pitch) {
     }
   }
 }
+
+// Paint the 64x64 aim-down-sights vignette sprite: black, transparent at the
+// centre, darkening towards the edge. strength (0..1) scales the whole alpha
+// so the viewer can ease it in and out by repainting.
+inline void paint_vignette_atlas(std::byte* pixels, std::uint32_t row_pitch,
+                                 float strength) {
+  if (strength < 0.0F) strength = 0.0F;
+  if (strength > 1.0F) strength = 1.0F;
+  for (int y = 0; y < 64; ++y) {
+    for (int x = 0; x < 64; ++x) {
+      const float dx = (static_cast<float>(x) + 0.5F - 32.0F) / 32.0F;
+      const float dy = (static_cast<float>(y) + 0.5F - 32.0F) / 32.0F;
+      float r = dx * dx + dy * dy;  // squared radius, 1 at the inscribed edge
+      if (r > 1.0F) r = 1.0F;
+      // Smooth ramp from a clear centre (r < 0.2) to the edge.
+      float t = (r - 0.2F) / 0.8F;
+      if (t < 0.0F) t = 0.0F;
+      t = t * t * (3.0F - 2.0F * t);
+      const float alpha = 0.7F * t * strength;
+      auto* p = pixels + y * row_pitch + x * 4;
+      p[0] = p[1] = p[2] = std::byte{0};
+      p[3] = static_cast<std::byte>(static_cast<int>(alpha * 255.0F + 0.5F));
+    }
+  }
+}
 }

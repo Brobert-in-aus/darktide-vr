@@ -35,8 +35,10 @@ function Filter.step(state,q,sequence,time,epoch,strength,tracked)
     strength=finite(strength) and math.max(0,math.min(100,strength)) or 75
     if state.q and state.epoch==epoch and state.sequence==sequence and state.strength==strength then return state.q end
     local dt=state.time and time-state.time
+    -- A changed strength only moves the cutoff (ADS raises it without a
+    -- jump); only leaving the off state restarts from the raw pose.
     if not state.q or state.epoch~=epoch or sequence<state.sequence or not dt or dt<=0 or dt>.1 or
-            strength~=state.strength or strength==0 or angle(state.raw,q)>math.rad(60) then
+            strength==0 or state.strength==0 or angle(state.raw,q)>math.rad(60) then
         state.q=q;state.speed=0
     else
         state.speed=state.speed+alpha(10,dt)*(angle(state.raw,q)/dt-state.speed)
@@ -84,8 +86,13 @@ function Filter.install(mod,presentation,tracking)
         local local_rotation=Quaternion.multiply(Quaternion.inverse(anchor),rotation)
         local q={Quaternion.to_elements(local_rotation)}
         local time=tracking.timestamp_ns and tonumber(tracking.timestamp_ns[0])*1e-9
+        -- Aiming down sights steadies the hand further while the option is on.
+        local strength=tonumber(mod:get('vr_aim_stabilization')) or 75
+        if presentation.ads_active and mod:get('ads_focus')~=false then
+            strength=math.min(100,strength*1.6)
+        end
         local result=Filter.step(state,q,tracking.last_sequence,time,tracking.last_transport_generation,
-            tonumber(mod:get('vr_aim_stabilization')),true)
+            strength,true)
         if not result then return rotation end
         return Quaternion.multiply(anchor,Quaternion.from_elements(unpack(result)))
     end

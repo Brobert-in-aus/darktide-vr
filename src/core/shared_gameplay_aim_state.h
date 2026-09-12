@@ -7,7 +7,7 @@
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedGameplayAimStateName[] =
-    L"Local\\DarktideVR-gameplay-aim-state-v4";
+    L"Local\\DarktideVR-gameplay-aim-state-v5";
 
 struct SharedGameplayAimState {
   std::uint64_t sequence{};
@@ -15,6 +15,9 @@ struct SharedGameplayAimState {
   float distance_metres{};
   bool active{};
   bool hit{};
+  // Aim-down-sights (alternate fire) held on the wielded weapon; the viewer
+  // tightens the reticle and draws the focus vignette from it.
+  bool aiming_down_sights{};
   std::uint64_t transport_generation{};
   bool target_point_valid{};
   math::Vec3 target_point{}; // OpenXR coordinates relative to the sampled origin

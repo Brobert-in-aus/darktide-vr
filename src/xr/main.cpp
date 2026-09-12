@@ -1230,6 +1230,11 @@ class OpenXrProbe {
     }
     float reticle_scale = 0.7F;
     auto next_reticle_scale_poll = start;
+    // Aim-down-sights focus: eased from the published aim state; tightens the
+    // reticle and drives the vignette sprite alpha.
+    float ads_blend = 0.0F;
+    float ads_painted_blend = -1.0F;
+    auto ads_last_tick = start;
     auto last_live_report = start;
     auto next_cached_pair_report = start;
     std::uint32_t last_live_submitted_frames{};
@@ -2711,6 +2716,22 @@ class OpenXrProbe {
                   upload_footprint.Footprint.RowPitch);
               const D3D12_BOX sprite{left, top, 0, left + 41, top + 41, 1};
               command_list->CopyTextureRegion(&destination, left, top, 0, &source, &sprite);
+              // The ADS vignette sprite sits left of the reticle with a
+              // transparent gutter; repaint only when its alpha changed.
+              if (ads_painted_blend != ads_blend) {
+                ads_painted_blend = ads_blend;
+                const UINT vignette_left = left - 66;
+                const UINT vignette_top = flat_capture_height - 66;
+                darktidevr::core::paint_vignette_atlas(
+                    upload_pixels + upload_footprint.Offset +
+                        static_cast<std::size_t>(vignette_top) * upload_footprint.Footprint.RowPitch +
+                        vignette_left * 4,
+                    upload_footprint.Footprint.RowPitch, ads_blend);
+                const D3D12_BOX vignette{vignette_left, vignette_top, 0,
+                                         vignette_left + 64, vignette_top + 64, 1};
+                command_list->CopyTextureRegion(&destination, vignette_left, vignette_top, 0,
+                                                &source, &vignette);
+              }
               // The atlas modified the upload buffer; a subsequent menu must
               // restore even the same last-captured window image.
               consumed_capture.reset();
@@ -3970,6 +3991,17 @@ class OpenXrProbe {
       }
       XrCompositionLayerQuad gameplay_reticle_quad{
           XR_TYPE_COMPOSITION_LAYER_QUAD};
+      {
+        const bool ads_target_active =
+            presentation_state.mode == darktidevr::core::SharedPresentationMode::stereo_world &&
+            gameplay_aim_state.active && gameplay_aim_state.aiming_down_sights;
+        const float ads_target = ads_target_active ? 1.0F : 0.0F;
+        const auto ads_dt = std::clamp(
+            std::chrono::duration<float>(frame_start - ads_last_tick).count(), 0.0F, 0.1F);
+        ads_last_tick = frame_start;
+        ads_blend += (ads_target - ads_blend) * (1.0F - std::exp(-ads_dt / 0.15F));
+        if (std::abs(ads_target - ads_blend) < 0.005F) ads_blend = ads_target;
+      }
       const auto reticle_scale_now = std::chrono::steady_clock::now();
       if (enable_gameplay_reticle && reticle_scale_file[0] && reticle_scale_now >= next_reticle_scale_poll) {
         next_reticle_scale_poll = reticle_scale_now + std::chrono::milliseconds(250);
@@ -4020,12 +4052,33 @@ class OpenXrProbe {
             gameplay_reticle_pose->position.z};
         const auto angular_size_metres = std::clamp(
             gameplay_reticle_distance_metres_ * 0.049F, 0.105F, 0.84F) * reticle_scale *
+            (1.0F - 0.4F * ads_blend) *
             (static_cast<float>(gameplay_reticle_sample_extent) /
              static_cast<float>(gameplay_reticle_extent));
         gameplay_reticle_quad.size = {angular_size_metres,
                                       angular_size_metres};
       }
-      std::array<const XrCompositionLayerBaseHeader*, 6> layers{};
+      // Head-locked focus vignette while aiming down sights: a metre ahead in
+      // view space, wide enough to cover the field of view, sampling the
+      // atlas sprite whose alpha follows ads_blend.
+      XrCompositionLayerQuad ads_vignette_quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+      const bool submit_ads_vignette =
+          ads_blend > 0.01F && window_capture && flat_swapchain != XR_NULL_HANDLE &&
+          view_space_ != XR_NULL_HANDLE && submitted_shared_pair_this_frame;
+      if (submit_ads_vignette) {
+        ads_vignette_quad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+        ads_vignette_quad.space = view_space_;
+        ads_vignette_quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+        ads_vignette_quad.subImage.swapchain = flat_swapchain;
+        ads_vignette_quad.subImage.imageRect.offset = {
+            static_cast<std::int32_t>(flat_capture_width) - 42 - 66 + 1,
+            static_cast<std::int32_t>(flat_capture_height) - 66 + 1};
+        ads_vignette_quad.subImage.imageRect.extent = {62, 62};
+        ads_vignette_quad.pose.orientation = {0.0F, 0.0F, 0.0F, 1.0F};
+        ads_vignette_quad.pose.position = {0.0F, 0.0F, -1.0F};
+        ads_vignette_quad.size = {3.6F, 3.6F};
+      }
+      std::array<const XrCompositionLayerBaseHeader*, 8> layers{};
       std::uint32_t layer_count{};
       if (submit_layer) {
         if (submitted_shared_pair_this_frame && stereo) {
@@ -4053,6 +4106,11 @@ class OpenXrProbe {
           layers[layer_count++] =
               reinterpret_cast<const XrCompositionLayerBaseHeader*>(
                   &gameplay_reticle_quad);
+        }
+        if (submit_ads_vignette) {
+          layers[layer_count++] =
+              reinterpret_cast<const XrCompositionLayerBaseHeader*>(
+                  &ads_vignette_quad);
         }
       }
       XrFrameEndInfo frame_end{XR_TYPE_FRAME_END_INFO};

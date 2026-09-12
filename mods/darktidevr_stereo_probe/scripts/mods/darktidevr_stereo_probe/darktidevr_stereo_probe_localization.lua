@@ -1,6 +1,8 @@
 return {
     vr_crosshair_scale = {en = "Crosshair scale (%%)"},
     vr_crosshair_scale_description = {en = "Resize the hand-aim crosshair, charge bars and hit feedback together. Updates while playing. 100% restores the original size; the default is 70%."},
+    ads_focus = {en = "Aim-down-sights focus"},
+    ads_focus_description = {en = "While aiming down sights: a soft vignette at the edges of view, a tighter crosshair and steadier aim. No zoom. Off leaves the view unchanged."},
     vr_aim_stabilization = {en = "Weapon aim stabilisation (%%)"},
     vr_aim_stabilization_description = {en = "Damp small aiming tremors while responding faster to deliberate movement. Higher values steady the aim more. Set to zero to disable. Applies to ranged weapons, including staffs."},
     controller_action_binding_description = {en = "Choose the controller input for this action. Actions can share a control: for example, interact and reload on X. Right-stick left/right actions require turning to be off. Hub overrides apply only in the hub."},

@@ -703,6 +703,7 @@ local function ensure_ui_native_hooks()
             float panel_x, float panel_y, float panel_z, float panel_qx,
             float panel_qy, float panel_qz, float panel_qw);
         int dtvr_commit_gameplay_generation(unsigned long long generation);
+        int dtvr_set_gameplay_ads(int active);
         int dtvr_set_gameplay_aim_state(int active, int hit,
             float distance_metres);
         int dtvr_set_gameplay_aim_target(int hit, float distance_metres,
@@ -5762,6 +5763,31 @@ function presentation.track_wielded_weapon()
     return wielded
 end
 
+-- Aim-down-sights (alternate fire) on the wielded weapon. The viewer
+-- tightens the reticle and eases in a focus vignette; the stabilisation
+-- filter steadies the hand. Off through the ads_focus option.
+function presentation.track_aim_down_sights()
+    local unit = presentation.gameplay_input_owner[2]
+    local script_unit = rawget(_G, "ScriptUnit")
+    local active = false
+    if unit and script_unit and Unit.alive(unit) and
+            (not mod.get or mod:get("ads_focus") ~= false) then
+        local unit_data = script_unit.has_extension(unit, "unit_data_system")
+        local ok, component = pcall(function()
+            return unit_data and unit_data:read_component("alternate_fire")
+        end)
+        active = ok and component ~= nil and component.is_active == true
+    end
+    if active ~= presentation.ads_active then
+        presentation.ads_active = active
+        if ui_native_capture and presentation.native_export and
+                presentation.native_export(ui_native_capture, "dtvr_set_gameplay_ads") then
+            ui_native_capture.dtvr_set_gameplay_ads(active and 1 or 0)
+        end
+        mod:info("DARKTIDEVR_AIM ads=%s", active and "active" or "off")
+    end
+end
+
 function presentation.quick_wield_names(names)
     if not names or names[1] ~= "quick_wield" or #names ~= 1 then
         return names
@@ -5846,6 +5872,7 @@ function presentation.inject_gameplay_input(self, main_t, input)
     controller_observation.gameplay_input_last_sequence =
         tonumber(controller_observation.gameplay_sequence[0])
     presentation.track_wielded_weapon()
+    presentation.track_aim_down_sights()
     -- Still sample/cancel both mappers and UI requests while blocked or after
     -- a failed native read. Do not inject synthetic cancellation release edges;
     -- stock false-held action behavior still applies.

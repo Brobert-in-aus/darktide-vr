@@ -15541,6 +15541,12 @@ bool publish_presentation_state(
   }
 }
 
+// Aim-down-sights state from Lua, carried in every published aim sample.
+std::atomic<bool> gameplay_ads_active{false};
+extern "C" __declspec(dllexport) int dtvr_set_gameplay_ads(int active) {
+  gameplay_ads_active.store(active != 0, std::memory_order_relaxed);
+  return 0;
+}
 bool publish_gameplay_aim_state(float distance_metres, bool active, bool hit,
     bool target_point_valid = false, darktidevr::math::Vec3 target_point = {},
     std::uint64_t head_sequence = 0, std::uint64_t head_generation = 0,
@@ -15557,7 +15563,9 @@ bool publish_gameplay_aim_state(float distance_metres, bool active, bool hit,
         timestamp_ns,
         active ? distance_metres : 0.0F,
         active,
-        active && hit, 0, active && target_point_valid, target_point,
+        active && hit,
+        active && gameplay_ads_active.load(std::memory_order_relaxed),
+        0, active && target_point_valid, target_point,
         head_sequence, head_generation, recenter_generation};
     return writer.publish(state);
   } catch (...) {

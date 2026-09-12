@@ -30,6 +30,11 @@ return {
                 default_value = 75, range = {0, 100}, decimals_number = 0, step_size_value = 5,
             },
             {
+                setting_id = "ads_focus",
+                type = "checkbox",
+                default_value = true,
+            },
+            {
                 setting_id = "melee_preview_toggle",
                 type = "button",
                 button_text = "melee_preview_toggle_button",
