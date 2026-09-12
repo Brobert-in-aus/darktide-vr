@@ -12999,14 +12999,22 @@ mod:hook(
             plane_scope = anchor and presentation.marker_plane_scope(ui_renderer, anchor,
                 markers_element and markers_element._player_camera) or nil
             presentation.interaction_plane_t = plane_scope and t or nil
+            presentation.interaction_plane_scope = plane_scope
         elseif world_marker_reprojecting and presentation.interaction_plane_t == t then
-            -- The first eye drew the popup on the world surface; nothing to replay.
-            return nil
+            local replay_scope = presentation.interaction_plane_scope
+            if not replay_scope or replay_scope.surface ~= "screen" then
+                -- The world surface already serves both eyes.
+                return nil
+            end
+            return presentation.marker_metrics.draw(ui_renderer, "interaction", self,
+                t, 2, nil,
+                function(...) return presentation.marker_world.draw(replay_scope, "right", func, ...) end,
+                self, dt, t, input_service, ui_renderer, render_settings)
         end
         if plane_scope then
             result = presentation.marker_metrics.draw(ui_renderer, "interaction", self,
                 t, 1, presentation.marker_gui.draw,
-                function(...) return presentation.marker_world.draw(plane_scope, func, ...) end,
+                function(...) return presentation.marker_world.draw(plane_scope, "left", func, ...) end,
                 self, dt, t, input_service, ui_renderer, render_settings)
         elseif capture or world_marker_reprojecting then
             -- The popup's boxes take this eye's horizontal scale about the
@@ -13104,7 +13112,14 @@ mod:hook("HudElementSmartTagging", "_draw_active_interaction_line",
             return func(self, dt, t, input_service, ui_renderer, render_settings)
         end
         if world_marker_reprojecting then
-            if presentation.tag_plane_t == t then return end
+            if presentation.tag_plane_t == t then
+                local replay_scope = presentation.tag_plane_scope
+                if not replay_scope or replay_scope.surface ~= "screen" then return end
+                return presentation.marker_metrics.draw(ui_renderer, "tag", self, t, 2,
+                    nil, function(...) return presentation.marker_world.draw(replay_scope, "right",
+                        presentation.draw_tag_prompt, ...) end,
+                    self, dt, t, input_service, ui_renderer, render_settings)
+            end
             return presentation.marker_metrics.draw(ui_renderer, "tag", self, t, 2,
                 nil, presentation.draw_tag_prompt,
                 self, dt, t, input_service, ui_renderer, render_settings)
@@ -13124,10 +13139,11 @@ mod:hook("HudElementSmartTagging", "_draw_active_interaction_line",
                 markers_element and markers_element._player_camera)
         end
         presentation.tag_plane_t = plane_scope and t or nil
+        presentation.tag_plane_scope = plane_scope
         if plane_scope then
             return presentation.marker_metrics.draw(ui_renderer, "tag", self, t, 1,
                 presentation.marker_gui.draw,
-                function(...) return presentation.marker_world.draw(plane_scope,
+                function(...) return presentation.marker_world.draw(plane_scope, "left",
                     presentation.draw_tag_prompt, ...) end,
                 self, dt, t, input_service, ui_renderer, render_settings)
         end
@@ -14628,6 +14644,34 @@ function presentation.marker_plane_scope(ui_renderer, anchor, camera)
             presentation.marker_plane_module, plain(anchor), plain(center),
             plain(head_right), plain(head_up), tangent, presentation.marker_plane_flip)
         if not geometry then return nil, reason end
+        local surface = presentation.marker_world.state.surface
+        local ps = geometry.pixel_size
+        local x_axis = Vector3(geometry.right.x * ps, geometry.right.y * ps, geometry.right.z * ps)
+        local y_axis = Vector3(geometry.up.x * ps, geometry.up.y * ps, geometry.up.z * ps)
+        if surface == "screen" then
+            -- Each eye's projection of the plane into the overlay GUI: the
+            -- anchor's screen position and the screen vectors of one plane
+            -- pixel along the plane's right and up (measured over 64 pixels
+            -- for precision). The overlay's 3D transforms map local x to
+            -- screen x and local z to screen y.
+            local function eye_frame(eye_camera)
+                local s0 = presentation.world_marker_screen_position(eye_camera, anchor)
+                local k = 64
+                local su = presentation.world_marker_screen_position(eye_camera, anchor + x_axis * k)
+                local sv = presentation.world_marker_screen_position(eye_camera, anchor + y_axis * k)
+                local eye_tm = Matrix4x4.identity()
+                Matrix4x4.set_right(eye_tm, Vector3((Vector3.x(su) - Vector3.x(s0)) / k, 0,
+                    (Vector3.y(su) - Vector3.y(s0)) / k))
+                Matrix4x4.set_up(eye_tm, Vector3((Vector3.x(sv) - Vector3.x(s0)) / k, 0,
+                    (Vector3.y(sv) - Vector3.y(s0)) / k))
+                Matrix4x4.set_forward(eye_tm, Vector3(0, 1, 0))
+                Matrix4x4.set_translation(eye_tm, Vector3(Vector3.x(s0), 0, Vector3.y(s0)))
+                return {tm = eye_tm, origin_x = Vector3.x(s0), origin_y = Vector3.y(s0)}
+            end
+            return {renderer = ui_renderer, surface = "screen",
+                eyes = {left = eye_frame(camera), right = eye_frame(right)},
+                pixel_size = ps, distance = geometry.distance}
+        end
         local screen = presentation.world_marker_screen_position(camera, anchor)
         local tm = Matrix4x4.identity()
         Matrix4x4.set_right(tm, Vector3(geometry.right.x, geometry.right.y, geometry.right.z))
@@ -14635,9 +14679,9 @@ function presentation.marker_plane_scope(ui_renderer, anchor, camera)
         Matrix4x4.set_up(tm, Vector3(geometry.up.x, geometry.up.y, geometry.up.z))
         Matrix4x4.set_translation(tm, Vector3(geometry.anchor.x, geometry.anchor.y, geometry.anchor.z))
         local gui = presentation.marker_world.gui_for(ui_renderer)
-        return {renderer = ui_renderer, gui = gui, tm = tm,
+        return {renderer = ui_renderer, surface = "world", gui = gui, tm = tm,
             origin_x = Vector3.x(screen), origin_y = Vector3.y(screen),
-            pixel_size = geometry.pixel_size, distance = geometry.distance}
+            pixel_size = ps, distance = geometry.distance}
     end)
     if not ok then
         presentation.marker_plane_note("error")
@@ -14657,17 +14701,30 @@ mod:hook(require("scripts/managers/ui/ui_widget"), "draw", function(func, widget
     if not scope or scope.renderer ~= ui_renderer then
         return func(widget, ui_renderer)
     end
-    if world_marker_reprojecting then return end
-    return presentation.marker_world.draw(scope, func, widget, ui_renderer)
+    if world_marker_reprojecting then
+        -- The world surface already serves both eyes; the screen surface
+        -- draws the right eye's projection in the replay.
+        if scope.surface ~= "screen" then return end
+        return presentation.marker_world.draw(scope, "right", func, widget, ui_renderer)
+    end
+    return presentation.marker_world.draw(scope, "left", func, widget, ui_renderer)
 end)
-mod:command("dtvr_marker_plane", "World-surface markers: on, off, flip, text <slug|rect|2d>, status", function(action, mode)
+mod:command("dtvr_marker_plane",
+    "World-surface markers: on, off, flip, surface <screen|world>, text <slug|rect|2d>, origin <top|bottom>, status",
+    function(action, mode)
     if action == "on" or action == "off" then
         mod:set("marker_plane", action == "on")
     elseif action == "flip" then
         presentation.marker_plane_flip = not presentation.marker_plane_flip
+    elseif action == "surface" then
+        local ok, why = presentation.marker_world.set_surface(mode)
+        if not ok then mod:echo("surface: " .. tostring(why)) end
     elseif action == "text" then
         local ok, why = presentation.marker_world.set_text_mode(mode)
         if not ok then mod:echo("text mode: " .. tostring(why)) end
+    elseif action == "origin" then
+        local ok, why = presentation.marker_world.set_text_origin(mode)
+        if not ok then mod:echo("origin: " .. tostring(why)) end
     end
     local counts = presentation.marker_plane_counts or {routed = 0, fallback = 0}
     local reasons = {}
@@ -14676,9 +14733,11 @@ mod:command("dtvr_marker_plane", "World-surface markers: on, off, flip, text <sl
     end
     table.sort(reasons)
     local line = string.format(
-        "DARKTIDEVR_MARKER_PLANE enabled=%s flip=%s text=%s routed=%d fallback=%d reasons=%s errors=%d",
-        tostring(presentation.marker_plane_enabled()), tostring(presentation.marker_plane_flip),
+        "DARKTIDEVR_MARKER_PLANE enabled=%s surface=%s flip=%s text=%s origin=%s routed=%d fallback=%d reasons=%s errors=%d",
+        tostring(presentation.marker_plane_enabled()),
+        tostring(presentation.marker_world.state.surface), tostring(presentation.marker_plane_flip),
         tostring(presentation.marker_world.state.text_mode),
+        tostring(presentation.marker_world.state.text_origin),
         counts.routed, counts.fallback, table.concat(reasons, ","),
         presentation.marker_world.state.errors)
     mod:echo(line)

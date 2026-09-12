@@ -1,28 +1,32 @@
 -- World-surface markers. Every primitive a stock world-marker widget draws is
--- re-issued as a 3D GUI draw on a plane through the marker's world anchor,
--- facing the shared head centre, at the size the primary projection gives its
--- pixels at that distance. One mod-owned world GUI in the level world carries
--- them, so the engine renders one surface that both eyes see natively: no
--- second-eye replay, and text, icons, rectangles and direct draws all converge.
+-- placed on a plane through the marker's world anchor, facing the shared head
+-- centre, sized so one primary-projection pixel keeps its angle at that
+-- distance. The stock widget draws unchanged; while it draws, the renderer's
+-- 2D entry points are converted into its 3D counterparts (bitmap_3d,
+-- slug_text_3d, slug_icon_3d, rect_3d) with a transform.
+--
+-- Two surfaces:
+--  "screen" (default): the transform is each eye's own projection of the
+--    plane into the overlay GUI (position, scale and skew at the anchor), so
+--    the first-eye draw and the right-eye replay each show the surface as
+--    that eye sees it. Correct stereo depth, and the overlay draws over the
+--    world as the stock markers do.
+--  "world": the transform places the surface in the level world on a world
+--    GUI; the engine renders it for both eyes, but its text depth-tests
+--    against geometry, which is why it is not the default.
 --
 -- This module owns no engine hooks. The marker metrics module owns the single
--- hook on each 2D renderer entry point and calls `route` from it; the marker
--- GUI module owns the renderer destroy hook and calls `destroy`. While a
--- marker is being drawn, `route` converts the call into the renderer's own 3D
--- counterpart (bitmap_3d, slug_text_3d, slug_icon_3d, rect_3d) with the
--- plane's transform. Nothing crosses renderers: the same renderer, its own
--- render settings and materials, only a different GUI and a transform.
+-- hook on each 2D renderer entry point and calls `route`; the marker GUI
+-- module owns the renderer destroy hook and calls `destroy`.
 local MarkerWorld = {}
 
 local function finite(n)
     return type(n) == "number" and n == n and math.abs(n) < math.huge
 end
 
--- Plane basis and per-pixel size for one anchor. Pure: takes plain {x,y,z}
--- tables, returns unit axes and the metre size of one primary-projection pixel
--- at the anchor's distance. `flip` reverses the facing convention (the HUD
--- panel's textured quad needed right and forward reversed to face the viewer;
--- direct glyphs may not).
+-- Plane basis and per-pixel size for one anchor. Pure: plain {x,y,z} tables
+-- in, unit axes and the metre size of one primary-projection pixel at the
+-- anchor's distance out. `flip` reverses the facing convention.
 function MarkerWorld.geometry(Plane, anchor, head_center, head_right, head_up,
         tangent_per_pixel, flip)
     local plane, reason = Plane.create(anchor, head_center, head_right, head_up,
@@ -45,12 +49,6 @@ function MarkerWorld.geometry(Plane, anchor, head_center, head_right, head_up,
     }
 end
 
--- Screen pixel to plane-local metres: (px - origin) * pixel_size.
-function MarkerWorld.local_point(scope, x, y)
-    return (x - scope.origin_x) * scope.pixel_size,
-        (y - scope.origin_y) * scope.pixel_size
-end
-
 -- Pass types whose draws the routing covers. A widget with any other pass
 -- keeps the stock 2D route so a marker is never half on the plane.
 local routed_pass_types = {
@@ -69,21 +67,35 @@ function MarkerWorld.admits(widget)
     return true
 end
 
-local state = {scope = nil, guis = {}, errors = 0, api = nil, text_mode = "slug"}
+local state = {scope = nil, eye = nil, guis = {}, errors = 0, api = nil,
+    surface = "screen", text_mode = "slug", text_origin = "top"}
 MarkerWorld.state = state
 
+local surfaces = {screen = true, world = true}
+function MarkerWorld.set_surface(mode)
+    if surfaces[mode] then state.surface = mode; return true end
+    return false, "screen or world"
+end
+
 -- How routed text is drawn: "slug" (the renderer's 3D slug text, laid out
--- here), "rect" (a marker box where the text would be, to prove the
--- placement), "2d" (text stays on the flat route while everything else is
--- on the plane).
+-- here), "rect" (a marker box where the text would be), "2d" (text stays on
+-- the flat route while everything else is on the plane).
 local text_modes = {slug = true, rect = true, ["2d"] = true}
 function MarkerWorld.set_text_mode(mode)
     if text_modes[mode] then state.text_mode = mode; return true end
     return false, "slug, rect or 2d"
 end
 
--- `api` supplies UIRenderer, Vector2, Vector3, Color, Gui, World, Matrix4x4
--- and material_flags(renderer, flags) so the module stays testable.
+-- Where the 3D text call anchors its position: "top" (the glyphs hang below
+-- it) or "bottom" (they stand on it). Worn evidence decides.
+local text_origins = {top = true, bottom = true}
+function MarkerWorld.set_text_origin(mode)
+    if text_origins[mode] then state.text_origin = mode; return true end
+    return false, "top or bottom"
+end
+
+-- `api` supplies UIRenderer, Vector2, Vector3, Color, Gui, World, Matrix4x4,
+-- material_flags(renderer, flags) and log(line) so the module stays testable.
 function MarkerWorld.configure(api)
     state.api = api
 end
@@ -112,27 +124,38 @@ function MarkerWorld.destroy_all()
     for renderer in pairs(state.guis) do MarkerWorld.destroy(renderer) end
 end
 
--- Draw `draw(...)` with every routed primitive on the plane described by
--- `scope` = {renderer, gui, tm, origin_x, origin_y, pixel_size}. The renderer's
--- pixel snapping is off for the duration: plane-local metres must not be
--- rounded to whole pixels.
-function MarkerWorld.draw(scope, draw, ...)
-    local previous = state.scope
+-- A scope describes one surface: {renderer, surface, eyes = {left = {tm,
+-- origin_x, origin_y}, right = {...}}, pixel_size, tm, gui}. The screen
+-- surface uses eyes[eye] (pixel units, the eye's projection); the world
+-- surface uses tm/gui/pixel_size (metres). `eye` is "left" or "right".
+function MarkerWorld.draw(scope, eye, draw, ...)
+    local previous_scope, previous_eye = state.scope, state.eye
     local settings = scope.renderer.render_settings
     local snap = settings and settings.snap_pixel_positions
+    -- Plane-local coordinates must not be rounded to whole pixels.
     if settings then settings.snap_pixel_positions = false end
-    state.scope = scope
+    state.scope, state.eye = scope, eye
     local results = {pcall(draw, ...)}
-    state.scope = previous
+    state.scope, state.eye = previous_scope, previous_eye
     if settings then settings.snap_pixel_positions = snap end
     if not results[1] then error(results[2], 0) end
     return unpack(results, 2)
 end
 
-local function with_gui(scope, fn, ...)
+-- Resolve the transform, origin, pixel scale and GUI for the current draw.
+local function frame(scope)
+    if scope.surface == "world" then
+        return scope.tm, scope.origin_x, scope.origin_y, scope.pixel_size, scope.gui
+    end
+    local eye = scope.eyes and scope.eyes[state.eye or "left"]
+    if not eye then return nil end
+    return eye.tm, eye.origin_x, eye.origin_y, 1, nil
+end
+
+local function with_gui(scope, gui, fn, ...)
     local renderer = scope.renderer
     local original = renderer.gui
-    renderer.gui = scope.gui
+    if gui then renderer.gui = gui end
     local results = {pcall(fn, ...)}
     renderer.gui = original
     if not results[1] then
@@ -146,87 +169,94 @@ local converters = {}
 
 converters.script_draw_bitmap = function(scope, func, self, material, position, size,
         color, retained_id)
-    if retained_id then return func(self, material, position, size, color, retained_id) end
+    local tm, ox, oy, ps, gui = frame(scope)
+    if retained_id or not tm then
+        return func(self, material, position, size, color, retained_id)
+    end
     local api = state.api
-    local x, y = MarkerWorld.local_point(scope, position[1], position[2])
-    local ps = scope.pixel_size
-    return with_gui(scope, api.UIRenderer.script_draw_bitmap_3d, self, material,
-        scope.tm, api.Vector3(x, y, 0), position[3] or 0,
+    return with_gui(scope, gui, api.UIRenderer.script_draw_bitmap_3d, self, material, tm,
+        api.Vector3((position[1] - ox) * ps, (position[2] - oy) * ps, 0), position[3] or 0,
         api.Vector3(size[1] * ps, size[2] * ps, 0), color, nil, nil)
 end
 
 converters.script_draw_bitmap_uv = function(scope, func, self, material, position, size,
         uvs, color, retained_id)
-    if retained_id then
+    local tm, ox, oy, ps, gui = frame(scope)
+    if retained_id or not tm then
         return func(self, material, position, size, uvs, color, retained_id)
     end
     local api = state.api
-    local x, y = MarkerWorld.local_point(scope, position[1], position[2])
-    local ps = scope.pixel_size
-    return with_gui(scope, api.UIRenderer.script_draw_bitmap_3d, self, material,
-        scope.tm, api.Vector3(x, y, 0), position[3] or 0,
+    return with_gui(scope, gui, api.UIRenderer.script_draw_bitmap_3d, self, material, tm,
+        api.Vector3((position[1] - ox) * ps, (position[2] - oy) * ps, 0), position[3] or 0,
         api.Vector3(size[1] * ps, size[2] * ps, 0), color, uvs, nil)
 end
 
 converters.script_draw_text = function(scope, func, self, text, font_size, font_type,
         position, size, color, options, retained_id)
     local mode = state.text_mode
-    if retained_id or mode == "2d" then
+    local tm, ox, oy, ps, gui = frame(scope)
+    if retained_id or mode == "2d" or not tm then
         return func(self, text, font_size, font_type, position, size, color, options,
             retained_id)
     end
     local api = state.api
-    local ps = scope.pixel_size
     local layer = position[3] or 0
     if mode == "rect" then
-        local x, y = MarkerWorld.local_point(scope, position[1], position[2])
         local box = size and api.Vector2(size[1] * ps, size[2] * ps) or
             api.Vector2(100 * ps, font_size * ps)
-        return with_gui(scope, function()
-            return api.Gui.rect_3d(scope.gui, scope.tm, api.Vector2(x, y), layer, box,
+        return with_gui(scope, gui, function()
+            return api.Gui.rect_3d(gui or self.gui, tm,
+                api.Vector2((position[1] - ox) * ps, (position[2] - oy) * ps), layer, box,
                 api.Color(200, 255, 0, 255))
         end)
     end
-    -- The engine's 3D slug text takes no layout box and no layout options:
-    -- given either, it rejected the call ("slug flags must be preceded by
-    -- specifier flags") and the game ended. So the text is laid out here:
-    -- its extent is measured at the 2D size, the box's alignment becomes an
-    -- offset, and the call gets only the position. Measurement failures
-    -- leave the text at the box origin.
+    -- The engine's 3D slug text takes no layout box and no layout options
+    -- (given either it rejects the call), so the text is laid out here: its
+    -- extent is measured at the 2D size, the box's alignment becomes an
+    -- offset, and the call gets only the position, font size and colour.
     local dx, dy = 0, 0
-    if size and type(options) == "table" and api.UIRenderer.text_size then
-        local ok, width, height = pcall(api.UIRenderer.text_size, self, text, font_type,
+    local height = font_size
+    if type(options) == "table" and api.UIRenderer.text_size then
+        local ok, width, measured = pcall(api.UIRenderer.text_size, self, text, font_type,
             font_size, size, options, true)
-        if ok and type(width) == "number" and type(height) == "number" then
-            local gui = api.Gui
-            local horizontal, vertical = options.horizontal_alignment, options.vertical_alignment
-            if horizontal == gui.HorizontalAlignCenter then
-                dx = (size[1] - width) * 0.5
-            elseif horizontal == gui.HorizontalAlignRight then
-                dx = size[1] - width
-            end
-            if vertical == gui.VerticalAlignCenter then
-                dy = (size[2] - height) * 0.5
-            elseif vertical == gui.VerticalAlignTop then
-                dy = size[2] - height
+        if ok and type(width) == "number" and type(measured) == "number" then
+            height = measured
+            if size then
+                local gui_enum = api.Gui
+                local horizontal = options.horizontal_alignment
+                local vertical = options.vertical_alignment
+                if horizontal == gui_enum.HorizontalAlignCenter then
+                    dx = (size[1] - width) * 0.5
+                elseif horizontal == gui_enum.HorizontalAlignRight then
+                    dx = size[1] - width
+                end
+                if vertical == gui_enum.VerticalAlignCenter then
+                    dy = (size[2] - height) * 0.5
+                elseif vertical == gui_enum.VerticalAlignTop then
+                    dy = size[2] - height
+                end
             end
         end
     end
-    local x, y = MarkerWorld.local_point(scope, position[1] + dx, position[2] + dy)
+    -- The offsets above place the text's bottom edge; if the call anchors the
+    -- glyphs' top, raise the position by the text height.
+    if state.text_origin == "top" then dy = dy + height end
+    local x = (position[1] + dx - ox) * ps
+    local y = (position[2] + dy - oy) * ps
     if not state.text_logged and api.log then
         state.text_logged = true
         api.log(string.format(
-            "DARKTIDEVR_MARKER_PLANE first_text mode=%s font=%s size_px=%s size_m=%.4f layer=%s box=%s offset=%.1f,%.1f color=%s",
-            mode, tostring(font_type), tostring(font_size), font_size * ps, tostring(layer),
-            tostring(size ~= nil), dx, dy, tostring(color ~= nil)))
+            "DARKTIDEVR_MARKER_PLANE first_text surface=%s mode=%s origin=%s font=%s size_px=%s layer=%s box=%s offset=%.1f,%.1f height=%.1f",
+            state.surface, mode, state.text_origin, tostring(font_type), tostring(font_size),
+            tostring(layer), tostring(size ~= nil), dx, dy, height))
     end
-    return with_gui(scope, api.UIRenderer.script_draw_text_3d, self, text,
-        font_size * ps, font_type, scope.tm, api.Vector3(x, y, 0),
-        layer, nil, color, nil, nil)
+    return with_gui(scope, gui, api.UIRenderer.script_draw_text_3d, self, text,
+        font_size * ps, font_type, tm, api.Vector3(x, y, 0), layer, nil, color, nil, nil)
 end
 
 converters.draw_rect = function(scope, func, self, position, size, color, retained_id)
-    if retained_id then return func(self, position, size, color, retained_id) end
+    local tm, ox, oy, ps, gui = frame(scope)
+    if retained_id or not tm then return func(self, position, size, color, retained_id) end
     -- Stock scales logical units here and applies start layer, alpha and
     -- intensity before Gui2.rect; do the same for rect_3d.
     local api = state.api
@@ -235,24 +265,24 @@ converters.draw_rect = function(scope, func, self, position, size, color, retain
     local layer = (position[3] or 0) + (settings and settings.start_layer or 0)
     local alpha = settings and settings.alpha_multiplier or 1
     local intensity = settings and settings.color_intensity_multiplier or 1
-    local x, y = MarkerWorld.local_point(scope, position[1] * scale, position[2] * scale)
-    local ps = scope.pixel_size
     local tinted = color and api.Color(color[1] * alpha, color[2] * intensity,
         color[3] * intensity, color[4] * intensity) or api.Color(255, 255, 255, 255)
-    return with_gui(scope, function()
-        return api.Gui.rect_3d(scope.gui, scope.tm, api.Vector2(x, y), layer,
-            api.Vector2(size[1] * scale * ps, size[2] * scale * ps), tinted)
+    return with_gui(scope, gui, function()
+        return api.Gui.rect_3d(gui or self.gui, tm,
+            api.Vector2((position[1] * scale - ox) * ps, (position[2] * scale - oy) * ps),
+            layer, api.Vector2(size[1] * scale * ps, size[2] * scale * ps), tinted)
     end)
 end
 
 converters.draw_slug_icon = function(scope, func, self, resource, index, position, size,
         color, optional_material, material_flags, retained_id)
-    if retained_id then
+    local tm, ox, oy, ps, gui = frame(scope)
+    if retained_id or not tm then
         return func(self, resource, index, position, size, color, optional_material,
             material_flags, retained_id)
     end
-    -- Same route as the stock rotated icon: the plane transform and the
-    -- offset in plane-local units.
+    -- Same route as the stock rotated icon: the transform and the offset in
+    -- plane-local units.
     local api = state.api
     local scale = self.scale or 1
     local settings = self.render_settings
@@ -261,8 +291,6 @@ converters.draw_slug_icon = function(scope, func, self, resource, index, positio
     local intensity = settings and settings.color_intensity_multiplier or 1
     local tinted = api.Color(color[1] * alpha, color[2] * intensity,
         color[3] * intensity, color[4] * intensity)
-    local x, y = MarkerWorld.local_point(scope, position[1] * scale, position[2] * scale)
-    local ps = scope.pixel_size
     local params = {}
     if optional_material then
         params[#params + 1] = "material"; params[#params + 1] = optional_material
@@ -271,17 +299,17 @@ converters.draw_slug_icon = function(scope, func, self, resource, index, positio
     if flags then
         params[#params + 1] = "material_flags"; params[#params + 1] = flags
     end
-    return with_gui(scope, function()
-        return api.Gui.slug_icon_3d(scope.gui, resource, index, scope.tm,
-            api.Vector3(x, y, 0), layer,
-            api.Vector2(size[1] * scale * ps, size[2] * scale * ps), tinted,
+    return with_gui(scope, gui, function()
+        return api.Gui.slug_icon_3d(gui or self.gui, resource, index, tm,
+            api.Vector3((position[1] * scale - ox) * ps, (position[2] * scale - oy) * ps, 0),
+            layer, api.Vector2(size[1] * scale * ps, size[2] * scale * ps), tinted,
             unpack(params))
     end)
 end
 
 -- Called by the owner of the renderer hooks with the hooked name, the stock
--- function and its arguments. Outside a marker draw, or for a renderer other
--- than the scope's, or for a name without a converter, the stock call runs.
+-- function and its arguments. Outside a marker draw, for another renderer,
+-- or for a name without a converter, the stock call runs.
 function MarkerWorld.route(name, func, renderer, ...)
     local scope = state.scope
     local converter = scope and state.api and scope.renderer == renderer and converters[name]
