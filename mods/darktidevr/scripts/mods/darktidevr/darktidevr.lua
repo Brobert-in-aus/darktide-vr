@@ -13008,6 +13008,15 @@ mod:hook(
                 Managers.ui._hud.element and Managers.ui._hud:element("HudElementWorldMarkers")
             plane_scope = anchor and presentation.marker_plane_scope(ui_renderer, anchor,
                 markers_element and markers_element._player_camera, t) or nil
+            if plane_scope and plane_scope.surface == "atlas" then
+                -- Worn: on the plane the popup sits high against its marker
+                -- (still on the per-eye route); lower it by a fraction of
+                -- the popup's own background height.
+                local size = self:scenegraph_size("background")
+                local drop = size and size[2] * (ui_renderer.scale or 1) *
+                    presentation.interaction_popup_drop or 0
+                plane_scope.origin_y = plane_scope.origin_y - drop
+            end
             presentation.interaction_plane_t = plane_scope and t or nil
             presentation.interaction_plane_scope = plane_scope
         elseif world_marker_reprojecting and presentation.interaction_plane_t == t then
@@ -14642,6 +14651,7 @@ presentation.marker_metrics = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_marker_metrics"
 ).install(mod, UIRenderer, presentation.marker_world.route)
 presentation.marker_plane_flip = false
+presentation.interaction_popup_drop = 1 / 3
 local marker_plane_log = {reported = false, reasons = {}}
 function presentation.marker_plane_enabled()
     return mod:get("marker_plane") ~= false and presentation.marker_world ~= nil
@@ -14784,7 +14794,7 @@ mod:hook(require("scripts/managers/ui/ui_widget"), "draw", function(func, widget
     return presentation.marker_world.draw(scope, "left", func, widget, ui_renderer)
 end)
 mod:command("dtvr_marker_plane",
-    "World-surface markers: on, off, flip, surface <atlas|screen|world>, text <slug|rect|2d>, origin <top|bottom>, layer <n>, dump, probe, status",
+    "World-surface markers: on, off, flip, surface <atlas|screen|world>, text <slug|rect|2d>, origin <top|bottom>, layer <n>, drop <fraction>, dump, probe, status",
     function(action, mode)
     if action == "on" or action == "off" then
         mod:set("marker_plane", action == "on")
@@ -14806,6 +14816,11 @@ mod:command("dtvr_marker_plane",
     elseif action == "dump" then
         presentation.marker_world.set_dump(mode or 1)
         mod:echo("marker plane: logging the routed draws of the next frame(s)")
+    elseif action == "drop" then
+        local value = tonumber(mode)
+        if value then presentation.interaction_popup_drop = value end
+        mod:echo("interaction popup drop (fraction of its height): " ..
+            tostring(presentation.interaction_popup_drop))
     elseif action == "probe" then
         local on = not presentation.marker_world.state.probe
         presentation.marker_world.set_probe(on)
