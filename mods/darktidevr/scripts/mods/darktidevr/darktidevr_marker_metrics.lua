@@ -176,7 +176,10 @@ function Metrics.draw(renderer,kind,owner,t,eye,wrapper,draw,...)
     end
     return unpack(result,2,result.n)
 end
-function Metrics.install(mod,renderer_class)
+-- This module owns the one hook the mod may place on each renderer draw
+-- entry point (the framework replaces a second same-mod hook). `router`, when
+-- given, decides how the call proceeds (the world-surface marker route).
+function Metrics.install(mod,renderer_class,router)
     state.text_size=renderer_class.text_size
     for name,spec in pairs(specs) do
         if renderer_class[name] then
@@ -185,6 +188,7 @@ function Metrics.install(mod,renderer_class)
                     local ok=pcall(capture,name,spec,renderer,...)
                     if not ok then state.scope.errors=state.scope.errors+1 end
                 end
+                if router then return router(name,func,renderer,...) end
                 return func(renderer,...)
             end)
         end

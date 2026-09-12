@@ -14549,17 +14549,11 @@ mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_combat_direction"
 ).install(mod, presentation.controller_aim)
 
-presentation.marker_gui = mod:io_dofile(
-    "darktidevr/scripts/mods/darktidevr/darktidevr_marker_gui"
-)
-presentation.marker_gui.install(mod, UIRenderer)
-presentation.marker_metrics = mod:io_dofile(
-    "darktidevr/scripts/mods/darktidevr/darktidevr_marker_metrics"
-).install(mod, UIRenderer)
-
 -- World-surface markers: each marker's stock widget is drawn onto a plane
 -- through its anchor on a world GUI, one surface for both eyes. See
 -- darktidevr_marker_world.lua. Option `marker_plane`; `/dtvr_marker_plane`.
+-- The module places no hooks: the marker GUI owns the renderer destroy hook
+-- and the marker metrics own the draw hooks; both call into it.
 presentation.marker_plane_module = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_marker_plane"
 )
@@ -14568,9 +14562,9 @@ presentation.marker_world = mod:io_dofile(
 )
 do
     local bor = rawget(_G, "bit_or") or (rawget(_G, "bit") and bit.bor)
-    presentation.marker_world.install(mod, {
+    presentation.marker_world.configure({
         UIRenderer = UIRenderer, Vector2 = Vector2, Vector3 = Vector3,
-        Color = Color, Gui = Gui, World = World,
+        Color = Color, Gui = Gui, World = World, Matrix4x4 = Matrix4x4,
         material_flags = function(renderer, flags)
             local settings = renderer.render_settings
             if settings and bor then
@@ -14584,6 +14578,13 @@ do
         end,
     })
 end
+presentation.marker_gui = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_marker_gui"
+)
+presentation.marker_gui.install(mod, UIRenderer, presentation.marker_world.destroy)
+presentation.marker_metrics = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_marker_metrics"
+).install(mod, UIRenderer, presentation.marker_world.route)
 presentation.marker_plane_flip = false
 local marker_plane_log = {reported = false, reasons = {}}
 function presentation.marker_plane_enabled()
@@ -14632,7 +14633,7 @@ function presentation.marker_plane_scope(ui_renderer, anchor, camera)
         Matrix4x4.set_forward(tm, Vector3(geometry.forward.x, geometry.forward.y, geometry.forward.z))
         Matrix4x4.set_up(tm, Vector3(geometry.up.x, geometry.up.y, geometry.up.z))
         Matrix4x4.set_translation(tm, Vector3(geometry.anchor.x, geometry.anchor.y, geometry.anchor.z))
-        local gui = presentation.marker_world.gui_for(ui_renderer, World, Matrix4x4)
+        local gui = presentation.marker_world.gui_for(ui_renderer)
         return {renderer = ui_renderer, gui = gui, tm = tm,
             origin_x = Vector3.x(screen), origin_y = Vector3.y(screen),
             pixel_size = geometry.pixel_size, distance = geometry.distance}
@@ -14801,7 +14802,7 @@ mod.on_disabled = function()
     presentation.melee_preview.destroy()
     pcall(presentation.hud_panel.set_enabled, false)
     pcall(presentation.marker_gui.destroy_all)
-    pcall(function() presentation.marker_world.destroy_all(World) end)
+    pcall(presentation.marker_world.destroy_all)
     pcall(teardown)
     pcall(teardown_ui_stereo)
     pcall(destroy_ui_offscreen_resources)
@@ -14819,7 +14820,7 @@ mod.on_unload = function()
     presentation.melee_preview.destroy()
     pcall(presentation.hud_panel.set_enabled, false)
     pcall(presentation.marker_gui.destroy_all)
-    pcall(function() presentation.marker_world.destroy_all(World) end)
+    pcall(presentation.marker_world.destroy_all)
     pcall(teardown)
     pcall(teardown_ui_stereo)
     pcall(destroy_ui_offscreen_resources)

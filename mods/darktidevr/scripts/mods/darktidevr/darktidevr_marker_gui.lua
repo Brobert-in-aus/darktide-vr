@@ -66,9 +66,12 @@ function MarkerGui.destroy_all()
     end
 end
 
-function MarkerGui.install(mod, renderer_class)
+-- The one destroy hook this mod places on the renderer class; `on_destroy`
+-- lets another owner (the world-surface markers) release its GUI too.
+function MarkerGui.install(mod, renderer_class, on_destroy)
     mod:hook(renderer_class, "destroy", function(func, renderer, ...)
         MarkerGui.destroy(renderer)
+        if on_destroy then pcall(on_destroy, renderer) end
         return func(renderer, ...)
     end)
 end

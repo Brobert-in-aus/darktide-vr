@@ -5,9 +5,11 @@
 -- them, so the engine renders one surface that both eyes see natively: no
 -- second-eye replay, and text, icons, rectangles and direct draws all converge.
 --
--- The stock UIRenderer keeps its 2D entry points; while a marker is being
--- drawn, hooks on those entry points convert the call into the renderer's own
--- 3D counterpart (bitmap_3d, slug_text_3d, slug_icon_3d, rect_3d) with the
+-- This module owns no engine hooks. The marker metrics module owns the single
+-- hook on each 2D renderer entry point and calls `route` from it; the marker
+-- GUI module owns the renderer destroy hook and calls `destroy`. While a
+-- marker is being drawn, `route` converts the call into the renderer's own 3D
+-- counterpart (bitmap_3d, slug_text_3d, slug_icon_3d, rect_3d) with the
 -- plane's transform. Nothing crosses renderers: the same renderer, its own
 -- render settings and materials, only a different GUI and a transform.
 local MarkerWorld = {}
@@ -53,8 +55,7 @@ end
 -- keeps the stock 2D route so a marker is never half on the plane.
 local routed_pass_types = {
     texture = true, texture_uv = true, text = true, rect = true,
-    slug_icon = true, slug_picture = false, rotated_texture = false,
-    rotated_rect = false, rotated_slug_icon = false, logic = true,
+    slug_icon = true, logic = true,
 }
 function MarkerWorld.admits(widget)
     local passes = widget and widget.passes
@@ -68,31 +69,37 @@ function MarkerWorld.admits(widget)
     return true
 end
 
-local state = {scope = nil, guis = {}, routed = 0, fallback = 0, errors = 0,
-    unsupported = {}}
+local state = {scope = nil, guis = {}, errors = 0, api = nil}
 MarkerWorld.state = state
 
-function MarkerWorld.gui_for(renderer, World, Matrix4x4)
+-- `api` supplies UIRenderer, Vector2, Vector3, Color, Gui, World, Matrix4x4
+-- and material_flags(renderer, flags) so the module stays testable.
+function MarkerWorld.configure(api)
+    state.api = api
+end
+
+function MarkerWorld.gui_for(renderer)
+    local api = state.api
     local entry = state.guis[renderer]
     if not entry then
         entry = {world = renderer.world,
-            gui = World.create_world_gui(renderer.world, Matrix4x4.identity(), 1, 1,
-                "immediate")}
+            gui = api.World.create_world_gui(renderer.world, api.Matrix4x4.identity(),
+                1, 1, "immediate")}
         state.guis[renderer] = entry
     end
     return entry.gui
 end
 
-function MarkerWorld.destroy(renderer, World)
+function MarkerWorld.destroy(renderer)
     local entry = state.guis[renderer]
     if entry then
         state.guis[renderer] = nil
-        World.destroy_gui(entry.world, entry.gui)
+        state.api.World.destroy_gui(entry.world, entry.gui)
     end
 end
 
-function MarkerWorld.destroy_all(World)
-    for renderer in pairs(state.guis) do MarkerWorld.destroy(renderer, World) end
+function MarkerWorld.destroy_all()
+    for renderer in pairs(state.guis) do MarkerWorld.destroy(renderer) end
 end
 
 -- Draw `draw(...)` with every routed primitive on the plane described by
@@ -112,11 +119,6 @@ function MarkerWorld.draw(scope, draw, ...)
     return unpack(results, 2)
 end
 
-local function active(renderer)
-    local scope = state.scope
-    return scope and scope.renderer == renderer and scope or nil
-end
-
 local function with_gui(scope, fn, ...)
     local renderer = scope.renderer
     local original = renderer.gui
@@ -130,118 +132,109 @@ local function with_gui(scope, fn, ...)
     return unpack(results, 2)
 end
 
--- Hooks on the stock renderer. `api` supplies UIRenderer, Vector2, Vector3,
--- Color, Gui and UIResolution so the module stays testable.
-function MarkerWorld.install(mod, api)
-    local UIRenderer, Vector3, Vector2 = api.UIRenderer, api.Vector3, api.Vector2
+local converters = {}
 
-    mod:hook(UIRenderer, "script_draw_bitmap",
-        function(func, self, material, position, size, color, retained_id)
-            local scope = active(self)
-            if not scope or retained_id then
-                return func(self, material, position, size, color, retained_id)
-            end
-            local x, y = MarkerWorld.local_point(scope, position[1], position[2])
-            local ps = scope.pixel_size
-            return with_gui(scope, UIRenderer.script_draw_bitmap_3d, self, material,
-                scope.tm, Vector3(x, y, 0), position[3] or 0,
-                Vector3(size[1] * ps, size[2] * ps, 0), color, nil, nil)
-        end)
+converters.script_draw_bitmap = function(scope, func, self, material, position, size,
+        color, retained_id)
+    if retained_id then return func(self, material, position, size, color, retained_id) end
+    local api = state.api
+    local x, y = MarkerWorld.local_point(scope, position[1], position[2])
+    local ps = scope.pixel_size
+    return with_gui(scope, api.UIRenderer.script_draw_bitmap_3d, self, material,
+        scope.tm, api.Vector3(x, y, 0), position[3] or 0,
+        api.Vector3(size[1] * ps, size[2] * ps, 0), color, nil, nil)
+end
 
-    mod:hook(UIRenderer, "script_draw_bitmap_uv",
-        function(func, self, material, position, size, uvs, color, retained_id)
-            local scope = active(self)
-            if not scope or retained_id then
-                return func(self, material, position, size, uvs, color, retained_id)
-            end
-            local x, y = MarkerWorld.local_point(scope, position[1], position[2])
-            local ps = scope.pixel_size
-            return with_gui(scope, UIRenderer.script_draw_bitmap_3d, self, material,
-                scope.tm, Vector3(x, y, 0), position[3] or 0,
-                Vector3(size[1] * ps, size[2] * ps, 0), color, uvs, nil)
-        end)
+converters.script_draw_bitmap_uv = function(scope, func, self, material, position, size,
+        uvs, color, retained_id)
+    if retained_id then
+        return func(self, material, position, size, uvs, color, retained_id)
+    end
+    local api = state.api
+    local x, y = MarkerWorld.local_point(scope, position[1], position[2])
+    local ps = scope.pixel_size
+    return with_gui(scope, api.UIRenderer.script_draw_bitmap_3d, self, material,
+        scope.tm, api.Vector3(x, y, 0), position[3] or 0,
+        api.Vector3(size[1] * ps, size[2] * ps, 0), color, uvs, nil)
+end
 
-    mod:hook(UIRenderer, "script_draw_text",
-        function(func, self, text, font_size, font_type, position, size, color,
-                options, retained_id)
-            local scope = active(self)
-            if not scope or retained_id then
-                return func(self, text, font_size, font_type, position, size, color,
-                    options, retained_id)
-            end
-            local x, y = MarkerWorld.local_point(scope, position[1], position[2])
-            local ps = scope.pixel_size
-            local box = size and Vector2(size[1] * ps, size[2] * ps) or nil
-            return with_gui(scope, UIRenderer.script_draw_text_3d, self, text,
-                font_size * ps, font_type, scope.tm, Vector3(x, y, 0),
-                position[3] or 0, box, color, options, nil)
-        end)
+converters.script_draw_text = function(scope, func, self, text, font_size, font_type,
+        position, size, color, options, retained_id)
+    if retained_id then
+        return func(self, text, font_size, font_type, position, size, color, options,
+            retained_id)
+    end
+    local api = state.api
+    local x, y = MarkerWorld.local_point(scope, position[1], position[2])
+    local ps = scope.pixel_size
+    local box = size and api.Vector2(size[1] * ps, size[2] * ps) or nil
+    return with_gui(scope, api.UIRenderer.script_draw_text_3d, self, text,
+        font_size * ps, font_type, scope.tm, api.Vector3(x, y, 0),
+        position[3] or 0, box, color, options, nil)
+end
 
-    mod:hook(UIRenderer, "draw_rect",
-        function(func, self, position, size, color, retained_id)
-            local scope = active(self)
-            if not scope or retained_id then
-                return func(self, position, size, color, retained_id)
-            end
-            -- Stock scales logical units here and applies start layer, alpha
-            -- and intensity before Gui2.rect; do the same for rect_3d.
-            local scale = self.scale or 1
-            local settings = self.render_settings
-            local layer = (position[3] or 0) + (settings and settings.start_layer or 0)
-            local alpha = settings and settings.alpha_multiplier or 1
-            local intensity = settings and settings.color_intensity_multiplier or 1
-            local x, y = MarkerWorld.local_point(scope, position[1] * scale,
-                position[2] * scale)
-            local ps = scope.pixel_size
-            local tinted = color and api.Color(color[1] * alpha, color[2] * intensity,
-                color[3] * intensity, color[4] * intensity) or api.Color(255, 255, 255, 255)
-            return with_gui(scope, function()
-                return api.Gui.rect_3d(scope.gui, scope.tm, Vector2(x, y), layer,
-                    Vector2(size[1] * scale * ps, size[2] * scale * ps), tinted)
-            end)
-        end)
-
-    mod:hook(UIRenderer, "draw_slug_icon",
-        function(func, self, resource, index, position, size, color,
-                optional_material, material_flags, retained_id)
-            local scope = active(self)
-            if not scope or retained_id then
-                return func(self, resource, index, position, size, color,
-                    optional_material, material_flags, retained_id)
-            end
-            -- Same route as the stock rotated icon: identity rotation, the
-            -- plane transform, and the offset in plane-local units.
-            local scale = self.scale or 1
-            local settings = self.render_settings
-            local layer = (settings and settings.start_layer or 0) +
-                math.max(position[3] or 0, 1)
-            local alpha = settings and settings.alpha_multiplier or 1
-            local intensity = settings and settings.color_intensity_multiplier or 1
-            local tinted = api.Color(color[1] * alpha, color[2] * intensity,
-                color[3] * intensity, color[4] * intensity)
-            local x, y = MarkerWorld.local_point(scope, position[1] * scale,
-                position[2] * scale)
-            local ps = scope.pixel_size
-            local params = {}
-            if optional_material then
-                params[#params + 1] = "material"; params[#params + 1] = optional_material
-            end
-            local flags = api.material_flags and api.material_flags(self, material_flags)
-            if flags then
-                params[#params + 1] = "material_flags"; params[#params + 1] = flags
-            end
-            return with_gui(scope, function()
-                return api.Gui.slug_icon_3d(scope.gui, resource, index, scope.tm,
-                    Vector3(x, y, 0), layer,
-                    Vector2(size[1] * scale * ps, size[2] * scale * ps), tinted,
-                    unpack(params))
-            end)
-        end)
-
-    mod:hook(UIRenderer, "destroy", function(func, renderer, ...)
-        MarkerWorld.destroy(renderer, api.World)
-        return func(renderer, ...)
+converters.draw_rect = function(scope, func, self, position, size, color, retained_id)
+    if retained_id then return func(self, position, size, color, retained_id) end
+    -- Stock scales logical units here and applies start layer, alpha and
+    -- intensity before Gui2.rect; do the same for rect_3d.
+    local api = state.api
+    local scale = self.scale or 1
+    local settings = self.render_settings
+    local layer = (position[3] or 0) + (settings and settings.start_layer or 0)
+    local alpha = settings and settings.alpha_multiplier or 1
+    local intensity = settings and settings.color_intensity_multiplier or 1
+    local x, y = MarkerWorld.local_point(scope, position[1] * scale, position[2] * scale)
+    local ps = scope.pixel_size
+    local tinted = color and api.Color(color[1] * alpha, color[2] * intensity,
+        color[3] * intensity, color[4] * intensity) or api.Color(255, 255, 255, 255)
+    return with_gui(scope, function()
+        return api.Gui.rect_3d(scope.gui, scope.tm, api.Vector2(x, y), layer,
+            api.Vector2(size[1] * scale * ps, size[2] * scale * ps), tinted)
     end)
+end
+
+converters.draw_slug_icon = function(scope, func, self, resource, index, position, size,
+        color, optional_material, material_flags, retained_id)
+    if retained_id then
+        return func(self, resource, index, position, size, color, optional_material,
+            material_flags, retained_id)
+    end
+    -- Same route as the stock rotated icon: the plane transform and the
+    -- offset in plane-local units.
+    local api = state.api
+    local scale = self.scale or 1
+    local settings = self.render_settings
+    local layer = (settings and settings.start_layer or 0) + math.max(position[3] or 0, 1)
+    local alpha = settings and settings.alpha_multiplier or 1
+    local intensity = settings and settings.color_intensity_multiplier or 1
+    local tinted = api.Color(color[1] * alpha, color[2] * intensity,
+        color[3] * intensity, color[4] * intensity)
+    local x, y = MarkerWorld.local_point(scope, position[1] * scale, position[2] * scale)
+    local ps = scope.pixel_size
+    local params = {}
+    if optional_material then
+        params[#params + 1] = "material"; params[#params + 1] = optional_material
+    end
+    local flags = api.material_flags and api.material_flags(self, material_flags)
+    if flags then
+        params[#params + 1] = "material_flags"; params[#params + 1] = flags
+    end
+    return with_gui(scope, function()
+        return api.Gui.slug_icon_3d(scope.gui, resource, index, scope.tm,
+            api.Vector3(x, y, 0), layer,
+            api.Vector2(size[1] * scale * ps, size[2] * scale * ps), tinted,
+            unpack(params))
+    end)
+end
+
+-- Called by the owner of the renderer hooks with the hooked name, the stock
+-- function and its arguments. Outside a marker draw, or for a renderer other
+-- than the scope's, or for a name without a converter, the stock call runs.
+function MarkerWorld.route(name, func, renderer, ...)
+    local scope = state.scope
+    local converter = scope and state.api and scope.renderer == renderer and converters[name]
+    if not converter then return func(renderer, ...) end
+    return converter(scope, func, renderer, ...)
 end
 
 return MarkerWorld
