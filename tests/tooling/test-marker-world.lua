@@ -27,12 +27,8 @@ assert(not MarkerWorld.geometry(Plane, {x = 0, y = 0, z = 0}, {x = 0, y = 0, z =
 -- Admission: only widgets whose passes the routing covers.
 assert(MarkerWorld.admits({passes = {{pass_type = "texture"}, {pass_type = "text"},
     {pass_type = "rect"}, {pass_type = "slug_icon"}, {pass_type = "logic"}}}))
-assert(MarkerWorld.admits({passes = {{pass_type = "texture"}, {pass_type = "rotated_texture"},
-    {pass_type = "rotated_rect"}}}), "the atlas surface takes rotated passes")
-MarkerWorld.set_surface("world")
 local ok, why = MarkerWorld.admits({passes = {{pass_type = "texture"}, {pass_type = "rotated_texture"}}})
 assert(not ok and why == "rotated_texture")
-MarkerWorld.set_surface("atlas")
 ok, why = MarkerWorld.admits({passes = {{pass_type = "texture", retained_mode = true}}})
 assert(not ok and why == "retained")
 assert(not MarkerWorld.admits({passes = {}}))
@@ -259,9 +255,6 @@ local function stock(name) return function(self, ...)
         settings = self.render_settings, ...}
     return name
 end end
-local rotated_tm = {translation = {x = 20, y = 0, z = 20}}
-api.Matrix4x4.translation = function(tm) return tm.translation end
-api.Matrix4x4.set_translation = function(tm, v) tm.translation = {x = v[1], y = v[2], z = v[3]} end
 local handle = {}
 MarkerWorld.note_material(handle, "content/ui/materials/hud/backgrounds/interaction_background")
 MarkerWorld.note_value("set_scalar", handle, "ui_scale", 2)
@@ -276,16 +269,8 @@ MarkerWorld.draw(atlas_scope, "left", function()
         V3(10, 10, 0), {255, 255, 255, 255}, nil, nil)
     MarkerWorld.route("script_draw_bitmap", stock("bitmap"), renderer, {}, V3(0, 0, 0),
         V3(1, 1, 0), nil)
-    MarkerWorld.route("script_draw_bitmap_3d", stock("bitmap3d"), renderer, "arrow", rotated_tm,
-        nil, 2, V3(30, 30, 0), {255, 255, 255, 255}, nil)
-    MarkerWorld.route("draw_rect_rotated", stock("rect_rotated"), renderer, V3(10, 10, 0),
-        V3(50, 10, 1), 0.5, {5, 5}, {255, 255, 255, 255})
 end)
-assert(#seen == 6, "an unknown material handle is not drawn on the atlas GUI")
-assert(seen[5].self == target and seen[5][1] == "arrow" and seen[5][2] == rotated_tm and
-    rotated_tm.translation.x == 432 and rotated_tm.translation.y == 0 and rotated_tm.translation.z == 236,
-    "a rotated texture's transform moves by the cell offset, screen y in z")
-assert(seen[6][2][1] == 256 and seen[6][2][2] == 118 and seen[6][3] == 0.5)
+assert(#seen == 4, "an unknown material handle is not drawn on the atlas GUI")
 assert(seen[1].self == target and seen[1].scale == 2 and seen[1].settings == renderer.render_settings)
 assert(seen[1][1] == "instance:content/ui/materials/hud/backgrounds/interaction_background")
 assert(seen[1][2][1] == 556 and seen[1][2][2] == 216 and seen[1][2][3] == 3 and seen[1][3][1] == 440,

@@ -56,19 +56,13 @@ local routed_pass_types = {
     texture = true, texture_uv = true, text = true, rect = true,
     slug_icon = true, logic = true,
 }
--- The atlas draws the stock calls themselves, so rotated passes (the
--- interaction marker's arrow and ping) can move with the rest.
-local atlas_pass_types = {rotated_texture = true, rotated_rect = true}
 function MarkerWorld.admits(widget)
     local passes = widget and widget.passes
     if type(passes) ~= "table" or #passes == 0 then return false, "no_passes" end
-    local atlas = MarkerWorld.state and MarkerWorld.state.surface == "atlas"
     for i = 1, #passes do
         local pass = passes[i]
         local kind = type(pass) == "table" and pass.pass_type
-        if not routed_pass_types[kind] and not (atlas and atlas_pass_types[kind]) then
-            return false, tostring(kind)
-        end
+        if not routed_pass_types[kind] then return false, tostring(kind) end
         if pass.retained_mode then return false, "retained" end
     end
     return true
@@ -573,28 +567,6 @@ end
 atlas_converters.draw_rect = function(scope, func, self, position, size, color, retained_id)
     if retained_id then return func(self, position, size, color, retained_id) end
     return atlas_call(scope, self, func, shifted(scope, position, self.scale or 1), size, color)
-end
-
--- Rotated textures reach the renderer as a 2D rotation transform whose
--- translation holds the screen position (x in x, screen y in z).
-atlas_converters.script_draw_bitmap_3d = function(scope, func, self, material, tm, position,
-        layer, size, color, uvs, retained_id)
-    if retained_id then
-        return func(self, material, tm, position, layer, size, color, uvs, retained_id)
-    end
-    local instance, ok = atlas_material(scope, material)
-    if not ok then state.atlas_skipped = state.atlas_skipped + 1; return nil end
-    local api = state.api
-    local t = api.Matrix4x4.translation(tm)
-    api.Matrix4x4.set_translation(tm, api.Vector3(t.x + scope.atlas_x - scope.origin_x, t.y,
-        t.z + scope.atlas_y - scope.origin_y))
-    return atlas_call(scope, self, func, instance, tm, position, layer, size, color, uvs)
-end
-
-atlas_converters.draw_rect_rotated = function(scope, func, self, size, position, angle, pivot,
-        color)
-    return atlas_call(scope, self, func, size, shifted(scope, position, self.scale or 1), angle,
-        pivot, color)
 end
 
 atlas_converters.draw_slug_icon = function(scope, func, self, resource, index, position, size,

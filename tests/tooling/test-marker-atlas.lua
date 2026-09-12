@@ -47,7 +47,7 @@ local x, y = Atlas.claim(1, {x = 0, y = 2, z = 0})
 assert(x == 512 and y == 256 and find("render_pass")[4] == true, "the target is cleared each frame")
 local x2, y2 = Atlas.claim(1, {x = 1, y = 2, z = 0})
 local x3, y3 = Atlas.claim(1, {x = 2, y = 2, z = 0})
-assert(x2 == 1536 and y2 == 256 and x3 == 2560 and y3 == 256)
+assert(x2 == 1536 and y2 == 256 and x3 == 512 and y3 == 768)
 local function frame_for(anchor) return "tm", 0.002 end
 assert(Atlas.draw(frame_for) == 0 and not find("copy"))
 
@@ -58,7 +58,7 @@ local quad = find("bitmap_3d")
 local args = quad[6]
 assert(quad[2] == state.world_material and quad[4] == "tm" and quad[5] == 1000)
 assert(math.abs(args.size[1] - 2.048) < 1e-9 and math.abs(args.size[2] - 1.024) < 1e-9)
-assert(args.uv00[1] == 0.75 and args.uv00[2] == 0.25 and args.uv11[1] == 0.5 and args.uv11[2] == 0,
+assert(args.uv00[1] == 0.5 and args.uv00[2] == 0.5 and args.uv11[1] == 0 and args.uv11[2] == 0.25,
     "the third cell, U and V reversed as on the HUD panel quad")
 for i = 1, Atlas.CELLS do assert(Atlas.claim(2, {x = i, y = 2, z = 0})) end
 local none, why = Atlas.claim(2, {x = 0, y = 0, z = 0})
