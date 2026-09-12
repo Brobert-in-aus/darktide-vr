@@ -6779,11 +6779,19 @@ function presentation.apply_body_visibility(self, frame, force)
         first_person_extension._wants_1p_camera = true
     elseif first_person_extension and
             controller_observation.stock_force_third_person_owner == first_person_extension then
-        first_person_extension._force_third_person_mode =
-            controller_observation.stock_force_third_person
+        -- The extension was initialised while the MissionManager hook already
+        -- answered false for the hub, so the captured value is not the stock
+        -- one; ask the mission again now that the hub option withdraws the
+        -- first-person request.
+        local mission_manager = Managers and Managers.state and Managers.state.mission
+        local stock = controller_observation.stock_force_third_person
+        if mission_manager and mission_manager.force_third_person_mode then
+            stock = mission_manager:force_third_person_mode() == true
+        end
+        first_person_extension._force_third_person_mode = stock
         controller_observation.stock_force_third_person_owner = nil
-        mod:info("DARKTIDEVR_BODY stock_force_third_person restored=%s",
-            tostring(controller_observation.stock_force_third_person))
+        mod:info("DARKTIDEVR_BODY stock_force_third_person restored=%s captured=%s",
+            tostring(stock), tostring(controller_observation.stock_force_third_person))
     end
 
     -- This is Darktide's stock visual swap, invoked with a visual-only 3P
