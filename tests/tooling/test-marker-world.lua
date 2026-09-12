@@ -281,4 +281,28 @@ assert(seen[3][1][1] == 256 and seen[3][1][2] == 118, "draw_rect shifts in logic
 assert(seen[4][3][1] == 206 and seen[4][3][2] == 108)
 assert(target.render_settings == nil and target.scale == nil and MarkerWorld.state.atlas_skipped == 1)
 assert(renderer.render_settings.snap_pixel_positions == true, "the atlas keeps stock pixel snapping")
+-- Mirror: each routed draw on the source runs as stock, then again on the
+-- target moved by the mirror offset; retained draws are not repeated and the
+-- stock result is returned.
+seen = {}
+local mirror_target = {gui = "panel_gui"}
+local mirror_atlas = {
+    renderer = function() return mirror_target end,
+    material = function(h, name) return "panel:" .. name end,
+}
+local source = {gui = "overlay_gui", scale = 1, render_settings = {start_layer = 0}}
+local results = {MarkerWorld.mirror(mirror_atlas, source, 0, -1116, function()
+    local a = MarkerWorld.route("script_draw_text", stock("text"), source, "hello", 20, "proxima",
+        V3(40, 2000, 1), V3(300, 30, 0), {255, 255, 255, 255}, {})
+    local b = MarkerWorld.route("script_draw_bitmap", stock("bitmap"), source, handle,
+        V3(40, 1990, 0), V3(320, 200, 0), nil, 7)
+    local c = MarkerWorld.route("draw_rect", stock("rect"), {gui = "other"}, V3(0, 0, 0), V3(1, 1, 0), nil)
+    return a, b, c
+end)}
+assert(results[1] == "text" and results[2] == "bitmap" and results[3] == "rect")
+assert(#seen == 4, "text twice, retained bitmap once, other renderer once")
+assert(seen[1].self == source and seen[2].self == mirror_target)
+assert(seen[2][4][1] == 40 and seen[2][4][2] == 884, "the copy moves by the mirror offset")
+assert(seen[3].self == source and seen[3][5] == 7 and seen[4].self.gui == "other")
+assert(mirror_target.render_settings == nil and MarkerWorld.state.mirror == nil)
 print("marker_world.result=pass")

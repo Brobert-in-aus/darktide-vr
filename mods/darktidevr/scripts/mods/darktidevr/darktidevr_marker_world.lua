@@ -507,11 +507,12 @@ end
 local function atlas_call(scope, self, func, ...)
     local target = scope.atlas.renderer()
     if not target then return nil end
+    local settings, scale, inverse = target.render_settings, target.scale, target.inverse_scale
     target.render_settings = self.render_settings
     target.scale = self.scale
     target.inverse_scale = self.inverse_scale
     local results = pack(pcall(func, target, ...))
-    target.render_settings, target.scale, target.inverse_scale = nil, nil, nil
+    target.render_settings, target.scale, target.inverse_scale = settings, scale, inverse
     if not results[1] then
         state.errors = state.errors + 1
         error(results[2], 0)
@@ -537,7 +538,10 @@ end
 
 atlas_converters.script_draw_bitmap = function(scope, func, self, material, position, size,
         color, retained_id)
-    if retained_id then return func(self, material, position, size, color, retained_id) end
+    if retained_id then
+        if scope.mirror then return nil end
+        return func(self, material, position, size, color, retained_id)
+    end
     local instance, ok = atlas_material(scope, material)
     if not ok then state.atlas_skipped = state.atlas_skipped + 1; return nil end
     dump("atlas_bitmap", state.material_names[material] or material, position[1] - scope.origin_x,
@@ -547,7 +551,10 @@ end
 
 atlas_converters.script_draw_bitmap_uv = function(scope, func, self, material, position, size,
         uvs, color, retained_id)
-    if retained_id then return func(self, material, position, size, uvs, color, retained_id) end
+    if retained_id then
+        if scope.mirror then return nil end
+        return func(self, material, position, size, uvs, color, retained_id)
+    end
     local instance, ok = atlas_material(scope, material)
     if not ok then state.atlas_skipped = state.atlas_skipped + 1; return nil end
     return atlas_call(scope, self, func, instance, shifted(scope, position, 1), size, uvs, color)
@@ -556,6 +563,7 @@ end
 atlas_converters.script_draw_text = function(scope, func, self, text, font_size, font_type,
         position, size, color, options, retained_id)
     if retained_id then
+        if scope.mirror then return nil end
         return func(self, text, font_size, font_type, position, size, color, options, retained_id)
     end
     dump("atlas_text", text, position[1] - scope.origin_x, position[2] - scope.origin_y,
@@ -565,13 +573,17 @@ atlas_converters.script_draw_text = function(scope, func, self, text, font_size,
 end
 
 atlas_converters.draw_rect = function(scope, func, self, position, size, color, retained_id)
-    if retained_id then return func(self, position, size, color, retained_id) end
+    if retained_id then
+        if scope.mirror then return nil end
+        return func(self, position, size, color, retained_id)
+    end
     return atlas_call(scope, self, func, shifted(scope, position, self.scale or 1), size, color)
 end
 
 atlas_converters.draw_slug_icon = function(scope, func, self, resource, index, position, size,
         color, optional_material, material_flags, retained_id)
     if retained_id then
+        if scope.mirror then return nil end
         return func(self, resource, index, position, size, color, optional_material,
             material_flags, retained_id)
     end
@@ -581,8 +593,40 @@ atlas_converters.draw_slug_icon = function(scope, func, self, resource, index, p
         size, color, instance, material_flags)
 end
 
+-- Mirror: while `fn` runs, every routed draw on `renderer` runs as stock and
+-- then once more on `target` (an atlas-like {renderer(), material()}), its
+-- position moved by dx, dy pixels, e.g. the constant elements onto the HUD
+-- panel's target.
+function MarkerWorld.mirror(target, renderer, dx, dy, fn, ...)
+    local previous = state.mirror
+    state.mirror = {renderer = renderer, atlas = target, mirror = true,
+        atlas_x = dx or 0, atlas_y = dy or 0, origin_x = 0, origin_y = 0}
+    local results = pack(pcall(fn, ...))
+    state.mirror = previous
+    if not results[1] then error(results[2], 0) end
+    return unpack(results, 2, results.n)
+end
+
 function MarkerWorld.route(name, func, renderer, ...)
     local scope = state.scope
+    local mirror = state.mirror
+    if mirror and mirror.renderer == renderer and not (scope and scope.renderer == renderer) then
+        local results = pack(func(renderer, ...))
+        local converter = atlas_converters[name]
+        if converter and state.api then
+            local ok, err = pcall(converter, mirror, func, renderer, ...)
+            if not ok then
+                state.mirror_errors = (state.mirror_errors or 0) + 1
+                if state.mirror_errors == 1 and state.api.log then
+                    state.api.log("DARKTIDEVR_HUD mirror_draw_failed call=" .. tostring(name) ..
+                        " error=" .. tostring(err))
+                end
+            else
+                state.mirror_draws = (state.mirror_draws or 0) + 1
+            end
+        end
+        return unpack(results, 1, results.n)
+    end
     if not scope or not state.api or scope.renderer ~= renderer then
         return func(renderer, ...)
     end

@@ -14605,6 +14605,7 @@ presentation.marker_plane_module = mod:io_dofile(
 presentation.marker_world = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_marker_world"
 )
+presentation.hud_panel.set_mirror(presentation.marker_world.mirror)
 do
     local bor = rawget(_G, "bit_or") or (rawget(_G, "bit") and bit.bor)
     presentation.marker_world.configure({

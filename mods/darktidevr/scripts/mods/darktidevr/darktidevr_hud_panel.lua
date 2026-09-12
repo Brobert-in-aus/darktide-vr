@@ -623,6 +623,12 @@ local function destroy_resources()
     if state.world and state.world_gui then
         pcall(World.destroy_gui, state.world, state.world_gui)
     end
+    if state.resource_renderer and state.mirror_materials then
+        for _, instance in pairs(state.mirror_materials) do
+            pcall(Gui.destroy_material, state.resource_renderer.gui, instance)
+        end
+    end
+    state.mirror_materials = {}
     if state.resource_renderer then
         if state.capture_target then
             -- Restore ownership metadata before stock destruction. During
@@ -874,6 +880,68 @@ function HudPanel.refresh_visibility(owner)
     end
 end
 
+-- Constant elements (chat, notification feed, mission buffs, voice chat,
+-- group finder and havoc status) draw through the UI manager's desktop
+-- renderer, which the headset never shows. While they draw, each stock
+-- draw call is repeated onto the panel's target through `mirror` (the
+-- marker router's mirror: same position, per-pass materials re-created on
+-- the panel GUI with their recorded values; drawing the elements a second
+-- time with the panel renderer crashed on those materials). Popups are a
+-- flat interactive panel and subtitles are mirrored separately, so both
+-- stay off the list, as do the watermark, loading and cursor.
+local panel_constant_elements = {
+    ConstantElementChat = true,
+    ConstantElementNotificationFeed = true,
+    ConstantElementMissionBuffs = true,
+    ConstantElementVoiceChat = true,
+    ConstantGroupFinderStatus = true,
+    ConstantElementHavocStatus = true,
+}
+HudPanel.panel_constant_elements = panel_constant_elements
+state.mirror_materials = {}
+local mirror_target = {
+    renderer = function() return state.resource_renderer end,
+    material = function(handle, name, values)
+        local renderer = state.resource_renderer
+        if not renderer then return nil end
+        local instance = state.mirror_materials[handle]
+        if not instance then
+            instance = Gui.create_material(renderer.gui, name)
+            state.mirror_materials[handle] = instance
+        end
+        for key, record in pairs(values or {}) do
+            local setter = Material[record[1]]
+            if setter then pcall(setter, instance, key, unpack(record, 3, record[2] + 2)) end
+        end
+        return instance
+    end,
+}
+-- Constant elements lay out on the whole UI lookup (in stereo taller than
+-- the panel target); each moves by its root node's alignment so a bottom
+-- anchored chat sits on the target's bottom edge.
+local function mirror_offset(element)
+    local lookup = RESOLUTION_LOOKUP
+    local width, height = state.target_width, state.target_height
+    if not lookup or not width or not height then return 0, 0 end
+    local horizontal, vertical
+    for _, node in pairs(element._ui_scenegraph or {}) do
+        if type(node) == "table" and node.parent == "screen" then
+            horizontal, vertical = node.horizontal_alignment, node.vertical_alignment
+            break
+        end
+    end
+    local function shift(alignment, target, source)
+        if alignment == "bottom" or alignment == "right" then return target - source end
+        if alignment == "center" then return (target - source) * 0.5 end
+        return 0
+    end
+    return shift(horizontal, width, lookup.width), shift(vertical, height, lookup.height)
+end
+
+function HudPanel.set_mirror(mirror)
+    state.mirror = mirror
+end
+
 function HudPanel.install(mod)
     state.mod = mod
     mod.toggle_vr_hud_editor = function()
@@ -890,6 +958,36 @@ function HudPanel.install(mod)
                 setting_id == "focus_warning" or
                 setting_id == "hud_visible" then HudPanel.read_settings(mod) end
     end
+    mod:hook("UIConstantElements", "draw", function(func, self, dt, t, input_service)
+        local renderer = state.resource_renderer
+        if not state.mirror or not state.enabled or not renderer or
+                state.hud_visible == false or not state.last_authored_t or
+                math.abs(state.last_authored_t - t) > 0.1 or
+                type(self._elements_array) ~= "table" then
+            return func(self, dt, t, input_service)
+        end
+        local source = self._ui_renderer
+        local wrapped = {}
+        for _, element in ipairs(self._elements_array) do
+            if panel_constant_elements[element.__class_name] and rawget(element, "draw") == nil then
+                local class_draw = element.draw
+                local dx, dy = mirror_offset(element)
+                element.draw = function(instance, ...)
+                    return state.mirror(mirror_target, source, dx, dy, class_draw, instance, ...)
+                end
+                wrapped[#wrapped + 1] = element
+            end
+        end
+        local ok, err = pcall(func, self, dt, t, input_service)
+        for i = 1, #wrapped do wrapped[i].draw = nil end
+        if not ok then error(err, 0) end
+        if #wrapped > 0 and not state.mirror_logged then
+            state.mirror_logged = true
+            mod:info("DARKTIDEVR_HUD constant_elements_mirrored=%d target=%sx%s",
+                #wrapped, tostring(state.target_width), tostring(state.target_height))
+        end
+    end)
+
     mod:hook("UIHud", "update", function(func, self, dt, t, input_service)
         update_enabled_flag(mod, t or 0)
         HudPanel.poll_window_focus(t or 0)
