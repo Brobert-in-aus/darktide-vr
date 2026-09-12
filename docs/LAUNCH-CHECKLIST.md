@@ -37,6 +37,8 @@ here, in the handover and on the Nexus page draft.
 - [x] Tutorial and HUD prompts show controller badges, no keyboard names.
   Passed 12 September.
 - [ ] Wide markers and the NPC interaction popup converge at the far edge.
+  **Fails** (worn 12 September on the published archive): the far edge
+  still diverges. Known limit for alpha.1; alpha.2 item in the todo.
 - [x] Damage-direction indicators visible in stereo when hit. Passed 12
   September.
 - [x] Quick wield returns to the last weapon; badge reads "[RS Down]".
@@ -48,6 +50,8 @@ here, in the handover and on the Nexus page draft.
 - [x] One Solo mission start to finish; one remote-server mission if the
   queue allows. Passed 12 September.
 - [ ] Flat mode through the batch file, launch flat once, back to VR mode.
+  Not tested on the published archive (the switch's own round trip was
+  tested on the bda5d37 package).
 - [x] Fresh install as a new user on the maintainer's machine: first-run
   state (no mod settings, no profile directory), archive extracted, batch
   choice 1. Done 12 September 14:24; backup of the previous state kept

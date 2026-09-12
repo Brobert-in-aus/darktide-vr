@@ -134,6 +134,8 @@ patch needs an update from us.
   prompts read Unbound.
 - The menu pointer's hit marker shows as a plain dark square (and the
   laser can look black) instead of the intended ring and cross.
+- Wide world markers and the interaction popup can double at their far
+  edge when they sit near the edge of your view.
 - Only one setup has been tested: an RTX 4090, a Quest 3 and Virtual
   Desktop.
 
