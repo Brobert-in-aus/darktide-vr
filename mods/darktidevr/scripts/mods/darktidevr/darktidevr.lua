@@ -14234,6 +14234,16 @@ mod:hook_require("scripts/managers/player/player_game_states/camera_handler", fu
             mod:info("DARKTIDEVR_CAMERA spectating=third_person source=option")
         end
     end)
+    -- Hub third person eases a movement pull-back out and an idle close-in
+    -- in over time. A menu stops the character, so the close-in ran on
+    -- behind it and the camera came back somewhere else when the menu was
+    -- opened mid-ease. Hold both eases (no elapsed time) while a menu is up.
+    mod:hook(class, "_update_hub_camera_variables", function(func, self, dt, ...)
+        if presentation.mode == 5 or presentation.mode == 6 then
+            dt = 0
+        end
+        return func(self, dt, ...)
+    end)
 end)
 
 -- The scanner display view (auspex scans, generator and decode minigames)
