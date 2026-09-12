@@ -5236,6 +5236,14 @@ local function update_stereo(manager)
             presentation.hud_panel.height, 2 * presentation.hud_panel.distance)
     end
     presentation.hud_panel.draw(world, clean_position, clean_rotation, hud_width, hud_center)
+    if presentation.marker_atlas then
+        local atlas_ok, atlas_error = pcall(presentation.marker_atlas.draw,
+            presentation.marker_atlas_frame)
+        if not atlas_ok and not presentation.marker_atlas_error_logged then
+            presentation.marker_atlas_error_logged = true
+            mod:error("DARKTIDEVR_MARKER_ATLAS draw_failed error=%s", tostring(atlas_error))
+        end
+    end
     if presentation.crosshair_feedback then
         presentation.crosshair_feedback.draw(world,clean_position,clean_rotation)
     end
@@ -12887,6 +12895,7 @@ mod:hook(
             local plane_widgets = nil
             if presentation.marker_plane_enabled() then
                 plane_widgets = {}
+                presentation.marker_atlas.begin_frame(t)
                 local routed, fallback = 0, 0
                 for _, markers in pairs(self._markers_by_type or {}) do
                     for i = 1, #markers do
@@ -12899,7 +12908,7 @@ mod:hook(
                                 local admitted, why = presentation.marker_world.admits(marker.widget)
                                 if admitted then
                                     scope, reason = presentation.marker_plane_scope(ui_renderer,
-                                        Vector3Box.unbox(marker.position), self._player_camera)
+                                        Vector3Box.unbox(marker.position), self._player_camera, t)
                                 else
                                     reason = why
                                 end
@@ -12998,7 +13007,7 @@ mod:hook(
             local markers_element = Managers.ui and Managers.ui._hud and
                 Managers.ui._hud.element and Managers.ui._hud:element("HudElementWorldMarkers")
             plane_scope = anchor and presentation.marker_plane_scope(ui_renderer, anchor,
-                markers_element and markers_element._player_camera) or nil
+                markers_element and markers_element._player_camera, t) or nil
             presentation.interaction_plane_t = plane_scope and t or nil
             presentation.interaction_plane_scope = plane_scope
         elseif world_marker_reprojecting and presentation.interaction_plane_t == t then
@@ -13137,7 +13146,7 @@ mod:hook("HudElementSmartTagging", "_draw_active_interaction_line",
                 Managers.ui._hud.element and Managers.ui._hud:element("HudElementWorldMarkers")
             plane_scope = presentation.marker_plane_scope(ui_renderer,
                 Vector3Box.unbox(marker.position),
-                markers_element and markers_element._player_camera)
+                markers_element and markers_element._player_camera, t)
         end
         presentation.tag_plane_t = plane_scope and t or nil
         presentation.tag_plane_scope = plane_scope
@@ -14605,6 +14614,26 @@ mod:hook(UIRenderer, "create_material", function(func, self, material_name, reta
     presentation.marker_world.note_material(handle, material_name)
     return handle
 end)
+-- Values set on those handles (material values, ui_scale), replayed on the
+-- marker atlas's own instances.
+for _, setter in ipairs({"set_scalar", "set_vector2", "set_vector3", "set_vector4",
+        "set_texture", "set_resource"}) do
+    if Material[setter] then
+        mod:hook(Material, setter, function(func, handle, key, ...)
+            presentation.marker_world.note_value(setter, handle, key, ...)
+            return func(handle, key, ...)
+        end)
+    end
+end
+presentation.marker_atlas = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_marker_atlas"
+)
+presentation.marker_atlas.configure({
+    Managers = Managers, UIRenderer = UIRenderer, Renderer = Renderer, World = World,
+    ScriptWorld = ScriptWorld, Gui = Gui, Gui2 = Gui2, Material = Material,
+    Matrix4x4 = Matrix4x4, Vector2 = Vector2, Vector3 = Vector3, Color = Color,
+    log = function(line) mod:info(line) end,
+})
 presentation.marker_gui = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_marker_gui"
 )
@@ -14633,7 +14662,7 @@ end
 -- anchor's screen position in the primary eye as the pixel origin. Screen
 -- pixels the stock widget draws relative to that origin land on the plane
 -- at the size the primary projection gives them at the anchor's distance.
-function presentation.marker_plane_scope(ui_renderer, anchor, camera)
+function presentation.marker_plane_scope(ui_renderer, anchor, camera, t)
     if not presentation.marker_plane_enabled() then return nil, "disabled" end
     local left, right = presentation.lod_primary_camera, presentation.lod_right_camera
     camera = camera or left
@@ -14656,6 +14685,19 @@ function presentation.marker_plane_scope(ui_renderer, anchor, camera)
         if not geometry then return nil, reason end
         local surface = presentation.marker_world.state.surface
         local ps = geometry.pixel_size
+        if surface == "atlas" then
+            -- Stock 2D draw into an atlas cell; the quad is drawn at the
+            -- camera update (presentation.marker_atlas_frame).
+            local atlas = presentation.marker_atlas
+            if not atlas.ensure(ui_renderer.world) then return nil, "atlas" end
+            local screen = presentation.world_marker_screen_position(camera, anchor)
+            local x, y = atlas.claim(t, plain(anchor))
+            if not x then return nil, y end
+            return {renderer = ui_renderer, surface = "atlas", atlas = atlas,
+                atlas_x = x, atlas_y = y,
+                origin_x = Vector3.x(screen), origin_y = Vector3.y(screen),
+                pixel_size = ps, distance = geometry.distance}
+        end
         local x_axis = Vector3(geometry.right.x * ps, geometry.right.y * ps, geometry.right.z * ps)
         local y_axis = Vector3(geometry.up.x * ps, geometry.up.y * ps, geometry.up.z * ps)
         if surface == "screen" then
@@ -14703,6 +14745,28 @@ function presentation.marker_plane_scope(ui_renderer, anchor, camera)
     end
     return scope_or_reason, detail
 end
+-- The atlas quad for one recorded anchor: the plane through it as seen from
+-- the head centre, faced toward the viewer as the HUD panel faces its quad.
+function presentation.marker_atlas_frame(anchor)
+    local left, right = presentation.lod_primary_camera, presentation.lod_right_camera
+    if not left or not right then return nil end
+    local center = (ScriptCamera.local_position(left) + ScriptCamera.local_position(right)) * 0.5
+    local rotation = ScriptCamera.local_rotation(left)
+    local _, height = Application.back_buffer_size()
+    local tangent = 2 * math.tan(Camera.vertical_fov(left) * 0.5) /
+        (height * (presentation.render_visibility_scale or 1))
+    local function plain(v) return {x = Vector3.x(v), y = Vector3.y(v), z = Vector3.z(v)} end
+    local geometry = presentation.marker_world.geometry(presentation.marker_plane_module,
+        anchor, plain(center), plain(Quaternion.right(rotation)), plain(Quaternion.up(rotation)),
+        tangent, false)
+    if not geometry then return nil end
+    local tm = Matrix4x4.identity()
+    Matrix4x4.set_right(tm, Vector3(-geometry.right.x, -geometry.right.y, -geometry.right.z))
+    Matrix4x4.set_forward(tm, Vector3(-geometry.forward.x, -geometry.forward.y, -geometry.forward.z))
+    Matrix4x4.set_up(tm, Vector3(geometry.up.x, geometry.up.y, geometry.up.z))
+    Matrix4x4.set_translation(tm, Vector3(anchor.x, anchor.y, anchor.z))
+    return tm, geometry.pixel_size
+end
 -- Marker widgets mapped to a plane this frame draw through it; the right-eye
 -- replay skips them because the world surface already serves both eyes.
 mod:hook(require("scripts/managers/ui/ui_widget"), "draw", function(func, widget, ui_renderer)
@@ -14720,7 +14784,7 @@ mod:hook(require("scripts/managers/ui/ui_widget"), "draw", function(func, widget
     return presentation.marker_world.draw(scope, "left", func, widget, ui_renderer)
 end)
 mod:command("dtvr_marker_plane",
-    "World-surface markers: on, off, flip, surface <screen|world>, text <slug|rect|2d>, origin <top|bottom>, layer <n>, dump, probe, status",
+    "World-surface markers: on, off, flip, surface <atlas|screen|world>, text <slug|rect|2d>, origin <top|bottom>, layer <n>, dump, probe, status",
     function(action, mode)
     if action == "on" or action == "off" then
         mod:set("marker_plane", action == "on")
@@ -14729,6 +14793,7 @@ mod:command("dtvr_marker_plane",
     elseif action == "surface" then
         local ok, why = presentation.marker_world.set_surface(mode)
         if not ok then mod:echo("surface: " .. tostring(why)) end
+        if mode ~= "atlas" then pcall(presentation.marker_atlas.destroy) end
     elseif action == "text" then
         local ok, why = presentation.marker_world.set_text_mode(mode)
         if not ok then mod:echo("text mode: " .. tostring(why)) end
@@ -14761,6 +14826,10 @@ mod:command("dtvr_marker_plane",
         tostring(presentation.marker_world.state.layer_base),
         counts.routed, counts.fallback, table.concat(reasons, ","),
         presentation.marker_world.state.errors)
+    local atlas = presentation.marker_atlas.state
+    line = line .. string.format(" atlas_created=%s atlas_failed=%s atlas_shown=%d atlas_skipped=%d",
+        tostring(atlas.resource ~= nil), tostring(atlas.failed == true), #atlas.shown,
+        presentation.marker_world.state.atlas_skipped or 0)
     mod:echo(line)
     mod:info(line)
 end)
@@ -14888,6 +14957,7 @@ mod.on_disabled = function()
     pcall(presentation.hud_panel.set_enabled, false)
     pcall(presentation.marker_gui.destroy_all)
     pcall(presentation.marker_world.destroy_all)
+    pcall(presentation.marker_atlas.destroy)
     pcall(teardown)
     pcall(teardown_ui_stereo)
     pcall(destroy_ui_offscreen_resources)
@@ -14906,6 +14976,7 @@ mod.on_unload = function()
     pcall(presentation.hud_panel.set_enabled, false)
     pcall(presentation.marker_gui.destroy_all)
     pcall(presentation.marker_world.destroy_all)
+    pcall(presentation.marker_atlas.destroy)
     pcall(teardown)
     pcall(teardown_ui_stereo)
     pcall(destroy_ui_offscreen_resources)

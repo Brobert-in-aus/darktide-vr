@@ -69,8 +69,9 @@ function MarkerWorld.admits(widget)
 end
 
 local state = {scope = nil, eye = nil, guis = {}, errors = 0, api = nil,
-    surface = "world", text_mode = "slug", text_origin = "top", layer_base = 1000,
-    material_names = setmetatable({}, {__mode = "k"}), world_materials = {}}
+    surface = "atlas", text_mode = "slug", text_origin = "top", layer_base = 1000,
+    material_names = setmetatable({}, {__mode = "k"}), world_materials = {},
+    material_values = setmetatable({}, {__mode = "k"}), atlas_skipped = 0}
 MarkerWorld.state = state
 
 -- Diagnostics. `dump` logs every routed draw for the next frames; `probe`
@@ -141,6 +142,18 @@ function MarkerWorld.note_material(handle, name)
     end
 end
 
+-- The owner of the Material setter hooks reports every value set on a
+-- handle this module knows by name, so the atlas instance replays them.
+function MarkerWorld.note_value(setter, handle, key, ...)
+    if handle == nil or key == nil or not state.material_names[handle] then return end
+    local values = state.material_values[handle]
+    if not values then
+        values = {}
+        state.material_values[handle] = values
+    end
+    values[key] = {setter, select("#", ...), ...}
+end
+
 local function world_material(scope, self, material, gui)
     if type(material) == "string" then return material end
     local name = state.material_names[material]
@@ -162,7 +175,7 @@ local function world_material(scope, self, material, gui)
     return instance
 end
 
-local surfaces = {screen = true, world = true}
+local surfaces = {screen = true, world = true, atlas = true}
 function MarkerWorld.set_surface(mode)
     if surfaces[mode] then state.surface = mode; return true end
     return false, "screen or world"
@@ -231,8 +244,9 @@ function MarkerWorld.draw(scope, eye, draw, ...)
     local previous_scope, previous_eye = state.scope, state.eye
     local settings = scope.renderer.render_settings
     local snap = settings and settings.snap_pixel_positions
-    -- Plane-local coordinates must not be rounded to whole pixels.
-    if settings then settings.snap_pixel_positions = false end
+    -- Plane-local coordinates must not be rounded to whole pixels; the atlas
+    -- draws stock 2D and keeps the stock setting.
+    if settings and scope.surface ~= "atlas" then settings.snap_pixel_positions = false end
     state.scope, state.eye = scope, eye
     local results = {pcall(draw, ...)}
     state.scope, state.eye = previous_scope, previous_eye
@@ -481,9 +495,103 @@ end
 -- Called by the owner of the renderer hooks with the hooked name, the stock
 -- function and its arguments. Outside a marker draw, for another renderer,
 -- or for a name without a converter, the stock call runs.
+-- Atlas surface: the stock call itself, on the atlas renderer, with the
+-- marker's anchor moved to its cell centre. Scaled entry points (script_*)
+-- shift in pixels, unscaled ones (draw_rect, draw_slug_icon) in logical units.
+local atlas_converters = {}
+
+local function pack(...)
+    return {n = select("#", ...), ...}
+end
+
+local function atlas_call(scope, self, func, ...)
+    local target = scope.atlas.renderer()
+    if not target then return nil end
+    target.render_settings = self.render_settings
+    target.scale = self.scale
+    target.inverse_scale = self.inverse_scale
+    local results = pack(pcall(func, target, ...))
+    target.render_settings, target.scale, target.inverse_scale = nil, nil, nil
+    if not results[1] then
+        state.errors = state.errors + 1
+        error(results[2], 0)
+    end
+    return unpack(results, 2, results.n)
+end
+
+-- nil means the handle cannot be drawn on the atlas GUI: the draw is skipped
+-- (a source-GUI handle on another GUI fails in the renderer).
+local function atlas_material(scope, material)
+    if material == nil or type(material) == "string" then return material, true end
+    local name = state.material_names[material]
+    if not name then return nil, false end
+    local instance = scope.atlas.material(material, name, state.material_values[material])
+    return instance, instance ~= nil
+end
+
+local function shifted(scope, position, divisor)
+    local dx = (scope.atlas_x - scope.origin_x) / divisor
+    local dy = (scope.atlas_y - scope.origin_y) / divisor
+    return state.api.Vector3(position[1] + dx, position[2] + dy, position[3] or 0)
+end
+
+atlas_converters.script_draw_bitmap = function(scope, func, self, material, position, size,
+        color, retained_id)
+    if retained_id then return func(self, material, position, size, color, retained_id) end
+    local instance, ok = atlas_material(scope, material)
+    if not ok then state.atlas_skipped = state.atlas_skipped + 1; return nil end
+    dump("atlas_bitmap", state.material_names[material] or material, position[1] - scope.origin_x,
+        position[2] - scope.origin_y, size[1], size[2], position[3])
+    return atlas_call(scope, self, func, instance, shifted(scope, position, 1), size, color)
+end
+
+atlas_converters.script_draw_bitmap_uv = function(scope, func, self, material, position, size,
+        uvs, color, retained_id)
+    if retained_id then return func(self, material, position, size, uvs, color, retained_id) end
+    local instance, ok = atlas_material(scope, material)
+    if not ok then state.atlas_skipped = state.atlas_skipped + 1; return nil end
+    return atlas_call(scope, self, func, instance, shifted(scope, position, 1), size, uvs, color)
+end
+
+atlas_converters.script_draw_text = function(scope, func, self, text, font_size, font_type,
+        position, size, color, options, retained_id)
+    if retained_id then
+        return func(self, text, font_size, font_type, position, size, color, options, retained_id)
+    end
+    dump("atlas_text", text, position[1] - scope.origin_x, position[2] - scope.origin_y,
+        size and size[1] or 0, size and size[2] or 0, position[3])
+    return atlas_call(scope, self, func, text, font_size, font_type,
+        shifted(scope, position, 1), size, color, options)
+end
+
+atlas_converters.draw_rect = function(scope, func, self, position, size, color, retained_id)
+    if retained_id then return func(self, position, size, color, retained_id) end
+    return atlas_call(scope, self, func, shifted(scope, position, self.scale or 1), size, color)
+end
+
+atlas_converters.draw_slug_icon = function(scope, func, self, resource, index, position, size,
+        color, optional_material, material_flags, retained_id)
+    if retained_id then
+        return func(self, resource, index, position, size, color, optional_material,
+            material_flags, retained_id)
+    end
+    local instance, ok = atlas_material(scope, optional_material)
+    if not ok then state.atlas_skipped = state.atlas_skipped + 1; return nil end
+    return atlas_call(scope, self, func, resource, index, shifted(scope, position, self.scale or 1),
+        size, color, instance, material_flags)
+end
+
 function MarkerWorld.route(name, func, renderer, ...)
     local scope = state.scope
-    local converter = scope and state.api and scope.renderer == renderer and converters[name]
+    if not scope or not state.api or scope.renderer ~= renderer then
+        return func(renderer, ...)
+    end
+    local converter
+    if scope.surface == "atlas" then
+        converter = atlas_converters[name]
+    else
+        converter = converters[name]
+    end
     if not converter then return func(renderer, ...) end
     return converter(scope, func, renderer, ...)
 end

@@ -66,7 +66,7 @@ local api = {
     material_flags = function() return 7 end,
 }
 MarkerWorld.configure(api)
-assert(MarkerWorld.state.surface == "world" and MarkerWorld.state.text_origin == "top")
+assert(MarkerWorld.state.surface == "atlas" and MarkerWorld.state.text_origin == "top")
 local function call(name, renderer, ...)
     return MarkerWorld.route(name, UIRenderer[name], renderer, ...)
 end
@@ -231,5 +231,54 @@ MarkerWorld.gui_for(other)
 MarkerWorld.destroy_all()
 assert(next(MarkerWorld.state.guis) == nil)
 assert(MarkerWorld.set_surface("world") and MarkerWorld.set_surface("screen") and
-    not MarkerWorld.set_surface("nowhere"))
+    MarkerWorld.set_surface("atlas") and not MarkerWorld.set_surface("nowhere"))
+
+-- Atlas surface: the stock function itself on the atlas renderer, the anchor
+-- moved to the cell centre (pixels for script_*, logical units otherwise),
+-- per-handle material instances with their recorded values replayed, and
+-- the atlas renderer's borrowed fields cleared afterwards.
+local target = {gui = "atlas_gui"}
+local instances, replayed = {}, {}
+local atlas = {
+    renderer = function() return target end,
+    material = function(handle, name, values)
+        instances[#instances + 1] = {handle = handle, name = name}
+        for key, value in pairs(values or {}) do replayed[key] = value end
+        return "instance:" .. name
+    end,
+}
+local atlas_scope = {renderer = renderer, surface = "atlas", atlas = atlas,
+    atlas_x = 512, atlas_y = 256, origin_x = 100, origin_y = 40}
+local seen = {}
+local function stock(name) return function(self, ...)
+    seen[#seen + 1] = {name = name, self = self, scale = self.scale,
+        settings = self.render_settings, ...}
+    return name
+end end
+local handle = {}
+MarkerWorld.note_material(handle, "content/ui/materials/hud/backgrounds/interaction_background")
+MarkerWorld.note_value("set_scalar", handle, "ui_scale", 2)
+MarkerWorld.note_value("set_scalar", {}, "ignored", 1)
+MarkerWorld.draw(atlas_scope, "left", function()
+    MarkerWorld.route("script_draw_bitmap", stock("bitmap"), renderer, handle,
+        V3(144, 0, 3), V3(440, 111, 0), {255, 255, 255, 255})
+    MarkerWorld.route("script_draw_text", stock("text"), renderer, "Title", 22, "proxima",
+        V3(180, 40, 5), V3(390, 42, 0), {255, 1, 2, 3}, {})
+    MarkerWorld.route("draw_rect", stock("rect"), renderer, V3(50, 10, 4), V3(220, 21, 0), nil)
+    MarkerWorld.route("draw_slug_icon", stock("icon"), renderer, "res", 1, V3(0, 0, 1),
+        V3(10, 10, 0), {255, 255, 255, 255}, nil, nil)
+    MarkerWorld.route("script_draw_bitmap", stock("bitmap"), renderer, {}, V3(0, 0, 0),
+        V3(1, 1, 0), nil)
+end)
+assert(#seen == 4, "an unknown material handle is not drawn on the atlas GUI")
+assert(seen[1].self == target and seen[1].scale == 2 and seen[1].settings == renderer.render_settings)
+assert(seen[1][1] == "instance:content/ui/materials/hud/backgrounds/interaction_background")
+assert(seen[1][2][1] == 556 and seen[1][2][2] == 216 and seen[1][2][3] == 3 and seen[1][3][1] == 440,
+    "script_draw_bitmap shifts by the cell offset in pixels and keeps its size")
+assert(replayed.ui_scale and replayed.ui_scale[1] == "set_scalar" and replayed.ui_scale[3] == 2)
+assert(seen[2][4][1] == 592 and seen[2][4][2] == 256 and seen[2][7] ~= nil, "text keeps its box and options")
+assert(seen[3][1][1] == 256 and seen[3][1][2] == 118, "draw_rect shifts in logical units")
+assert(seen[4][3][1] == 206 and seen[4][3][2] == 108)
+assert(target.render_settings == nil and target.scale == nil and MarkerWorld.state.atlas_skipped == 1)
+assert(renderer.render_settings.snap_pixel_positions == true, "the atlas keeps stock pixel snapping")
 print("marker_world.result=pass")
