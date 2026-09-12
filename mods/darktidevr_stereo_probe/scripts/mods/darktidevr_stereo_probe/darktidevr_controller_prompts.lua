@@ -25,6 +25,8 @@ local scopes = {
     {"HudElementSmartTagging","_update_tag_interaction_information"},
     {"ConstantElementOnboardingHandler","_sync_onboarding_settings"},
     {"HudElementPrologueTutorialInfoBox","_get_input_description_text"},
+    {"HudElementTacticalOverlay","_update_right_hint"},
+    {"HudElementSpectatorText","_get_cycle_input_text"},
 }
 
 function Prompts.install(mod, bindings, enabled, menu_prompts)
@@ -101,6 +103,28 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
             return finish_scope(previous_switch,pcall(func,...))
         end)
     end
+    -- Localised strings carry input glyphs through the $INGAME_INPUT:...$
+    -- macro (prologue popups, objective and area text). Expand it inside the
+    -- scope so those read the controller too, and drop the localisation
+    -- string cache whenever the mapping or VR availability changes, since it
+    -- keeps an expanded glyph for the session.
+    local has_macros,localization_macros=pcall(require,"scripts/managers/localization/localization_macros")
+    local cache_revision
+    local function refresh_localization_cache()
+        local current=bindings.revision*2+(enabled() and 1 or 0)
+        if cache_revision==current then return end
+        cache_revision=current
+        local localization=Managers and Managers.localization
+        if localization and localization.reset_cache then pcall(localization.reset_cache,localization) end
+    end
+    if has_macros and type(localization_macros)=="table" and localization_macros.INGAME_INPUT then
+        mod:hook(localization_macros,"INGAME_INPUT",function(func,...)
+            refresh_localization_cache()
+            local previous_switch=weapon_switch
+            depth=depth+1; weapon_switch=false
+            return finish_scope(previous_switch,pcall(func,...))
+        end)
+    end
     -- Stock prologue caching watches keyboard keys and device selection, which
     -- do not change when a VR control is remapped or tracking becomes unavailable.
     mod:hook("HudElementPrologueTutorialInfoBox","_should_update_input",function(func,self,info)
@@ -117,6 +141,7 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
             "HudElementPlayerSlotItemAbility","HudElementWieldInfo"}) do
         local wield=class=="HudElementWieldInfo"
         mod:hook(class,"update",function(func,self,dt,t,renderer,...)
+            refresh_localization_cache()
             local current=bindings.revision*2+(enabled() and 1 or 0)
             if revisions[self]~=current then
                 revisions[self]=current

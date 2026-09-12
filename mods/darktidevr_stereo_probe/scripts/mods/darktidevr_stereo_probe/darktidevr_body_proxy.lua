@@ -9,6 +9,13 @@ function BodyProxy.uses_stock_melee_animation(slot, kind, action, actions)
     if kind == "sweep" or kind == "push" or kind == "melee_explosive" then
         return true
     end
+    -- A held block plays the authored guard pose on every melee weapon (and
+    -- the shield states); the tracked arms would otherwise overwrite it and
+    -- leave the block invisible. Block direction still follows the hand.
+    if kind == "block" or kind == "block_windup" or kind == "block_aiming" or
+            kind == "block_unaim" then
+        return true
+    end
     if kind ~= "windup" then return false end
     if slot == "slot_primary" then return true end
     -- Staff special attacks have ranged-slot windups too. Follow their

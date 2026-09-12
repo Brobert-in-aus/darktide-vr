@@ -14,6 +14,7 @@ assert(stock("slot_secondary", "windup", staff_start,
 assert(not stock("slot_secondary", "windup", staff_start,
     { stab = { kind = "spawn_projectile" } }), "projectile charge lost tracking")
 assert(not stock("slot_secondary", "shoot_hit_scan"))
-assert(not stock("slot_primary", "block"))
+-- A held block plays the authored guard pose on every melee weapon.
+assert(stock("slot_primary", "block") and stock("slot_primary", "block_windup"))
 assert(not stock(nil, nil))
 print("melee_animation_owner=pass")
