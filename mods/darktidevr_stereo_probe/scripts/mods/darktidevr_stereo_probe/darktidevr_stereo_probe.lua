@@ -10407,14 +10407,15 @@ end
 
 -- Optional stock third-person body in the hub (mod setting). Combat modes
 -- keep the first-person body regardless.
-function presentation.hub_third_person_active()
-    -- The onboarding hub missions force the stock third-person camera; they
-    -- always take the third-person presentation.
+-- True in the onboarding hub missions, whose game mode reports as
+-- prologue_hub before the mod maps it to the hub.
+function presentation.onboarding_hub_active()
     local game_mode = Managers and Managers.state and Managers.state.game_mode
-    local raw_ok, raw_name = pcall(function() return game_mode:game_mode_name() end)
-    if raw_ok and raw_name == "prologue_hub" then
-        return true
-    end
+    local ok, name = pcall(function() return game_mode:game_mode_name() end)
+    return ok and name == "prologue_hub"
+end
+
+function presentation.hub_third_person_active()
     if mod:get("hub_third_person") ~= true then
         return false
     end
@@ -10495,8 +10496,11 @@ mod:hook(
     require("scripts/managers/mission/mission_manager"),
     "force_third_person_mode",
     function(func, self)
+        -- The hub and the onboarding hub missions both force third person
+        -- in stock; the first-person body request overrides either.
         if presentation.hub_first_person_requested() and
-                self:mission_name() == "hub_ship" then
+                (self:mission_name() == "hub_ship" or
+                    presentation.onboarding_hub_active()) then
             return false
         end
         return func(self)
