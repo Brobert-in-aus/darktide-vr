@@ -5361,9 +5361,10 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         end
         gameplay_yaw = (game_yaw +
             (controller_observation.hub_third_person_yaw_delta or 0)) % (math.pi * 2)
-        hub_third_person_pitch = math.clamp(game_pitch +
-            (controller_observation.hub_third_person_pitch_delta or 0),
-            -math.pi * 0.45, math.pi * 0.45)
+        -- Stock keeps pitch wrapped into [0, 2pi); add the delta in that
+        -- range and leave the limits to the stock orientation update.
+        hub_third_person_pitch = (game_pitch +
+            (controller_observation.hub_third_person_pitch_delta or 0)) % (math.pi * 2)
         controller_observation.hub_third_person_yaw_delta = 0
         controller_observation.hub_third_person_pitch_delta = 0
     else
@@ -6765,9 +6766,24 @@ function presentation.apply_body_visibility(self, frame, force)
     -- forcing the whole extension into third person and repairing its camera.
     local first_person_extension = self._first_person_extension
     if first_person_extension and active then
+        -- Remember the stock flag once per extension so that withdrawing the
+        -- gate (the optional third-person hub body) gives the hub its stock
+        -- third-person camera back; a cleared flag left it first person.
+        if controller_observation.stock_force_third_person_owner ~= first_person_extension then
+            controller_observation.stock_force_third_person_owner = first_person_extension
+            controller_observation.stock_force_third_person =
+                first_person_extension._force_third_person_mode == true
+        end
         first_person_extension._force_third_person_mode = false
         first_person_extension._show_1p_equipment = false
         first_person_extension._wants_1p_camera = true
+    elseif first_person_extension and
+            controller_observation.stock_force_third_person_owner == first_person_extension then
+        first_person_extension._force_third_person_mode =
+            controller_observation.stock_force_third_person
+        controller_observation.stock_force_third_person_owner = nil
+        mod:info("DARKTIDEVR_BODY stock_force_third_person restored=%s",
+            tostring(controller_observation.stock_force_third_person))
     end
 
     -- This is Darktide's stock visual swap, invoked with a visual-only 3P

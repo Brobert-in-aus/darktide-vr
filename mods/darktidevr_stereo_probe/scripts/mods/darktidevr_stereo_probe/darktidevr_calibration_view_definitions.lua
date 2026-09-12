@@ -191,7 +191,7 @@ local widget_definitions = {
     capture = text_widget("capture",
         "POSE CAPTURE USES THE CONTROLLER TRIGGER(S)", body_style),
     retry = button_widget("retry", "RETRY CURRENT STEP"),
-    back = button_widget("back", "BACK"),
+    back = button_widget("back", "DONE"),
     target_head = pose_marker_widget(
         "target_head", "TARGET", { 110, 115, 125, 135 }),
     target_left = pose_marker_widget(

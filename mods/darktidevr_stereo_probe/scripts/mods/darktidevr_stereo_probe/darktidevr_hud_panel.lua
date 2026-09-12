@@ -310,30 +310,34 @@ function HudPanel.update_editor_request(owner)
     custom:toggle_hud_customization()
 end
 
-local function draw_notice(renderer, text, vertical_fraction, background)
+-- centre_fraction places the notice's vertical centre at that fraction of
+-- the HUD height.
+local function draw_notice(renderer, text, centre_fraction, background)
     local width, height = state.target_width, state.target_height
     if not width or not height then return end
     -- Author into the shared HUD texture so both eyes receive identical text.
     -- A separate renderer facade preserves the stock pass's cleared scale state.
     local notice_renderer = setmetatable({scale=1,render_settings=false},{__index=renderer})
     local size, margin = width / 1920 * 34, width * 0.035
-    UIRenderer.draw_rect(notice_renderer,Vector3(margin,height*vertical_fraction,19000),
+    local top = height * centre_fraction - size
+    UIRenderer.draw_rect(notice_renderer,Vector3(margin,top,19000),
         Vector3(width-2*margin,size*2,0),background)
     UIRenderer.draw_text(notice_renderer,text,
-        size,"proxima_nova_bold",Vector3(margin,height*vertical_fraction,19001),
+        size,"proxima_nova_bold",Vector3(margin,top,19001),
         Vector3(width-2*margin,size*2,0),Color(255,230,245,240),
         {horizontal_alignment="center",vertical_alignment="center"})
 end
 
 function HudPanel.draw_editor_notice(renderer)
     if HudPanel.editing() then
-        draw_notice(renderer, state.mod:localize("hud_editor_notice"), 0.88,
+        draw_notice(renderer, state.mod:localize("hud_editor_notice"), 0.91,
             Color(235,12,16,20))
     end
     -- Losing the OS foreground stops frame generation and controller input
     -- reaching the game; the headset otherwise shows a silently frozen world.
+    -- Centred on the panel so it is seen without looking down.
     if state.focus_warning and state.window_focused == false then
-        draw_notice(renderer, state.mod:localize("hud_focus_notice"), 0.12,
+        draw_notice(renderer, state.mod:localize("hud_focus_notice"), 0.5,
             Color(235,90,20,10))
     end
 end
