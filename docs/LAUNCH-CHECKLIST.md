@@ -7,20 +7,26 @@ the page text or package must reflect the decision.
 ## 1. Worn acceptance on the release package
 
 The archive to ship is the one whose name carries the final commit. Today
-that is `artifacts/packages/darktidevr-0.1.0-alpha.1-c626f44a82c2.zip`
-(SHA-256 `0D9A46C7...`), built from `c626f44` (mod id `darktidevr`, mode
-switch update-safe) and installed fresh in the late afternoon. If any item below needs a code change, commit it, rebuild
+that is `artifacts/packages/darktidevr-0.1.0-alpha.1-4efe666bc7ff.zip`
+(SHA-256 `E61B47F6...`), built from `4efe666` (mod id `darktidevr`, mode
+switch update-safe, two Lua crash guards) and installed fresh in the
+evening. If any item below needs a code change, commit it, rebuild
 (`record-component-provenance.ps1 -OutputPath ...` then
 `build-runtime-package.ps1 -ReleaseVersion 0.1.0-alpha.1
 -ComponentProvenancePath ... -RequireComponentProvenance`), re-run the
 verifier and the batch round trip, and update the archive name and hash
 here, in the handover and on the Nexus page draft.
 
-- [ ] Renamed install carries your settings, bindings and options over
+- [x] Renamed install carries your settings, bindings and options over
   (the mod id is now `darktidevr`; profiles were migrated on disk).
-- [ ] Psykhanium onboarding from a fresh character: gun sits in the hand,
+  Passed 12 September evening.
+- [x] Psykhanium onboarding from a fresh character: gun sits in the hand,
   grenade section advances, end-of-training question appears in the
-  headset and can be answered with the pointer.
+  headset and can be answered with the pointer. Passed 12 September
+  (gun placement, popup with laser and cursor, medicrate badge, marker
+  step).
+- [ ] Enter the Psykhanium twice in one session and exit the game from
+  the onboarding normally (the two crash guards in 4efe666).
 - [ ] Aim-down-sights focus: vignette, tighter reticle, steadier aim while
   the sight is held; releases cleanly.
 - [ ] Block pose on a melee weapon (shovel or sword).
