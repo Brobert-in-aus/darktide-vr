@@ -40,6 +40,13 @@ here, in the handover and on the Nexus page draft.
 - [ ] One Solo mission start to finish; one remote-server mission if the
   queue allows.
 - [ ] Flat mode through the batch file, launch flat once, back to VR mode.
+- [x] Fresh install as a new user on the maintainer's machine: first-run
+  state (no mod settings, no profile directory), archive extracted, batch
+  choice 1. Done 12 September 14:24; backup of the previous state kept
+  under `%LOCALAPPDATA%`.
+- [ ] From that fresh install: launch through Steam and the launcher,
+  calibration prompt appears, defaults in place, one full mission;
+  capture the page's screenshots and video on the way.
 
 ## 2. Documents inside the package
 
