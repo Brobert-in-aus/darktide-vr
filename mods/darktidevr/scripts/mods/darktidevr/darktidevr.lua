@@ -14565,6 +14565,7 @@ do
     presentation.marker_world.configure({
         UIRenderer = UIRenderer, Vector2 = Vector2, Vector3 = Vector3,
         Color = Color, Gui = Gui, World = World, Matrix4x4 = Matrix4x4,
+        log = function(line) mod:info(line) end,
         material_flags = function(renderer, flags)
             local settings = renderer.render_settings
             if settings and bor then
@@ -14659,11 +14660,14 @@ mod:hook(require("scripts/managers/ui/ui_widget"), "draw", function(func, widget
     if world_marker_reprojecting then return end
     return presentation.marker_world.draw(scope, func, widget, ui_renderer)
 end)
-mod:command("dtvr_marker_plane", "World-surface markers: on, off, flip, status", function(action)
+mod:command("dtvr_marker_plane", "World-surface markers: on, off, flip, text <slug|nopass|rect|2d>, status", function(action, mode)
     if action == "on" or action == "off" then
         mod:set("marker_plane", action == "on")
     elseif action == "flip" then
         presentation.marker_plane_flip = not presentation.marker_plane_flip
+    elseif action == "text" then
+        local ok, why = presentation.marker_world.set_text_mode(mode)
+        if not ok then mod:echo("text mode: " .. tostring(why)) end
     end
     local counts = presentation.marker_plane_counts or {routed = 0, fallback = 0}
     local reasons = {}
@@ -14672,8 +14676,9 @@ mod:command("dtvr_marker_plane", "World-surface markers: on, off, flip, status",
     end
     table.sort(reasons)
     local line = string.format(
-        "DARKTIDEVR_MARKER_PLANE enabled=%s flip=%s routed=%d fallback=%d reasons=%s errors=%d",
+        "DARKTIDEVR_MARKER_PLANE enabled=%s flip=%s text=%s routed=%d fallback=%d reasons=%s errors=%d",
         tostring(presentation.marker_plane_enabled()), tostring(presentation.marker_plane_flip),
+        tostring(presentation.marker_world.state.text_mode),
         counts.routed, counts.fallback, table.concat(reasons, ","),
         presentation.marker_world.state.errors)
     mod:echo(line)

@@ -67,7 +67,7 @@ local function call(name, renderer, ...)
 end
 
 local stock_gui = {}
-local renderer = {world = {}, gui = stock_gui, scale = 2,
+local renderer = {world = {}, gui = stock_gui, scale = 2, base_render_pass = "hud_pass",
     render_settings = {snap_pixel_positions = true, start_layer = 100, alpha_multiplier = 0.5,
         color_intensity_multiplier = 1}}
 local gui = MarkerWorld.gui_for(renderer)
@@ -92,10 +92,25 @@ MarkerWorld.draw(scope, function()
     call("script_draw_bitmap_uv", renderer, "m", V3(1000, 500, 1), V3(2, 2, 0), "uvs", nil, nil)
     c = calls[#calls]
     assert(c.name == "bitmap3d" and c[8] == "uvs")
-    call("script_draw_text", renderer, "hi", 30, "body", V3(1000, 500, 2), V2(200, 40), nil, nil, nil)
+    call("script_draw_text", renderer, "hi", 30, "body", V3(1000, 500, 2), V2(200, 40), nil,
+        {horizontal_alignment = "center", character_spacing = 2}, nil)
     c = calls[#calls]
     assert(c.name == "text3d" and near(c[3], 0.06) and c[5] == "tm" and near(c[6][1], 0) and
         c[7] == 2 and near(c[8][1], 0.4), "text: font size and box in metres, layer kept")
+    local params = c[10]
+    assert(type(params) == "table" and #params == 6, "options and render pass as key/value pairs")
+    local seen = {}
+    for i = 1, #params, 2 do seen[params[i]] = params[i + 1] end
+    assert(seen.horizontal_alignment == "center" and near(seen.character_spacing, 0.004) and
+        seen.render_pass == "hud_pass", "spacing scaled, render pass appended")
+    assert(MarkerWorld.set_text_mode("rect"))
+    call("script_draw_text", renderer, "hi", 30, "body", V3(1000, 500, 2), V2(200, 40), nil, nil, nil)
+    assert(calls[#calls].name == "rect3d", "rect mode marks the text box")
+    assert(MarkerWorld.set_text_mode("2d"))
+    call("script_draw_text", renderer, "hi", 30, "body", V3(1000, 500, 2), V2(200, 40), nil, nil, nil)
+    assert(calls[#calls].name == "text2d", "2d mode keeps text on the flat route")
+    assert(not MarkerWorld.set_text_mode("bogus"))
+    assert(MarkerWorld.set_text_mode("slug"))
     -- Logical rect: scaled by the renderer, start layer and alpha applied.
     call("draw_rect", renderer, V3(520, 240, 5), V3(10, 20, 0), {200, 255, 255, 255}, nil)
     c = calls[#calls]

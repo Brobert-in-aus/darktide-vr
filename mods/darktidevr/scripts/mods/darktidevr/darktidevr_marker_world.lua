@@ -69,8 +69,19 @@ function MarkerWorld.admits(widget)
     return true
 end
 
-local state = {scope = nil, guis = {}, errors = 0, api = nil}
+local state = {scope = nil, guis = {}, errors = 0, api = nil, text_mode = "slug"}
 MarkerWorld.state = state
+
+-- How routed text is drawn: "slug" (the renderer's 3D slug text with the
+-- 2D path's render pass and named options), "nopass" (the same without the
+-- render pass), "rect" (a marker box where the text would be, to prove the
+-- placement), "2d" (text stays on the flat route while everything else is
+-- on the plane).
+local text_modes = {slug = true, nopass = true, rect = true, ["2d"] = true}
+function MarkerWorld.set_text_mode(mode)
+    if text_modes[mode] then state.text_mode = mode; return true end
+    return false, "slug, nopass, rect or 2d"
+end
 
 -- `api` supplies UIRenderer, Vector2, Vector3, Color, Gui, World, Matrix4x4
 -- and material_flags(renderer, flags) so the module stays testable.
@@ -160,17 +171,54 @@ end
 
 converters.script_draw_text = function(scope, func, self, text, font_size, font_type,
         position, size, color, options, retained_id)
-    if retained_id then
+    local mode = state.text_mode
+    if retained_id or mode == "2d" then
         return func(self, text, font_size, font_type, position, size, color, options,
             retained_id)
     end
     local api = state.api
     local x, y = MarkerWorld.local_point(scope, position[1], position[2])
     local ps = scope.pixel_size
+    local layer = position[3] or 0
     local box = size and api.Vector2(size[1] * ps, size[2] * ps) or nil
+    if mode == "rect" then
+        return with_gui(scope, function()
+            return api.Gui.rect_3d(scope.gui, scope.tm, api.Vector2(x, y), layer,
+                box or api.Vector2(100 * ps, 20 * ps), api.Color(200, 255, 0, 255))
+        end)
+    end
+    -- The 2D path hands the GUI a settings table (alignment, spacing, shadow,
+    -- render pass). The 3D function takes those as appended key/value pairs
+    -- and never adds the render pass itself, so build them here; spacings
+    -- are pixel values and scale with everything else.
+    local params = {}
+    if type(options) == "table" then
+        for key, value in pairs(options) do
+            if type(key) == "string" and value ~= nil then
+                if (key == "line_spacing" or key == "character_spacing") and
+                        type(value) == "number" then
+                    value = value * ps
+                end
+                params[#params + 1] = key
+                params[#params + 1] = value
+            end
+        end
+    end
+    if mode ~= "nopass" and self.base_render_pass then
+        params[#params + 1] = "render_pass"
+        params[#params + 1] = self.base_render_pass
+    end
+    if not state.text_logged and api.log then
+        state.text_logged = true
+        api.log(string.format(
+            "DARKTIDEVR_MARKER_PLANE first_text mode=%s font=%s size_px=%s size_m=%.4f layer=%s box=%s color=%s pass=%s params=%d",
+            mode, tostring(font_type), tostring(font_size), font_size * ps, tostring(layer),
+            tostring(size ~= nil), tostring(color ~= nil), tostring(self.base_render_pass),
+            #params / 2))
+    end
     return with_gui(scope, api.UIRenderer.script_draw_text_3d, self, text,
         font_size * ps, font_type, scope.tm, api.Vector3(x, y, 0),
-        position[3] or 0, box, color, options, nil)
+        layer, box, color, params, nil)
 end
 
 converters.draw_rect = function(scope, func, self, position, size, color, retained_id)
