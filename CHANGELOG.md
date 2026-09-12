@@ -4,7 +4,7 @@ All notable user-facing changes to Darktide VR. Versions follow
 `major.minor.patch` with a pre-release suffix while the mod is in alpha; the
 runtime package records the exact source revision alongside the version.
 
-## 0.1.0-alpha.1 (unreleased)
+## 0.1.0-alpha.1 (12 September 2026)
 
 First public early-alpha candidate. Windows x64, Quest 3 through Virtual
 Desktop (VDXR), Darktide with the Darktide Mod Framework.

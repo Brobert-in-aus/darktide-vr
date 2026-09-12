@@ -95,15 +95,13 @@ what ships.
 
 ## 3. Repository and source
 
-- [ ] Decide where the source lives publicly. A private GitHub mirror
-  exists (https://github.com/Brobert-in-aus/darktide-vr, remote
-  `github`, pushed 12 September). Either make it public at the release
-  commit and tag `v0.1.0-alpha.1`, or drop the Source section and say
-  the source is available on request.
-- [ ] Decide whether `main` should be fast-forwarded to the release
-  commit before tagging (it is still the bootstrap commit on both
-  remotes; all work is on the codex branch).
-- [ ] Tag the release commit in the origin repository as well.
+- [x] Source is public: the GitHub mirror
+  (https://github.com/Brobert-in-aus/darktide-vr, remote `github`) was
+  made public on 12 September after the mod was published.
+- [x] `main` fast-forwarded to the codex branch head on both remotes
+  (12 September).
+- [x] Tag `v0.1.0-alpha.1` on `8f860f6`, the commit the published
+  archive was built from, pushed to origin and github.
 - [ ] The dev launcher, sync script and benchmark tooling stay in the
   repository, not in the package; the package's `tools/` folder holds only
   the executable patch tool that the mode switch calls.
@@ -133,8 +131,10 @@ Draft text is in `docs/NEXUS-PAGE.md`; copy from there, do not retype.
   pull from the Quest with `adb pull /sdcard/Oculus/Screenshots/`.
 - [ ] Tags: VR, Gameplay, Utilities; do not tag as "Fair and balanced" or
   similar categories that imply parity with flat play.
-- [ ] Set the mod page to hidden until sections 1 to 3 are ticked, then
-  publish.
+- [x] Published on Nexus Mods, 12 September 2026, with the 8f860f6
+  archive. The page items above were done by the maintainer; the
+  changelog inside that archive still reads "(unreleased)" (the dated
+  heading is in the repository from the commit after the tag).
 
 ## 5. After publishing
 
