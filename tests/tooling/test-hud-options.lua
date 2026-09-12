@@ -76,9 +76,11 @@ local options=assert(groups.hud_options, 'missing HUD settings')
 assert(groups.vr_turning and groups.vr_turning.type=='group')
 assert(groups.controller_bindings and groups.controller_bindings.type=='group')
 assert(options.setting_id=='hud_options' and options.type=='group')
-assert(#options.sub_widgets==5)
-assert(options.sub_widgets[5].setting_id=='focus_warning' and
-    options.sub_widgets[5].type=='checkbox' and options.sub_widgets[5].default_value==true)
+assert(#options.sub_widgets==6)
+assert(options.sub_widgets[6].setting_id=='focus_warning' and
+    options.sub_widgets[6].type=='checkbox' and options.sub_widgets[6].default_value==true)
+assert(options.sub_widgets[1].setting_id=='hud_visible' and options.sub_widgets[1].type=='checkbox' and
+    options.sub_widgets[1].default_value==true and text.hud_visible.en and text.hud_visible_description.en)
 assert(text.focus_warning.en and text.focus_warning_description.en and text.hud_focus_notice.en)
 for _,widget in ipairs(options.sub_widgets) do
     if widget.type == 'numeric' then
@@ -90,8 +92,8 @@ for _,widget in ipairs(options.sub_widgets) do
     end
 end
 assert(string.format(text.hud_size.en)=='HUD size (%)')
-assert(options.sub_widgets[1].type=='button' and
-    options.sub_widgets[1].function_name=='toggle_vr_hud_editor')
+assert(options.sub_widgets[2].type=='button' and
+    options.sub_widgets[2].function_name=='toggle_vr_hud_editor')
 local custom, toggles, blocked = nil, 0, true
 get_mod=function(name) return name=='custom_hud' and custom or nil end
 assert(not panel.request_editor())

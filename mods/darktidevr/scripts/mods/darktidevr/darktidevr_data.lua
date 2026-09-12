@@ -72,6 +72,11 @@ return {
                 type = "group",
                 sub_widgets = {
                     {
+                        setting_id = "hud_visible",
+                        type = "checkbox",
+                        default_value = true,
+                    },
+                    {
                         setting_id = "hud_editor",
                         type = "button",
                         button_text = "hud_editor_button",
@@ -120,6 +125,11 @@ return {
                     },
                     {
                         setting_id = "spectate_third_person",
+                        type = "checkbox",
+                        default_value = true,
+                    },
+                    {
+                        setting_id = "marker_plane",
                         type = "checkbox",
                         default_value = true,
                     },

@@ -12701,12 +12701,13 @@ end
 -- World-marker widgets: scale their pass sizes, offsets and pivots on x for
 -- one eye's draw. Text passes keep their box (wrapping must not differ per
 -- eye); only their offset moves.
-function presentation.scale_marker_widgets(instance, camera, other_camera)
+function presentation.scale_marker_widgets(instance, camera, other_camera, exclude)
     local saved = {}
     for _, markers in pairs(instance._markers_by_type or {}) do
         for i = 1, #markers do
             local marker = markers[i]
-            if marker.draw and marker.position and marker.widget then
+            if marker.draw and marker.position and marker.widget and
+                    not (exclude and exclude[marker.widget]) then
                 local factor = presentation.marker_eye_horizontal_scale(
                     camera, other_camera, Vector3Box.unbox(marker.position))
                 if factor ~= 1 then
@@ -12879,6 +12880,45 @@ mod:hook(
             )
         end
 
+        if capture then
+            -- Unclamped markers whose passes the world route covers draw on
+            -- a plane through their anchor; clamped ones and the rest keep
+            -- the per-eye 2D route below.
+            local plane_widgets = nil
+            if presentation.marker_plane_enabled() then
+                plane_widgets = {}
+                local routed, fallback = 0, 0
+                for _, markers in pairs(self._markers_by_type or {}) do
+                    for i = 1, #markers do
+                        local marker = markers[i]
+                        if marker.draw and marker.position and marker.widget then
+                            local scope, reason
+                            if marker.is_clamped then
+                                reason = "clamped"
+                            else
+                                local admitted, why = presentation.marker_world.admits(marker.widget)
+                                if admitted then
+                                    scope, reason = presentation.marker_plane_scope(ui_renderer,
+                                        Vector3Box.unbox(marker.position), self._player_camera)
+                                else
+                                    reason = why
+                                end
+                            end
+                            if scope then
+                                plane_widgets[marker.widget] = scope
+                                routed = routed + 1
+                            else
+                                fallback = fallback + 1
+                                presentation.marker_plane_note(reason)
+                            end
+                        end
+                    end
+                end
+                presentation.marker_plane_report(routed, fallback)
+            end
+            presentation.marker_plane_widgets = plane_widgets
+        end
+
         local result
         if capture or world_marker_reprojecting then
             -- Each eye draws the marker widgets under its own horizontal scale
@@ -12887,7 +12927,8 @@ mod:hook(
             local other_camera = world_marker_reprojecting and
                 presentation.lod_primary_camera or presentation.lod_right_camera
             local function draw_scaled(...)
-                local saved = presentation.scale_marker_widgets(self, eye_camera, other_camera)
+                local saved = presentation.scale_marker_widgets(self, eye_camera, other_camera,
+                    presentation.marker_plane_widgets)
                 local results = {pcall(func, ...)}
                 presentation.restore_marker_widgets(saved)
                 if not results[1] then error(results[2], 0) end
@@ -12950,7 +12991,24 @@ mod:hook(
         end
 
         local result
-        if capture or world_marker_reprojecting then
+        local plane_scope = nil
+        if capture and presentation.marker_plane_enabled() then
+            local anchor = presentation.interaction_popup_anchor(self)
+            local markers_element = Managers.ui and Managers.ui._hud and
+                Managers.ui._hud.element and Managers.ui._hud:element("HudElementWorldMarkers")
+            plane_scope = anchor and presentation.marker_plane_scope(ui_renderer, anchor,
+                markers_element and markers_element._player_camera) or nil
+            presentation.interaction_plane_t = plane_scope and t or nil
+        elseif world_marker_reprojecting and presentation.interaction_plane_t == t then
+            -- The first eye drew the popup on the world surface; nothing to replay.
+            return nil
+        end
+        if plane_scope then
+            result = presentation.marker_metrics.draw(ui_renderer, "interaction", self,
+                t, 1, presentation.marker_gui.draw,
+                function(...) return presentation.marker_world.draw(plane_scope, func, ...) end,
+                self, dt, t, input_service, ui_renderer, render_settings)
+        elseif capture or world_marker_reprojecting then
             -- The popup's boxes take this eye's horizontal scale about the
             -- marker pivot, so their far edge converges in stereo.
             local eye_camera = world_marker_reprojecting and
@@ -13046,6 +13104,7 @@ mod:hook("HudElementSmartTagging", "_draw_active_interaction_line",
             return func(self, dt, t, input_service, ui_renderer, render_settings)
         end
         if world_marker_reprojecting then
+            if presentation.tag_plane_t == t then return end
             return presentation.marker_metrics.draw(ui_renderer, "tag", self, t, 2,
                 nil, presentation.draw_tag_prompt,
                 self, dt, t, input_service, ui_renderer, render_settings)
@@ -13053,6 +13112,25 @@ mod:hook("HudElementSmartTagging", "_draw_active_interaction_line",
         presentation.tag_hud_context = {instance=self,t=t,input_service=input_service,
             ui_renderer=ui_renderer,
             render_settings=presentation.marker_gui.snapshot_settings(render_settings)}
+        local data = self._active_interaction_data
+        local marker = data and data.marker
+        local plane_scope = nil
+        if marker and marker.position and not marker.is_clamped and
+                presentation.marker_plane_enabled() then
+            local markers_element = Managers.ui and Managers.ui._hud and
+                Managers.ui._hud.element and Managers.ui._hud:element("HudElementWorldMarkers")
+            plane_scope = presentation.marker_plane_scope(ui_renderer,
+                Vector3Box.unbox(marker.position),
+                markers_element and markers_element._player_camera)
+        end
+        presentation.tag_plane_t = plane_scope and t or nil
+        if plane_scope then
+            return presentation.marker_metrics.draw(ui_renderer, "tag", self, t, 1,
+                presentation.marker_gui.draw,
+                function(...) return presentation.marker_world.draw(plane_scope,
+                    presentation.draw_tag_prompt, ...) end,
+                self, dt, t, input_service, ui_renderer, render_settings)
+        end
         return presentation.marker_metrics.draw(ui_renderer, "tag", self, t, 1,
             presentation.marker_gui.draw, presentation.draw_tag_prompt,
             self, dt, t, input_service, ui_renderer, render_settings)
@@ -14479,6 +14557,128 @@ presentation.marker_metrics = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_marker_metrics"
 ).install(mod, UIRenderer)
 
+-- World-surface markers: each marker's stock widget is drawn onto a plane
+-- through its anchor on a world GUI, one surface for both eyes. See
+-- darktidevr_marker_world.lua. Option `marker_plane`; `/dtvr_marker_plane`.
+presentation.marker_plane_module = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_marker_plane"
+)
+presentation.marker_world = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_marker_world"
+)
+do
+    local bor = rawget(_G, "bit_or") or (rawget(_G, "bit") and bit.bor)
+    presentation.marker_world.install(mod, {
+        UIRenderer = UIRenderer, Vector2 = Vector2, Vector3 = Vector3,
+        Color = Color, Gui = Gui, World = World,
+        material_flags = function(renderer, flags)
+            local settings = renderer.render_settings
+            if settings and bor then
+                flags = flags and bor(flags, settings.material_flags or 0) or
+                    settings.material_flags
+            end
+            if renderer.render_pass_flag and bor then
+                flags = bor(flags or 0, GuiMaterialFlag.GUI_RENDER_PASS_LAYER)
+            end
+            return flags
+        end,
+    })
+end
+presentation.marker_plane_flip = false
+local marker_plane_log = {reported = false, reasons = {}}
+function presentation.marker_plane_enabled()
+    return mod:get("marker_plane") ~= false and presentation.marker_world ~= nil
+end
+function presentation.marker_plane_note(reason)
+    reason = tostring(reason)
+    marker_plane_log.reasons[reason] = (marker_plane_log.reasons[reason] or 0) + 1
+end
+function presentation.marker_plane_report(routed, fallback)
+    presentation.marker_plane_counts = {routed = routed, fallback = fallback}
+    if routed > 0 and not marker_plane_log.reported then
+        marker_plane_log.reported = true
+        mod:info("DARKTIDEVR_MARKER_PLANE first_frame routed=%d fallback=%d flip=%s",
+            routed, fallback, tostring(presentation.marker_plane_flip))
+    end
+end
+-- The plane for one anchor as seen from the shared head centre, with the
+-- anchor's screen position in the primary eye as the pixel origin. Screen
+-- pixels the stock widget draws relative to that origin land on the plane
+-- at the size the primary projection gives them at the anchor's distance.
+function presentation.marker_plane_scope(ui_renderer, anchor, camera)
+    if not presentation.marker_plane_enabled() then return nil, "disabled" end
+    local left, right = presentation.lod_primary_camera, presentation.lod_right_camera
+    camera = camera or left
+    if not left or not right or not camera or not anchor or not ui_renderer or
+            not ui_renderer.world then
+        return nil, "cameras"
+    end
+    local ok, scope_or_reason, detail = pcall(function()
+        local center = (ScriptCamera.local_position(left) +
+            ScriptCamera.local_position(right)) * 0.5
+        local rotation = ScriptCamera.local_rotation(left)
+        local head_right, head_up = Quaternion.right(rotation), Quaternion.up(rotation)
+        local _, height = Application.back_buffer_size()
+        local tangent = 2 * math.tan(Camera.vertical_fov(left) * 0.5) /
+            (height * (presentation.render_visibility_scale or 1))
+        local function plain(v) return {x = Vector3.x(v), y = Vector3.y(v), z = Vector3.z(v)} end
+        local geometry, reason = presentation.marker_world.geometry(
+            presentation.marker_plane_module, plain(anchor), plain(center),
+            plain(head_right), plain(head_up), tangent, presentation.marker_plane_flip)
+        if not geometry then return nil, reason end
+        local screen = presentation.world_marker_screen_position(camera, anchor)
+        local tm = Matrix4x4.identity()
+        Matrix4x4.set_right(tm, Vector3(geometry.right.x, geometry.right.y, geometry.right.z))
+        Matrix4x4.set_forward(tm, Vector3(geometry.forward.x, geometry.forward.y, geometry.forward.z))
+        Matrix4x4.set_up(tm, Vector3(geometry.up.x, geometry.up.y, geometry.up.z))
+        Matrix4x4.set_translation(tm, Vector3(geometry.anchor.x, geometry.anchor.y, geometry.anchor.z))
+        local gui = presentation.marker_world.gui_for(ui_renderer, World, Matrix4x4)
+        return {renderer = ui_renderer, gui = gui, tm = tm,
+            origin_x = Vector3.x(screen), origin_y = Vector3.y(screen),
+            pixel_size = geometry.pixel_size, distance = geometry.distance}
+    end)
+    if not ok then
+        presentation.marker_plane_note("error")
+        if not marker_plane_log.error_logged then
+            marker_plane_log.error_logged = true
+            mod:warning("DARKTIDEVR_MARKER_PLANE scope_error=%s", tostring(scope_or_reason))
+        end
+        return nil, "error"
+    end
+    return scope_or_reason, detail
+end
+-- Marker widgets mapped to a plane this frame draw through it; the right-eye
+-- replay skips them because the world surface already serves both eyes.
+mod:hook(require("scripts/managers/ui/ui_widget"), "draw", function(func, widget, ui_renderer)
+    local scopes = presentation.marker_plane_widgets
+    local scope = scopes and scopes[widget]
+    if not scope or scope.renderer ~= ui_renderer then
+        return func(widget, ui_renderer)
+    end
+    if world_marker_reprojecting then return end
+    return presentation.marker_world.draw(scope, func, widget, ui_renderer)
+end)
+mod:command("dtvr_marker_plane", "World-surface markers: on, off, flip, status", function(action)
+    if action == "on" or action == "off" then
+        mod:set("marker_plane", action == "on")
+    elseif action == "flip" then
+        presentation.marker_plane_flip = not presentation.marker_plane_flip
+    end
+    local counts = presentation.marker_plane_counts or {routed = 0, fallback = 0}
+    local reasons = {}
+    for reason, count in pairs(marker_plane_log.reasons) do
+        reasons[#reasons + 1] = reason .. "=" .. count
+    end
+    table.sort(reasons)
+    local line = string.format(
+        "DARKTIDEVR_MARKER_PLANE enabled=%s flip=%s routed=%d fallback=%d reasons=%s errors=%d",
+        tostring(presentation.marker_plane_enabled()), tostring(presentation.marker_plane_flip),
+        counts.routed, counts.fallback, table.concat(reasons, ","),
+        presentation.marker_world.state.errors)
+    mod:echo(line)
+    mod:info(line)
+end)
+
 presentation.visual_settings = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_visual_settings"
 )
@@ -14601,6 +14801,7 @@ mod.on_disabled = function()
     presentation.melee_preview.destroy()
     pcall(presentation.hud_panel.set_enabled, false)
     pcall(presentation.marker_gui.destroy_all)
+    pcall(function() presentation.marker_world.destroy_all(World) end)
     pcall(teardown)
     pcall(teardown_ui_stereo)
     pcall(destroy_ui_offscreen_resources)
@@ -14618,6 +14819,7 @@ mod.on_unload = function()
     presentation.melee_preview.destroy()
     pcall(presentation.hud_panel.set_enabled, false)
     pcall(presentation.marker_gui.destroy_all)
+    pcall(function() presentation.marker_world.destroy_all(World) end)
     pcall(teardown)
     pcall(teardown_ui_stereo)
     pcall(destroy_ui_offscreen_resources)
