@@ -74,8 +74,17 @@ patch needs an update from us.
 - Movement follows the head by default (or the left hand, in the mod
   options), turning is snap or smooth on the right stick, and buttons can be
   rebound per action in Mod Options, Darktide VR.
+- Default layout: right trigger fires, left trigger aims (or the weapon's
+  alternate), right grip is the weapon special, left grip the combat
+  ability, X cycles carried items, Y crouches, A jumps and dodges, B is the
+  blitz, clicking the left stick sprints, clicking the right stick tags,
+  right stick up switches weapon and right stick down interacts and
+  reloads. Tutorial and HUD prompts show these badges.
 - Firing follows the right hand. Aim stabilisation and the crosshair size are
-  adjustable. Melee is on a button; a swing preview can be toggled with F6.
+  adjustable. Holding the sight dims the edges, tightens the reticle and
+  steadies the aim ("Aim-down-sights focus" in the options). Melee is on a
+  button, block uses the game's guard pose, and a swing preview can be
+  toggled with F6.
 - The hub is first person by default; "Third-person body in the hub" shows
   the stock character instead, with the right stick orbiting the camera.
 - The HUD sits on a fixed panel in front of you; size, distance and text
@@ -85,8 +94,9 @@ patch needs an update from us.
   frame generation and controller input stop and the HUD shows a warning
   (it can be turned off in the HUD options). Click the Darktide window to
   continue.
-- Everything works in the hub, the Psykhanium, Solo missions and on ordinary
-  mission servers.
+- Everything works in the hub, the Psykhanium (including the onboarding
+  tutorial), Solo missions and on ordinary mission servers. Game questions
+  such as the end-of-training prompt open in the headset with the pointer.
 
 ## Known limits of this alpha
 

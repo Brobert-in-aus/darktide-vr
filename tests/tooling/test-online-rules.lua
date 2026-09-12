@@ -151,7 +151,8 @@ for _,mission in ipairs({'coop_complete_objective','survival','expedition','prol
 end
 mode='unknown_mission'; assert(not rules.enabled())
 option=true
-mode='training_grounds'; assert(not rules.enabled())
+mode='training_grounds'; assert(rules.enabled(),'The onboarding tutorial must use the stock-input route')
+assert(logs[#logs]:find('range=training_grounds enabled=true',1,true),'Training grounds admission must be recorded')
 mode='shooting_range'; assert(rules.enabled())
 assert(rules.frames==0 and rules.failures==0,'Range re-entry retained previous session diagnostics')
 local function log_count(pattern)

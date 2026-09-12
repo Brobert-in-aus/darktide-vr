@@ -40,6 +40,22 @@ Desktop (VDXR), Darktide with the Darktide Mod Framework.
 - Recovery when the DLSS quality is changed in-game, when the engine turns
   generation off (mission intros, the in-game FG toggle) and across mission
   loads.
+- Aim-down-sights focus (option, on by default): a soft vignette, a tighter
+  reticle and steadier aim while the sight is held.
+- Block on every melee weapon uses the game's guard pose.
+- Tutorial and HUD prompts show controller badges. Game questions (for
+  example at the end of the Psykhanium onboarding) open in the headset with
+  the pointer.
+- Wide markers and interaction popups converge per eye, and the
+  damage-direction indicators draw on the HUD panel.
+- Default controller layout: right trigger fire, left trigger aim or weapon
+  alternate, right grip weapon special, left grip combat ability, X carried
+  items, Y crouch, A jump and dodge, B blitz, left stick click sprint,
+  right stick click tag, right stick up quick wield, right stick down
+  interact and reload. All of it can be rebound in the mod options.
+- The Psykhanium onboarding runs to completion in VR: it uses the same
+  stock-input route as missions (so the gun sits in the hand), the grenade
+  section advances, and the end-of-training question appears.
 
 Known limits of this alpha are listed in the user guide: right-hand
 dominant presentation, no independent weapon origins on mission servers,

@@ -1,7 +1,7 @@
 -- Range and local mission rules: author only stock input columns. No action pose proxy,
 -- origin override, extra movement velocity, damage rule or custom RPC.
 local Rules = {}
-local ranges = {shooting_range=true}
+local ranges = {shooting_range=true, training_grounds=true}
 local controllable = {walking=true, sprinting=true, sliding=true,
     jumping=true, falling=true, dodging=true, interacting=true}
 local function finite(value)
