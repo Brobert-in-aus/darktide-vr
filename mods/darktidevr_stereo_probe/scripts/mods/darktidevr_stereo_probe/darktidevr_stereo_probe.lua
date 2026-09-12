@@ -1624,6 +1624,15 @@ function presentation.reconcile_fullscreen_views(manager)
         desired_mode = 5
         classified[#classified + 1] = "custom_hud:desktop_editor"
     end
+    -- Confirmation popups (the training grounds "continue?" question, party
+    -- and matchmaking prompts) are constant elements, not views. In the
+    -- stereo world they were drawn only on the desktop canvas, which stalled
+    -- the training at its end. Present them on the interactive flat panel.
+    local active_popups = manager and manager._active_popups
+    if not desired_mode and active_popups and active_popups[1] then
+        desired_mode = 5
+        classified[#classified + 1] = "popup:" .. tostring(active_popups[1].id or "active")
+    end
     presentation.world_menu_views = observed_world_menu_views
     local signature = table.concat(classified, ",")
     if signature ~= presentation.fullscreen_view_signature then
@@ -12571,6 +12580,105 @@ mod:hook("HudElementWorldMarkers", "_apply_scale", function(func, self, widget, 
     return func(self, widget, scale)
 end)
 
+-- A wide screen-space popup drawn at each eye's projected anchor keeps the
+-- same pixel width in both eyes, but one pixel spans a different angle in each
+-- eye at large eccentricity, so its far edge lands at different depths. Give
+-- each eye the horizontal scale under which the widget spans the same world
+-- extent: project the anchor and a point one reference length to its right
+-- (in the head's frame) through both eye cameras and take this eye's share.
+local marker_eye_reference_length = 0.25
+function presentation.marker_eye_horizontal_scale(camera, other_camera, world_position)
+    if not camera or not other_camera or not world_position or
+            not presentation.lod_primary_camera then
+        return 1
+    end
+    local head_rotation = ScriptCamera.local_rotation(presentation.lod_primary_camera)
+    local right = Quaternion.right(head_rotation)
+    local offset_position = world_position + right * marker_eye_reference_length
+    local function width(eye_camera)
+        local anchor_screen = presentation.world_marker_screen_position(eye_camera, world_position)
+        local edge_screen = presentation.world_marker_screen_position(eye_camera, offset_position)
+        return math.abs(Vector3.x(edge_screen) - Vector3.x(anchor_screen))
+    end
+    local this_width = width(camera)
+    local other_width = width(other_camera)
+    local mean = (this_width + other_width) * 0.5
+    if this_width ~= this_width or mean ~= mean or mean < 1e-3 then
+        return 1
+    end
+    return math.max(0.8, math.min(1.25, this_width / mean))
+end
+
+-- The interaction popup hangs its boxes off a pivot at the marker; scaling
+-- the box widths about that pivot for one eye's draw converges the far edge.
+local interaction_popup_nodes = {"background", "description_box", "extra_info_background"}
+function presentation.scale_interaction_popup(interaction, factor, render_scale)
+    local scenegraph = interaction._ui_scenegraph
+    if not scenegraph or factor == 1 then
+        return nil
+    end
+    local saved = {}
+    for _, id in ipairs(interaction_popup_nodes) do
+        local node = scenegraph[id]
+        if node and node.size and type(node.size[1]) == "number" then
+            saved[#saved + 1] = {node.size, node.size[1]}
+            node.size[1] = node.size[1] * factor
+        end
+    end
+    UIScenegraph.update_scenegraph(scenegraph, render_scale)
+    return saved
+end
+function presentation.restore_interaction_popup(interaction, saved, render_scale)
+    if not saved then
+        return
+    end
+    for _, entry in ipairs(saved) do
+        entry[1][1] = entry[2]
+    end
+    UIScenegraph.update_scenegraph(interaction._ui_scenegraph, render_scale)
+end
+function presentation.interaction_popup_anchor(interaction)
+    local data = interaction and interaction._active_presentation_data
+    local marker = data and data.marker
+    return marker and marker.position and Vector3Box.unbox(marker.position) or nil
+end
+
+-- World-marker widgets: scale their pass sizes, offsets and pivots on x for
+-- one eye's draw. Text passes keep their box (wrapping must not differ per
+-- eye); only their offset moves.
+function presentation.scale_marker_widgets(instance, camera, other_camera)
+    local saved = {}
+    for _, markers in pairs(instance._markers_by_type or {}) do
+        for i = 1, #markers do
+            local marker = markers[i]
+            if marker.draw and marker.position and marker.widget then
+                local factor = presentation.marker_eye_horizontal_scale(
+                    camera, other_camera, Vector3Box.unbox(marker.position))
+                if factor ~= 1 then
+                    for _, pass_style in pairs(marker.widget.style) do
+                        if type(pass_style) == "table" then
+                            local text = pass_style.font_size ~= nil or pass_style.font_type ~= nil
+                            for _, key in ipairs(text and {"offset"} or {"size", "texture_size", "area_size", "offset", "pivot"}) do
+                                local value = pass_style[key]
+                                if type(value) == "table" and type(value[1]) == "number" then
+                                    saved[#saved + 1] = {value, value[1]}
+                                    value[1] = value[1] * factor
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return saved
+end
+function presentation.restore_marker_widgets(saved)
+    for _, entry in ipairs(saved) do
+        entry[1][1] = entry[2]
+    end
+end
+
 local function prepare_binocular_clamped_offsets(instance, inverse_scale)
     local offsets = {}
     if not head_render_frusta or not inverse_scale or inverse_scale == 0 then
@@ -12718,9 +12826,21 @@ mod:hook(
 
         local result
         if capture or world_marker_reprojecting then
+            -- Each eye draws the marker widgets under its own horizontal scale
+            -- so wide badges span one world extent in both eyes.
+            local eye_camera = self._player_camera
+            local other_camera = world_marker_reprojecting and
+                presentation.lod_primary_camera or presentation.lod_right_camera
+            local function draw_scaled(...)
+                local saved = presentation.scale_marker_widgets(self, eye_camera, other_camera)
+                local results = {pcall(func, ...)}
+                presentation.restore_marker_widgets(saved)
+                if not results[1] then error(results[2], 0) end
+                return unpack(results, 2)
+            end
             result = presentation.marker_metrics.draw(ui_renderer, "markers", self,
                 t, world_marker_reprojecting and 2 or 1,
-                capture and presentation.marker_gui.draw or nil, func,
+                capture and presentation.marker_gui.draw or nil, draw_scaled,
                 self, dt, t, input_service, ui_renderer, render_settings)
         else
             result = func(self, dt, t, input_service, ui_renderer, render_settings)
@@ -12776,9 +12896,26 @@ mod:hook(
 
         local result
         if capture or world_marker_reprojecting then
+            -- The popup's boxes take this eye's horizontal scale about the
+            -- marker pivot, so their far edge converges in stereo.
+            local eye_camera = world_marker_reprojecting and
+                presentation.lod_right_camera or presentation.lod_primary_camera
+            local other_camera = world_marker_reprojecting and
+                presentation.lod_primary_camera or presentation.lod_right_camera
+            local anchor = presentation.interaction_popup_anchor(self)
+            local factor = anchor and presentation.marker_eye_horizontal_scale(
+                eye_camera, other_camera, anchor) or 1
+            local render_scale = render_settings and render_settings.scale
+            local function draw_scaled(...)
+                local saved = presentation.scale_interaction_popup(self, factor, render_scale)
+                local results = {pcall(func, ...)}
+                presentation.restore_interaction_popup(self, saved, render_scale)
+                if not results[1] then error(results[2], 0) end
+                return unpack(results, 2)
+            end
             result = presentation.marker_metrics.draw(ui_renderer, "interaction", self,
                 t, world_marker_reprojecting and 2 or 1,
-                capture and presentation.marker_gui.draw or nil, func,
+                capture and presentation.marker_gui.draw or nil, draw_scaled,
                 self, dt, t, input_service, ui_renderer, render_settings)
         else
             result = func(self, dt, t, input_service, ui_renderer, render_settings)

@@ -152,7 +152,9 @@ local spatial_elements = {
     HudElementNameplates = true,
     HudElementSmartTagging = true,
     HudElementMinionShieldHealth = true,
-    HudElementDamageIndicator = true,
+    -- Damage indicators are screen-centred arcs, not world-anchored; on the
+    -- per-eye layer they sat at the same pixels in both eyes and read flat.
+    -- They belong on the shared HUD panel with the other fixed elements.
 }
 
 local function partition_elements(elements)
