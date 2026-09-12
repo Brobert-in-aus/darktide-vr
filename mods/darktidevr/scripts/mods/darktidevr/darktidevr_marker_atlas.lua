@@ -7,7 +7,7 @@
 -- capture target, and a completed copy that the world material samples.
 local Atlas = {}
 
-local CELL_WIDTH, CELL_HEIGHT, COLUMNS, ROWS = 1024, 512, 2, 4
+local CELL_WIDTH, CELL_HEIGHT, COLUMNS, ROWS = 1024, 512, 4, 4
 local WIDTH, HEIGHT = CELL_WIDTH * COLUMNS, CELL_HEIGHT * ROWS
 Atlas.CELL_WIDTH, Atlas.CELL_HEIGHT = CELL_WIDTH, CELL_HEIGHT
 Atlas.WIDTH, Atlas.HEIGHT, Atlas.CELLS = WIDTH, HEIGHT, COLUMNS * ROWS
