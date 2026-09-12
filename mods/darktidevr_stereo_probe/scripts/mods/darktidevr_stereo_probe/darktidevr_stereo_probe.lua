@@ -10399,6 +10399,13 @@ end
 -- Optional stock third-person body in the hub (mod setting). Combat modes
 -- keep the first-person body regardless.
 function presentation.hub_third_person_active()
+    -- The onboarding hub missions force the stock third-person camera; they
+    -- always take the third-person presentation.
+    local game_mode = Managers and Managers.state and Managers.state.game_mode
+    local raw_ok, raw_name = pcall(function() return game_mode:game_mode_name() end)
+    if raw_ok and raw_name == "prologue_hub" then
+        return true
+    end
     if mod:get("hub_third_person") ~= true then
         return false
     end

@@ -76,6 +76,8 @@ patch needs an update from us.
   rebound per action in Mod Options, Darktide VR.
 - Firing follows the right hand. Aim stabilisation and the crosshair size are
   adjustable. Melee is on a button; a swing preview can be toggled with F6.
+- The hub is first person by default; "Third-person body in the hub" shows
+  the stock character instead, with the right stick orbiting the camera.
 - The HUD sits on a fixed panel in front of you; size, distance and text
   scale are in the options. With Custom HUD installed, the layout editor
   opens in the desktop window from the same options group.
@@ -94,11 +96,12 @@ patch needs an update from us.
 - Ledge discovery follows hand aim.
 - Text entry needs a physical keyboard, including the character name on
   creation (the Randomize button works with the pointer).
-- The prologue's opening cinematic shows black in the headset with the
-  subtitles piling up; the game continues normally after it. Under
-  investigation.
-- The two onboarding hub missions after the prologue force third person and
-  are not yet VR-admitted; the prologue itself is.
+- In-engine cutscenes play in stereo with the cinematic camera moving you;
+  turn "In-engine cinematics in stereo" off if the cuts and camera moves
+  are uncomfortable (they then show on the flat panel, without picture).
+- The two onboarding hub missions after the prologue run as the
+  third-person hub (the game forces that camera there); this route has had
+  little testing.
 - The desktop window must stay focused (see above).
 - Lower-tier GPUs have not been tested; the accepted numbers come from an
   RTX 4090 at 120 Hz.

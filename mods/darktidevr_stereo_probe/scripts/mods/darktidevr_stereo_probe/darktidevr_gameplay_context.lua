@@ -38,9 +38,13 @@ function Context.remote_mission(mode, session)
     return ok and allowed == true
 end
 
+-- The onboarding hub (prologue_hub) is the hub level with the same player
+-- template, locomotion and third-person camera; the mod treats it as the hub.
 function Context.game_mode_name(game_mode)
     local ok, name = pcall(query_owner, game_mode, "game_mode_name")
-    return ok and type(name) == "string" and name or nil
+    if not ok or type(name) ~= "string" then return nil end
+    if name == "prologue_hub" then return "hub" end
+    return name
 end
 
 function Context.aim_mode(mode, session)

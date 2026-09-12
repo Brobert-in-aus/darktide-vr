@@ -21,6 +21,13 @@ Desktop (VDXR), Darktide with the Darktide Mod Framework.
 - A HUD warning while the game window has lost the desktop focus (frame
   generation and controller input pause until it is focused again); can be
   turned off in the HUD options.
+- In-game menus are taken from the game's own canvas, so the desktop window
+  can be any size without changing the headset menus or the pointer.
+- Optional third-person body in the hub with stick orbit; first person is
+  the default. Quick wield returns to the weapon last held.
+- In-engine cinematics play in stereo with subtitles on the HUD panel
+  (option, on by default). The onboarding hub missions run as the
+  third-person hub.
 - Flat panels for menus, loading and cinematics; controller pointer input
   in menus; a fixed HUD panel with size, distance and scale options.
 - Controller-driven gameplay in the hub, in the Psykhanium, in SoloPlay

@@ -27,6 +27,9 @@ for _,session in ipairs({server,client,missing,broken,invalid}) do
     end
 end
 assert(not context.aim_mode(nil,server) and not context.body_mode(nil,server))
+-- The onboarding hub reports as the hub: same level, template and locomotion.
+assert(context.game_mode_name({game_mode_name=function() return "prologue_hub" end})=="hub")
+assert(context.game_mode_name({game_mode_name=function() return "hub_singleplay" end})=="hub_singleplay")
 -- The owner's setting reader can withdraw remote admission at any query; a
 -- failing or non-boolean reader admits nothing, and never touches local modes.
 for _,reader in ipairs({function() return false end,function() error('retiring settings') end,
