@@ -13895,8 +13895,12 @@ mod:hook_safe(
         local primary = widgets and widgets.subtitles and widgets.subtitles.content
         local secondary = widgets and widgets.secondary_subtitles and
             widgets.secondary_subtitles.content
-        local text = primary and primary.text or ""
-        local secondary_text = secondary and secondary.text or ""
+        -- The widget holds a placeholder ("<text>") until a line plays; the
+        -- stock draw gate decides whether anything is showing.
+        local showing = self._subtitle_enabled and
+            (self._line_duration or self._line_currently_playing)
+        local text = showing and primary and primary.text or ""
+        local secondary_text = showing and secondary and secondary.text or ""
         if secondary_text ~= "" then
             text = text ~= "" and (text .. "\n" .. secondary_text) or secondary_text
         end
@@ -13923,6 +13927,19 @@ mod:hook_safe(
         if presentation.hud_panel then
             presentation.hud_panel.set_subtitle(stereo and text ~= "" and text or nil)
         end
+    end)
+
+-- The cutscene overlay HUD element draws the letterbox bars; on the HUD
+-- panel they sit across the stereo world, so it stands down in a stereo
+-- cinematic.
+mod:hook(
+    require("scripts/ui/hud/elements/cutscene_overlay/hud_element_cutscene_overlay"),
+    "_draw_widgets",
+    function(func, self, ...)
+        if presentation.cinematic_stereo_active() then
+            return
+        end
+        return func(self, ...)
     end)
 
 presentation.viewer = mod:io_dofile(
