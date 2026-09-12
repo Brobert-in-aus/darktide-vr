@@ -13,6 +13,8 @@ return {
     vr_gun_pitch_description = {en = "Tilt guns relative to the controller. Negative angles lower the barrel; positive angles raise it. Updates gun, hand and aim together. Does not affect staffs."},
     remote_mission_input = {en = "VR input and hands in online missions"},
     remote_mission_input_description = {en = "On a mission server you do not host, use the same stock-input route as Psykhanium's online rules: controller buttons and movement, hand-aimed firing through the server's normal firing position, and local hand and weapon presentation. Off keeps online missions view-only. Applies immediately."},
+    hub_third_person = {en = "Third-person body in the hub"},
+    hub_third_person_description = {en = "Show the stock third-person character in the hub instead of the first-person body, with the equipped weapons hidden. Combat areas always use first person. Applies on the next hub visit."},
     psykhanium_online_rules = {en = "Online combat rules in Psykhanium"},
     psykhanium_online_rules_description = {en = "Aim with the right hand using normal firing positions, button melee and movement rules. Room movement stays visual and training aids remain. Applies on your next visit to Psykhanium; online missions are still under development."},
     vr_menu_back = {en = "B / Menu"},

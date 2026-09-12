@@ -87,7 +87,8 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
             -- remain usable and are listed individually in the options.
             if controls[1] then labels[1]=mod:localize("vr_prompt_"..controls[1]) end
             local text = #labels>0 and table.concat(labels," / ") or mod:localize("vr_action_unbound")
-            if switch and #labels>0 then text=text.." "..mod:localize("vr_prompt_switch") end
+            -- The weapon-switch badge shows only the control ("[RS Down]"); the
+            -- action is clear from where the badge sits.
             text=Prompts.single_line("["..text.."]")
             if tint then text=InputUtils.apply_color_to_input_text(text,Color.ui_input_color(255,true)) end
             return text

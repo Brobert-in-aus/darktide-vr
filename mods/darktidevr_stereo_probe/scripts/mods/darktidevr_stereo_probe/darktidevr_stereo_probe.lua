@@ -5649,6 +5649,35 @@ presentation.push_to_talk = mod:io_dofile(
     mode=active_game_mode_name,world=function()return active_world end,
 })
 
+-- Quick wield from a grenade, pocketable, stim or device returns to the
+-- weapon last held rather than to the stock default. The last weapon slot is
+-- sampled every input update from the stock inventory component.
+local last_wielded_weapon_slot = nil
+function presentation.track_wielded_weapon()
+    local unit = presentation.gameplay_input_owner[2]
+    local script_unit = rawget(_G, "ScriptUnit")
+    if not unit or not script_unit or not Unit.alive(unit) then return end
+    local unit_data = script_unit.has_extension(unit, "unit_data_system")
+    local inventory = unit_data and unit_data:read_component("inventory")
+    local wielded = inventory and inventory.wielded_slot
+    if wielded == "slot_primary" or wielded == "slot_secondary" then
+        last_wielded_weapon_slot = wielded
+    end
+    return wielded
+end
+
+function presentation.quick_wield_names(names)
+    if not names or names[1] ~= "quick_wield" or #names ~= 1 then
+        return names
+    end
+    local wielded = presentation.track_wielded_weapon()
+    if not wielded or wielded == "slot_primary" or wielded == "slot_secondary" or
+            not last_wielded_weapon_slot then
+        return names
+    end
+    return {last_wielded_weapon_slot == "slot_primary" and "wield_1" or "wield_2"}
+end
+
 function presentation.inject_gameplay_input(self, main_t, input)
     if not presentation.gameplay_context.local_input_handler(
             self, Managers and Managers.player) then return end
@@ -5720,6 +5749,7 @@ function presentation.inject_gameplay_input(self, main_t, input)
         controller_observation.gameplay_input_active,held,game_mode_name,active_world)
     controller_observation.gameplay_input_last_sequence =
         tonumber(controller_observation.gameplay_sequence[0])
+    presentation.track_wielded_weapon()
     -- Still sample/cancel both mappers and UI requests while blocked or after
     -- a failed native read. Do not inject synthetic cancellation release edges;
     -- stock false-held action behavior still applies.
@@ -5747,7 +5777,7 @@ function presentation.inject_gameplay_input(self, main_t, input)
         local binding = presentation.gameplay_input_bindings[binding_index]
         local names = nil
         if bit.band(pressed, binding.mask) ~= 0 then
-            names = binding.pressed
+            names = presentation.quick_wield_names(binding.pressed)
         end
         if names then
             presentation.inject_ephemeral_action_names(
@@ -6218,10 +6248,12 @@ function presentation.refresh_body_follow_mode(t)
     local flag_path =
         "./../mods/darktidevr_stereo_probe/darktidevr_body_follow_test.flag"
     local flag = Mods.lua.io.open(flag_path, "r")
-    local mode = "disabled"
+    -- Play default when the flag is absent; a present file decides.
+    local mode = "enabled"
     if flag then
         local request = flag:read("*all")
         flag:close()
+        mode = "disabled"
         if request and request:match("^%s*trace%s*$") then
             mode = "trace"
         elseif request and request:match("^%s*enabled%s*$") then
@@ -6559,10 +6591,15 @@ function presentation.update_body_visibility_gate(frame)
         "./../mods/darktidevr_stereo_probe/darktidevr_headless_body.flag"
     local flag = Mods and Mods.lua and Mods.lua.io and
         Mods.lua.io.open(path, "r")
-    local enabled = false
+    -- The headless first-person body is the play default; a present flag
+    -- still decides. The hub third-person option withdraws it in the hub only.
+    local enabled = true
     if flag then
         enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
         flag:close()
+    end
+    if enabled and presentation.hub_third_person_active() then
+        enabled = false
     end
     local full_body_path =
         "./../mods/darktidevr_stereo_probe/darktidevr_full_body_experimental.flag"
@@ -6879,6 +6916,29 @@ function presentation.apply_body_visibility(self, frame, force)
         end
         Unit.set_unit_visibility(
             unit_3p, not self._is_in_first_person_mode, true)
+        -- The optional third-person hub body shows the stock character but
+        -- not its weapons: their attachment follows the tracked hands, so
+        -- they sit wrongly on a stock-animated body.
+        if presentation.hub_third_person_active() then
+            local hidden_weapon_units = 0
+            for _, slot_name in ipairs({"slot_primary", "slot_secondary"}) do
+                local slot = equipment[slot_name]
+                if type(slot) == "table" then
+                    for _, unit in ipairs({slot.unit_3p, slot.unit_1p}) do
+                        if unit and Unit.alive(unit) then
+                            Unit.set_unit_visibility(unit, false, true)
+                            hidden_weapon_units = hidden_weapon_units + 1
+                        end
+                    end
+                end
+            end
+            if not controller_observation.body_visibility_logged_slots then
+                controller_observation.body_visibility_logged_slots = true
+                mod:info(
+                    "DARKTIDEVR_BODY hub_third_person weapons_hidden=%d wielded=%s",
+                    hidden_weapon_units, tostring(inventory.wielded_slot))
+            end
+        end
         return
     end
 
@@ -7864,7 +7924,8 @@ function presentation.update_body_ik_presentation_gate(fixed_frame)
     local path =
         "./../mods/darktidevr_stereo_probe/darktidevr_body_ik_presentation.flag"
     local flag = Mods.lua.io.open(path, "r")
-    local enabled = false
+    -- Play default when the flag is absent; a present file decides.
+    local enabled = true
     if flag then
         enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
         flag:close()
@@ -10170,14 +10231,24 @@ function presentation.hub_first_person_requested()
         "./../mods/darktidevr_stereo_probe/darktidevr_headless_body.flag"
     local flag = Mods and Mods.lua and Mods.lua.io and Mods.lua.io.open(path, "r")
     if not flag then
-        hub_first_person_flag_value = false
-        return false
+        -- Play default: first person in the hub unless the option asks for
+        -- the stock third-person body there.
+        hub_first_person_flag_value = not presentation.hub_third_person_active()
+        return hub_first_person_flag_value
     end
     local text = flag:read("*all")
     flag:close()
     hub_first_person_flag_value = text ~= nil and
-        text:match("^%s*enabled%s*$") ~= nil
+        text:match("^%s*enabled%s*$") ~= nil and
+        not presentation.hub_third_person_active()
     return hub_first_person_flag_value
+end
+
+-- Optional stock third-person body in the hub (mod setting). Combat modes
+-- keep the first-person body regardless.
+function presentation.hub_third_person_active()
+    return mod:get("hub_third_person") == true and
+        active_game_mode_name() == "hub"
 end
 
 -- Bounded diagnostic at the actual two-eye submission boundaries. This

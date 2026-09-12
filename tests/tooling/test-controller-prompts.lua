@@ -71,7 +71,7 @@ scope('HudElementWieldInfo','_create_entry',function()
     assert(text('action_one','View')=='keyboard:action_one','desktop menu changed')
     assert(text('action_one','Ingame',true)=='<tint>[RT]')
     local a,b,c=scope('HudElementPlayerWeapon','_update_input',function()
-        assert(text('wield_1')=='[Y\194\160switch]' and text('wield_2')=='[Y\194\160switch]')
+        assert(text('wield_1')=='[Y]' and text('wield_2')=='[Y]','switch badge must show only the control')
         assert(text('wield_3')=='[Unbound]')
         return 7,nil,9
     end)

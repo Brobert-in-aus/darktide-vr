@@ -83,6 +83,11 @@ return {
             mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_turning").widgets(),
             mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings").widgets(mod),
             {
+                setting_id = "hub_third_person",
+                type = "checkbox",
+                default_value = false,
+            },
+            {
                 setting_id = "psykhanium_online_rules",
                 type = "checkbox",
                 default_value = true,
