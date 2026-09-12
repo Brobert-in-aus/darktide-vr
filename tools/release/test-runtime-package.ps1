@@ -9,7 +9,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
 $root = (Resolve-Path -LiteralPath $PackageRoot).Path.TrimEnd('\', '/')
-$manifest = Get-Content -LiteralPath (Join-Path $root 'package-manifest.json') -Raw | ConvertFrom-Json
+# The manifest lives inside the mod folder like everything else in the archive.
+$manifestPath = Join-Path $root 'mods\darktidevr_stereo_probe\package-manifest.json'
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if ($manifest.schema_version -ne 2 -or $manifest.platform -cne 'windows-x64' -or $manifest.layout -cne 'game_folder' -or
         $manifest.release_state -cnotin @('development_candidate', 'release_candidate')) {
     throw 'Unsupported runtime package manifest.'
@@ -61,9 +63,9 @@ $required = @(
     'mods/darktidevr_stereo_probe/bin/openxr_loader.dll'
     'mods/darktidevr_stereo_probe/bin/dxcompiler.dll'
     'mods/darktidevr_stereo_probe/bin/billboard_shaders/vs-42e436fb1ef1b392.dxil'
-    'LICENSE'
-    'THIRD_PARTY_NOTICES.md'
-    'README.txt'
+    'mods/darktidevr_stereo_probe/LICENSE'
+    'mods/darktidevr_stereo_probe/THIRD_PARTY_NOTICES.md'
+    'mods/darktidevr_stereo_probe/README.txt'
 )
 foreach ($relative in $required) {
     if (-not $seen.Contains([IO.Path]::GetFullPath((Join-Path $root $relative)))) {
@@ -81,7 +83,7 @@ foreach ($file in Get-ChildItem -LiteralPath $luaRoot -Filter '*.lua' -File) {
     if (-not $seen.Contains($file.FullName)) { throw "Unlisted runtime Lua module: $($file.Name)" }
 }
 foreach ($file in Get-ChildItem -LiteralPath $root -Recurse -File) {
-    if ($file.Name -ceq 'package-manifest.json' -and $file.DirectoryName -eq $root) { continue }
+    if ($file.FullName -eq [IO.Path]::GetFullPath($manifestPath)) { continue }
     if (-not $seen.Contains($file.FullName)) { throw "Unlisted file in package: $($file.FullName.Substring($root.Length + 1))" }
 }
 Write-Output "runtime_package=pass files=$($seen.Count) state=$($manifest.release_state) layout=game_folder headset_tested=false"

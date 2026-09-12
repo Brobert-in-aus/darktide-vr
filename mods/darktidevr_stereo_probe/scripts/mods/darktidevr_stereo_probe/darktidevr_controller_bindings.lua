@@ -20,28 +20,28 @@ Bindings.controls = {
 }
 Bindings.actions = {
     {id="unbound", mask=0},
-    {id="primary", mask=1, pressed={"action_one_pressed"}, held={"action_one_hold"}, released={"action_one_release"}},
-    {id="alternate", mask=2, pressed={"action_two_pressed"}, held={"action_two_hold"}, released={"action_two_release"}},
-    {id="special", mask=4, pressed={"weapon_extra_pressed"}, held={"weapon_extra_hold"}, released={"weapon_extra_release"}},
+    {id="primary", hub=false, mask=1, pressed={"action_one_pressed"}, held={"action_one_hold"}, released={"action_one_release"}},
+    {id="alternate", hub=false, mask=2, pressed={"action_two_pressed"}, held={"action_two_hold"}, released={"action_two_release"}},
+    {id="special", hub=false, mask=4, pressed={"weapon_extra_pressed"}, held={"weapon_extra_hold"}, released={"weapon_extra_release"}},
     {id="interact", mask=8, pressed={"interact_pressed"}, held={"interact_hold"}},
-    {id="reload", mask=4096, pressed={"weapon_reload_pressed"}, held={"weapon_reload_hold"}},
+    {id="reload", hub=false, mask=4096, pressed={"weapon_reload_pressed"}, held={"weapon_reload_hold"}},
     {id="interact_reload", mask=4104},
-    {id="quick_wield", mask=16, pressed={"quick_wield"}},
+    {id="quick_wield", hub=false, mask=16, pressed={"quick_wield"}},
     {id="jump", mask=32, pressed={"jump"}, held={"jump_held"}},
-    {id="dodge", mask=8192, pressed={"dodge"}},
+    {id="dodge", hub=false, mask=8192, pressed={"dodge"}},
     {id="jump_dodge", mask=8224},
     {id="crouch", mask=64, pressed={"crouch"}, held={"crouching"}},
     {id="sprint", mask=128, pressed={"sprint"}, held={"sprinting"}},
     {id="tag", mask=256},
-    {id="blitz", mask=512, pressed={"grenade_ability_pressed"}, held={"grenade_ability_hold"}, released={"grenade_ability_release"}},
-    {id="combat_ability", mask=2048, pressed={"combat_ability_pressed"}, held={"combat_ability_hold"}, released={"combat_ability_release"}},
-    {id="inspect", mask=16384, held={"weapon_inspect_hold"}},
+    {id="blitz", hub=false, mask=512, pressed={"grenade_ability_pressed"}, held={"grenade_ability_hold"}, released={"grenade_ability_release"}},
+    {id="combat_ability", hub=false, mask=2048, pressed={"combat_ability_pressed"}, held={"combat_ability_hold"}, released={"combat_ability_release"}},
+    {id="inspect", hub=false, mask=16384, held={"weapon_inspect_hold"}},
     {id="menu", mask=1024},
     {id="inventory", mask=32768},
-    {id="pocketable", mask=65536, pressed={"wield_3"}},
-    {id="stim", mask=131072, pressed={"wield_4"}},
-    {id="device", mask=262144, pressed={"wield_5"}},
-    {id="cycle_pocketables", mask=524288, pressed={"wield_3_gamepad"}},
+    {id="pocketable", hub=false, mask=65536, pressed={"wield_3"}},
+    {id="stim", hub=false, mask=131072, pressed={"wield_4"}},
+    {id="device", hub=false, mask=262144, pressed={"wield_5"}},
+    {id="cycle_pocketables", hub=false, mask=524288, pressed={"wield_3_gamepad"}},
     {id="inspect_target", mask=1048576, pressed={"interact_inspect_pressed"}},
     {id="tactical_overlay", mask=2097152},
     {id="communication_wheel", mask=4194304, physical_only=true},
@@ -90,6 +90,9 @@ function Bindings.widgets(mod)
             end
             for _,context in ipairs({'combat','hub'}) do
                 local is_hub=context=='hub'
+                -- The hub has no combat, wielding or dodging: do not offer an
+                -- override for an action the hub cannot perform.
+                if is_hub and action.hub==false then break end
                 local key=is_hub and 'vr_hub_action_bind_'..action.id or combat_key
                 local current=mod and mod:get(key)
                 if current==nil then

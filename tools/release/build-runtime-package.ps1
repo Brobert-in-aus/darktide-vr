@@ -83,7 +83,7 @@ foreach ($entry in $plan) {
     lua_directory=$spec.LuaDestination
     built_utc=(Get-Date).ToUniversalTime().ToString('o')
     files=@($plan | Select-Object path,bytes,sha256)
-} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $package 'package-manifest.json') -Encoding UTF8
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $package 'mods/darktidevr_stereo_probe/package-manifest.json') -Encoding UTF8
 & (Join-Path $PSScriptRoot 'test-runtime-package.ps1') -PackageRoot $package
 $archive = Join-Path $output ($name + '.zip')
 # Archive the contents, not the folder, so extracting into the game folder

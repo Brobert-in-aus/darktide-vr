@@ -2,8 +2,9 @@
 
 `tools/release/build-runtime-package.ps1` produces the archive that players
 extract into the game folder. Since 12 September 2026 the archive is shaped
-like the game folder: `mods/darktidevr_stereo_probe/...` plus the licence,
-notices, changelog, user guide and a short README at the root. Extracting it
+like the game folder: everything, the licence, notices, changelog, user
+guide and a short README included, lives under
+`mods/darktidevr_stereo_probe/`, so extraction adds nothing else. Extracting it
 over the Darktide installation and running the mode switch inside the mod
 folder is the whole installation; no PowerShell launcher, sync script or
 readiness preflight ships with it.

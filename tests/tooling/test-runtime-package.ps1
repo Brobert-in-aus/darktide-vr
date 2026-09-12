@@ -31,7 +31,7 @@ try {
             "$modRelative/tools/set-skinner-assert-patch.ps1", "$luaRelative/darktidevr_stereo_probe.lua",
             "$modRelative/bin/d3d12.dll", "$modRelative/bin/darktidevr_native_capture.dll", "$modRelative/bin/darktidevr-xr-harness.exe",
             "$modRelative/bin/openxr_loader.dll", "$modRelative/bin/dxcompiler.dll",
-            "$modRelative/bin/billboard_shaders/vs-42e436fb1ef1b392.dxil", 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.txt')) {
+            "$modRelative/bin/billboard_shaders/vs-42e436fb1ef1b392.dxil", "$modRelative/LICENSE", "$modRelative/THIRD_PARTY_NOTICES.md", "$modRelative/README.txt")) {
         Write-Fixture $relative ('fixture-' + $relative)
     }
     Write-Fixture ($luaRelative + '/module.lua') 'return {}'
@@ -39,7 +39,7 @@ try {
     $files = Get-Files
     $manifest = @{schema_version=2;platform='windows-x64';layout='game_folder';release_state='development_candidate';
         project_binaries=$projectBinaries;lua_directory=$luaRelative;files=$files}
-    $manifestPath = Join-Path $testRoot 'package-manifest.json'
+    $manifestPath = Join-Path $testRoot "$modRelative/package-manifest.json"
     $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
     & $verifier -PackageRoot $testRoot | Out-Null
     $manifest.binary_source_provenance = 'recorded_hash_matched_claims'
@@ -72,11 +72,11 @@ try {
     Write-Fixture 'stray.txt' 'stray'
     Assert-Rejected 'Unlisted file in package'
     Remove-Item -LiteralPath (Join-Path $testRoot 'stray.txt')
-    $manifest.files = @($files | Where-Object path -ne 'LICENSE')
-    Remove-Item -LiteralPath (Join-Path $testRoot 'LICENSE')
+    $manifest.files = @($files | Where-Object path -ne "$modRelative/LICENSE")
+    Remove-Item -LiteralPath (Join-Path $testRoot "$modRelative/LICENSE")
     $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
     Assert-Rejected 'Required runtime package file is not listed'
-    Write-Fixture 'LICENSE' 'fixture-LICENSE'
+    Write-Fixture "$modRelative/LICENSE" ('fixture-' + "$modRelative/LICENSE")
     $manifest.files = @($files) + @($files[0])
     $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
     Assert-Rejected 'outside its root or duplicated'

@@ -4,7 +4,8 @@ local source = file:read("*all")
 file:close()
 local first = assert(source:find("function presentation.observe_controller_aim", 1, true))
 local last = assert(source:find("\nmod:hook_safe(", first, true))
-presentation = {mode = 1, sequence = 1, current_game_mode_name = function() return "hub" end}
+presentation = {mode = 1, sequence = 1, current_game_mode_name = function() return "hub" end,
+    hub_third_person_active = function() return false end}
 controller_observation = {
     authoring_last_check_t = 0, authoring_enabled = true,
     head_aim_yaw = 0, head_aim_pitch = 0, physical_head_yaw = 0,

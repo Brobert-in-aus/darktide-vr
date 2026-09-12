@@ -23,7 +23,8 @@ have rough edges on yours. Read the "Known limits" section before you judge it.
 
 1. Extract the archive into the Darktide game folder, the one that contains
    `binaries`, `bundle` and `mods`. When you are done,
-   `mods\darktidevr_stereo_probe` sits beside `mods\dmf`.
+   `mods\darktidevr_stereo_probe` sits beside `mods\dmf`; the archive adds
+   nothing outside that folder.
 2. Close Darktide. Run `mods\darktidevr_stereo_probe\Darktide VR Mode.bat`
    and choose **1, VR mode**. The switch does three things:
    - patches two bytes of `binaries\Darktide.exe` so the game accepts the

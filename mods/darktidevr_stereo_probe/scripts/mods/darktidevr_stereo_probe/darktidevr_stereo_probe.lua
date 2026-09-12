@@ -5343,6 +5343,32 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
     end
     controller_observation.body_yaw_anchor = physical_yaw
     local gameplay_yaw = controller_observation.head_aim_yaw % (math.pi * 2)
+    -- Third-person hub: the stock orientation (camera orbit and movement
+    -- frame) follows the stick-turned room anchor rather than the head, so
+    -- looking around does not swing the camera, and the right stick's
+    -- vertical axis moves the orbit while the headset keeps its own pitch.
+    local hub_third_person = presentation.hub_third_person_active()
+    local hub_third_person_pitch = nil
+    if hub_third_person then
+        -- The mouse already moves this orbit; stick deltas add to the same
+        -- stock orientation instead of owning it.
+        if not controller_observation.hub_third_person_orbit then
+            controller_observation.hub_third_person_orbit = true
+            controller_observation.hub_third_person_yaw_delta = 0
+            controller_observation.hub_third_person_pitch_delta = 0
+            mod:info("DARKTIDEVR_AIM hub_third_person orbit=stock+stick yaw=%.4f pitch=%.4f",
+                game_yaw, game_pitch)
+        end
+        gameplay_yaw = (game_yaw +
+            (controller_observation.hub_third_person_yaw_delta or 0)) % (math.pi * 2)
+        hub_third_person_pitch = math.clamp(game_pitch +
+            (controller_observation.hub_third_person_pitch_delta or 0),
+            -math.pi * 0.45, math.pi * 0.45)
+        controller_observation.hub_third_person_yaw_delta = 0
+        controller_observation.hub_third_person_pitch_delta = 0
+    else
+        controller_observation.hub_third_person_orbit = nil
+    end
     controller_observation.gameplay_yaw = gameplay_yaw
 
     -- Native fullscreen shop views temporarily force Darktide's mutable
@@ -5388,7 +5414,10 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
             presentation.sequence)
     else
         self._orientation.yaw = gameplay_yaw
-        controller_observation.gameplay_pitch = game_pitch
+        if hub_third_person_pitch then
+            self._orientation.pitch = hub_third_person_pitch
+        end
+        controller_observation.gameplay_pitch = self._orientation.pitch
         controller_observation.gameplay_roll = game_roll
     end
     controller_observation.authoring_writes =
@@ -5605,6 +5634,26 @@ function presentation.apply_controller_turning(main_t,exclusive_stick)
         active_base_rotation:store(Quaternion.multiply(
             Quaternion.axis_angle(Vector3.up(), delta), active_base_rotation:unbox()))
     end
+    -- Third-person hub orbit: stick turning also turns the stock orientation,
+    -- and the stick's vertical axis moves the orbit camera up and down. Both
+    -- are deltas onto the stock orientation, applied by the aim authoring.
+    if controller_observation.hub_third_person_orbit then
+        if delta ~= 0 then
+            controller_observation.hub_third_person_yaw_delta =
+                (controller_observation.hub_third_person_yaw_delta or 0) + delta
+        end
+        local last_t = controller_observation.hub_third_person_last_t or main_t
+        local dt = math.clamp(main_t - last_t, 0, 0.1)
+        local y = controller_observation.gameplay_input_active and
+            controller_observation.right_aim_usable and
+            tonumber(controller_observation.right_stick_y) or 0
+        if not exclusive_stick and math.abs(y) > 0.2 then
+            local rate = 1.6 -- radians per second at full deflection
+            controller_observation.hub_third_person_pitch_delta =
+                (controller_observation.hub_third_person_pitch_delta or 0) + y * rate * dt
+        end
+    end
+    controller_observation.hub_third_person_last_t = main_t
 end
 presentation.menu_prompts = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_menu_prompts"

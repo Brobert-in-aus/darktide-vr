@@ -3,13 +3,14 @@
     # root) to a path inside the release archive (Destination, relative to the
     # archive root). The archive is shaped like the game folder: extract it
     # over the Darktide installation so that mods\darktidevr_stereo_probe lands
-    # beside the other mods, then run "Darktide VR Mode.bat" inside it.
+    # beside the other mods, then run "Darktide VR Mode.bat" inside it. Every
+    # file, the documents included, lives under that mod folder.
     Files = @(
-        @{ Source = 'tools/release/package-README.txt'; Destination = 'README.txt' }
-        @{ Source = 'LICENSE'; Destination = 'LICENSE' }
-        @{ Source = 'THIRD_PARTY_NOTICES.md'; Destination = 'THIRD_PARTY_NOTICES.md' }
-        @{ Source = 'CHANGELOG.md'; Destination = 'CHANGELOG.md' }
-        @{ Source = 'docs/USER-GUIDE.md'; Destination = 'USER-GUIDE.md' }
+        @{ Source = 'tools/release/package-README.txt'; Destination = 'mods/darktidevr_stereo_probe/README.txt' }
+        @{ Source = 'LICENSE'; Destination = 'mods/darktidevr_stereo_probe/LICENSE' }
+        @{ Source = 'THIRD_PARTY_NOTICES.md'; Destination = 'mods/darktidevr_stereo_probe/THIRD_PARTY_NOTICES.md' }
+        @{ Source = 'CHANGELOG.md'; Destination = 'mods/darktidevr_stereo_probe/CHANGELOG.md' }
+        @{ Source = 'docs/USER-GUIDE.md'; Destination = 'mods/darktidevr_stereo_probe/USER-GUIDE.md' }
         @{ Source = 'mods/darktidevr_stereo_probe/darktidevr_stereo_probe.mod'; Destination = 'mods/darktidevr_stereo_probe/darktidevr_stereo_probe.mod' }
         @{ Source = 'mods/darktidevr_stereo_probe/Darktide VR Mode.bat'; Destination = 'mods/darktidevr_stereo_probe/Darktide VR Mode.bat' }
         @{ Source = 'mods/darktidevr_stereo_probe/darktidevr-mode.ps1'; Destination = 'mods/darktidevr_stereo_probe/darktidevr-mode.ps1' }
