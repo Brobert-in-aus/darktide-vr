@@ -917,8 +917,16 @@ local mirror_target = {
     end,
 }
 -- Constant elements lay out on the whole UI lookup (in stereo taller than
--- the panel target); each moves by its root node's alignment so a bottom
--- anchored chat sits on the target's bottom edge.
+-- the panel target). Their screen-anchored nodes are placed in panel
+-- coordinates (left/top), as the status nodes are, so the drawn element and
+-- the Custom HUD editor's box both land on the panel; a node Custom HUD has
+-- a saved position for is left to it. `mirror_offset` covers any node that
+-- is still anchored otherwise.
+local function alignment_shift(alignment, target, source)
+    if alignment == "bottom" or alignment == "right" then return target - source end
+    if alignment == "center" then return (target - source) * 0.5 end
+    return 0
+end
 local function mirror_offset(element)
     local lookup = RESOLUTION_LOOKUP
     local width, height = state.target_width, state.target_height
@@ -930,12 +938,52 @@ local function mirror_offset(element)
             break
         end
     end
-    local function shift(alignment, target, source)
-        if alignment == "bottom" or alignment == "right" then return target - source end
-        if alignment == "center" then return (target - source) * 0.5 end
-        return 0
+    return alignment_shift(horizontal, width, lookup.width),
+        alignment_shift(vertical, height, lookup.height)
+end
+
+local function place_constant_nodes(constants)
+    local lookup = RESOLUTION_LOOKUP
+    local width, height = state.target_width, state.target_height
+    if not lookup or not width or not height or
+            (lookup.width == width and lookup.height == height) then return end
+    local custom = custom_hud()
+    local overrides = custom and custom._position_overrides
+    local hud_scaled = constants._elements_hud_scale_lookup or {}
+    for _, element in ipairs(constants._elements_array) do
+        local name = element.__class_name
+        local graph = element._ui_scenegraph
+        -- World positions are stale while an update is pending (e.g. right
+        -- after the originals were restored); place on a settled graph only.
+        if panel_constant_elements[name] and type(graph) == "table" and
+                element.set_scenegraph_position and not element._update_scenegraph then
+            local override = overrides and overrides[element]
+            local scale = hud_scaled[name] and
+                require("scripts/utilities/ui/hud").hud_scale() or lookup.scale or 1
+            for id, node in pairs(graph) do
+                local world = type(id) == "string" and type(node) == "table" and
+                    node.parent == "screen" and node.world_position
+                local anchored = world and (node.vertical_alignment == "bottom" or
+                    node.vertical_alignment == "center" or node.horizontal_alignment == "right" or
+                    node.horizontal_alignment == "center")
+                if anchored and not (override and override.nodes and override.nodes[id]) then
+                    if not state.layout_nodes[node] then
+                        local p = node.position
+                        state.layout_nodes[node] = {element = element, id = id, x = p[1], y = p[2],
+                            horizontal = node.horizontal_alignment, vertical = node.vertical_alignment}
+                    end
+                    local dx = alignment_shift(node.horizontal_alignment, width, lookup.width) / scale
+                    local dy = alignment_shift(node.vertical_alignment, height, lookup.height) / scale
+                    element:set_scenegraph_position(id, world[1] + dx, world[2] + dy, nil, "left", "top")
+                    if not state.constant_layout_logged then
+                        state.constant_layout_logged = true
+                        state.mod:info("DARKTIDEVR_HUD constant_node_placed element=%s node=%s x=%.1f y=%.1f",
+                            name, id, world[1] + dx, world[2] + dy)
+                    end
+                end
+            end
+        end
     end
-    return shift(horizontal, width, lookup.width), shift(vertical, height, lookup.height)
 end
 
 function HudPanel.set_mirror(mirror)
@@ -967,6 +1015,7 @@ function HudPanel.install(mod)
             return func(self, dt, t, input_service)
         end
         local source = self._ui_renderer
+        place_constant_nodes(self)
         local wrapped = {}
         for _, element in ipairs(self._elements_array) do
             if panel_constant_elements[element.__class_name] and rawget(element, "draw") == nil then
