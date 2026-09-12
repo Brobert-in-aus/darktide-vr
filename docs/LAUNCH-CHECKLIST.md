@@ -30,17 +30,23 @@ here, in the handover and on the Nexus page draft.
 - [x] Enter the Psykhanium twice in one session and exit the game from
   the onboarding normally (the two crash guards in 4efe666). Passed 12
   September evening; neither guard fired in that run.
-- [ ] Aim-down-sights focus: vignette, tighter reticle, steadier aim while
-  the sight is held; releases cleanly.
-- [ ] Block pose on a melee weapon (shovel or sword).
-- [ ] Tutorial and HUD prompts show controller badges, no keyboard names.
+- [x] Aim-down-sights focus: vignette, tighter reticle, steadier aim while
+  the sight is held; releases cleanly. Passed 12 September (worn, on
+  the published archive).
+- [x] Block pose on a melee weapon (shovel or sword). Passed 12 September.
+- [x] Tutorial and HUD prompts show controller badges, no keyboard names.
+  Passed 12 September.
 - [ ] Wide markers and the NPC interaction popup converge at the far edge.
-- [ ] Damage-direction indicators visible in stereo when hit.
-- [ ] Quick wield returns to the last weapon; badge reads "[RS Down]".
-- [ ] Third-person hub option on and off, including the onboarding hub.
-- [ ] Focus warning appears when another window takes focus and clears.
-- [ ] One Solo mission start to finish; one remote-server mission if the
-  queue allows.
+- [x] Damage-direction indicators visible in stereo when hit. Passed 12
+  September.
+- [x] Quick wield returns to the last weapon; badge reads "[RS Down]".
+  Passed 12 September.
+- [x] Third-person hub option on and off, including the onboarding hub.
+  Passed 12 September.
+- [x] Focus warning appears when another window takes focus and clears.
+  Passed 12 September.
+- [x] One Solo mission start to finish; one remote-server mission if the
+  queue allows. Passed 12 September.
 - [ ] Flat mode through the batch file, launch flat once, back to VR mode.
 - [x] Fresh install as a new user on the maintainer's machine: first-run
   state (no mod settings, no profile directory), archive extracted, batch
