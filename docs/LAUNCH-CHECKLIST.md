@@ -77,6 +77,8 @@ Draft text is in `docs/NEXUS-PAGE.md`; copy from there, do not retype.
   generation. Optional: Custom HUD.
 - [ ] Installation section matches the package README word for word.
 - [ ] Known limits list matches the user guide.
+- [ ] Planned section is on the page (from the draft), so requests for
+  work already in the pipeline can be pointed at it.
 - [ ] Permissions: as suggested in the draft (credit required for
   redistribution and asset use). Licence: MIT.
 - [ ] Upload the archive as the main file, version `0.1.0-alpha.1`,

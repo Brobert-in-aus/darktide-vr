@@ -6,20 +6,21 @@ has not been checked worn.
 
 ## Short description
 
-Native stereo VR for Darktide on Quest 3 through Virtual Desktop: hand-aimed
-weapons, controller movement and menus, frame generation, 120 Hz. Very early
-alpha.
+Native stereo VR for Darktide through OpenXR, built on a Quest 3 with
+Virtual Desktop: hand-aimed weapons, controller movement and menus, frame
+generation. Very early alpha.
 
 ## Description
 
-Darktide VR renders Warhammer 40,000: Darktide in true stereo on a Quest 3
-through Virtual Desktop (VDXR), with motion-controller gameplay. It installs
+Darktide VR renders Warhammer 40,000: Darktide in true stereo through
+OpenXR, with motion-controller gameplay. It was built and tested on a Quest 3
+through Virtual Desktop (VDXR). It installs
 like any other Darktide mod and is launched through Steam as usual.
 
 **What works**
 
-- Stereo world rendering with the game's DLSS Frame Generation (120 Hz on
-  an RTX 4090 at DLSS Quality).
+- Stereo world rendering, with the game's DLSS Frame Generation when the
+  GPU supports it.
 - Controller gameplay in the hub, the Psykhanium, Solo missions and on
   ordinary mission servers: movement (head- or hand-relative), snap or
   smooth turning, hand-aimed firing with aim-down-sights focus, button
@@ -40,16 +41,34 @@ like any other Darktide mod and is launched through Steam as usual.
 - Weapons on mission servers fire from the game's own firing position.
 - The game window must keep the desktop focus (a HUD warning tells you).
 - Character select and title screens come from the desktop window.
+- Movement speed follows the aim direction, not where you look.
+- The game is graphically heavy; expect to lower settings and streaming
+  resolution for an acceptable frame rate.
 - Tested on one machine (RTX 4090, Quest 3, Virtual Desktop). Other GPUs,
-  headsets and runtimes are untested.
+  headsets, runtimes and controllers are untested; controllers other than
+  Touch get only the basic OpenXR profile for now.
+
+**Planned** (already in the pipeline, no need to request):
+
+- Haptics pass.
+- Proper two-hand weapon support with saved grips.
+- Left-hand dominant presentation.
+- Bindings for Index, Vive, WMR and Pico controllers; checks on SteamVR,
+  Meta Link and other headsets; AMD and Intel verification.
+- Independent weapon origins on mission servers and the remaining mission
+  actions (rescue, spectating, extraction, reconnect).
+- Pointer text entry.
+- Performance work on the stereo render cost and frame-generation
+  artefacts around HUD objects.
 
 ## Requirements
 
 - Warhammer 40,000: Darktide on Steam, Windows 10/11 x64.
 - Darktide Mod Loader and Darktide Mod Framework (hard requirement).
-- Virtual Desktop Streamer with VDXR as the OpenXR runtime, Quest 3.
-- NVIDIA RTX GPU for frame generation (the mod runs without it at the
-  native frame rate).
+- An OpenXR runtime with Direct3D 12 support. Tested: Virtual Desktop
+  Streamer with VDXR as the runtime, Quest 3.
+- NVIDIA RTX 40-series or newer for frame generation (the mod runs without
+  it at the native frame rate; other GPUs untested).
 - Optional: Custom HUD, for HUD layout editing.
 
 ## Installation
@@ -61,7 +80,8 @@ like any other Darktide mod and is launched through Steam as usual.
    and choose VR mode. It patches two bytes of `Darktide.exe` (a pristine
    copy is kept), installs a `d3d12.dll` proxy and adds the mod to the
    load order.
-3. Connect Virtual Desktop, launch Darktide through Steam, press Play.
+3. Connect the headset (Virtual Desktop in the tested setup), launch
+   Darktide through Steam, press Play.
 
 To play flat, run the batch file and choose Flat mode. After a game update,
 run it again and choose VR mode (if the executable is not recognised, wait

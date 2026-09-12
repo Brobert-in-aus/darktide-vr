@@ -1,21 +1,28 @@
 # Darktide VR user guide (early alpha)
 
-Darktide VR presents Warhammer 40,000: Darktide in stereo on a Quest 3 through
-Virtual Desktop, with controller input in menus and gameplay. It is an early
+Darktide VR presents Warhammer 40,000: Darktide in stereo through OpenXR,
+with controller input in menus and gameplay. It has been built and tested on
+a Quest 3 through Virtual Desktop. It is an early
 alpha: it works for the people who built it, on their hardware, and it will
 have rough edges on yours. Read the "Known limits" section before you judge it.
 
 ## What you need
 
 - Windows 10 or 11, x64. Darktide installed through Steam.
-- An NVIDIA RTX GPU. Frame generation uses the game's own DLSS Frame
-  Generation and is what makes 120 Hz reachable; without it the mod still
-  works at whatever frame rate the GPU renders two 2112x2304 eyes.
+- A GPU that runs Darktide comfortably flat. Frame generation uses the
+  game's own DLSS Frame Generation, so it needs an NVIDIA RTX 40-series or
+  newer; without it the mod runs at whatever rate the GPU renders two eyes.
+  Only NVIDIA GPUs have been tested.
 - The Darktide Mod Loader and the Darktide Mod Framework (DMF), installed
   and working: with them alone, the game should start and show "Mods" in its
   options. Install those first, from their own Nexus pages.
-- A Quest 3, Virtual Desktop on the headset, Virtual Desktop Streamer on the
-  PC, and VDXR selected as the OpenXR runtime in the Streamer's settings.
+- An OpenXR runtime with Direct3D 12 support and a headset with Touch-style
+  controllers. The tested setup is a Quest 3 with Virtual Desktop on the
+  headset, Virtual Desktop Streamer on the PC, and VDXR selected as the
+  OpenXR runtime in the Streamer's settings. SteamVR, Meta Link and other
+  runtimes and headsets are untested; controllers other than Touch fall back
+  to the basic OpenXR profile (select and menu only) until their bindings
+  are added.
 - Optional: the Custom HUD mod, which the VR mod uses for HUD layout
   editing. Everything else works without it.
 
@@ -34,7 +41,8 @@ have rough edges on yours. Read the "Known limits" section before you judge it.
    - adds `darktidevr_stereo_probe` to `mods\mod_load_order.txt`.
    It prints a status block at the end; every line should read patched,
    installed, listed and present.
-3. Put the headset on, connect Virtual Desktop to the PC, then launch
+3. Put the headset on, connect it to the PC (Virtual Desktop in the tested
+   setup), then launch
    Darktide through Steam and press Play in the Fatshark launcher. Nothing
    else is needed. The desktop window comes up as usual; a few seconds later
    the headset shows the game.
@@ -66,8 +74,10 @@ patch needs an update from us.
 - Set DLSS and Frame Generation in the game's own video options. Quality
   DLSS with Frame Generation on is the accepted setting on an RTX 4090.
   Changing DLSS quality in-game is fine; frame generation recovers.
-- Turn V-Sync off and cap nothing. Virtual Desktop: 120 Hz, resolution one
-  step below the top, H.264+.
+- Turn V-Sync off and cap nothing. The game is graphically heavy: expect
+  to lower the game's settings and the headset's streaming resolution to
+  reach a frame rate you find acceptable, and choose the refresh rate
+  yourself.
 
 ## Playing
 
@@ -113,8 +123,28 @@ patch needs an update from us.
   third-person hub (the game forces that camera there); this route has had
   little testing.
 - The desktop window must stay focused (see above).
-- Lower-tier GPUs have not been tested; the accepted numbers come from an
-  RTX 4090 at 120 Hz.
+- Movement speed follows the aim direction, not where you look: sprinting
+  and the slow backward walk are judged against the hand's aim.
+- Only one setup has been tested: an RTX 4090, a Quest 3 and Virtual
+  Desktop.
+
+## Planned
+
+Already in the pipeline; no need to request these:
+
+- A broad haptics pass: firing, melee contact, block, sight, damage taken,
+  interaction and pointer hover, with per-event strength options.
+- Proper two-hand weapon support with saved per-weapon grips (today's
+  session-only prototype behind chat commands is not the feature).
+- Left-hand dominant presentation.
+- Bindings for controllers other than Touch (Index, Vive, WMR, Pico) and
+  checks on other OpenXR runtimes (SteamVR, Meta Link) and other headsets.
+- Verification on AMD and Intel GPUs.
+- Independent weapon origins on mission servers, and coverage of the
+  remaining mission actions (rescue, spectating, extraction, reconnect).
+- Pointer text entry, so the character name does not need a keyboard.
+- Performance work on the stereo render cost and on frame-generation
+  artefacts around HUD objects.
 
 ## When something goes wrong
 

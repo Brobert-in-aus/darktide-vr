@@ -1,16 +1,18 @@
 Darktide VR (early alpha)
 =========================
 
-Stereo VR for Warhammer 40,000: Darktide on a Quest 3 through Virtual
-Desktop (VDXR). Read USER-GUIDE.md before playing; this file is the short
-version.
+Stereo VR for Warhammer 40,000: Darktide through OpenXR, built and tested
+on a Quest 3 through Virtual Desktop (VDXR). Read USER-GUIDE.md before
+playing; this file is the short version.
 
 Requirements
-  - Darktide on Steam (Windows), an NVIDIA RTX GPU (frame generation needs
-    DLSS Frame Generation; the mod works without it at a lower frame rate).
+  - Darktide on Steam (Windows). Frame generation needs DLSS Frame
+    Generation (NVIDIA RTX 40-series or newer); the mod works without it
+    at a lower frame rate. Only NVIDIA GPUs have been tested.
   - Darktide Mod Loader and Darktide Mod Framework installed and working.
-  - Virtual Desktop Streamer with VDXR set as the OpenXR runtime.
-  - Quest 3 connected through Virtual Desktop before you launch.
+  - An OpenXR runtime with Direct3D 12 support. Tested: Virtual Desktop
+    Streamer with VDXR set as the OpenXR runtime, Quest 3, connected
+    before you launch. Other runtimes, headsets and controllers untested.
 
 Install
   1. Extract this archive into the Darktide game folder (the folder that
