@@ -34,6 +34,11 @@ After a game update
   Steam replaces Darktide.exe. Run the batch file again and choose VR mode.
   If it reports that the build is not supported yet, wait for a mod update.
 
+After a mod update
+  Extract the new archive over the old one, then run the batch file and
+  choose VR mode again; it replaces the earlier proxy and keeps your
+  settings.
+
 Uninstall
   Choose Flat mode, then delete mods\darktidevr.
 

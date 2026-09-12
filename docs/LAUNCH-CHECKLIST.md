@@ -16,6 +16,8 @@ folder in the afternoon. If any item below needs a code change, commit it, rebui
 verifier and the batch round trip, and update the archive name and hash
 here, in the handover and on the Nexus page draft.
 
+- [ ] Renamed install carries your settings, bindings and options over
+  (the mod id is now `darktidevr`; profiles were migrated on disk).
 - [ ] Psykhanium onboarding from a fresh character: gun sits in the hand,
   grenade section advances, end-of-training question appears in the
   headset and can be answered with the pointer.

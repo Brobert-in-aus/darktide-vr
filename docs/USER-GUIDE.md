@@ -52,6 +52,8 @@ restores the original executable, removes the proxy and takes the mod out of
 the load order. The mod folder and your other mods stay where they are.
 
 After Steam updates the game, run the batch file again and choose VR mode.
+After a mod update, extract the new archive over the old one and do the
+same; the switch replaces the earlier proxy and keeps your settings.
 If it says the build is not supported yet, the executable changed and the
 patch needs an update from us.
 

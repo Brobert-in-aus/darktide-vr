@@ -95,11 +95,25 @@ function Get-LoadOrderState {
     return 'absent'
 }
 
+# This mod's proxies carry the mod's name in their embedded paths (as wide
+# strings). An installed d3d12.dll with that marker but different bytes is an
+# earlier build of ours, left by a previous version: replace or remove it.
+# One without the marker belongs to something else and is never touched.
+function Test-ProxyMarker([string] $Path) {
+    try { $bytes = [IO.File]::ReadAllBytes($Path) } catch { return $false }
+    foreach ($encoding in @([Text.Encoding]::Unicode, [Text.Encoding]::ASCII)) {
+        $text = $encoding.GetString($bytes)
+        if ($text.IndexOf('darktidevr', [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
+    }
+    return $false
+}
+
 function Get-ProxyState {
     $installed = Get-FileSha256 $proxyDestination
     if (-not $installed) { return 'absent' }
     $ours = Get-FileSha256 $proxySource
     if ($ours -and $installed -eq $ours) { return 'installed' }
+    if (Test-ProxyMarker $proxyDestination) { return 'outdated' }
     return 'foreign'
 }
 
@@ -152,7 +166,10 @@ if ($Mode -eq 'vr') {
     if ($proxyState -eq 'foreign') {
         throw "binaries\d3d12.dll exists and is not this mod's proxy. Remove or rename it first."
     }
-    if ($proxyState -ne 'installed') {
+    if ($proxyState -eq 'outdated') {
+        Copy-Item -LiteralPath $proxySource -Destination $proxyDestination -Force
+        Write-Output 'd3d12 proxy: updated from an earlier version.'
+    } elseif ($proxyState -ne 'installed') {
         Copy-Item -LiteralPath $proxySource -Destination $proxyDestination -Force
         Write-Output 'd3d12 proxy: installed.'
     } else {
@@ -186,6 +203,7 @@ if ($exeState -eq 'patched') {
 }
 switch (Get-ProxyState) {
     'installed' { Remove-Item -LiteralPath $proxyDestination -Force; Write-Output 'd3d12 proxy: removed.' }
+    'outdated' { Remove-Item -LiteralPath $proxyDestination -Force; Write-Output 'd3d12 proxy: removed (earlier version).' }
     'absent' { Write-Output 'd3d12 proxy: not installed.' }
     default { Write-Output 'd3d12 proxy: a different d3d12.dll is present; left as is.' }
 }

@@ -85,7 +85,8 @@ like any other Darktide mod and is launched through Steam as usual.
 
 To play flat, run the batch file and choose Flat mode. After a game update,
 run it again and choose VR mode (if the executable is not recognised, wait
-for a mod update).
+for a mod update). After a mod update, extract the new archive over the old
+one and choose VR mode again.
 
 ## Permissions and licence
 

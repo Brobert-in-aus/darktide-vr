@@ -2,6 +2,8 @@
 if(BUILD_TESTING)
   add_test(NAME component_provenance COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/test-component-provenance.ps1")
+  add_test(NAME mode_switch COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-mode-switch.ps1")
   add_test(NAME offline_workload_readiness COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
     "${CMAKE_CURRENT_SOURCE_DIR}/test-offline-workload-readiness.ps1")
   add_test(NAME synthetic_framegen_settings COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
