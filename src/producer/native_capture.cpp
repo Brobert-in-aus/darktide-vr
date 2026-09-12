@@ -12995,11 +12995,16 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
         static_cast<unsigned long long>(gameplay_mirror_copies_recorded.load()),
         static_cast<unsigned long long>(gameplay_mirror_blits_attempted.load()));
   }
-  // In-game interactive menus reach the headset from the engine's private
-  // canvas at the published extent, independent of the desktop window.
+  // In-game interactive menus, loading boards and video cutscenes reach the
+  // headset from the engine's private canvas at the published extent,
+  // independent of the desktop window. The desktop window mirrors the
+  // 2112x2304 eye canvas into its own client extent, so a loading screen
+  // taken from the window was squashed to that aspect.
   if (menu_virtual_capture_enabled.load(std::memory_order_relaxed) &&
       candidate && queue &&
-      darktidevr::core::flat_interactive_active(presentation_mode)) {
+      (darktidevr::core::flat_interactive_active(presentation_mode) ||
+       presentation_mode ==
+           darktidevr::core::SharedPresentationMode::flat_loading_or_cinematic)) {
     const auto canvas = engine_eye_backbuffers.find(
         reinterpret_cast<std::uintptr_t>(candidate.Get()),
         resize_diagnostic_generation.load(std::memory_order_relaxed),

@@ -1157,10 +1157,11 @@ function presentation.publish_mode(mode, reason)
     local scaled_flat_height = math.floor(
         presentation.flat_target_height * ui_scale + 0.5)
     local direct_menu_target = mode == 3 or mode == 4
-    local native_window_target = mode == 5 or mode == 6
-    -- Interactive menus now have a dedicated RGBA source. Loading screens
-    -- still use the portrait window/eye source until they receive their own
-    -- resource renderer.
+    -- Interactive menus, loading boards and video cutscenes have a dedicated
+    -- 16:9 RGBA source blitted from the engine canvas at this extent. Taking
+    -- loading boards from the portrait eye source through the desktop window
+    -- showed them squashed to the window's aspect.
+    local native_window_target = mode == 2 or mode == 5 or mode == 6
     local source_width = native_window_target and scaled_flat_width or
         (direct_menu_target and math.min(
             scaled_flat_width, ui_eye_target_width) or ui_eye_target_width)
@@ -14159,37 +14160,41 @@ mod:hook_require("scripts/ui/views/scanner_display_view/scanner_display_view", f
         end
         self._darktidevr_linked_3p = nil
     end)
-    mod.toggle_scanner_test = function()
-                local manager = Managers and Managers.ui
-                if not manager then return end
-                if manager:view_active("scanner_display_view") then
-                    manager:close_view("scanner_display_view")
-                    mod:echo("Scanner display closed.")
-                    return
-                end
-                local player = Managers.player and Managers.player:local_player(1)
-                local unit = player and player.player_unit
-                local loadout = unit and Unit.alive(unit) and
-                    ScriptUnit.has_extension(unit, "visual_loadout_system")
-                local slot = loadout and loadout._equipment and loadout._equipment.slot_device
-                local auspex = slot and (slot.unit_1p or slot.unit_3p)
-                if not auspex then
-                    mod:echo("No device in slot_device; wield the auspex where the game gives one.")
-                    return
-                end
-                local world = Managers.world and Managers.world:world("level_world")
-                local ok, err = pcall(manager.open_view, manager, "scanner_display_view", nil, nil, nil, nil, {
-                    device_owner_unit = unit, minigame_type = "none", minigame_extension = nil,
-                    auspex_unit = auspex, wwise_world = world and Managers.world:wwise_world(world)})
-                mod:echo(ok and "Scanner display opened on the first-person device unit; the third-person screen should show it."
-                    or ("Scanner display failed: " .. tostring(err)))
-    end
-    if mod.command then
-        mod:command("dtvr_scanner_test",
-            "Open or close the scanner display on the equipped device (also on the F7 keybind)",
-            function() mod.toggle_scanner_test() end)
-    end
 end)
+
+-- Dev check, on F7 and /dtvr_scanner_test: open the scanner display on the
+-- equipped device without a mission interface. Defined at top level: the
+-- keybind must resolve before the scanner view has ever been required.
+mod.toggle_scanner_test = function()
+    local manager = Managers and Managers.ui
+    if not manager then return end
+    if manager:view_active("scanner_display_view") then
+        manager:close_view("scanner_display_view")
+        mod:echo("Scanner display closed.")
+        return
+    end
+    local player = Managers.player and Managers.player:local_player(1)
+    local unit = player and player.player_unit
+    local loadout = unit and Unit.alive(unit) and
+        ScriptUnit.has_extension(unit, "visual_loadout_system")
+    local slot = loadout and loadout._equipment and loadout._equipment.slot_device
+    local auspex = slot and (slot.unit_1p or slot.unit_3p)
+    if not auspex then
+        mod:echo("No device in slot_device; wield the auspex where the game gives one.")
+        return
+    end
+    local world = Managers.world and Managers.world:world("level_world")
+    local ok, err = pcall(manager.open_view, manager, "scanner_display_view", nil, nil, nil, nil, {
+        device_owner_unit = unit, minigame_type = "none", minigame_extension = nil,
+        auspex_unit = auspex, wwise_world = world and Managers.world:wwise_world(world)})
+    mod:echo(ok and "Scanner display opened on the first-person device unit; the third-person screen should show it."
+        or ("Scanner display failed: " .. tostring(err)))
+end
+if mod.command then
+    mod:command("dtvr_scanner_test",
+        "Open or close the scanner display on the equipped device (also on the F7 keybind)",
+        function() mod.toggle_scanner_test() end)
+end
 
 presentation.gun_aim = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_gun_aim"

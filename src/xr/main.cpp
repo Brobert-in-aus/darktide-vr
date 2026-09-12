@@ -1884,10 +1884,12 @@ class OpenXrProbe {
           }
         }
       }
-      // Direct-render menus (3, 4) and the in-game interactive menus (5, 6),
-      // which the producer now publishes from its private canvas at the
-      // presentation extent; the window capture remains the fallback while
-      // no shared menu can be opened (character select, title).
+      // Direct-render menus (3, 4), the in-game interactive menus (5, 6) and
+      // the loading and cutscene boards (2), which the producer publishes
+      // from its private canvas at the presentation extent; the window
+      // capture remains the fallback while no shared menu can be opened
+      // (character select, title). Mode 2 takes the texture only: menu_mode
+      // and the pointer stay off for it.
       const bool interactive_menu_projection =
           presentation_sequence != 0 &&
           (presentation_state.mode == darktidevr::core::
@@ -1895,6 +1897,9 @@ class OpenXrProbe {
            presentation_state.mode == darktidevr::core::
                                           SharedPresentationMode::
                                               world_anchored_menu ||
+           presentation_state.mode == darktidevr::core::
+                                          SharedPresentationMode::
+                                              flat_loading_or_cinematic ||
            darktidevr::core::flat_interactive_active(presentation_state.mode));
       if (opened_menu) {
         const auto menu_ready =

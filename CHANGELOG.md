@@ -78,6 +78,8 @@ Desktop (VDXR), Darktide with the Darktide Mod Framework.
   (option, on by default).
 - Game popups that arrive over a loading screen or a cutscene (the hub's
   "summoned to the strategium" notice) now get the pointer.
+- Loading screens and video cutscenes are shown at their true 16:9 shape
+  instead of squashed to the desktop window's aspect.
 
 Known limits of this alpha are listed in the user guide: right-hand
 dominant presentation, no independent weapon origins on mission servers,
