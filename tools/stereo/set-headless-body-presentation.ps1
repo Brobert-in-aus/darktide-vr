@@ -4,7 +4,7 @@ param(
     [string] $Mode = 'Disabled',
 
     [string] $GameModDirectory =
-        'D:\SteamLibrary\steamapps\common\Warhammer 40,000 DARKTIDE\mods\darktidevr_stereo_probe'
+        'D:\SteamLibrary\steamapps\common\Warhammer 40,000 DARKTIDE\mods\darktidevr'
 )
 
 Set-StrictMode -Version Latest

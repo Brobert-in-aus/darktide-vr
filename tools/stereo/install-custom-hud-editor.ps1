@@ -23,10 +23,10 @@ $orderPath = Join-Path $game 'mods/mod_load_order.txt'
 $order = @(Get-Content -LiteralPath $orderPath)
 if (-not ($order | Where-Object { $_.Trim() -eq 'custom_hud' })) {
     $updated = foreach ($line in $order) {
-        if ($line.Trim() -eq 'darktidevr_stereo_probe') { 'custom_hud' }
+        if ($line.Trim() -eq 'darktidevr') { 'custom_hud' }
         $line
     }
-    if (-not ($order | Where-Object { $_.Trim() -eq 'darktidevr_stereo_probe' })) {
+    if (-not ($order | Where-Object { $_.Trim() -eq 'darktidevr' })) {
         $updated += 'custom_hud'
     }
     Copy-Item -LiteralPath $orderPath -Destination ($orderPath + '.before-custom-hud-editor')

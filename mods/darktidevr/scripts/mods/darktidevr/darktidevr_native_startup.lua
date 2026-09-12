@@ -1,5 +1,5 @@
 local Startup = {}
-local root = "./../mods/darktidevr_stereo_probe/"
+local root = "./../mods/darktidevr/"
 
 function Startup.read(open)
     local function present(name)

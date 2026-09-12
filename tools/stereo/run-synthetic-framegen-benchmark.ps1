@@ -74,8 +74,8 @@ if ($NativeDllPath -or $NativeSha256 -or $ExpectedInstalledNativeSha256) {
 $SettingsPath = (Resolve-Path -LiteralPath $SettingsPath).Path
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $OutputDirectory) { throw 'Use a new output directory for each run.' }
-$modPath = Join-Path $GameRoot 'mods/darktidevr_stereo_probe'
-$luaDirectory = Join-Path $modPath 'scripts/mods/darktidevr_stereo_probe'
+$modPath = Join-Path $GameRoot 'mods/darktidevr'
+$luaDirectory = Join-Path $modPath 'scripts/mods/darktidevr'
 $censusFlag = Join-Path $modPath 'darktidevr_render_world_census.flag'
 $cpuTimingFlag = Join-Path $modPath 'darktidevr_cpu_render_timing.flag'
 $luaTrialFiles = @{}
@@ -99,7 +99,7 @@ if($diagnosticLuaSource -or $ExpectedInstalledLuaSha256) {
     }
     $diagnosticLuaSource = (Resolve-Path -LiteralPath $diagnosticLuaSource).Path
     & (Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1') -SourcePath $diagnosticLuaSource
-    foreach($name in @('darktidevr_stereo_probe.lua','darktidevr_render_world_census.lua')) {
+    foreach($name in @('darktidevr.lua','darktidevr_render_world_census.lua')) {
         $luaTrialFiles[(Join-Path $luaDirectory $name)] = [IO.File]::ReadAllBytes(
             (Join-Path (Split-Path $diagnosticLuaSource) $name))
     }
@@ -134,7 +134,7 @@ try {
         Save-BenchmarkFile $soloModule
     }
     if($diagnosticLuaSource) {
-        if((Get-FileHash -LiteralPath (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash -ne $ExpectedInstalledLuaSha256) {
+        if((Get-FileHash -LiteralPath (Join-Path $luaDirectory 'darktidevr.lua')).Hash -ne $ExpectedInstalledLuaSha256) {
             throw 'Installed Lua baseline changed.'
         }
         foreach($path in $luaTrialFiles.Keys) { Save-BenchmarkFile $path }
@@ -202,7 +202,7 @@ try {
             [IO.File]::WriteAllText($cpuTimingFlag,"disabled`r`n")
             [IO.File]::WriteAllText($censusFlag,"enabled`r`nwarmup=$RenderWorldCensusWarmupFrames`r`n")
         }
-        & (Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1') -SourcePath (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')
+        & (Join-Path $PSScriptRoot 'test-darktide-lua-source.ps1') -SourcePath (Join-Path $luaDirectory 'darktidevr.lua')
     }
     [IO.File]::WriteAllText($SettingsPath,$settings,[Text.UTF8Encoding]::new($false))
     # Make both control states explicit; a false switch must not inherit a
@@ -278,7 +278,7 @@ try {
         gpu_profile=$GpuProfile.IsPresent
         render_api_cpu_profile=$RenderApiCpuProfile.IsPresent
         render_world_census_warmup=$RenderWorldCensusWarmupFrames
-        lua_sha256=(Get-FileHash -LiteralPath (Join-Path $luaDirectory 'darktidevr_stereo_probe.lua')).Hash
+        lua_sha256=(Get-FileHash -LiteralPath (Join-Path $luaDirectory 'darktidevr.lua')).Hash
     }
     $receipt['gpu_engine_activity_observed'] = [bool]$ObserveGpuEngineActivity
     $receipt | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'configuration.json') -Encoding utf8

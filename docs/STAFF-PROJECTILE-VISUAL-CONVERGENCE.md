@@ -45,7 +45,7 @@ established by the isolated test.
 Validation on Windows x64:
 
 ```powershell
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-projectile-visual-stock-contract.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_projectile_visual.lua _downloads/Darktide-Source-Code
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-projectile-visual-stock-contract.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_projectile_visual.lua _downloads/Darktide-Source-Code
 tools/stereo/test-darktide-lua-source.ps1
 tools/stereo/test-darktide-lua-invariants.ps1
 ```

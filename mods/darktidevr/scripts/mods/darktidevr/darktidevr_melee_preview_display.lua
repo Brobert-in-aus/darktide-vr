@@ -2,14 +2,14 @@
 local Display={}
 function Display.startup_requested(io_api)
     if not io_api then return false end
-    local flag=io_api.open('./../mods/darktidevr_stereo_probe/darktidevr_melee_preview.flag','r')
+    local flag=io_api.open('./../mods/darktidevr/darktidevr_melee_preview.flag','r')
     if not flag then return false end
     local ok,value=pcall(flag.read,flag,32)
     flag:close()
     return ok and type(value)=='string' and value:match('^%s*enabled%s*$')~=nil
 end
 function Display.install(mod,presentation,tracking)
-    local Preview=mod:io_dofile('darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_preview')
+    local Preview=mod:io_dofile('darktidevr/scripts/mods/darktidevr/darktidevr_melee_preview')
     local api={enabled=false}
     local world,gui,failed
     function api.destroy()

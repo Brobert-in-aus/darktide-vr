@@ -127,7 +127,7 @@ function Support.new(Pose)
     return api
 end
 function Support.install(mod,presentation,observation)
-    local Pose=mod:io_dofile('darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_two_hand_pose')
+    local Pose=mod:io_dofile('darktidevr/scripts/mods/darktidevr/darktidevr_two_hand_pose')
     local api=Support.new(Pose)
     local previous_t
     local allowed_states={walking=true,sprinting=true,sliding=true,jumping=true,falling=true,dodging=true}

@@ -30,15 +30,15 @@ have rough edges on yours. Read the "Known limits" section before you judge it.
 
 1. Extract the archive into the Darktide game folder, the one that contains
    `binaries`, `bundle` and `mods`. When you are done,
-   `mods\darktidevr_stereo_probe` sits beside `mods\dmf`; the archive adds
+   `mods\darktidevr` sits beside `mods\dmf`; the archive adds
    nothing outside that folder.
-2. Close Darktide. Run `mods\darktidevr_stereo_probe\Darktide VR Mode.bat`
+2. Close Darktide. Run `mods\darktidevr\Darktide VR Mode.bat`
    and choose **1, VR mode**. The switch does three things:
    - patches two bytes of `binaries\Darktide.exe` so the game accepts the
      stereo camera (a pristine copy is kept under `%LOCALAPPDATA%\DarktideVR`);
    - places the mod's `d3d12.dll` proxy in `binaries`, which is how the VR
      module gets into the game;
-   - adds `darktidevr_stereo_probe` to `mods\mod_load_order.txt`.
+   - adds `darktidevr` to `mods\mod_load_order.txt`.
    It prints a status block at the end; every line should read patched,
    installed, listed and present.
 3. Put the headset on, connect it to the PC (Virtual Desktop in the tested

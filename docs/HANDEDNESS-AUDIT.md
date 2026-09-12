@@ -119,11 +119,11 @@ lifetimes; never mutate shared weapon templates globally for one local player.
 ## Confirmed consumers
 
 Paths below are relative to the repository. Lua modules are under
-`mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/`.
+`mods/darktidevr/scripts/mods/darktidevr/`.
 
 | Consumer | Existing behavior | Required separation |
 | --- | --- | --- |
-| `darktidevr_stereo_probe.lua`, controller observation and grip/aim helpers | Physical left/right records and validity ages | Preserve physical identity; resolve roles at consumers |
+| `darktidevr.lua`, controller observation and grip/aim helpers | Physical left/right records and validity ages | Preserve physical identity; resolve roles at consumers |
 | Same file, `body_ik_calibrated_wrist_target` and arm/rigid glove paths | Anatomical left/right wrist and skeleton | Keep anatomical mapping and accepted calibration |
 | `darktidevr_controller_aim.lua`, `target`, reticle and shooting hooks | Main attack/reticle uses right aim | Dominant aim for both target and shot preparation |
 | Same module, `projectile_target` | Staff uncharged origin left, converged toward right aim; charged origin staff tip | Support origin, dominant aim; tip must follow actual weapon |

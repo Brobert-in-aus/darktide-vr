@@ -8,12 +8,12 @@ function Get-DarktideVrModLoadOrder {
         throw 'Mod load order has a UTF-8 BOM that the loader treats as part of its first entry.'
     }
     $text = [Text.Encoding]::UTF8.GetString($Bytes)
-    $name = 'darktidevr_stereo_probe'
+    $name = 'darktidevr'
     # Match the loader's f:lines and ASCII Lua %s trim, not Unicode whitespace.
     $pattern = '^[ \t\v\f\r]*' + $name + '[ \t\v\f\r]*$'
     $active = @($text -split '\n' | Where-Object { $_ -cmatch $pattern })
     if (@($text -split '\n' | Where-Object { $_ -match $pattern -and $_ -cnotmatch $pattern }).Count) {
-        throw 'Mod load order has a VR entry with different capitalization; use darktidevr_stereo_probe.'
+        throw 'Mod load order has a VR entry with different capitalization; use darktidevr.'
     }
     if ($active.Count -gt 1) { throw 'Mod load order has duplicate active VR entries; resolve them before installation.' }
     if ($active.Count -eq 1) { return [pscustomobject]@{ Changed = $false; Bytes = $Bytes } }

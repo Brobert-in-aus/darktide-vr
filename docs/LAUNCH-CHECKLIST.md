@@ -47,7 +47,7 @@ what ships.
   nowhere once the release date is set.
 - [ ] `LICENSE` (MIT) and `THIRD_PARTY_NOTICES.md` present; notices cover
   the OpenXR loader, MinHook and DirectXShaderCompiler with their texts.
-- [ ] `darktidevr_stereo_probe.mod` and the manifest name and version read
+- [ ] `darktidevr.mod` and the manifest name and version read
   0.1.0-alpha.1.
 - [ ] No stray files: no test flags, logs, personal settings copies or
   screenshots in the archive (compare against `runtime-package-files.psd1`).

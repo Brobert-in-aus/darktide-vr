@@ -13,7 +13,7 @@ function Assist.install(mod,presentation,tracking)
     local observed,observed_t,observed_weapon,observed_epoch,sequence,epoch,cached,owner,weapon
     local pending=false
     local flag=Mods and Mods.lua and Mods.lua.io and Mods.lua.io.open(
-        './../mods/darktidevr_stereo_probe/darktidevr_aim_assist_light.flag','r')
+        './../mods/darktidevr/darktidevr_aim_assist_light.flag','r')
     if flag then
         -- An empty flag file reads nil; never index it during mod load.
         local text=flag:read(32)

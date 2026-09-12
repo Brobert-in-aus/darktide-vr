@@ -206,7 +206,7 @@ $priorErrorActionPreference = $ErrorActionPreference
 $sharedStereoEvidence = @{}
 $priorReticleScaleFile = $env:DTVR_RETICLE_SCALE_FILE
 try {
-    $env:DTVR_RETICLE_SCALE_FILE = Join-Path (Split-Path (Split-Path $resolvedGameExe -Parent) -Parent) 'mods\darktidevr_stereo_probe\darktidevr_crosshair_scale.flag'
+    $env:DTVR_RETICLE_SCALE_FILE = Join-Path (Split-Path (Split-Path $resolvedGameExe -Parent) -Parent) 'mods\darktidevr\darktidevr_crosshair_scale.flag'
     # The Khronos loader can write a diagnostic to stderr when the harness's
     # first API-version attempt is rejected, then succeed on its built-in
     # compatibility retry. Windows PowerShell converts native stderr into

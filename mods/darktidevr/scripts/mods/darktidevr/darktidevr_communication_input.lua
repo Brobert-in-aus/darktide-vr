@@ -2,7 +2,7 @@
 -- The stock wheel coordinator owns HUD state and deferred communication.
 local Input={}
 function Input.install(mod,presentation,observation,runtime)
-    local root='darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/'
+    local root='darktidevr/scripts/mods/darktidevr/'
     local function load(name)return mod:io_dofile(root..'darktidevr_'..name)end
     local bindings,context=presentation.controller_bindings,presentation.gameplay_context
     local state={frame=0}

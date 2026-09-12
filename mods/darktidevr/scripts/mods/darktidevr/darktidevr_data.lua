@@ -1,4 +1,4 @@
-local mod = get_mod("darktidevr_stereo_probe")
+local mod = get_mod("darktidevr")
 
 return {
     name = mod:localize("mod_name"),
@@ -126,8 +126,8 @@ return {
                     },
                 },
             },
-            mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_turning").widgets(),
-            mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings").widgets(mod),
+            mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_turning").widgets(),
+            mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_controller_bindings").widgets(mod),
         },
     },
 }

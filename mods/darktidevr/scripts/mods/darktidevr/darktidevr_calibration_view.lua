@@ -1,6 +1,6 @@
-local mod = get_mod("darktidevr_stereo_probe")
+local mod = get_mod("darktidevr")
 local definitions = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_calibration_view_definitions")
+    "darktidevr/scripts/mods/darktidevr/darktidevr_calibration_view_definitions")
 
 DarktideVRCalibrationView = class(
     "DarktideVRCalibrationView", "BaseView")

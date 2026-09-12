@@ -5,8 +5,8 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('darktidevr-installed-gate-' + [guid]::NewGuid().ToString('N'))
 $fixtureRepo = Join-Path $fixture 'repository'
 $fixtureGame = Join-Path $fixture 'game'
-$relativeLua = 'mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_stereo_probe.lua'
-$relativeDescriptor = 'mods/darktidevr_stereo_probe/darktidevr_stereo_probe.mod'
+$relativeLua = 'mods/darktidevr/scripts/mods/darktidevr/darktidevr.lua'
+$relativeDescriptor = 'mods/darktidevr/darktidevr.mod'
 $global:InstalledGateCompiler = Join-Path $repo 'tools/stereo/test-darktide-lua-source.ps1'
 $global:InstalledGateFixtureSource = Join-Path $fixtureRepo $relativeLua
 $global:InstalledGateFixtureCalls = [Collections.Generic.List[string]]::new()
@@ -49,7 +49,7 @@ Write-Fixture (Join-Path $fixtureRepo 'tools/stereo/sync-darktide-vr-dev.ps1') @
 param($GameRoot,$Configuration,[switch]$UsePrebuiltProductionShader,[switch]$DiagnosticRenderHooks,[switch]$ClusterLightTrace,[bool]$ClusterLightVisibilityFix)
 $global:InstalledGateFixtureEffects.Add('sync')
 $value = if ($global:InstalledGateFixtureBreakSync) { 'local = invalid_sync' } else { 'return {}' }
-[IO.File]::WriteAllText((Join-Path $GameRoot 'mods/darktidevr_stereo_probe/darktidevr_stereo_probe.mod'), $value)
+[IO.File]::WriteAllText((Join-Path $GameRoot 'mods/darktidevr/darktidevr.mod'), $value)
 '@
 Write-Fixture $global:InstalledGateFixtureSource 'error("Source must only compile")'
 Write-Fixture (Join-Path $fixtureRepo $relativeDescriptor) 'return {}'
@@ -63,7 +63,7 @@ function Invoke-Case([string] $Script, [hashtable] $Arguments, [bool] $Reject) {
     $failed = $false
     try { & $Script @Arguments 2>&1 | Out-Null }
     catch {
-        if ($_.Exception.Message -notmatch 'LuaJIT rejected|darktidevr_stereo_probe\.mod') { throw }
+        if ($_.Exception.Message -notmatch 'LuaJIT rejected|darktidevr\.mod') { throw }
         $failed = $true
     }
     if ($failed -ne $Reject) { throw "Installed Lua gate outcome mismatch: expected rejection=$Reject" }

@@ -37,8 +37,8 @@ Lua performance package and the accepted installation is unchanged.
 Validation on Windows x64:
 
 ```powershell
-& build/dependencies/luajit/src/luajit.exe tools/stereo/benchmark-reticle-equipment.lua BASELINE.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_aim.lua
-& build/dependencies/luajit/src/luajit.exe -joff tools/stereo/benchmark-reticle-equipment.lua BASELINE.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_aim.lua
+& build/dependencies/luajit/src/luajit.exe tools/stereo/benchmark-reticle-equipment.lua BASELINE.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_controller_aim.lua
+& build/dependencies/luajit/src/luajit.exe -joff tools/stereo/benchmark-reticle-equipment.lua BASELINE.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_controller_aim.lua
 & tools/stereo/test-darktide-lua-source.ps1
 git diff --check
 ```

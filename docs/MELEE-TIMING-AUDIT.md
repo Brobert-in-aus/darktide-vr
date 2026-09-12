@@ -137,7 +137,7 @@ retain stock admission behavior; the resolver conservatively rejects conditional
 timing instead of presenting it as an ordinary interval.
 
 ```powershell
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-timing-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_timing.lua
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-timing-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr/scripts/mods/darktidevr/darktidevr_melee_timing.lua
 ```
 
 PASS on snapshot `0f0cb45991e9305ef4a7b925370792d7d6035f95`. Network min/max

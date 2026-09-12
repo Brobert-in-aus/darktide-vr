@@ -56,7 +56,7 @@ All three pass against cached source snapshot
 `0f0cb45991e9305ef4a7b925370792d7d6035f95` with the pinned LuaJIT:
 
 ```powershell
-& build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-parser-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings.lua
+& build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-parser-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr/scripts/mods/darktidevr/darktidevr_controller_bindings.lua
 & build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-reference-stock-contract.lua _downloads/Darktide-Source-Code
 & build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-authority-stock-contract.lua _downloads/Darktide-Source-Code
 ```
@@ -70,7 +70,7 @@ parameters are fixtures. This validates geometry sampling, not live rendering or
 damage, and does not replace the user's worn check.
 
 ```powershell
-& build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-preview-spline-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_preview.lua
+& build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-preview-spline-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr/scripts/mods/darktidevr/darktidevr_melee_preview.lua
 ```
 
 For the next worn check use the focused [first-swing preview candidate](STOCK-MELEE-PREVIEW.md)

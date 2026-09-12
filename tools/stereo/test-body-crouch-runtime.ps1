@@ -31,7 +31,7 @@ $lines = @(Get-Content -LiteralPath $resolvedLog)
 $fatalPatterns = @(
     '\[Script Error\]',
     'DARKTIDEVR_IK presentation_disabled',
-    '\[MOD\]\[darktidevr_stereo_probe\].*\[(ERROR|EXCEPTION)\]',
+    '\[MOD\]\[darktidevr\].*\[(ERROR|EXCEPTION)\]',
     'DXGI_ERROR_DEVICE_(HUNG|REMOVED|RESET)',
     'd3d_assert'
 )

@@ -93,11 +93,11 @@ real C++ quaternion math.
 Optional source checks (run from the repository root):
 
 ```powershell
-$auditText = python tools/stereo/audit-ranged-templates.py _downloads/Darktide-Source-Code mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings.lua
+$auditText = python tools/stereo/audit-ranged-templates.py _downloads/Darktide-Source-Code mods/darktidevr/scripts/mods/darktidevr/darktidevr_controller_bindings.lua
 $audit = $auditText | ConvertFrom-Json
 $audit.templates | Where-Object scope -eq player_ranged | ForEach-Object path | Set-Content artifacts/unattended/ranged-template-paths.txt
-& build/dependencies/luajit/src/luajit.exe tests/tooling/test-ranged-inputs-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings.lua artifacts/unattended/ranged-template-paths.txt
-& build/dependencies/luajit/src/luajit.exe tests/tooling/test-online-reticle-stock-contract.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_online_reticle.lua _downloads/Darktide-Source-Code
+& build/dependencies/luajit/src/luajit.exe tests/tooling/test-ranged-inputs-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr/scripts/mods/darktidevr/darktidevr_controller_bindings.lua artifacts/unattended/ranged-template-paths.txt
+& build/dependencies/luajit/src/luajit.exe tests/tooling/test-online-reticle-stock-contract.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_online_reticle.lua _downloads/Darktide-Source-Code
 ```
 
 ## Remaining acceptance

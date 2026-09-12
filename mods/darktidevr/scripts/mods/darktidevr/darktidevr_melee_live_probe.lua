@@ -3,7 +3,7 @@
 local Live = {}
 
 function Live.install(mod, presentation, tracking, game_mode)
-    local prefix = "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/"
+    local prefix = "darktidevr/scripts/mods/darktidevr/"
     local function load(name) return mod:io_dofile(prefix .. "darktidevr_melee_" .. name) end
     local Simulation, Planner, Probe = load("simulation"), load("sweep_plan"), load("probe")
     local Diagnostics, Volume = load("diagnostics"), load("volume")
@@ -19,7 +19,7 @@ function Live.install(mod, presentation, tracking, game_mode)
         if not last_check or t < last_check or t-last_check >= 1 then
             last_check = t
             local flag = Mods and Mods.lua and Mods.lua.io and Mods.lua.io.open(
-                "./../mods/darktidevr_stereo_probe/darktidevr_melee_probe.flag", "r")
+                "./../mods/darktidevr/darktidevr_melee_probe.flag", "r")
             local next_enabled = false
             if flag then
                 next_enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil

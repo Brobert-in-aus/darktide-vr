@@ -49,8 +49,8 @@ From the Windows repository root:
 ```powershell
 & tools/stereo/test-darktide-lua-source.ps1
 & tools/stereo/test-darktide-lua-invariants.ps1
-& build/dependencies/luajit/src/luajit.exe tests/tooling/test-roomscale.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_roomscale.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_stereo_probe.lua
-& build/dependencies/luajit/src/luajit.exe tests/tooling/test-roomscale-stock-contract.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_roomscale.lua _downloads/Darktide-Source-Code
+& build/dependencies/luajit/src/luajit.exe tests/tooling/test-roomscale.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_roomscale.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr.lua
+& build/dependencies/luajit/src/luajit.exe tests/tooling/test-roomscale-stock-contract.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_roomscale.lua _downloads/Darktide-Source-Code
 ```
 
 All 39 mod chunks compile and source invariants pass. The core fixture covers

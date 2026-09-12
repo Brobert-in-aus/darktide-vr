@@ -23,17 +23,17 @@ Write-Output "luajit_source_path=pass path_length=$($valid.Length) compile_only=
 # its source comes from an installed copy or a focused worktree.
 $packageGate = Join-Path $repo 'tools/stereo/test-darktide-lua-source.ps1'
 $packageRoot = Join-Path ([IO.Path]::GetTempPath()) ('darktidevr-lua-package-' + [guid]::NewGuid().ToString('N'))
-$packageLua = Join-Path $packageRoot 'scripts/mods/darktidevr_stereo_probe'
+$packageLua = Join-Path $packageRoot 'scripts/mods/darktidevr'
 [void][IO.Directory]::CreateDirectory($packageLua)
-$entry = Join-Path $packageLua 'darktidevr_stereo_probe.lua'
+$entry = Join-Path $packageLua 'darktidevr.lua'
 $companion = Join-Path $packageLua 'companion.lua'
-$descriptor = Join-Path $packageRoot 'darktidevr_stereo_probe.mod'
+$descriptor = Join-Path $packageRoot 'darktidevr.mod'
 [IO.File]::WriteAllText($entry, 'error("Package validation must not execute Lua")')
 [IO.File]::WriteAllText($companion, 'return {}')
 [IO.File]::WriteAllText($descriptor, 'local = broken_descriptor')
 $rejected = $false
 try { & $packageGate -SourcePath $entry 2>&1 | Out-Null }
-catch { $rejected = $_.Exception.Message -match 'LuaJIT rejected|darktidevr_stereo_probe\.mod' }
+catch { $rejected = $_.Exception.Message -match 'LuaJIT rejected|darktidevr\.mod' }
 if (-not $rejected) { throw 'Selected package descriptor was not compiled.' }
 [IO.File]::WriteAllText($descriptor, 'error("Package validation must not execute its descriptor")')
 $result = & $packageGate -SourcePath $entry

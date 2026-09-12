@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '../../tools/stereo/psykhanium-launch-request.ps1')
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('dtvr-range-request-' + [guid]::NewGuid())
-$directory = Join-Path $fixture 'mods/darktidevr_stereo_probe'
+$directory = Join-Path $fixture 'mods/darktidevr'
 New-Item -ItemType Directory -Path $directory -Force | Out-Null
 $path = Join-Path $directory 'darktidevr_enter_psykhanium.flag'
 try {

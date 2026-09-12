@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '..\..\tools\stereo\get-vr-mod-load-order.ps1')
-$name = 'darktidevr_stereo_probe'
+$name = 'darktidevr'
 foreach ($newline in @("`n", "`r`n")) {
     foreach ($tail in @('', $newline)) {
         $original = '-- User ' + [char]0x00e9 + ' comments' + $newline + '-- ' + $name + $newline + 'custom_hud' + $tail

@@ -310,5 +310,5 @@ This does not execute the complete action hierarchy or establish live firing,
 accuracy, server behavior or worn acceptance. Run:
 
 ```powershell
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-two-hand-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_two_hand_support.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings.lua artifacts/unattended/ranged-template-paths-20260907.txt
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-two-hand-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr/scripts/mods/darktidevr/darktidevr_two_hand_support.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_controller_bindings.lua artifacts/unattended/ranged-template-paths-20260907.txt
 ```

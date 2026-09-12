@@ -2,7 +2,7 @@
 -- The binding mapper owns release-before-activation and remap cancellation.
 local Input={}
 function Input.install(mod,presentation,observation,runtime)
-    local Talk=mod:io_dofile('darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_push_to_talk_input')
+    local Talk=mod:io_dofile('darktidevr/scripts/mods/darktidevr/darktidevr_push_to_talk_input')
     local context,bindings=presentation.gameplay_context,presentation.controller_bindings
     local state={sample=0,needs_release=true}
     local function valid(owner,sample)

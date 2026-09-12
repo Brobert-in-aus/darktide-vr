@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if (-not $SourcePath) {
     $SourcePath = Join-Path $repoRoot `
-        'mods\darktidevr_stereo_probe\scripts\mods\darktidevr_stereo_probe\darktidevr_stereo_probe.lua'
+        'mods\darktidevr\scripts\mods\darktidevr\darktidevr.lua'
 }
 $resolvedSource = (Resolve-Path -LiteralPath $SourcePath).Path
 $lines = @(Get-Content -LiteralPath $resolvedSource)
@@ -72,7 +72,7 @@ if ($spectatorModuleInit -lt 0 -or $nativeHookDefinition -lt 0 -or
     throw 'Load the spectator module before native hooks can initialize its reader during mod loading.'
 }
 $bootstrapPath = Join-Path $repoRoot `
-    'mods\darktidevr_stereo_probe\darktidevr_stereo_probe.mod'
+    'mods\darktidevr\darktidevr.mod'
 $bootstrap = Get-Content -LiteralPath $bootstrapPath -Raw
 foreach ($resource in @('mod_localization', 'mod_data', 'mod_script')) {
     if (-not $bootstrap.Contains($resource)) {
@@ -82,7 +82,7 @@ foreach ($resource in @('mod_localization', 'mod_data', 'mod_script')) {
 $syncPath = Join-Path $repoRoot 'tools\stereo\sync-darktide-vr-dev.ps1'
 $syncSource = Get-Content -LiteralPath $syncPath -Raw
 if (-not $syncSource.Contains('$sourceBootstrap') -or
-        -not $syncSource.Contains("'darktidevr_stereo_probe.mod'")) {
+        -not $syncSource.Contains("'darktidevr.mod'")) {
     throw 'Development sync must deploy the DMF bootstrap alongside Lua modules.'
 }
 $startPath = Join-Path $repoRoot 'tools\stereo\start-darktide-vr.ps1'

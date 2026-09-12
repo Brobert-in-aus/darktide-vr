@@ -17,8 +17,8 @@ Requirements
 Install
   1. Extract this archive into the Darktide game folder (the folder that
      contains "binaries", "bundle" and "mods"). Afterwards
-     mods\darktidevr_stereo_probe must exist beside mods\dmf.
-  2. Run mods\darktidevr_stereo_probe\"Darktide VR Mode.bat" and choose
+     mods\darktidevr must exist beside mods\dmf.
+  2. Run mods\darktidevr\"Darktide VR Mode.bat" and choose
      "1  VR mode". It patches two bytes of Darktide.exe (a pristine copy is
      kept under %LOCALAPPDATA%\DarktideVR), installs the d3d12 proxy and adds
      the mod to mods\mod_load_order.txt. Darktide must be closed.
@@ -35,6 +35,6 @@ After a game update
   If it reports that the build is not supported yet, wait for a mod update.
 
 Uninstall
-  Choose Flat mode, then delete mods\darktidevr_stereo_probe.
+  Choose Flat mode, then delete mods\darktidevr.
 
 Licence: MIT (LICENSE). Third-party components: THIRD_PARTY_NOTICES.md.

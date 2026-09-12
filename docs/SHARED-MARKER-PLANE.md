@@ -34,7 +34,7 @@ both plane axes, nonfinite/basis rejection and near-plane rejection.
 Commands, Windows x64:
 
 ```powershell
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-marker-plane.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_marker_plane.lua
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-marker-plane.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_marker_plane.lua
 tools/stereo/test-darktide-lua-source.ps1
 cmake --preset windows-vs2022
 ctest --test-dir build/windows-vs2022 -C Release -R '^(marker_plane|marker_gui|marker_metrics|projection_math)$' --output-on-failure

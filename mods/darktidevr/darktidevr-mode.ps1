@@ -13,7 +13,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$modName = 'darktidevr_stereo_probe'
+$modName = 'darktidevr'
 $modRoot = $PSScriptRoot
 if (-not $GameRoot) {
     $GameRoot = Split-Path -Parent (Split-Path -Parent $modRoot)

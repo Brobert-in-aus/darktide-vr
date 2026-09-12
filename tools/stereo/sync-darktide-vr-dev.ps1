@@ -41,7 +41,7 @@ if (Get-Process Darktide -ErrorAction SilentlyContinue) {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 . (Join-Path $PSScriptRoot 'resolve-darktide-game-root.ps1')
 $gameRootPath = Resolve-DarktideGameRoot -GameRoot $GameRoot
-$modRoot = Join-Path $gameRootPath 'mods\darktidevr_stereo_probe'
+$modRoot = Join-Path $gameRootPath 'mods\darktidevr'
 if ($InitializeInstall) {
     foreach ($required in @('binaries\mod_loader', 'mods\base\mod_manager.lua', 'mods\dmf\dmf.mod', 'mods\mod_load_order.txt')) {
         if (-not (Test-Path -LiteralPath (Join-Path $gameRootPath $required) -PathType Leaf)) {
@@ -53,10 +53,10 @@ if ($UsePrebuiltProductionShader -and (-not $BillboardShaderSubstitution -or $Pa
     throw 'Prebuilt production shader mode requires ordinary billboard substitution without particle diagnostic switches.'
 }
 $sourceLua = Join-Path $repoRoot `
-    'mods\darktidevr_stereo_probe\scripts\mods\darktidevr_stereo_probe\darktidevr_stereo_probe.lua'
+    'mods\darktidevr\scripts\mods\darktidevr\darktidevr.lua'
 $sourceLuaRoot = Split-Path -Parent $sourceLua
 $sourceBootstrap = Join-Path $repoRoot `
-    'mods\darktidevr_stereo_probe\darktidevr_stereo_probe.mod'
+    'mods\darktidevr\darktidevr.mod'
 $sourceNative = Join-Path $repoRoot `
     "build\windows-vs2022\src\producer\$Configuration\darktidevr_native_capture.dll"
 $sourceD3D12Bootstrap = Join-Path $repoRoot `
@@ -70,11 +70,11 @@ $destinations = @(
     [pscustomobject]@{
         Source = $sourceLua
         Destination = Join-Path $modRoot `
-            'scripts\mods\darktidevr_stereo_probe\darktidevr_stereo_probe.lua'
+            'scripts\mods\darktidevr\darktidevr.lua'
     },
     [pscustomobject]@{
         Source = $sourceBootstrap
-        Destination = Join-Path $modRoot 'darktidevr_stereo_probe.mod'
+        Destination = Join-Path $modRoot 'darktidevr.mod'
     },
     [pscustomobject]@{
         Source = $sourceNative
@@ -99,8 +99,8 @@ $destinations = @(
 # The mode switch and the executable patch tool live in the installed mod
 # folder so that a package user can switch between VR and flat play.
 foreach ($switchFile in @(
-        @{ Source = Join-Path $repoRoot 'mods\darktidevr_stereo_probe\darktidevr-mode.ps1'; Destination = 'darktidevr-mode.ps1' },
-        @{ Source = Join-Path $repoRoot 'mods\darktidevr_stereo_probe\Darktide VR Mode.bat'; Destination = 'Darktide VR Mode.bat' },
+        @{ Source = Join-Path $repoRoot 'mods\darktidevr\darktidevr-mode.ps1'; Destination = 'darktidevr-mode.ps1' },
+        @{ Source = Join-Path $repoRoot 'mods\darktidevr\Darktide VR Mode.bat'; Destination = 'Darktide VR Mode.bat' },
         @{ Source = Join-Path $PSScriptRoot 'set-skinner-assert-patch.ps1'; Destination = 'tools\set-skinner-assert-patch.ps1' })) {
     $destinations += [pscustomobject]@{
         Source = $switchFile.Source

@@ -137,7 +137,7 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID parameter, PVOID*) {
   }
   path.resize(separator + 1);
   const auto mod_bin_path =
-      path + L"..\\mods\\darktidevr_stereo_probe\\bin\\";
+      path + L"..\\mods\\darktidevr\\bin\\";
   const auto offline_dual_view_flag_path =
       mod_bin_path + L"..\\darktidevr_offline_dual_view.flag";
   const auto offline_dual_view_requested =

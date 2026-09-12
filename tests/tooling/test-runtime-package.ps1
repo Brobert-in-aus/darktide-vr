@@ -5,8 +5,8 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
 $tempBase = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
 $testRoot = Join-Path $tempBase ('dtvr-pkg-test-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
-$modRelative = 'mods/darktidevr_stereo_probe'
-$luaRelative = $modRelative + '/scripts/mods/darktidevr_stereo_probe'
+$modRelative = 'mods/darktidevr'
+$luaRelative = $modRelative + '/scripts/mods/darktidevr'
 $verifier = (Resolve-Path (Join-Path $PSScriptRoot '..\..\tools\release\test-runtime-package.ps1')).Path
 function Write-Fixture([string] $Relative, [string] $Text) {
     $path = Join-Path $testRoot $Relative
@@ -27,8 +27,8 @@ function Get-Files {
 try {
     # The game-folder layout the verifier requires.
     foreach ($relative in @(
-            "$modRelative/darktidevr_stereo_probe.mod", "$modRelative/Darktide VR Mode.bat", "$modRelative/darktidevr-mode.ps1",
-            "$modRelative/tools/set-skinner-assert-patch.ps1", "$luaRelative/darktidevr_stereo_probe.lua",
+            "$modRelative/darktidevr.mod", "$modRelative/Darktide VR Mode.bat", "$modRelative/darktidevr-mode.ps1",
+            "$modRelative/tools/set-skinner-assert-patch.ps1", "$luaRelative/darktidevr.lua",
             "$modRelative/bin/d3d12.dll", "$modRelative/bin/darktidevr_native_capture.dll", "$modRelative/bin/darktidevr-xr-harness.exe",
             "$modRelative/bin/openxr_loader.dll", "$modRelative/bin/dxcompiler.dll",
             "$modRelative/bin/billboard_shaders/vs-42e436fb1ef1b392.dxil", "$modRelative/LICENSE", "$modRelative/THIRD_PARTY_NOTICES.md", "$modRelative/README.txt")) {

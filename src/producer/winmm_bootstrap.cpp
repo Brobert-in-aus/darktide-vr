@@ -77,7 +77,7 @@ BOOL CALLBACK initialize_native_capture(PINIT_ONCE, PVOID, PVOID*) {
     return FALSE;
   }
   path.resize(separator + 1);
-  path += L"..\\mods\\darktidevr_stereo_probe\\bin\\"
+  path += L"..\\mods\\darktidevr\\bin\\"
           L"darktidevr_native_capture.dll";
   const auto native = LoadLibraryW(path.c_str());
   if (!native) {

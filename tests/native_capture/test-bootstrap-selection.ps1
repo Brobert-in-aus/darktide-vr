@@ -10,7 +10,7 @@ $script:caseCount = 0
 function Invoke-StartupCase([int] $Mask, [string] $Text = 'enabled', [bool] $Enabled = $true) {
     $caseRoot = Join-Path $evidenceRoot ('case-' + $script:caseCount++)
     $binaries = Join-Path $caseRoot 'binaries'
-    $modRoot = Join-Path $caseRoot 'mods/darktidevr_stereo_probe'
+    $modRoot = Join-Path $caseRoot 'mods/darktidevr'
     $modBin = Join-Path $modRoot 'bin'
     [IO.Directory]::CreateDirectory($binaries) | Out-Null
     [IO.Directory]::CreateDirectory($modBin) | Out-Null

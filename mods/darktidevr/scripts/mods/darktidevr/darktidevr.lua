@@ -1,4 +1,4 @@
-local mod = get_mod("darktidevr_stereo_probe")
+local mod = get_mod("darktidevr")
 
 local ScriptCamera = require("scripts/foundation/utilities/script_camera")
 local ScriptViewport = require("scripts/foundation/utilities/script_viewport")
@@ -644,7 +644,7 @@ local presentation = {
 
 -- Native hooks initialize during this chunk, before gameplay hooks install.
 presentation.spectator_module = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_spectator_input")
+    "darktidevr/scripts/mods/darktidevr/darktidevr_spectator_input")
 
 -- Stingray 1.6 exposed a native SteamVR namespace when its VR subsystem was
 -- compiled in. Record presence only; do not call or mutate an undocumented
@@ -919,7 +919,7 @@ local function ensure_ui_native_hooks()
 
     local ok, library = pcall(
         ffi.load,
-        "../mods/darktidevr_stereo_probe/bin/darktidevr_native_capture.dll"
+        "../mods/darktidevr/bin/darktidevr_native_capture.dll"
     )
 
     if not ok then
@@ -1005,7 +1005,7 @@ local function ensure_ui_native_hooks()
         -- This optional readback does not select startup hooks. It requires the
         -- separate census mode, whose bootstrap/Lua agreement is already gated.
         local flag = Mods.lua.io.open(
-            "./../mods/darktidevr_stereo_probe/darktidevr_billboard_readback.flag", "r")
+            "./../mods/darktidevr/darktidevr_billboard_readback.flag", "r")
         if flag then
             local value = flag:read("*all")
             flag:close()
@@ -1821,7 +1821,7 @@ function presentation.update_psykhanium(manager, t)
             t >= (state.flag_last_poll_t or -math.huge) + 0.25 then
         state.flag_last_poll_t = t
         local flag_path =
-            "./../mods/darktidevr_stereo_probe/darktidevr_enter_psykhanium.flag"
+            "./../mods/darktidevr/darktidevr_enter_psykhanium.flag"
         local flag = Mods.lua.io.open(flag_path, "r")
         if flag then
             local request = flag:read("*all")
@@ -1975,7 +1975,7 @@ function presentation.update_dlss_quality_test()
     presentation.dlss_quality_test_poll_updates = 0
 
     local flag_path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_set_dlss_quality.flag"
+        "./../mods/darktidevr/darktidevr_set_dlss_quality.flag"
     local flag = Mods.lua.io.open(flag_path, "r")
     if not flag then
         return
@@ -2039,7 +2039,7 @@ function presentation.update_system_menu_test(manager)
     presentation.system_menu_test_poll_updates = 0
 
     local flag_path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_open_system_menu.flag"
+        "./../mods/darktidevr/darktidevr_open_system_menu.flag"
     local flag = Mods.lua.io.open(flag_path, "r")
     if not flag then
         return
@@ -2136,7 +2136,7 @@ function presentation.update_vendor_menu_test(manager)
     presentation.vendor_menu_test_poll_updates = 0
 
     local flag_path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_open_vendor_menu.flag"
+        "./../mods/darktidevr/darktidevr_open_vendor_menu.flag"
     local flag = Mods.lua.io.open(flag_path, "r")
     if not flag then
         return
@@ -2299,7 +2299,7 @@ function presentation.scan_input_services(manager)
         return
     end
     local flag_path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_input_inventory.flag"
+        "./../mods/darktidevr/darktidevr_input_inventory.flag"
     local flag = Mods.lua.io.open(flag_path, "r")
     if not flag then
         return
@@ -2371,7 +2371,7 @@ function presentation.update_menu_input_probe(manager)
     if probe.poll_updates >= 15 and Mods and Mods.lua and Mods.lua.io then
         probe.poll_updates = 0
         local flag_path =
-            "./../mods/darktidevr_stereo_probe/darktidevr_menu_input_probe.flag"
+            "./../mods/darktidevr/darktidevr_menu_input_probe.flag"
         local flag = Mods.lua.io.open(flag_path, "r")
         if flag then
             local request = flag:read("*all")
@@ -2654,8 +2654,8 @@ function presentation.is_top_menu_view(instance)
     return presentation.active_menu_view_instance == instance
 end
 
-mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_menu_widgets").install(mod, presentation)
-mod:io_dofile("darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_menu_input").install(mod, presentation)
+mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_menu_widgets").install(mod, presentation)
+mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_menu_input").install(mod, presentation)
 
 local function refresh_xr_render_extent()
     if not ui_native_capture or not head_pose_values or not head_pose_sequence then
@@ -3145,7 +3145,7 @@ end
 -- root-signature creation descriptors through our hooks. Delaying this until
 -- UIWorldSpawner.create_viewport is too late for shader/root localization.
 presentation.native_startup = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_native_startup")
+    "darktidevr/scripts/mods/darktidevr/darktidevr_native_startup")
 function presentation.refresh_performance_profile_request()
     local startup = presentation.native_startup.read(Mods.lua.io.open)
     diagnostic_render_hooks_requested = startup.diagnostic_hooks
@@ -3507,7 +3507,7 @@ local function report_native_capture_result(result)
 end
 
 do
-    local flag = Mods.lua.io.open("./../mods/darktidevr_stereo_probe/darktidevr_cpu_render_timing.flag", "r")
+    local flag = Mods.lua.io.open("./../mods/darktidevr/darktidevr_cpu_render_timing.flag", "r")
     local value = flag and flag:read(32) or ""
     if flag then flag:close() end
     presentation.cpu_render_timing_requested = #value < 32 and value:match("^%s*enabled%s*$") ~= nil
@@ -3732,7 +3732,7 @@ local function render_eye_from_prepared_frame(world, prepared, target)
         presentation.full_second_eye_probe_last_check_frame =
             presentation.full_second_eye_probe_check_frame
         local flag = Mods.lua.io.open(
-            "./../mods/darktidevr_stereo_probe/darktidevr_full_second_eye.flag",
+            "./../mods/darktidevr/darktidevr_full_second_eye.flag",
             "r")
         local enabled = false
         if flag then
@@ -3746,7 +3746,7 @@ local function render_eye_from_prepared_frame(world, prepared, target)
                 enabled and "full_wrapper" or "prepared_frame")
         end
         local marker_flag = Mods.lua.io.open(
-            "./../mods/darktidevr_stereo_probe/darktidevr_marker_reprojection_disabled.flag",
+            "./../mods/darktidevr/darktidevr_marker_reprojection_disabled.flag",
             "r")
         local markers_disabled = false
         if marker_flag then
@@ -3858,7 +3858,7 @@ local function setup(manager)
     local primary_layer = Viewport.get_data(primary, "layer")
 
     local metadata_flag = Mods.lua.io.open(
-        "./../mods/darktidevr_stereo_probe/darktidevr_inherit_viewport_metadata.flag",
+        "./../mods/darktidevr/darktidevr_inherit_viewport_metadata.flag",
         "r")
     local inherit_viewport_metadata_mode = "disabled"
     if metadata_flag then
@@ -3900,7 +3900,7 @@ local function setup(manager)
     )
 
     local shadow_cull_flag = Mods.lua.io.open(
-        "./../mods/darktidevr_stereo_probe/darktidevr_shared_shadow_cull.flag",
+        "./../mods/darktidevr/darktidevr_shared_shadow_cull.flag",
         "r")
     -- The stock primary viewport owns a dedicated shadow-cull camera which the
     -- camera manager updates before this late VR hook applies the tracked eye
@@ -4819,7 +4819,7 @@ function presentation.body_camera_anchor(unit)
                 "first_person_fallback", left_eye, right_eye, captured
         end
         local reverse_order_flag = Mods.lua.io.open(
-            "./../mods/darktidevr_stereo_probe/darktidevr_reverse_eye_order.flag",
+            "./../mods/darktidevr/darktidevr_reverse_eye_order.flag",
             "r")
         local reverse_order_enabled = false
         if reverse_order_flag then
@@ -4976,7 +4976,7 @@ local function update_stereo(manager)
         presentation.eye_transform_probe_last_check_frame =
             presentation.eye_transform_probe_check_frame
         local probe_flag = Mods.lua.io.open(
-            "./../mods/darktidevr_stereo_probe/darktidevr_coincident_eyes.flag",
+            "./../mods/darktidevr/darktidevr_coincident_eyes.flag",
             "r")
         local probe_value = "disabled"
         if probe_flag then
@@ -5317,7 +5317,7 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
     if main_t >= controller_observation.authoring_last_check_t + 1 then
         controller_observation.authoring_last_check_t = main_t
         local flag_path =
-            "./../mods/darktidevr_stereo_probe/darktidevr_controller_aim_test.flag"
+            "./../mods/darktidevr/darktidevr_controller_aim_test.flag"
         local flag = Mods.lua.io.open(flag_path, "r")
         -- Play default when the flag is absent; a present file decides.
         local enabled = true
@@ -5532,7 +5532,7 @@ local function active_game_mode_name()
 end
 
 presentation.gameplay_context = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gameplay_context")
+    "darktidevr/scripts/mods/darktidevr/darktidevr_gameplay_context")
 -- Remote (dedicated-server) missions admit stock input, presentation and the
 -- stock-input aim route unless the user turns the setting off; the switch is
 -- read per query so it applies without a relaunch.
@@ -5542,15 +5542,15 @@ end
 -- Foundation only: keep the accepted right-dominant presentation until weapon
 -- attachments/effects and input rearming support a complete handedness option.
 presentation.weapon_hand_roles = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_weapon_hand_roles").new("right")
+    "darktidevr/scripts/mods/darktidevr/darktidevr_weapon_hand_roles").new("right")
 presentation.online_rules = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_online_rules"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_online_rules"
 ).install(mod, presentation, controller_observation, active_game_mode_name)
 presentation.roomscale = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_roomscale"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_roomscale"
 ).install(mod, presentation)
 presentation.online_reticle = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_online_reticle"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_online_reticle"
 ).install(mod, presentation)
 
 function presentation.is_first_person_body_mode(mode)
@@ -5575,7 +5575,7 @@ function presentation.inject_primary_action(self, main_t, input)
             main_t >= controller_observation.primary_action_last_check_t + 0.25 then
         controller_observation.primary_action_last_check_t = main_t
         local flag_path =
-            "./../mods/darktidevr_stereo_probe/darktidevr_primary_action_test.flag"
+            "./../mods/darktidevr/darktidevr_primary_action_test.flag"
         local flag = Mods.lua.io.open(flag_path, "r")
         if flag then
             local request = flag:read("*all")
@@ -5662,11 +5662,11 @@ function presentation.inject_primary_action(self, main_t, input)
 end
 
 presentation.controller_bindings = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_controller_bindings"
 ).install(mod)
 presentation.gameplay_input_bindings = presentation.controller_bindings.bindings
 presentation.spectator_module.install(mod,mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings"),
+    "darktidevr/scripts/mods/darktidevr/darktidevr_controller_bindings"),
     presentation.gameplay_context,function(enabled)
         if presentation.spectator_reader then return presentation.spectator_reader(enabled) end
         return 2,0,0
@@ -5675,7 +5675,7 @@ presentation.spectator_module.install(mod,mod:io_dofile(
             presentation.is_first_person_body_mode(active_game_mode_name())
     end)
 presentation.turning = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_turning"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_turning"
 ).install(mod)
 
 function presentation.apply_controller_turning(main_t,exclusive_stick)
@@ -5713,14 +5713,14 @@ function presentation.apply_controller_turning(main_t,exclusive_stick)
     controller_observation.hub_third_person_last_t = main_t
 end
 presentation.menu_prompts = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_menu_prompts"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_menu_prompts"
 ).install(mod,function()
     return ui_native_capture_active == true
 end,function()
     return presentation.menu_pointer.read_state_v3 == true
 end)
 mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_prompts"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_controller_prompts"
 ).install(mod,presentation.controller_bindings,function()
     return controller_observation.gameplay_input_enabled == true
 end,presentation.menu_prompts)
@@ -5745,12 +5745,12 @@ end
 -- Observe identity without keeping a retired player/input cache alive.
 presentation.gameplay_input_owner = setmetatable({}, {__mode = "v"})
 presentation.communication_input = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_communication_input"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_communication_input"
 ).install(mod,presentation,controller_observation,{
     mode=active_game_mode_name,world=function()return active_world end,
 })
 presentation.push_to_talk = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_push_to_talk"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_push_to_talk"
 ).install(mod,presentation,controller_observation,{
     mode=active_game_mode_name,world=function()return active_world end,
 })
@@ -5819,7 +5819,7 @@ function presentation.inject_gameplay_input(self, main_t, input)
     if main_t >= controller_observation.gameplay_input_last_check_t + 0.25 then
         controller_observation.gameplay_input_last_check_t = main_t
         local flag = Mods.lua.io.open(
-            "./../mods/darktidevr_stereo_probe/darktidevr_gameplay_input_test.flag",
+            "./../mods/darktidevr/darktidevr_gameplay_input_test.flag",
             "r")
         -- Play default when the flag is absent; a present file decides.
         local requested = true
@@ -6157,7 +6157,7 @@ function presentation.scan_movement_inventory(self, fixed_frame)
     controller_observation.movement_inventory_last_check_frame =
         fixed_frame or 0
     local flag_path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_movement_inventory.flag"
+        "./../mods/darktidevr/darktidevr_movement_inventory.flag"
     local flag = Mods.lua.io.open(flag_path, "r")
     if not flag then
         return
@@ -6378,7 +6378,7 @@ function presentation.refresh_body_follow_mode(t)
     end
     controller_observation.body_follow_last_check_t = t
     local flag_path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_body_follow_test.flag"
+        "./../mods/darktidevr/darktidevr_body_follow_test.flag"
     local flag = Mods.lua.io.open(flag_path, "r")
     -- Play default when the flag is absent; a present file decides.
     local mode = "enabled"
@@ -6589,7 +6589,7 @@ function presentation.scan_body_rig(self, fixed_frame)
     controller_observation.body_rig_inventory_last_check_frame =
         fixed_frame or 0
     local flag_path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_body_rig_inventory.flag"
+        "./../mods/darktidevr/darktidevr_body_rig_inventory.flag"
     local flag = Mods.lua.io.open(flag_path, "r")
     if not flag then
         return
@@ -6720,7 +6720,7 @@ function presentation.update_body_visibility_gate(frame)
     end
     controller_observation.body_visibility_last_check_frame = frame
     local path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_headless_body.flag"
+        "./../mods/darktidevr/darktidevr_headless_body.flag"
     local flag = Mods and Mods.lua and Mods.lua.io and
         Mods.lua.io.open(path, "r")
     -- The headless first-person body is the play default; a present flag
@@ -6737,7 +6737,7 @@ function presentation.update_body_visibility_gate(frame)
         enabled = false
     end
     local full_body_path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_full_body_experimental.flag"
+        "./../mods/darktidevr/darktidevr_full_body_experimental.flag"
     local full_body_flag = Mods and Mods.lua and Mods.lua.io and
         Mods.lua.io.open(full_body_path, "r")
     local full_body_experimental = false
@@ -7210,7 +7210,7 @@ function presentation.scan_weapon_inventory(self, fixed_frame)
     end
     controller_observation.weapon_inventory_last_check_frame = fixed_frame
     local flag_path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_weapon_inventory.flag"
+        "./../mods/darktidevr/darktidevr_weapon_inventory.flag"
     local flag = Mods.lua.io.open(flag_path, "r")
     if not flag then
         return
@@ -8010,7 +8010,7 @@ function presentation.update_body_ik_trace_gate(fixed_frame)
     end
     controller_observation.body_ik_trace_last_check_frame = fixed_frame
     local path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_body_ik_trace.flag"
+        "./../mods/darktidevr/darktidevr_body_ik_trace.flag"
     local flag = Mods.lua.io.open(path, "r")
     local enabled = false
     if flag then
@@ -8085,7 +8085,7 @@ function presentation.update_body_ik_presentation_gate(fixed_frame)
     end
     controller_observation.body_ik_presentation_last_check_frame = fixed_frame
     local path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_body_ik_presentation.flag"
+        "./../mods/darktidevr/darktidevr_body_ik_presentation.flag"
     local flag = Mods.lua.io.open(path, "r")
     -- Play default when the flag is absent; a present file decides.
     local enabled = true
@@ -10002,7 +10002,7 @@ function presentation.trace_weapon_pose(self, fixed_frame)
             controller_observation.weapon_pose_trace_last_check_frame + 60 then
         controller_observation.weapon_pose_trace_last_check_frame = fixed_frame
         local flag_path =
-            "./../mods/darktidevr_stereo_probe/darktidevr_weapon_pose_trace.flag"
+            "./../mods/darktidevr/darktidevr_weapon_pose_trace.flag"
         local flag = Mods.lua.io.open(flag_path, "r")
         local enabled = false
         if flag then
@@ -10073,7 +10073,7 @@ function presentation.update_weapon_presentation_gate(fixed_frame)
     end
     controller_observation.weapon_presentation_last_check_frame = fixed_frame
     local flag_path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_weapon_presentation.flag"
+        "./../mods/darktidevr/darktidevr_weapon_presentation.flag"
     local flag = Mods.lua.io.open(flag_path, "r")
     local enabled = false
     if flag then
@@ -10395,7 +10395,7 @@ function presentation.hub_first_person_requested()
     end
     hub_first_person_flag_polled_at = now
     local path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_headless_body.flag"
+        "./../mods/darktidevr/darktidevr_headless_body.flag"
     local flag = Mods and Mods.lua and Mods.lua.io and Mods.lua.io.open(path, "r")
     if not flag then
         -- Play default: first person in the hub unless the option asks for
@@ -12036,7 +12036,7 @@ presentation.hook_legacy_menu(
         local result = func(self, dt, t, input_service, ui_renderer, ...)
         local inventory_requested = false
         local inventory_path =
-            "./../mods/darktidevr_stereo_probe/darktidevr_hotspot_inventory.flag"
+            "./../mods/darktidevr/darktidevr_hotspot_inventory.flag"
         if Mods and Mods.lua and Mods.lua.io and
                 t >= (presentation.hotspot_inventory_last_poll_t or
                     -math.huge) + 0.25 then
@@ -13920,7 +13920,7 @@ mod:command(
 )
 
 presentation.render_world_census = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_render_world_census"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_render_world_census"
 ).install(mod, function(world)
     if world == active_world and active then return "gameplay" end
     if world == ui_stereo_world and ui_stereo_spawner then return "stereo_ui" end
@@ -13928,7 +13928,7 @@ presentation.render_world_census = mod:io_dofile(
 end)
 
 mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_calibration"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_calibration"
 ).install(mod, controller_observation, function()
     if not ui_native_capture or not head_pose_values or
             not head_pose_sequence or
@@ -13980,19 +13980,19 @@ end, function()
 end)
 
 presentation.projection_math = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_projection_math"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_projection_math"
 )
 presentation.body_proxy = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_body_proxy"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_body_proxy"
 )
 presentation.body_proxy_active = false
 
 presentation.melee_live_probe = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_live_probe"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_melee_live_probe"
 ).install(mod, presentation, controller_observation, active_game_mode_name)
 
 presentation.melee_preview = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_melee_preview_display"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_melee_preview_display"
 ).install(mod, presentation, controller_observation)
 
 mod.update = function()
@@ -14003,7 +14003,7 @@ mod.update = function()
 end
 
 presentation.hud_panel = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_hud_panel"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_hud_panel"
 )
 presentation.hud_panel.mirror_width = ui_mirror_client_width
 presentation.hud_panel.mirror_height = ui_mirror_client_height
@@ -14015,64 +14015,64 @@ end
 presentation.hud_panel.read_mirror = presentation.read_desktop_mirror
 presentation.hud_panel.install(mod)
 presentation.crosshair_feedback = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_crosshair_feedback"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_crosshair_feedback"
 ).install(mod,presentation,controller_observation)
 presentation.gameplay_ui = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gameplay_ui_input"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_gameplay_ui_input"
 ).install(mod, function()
     local player = Managers and Managers.player and Managers.player:local_player(1)
     return player and player.player_unit
 end)
 
 presentation.controller_aim = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_aim"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_controller_aim"
 )
 presentation.controller_aim.install(
     mod, presentation, controller_observation)
 
 presentation.projectile_visual = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_projectile_visual"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_projectile_visual"
 ).install(mod, presentation)
 mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_weapon_sound"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_weapon_sound"
 ).install(mod, presentation, controller_observation, active_game_mode_name)
 presentation.ranged_evidence = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_ranged_evidence"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_ranged_evidence"
 ).install(mod, presentation)
 presentation.gun_aim = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gun_aim"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_gun_aim"
 ).install(mod, presentation)
 presentation.weapon_stabilization = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_weapon_stabilization"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_weapon_stabilization"
 ).install(mod, presentation, controller_observation)
 mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_options_layout"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_options_layout"
 ).install(mod)
 presentation.weapon_assist = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_weapon_assist"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_weapon_assist"
 ).install(mod,presentation,controller_observation)
 presentation.two_hand = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_two_hand_support"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_two_hand_support"
 ).install(mod, presentation, controller_observation)
 
 mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_grenade_aim"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_grenade_aim"
 ).install(mod, presentation.controller_aim, presentation.online_rules.preview_pose)
 
 mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_combat_direction"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_combat_direction"
 ).install(mod, presentation.controller_aim)
 
 presentation.marker_gui = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_marker_gui"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_marker_gui"
 )
 presentation.marker_gui.install(mod, UIRenderer)
 presentation.marker_metrics = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_marker_metrics"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_marker_metrics"
 ).install(mod, UIRenderer)
 
 presentation.visual_settings = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_visual_settings"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_visual_settings"
 )
 presentation.visual_settings.install(mod)
 
@@ -14080,7 +14080,7 @@ do
     -- Isolated gameplay eye targets are the play default; a present flag
     -- still decides, matching the native module's reading of the same file.
     local flag = Mods.lua.io.open(
-        "./../mods/darktidevr_stereo_probe/darktidevr_streamline_eye_target_probe.flag", "r")
+        "./../mods/darktidevr/darktidevr_streamline_eye_target_probe.flag", "r")
     local enabled = true
     if flag then
         enabled = flag:read("*all"):match("^%s*enabled%s*$") ~= nil
@@ -14088,7 +14088,7 @@ do
     end
     if enabled then
         mod:io_dofile(
-            "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_eye_targets"
+            "darktidevr/scripts/mods/darktidevr/darktidevr_eye_targets"
         ).install(mod, ScriptWorld, function()
             assert(ensure_ui_native_hooks() and refresh_xr_render_extent(),
                 "isolated gameplay targets require a current XR render extent")
@@ -14167,7 +14167,7 @@ mod:hook(
     end)
 
 presentation.viewer = mod:io_dofile(
-    "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_viewer"
+    "darktidevr/scripts/mods/darktidevr/darktidevr_viewer"
 )
 presentation.viewer.install(mod, function()
     return ensure_ui_native_hooks() and ui_native_capture or nil

@@ -30,7 +30,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 . (Join-Path $repoRoot 'tools\stereo\resolve-darktide-game-root.ps1')
 $gameRootPath = Resolve-DarktideGameRoot -GameRoot $GameRoot
 $gameExe = Join-Path $gameRootPath 'binaries\Darktide.exe'
-$modRoot = Join-Path $gameRootPath 'mods\darktidevr_stereo_probe'
+$modRoot = Join-Path $gameRootPath 'mods\darktidevr'
 $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
 $luaSourceCheck = Join-Path $repoRoot `
     'tools\stereo\test-darktide-lua-source.ps1'
@@ -42,7 +42,7 @@ if ($Mode -eq 'Ready') {
     # Inventory remains observation-only; Ready must validate the package that
     # the selected game installation will load, not only development source.
     & $luaSourceCheck -SourcePath (Join-Path $modRoot `
-        'scripts/mods/darktidevr_stereo_probe/darktidevr_stereo_probe.lua')
+        'scripts/mods/darktidevr/darktidevr.lua')
 }
 
 if (-not $OutputPath) {
@@ -168,11 +168,11 @@ $eac = Get-Service EasyAntiCheat_EOS -ErrorAction SilentlyContinue
 
 $filePaths = @(
     @('game_executable', $gameExe),
-    @('installed_mod_descriptor', (Join-Path $modRoot 'darktidevr_stereo_probe.mod')),
-    @('installed_mod_lua', (Join-Path $modRoot 'scripts\mods\darktidevr_stereo_probe\darktidevr_stereo_probe.lua')),
+    @('installed_mod_descriptor', (Join-Path $modRoot 'darktidevr.mod')),
+    @('installed_mod_lua', (Join-Path $modRoot 'scripts\mods\darktidevr\darktidevr.lua')),
     @('installed_native_capture', (Join-Path $modRoot 'bin\darktidevr_native_capture.dll')),
     @('installed_d3d12_bootstrap', (Join-Path $gameRootPath 'binaries\d3d12.dll')),
-    @('source_mod_lua', (Join-Path $repoRoot 'mods\darktidevr_stereo_probe\scripts\mods\darktidevr_stereo_probe\darktidevr_stereo_probe.lua')),
+    @('source_mod_lua', (Join-Path $repoRoot 'mods\darktidevr\scripts\mods\darktidevr\darktidevr.lua')),
     @('source_native_capture', (Join-Path $repoRoot "build\windows-vs2022\src\producer\$Configuration\darktidevr_native_capture.dll")),
     @('source_d3d12_bootstrap', (Join-Path $repoRoot "build\windows-vs2022\src\producer\$Configuration\d3d12.dll"))
 )

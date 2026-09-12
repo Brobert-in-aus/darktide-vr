@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
 $root = (Resolve-Path -LiteralPath $PackageRoot).Path.TrimEnd('\', '/')
 # The manifest lives inside the mod folder like everything else in the archive.
-$manifestPath = Join-Path $root 'mods\darktidevr_stereo_probe\package-manifest.json'
+$manifestPath = Join-Path $root 'mods\darktidevr\package-manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if ($manifest.schema_version -ne 2 -or $manifest.platform -cne 'windows-x64' -or $manifest.layout -cne 'game_folder' -or
         $manifest.release_state -cnotin @('development_candidate', 'release_candidate')) {
@@ -52,20 +52,20 @@ if ($manifest.PSObject.Properties['binary_source_provenance'] -and
 }
 # The game-folder layout: everything a player needs sits under the mod folder.
 $required = @(
-    'mods/darktidevr_stereo_probe/darktidevr_stereo_probe.mod'
-    'mods/darktidevr_stereo_probe/Darktide VR Mode.bat'
-    'mods/darktidevr_stereo_probe/darktidevr-mode.ps1'
-    'mods/darktidevr_stereo_probe/tools/set-skinner-assert-patch.ps1'
-    'mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_stereo_probe.lua'
-    'mods/darktidevr_stereo_probe/bin/d3d12.dll'
-    'mods/darktidevr_stereo_probe/bin/darktidevr_native_capture.dll'
-    'mods/darktidevr_stereo_probe/bin/darktidevr-xr-harness.exe'
-    'mods/darktidevr_stereo_probe/bin/openxr_loader.dll'
-    'mods/darktidevr_stereo_probe/bin/dxcompiler.dll'
-    'mods/darktidevr_stereo_probe/bin/billboard_shaders/vs-42e436fb1ef1b392.dxil'
-    'mods/darktidevr_stereo_probe/LICENSE'
-    'mods/darktidevr_stereo_probe/THIRD_PARTY_NOTICES.md'
-    'mods/darktidevr_stereo_probe/README.txt'
+    'mods/darktidevr/darktidevr.mod'
+    'mods/darktidevr/Darktide VR Mode.bat'
+    'mods/darktidevr/darktidevr-mode.ps1'
+    'mods/darktidevr/tools/set-skinner-assert-patch.ps1'
+    'mods/darktidevr/scripts/mods/darktidevr/darktidevr.lua'
+    'mods/darktidevr/bin/d3d12.dll'
+    'mods/darktidevr/bin/darktidevr_native_capture.dll'
+    'mods/darktidevr/bin/darktidevr-xr-harness.exe'
+    'mods/darktidevr/bin/openxr_loader.dll'
+    'mods/darktidevr/bin/dxcompiler.dll'
+    'mods/darktidevr/bin/billboard_shaders/vs-42e436fb1ef1b392.dxil'
+    'mods/darktidevr/LICENSE'
+    'mods/darktidevr/THIRD_PARTY_NOTICES.md'
+    'mods/darktidevr/README.txt'
 )
 foreach ($relative in $required) {
     if (-not $seen.Contains([IO.Path]::GetFullPath((Join-Path $root $relative)))) {

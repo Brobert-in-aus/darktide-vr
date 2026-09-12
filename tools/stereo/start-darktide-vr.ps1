@@ -310,7 +310,7 @@ if (-not $SkipDeploymentSync) {
 # focused trial with sync skipped. Compile what the game will actually load,
 # including its descriptor and extra companions, before launch preparation.
 & $luaSourceCheck -SourcePath (Join-Path $GameRoot `
-    'mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_stereo_probe.lua')
+    'mods/darktidevr/scripts/mods/darktidevr/darktidevr.lua')
 
 if ($TuneWorkerThreads -and -not (Get-Process Darktide -ErrorAction SilentlyContinue)) {
     & (Join-Path $PSScriptRoot 'set-vr-worker-threads.ps1') -Action Apply
@@ -413,11 +413,11 @@ $launchFailure = $null
 $cleanLaunchSaved = @{}
 . (Join-Path $PSScriptRoot 'clean-launch-diagnostics.ps1')
 $advanceProcess = $null
-$characterStartFlag = Join-Path $GameRoot 'mods\darktidevr_stereo_probe\darktidevr_start_character.flag'
+$characterStartFlag = Join-Path $GameRoot 'mods\darktidevr\darktidevr_start_character.flag'
 try {
 $gameAlreadyRunning = [bool](Get-Process Darktide -ErrorAction SilentlyContinue)
 if (-not $gameAlreadyRunning -and -not $PreserveDiagnosticFlags) {
-    Set-CleanLaunchDiagnostics -ModRoot (Join-Path $GameRoot 'mods/darktidevr_stereo_probe') `
+    Set-CleanLaunchDiagnostics -ModRoot (Join-Path $GameRoot 'mods/darktidevr') `
         -Saved $cleanLaunchSaved -CopyProbe $StreamlineCopyProbe.IsPresent `
         -TransportProbe $StreamlineTransportProbe.IsPresent `
         -PerformanceProfile $EnablePerformanceProfile.IsPresent `
@@ -451,7 +451,7 @@ if ($StreamlineProbe -or $StreamlineCopyProbe -or
         $StreamlineTargetTokenProbe -or $StreamlineEyeTargetProbe -or $StreamlineStereoSwapchainProbe -or
         $StreamlineStereoStageProbe) {
     $streamlineProbeFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_streamline_probe.flag'
+        'mods\darktidevr\darktidevr_streamline_probe.flag'
     $streamlineProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineProbeFlagPath -PathType Leaf
     if ($streamlineProbeFlagExisted) {
@@ -464,7 +464,7 @@ if ($StreamlineProbe -or $StreamlineCopyProbe -or
 }
 if ($StreamlineCopyProbe) {
     $streamlineCopyProbeFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_streamline_copy_probe.flag'
+        'mods\darktidevr\darktidevr_streamline_copy_probe.flag'
     $streamlineCopyProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineCopyProbeFlagPath -PathType Leaf
     if ($streamlineCopyProbeFlagExisted) {
@@ -477,7 +477,7 @@ if ($StreamlineCopyProbe) {
 }
 if ($StreamlineTransportProbe) {
     $streamlineTransportProbeFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_streamline_transport_probe.flag'
+        'mods\darktidevr\darktidevr_streamline_transport_probe.flag'
     $streamlineTransportProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineTransportProbeFlagPath -PathType Leaf
     if ($streamlineTransportProbeFlagExisted) {
@@ -489,7 +489,7 @@ if ($StreamlineTransportProbe) {
 }
 if ($StreamlineInputSnapshotProbe -or $StreamlineTargetTokenProbe) {
     $streamlineInputSnapshotProbeFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_streamline_input_snapshot_probe.flag'
+        'mods\darktidevr\darktidevr_streamline_input_snapshot_probe.flag'
     $streamlineInputSnapshotProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineInputSnapshotProbeFlagPath -PathType Leaf
     if ($streamlineInputSnapshotProbeFlagExisted) {
@@ -501,7 +501,7 @@ if ($StreamlineInputSnapshotProbe -or $StreamlineTargetTokenProbe) {
 }
 if ($StreamlineTargetTokenProbe) {
     $streamlineTargetTokenProbeFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_streamline_target_token_probe.flag'
+        'mods\darktidevr\darktidevr_streamline_target_token_probe.flag'
     $streamlineTargetTokenProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineTargetTokenProbeFlagPath -PathType Leaf
     if ($streamlineTargetTokenProbeFlagExisted) {
@@ -513,7 +513,7 @@ if ($StreamlineTargetTokenProbe) {
 }
 if ($StreamlineEyeTargetProbe) {
     $streamlineEyeTargetProbeFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_streamline_eye_target_probe.flag'
+        'mods\darktidevr\darktidevr_streamline_eye_target_probe.flag'
     $streamlineEyeTargetProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineEyeTargetProbeFlagPath -PathType Leaf
     if ($streamlineEyeTargetProbeFlagExisted) {
@@ -527,7 +527,7 @@ if ($nativeOriginalRingDefault) {
     # The native module reads the flag beside the DLL it was loaded from; both
     # installed copies get one. Persistent FG launches publish originals through
     # the continuous submission and never construct this ring.
-    foreach ($ringDirectory in @('mods\darktidevr_stereo_probe\bin', 'binaries')) {
+    foreach ($ringDirectory in @('mods\darktidevr\bin', 'binaries')) {
         $ringFlagPath = Join-Path $GameRoot (Join-Path $ringDirectory 'darktidevr_native_original_ring.flag')
         $ringFlagExisted = Test-Path -LiteralPath $ringFlagPath -PathType Leaf
         $nativeOriginalRingFlags += [pscustomobject]@{
@@ -541,7 +541,7 @@ if ($nativeOriginalRingDefault) {
 }
 if ($StreamlineStereoSwapchainProbe) {
     $streamlineStereoSwapchainProbeFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_streamline_stereo_swapchain_probe.flag'
+        'mods\darktidevr\darktidevr_streamline_stereo_swapchain_probe.flag'
     $streamlineStereoSwapchainProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineStereoSwapchainProbeFlagPath -PathType Leaf
     if ($streamlineStereoSwapchainProbeFlagExisted) {
@@ -553,7 +553,7 @@ if ($StreamlineStereoSwapchainProbe) {
 }
 if ($StreamlineStereoStageProbe) {
     $streamlineStereoStageProbeFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_streamline_stereo_stage_probe.flag'
+        'mods\darktidevr\darktidevr_streamline_stereo_stage_probe.flag'
     $streamlineStereoStageProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineStereoStageProbeFlagPath -PathType Leaf
     if ($streamlineStereoStageProbeFlagExisted) {
@@ -565,7 +565,7 @@ if ($StreamlineStereoStageProbe) {
 }
 if ($NgxOutputProbe) {
     $ngxOutputProbeFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_ngx_output_probe.flag'
+        'mods\darktidevr\darktidevr_ngx_output_probe.flag'
     if (Test-Path -LiteralPath $ngxOutputProbeFlagPath -PathType Leaf) {
         $ngxOutputProbeFlagOriginal = [IO.File]::ReadAllBytes($ngxOutputProbeFlagPath)
     }
@@ -580,7 +580,7 @@ if ($NgxOutputProbe) {
 }
 if ($StreamlineStereoSubmitProbe) {
     $streamlineStereoSubmitProbeFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_streamline_stereo_submit_probe.flag'
+        'mods\darktidevr\darktidevr_streamline_stereo_submit_probe.flag'
     $streamlineStereoSubmitProbeFlagExisted = Test-Path -LiteralPath `
         $streamlineStereoSubmitProbeFlagPath -PathType Leaf
     if ($streamlineStereoSubmitProbeFlagExisted) {
@@ -605,7 +605,7 @@ foreach ($playDefault in @(
         @{ Requested = [bool] $ngxOutputProbeFlagPath; Name = 'darktidevr_ngx_output_probe.flag'; Value = "[probe]`nwait_for_stereo=0`ncopy_output=0`ngenerated_stereo=0`nobserve_sr_inputs=0" },
         @{ Requested = [bool] $streamlineStereoSubmitProbeFlagPath; Name = 'darktidevr_streamline_stereo_submit_probe.flag'; Value = "[probe]`nframes=1`ncontinuous=0`npersistent=0" })) {
     if ($playDefault.Requested) { continue }
-    $playDefaultPath = Join-Path $GameRoot (Join-Path 'mods\darktidevr_stereo_probe' $playDefault.Name)
+    $playDefaultPath = Join-Path $GameRoot (Join-Path 'mods\darktidevr' $playDefault.Name)
     $playDefaultExisted = Test-Path -LiteralPath $playDefaultPath -PathType Leaf
     $playDefaultOffFlags += [pscustomobject]@{
         Path = $playDefaultPath
@@ -643,7 +643,7 @@ if ($BillboardPixelShaderProbeHash) {
         throw "Interface-matched pixel probe not found: $probeSource"
     }
     $billboardPixelProbeDestinationPath = Join-Path $GameRoot `
-        "mods\darktidevr_stereo_probe\bin\billboard_shaders\ps-$BillboardPixelShaderProbeHash.dxil"
+        "mods\darktidevr\bin\billboard_shaders\ps-$BillboardPixelShaderProbeHash.dxil"
     $billboardPixelProbeDestinationExisted = Test-Path -LiteralPath `
         $billboardPixelProbeDestinationPath -PathType Leaf
     if ($billboardPixelProbeDestinationExisted) {
@@ -653,7 +653,7 @@ if ($BillboardPixelShaderProbeHash) {
     Copy-Item -LiteralPath $probeSource `
         -Destination $billboardPixelProbeDestinationPath -Force
     $billboardPixelProbeFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_billboard_pixel_shader_probe.flag'
+        'mods\darktidevr\darktidevr_billboard_pixel_shader_probe.flag'
     $billboardPixelProbeFlagExisted = Test-Path -LiteralPath `
         $billboardPixelProbeFlagPath -PathType Leaf
     if ($billboardPixelProbeFlagExisted) {
@@ -666,7 +666,7 @@ if ($BillboardPixelShaderProbeHash) {
 }
 if ($EnableGameplayReticle -and -not $offlineNoHeadset) {
     $candidateControllerAimFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_controller_aim_test.flag'
+        'mods\darktidevr\darktidevr_controller_aim_test.flag'
     if (-not (Test-Path -LiteralPath $candidateControllerAimFlagPath -PathType Leaf)) {
         throw "Controller-aim test flag not found: $candidateControllerAimFlagPath"
     }
@@ -678,7 +678,7 @@ if ($EnableGameplayReticle -and -not $offlineNoHeadset) {
 }
 if ($EnableHudPanel) {
     $candidateHudPanelFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_hud_panel.flag'
+        'mods\darktidevr\darktidevr_hud_panel.flag'
     # The panel is on by default; an absent flag is restored to 'disabled',
     # which the panel ignores, so the run's 'enable' command stays one-shot.
     $hudPanelFlagOriginal = if (Test-Path -LiteralPath $candidateHudPanelFlagPath -PathType Leaf) {
@@ -693,7 +693,7 @@ if ($EnableHudPanel) {
 }
 if ($EnablePerformanceProfile) {
     $candidatePerformanceProfileFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_performance_profile.flag'
+        'mods\darktidevr\darktidevr_performance_profile.flag'
     if (-not (Test-Path -LiteralPath `
             $candidatePerformanceProfileFlagPath -PathType Leaf)) {
         throw "Performance-profile flag not found: $candidatePerformanceProfileFlagPath"
@@ -706,7 +706,7 @@ if ($EnablePerformanceProfile) {
 }
 if ($EnablePerformancePassTrace) {
     $candidatePerformancePassTraceFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_performance_pass_trace.flag'
+        'mods\darktidevr\darktidevr_performance_pass_trace.flag'
     if (-not (Test-Path -LiteralPath `
             $candidatePerformancePassTraceFlagPath -PathType Leaf)) {
         throw "Performance-pass trace flag not found: $candidatePerformancePassTraceFlagPath"
@@ -719,7 +719,7 @@ if ($EnablePerformancePassTrace) {
 }
 if ($offlineNoHeadset) {
     $candidateOfflineDualViewFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_offline_dual_view.flag'
+        'mods\darktidevr\darktidevr_offline_dual_view.flag'
     $offlineDualViewFlagExisted = Test-Path -LiteralPath `
         $candidateOfflineDualViewFlagPath -PathType Leaf
     if ($offlineDualViewFlagExisted) {
@@ -853,7 +853,7 @@ if ($MenuAimStabilization) {
 }
 if ($SyntheticGameplayInput) {
     $candidateGameplayInputFlagPath = Join-Path $GameRoot `
-        'mods\darktidevr_stereo_probe\darktidevr_gameplay_input_test.flag'
+        'mods\darktidevr\darktidevr_gameplay_input_test.flag'
     if (-not (Test-Path -LiteralPath $candidateGameplayInputFlagPath -PathType Leaf)) {
         throw "Gameplay-input test flag not found: $candidateGameplayInputFlagPath"
     }
@@ -931,7 +931,7 @@ if ($offlineNoHeadset) {
         if ($game -and $benchmarkLog) {
             $benchmarkText = Get-Content -LiteralPath $benchmarkLog.FullName `
                 -Raw -ErrorAction SilentlyContinue
-            if ($benchmarkText -match '\[MOD\]\[darktidevr_stereo_probe\]\[ERROR\].*mod_script.*initialization') {
+            if ($benchmarkText -match '\[MOD\]\[darktidevr\]\[ERROR\].*mod_script.*initialization') {
                 throw 'The stereo mod failed initialization; inspect the launch console log.'
             }
             $ready = if ($OfflineDualViewBenchmark) {

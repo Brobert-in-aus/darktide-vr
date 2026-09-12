@@ -1,7 +1,7 @@
-diff --git a/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_crosshair_feedback.lua b/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_crosshair_feedback.lua
+diff --git a/mods/darktidevr/scripts/mods/darktidevr/darktidevr_crosshair_feedback.lua b/mods/darktidevr/scripts/mods/darktidevr/darktidevr_crosshair_feedback.lua
 index 275b6b2..e663526 100644
---- a/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_crosshair_feedback.lua
-+++ b/mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_crosshair_feedback.lua
+--- a/mods/darktidevr/scripts/mods/darktidevr/darktidevr_crosshair_feedback.lua
++++ b/mods/darktidevr/scripts/mods/darktidevr/darktidevr_crosshair_feedback.lua
 @@ -8,21 +8,21 @@ function Feedback.quad(pass,widget)
      local content=pass.content_id and widget.content[pass.content_id] or widget.content
      if not style or not content or style.visible==false or content.visible==false or

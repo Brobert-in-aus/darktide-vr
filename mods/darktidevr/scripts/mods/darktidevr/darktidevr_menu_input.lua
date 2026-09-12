@@ -234,7 +234,7 @@ function MenuInput.install(mod, presentation)
     local startup = {}
     local files = Mods and Mods.lua and Mods.lua.io
     if files then
-        local path = "./../mods/darktidevr_stereo_probe/darktidevr_start_character.flag"
+        local path = "./../mods/darktidevr/darktidevr_start_character.flag"
         local flag = files.open(path, "r")
         if flag then
             local value = flag:read("*all")

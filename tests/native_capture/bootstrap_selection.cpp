@@ -20,7 +20,7 @@ int wmain(int argc, wchar_t** argv) {
       throw std::runtime_error("Bootstrap device creation failed");
     }
     const auto native = GetModuleHandleW(
-        (root / L"mods/darktidevr_stereo_probe/bin/darktidevr_native_capture.dll").c_str());
+        (root / L"mods/darktidevr/bin/darktidevr_native_capture.dll").c_str());
     if (!native) throw std::runtime_error("Bootstrap did not load the fixture native module");
     const char* exports[] = {"dtvr_set_diagnostic_render_hooks", "dtvr_set_vertex_shader_dump",
         "dtvr_set_billboard_shader_substitution", "dtvr_set_billboard_pixel_shader_probe"};

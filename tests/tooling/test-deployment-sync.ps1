@@ -8,8 +8,8 @@ $testRoot = Join-Path $tempBase ('darktidevr-sync-test-' + [Guid]::NewGuid().ToS
 $repo = Join-Path $testRoot 'repository'
 $game = Join-Path $testRoot 'game'
 $tools = Join-Path $repo 'tools\stereo'
-$modRelative = 'mods\darktidevr_stereo_probe'
-$luaRelative = $modRelative + '\scripts\mods\darktidevr_stereo_probe'
+$modRelative = 'mods\darktidevr'
+$luaRelative = $modRelative + '\scripts\mods\darktidevr'
 $lock = $null
 $global:DeploymentFixtureGateFailure = $false
 function Get-Process {
@@ -55,12 +55,12 @@ param([string] $SourcePath)
 if (-not (Test-Path -LiteralPath $SourcePath)) { throw 'Missing fixture source.' }
 if ($global:DeploymentFixtureGateFailure) { throw 'fixture syntax gate failed' }
 '@
-    foreach ($name in @('darktidevr_stereo_probe.lua', 'module.lua')) {
+    foreach ($name in @('darktidevr.lua', 'module.lua')) {
         Write-Fixture (Join-Path $repo ($luaRelative + '\' + $name)) ('new-' + $name)
         Write-Fixture (Join-Path $game ($luaRelative + '\' + $name)) ('old-' + $name)
     }
-    Write-Fixture (Join-Path $repo ($modRelative + '\darktidevr_stereo_probe.mod')) 'new-descriptor'
-    Write-Fixture (Join-Path $game ($modRelative + '\darktidevr_stereo_probe.mod')) 'old-descriptor'
+    Write-Fixture (Join-Path $repo ($modRelative + '\darktidevr.mod')) 'new-descriptor'
+    Write-Fixture (Join-Path $game ($modRelative + '\darktidevr.mod')) 'old-descriptor'
     # The mode switch, its batch file and the patch tool deploy into the mod.
     Write-Fixture (Join-Path $repo ($modRelative + '\darktidevr-mode.ps1')) 'new-mode-switch'
     Write-Fixture (Join-Path $repo ($modRelative + '\Darktide VR Mode.bat')) 'new-mode-batch'
@@ -144,7 +144,7 @@ if ($global:DeploymentFixtureGateFailure) { throw 'fixture syntax gate failed' }
     Assert-Unchanged $before
     if (Test-Path -LiteralPath (Join-Path $game $modRelative)) { throw 'New VR tree survived clean-install rollback.' }
     & $sync -GameRoot $game -BillboardShaderSubstitution:$false -InitializeInstall | Out-Null
-    if ([IO.File]::ReadAllText($orderPath) -cne "-- Existing user list`ncustom_hud`ndarktidevr_stereo_probe`n") { throw 'Mod load order changed unexpectedly.' }
+    if ([IO.File]::ReadAllText($orderPath) -cne "-- Existing user list`ncustom_hud`ndarktidevr`n") { throw 'Mod load order changed unexpectedly.' }
     $before = Get-InstallationSnapshot
     & $sync -GameRoot $game -BillboardShaderSubstitution:$false -InitializeInstall | Out-Null
     Assert-Unchanged $before

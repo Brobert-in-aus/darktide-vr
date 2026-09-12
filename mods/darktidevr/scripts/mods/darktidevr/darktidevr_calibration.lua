@@ -133,7 +133,7 @@ function calibration.install(mod, controller_state, get_head_pose,
         runtime, "event_darktidevr_calibration_sample", "sample")
 
     local view_path =
-        "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_calibration_view"
+        "darktidevr/scripts/mods/darktidevr/darktidevr_calibration_view"
     mod:add_require_path(view_path)
     mod:register_view({
         view_name = "darktidevr_calibration_view",

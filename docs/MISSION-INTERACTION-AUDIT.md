@@ -29,7 +29,7 @@ network, tactile, readability or worn acceptance is established.
 This is an optional source-dependent test, not added to portable CTest:
 
 ```powershell
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-mission-device-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_bindings.lua
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-mission-device-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr/scripts/mods/darktidevr/darktidevr_controller_bindings.lua
 ```
 
 | Interaction | Stock consumer | Controller candidate / remaining check |

@@ -148,7 +148,7 @@ p,r=presentation.weapon_aim_target('support'); near(r,raw)
 assert(support_calls==1,'Support controller received the gun correction')
 presentation.two_hand=nil
 -- Execute the actual visible-hand correction with a separate visual root.
-local body_file=assert(io.open(arg[2]:gsub('darktidevr_stereo_probe.lua$','darktidevr_body_proxy.lua'),'rb'))
+local body_file=assert(io.open(arg[2]:gsub('darktidevr.lua$','darktidevr_body_proxy.lua'),'rb'))
 local body=body_file:read('*a'); body_file:close()
 local begin=assert(body:find('function BodyProxy.convert_hand_rotation(',1,true))
 local finish=assert(body:find('\nfunction BodyProxy.follow_gameplay_hands(',begin,true))

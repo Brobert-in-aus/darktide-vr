@@ -5,7 +5,7 @@ function Set-PsykhaniumLaunchRequest {
         [Parameter(Mandatory)][string] $GameRoot,
         [Parameter(Mandatory)][ValidateSet('enter','disabled')][string] $Action
     )
-    $path = Join-Path $GameRoot 'mods\darktidevr_stereo_probe\darktidevr_enter_psykhanium.flag'
+    $path = Join-Path $GameRoot 'mods\darktidevr\darktidevr_enter_psykhanium.flag'
     $content = "$Action`nlaunch_id=$([guid]::NewGuid().ToString('N'))"
     Set-Content -LiteralPath $path -Value $content -Encoding ascii
     [pscustomobject]@{ Path = $path; Content = $content }

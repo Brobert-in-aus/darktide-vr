@@ -3,14 +3,14 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('dtvr-launch-' + [guid]::NewGuid())
 $previousAppData = $env:APPDATA
 New-Item -ItemType Directory -Path $fixture | Out-Null
-$modDirectory = Join-Path $fixture 'mods/darktidevr_stereo_probe'
+$modDirectory = Join-Path $fixture 'mods/darktidevr'
 New-Item -ItemType Directory -Path $modDirectory -Force | Out-Null
 $scriptsDirectory = Join-Path $modDirectory 'scripts'
 $scriptsModsDirectory = Join-Path $scriptsDirectory 'mods'
-$luaDirectory = Join-Path $scriptsModsDirectory 'darktidevr_stereo_probe'
+$luaDirectory = Join-Path $scriptsModsDirectory 'darktidevr'
 New-Item -ItemType Directory -Path $luaDirectory -Force | Out-Null
-$luaSource = Join-Path $luaDirectory 'darktidevr_stereo_probe.lua'
-$descriptor = Join-Path $modDirectory 'darktidevr_stereo_probe.mod'
+$luaSource = Join-Path $luaDirectory 'darktidevr.lua'
+$descriptor = Join-Path $modDirectory 'darktidevr.mod'
 # Pass installed compilation so this fixture still reaches its intended cache
 # setup failure. These chunks must never execute or start a mod/game session.
 [IO.File]::WriteAllText($luaSource, 'error("Early-failure fixture Lua must only compile")')
@@ -34,7 +34,7 @@ try {
         if ($_.Exception.Message -notmatch '(cache directory|settings file) not found') { throw }
         $failed = $true
     }
-    if (-not $failed -or (Test-Path (Join-Path $fixture 'mods/darktidevr_stereo_probe/darktidevr_enter_psykhanium.flag'))) {
+    if (-not $failed -or (Test-Path (Join-Path $fixture 'mods/darktidevr/darktidevr_enter_psykhanium.flag'))) {
         throw 'Early setup failure must not arm a later Psykhanium entry'
     }
     Write-Output 'launcher_early_failure=pass'

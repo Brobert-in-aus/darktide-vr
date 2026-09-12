@@ -129,7 +129,7 @@ class MarkerSummary(unittest.TestCase):
         validator = ROOT / "build/dependencies/luajit/src/luajit.exe"
         if not validator.is_file():
             self.skipTest("Pinned Windows LuaJIT is unavailable")
-        module = ROOT / "mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_marker_metrics.lua"
+        module = ROOT / "mods/darktidevr/scripts/mods/darktidevr/darktidevr_marker_metrics.lua"
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Path(temporary) / "observer.lua"
             log = Path(temporary) / "observer.log"

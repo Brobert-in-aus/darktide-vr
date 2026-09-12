@@ -202,8 +202,8 @@ Commands:
 
 ```powershell
 tools/stereo/test-darktide-lua-source.ps1
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-ranged-aim.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_aim.lua
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-aim.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_controller_aim.lua
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-ranged-aim.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_controller_aim.lua
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-melee-aim.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_controller_aim.lua
 ```
 
 Live initialization passed: the fresh game console confirms all five preparation
@@ -289,7 +289,7 @@ fallbacks. An additional optional test executes the actual local source-snapshot
 aim and throw methods with engine stubs:
 
 ```powershell
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-luggable-stock-contract.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_grenade_aim.lua _downloads/Darktide-Source-Code
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-luggable-stock-contract.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_grenade_aim.lua _downloads/Darktide-Source-Code
 # PASS: stock aim/collision parameters, cached delayed release, once-only/server
 # physics, equipment transition and untouched drop component references
 ```

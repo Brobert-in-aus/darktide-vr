@@ -26,10 +26,10 @@ if (-not $cmake) {
 $buildDirectory = 'build/windows-vs2022'
 $components = @(
     @{ name = 'producer'; targets = @('darktidevr_native_capture', 'darktidevr_d3d12_bootstrap')
-       outputs = @('mods/darktidevr_stereo_probe/bin/darktidevr_native_capture.dll', 'mods/darktidevr_stereo_probe/bin/d3d12.dll')
+       outputs = @('mods/darktidevr/bin/darktidevr_native_capture.dll', 'mods/darktidevr/bin/d3d12.dll')
        dependencies = 'MinHook c3fcafdc10146beb5919319d0683e44e3c30d537 (BSD-2-Clause, static); Windows SDK and D3D12/DXGI/DXC headers from the toolchain; no NVIDIA Streamline code (project-declared ABI 2.7.30)' },
     @{ name = 'viewer'; targets = @('darktidevr-xr-harness')
-       outputs = @('mods/darktidevr_stereo_probe/bin/darktidevr-xr-harness.exe')
+       outputs = @('mods/darktidevr/bin/darktidevr-xr-harness.exe')
        dependencies = 'Khronos OpenXR SDK loader release 1.1.61 commit 5267613 (Apache-2.0, app-local openxr_loader.dll); Windows SDK D3D12/D3D11/DXGI' }
 )
 $spec = Import-PowerShellDataFile -LiteralPath (Join-Path $PSScriptRoot 'runtime-package-files.psd1')

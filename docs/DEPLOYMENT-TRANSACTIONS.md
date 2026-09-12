@@ -114,7 +114,7 @@ made atomic across machine failure.
 
 With the Darktide Mod Loader and Framework already installed, the explicit
 `-InitializeInstall` switch permits creation of the VR mod directory tree and
-appends its missing `darktidevr_stereo_probe` entry to `mods/mod_load_order.txt`.
+appends its missing `darktidevr` entry to `mods/mod_load_order.txt`.
 It requires the game executable, loader, base manager, framework descriptor and
 existing mod list. It does not install or activate the loader, install optional
 Custom HUD, change other mod ordering, create a shortcut or launch the game.

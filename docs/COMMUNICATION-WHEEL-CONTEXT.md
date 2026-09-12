@@ -64,7 +64,7 @@ fixture update (0.14 seconds). All 68 source chunks compile. No installed Lua,
 native binary, settings, headset or game state changed.
 
 ```powershell
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-communication-wheel.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe artifacts/vendor/Darktide-Source-Code
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-communication-wheel.lua mods/darktidevr/scripts/mods/darktidevr artifacts/vendor/Darktide-Source-Code
 ```
 
 ## Context primitive
@@ -115,6 +115,6 @@ leaves no delayed tag and rejects duplicate deferred releases. Communication
 side effects are mocked; no game, headset, network, voice or chat was invoked.
 
 ```powershell
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-communication-context.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_communication_context.lua artifacts/vendor/Darktide-Source-Code
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-communication-context.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_communication_context.lua artifacts/vendor/Darktide-Source-Code
 tools/stereo/test-darktide-lua-source.ps1
 ```

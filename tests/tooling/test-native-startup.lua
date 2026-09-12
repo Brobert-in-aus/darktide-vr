@@ -1,5 +1,5 @@
 local startup = dofile(arg[1])
-local root = "./../mods/darktidevr_stereo_probe/"
+local root = "./../mods/darktidevr/"
 local files, opened, closed = {}, 0, 0
 local function open(path, mode)
     assert(mode == "r")

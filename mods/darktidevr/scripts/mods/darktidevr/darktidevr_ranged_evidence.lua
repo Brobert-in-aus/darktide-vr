@@ -9,7 +9,7 @@ local function vector_text(v)
 end
 function Evidence.install(mod,presentation)
     local instance={rows={},failures=0}
-    instance.hits=mod:io_dofile('darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_hit_evidence').install(mod,presentation)
+    instance.hits=mod:io_dofile('darktidevr/scripts/mods/darktidevr/darktidevr_hit_evidence').install(mod,presentation)
     local owner,session
     local function observe(action,position,rotation,power,charge,t)
         if not presentation.online_rules.simulation_aim_active(action._player_unit) or

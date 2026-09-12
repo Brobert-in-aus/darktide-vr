@@ -1,7 +1,7 @@
 @echo off
 setlocal
 rem Switches Darktide between VR mode and flat mode. Run from inside the game
-rem folder at mods\darktidevr_stereo_probe. Darktide must be closed.
+rem folder at mods\darktidevr. Darktide must be closed.
 echo Darktide VR mode switch
 echo.
 echo   1  VR mode    (patch the executable, install the d3d12 proxy, enable the mod)

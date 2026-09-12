@@ -43,7 +43,7 @@ function Feedback.install(mod,presentation,tracking)
         if published==scale_percent then return end
         local io_api=Mods and Mods.lua and Mods.lua.io
         if not io_api then return end
-        local file=io_api.open('./../mods/darktidevr_stereo_probe/darktidevr_crosshair_scale.flag','w')
+        local file=io_api.open('./../mods/darktidevr/darktidevr_crosshair_scale.flag','w')
         if not file then return end
         local ok,result=pcall(file.write,file,string.format('%.0f\n',scale_percent))
         file:close()

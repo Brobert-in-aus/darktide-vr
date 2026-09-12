@@ -186,8 +186,8 @@ Two optional checks execute methods from the inspected game source snapshot:
 
 ```powershell
 build/dependencies/luajit/src/luajit.exe tests/tooling/test-online-input-stock-contract.lua _downloads/Darktide-Source-Code
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-online-input-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_online_rules.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gameplay_context.lua
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-online-rules-stock-contract.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_online_rules.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_gameplay_context.lua _downloads/Darktide-Source-Code
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-online-input-stock-contract.lua _downloads/Darktide-Source-Code mods/darktidevr/scripts/mods/darktidevr/darktidevr_online_rules.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_gameplay_context.lua
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-online-rules-stock-contract.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_online_rules.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_gameplay_context.lua _downloads/Darktide-Source-Code
 ```
 
 Both fixtures pass. The first covers stock buffering/send/receive/history behavior.
@@ -308,7 +308,7 @@ substitutes, not live movement or comfort evidence.
 An optional stock grenade check passes:
 
 ```powershell
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-grenade-stock-contract.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_grenade_aim.lua artifacts/vendor/Darktide-Source-Code
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-grenade-stock-contract.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_grenade_aim.lua artifacts/vendor/Darktide-Source-Code
 ```
 
 It executes actual aim, trajectory-preview and delayed-release methods with

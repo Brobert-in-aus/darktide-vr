@@ -4,7 +4,7 @@
 extract into the game folder. Since 12 September 2026 the archive is shaped
 like the game folder: everything, the licence, notices, changelog, user
 guide and a short README included, lives under
-`mods/darktidevr_stereo_probe/`, so extraction adds nothing else. Extracting it
+`mods/darktidevr/`, so extraction adds nothing else. Extracting it
 over the Darktide installation and running the mode switch inside the mod
 folder is the whole installation; no PowerShell launcher, sync script or
 readiness preflight ships with it.
@@ -26,7 +26,7 @@ Lua chunk through the pinned LuaJIT, the production shader identity), records
 the packaging checkout revision, writes `package-manifest.json` (schema 2,
 `layout=game_folder`) with every file's size and SHA-256, verifies the staged
 tree with `tools/release/test-runtime-package.ps1`, and zips the contents so
-that extraction places `mods\darktidevr_stereo_probe` directly. Passing
+that extraction places `mods\darktidevr` directly. Passing
 `-ReleaseVersion 0.1.0-alpha.1` names the archive
 `darktidevr-<version>-<head12>.zip` and marks it `release_candidate`;
 without it the archive is a `development_candidate`.

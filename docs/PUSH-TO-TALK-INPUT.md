@@ -81,6 +81,6 @@ coexistence, muted/voice-activated modes and Windows fallback. No game, micropho
 voice channel or network operation ran. Installed files/settings are unchanged.
 
 ```powershell
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-push-to-talk-input.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_push_to_talk_input.lua artifacts/vendor/Darktide-Source-Code
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-push-to-talk-input.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_push_to_talk_input.lua artifacts/vendor/Darktide-Source-Code
 tools/stereo/test-darktide-lua-source.ps1
 ```

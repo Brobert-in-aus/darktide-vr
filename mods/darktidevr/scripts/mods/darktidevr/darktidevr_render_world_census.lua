@@ -2,7 +2,7 @@ local Census = {}
 
 function Census.install(mod, classify)
     local flag = Mods.lua.io.open(
-        "./../mods/darktidevr_stereo_probe/darktidevr_render_world_census.flag", "r")
+        "./../mods/darktidevr/darktidevr_render_world_census.flag", "r")
     if not flag then return nil end
     local text = flag:read(32)
     flag:close()

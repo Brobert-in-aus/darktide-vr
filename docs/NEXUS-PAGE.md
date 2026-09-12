@@ -75,8 +75,8 @@ like any other Darktide mod and is launched through Steam as usual.
 
 1. Extract the archive into the Darktide game folder (the one with
    `binaries`, `bundle` and `mods`). Everything lands in
-   `mods\darktidevr_stereo_probe`.
-2. With Darktide closed, run `mods\darktidevr_stereo_probe\Darktide VR Mode.bat`
+   `mods\darktidevr`.
+2. With Darktide closed, run `mods\darktidevr\Darktide VR Mode.bat`
    and choose VR mode. It patches two bytes of `Darktide.exe` (a pristine
    copy is kept), installs a `d3d12.dll` proxy and adds the mod to the
    load order.

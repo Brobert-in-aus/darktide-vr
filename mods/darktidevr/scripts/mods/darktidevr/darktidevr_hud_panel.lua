@@ -817,7 +817,7 @@ local function update_enabled_flag(mod, t)
     end
     state.flag_last_poll_t = t
     local path =
-        "./../mods/darktidevr_stereo_probe/darktidevr_hud_panel.flag"
+        "./../mods/darktidevr/darktidevr_hud_panel.flag"
     local flag = Mods.lua.io.open(path, "r")
     if not flag then
         return

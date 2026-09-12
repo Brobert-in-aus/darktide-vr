@@ -468,7 +468,7 @@ unsupported actions and unavailable VR routes retain stock text. This tests the
 common path, with no talent-specific code change.
 
 ```powershell
-build/dependencies/luajit/src/luajit.exe tests/tooling/test-menu-prompts.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_menu_prompts.lua mods/darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_stereo_probe_localization.lua _downloads/Darktide-Source-Code
+build/dependencies/luajit/src/luajit.exe tests/tooling/test-menu-prompts.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_menu_prompts.lua mods/darktidevr/scripts/mods/darktidevr/darktidevr_localization.lua _downloads/Darktide-Source-Code
 ```
 
 PASS, along with three focused CTests (menu prompts, controller prompts and
