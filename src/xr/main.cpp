@@ -4019,8 +4019,7 @@ class OpenXrProbe {
           }
         }
       }
-      std::array<XrCompositionLayerQuad, 3> pointer_quads{{
-          {XR_TYPE_COMPOSITION_LAYER_QUAD},
+      std::array<XrCompositionLayerQuad, 2> pointer_quads{{
           {XR_TYPE_COMPOSITION_LAYER_QUAD},
           {XR_TYPE_COMPOSITION_LAYER_QUAD},
       }};
@@ -4047,9 +4046,13 @@ class OpenXrProbe {
                                     pose.position.z};
               quad.size = size;
             };
+        // The ray reaches halfway to the panel: the board draws its own
+        // cursor at the hit, so a full-length beam and a hit dot only hid
+        // what it pointed at. Two crossed strips make it visible from any
+        // angle.
         const auto ray_direction = darktidevr::math::rotate(
             controller_pointer_pose->orientation, {0.0F, 0.0F, -1.0F});
-        const auto distance = controller_pointer_hit->distance_metres;
+        const auto distance = controller_pointer_hit->distance_metres * 0.5F;
         const darktidevr::math::Vec3 ray_midpoint{
             controller_pointer_pose->position.x +
                 ray_direction.x * distance * 0.5F,
@@ -4073,22 +4076,6 @@ class OpenXrProbe {
                      {0.0F, 1.0F, 0.0F}, half_pi)),
              ray_midpoint},
             {0.008F, distance});
-        const darktidevr::math::Vec3 hit_position{
-            controller_pointer_pose->position.x +
-                ray_direction.x * distance,
-            controller_pointer_pose->position.y +
-                ray_direction.y * distance,
-            controller_pointer_pose->position.z +
-                ray_direction.z * distance};
-        const auto panel_normal = darktidevr::math::rotate(
-            panel_pose.orientation, {0.0F, 0.0F, 1.0F});
-        configure_pointer_quad(
-            pointer_quads[2],
-            {panel_pose.orientation,
-             {hit_position.x + panel_normal.x * 0.004F,
-              hit_position.y + panel_normal.y * 0.004F,
-              hit_position.z + panel_normal.z * 0.004F}},
-            {0.035F, 0.035F});
       }
       XrCompositionLayerQuad gameplay_reticle_quad{
           XR_TYPE_COMPOSITION_LAYER_QUAD};

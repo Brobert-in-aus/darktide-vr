@@ -47,6 +47,16 @@ int main() {
                !flat_interactive_uses_eye_aspect(
                    SharedPresentationMode::flat_interactive_native_aspect, false),
            "Only an attached eye-encoded panel may use portrait eye aspect");
+    // Loading and video boards are blitted from the same eye-sized canvas
+    // once the eyes are open, so they take the eye-aspect panel as well;
+    // before that (title, character select) they are window captures.
+    expect(flat_interactive_uses_eye_aspect(
+               SharedPresentationMode::flat_loading_or_cinematic, true) &&
+               !flat_interactive_uses_eye_aspect(
+                   SharedPresentationMode::flat_loading_or_cinematic, false) &&
+               !flat_interactive_uses_eye_aspect(
+                   SharedPresentationMode::flat_menu, true),
+           "Loading boards use the eye aspect only with the eyes open");
     SharedPresentationState loading_anchor{
         1, SharedPresentationMode::flat_loading_or_cinematic, 1920, 1080,
         0, 0, 1920, 1080, 2.0F, 2.0F};

@@ -56,7 +56,14 @@ bool flat_interactive_active(SharedPresentationMode mode) {
 
 bool flat_interactive_uses_eye_aspect(SharedPresentationMode mode,
                                       bool shared_eyes_open) {
-  return flat_interactive_active(mode) && shared_eyes_open;
+  // With the shared eyes open the engine draws every flat board into its
+  // eye-sized private backbuffer, and the canvas blit squashes that whole
+  // buffer into the 16:9 menu texture. A panel at the eye aspect restores the
+  // geometry. Loading and video boards (mode 2) come from the same canvas,
+  // so they take the same panel; shown 16:9 they were squashed.
+  return (flat_interactive_active(mode) ||
+          mode == SharedPresentationMode::flat_loading_or_cinematic) &&
+         shared_eyes_open;
 }
 
 bool same_flat_panel_anchor_identity(const SharedPresentationState& left,
