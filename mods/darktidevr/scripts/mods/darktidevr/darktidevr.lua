@@ -14165,29 +14165,97 @@ end)
 -- Dev check, on F7 and /dtvr_scanner_test: open the scanner display on the
 -- equipped device without a mission interface. Defined at top level: the
 -- keybind must resolve before the scanner view has ever been required.
+-- The auspex is not part of any loadout: a scanning zone or a decoding
+-- interaction equips it into slot_device and removes it afterwards. The
+-- check does the same when the slot is empty, with the catalogue's auspex
+-- scanner item (the item id lives in level data, so it is found by name).
+local function scanner_test_item()
+    local ok, MasterItems = pcall(require, "scripts/backend/master_items")
+    if not ok or not MasterItems then return nil end
+    local direct = MasterItems.get_item and MasterItems.get_item("content/items/devices/auspex_scanner")
+    if direct then return direct end
+    local cached = MasterItems.get_cached and MasterItems.get_cached() or {}
+    local chosen
+    for name, item in pairs(cached) do
+        if type(name) == "string" and name:find("auspex", 1, true) and
+                not name:find("_map", 1, true) and type(item) == "table" and type(item.slots) == "table" then
+            for _, slot in ipairs(item.slots) do
+                if slot == "slot_device" and (not chosen or name < chosen.name) then
+                    chosen = item
+                end
+            end
+        end
+    end
+    return chosen
+end
 mod.toggle_scanner_test = function()
     local manager = Managers and Managers.ui
     if not manager then return end
-    if manager:view_active("scanner_display_view") then
-        manager:close_view("scanner_display_view")
-        mod:echo("Scanner display closed.")
+    -- The Psykhanium is a local server with no scanning zones of its own, so
+    -- the check may equip the auspex there. Missions, SoloPlay or Fatshark's
+    -- servers, hand it out through their own zones and interactions.
+    local mode = presentation.gameplay_context.game_mode_name(
+        Managers.state and Managers.state.game_mode)
+    if mode ~= "shooting_range" and mode ~= "training_grounds" then
+        mod:echo("The scanner check works in the Psykhanium; missions equip the auspex themselves.")
         return
     end
     local player = Managers.player and Managers.player:local_player(1)
     local unit = player and player.player_unit
+    local PlayerUnitVisualLoadout = require(
+        "scripts/extension_systems/visual_loadout/utilities/player_unit_visual_loadout")
+    local t = Managers.time and Managers.time:time("gameplay") or 0
+    if manager:view_active("scanner_display_view") then
+        manager:close_view("scanner_display_view")
+        if mod.scanner_test_equipped and unit and Unit.alive(unit) then
+            local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
+            local inventory = unit_data and unit_data:read_component("inventory")
+            pcall(function()
+                if inventory and inventory.wielded_slot == "slot_device" then
+                    PlayerUnitVisualLoadout.wield_previous_weapon_slot(inventory, unit, t)
+                end
+                PlayerUnitVisualLoadout.unequip_item_from_slot(unit, "slot_device", t)
+            end)
+        end
+        mod.scanner_test_equipped = nil
+        mod:echo("Scanner display closed.")
+        return
+    end
     local loadout = unit and Unit.alive(unit) and
         ScriptUnit.has_extension(unit, "visual_loadout_system")
-    local slot = loadout and loadout._equipment and loadout._equipment.slot_device
+    if not loadout then
+        mod:echo("No player unit; the scanner check needs a spawned character.")
+        return
+    end
+    local slot = loadout._equipment and loadout._equipment.slot_device
     local auspex = slot and (slot.unit_1p or slot.unit_3p)
     if not auspex then
-        mod:echo("No device in slot_device; wield the auspex where the game gives one.")
-        return
+        local item = scanner_test_item()
+        if not item then
+            mod:echo("No auspex item in the catalogue; try inside a scanning zone.")
+            return
+        end
+        local ok, err = pcall(function()
+            PlayerUnitVisualLoadout.equip_item_to_slot(unit, item, "slot_device", nil, t)
+            PlayerUnitVisualLoadout.wield_slot("slot_device", unit, t)
+        end)
+        if not ok then
+            mod:echo("Equipping the auspex failed: " .. tostring(err))
+            return
+        end
+        mod.scanner_test_equipped = true
+        slot = loadout._equipment and loadout._equipment.slot_device
+        auspex = slot and (slot.unit_1p or slot.unit_3p)
+        if not auspex then
+            mod:echo("Auspex equipped (" .. tostring(item.name) .. ") but its unit is not up yet; press F7 again.")
+            return
+        end
     end
     local world = Managers.world and Managers.world:world("level_world")
     local ok, err = pcall(manager.open_view, manager, "scanner_display_view", nil, nil, nil, nil, {
         device_owner_unit = unit, minigame_type = "none", minigame_extension = nil,
         auspex_unit = auspex, wwise_world = world and Managers.world:wwise_world(world)})
-    mod:echo(ok and "Scanner display opened on the first-person device unit; the third-person screen should show it."
+    mod:echo(ok and "Scanner display opened; the screen on the device in your hand should show it. F7 again closes it."
         or ("Scanner display failed: " .. tostring(err)))
 end
 if mod.command then
