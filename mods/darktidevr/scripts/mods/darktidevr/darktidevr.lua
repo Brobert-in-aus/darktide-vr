@@ -14660,7 +14660,7 @@ mod:hook(require("scripts/managers/ui/ui_widget"), "draw", function(func, widget
     if world_marker_reprojecting then return end
     return presentation.marker_world.draw(scope, func, widget, ui_renderer)
 end)
-mod:command("dtvr_marker_plane", "World-surface markers: on, off, flip, text <slug|nopass|rect|2d>, status", function(action, mode)
+mod:command("dtvr_marker_plane", "World-surface markers: on, off, flip, text <slug|rect|2d>, status", function(action, mode)
     if action == "on" or action == "off" then
         mod:set("marker_plane", action == "on")
     elseif action == "flip" then

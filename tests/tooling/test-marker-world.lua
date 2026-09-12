@@ -49,13 +49,16 @@ local UIRenderer = {
     script_draw_text_3d = record("text3d"),
     draw_rect = record("rect2d"),
     draw_slug_icon = record("icon2d"),
+    text_size = function() return 40, 20 end,
 }
 local V3 = function(x, y, z) return {x, y, z, kind = "v3"} end
 local V2 = function(x, y) return {x, y, kind = "v2"} end
 local api = {
     UIRenderer = UIRenderer, Vector3 = V3, Vector2 = V2,
     Color = function(a, r, g, b) return {a, r, g, b} end,
-    Gui = {rect_3d = record("rect3d"), slug_icon_3d = record("icon3d")},
+    Gui = {rect_3d = record("rect3d"), slug_icon_3d = record("icon3d"),
+        HorizontalAlignCenter = 11, HorizontalAlignRight = 12,
+        VerticalAlignCenter = 21, VerticalAlignTop = 22},
     World = {create_world_gui = function(world) return {world = world} end,
         destroy_gui = function(world, gui) gui.destroyed = true end},
     Matrix4x4 = {identity = function() return "identity" end},
@@ -92,26 +95,19 @@ MarkerWorld.draw(scope, function()
     call("script_draw_bitmap_uv", renderer, "m", V3(1000, 500, 1), V3(2, 2, 0), "uvs", nil, nil)
     c = calls[#calls]
     assert(c.name == "bitmap3d" and c[8] == "uvs")
+    -- Text: the 3D call takes no box and no options; alignment inside the
+    -- 2D box becomes a measured offset. "hi" measures 40x20 px here.
     call("script_draw_text", renderer, "hi", 30, "body", V3(1000, 500, 2), V2(200, 40), nil,
-        {horizontal_alignment = "center", character_spacing = 2}, nil)
+        {horizontal_alignment = api.Gui.HorizontalAlignCenter,
+         vertical_alignment = api.Gui.VerticalAlignCenter}, nil)
     c = calls[#calls]
-    assert(c.name == "text3d" and near(c[3], 0.06) and c[5] == "tm" and near(c[6][1], 0) and
-        c[7] == 2 and near(c[8][1], 0.4), "text: font size and box in metres, layer kept")
-    local params = c[10]
-    assert(type(params) == "table" and #params == 6, "options and render pass as key/value pairs")
-    local seen = {}
-    for i = 1, #params, 2 do seen[params[i]] = params[i + 1] end
-    assert(seen.horizontal_alignment == "center" and near(seen.character_spacing, 0.004) and
-        seen.render_pass == "hud_pass", "spacing scaled, render pass appended")
-    -- Box-less text gets a wide box at the font height and no alignment, so
-    -- the positional 3D call never compacts around a nil.
-    call("script_draw_text", renderer, "hi", 30, "body", V3(1000, 500, 2), nil, nil,
-        {horizontal_alignment = "center", shadow = true}, nil)
+    assert(c.name == "text3d" and near(c[3], 0.06) and c[5] == "tm" and c[7] == 2,
+        "text: font size in metres, layer kept")
+    assert(near(c[6][1], 80 * 0.002) and near(c[6][2], 10 * 0.002), "centred in its 200x40 box")
+    assert(c[8] == nil and c[10] == nil, "no box and no options reach the 3D call")
+    call("script_draw_text", renderer, "hi", 30, "body", V3(1000, 500, 2), nil, nil, nil, nil)
     c = calls[#calls]
-    assert(c.name == "text3d" and c[8] and near(c[8][1], 4096 * 0.002) and near(c[8][2], 0.06))
-    local kv = {}
-    for i = 1, #c[10], 2 do kv[c[10][i]] = c[10][i + 1] end
-    assert(kv.horizontal_alignment == nil and kv.shadow == true and kv.render_pass == "hud_pass")
+    assert(c.name == "text3d" and near(c[6][1], 0) and near(c[6][2], 0), "box-less text at its origin")
     assert(MarkerWorld.set_text_mode("rect"))
     call("script_draw_text", renderer, "hi", 30, "body", V3(1000, 500, 2), V2(200, 40), nil, nil, nil)
     assert(calls[#calls].name == "rect3d", "rect mode marks the text box")

@@ -72,15 +72,14 @@ end
 local state = {scope = nil, guis = {}, errors = 0, api = nil, text_mode = "slug"}
 MarkerWorld.state = state
 
--- How routed text is drawn: "slug" (the renderer's 3D slug text with the
--- 2D path's render pass and named options), "nopass" (the same without the
--- render pass), "rect" (a marker box where the text would be, to prove the
+-- How routed text is drawn: "slug" (the renderer's 3D slug text, laid out
+-- here), "rect" (a marker box where the text would be, to prove the
 -- placement), "2d" (text stays on the flat route while everything else is
 -- on the plane).
-local text_modes = {slug = true, nopass = true, rect = true, ["2d"] = true}
+local text_modes = {slug = true, rect = true, ["2d"] = true}
 function MarkerWorld.set_text_mode(mode)
     if text_modes[mode] then state.text_mode = mode; return true end
-    return false, "slug, nopass, rect or 2d"
+    return false, "slug, rect or 2d"
 end
 
 -- `api` supplies UIRenderer, Vector2, Vector3, Color, Gui, World, Matrix4x4
@@ -177,59 +176,53 @@ converters.script_draw_text = function(scope, func, self, text, font_size, font_
             retained_id)
     end
     local api = state.api
-    local x, y = MarkerWorld.local_point(scope, position[1], position[2])
     local ps = scope.pixel_size
     local layer = position[3] or 0
-    -- The 3D call's arguments are positional and compacted: a nil box would
-    -- shift the colour and flags into the wrong slots and the engine rejects
-    -- the call ("slug flags must be preceded by specifier flags"), which
-    -- crashed the game on the first box-less text. A box-less 2D text lays
-    -- out unbounded from its position, so give it a wide box at the font's
-    -- height and no alignment.
-    local boxless = size == nil
-    local box = boxless and api.Vector2(4096 * ps, font_size * ps) or
-        api.Vector2(size[1] * ps, size[2] * ps)
     if mode == "rect" then
+        local x, y = MarkerWorld.local_point(scope, position[1], position[2])
+        local box = size and api.Vector2(size[1] * ps, size[2] * ps) or
+            api.Vector2(100 * ps, font_size * ps)
         return with_gui(scope, function()
-            return api.Gui.rect_3d(scope.gui, scope.tm, api.Vector2(x, y), layer,
-                box, api.Color(200, 255, 0, 255))
+            return api.Gui.rect_3d(scope.gui, scope.tm, api.Vector2(x, y), layer, box,
+                api.Color(200, 255, 0, 255))
         end)
     end
-    -- The 2D path hands the GUI a settings table (alignment, spacing, shadow,
-    -- render pass). The 3D function takes those as appended key/value pairs
-    -- and never adds the render pass itself, so build them here; spacings
-    -- are pixel values and scale with everything else.
-    local params = {}
-    if type(options) == "table" then
-        for key, value in pairs(options) do
-            if boxless and (key == "horizontal_alignment" or key == "vertical_alignment") then
-                value = nil
+    -- The engine's 3D slug text takes no layout box and no layout options:
+    -- given either, it rejected the call ("slug flags must be preceded by
+    -- specifier flags") and the game ended. So the text is laid out here:
+    -- its extent is measured at the 2D size, the box's alignment becomes an
+    -- offset, and the call gets only the position. Measurement failures
+    -- leave the text at the box origin.
+    local dx, dy = 0, 0
+    if size and type(options) == "table" and api.UIRenderer.text_size then
+        local ok, width, height = pcall(api.UIRenderer.text_size, self, text, font_type,
+            font_size, size, options, true)
+        if ok and type(width) == "number" and type(height) == "number" then
+            local gui = api.Gui
+            local horizontal, vertical = options.horizontal_alignment, options.vertical_alignment
+            if horizontal == gui.HorizontalAlignCenter then
+                dx = (size[1] - width) * 0.5
+            elseif horizontal == gui.HorizontalAlignRight then
+                dx = size[1] - width
             end
-            if type(key) == "string" and value ~= nil then
-                if (key == "line_spacing" or key == "character_spacing") and
-                        type(value) == "number" then
-                    value = value * ps
-                end
-                params[#params + 1] = key
-                params[#params + 1] = value
+            if vertical == gui.VerticalAlignCenter then
+                dy = (size[2] - height) * 0.5
+            elseif vertical == gui.VerticalAlignTop then
+                dy = size[2] - height
             end
         end
     end
-    if mode ~= "nopass" and self.base_render_pass then
-        params[#params + 1] = "render_pass"
-        params[#params + 1] = self.base_render_pass
-    end
+    local x, y = MarkerWorld.local_point(scope, position[1] + dx, position[2] + dy)
     if not state.text_logged and api.log then
         state.text_logged = true
         api.log(string.format(
-            "DARKTIDEVR_MARKER_PLANE first_text mode=%s font=%s size_px=%s size_m=%.4f layer=%s box=%s color=%s pass=%s params=%d",
+            "DARKTIDEVR_MARKER_PLANE first_text mode=%s font=%s size_px=%s size_m=%.4f layer=%s box=%s offset=%.1f,%.1f color=%s",
             mode, tostring(font_type), tostring(font_size), font_size * ps, tostring(layer),
-            tostring(size ~= nil), tostring(color ~= nil), tostring(self.base_render_pass),
-            #params / 2))
+            tostring(size ~= nil), dx, dy, tostring(color ~= nil)))
     end
     return with_gui(scope, api.UIRenderer.script_draw_text_3d, self, text,
         font_size * ps, font_type, scope.tm, api.Vector3(x, y, 0),
-        layer, box, color, params, nil)
+        layer, nil, color, nil, nil)
 end
 
 converters.draw_rect = function(scope, func, self, position, size, color, retained_id)
