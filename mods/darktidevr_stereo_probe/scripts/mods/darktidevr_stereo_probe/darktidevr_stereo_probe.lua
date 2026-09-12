@@ -1506,6 +1506,11 @@ function presentation.draw_world_menu_surface(world, position, rotation)
 end
 
 function presentation.classify_active_view(manager, view_name)
+    if view_name == "cutscene_view" and presentation.cinematic_stereo_active() then
+        -- An in-engine cinematic keeps the stereo world: the game camera
+        -- leads translation and yaw, the headset adds its own rotation.
+        return nil
+    end
     if presentation.flat_loading_views[view_name] then
         return 2, "loading_or_cinematic"
     end
@@ -5002,11 +5007,20 @@ local function update_stereo(manager)
     local right_camera = ScriptViewport.camera(right_viewport)
     local clean_position = ScriptCamera.local_position(primary_camera)
     local body_anchor_position = clean_position
+    -- A stereo cinematic keeps the game camera's own origin and yaw; the
+    -- body anchor and the room anchor's yaw step aside until it ends.
+    local cinematic_stereo = presentation.cinematic_stereo_active()
+    if cinematic_stereo ~= controller_observation.cinematic_stereo_logged then
+        controller_observation.cinematic_stereo_logged = cinematic_stereo
+        mod:info("DARKTIDEVR_STEREO cinematic=%s camera=%s",
+            cinematic_stereo and "stereo" or "off",
+            cinematic_stereo and "game_translation_yaw" or "anchor")
+    end
     -- Keep Darktide's genuine 3P camera tree active so its skinned-local-player
     -- submission policy remains active, but replace the tree's final render
     -- origin with the first-person head anchor. Choosing the 1P camera tree
     -- itself suppresses the skinned body even when every unit/slot is visible.
-    if controller_observation.body_visibility_enabled then
+    if controller_observation.body_visibility_enabled and not cinematic_stereo then
         local local_player = Managers and Managers.player and
             Managers.player:local_player(1)
         local player_unit = local_player and local_player.player_unit
@@ -5060,7 +5074,7 @@ local function update_stereo(manager)
         -- becomes the persistent lateral offset seen after recentering.
         body_anchor_position = clean_position
     end
-    if game_rotation_mode == "yaw_only" then
+    if game_rotation_mode == "yaw_only" or cinematic_stereo then
         local live_rotation = ScriptCamera.local_rotation(primary_camera)
         local yaw_delta = Quaternion.yaw(live_rotation) -
             Quaternion.yaw(clean_rotation)
@@ -10367,6 +10381,21 @@ do
     end
 end
 
+-- In-engine cinematics presented in stereo (mod setting, default on): only
+-- while the cinematic manager reports a playing cutscene camera; videos and
+-- loading screens keep the flat panel.
+function presentation.cinematic_stereo_active()
+    if mod:get("stereo_cinematics") == false then
+        return false
+    end
+    local cinematic = Managers and Managers.state and Managers.state.cinematic
+    if not cinematic or not cinematic.is_playing then
+        return false
+    end
+    local ok, playing = pcall(cinematic.is_playing, cinematic)
+    return ok and playing == true
+end
+
 -- Optional stock third-person body in the hub (mod setting). Combat modes
 -- keep the first-person body regardless.
 function presentation.hub_third_person_active()
@@ -13854,6 +13883,28 @@ do
         end)
     end
 end
+
+-- Cinematic subtitles are drawn by the stock constant element onto the flat
+-- canvas, which a stereo cinematic never shows. Mirror the current lines to
+-- the HUD panel, which draws them at its bottom edge.
+mod:hook_safe(
+    require("scripts/ui/constant_elements/elements/subtitles/constant_element_subtitles"),
+    "update",
+    function(self)
+        local widgets = self._widgets_by_name
+        local primary = widgets and widgets.subtitles and widgets.subtitles.content
+        local secondary = widgets and widgets.secondary_subtitles and
+            widgets.secondary_subtitles.content
+        local text = primary and primary.text or ""
+        local secondary_text = secondary and secondary.text or ""
+        if secondary_text ~= "" then
+            text = text ~= "" and (text .. "\n" .. secondary_text) or secondary_text
+        end
+        if presentation.hud_panel then
+            presentation.hud_panel.set_subtitle(
+                presentation.cinematic_stereo_active() and text ~= "" and text or nil)
+        end
+    end)
 
 presentation.viewer = mod:io_dofile(
     "darktidevr_stereo_probe/scripts/mods/darktidevr_stereo_probe/darktidevr_viewer"

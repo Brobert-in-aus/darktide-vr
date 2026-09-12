@@ -105,6 +105,11 @@ return {
                         default_value = false,
                     },
                     {
+                        setting_id = "stereo_cinematics",
+                        type = "checkbox",
+                        default_value = true,
+                    },
+                    {
                         setting_id = "psykhanium_online_rules",
                         type = "checkbox",
                         default_value = true,

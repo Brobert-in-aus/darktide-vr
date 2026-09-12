@@ -16,6 +16,8 @@ return {
     mode_options = {en = "Hub and missions"},
     hub_third_person = {en = "Third-person body in the hub"},
     hub_third_person_description = {en = "Show the stock third-person character in the hub instead of the first-person body, with the equipped weapons hidden. Combat areas always use first person. Applies on the next hub visit."},
+    stereo_cinematics = {en = "In-engine cinematics in stereo"},
+    stereo_cinematics_description = {en = "Watch in-engine cutscenes in the world: the cinematic camera moves and turns you, your head adds its own look, and subtitles are shown on the HUD panel. Off shows cutscenes on the flat panel. Cinematic cameras cut and shake; turn this off if that is uncomfortable."},
     psykhanium_online_rules = {en = "Online combat rules in Psykhanium"},
     psykhanium_online_rules_description = {en = "Aim with the right hand using normal firing positions, button melee and movement rules. Room movement stays visual and training aids remain. Applies on your next visit to Psykhanium; online missions are still under development."},
     vr_menu_back = {en = "B / Menu"},
