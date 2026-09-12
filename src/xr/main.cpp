@@ -1845,13 +1845,18 @@ class OpenXrProbe {
           }
         }
       }
+      // Direct-render menus (3, 4) and the in-game interactive menus (5, 6),
+      // which the producer now publishes from its private canvas at the
+      // presentation extent; the window capture remains the fallback while
+      // no shared menu can be opened (character select, title).
       const bool interactive_menu_projection =
           presentation_sequence != 0 &&
           (presentation_state.mode == darktidevr::core::
                                           SharedPresentationMode::flat_menu ||
            presentation_state.mode == darktidevr::core::
                                           SharedPresentationMode::
-                                              world_anchored_menu);
+                                              world_anchored_menu ||
+           darktidevr::core::flat_interactive_active(presentation_state.mode));
       if (opened_menu) {
         const auto menu_ready =
             opened_menu->ready_fence->GetCompletedValue();
@@ -3328,8 +3333,12 @@ class OpenXrProbe {
       const auto flat_interactive_mode =
           presentation_sequence != 0 && darktidevr::core::
               flat_interactive_active(presentation_state.mode);
+      // With a shared menu attached the pointer space is the published
+      // presentation source; only the window-capture fallback reads the
+      // physical client extent.
       const auto native_window_extent =
-          flat_interactive_mode && window_capture
+          flat_interactive_mode && window_capture &&
+                  !(shared_menu_projection_enabled && opened_menu.has_value())
               ? window_capture->source_extent()
               : std::nullopt;
       // In-game menus (including the mode-6 premium store) retain the eye

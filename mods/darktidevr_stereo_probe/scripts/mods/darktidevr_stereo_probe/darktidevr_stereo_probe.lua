@@ -132,11 +132,11 @@ local ui_reset_dlss_each_eye_requested = false
 -- directly rendered swapchain before the following eye can overwrite it.
 local ui_direct_swapchain_capture_requested = false
 local ui_boundary_census_requested = false -- expensive diagnostic logging only
--- Keep the desktop mirror in the same 16:9 coordinate space used by screen
--- GUI. A 1280x768 (5:3) client forced non-uniform scaling and made the engine
--- hover and XR ray disagree increasingly with vertical position. Use a native
--- 1080p client so the high-resolution XR panel contains real menu detail
--- instead of merely upscaling a 720p window capture.
+-- Authored desktop reference extent for the HUD editor preview seed and logs.
+-- The window itself is no longer forced to this size: in-game menus are
+-- published from the engine canvas at the presentation extent, so the
+-- headset menu resolution and pointer mapping do not follow the client.
+-- (Character select and title still use the window capture.)
 local ui_mirror_client_width = 1920
 local ui_mirror_client_height = 1080
 local ui_virtual_client_extent_requested = false
@@ -2815,6 +2815,15 @@ local function apply_head_tracking(clean_position, clean_rotation)
         tonumber(head_pose_values[23]) + 0.5)
     if recenter_generation ~= controller_observation.head_recenter_generation then
         controller_observation.head_recenter_generation = recenter_generation
+        -- Third-person hub: a reset view looks at the character, i.e. along
+        -- the stock orbit orientation, so the room anchor takes that yaw.
+        if active_base_rotation and controller_observation.gameplay_yaw and
+                presentation.hub_third_person_active() then
+            active_base_rotation:store(Quaternion.axis_angle(
+                Vector3.up(), controller_observation.gameplay_yaw))
+            mod:info("DARKTIDEVR_AIM hub_third_person recenter anchor_yaw=%.4f generation=%d",
+                controller_observation.gameplay_yaw, recenter_generation)
+        end
         controller_observation.body_ik_neck_unit = nil
         controller_observation.body_ik_neck_generation = nil
         controller_observation.body_ik_neck_baseline_raw = nil
@@ -3175,10 +3184,12 @@ local function enable_ui_native_capture()
         end
     end
 
-    local mirror_result = ui_native_capture.dtvr_set_mirror_client_extent(
-        ui_mirror_client_width,
-        ui_mirror_client_height
-    )
+    -- The desktop window keeps whatever size the player chose: in-game menus
+    -- are published from the engine canvas at the presentation extent, so
+    -- neither the headset menu resolution nor the pointer depends on the
+    -- client. Zero leaves the native resize nudge restoring the original
+    -- window rectangle instead of forcing 1920x1080.
+    local mirror_result = ui_native_capture.dtvr_set_mirror_client_extent(0, 0)
     if mirror_result ~= 0 then
         mod:error("DARKTIDEVR_STEREO mirror_extent_failed code=%d",
             tonumber(mirror_result))

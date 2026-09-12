@@ -746,6 +746,12 @@ std::atomic<bool> vendor_menu_widget_capture_enabled{false};
 // target and replay it during later world Presents.  Lua enables this only for
 // an explicitly classified interactive-menu presentation.
 std::atomic<bool> menu_direct_capture_enabled{false};
+// Play default: in-game interactive menus (modes 5 and 6) are published from
+// the engine's private eye canvas at the presentation source extent, so the
+// headset menu and its pointer no longer depend on the desktop window. A
+// present darktidevr_menu_window_capture.flag reading "enabled" restores the
+// window-capture path for diagnosis.
+std::atomic<bool> menu_virtual_capture_enabled{true};
 thread_local unsigned int menu_draw_scope_depth{};
 std::atomic<std::uint64_t> menu_draw_scope_redirect_count{};
 std::atomic<std::uint64_t> stock_menu_draw_frame{
@@ -2000,6 +2006,9 @@ int capture_menu_from_resource(ID3D12CommandQueue* queue,
                                D3D12_RESOURCE_STATES source_state,
                                std::uint64_t capture_width = 0,
                                UINT capture_height = 0);
+int capture_menu_from_engine_canvas(ID3D12CommandQueue* queue,
+                                    ID3D12Resource* canvas,
+                                    unsigned int width, unsigned int height);
 int ensure_menu_surface(ID3D12Device* device,
                         const D3D12_RESOURCE_DESC& source_description,
                         DXGI_FORMAT render_target_format = DXGI_FORMAT_UNKNOWN);
@@ -2843,6 +2852,9 @@ void initialize_streamline_probe(void* present_target,
   flag_path.resize(separator + 1);
   const auto flag_directory = flag_path;
   flag_path += L"..\\darktidevr_streamline_probe.flag";
+  menu_virtual_capture_enabled.store(
+      !play_default_flag(flag_directory + L"..\\darktidevr_menu_window_capture.flag", false),
+      std::memory_order_relaxed);
   if (!play_default_flag(flag_path, true)) {
     return;
   }
@@ -12983,6 +12995,33 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* swapchain,
         static_cast<unsigned long long>(gameplay_mirror_copies_recorded.load()),
         static_cast<unsigned long long>(gameplay_mirror_blits_attempted.load()));
   }
+  // In-game interactive menus reach the headset from the engine's private
+  // canvas at the published extent, independent of the desktop window.
+  if (menu_virtual_capture_enabled.load(std::memory_order_relaxed) &&
+      candidate && queue &&
+      darktidevr::core::flat_interactive_active(presentation_mode)) {
+    const auto canvas = engine_eye_backbuffers.find(
+        reinterpret_cast<std::uintptr_t>(candidate.Get()),
+        resize_diagnostic_generation.load(std::memory_order_relaxed),
+        candidate->GetCurrentBackBufferIndex());
+    const auto width =
+        current_presentation_source_width.load(std::memory_order_relaxed);
+    const auto height =
+        current_presentation_source_height.load(std::memory_order_relaxed);
+    if (canvas) {
+      const auto canvas_result = capture_menu_from_engine_canvas(
+          queue.Get(), canvas.Get(), width, height);
+      if (canvas_result != 0 || present % 600 == 0) {
+        menu_resource_log_budget.run([&] {
+          write_menu_resource_log(
+              "MENU_CANVAS_CAPTURE\tframe=%llu\tresult=%d\textent=%ux%u"
+              "\tready=%llu\r\n",
+              present, canvas_result, width, height,
+              static_cast<unsigned long long>(menu_ready_value));
+        });
+      }
+    }
+  }
   // Packed rendering gives the engine a private backbuffer. Flat menus and
   // loading screens must reach DXGI from that current buffer too; otherwise
   // skipping the eye mirror leaves the last world image on the desktop.
@@ -14774,6 +14813,100 @@ int capture_menu_from_resource(ID3D12CommandQueue* queue,
   std::swap(source_barrier.Transition.StateBefore,
             source_barrier.Transition.StateAfter);
   pending.commands->ResourceBarrier(1, &source_barrier);
+  if (FAILED(pending.commands->Close())) {
+    return 96;
+  }
+  ID3D12CommandList* command_lists[]{pending.commands.Get()};
+  original_execute_command_lists(queue, 1, command_lists);
+  if (FAILED(queue->Signal(fence.Get(), signal_value))) {
+    std::scoped_lock lock(state_mutex);
+    reset_menu_surface_resources();
+    return 97;
+  }
+  pending.fence_value = signal_value;
+  {
+    std::scoped_lock lock(state_mutex);
+    menu_pending_captures.push_back(std::move(pending));
+    menu_ready_value = signal_value;
+  }
+  return 0;
+}
+
+// Publishes an in-game interactive menu from the engine's private eye canvas
+// (the same image the desktop mirror stretches into the window) into the
+// shared menu texture at the published 16:9 presentation extent. A linear
+// blit fits the portrait canvas the way the window did, so the pointer
+// mapping and the Lua hit tests keep their existing ratios, while the
+// resolution no longer follows the desktop client.
+int capture_menu_from_engine_canvas(ID3D12CommandQueue* queue,
+                                    ID3D12Resource* canvas,
+                                    unsigned int width, unsigned int height) {
+  if (!queue || !canvas || width < 2 || height < 2) {
+    return 93;
+  }
+  ComPtr<ID3D12Device> device;
+  if (FAILED(canvas->GetDevice(IID_PPV_ARGS(&device)))) {
+    return 94;
+  }
+  ComPtr<ID3D12Resource> destination;
+  ComPtr<ID3D12Fence> fence;
+  PendingCapture pending;
+  std::uint64_t signal_value{};
+  {
+    std::scoped_lock lock(state_mutex);
+    auto capture_description = canvas->GetDesc();
+    capture_description.Width = width;
+    capture_description.Height = height;
+    capture_description.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    capture_description.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+    const auto ensure_result = ensure_menu_surface(
+        device.Get(), capture_description, DXGI_FORMAT_R8G8B8A8_UNORM);
+    if (ensure_result != 0) {
+      return ensure_result;
+    }
+    const auto completed = menu_ready_fence->GetCompletedValue();
+    while (!menu_pending_captures.empty() &&
+           menu_pending_captures.front().fence_value <= completed) {
+      menu_pending_captures.front().fence_value = 0;
+      menu_available_captures.push_back(
+          std::move(menu_pending_captures.front()));
+      menu_pending_captures.pop_front();
+    }
+    if (!darktidevr::core::shared_mailbox_writable(
+            menu_ready_value, menu_consumed_fence->GetCompletedValue())) {
+      return 0;
+    }
+    if (!menu_available_captures.empty()) {
+      pending = std::move(menu_available_captures.front());
+      menu_available_captures.pop_front();
+    }
+    destination = menu_surface;
+    fence = menu_ready_fence;
+    signal_value = menu_ready_value + 1;
+  }
+  if (pending.allocator && pending.commands) {
+    if (FAILED(pending.allocator->Reset()) ||
+        FAILED(pending.commands->Reset(pending.allocator.Get(), nullptr))) {
+      return 95;
+    }
+  } else if (FAILED(device->CreateCommandAllocator(
+                 D3D12_COMMAND_LIST_TYPE_DIRECT,
+                 IID_PPV_ARGS(&pending.allocator))) ||
+             FAILED(device->CreateCommandList(
+                 0, D3D12_COMMAND_LIST_TYPE_DIRECT, pending.allocator.Get(),
+                 nullptr, IID_PPV_ARGS(&pending.commands)))) {
+    return 95;
+  }
+  if (!pending.mirror_blit) {
+    pending.mirror_blit =
+        std::make_shared<darktidevr::producer::DesktopMirrorBlit>();
+  }
+  // The blit expects the destination in the PRESENT state; the shared menu
+  // surface rests in COMMON, which D3D12 defines as the same state.
+  if (FAILED(pending.mirror_blit->record(device.Get(), pending.commands.Get(),
+                                         canvas, destination.Get()))) {
+    return 98;
+  }
   if (FAILED(pending.commands->Close())) {
     return 96;
   }
