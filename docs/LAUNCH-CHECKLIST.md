@@ -7,9 +7,9 @@ the page text or package must reflect the decision.
 ## 1. Worn acceptance on the release package
 
 The archive to ship is the one whose name carries the final commit. Today
-that is `artifacts/packages/darktidevr-0.1.0-alpha.1-06b662c2b662.zip`
-(SHA-256 `8C9264D1...`), built from `06b662c` and installed over the game
-folder in the afternoon. If any item below needs a code change, commit it, rebuild
+that is `artifacts/packages/darktidevr-0.1.0-alpha.1-c626f44a82c2.zip`
+(SHA-256 `0D9A46C7...`), built from `c626f44` (mod id `darktidevr`, mode
+switch update-safe) and installed fresh in the late afternoon. If any item below needs a code change, commit it, rebuild
 (`record-component-provenance.ps1 -OutputPath ...` then
 `build-runtime-package.ps1 -ReleaseVersion 0.1.0-alpha.1
 -ComponentProvenancePath ... -RequireComponentProvenance`), re-run the
