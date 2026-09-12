@@ -104,12 +104,28 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
             if tint then text=InputUtils.apply_color_to_input_text(text,Color.ui_input_color(255,true)) end
             return text
         end)
+    -- The onboarding handler's destroy syncs its settings after the UI
+    -- manager has already dropped its view handler; closing a still-active
+    -- tutorial view there indexes nil in stock and the game reports a crash
+    -- on exit. Nothing is lost by letting the teardown finish quietly.
+    local function shutdown_sync(name,on_destroy)
+        if name~='_sync_onboarding_settings' or on_destroy~=true then return false end
+        local ui=Managers and Managers.ui
+        return ui~=nil and ui._view_handler==nil
+    end
     for _,scope in ipairs(scopes) do
         local switching=scope[3] or false
-        mod:hook(scope[1],scope[2],function(func,...)
+        mod:hook(scope[1],scope[2],function(func,self,...)
+            if shutdown_sync(scope[2],...) then
+                local ok,err=pcall(func,self,...)
+                if not ok and mod.info then
+                    mod:info('DARKTIDEVR_PROMPTS shutdown_sync=failed error=%s',tostring(err):sub(1,160))
+                end
+                return
+            end
             local previous_switch=weapon_switch
             depth=depth+1; weapon_switch=switching
-            return finish_scope(previous_switch,pcall(func,...))
+            return finish_scope(previous_switch,pcall(func,self,...))
         end)
     end
     -- Localised strings carry input glyphs through the $INGAME_INPUT:...$

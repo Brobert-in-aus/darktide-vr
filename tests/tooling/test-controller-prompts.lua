@@ -278,3 +278,18 @@ if arg[5] and arg[6] then
     assert(text('action_two')=='keyboard:action_two','Stock tutorial leaked prompt scope')
     print('controller_prompts: actual stock tutorial/text preserve remaps, availability, device aliases and action wording')
 end
+
+-- Shutdown: the onboarding handler syncs on destroy after the UI manager has
+-- dropped its view handler. A stock error there is swallowed only in that
+-- state; everywhere else the scope wrapper still re-raises stock errors.
+do
+    local sync=assert(hooks.ConstantElementOnboardingHandler._sync_onboarding_settings)
+    local function stock(self,on_destroy) error('ui_manager.lua:618: attempt to index field _view_handler (a nil value)',0) end
+    Managers={ui={}}
+    sync(stock,{},true)
+    Managers={ui={_view_handler={}}}
+    assert(not pcall(sync,stock,{},true),'error with a live view handler must propagate')
+    Managers={ui={}}
+    assert(not pcall(sync,stock,{},false),'error outside destroy must propagate')
+    Managers=nil
+end

@@ -13376,6 +13376,19 @@ mod:hook(ScriptWorld, "render", function(func, world, ...)
             first_eye = 1
             second_eye = 0
         end
+        if not first or not second then
+            -- During a scene transition (the second entry into the
+            -- Psykhanium, for one) the world renders before its player
+            -- viewports exist; activating a nil viewport is a Lua crash in
+            -- ScriptWorld. Let stock render the world alone this frame.
+            if not presentation.viewport_pair_missing_logged then
+                presentation.viewport_pair_missing_logged = true
+                mod:info("DARKTIDEVR_STEREO viewport_pair=missing primary=%s right=%s action=stock_render",
+                    tostring(primary ~= nil), tostring(right ~= nil))
+            end
+            return func(world, ...)
+        end
+        presentation.viewport_pair_missing_logged = nil
 
         if ui_native_sync_requested and not ui_native_sync_initialized then
             ui_native_capture.dtvr_reset_eye_capture_tags()

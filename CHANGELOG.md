@@ -61,6 +61,9 @@ Desktop (VDXR), Darktide with the Darktide Mod Framework.
   own control show the cycle control's badge instead of "Unbound".
 - The menu laser and cursor are a fixed dark green; they no longer take
   their colour from the menu image and no longer vanish over popups.
+- Entering the Psykhanium a second time in one session no longer crashes
+  the game, and exiting while an onboarding tutorial is active no longer
+  reports a crash.
 
 Known limits of this alpha are listed in the user guide: right-hand
 dominant presentation, no independent weapon origins on mission servers,
