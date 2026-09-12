@@ -103,6 +103,15 @@ MarkerWorld.draw(scope, function()
     for i = 1, #params, 2 do seen[params[i]] = params[i + 1] end
     assert(seen.horizontal_alignment == "center" and near(seen.character_spacing, 0.004) and
         seen.render_pass == "hud_pass", "spacing scaled, render pass appended")
+    -- Box-less text gets a wide box at the font height and no alignment, so
+    -- the positional 3D call never compacts around a nil.
+    call("script_draw_text", renderer, "hi", 30, "body", V3(1000, 500, 2), nil, nil,
+        {horizontal_alignment = "center", shadow = true}, nil)
+    c = calls[#calls]
+    assert(c.name == "text3d" and c[8] and near(c[8][1], 4096 * 0.002) and near(c[8][2], 0.06))
+    local kv = {}
+    for i = 1, #c[10], 2 do kv[c[10][i]] = c[10][i + 1] end
+    assert(kv.horizontal_alignment == nil and kv.shadow == true and kv.render_pass == "hud_pass")
     assert(MarkerWorld.set_text_mode("rect"))
     call("script_draw_text", renderer, "hi", 30, "body", V3(1000, 500, 2), V2(200, 40), nil, nil, nil)
     assert(calls[#calls].name == "rect3d", "rect mode marks the text box")

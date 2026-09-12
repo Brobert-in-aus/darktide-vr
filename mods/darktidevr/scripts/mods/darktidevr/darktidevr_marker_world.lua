@@ -180,11 +180,19 @@ converters.script_draw_text = function(scope, func, self, text, font_size, font_
     local x, y = MarkerWorld.local_point(scope, position[1], position[2])
     local ps = scope.pixel_size
     local layer = position[3] or 0
-    local box = size and api.Vector2(size[1] * ps, size[2] * ps) or nil
+    -- The 3D call's arguments are positional and compacted: a nil box would
+    -- shift the colour and flags into the wrong slots and the engine rejects
+    -- the call ("slug flags must be preceded by specifier flags"), which
+    -- crashed the game on the first box-less text. A box-less 2D text lays
+    -- out unbounded from its position, so give it a wide box at the font's
+    -- height and no alignment.
+    local boxless = size == nil
+    local box = boxless and api.Vector2(4096 * ps, font_size * ps) or
+        api.Vector2(size[1] * ps, size[2] * ps)
     if mode == "rect" then
         return with_gui(scope, function()
             return api.Gui.rect_3d(scope.gui, scope.tm, api.Vector2(x, y), layer,
-                box or api.Vector2(100 * ps, 20 * ps), api.Color(200, 255, 0, 255))
+                box, api.Color(200, 255, 0, 255))
         end)
     end
     -- The 2D path hands the GUI a settings table (alignment, spacing, shadow,
@@ -194,6 +202,9 @@ converters.script_draw_text = function(scope, func, self, text, font_size, font_
     local params = {}
     if type(options) == "table" then
         for key, value in pairs(options) do
+            if boxless and (key == "horizontal_alignment" or key == "vertical_alignment") then
+                value = nil
+            end
             if type(key) == "string" and value ~= nil then
                 if (key == "line_spacing" or key == "character_spacing") and
                         type(value) == "number" then
