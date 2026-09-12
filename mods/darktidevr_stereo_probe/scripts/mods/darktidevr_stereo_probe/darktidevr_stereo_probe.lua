@@ -6994,7 +6994,12 @@ function presentation.apply_body_visibility(self, frame, force)
         -- they sit wrongly on a stock-animated body.
         if presentation.hub_third_person_active() then
             local hidden_weapon_units = 0
-            for _, slot_name in ipairs({"slot_primary", "slot_secondary"}) do
+            -- Weapons, curios (attachment slots) and carried items: all are
+            -- placed by the tracked-hand rig, not by the stock animation.
+            for _, slot_name in ipairs({"slot_primary", "slot_secondary",
+                    "slot_attachment_1", "slot_attachment_2", "slot_attachment_3",
+                    "slot_pocketable", "slot_pocketable_small", "slot_device",
+                    "slot_luggable"}) do
                 local slot = equipment[slot_name]
                 if type(slot) == "table" then
                     for _, unit in ipairs({slot.unit_3p, slot.unit_1p}) do
@@ -8006,8 +8011,11 @@ function presentation.update_body_ik_presentation_gate(fixed_frame)
     if not enabled then
         controller_observation.body_ik_presentation_faulted = false
     end
+    -- The optional third-person hub body keeps the stock animation; the
+    -- tracked-hand IK would pose its arms against it.
     enabled = enabled and
-        not controller_observation.body_ik_presentation_faulted
+        not controller_observation.body_ik_presentation_faulted and
+        not presentation.hub_third_person_active()
     if enabled ~= controller_observation.body_ik_presentation_enabled then
         controller_observation.body_ik_presentation_enabled = enabled
         controller_observation.body_ik_presentation_block_reason = nil
@@ -10317,11 +10325,35 @@ function presentation.hub_first_person_requested()
     return hub_first_person_flag_value
 end
 
+-- DMF writes mod settings to disk only on a game-state change or a normal
+-- exit, so a force-quit after toggling this option lost it. Flush at once.
+do
+    local previous_setting_changed = mod.on_setting_changed
+    mod.on_setting_changed = function(setting_id, ...)
+        if previous_setting_changed then previous_setting_changed(setting_id, ...) end
+        if setting_id == "hub_third_person" then
+            local dmf = rawget(_G, "get_mod") and get_mod("dmf")
+            if dmf and dmf.save_unsaved_settings_to_file then
+                pcall(dmf.save_unsaved_settings_to_file)
+            end
+        end
+    end
+end
+
 -- Optional stock third-person body in the hub (mod setting). Combat modes
 -- keep the first-person body regardless.
 function presentation.hub_third_person_active()
-    return mod:get("hub_third_person") == true and
-        active_game_mode_name() == "hub"
+    if mod:get("hub_third_person") ~= true then
+        return false
+    end
+    if active_game_mode_name() == "hub" then
+        return true
+    end
+    -- The MissionManager hook asks before the game mode exists; the mission
+    -- name already identifies the hub then.
+    local mission_manager = Managers and Managers.state and Managers.state.mission
+    return mission_manager ~= nil and mission_manager.mission_name ~= nil and
+        mission_manager:mission_name() == "hub_ship"
 end
 
 -- Bounded diagnostic at the actual two-eye submission boundaries. This
