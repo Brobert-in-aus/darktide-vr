@@ -57,26 +57,39 @@ here, in the handover and on the Nexus page draft.
   then a real scan), view height after a rescue, third-person
   spectating, prompts in votes and end-of-round tabs, hub return after
   a mission.
+- [x] Loading screens and cutscene boards at their true shape (12
+  September evening). The pointer's hit marker renders as a dark square:
+  shipped as a known limit, post-alpha fix in the todo.
 
 ## 2. Documents inside the package
 
 Open the extracted package, not the repository, so what you review is
 what ships.
 
-- [ ] `README.txt` (from `tools/release/package-README.txt`): install
-  steps match the batch file's menu wording, paths are the game-folder
-  layout, no dev-only launcher or flag-file instructions remain.
-- [ ] `USER-GUIDE.md`: requirements, install, first run, playing,
-  known limits, troubleshooting. Check every option name against the mod
-  options menu as displayed in-game.
-- [ ] `CHANGELOG.md`: the alpha.1 entry is complete and says "unreleased"
-  nowhere once the release date is set.
-- [ ] `LICENSE` (MIT) and `THIRD_PARTY_NOTICES.md` present; notices cover
-  the OpenXR loader, MinHook and DirectXShaderCompiler with their texts.
-- [ ] `darktidevr.mod` and the manifest name and version read
-  0.1.0-alpha.1.
-- [ ] No stray files: no test flags, logs, personal settings copies or
-  screenshots in the archive (compare against `runtime-package-files.psd1`).
+- [x] `README.txt` (from `tools/release/package-README.txt`): install
+  steps match the batch file's menu wording ("1  VR mode", "2  Flat
+  mode"), paths are the game-folder layout, no dev-only launcher or
+  flag-file instructions remain. Reviewed in the extracted 2993ea3
+  package, 12 September evening.
+- [x] `USER-GUIDE.md`: requirements, install, first run, playing,
+  known limits, troubleshooting. The option names it quotes
+  ("Aim-down-sights focus", "Third-person body in the hub", "In-engine
+  cinematics in stereo") and the switch's status words (patched,
+  installed, listed, present) match the localisation and the script.
+  Known limits now include the dark-square hit marker.
+- [ ] `CHANGELOG.md`: the alpha.1 entry is complete (reviewed; the
+  marker entry corrected, the stale 120 Hz line replaced). The heading
+  still says "(unreleased)": replace it with the release date on the
+  day you publish, rebuild, and update the archive identity here.
+- [x] `LICENSE` (MIT) and `THIRD_PARTY_NOTICES.md` present; notices cover
+  the OpenXR loader, MinHook, the Streamline ABI, the LuaJIT validator
+  and DirectXShaderCompiler, with the DXC licence texts shipped beside
+  the binaries.
+- [x] The manifest reads 0.1.0-alpha.1 with the built commit;
+  `darktidevr.mod` carries no version (DMF descriptors do not).
+- [x] No stray files: the archive holds the mod folder only (docs, bin
+  with the two feature flags the native module reads, Lua, the switch
+  and the patch tool); no logs, settings copies or screenshots.
 
 ## 3. Repository and source
 

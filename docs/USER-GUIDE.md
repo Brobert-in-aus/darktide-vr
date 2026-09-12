@@ -129,6 +129,8 @@ patch needs an update from us.
   and the slow backward walk are judged against the hand's aim.
 - Votes (kick a player, mission flow) cannot be answered in VR yet; their
   prompts read Unbound.
+- The menu pointer's hit marker shows as a plain dark square (and the
+  laser can look black) instead of the intended ring and cross.
 - Only one setup has been tested: an RTX 4090, a Quest 3 and Virtual
   Desktop.
 

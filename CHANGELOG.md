@@ -80,13 +80,16 @@ Desktop (VDXR), Darktide with the Darktide Mod Framework.
   "summoned to the strategium" notice) now get the pointer.
 - Loading screens and video cutscenes are shown at their true shape
   instead of squashed.
-- The menu laser reaches halfway to the panel. The hit is marked by one
-  target (cyan ring and cross) on every menu, popup and loading board;
-  the earlier green square, and the target the title and character
-  screens painted into their own image, are gone.
+- The menu laser reaches halfway to the panel and a small marker sits at
+  the hit on every menu, popup and loading board (the title and
+  character screens no longer paint their own). The marker is meant to
+  be a cyan ring and cross; in this build it shows as a plain dark
+  square, and the laser can look black. Fix planned for the next
+  release.
 
 Known limits of this alpha are listed in the user guide: right-hand
 dominant presentation, no independent weapon origins on mission servers,
 ledge discovery following hand aim, text entry needing a physical keyboard
-(the character-name Randomize button works with the pointer), and the
-performance guidance for 120 Hz.
+(the character-name Randomize button works with the pointer), movement
+speed following the aim direction, votes unanswerable in VR, and the
+game's own performance demands.

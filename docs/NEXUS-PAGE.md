@@ -43,6 +43,8 @@ like any other Darktide mod and is launched through Steam as usual.
 - Character select and title screens come from the desktop window.
 - Movement speed follows the aim direction, not where you look.
 - Votes (kick, mission flow) cannot be answered in VR yet.
+- The menu pointer's hit marker is a plain dark square for now, not the
+  intended ring and cross.
 - The game is graphically heavy; expect to lower settings and streaming
   resolution for an acceptable frame rate.
 - Tested on one machine (RTX 4090, Quest 3, Virtual Desktop). Other GPUs,
