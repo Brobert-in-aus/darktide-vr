@@ -22,9 +22,9 @@ like any other Darktide mod and is launched through Steam as usual.
   an RTX 4090 at DLSS Quality).
 - Controller gameplay in the hub, the Psykhanium, Solo missions and on
   ordinary mission servers: movement (head- or hand-relative), snap or
-  smooth turning, hand-aimed firing, button melee, throws, interactions,
-  communication wheel, push-to-talk, per-action bindings with hub
-  overrides.
+  smooth turning, hand-aimed firing with aim-down-sights focus, button
+  melee, throws, interactions, communication wheel, push-to-talk,
+  per-action bindings with hub overrides.
 - Menus on a flat panel with a controller pointer; a fixed, adjustable HUD
   panel; in-engine cutscenes in stereo with subtitles on the HUD.
 - A two-pose calibration that also sets your character's official height.
