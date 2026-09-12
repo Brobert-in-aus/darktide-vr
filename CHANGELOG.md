@@ -59,6 +59,8 @@ Desktop (VDXR), Darktide with the Darktide Mod Framework.
 - Tag with nothing under the reticle places a location marker, as the
   middle mouse button does. Prompts for a carried-item slot without its
   own control show the cycle control's badge instead of "Unbound".
+- The menu laser and cursor are a fixed dark green; they no longer take
+  their colour from the menu image and no longer vanish over popups.
 
 Known limits of this alpha are listed in the user guide: right-hand
 dominant presentation, no independent weapon origins on mission servers,

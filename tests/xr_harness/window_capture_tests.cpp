@@ -185,13 +185,14 @@ int wmain() {
                cyan_ring[1] == std::byte{220} &&
                cyan_ring[2] == std::byte{0},
            "Pointer overlay ring did not use its high-contrast colour");
+    // The laser's colour lives in the viewer's own static swapchain; the
+    // capture must not paint a swatch into the menu image any more.
     const auto laser_swatch = with_pointer.bgra_pixels +
                               (static_cast<std::size_t>(89) * 160 + 159) * 4;
-    expect(laser_swatch[0] == std::byte{255} &&
+    expect(!(laser_swatch[0] == std::byte{255} &&
                laser_swatch[1] == std::byte{255} &&
-               laser_swatch[2] == std::byte{0} &&
-               laser_swatch[3] == std::byte{255},
-           "Pointer overlay did not preserve its OpenXR overlay swatch");
+               laser_swatch[2] == std::byte{0}),
+           "Pointer overlay painted a laser swatch into the capture");
     capture.set_pointer_overlay(std::nullopt, 160, 90);
 
     const auto loading_capture = capture.capture();

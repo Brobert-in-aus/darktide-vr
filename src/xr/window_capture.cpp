@@ -338,11 +338,6 @@ CapturedWindowFrame WindowCapture::capture() {
       }
     }
   }
-  // Do not expose the menu laser's colour swatch in a loading capture.
-  if (pointer_normalized != UINT64_MAX) {
-    set_pixel(static_cast<int>(width_ - 1), static_cast<int>(height_ - 1),
-              std::byte{255}, std::byte{255}, std::byte{0}, std::byte{255});
-  }
   return {pixels_, width_, height_, width_ * 4};
 }
 

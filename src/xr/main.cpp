@@ -786,6 +786,35 @@ class OpenXrProbe {
                 "xrEnumerateSwapchainImages(flat capture list)");
     }
 
+    // The laser and cursor quads show one fixed colour. A quad layer can only
+    // sample a swapchain image, and the flat texture is rewritten on every
+    // menu update, so the pointer owns a static swapchain that is filled once
+    // and never written again: no capture or canvas pixel can tint or hide it.
+    XrSwapchain pointer_swapchain{XR_NULL_HANDLE};
+    std::vector<XrSwapchainImageD3D12KHR> pointer_images;
+    constexpr std::uint32_t pointer_swatch_extent = 16;
+    if (capture_title) {
+      auto pointer_swapchain_info = swapchain_info;
+      pointer_swapchain_info.createFlags |=
+          XR_SWAPCHAIN_CREATE_STATIC_IMAGE_BIT;
+      pointer_swapchain_info.width = pointer_swatch_extent;
+      pointer_swapchain_info.height = pointer_swatch_extent;
+      check_xr(xrCreateSwapchain(session_, &pointer_swapchain_info,
+                                 &pointer_swapchain),
+               "xrCreateSwapchain(pointer swatch)");
+      std::uint32_t pointer_image_count{};
+      check_xr(xrEnumerateSwapchainImages(pointer_swapchain, 0,
+                                          &pointer_image_count, nullptr),
+               "xrEnumerateSwapchainImages(pointer swatch count)");
+      pointer_images.assign(pointer_image_count,
+                            {XR_TYPE_SWAPCHAIN_IMAGE_D3D12_KHR});
+      check_xr(xrEnumerateSwapchainImages(
+                   pointer_swapchain, pointer_image_count, &pointer_image_count,
+                   reinterpret_cast<XrSwapchainImageBaseHeader*>(
+                       pointer_images.data())),
+               "xrEnumerateSwapchainImages(pointer swatch list)");
+    }
+
     // Preserve the last complete stereo pair independently of the producer's
     // single shared slot. Fullscreen menus can then be a live 2 m spatial quad
     // over a stable stereo world, and closing one never exposes the engine's
@@ -1089,6 +1118,9 @@ class OpenXrProbe {
       if (flat_swapchain != XR_NULL_HANDLE) {
         xrDestroySwapchain(flat_swapchain);
       }
+      if (pointer_swapchain != XR_NULL_HANDLE) {
+        xrDestroySwapchain(pointer_swapchain);
+      }
       throw std::runtime_error("CreateEventW(theatre) failed");
     }
     UINT64 fence_value{};
@@ -1265,6 +1297,8 @@ class OpenXrProbe {
         theatre_swapchain_count);
     std::uint32_t flat_image_index{};
     ID3D12Resource* flat_resource{};
+    bool pointer_swatch_uploaded{};
+    bool pointer_swatch_release_pending{};
     ComPtr<ID3D12Resource> menu_readback;
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT menu_readback_footprint{};
     std::uint64_t menu_readback_total_bytes{};
@@ -2622,6 +2656,62 @@ class OpenXrProbe {
               static_cast<UINT>(cached_eye_barriers.size()),
               cached_eye_barriers.data());
         }
+        if (pointer_swapchain != XR_NULL_HANDLE && !pointer_swatch_uploaded) {
+          // A static swapchain is acquired exactly once. Stage the dark green
+          // swatch in the upload buffer's corner (the next capture repaints
+          // that corner), copy it in, and release after this frame's command
+          // list has been executed.
+          std::uint32_t pointer_image_index{};
+          check_xr(xrAcquireSwapchainImage(pointer_swapchain, &acquire_info,
+                                           &pointer_image_index),
+                   "xrAcquireSwapchainImage(pointer swatch)");
+          check_xr(xrWaitSwapchainImage(pointer_swapchain, &image_wait),
+                   "xrWaitSwapchainImage(pointer swatch)");
+          for (std::uint32_t y = 0; y < pointer_swatch_extent; ++y) {
+            auto* row = upload_pixels + upload_footprint.Offset +
+                        static_cast<std::size_t>(
+                            flat_capture_height - pointer_swatch_extent + y) *
+                            upload_footprint.Footprint.RowPitch +
+                        static_cast<std::size_t>(
+                            flat_capture_width - pointer_swatch_extent) * 4;
+            for (std::uint32_t x = 0; x < pointer_swatch_extent; ++x) {
+              row[x * 4 + 0] = std::byte{0};    // blue
+              row[x * 4 + 1] = std::byte{100};  // green
+              row[x * 4 + 2] = std::byte{0};    // red
+              row[x * 4 + 3] = std::byte{255};
+            }
+          }
+          consumed_capture.reset();
+          auto* pointer_resource = pointer_images[pointer_image_index].texture;
+          D3D12_RESOURCE_BARRIER swatch_barrier{};
+          swatch_barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+          swatch_barrier.Transition.pResource = pointer_resource;
+          swatch_barrier.Transition.StateBefore =
+              D3D12_RESOURCE_STATE_RENDER_TARGET;
+          swatch_barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+          swatch_barrier.Transition.Subresource =
+              D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+          command_list->ResourceBarrier(1, &swatch_barrier);
+          D3D12_TEXTURE_COPY_LOCATION swatch_source{};
+          swatch_source.pResource = upload.Get();
+          swatch_source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+          swatch_source.PlacedFootprint = upload_footprint;
+          D3D12_TEXTURE_COPY_LOCATION swatch_destination{};
+          swatch_destination.pResource = pointer_resource;
+          swatch_destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+          swatch_destination.SubresourceIndex = 0;
+          const D3D12_BOX swatch_box{
+              flat_capture_width - pointer_swatch_extent,
+              flat_capture_height - pointer_swatch_extent, 0,
+              flat_capture_width, flat_capture_height, 1};
+          command_list->CopyTextureRegion(&swatch_destination, 0, 0, 0,
+                                          &swatch_source, &swatch_box);
+          std::swap(swatch_barrier.Transition.StateBefore,
+                    swatch_barrier.Transition.StateAfter);
+          command_list->ResourceBarrier(1, &swatch_barrier);
+          pointer_swatch_uploaded = true;
+          pointer_swatch_release_pending = true;
+        }
         const bool update_reticle_atlas = enable_gameplay_reticle && window_capture &&
             presentation_state.mode == darktidevr::core::SharedPresentationMode::stereo_world;
         if (use_flat_capture || update_reticle_atlas) {
@@ -3300,6 +3390,11 @@ class OpenXrProbe {
           check_xr(xrReleaseSwapchainImage(flat_swapchain, &release_info),
                    "xrReleaseSwapchainImage(flat capture)");
         }
+        if (pointer_swatch_release_pending) {
+          check_xr(xrReleaseSwapchainImage(pointer_swapchain, &release_info),
+                   "xrReleaseSwapchainImage(pointer swatch)");
+          pointer_swatch_release_pending = false;
+        }
         ++submitted_frames;
       } else {
         ++not_rendered_frames;
@@ -3925,7 +4020,8 @@ class OpenXrProbe {
           {XR_TYPE_COMPOSITION_LAYER_QUAD},
       }};
       if (menu_mode && submitted_flat_fallback_this_frame && controller_pointer_pose &&
-          controller_pointer_hit) {
+          controller_pointer_hit && pointer_swatch_uploaded &&
+          !pointer_swatch_release_pending) {
         const auto configure_pointer_quad =
             [&](XrCompositionLayerQuad& quad,
                 darktidevr::math::Pose pose, XrExtent2Df size) {
@@ -3933,11 +4029,11 @@ class OpenXrProbe {
                   XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
               quad.space = local_space_;
               quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-              quad.subImage.swapchain = flat_swapchain;
-              quad.subImage.imageRect.offset = {
-                  static_cast<std::int32_t>(flat_capture_width - 1),
-                  static_cast<std::int32_t>(flat_capture_height - 1)};
-              quad.subImage.imageRect.extent = {1, 1};
+              quad.subImage.swapchain = pointer_swapchain;
+              quad.subImage.imageRect.offset = {0, 0};
+              quad.subImage.imageRect.extent = {
+                  static_cast<std::int32_t>(pointer_swatch_extent),
+                  static_cast<std::int32_t>(pointer_swatch_extent)};
               quad.pose.orientation = {pose.orientation.x,
                                        pose.orientation.y,
                                        pose.orientation.z,
@@ -4095,7 +4191,8 @@ class OpenXrProbe {
               reinterpret_cast<const XrCompositionLayerBaseHeader*>(&quads[0]);
         }
         if (menu_mode && submitted_flat_fallback_this_frame && controller_pointer_pose &&
-            controller_pointer_hit) {
+            controller_pointer_hit && pointer_swatch_uploaded &&
+            !pointer_swatch_release_pending) {
           for (const auto& pointer_quad : pointer_quads) {
             layers[layer_count++] =
                 reinterpret_cast<const XrCompositionLayerBaseHeader*>(
@@ -4400,6 +4497,10 @@ class OpenXrProbe {
     if (flat_swapchain != XR_NULL_HANDLE) {
       check_xr(xrDestroySwapchain(flat_swapchain),
                "xrDestroySwapchain(flat capture)");
+    }
+    if (pointer_swapchain != XR_NULL_HANDLE) {
+      check_xr(xrDestroySwapchain(pointer_swapchain),
+               "xrDestroySwapchain(pointer swatch)");
     }
     if (require_rendering && submitted_frames == 0) {
       request_clean_exit();
