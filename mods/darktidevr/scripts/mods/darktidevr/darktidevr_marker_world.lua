@@ -73,6 +73,51 @@ local state = {scope = nil, eye = nil, guis = {}, errors = 0, api = nil,
     material_names = setmetatable({}, {__mode = "k"}), world_materials = {}}
 MarkerWorld.state = state
 
+-- Diagnostics. `dump` logs every routed draw for the next frames; `probe`
+-- draws, over each world-surface bitmap, a second quad with the HUD
+-- panel's material (a placeholder texture instead of its render target):
+-- if that quad shows in front of the scene while the bitmap does not, depth
+-- testing is decided by the material.
+local panel_material_name = "content/ui/materials/icons/items/containers/item_container_square"
+function MarkerWorld.set_dump(frames)
+    state.dump = tonumber(frames) or 1
+    return true
+end
+function MarkerWorld.set_probe(enabled)
+    state.probe = enabled == true
+    return true
+end
+local function dump(kind, detail, x, y, w, h, layer)
+    if not state.dump or state.dump <= 0 or not state.api.log then return end
+    state.api.log(string.format(
+        "DARKTIDEVR_MARKER_PLANE draw kind=%s detail=%s x=%.1f y=%.1f w=%.1f h=%.1f layer=%s",
+        kind, tostring(detail), x, y, w, h, tostring(layer)))
+end
+function MarkerWorld.end_dump_frame()
+    if state.dump and state.dump > 0 then state.dump = state.dump - 1 end
+end
+local function probe_material(gui)
+    local entry = state.world_materials[gui]
+    if not entry then
+        entry = {}
+        state.world_materials[gui] = entry
+    end
+    local instance = entry["<probe>"]
+    if not instance then
+        local api = state.api
+        instance = api.Gui.create_material(gui, panel_material_name)
+        if api.Material then
+            api.Material.set_scalar(instance, "use_placeholder_texture", 1)
+            api.Material.set_scalar(instance, "use_render_target", 0)
+            api.Material.set_scalar(instance, "rows", 1)
+            api.Material.set_scalar(instance, "columns", 1)
+            api.Material.set_scalar(instance, "grid_index", 0)
+        end
+        entry["<probe>"] = instance
+    end
+    return instance
+end
+
 -- Layer added to every world-surface draw. The HUD panel draws its quad at
 -- layer 1000 and shows in front of everything; marker passes sit at single
 -- digits. Whether the layer decides that is what the setting tests.
@@ -253,9 +298,18 @@ local function draw_bitmap(scope, self, material, position, size, uvs, color)
             args.uv11 = api.Vector2(uvs[2][1], uvs[2][2])
         end
         local instance = world_material(scope, self, material, gui)
+        local layer = (position[3] or 0) + start_layer(self) + state.layer_base
+        dump("bitmap", type(material) == "string" and material or
+            (state.material_names[material] or "handle"), position[1] - ox, position[2] - oy,
+            size[1], size[2], layer)
         return with_gui(scope, nil, function()
-            return api.Gui2.bitmap_3d(gui, instance, nil, tm,
-                (position[3] or 0) + start_layer(self) + state.layer_base, args)
+            local result = api.Gui2.bitmap_3d(gui, instance, nil, tm, layer, args)
+            if state.probe then
+                api.Gui2.bitmap_3d(gui, probe_material(gui), nil, tm, layer + 1,
+                    {position_offset = offset, size = extent, color = api.Color(255, 255, 255, 255),
+                     snap_pixel_positions = false})
+            end
+            return result
         end)
     end
     return with_gui(scope, gui, api.UIRenderer.script_draw_bitmap_3d, self, material, tm,
@@ -346,6 +400,8 @@ converters.script_draw_text = function(scope, func, self, text, font_size, font_
             return func(self, text, font_size, font_type, position, size, color, options,
                 retained_id)
         end
+        dump("text", text, position[1] + dx - ox, position[2] + dy - oy, size and size[1] or 0,
+            size and size[2] or 0, layer + start_layer(self) + state.layer_base)
         return with_gui(scope, nil, function()
             return api.Gui.slug_text_3d(gui, text, font_data.path, font_size * ps, tm,
                 api.Vector3(x, y, 0), layer + start_layer(self) + state.layer_base,
@@ -369,7 +425,11 @@ converters.draw_rect = function(scope, func, self, position, size, color, retain
     local intensity = settings and settings.color_intensity_multiplier or 1
     local tinted = color and api.Color(color[1] * alpha, color[2] * intensity,
         color[3] * intensity, color[4] * intensity) or api.Color(255, 255, 255, 255)
-    if scope.surface == "world" then layer = layer + state.layer_base end
+    if scope.surface == "world" then
+        layer = layer + state.layer_base
+        dump("rect", "", position[1] * scale - ox, position[2] * scale - oy,
+            size[1] * scale, size[2] * scale, layer)
+    end
     return with_gui(scope, gui, function()
         return api.Gui.rect_3d(gui or self.gui, tm,
             api.Vector2((position[1] * scale - ox) * ps, (position[2] * scale - oy) * ps),
@@ -405,7 +465,11 @@ converters.draw_slug_icon = function(scope, func, self, resource, index, positio
     if flags then
         params[#params + 1] = "material_flags"; params[#params + 1] = flags
     end
-    if scope.surface == "world" then layer = layer + state.layer_base end
+    if scope.surface == "world" then
+        layer = layer + state.layer_base
+        dump("icon", tostring(resource) .. "#" .. tostring(index), position[1] * scale - ox,
+            position[2] * scale - oy, size[1] * scale, size[2] * scale, layer)
+    end
     return with_gui(scope, gui, function()
         return api.Gui.slug_icon_3d(gui or self.gui, resource, index, tm,
             api.Vector3((position[1] * scale - ox) * ps, (position[2] * scale - oy) * ps, 0),

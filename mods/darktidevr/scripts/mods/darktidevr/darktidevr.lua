@@ -12917,6 +12917,7 @@ mod:hook(
                 presentation.marker_plane_report(routed, fallback)
             end
             presentation.marker_plane_widgets = plane_widgets
+            presentation.marker_world.end_dump_frame()
         end
 
         local result
@@ -14719,7 +14720,7 @@ mod:hook(require("scripts/managers/ui/ui_widget"), "draw", function(func, widget
     return presentation.marker_world.draw(scope, "left", func, widget, ui_renderer)
 end)
 mod:command("dtvr_marker_plane",
-    "World-surface markers: on, off, flip, surface <screen|world>, text <slug|rect|2d>, origin <top|bottom>, layer <n>, status",
+    "World-surface markers: on, off, flip, surface <screen|world>, text <slug|rect|2d>, origin <top|bottom>, layer <n>, dump, probe, status",
     function(action, mode)
     if action == "on" or action == "off" then
         mod:set("marker_plane", action == "on")
@@ -14737,6 +14738,13 @@ mod:command("dtvr_marker_plane",
     elseif action == "layer" then
         local ok, why = presentation.marker_world.set_layer_base(mode)
         if not ok then mod:echo("layer: " .. tostring(why)) end
+    elseif action == "dump" then
+        presentation.marker_world.set_dump(mode or 1)
+        mod:echo("marker plane: logging the routed draws of the next frame(s)")
+    elseif action == "probe" then
+        local on = not presentation.marker_world.state.probe
+        presentation.marker_world.set_probe(on)
+        mod:echo("marker plane probe (HUD panel material over each bitmap): " .. tostring(on))
     end
     local counts = presentation.marker_plane_counts or {routed = 0, fallback = 0}
     local reasons = {}
