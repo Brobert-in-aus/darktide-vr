@@ -4,6 +4,22 @@ All notable user-facing changes to Darktide VR. Versions follow
 `major.minor.patch` with a pre-release suffix while the mod is in alpha; the
 runtime package records the exact source revision alongside the version.
 
+## 0.1.0-alpha.2 (unreleased)
+
+- World markers, nameplates and interaction popups draw in world space in
+  stereo, in front of the scene, at their stock size and layout (option
+  "World-surface markers", on by default).
+- The Skitarii servo-skull companion is visible to its owner.
+- Cutscenes and videos skip by holding the right trigger.
+- The player no longer appears twice in cutscenes.
+- The menu button no longer acts as back (B does), so Virtual Desktop's
+  double tap works in menus.
+- Calibrated height is kept when a character is created or selected.
+- HUD panel on/off option in the VR settings.
+- The menu pointer shows its cyan ring-and-cross target at the laser's hit.
+- In the third-person hub, opening a menu while moving no longer moves the
+  camera.
+
 ## 0.1.0-alpha.1 (12 September 2026)
 
 First public early-alpha candidate. Windows x64, Quest 3 through Virtual
