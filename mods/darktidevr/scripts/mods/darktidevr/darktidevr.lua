@@ -1627,9 +1627,13 @@ function presentation.reconcile_fullscreen_views(manager)
     -- Confirmation popups (the training grounds "continue?" question, party
     -- and matchmaking prompts) are constant elements, not views. In the
     -- stereo world they were drawn only on the desktop canvas, which stalled
-    -- the training at its end. Present them on the interactive flat panel.
+    -- the training at its end. Present them on the interactive flat panel,
+    -- and let them outrank a loading board or a cutscene view too: the hub's
+    -- "summoned to the strategium" notice arrives while the Path of Trust
+    -- cutscene view is already open and waits for its Obey button, so a
+    -- non-interactive panel left it unanswerable.
     local active_popups = manager and manager._active_popups
-    if not desired_mode and active_popups and active_popups[1] then
+    if active_popups and active_popups[1] and desired_mode ~= 5 and desired_mode ~= 6 then
         desired_mode = 5
         classified[#classified + 1] = "popup:" .. tostring(active_popups[1].id or "active")
     end

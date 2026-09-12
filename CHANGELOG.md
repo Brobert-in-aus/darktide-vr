@@ -76,6 +76,8 @@ Desktop (VDXR), Darktide with the Darktide Mod Framework.
   VR yet.
 - Spectating a teammate after death uses the third-person camera
   (option, on by default).
+- Game popups that arrive over a loading screen or a cutscene (the hub's
+  "summoned to the strategium" notice) now get the pointer.
 
 Known limits of this alpha are listed in the user guide: right-hand
 dominant presentation, no independent weapon origins on mission servers,
