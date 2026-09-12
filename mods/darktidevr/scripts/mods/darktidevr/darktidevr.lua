@@ -14580,7 +14580,8 @@ do
     local bor = rawget(_G, "bit_or") or (rawget(_G, "bit") and bit.bor)
     presentation.marker_world.configure({
         UIRenderer = UIRenderer, Vector2 = Vector2, Vector3 = Vector3,
-        Color = Color, Gui = Gui, World = World, Matrix4x4 = Matrix4x4,
+        Color = Color, Gui = Gui, Gui2 = Gui2, World = World, Matrix4x4 = Matrix4x4,
+        UIFonts = require("scripts/managers/ui/ui_fonts"),
         log = function(line) mod:info(line) end,
         material_flags = function(renderer, flags)
             local settings = renderer.render_settings

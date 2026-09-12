@@ -6,14 +6,15 @@
 -- slug_text_3d, slug_icon_3d, rect_3d) with a transform.
 --
 -- Two surfaces:
---  "screen" (default): the transform is each eye's own projection of the
---    plane into the overlay GUI (position, scale and skew at the anchor), so
---    the first-eye draw and the right-eye replay each show the surface as
---    that eye sees it. Correct stereo depth, and the overlay draws over the
---    world as the stock markers do.
---  "world": the transform places the surface in the level world on a world
---    GUI; the engine renders it for both eyes, but its text depth-tests
---    against geometry, which is why it is not the default.
+--  "world" (default): the transform places the surface in the level world
+--    on a world GUI and the engine renders it for both eyes (worn: correct
+--    stereo). The draws are issued the way the HUD panel issues its own
+--    world quad, with no render pass and no material flags: with the HUD
+--    renderer's pass and flags attached they depth-tested against the
+--    scene; the HUD panel, drawn bare, shows in front of everything.
+--  "screen": the transform is each eye's own projection of the plane into
+--    the overlay GUI, drawn by the first-eye draw and the right-eye replay.
+--    Kept for comparison; its per-eye scale did not match the render.
 --
 -- This module owns no engine hooks. The marker metrics module owns the single
 -- hook on each 2D renderer entry point and calls `route`; the marker GUI
@@ -68,7 +69,7 @@ function MarkerWorld.admits(widget)
 end
 
 local state = {scope = nil, eye = nil, guis = {}, errors = 0, api = nil,
-    surface = "screen", text_mode = "slug", text_origin = "top"}
+    surface = "world", text_mode = "slug", text_origin = "top"}
 MarkerWorld.state = state
 
 local surfaces = {screen = true, world = true}
@@ -94,8 +95,9 @@ function MarkerWorld.set_text_origin(mode)
     return false, "top or bottom"
 end
 
--- `api` supplies UIRenderer, Vector2, Vector3, Color, Gui, World, Matrix4x4,
--- material_flags(renderer, flags) and log(line) so the module stays testable.
+-- `api` supplies UIRenderer, UIFonts, Vector2, Vector3, Color, Gui, Gui2,
+-- World, Matrix4x4, material_flags(renderer, flags) and log(line) so the
+-- module stays testable.
 function MarkerWorld.configure(api)
     state.api = api
 end
@@ -167,28 +169,62 @@ end
 
 local converters = {}
 
+-- Stock colour handling: alpha multiplied by the render settings' alpha, the
+-- channels by their intensity; nil stays nil (engine default).
+local function tint(self, color)
+    if not color then return nil end
+    local settings = self.render_settings
+    local alpha = settings and settings.alpha_multiplier or 1
+    local intensity = settings and settings.color_intensity_multiplier or 1
+    return state.api.Color(color[1] * alpha, color[2] * intensity, color[3] * intensity,
+        color[4] * intensity)
+end
+
+local function start_layer(self)
+    local settings = self.render_settings
+    return settings and settings.start_layer or 0
+end
+
+-- The world surface draws bare, as the HUD panel does (Gui2.bitmap_3d with
+-- no material flags and no render pass); the screen surface goes through
+-- the renderer's 3D function, which adds the overlay's pass and flags.
+local function draw_bitmap(scope, self, material, position, size, uvs, color)
+    local tm, ox, oy, ps, gui = frame(scope)
+    local api = state.api
+    local offset = api.Vector3((position[1] - ox) * ps, (position[2] - oy) * ps, 0)
+    local extent = api.Vector3(size[1] * ps, size[2] * ps, 0)
+    if scope.surface == "world" then
+        local args = {position_offset = offset, size = extent, color = tint(self, color),
+            snap_pixel_positions = false}
+        if uvs then
+            args.uv00 = api.Vector2(uvs[1][1], uvs[1][2])
+            args.uv11 = api.Vector2(uvs[2][1], uvs[2][2])
+        end
+        return with_gui(scope, nil, function()
+            return api.Gui2.bitmap_3d(gui, material, nil, tm,
+                (position[3] or 0) + start_layer(self), args)
+        end)
+    end
+    return with_gui(scope, gui, api.UIRenderer.script_draw_bitmap_3d, self, material, tm,
+        offset, position[3] or 0, extent, color, uvs, nil)
+end
+
 converters.script_draw_bitmap = function(scope, func, self, material, position, size,
         color, retained_id)
-    local tm, ox, oy, ps, gui = frame(scope)
+    local tm = frame(scope)
     if retained_id or not tm then
         return func(self, material, position, size, color, retained_id)
     end
-    local api = state.api
-    return with_gui(scope, gui, api.UIRenderer.script_draw_bitmap_3d, self, material, tm,
-        api.Vector3((position[1] - ox) * ps, (position[2] - oy) * ps, 0), position[3] or 0,
-        api.Vector3(size[1] * ps, size[2] * ps, 0), color, nil, nil)
+    return draw_bitmap(scope, self, material, position, size, nil, color)
 end
 
 converters.script_draw_bitmap_uv = function(scope, func, self, material, position, size,
         uvs, color, retained_id)
-    local tm, ox, oy, ps, gui = frame(scope)
+    local tm = frame(scope)
     if retained_id or not tm then
         return func(self, material, position, size, uvs, color, retained_id)
     end
-    local api = state.api
-    return with_gui(scope, gui, api.UIRenderer.script_draw_bitmap_3d, self, material, tm,
-        api.Vector3((position[1] - ox) * ps, (position[2] - oy) * ps, 0), position[3] or 0,
-        api.Vector3(size[1] * ps, size[2] * ps, 0), color, uvs, nil)
+    return draw_bitmap(scope, self, material, position, size, uvs, color)
 end
 
 converters.script_draw_text = function(scope, func, self, text, font_size, font_type,
@@ -250,6 +286,19 @@ converters.script_draw_text = function(scope, func, self, text, font_size, font_
             state.surface, mode, state.text_origin, tostring(font_type), tostring(font_size),
             tostring(layer), tostring(size ~= nil), dx, dy, height))
     end
+    if scope.surface == "world" then
+        -- Bare slug text: the font's own render flags only.
+        local font_data = api.UIFonts and api.UIFonts.data_by_type(font_type)
+        if not font_data then
+            return func(self, text, font_size, font_type, position, size, color, options,
+                retained_id)
+        end
+        return with_gui(scope, nil, function()
+            return api.Gui.slug_text_3d(gui, text, font_data.path, font_size * ps, tm,
+                api.Vector3(x, y, 0), layer + start_layer(self), tint(self, color),
+                "flags", font_data.render_flags or 0)
+        end)
+    end
     return with_gui(scope, gui, api.UIRenderer.script_draw_text_3d, self, text,
         font_size * ps, font_type, tm, api.Vector3(x, y, 0), layer, nil, color, nil, nil)
 end
@@ -295,7 +344,10 @@ converters.draw_slug_icon = function(scope, func, self, resource, index, positio
     if optional_material then
         params[#params + 1] = "material"; params[#params + 1] = optional_material
     end
-    local flags = api.material_flags and api.material_flags(self, material_flags)
+    -- The world surface carries no material flags (they bound the draw to the
+    -- HUD's depth-tested pass); the screen surface keeps the stock ones.
+    local flags = scope.surface ~= "world" and api.material_flags and
+        api.material_flags(self, material_flags)
     if flags then
         params[#params + 1] = "material_flags"; params[#params + 1] = flags
     end

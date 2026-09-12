@@ -52,15 +52,18 @@ local api = {
     UIRenderer = UIRenderer, Vector3 = V3, Vector2 = V2,
     Color = function(a, r, g, b) return {a, r, g, b} end,
     Gui = {rect_3d = record("rect3d"), slug_icon_3d = record("icon3d"),
+        slug_text_3d = record("slug3d"),
         HorizontalAlignCenter = 11, HorizontalAlignRight = 12,
         VerticalAlignCenter = 21, VerticalAlignTop = 22},
+    Gui2 = {bitmap_3d = record("gui2_bitmap3d")},
+    UIFonts = {data_by_type = function(kind) return {path = "font/" .. kind, render_flags = 16} end},
     World = {create_world_gui = function(world) return {world = world} end,
         destroy_gui = function(world, gui) gui.destroyed = true end},
     Matrix4x4 = {identity = function() return "identity" end},
     material_flags = function() return 7 end,
 }
 MarkerWorld.configure(api)
-assert(MarkerWorld.state.surface == "screen" and MarkerWorld.state.text_origin == "top")
+assert(MarkerWorld.state.surface == "world" and MarkerWorld.state.text_origin == "top")
 local function call(name, renderer, ...)
     return MarkerWorld.route(name, UIRenderer[name], renderer, ...)
 end
@@ -156,19 +159,40 @@ local world_scope = {renderer = renderer, surface = "world", gui = gui, tm = "tm
     origin_x = 1000, origin_y = 500, pixel_size = 0.002}
 local seen_gui_during_draw
 MarkerWorld.draw(world_scope, "left", function()
-    call("script_draw_bitmap", renderer, "m", V3(1100, 450, 3), V3(50, 25, 0), nil, nil)
+    -- Bare Gui2 bitmap: no material flags, no render pass, layer with the
+    -- start layer, colour tinted, metres.
+    call("script_draw_bitmap", renderer, "m", V3(1100, 450, 3), V3(50, 25, 0), {200, 255, 255, 255}, nil)
     local c = calls[#calls]
-    assert(c.name == "bitmap3d" and c[3] == "tm" and near(c[4][1], 0.2) and near(c[4][2], -0.1) and
-        near(c[6][1], 0.1), "world surface in metres")
+    assert(c.name == "gui2_bitmap3d" and c[1] == gui and c[2] == "m" and c[3] == nil and c[4] == "tm" and
+        c[5] == 103, "world surface: bare bitmap call on the world GUI")
+    local args = c[6]
+    assert(near(args.position_offset[1], 0.2) and near(args.position_offset[2], -0.1) and
+        near(args.size[1], 0.1) and args.color[1] == 100 and args.snap_pixel_positions == false and
+        args.uv00 == nil, "world surface in metres, tinted, unsnapped")
+    call("script_draw_bitmap_uv", renderer, "m", V3(1000, 500, 1), V3(2, 2, 0), {{0, 0}, {1, 1}}, nil, nil)
+    c = calls[#calls]
+    assert(c.name == "gui2_bitmap3d" and c[6].uv00[1] == 0 and c[6].uv11[1] == 1 and c[6].color == nil)
+    call("script_draw_text", renderer, "hi", 30, "body", V3(1000, 500, 2), V2(200, 40), {255, 9, 9, 9},
+        {horizontal_alignment = api.Gui.HorizontalAlignCenter}, nil)
+    c = calls[#calls]
+    assert(c.name == "slug3d" and c[1] == gui and c[2] == "hi" and c[3] == "font/body" and
+        near(c[4], 0.06) and c[5] == "tm" and near(c[6][1], 0.16) and near(c[6][2], 0.04) and
+        c[7] == 102 and c[8][1] == 127.5 and c[9] == "flags" and c[10] == 16,
+        "world surface: bare slug text with the font's own flags")
     call("draw_rect", renderer, V3(520, 240, 5), V3(10, 20, 0), {200, 255, 255, 255}, nil)
     c = calls[#calls]
     assert(c.name == "rect3d" and c[1] == gui and near(c[3][1], 0.08) and near(c[5][1], 0.04))
+    call("draw_slug_icon", renderer, "res", 1, V3(500, 250, 0), V3(10, 10, 0), {255, 255, 255, 255},
+        "mat", 3, nil)
+    c = calls[#calls]
+    assert(c.name == "icon3d" and c[1] == gui and c[9] == "material" and c[10] == "mat" and c[11] == nil,
+        "world surface: icon keeps its material but carries no material flags")
     seen_gui_during_draw = renderer.gui
 end)
 assert(seen_gui_during_draw == stock_gui, "the renderer's own GUI is restored between routed calls")
 
 -- A failing draw restores everything and propagates the error.
-UIRenderer.script_draw_bitmap_3d = function() error("boom", 0) end
+api.Gui2.bitmap_3d = function() error("boom", 0) end
 local failed, err = pcall(MarkerWorld.draw, world_scope, "left", function()
     call("script_draw_bitmap", renderer, "m", V3(0, 0, 0), V3(1, 1, 0), nil, nil)
 end)
