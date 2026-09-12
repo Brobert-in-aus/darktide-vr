@@ -69,8 +69,53 @@ function MarkerWorld.admits(widget)
 end
 
 local state = {scope = nil, eye = nil, guis = {}, errors = 0, api = nil,
-    surface = "world", text_mode = "slug", text_origin = "top"}
+    surface = "world", text_mode = "slug", text_origin = "top", layer_base = 1000,
+    material_names = setmetatable({}, {__mode = "k"}), world_materials = {}}
 MarkerWorld.state = state
+
+-- Layer added to every world-surface draw. The HUD panel draws its quad at
+-- layer 1000 and shows in front of everything; marker passes sit at single
+-- digits. Whether the layer decides that is what the setting tests.
+function MarkerWorld.set_layer_base(value)
+    value = tonumber(value)
+    if not value then return false, "a number" end
+    state.layer_base = value
+    return true
+end
+
+-- Per-pass materials. Passes with material values or scale_to_material draw
+-- through a material instance the renderer created for its own 2D GUI, with
+-- "ui_scale" set to pixels per logical unit; the material sizes its frame
+-- from that. On the world surface the same name gets its own instance on
+-- the world GUI, with ui_scale in metres per logical unit, so a 9-slice
+-- frame keeps its proportions. The owner of the renderer's create_material
+-- hook reports each handle's name here.
+function MarkerWorld.note_material(handle, name)
+    if handle ~= nil and type(name) == "string" then
+        state.material_names[handle] = name
+    end
+end
+
+local function world_material(scope, self, material, gui)
+    if type(material) == "string" then return material end
+    local name = state.material_names[material]
+    if not name then return material end
+    local api = state.api
+    local entry = state.world_materials[gui]
+    if not entry then
+        entry = {}
+        state.world_materials[gui] = entry
+    end
+    local instance = entry[name]
+    if not instance then
+        instance = api.Gui.create_material(gui, name)
+        entry[name] = instance
+    end
+    if api.Material then
+        api.Material.set_scalar(instance, "ui_scale", (self.scale or 1) * scope.pixel_size)
+    end
+    return instance
+end
 
 local surfaces = {screen = true, world = true}
 function MarkerWorld.set_surface(mode)
@@ -118,6 +163,13 @@ function MarkerWorld.destroy(renderer)
     local entry = state.guis[renderer]
     if entry then
         state.guis[renderer] = nil
+        local materials = state.world_materials[entry.gui]
+        state.world_materials[entry.gui] = nil
+        if materials and state.api.Gui.destroy_material then
+            for _, instance in pairs(materials) do
+                pcall(state.api.Gui.destroy_material, entry.gui, instance)
+            end
+        end
         state.api.World.destroy_gui(entry.world, entry.gui)
     end
 end
@@ -200,9 +252,10 @@ local function draw_bitmap(scope, self, material, position, size, uvs, color)
             args.uv00 = api.Vector2(uvs[1][1], uvs[1][2])
             args.uv11 = api.Vector2(uvs[2][1], uvs[2][2])
         end
+        local instance = world_material(scope, self, material, gui)
         return with_gui(scope, nil, function()
-            return api.Gui2.bitmap_3d(gui, material, nil, tm,
-                (position[3] or 0) + start_layer(self), args)
+            return api.Gui2.bitmap_3d(gui, instance, nil, tm,
+                (position[3] or 0) + start_layer(self) + state.layer_base, args)
         end)
     end
     return with_gui(scope, gui, api.UIRenderer.script_draw_bitmap_3d, self, material, tm,
@@ -295,8 +348,8 @@ converters.script_draw_text = function(scope, func, self, text, font_size, font_
         end
         return with_gui(scope, nil, function()
             return api.Gui.slug_text_3d(gui, text, font_data.path, font_size * ps, tm,
-                api.Vector3(x, y, 0), layer + start_layer(self), tint(self, color),
-                "flags", font_data.render_flags or 0)
+                api.Vector3(x, y, 0), layer + start_layer(self) + state.layer_base,
+                tint(self, color), "flags", font_data.render_flags or 0)
         end)
     end
     return with_gui(scope, gui, api.UIRenderer.script_draw_text_3d, self, text,
@@ -316,6 +369,7 @@ converters.draw_rect = function(scope, func, self, position, size, color, retain
     local intensity = settings and settings.color_intensity_multiplier or 1
     local tinted = color and api.Color(color[1] * alpha, color[2] * intensity,
         color[3] * intensity, color[4] * intensity) or api.Color(255, 255, 255, 255)
+    if scope.surface == "world" then layer = layer + state.layer_base end
     return with_gui(scope, gui, function()
         return api.Gui.rect_3d(gui or self.gui, tm,
             api.Vector2((position[1] * scale - ox) * ps, (position[2] * scale - oy) * ps),
@@ -351,6 +405,7 @@ converters.draw_slug_icon = function(scope, func, self, resource, index, positio
     if flags then
         params[#params + 1] = "material_flags"; params[#params + 1] = flags
     end
+    if scope.surface == "world" then layer = layer + state.layer_base end
     return with_gui(scope, gui, function()
         return api.Gui.slug_icon_3d(gui or self.gui, resource, index, tm,
             api.Vector3((position[1] * scale - ox) * ps, (position[2] * scale - oy) * ps, 0),

@@ -14581,6 +14581,7 @@ do
     presentation.marker_world.configure({
         UIRenderer = UIRenderer, Vector2 = Vector2, Vector3 = Vector3,
         Color = Color, Gui = Gui, Gui2 = Gui2, World = World, Matrix4x4 = Matrix4x4,
+        Material = Material,
         UIFonts = require("scripts/managers/ui/ui_fonts"),
         log = function(line) mod:info(line) end,
         material_flags = function(renderer, flags)
@@ -14596,6 +14597,13 @@ do
         end,
     })
 end
+-- Per-pass material handles are tied to the renderer's 2D GUI; the world
+-- surface needs their names to make its own instances.
+mod:hook(UIRenderer, "create_material", function(func, self, material_name, retained_mode)
+    local handle = func(self, material_name, retained_mode)
+    presentation.marker_world.note_material(handle, material_name)
+    return handle
+end)
 presentation.marker_gui = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_marker_gui"
 )
@@ -14711,7 +14719,7 @@ mod:hook(require("scripts/managers/ui/ui_widget"), "draw", function(func, widget
     return presentation.marker_world.draw(scope, "left", func, widget, ui_renderer)
 end)
 mod:command("dtvr_marker_plane",
-    "World-surface markers: on, off, flip, surface <screen|world>, text <slug|rect|2d>, origin <top|bottom>, status",
+    "World-surface markers: on, off, flip, surface <screen|world>, text <slug|rect|2d>, origin <top|bottom>, layer <n>, status",
     function(action, mode)
     if action == "on" or action == "off" then
         mod:set("marker_plane", action == "on")
@@ -14726,6 +14734,9 @@ mod:command("dtvr_marker_plane",
     elseif action == "origin" then
         local ok, why = presentation.marker_world.set_text_origin(mode)
         if not ok then mod:echo("origin: " .. tostring(why)) end
+    elseif action == "layer" then
+        local ok, why = presentation.marker_world.set_layer_base(mode)
+        if not ok then mod:echo("layer: " .. tostring(why)) end
     end
     local counts = presentation.marker_plane_counts or {routed = 0, fallback = 0}
     local reasons = {}
@@ -14734,11 +14745,12 @@ mod:command("dtvr_marker_plane",
     end
     table.sort(reasons)
     local line = string.format(
-        "DARKTIDEVR_MARKER_PLANE enabled=%s surface=%s flip=%s text=%s origin=%s routed=%d fallback=%d reasons=%s errors=%d",
+        "DARKTIDEVR_MARKER_PLANE enabled=%s surface=%s flip=%s text=%s origin=%s layer=%s routed=%d fallback=%d reasons=%s errors=%d",
         tostring(presentation.marker_plane_enabled()),
         tostring(presentation.marker_world.state.surface), tostring(presentation.marker_plane_flip),
         tostring(presentation.marker_world.state.text_mode),
         tostring(presentation.marker_world.state.text_origin),
+        tostring(presentation.marker_world.state.layer_base),
         counts.routed, counts.fallback, table.concat(reasons, ","),
         presentation.marker_world.state.errors)
     mod:echo(line)

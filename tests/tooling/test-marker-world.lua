@@ -53,9 +53,12 @@ local api = {
     Color = function(a, r, g, b) return {a, r, g, b} end,
     Gui = {rect_3d = record("rect3d"), slug_icon_3d = record("icon3d"),
         slug_text_3d = record("slug3d"),
+        create_material = function(gui, name) return {instance_of = name, gui = gui} end,
+        destroy_material = record("destroy_material"),
         HorizontalAlignCenter = 11, HorizontalAlignRight = 12,
         VerticalAlignCenter = 21, VerticalAlignTop = 22},
     Gui2 = {bitmap_3d = record("gui2_bitmap3d")},
+    Material = {set_scalar = record("set_scalar")},
     UIFonts = {data_by_type = function(kind) return {path = "font/" .. kind, render_flags = 16} end},
     World = {create_world_gui = function(world) return {world = world} end,
         destroy_gui = function(world, gui) gui.destroyed = true end},
@@ -164,7 +167,7 @@ MarkerWorld.draw(world_scope, "left", function()
     call("script_draw_bitmap", renderer, "m", V3(1100, 450, 3), V3(50, 25, 0), {200, 255, 255, 255}, nil)
     local c = calls[#calls]
     assert(c.name == "gui2_bitmap3d" and c[1] == gui and c[2] == "m" and c[3] == nil and c[4] == "tm" and
-        c[5] == 103, "world surface: bare bitmap call on the world GUI")
+        c[5] == 1103, "world surface: bare bitmap call on the world GUI, layer with the base")
     local args = c[6]
     assert(near(args.position_offset[1], 0.2) and near(args.position_offset[2], -0.1) and
         near(args.size[1], 0.1) and args.color[1] == 100 and args.snap_pixel_positions == false and
@@ -172,21 +175,40 @@ MarkerWorld.draw(world_scope, "left", function()
     call("script_draw_bitmap_uv", renderer, "m", V3(1000, 500, 1), V3(2, 2, 0), {{0, 0}, {1, 1}}, nil, nil)
     c = calls[#calls]
     assert(c.name == "gui2_bitmap3d" and c[6].uv00[1] == 0 and c[6].uv11[1] == 1 and c[6].color == nil)
+    -- A per-pass material handle (scale_to_material) becomes the world GUI's
+    -- own instance of the same name, with ui_scale in metres per logical unit.
+    local handle = {}
+    MarkerWorld.note_material(handle, "content/ui/materials/frame")
+    call("script_draw_bitmap", renderer, handle, V3(1000, 500, 1), V3(2, 2, 0), nil, nil)
+    c = calls[#calls]
+    assert(c.name == "gui2_bitmap3d" and c[2].instance_of == "content/ui/materials/frame" and c[2].gui == gui,
+        "world surface: own material instance for a handle")
+    local scalar = calls[#calls - 1]
+    assert(scalar.name == "set_scalar" and scalar[1] == c[2] and scalar[2] == "ui_scale" and
+        near(scalar[3], 2 * 0.002), "ui_scale is renderer scale times pixel size")
+    call("script_draw_bitmap", renderer, handle, V3(1000, 500, 1), V3(2, 2, 0), nil, nil)
+    assert(calls[#calls][2] == c[2], "instance reused")
+    local unknown = {}
+    call("script_draw_bitmap", renderer, unknown, V3(1000, 500, 1), V3(2, 2, 0), nil, nil)
+    assert(calls[#calls][2] == unknown, "an unknown handle passes through")
     call("script_draw_text", renderer, "hi", 30, "body", V3(1000, 500, 2), V2(200, 40), {255, 9, 9, 9},
         {horizontal_alignment = api.Gui.HorizontalAlignCenter}, nil)
     c = calls[#calls]
     assert(c.name == "slug3d" and c[1] == gui and c[2] == "hi" and c[3] == "font/body" and
         near(c[4], 0.06) and c[5] == "tm" and near(c[6][1], 0.16) and near(c[6][2], 0.04) and
-        c[7] == 102 and c[8][1] == 127.5 and c[9] == "flags" and c[10] == 16,
+        c[7] == 1102 and c[8][1] == 127.5 and c[9] == "flags" and c[10] == 16,
         "world surface: bare slug text with the font's own flags")
     call("draw_rect", renderer, V3(520, 240, 5), V3(10, 20, 0), {200, 255, 255, 255}, nil)
     c = calls[#calls]
-    assert(c.name == "rect3d" and c[1] == gui and near(c[3][1], 0.08) and near(c[5][1], 0.04))
+    assert(c.name == "rect3d" and c[1] == gui and near(c[3][1], 0.08) and near(c[5][1], 0.04) and c[4] == 1105)
     call("draw_slug_icon", renderer, "res", 1, V3(500, 250, 0), V3(10, 10, 0), {255, 255, 255, 255},
         "mat", 3, nil)
     c = calls[#calls]
-    assert(c.name == "icon3d" and c[1] == gui and c[9] == "material" and c[10] == "mat" and c[11] == nil,
-        "world surface: icon keeps its material but carries no material flags")
+    assert(c.name == "icon3d" and c[1] == gui and c[6] == 1101 and c[9] == "material" and c[10] == "mat" and
+        c[11] == nil, "world surface: icon keeps its material but carries no material flags")
+    assert(MarkerWorld.set_layer_base(0) and MarkerWorld.state.layer_base == 0 and
+        not MarkerWorld.set_layer_base("x"))
+    MarkerWorld.set_layer_base(1000)
     seen_gui_during_draw = renderer.gui
 end)
 assert(seen_gui_during_draw == stock_gui, "the renderer's own GUI is restored between routed calls")
@@ -200,9 +222,10 @@ assert(not failed and err == "boom")
 assert(renderer.gui == stock_gui and renderer.render_settings.snap_pixel_positions == true)
 assert(MarkerWorld.state.scope == nil and MarkerWorld.state.errors == 1)
 
--- Destruction releases the renderer's world GUI once.
+-- Destruction releases the renderer's world GUI and its material instances once.
 MarkerWorld.destroy(renderer)
 assert(gui.destroyed and MarkerWorld.state.guis[renderer] == nil)
+assert(calls[#calls].name == "destroy_material" and MarkerWorld.state.world_materials[gui] == nil)
 MarkerWorld.destroy(renderer)
 MarkerWorld.gui_for(other)
 MarkerWorld.destroy_all()
