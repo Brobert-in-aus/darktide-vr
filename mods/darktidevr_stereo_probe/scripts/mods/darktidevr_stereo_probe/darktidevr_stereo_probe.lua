@@ -5370,16 +5370,30 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
             mod:info("DARKTIDEVR_AIM hub_third_person orbit=stock+stick yaw=%.4f pitch=%.4f",
                 game_yaw, game_pitch)
         end
-        gameplay_yaw = (game_yaw +
-            (controller_observation.hub_third_person_yaw_delta or 0)) % (math.pi * 2)
-        -- Stock keeps pitch wrapped into [0, 2pi); add the delta in that
-        -- range and leave the limits to the stock orientation update.
-        hub_third_person_pitch = (game_pitch +
-            (controller_observation.hub_third_person_pitch_delta or 0)) % (math.pi * 2)
+        -- A menu (mode 5/6) may point the stock orientation at its own
+        -- camera; hold the orbit from before it opened until the modal
+        -- restore below has put it back, or the camera returns elsewhere.
+        local menu_open = presentation.mode == 5 or presentation.mode == 6 or
+            controller_observation.gameplay_orientation_suspended
+        if menu_open and controller_observation.hub_third_person_held_yaw then
+            gameplay_yaw = controller_observation.hub_third_person_held_yaw
+            hub_third_person_pitch = controller_observation.hub_third_person_held_pitch
+        else
+            gameplay_yaw = (game_yaw +
+                (controller_observation.hub_third_person_yaw_delta or 0)) % (math.pi * 2)
+            -- Stock keeps pitch wrapped into [0, 2pi); add the delta in that
+            -- range and leave the limits to the stock orientation update.
+            hub_third_person_pitch = (game_pitch +
+                (controller_observation.hub_third_person_pitch_delta or 0)) % (math.pi * 2)
+            controller_observation.hub_third_person_held_yaw = gameplay_yaw
+            controller_observation.hub_third_person_held_pitch = hub_third_person_pitch
+        end
         controller_observation.hub_third_person_yaw_delta = 0
         controller_observation.hub_third_person_pitch_delta = 0
     else
         controller_observation.hub_third_person_orbit = nil
+        controller_observation.hub_third_person_held_yaw = nil
+        controller_observation.hub_third_person_held_pitch = nil
     end
     controller_observation.gameplay_yaw = gameplay_yaw
 
@@ -5411,8 +5425,10 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
     end
     if controller_observation.gameplay_orientation_suspended then
         self._orientation.yaw = gameplay_yaw
-        self._orientation.pitch = controller_observation.gameplay_pitch or
-            game_pitch
+        -- The third-person orbit restores the pitch held from before the
+        -- menu; first person keeps the pitch stored at suspension.
+        self._orientation.pitch = hub_third_person_pitch or
+            controller_observation.gameplay_pitch or game_pitch
         self._orientation.roll = controller_observation.gameplay_roll or
             game_roll
         controller_observation.gameplay_orientation_suspended = false
