@@ -82,7 +82,25 @@ function Wheel.install(mod,config)
 
     mod:hook('HudElementSmartTagging','_handle_com_wheel',function(func,self,t,renderer,settings,input)
         local owned=scope_for(self)
-        if not owned then return func(self,t,renderer,settings,input) end
+        if not owned then
+            -- A controller tag press is also a one-frame com_wheel press, as
+            -- the middle mouse button is in stock play: released next frame
+            -- with nothing tagged, the stock stop callback leaves the
+            -- single-tap location marker. An enemy tag made in the same
+            -- frame still wins there (simultaneous_press and enemy_tagged).
+            if config.tag_tap and usable(input) and config.tag_tap(self,t)==true then
+                local source=input
+                input=setmetatable({get=function(_,name,...)
+                    if name=='com_wheel' then return true end
+                    return source:get(name,...)
+                end},{__index=function(_,name)
+                    local value=source[name]
+                    if type(value)=='function' then return function(_,...)return value(source,...)end end
+                    return value
+                end})
+            end
+            return func(self,t,renderer,settings,input)
+        end
         -- Never let an unscoped reentrant call operate the owned stock context.
         if not inside(owned) then return end
         if not current(self) or not usable(input) then cancel();return func(self,t,renderer,settings,input) end

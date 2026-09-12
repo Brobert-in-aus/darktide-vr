@@ -30,6 +30,10 @@ function Input.install(mod,presentation,observation,runtime)
         dimensions=function()return RESOLUTION_LOOKUP.width,RESOLUTION_LOOKUP.height end,
         vector=function(x,y,z)return Vector3(x,y,z)end,
         defer=function(fn)Managers.state.game_mode:register_physics_safe_callback(fn)end,
+        tag_tap=function(hud,t)
+            local ui=presentation.gameplay_ui
+            return ui~=nil and ui.tag_tap_frame~=nil and ui.tag_tap_frame(hud,t)==true
+        end,
     })
     local api={}
     function api.sample(handler,unit,input,enabled,physical,mode,world)

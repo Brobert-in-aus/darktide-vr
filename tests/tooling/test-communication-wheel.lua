@@ -7,7 +7,7 @@ if arg[2] then
     local file=assert(io.open(arg[2]..'/scripts/ui/hud/elements/smart_tagging/hud_element_smart_tagging.lua','r'))
     source=file:read('*a');file:close()
 end
-local function fixture()
+local function fixture(tag_tap)
     local f={frame=0,owner={},eligible=true,queue={},effects=0,pops=0,presentations=0,base_stops=0}
     local input={keyboard=false,blocked=false}
     function input:get(name)
@@ -91,7 +91,8 @@ local function fixture()
     local api=Wheel.install(mod,{Gesture=Gesture,Context=Context,Navigation=Navigation,
         current=function(owner)return owner==f.owner and f.eligible end,
         hud_owner=function(h,owner)return h.owner==owner end,
-        dimensions=function()return 1920,1080 end,vector=function(x,y,z)return {x,y,z}end,defer=defer})
+        dimensions=function()return 1920,1080 end,vector=function(x,y,z)return {x,y,z}end,defer=defer,
+        tag_tap=tag_tap})
     f.api,f.hud,f.input=api,hud,input
     function f:sample(held,x,y)
         self.frame=self.frame+1;return api.sample(self.frame,self.owner,self.eligible,held,x or 0,y or 0)
@@ -187,3 +188,25 @@ for _,failure in ipairs({'defer','update','callback'})do
 end
 print('communication_wheel=pass owned lifecycle deferred exactly-once release cancellation keyboard pending taps and neutral rearm')
 if source then print('communication_wheel_stock=pass actual cached handling/close/release callback; all communication effects mocked')end
+
+-- A controller tag press with no wheel gesture owned is a one-frame com_wheel
+-- press for the stock handler (middle-mouse parity): the stock context starts
+-- on the tap frame, stops on the next, and its deferred stop leaves the
+-- single-tap location marker. Without a tap the keyboard route stays stock.
+do
+    local tapped=false
+    local g=fixture(function(hud,t) return tapped end)
+    g:sample(false);g:sample(false)
+    local context=g.hud._com_wheel_context
+    g:update()
+    assert(context.input_start_time==nil and g.hud._com_wheel_context==context,'no tap must leave the stock context idle')
+    tapped=true;g:update()
+    assert(g.hud._com_wheel_context==context and context.input_start_time~=nil,'tag tap must start the stock wheel context')
+    tapped=false;g:update()
+    assert(#g.queue==1 and context.input_start_time~=nil,'release must defer the stock stop callback')
+    g.queue[1]()
+    assert(context.single_tap_location_tag and context.input_start_time==nil and g.effects==0,
+        'a tap with nothing tagged must leave the location marker')
+    g.input.blocked=true;tapped=true;g:update()
+    assert(context.input_start_time==nil,'a blocked service must not see the tap')
+end

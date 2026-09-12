@@ -72,7 +72,8 @@ scope('HudElementWieldInfo','_create_entry',function()
     assert(text('action_one','Ingame',true)=='<tint>[RT]')
     local a,b,c=scope('HudElementPlayerWeapon','_update_input',function()
         assert(text('wield_1')=='[RS\194\160Up]' and text('wield_2')=='[RS\194\160Up]','switch badge must show only the control')
-        assert(text('wield_3')=='[Unbound]')
+        -- No control of its own, but X cycles carried items by default.
+        assert(text('wield_3')=='[X]','unbound slot must advertise the cycle control')
         return 7,nil,9
     end)
     assert(a==7 and b==nil and c==9)
@@ -92,8 +93,8 @@ mod.on_setting_changed('vr_action_bind_push_to_talk')
 scope('HudElementWieldInfo','_create_entry',function()assert(text('voip_push_to_talk')=='[R3]')end)
 settings.vr_action_bind_push_to_talk=nil
 mod.on_setting_changed('vr_action_bind_push_to_talk')
--- Direct slots keep distinct hints; cycling is never advertised as selecting
--- a particular slot. Defaults remain unbound until the user assigns a control.
+-- Direct slots keep distinct hints. A slot without its own control shows the
+-- cycle control that reaches it (the default layout cycles carried items).
 settings.vr_bind_x='unbound' -- X carries the item defaults; the stick must label alone here
 for id,alias in pairs({pocketable='wield_3',stim='wield_4',device='wield_5',
         cycle_pocketables='wield_3_gamepad',inspect_target='interact_inspect'}) do
@@ -102,7 +103,10 @@ for id,alias in pairs({pocketable='wield_3',stim='wield_4',device='wield_5',
     scope('HudElementWieldInfo','_create_entry',function()
         assert(text(alias)=='[RS\194\160Up]','Slot binding hint missing')
         if id=='cycle_pocketables' then
-            assert(text('wield_3')=='[Unbound]' and text('wield_4')=='[Unbound]')
+            assert(text('wield_3')=='[RS\194\160Up]' and text('wield_4')=='[RS\194\160Up]',
+                'unbound slots must advertise the cycle control')
+        else
+            assert(text('wield_3_gamepad')=='[Unbound]' or id=='cycle_pocketables')
         end
     end)
 end

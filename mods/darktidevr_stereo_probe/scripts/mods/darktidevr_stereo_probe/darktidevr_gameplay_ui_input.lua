@@ -162,6 +162,14 @@ function Input.install(mod, local_player_unit)
             if blocked then tag_frames[self].pressed = false end
             return run_tag(func,self,t,renderer,settings,source,sample and not blocked)
         end)
+    -- In stock play the middle mouse button carries both smart_tag and
+    -- com_wheel, so a tap with nothing under the reticle becomes a location
+    -- marker. Report this HUD's tag press for the frame so the wheel handler
+    -- can see the same one-frame com_wheel press.
+    function api.tag_tap_frame(hud,t)
+        local frame=tag_frames[hud]
+        return frame~=nil and frame.t==t and frame.sample==state.sample and frame.pressed==true
+    end
     return api
 end
 

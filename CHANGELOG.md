@@ -56,6 +56,9 @@ Desktop (VDXR), Darktide with the Darktide Mod Framework.
 - The Psykhanium onboarding runs to completion in VR: it uses the same
   stock-input route as missions (so the gun sits in the hand), the grenade
   section advances, and the end-of-training question appears.
+- Tag with nothing under the reticle places a location marker, as the
+  middle mouse button does. Prompts for a carried-item slot without its
+  own control show the cycle control's badge instead of "Unbound".
 
 Known limits of this alpha are listed in the user guide: right-hand
 dominant presentation, no independent weapon origins on mission servers,

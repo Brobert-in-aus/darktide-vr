@@ -3,6 +3,8 @@ function Prompts.single_line(text)
     -- Keep each complete binding together in stock rich-text/word wrapping.
     return (text:gsub('%s','\194\160'))
 end
+-- Slots the cycle control reaches when their own control is unbound.
+local cycle_fallback = {pocketable=true, stim=true, device=true}
 local aliases = {
     action_one="primary",action_two="alternate",weapon_extra="special",
     interact="interact",weapon_reload="reload",quick_wield="quick_wield",
@@ -81,6 +83,13 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
             local switch = weapon_switch and (alias=="wield_1" or alias=="wield_2")
             if switch then action="quick_wield" end
             local controls = bindings.controls_for_action(action)
+            -- The default layout reaches carried items through the cycle
+            -- control rather than one button per slot. A prompt for an
+            -- unbound slot ("Equip medicrate") shows the cycle binding that
+            -- does reach it instead of "Unbound".
+            if not controls[1] and cycle_fallback[action] then
+                controls = bindings.controls_for_action("cycle_pocketables")
+            end
             -- A hub hotkey without a controller assignment remains an accurate
             -- keyboard hint. Never advertise an unavailable inventory shortcut.
             if inventory and not controls[1] then return func(service,alias,tint) end
