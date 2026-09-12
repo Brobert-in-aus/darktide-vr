@@ -102,6 +102,7 @@ return {
     vr_action_interact = {en = "Interact"},
     vr_action_reload = {en = "Reload"},
     vr_action_interact_reload = {en = "Interact + reload (original)"},
+    vr_action_pocketable_device = {en = "Carried item + scanner (original)"},
     vr_action_quick_wield = {en = "Switch weapon"},
     vr_action_jump = {en = "Jump"},
     vr_action_dodge = {en = "Dodge"},

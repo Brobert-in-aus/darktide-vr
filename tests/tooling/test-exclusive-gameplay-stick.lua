@@ -4,7 +4,8 @@ local Bindings=dofile(root..'/darktidevr_controller_bindings.lua')
 local Turning=dofile(root..'/darktidevr_turning.lua')
 local Gesture=dofile(root..'/darktidevr_communication_gesture.lua')
 local settings={vr_turn_mode='off',vr_action_bind_primary=1+2048,
-    vr_action_bind_alternate=2+4096,vr_action_bind_quick_wield=8192,vr_action_bind_interact=16384}
+    vr_action_bind_alternate=2+4096,vr_action_bind_quick_wield=8192,vr_action_bind_interact=16384,
+    vr_action_bind_combat_ability=0,vr_action_bind_reload=0} -- the stick defaults (switch, interact/reload) are owned here
 local mod={get=function(_,name)return settings[name]end}
 local bindings=Bindings.install(mod)
 local function sample(physical,x,y,claimed)

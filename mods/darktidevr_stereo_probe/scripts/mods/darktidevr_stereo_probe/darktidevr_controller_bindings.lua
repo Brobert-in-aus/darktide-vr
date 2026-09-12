@@ -1,20 +1,23 @@
 -- Native bits remain physical channels. Resolve gameplay semantics here so
 -- the options and delivery share one catalog; menu pointer bindings stay native.
 local Bindings = {}
+-- Defaults follow the accepted play layout (12 September 2026): triggers
+-- fire, right grip special, left grip class ability, B blitz, Y crouch,
+-- A jump/dodge, X items, RS up weapon switch, RS down interact/reload.
 Bindings.controls = {
     {id="right_trigger", bit=1, default="primary"},
     {id="left_trigger", bit=2, default="alternate"},
     {id="right_grip", bit=4, default="special"},
-    {id="left_grip", bit=512, default="blitz"},
-    {id="x", bit=8, default="interact_reload"},
-    {id="y", bit=16, default="quick_wield"},
+    {id="left_grip", bit=512, default="combat_ability"},
+    {id="x", bit=8, default="pocketable_device"},
+    {id="y", bit=16, default="crouch"},
     {id="a", bit=32, default="jump_dodge"},
-    {id="b", bit=64, default="crouch"},
+    {id="b", bit=64, default="blitz"},
     {id="l3", bit=128, default="sprint"},
     {id="r3", bit=256, default="tag"},
     {id="menu", bit=1024, default="menu"},
-    {id="right_stick_up", bit=2048, default="unbound", axis="y", sign=1},
-    {id="right_stick_down", bit=4096, default="unbound", axis="y", sign=-1},
+    {id="right_stick_up", bit=2048, default="quick_wield", axis="y", sign=1},
+    {id="right_stick_down", bit=4096, default="interact_reload", axis="y", sign=-1},
     {id="right_stick_left", bit=8192, default="unbound", axis="x", sign=-1},
     {id="right_stick_right", bit=16384, default="unbound", axis="x", sign=1},
 }
@@ -26,6 +29,8 @@ Bindings.actions = {
     {id="interact", mask=8, pressed={"interact_pressed"}, held={"interact_hold"}},
     {id="reload", hub=false, mask=4096, pressed={"weapon_reload_pressed"}, held={"weapon_reload_hold"}},
     {id="interact_reload", mask=4104},
+    -- Item selection shares one control: device and pocketable cycling.
+    {id="pocketable_device", mask=786432},
     {id="quick_wield", hub=false, mask=16, pressed={"quick_wield"}},
     {id="jump", mask=32, pressed={"jump"}, held={"jump_held"}},
     {id="dodge", hub=false, mask=8192, pressed={"dodge"}},

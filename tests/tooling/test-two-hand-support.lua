@@ -17,8 +17,8 @@ local function sample(physical,pressed,held,released,owned)
     assert(mapper.support_grip.held==owned)
 end
 sample(0,0,0,0,false)
-sample(512,512,512,0,false) -- Disabled by default, even with a registered socket.
-sample(0,0,0,512,false)
+sample(512,2048,2048,0,false) -- Disabled by default, even with a registered socket: left grip is the class ability.
+sample(0,0,0,2048,false)
 api.enabled=true
 sample(512,2,2,0,true)
 frame.support={.1,.3,0}
@@ -54,10 +54,10 @@ sample(512,0,0,0,true)
 assert(api.ads_unavailable,'toggle ADS limitation was hidden')
 sample(0,0,0,0,false)
 frame.template='unregistered'
-sample(512,512,512,0,false) -- No guessed generic socket for another gun/staff.
-sample(0,0,0,512,false)
+sample(512,2048,2048,0,false) -- No guessed generic socket for another gun/staff.
+sample(0,0,0,2048,false)
 frame.template='example'; profile.socket={0,0,0}
-sample(512,512,512,0,false)
+sample(512,2048,2048,0,false)
 print('two_hand_support=pass mapper pose live_tracking identity profiles toggle_guard')
 
 -- Exercise the installed adapter against engine-shaped owners and deliberately
@@ -167,7 +167,7 @@ p,h,r=installed_sample(512); assert(p==0 and h==0 and r==0)
 assert(installed.failure_logged)
 retired=false; installed_sample(0)
 state_name='dead'
-assert(installed_sample(512)==512,'dead state claimed the support grip')
+assert(installed_sample(512)==2048,'dead state claimed the support grip')
 print('two_hand_support_adapter=pass cached_tracking reload weapon_switch retirement death')
 -- Explicit calibration waits for chat to close, then samples real tracked
 -- positions after the countdown. It never enables support by itself.
@@ -205,7 +205,7 @@ installed_sample(0)
 assert(not installed.place_hand('world',unit,primary,{0,0,0,1}) and hand_writes==1,
     'Released support hand stayed constrained')
 equipped={}
-assert(installed_sample(512)==512 and not real_mapper.support_grip.held,
+assert(installed_sample(512)==2048 and not real_mapper.support_grip.held,
     'A different item with the same template inherited a measured grip')
 installed_sample(0); equipped=calibrated_weapon
 support_side='right'; installed_sample(0)

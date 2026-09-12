@@ -10741,6 +10741,35 @@ mod:hook(
         return show_1p_equipment, wants_1p_camera
     end)
 
+-- The Psykhanium onboarding's ensure_player_healthy step waits until
+-- is_in_first_person_mode() is true, which reads the equipment flag the
+-- first-person body deliberately reports as third person. That stalled the
+-- tutorial after the grenade section. Answer that one check from the camera
+-- flag instead, for the duration of the step's own condition.
+do
+    local ok, steps = pcall(require,
+        "scripts/extension_systems/training_grounds/training_grounds_steps")
+    local extension_class = require(
+        "scripts/extension_systems/first_person/player_unit_first_person_extension")
+    local step = ok and type(steps) == "table" and steps.ensure_player_healthy
+    if step and type(step.condition_func) == "function" and extension_class then
+        local original_condition = step.condition_func
+        step.condition_func = function(...)
+            local original_query = extension_class.is_in_first_person_mode
+            extension_class.is_in_first_person_mode = function(self)
+                return original_query(self) or self._wants_1p_camera == true
+            end
+            local results = {pcall(original_condition, ...)}
+            extension_class.is_in_first_person_mode = original_query
+            if not results[1] then
+                error(results[2], 0)
+            end
+            return unpack(results, 2)
+        end
+        mod:info("DARKTIDEVR_TRAINING ensure_player_healthy=camera_first_person")
+    end
+end
+
 -- Preserve FadeSystem ownership/registration but move its observation point
 -- far outside the playable world during the normal-off range body diagnostic.
 -- This disables camera-proximity fading for the test without risking a stale

@@ -61,17 +61,17 @@ assert(text('back','View')=='keyboard:back','menu label leaked out of action con
 scope('HudElementWieldInfo','_create_entry',function()
     assert(text('action_one')=='[RT]')
     assert(text('weapon_extra')=='[R\194\160Grip]')
-    assert(text('combat_ability')=='[Unbound]')
+    assert(text('combat_ability')=='[L\194\160Grip]','combat ability defaults to the left grip')
     assert(text('smart_tag')=='[R3]')
     assert(text('com_wheel')=='[Unbound]')
     assert(text('voip_push_to_talk')=='[Unbound]')
-    assert(text('interact')=='[X]' and text('weapon_reload')=='[X]')
+    assert(text('interact')=='[RS\194\160Down]' and text('weapon_reload')=='[RS\194\160Down]')
     assert(text('wield_1')=='[Unbound]','direct slot selection pretended to be bound')
     assert(text('unrecognized')=='keyboard:unrecognized')
     assert(text('action_one','View')=='keyboard:action_one','desktop menu changed')
     assert(text('action_one','Ingame',true)=='<tint>[RT]')
     local a,b,c=scope('HudElementPlayerWeapon','_update_input',function()
-        assert(text('wield_1')=='[Y]' and text('wield_2')=='[Y]','switch badge must show only the control')
+        assert(text('wield_1')=='[RS\194\160Up]' and text('wield_2')=='[RS\194\160Up]','switch badge must show only the control')
         assert(text('wield_3')=='[Unbound]')
         return 7,nil,9
     end)
@@ -94,6 +94,7 @@ settings.vr_action_bind_push_to_talk=nil
 mod.on_setting_changed('vr_action_bind_push_to_talk')
 -- Direct slots keep distinct hints; cycling is never advertised as selecting
 -- a particular slot. Defaults remain unbound until the user assigns a control.
+settings.vr_bind_x='unbound' -- X carries the item defaults; the stick must label alone here
 for id,alias in pairs({pocketable='wield_3',stim='wield_4',device='wield_5',
         cycle_pocketables='wield_3_gamepad',inspect_target='interact_inspect'}) do
     settings.vr_bind_right_stick_up=id
@@ -106,17 +107,18 @@ for id,alias in pairs({pocketable='wield_3',stim='wield_4',device='wield_5',
     end)
 end
 settings.vr_bind_right_stick_up=nil
+settings.vr_bind_x=nil
 mod.on_setting_changed('vr_bind_right_stick_up')
 settings.vr_hub_bind_x='inspect_target'
 mod.on_setting_changed('vr_hub_bind_x')
 bindings.sample(true,0,0,0,true,1,'hub')
 scope('HudElementInteraction','_update_interaction_input_text',function()
-    assert(text('interact_inspect')=='[X]' and text('interact')=='[Unbound]')
+    assert(text('interact_inspect')=='[X]' and text('interact')=='[RS\194\160Down]')
     assert(text('weapon_inspect')=='[Unbound]','Target interaction pretended to inspect a weapon')
 end)
 bindings.sample(true,0,0,0,true,1,'shooting_range')
 scope('HudElementInteraction','_update_interaction_input_text',function()
-    assert(text('interact_inspect')=='[Unbound]' and text('interact')=='[X]')
+    assert(text('interact_inspect')=='[Unbound]' and text('interact')=='[RS\194\160Down]')
 end)
 settings.vr_hub_bind_x=nil
 mod.on_setting_changed('vr_hub_bind_x')
@@ -138,7 +140,8 @@ end)
 bindings.sample(true,0)
 settings.vr_bind_right_trigger='combat_ability'
 mod.on_setting_changed('vr_bind_right_trigger')
-assert(#bindings.controls_for_action('combat_ability')==3)
+-- Right grip, R3, right trigger, plus the right-stick-up default.
+assert(#bindings.controls_for_action('combat_ability')==4)
 local p,h=bindings.sample(true,1)
 assert(p==0 and h==0)
 
@@ -180,6 +183,7 @@ assert(style.font_size==20 and fit_calls==1,'did not restore stock font outside 
 assert(stock_calls>0)
 for key in pairs(settings) do settings[key]=nil end
 settings.vr_bind_right_stick_up='combat_ability'
+settings.vr_bind_left_grip='unbound' -- the default ability control would label first
 mod.on_setting_changed('vr_bind_right_stick_up')
 active=true
 scope('HudElementPlayerAbility','_update_input',function()
@@ -203,7 +207,7 @@ scope('ConstantElementOnboardingHandler','_sync_onboarding_settings',function()
     assert(text('hotkey_inventory','View')=='keyboard:hotkey_inventory','Hub hint leaked into combat')
 end)
 scope('HudElementPrologueTutorialInfoBox','_get_input_description_text',function()
-    assert(text('interact')=='[X]','Tutorial missed shared action binding')
+    assert(text('interact')=='[RS\194\160Down]','Tutorial missed shared action binding')
 end)
 
 -- Optional cached-source contract: execute the real tutorial and text utility

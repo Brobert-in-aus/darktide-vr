@@ -13,8 +13,8 @@ sample(true,0,0,0,0)
 sample(true,1,1,1,0)
 sample(true,1,0,1,0)
 sample(true,0,0,0,1)
-sample(true,8+32,4104+8224,4104+8224,0) -- Original paired controls.
-sample(false,8+32,0,0,4104+8224)
+sample(true,8+32,786432+8224,786432+8224,0) -- Original paired controls: X items, A jump/dodge.
+sample(false,8+32,0,0,786432+8224)
 sample(true,8+32,0,0,0)
 sample(true,0,0,0,0)
 sample(true,256+1024,1280,1280,0)
@@ -169,7 +169,11 @@ stick(true,0,0,true,2,0,0,0,2048) -- Unknown native bits cannot impersonate dire
 local default_mapper=Bindings.install({get=function() end})
 default_mapper.sample(true,0,0,0,true,1)
 local p,h,r=default_mapper.sample(true,0,1,1,true,1)
-assert(p==0 and h==0 and r==0,'new direction defaults were not unbound')
+-- Right stick up defaults to the class ability (the Psykhanium onboarding
+-- waits for it); the other directions stay unbound.
+assert(p==16 and h==16 and r==0,'right stick up must default to the weapon switch')
+p,h,r=default_mapper.sample(true,0,0,-1,true,1)
+assert(p==4104 and h==4104,'right stick down must default to interact/reload')
 print('controller_bindings=pass defaults aliases remap_cancel context_handoff directional_hysteresis tracking generation stock_names options')
 -- Mission slots use ordinary stock wield edges. Held bindings and a second
 -- alias cannot repeat slot changes; an inactive transition requires release.
@@ -202,7 +206,7 @@ directional_settings.vr_bind_right_stick_up='combat_ability'
 directional_mod.on_setting_changed('vr_turn_mode')
 stick(true,0,0,true,2,0,0,0)
 stick(true,1,1,true,2,2048,2048,0)
-assert(#directional.controls_for_action('reload')==1) -- X default, no RS directions.
+assert(#directional.controls_for_action('reload')==0) -- reload's default is RS down, reassigned to inspect here.
 directional_settings.vr_turn_mode='off'
 directional_mod.on_setting_changed('vr_turn_mode')
 stick(true,1,0,true,2,0,0,0)
@@ -258,10 +262,10 @@ grip_sample(2,0,2,0,false,grip_request)
 assert(grip_mapper.support_grip.released,'Physical support release was lost')
 grip_sample(0,0,0,2,false,grip_request)
 grip_request.acquire=false
-grip_sample(512,512,512,0,false,grip_request)
+grip_sample(512,2048,2048,0,false,grip_request)
 grip_request.acquire=true
-grip_sample(512,0,512,0,false,grip_request) -- Moving a held grip into range is not a press.
-grip_sample(0,0,0,512,false,grip_request)
+grip_sample(512,0,2048,0,false,grip_request) -- Moving a held grip into range is not a press.
+grip_sample(0,0,0,2048,false,grip_request)
 grip_sample(512,2,2,0,true,grip_request)
 grip_request.retain=false
 grip_sample(512,0,0,0,false,grip_request)
@@ -331,7 +335,8 @@ for _,mode in ipairs({'combat','hub'}) do
     end
 end
 assert(migrated_settings.vr_action_bind_jump==32+64,'Migration dropped an alias')
-assert(migrated_settings.vr_action_bind_interact==8 and migrated_settings.vr_action_bind_reload==8)
+-- X from the legacy setting plus the right-stick-down default.
+assert(migrated_settings.vr_action_bind_interact==8+4096 and migrated_settings.vr_action_bind_reload==8+4096)
 local jump_row
 for _,row in ipairs(menu.sub_widgets) do
     if row.setting_id=='vr_action_bind_jump' then jump_row=row end
@@ -408,10 +413,10 @@ assert(conflict_mapper.wield_conflicts()[1].control=='right_stick_left')
 conflict_settings.vr_action_bind_cycle_pocketables=0
 conflict_mod.on_setting_changed('vr_action_bind_cycle_pocketables')
 assert(#conflict_mapper.wield_conflicts()==0, 'Remapped conflict stayed cached')
-conflict_settings.vr_action_bind_device=16
+conflict_settings.vr_action_bind_device=2048 -- right stick up carries the weapon switch by default
 conflict_mod.on_setting_changed('vr_action_bind_device')
 local quick_overlap=conflict_mapper.wield_conflicts()
-assert(#quick_overlap==1 and quick_overlap[1].control=='y' and quick_overlap[1].actions[1]=='quick_wield')
+assert(#quick_overlap==1 and quick_overlap[1].control=='right_stick_up' and quick_overlap[1].actions[1]=='quick_wield')
 print('wield_binding_conflicts=pass current_profile aliases remap horizontal_gate no_setting_writes')
 local talk_settings={}
 local talk_mod={get=function(_,key)return talk_settings[key]end}
