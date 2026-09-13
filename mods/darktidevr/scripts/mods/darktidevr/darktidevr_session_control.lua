@@ -66,8 +66,10 @@ SessionControl.TRACED = {
 
 function SessionControl.trace_resources(api, mod, on)
     api.traced = api.traced or {}
+    local owners = {Renderer = Renderer, World = World, Gui = Gui, UIRenderer = UIRenderer}
     for owner_name, names in pairs(SessionControl.TRACED) do
-        local owner = rawget(_G, owner_name)
+        -- Named directly: a mod environment reaches engine globals through __index.
+        local owner = owners[owner_name]
         for i = 1, #names do
             local name = names[i]
             local key = owner_name .. "." .. name
@@ -192,6 +194,9 @@ function SessionControl.install(mod)
                 api.chat_next_t = 0
                 if trace == "trace" then
                     SessionControl.trace_resources(api, mod, true)
+                    local wrapped = 0
+                    for _ in pairs(api.traced) do wrapped = wrapped + 1 end
+                    mod:info("DARKTIDEVR_SESSION resource_trace wrapped=%d", wrapped)
                 end
                 mod:info("DARKTIDEVR_SESSION chat_cycle_requested cycles=%d probe=%s",
                     api.chat_remaining, tostring(probe or "none"))
