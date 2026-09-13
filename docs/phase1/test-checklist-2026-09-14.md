@@ -54,7 +54,8 @@ unattended evidence for each is in
    Darktide VR > Experimental features > Virtual holsters and, in the
    Psykhanium, reach and press grip: over the right shoulder (ranged), left
    hip (melee), left chest (stim), right hip (auspex if carried), right chest
-   (carried item). Check nothing triggers while holding a gun, swinging melee
+   (carried item), and the front of the belt: hold grip to draw and aim the
+   blitz, let go to throw (`4571e85`). Check nothing triggers while holding a gun, swinging melee
    or reloading. Say which zones feel too high, low, far forward or small.
    Console: `DARKTIDEVR_HOLSTER armed zone=...` and `wield ...` lines.
 

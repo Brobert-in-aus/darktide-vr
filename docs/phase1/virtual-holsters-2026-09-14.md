@@ -15,7 +15,7 @@ players expect from other VR shooters.
 
 ## Zones
 
-Five zones in a body frame, as spheres. Centres are metres from the eyes at a
+Six zones in a body frame, as spheres. Centres are metres from the eyes at a
 reference eye height of 1.64 m and scale with the player's eye height (both
 the offsets and the radii):
 
@@ -26,6 +26,7 @@ the offsets and the radii):
 | Right hip | 0.20, 0.00, -0.72 | 0.14 | device (auspex, `slot_device`) | `wield_5` |
 | Left chest | -0.13, 0.16, -0.38 | 0.10 | stim (`slot_pocketable_small`) | `wield_4` |
 | Right chest | 0.13, 0.16, -0.38 | 0.10 | carried item (ammo crate, medkit, `slot_pocketable`) | `wield_3` |
+| Belt, front | 0.00, 0.14, -0.60 | 0.11 | blitz (held: press draws and aims, release throws) | `grenade_ability_pressed`/`hold`/`release` |
 
 Both hands can use every zone. The layout keeps the chest zones small and in
 front, where a gun's support hand rarely rests, and the hip zones low beside
@@ -86,8 +87,8 @@ turn with the body, not with a glance, and follow crouching.
   A console line `DARKTIDEVR_HOLSTER armed zone=... hand=... selector=...`
   logs the first arming of each zone per session, and
   `DARKTIDEVR_HOLSTER wield hand=... selector=...` each press.
-- Blitz from the belt, holster counts and the item radial are separate backlog
-  items.
+- Blitz from the belt (`4571e85`): the belt holds the stock blitz input for as long as the grip is held, so the stock draw, aim arc and throw on release apply; it is requested even while the blitz is out. The throw follows the dominant hand's aim, as with the button.
+- Holster counts and the item radial are separate backlog items.
 - Seated play: zones scale with the measured standing eye height but hang from
   the seated head, so the hip zones sit below the seat. Seated tuning is not
   attempted.

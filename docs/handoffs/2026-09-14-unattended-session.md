@@ -383,3 +383,22 @@ The automatic restart stays as a safety net.
 - Not done: the rig scan (human and Ogryn joint map) and the solver itself.
   Traces recorded worn tonight (evening item 7) are the input for the next
   step.
+
+## Blitz from the belt (VR-native input backlog), default off with holsters
+
+Commit `4571e85`: a sixth holster zone at the front of the belt requests the
+stock blitz action (mask 512) for as long as the grip is held. Tests
+`holsters`, `controller_bindings` and the synthetic path contract; suite
+247/247.
+
+Synthetic run (holster test flag, `--holster-path` now also visiting the belt
+with a one-second squeeze): three belt visits, each showing
+- `armed zone=belt` then `wield selector=blitz`;
+- `delivered=grenade_ability_pressed` on the press and
+  `delivered=grenade_ability_release` one second later;
+- `wielded_slot=slot_grenade_ability` on the press, then back to
+  `slot_primary` 0.46 s after the release, as after a stock throw.
+
+The shoulder and hip zones kept working in the same run (`delivered=wield_2`).
+Evidence: `artifacts/unattended/holsters-20260914/synthetic-belt-blitz/`. Not
+shown: the projectile itself (no world check), or the aim arc while held.

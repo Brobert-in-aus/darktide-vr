@@ -10,11 +10,15 @@ runtime package records the exact source revision alongside the version.
 - The headset view no longer goes dark when a level finishes loading (for
   example entering the Psykhanium). If the headset viewer ever fails during
   play, the game starts it again.
+- Experimental ammo count at the hand (off by default): clip and reserve
+  beside the weapon hand, fading from white to red as they run down, with a
+  ring that fills while reloading.
 - Flamethrower streams, chain lightning, the force sword's wind slash and the
   shield's windup glow start from the weapon in your hand.
 - Experimental virtual holsters (off by default): reach to your shoulder,
   hip or chest and press grip to take out a weapon, stim, device or carried
-  item.
+  item; hold grip at the front of the belt to draw a blitz and let go to
+  throw it.
 
 ## 0.1.0-alpha.3 (13 September 2026)
 
