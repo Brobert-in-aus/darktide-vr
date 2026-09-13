@@ -222,7 +222,18 @@ swapchain images survive a stop.
 Fix (`c144f2b`): a stop seen at the poll before `xrWaitFrame` skips straight to
 the pause, and layers are rendered only while the session is VISIBLE or
 FOCUSED. The simulator stop test still pauses and resumes twice and passes.
-Physical-runtime check: see the long Psykhanium run below.
+Physical-runtime check: the render gate broke startup. With Virtual Desktop,
+the first frames after `xrBeginSession` still read READY before events are
+polled, so no views were located and the viewer exited at start with
+"Invalid recentered projection inputs". Caught in the next run (viewer
+`c144f2b`), and the gate was removed in `665ba15`, keeping the skip to the
+pause.
+
+With `665ba15` installed, a 6-minute Psykhanium run with the physical headset
+(awake, unworn) rendered throughout at 120 Hz and stopped with `result=pass`
+on the game's stop file. Virtual Desktop did not stop the session in that
+run, so the physical stop and resume path is still unobserved. Worn check:
+evening item 4.
 
 ## Virtual holsters (queue item 4), core and default-off wiring
 

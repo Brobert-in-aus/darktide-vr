@@ -68,6 +68,12 @@ for clip = 40, 1, -1 do
 end
 assert(select(2, rgb({heat = 0.97})) == 55 and select(3, rgb({heat = 0})) == 250)
 assert(select(3, rgb(nil)) == 250)
+-- The reserve line fades on its own capacity: a full clip with a low reserve.
+local full_clip = Readout.color({clip = 40, clip_max = 40, reserve = 20, reserve_max = 400})
+local low_reserve = Readout.fill_color(20, 400)
+assert(math.floor(full_clip[3] + .5) == 250, "clip colour follows the reserve")
+assert(low_reserve[1] == 255 and low_reserve[2] < 160, "reserve at 5 % is not orange")
+assert(Readout.fill_color(400, 400)[3] == 250 and Readout.fill_color(0, 400)[2] == 55)
 
 -- Reload ring and interrupted-reload shake.
 local tracker = Readout.reload_tracker()

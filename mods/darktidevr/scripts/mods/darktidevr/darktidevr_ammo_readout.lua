@@ -73,12 +73,23 @@ local WHITE, YELLOW, ORANGE, RED = {240, 245, 250}, {255, 225, 80}, {255, 140, 3
 local function mix(a, b, f)
     return {a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, a[3] + (b[3] - a[3]) * f}
 end
+-- Colour of an amount against its capacity: white at capacity, yellow at half,
+-- orange nearly empty, red at 0.
+function Readout.fill_color(amount, capacity)
+    if type(amount) ~= "number" or type(capacity) ~= "number" or capacity <= 0 then return WHITE end
+    if amount <= 0 then return RED end
+    local fraction = math.max(0, math.min(1, amount / capacity))
+    if fraction >= 0.5 then return mix(YELLOW, WHITE, (fraction - 0.5) / 0.5) end
+    return mix(ORANGE, YELLOW, fraction / 0.5)
+end
+
+-- The clip count's colour (clip against clip size); heat-only weapons on the
+-- heat left. The reserve line uses fill_color(reserve, reserve_max).
 function Readout.color(values)
     if not values then return WHITE end
     local fraction
     if values.clip and values.clip_max and values.clip_max > 0 then
-        if values.clip <= 0 then return RED end
-        fraction = values.clip / values.clip_max
+        return Readout.fill_color(values.clip, values.clip_max)
     elseif values.heat then
         if values.heat >= 0.95 then return RED end
         fraction = 1 - values.heat
@@ -170,7 +181,7 @@ function Readout.install(mod, presentation, observation)
             hide(); return
         end
         local values = slot_values(unit)
-        if not values and test then values = {clip = 12, clip_max = 40, reserve = 180, reserve_max = 400} end
+        if not values and test then values = {clip = 32, clip_max = 40, reserve = 60, reserve_max = 400} end
         local text, level = Readout.text(values)
         if not text then hide(); return end
         local now = Managers.time:time("gameplay")
@@ -235,10 +246,12 @@ function Readout.install(mod, presentation, observation)
         Gui.slug_text_3d(gui, primary, font.path, size, tm, Vector3(dx - width * 0.5, top, 0), 10,
             color, "flags", font.render_flags or 0)
         if secondary then
+            -- The reserve fades on its own capacity, independently of the clip.
             local small_width = #secondary * small * 0.52
+            local r = values.clip and Readout.fill_color(values.reserve, values.reserve_max) or c
             Gui.slug_text_3d(gui, secondary, font.path, small, tm,
                 Vector3(dx - small_width * 0.5, top - small * 1.15, 0), 10,
-                Color(200, 225, 230, 235), "flags", font.render_flags or 0)
+                Color(230, r[1], r[2], r[3]), "flags", font.render_flags or 0)
         end
         if progress then
             -- Reload ring: segments around the count, filling clockwise from the top.
