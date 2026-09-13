@@ -123,9 +123,10 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
             if inventory then action="inventory" end
             if service=="View" and not inventory then
                 if type(alias)~="string" then return func(service,alias,tint) end
-                -- Hub hotkeys stay accurate keyboard hints; everything else
-                -- in a menu is answered by the VR adapter or is unbound.
-                if alias:find("^hotkey_") then return func(service,alias,tint) end
+                -- Every menu alias, hotkeys included, is answered by the VR
+                -- adapter or reads Unbound: no keyboard key can be pressed in
+                -- controller play (the end screen's "[E] Merge Strike Teams?"
+                -- came through a hotkey passthrough).
                 return view_text(alias,tint)
             end
             if service~="Ingame" and not inventory then return func(service,alias,tint) end
@@ -147,9 +148,9 @@ function Prompts.install(mod, bindings, enabled, menu_prompts)
             if not controls[1] and cycle_fallback[action] then
                 controls = bindings.controls_for_action("cycle_pocketables")
             end
-            -- A hub hotkey without a controller assignment remains an accurate
-            -- keyboard hint. Never advertise an unavailable inventory shortcut.
-            if inventory and not controls[1] then return func(service,alias,tint) end
+            -- A hub hotkey without a controller assignment reads Unbound, not
+            -- its keyboard key.
+            if inventory and not controls[1] then return view_text(alias,tint) end
             local labels = {}
             -- One valid binding keeps compact HUD badges readable. All aliases
             -- remain usable and are listed individually in the options.

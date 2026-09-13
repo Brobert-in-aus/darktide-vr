@@ -40,6 +40,16 @@ assert(hint("back_released")=="keyboard:back_released Action")
 assert(hint("back","Ingame")=="keyboard:back Action")
 assert(input("View","back")=="keyboard:back","label leaked outside a known action")
 local a,b,c=hint("back"); assert(a=="[B] Action" and b==nil and c==9)
+-- A view labels its own buttons for one call: the end screen's continue
+-- (held trigger) and vote (pointed click); outside it the aliases are unchanged.
+local end_labels={continue_end_view="vr_menu_hold_skip",hotkey_menu_special_1="vr_menu_point_select"}
+local continue_text,vote_text=menu.with_labels(end_labels,function()
+    return hint("continue_end_view"),hint("hotkey_menu_special_1")
+end)
+assert(continue_text=="[Hold\194\160RT] Action" and vote_text=="[Point\194\160+\194\160RT] Action")
+assert(hint("hotkey_menu_special_1")=="keyboard:hotkey_menu_special_1 Action","scoped labels leaked")
+assert(not pcall(menu.with_labels,end_labels,function() error("stock") end))
+assert(hint("continue_end_view")=="keyboard:continue_end_view Action","scoped labels survived an error")
 local legend=hooks.ViewElementInputLegend
 local function widget(self,entry)
     entry.widget.content.text=hint(entry.input_action)

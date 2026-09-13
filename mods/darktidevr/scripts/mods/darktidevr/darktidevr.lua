@@ -14731,38 +14731,82 @@ end)
 -- read the controller state directly here. A trigger already down when the
 -- screen opens must be released first.
 do
-local title_trigger = {down = true}
-local function title_triggers_down()
-    if not ui_native_capture or not controller_observation.values or
-            not ui_native_capture.dtvr_read_controller_state or
-            ui_native_capture.dtvr_read_controller_state(
-                controller_observation.values,
-                controller_observation.tracking_flags,
-                controller_observation.buttons,
-                controller_observation.sequence,
-                controller_observation.timestamp_ns) ~= 0 then
-        return nil
-    end
-    local left = tonumber(controller_observation.values[14]) or 0
-    local right = tonumber(controller_observation.values[32]) or 0
-    return left >= 0.55 or right >= 0.55
-end
-mod:hook_require("scripts/ui/views/title_view/title_view", function(class)
-    mod:hook_safe(class, "on_enter", function() title_trigger.down = true end)
-    mod:hook(class, "update", function(func, self, dt, t, input_service, ...)
-        if not self._continue_triggered and not self.closing_view and self._continue then
-            local ok, down = pcall(title_triggers_down)
-            if ok and down ~= nil then
-                if down and not title_trigger.down then
-                    self:_continue()
-                    mod:info("DARKTIDEVR_TITLE continue source=trigger")
-                end
-                title_trigger.down = down
-            end
+    local title_trigger = {down = true}
+    -- Both trigger values, or nil when the controller state is unavailable.
+    local function read_triggers()
+        if not ui_native_capture or not controller_observation.values or
+                not ui_native_capture.dtvr_read_controller_state or
+                ui_native_capture.dtvr_read_controller_state(
+                    controller_observation.values,
+                    controller_observation.tracking_flags,
+                    controller_observation.buttons,
+                    controller_observation.sequence,
+                    controller_observation.timestamp_ns) ~= 0 then
+            return nil
         end
-        return func(self, dt, t, input_service, ...)
+        return tonumber(controller_observation.values[14]) or 0,
+            tonumber(controller_observation.values[32]) or 0
+    end
+    local function title_triggers_down()
+        local left, right = read_triggers()
+        if not left then return nil end
+        return left >= 0.55 or right >= 0.55
+    end
+
+    -- End of mission screen: continue is Space and the stay-in-party vote is E.
+    -- The vote button takes a pointed click (RT), so continue is a held right
+    -- trigger (half a second, as the cutscene skip): a click on the vote must
+    -- not leave the round. Both buttons are labelled with their VR routes.
+    local end_view_labels = {continue_end_view = "vr_menu_hold_skip",
+        hotkey_menu_special_1 = "vr_menu_point_select"}
+    local end_hold = {start = nil, fired = true}
+    mod:hook_require("scripts/ui/views/end_view/end_view", function(class)
+        mod:hook_safe(class, "on_enter", function() end_hold.start, end_hold.fired = nil, true end)
+        mod:hook(class, "_update_buttons", function(func, self, ...)
+            local prompts = presentation.menu_prompts
+            if prompts and prompts.with_labels then
+                return prompts.with_labels(end_view_labels, func, self, ...)
+            end
+            return func(self, ...)
+        end)
+        mod:hook(class, "update", function(func, self, dt, t, input_service, ...)
+            local ok, _, right = pcall(read_triggers)
+            if ok and right then
+                if right >= 0.55 then
+                    -- A trigger already held when the screen opens must be released.
+                    if not end_hold.fired then
+                        end_hold.start = end_hold.start or t
+                        if t - end_hold.start >= 0.5 then
+                            end_hold.fired = true
+                            if self._trigger_current_presentation_skip then
+                                self:_trigger_current_presentation_skip()
+                                mod:info("DARKTIDEVR_END_VIEW continue source=trigger_hold")
+                            end
+                        end
+                    end
+                else
+                    end_hold.start, end_hold.fired = nil, false
+                end
+            end
+            return func(self, dt, t, input_service, ...)
+        end)
     end)
-end)
+    mod:hook_require("scripts/ui/views/title_view/title_view", function(class)
+        mod:hook_safe(class, "on_enter", function() title_trigger.down = true end)
+        mod:hook(class, "update", function(func, self, dt, t, input_service, ...)
+            if not self._continue_triggered and not self.closing_view and self._continue then
+                local ok, down = pcall(title_triggers_down)
+                if ok and down ~= nil then
+                    if down and not title_trigger.down then
+                        self:_continue()
+                        mod:info("DARKTIDEVR_TITLE continue source=trigger")
+                    end
+                    title_trigger.down = down
+                end
+            end
+            return func(self, dt, t, input_service, ...)
+        end)
+    end)
 end
 
 -- The local player's companion units (the Skitarii servo-skull): alive,

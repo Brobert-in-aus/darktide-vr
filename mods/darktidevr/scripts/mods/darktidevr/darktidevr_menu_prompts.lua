@@ -25,10 +25,22 @@ function Prompts.install(mod, enabled, secondary_enabled)
         if tint then text=InputUtils.apply_color_to_input_text(text,Color.ui_input_color(255,true)) end
         return text
     end
+    -- A view whose own buttons have their own VR route labels them for the
+    -- duration of `fn` (e.g. the end screen: vote by pointing, continue by
+    -- holding the trigger), without relabelling the alias in other views.
+    local scoped
+    function api.with_labels(labels,fn,...)
+        local previous=scoped
+        scoped=labels
+        local result=pack(pcall(fn,...))
+        scoped=previous
+        if not result[1] then error(result[2],0) end
+        return unpack(result,2,result.n)
+    end
     mod:hook(Text,"localize_with_button_hint",function(func,action,name,context,service,...)
         local previous=label
         label=(service==nil or service=="View") and enabled() and
-            (direct[action] or
+            (scoped and scoped[action] or direct[action] or
              ((action=="right_pressed" or action=="right_released" or action=="right_hold") and
               secondary_enabled and secondary_enabled() and "vr_menu_point_secondary") or
              (clickable and "vr_menu_point_select")) or nil

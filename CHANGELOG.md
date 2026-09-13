@@ -4,6 +4,14 @@ All notable user-facing changes to Darktide VR. Versions follow
 `major.minor.patch` with a pre-release suffix while the mod is in alpha; the
 runtime package records the exact source revision alongside the version.
 
+## 0.1.0-alpha.3 (unreleased)
+
+- End of mission screen: hold the right trigger to continue, and point and
+  click to vote on merging strike teams. No menu prompt shows a keyboard
+  key any more.
+- Chat on the HUD panel is drawn at the HUD's size and has a box in the HUD
+  editor.
+
 ## 0.1.0-alpha.2 (13 September 2026)
 
 - Experimental keyboard and mouse mode (Mod Options, Experimental features):
