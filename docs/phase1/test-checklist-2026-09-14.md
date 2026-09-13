@@ -73,6 +73,22 @@ unattended evidence for each is in
    - plasma or staff heat shows as a percentage.
 
    Say if it is too big, too close or in the way of the sights.
+7. **Optional, five minutes: record pose traces for the body IK work**
+   (`a506d9e`). Before launching, create
+   `mods\darktidevr\darktidevr_pose_trace.flag` containing `record`. In the
+   Psykhanium, do each for about 20 seconds:
+   - stand and look around;
+   - crouch and stand a few times;
+   - lean over something;
+   - reach high and low;
+   - hold a gun two-handed;
+   - swing melee;
+   - walk, strafe and walk backwards;
+   - turn on the spot;
+   - sprint and slide.
+
+   Then delete the flag (the recording stops within a second) and leave
+   `darktidevr_pose_trace.csv` where it is for the next session.
 ## Assumptions and questions for the evening review
 
 - Held-item effects (item 3) were deployed on static reading and unit tests

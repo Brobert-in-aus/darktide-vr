@@ -196,8 +196,8 @@ time it appears.
 
 ## Offline testing
 
-- **Recorder.** A request-file-enabled recorder (`darktidevr_pose_trace.flag`)
-  writes a compact CSV to `artifacts/pose-traces/` at 30 Hz. Each row: time,
+- **Recorder (implemented, `a506d9e`).** A request-file-enabled recorder (`darktidevr_pose_trace.flag`)
+  appends a CSV (`mods/darktidevr/darktidevr_pose_trace.csv`, moved into`nartifacts after recording) at 30 Hz; columns are documented in`n`darktidevr_pose_trace.lua`. Each row: time,
   head pose, both grip poses and tracking flags, root position and velocity,
   character state, crouch input, floor eye height, calibration id. Players
   never have the flag.

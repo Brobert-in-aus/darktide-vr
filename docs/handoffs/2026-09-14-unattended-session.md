@@ -364,3 +364,22 @@ destination=2112x1188` (and frame 5424) at the same moment, with no Close
 failure, one viewer start each and `result=pass`. Evidence:
 `artifacts/unattended/viewer-close-failure-20260914/` (repro-1 to repro-5).
 The automatic restart stays as a safety net.
+
+## Whole-body IK: design and pose trace recorder (backlog, milestone 1 part)
+
+- Design document: [whole-body-ik-design-2026-09-14.md](../phase1/whole-body-ik-design-2026-09-14.md)
+  (`26350e8`). It covers the joint map, solve order and heuristics, the
+  stock-owned state table, the adapter, offline testing and milestones. It is
+  based on a read of the body proxy, the IK path, calibration and the earlier
+  plans.
+- Pose trace recorder (`a506d9e`): `darktidevr_pose_trace.flag` "record"
+  appends 30 Hz CSV rows. Test `pose_trace`; suite 247/247.
+- In-game check: the synthetic holster reach run with the flag recorded 990
+  rows in about 33 s. The right grip columns followed the synthetic zone
+  positions (for example 0.13, 0.16, -0.38) and the floor eye height read
+  1.70 (the publisher's value). `body_yaw` was empty in that no-viewer run
+  (the body presentation's yaw is not published there). Evidence:
+  `artifacts/unattended/holsters-20260914/synthetic-pose-trace/pose-trace.csv`.
+- Not done: the rig scan (human and Ogryn joint map) and the solver itself.
+  Traces recorded worn tonight (evening item 7) are the input for the next
+  step.
