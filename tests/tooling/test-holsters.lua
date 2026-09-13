@@ -20,6 +20,7 @@ assert(near(p[1], 0.2) and near(p[3], -0.72), "scaled frame")
 assert(not Holsters.frame({0, 0, 0 / 0}, {0, 1, 0}, 1.6))
 assert(not Holsters.frame({0, 0, 1.6}, {0, 0, 1}, 1.6), "vertical forward")
 assert(not Holsters.frame({0, 0, 1.6}, {0, 1, 0}, 0.3), "implausible eye height")
+assert(Holsters.frame({0, 0, 3.0}, {0, 1, 0}, 3.0), "an Ogryn-scale eye height is plausible")
 assert(not Holsters.local_point(nil, {0, 0, 0}))
 
 -- Zones: entry radius, exit hysteresis, nearest by relative distance.

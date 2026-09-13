@@ -268,8 +268,16 @@ void apply_synthetic_holster_path(core::SharedControllerState& state,
       {-0.25F, 0.25F, -0.25F},
       {0.25F, 0.25F, -0.25F},
   }};
+  // Tracked throughout: the generic sample's tracking-loss phase would
+  // otherwise interrupt a zone visit.
+  const auto tracked = core::controller_orientation_valid |
+                       core::controller_position_valid |
+                       core::controller_orientation_tracked |
+                       core::controller_position_tracked;
   for (std::size_t hand = 0; hand < 2; ++hand) {
     auto& destination = state.hands[hand];
+    destination.aim_tracking_flags = tracked;
+    destination.grip_tracking_flags = tracked;
     auto position = neutral[hand];
     if (hand == 1 && step < 90) {
       position = zones[zone];

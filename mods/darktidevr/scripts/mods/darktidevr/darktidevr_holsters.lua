@@ -29,7 +29,7 @@ local function vector(v) return type(v) == "table" and finite(v[1]) and finite(v
 -- horizontal part is used) and the eye height. nil when any input is unusable.
 function Holsters.frame(head, forward, eye_height)
     if not vector(head) or not vector(forward) or not finite(eye_height) or
-            eye_height < 0.8 or eye_height > 2.4 then return nil end
+            eye_height < 0.8 or eye_height > 4.5 then return nil end
     local length = math.sqrt(forward[1] * forward[1] + forward[2] * forward[2])
     if length < 1e-4 then return nil end
     local fx, fy = forward[1] / length, forward[2] / length
@@ -140,8 +140,7 @@ end
 
 -- Live adapter, behind the "vr_holsters" option (default off). World space
 -- throughout: tracked grip targets, the first-person eye position, the body's
--- visual yaw (head yaw when unknown) and the eye height above the character's
--- feet. One hand at a time owns a request; a claim keeps its hand until the
+-- visual yaw (head yaw when unknown) and the player's physical eye height. One hand at a time owns a request; a claim keeps its hand until the
 -- grip is released. The two-hand support request is used when no holster is
 -- armed or claimed.
 function Holsters.install(mod, presentation, observation)
@@ -158,7 +157,6 @@ function Holsters.install(mod, presentation, observation)
         local eye_unit = first_person and first_person:first_person_unit()
         if not eye_unit or not Unit.alive(eye_unit) then return nil end
         local eye = Unit.world_position(eye_unit, 1)
-        local feet = Unit.world_position(unit, 1)
         local yaw = observation.body_visual_yaw
         local forward
         if type(yaw) == "number" and yaw == yaw then
@@ -166,7 +164,15 @@ function Holsters.install(mod, presentation, observation)
         else
             forward = Quaternion.forward(Unit.world_rotation(eye_unit, 1))
         end
-        return Holsters.frame(vector(eye), vector(forward), Vector3.z(eye) - Vector3.z(feet))
+        -- Tracked hands move in physical metres (times the character scale,
+        -- 1 for humans), so the zones scale with the player's own eye height,
+        -- not the character's eye height in the world.
+        local physical = presentation.physical_eye_height and presentation.physical_eye_height()
+        local player = Managers.player and Managers.player:local_player(1)
+        local character_scale = presentation.calibrated_character_scale and
+            presentation.calibrated_character_scale(player) or 1
+        local eye_height = (physical or Holsters.REFERENCE_EYE_HEIGHT) * (tonumber(character_scale) or 1)
+        return Holsters.frame(vector(eye), vector(forward), eye_height)
     end
     -- Unattended runs turn holsters on with a request file instead of the
     -- saved option ("enabled"); players never have it.

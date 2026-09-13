@@ -33,9 +33,10 @@ the body, below where the dominant hand holds a weapon.
 
 Body frame (world space): origin at the first-person eye position; forward is
 the body's visual yaw (`body_visual_yaw`, the yaw the body presentation
-already follows) and falls back to the head's yaw; eye height is the eye's
-height above the character's feet. So the zones turn with the body, not with
-a glance, and follow crouching.
+already follows) and falls back to the head's yaw; the scale is the player's
+physical standing eye height from the headset (times the character scale,
+1 for humans), because tracked hands move in physical metres. So the zones
+turn with the body, not with a glance, and follow crouching.
 
 ## Arming and pressing
 
@@ -87,9 +88,9 @@ a glance, and follow crouching.
   `DARKTIDEVR_HOLSTER wield hand=... selector=...` each press.
 - Blitz from the belt, holster counts and the item radial are separate backlog
   items.
-- Seated play: zones follow the eye height above the character's feet, which
-  in seated play is the character's standing height; the hip zones then sit
-  below the seat. Seated tuning is not attempted.
+- Seated play: zones scale with the measured standing eye height but hang from
+  the seated head, so the hip zones sit below the seat. Seated tuning is not
+  attempted.
 
 ## Tests
 

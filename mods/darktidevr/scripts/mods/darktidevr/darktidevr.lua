@@ -8467,6 +8467,13 @@ function presentation.weapon_aim_target(role)
     return position, rotation
 end
 
+-- The player's standing eye height above the floor, in physical metres, from
+-- the shared head pose; nil when the viewer has not measured it.
+function presentation.physical_eye_height()
+    local value = head_pose_values and tonumber(head_pose_values[24])
+    if value and value >= 0.8 and value <= 2.4 then return value end
+end
+
 function presentation.weapon_grip_target(role)
     local side = presentation.weapon_hand_roles.physical(role)
     if side == "left" then return presentation.left_controller_grip_target() end
