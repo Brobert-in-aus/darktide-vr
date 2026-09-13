@@ -27,6 +27,8 @@ param(
     # After the scene is reached: open and close stock chat this many times
     # through the session control request file (open-chat stutter checks).
     [ValidateRange(0, 20)] [int] $ChatCycles = 0,
+    # With -ChatCycles: toggle one engine call instead of chat (clip, show, cursor).
+    [ValidateSet('', 'clip', 'show', 'cursor')] [string] $ChatProbe = '',
     [string] $OutputDirectory,
     [ValidateRange(60, 3600)] [int] $StartTimeoutSeconds = 900,
     [ValidateRange(10, 600)] [int] $ExitTimeoutSeconds = 180
@@ -173,7 +175,7 @@ try {
     if (-not $reached) { throw "Did not reach $Scene within $StartTimeoutSeconds s." }
 
     if ($ChatCycles -gt 0) {
-        Set-Content -LiteralPath (Join-Path $modRoot 'darktidevr_quit_game.flag') -Value "chat $ChatCycles" -Encoding ascii
+        Set-Content -LiteralPath (Join-Path $modRoot 'darktidevr_quit_game.flag') -Value $(if ($ChatProbe) { "probe $ChatProbe $ChatCycles" } else { "chat $ChatCycles" }) -Encoding ascii
         $summary.chat_cycles = $ChatCycles
         $HoldSeconds = [math]::Max($HoldSeconds, $ChatCycles * 6 + 10)
         $summary.hold_seconds = $HoldSeconds
@@ -236,8 +238,8 @@ try {
         $quit = [regex]::Match($text, 'DARKTIDEVR_SESSION quit_requested source=flag route=(\S+)')
         if ($quit.Success) { $summary.quit_route = $quit.Groups[1].Value }
         if ($ChatCycles -gt 0) {
-            $summary.chat_actions = @([regex]::Matches($text, 'DARKTIDEVR_SESSION chat_(open|close) ') | ForEach-Object { $_.Groups[1].Value }).Count
-            $summary.chat_frame_spikes = @([regex]::Matches($text, 'DARKTIDEVR_SESSION frame_spike dt_ms=([0-9.]+) since_(open|close)_ms=([0-9.]+)') |
+            $summary.chat_actions = @([regex]::Matches($text, 'DARKTIDEVR_SESSION (?:chat|probe)_(open|close|\w+_on|\w+_off) ') | ForEach-Object { $_.Groups[1].Value }).Count
+            $summary.chat_frame_spikes = @([regex]::Matches($text, 'DARKTIDEVR_SESSION frame_spike dt_ms=([0-9.]+) since_(\w+)_ms=([0-9.]+)') |
                 ForEach-Object { '{0} {1}ms after {2}' -f $_.Groups[1].Value, $_.Groups[3].Value, $_.Groups[2].Value })
         }
     }

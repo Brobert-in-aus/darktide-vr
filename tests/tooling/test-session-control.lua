@@ -91,6 +91,20 @@ do
     frame(0.3) -- long after the last action: not logged
     assert(not infos[#infos]:find("dt_ms=300", 1, true))
     assert(#infos - before >= 5)
+
+    -- Probes toggle one engine call without touching chat.
+    local clips = {}
+    Window = {set_clip_cursor = function(value) clips[#clips + 1] = value end}
+    files[SessionControl.QUIT_FLAG] = "probe clip 1"
+    for _ = 1, 30 do cycles.update() end
+    assert(files[SessionControl.QUIT_FLAG] == "consumed")
+    for _ = 1, 800 do frame(0.016) end
+    assert(#clips == 2 and clips[1] == false and clips[2] == true, "clip probe toggled wrong")
+    assert(opens == 2, "a probe opened chat")
+    assert(infos[#infos - 0]:find("probe_clip_off remaining=0", 1, true) or infos[#infos - 1]:find("probe_clip_off", 1, true))
+    files[SessionControl.QUIT_FLAG] = "probe bogus 2"
+    for _ = 1, 30 do cycles.update() end
+    assert(files[SessionControl.QUIT_FLAG] == "probe bogus 2", "unknown probe consumed")
 end
 
 -- Viewer: an external-viewer file means no game-started viewer.

@@ -38,12 +38,42 @@ end
 SessionControl.CHAT_INTERVAL = 3
 SessionControl.SPIKE_SECONDS = 0.05
 
+-- Probes toggle one engine call on and off instead of the whole chat, to find
+-- which part of closing chat stalls a frame: "probe clip N" (Window clip
+-- cursor), "probe show N" (Window cursor visibility), "probe cursor N" (the
+-- input manager's cursor stack, as chat pushes and pops it).
+SessionControl.PROBES = {
+    clip = function(on) Window.set_clip_cursor(not on) end,
+    show = function(on) Window.set_show_cursor(on) end,
+    cursor = function(on)
+        if on then
+            Managers.input:push_cursor("DarktideVRProbe")
+        else
+            Managers.input:pop_cursor("DarktideVRProbe")
+        end
+    end,
+}
+
 function SessionControl.chat_step(api, chat, dt, t, ui_renderer, mod)
     if api.chat_watch_until and t <= api.chat_watch_until and dt > SessionControl.SPIKE_SECONDS then
         mod:info("DARKTIDEVR_SESSION frame_spike dt_ms=%.1f since_%s_ms=%.1f",
             dt * 1000, tostring(api.chat_last_action), (t - api.chat_last_t) * 1000)
     end
     if (api.chat_remaining or 0) <= 0 or t < (api.chat_next_t or 0) then
+        return
+    end
+    local probe = api.probe and SessionControl.PROBES[api.probe]
+    if probe then
+        api.probe_on = not api.probe_on
+        probe(api.probe_on)
+        api.chat_last_action = api.probe .. (api.probe_on and "_on" or "_off")
+        if not api.probe_on then
+            api.chat_remaining = api.chat_remaining - 1
+        end
+        api.chat_last_t = t
+        api.chat_watch_until = t + 1
+        api.chat_next_t = t + SessionControl.CHAT_INTERVAL
+        mod:info("DARKTIDEVR_SESSION probe_%s remaining=%d t=%.3f", api.chat_last_action, api.chat_remaining, t)
         return
     end
     local widget = chat._input_field_widget
@@ -97,14 +127,26 @@ function SessionControl.install(mod)
         end
         local value = read_request(files)
         local cycles = type(value) == "string" and tonumber(value:match("^%s*chat%s+(%d+)%s*$"))
+        local probe, probe_cycles
+        if type(value) == "string" then
+            probe, probe_cycles = value:match("^%s*probe%s+(%a+)%s+(%d+)%s*$")
+        end
+        if probe and SessionControl.PROBES[probe] then
+            cycles = tonumber(probe_cycles)
+        else
+            probe = nil
+        end
         if cycles then
+            api.probe = probe
+            api.probe_on = false
             local consumed = files.open(SessionControl.QUIT_FLAG, "w")
             if consumed then
                 consumed:write("consumed")
                 consumed:close()
                 api.chat_remaining = math.min(cycles, 20)
                 api.chat_next_t = 0
-                mod:info("DARKTIDEVR_SESSION chat_cycle_requested cycles=%d", api.chat_remaining)
+                mod:info("DARKTIDEVR_SESSION chat_cycle_requested cycles=%d probe=%s",
+                    api.chat_remaining, tostring(probe or "none"))
             end
             return
         end
