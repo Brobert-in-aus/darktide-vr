@@ -270,15 +270,18 @@ function Readout.install(mod, presentation, observation)
         local dx = shake and math.sin(now * 55) * 0.006 * shake or 0
         local small = Readout.SMALL_FONT_SIZE * ps
         local width = #primary * size * 0.52
-        local top = secondary and size * 0.08 or -size * 0.35
-        Gui.slug_text_3d(gui, primary, font.path, size, tm, Vector3(dx - width * 0.5, top, 0), 10,
+        -- Measured in the eye render: the text position is above the glyphs,
+        -- whose tops sit 0.32 and bottoms 0.80 of the font size below it.
+        -- These place the clip and reserve as one block centred in the ring.
+        local primary_y = secondary and size * 0.727 or size * 0.56
+        Gui.slug_text_3d(gui, primary, font.path, size, tm, Vector3(dx - width * 0.5, primary_y, 0), 10,
             color, "flags", font.render_flags or 0)
         if secondary then
             -- The reserve fades on its own capacity, independently of the clip.
             local small_width = #secondary * small * 0.52
             local r = values.clip and Readout.fill_color(values.reserve, values.reserve_max) or c
             Gui.slug_text_3d(gui, secondary, font.path, small, tm,
-                Vector3(dx - small_width * 0.5, top - small * 1.15, 0), 10,
+                Vector3(dx - small_width * 0.5, 0, 0), 10,
                 Color(230, r[1], r[2], r[3]), "flags", font.render_flags or 0)
         end
         if progress then
