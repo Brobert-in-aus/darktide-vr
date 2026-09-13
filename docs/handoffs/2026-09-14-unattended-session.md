@@ -45,6 +45,10 @@ today cannot rely on the physical headset; the external-viewer path with a
 synthetic controller path or the simulator runtime is the fallback. The
 viewer exiting on a runtime stop is itself a defect to fix (todo).
 
+**Correction (later the same day):** that reading was wrong; see "Viewer
+exits: theatre Close failure" below. The 4, 3, 6 states are the viewer's own
+exit request during cleanup after the Close failure, not a runtime stop.
+
 ## Shutdown crash (queue item 1), fixed
 
 Evidence directory: `artifacts/unattended/shutdown-crash-20260914/`.
@@ -297,3 +301,32 @@ the window cannot check world-space drawing.) The flag was removed afterwards.
 Not checked: placement at a tracked hand, real ammo values (the character
 held its melee weapon; no controller input), the panel element hiding. Worn
 check: evening item 6.
+
+## Viewer exits: theatre Close failure (reopened), mitigation
+
+The viewer's `ID3D12GraphicsCommandList::Close(theatre)` intermittently
+returns E_INVALIDARG. `check` throws, and cleanup's `request_clean_exit`
+produces the FOCUSED → VISIBLE → SYNCHRONIZED → STOPPING states that were
+first taken for a runtime stop. The viewer exits 1 and the headset stays dark.
+
+Seen three times today with the physical headset:
+- the first session run, about 90 s in;
+- a Psykhanium run at about 08:20;
+- a Psykhanium run at 08:53, 45 s after the viewer started, at the loading →
+  gameplay transition.
+
+A 6-minute run between those did not fail. The pause and resume change
+(`262f6df`) is correct OpenXR handling of a real stop, but did not address
+this; the skip-on-stop in `c144f2b` cannot help either, since no stop precedes
+the failure.
+
+Mitigation (`c0913f3`):
+- The mod restarts a viewer that exits with an error, at most three times in
+  about five minutes. A clean exit or a stop the mod asked for is left alone.
+  Test: `session_control`.
+- Diagnosis aid: the Close failure prints the frame and, when the viewer runs
+  with `--debug-layer`, the D3D12 info queue messages.
+- The runner's `-ViewerArguments` starts an external viewer with extra
+  arguments.
+
+Root cause: open; debug-layer reproduction runs below.

@@ -7,8 +7,8 @@ runtime package records the exact source revision alongside the version.
 ## 0.1.0-alpha.4 (unreleased)
 
 - Closing the game in VR mode no longer crashes it on the way out.
-- Taking the headset off until it sleeps no longer leaves it dark: the view
-  comes back when it wakes.
+- If the headset viewer fails during play, the game starts it again instead
+  of leaving the headset dark.
 - Flamethrower streams, chain lightning, the force sword's wind slash and the
   shield's windup glow start from the weapon in your hand.
 - Experimental virtual holsters (off by default): reach to your shoulder,

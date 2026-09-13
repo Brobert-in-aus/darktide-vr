@@ -85,13 +85,15 @@ void check(HRESULT result, const char* operation) {
 // messages before failing (intermittent theatre failure, 14 September).
 void check_command_list_close(ID3D12GraphicsCommandList* list,
                               ID3D12Device* device, std::uint64_t frame,
-                              const char* operation) {
+                              const char* operation,
+                              const std::function<std::string()>& describe = {}) {
   const auto result = list->Close();
   if (SUCCEEDED(result)) {
     return;
   }
   std::cerr << "openxr.command_list_close_failure frame=" << frame
-            << " result=" << static_cast<std::uint32_t>(result) << '\n';
+            << " result=" << static_cast<std::uint32_t>(result)
+            << (describe ? " " + describe() : std::string()) << '\n';
   Microsoft::WRL::ComPtr<ID3D12InfoQueue> messages;
   if (device && SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&messages)))) {
     const auto count = messages->GetNumStoredMessagesAllowedByRetrievalFilter();
@@ -3258,7 +3260,30 @@ class OpenXrProbe {
               destination_barriers.data());
         }
         check_command_list_close(command_list.Get(), device, frame,
-                                 "ID3D12GraphicsCommandList::Close(theatre)");
+                                 "ID3D12GraphicsCommandList::Close(theatre)",
+                                 [&]() {
+          std::ostringstream text;
+          auto size = [](ID3D12Resource* resource) {
+            if (!resource) return std::string("null");
+            const auto d = resource->GetDesc();
+            return std::to_string(d.Width) + "x" + std::to_string(d.Height) +
+                   "/f" + std::to_string(static_cast<int>(d.Format));
+          };
+          text << "shared=" << use_shared_pair << " cached=" << use_cached_pair
+               << " generated=" << use_generated_pair << " menu=" << use_shared_menu
+               << " queued_original=" << use_queued_original
+               << " ingested_original=" << ingested_original_this_frame
+               << " cuffs=" << rendered_tracked_cuffs
+               << " separate_eyes=" << separate_shared_eye_swapchains
+               << " shared_eye=" << shared_eye_width << "x" << shared_eye_height
+               << " shared_source=" << (opened_eyes ? size(opened_eyes->eyes[0].Get()) : std::string("detached"))
+               << " cached0=" << size(cached_eye_resources[0].Get())
+               << " swapchain0=" << size(resources.empty() ? nullptr : resources[0])
+               << " projected_readback=" << projected_eye_readback_copied_this_frame
+               << " eye_readback=" << shared_eye_readback_copied_this_frame
+               << " menu_readback=" << menu_readback_copied_this_frame;
+          return text.str();
+        });
         ID3D12CommandList* lists[]{command_list.Get()};
         if (use_generated_pair) {
           check(queue->Wait(generated_surfaces->ready_fence.Get(),generated_sequence_for_frame),

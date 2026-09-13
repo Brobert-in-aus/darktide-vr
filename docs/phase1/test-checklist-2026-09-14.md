@@ -33,13 +33,17 @@ unattended evidence for each is in
    line per effect type, and no `DARKTIDEVR_SCANNER_HOLO fallback=` line. Not
    changed (cannot be fixed this way): the shout and shield-bash bursts.
 
-4. **Viewer survives the headset sleeping** (`262f6df`, viewer). Take the
-   headset off long enough for it to sleep (proximity sensor back on
-   automatic by then), put it back on: the game view should come back without
-   restarting the game. Viewer log (`%LOCALAPPDATA%\DarktideVR\viewer-<pid>.log`):
-   `openxr.session_pause=runtime_stop` then `openxr.session_resume=ready`.
-   Before this build the headset stayed dark until the game was restarted.
-
+4. **Viewer comes back after a failure** (`c0913f3`, Lua and viewer). The
+   headset viewer can fail during play (an intermittent D3D12 error, three
+   times today). The game now restarts it, up to three times in about five
+   minutes. Play normally. If the headset goes dark, it should come back
+   within a few seconds. The console log shows
+   `DARKTIDEVR_VIEWER restart=automatic exit_code=1 attempt=1`; the viewer
+   log shows `openxr.command_list_close_failure frame=...`. Please say if you
+   saw a blackout and roughly when. Also: taking the headset off until it
+   sleeps and putting it back on should bring the view back
+   (`openxr.session_pause=runtime_stop`, then `session_resume`); this part is
+   checked only on the simulator.
 5. **Virtual holsters, new and off by default** (`baa12ee`, Lua). Design and
    zone table: [virtual-holsters-2026-09-14.md](virtual-holsters-2026-09-14.md).
    First, with the option still off: the grips behave exactly as before
