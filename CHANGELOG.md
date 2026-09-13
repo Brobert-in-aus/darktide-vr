@@ -12,7 +12,7 @@ runtime package records the exact source revision alongside the version.
 - The survival-mode buff choice opens on the menu panel: point at a buff and
   hold the right trigger to pick it.
 - Holding the right trigger skips cutscenes and videos again.
-- Fixed a crash when leaving a survival mission.
+- Fixed a crash at the end of a mission.
 - Chat on the HUD panel is drawn at the HUD's size and has a box in the HUD
   editor.
 

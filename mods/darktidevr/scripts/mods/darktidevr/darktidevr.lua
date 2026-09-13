@@ -15488,6 +15488,19 @@ presentation.viewer.install(mod, function()
     return ensure_ui_native_hooks() and ui_native_capture or nil
 end)
 
+-- Backstop for the marker atlas's idle release: leaving gameplay (the score
+-- screen, or loading) releases what the atlas and the HUD panel's mirrored
+-- elements hold before the mission's packages unload.
+mod.on_game_state_changed = function(status, state_name)
+    if status == "enter" and (state_name == "StateGameScore" or state_name == "StateLoading") then
+        if presentation.marker_atlas then pcall(presentation.marker_atlas.destroy) end
+        if presentation.hud_panel and presentation.hud_panel.release_mirror_materials then
+            pcall(presentation.hud_panel.release_mirror_materials)
+        end
+        mod:info("DARKTIDEVR_MARKER_ATLAS released reason=state_%s", tostring(state_name))
+    end
+end
+
 mod.on_disabled = function()
     presentation.marker_metrics.stop()
     pcall(presentation.communication_input.cancel)

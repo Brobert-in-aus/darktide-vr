@@ -203,8 +203,23 @@ end
 -- Called once per camera update with the world being drawn. `frame_for(anchor)` returns the quad's
 -- transform (right = viewer left, forward = toward the viewer, up = up, at
 -- the anchor, as the HUD panel faces its quad) and metres per pixel.
+-- Camera updates without a marker frame before the atlas lets go of its
+-- resources. Its GUI keeps what it drew (the tag wheel's materials, marker
+-- icons), some from a mission's own packages; the atlas's UI world outlives
+-- the mission, and two mission-end unloads crashed on a resource it still
+-- held. Markers stop drawing before every unload (cutscene, end screen).
+Atlas.IDLE_RELEASE_FRAMES = 30
+
 function Atlas.draw(world, frame_for)
     state.frame = state.frame + 1
+    if state.resource and state.world == world and
+            state.frame - state.stamp > Atlas.IDLE_RELEASE_FRAMES then
+        Atlas.destroy()
+        if state.api and state.api.log then
+            state.api.log("DARKTIDEVR_MARKER_ATLAS released reason=idle")
+        end
+        return 0
+    end
     -- Cells recorded in another world (the one before a map change) never
     -- draw: their GUI belongs to that world.
     if not state.ready or not state.world_gui or state.world ~= world or

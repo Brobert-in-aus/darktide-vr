@@ -88,4 +88,18 @@ assert(resource.render_target == "capture" and find("destroy_gui")[2] == "world_
 assert(find("destroy_resource")[1] == "display" and find("destroy_world")[2] == "render_world")
 assert(state.resource == nil and not state.ready and #state.shown == 0)
 assert(not Atlas.claim(3, {x = 0, y = 0, z = 0}))
+
+-- Camera updates without a marker frame release the atlas while its world
+-- is alive (a mission's resources must not outlive the mission in its GUI).
+assert(Atlas.ensure("game_world") and Atlas.begin_frame(4))
+for _ = 1, Atlas.IDLE_RELEASE_FRAMES do Atlas.draw("game_world", frame_for) end
+assert(state.resource ~= nil, "released before the idle threshold")
+local worlds_destroyed = 0
+for _, call in ipairs(calls) do if call.name == "destroy_world" then worlds_destroyed = worlds_destroyed + 1 end end
+assert(Atlas.draw("game_world", frame_for) == 0 and state.resource == nil and
+    find("destroy_gui")[1] == "game_world", "an idle atlas must release")
+local after_release = 0
+for _, call in ipairs(calls) do if call.name == "destroy_world" then after_release = after_release + 1 end end
+assert(after_release == worlds_destroyed + 1)
+assert(Atlas.ensure("game_world") and Atlas.claim(5, {x = 0, y = 2, z = 0}), "rebuilds on the next marker")
 print("marker_atlas.result=pass")
