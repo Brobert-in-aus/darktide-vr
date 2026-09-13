@@ -1,10 +1,32 @@
 # Unattended session brief: 14 September 2026
 
 Written 13 September after the 0.1.0-alpha.3 publication. The user is at
-work for the whole session and cannot answer questions or wear the headset.
-Work the queue in [todo-2026-09-14.md](../phase1/todo-2026-09-14.md) in
-order, as far as evidence allows, and leave a clean, documented state for
-an evening worn check.
+work for the whole session and cannot answer questions or wear the headset;
+the first worn check of anything done today is in the evening. Work the
+queue in [todo-2026-09-14.md](../phase1/todo-2026-09-14.md) in order, as far
+as evidence allows, and leave a clean, documented state for that evening
+check.
+
+## Working without a headset check
+
+- Nothing done today is accepted until the user wears it. Aim every change at
+  a result the session can measure itself (a crash that stops reproducing,
+  a timed hitch that disappears, a traced position that lands on its node,
+  a unit test), and say what the evening check still has to confirm.
+- Behaviour or visual changes: bug fixes with unattended evidence may be
+  installed at their intended default; new features (holsters, two-hand
+  work, diegetic readouts, the reticle charge meter) ship behind options that
+  default off. The installed game must stay playable as alpha.3 plays if the
+  user launches it without reading anything.
+- Do not stall on a decision the user would normally make. Pick the
+  conservative option, write it down as an assumption with the alternative,
+  and put it on the evening review list.
+- Each deployed change gets an evening checklist entry at the time it is
+  deployed, not reconstructed at the end, so the list is complete even if
+  the session stops early.
+- If an item cannot progress without a worn observation, finish its
+  unattended part (static analysis, instrumentation, default-off code,
+  tests), write the exact observation needed, and move on.
 
 ## Starting state
 
@@ -101,7 +123,9 @@ an evening worn check.
    Status`, per AGENTS.md.
 4. Write `docs/handoffs/2026-09-14-unattended-session.md`: per item, what was
    done, commits, validation commands and results, evidence paths, limits.
-5. Write `docs/phase1/test-checklist-2026-09-14.md`: the specific worn checks
-   for the evening, in the order they should be tried, each with what to
-   look for and the log line that confirms it.
+5. Finish `docs/phase1/test-checklist-2026-09-14.md` (started at the first
+   deployment and extended with each one): the specific worn checks for the
+   evening in the order to try them, each with what to look for, the option
+   to turn on for default-off features, and the log line that confirms it;
+   then the assumptions and design questions waiting on the user.
 6. Update the todo, commit, push the branch to both remotes.
