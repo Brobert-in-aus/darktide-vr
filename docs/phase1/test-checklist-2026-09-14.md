@@ -51,15 +51,21 @@ unattended evidence for each is in
    or reloading. Say which zones feel too high, low, far forward or small.
    Console: `DARKTIDEVR_HOLSTER armed zone=...` and `wield ...` lines.
 
-6. **Ammo count at the hand, new and off by default** (`ecec404`, Lua). Turn
-   on Mod Options > Darktide VR > Experimental features > Ammo count at the
-   hand. In the Psykhanium with a gun out: clip and reserve show just above
-   and inside the weapon hand, facing you, and the panel's weapon block for
-   the gun is gone. As the clip runs down the count goes from white through
-   yellow to orange, red at 0 (`a18217f`); reloading fills a ring around it;
-   sprinting mid-reload shakes the count and the ring disappears. Plasma or
-   staff heat shows as a percentage. Say if it is too big, too close or in
-   the way of the sights.
+6. **Ammo count at the hand, new and off by default** (`ecec404` to
+   `20fe0ae`, Lua). Turn on Mod Options > Darktide VR > Experimental features
+   > Ammo count at the hand. In the Psykhanium with a gun out:
+   - the clip count shows large just above and inside the weapon hand, facing
+     you, with the reserve small beneath it;
+   - the panel's weapon block for the gun is gone;
+   - each number is white at its own capacity and fades through yellow and
+     orange to red at 0 as you fire (the reserve on its own capacity);
+   - reloading fills a solid ring around the count, smoothly, over a dim
+     track;
+   - sprinting or swapping mid-reload shakes the count and the ring
+     disappears;
+   - plasma or staff heat shows as a percentage.
+
+   Say if it is too big, too close or in the way of the sights.
 ## Assumptions and questions for the evening review
 
 - Held-item effects (item 3) were deployed on static reading and unit tests
