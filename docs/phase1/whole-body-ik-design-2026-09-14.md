@@ -1,6 +1,6 @@
 # Whole-body IK for the third-person body: design (14 September 2026)
 
-Status: design only. Nothing here is implemented or worn-tested. It replaces
+Status: design, plus the pose trace recorder (`a506d9e`). Nothing of the solver is implemented or worn-tested. It replaces
 the approach of layering tracked arms and torso onto Darktide's own
 third-person animation, at the user's direction (13 September): that
 layering clashes too often to finish. Todo item: "Custom whole-body IK for the
@@ -197,7 +197,9 @@ time it appears.
 ## Offline testing
 
 - **Recorder (implemented, `a506d9e`).** A request-file-enabled recorder (`darktidevr_pose_trace.flag`)
-  appends a CSV (`mods/darktidevr/darktidevr_pose_trace.csv`, moved into`nartifacts after recording) at 30 Hz; columns are documented in`n`darktidevr_pose_trace.lua`. Each row: time,
+  appends a CSV (`mods/darktidevr/darktidevr_pose_trace.csv`, moved into
+artifacts after recording) at 30 Hz; columns are documented in
+`darktidevr_pose_trace.lua`. Each row: time,
   head pose, both grip poses and tracking flags, root position and velocity,
   character state, crouch input, floor eye height, calibration id. Players
   never have the flag.
