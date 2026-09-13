@@ -1151,6 +1151,20 @@ function presentation.publish_mode(mode, reason)
         return
     end
     presentation.sequence = presentation.sequence + 1
+    -- Loading boards, videos and cutscenes (mode 2) precede every map unload.
+    -- The marker atlas and the HUD panel's mirrored elements hold material
+    -- instances made from widgets, some from the mission's own packages
+    -- (survival markers, the buff choice); an engine crash followed the
+    -- survival mission's unload with a material still referenced. Release
+    -- them at the first heartbeat in mode 2 (0.5 s in, after the last frame
+    -- that drew with them, with the world still alive); the next routed draw
+    -- re-creates them.
+    if not mode_changed and heartbeat_due and mode == 2 then
+        if presentation.marker_atlas then pcall(presentation.marker_atlas.destroy) end
+        if presentation.hud_panel and presentation.hud_panel.release_mirror_materials then
+            pcall(presentation.hud_panel.release_mirror_materials)
+        end
+    end
     local flat_mode = mode == 2 or mode == 3 or mode == 4 or mode == 5 or
         mode == 6
     -- UI layout is authored at 1920x1080 logical pixels and then multiplied
@@ -1643,6 +1657,14 @@ function presentation.reconcile_fullscreen_views(manager)
         desired_mode = 5
         classified[#classified + 1] = "popup:" .. tostring(active_popups[1].id or "active")
     end
+    -- The survival-mode buff choice is a constant element, like the popups:
+    -- while a choice is open and unanswered, present it on the interactive
+    -- panel so it takes the pointer (hover, and aim and RT on a card) as
+    -- every other menu does. Unanswered, the stock timer picks at random.
+    if desired_mode ~= 5 and desired_mode ~= 6 and presentation.mission_buff_choice_open(manager) then
+        desired_mode = 5
+        classified[#classified + 1] = "mission_buffs:choice"
+    end
     presentation.world_menu_views = observed_world_menu_views
     local signature = table.concat(classified, ",")
     if signature ~= presentation.fullscreen_view_signature then
@@ -1664,6 +1686,22 @@ function presentation.reconcile_fullscreen_views(manager)
         -- Lua producer while the game process itself remains alive.
         presentation.publish_mode(1, "stereo_world")
     end
+end
+
+function presentation.mission_buff_choice_open(manager)
+    local constants = manager and manager._ui_constant_elements
+    if not constants and manager and manager.ui_constant_elements then
+        local ok, value = pcall(manager.ui_constant_elements, manager)
+        constants = ok and value or nil
+    end
+    local element = constants and constants._elements and
+        constants._elements.ConstantElementMissionBuffs
+    local context = element and element._context
+    -- The element holds input (`_using_input`) only while a live choice is
+    -- shown; its context outlives the choice.
+    return context ~= nil and context.is_choice == true and not context.buff_chosen and
+        element._using_input == true and element._is_visible ~= false and
+        not (element._states and element._states.view == "inactive")
 end
 
 function presentation.on_view_open(manager, view_name)
@@ -14668,7 +14706,15 @@ end)
 -- legend's badge reads Hold RT through the prompt aliases.
 local cinematic_skip = {down = false}
 function presentation.cinematic_skip_trigger()
-    local trigger = tonumber(controller_observation.right_trigger)
+    -- Cutscenes and videos run on flat screens, where gameplay no longer
+    -- refreshes controller_observation.right_trigger: read the state directly.
+    local trigger
+    if presentation.read_controller_triggers then
+        local ok, _, right = pcall(presentation.read_controller_triggers)
+        trigger = ok and right or nil
+    else
+        trigger = tonumber(controller_observation.right_trigger)
+    end
     if not trigger or presentation.controllers_disabled() then
         cinematic_skip.down = false
         return nil, false
@@ -14732,7 +14778,9 @@ end)
 -- screen opens must be released first.
 do
     local title_trigger = {down = true}
-    -- Both trigger values, or nil when the controller state is unavailable.
+    -- Both trigger values and the A button, or nil when the controller state
+    -- is unavailable. Read directly: gameplay refreshes the trigger values
+    -- only while stereo gameplay runs, not on flat screens or in menus.
     local function read_triggers()
         if not ui_native_capture or not controller_observation.values or
                 not ui_native_capture.dtvr_read_controller_state or
@@ -14744,8 +14792,22 @@ do
                     controller_observation.timestamp_ns) ~= 0 then
             return nil
         end
+        -- buttons[0] is the left hand, buttons[1] the right; bit 0 is the
+        -- primary button (X, A), bit 1 the secondary (Y, B).
         return tonumber(controller_observation.values[14]) or 0,
-            tonumber(controller_observation.values[32]) or 0
+            tonumber(controller_observation.values[32]) or 0,
+            tonumber(controller_observation.buttons[0]) or 0,
+            tonumber(controller_observation.buttons[1]) or 0
+    end
+    presentation.read_controller_triggers = read_triggers
+    -- The controller buttons a menu hotkey can answer to
+    -- (darktidevr_menu_input.lua, MenuInput.menu_buttons).
+    function presentation.read_menu_buttons()
+        if presentation.controllers_disabled() then return nil end
+        local ok, _, right, left_buttons, right_buttons = pcall(read_triggers)
+        if not ok or not right then return nil end
+        return {x = bit.band(left_buttons, 1) ~= 0, y = bit.band(left_buttons, 2) ~= 0,
+            a = bit.band(right_buttons, 1) ~= 0, rt = right >= 0.55}
     end
     local function title_triggers_down()
         local left, right = read_triggers()
@@ -14753,44 +14815,8 @@ do
         return left >= 0.55 or right >= 0.55
     end
 
-    -- End of mission screen: continue is Space and the stay-in-party vote is E.
-    -- The vote button takes a pointed click (RT), so continue is a held right
-    -- trigger (half a second, as the cutscene skip): a click on the vote must
-    -- not leave the round. Both buttons are labelled with their VR routes.
-    local end_view_labels = {continue_end_view = "vr_menu_hold_skip",
-        hotkey_menu_special_1 = "vr_menu_point_select"}
-    local end_hold = {start = nil, fired = true}
-    mod:hook_require("scripts/ui/views/end_view/end_view", function(class)
-        mod:hook_safe(class, "on_enter", function() end_hold.start, end_hold.fired = nil, true end)
-        mod:hook(class, "_update_buttons", function(func, self, ...)
-            local prompts = presentation.menu_prompts
-            if prompts and prompts.with_labels then
-                return prompts.with_labels(end_view_labels, func, self, ...)
-            end
-            return func(self, ...)
-        end)
-        mod:hook(class, "update", function(func, self, dt, t, input_service, ...)
-            local ok, _, right = pcall(read_triggers)
-            if ok and right then
-                if right >= 0.55 then
-                    -- A trigger already held when the screen opens must be released.
-                    if not end_hold.fired then
-                        end_hold.start = end_hold.start or t
-                        if t - end_hold.start >= 0.5 then
-                            end_hold.fired = true
-                            if self._trigger_current_presentation_skip then
-                                self:_trigger_current_presentation_skip()
-                                mod:info("DARKTIDEVR_END_VIEW continue source=trigger_hold")
-                            end
-                        end
-                    end
-                else
-                    end_hold.start, end_hold.fired = nil, false
-                end
-            end
-            return func(self, dt, t, input_service, ...)
-        end)
-    end)
+    -- The end of mission screen's continue (RT) and stay-in-party vote (Y)
+    -- are menu hotkeys: MenuInput.menu_buttons answers them in every menu.
     mod:hook_require("scripts/ui/views/title_view/title_view", function(class)
         mod:hook_safe(class, "on_enter", function() title_trigger.down = true end)
         mod:hook(class, "update", function(func, self, dt, t, input_service, ...)

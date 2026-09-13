@@ -461,3 +461,46 @@ end
 local without_null={get=function()return false end}
 assert(direct_hook(function()return without_null end,{},'View')==without_null)
 print('menu_retired_service=pass direct_stock_return_preserved=true readiness_probe_protected=true')
+
+-- Menu hotkeys answer to fixed controller buttons by key alias and action
+-- type; buttons held when a menu takes over must be released first, and a
+-- button alone (pointer off the panel) still reaches the menu.
+do
+    local button_state={}
+    local off_panel={available=false,active=false,transport_generation=1,
+        primary_down=false,primary_pressed=false,scroll_steps=0}
+    local actions={
+        hotkey_menu_special_1={key_alias='hotkey_menu_special_1',type='pressed'},
+        hotkey_menu_special_1_hold={key_alias='hotkey_menu_special_1',type='held'},
+        hotkey_menu_special_2_released={key_alias='hotkey_menu_special_2',type='released'},
+        continue_end_view={key_alias='continue_end_view',type='pressed'},
+        hotkey_item_sort={key_alias='hotkey_item_sort',type='pressed'}}
+    local hotkey_source={_actions=actions,get=function() return false end}
+    local function frame(n,buttons,owner)
+        return menu.sample(button_state,off_panel,n,owner or 'end_view',1920,1080,buttons)
+    end
+    local function buttons(y,x,rt) return {y=y,x=x,a=false,rt=rt} end
+    local s=frame(1,buttons(true,false,true))
+    local hot=menu.proxy(hotkey_source,null,s,vector)
+    assert(not hot:get('hotkey_menu_special_1') and not hot:get('continue_end_view'),
+        'buttons held when the menu opened pressed it')
+    frame(2,buttons(false,false,false))
+    s=frame(3,buttons(true,true,true)); hot=menu.proxy(hotkey_source,null,s,vector)
+    assert(s.override and hot:get('hotkey_menu_special_1') and hot:get('hotkey_menu_special_1_hold') and
+        hot:get('continue_end_view'),'Y presses E and RT the end screen continue')
+    assert(not hot:get('hotkey_item_sort'),'an unmapped hotkey answered to a button')
+    s=frame(4,buttons(true,false,true)); hot=menu.proxy(hotkey_source,null,s,vector)
+    assert(not hot:get('hotkey_menu_special_1') and hot:get('hotkey_menu_special_1_hold') and
+        hot:get('hotkey_menu_special_2_released') and not hot:get('continue_end_view'),
+        'pressed fires once, held and released follow the button')
+    s=frame(5,buttons(true,false,true),'other_view'); hot=menu.proxy(hotkey_source,null,s,vector)
+    assert(not hot:get('hotkey_menu_special_1_hold') and not hot:get('continue_end_view'),
+        'a new menu inherited held buttons')
+    frame(6,buttons(false,false,false),'other_view')
+    s=frame(7,buttons(true,false,false),'other_view'); hot=menu.proxy(hotkey_source,null,s,vector)
+    assert(hot:get('hotkey_menu_special_1'))
+    s=frame(8,nil,'other_view')
+    assert(not s.override,'no buttons and no pointer keep the stock service')
+    assert(menu.menu_buttons.hotkey_menu_special_1=='y' and menu.menu_buttons.hotkey_menu_special_2=='x')
+    print('menu_hotkey_buttons=pass key_alias_types release_required owner_quarantine pointer_independent')
+end

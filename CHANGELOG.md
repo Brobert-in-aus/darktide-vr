@@ -6,9 +6,13 @@ runtime package records the exact source revision alongside the version.
 
 ## 0.1.0-alpha.3 (unreleased)
 
-- End of mission screen: hold the right trigger to continue, and point and
-  click to vote on merging strike teams. No menu prompt shows a keyboard
-  key any more.
+- Menu hotkeys that only had a keyboard key now use controller buttons: E is
+  Y, Q is X. On the end of mission screen the right trigger continues and Y
+  votes to merge strike teams. No menu prompt shows a keyboard key any more.
+- The survival-mode buff choice opens on the menu panel: point at a buff and
+  hold the right trigger to pick it.
+- Holding the right trigger skips cutscenes and videos again.
+- Fixed a crash when leaving a survival mission.
 - Chat on the HUD panel is drawn at the HUD's size and has a box in the HUD
   editor.
 

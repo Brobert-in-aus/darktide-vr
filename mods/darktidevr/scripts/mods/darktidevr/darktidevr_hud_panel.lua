@@ -988,6 +988,19 @@ local function place_constant_nodes(constants)
     end
 end
 
+-- Mirrored materials can come from a mission's own packages (the survival
+-- buff choice); release them before a map unload. They are re-created on the
+-- next mirrored draw.
+function HudPanel.release_mirror_materials()
+    local renderer = state.resource_renderer
+    if renderer then
+        for _, instance in pairs(state.mirror_materials) do
+            pcall(Gui.destroy_material, renderer.gui, instance)
+        end
+    end
+    state.mirror_materials = {}
+end
+
 function HudPanel.set_mirror(mirror)
     state.mirror = mirror
 end

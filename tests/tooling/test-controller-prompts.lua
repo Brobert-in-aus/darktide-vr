@@ -69,7 +69,9 @@ assert(text('notification_option_a','View')=='[Unbound]','vote prompt must not s
 assert(text('skip_cinematic_hold','View')=='[Hold\194\160RT]','cutscene skip legend must read Hold RT')
 assert(text('some_new_alias','View')=='[Unbound]','unrouted menu alias must read Unbound')
 assert(text('hotkey_inventory','View')=='[Unbound]','a menu hotkey outside the hub must not show a keyboard key')
-assert(text('hotkey_menu_special_1','View')=='[Unbound]','the end screen vote hotkey must not show E')
+assert(text('hotkey_menu_special_1','View')=='[Y]','menu hotkey E reads its controller button Y')
+assert(text('hotkey_menu_special_2','View')=='[X]' and text('continue_end_view','View')=='[RT]' and
+    text('social_show_list','View')=='[A]','menu hotkeys read their controller buttons')
 scope('HudElementWieldInfo','_create_entry',function()
     assert(text('action_one')=='[RT]')
     assert(text('weapon_extra')=='[R\194\160Grip]')

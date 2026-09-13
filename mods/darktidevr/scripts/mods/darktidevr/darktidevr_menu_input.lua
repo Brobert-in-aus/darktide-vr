@@ -35,7 +35,41 @@ function MenuInput.view_mode(name)
             name=="splash_video_view" or name=="cutscene_view" then return 2 end
 end
 
-function MenuInput.sample(state, pointer, frame, owner, width, height)
+-- Menu hotkeys with a keyboard default and no pointer route (special menus
+-- such as the end of mission screen) answer to a fixed controller button,
+-- keyed by the action's key alias: E (hotkey_menu_special_1) is Y, Q
+-- (hotkey_menu_special_2) is X, the end screen's continue is the right
+-- trigger, and Space on the social list is A. B stays back and the triggers
+-- stay pointer clicks. Overlap with gameplay bindings does not matter in a
+-- menu. darktidevr_controller_prompts.lua labels the same buttons.
+MenuInput.menu_buttons = {hotkey_menu_special_1 = "y", hotkey_menu_special_2 = "x",
+    continue_end_view = "rt", social_show_list = "a"}
+
+-- Per-button edges for one UI frame. A button held when the owner changes
+-- must be released before it presses.
+local function sample_buttons(state, buttons, changed)
+    local previous = state.buttons or {}
+    state.buttons = previous
+    local result, active = {}, false
+    for id, down in pairs(buttons or {}) do
+        local button = previous[id]
+        if not button then
+            button = {held = false, armed = not down}
+            previous[id] = button
+        end
+        if changed then button.held, button.armed = false, not down end
+        local was_held = button.held
+        local pressed = down and button.armed and not was_held
+        if pressed then button.held = true end
+        local released = was_held and not down
+        if not down then button.held, button.armed = false, true end
+        result[id] = {pressed = pressed, held = button.held, released = released}
+        active = active or down or released
+    end
+    return result, active
+end
+
+function MenuInput.sample(state, pointer, frame, owner, width, height, buttons)
     if state.frame == frame and state.owner == owner then return state.sample end
     local changed = state.owner ~= owner or state.generation ~= pointer.transport_generation
     local was_held = state.held == true
@@ -83,8 +117,10 @@ function MenuInput.sample(state, pointer, frame, owner, width, height)
         state.x, state.y = x, y
     end
     local retain_position = state.held or released or state.secondary_held or secondary_released
+    local button_sample, buttons_active = sample_buttons(state, buttons, changed)
     local sample = {
-        override = valid or released or secondary_released,
+        override = valid or released or secondary_released or buttons_active,
+        buttons = button_sample,
         x = (inside or retain_position) and state.x or -10000,
         y = (inside or retain_position) and state.y or -10000,
         pressed = pressed == true, released = released,
@@ -180,6 +216,17 @@ function MenuInput.proxy(source, null_service, sample, vector, read_desktop, wid
             return vector(sample.dx, sample.dy, 0)
         end
         if action == "back" then return sample.back or source:get(action) end
+        -- A menu hotkey answers to its controller button, per the action's
+        -- own type (pressed, held or released) on its key alias.
+        local rule = source._actions and source._actions[action]
+        local button_id = rule and MenuInput.menu_buttons[rule.key_alias]
+        local button = button_id and sample.buttons and sample.buttons[button_id]
+        if button then
+            local down = rule.type == "held" and button.held or
+                rule.type == "released" and button.released or
+                (rule.type ~= "held" and rule.type ~= "released") and button.pressed
+            if down then return true end
+        end
         -- XR adds controls to the stock service; mouse buttons and keyboard
         -- confirmation remain available alongside the tracked pointer.
         return source:get(action)
@@ -325,8 +372,9 @@ function MenuInput.install(mod, presentation)
         local data = owner and handler._active_views_data and handler._active_views_data[owner]
         owner = (self._active_popups and self._active_popups[1]) or
             (data and data.instance) or owner
+        local buttons = presentation.read_menu_buttons and presentation.read_menu_buttons() or nil
         local sample = MenuInput.sample(state, pointer, pointer.frame_id or 0, owner,
-            RESOLUTION_LOOKUP.width, RESOLUTION_LOOKUP.height)
+            RESOLUTION_LOOKUP.width, RESOLUTION_LOOKUP.height, buttons)
         if pointer.primary_pressed and sample.rejection then
             mod:info("DARKTIDEVR_MENU_INPUT rejected frame=%d reason=%s",
                 pointer.frame_id or 0, sample.rejection)
