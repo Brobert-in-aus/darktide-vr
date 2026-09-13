@@ -302,6 +302,19 @@ Not checked: placement at a tracked hand, real ammo values (the character
 held its melee weapon; no controller input), the panel element hiding. Worn
 check: evening item 6.
 
+User direction during the day (14 September), applied and checked in the eye
+render with the test flag (which also cycles a 3 s reload, every other one
+interrupted at 60 %):
+- clip above reserve, each coloured on its own capacity, from white through
+  yellow and orange to red (`a18217f`, `86f20e4`);
+- a solid reload donut that fills smoothly over a dim track (`20fe0ae`);
+- the pair centred in a 3 cm ring (`ded6827`, `eec0b9f`).
+
+Captures in `artifacts/unattended/ammo-readout-20260914/ring-run6` and
+`ring-run7` (`readout-*.png`): 32 of 40 near white, a reserve of 60 of 400
+orange, the arc filling clockwise from the top, and no ring between reloads.
+The shake is timing-based and not caught in a still. Flag removed afterwards.
+
 ## Viewer exits: theatre Close failure (reopened), mitigation
 
 The viewer's `ID3D12GraphicsCommandList::Close(theatre)` intermittently
