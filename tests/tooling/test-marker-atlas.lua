@@ -49,11 +49,12 @@ local x2, y2 = Atlas.claim(1, {x = 1, y = 2, z = 0})
 local x3, y3 = Atlas.claim(1, {x = 2, y = 2, z = 0})
 assert(x2 == 1536 and y2 == 256 and x3 == 512 and y3 == 768)
 local function frame_for(anchor) return "tm", 0.002 end
-assert(Atlas.draw(frame_for) == 0 and not find("copy"))
+assert(Atlas.draw("game_world", frame_for) == 0 and not find("copy"))
 
 -- Frame 2: the copy runs first, then frame 1's cells are shown.
 assert(Atlas.begin_frame(2) and find("copy")[1] == "capture" and find("copy")[6] == "display")
-assert(Atlas.draw(frame_for) == 3)
+assert(Atlas.draw("other_world", frame_for) == 0, "cells never draw into another world")
+assert(Atlas.draw("game_world", frame_for) == 3)
 local quad = find("bitmap_3d")
 local args = quad[6]
 assert(quad[2] == state.world_material and quad[4] == "tm" and quad[5] == 1000)
@@ -65,13 +66,20 @@ local none, why = Atlas.claim(2, {x = 0, y = 0, z = 0})
 assert(not none and why == "atlas_full")
 
 -- Stale cells stop showing when the marker pass stops starting frames.
-Atlas.draw(frame_for); Atlas.draw(frame_for)
-assert(Atlas.draw(frame_for) == 0)
+Atlas.draw("game_world", frame_for); Atlas.draw("game_world", frame_for)
+assert(Atlas.draw("game_world", frame_for) == 0)
 
 -- A per-pass handle gets one instance on the atlas GUI, its values replayed.
 local instance = Atlas.material("handle", "frame", {ui_scale = {"set_scalar", 1, 2}})
 assert(instance == "queue_gui:frame" and Atlas.material("handle", "frame") == instance)
 assert(find("set_scalar")[1] == instance and find("set_scalar")[2] == "ui_scale" and find("set_scalar")[3] == 2)
+
+-- A map change drops the old world's GUI without calling into that world.
+local before = #calls
+Atlas.forget_world()
+for i = before + 1, #calls do assert(calls[i].name ~= "destroy_gui", "the dying world is not called") end
+assert(state.resource == nil and state.world_gui == nil and not state.ready)
+assert(Atlas.ensure("game_world"))
 
 -- A different world rebuilds; destroy restores ownership and releases all.
 local resource = state.resource

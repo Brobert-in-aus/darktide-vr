@@ -3841,6 +3841,7 @@ local function teardown()
     presentation.world_menu_material = nil
     presentation.world_menu_anchor = nil
     presentation.world_menu_draw_logged = false
+    if presentation.marker_atlas then pcall(presentation.marker_atlas.forget_world) end
 end
 
 local function setup(manager)
@@ -5237,7 +5238,7 @@ local function update_stereo(manager)
     end
     presentation.hud_panel.draw(world, clean_position, clean_rotation, hud_width, hud_center)
     if presentation.marker_atlas then
-        local atlas_ok, atlas_error = pcall(presentation.marker_atlas.draw,
+        local atlas_ok, atlas_error = pcall(presentation.marker_atlas.draw, world,
             presentation.marker_atlas_frame)
         if not atlas_ok and not presentation.marker_atlas_error_logged then
             presentation.marker_atlas_error_logged = true

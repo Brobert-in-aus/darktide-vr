@@ -61,6 +61,15 @@ function Atlas.destroy()
     state.pending, state.shown, state.materials = {}, {}, {}
 end
 
+-- The game world is being torn down (map change): its world GUI and the
+-- material on it die with it, so drop those handles without calling into
+-- that world, then release the offscreen resources, which belong to our own
+-- UI world. The next claim builds everything for the new world.
+function Atlas.forget_world()
+    state.world, state.world_gui, state.world_material = nil, nil, nil
+    Atlas.destroy()
+end
+
 local function fail(step, detail)
     state.failed = true
     if state.api.log then
@@ -191,12 +200,15 @@ function Atlas.material(handle, name, values)
     return instance
 end
 
--- Called once per camera update. `frame_for(anchor)` returns the quad's
+-- Called once per camera update with the world being drawn. `frame_for(anchor)` returns the quad's
 -- transform (right = viewer left, forward = toward the viewer, up = up, at
 -- the anchor, as the HUD panel faces its quad) and metres per pixel.
-function Atlas.draw(frame_for)
+function Atlas.draw(world, frame_for)
     state.frame = state.frame + 1
-    if not state.ready or not state.world_gui or state.frame - state.stamp > 2 then return 0 end
+    -- Cells recorded in another world (the one before a map change) never
+    -- draw: their GUI belongs to that world.
+    if not state.ready or not state.world_gui or state.world ~= world or
+            state.frame - state.stamp > 2 then return 0 end
     local api = state.api
     local drawn = 0
     for _, record in ipairs(state.shown) do
