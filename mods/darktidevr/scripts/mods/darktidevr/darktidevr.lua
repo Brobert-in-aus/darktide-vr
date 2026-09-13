@@ -15114,9 +15114,6 @@ end
 presentation.scanner_holo = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_scanner_holo"
 ).install(mod)
-presentation.skull_preview_trace = mod:io_dofile(
-    "darktidevr/scripts/mods/darktidevr/darktidevr_skull_preview_trace"
-).install(mod)
 -- Psykhanium check for the scan hologram: hands out the auspex and stands in
 -- for a scanning zone, so holding the scan shows the hologram without a mission.
 -- The player brings the scanner out with their own device button: a wield

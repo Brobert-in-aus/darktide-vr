@@ -162,6 +162,11 @@ Options, Darktide VR, Experimental features, "Keyboard and mouse in VR".
   markers beyond the eighth on screen still use the older per-eye drawing,
   and can double at their far edge near the edge of your view.
 - Chat on the HUD panel is small, and the HUD editor cannot move it yet.
+- Ground previews, such as the Skitarii flamethrower skull's target area,
+  are decals: keep Decals on in the game's graphics settings or they do not
+  show.
+- Weapon charge meters (for example the Skitarii shock maul's) sit at the
+  centre of the HUD panel rather than around the hand-aimed crosshair.
 - Only one setup has been tested: an RTX 4090, a Quest 3 and Virtual
   Desktop.
 

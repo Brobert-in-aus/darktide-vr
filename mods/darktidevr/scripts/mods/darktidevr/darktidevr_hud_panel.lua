@@ -281,6 +281,27 @@ function HudPanel.draw_stock_crosshair(func, self, ...)
     return finish_crosshair_draw(self, widget, pcall(func, self, ...))
 end
 
+-- The weapon counter (charge arcs, e.g. the Skitarii shock maul) offsets itself
+-- by the flat camera's projection of the aim. On the panel that offset moved
+-- it opposite to head pitch; keep it at the panel centre instead.
+function HudPanel.centred_crosshair_position()
+    return 0, 0
+end
+
+local function finish_counter_draw(crosshair, position, ok, ...)
+    crosshair.position = position
+    if not ok then error((...), 0) end
+    return ...
+end
+
+function HudPanel.draw_weapon_counter(func, self, ...)
+    if not state.enabled then return func(self, ...) end
+    local crosshair = require("scripts/ui/utilities/crosshair")
+    local position = crosshair.position
+    crosshair.position = HudPanel.centred_crosshair_position
+    return finish_counter_draw(crosshair, position, pcall(func, self, ...))
+end
+
 function HudPanel.request_editor()
     local custom = custom_hud()
     if not custom or type(custom.toggle_hud_customization) ~= "function" or
@@ -1013,6 +1034,7 @@ function HudPanel.install(mod)
     end
     HudPanel.read_settings(mod)
     mod:hook("HudElementCrosshair", "_draw_widgets", HudPanel.draw_stock_crosshair)
+    mod:hook("HudElementWeaponCounter", "_draw_widgets", HudPanel.draw_weapon_counter)
     local previous_setting_changed = mod.on_setting_changed
     mod.on_setting_changed = function(setting_id)
         if previous_setting_changed then previous_setting_changed(setting_id) end

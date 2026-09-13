@@ -455,6 +455,27 @@ assert(crosshair._widget==original_crosshair)
 state.enabled=false
 panel.draw_stock_crosshair(function(self) assert(self._widget==original_crosshair) end,crosshair)
 
+-- The weapon counter (shock maul charge arcs) stays at the panel centre: its
+-- flat-camera aim offset moved it against head pitch. Stock placement returns
+-- afterwards, on failure too, and when the panel is off.
+local stock_position=function() return 120,-80 end
+package.loaded["scripts/ui/utilities/crosshair"]={position=stock_position}
+local crosshair_module=package.loaded["scripts/ui/utilities/crosshair"]
+local counter={}
+state.enabled=true
+local counted=pack(panel.draw_weapon_counter(function(self)
+    assert(self==counter)
+    local x,y=crosshair_module.position()
+    assert(x==0 and y==0,"counter still follows the flat aim projection")
+    return "drawn",nil,2
+end,counter))
+assert(counted.n==3 and counted[1]=="drawn" and counted[3]==2)
+assert(crosshair_module.position==stock_position)
+assert(not pcall(panel.draw_weapon_counter,function() error("draw failure") end,counter))
+assert(crosshair_module.position==stock_position)
+state.enabled=false
+panel.draw_weapon_counter(function() assert(crosshair_module.position==stock_position) end,counter)
+
 -- Constant-element nodes on the panel canvas: same margin from the same edge,
 -- kept inside the canvas (units at element scale x object scale).
 local function near(a, b) return math.abs(a - b) < 1e-6 end

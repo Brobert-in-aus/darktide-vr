@@ -22,6 +22,10 @@ runtime package records the exact source revision alongside the version.
 - Every weapon and item aims with the same pitch, so the crosshair no longer
   jumps when switching between guns, melee, staffs and blitz. The option is
   now "Aim pitch angle" (default -10).
+- The auspex scan hologram sits on the scanner in your hand instead of
+  floating in the air.
+- Weapon charge meters (such as the Skitarii shock maul's) stay put on the HUD
+  panel instead of moving against your head.
 
 ## 0.1.0-alpha.2 (13 September 2026)
 
