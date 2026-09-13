@@ -75,6 +75,28 @@ assert(math.floor(full_clip[3] + .5) == 250, "clip colour follows the reserve")
 assert(low_reserve[1] == 255 and low_reserve[2] < 160, "reserve at 5 % is not orange")
 assert(Readout.fill_color(400, 400)[3] == 250 and Readout.fill_color(0, 400)[2] == 55)
 
+-- Donut pieces: a full dim track, then the filled arc; the fill grows smoothly.
+local function filled_length(progress)
+    local total = 0
+    for _, arc in ipairs(Readout.ring_arcs(progress)) do
+        if not arc.track then total = total + arc.length end
+    end
+    return total
+end
+local track_count = 0
+for _, arc in ipairs(Readout.ring_arcs(0)) do assert(arc.track); track_count = track_count + 1 end
+assert(track_count == Readout.RING_SEGMENTS and filled_length(0) == 0)
+local previous = 0
+for step = 1, 200 do
+    local length = filled_length(step / 200)
+    assert(length >= previous, "fill went backwards")
+    assert(length - previous < filled_length(1) / Readout.RING_SEGMENTS * 1.01, "fill jumped by more than one piece")
+    previous = length
+end
+local last
+for _, arc in ipairs(Readout.ring_arcs(0.5)) do if not arc.track then last = arc end end
+assert(last.angle <= math.pi + 1e-9, "half fill passes the bottom")
+
 -- Reload ring and interrupted-reload shake.
 local tracker = Readout.reload_tracker()
 local p, s = tracker.update(nil, 0, 0, 10)

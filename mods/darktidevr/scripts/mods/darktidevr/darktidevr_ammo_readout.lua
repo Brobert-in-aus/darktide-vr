@@ -11,6 +11,34 @@ Readout.PIXEL_METRES = 0.0011   -- world size of one font pixel
 Readout.FONT_SIZE = 30          -- clip count (or heat)
 Readout.SMALL_FONT_SIZE = 15    -- reserve under it
 Readout.RING_RADIUS = 0.030     -- metres; the ring encloses both lines
+Readout.RING_THICKNESS = 0.0045 -- metres
+Readout.RING_SEGMENTS = 96
+
+-- Pieces of the reload donut: the dim full track, then the filled arc from
+-- the top clockwise. Each piece is a short straight quad centred at `angle`
+-- (radians clockwise from the top), slightly overlapping its neighbours so
+-- the ring reads solid; the last filled piece is shortened to the exact
+-- progress so the fill moves smoothly.
+function Readout.ring_arcs(progress)
+    local arcs = {}
+    local n = Readout.RING_SEGMENTS
+    local step = 2 * math.pi / n
+    local full = 2 * Readout.RING_RADIUS * math.sin(step * 0.5) * 1.15
+    for i = 0, n - 1 do
+        arcs[#arcs + 1] = {angle = (i + 0.5) * step, length = full, track = true}
+    end
+    progress = math.max(0, math.min(1, progress or 0))
+    local filled = progress * n
+    local whole = math.floor(filled)
+    for i = 0, whole - 1 do
+        arcs[#arcs + 1] = {angle = (i + 0.5) * step, length = full}
+    end
+    local part = filled - whole
+    if part > 0.01 then
+        arcs[#arcs + 1] = {angle = (whole + part * 0.5) * step, length = full * part}
+    end
+    return arcs
+end
 Readout.TEST_FLAG = "./../mods/darktidevr/darktidevr_ammo_readout_test.flag"
 
 -- Ammo and heat of a slot component. nil when the slot shows neither.
@@ -254,14 +282,20 @@ function Readout.install(mod, presentation, observation)
                 Color(230, r[1], r[2], r[3]), "flags", font.render_flags or 0)
         end
         if progress then
-            -- Reload ring: segments around the count, filling clockwise from the top.
-            local radius = Readout.RING_RADIUS
-            local segments, dot = 56, 0.0034
-            local filled = math.floor(progress * segments + 0.5)
-            for i = 0, filled - 1 do
-                local angle = (i + 0.5) / segments * 2 * math.pi
-                Gui.rect_3d(gui, tm, Vector2(dx + math.sin(angle) * radius - dot * 0.5,
-                    math.cos(angle) * radius - dot * 0.5), 9, Vector2(dot, dot), Color(220, c[1], c[2], c[3]))
+            -- Reload ring: a solid donut filling clockwise from the top over a
+            -- dim full track, smoothly (the leading piece grows with progress).
+            local centre = anchor + right * dx
+            for _, arc in ipairs(Readout.ring_arcs(progress)) do
+                local segment = Matrix4x4.identity()
+                local radial = right * math.sin(arc.angle) + up * math.cos(arc.angle)
+                Matrix4x4.set_right(segment, right * math.cos(arc.angle) - up * math.sin(arc.angle))
+                Matrix4x4.set_up(segment, radial)
+                Matrix4x4.set_forward(segment, -to_eye)
+                Matrix4x4.set_translation(segment, centre + radial * Readout.RING_RADIUS)
+                local length, thickness = arc.length, Readout.RING_THICKNESS
+                local alpha = arc.track and 70 or 230
+                Gui.rect_3d(gui, segment, Vector2(-length * 0.5, -thickness * 0.5), arc.track and 8 or 9,
+                    Vector2(length, thickness), Color(alpha, c[1], c[2], c[3]))
             end
         end
         showing_t = not test and Managers.time:time("main") or nil
