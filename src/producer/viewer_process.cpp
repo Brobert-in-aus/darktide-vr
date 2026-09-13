@@ -117,6 +117,13 @@ int start_locked(ViewerState& state) {
   inheritable.nLength = sizeof(inheritable);
   inheritable.bInheritHandle = TRUE;
   const auto log_path = directory + L"viewer-" + pid + L".log";
+  if (state.starts > 0) {
+    // A restart (the chat command, or the mod after a viewer failure) keeps
+    // the previous run's log, which holds the failure, as viewer-<pid>-<n>.log.
+    const auto previous = directory + L"viewer-" + pid + L"-" +
+                          std::to_wstring(state.starts) + L".log";
+    MoveFileExW(log_path.c_str(), previous.c_str(), MOVEFILE_REPLACE_EXISTING);
+  }
   state.log = CreateFileW(log_path.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
                           &inheritable, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
                           nullptr);
