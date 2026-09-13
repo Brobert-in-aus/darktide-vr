@@ -105,6 +105,19 @@ do
     files[SessionControl.QUIT_FLAG] = "probe bogus 2"
     for _ = 1, 30 do cycles.update() end
     assert(files[SessionControl.QUIT_FLAG] == "probe bogus 2", "unknown probe consumed")
+
+    -- "chat N trace" wraps resource creation while cycles run, then restores it.
+    local created = 0
+    local function stock_create(kind) created = created + 1; return kind end
+    Renderer = {create_resource = stock_create}
+    files[SessionControl.QUIT_FLAG] = "chat 1 trace"
+    for _ = 1, 30 do cycles.update() end
+    assert(Renderer.create_resource ~= stock_create, "trace not installed")
+    frame(0.016)
+    assert(Renderer.create_resource("render_target") == "render_target" and created == 1)
+    assert(infos[#infos]:find("resource call=Renderer.create_resource since_open", 1, true), infos[#infos])
+    for _ = 1, 600 do frame(0.016) end
+    assert(Renderer.create_resource == stock_create, "trace not restored after the cycles")
 end
 
 -- Viewer: an external-viewer file means no game-started viewer.

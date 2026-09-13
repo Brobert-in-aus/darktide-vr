@@ -29,6 +29,8 @@ param(
     [ValidateRange(0, 20)] [int] $ChatCycles = 0,
     # With -ChatCycles: toggle one engine call instead of chat (clip, show, cursor).
     [ValidateSet('', 'clip', 'show', 'cursor')] [string] $ChatProbe = '',
+    # With -ChatCycles: log engine resource and GUI creation around each action.
+    [switch] $ChatTrace,
     [string] $OutputDirectory,
     [ValidateRange(60, 3600)] [int] $StartTimeoutSeconds = 900,
     [ValidateRange(10, 600)] [int] $ExitTimeoutSeconds = 180
@@ -175,7 +177,7 @@ try {
     if (-not $reached) { throw "Did not reach $Scene within $StartTimeoutSeconds s." }
 
     if ($ChatCycles -gt 0) {
-        Set-Content -LiteralPath (Join-Path $modRoot 'darktidevr_quit_game.flag') -Value $(if ($ChatProbe) { "probe $ChatProbe $ChatCycles" } else { "chat $ChatCycles" }) -Encoding ascii
+        Set-Content -LiteralPath (Join-Path $modRoot 'darktidevr_quit_game.flag') -Value $(if ($ChatProbe) { "probe $ChatProbe $ChatCycles" } else { "chat $ChatCycles" + $(if ($ChatTrace) { ' trace' } else { '' }) }) -Encoding ascii
         $summary.chat_cycles = $ChatCycles
         $HoldSeconds = [math]::Max($HoldSeconds, $ChatCycles * 6 + 10)
         $summary.hold_seconds = $HoldSeconds

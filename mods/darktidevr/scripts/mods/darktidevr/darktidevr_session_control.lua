@@ -54,10 +54,51 @@ SessionControl.PROBES = {
     end,
 }
 
+-- Resource trace (chat stall diagnosis): while cycles run, log every engine
+-- resource, GUI and material creation or destruction with its Lua caller.
+SessionControl.TRACED = {
+    Renderer = {"create_resource", "destroy_resource"},
+    World = {"create_world_gui", "create_screen_gui", "destroy_gui", "create_shading_environment",
+        "destroy_shading_environment", "create_viewport", "destroy_viewport"},
+    Gui = {"create_material"},
+    UIRenderer = {"create_resource_renderer", "destroy_resource_renderer", "create_renderer"},
+}
+
+function SessionControl.trace_resources(api, mod, on)
+    api.traced = api.traced or {}
+    for owner_name, names in pairs(SessionControl.TRACED) do
+        local owner = rawget(_G, owner_name)
+        for i = 1, #names do
+            local name = names[i]
+            local key = owner_name .. "." .. name
+            local original = api.traced[key]
+            if on and not original and type(owner) == "table" and type(owner[name]) == "function" then
+                original = owner[name]
+                api.traced[key] = original
+                owner[name] = function(...)
+                    if api.chat_last_t then
+                        local info = debug and debug.getinfo and debug.getinfo(2, "Sl")
+                        mod:info("DARKTIDEVR_SESSION resource call=%s since_%s caller=%s:%s",
+                            key, tostring(api.chat_last_action),
+                            info and tostring(info.short_src):match("[^/\\]+$") or "?", info and tostring(info.currentline) or "?")
+                    end
+                    return original(...)
+                end
+            elseif not on and original then
+                owner[name] = original
+                api.traced[key] = nil
+            end
+        end
+    end
+end
+
 function SessionControl.chat_step(api, chat, dt, t, ui_renderer, mod)
     if api.chat_watch_until and t <= api.chat_watch_until and dt > SessionControl.SPIKE_SECONDS then
         mod:info("DARKTIDEVR_SESSION frame_spike dt_ms=%.1f since_%s_ms=%.1f",
             dt * 1000, tostring(api.chat_last_action), (t - api.chat_last_t) * 1000)
+    end
+    if (api.chat_remaining or 0) <= 0 and api.traced and api.chat_watch_until and t > api.chat_watch_until then
+        SessionControl.trace_resources(api, mod, false)
     end
     if (api.chat_remaining or 0) <= 0 or t < (api.chat_next_t or 0) then
         return
@@ -126,7 +167,11 @@ function SessionControl.install(mod)
             return
         end
         local value = read_request(files)
-        local cycles = type(value) == "string" and tonumber(value:match("^%s*chat%s+(%d+)%s*$"))
+        local cycles, trace
+        if type(value) == "string" then
+            cycles, trace = value:match("^%s*chat%s+(%d+)%s*(%a*)%s*$")
+            cycles = tonumber(cycles)
+        end
         local probe, probe_cycles
         if type(value) == "string" then
             probe, probe_cycles = value:match("^%s*probe%s+(%a+)%s+(%d+)%s*$")
@@ -145,6 +190,9 @@ function SessionControl.install(mod)
                 consumed:close()
                 api.chat_remaining = math.min(cycles, 20)
                 api.chat_next_t = 0
+                if trace == "trace" then
+                    SessionControl.trace_resources(api, mod, true)
+                end
                 mod:info("DARKTIDEVR_SESSION chat_cycle_requested cycles=%d probe=%s",
                     api.chat_remaining, tostring(probe or "none"))
             end
