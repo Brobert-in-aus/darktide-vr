@@ -5706,9 +5706,10 @@ presentation.online_rules = mod:io_dofile(
 presentation.roomscale = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_roomscale"
 ).install(mod, presentation)
-presentation.online_reticle = mod:io_dofile(
+presentation.online_reticle_module = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_online_reticle"
-).install(mod, presentation)
+)
+presentation.online_reticle = presentation.online_reticle_module.install(mod, presentation)
 
 function presentation.is_first_person_body_mode(mode)
     return presentation.gameplay_context.body_mode(mode,
