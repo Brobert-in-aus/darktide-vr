@@ -42,6 +42,50 @@ local idle = gun(5, 5); idle.current_ammunition_clips_in_use = {false, false}
 assert(Readout.values(idle, Ammo, 2) == nil)
 assert(Readout.values(nil, Ammo, 2) == nil and Readout.text(nil) == nil)
 
+-- Colour runs white (full) -> yellow (half) -> orange (nearly empty), red at 0.
+local function rgb(values) local c = Readout.color(values); return math.floor(c[1] + .5), math.floor(c[2] + .5), math.floor(c[3] + .5) end
+assert(select(3, rgb({clip = 40, clip_max = 40})) == 250, "full is not white")
+local r, g, b = rgb({clip = 20, clip_max = 40})
+assert(r == 255 and g == 225 and b == 80, "half is not yellow")
+r, g, b = rgb({clip = 1, clip_max = 40})
+assert(r == 255 and g < 145 and g > 135, "nearly empty is not orange")
+r, g, b = rgb({clip = 0, clip_max = 40})
+assert(r == 255 and g == 55 and b == 45, "empty is not red")
+local g_prev = 999
+for clip = 40, 1, -1 do
+    local _, gg = rgb({clip = clip, clip_max = 40})
+    assert(gg <= g_prev, "colour does not darken steadily as ammo runs down")
+    g_prev = gg
+end
+assert(select(2, rgb({heat = 0.97})) == 55 and select(3, rgb({heat = 0})) == 250)
+assert(select(3, rgb(nil)) == 250)
+
+-- Reload ring and interrupted-reload shake.
+local tracker = Readout.reload_tracker()
+local p, s = tracker.update(nil, 0, 0, 10)
+assert(p == nil and s == nil)
+p, s = tracker.update("reload_state", 10, 13, 10)
+assert(p == 0 and s == nil)
+p = tracker.update("reload_state", 10, 13, 11.5)
+assert(math.abs(p - 0.5) < 1e-9)
+-- Finished: the action ends at its end time, no shake.
+tracker.update("reload_state", 10, 13, 12.95)
+p, s = tracker.update(nil, 0, 0, 13.0)
+assert(p == nil and s == nil, "a completed reload shook")
+-- Interrupted by a sprint at 40 %: shake that fades, ring gone.
+tracker.update("reload_state", 20, 23, 21.2)
+p, s = tracker.update("sprint", 21.2, 21.3, 21.25)
+assert(p == nil and s and math.abs(s - 1) < 1e-9, "no shake on interruption")
+p, s = tracker.update(nil, 0, 0, 21.45)
+assert(p == nil and s > 0 and s < 1, "shake does not fade")
+p, s = tracker.update(nil, 0, 0, 21.7)
+assert(s == nil, "shake did not stop")
+-- A new reload restarts the ring from zero; a shotgun's reload kind counts too.
+p = tracker.update("reload_shotgun", 30, 31, 30)
+assert(p == 0)
+p = tracker.update("reload_shotgun", 31, 32, 31.5)
+assert(math.abs(p - 0.5) < 1e-9, "next shell did not restart the ring")
+
 -- Drawn after the hand pose, and released with the other GUI resources.
 local file = assert(io.open(assert(arg[2]), "rb")); local main = file:read("*a"); file:close()
 local ik = assert(main:find("presentation.gun_aim.update(self._world, player_unit)", 1, true))

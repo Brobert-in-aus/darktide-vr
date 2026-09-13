@@ -53,11 +53,64 @@ end
 
 Readout.COLORS = {normal = {230, 235, 245, 240}, low = {235, 255, 190, 60}, critical = {235, 255, 70, 50}}
 
+-- Colour as the clip runs down: white when full, yellow at half, orange just
+-- before empty, red at 0. Heat-only weapons run the same scale on the heat left
+-- before overheating (red from 95 % heat).
+local WHITE, YELLOW, ORANGE, RED = {240, 245, 250}, {255, 225, 80}, {255, 140, 35}, {255, 55, 45}
+local function mix(a, b, f)
+    return {a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, a[3] + (b[3] - a[3]) * f}
+end
+function Readout.color(values)
+    if not values then return WHITE end
+    local fraction
+    if values.clip and values.clip_max and values.clip_max > 0 then
+        if values.clip <= 0 then return RED end
+        fraction = values.clip / values.clip_max
+    elseif values.heat then
+        if values.heat >= 0.95 then return RED end
+        fraction = 1 - values.heat
+    else
+        return WHITE
+    end
+    fraction = math.max(0, math.min(1, fraction))
+    if fraction >= 0.5 then return mix(YELLOW, WHITE, (fraction - 0.5) / 0.5) end
+    return mix(ORANGE, YELLOW, fraction / 0.5)
+end
+
+-- Reload progress from the stock weapon action component: a reload action's
+-- elapsed share of its (time-scaled) duration. When the reload action ends
+-- more than 0.15 s before its end time it was interrupted (sprint, swap,
+-- dodge): the readout shakes for SHAKE_SECONDS and the ring goes.
+Readout.SHAKE_SECONDS = 0.4
+function Readout.reload_tracker()
+    local tracker = {}
+    local active, shake_until
+    function tracker.update(kind, start_t, end_t, t)
+        local reloading = type(kind) == "string" and kind:match("^reload") ~= nil and
+            type(start_t) == "number" and type(end_t) == "number" and end_t > start_t
+        if reloading then
+            if not active or active.start_t ~= start_t then
+                active = {start_t = start_t, end_t = end_t}
+            end
+            active.end_t = end_t
+        elseif active then
+            if t < active.end_t - 0.15 then shake_until = t + Readout.SHAKE_SECONDS end
+            active = nil
+        end
+        local progress = active and math.max(0, math.min(1, (t - active.start_t) / (active.end_t - active.start_t)))
+        local shake = shake_until and t < shake_until and (shake_until - t) / Readout.SHAKE_SECONDS or nil
+        if shake_until and t >= shake_until then shake_until = nil end
+        return progress, shake
+    end
+    return tracker
+end
+
 function Readout.install(mod, presentation, observation)
     local api = {}
     local world, gui, failed, logged
     local UIFonts, Ammo, NetworkConstants
     local test_poll, test_mode = 0, nil
+    local tracker = Readout.reload_tracker()
     function api.destroy()
         if gui and world then pcall(World.destroy_gui, world, gui) end
         world, gui = nil, nil
@@ -84,6 +137,8 @@ function Readout.install(mod, presentation, observation)
         if not file then test_mode = nil; return nil end
         local value = file:read("*all"); file:close()
         test_mode = type(value) == "string" and value:match("^%s*front%s*$") and "front" or nil
+        -- The test flag also cycles a 3 s reload, every other one interrupted
+        -- at 60 %, so the ring and the shake show without a gun.
         return test_mode
     end
     local function slot_values(unit)
@@ -105,6 +160,24 @@ function Readout.install(mod, presentation, observation)
         if not values and test then values = {clip = 12, clip_max = 40, reserve = 180, reserve_max = 400} end
         local text, level = Readout.text(values)
         if not text then hide(); return end
+        local now = Managers.time:time("gameplay")
+        local progress, shake
+        if test then
+            local cycle = now % 8
+            local interrupted = cycle >= 4
+            local phase = interrupted and cycle - 4 or cycle
+            local kind = (phase < (interrupted and 1.8 or 3)) and "reload_state" or nil
+            progress, shake = tracker.update(kind, now - phase, now - phase + 3, now)
+        else
+            local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
+            local action = unit_data and unit_data:read_component("weapon_action")
+            local weapon = ScriptUnit.has_extension(unit, "weapon_system")
+            local template = weapon and weapon:weapon_template()
+            local settings = action and template and template.actions and action.current_action_name and
+                template.actions[action.current_action_name]
+            progress, shake = tracker.update(settings and settings.kind, action and action.start_t,
+                action and action.end_t, now)
+        end
         local first_person = ScriptUnit.has_extension(unit, "first_person_system")
         local eye_unit = first_person and first_person:first_person_unit()
         if not eye_unit then hide(); return end
@@ -139,9 +212,23 @@ function Readout.install(mod, presentation, observation)
         Matrix4x4.set_forward(tm, -to_eye)
         Matrix4x4.set_translation(tm, anchor)
         local width = #text * size * 0.5
-        local c = Readout.COLORS[level] or Readout.COLORS.normal
-        Gui.slug_text_3d(gui, text, font.path, size, tm, Vector3(-width * 0.5, -size * 0.5, 0), 10,
-            Color(c[1], c[2], c[3], c[4]), "flags", font.render_flags or 0)
+        local c = Readout.color(values)
+        local color = Color(240, c[1], c[2], c[3])
+        -- An interrupted reload shakes the readout sideways, fading out.
+        local dx = shake and math.sin(now * 55) * 0.006 * shake or 0
+        Gui.slug_text_3d(gui, text, font.path, size, tm, Vector3(dx - width * 0.5, -size * 0.5, 0), 10,
+            color, "flags", font.render_flags or 0)
+        if progress then
+            -- Reload ring: segments around the count, filling clockwise from the top.
+            local radius = math.max(width * 0.5 + 0.012, 0.03)
+            local segments, dot = 40, 0.0036
+            local filled = math.floor(progress * segments + 0.5)
+            for i = 0, filled - 1 do
+                local angle = (i + 0.5) / segments * 2 * math.pi
+                Gui.rect_3d(gui, tm, Vector2(dx + math.sin(angle) * radius - dot * 0.5,
+                    math.cos(angle) * radius - dot * 0.5), 9, Vector2(dot, dot), Color(220, c[1], c[2], c[3]))
+            end
+        end
         showing_t = not test and Managers.time:time("main") or nil
         if not logged then
             logged = true
