@@ -242,4 +242,48 @@ void apply_synthetic_movement_reference_path(
   }
 }
 
+void apply_synthetic_holster_path(core::SharedControllerState& state,
+                                  std::uint64_t frame) {
+  constexpr std::uint64_t zone_frames = 120;
+  // Body-local zone centres (+X right, +Y forward, +Z up from the head), the
+  // same numbers as Holsters.ZONES at the reference eye height.
+  static constexpr std::array<math::Vec3, 5> zones{{
+      {0.16F, -0.14F, -0.10F},
+      {-0.20F, 0.00F, -0.72F},
+      {-0.13F, 0.16F, -0.38F},
+      {0.20F, 0.00F, -0.72F},
+      {0.13F, 0.16F, -0.38F},
+  }};
+  const auto cycle = frame % (zone_frames * zones.size());
+  const auto zone = static_cast<std::size_t>(cycle / zone_frames);
+  const auto step = cycle % zone_frames;
+  for (auto& hand : state.hands) {
+    hand.trigger = 0.0F;
+    hand.squeeze = 0.0F;
+    hand.thumbstick_x = 0.0F;
+    hand.thumbstick_y = 0.0F;
+    hand.buttons = 0;
+  }
+  const std::array<math::Vec3, 2> neutral{{
+      {-0.25F, 0.25F, -0.25F},
+      {0.25F, 0.25F, -0.25F},
+  }};
+  for (std::size_t hand = 0; hand < 2; ++hand) {
+    auto& destination = state.hands[hand];
+    auto position = neutral[hand];
+    if (hand == 1 && step < 90) {
+      position = zones[zone];
+    }
+    destination.body_aim_pose.position = position;
+    destination.body_grip_pose.position = position;
+    destination.body_aim_pose.orientation = {0.0F, 0.0F, 0.0F, 1.0F};
+    destination.body_grip_pose.orientation = {0.0F, 0.0F, 0.0F, 1.0F};
+    destination.body_aim_tracking_flags = destination.aim_tracking_flags;
+    destination.body_grip_tracking_flags = destination.grip_tracking_flags;
+  }
+  if (step >= 45 && step < 60) {
+    state.hands[1].squeeze = 1.0F;
+  }
+}
+
 }  // namespace darktidevr::harness

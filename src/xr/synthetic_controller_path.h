@@ -46,4 +46,11 @@ void apply_synthetic_weapon_aim_matrix(core::SharedControllerState& state,
 void apply_synthetic_movement_reference_path(
     core::SharedControllerState& state, std::uint64_t frame);
 
+// Virtual holster reach: the right hand visits each holster zone centre of
+// darktidevr_holsters.lua (right shoulder, left hip, left chest, right hip,
+// right chest) for 90 of 120 frames and squeezes its grip for frames 45-59;
+// the left hand rests at the neutral reach pose. Other controls are neutral.
+void apply_synthetic_holster_path(core::SharedControllerState& state,
+                                  std::uint64_t frame);
+
 }  // namespace darktidevr::harness

@@ -179,6 +179,30 @@ int main() {
     std::cerr << "Synthetic controller path contract failed\n";
     return 1;
   }
+  // Holster reach: right hand at the zone, grip squeezed mid-visit, then away.
+  auto holster_reach = left.state;
+  auto holster_squeeze = left.state;
+  auto holster_away = left.state;
+  auto holster_second = left.state;
+  darktidevr::harness::apply_synthetic_holster_path(holster_reach, 10);
+  darktidevr::harness::apply_synthetic_holster_path(holster_squeeze, 50);
+  darktidevr::harness::apply_synthetic_holster_path(holster_away, 100);
+  darktidevr::harness::apply_synthetic_holster_path(holster_second, 170);
+  const bool holster_valid =
+      std::abs(holster_reach.hands[1].body_grip_pose.position.x - 0.16F) < 0.001F &&
+      std::abs(holster_reach.hands[1].body_grip_pose.position.z + 0.10F) < 0.001F &&
+      holster_reach.hands[1].squeeze == 0.0F &&
+      holster_squeeze.hands[1].squeeze == 1.0F &&
+      holster_squeeze.hands[0].squeeze == 0.0F && holster_squeeze.hands[1].trigger == 0.0F &&
+      holster_away.hands[1].squeeze == 0.0F &&
+      std::abs(holster_away.hands[1].body_grip_pose.position.y - 0.25F) < 0.001F &&
+      std::abs(holster_second.hands[1].body_grip_pose.position.z + 0.72F) < 0.001F &&
+      holster_second.hands[1].body_grip_pose.position.x < 0.0F &&
+      holster_squeeze.hands[1].body_grip_tracking_flags != 0;
+  if (!holster_valid) {
+    std::cerr << "Synthetic holster path contract failed\n";
+    return 1;
+  }
   std::cout << "Synthetic controller path contract passed\n";
   return 0;
 }

@@ -33,7 +33,7 @@ std::uint64_t timestamp_ns() {
 void print_usage() {
   std::wcout << L"Usage: darktidevr-synthetic-controller-publisher "
                 L"[--seconds N] [--weapon-aim-matrix] "
-                L"[--neutral-body-pose]\n";
+                L"[--neutral-body-pose] [--holster-path]\n";
 }
 
 }  // namespace
@@ -43,6 +43,7 @@ int wmain(int argc, wchar_t** argv) {
     std::uint32_t seconds = 300;
     bool weapon_aim_matrix = false;
     bool neutral_body_pose = false;
+    bool holster_path = false;
     for (int index = 1; index < argc; ++index) {
       const std::wstring argument(argv[index]);
       if (argument == L"--help") {
@@ -55,6 +56,8 @@ int wmain(int argc, wchar_t** argv) {
         weapon_aim_matrix = true;
       } else if (argument == L"--neutral-body-pose") {
         neutral_body_pose = true;
+      } else if (argument == L"--holster-path") {
+        holster_path = true;
       } else {
         print_usage();
         return 2;
@@ -131,6 +134,15 @@ int wmain(int argc, wchar_t** argv) {
           } else {
             darktidevr::harness::apply_synthetic_weapon_aim_matrix(
                 sample.state, 0);
+          }
+        }
+        if (holster_path) {
+          // Neutral (hand away, no grip) until gameplay aim is live, then the
+          // holster reach cycle.
+          darktidevr::harness::apply_synthetic_holster_path(
+              sample.state, gameplay_active ? matrix_frame++ : 110);
+          if (gameplay_active) {
+            ++gameplay_active_frames;
           }
         }
         if (!writer.publish(sample.state)) {

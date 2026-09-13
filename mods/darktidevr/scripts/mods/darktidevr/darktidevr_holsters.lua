@@ -9,6 +9,7 @@ local Holsters = {}
 Holsters.REFERENCE_EYE_HEIGHT = 1.64
 Holsters.EXIT_SCALE = 1.25
 Holsters.DWELL_SECONDS = 0.05
+Holsters.TEST_FLAG = "./../mods/darktidevr/darktidevr_holsters_test.flag"
 
 -- Zone centres in the body frame at the reference eye height, metres from the
 -- eyes: x to the right, y forward, z up. Radii scale with the eye height too.
@@ -167,8 +168,22 @@ function Holsters.install(mod, presentation, observation)
         end
         return Holsters.frame(vector(eye), vector(forward), Vector3.z(eye) - Vector3.z(feet))
     end
+    -- Unattended runs turn holsters on with a request file instead of the
+    -- saved option ("enabled"); players never have it.
+    local test_poll, test_enabled = 0, false
+    local function test_flag()
+        test_poll = test_poll - 1
+        if test_poll > 0 then return test_enabled end
+        test_poll = 120
+        local io_api = Mods and Mods.lua and Mods.lua.io
+        local file = io_api and io_api.open(Holsters.TEST_FLAG, "r")
+        if not file then test_enabled = false; return false end
+        local value = file:read("*all"); file:close()
+        test_enabled = type(value) == "string" and value:match("^%s*enabled%s*$") ~= nil
+        return test_enabled
+    end
     local function sample(unit, active, t)
-        if not active or not mod:get("vr_holsters") or not unit then
+        if not active or not (mod:get("vr_holsters") or test_flag()) or not unit then
             api.reset(); owner_hand = nil
             return nil
         end
@@ -189,10 +204,19 @@ function Holsters.install(mod, presentation, observation)
         end
         if chosen and chosen.request.acquire and not logged[chosen.request.owner.zone.id] then
             logged[chosen.request.owner.zone.id] = true
-            mod:info("DARKTIDEVR_HOLSTER armed zone=%s hand=%s selector=%s",
-                chosen.request.owner.zone.id, chosen.hand, chosen.request.action)
+            mod:info("DARKTIDEVR_HOLSTER armed zone=%s hand=%s selector=%s wielded=%s",
+                chosen.request.owner.zone.id, chosen.hand, chosen.request.action,
+                tostring(inventory and inventory.wielded_slot))
         end
         owner_hand = chosen and chosen.hand or nil
+        -- Evidence of the result: the wielded slot whenever it changes.
+        local wielded = inventory and inventory.wielded_slot
+        if wielded ~= api.last_wielded then
+            if api.last_wielded then
+                mod:info("DARKTIDEVR_HOLSTER wielded_slot=%s previous=%s", tostring(wielded), tostring(api.last_wielded))
+            end
+            api.last_wielded = wielded
+        end
         return chosen and chosen.request or nil
     end
     -- Returns the request to hand to the bindings, and whether it is ours.
