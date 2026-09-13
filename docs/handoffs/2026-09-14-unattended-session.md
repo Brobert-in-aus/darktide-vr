@@ -211,6 +211,19 @@ this morning was logged after the old loop's exit lines (which of the two came
 first is not certain from the merged log) and was not reproduced by the
 simulator; worn check: evening item 4.
 
+Not enough with the physical runtime. In a later Psykhanium run (headset awake,
+unworn, viewer from `262f6df`), Virtual Desktop reported states 4, 3 and 6 in
+one poll and still returned `shouldRender`. That frame failed
+`ID3D12GraphicsCommandList::Close(theatre)` with E_INVALIDARG and the viewer
+exited before the loop top could pause, so the morning's failure is this
+frame, not the old loop exit. The simulator does not reproduce it: its
+swapchain images survive a stop.
+
+Fix (`c144f2b`): a stop seen at the poll before `xrWaitFrame` skips straight to
+the pause, and layers are rendered only while the session is VISIBLE or
+FOCUSED. The simulator stop test still pauses and resumes twice and passes.
+Physical-runtime check: see the long Psykhanium run below.
+
 ## Virtual holsters (queue item 4), core and default-off wiring
 
 Design: [virtual-holsters-2026-09-14.md](../phase1/virtual-holsters-2026-09-14.md).
