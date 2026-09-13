@@ -16,6 +16,9 @@ runtime package records the exact source revision alongside the version.
   double tap works in menus.
 - Calibrated height is kept when a character is created or selected.
 - HUD panel on/off option in the VR settings.
+- Crouch moves to X and carried items to Y, so the thumb can roll from the
+  stick onto crouch to slide while sprinting (saved bindings are swapped
+  once).
 - Chat, the notification feed and the other always-on elements show on the
   HUD panel and can be moved in the HUD editor.
 - The menu pointer shows its cyan ring-and-cross target at the laser's hit.

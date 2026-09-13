@@ -94,7 +94,7 @@ patch needs an update from us.
   rebound per action in Mod Options, Darktide VR.
 - Default layout: right trigger fires, left trigger aims (or the weapon's
   alternate), right grip is the weapon special, left grip the combat
-  ability, X cycles carried items, Y crouches, A jumps and dodges, B is the
+  ability, X crouches, Y cycles carried items, A jumps and dodges, B is the
   blitz, clicking the left stick sprints, clicking the right stick tags,
   right stick up switches weapon and right stick down interacts and
   reloads. Tutorial and HUD prompts show these badges.

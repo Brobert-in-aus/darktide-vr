@@ -1,16 +1,18 @@
 -- Native bits remain physical channels. Resolve gameplay semantics here so
 -- the options and delivery share one catalog; menu pointer bindings stay native.
 local Bindings = {}
--- Defaults follow the accepted play layout (12 September 2026): triggers
--- fire, right grip special, left grip class ability, B blitz, Y crouch,
--- A jump/dodge, X items, RS up weapon switch, RS down interact/reload.
+-- Defaults follow the accepted play layout (12 September 2026, X and Y
+-- swapped 13 September): triggers fire, right grip special, left grip class
+-- ability, B blitz, X crouch (the thumb rolls onto it from the stick to
+-- slide while sprinting), A jump/dodge, Y items, RS up weapon switch, RS
+-- down interact/reload.
 Bindings.controls = {
     {id="right_trigger", bit=1, default="primary"},
     {id="left_trigger", bit=2, default="alternate"},
     {id="right_grip", bit=4, default="special"},
     {id="left_grip", bit=512, default="combat_ability"},
-    {id="x", bit=8, default="pocketable_device"},
-    {id="y", bit=16, default="crouch"},
+    {id="x", bit=8, default="crouch"},
+    {id="y", bit=16, default="pocketable_device"},
     {id="a", bit=32, default="jump_dodge"},
     {id="b", bit=64, default="blitz"},
     {id="l3", bit=128, default="sprint"},
@@ -82,7 +84,29 @@ local function valid_controls(value)
     return type(value)=='number' and value>=0 and value<=32767 and value==math.floor(value)
 end
 
+-- The 13 September layout change swaps what X and Y do in the per-action
+-- bindings a player already has saved (customisations included), once. The
+-- older per-control settings are left as they are: every install that has
+-- them converted them to per-action bindings already, and a fresh
+-- conversion reads the new defaults.
+local function swap_saved_xy(mod)
+    if not mod or not mod.set or mod:get('vr_bindings_xy_swapped') then return end
+    for _,action in ipairs(Bindings.actions) do
+        if atomic(action) then
+            for _,key in ipairs({'vr_action_bind_'..action.id,'vr_hub_action_bind_'..action.id}) do
+                local value=mod:get(key)
+                if valid_controls(value) and (bit.band(value,8)~=0)~=(bit.band(value,16)~=0) then
+                    mod:set(key,bit.bxor(value,24))
+                end
+            end
+        end
+    end
+    mod:set('vr_bindings_xy_swapped',true)
+end
+Bindings.swap_saved_xy=swap_saved_xy
+
 function Bindings.widgets(mod)
+    swap_saved_xy(mod)
     local widgets,hub={},{}
     local function label(key) return mod and mod:localize(key) or key end
     for _,action in ipairs(Bindings.actions) do
@@ -137,6 +161,7 @@ function Bindings.widgets(mod)
 end
 
 function Bindings.install(mod)
+    swap_saved_xy(mod)
     local api = {held=0,bindings={},revision=0,context="combat",
         support_grip={held=false,pressed=false,released=false,cancelled=false}}
     local previous_physical, grip_claim = 0, nil

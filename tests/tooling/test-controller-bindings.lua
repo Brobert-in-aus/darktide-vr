@@ -13,9 +13,9 @@ sample(true,0,0,0,0)
 sample(true,1,1,1,0)
 sample(true,1,0,1,0)
 sample(true,0,0,0,1)
-sample(true,8+32,786432+8224,786432+8224,0) -- Original paired controls: X items, A jump/dodge.
-sample(false,8+32,0,0,786432+8224)
-sample(true,8+32,0,0,0)
+sample(true,16+32,786432+8224,786432+8224,0) -- Paired controls: Y items, A jump/dodge.
+sample(false,16+32,0,0,786432+8224)
+sample(true,16+32,0,0,0)
 sample(true,0,0,0,0)
 sample(true,256+1024,1280,1280,0)
 sample(true,0,0,0,1280)
@@ -431,4 +431,28 @@ local tp,th=talk_mapper.sample(true,32,0,1,true,1,'combat')
 assert(bit.band(tp,8388608)~=0 and bit.band(th,8388608)~=0)
 local _,_,tr=talk_mapper.sample(true,0,0,1,true,1,'combat')
 assert(bit.band(tr,8388608)~=0,'Axis assignment kept physical PTT release held')
+-- 13 September layout: X crouches, Y cycles carried items; saved bindings
+-- swap their X and Y buttons once (customisations included, inherit and
+-- unbound untouched).
+do
+    local defaults={}
+    for _,control in ipairs(Bindings.controls) do defaults[control.id]=control.default end
+    assert(defaults.x=='crouch' and defaults.y=='pocketable_device','X must default to crouch, Y to items')
+    local saved={vr_action_bind_crouch=16,vr_action_bind_cycle_pocketables=8,vr_action_bind_device=8,
+        vr_action_bind_jump=32,vr_action_bind_tag=24,vr_hub_action_bind_crouch=-1,vr_action_bind_stim=0,
+        vr_action_bind_sprint=128+16}
+    local writes=0
+    local swap_mod={get=function(_,key) return saved[key] end,
+        set=function(_,key,value) saved[key]=value;writes=writes+1 end}
+    Bindings.install(swap_mod)
+    assert(saved.vr_action_bind_crouch==8 and saved.vr_action_bind_cycle_pocketables==16 and
+        saved.vr_action_bind_device==16,'crouch and items must swap buttons')
+    assert(saved.vr_action_bind_jump==32 and saved.vr_action_bind_tag==24 and
+        saved.vr_hub_action_bind_crouch==-1 and saved.vr_action_bind_stim==0,'other values stay')
+    assert(saved.vr_action_bind_sprint==128+8,'a custom Y binding moves to X')
+    assert(saved.vr_bindings_xy_swapped==true and saved.vr_bind_x==nil and saved.vr_bind_y==nil)
+    local after=writes
+    Bindings.install(swap_mod)
+    assert(writes==after and saved.vr_action_bind_crouch==8,'the swap runs once')
+end
 print('push_to_talk_binding=pass default_unassigned physical-only aliases and release')

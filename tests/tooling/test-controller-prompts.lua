@@ -83,8 +83,8 @@ scope('HudElementWieldInfo','_create_entry',function()
     assert(text('action_one','Ingame',true)=='<tint>[RT]')
     local a,b,c=scope('HudElementPlayerWeapon','_update_input',function()
         assert(text('wield_1')=='[RS\194\160Up]' and text('wield_2')=='[RS\194\160Up]','switch badge must show only the control')
-        -- No control of its own, but X cycles carried items by default.
-        assert(text('wield_3')=='[X]','unbound slot must advertise the cycle control')
+        -- No control of its own, but Y cycles carried items by default.
+        assert(text('wield_3')=='[Y]','unbound slot must advertise the cycle control')
         return 7,nil,9
     end)
     assert(a==7 and b==nil and c==9)
@@ -106,7 +106,7 @@ settings.vr_action_bind_push_to_talk=nil
 mod.on_setting_changed('vr_action_bind_push_to_talk')
 -- Direct slots keep distinct hints. A slot without its own control shows the
 -- cycle control that reaches it (the default layout cycles carried items).
-settings.vr_bind_x='unbound' -- X carries the item defaults; the stick must label alone here
+settings.vr_bind_y='unbound' -- Y carries the item defaults; the stick must label alone here
 for id,alias in pairs({pocketable='wield_3',stim='wield_4',device='wield_5',
         cycle_pocketables='wield_3_gamepad',inspect_target='interact_inspect'}) do
     settings.vr_bind_right_stick_up=id
