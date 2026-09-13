@@ -80,4 +80,8 @@ local place = assert(main:find("presentation.scanner_holo.place(player_unit, t)"
 assert(place > ik, "hologram placed before the hand pose")
 local state = assert(main:find("mod.on_game_state_changed = function", 1, true))
 assert(main:find("presentation.scanner_holo.test_zone = false", state, true), "test zone survives a map change")
+-- The test hands out the auspex but never writes the wield itself.
+local toggle = assert(main:find("mod.toggle_scan_test = function", 1, true))
+local toggle_end = assert(main:find('mod:command("dtvr_scan_test"', toggle, true))
+assert(not main:sub(toggle, toggle_end):find("wield_slot", 1, true), "scan test writes a wield")
 print("scanner_holo=pass replaced_after_hand_pose dt0 auspex_only log_per_scan failure_contained test_zone")

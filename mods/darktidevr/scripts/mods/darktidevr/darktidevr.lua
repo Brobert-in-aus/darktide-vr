@@ -15114,8 +15114,13 @@ end
 presentation.scanner_holo = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_scanner_holo"
 ).install(mod)
--- Psykhanium check for the scan hologram: brings out the auspex and stands in
+presentation.skull_preview_trace = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_skull_preview_trace"
+).install(mod)
+-- Psykhanium check for the scan hologram: hands out the auspex and stands in
 -- for a scanning zone, so holding the scan shows the hologram without a mission.
+-- The player brings the scanner out with their own device button: a wield
+-- written from a command did not take (the next LT blocked with the weapon).
 mod.toggle_scan_test = function()
     local holo = presentation.scanner_holo
     local player = Managers.player and Managers.player:local_player(1)
@@ -15125,21 +15130,16 @@ mod.toggle_scan_test = function()
     local t = Managers.time and Managers.time:time("gameplay") or 0
     if holo.test_zone then
         holo.test_zone = false
-        if mod.scan_test_equipped and unit and Unit.alive(unit) then
-            local loadout = ScriptUnit.has_extension(unit, "visual_loadout_system")
-            local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
-            local inventory = unit_data and unit_data:read_component("inventory")
-            pcall(function()
-                if not (loadout and loadout._equipment and loadout._equipment.slot_device and
-                        loadout._equipment.slot_device.item) then return end
-                if inventory and inventory.wielded_slot == "slot_device" then
-                    PlayerUnitVisualLoadout.wield_previous_weapon_slot(inventory, unit, t)
-                end
-                PlayerUnitVisualLoadout.unequip_item_from_slot(unit, "slot_device", t)
-            end)
+        local unit_data = unit and Unit.alive(unit) and ScriptUnit.has_extension(unit, "unit_data_system")
+        local inventory = unit_data and unit_data:read_component("inventory")
+        if mod.scan_test_equipped and inventory and inventory.wielded_slot ~= "slot_device" then
+            local ok, err = pcall(PlayerUnitVisualLoadout.unequip_item_from_slot, unit, "slot_device", t)
+            if not ok then mod:info("DARKTIDEVR_SCANNER_HOLO test_unequip_failed=%s", tostring(err)) end
+            mod.scan_test_equipped = nil
+            mod:echo("Scan hologram check off.")
+        else
+            mod:echo("Scan hologram check off. Switch to a weapon to put the scanner away; it stays in your device slot until you leave.")
         end
-        mod.scan_test_equipped = nil
-        mod:echo("Scan hologram check off.")
         return
     end
     local mode = presentation.gameplay_context.game_mode_name(
@@ -15167,9 +15167,8 @@ mod.toggle_scan_test = function()
         end
         mod.scan_test_equipped = true
     end
-    pcall(PlayerUnitVisualLoadout.wield_slot, "slot_device", unit, t)
     holo.test_zone = true
-    mod:echo("Scan hologram check on: hold the scan (LT) and the hologram should sit just above the scanner. Run /dtvr_scan_test again to finish.")
+    mod:echo("Scan hologram check on: bring out the scanner with your scanner button (default Y), then hold LT. The hologram should sit just above the scanner. Run /dtvr_scan_test again to finish.")
 end
 if mod.command then
     mod:command("dtvr_scan_test",
