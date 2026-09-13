@@ -198,6 +198,17 @@ function Holsters.install(mod, presentation, observation)
             local point = live and frame and Holsters.local_point(frame, vector(role_position))
             local ready = api.update(hand, point, t)
             local request = api.request(hand, ready, inventory)
+            if test_enabled and hand == "right" then
+                api.trace_count = (api.trace_count or 0) + 1
+                if api.trace_count % 60 == 1 then
+                    local state = api.hands[hand]
+                    mod:info("DARKTIDEVR_HOLSTER trace live=%s point=%s zone=%s ready=%s claim=%s request=%s eye_height=%s",
+                        tostring(live), point and string.format("%.2f,%.2f,%.2f", point[1], point[2], point[3]) or "nil",
+                        tostring(state.zone and state.zone.id), tostring(ready and ready.id),
+                        tostring(state.claim and state.claim.selector), tostring(request and request.action),
+                        frame and string.format("%.2f", frame.scale * Holsters.REFERENCE_EYE_HEIGHT) or "nil")
+                end
+            end
             if request and (owner_hand == hand or (not owner_hand and not chosen)) then
                 chosen = {hand = hand, request = request}
             end
