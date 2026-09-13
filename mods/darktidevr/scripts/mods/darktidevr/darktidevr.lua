@@ -15003,6 +15003,37 @@ mod:hook_require("scripts/ui/views/scanner_display_view/scanner_display_view", f
     end)
 end)
 
+-- The scanner's scan hologram (the target spheres and the player marker held
+-- while LT is down) is a set of world units placed from the first-person
+-- scanner, with the first-person FOV shader pass, whenever the player is in
+-- first person. VR hides that viewmodel near the camera and shows the
+-- third-person scanner in the hand, so the spheres floated in the air. While
+-- the VR body owns first person, the effect takes its stock third-person
+-- branch: anchored to the third-person scanner, without the FOV pass.
+mod:hook_require("scripts/extension_systems/visual_loadout/wieldable_slot_scripts/auspex_scanning_effects",
+    function(class)
+        local function vr_body_first_person()
+            return active and presentation.is_first_person_body_mode(active_game_mode_name())
+        end
+        local third_person_view = {
+            is_camera_follow_target = function() return true end,
+            is_in_first_person_mode = function() return false end,
+        }
+        mod:hook(class, "update_first_person_mode", function(func, self, first_person_mode)
+            if vr_body_first_person() then first_person_mode = false end
+            return func(self, first_person_mode)
+        end)
+        mod:hook(class, "update_unit_position", function(func, self, ...)
+            if not vr_body_first_person() then return func(self, ...) end
+            if self._is_in_first_person then self:update_first_person_mode(false) end
+            local extension = self._first_person_extension
+            self._first_person_extension = third_person_view
+            local ok, err = pcall(func, self, ...)
+            self._first_person_extension = extension
+            if not ok then error(err, 0) end
+        end)
+    end)
+
 -- Dev check, on F7 and /dtvr_scanner_test: open the scanner display on the
 -- equipped device without a mission interface. Defined at top level: the
 -- keybind must resolve before the scanner view has ever been required.
