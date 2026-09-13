@@ -156,6 +156,10 @@ Draft text is in `docs/NEXUS-PAGE.md`; copy from there, do not retype.
 - [ ] Decide the update cadence for the first week (fix releases as
   `0.1.0-alpha.2` and so on; each rebuild follows section 1's rebuild
   steps).
+- [ ] From 0.1.0-alpha.2: create a GitHub release on the mirror for the
+  tag and upload the same archive as on Nexus, with the changelog section
+  as its notes (`gh release create <tag> <zip> --repo
+  Brobert-in-aus/darktide-vr --notes-file <notes>`).
 - [ ] Watch for a Darktide patch: the executable patch is byte-exact, and
   the batch reports an unrecognised executable rather than patching. A
   game update needs a mod update before VR mode returns.

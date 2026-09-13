@@ -115,6 +115,29 @@ patch needs an update from us.
 - Everything works in the hub, the Psykhanium (including the onboarding
   tutorial), Solo missions and on ordinary mission servers. Game questions
   such as the end-of-training prompt open in the headset with the pointer.
+- Either trigger continues past the title screen; hold the right trigger to
+  skip a cutscene or video.
+
+### Keyboard and mouse (experimental)
+
+Play seated with keyboard and mouse while the headset shows the game: Mod
+Options, Darktide VR, Experimental features, "Keyboard and mouse in VR".
+
+- The mouse moves the reticle inside a deadzone (15 degrees by default);
+  past its edge the view turns. Turning your head carries the reticle with
+  it. Vertical mouse movement stops at the deadzone edge unless
+  "Horizontal mouselook only" is turned off.
+- "Recentre view" (default Z) faces the view where you aim from where you
+  sit now.
+- "Disable controllers" (on by default) ignores the controllers; turned
+  off, controllers and keyboard and mouse work together.
+- Menus take the mouse cursor, and prompts show your keyboard bindings.
+- No controllers to open the options with? Before launching, rename the
+  empty `KeyboardMouseOff` file in `mods\darktidevr` to `KeyboardMouseOn`.
+  Rename it back to return to the setting in the options.
+- Tested seated in the hub, the Psykhanium and part of a mission, with
+  horizontal-only mouselook. Full mouselook and remote mission servers are
+  less tested.
 
 ## Known limits of this alpha
 
@@ -135,10 +158,10 @@ patch needs an update from us.
   and the slow backward walk are judged against the hand's aim.
 - Votes (kick a player, mission flow) cannot be answered in VR yet; their
   prompts read Unbound.
-- The menu pointer's hit marker shows as a plain dark square (and the
-  laser can look black) instead of the intended ring and cross.
-- Wide world markers and the interaction popup can double at their far
-  edge when they sit near the edge of your view.
+- Markers pinned to the edge of your view, interaction markers and any
+  markers beyond the eighth on screen still use the older per-eye drawing,
+  and can double at their far edge near the edge of your view.
+- Chat on the HUD panel is small, and the HUD editor cannot move it yet.
 - Only one setup has been tested: an RTX 4090, a Quest 3 and Virtual
   Desktop.
 

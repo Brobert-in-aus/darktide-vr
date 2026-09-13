@@ -13,7 +13,7 @@ runtime package records the exact source revision alongside the version.
   and disabling the controllers.
 - World markers, nameplates and interaction popups draw in world space in
   stereo, in front of the scene, at their stock size and layout (option
-  "World-surface markers", on by default).
+  "World-surface markers" under Experimental features, on by default).
 - The Skitarii servo-skull companion is visible to its owner.
 - Cutscenes and videos skip by holding the right trigger.
 - Either trigger continues past the title screen.
@@ -26,7 +26,8 @@ runtime package records the exact source revision alongside the version.
   stick onto crouch to slide while sprinting (saved bindings are swapped
   once).
 - Chat, the notification feed and the other always-on elements show on the
-  HUD panel and can be moved in the HUD editor.
+  HUD panel.
+- Entering the Psykhanium no longer crashes the game.
 - The menu pointer shows its cyan ring-and-cross target at the laser's hit.
 - In the third-person hub, opening a menu while moving no longer moves the
   camera.
