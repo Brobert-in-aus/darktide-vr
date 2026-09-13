@@ -111,6 +111,7 @@ local state = {
     updating_owner = nil,
     follow_pose = nil,
     layout_nodes = {},
+    layout_pins = {},
 }
 
 local function bounded_setting(value, fallback, minimum, maximum)
@@ -625,6 +626,10 @@ local function destroy_resources()
             record.horizontal,record.vertical)
     end
     state.layout_nodes = {}
+    for pin, original in pairs(state.layout_pins) do
+        pin[1], pin[2] = original.x, original.y
+    end
+    state.layout_pins = {}
     for _, record in ipairs(state.update_routes) do
         if record.element[record.name] == record.wrapper then
             record.element[record.name] = record.own
@@ -961,6 +966,56 @@ function HudPanel.panel_node_position(alignment_h, alignment_v, world_x, world_y
         place(alignment_v, world_y, height, source_height, canvas_height)
 end
 
+-- Custom HUD saves a node's position the first time its editor sees it, even
+-- when the player never moves it, and re-pins that saved position every frame.
+-- Captured while chat sat at its stock flat-screen place, that pin put chat
+-- below the panel canvas, invisible. (Its saved default is no guide: it was
+-- captured on the taller menu canvas.) An unmoved pin (saved position equal to
+-- its saved default) gets the panel placement from the stock scenegraph
+-- definition, as unpinned nodes do; a moved pin is kept but held inside the
+-- canvas. Only the pin's values change, so Custom HUD keeps pinning and the
+-- two never fight; the originals return on disable.
+function HudPanel.panel_pin_position(saved, definition, size, canvas_width, canvas_height, pin_x, pin_y)
+    local function clamp(value, extent, canvas)
+        return math.max(0, math.min(value, math.max(0, canvas - extent)))
+    end
+    local defaults = type(saved) == "table" and saved.default_settings
+    local default_position = defaults and defaults.position
+    local position = type(definition) == "table" and definition.position
+    if default_position and position and saved.x == default_position[1] and
+            saved.y == default_position[2] then
+        local function place(alignment, offset, extent, canvas)
+            if alignment == "right" or alignment == "bottom" then
+                return clamp(canvas - extent + offset, extent, canvas)
+            elseif alignment == "center" then
+                return clamp((canvas - extent) * 0.5 + offset, extent, canvas)
+            end
+            return clamp(offset, extent, canvas)
+        end
+        return place(definition.horizontal_alignment, position[1] or 0, size[1], canvas_width),
+            place(definition.vertical_alignment, position[2] or 0, size[2], canvas_height)
+    end
+    return clamp(pin_x, size[1], canvas_width), clamp(pin_y, size[2], canvas_height)
+end
+
+local function place_constant_pins(element, name, override, custom, sizes)
+    local saved_settings = custom.get and custom:get("saved_node_settings")
+    local definitions = element._definitions and element._definitions.scenegraph_definition
+    for id, pin in pairs(override.nodes) do
+        local node = type(pin) == "table" and element._ui_scenegraph and
+            rawget(element._ui_scenegraph, id)
+        if node and node.size and not state.layout_pins[pin] then
+            local saved = type(saved_settings) == "table" and saved_settings[name .. "|" .. id]
+            local x, y = HudPanel.panel_pin_position(saved, definitions and definitions[id],
+                node.size, sizes[1], sizes[2], pin[1], pin[2])
+            state.layout_pins[pin] = {x = pin[1], y = pin[2]}
+            pin[1], pin[2] = x, y
+            state.mod:info("DARKTIDEVR_HUD constant_pin_placed element=%s node=%s x=%.1f y=%.1f saved=%s",
+                name, id, x, y, tostring(saved ~= nil and saved ~= false))
+        end
+    end
+end
+
 local function place_constant_nodes(constants)
     local lookup = RESOLUTION_LOOKUP
     local width, height = state.target_width, state.target_height
@@ -979,6 +1034,11 @@ local function place_constant_nodes(constants)
             local override = overrides and overrides[element]
             local scale = hud_scaled[name] and
                 require("scripts/utilities/ui/hud").hud_scale() or lookup.scale or 1
+            if override and type(override.nodes) == "table" then
+                local panel_scale = scale * HudPanel.object_scale
+                place_constant_pins(element, name, override, custom,
+                    {width / panel_scale, height / panel_scale})
+            end
             for id, node in pairs(graph) do
                 local world = type(id) == "string" and type(node) == "table" and
                     node.parent == "screen" and node.world_position

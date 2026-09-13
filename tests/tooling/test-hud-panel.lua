@@ -19,7 +19,10 @@ Renderer = {copy_render_target_rect=function() stage("copy") end}
 Vector3, Vector2, Color = function() end, function() end, function() end
 local panel = dofile(arg[1])
 local hooks = {}
-panel.install({hook=function(_, _, method, callback) hooks[method] = callback end,
+panel.install({hook=function(_, target, method, callback)
+        hooks[method] = callback
+        hooks[tostring(target) .. ":" .. method] = callback
+    end,
     info=function() end, error=function() end})
 -- Inject already-created resources to isolate the real draw hook from engine
 -- allocation. This test exercises restoration, not GPU target correctness.
@@ -480,6 +483,60 @@ panel.draw_weapon_counter(function() assert(crosshair_module.position==stock_pos
 -- kept inside the canvas (units at element scale x object scale).
 local function near(a, b) return math.abs(a - b) < 1e-6 end
 local cw, ch = 2112 / (1.1 * 2.08), 1188 / (1.1 * 2.08)
+
+-- Custom HUD pins. Its saved chat entry was captured unmoved on the menu
+-- canvas (y=1327 > the 519-unit panel canvas): it gets the stock-definition
+-- placement, as an unpinned chat does. A moved pin stays, held on the canvas.
+local chat_definition = {position={50,-490,0}, horizontal_alignment="left", vertical_alignment="bottom"}
+local unmoved = {x=50, y=1327, default_settings={position={50,1327,2}, horizontal_alignment="left", vertical_alignment="bottom"}}
+local px, py = panel.panel_pin_position(unmoved, chat_definition, {500,250}, cw, ch, 50, 1327)
+assert(px == 50 and py == 0, string.format("unmoved chat pin %.1f,%.1f", px, py))
+local roomy = {position={50,-40,0}, horizontal_alignment="left", vertical_alignment="bottom"}
+px, py = panel.panel_pin_position(unmoved, roomy, {500,250}, cw, ch, 50, 1327)
+assert(px == 50 and math.abs(py - (ch - 250 - 40)) < 1e-9, "bottom margin not kept")
+local centred = {position={10,0,0}, horizontal_alignment="center", vertical_alignment="center"}
+px, py = panel.panel_pin_position(unmoved, centred, {500,250}, cw, ch, 50, 1327)
+assert(math.abs(px - ((cw - 500) * 0.5 + 10)) < 1e-9 and math.abs(py - (ch - 250) * 0.5) < 1e-9)
+local moved = {x=200, y=100, default_settings={position={50,1327,2}}}
+px, py = panel.panel_pin_position(moved, chat_definition, {500,250}, cw, ch, 200, 100)
+assert(px == 200 and py == 100, "a moved pin on the canvas was changed")
+px, py = panel.panel_pin_position(moved, chat_definition, {500,250}, cw, ch, 900, 1327)
+assert(math.abs(px - (cw - 500)) < 1e-9 and math.abs(py - (ch - 250)) < 1e-9, "moved pin left off the canvas")
+px, py = panel.panel_pin_position(nil, chat_definition, {500,250}, cw, ch, 50, 1327)
+assert(px == 50 and math.abs(py - (ch - 250)) < 1e-9, "unsaved pin not held on the canvas")
+
+-- Through the constant-element draw: the chat pin is rewritten once, in place
+-- (so Custom HUD's per-frame re-pin holds the panel position), and restored on
+-- disable so the flat HUD returns to Custom HUD's saved layout.
+local constant_draw = assert(hooks["UIConstantElements:draw"])
+local chat = {__class_name="ConstantElementChat",
+    _ui_scenegraph={chat_window={position={50,1327,2}, size={500,250}, parent="screen",
+        horizontal_alignment="left", vertical_alignment="top", world_position={50,1327}}},
+    _definitions={scenegraph_definition={chat_window=chat_definition}},
+    set_scenegraph_position=function() error("pinned chat placed directly") end}
+local pin = {50,1327,2}
+local pin_logs = 0
+local previous_mod = state.mod
+state.mod = {info=function(_, format) if format:find("constant_pin_placed", 1, true) then pin_logs = pin_logs + 1 end end}
+get_mod = function() return {_position_overrides={[chat]={nodes={chat_window=pin}}},
+    get=function(_, key)
+        assert(key == "saved_node_settings")
+        return {["ConstantElementChat|chat_window"]=unmoved}
+    end} end
+RESOLUTION_LOOKUP = {width=2112, height=2304, scale=1.1}
+state.enabled, state.hud_visible, state.last_authored_t = true, true, 20
+state.target_width, state.target_height = 2112, 1188
+state.resource_renderer, state.mirror = {gui={}}, function() end
+local constants = {_elements_array={chat}, _elements_hud_scale_lookup={}, _ui_renderer={}}
+constant_draw(function() end, constants, .01, 20, {})
+assert(pin[1] == 50 and pin[2] == 0 and pin[3] == 2, string.format("chat pin %s,%s", pin[1], pin[2]))
+constant_draw(function() end, constants, .01, 20.05, {})
+assert(pin_logs == 1, "chat pin re-placed every frame")
+renderer_api.destroy, Renderer.destroy_resource = function() end, function() end
+state.display_target = nil
+panel.set_enabled(false)
+assert(pin[1] == 50 and pin[2] == 1327, "Custom HUD's saved chat pin not restored")
+state.mod, get_mod = previous_mod, nil
 local x, y = panel.panel_node_position("left", "bottom", 50, 2304 / 1.1 - 250 - 490, 500, 250,
     1920, 2304 / 1.1, cw, ch)
 assert(near(x, 50) and near(y, 0), "bottom margin larger than the canvas clamps to its top")
