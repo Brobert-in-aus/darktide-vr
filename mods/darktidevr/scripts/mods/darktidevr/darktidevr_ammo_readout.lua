@@ -8,7 +8,9 @@ local Readout = {}
 Readout.OFFSET_UP = 0.09        -- metres above the grip
 Readout.OFFSET_INWARD = 0.05    -- towards the body's midline
 Readout.PIXEL_METRES = 0.0011   -- world size of one font pixel
-Readout.FONT_SIZE = 30
+Readout.FONT_SIZE = 30          -- clip count (or heat)
+Readout.SMALL_FONT_SIZE = 15    -- reserve under it
+Readout.RING_RADIUS = 0.030     -- metres; the ring encloses both lines
 Readout.TEST_FLAG = "./../mods/darktidevr/darktidevr_ammo_readout_test.flag"
 
 -- Ammo and heat of a slot component. nil when the slot shows neither.
@@ -49,6 +51,17 @@ function Readout.text(values)
     if values.heat and values.heat >= 0.75 then level = "low" end
     if (values.clip and values.clip == 0) or (values.heat and values.heat >= 0.9) then level = "critical" end
     return table.concat(parts, "  "), level
+end
+
+-- The stacked layout: the clip count (or heat) large in the ring's centre, the
+-- reserve (or heat, for a weapon with both) small beneath it.
+function Readout.lines(values)
+    if not values then return nil end
+    if values.clip then
+        return tostring(values.clip), values.heat and string.format("%d  %d%%", values.reserve,
+            math.floor(values.heat * 100 + 0.5)) or tostring(values.reserve)
+    end
+    return string.format("%d%%", math.floor(values.heat * 100 + 0.5)), nil
 end
 
 Readout.COLORS = {normal = {230, 235, 245, 240}, low = {235, 255, 190, 60}, critical = {235, 255, 70, 50}}
@@ -211,17 +224,26 @@ function Readout.install(mod, presentation, observation)
         Matrix4x4.set_up(tm, up)
         Matrix4x4.set_forward(tm, -to_eye)
         Matrix4x4.set_translation(tm, anchor)
-        local width = #text * size * 0.5
+        local primary, secondary = Readout.lines(values)
         local c = Readout.color(values)
         local color = Color(240, c[1], c[2], c[3])
         -- An interrupted reload shakes the readout sideways, fading out.
         local dx = shake and math.sin(now * 55) * 0.006 * shake or 0
-        Gui.slug_text_3d(gui, text, font.path, size, tm, Vector3(dx - width * 0.5, -size * 0.5, 0), 10,
+        local small = Readout.SMALL_FONT_SIZE * ps
+        local width = #primary * size * 0.52
+        local top = secondary and size * 0.08 or -size * 0.35
+        Gui.slug_text_3d(gui, primary, font.path, size, tm, Vector3(dx - width * 0.5, top, 0), 10,
             color, "flags", font.render_flags or 0)
+        if secondary then
+            local small_width = #secondary * small * 0.52
+            Gui.slug_text_3d(gui, secondary, font.path, small, tm,
+                Vector3(dx - small_width * 0.5, top - small * 1.15, 0), 10,
+                Color(200, 225, 230, 235), "flags", font.render_flags or 0)
+        end
         if progress then
             -- Reload ring: segments around the count, filling clockwise from the top.
-            local radius = math.max(width * 0.5 + 0.012, 0.03)
-            local segments, dot = 40, 0.0036
+            local radius = Readout.RING_RADIUS
+            local segments, dot = 56, 0.0034
             local filled = math.floor(progress * segments + 0.5)
             for i = 0, filled - 1 do
                 local angle = (i + 0.5) / segments * 2 * math.pi

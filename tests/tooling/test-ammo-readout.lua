@@ -42,6 +42,15 @@ local idle = gun(5, 5); idle.current_ammunition_clips_in_use = {false, false}
 assert(Readout.values(idle, Ammo, 2) == nil)
 assert(Readout.values(nil, Ammo, 2) == nil and Readout.text(nil) == nil)
 
+-- Stacked lines: clip large, reserve small beneath; heat-only is one line.
+local first, second = Readout.lines({clip = 12, reserve = 180})
+assert(first == "12" and second == "180")
+first, second = Readout.lines({clip = 5, reserve = 100, heat = 0.3})
+assert(first == "5" and second == "100  30%")
+first, second = Readout.lines({heat = 0.5})
+assert(first == "50%" and second == nil)
+assert(Readout.lines(nil) == nil)
+
 -- Colour runs white (full) -> yellow (half) -> orange (nearly empty), red at 0.
 local function rgb(values) local c = Readout.color(values); return math.floor(c[1] + .5), math.floor(c[2] + .5), math.floor(c[3] + .5) end
 assert(select(3, rgb({clip = 40, clip_max = 40})) == 250, "full is not white")
