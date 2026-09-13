@@ -19,6 +19,9 @@ runtime package records the exact source revision alongside the version.
   and cycles on to your carried items.
 - Chat on the HUD panel is drawn at the HUD's size and has a box in the HUD
   editor.
+- Every weapon and item aims with the same pitch, so the crosshair no longer
+  jumps when switching between guns, melee, staffs and blitz. The option is
+  now "Aim pitch angle" (default -10).
 
 ## 0.1.0-alpha.2 (13 September 2026)
 

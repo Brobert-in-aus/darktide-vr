@@ -8443,15 +8443,16 @@ end
 
 function presentation.weapon_aim_target(role)
     local side = presentation.weapon_hand_roles.physical(role)
-    if side == "left" then return presentation.left_controller_aim_target() end
-    if side == "right" then
-        local position,rotation=presentation.controller_aim_target()
-        if role=='dominant' and presentation.gun_aim then
-            local player=Managers.player and Managers.player:local_player(1)
-            rotation=presentation.gun_aim.aim(player and player.player_unit,rotation)
-        end
-        return position,rotation
+    local position, rotation
+    if side == "left" then position, rotation = presentation.left_controller_aim_target()
+    elseif side == "right" then position, rotation = presentation.controller_aim_target()
+    else return end
+    -- The dominant hand aims every weapon and item with the same pitch, on either side.
+    if role == "dominant" and presentation.gun_aim then
+        local player = Managers.player and Managers.player:local_player(1)
+        rotation = presentation.gun_aim.aim(player and player.player_unit, rotation)
     end
+    return position, rotation
 end
 
 function presentation.weapon_grip_target(role)

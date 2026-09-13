@@ -27,10 +27,10 @@ local function same(a,b)
 end
 function Alignment.install(mod,presentation)
     local instance={failures=0,writes=0,is_gun=Alignment.is_gun}
+    -- One pitch for every weapon and item, so switching between a gun, a melee
+    -- weapon, a staff or a blitz never moves the crosshair.
     function instance.base_aim(unit,rotation)
         if not unit or not rotation then return rotation end
-        local weapon=ScriptUnit.has_extension(unit,'weapon_system')
-        if not Alignment.is_gun(weapon and weapon:weapon_template()) then return rotation end
         local degrees=tonumber(mod:get('vr_gun_pitch')) or -10
         if degrees~=degrees then degrees=-10 end
         return Alignment.pitch(rotation,math.max(-45,math.min(45,degrees)))

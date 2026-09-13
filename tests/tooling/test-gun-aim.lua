@@ -128,9 +128,16 @@ local down=rotate(Alignment.pitch(q(0,0,0),-10),{0,1,0})
 assert(math.abs(down[1])<1e-8 and math.abs(down[3]+math.sin(math.rad(10)))<1e-8)
 pitch_setting=15; p,r=presentation.weapon_aim_target('dominant'); near(r,mul(raw,q(math.rad(15),0,0)))
 pitch_setting=0; p,r=presentation.weapon_aim_target('dominant'); near(r,raw)
-pitch_setting=-10; template={keywords={'force_staff'}}
-p,r=presentation.weapon_aim_target('dominant'); near(r,raw)
+-- Every weapon and item shares the pitch, so switching never moves the crosshair.
+pitch_setting=-10
+local pitched=mul(raw,q(math.rad(-10),0,0))
+for _,item in ipairs({{keywords={'force_staff'}},{actions={swing={kind='sweep'}}},{}}) do
+    template=item; p,r=presentation.weapon_aim_target('dominant'); near(r,pitched)
+end
 p,r=presentation.weapon_aim_target('support'); assert(p==24); near(r,raw)
+-- A left-handed player gets the same pitch on the left controller.
+dominant='left'; p,r=presentation.weapon_aim_target('dominant'); assert(p==24); near(r,pitched)
+dominant='right'
 -- The shared aim reader applies pitch once, then the support correction. The
 -- calibration/base reader must not feed the corrected pose back into itself.
 template={actions={shoot={kind='shoot_hit_scan'}}}
@@ -186,4 +193,4 @@ expected_hand=opposite_hand
 expected_rotation=mul(mul(mul(newr,wrist_basis),Quaternion.inverse(hands.right.anatomy_inverse:unbox())),hands.left.anatomy_inverse:unbox())
 assert(proxy.align_gun_hand(world,source,oldp,oldr,newp,newr,'left') and placed)
 assert(not proxy.align_gun_hand(world,source,oldp,oldr,newp,newr,'unknown'))
-print('PASS controller gun pitch/hand: 120 poses, pitch sign/live setting/staff isolation, draw/reload ownership, actual simulation reader and rigid-hand relative grip preservation')
+print('PASS controller gun pitch/hand: 120 poses, pitch sign/live setting/shared pitch for every item and hand, draw/reload ownership, actual simulation reader and rigid-hand relative grip preservation')
