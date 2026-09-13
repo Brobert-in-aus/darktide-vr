@@ -33,17 +33,20 @@ unattended evidence for each is in
    line per effect type, and no `DARKTIDEVR_SCANNER_HOLO fallback=` line. Not
    changed (cannot be fixed this way): the shout and shield-bash bursts.
 
-4. **Viewer comes back after a failure** (`c0913f3`, Lua and viewer). The
-   headset viewer can fail during play (an intermittent D3D12 error, three
-   times today). The game now restarts it, up to three times in about five
-   minutes. Play normally. If the headset goes dark, it should come back
-   within a few seconds. The console log shows
-   `DARKTIDEVR_VIEWER restart=automatic exit_code=1 attempt=1`; the viewer
-   log shows `openxr.command_list_close_failure frame=...`. Please say if you
-   saw a blackout and roughly when. Also: taking the headset off until it
-   sleeps and putting it back on should bring the view back
-   (`openxr.session_pause=runtime_stop`, then `session_resume`); this part is
-   checked only on the simulator.
+4. **Headset no longer goes dark entering the Psykhanium; the viewer restarts
+   if it fails** (`7f790f4` viewer, `c0913f3` Lua, `177bd16` native). The
+   viewer died at the loading → gameplay switch on every unattended
+   Psykhanium entry (the menu copy box described the new canvas before the
+   menu texture changed). That is fixed, and the game now also restarts a
+   viewer that fails, up to three times in about five minutes.
+   - Enter the Psykhanium and a mission: the view should stay up through
+     loading.
+   - If the headset ever goes dark mid-game, it should come back within a few
+     seconds. The console log then shows
+     `DARKTIDEVR_VIEWER restart=automatic`; please note when.
+   - Headset off until it sleeps, then back on: the view should return
+     (`openxr.session_pause=runtime_stop`, then `session_resume`). This part
+     is checked only on the simulator.
 5. **Virtual holsters, new and off by default** (`baa12ee`, Lua). Design and
    zone table: [virtual-holsters-2026-09-14.md](virtual-holsters-2026-09-14.md).
    First, with the option still off: the grips behave exactly as before

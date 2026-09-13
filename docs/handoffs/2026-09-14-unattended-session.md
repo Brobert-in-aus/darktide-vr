@@ -329,4 +329,25 @@ Mitigation (`c0913f3`):
 - The runner's `-ViewerArguments` starts an external viewer with extra
   arguments.
 
-Root cause: open; debug-layer reproduction runs below.
+Root cause, found and fixed (`7f790f4`). The D3D12 debug layer is not
+installed (`D3D12GetDebugInterface` 0x887A002D; installing Graphics Tools is a
+system change, not made), so the failure was made to describe its own frame
+(`caf7a23`), and the previous viewer log is now kept on a restart (`177bd16`,
+native module).
+
+The Psykhanium reproduced it every time, about 45 s after the viewer started,
+at the loading → gameplay transition (3 of 3 runs). The automatic restart
+recovered each run within 2 s. The failing frame recorded only the
+shared-menu copy (`shared=0 cached=0 generated=0 menu=1`): the menu copy box
+is the published presentation crop, which already described the gameplay
+canvas (2112x1188) while the attached menu texture was still the loading
+screen's 1280x720. `CopyTextureRegion` records such a box and `Close` rejects
+the list with E_INVALIDARG.
+
+The box is now clamped to the source and the destination, and an empty copy
+is skipped. After the fix, two Psykhanium runs logged
+`openxr.shared_menu_crop_clamped frame=5366 crop=0,0,2112x1188 source=1280x720
+destination=2112x1188` (and frame 5424) at the same moment, with no Close
+failure, one viewer start each and `result=pass`. Evidence:
+`artifacts/unattended/viewer-close-failure-20260914/` (repro-1 to repro-5).
+The automatic restart stays as a safety net.
