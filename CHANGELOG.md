@@ -23,8 +23,9 @@ runtime package records the exact source revision alongside the version.
 - Calibrated height is kept when a character is created or selected.
 - HUD panel on/off option in the VR settings.
 - Crouch moves to X and carried items to Y, so the thumb can roll from the
-  stick onto crouch to slide while sprinting (saved bindings are swapped
-  once).
+  stick onto crouch to slide while sprinting. Saved bindings follow only if
+  crouch and carried items were still on their old buttons; changed layouts
+  are kept.
 - Chat, the notification feed and the other always-on elements show on the
   HUD panel.
 - Entering the Psykhanium no longer crashes the game.

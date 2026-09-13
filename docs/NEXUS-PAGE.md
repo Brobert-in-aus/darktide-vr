@@ -103,7 +103,9 @@ For the Nexus changelog and the Posts tab. Matches CHANGELOG.md.
   in front of the scene, at their normal size and layout.
 - Chat and the other always-on messages show on the HUD panel.
 - Crouch is on X and carried items on Y, so you can roll your thumb onto
-  crouch to slide while sprinting. Your saved bindings swap once.
+  crouch to slide while sprinting. If you never moved crouch or carried
+  items, your bindings switch over too; if you changed them, your layout is
+  kept.
 - Either trigger continues past the title screen; hold the right trigger to
   skip cutscenes and videos.
 - The menu button no longer acts as back (B does), so Virtual Desktop's

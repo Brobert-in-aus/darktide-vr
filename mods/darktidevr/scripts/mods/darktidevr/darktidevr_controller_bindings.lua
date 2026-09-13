@@ -84,22 +84,22 @@ local function valid_controls(value)
     return type(value)=='number' and value>=0 and value<=32767 and value==math.floor(value)
 end
 
--- The 13 September layout change swaps what X and Y do in the per-action
--- bindings a player already has saved (customisations included), once. The
--- older per-control settings are left as they are: every install that has
--- them converted them to per-action bindings already, and a fresh
--- conversion reads the new defaults.
+-- The 13 September layout change (crouch X, carried items Y) moves a saved
+-- layout, once, only where both still sit exactly on the old defaults:
+-- crouch on Y alone and both item actions on X alone. Every alpha.1 install
+-- saved its per-action bindings on first launch, so a saved value cannot
+-- tell an untouched default from a choice; a player who changed either of
+-- the two, or already set up the new layout, keeps every binding as it is.
+-- The older per-control settings are left alone too: installs that have
+-- them converted them already, and a fresh conversion reads the new defaults.
 local function swap_saved_xy(mod)
     if not mod or not mod.set or mod:get('vr_bindings_xy_swapped') then return end
-    for _,action in ipairs(Bindings.actions) do
-        if atomic(action) then
-            for _,key in ipairs({'vr_action_bind_'..action.id,'vr_hub_action_bind_'..action.id}) do
-                local value=mod:get(key)
-                if valid_controls(value) and (bit.band(value,8)~=0)~=(bit.band(value,16)~=0) then
-                    mod:set(key,bit.bxor(value,24))
-                end
-            end
-        end
+    if mod:get('vr_action_bind_crouch')==16 and
+            mod:get('vr_action_bind_cycle_pocketables')==8 and
+            mod:get('vr_action_bind_device')==8 then
+        mod:set('vr_action_bind_crouch',8)
+        mod:set('vr_action_bind_cycle_pocketables',16)
+        mod:set('vr_action_bind_device',16)
     end
     mod:set('vr_bindings_xy_swapped',true)
 end

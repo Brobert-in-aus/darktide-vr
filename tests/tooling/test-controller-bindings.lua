@@ -431,28 +431,45 @@ local tp,th=talk_mapper.sample(true,32,0,1,true,1,'combat')
 assert(bit.band(tp,8388608)~=0 and bit.band(th,8388608)~=0)
 local _,_,tr=talk_mapper.sample(true,0,0,1,true,1,'combat')
 assert(bit.band(tr,8388608)~=0,'Axis assignment kept physical PTT release held')
--- 13 September layout: X crouches, Y cycles carried items; saved bindings
--- swap their X and Y buttons once (customisations included, inherit and
--- unbound untouched).
+-- 13 September layout: X crouches, Y cycles carried items. A saved layout
+-- moves once, and only where crouch and the item actions still sit on the old
+-- defaults; any other layout is kept exactly.
 do
     local defaults={}
     for _,control in ipairs(Bindings.controls) do defaults[control.id]=control.default end
     assert(defaults.x=='crouch' and defaults.y=='pocketable_device','X must default to crouch, Y to items')
-    local saved={vr_action_bind_crouch=16,vr_action_bind_cycle_pocketables=8,vr_action_bind_device=8,
-        vr_action_bind_jump=32,vr_action_bind_tag=24,vr_hub_action_bind_crouch=-1,vr_action_bind_stim=0,
-        vr_action_bind_sprint=128+16}
-    local writes=0
-    local swap_mod={get=function(_,key) return saved[key] end,
-        set=function(_,key,value) saved[key]=value;writes=writes+1 end}
-    Bindings.install(swap_mod)
+    local function migrated(saved)
+        local writes={}
+        local swap_mod={get=function(_,key) return saved[key] end,
+            set=function(_,key,value) saved[key]=value;writes[#writes+1]=key end}
+        Bindings.install(swap_mod)
+        return saved,writes
+    end
+    -- Untouched defaults move; everything else stays, and it runs once.
+    local saved,writes=migrated({vr_action_bind_crouch=16,vr_action_bind_cycle_pocketables=8,
+        vr_action_bind_device=8,vr_action_bind_jump=32,vr_hub_action_bind_crouch=-1,
+        vr_action_bind_sprint=128+16})
     assert(saved.vr_action_bind_crouch==8 and saved.vr_action_bind_cycle_pocketables==16 and
-        saved.vr_action_bind_device==16,'crouch and items must swap buttons')
-    assert(saved.vr_action_bind_jump==32 and saved.vr_action_bind_tag==24 and
-        saved.vr_hub_action_bind_crouch==-1 and saved.vr_action_bind_stim==0,'other values stay')
-    assert(saved.vr_action_bind_sprint==128+8,'a custom Y binding moves to X')
-    assert(saved.vr_bindings_xy_swapped==true and saved.vr_bind_x==nil and saved.vr_bind_y==nil)
-    local after=writes
-    Bindings.install(swap_mod)
-    assert(writes==after and saved.vr_action_bind_crouch==8,'the swap runs once')
+        saved.vr_action_bind_device==16,'default crouch and items must move to the new buttons')
+    assert(saved.vr_action_bind_jump==32 and saved.vr_hub_action_bind_crouch==-1 and
+        saved.vr_action_bind_sprint==128+16,'other bindings stay, including a custom Y')
+    assert(saved.vr_bindings_xy_swapped==true and #writes==4)
+    local _,again=migrated(saved)
+    assert(#again==0 and saved.vr_action_bind_crouch==8,'the migration runs once')
+    -- Crouch moved elsewhere: nothing moves, X and Y keep their actions.
+    saved=migrated({vr_action_bind_crouch=32,vr_action_bind_cycle_pocketables=8,
+        vr_action_bind_device=8,vr_action_bind_dodge=16})
+    assert(saved.vr_action_bind_crouch==32 and saved.vr_action_bind_cycle_pocketables==8 and
+        saved.vr_action_bind_device==8 and saved.vr_action_bind_dodge==16,'a custom crouch keeps the layout')
+    -- Already on the new layout: kept, not reversed.
+    saved=migrated({vr_action_bind_crouch=8,vr_action_bind_cycle_pocketables=16,vr_action_bind_device=16})
+    assert(saved.vr_action_bind_crouch==8 and saved.vr_action_bind_cycle_pocketables==16 and
+        saved.vr_action_bind_device==16,'a player-made new layout must not be reversed')
+    -- Crouch on Y plus another button: a choice, kept.
+    saved=migrated({vr_action_bind_crouch=16+128,vr_action_bind_cycle_pocketables=8,vr_action_bind_device=8})
+    assert(saved.vr_action_bind_crouch==16+128 and saved.vr_action_bind_device==8)
+    -- Fresh install: nothing saved, nothing written but the flag.
+    saved,writes=migrated({})
+    assert(#writes==1 and saved.vr_bindings_xy_swapped==true and saved.vr_action_bind_crouch==nil)
 end
 print('push_to_talk_binding=pass default_unassigned physical-only aliases and release')
