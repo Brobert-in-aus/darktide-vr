@@ -508,9 +508,10 @@ local function atlas_call(scope, self, func, ...)
     local target = scope.atlas.renderer()
     if not target then return nil end
     local settings, scale, inverse = target.render_settings, target.scale, target.inverse_scale
+    local factor = scope.factor or 1
     target.render_settings = self.render_settings
-    target.scale = self.scale
-    target.inverse_scale = self.inverse_scale
+    target.scale = self.scale and self.scale * factor
+    target.inverse_scale = target.scale and 1 / target.scale or self.inverse_scale
     local results = pack(pcall(func, target, ...))
     target.render_settings, target.scale, target.inverse_scale = settings, scale, inverse
     if not results[1] then
@@ -526,14 +527,42 @@ local function atlas_material(scope, material)
     if material == nil or type(material) == "string" then return material, true end
     local name = state.material_names[material]
     if not name then return nil, false end
-    local instance = scope.atlas.material(material, name, state.material_values[material])
+    local values = state.material_values[material]
+    local factor = scope.factor or 1
+    if factor ~= 1 and values and values.ui_scale then
+        -- ui_scale is pixels per logical unit; the copy draws `factor` larger.
+        local scaled = {}
+        for key, record in pairs(values) do scaled[key] = record end
+        local ui_scale = values.ui_scale
+        scaled.ui_scale = {ui_scale[1], ui_scale[2], (tonumber(ui_scale[3]) or 1) * factor}
+        values = scaled
+    end
+    local instance = scope.atlas.material(material, name, values)
     return instance, instance ~= nil
 end
 
-local function shifted(scope, position, divisor)
-    local dx = (scope.atlas_x - scope.origin_x) / divisor
-    local dy = (scope.atlas_y - scope.origin_y) / divisor
-    return state.api.Vector3(position[1] + dx, position[2] + dy, position[3] or 0)
+-- Positions move to the target: the cell or mirror offset (target pixels),
+-- and a mirror's `factor` about the target origin. Pixel entry points
+-- (script_*) pass no `logical_scale`; the logical ones (draw_rect,
+-- draw_slug_icon) pass the renderer scale, and their factor is applied
+-- through the target renderer's scale instead.
+local function shifted(scope, position, logical_scale)
+    local factor = scope.factor or 1
+    local dx = scope.atlas_x - scope.origin_x
+    local dy = scope.atlas_y - scope.origin_y
+    local unit = logical_scale
+    if not unit then
+        return state.api.Vector3(position[1] * factor + dx, position[2] * factor + dy,
+            position[3] or 0)
+    end
+    return state.api.Vector3(position[1] + dx / (unit * factor), position[2] + dy / (unit * factor),
+        position[3] or 0)
+end
+
+local function sized(scope, size)
+    local factor = scope.factor or 1
+    if factor == 1 or not size then return size end
+    return state.api.Vector3(size[1] * factor, size[2] * factor, size[3] or 0)
 end
 
 atlas_converters.script_draw_bitmap = function(scope, func, self, material, position, size,
@@ -546,7 +575,8 @@ atlas_converters.script_draw_bitmap = function(scope, func, self, material, posi
     if not ok then state.atlas_skipped = state.atlas_skipped + 1; return nil end
     dump("atlas_bitmap", state.material_names[material] or material, position[1] - scope.origin_x,
         position[2] - scope.origin_y, size[1], size[2], position[3])
-    return atlas_call(scope, self, func, instance, shifted(scope, position, 1), size, color)
+    return atlas_call(scope, self, func, instance, shifted(scope, position), sized(scope, size),
+        color)
 end
 
 atlas_converters.script_draw_bitmap_uv = function(scope, func, self, material, position, size,
@@ -557,7 +587,8 @@ atlas_converters.script_draw_bitmap_uv = function(scope, func, self, material, p
     end
     local instance, ok = atlas_material(scope, material)
     if not ok then state.atlas_skipped = state.atlas_skipped + 1; return nil end
-    return atlas_call(scope, self, func, instance, shifted(scope, position, 1), size, uvs, color)
+    return atlas_call(scope, self, func, instance, shifted(scope, position), sized(scope, size),
+        uvs, color)
 end
 
 atlas_converters.script_draw_text = function(scope, func, self, text, font_size, font_type,
@@ -568,8 +599,8 @@ atlas_converters.script_draw_text = function(scope, func, self, text, font_size,
     end
     dump("atlas_text", text, position[1] - scope.origin_x, position[2] - scope.origin_y,
         size and size[1] or 0, size and size[2] or 0, position[3])
-    return atlas_call(scope, self, func, text, font_size, font_type,
-        shifted(scope, position, 1), size, color, options)
+    return atlas_call(scope, self, func, text, font_size * (scope.factor or 1), font_type,
+        shifted(scope, position), sized(scope, size), color, options)
 end
 
 atlas_converters.draw_rect = function(scope, func, self, position, size, color, retained_id)
@@ -594,12 +625,12 @@ atlas_converters.draw_slug_icon = function(scope, func, self, resource, index, p
 end
 
 -- Mirror: while `fn` runs, every routed draw on `renderer` runs as stock and
--- then once more on `target` (an atlas-like {renderer(), material()}), its
--- position moved by dx, dy pixels, e.g. the constant elements onto the HUD
--- panel's target.
-function MarkerWorld.mirror(target, renderer, dx, dy, fn, ...)
+-- then once more on `target` (an atlas-like {renderer(), material()}), scaled
+-- by `factor` about the target origin and moved by dx, dy target pixels, e.g.
+-- the constant elements onto the HUD panel's target at the panel's scale.
+function MarkerWorld.mirror(target, renderer, factor, dx, dy, fn, ...)
     local previous = state.mirror
-    state.mirror = {renderer = renderer, atlas = target, mirror = true,
+    state.mirror = {renderer = renderer, atlas = target, mirror = true, factor = factor or 1,
         atlas_x = dx or 0, atlas_y = dy or 0, origin_x = 0, origin_y = 0}
     local results = pack(pcall(fn, ...))
     state.mirror = previous

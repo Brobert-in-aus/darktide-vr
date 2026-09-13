@@ -916,30 +916,28 @@ local mirror_target = {
         return instance
     end,
 }
--- Constant elements lay out on the whole UI lookup (in stereo taller than
--- the panel target). Their screen-anchored nodes are placed in panel
--- coordinates (left/top), as the status nodes are, so the drawn element and
--- the Custom HUD editor's box both land on the panel; a node Custom HUD has
--- a saved position for is left to it. `mirror_offset` covers any node that
--- is still anchored otherwise.
-local function alignment_shift(alignment, target, source)
-    if alignment == "bottom" or alignment == "right" then return target - source end
-    if alignment == "center" then return (target - source) * 0.5 end
-    return 0
-end
-local function mirror_offset(element)
-    local lookup = RESOLUTION_LOOKUP
-    local width, height = state.target_width, state.target_height
-    if not lookup or not width or not height then return 0, 0 end
-    local horizontal, vertical
-    for _, node in pairs(element._ui_scenegraph or {}) do
-        if type(node) == "table" and node.parent == "screen" then
-            horizontal, vertical = node.horizontal_alignment, node.vertical_alignment
-            break
+-- Constant elements lay out on the whole UI lookup at their own scale. On
+-- the panel they draw as the fixed HUD elements do, `object_scale` larger
+-- (the mirror's factor), so one layout unit is element scale x object scale
+-- target pixels, the same mapping the Custom HUD editor draws its boxes
+-- with. Their screen-anchored nodes are placed (left/top) in that panel
+-- canvas: the same margin from the same edge, kept inside the canvas. A
+-- node Custom HUD has a saved position for is left to it.
+function HudPanel.panel_node_position(alignment_h, alignment_v, world_x, world_y, width, height,
+        source_width, source_height, canvas_width, canvas_height)
+    local function place(alignment, world, size, source, canvas)
+        local value
+        if alignment == "right" or alignment == "bottom" then
+            value = canvas - size - (source - world - size)
+        elseif alignment == "center" then
+            value = (canvas - size) * 0.5 + (world - (source - size) * 0.5)
+        else
+            value = world
         end
+        return math.max(0, math.min(value, math.max(0, canvas - size)))
     end
-    return alignment_shift(horizontal, width, lookup.width),
-        alignment_shift(vertical, height, lookup.height)
+    return place(alignment_h, world_x, width, source_width, canvas_width),
+        place(alignment_v, world_y, height, source_height, canvas_height)
 end
 
 local function place_constant_nodes(constants)
@@ -963,7 +961,8 @@ local function place_constant_nodes(constants)
             for id, node in pairs(graph) do
                 local world = type(id) == "string" and type(node) == "table" and
                     node.parent == "screen" and node.world_position
-                local anchored = world and (node.vertical_alignment == "bottom" or
+                local size = world and node.size
+                local anchored = size and (node.vertical_alignment == "bottom" or
                     node.vertical_alignment == "center" or node.horizontal_alignment == "right" or
                     node.horizontal_alignment == "center")
                 if anchored and not (override and override.nodes and override.nodes[id]) then
@@ -972,13 +971,16 @@ local function place_constant_nodes(constants)
                         state.layout_nodes[node] = {element = element, id = id, x = p[1], y = p[2],
                             horizontal = node.horizontal_alignment, vertical = node.vertical_alignment}
                     end
-                    local dx = alignment_shift(node.horizontal_alignment, width, lookup.width) / scale
-                    local dy = alignment_shift(node.vertical_alignment, height, lookup.height) / scale
-                    element:set_scenegraph_position(id, world[1] + dx, world[2] + dy, nil, "left", "top")
-                    if not state.constant_layout_logged then
-                        state.constant_layout_logged = true
-                        state.mod:info("DARKTIDEVR_HUD constant_node_placed element=%s node=%s x=%.1f y=%.1f",
-                            name, id, world[1] + dx, world[2] + dy)
+                    local panel_scale = scale * HudPanel.object_scale
+                    local x, y = HudPanel.panel_node_position(node.horizontal_alignment,
+                        node.vertical_alignment, world[1], world[2], size[1], size[2],
+                        lookup.width / scale, lookup.height / scale,
+                        width / panel_scale, height / panel_scale)
+                    element:set_scenegraph_position(id, x, y, nil, "left", "top")
+                    state.constant_layout_count = (state.constant_layout_count or 0) + 1
+                    if state.constant_layout_count <= 8 then
+                        state.mod:info("DARKTIDEVR_HUD constant_node_placed element=%s node=%s x=%.1f y=%.1f size=%.0fx%.0f canvas=%.0fx%.0f",
+                            name, id, x, y, size[1], size[2], width / panel_scale, height / panel_scale)
                     end
                 end
             end
@@ -1020,9 +1022,9 @@ function HudPanel.install(mod)
         for _, element in ipairs(self._elements_array) do
             if panel_constant_elements[element.__class_name] and rawget(element, "draw") == nil then
                 local class_draw = element.draw
-                local dx, dy = mirror_offset(element)
                 element.draw = function(instance, ...)
-                    return state.mirror(mirror_target, source, dx, dy, class_draw, instance, ...)
+                    return state.mirror(mirror_target, source, HudPanel.object_scale, 0, 0,
+                        class_draw, instance, ...)
                 end
                 wrapped[#wrapped + 1] = element
             end

@@ -291,7 +291,7 @@ local mirror_atlas = {
     material = function(h, name) return "panel:" .. name end,
 }
 local source = {gui = "overlay_gui", scale = 1, render_settings = {start_layer = 0}}
-local results = {MarkerWorld.mirror(mirror_atlas, source, 0, -1116, function()
+local results = {MarkerWorld.mirror(mirror_atlas, source, 1, 0, -1116, function()
     local a = MarkerWorld.route("script_draw_text", stock("text"), source, "hello", 20, "proxima",
         V3(40, 2000, 1), V3(300, 30, 0), {255, 255, 255, 255}, {})
     local b = MarkerWorld.route("script_draw_bitmap", stock("bitmap"), source, handle,
@@ -305,4 +305,27 @@ assert(seen[1].self == source and seen[2].self == mirror_target)
 assert(seen[2][4][1] == 40 and seen[2][4][2] == 884, "the copy moves by the mirror offset")
 assert(seen[3].self == source and seen[3][5] == 7 and seen[4].self.gui == "other")
 assert(mirror_target.render_settings == nil and MarkerWorld.state.mirror == nil)
+-- A mirror factor draws the copy larger about the target origin: pixel calls
+-- scale position, size and font size; logical calls go through the target's
+-- scale; a recorded ui_scale is scaled for the copy's material instance.
+seen = {}
+local replayed_scale
+mirror_atlas.material = function(h, name, values)
+    replayed_scale = values and values.ui_scale and values.ui_scale[3]
+    return "panel:" .. name
+end
+MarkerWorld.note_value("set_scalar", handle, "ui_scale", 1.1)
+MarkerWorld.mirror(mirror_atlas, source, 2, 0, 0, function()
+    MarkerWorld.route("script_draw_text", stock("text"), source, "hi", 20, "proxima",
+        V3(40, 100, 1), V3(300, 30, 0), {255, 255, 255, 255}, {})
+    MarkerWorld.route("script_draw_bitmap", stock("bitmap"), source, handle,
+        V3(10, 20, 0), V3(30, 40, 0), nil)
+    MarkerWorld.route("draw_rect", stock("rect"), source, V3(5, 6, 0), V3(7, 8, 0), nil)
+end)
+assert(seen[2].self == mirror_target and seen[2][2] == 40 and seen[2][4][1] == 80 and
+    seen[2][4][2] == 200 and seen[2][5][1] == 600, "text copy scaled by the factor")
+assert(seen[4][2][1] == 20 and seen[4][2][2] == 40 and seen[4][3][1] == 60 and replayed_scale == 2.2)
+assert(seen[6].self == mirror_target and seen[6].scale == 2 and seen[6][1][1] == 5,
+    "logical calls scale through the target renderer")
+assert(mirror_target.scale == nil and source.scale == 1)
 print("marker_world.result=pass")

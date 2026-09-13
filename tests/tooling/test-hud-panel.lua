@@ -454,3 +454,17 @@ assert(not pcall(panel.draw_stock_crosshair,function() error("draw failure") end
 assert(crosshair._widget==original_crosshair)
 state.enabled=false
 panel.draw_stock_crosshair(function(self) assert(self._widget==original_crosshair) end,crosshair)
+
+-- Constant-element nodes on the panel canvas: same margin from the same edge,
+-- kept inside the canvas (units at element scale x object scale).
+local function near(a, b) return math.abs(a - b) < 1e-6 end
+local cw, ch = 2112 / (1.1 * 2.08), 1188 / (1.1 * 2.08)
+local x, y = panel.panel_node_position("left", "bottom", 50, 2304 / 1.1 - 250 - 490, 500, 250,
+    1920, 2304 / 1.1, cw, ch)
+assert(near(x, 50) and near(y, 0), "bottom margin larger than the canvas clamps to its top")
+x, y = panel.panel_node_position("right", "bottom", 1920 - 200 - 30, 2304 / 1.1 - 60 - 20, 200, 60,
+    1920, 2304 / 1.1, cw, ch)
+assert(near(x, cw - 200 - 30) and near(y, ch - 60 - 20), "right and bottom margins kept")
+x, y = panel.panel_node_position("center", "top", (1920 - 100) * 0.5 + 10, 40, 100, 20,
+    1920, 2304 / 1.1, cw, ch)
+assert(near(x, (cw - 100) * 0.5 + 10) and near(y, 40), "centre offset and top position kept")
