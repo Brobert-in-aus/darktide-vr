@@ -6,6 +6,11 @@ runtime package records the exact source revision alongside the version.
 
 ## 0.1.0-alpha.2 (unreleased)
 
+- Experimental keyboard and mouse mode (Mod Options, Experimental features):
+  play seated with keyboard and mouse while the headset shows the game. The
+  mouse aims within a deadzone and turns the view past its edge, with
+  options for horizontal-only mouselook, the deadzone size, a recentre key
+  and disabling the controllers.
 - World markers, nameplates and interaction popups draw in world space in
   stereo, in front of the scene, at their stock size and layout (option
   "World-surface markers", on by default).
