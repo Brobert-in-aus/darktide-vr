@@ -11577,6 +11577,11 @@ mod:hook_safe(
         if ok and presentation.gun_aim then
             presentation.gun_aim.update(self._world, player_unit)
         end
+        -- The scan hologram was placed from the scanner before the hand pose
+        -- above moved it; place it again from the scanner in the hand.
+        if presentation.scanner_holo then
+            presentation.scanner_holo.place(player_unit, t)
+        end
         local ik_end = performance_tick()
         if presentation_start and ik_start and ik_end and ui_native_capture then
             local weapon_ticks =
@@ -15106,6 +15111,72 @@ if mod.command then
         function() mod.toggle_scanner_test() end)
 end
 
+presentation.scanner_holo = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_scanner_holo"
+).install(mod)
+-- Psykhanium check for the scan hologram: brings out the auspex and stands in
+-- for a scanning zone, so holding the scan shows the hologram without a mission.
+mod.toggle_scan_test = function()
+    local holo = presentation.scanner_holo
+    local player = Managers.player and Managers.player:local_player(1)
+    local unit = player and player.player_unit
+    local PlayerUnitVisualLoadout = require(
+        "scripts/extension_systems/visual_loadout/utilities/player_unit_visual_loadout")
+    local t = Managers.time and Managers.time:time("gameplay") or 0
+    if holo.test_zone then
+        holo.test_zone = false
+        if mod.scan_test_equipped and unit and Unit.alive(unit) then
+            local loadout = ScriptUnit.has_extension(unit, "visual_loadout_system")
+            local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
+            local inventory = unit_data and unit_data:read_component("inventory")
+            pcall(function()
+                if not (loadout and loadout._equipment and loadout._equipment.slot_device and
+                        loadout._equipment.slot_device.item) then return end
+                if inventory and inventory.wielded_slot == "slot_device" then
+                    PlayerUnitVisualLoadout.wield_previous_weapon_slot(inventory, unit, t)
+                end
+                PlayerUnitVisualLoadout.unequip_item_from_slot(unit, "slot_device", t)
+            end)
+        end
+        mod.scan_test_equipped = nil
+        mod:echo("Scan hologram check off.")
+        return
+    end
+    local mode = presentation.gameplay_context.game_mode_name(
+        Managers.state and Managers.state.game_mode)
+    if mode ~= "shooting_range" and mode ~= "training_grounds" then
+        mod:echo("The scan hologram check works in the Psykhanium; missions have real scanning zones.")
+        return
+    end
+    local loadout = unit and Unit.alive(unit) and ScriptUnit.has_extension(unit, "visual_loadout_system")
+    if not loadout then
+        mod:echo("No player unit; the scan hologram check needs a spawned character.")
+        return
+    end
+    local slot = loadout._equipment and loadout._equipment.slot_device
+    if not (slot and slot.item) then
+        local item = scanner_test_item()
+        if not item then
+            mod:echo("No auspex item in the catalogue.")
+            return
+        end
+        local ok, err = pcall(PlayerUnitVisualLoadout.equip_item_to_slot, unit, item, "slot_device", nil, t)
+        if not ok then
+            mod:echo("Equipping the auspex failed: " .. tostring(err))
+            return
+        end
+        mod.scan_test_equipped = true
+    end
+    pcall(PlayerUnitVisualLoadout.wield_slot, "slot_device", unit, t)
+    holo.test_zone = true
+    mod:echo("Scan hologram check on: hold the scan (LT) and the hologram should sit just above the scanner. Run /dtvr_scan_test again to finish.")
+end
+if mod.command then
+    mod:command("dtvr_scan_test",
+        "Psykhanium: bring out the auspex and stand in for a scanning zone to check the scan hologram",
+        function() mod.toggle_scan_test() end)
+end
+
 presentation.gun_aim = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_gun_aim"
 ).install(mod, presentation)
@@ -15517,6 +15588,10 @@ mod.on_game_state_changed = function(status, state_name)
             pcall(presentation.hud_panel.release_mirror_materials)
         end
         mod:info("DARKTIDEVR_MARKER_ATLAS released reason=state_%s", tostring(state_name))
+        if presentation.scanner_holo then
+            presentation.scanner_holo.test_zone = false
+            mod.scan_test_equipped = nil
+        end
     end
 end
 
