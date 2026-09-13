@@ -31,6 +31,8 @@ param(
     [ValidateSet('', 'clip', 'show', 'cursor')] [string] $ChatProbe = '',
     # With -ChatCycles: log engine resource and GUI creation around each action.
     [switch] $ChatTrace,
+    # Extra arguments for an external viewer, e.g. @('--debug-layer').
+    [string[]] $ViewerArguments = @(),
     [string] $OutputDirectory,
     [ValidateRange(60, 3600)] [int] $StartTimeoutSeconds = 900,
     [ValidateRange(10, 600)] [int] $ExitTimeoutSeconds = 180
@@ -43,7 +45,7 @@ $modRoot = Join-Path $GameRoot 'mods\darktidevr'
 $gameExe = (Resolve-Path -LiteralPath (Join-Path $GameRoot 'binaries\Darktide.exe')).Path
 $consoleRoot = Join-Path $env:APPDATA 'Fatshark\Darktide\console_logs'
 $viewerLogRoot = Join-Path $env:LOCALAPPDATA 'DarktideVR'
-if ($SyntheticControllerPath -or $RuntimeJson) { $ExternalViewer = $true }
+if ($SyntheticControllerPath -or $RuntimeJson -or $ViewerArguments.Count -gt 0) { $ExternalViewer = $true }
 if ($NoViewer -and ($SyntheticControllerPath -or $RuntimeJson)) { throw '-NoViewer cannot be combined with a viewer option.' }
 if ($RuntimeJson -and -not (Test-Path -LiteralPath $RuntimeJson -PathType Leaf)) { throw "Runtime JSON not found: $RuntimeJson" }
 if (-not $OutputDirectory) {
@@ -96,6 +98,7 @@ try {
             '--enable-menu-input', '--enable-gameplay-reticle', '--projection-translation-scale', '1.0',
             '--stop-file', ('"' + $stopFile + '"'))
         if ($SyntheticControllerPath) { $arguments += '--synthetic-controller-path' }
+        $arguments += $ViewerArguments
         $priorRuntime = $env:XR_RUNTIME_JSON
         try {
             if ($RuntimeJson) { $env:XR_RUNTIME_JSON = (Resolve-Path -LiteralPath $RuntimeJson).Path }

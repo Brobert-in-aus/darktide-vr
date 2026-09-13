@@ -80,6 +80,46 @@ void check(HRESULT result, const char* operation) {
   }
 }
 
+// Close reports only E_INVALIDARG for an invalid recorded command. With the
+// debug layer (--debug-layer) the device's info queue names it: print the last
+// messages before failing (intermittent theatre failure, 14 September).
+void check_command_list_close(ID3D12GraphicsCommandList* list,
+                              ID3D12Device* device, std::uint64_t frame,
+                              const char* operation) {
+  const auto result = list->Close();
+  if (SUCCEEDED(result)) {
+    return;
+  }
+  std::cerr << "openxr.command_list_close_failure frame=" << frame
+            << " result=" << static_cast<std::uint32_t>(result) << '\n';
+  Microsoft::WRL::ComPtr<ID3D12InfoQueue> messages;
+  if (device && SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&messages)))) {
+    const auto count = messages->GetNumStoredMessagesAllowedByRetrievalFilter();
+    std::cerr << "openxr.command_list_close_failure.d3d12_messages=" << count << '\n';
+    const auto first = count > 12 ? count - 12 : 0;
+    for (auto index = first; index < count; ++index) {
+      SIZE_T bytes{};
+      if (FAILED(messages->GetMessage(index, nullptr, &bytes)) ||
+          bytes < sizeof(D3D12_MESSAGE) || bytes > 1024 * 1024) {
+        continue;
+      }
+      std::vector<std::byte> storage(bytes);
+      auto* message = reinterpret_cast<D3D12_MESSAGE*>(storage.data());
+      if (SUCCEEDED(messages->GetMessage(index, message, &bytes))) {
+        std::cerr << "openxr.command_list_close_failure.d3d12 id=" << message->ID
+                  << " severity=" << message->Severity << " text="
+                  << (message->pDescription ? message->pDescription : "unavailable")
+                  << '\n';
+      }
+    }
+  } else {
+    std::cerr << "openxr.command_list_close_failure.d3d12_messages=unavailable"
+                 " (run the viewer with --debug-layer)\n";
+  }
+  std::cerr.flush();
+  check(result, operation);
+}
+
 void wait_for_fence(ID3D12Fence* fence, std::uint64_t value, HANDLE event,
                     const char* operation) {
   constexpr DWORD timeout_ms = 10000;
@@ -3217,8 +3257,8 @@ class OpenXrProbe {
               static_cast<UINT>(destination_barriers.size()),
               destination_barriers.data());
         }
-        check(command_list->Close(),
-              "ID3D12GraphicsCommandList::Close(theatre)");
+        check_command_list_close(command_list.Get(), device, frame,
+                                 "ID3D12GraphicsCommandList::Close(theatre)");
         ID3D12CommandList* lists[]{command_list.Get()};
         if (use_generated_pair) {
           check(queue->Wait(generated_surfaces->ready_fence.Get(),generated_sequence_for_frame),

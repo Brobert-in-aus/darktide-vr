@@ -85,6 +85,8 @@ function Viewer.control(enabled)
     end
     state.mod:info("DARKTIDEVR_VIEWER control=%s accepted",
         enabled and "start" or "stop")
+    -- A stop asked for by the mod (quit, the chat command) is not a failure.
+    state.stopped_on_request = not enabled
     return true
 end
 
@@ -95,6 +97,8 @@ end
 -- Polling counts updates rather than reading a clock: the mod update runs
 -- every frame and the state rarely changes.
 local POLL_UPDATES = 120
+Viewer.RESTART_LIMIT = 3
+Viewer.RESTART_WINDOW = 120 * 60 * 5 -- updates (about five minutes)
 
 -- Development runs that start their own viewer (a synthetic controller path,
 -- the OpenXR simulator runtime) write "external" into this file before the
@@ -132,6 +136,7 @@ function Viewer.update()
         return
     end
     state.poll_t = state.poll_t + 1
+    state.update_count = (state.update_count or 0) + 1
     if state.poll_t < POLL_UPDATES then
         return
     end
@@ -140,11 +145,36 @@ function Viewer.update()
     if not current or current.running == state.running then
         return
     end
+    local was_running = state.running
     state.running = current.running
     state.mod:info(
         "DARKTIDEVR_VIEWER running=%s exit_code=%d starts=%d installed=%s",
         tostring(current.running), current.exit_code, current.starts,
         tostring(current.installed))
+    -- A viewer that fails mid-game (14 September: an intermittent D3D12
+    -- command-list failure) leaves the headset dark until someone types
+    -- /dtvr_viewer restart. Restart it automatically, at most
+    -- RESTART_LIMIT times per RESTART_WINDOW updates; a clean exit (0) or a
+    -- stop the mod asked for is left alone.
+    if was_running and not current.running and current.exit_code ~= 0 and
+            not state.stopped_on_request then
+        state.update_count = state.update_count or 0
+        state.restarts = state.restarts or {}
+        local recent = {}
+        for _, at in ipairs(state.restarts) do
+            if state.update_count - at < Viewer.RESTART_WINDOW then recent[#recent + 1] = at end
+        end
+        state.restarts = recent
+        if #recent < Viewer.RESTART_LIMIT then
+            recent[#recent + 1] = state.update_count
+            state.mod:info("DARKTIDEVR_VIEWER restart=automatic exit_code=%d attempt=%d",
+                current.exit_code, #recent)
+            Viewer.control(true)
+        elseif not state.restart_limit_logged then
+            state.restart_limit_logged = true
+            state.mod:info("DARKTIDEVR_VIEWER restart=gave_up exit_code=%d attempts=%d", current.exit_code, #recent)
+        end
+    end
 end
 
 function Viewer.install(mod, native_accessor)

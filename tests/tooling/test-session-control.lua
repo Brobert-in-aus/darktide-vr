@@ -141,4 +141,48 @@ local PlayerViewer = dofile(arg[2])
 PlayerViewer.install({info = mod.info, error = mod.error, command = function() end}, function() return native end)
 PlayerViewer.update()
 assert(#controls == 1 and controls[1] == 1, "the player's viewer did not start")
+-- A viewer that exits with an error mid-game is restarted, at most three
+-- times per window; a clean exit or a stop the mod asked for is not.
+do
+    local RestartViewer = dofile(arg[2])
+    local values = {[0] = 0, 0, 0, 0, 1}
+    local starts = {}
+    local stub = {dtvr_bootstrap_state = function() return 1 end,
+        dtvr_viewer_control = function(enabled) starts[#starts + 1] = enabled; return 0 end,
+        dtvr_viewer_state = function(out) for i = 0, 4 do out[i] = values[i] end; return 0 end}
+    Mods.lua.ffi = {new = function() return {[0] = 0, 0, 0, 0, 0} end}
+    local lines = {}
+    RestartViewer.install({info = function(_, f, ...) lines[#lines + 1] = string.format(f, ...) end,
+        error = mod.error, command = function() end}, function() return stub end)
+    local function poll(running, exit_code)
+        values[0], values[1] = running and 1 or 0, exit_code
+        for _ = 1, 120 do RestartViewer.update() end
+    end
+    RestartViewer.update() -- first update requests the start
+    assert(#starts == 1 and starts[1] == 1)
+    poll(true, -1)
+    poll(false, 1)
+    assert(#starts == 2 and starts[2] == 1, "failed viewer not restarted")
+    assert(lines[#lines]:find("control=start accepted", 1, true) and lines[#lines - 1]:find("restart=automatic exit_code=1 attempt=1", 1, true))
+    for attempt = 2, 3 do poll(true, -1); poll(false, 1) end
+    assert(#starts == 4, "restart attempts not counted")
+    poll(true, -1); poll(false, 1)
+    assert(#starts == 4, "restarted beyond the limit")
+    assert(lines[#lines]:find("restart=gave_up", 1, true))
+
+    local CleanViewer = dofile(arg[2])
+    starts = {}
+    CleanViewer.install({info = function() end, error = mod.error, command = function() end}, function() return stub end)
+    CleanViewer.update()
+    local function poll_clean(running, exit_code)
+        values[0], values[1] = running and 1 or 0, exit_code
+        for _ = 1, 120 do CleanViewer.update() end
+    end
+    poll_clean(true, -1); poll_clean(false, 0)
+    assert(#starts == 1, "clean exit restarted")
+    CleanViewer.control(true); poll_clean(true, -1)
+    CleanViewer.control(false); poll_clean(false, 1)
+    assert(#starts == 3 and starts[3] == 0, "a requested stop was restarted")
+end
+
 print("session_control=pass quit_once menu_and_gameplay_routes failure_not_replayed external_viewer_skip")
