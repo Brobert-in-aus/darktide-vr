@@ -11,6 +11,7 @@ runtime package records the exact source revision alongside the version.
   "World-surface markers", on by default).
 - The Skitarii servo-skull companion is visible to its owner.
 - Cutscenes and videos skip by holding the right trigger.
+- Either trigger continues past the title screen.
 - The player no longer appears twice in cutscenes.
 - The menu button no longer acts as back (B does), so Virtual Desktop's
   double tap works in menus.

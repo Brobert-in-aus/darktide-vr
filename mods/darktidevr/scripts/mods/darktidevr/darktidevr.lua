@@ -14319,6 +14319,45 @@ mod:hook_require("scripts/ui/views/video_view/video_view", function(class)
     end)
 end)
 
+-- The title screen ("press Space to continue") also continues on either
+-- trigger. Gameplay refreshes the trigger values only while stereo runs, so
+-- read the controller state directly here. A trigger already down when the
+-- screen opens must be released first.
+do
+local title_trigger = {down = true}
+local function title_triggers_down()
+    if not ui_native_capture or not controller_observation.values or
+            not ui_native_capture.dtvr_read_controller_state or
+            ui_native_capture.dtvr_read_controller_state(
+                controller_observation.values,
+                controller_observation.tracking_flags,
+                controller_observation.buttons,
+                controller_observation.sequence,
+                controller_observation.timestamp_ns) ~= 0 then
+        return nil
+    end
+    local left = tonumber(controller_observation.values[14]) or 0
+    local right = tonumber(controller_observation.values[32]) or 0
+    return left >= 0.55 or right >= 0.55
+end
+mod:hook_require("scripts/ui/views/title_view/title_view", function(class)
+    mod:hook_safe(class, "on_enter", function() title_trigger.down = true end)
+    mod:hook(class, "update", function(func, self, dt, t, input_service, ...)
+        if not self._continue_triggered and not self.closing_view and self._continue then
+            local ok, down = pcall(title_triggers_down)
+            if ok and down ~= nil then
+                if down and not title_trigger.down then
+                    self:_continue()
+                    mod:info("DARKTIDEVR_TITLE continue source=trigger")
+                end
+                title_trigger.down = down
+            end
+        end
+        return func(self, dt, t, input_service, ...)
+    end)
+end)
+end
+
 -- The local player's companion units (the Skitarii servo-skull): alive,
 -- distance from the player and mesh visibility, for the invisible-skull report.
 local function companion_trace_arm()
