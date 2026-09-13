@@ -16,6 +16,8 @@ runtime package records the exact source revision alongside the version.
   double tap works in menus.
 - Calibrated height is kept when a character is created or selected.
 - HUD panel on/off option in the VR settings.
+- Chat, the notification feed and the other always-on elements show on the
+  HUD panel and can be moved in the HUD editor.
 - The menu pointer shows its cyan ring-and-cross target at the laser's hit.
 - In the third-person hub, opening a menu while moving no longer moves the
   camera.
