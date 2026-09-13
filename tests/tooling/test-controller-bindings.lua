@@ -266,6 +266,11 @@ do
     holster={control='right_grip',owner={},acquire=true,retain=true,action='ranged'}
     grip_sample(4,33554432,33554432,0,true,holster)
     grip_sample(0,0,0,33554432,false,holster)
+    -- Belt blitz: press, hold (aim) and release (throw) edges of the blitz action.
+    holster={control='right_grip',owner={},acquire=true,retain=true,action='blitz'}
+    grip_sample(4,512,512,0,true,holster)
+    grip_sample(4,0,512,0,true,holster)
+    grip_sample(0,0,0,512,false,holster)
     -- An unknown action is no request: the grip keeps its binding (special).
     holster={control='right_grip',owner={},acquire=true,retain=true,action='bogus'}
     grip_sample(4,4,4,0,false,holster)

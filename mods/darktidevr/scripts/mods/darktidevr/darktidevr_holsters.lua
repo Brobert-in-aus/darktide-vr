@@ -20,6 +20,10 @@ Holsters.ZONES = {
     {id = "hip_right", selector = "device", slot = "slot_device", centre = {0.20, 0.00, -0.72}, radius = 0.14},
     {id = "chest_left", selector = "stim", slot = "slot_pocketable_small", centre = {-0.13, 0.16, -0.38}, radius = 0.10},
     {id = "chest_right", selector = "pocketable", slot = "slot_pocketable", centre = {0.13, 0.16, -0.38}, radius = 0.10},
+    -- Blitz from the belt: the grip holds the stock blitz input, so pressing
+    -- draws and aims it and releasing throws, as the blitz button does. No
+    -- inventory slot to check; the ability itself decides (charges, class).
+    {id = "belt", selector = "blitz", centre = {0.00, 0.14, -0.60}, radius = 0.11},
 }
 
 local function finite(x) return type(x) == "number" and x == x and math.abs(x) < math.huge end
@@ -75,6 +79,7 @@ function Holsters.zone_at(point, zones, current)
 end
 
 local function equipped(inventory, slot)
+    if slot == nil then return inventory ~= nil end
     local item = inventory and inventory[slot]
     return item ~= nil and item ~= "not_equipped"
 end
@@ -114,7 +119,7 @@ function Holsters.new(zones)
                 acquire = false, retain = true}
         end
         if not ready_zone or not equipped(inventory, ready_zone.slot) or
-                inventory.wielded_slot == ready_zone.slot then
+                (ready_zone.slot and inventory.wielded_slot == ready_zone.slot) then
             return nil
         end
         state.offer = state.offer and state.offer.zone == ready_zone and state.offer or

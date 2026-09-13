@@ -247,13 +247,15 @@ void apply_synthetic_holster_path(core::SharedControllerState& state,
   constexpr std::uint64_t zone_frames = 120;
   // Body-local zone centres (+X right, +Y forward, +Z up from the head), the
   // same numbers as Holsters.ZONES at the reference eye height.
-  static constexpr std::array<math::Vec3, 5> zones{{
+  static constexpr std::array<math::Vec3, 6> zones{{
       {0.16F, -0.14F, -0.10F},
       {-0.20F, 0.00F, -0.72F},
       {-0.13F, 0.16F, -0.38F},
       {0.20F, 0.00F, -0.72F},
       {0.13F, 0.16F, -0.38F},
+      {0.00F, 0.14F, -0.60F},
   }};
+  constexpr std::size_t belt_zone = 5;
   const auto cycle = frame % (zone_frames * zones.size());
   const auto zone = static_cast<std::size_t>(cycle / zone_frames);
   const auto step = cycle % zone_frames;
@@ -289,7 +291,10 @@ void apply_synthetic_holster_path(core::SharedControllerState& state,
     destination.body_aim_tracking_flags = destination.aim_tracking_flags;
     destination.body_grip_tracking_flags = destination.grip_tracking_flags;
   }
-  if (step >= 45 && step < 60) {
+  // The belt's blitz is held for a second, past the hand leaving the zone at
+  // frame 90, so the draw, aim and release (throw) all happen.
+  const auto squeeze_end = zone == belt_zone ? 105U : 60U;
+  if (step >= 45 && step < squeeze_end) {
     state.hands[1].squeeze = 1.0F;
   }
 }

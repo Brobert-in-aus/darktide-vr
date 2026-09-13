@@ -75,6 +75,18 @@ assert(api.request("left", nil, inventory) == nil)
 api.request("left", stim, inventory)
 api.finish("left", {held = false})
 assert(api.request("left", nil, inventory) == nil)
+-- Belt: blitz has no inventory slot; it is requested whatever is wielded,
+-- including while the blitz is already out (the press throws or re-aims as
+-- the blitz button does).
+local belt = Holsters.zone_at({0, 0.14, -0.60})
+assert(belt and belt.id == "belt" and belt.selector == "blitz" and belt.slot == nil)
+local blitz = assert(api.request("right", belt, inventory), "belt not requested")
+assert(blitz.action == "blitz" and blitz.acquire == true)
+local grenade_out = {wielded_slot = "slot_grenade_ability", slot_primary = "sword"}
+api.reset("right")
+assert(api.request("right", belt, grenade_out), "belt passed through while the blitz is out")
+api.reset("right")
+assert(api.request("right", belt, nil) == nil, "requested without an inventory")
 api.reset()
 assert(api.hands.left.claim == nil and api.hands.right.zone == nil)
 

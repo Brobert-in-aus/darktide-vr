@@ -198,7 +198,20 @@ int main() {
       std::abs(holster_away.hands[1].body_grip_pose.position.y - 0.25F) < 0.001F &&
       std::abs(holster_second.hands[1].body_grip_pose.position.z + 0.72F) < 0.001F &&
       holster_second.hands[1].body_grip_pose.position.x < 0.0F &&
-      holster_squeeze.hands[1].body_grip_tracking_flags != 0;
+      holster_squeeze.hands[1].body_grip_tracking_flags != 0 &&
+      [&] {
+        auto belt_hold = left.state;
+        auto belt_after_zone = left.state;
+        auto belt_released = left.state;
+        darktidevr::harness::apply_synthetic_holster_path(belt_hold, 600 + 50);
+        darktidevr::harness::apply_synthetic_holster_path(belt_after_zone, 600 + 95);
+        darktidevr::harness::apply_synthetic_holster_path(belt_released, 600 + 110);
+        return std::abs(belt_hold.hands[1].body_grip_pose.position.z + 0.60F) < 0.001F &&
+               belt_hold.hands[1].squeeze == 1.0F &&
+               belt_after_zone.hands[1].squeeze == 1.0F &&
+               std::abs(belt_after_zone.hands[1].body_grip_pose.position.y - 0.25F) < 0.001F &&
+               belt_released.hands[1].squeeze == 0.0F;
+      }();
   if (!holster_valid) {
     std::cerr << "Synthetic holster path contract failed\n";
     return 1;

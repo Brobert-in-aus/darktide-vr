@@ -58,7 +58,7 @@ Bindings.actions = {
     {id="ranged", hub=false, mask=33554432, request_only=true, pressed={"wield_2"}},
 }
 -- Actions a contextual grip request may hold instead of the grip's binding.
-Bindings.REQUEST_ACTIONS = {unbound=0, alternate=2, pocketable=65536, stim=131072, device=262144,
+Bindings.REQUEST_ACTIONS = {unbound=0, alternate=2, blitz=512, pocketable=65536, stim=131072, device=262144,
     melee=16777216, ranged=33554432}
 
 local function atomic(action)
