@@ -78,7 +78,7 @@ end
 local widgets=Bindings.widgets()
 local action_count=0
 for _,action in ipairs(Bindings.actions) do
-    if action.mask>0 and bit.band(action.mask,action.mask-1)==0 then action_count=action_count+1 end
+    if action.mask>0 and bit.band(action.mask,action.mask-1)==0 and not action.request_only then action_count=action_count+1 end
 end
 assert(#widgets.sub_widgets==action_count+1)
 local used={}
@@ -252,6 +252,29 @@ local function grip_sample(physical,p,h,r,owned,request,enabled,generation,mode)
     assert(gp==p and gh==h and gr==r,
         string.format('support grip got %d,%d,%d expected %d,%d,%d',gp,gh,gr,p,h,r))
     assert(grip_mapper.support_grip.held==owned,'Incorrect contextual grip ownership')
+end
+-- Holster requests hold a wield selector instead of the grip's action, and
+-- request-only selectors are deliverable (wield_1/wield_2) without options.
+do
+    local holster={control='right_grip',owner={},acquire=true,retain=true,action='stim'}
+    grip_sample(0,0,0,0,false,holster)
+    grip_sample(4,131072,131072,0,true,holster)
+    grip_sample(0,0,0,131072,false,holster)
+    holster={control='right_grip',owner={},acquire=true,retain=true,action='melee'}
+    grip_sample(4,16777216,16777216,0,true,holster)
+    grip_sample(0,0,0,16777216,false,holster)
+    holster={control='right_grip',owner={},acquire=true,retain=true,action='ranged'}
+    grip_sample(4,33554432,33554432,0,true,holster)
+    grip_sample(0,0,0,33554432,false,holster)
+    -- An unknown action is no request: the grip keeps its binding (special).
+    holster={control='right_grip',owner={},acquire=true,retain=true,action='bogus'}
+    grip_sample(4,4,4,0,false,holster)
+    grip_sample(0,0,0,4,false,holster)
+    local delivered={}
+    for _,binding in ipairs(grip_mapper.bindings) do
+        for _,name in ipairs(binding.pressed) do delivered[name]=binding.mask end
+    end
+    assert(delivered.wield_1==16777216 and delivered.wield_2==33554432,'request-only wields not delivered')
 end
 grip_sample(0,0,0,0,false,grip_request)
 grip_sample(512,2,2,0,true,grip_request)

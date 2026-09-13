@@ -158,6 +158,11 @@ return {
                         type = "checkbox",
                         default_value = true,
                     },
+                    {
+                        setting_id = "vr_holsters",
+                        type = "checkbox",
+                        default_value = false,
+                    },
                 },
             },
             mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_controller_bindings").widgets(mod),

@@ -53,7 +53,13 @@ Bindings.actions = {
     {id="tactical_overlay", mask=2097152},
     {id="communication_wheel", mask=4194304, physical_only=true},
     {id="push_to_talk", mask=8388608, physical_only=true},
+    -- Delivered only through a grip request (virtual holsters); no option.
+    {id="melee", hub=false, mask=16777216, request_only=true, pressed={"wield_1"}},
+    {id="ranged", hub=false, mask=33554432, request_only=true, pressed={"wield_2"}},
 }
+-- Actions a contextual grip request may hold instead of the grip's binding.
+Bindings.REQUEST_ACTIONS = {unbound=0, alternate=2, pocketable=65536, stim=131072, device=262144,
+    melee=16777216, ranged=33554432}
 
 local function atomic(action)
     return action.mask>0 and bit.band(action.mask,action.mask-1)==0
@@ -158,7 +164,7 @@ function Bindings.widgets(mod)
     local widgets,hub={},{}
     local function label(key) return mod and mod:localize(key) or key end
     for _,action in ipairs(Bindings.actions) do
-        if atomic(action) then
+        if atomic(action) and not action.request_only then
             local combat_key='vr_action_bind_'..action.id
             local combat=mod and mod:get(combat_key)
             if combat==nil then
@@ -241,7 +247,7 @@ function Bindings.install(mod)
         if selection_revision==api.revision and selection_context==api.context then return end
         for _,control in ipairs(Bindings.controls) do selection_cache[control.id]=0 end
         for _,action in ipairs(Bindings.actions) do
-            if atomic(action) then
+            if atomic(action) and not action.request_only then
                 local value=mod:get('vr_action_bind_'..action.id)
                 if api.context=='hub' then
                     local hub_value=mod:get('vr_hub_action_bind_'..action.id)
@@ -397,8 +403,7 @@ function Bindings.install(mod)
         -- original mapper behavior, including ordinary keyboard coexistence.
         local request_bit=type(support)=='table' and
             (support.control=='left_grip' and 512 or support.control=='right_grip' and 4) or nil
-        local request_mask=request_bit and
-            (support.action=='alternate' and 2 or support.action=='unbound' and 0) or nil
+        local request_mask=request_bit and Bindings.REQUEST_ACTIONS[support.action] or nil
         local request_valid=request_bit and request_mask~=nil and support.owner~=nil
         local cancelled_grip=0
         if grip_claim then

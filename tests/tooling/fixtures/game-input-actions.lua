@@ -10,5 +10,5 @@ return {
         "interact_pressed","weapon_reload_pressed","quick_wield","jump","dodge",
         "crouch","sprint","grenade_ability_pressed","grenade_ability_release",
         "combat_ability_pressed","combat_ability_release",
-        "wield_3","wield_3_gamepad","wield_4","wield_5","interact_inspect_pressed"},
+        "wield_1","wield_2","wield_3","wield_3_gamepad","wield_4","wield_5","interact_inspect_pressed"},
 }

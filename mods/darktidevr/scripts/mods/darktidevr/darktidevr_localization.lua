@@ -33,6 +33,8 @@ return {
     spectate_third_person = {en = "Third-person spectating"},
     marker_plane = {en = "World-surface markers"},
     marker_plane_description = {en = "Draw world markers, nameplates and the interaction popup as one surface at the marker's distance, so both eyes see the same thing. Off returns to the per-eye flat markers."},
+    vr_holsters = {en = "Virtual holsters"},
+    vr_holsters_description = {en = "Reach to a body holster and press grip to take out what is kept there: ranged weapon over the right shoulder, melee weapon at the left hip, device at the right hip, stim at the left chest, carried item at the right chest. The grip keeps its own action everywhere else."},
     hud_visible = {en = "Show the HUD panel"},
     hud_visible_description = {en = "Off hides the fixed HUD panel (health, ammo, objectives, prompts). World markers and the crosshair stay."},
     spectate_third_person_description = {en = "When dead or captured and watching a teammate, follow them with the third-person camera instead of looking through their eyes. Applies on the next mission."},

@@ -6334,14 +6334,25 @@ function presentation.inject_gameplay_input(self, main_t, input)
     presentation.apply_controller_turning(main_t,exclusive_stick)
     local support_request=presentation.two_hand and presentation.two_hand.sample(
         player_unit,controller_observation.gameplay_input_active,main_t,self)
+    local holster_request=false
+    if presentation.holsters then
+        -- The hub has nothing to wield; its grip opens the inventory.
+        support_request,holster_request=presentation.holsters.sample(player_unit,
+            controller_observation.gameplay_input_active and game_mode_name~="hub",main_t,support_request)
+    end
     local pressed, held, released = presentation.controller_bindings.sample(
         controller_observation.gameplay_input_active,
         tonumber(controller_observation.gameplay_held[0]),
         controller_observation.right_stick_x,controller_observation.right_stick_y,
         controller_observation.right_aim_usable,
         controller_observation.last_transport_generation, game_mode_name,support_request,exclusive_stick)
+    if presentation.holsters then
+        presentation.holsters.finish_grip(presentation.controller_bindings.support_grip,holster_request)
+    end
     if presentation.two_hand then
-        presentation.two_hand.finish(presentation.controller_bindings.support_grip)
+        -- A holster claim is not the support hand's grip.
+        presentation.two_hand.finish(holster_request and presentation.holsters.idle_grip or
+            presentation.controller_bindings.support_grip)
     end
     if presentation.gameplay_ui then
         presentation.gameplay_ui.sample(controller_observation.gameplay_input_active, pressed, held)
@@ -15202,6 +15213,9 @@ presentation.weapon_assist = mod:io_dofile(
 ).install(mod,presentation,controller_observation)
 presentation.two_hand = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_two_hand_support"
+).install(mod, presentation, controller_observation)
+presentation.holsters = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_holsters"
 ).install(mod, presentation, controller_observation)
 
 mod:io_dofile(
