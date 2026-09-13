@@ -22,6 +22,27 @@ unattended evidence for each is in
    by `[Log end]`, and no `<<Crash>>`. If the headset view freezes for a
    moment as you quit, that is the viewer being stopped first.
 
+3. **Held-item effects follow the hand** (`68e4ff8`, Lua). The scan
+   hologram's late placement now also covers the flamer stream, chain
+   lightning (hand effects and the links from the hand), the force sword's
+   wind slash activation and the riot shield's windup glow. Check whichever
+   of those your characters have: fire the flamer, hold the psyker's chain
+   lightning or smite charge, use the force sword special, brace the shield,
+   and look for the effect starting at the gun or hand rather than a little
+   away from it. Console log: one `DARKTIDEVR_HELD_EFFECTS placed class=...`
+   line per effect type, and no `DARKTIDEVR_SCANNER_HOLO fallback=` line. Not
+   changed (cannot be fixed this way): the shout and shield-bash bursts.
+
+4. **Viewer survives the headset sleeping** (`262f6df`, viewer). Take the
+   headset off long enough for it to sleep (proximity sensor back on
+   automatic by then), put it back on: the game view should come back without
+   restarting the game. Viewer log (`%LOCALAPPDATA%\DarktideVR\viewer-<pid>.log`):
+   `openxr.session_pause=runtime_stop` then `openxr.session_resume=ready`.
+   Before this build the headset stayed dark until the game was restarted.
+
 ## Assumptions and questions for the evening review
 
-- (none yet)
+- Held-item effects (item 3) were deployed on static reading and unit tests
+  only: no character with those weapons could be driven unattended. They
+  only move effects that already exist; if one looks wrong, the log line
+  names the class.
