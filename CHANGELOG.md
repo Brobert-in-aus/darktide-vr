@@ -13,8 +13,9 @@ runtime package records the exact source revision alongside the version.
   hold the right trigger to pick it.
 - Holding the right trigger skips cutscenes and videos again.
 - Fixed a crash at the end of a mission.
-- A button shared by the device (auspex scanner) and the carried-item cycle
-  now brings out the device whenever one is equipped.
+- An equipped device (auspex scanner) is the first item in the carried-item
+  cycle: the cycle button brings it out from a weapon, then steps on to your
+  carried items and back.
 - Chat on the HUD panel is drawn at the HUD's size and has a box in the HUD
   editor.
 

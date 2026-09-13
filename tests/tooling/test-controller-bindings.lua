@@ -472,4 +472,27 @@ do
     saved,writes=migrated({})
     assert(#writes==1 and saved.vr_bindings_xy_swapped==true and saved.vr_action_bind_crouch==nil)
 end
+-- The carried-item cycle with an equipped device as its first item.
+do
+    local DEVICE, CYCLE, JUMP = 262144, 524288, 32
+    local function inv(wielded, device, pocketable, small)
+        return {wielded_slot=wielded, slot_device=device and 'auspex' or 'not_equipped',
+            slot_pocketable=pocketable and 'ammo' or 'not_equipped',
+            slot_pocketable_small=small and 'stim' or 'not_equipped'}
+    end
+    local press = Bindings.device_cycle_press
+    local shared = DEVICE + CYCLE
+    assert(press(shared, inv('slot_primary', true, true, true)) == DEVICE, 'a weapon held brings out the device')
+    assert(press(CYCLE, inv('slot_secondary', true, true, true)) == DEVICE, 'the cycle alone starts at the device')
+    assert(press(shared, inv('slot_device', true, true, true)) == CYCLE, 'the device cycles on to the pocketable')
+    assert(press(shared, inv('slot_pocketable', true, true, true)) == CYCLE, 'the pocketable cycles to the small one')
+    assert(press(shared, inv('slot_pocketable_small', true, true, true)) == DEVICE, 'the small pocketable wraps to the device')
+    assert(press(shared, inv('slot_pocketable', true, true, false)) == DEVICE, 'an empty small slot is skipped')
+    assert(press(shared, inv('slot_device', true, false, true)) == CYCLE, 'the device reaches an only small pocketable')
+    assert(press(shared, inv('slot_device', true, false, false)) == DEVICE, 'nothing else to cycle to keeps the device')
+    assert(press(shared, inv('slot_primary', false, true, true)) == shared, 'without a device the stock press is unchanged')
+    assert(press(DEVICE, inv('slot_primary', true, true, true)) == DEVICE, 'a device-only press is unchanged')
+    assert(press(shared + JUMP, inv('slot_device', true, true, true)) == CYCLE + JUMP, 'other actions in the press stay')
+    assert(press(shared, nil) == shared)
+end
 print('push_to_talk_binding=pass default_unassigned physical-only aliases and release')

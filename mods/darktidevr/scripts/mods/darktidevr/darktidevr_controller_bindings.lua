@@ -105,6 +105,42 @@ local function swap_saved_xy(mod)
 end
 Bindings.swap_saved_xy=swap_saved_xy
 
+-- The carried-item cycle with an equipped device as its first item. The stock
+-- cycle (wield_3_gamepad) only alternates the two pocketable slots, and a
+-- press also selecting the device (wield_5) resolved to the cycle. With a
+-- device equipped, a press carrying the cycle steps device -> pocketable ->
+-- small pocketable -> device, skipping empty slots; from outside the cycle
+-- (a weapon) it brings out the device. Returns the press with only the
+-- selector that reaches that slot. `inventory` holds the inventory
+-- component's wielded_slot and slot_* item names ("not_equipped" when empty).
+local DEVICE_BIT, CYCLE_BIT = 262144, 524288
+function Bindings.device_cycle_press(pressed, inventory)
+    if not inventory or bit.band(pressed, CYCLE_BIT) == 0 then return pressed end
+    local function equipped(slot)
+        local item = inventory[slot]
+        return item ~= nil and item ~= "not_equipped"
+    end
+    if not equipped("slot_device") then return pressed end
+    local order = {"slot_device", "slot_pocketable", "slot_pocketable_small"}
+    local current
+    for index, slot in ipairs(order) do
+        if inventory.wielded_slot == slot then current = index end
+    end
+    local target = "slot_device"
+    if current then
+        for step = 1, #order do
+            local slot = order[(current + step - 1) % #order + 1]
+            if equipped(slot) then target = slot; break end
+        end
+    end
+    local without = bit.band(pressed, bit.bnot(DEVICE_BIT + CYCLE_BIT))
+    if target == "slot_device" then return bit.bor(without, DEVICE_BIT) end
+    -- The stock cycle reaches the pocketable from the device and the small
+    -- pocketable from the pocketable; from the device with only a small
+    -- pocketable equipped it picks that.
+    return bit.bor(without, CYCLE_BIT)
+end
+
 function Bindings.widgets(mod)
     swap_saved_xy(mod)
     local widgets,hub={},{}
@@ -163,6 +199,7 @@ end
 function Bindings.install(mod)
     swap_saved_xy(mod)
     local api = {held=0,bindings={},revision=0,context="combat",
+        device_cycle_press=Bindings.device_cycle_press,
         support_grip={held=false,pressed=false,released=false,cancelled=false}}
     local previous_physical, grip_claim = 0, nil
     local previous_contributors=0

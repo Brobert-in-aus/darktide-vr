@@ -6258,25 +6258,21 @@ function presentation.quick_wield_names(names)
     return {last_wielded_weapon_slot == "slot_primary" and "wield_1" or "wield_2"}
 end
 
--- One press that selects both the device (wield_5) and the carried-item cycle
--- (wield_3_gamepad) resolved to the cycle, so a shared button never brought
--- out the scanner. While a device is equipped it takes precedence: the cycle
--- is dropped from that press. Without a device the button cycles as before.
+-- A press carrying the carried-item cycle treats an equipped device as the
+-- cycle's first item (Bindings.device_cycle_press): from a weapon it brings
+-- out the device, from the device it cycles on. A press also selecting the
+-- device used to resolve to the stock cycle, so the scanner never came out.
 function presentation.device_wield_precedence(pressed, player_unit)
-    local DEVICE_MASK, CYCLE_POCKETABLES_MASK = 262144, 524288
-    if bit.band(pressed, DEVICE_MASK) == 0 or bit.band(pressed, CYCLE_POCKETABLES_MASK) == 0 then
+    local bindings = presentation.controller_bindings
+    if not bindings or not bindings.device_cycle_press or bit.band(pressed, 524288) == 0 then
         return pressed
     end
-    local ok, equipped = pcall(function()
+    local ok, result = pcall(function()
         local unit_data = ScriptUnit.has_extension(player_unit, "unit_data_system")
         local inventory = unit_data and unit_data:read_component("inventory")
-        local item = inventory and inventory.slot_device
-        return item ~= nil and item ~= "not_equipped"
+        return bindings.device_cycle_press(pressed, inventory)
     end)
-    if ok and equipped then
-        return bit.band(pressed, bit.bnot(CYCLE_POCKETABLES_MASK))
-    end
-    return pressed
+    return ok and result or pressed
 end
 
 function presentation.inject_gameplay_input(self, main_t, input)
