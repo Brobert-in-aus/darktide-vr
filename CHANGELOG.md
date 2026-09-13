@@ -17,7 +17,6 @@ runtime package records the exact source revision alongside the version.
   (auspex scanner) first, then ammo crate and stim, then back to the weapon
   if quick wield is on the same button. The default Y brings out the scanner
   and cycles on to your carried items.
-- The scanner's scan hologram sits on the scanner in your hand.
 - Chat on the HUD panel is drawn at the HUD's size and has a box in the HUD
   editor.
 

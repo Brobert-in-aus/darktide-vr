@@ -212,52 +212,10 @@ function controller_aim.install(mod, presentation, state)
         controller_aim.reticle_point_generation = nil
     end
 
-    -- Diagnostic for the crosshair moving while an ability aim (the Skitarii
-    -- servo-skull order) is held: which pose the crosshair used, how far it is
-    -- from the raw first-person aim and from the hand ray, and what was
-    -- wielded and running. Logged on any change of those, and every half
-    -- second while a grenade-ability action runs.
-    local reticle_trace = {signature = nil, next_t = 0}
-    local function degrees(rotation)
-        return math.deg(Quaternion.pitch(rotation)), math.deg(Quaternion.yaw(rotation))
-    end
-    local function trace_reticle(extension, source, rotation)
-        local weapon = extension._weapon_extension
-        local template = weapon and weapon.weapon_template and weapon:weapon_template()
-        local settings = weapon and weapon.running_action_settings and weapon:running_action_settings()
-        local grenade = extension._grenade_ability_action_component
-        local grenade_action = grenade and grenade.current_action_name or "none"
-        local template_name = template and template.name or "none"
-        local kind = settings and settings.kind or "none"
-        local reticle = presentation.online_reticle_module
-        local prepared = reticle and reticle.uses_gun_preparation and
-            reticle.uses_gun_preparation(template, settings) or false
-        local signature = table.concat({source, template_name, kind, grenade_action, tostring(prepared)}, "|")
-        local t = Managers and Managers.time and Managers.time:time("gameplay") or 0
-        local grenade_active = grenade_action ~= "none"
-        if signature == reticle_trace.signature and not (grenade_active and t >= reticle_trace.next_t) then
-            return
-        end
-        reticle_trace.signature = signature
-        reticle_trace.next_t = t + 0.5
-        local pitch, yaw = degrees(rotation)
-        local fp = extension._first_person_component
-        local fp_pitch, fp_yaw = pitch, yaw
-        if fp and fp.rotation then fp_pitch, fp_yaw = degrees(fp.rotation) end
-        local _, hand_rotation = controller_aim.target("dominant")
-        local hand_pitch, hand_yaw = pitch, yaw
-        if hand_rotation then hand_pitch, hand_yaw = degrees(hand_rotation) end
-        mod:info("DARKTIDEVR_RETICLE_TRACE source=%s template=%s action=%s grenade_action=%s gun_preparation=%s pitch=%.2f yaw=%.2f minus_first_person=%.2f,%.2f minus_hand=%.2f,%.2f",
-            source, template_name, kind, grenade_action, tostring(prepared), pitch, yaw,
-            pitch - fp_pitch, yaw - fp_yaw, pitch - hand_pitch, yaw - hand_yaw)
-    end
-
     function controller_aim.publish_reticle(extension, stock_position, stock_rotation)
         controller_aim.clear_reticle()
         local position, rotation = stock_position, stock_rotation
-        local source = stock_rotation and "stock_pose" or "hand"
         if not position or not rotation then position, rotation = controller_aim.target("dominant") end
-        if extension and rotation then pcall(trace_reticle, extension, source, rotation) end
         local physics_world = extension and extension._physics_world
         if not position or not rotation or not physics_world then
             presentation.publish_gameplay_aim_state(false, false, 0)
