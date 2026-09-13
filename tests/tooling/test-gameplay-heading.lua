@@ -5,7 +5,8 @@ file:close()
 local first = assert(source:find("function presentation.observe_controller_aim", 1, true))
 local last = assert(source:find("\nmod:hook_safe(", first, true))
 presentation = {mode = 1, sequence = 1, current_game_mode_name = function() return "hub" end,
-    hub_third_person_active = function() return false end}
+    hub_third_person_active = function() return false end,
+    keyboard_mouse_enabled = function() return false end}
 controller_observation = {
     authoring_last_check_t = 0, authoring_enabled = true,
     head_aim_yaw = 0, head_aim_pitch = 0, physical_head_yaw = 0,
@@ -74,6 +75,49 @@ assert(controller_observation.gameplay_generation_pending)
 commit_result=0
 observe(1)
 assert(commits[#commits]==55 and not controller_observation.gameplay_generation_pending)
+
+-- Keyboard and mouse in the third-person hub: the real orbit branch turns the
+-- scene anchor by exactly the stock mouse orbit, so a seated player's view
+-- follows the camera around the body. Menus neither turn it nor lose motion.
+do
+    local settings = {keyboard_mouse_mode = true}
+    presentation.keyboard_mouse = dofile((arg[1]:gsub("darktidevr%.lua$", "darktidevr_keyboard_mouse.lua")))
+        .install({get = function(_, key) return settings[key] end, info = function() end})
+    presentation.keyboard_mouse_enabled = function() return presentation.keyboard_mouse.enabled() end
+    presentation.hub_third_person_active = function() return true end
+    presentation.mode = 1
+    active_base_rotation = {value = 0, store = function(self, value) self.value = value end,
+        unbox = function(self) return self.value end}
+    -- Yaw-only anchor quaternions compose by adding their angles.
+    Quaternion = {multiply = function(a, b) return a + b end, axis_angle = function(_, angle) return angle end}
+    Vector3 = {up = function() return "up" end}
+    ui_native_capture = {dtvr_commit_gameplay_generation = function() return 0 end}
+    Mods = {lua = {io = {open = function() return nil end}}} -- No test flag: play default.
+    local hub = {_orientation = {yaw = 1, pitch = 0, roll = 0}}
+    local t = 20
+    local function hub_frame(mouse_yaw, mode)
+        presentation.mode = mode or 1
+        t = t + 1 / 60
+        hub._orientation.yaw = (hub._orientation.yaw + mouse_yaw) % (2 * math.pi) -- stock orbit
+        head_pose_last_sequence = head_pose_last_sequence + 1
+        presentation.observe_controller_aim(hub, t, "hub", 1 / 60)
+    end
+    hub_frame(0)
+    near(active_base_rotation.value, 0)
+    hub_frame(0.2)
+    near(active_base_rotation.value, 0.2) -- The orbit turned the view with it.
+    hub_frame(-0.5)
+    near(active_base_rotation.value, -0.3)
+    hub_frame(0.4, 5) -- A menu camera moving the orientation is not an orbit.
+    near(active_base_rotation.value, -0.3)
+    hub_frame(0, 1) -- Modal restore writes the held orbit back.
+    near(active_base_rotation.value, -0.3)
+    hub_frame(0.1)
+    near(active_base_rotation.value, -0.2)
+    settings.keyboard_mouse_mode = false
+    hub_frame(0.3) -- Controller play keeps the stick-only turn.
+    near(active_base_rotation.value, -0.2)
+end
 print("gameplay_heading=pass")
 
 -- Run the actual locomotion log with engine-style userdata vectors. The

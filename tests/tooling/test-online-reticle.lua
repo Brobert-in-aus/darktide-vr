@@ -59,7 +59,10 @@ if arg[2] then
     local quat={from_elements=function() return math.pi/2 end,inverse=function(q) return -q end,
         rotate=function(q,v) return vec(math.cos(q)*v[1]-math.sin(q)*v[2],math.sin(q)*v[1]+math.cos(q)*v[2],v[3]) end}
     local legacy,packet={},nil
-    local p={online_rules={enabled=function() return true end},calibrated_character_scale=function() return 2 end,
+    local keyboard_mouse=false
+    local online=true
+    local p={online_rules={enabled=function() return online end},calibrated_character_scale=function() return 2 end,
+        keyboard_mouse_enabled=function() return keyboard_mouse end,keyboard_mouse_view_pitch=function() return 0 end,
         native_gameplay_aim_target=function(...) packet={...}; return 0 end}
     local obs={body_anchor_x=10,body_anchor_y=20,body_anchor_z=30,body_anchor_pose_sequence=42,
         body_anchor_pose_generation=3,body_anchor_recenter_generation=8}
@@ -72,6 +75,12 @@ if arg[2] then
         math.abs(packet[4]-.5)<1e-9 and math.abs(packet[5]+1)<1e-9 and
         packet[6]==42 and packet[7]==3 and packet[8]==8,'world target basis/scale/reference changed')
     assert(p.publish_gameplay_aim_state(false,false,0) and legacy[1]==0)
+    -- Keyboard and mouse aim has no hand ray: even outside online rules it sends
+    -- the world-depth target point, never the controller-extended distance.
+    keyboard_mouse,online,packet,legacy=true,false,nil,{}
+    assert(p.publish_gameplay_aim_state(true,true,12,vec(8,22,31)) and packet and packet[1]==1 and
+        packet[6]==42 and legacy[1]==nil,'keyboard and mouse mode fell back to the hand-ray reticle')
+    keyboard_mouse,online=false,true
     p.native_gameplay_aim_target=function() return 3 end
     assert(not p.publish_gameplay_aim_state(true,true,12,vec(8,22,31)) and legacy[1]==0,
         'failed target packet left an older reticle active')

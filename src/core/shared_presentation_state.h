@@ -7,7 +7,7 @@
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedPresentationStateName[] =
-    L"Local\\DarktideVR-presentation-state-v4";
+    L"Local\\DarktideVR-presentation-state-v6";
 
 enum class SharedPresentationMode : std::uint32_t {
   disabled = 0,
@@ -40,6 +40,24 @@ struct SharedPresentationState {
   // producer republishes unchanged modes as a heartbeat so a live consumer can
   // fail flat if the mod stops updating while the game process remains alive.
   std::uint64_t published_at_ms{};
+  // Experimental keyboard and mouse play: the viewer marks the desktop mouse
+  // on the panel, never moves the Windows cursor, and draws a mouse-aimed
+  // reticle without a tracked controller.
+  bool keyboard_mouse{};
+  // Monotonic count of recentre-view requests from the game. The viewer
+  // recentres once per increase within one transport generation.
+  std::uint64_t recenter_request{};
+  // Keyboard and mouse play with controllers disabled: they neither point,
+  // click, scroll nor go back in menus. Otherwise both inputs add together.
+  bool controllers_disabled{};
+};
+
+// Returns true once for each new recentre request. A new transport generation
+// (a restarted game or reloaded mod) only establishes the baseline count.
+struct RecenterRequestTracker {
+  std::uint64_t generation{};
+  std::uint64_t count{};
+  bool observe(const SharedPresentationState& state);
 };
 
 class SharedPresentationStateWriter {

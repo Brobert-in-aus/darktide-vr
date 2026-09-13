@@ -177,7 +177,36 @@ int main() {
                  observed.mode ==
                      SharedPresentationMode::flat_interactive_native_aspect,
              "Reader should preserve native-aspect interactive mode");
+
+      state.sequence = 12;
+      state.keyboard_mouse = true;
+      state.recenter_request = 3;
+      state.controllers_disabled = true;
+      expect(writer.publish(state), "Input preferences should publish");
+      expect(reader.read(observed) && observed.keyboard_mouse &&
+                 observed.recenter_request == 3 && observed.controllers_disabled,
+             "Reader should preserve keyboard and mouse input preferences");
+      state.sequence = 13;
+      state.controllers_disabled = false;
+      expect(writer.publish(state) && reader.read(observed) &&
+                 observed.keyboard_mouse && !observed.controllers_disabled,
+             "Keyboard and mouse with controllers enabled must stay distinct");
     }
+
+    RecenterRequestTracker recenter;
+    SharedPresentationState request{};
+    request.transport_generation = 5;
+    request.recenter_request = 4;
+    expect(!recenter.observe(request),
+           "A first or restarted transport only establishes the request baseline");
+    expect(!recenter.observe(request), "A heartbeat must not repeat a recentre");
+    request.recenter_request = 5;
+    expect(recenter.observe(request) && !recenter.observe(request),
+           "Each new recentre request applies exactly once");
+    request.transport_generation = 6;
+    request.recenter_request = 0;
+    expect(!recenter.observe(request),
+           "A reloaded mod's reset count must not recentre");
 
     SharedPresentationState restarted{};
     {

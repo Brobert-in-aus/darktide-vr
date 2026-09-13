@@ -245,8 +245,19 @@ function calibration.install(mod, controller_state, get_head_pose,
         if widget and widget.content and widget.content.hotspot then
             widget.content.hotspot.pressed_callback = open_calibration_view
         end
+        -- Capture needs trigger pulls: with controllers disabled in keyboard
+        -- and mouse mode, leave calibration to the button instead.
+        -- The mod's own query also honours a KeyboardMouseOn file.
+        local query = mod.darktidevr_controllers_disabled
+        local controllers_disabled
+        if query then
+            controllers_disabled = query() == true
+        else
+            controllers_disabled = mod:get("keyboard_mouse_mode") == true and
+                mod:get("keyboard_mouse_disable_controllers") ~= false
+        end
         local first_run = mod:get("vr_calibration_v1") == nil and
-            not first_run_offered
+            not first_run_offered and not controllers_disabled
         if first_run then
             first_run_offered = true
             open_calibration_view()

@@ -26,6 +26,9 @@ struct SharedLayout {
   float maximum_panel_height_metres{2.0F};
   volatile LONG body_panel_pose_valid{};
   float body_panel_pose[7]{};
+  volatile LONG keyboard_mouse{};
+  volatile LONG64 recenter_request{};
+  volatile LONG controllers_disabled{};
 };
 
 static_assert(alignof(SharedLayout) >= alignof(LONG64));
@@ -143,6 +146,19 @@ bool presentation_state_fresh(const SharedPresentationState& state,
          now_ms - state.published_at_ms <= maximum_age_ms;
 }
 
+bool RecenterRequestTracker::observe(const SharedPresentationState& state) {
+  if (state.transport_generation != generation) {
+    generation = state.transport_generation;
+    count = state.recenter_request;
+    return false;
+  }
+  if (state.recenter_request == count) {
+    return false;
+  }
+  count = state.recenter_request;
+  return true;
+}
+
 SharedPresentationStateWriter::SharedPresentationStateWriter() {
   mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
                                 0, sizeof(SharedLayout),
@@ -174,6 +190,9 @@ SharedPresentationStateWriter::SharedPresentationStateWriter() {
   data.maximum_panel_height_metres = 2.0F;
   data.body_panel_pose_valid = 0;
   data.body_panel_pose[6] = 1.0F;
+  data.keyboard_mouse = 0;
+  InterlockedExchange64(&data.recenter_request, 0);
+  data.controllers_disabled = 0;
   MemoryBarrier();
   InterlockedExchange64(&data.epoch, 2);
 }
@@ -206,6 +225,10 @@ bool SharedPresentationStateWriter::publish(
   data.body_panel_pose[4] = state.body_panel_pose.orientation.y;
   data.body_panel_pose[5] = state.body_panel_pose.orientation.z;
   data.body_panel_pose[6] = state.body_panel_pose.orientation.w;
+  data.keyboard_mouse = state.keyboard_mouse ? 1 : 0;
+  InterlockedExchange64(&data.recenter_request,
+                        static_cast<LONG64>(state.recenter_request));
+  data.controllers_disabled = state.controllers_disabled ? 1 : 0;
   InterlockedExchange64(&data.published_at_ms,
                         static_cast<LONG64>(GetTickCount64()));
   InterlockedExchange64(&data.sequence, static_cast<LONG64>(state.sequence));
@@ -264,7 +287,10 @@ bool SharedPresentationStateReader::read(SharedPresentationState& state) {
          {data.body_panel_pose[0], data.body_panel_pose[1],
           data.body_panel_pose[2]}},
         static_cast<std::uint64_t>(data.writer_generation),
-        static_cast<std::uint64_t>(data.published_at_ms)};
+        static_cast<std::uint64_t>(data.published_at_ms),
+        data.keyboard_mouse != 0,
+        static_cast<std::uint64_t>(data.recenter_request),
+        data.controllers_disabled != 0};
     MemoryBarrier();
     const auto after = data.epoch;
     if (before == after && (after & 1) == 0 &&

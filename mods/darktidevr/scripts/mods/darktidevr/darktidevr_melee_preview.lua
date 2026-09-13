@@ -56,7 +56,9 @@ function Preview.sample(instance,origin,rotation)
     return {paths=paths,half_extents=dimensions,damage=false,obstruction_tested=false}
 end
 
-function Preview.context(extension,presentation,t)
+-- rotation_override samples the same swing for a caller-chosen reference
+-- rotation, e.g. candidate rolls for keyboard and mouse melee direction.
+function Preview.context(extension,presentation,t,rotation_override)
     local handler=extension._action_handler
     if handler:running_action_name('weapon_action') then return nil,'action_running' end
     local slot=extension._inventory_component.wielded_slot
@@ -71,8 +73,9 @@ function Preview.context(extension,presentation,t)
     local instance=weapon.actions and weapon.actions[name]
     local component=instance and instance._first_person_component
     if not component then return nil,'missing_instance' end
-    local rotation
-    if presentation.online_rules.simulation_aim_active(extension._unit) then
+    local rotation=rotation_override
+    if rotation then
+    elseif presentation.online_rules.simulation_aim_active(extension._unit) then
         rotation=component.rotation
     else
         local ignored

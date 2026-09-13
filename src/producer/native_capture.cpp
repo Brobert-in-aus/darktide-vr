@@ -15532,15 +15532,36 @@ int capture_present_halves(IDXGISwapChain3* swapchain,
   return 0;
 }
 
+// Input preferences from Lua ride on every presentation packet. The last
+// packet is kept so a preference change reaches the viewer without waiting for
+// the next heartbeat.
+std::mutex presentation_publish_mutex;
+std::optional<darktidevr::core::SharedPresentationState> last_presentation_state;
+bool input_keyboard_mouse{};
+bool input_controllers_disabled{};
+std::uint64_t input_recenter_request{};
+
+bool publish_presentation_state_locked(
+    const darktidevr::core::SharedPresentationState& state) {
+  static darktidevr::core::SharedPresentationStateWriter writer;
+  static std::uint64_t transport_sequence{0};
+  auto published = state;
+  published.sequence = ++transport_sequence;
+  published.keyboard_mouse = input_keyboard_mouse;
+  published.recenter_request = input_recenter_request;
+  published.controllers_disabled = input_controllers_disabled;
+  if (!writer.publish(published)) {
+    return false;
+  }
+  last_presentation_state = state;
+  return true;
+}
+
 bool publish_presentation_state(
     const darktidevr::core::SharedPresentationState& state) {
   try {
-    static darktidevr::core::SharedPresentationStateWriter writer;
-    static std::atomic<std::uint64_t> transport_sequence{0};
-    auto published = state;
-    published.sequence =
-        transport_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
-    return writer.publish(published);
+    std::scoped_lock lock(presentation_publish_mutex);
+    return publish_presentation_state_locked(state);
   } catch (...) {
     return false;
   }
@@ -15663,6 +15684,29 @@ extern "C" __declspec(dllexport) int dtvr_set_projection_active(int enabled) {
     return 3;
   }
   return event_result ? 0 : 2;
+}
+extern "C" __declspec(dllexport) int dtvr_set_input_preferences_v2(
+    int keyboard_mouse, int controllers_disabled,
+    unsigned long long recenter_request) {
+  if ((keyboard_mouse != 0 && keyboard_mouse != 1) ||
+      (controllers_disabled != 0 && controllers_disabled != 1) ||
+      (controllers_disabled != 0 && keyboard_mouse == 0)) {
+    return 1;
+  }
+  try {
+    std::scoped_lock lock(presentation_publish_mutex);
+    input_keyboard_mouse = keyboard_mouse != 0;
+    input_controllers_disabled = controllers_disabled != 0;
+    input_recenter_request = recenter_request;
+    // Before the first presentation packet the values wait for it.
+    if (last_presentation_state &&
+        !publish_presentation_state_locked(*last_presentation_state)) {
+      return 2;
+    }
+    return 0;
+  } catch (...) {
+    return 3;
+  }
 }
 extern "C" __declspec(dllexport) int dtvr_set_presentation_state(
     unsigned int mode, unsigned long long sequence, unsigned int source_width,

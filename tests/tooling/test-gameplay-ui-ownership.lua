@@ -16,7 +16,8 @@ mod={get=function(_,key) return settings[key] end,info=function() end,
     end}
 presentation={mode=1,gameplay_context=dofile(arg[2]),
     is_first_person_body_mode=function(mode) return mode=='hub' end,
-    apply_controller_turning=function() end}
+    apply_controller_turning=function() end,
+    keyboard_mouse_enabled=function() return false end,controllers_disabled=function() return false end}
 presentation.controller_bindings=dofile(arg[3]).install(mod)
 presentation.gameplay_input_bindings=presentation.controller_bindings.bindings
 controller_observation={gameplay_input_enabled=true,gameplay_input_last_check_t=0,
@@ -174,11 +175,14 @@ require=saved_require
 local scans,captures=0,0
 presentation.scan_movement_inventory=function() scans=scans+1 end
 presentation.online_rules={capture=function() captures=captures+1 end}
+-- Keyboard and mouse melee roll input follows each capture in the same hook.
+local roll_inputs=0
+presentation.apply_keyboard_mouse_roll_input=function(handler) assert(handler==owner); roll_inputs=roll_inputs+1 end
 fixed_hook(foreign,0,0,1)
 fixed_hook(retired,0,0,1)
-assert(scans==0 and captures==0)
+assert(scans==0 and captures==0 and roll_inputs==0)
 fixed_hook(owner,0,0,1,input_service)
-assert(scans==1 and captures==1)
+assert(scans==1 and captures==1 and roll_inputs==1)
 player.player_unit='unsampled_character'
 fixed_hook(owner,0,0,1)
 assert(scans==1 and captures==1,'Replacement character inherited previous fixed input state')

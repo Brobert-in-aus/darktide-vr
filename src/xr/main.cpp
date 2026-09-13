@@ -1051,6 +1051,7 @@ class OpenXrProbe {
     std::uint64_t shared_menu_generation{};
     HANDLE projection_active_event{};
     darktidevr::core::SharedPresentationStateReader presentation_state_reader;
+    darktidevr::core::RecenterRequestTracker recenter_request_tracker;
     darktidevr::core::SharedPresentationState presentation_state{};
     std::uint64_t presentation_sequence{};
     std::uint64_t presentation_transport_generation{};
@@ -1805,6 +1806,14 @@ class OpenXrProbe {
                   }
                   projection_resume_started.reset();
                 }
+              }
+              // The game's recentre-view keybind takes the same path as a
+              // runtime recentre: the next tracking update rebases on the
+              // current head and advances the recenter generation.
+              if (recenter_request_tracker.observe(newest)) {
+                reference_space_recenter_pending_ = true;
+                std::cout << "openxr.head_recenter=game-request count="
+                          << newest.recenter_request << '\n';
               }
               presentation_state = newest;
               presentation_sequence = newest.sequence;
@@ -3648,6 +3657,16 @@ class OpenXrProbe {
       // pointer path, while this matrix stays completely inert until gameplay.
       const bool synthetic_weapon_pointer_suppressed =
           synthetic_weapon_aim_matrix && !gameplay_aim_state.active;
+      // The desktop mouse works in every menu, whatever the input settings, so
+      // any settings state can be undone with it. Its position is marked
+      // whenever no controller ray owns the pointer. Experimental keyboard and
+      // mouse play only adds controller disabling and the mouse-aimed reticle.
+      const bool keyboard_mouse_input =
+          presentation_sequence != 0 && presentation_state.keyboard_mouse;
+      const bool controllers_ignored =
+          presentation_sequence != 0 && presentation_state.controllers_disabled;
+      std::optional<std::pair<std::uint32_t, std::uint32_t>> desktop_cursor;
+      bool desktop_owns_pointer = false;
       if (!submitted_flat_fallback_this_frame || !latest_controller_sample_ ||
           synthetic_weapon_pointer_suppressed ||
           menu_filter_presentation_generation != presentation_transport_generation) {
@@ -3655,7 +3674,7 @@ class OpenXrProbe {
       }
       menu_filter_presentation_generation = presentation_transport_generation;
       if (submitted_flat_fallback_this_frame && latest_controller_sample_ &&
-          !synthetic_weapon_pointer_suppressed) {
+          !synthetic_weapon_pointer_suppressed && !controllers_ignored) {
         const auto& right = latest_controller_sample_->hands[1];
         std::optional<darktidevr::math::Pose> pointer_pose = right.aim_pose;
         if (menu_aim_stabilization && !synthetic_controller_path) {
@@ -3739,6 +3758,11 @@ class OpenXrProbe {
           menu_pointer_position =
               std::pair{desktop_pointer->source_x, desktop_pointer->source_y};
           desktop_pointer_primary_down = desktop_pointer->primary_down;
+          desktop_owns_pointer = true;
+        }
+        if (desktop_pointer && !controller_pointer_hit) {
+          desktop_cursor =
+              std::pair{desktop_pointer->source_x, desktop_pointer->source_y};
         }
       }
       bool shared_menu_primary_down{};
@@ -3751,7 +3775,7 @@ class OpenXrProbe {
         input.source_position = menu_pointer_position;
         input.time_seconds =
             std::chrono::duration<double>(frame_start - start).count();
-        if (latest_controller_sample_) {
+        if (latest_controller_sample_ && !controllers_ignored) {
           const auto& right = latest_controller_sample_->hands[1];
           input.trigger = right.trigger;
           input.thumbstick_y = right.thumbstick_y;
@@ -3773,7 +3797,12 @@ class OpenXrProbe {
           }
           // The game input adapter owns the XR cursor. Only the explicit
           // legacy injection mode may move Windows' cursor or send buttons.
-          if (enable_menu_input &&
+          // A position read from the desktop mouse is never written back: the
+          // round trip through the panel would drag against the real mouse.
+          const bool desktop_move =
+              desktop_owns_pointer &&
+              event.type == darktidevr::core::MenuPointerEventType::move;
+          if (enable_menu_input && !desktop_move &&
               menu_input_injector->dispatch(
                   event, menu_input_source_width,
                   menu_input_source_height)) {
@@ -3832,7 +3861,7 @@ class OpenXrProbe {
           shared_pointer.source_x = menu_pointer_position->first;
           shared_pointer.source_y = menu_pointer_position->second;
         }
-        if (latest_controller_sample_) {
+        if (latest_controller_sample_ && !controllers_ignored) {
           const auto& left = latest_controller_sample_->hands[0];
           const auto& right = latest_controller_sample_->hands[1];
           shared_pointer.primary_down =
@@ -3983,7 +4012,8 @@ class OpenXrProbe {
       if (enable_gameplay_reticle && submitted_shared_pair_this_frame &&
           presentation_state.mode == darktidevr::core::
                                          SharedPresentationMode::stereo_world &&
-          latest_controller_sample_ && current_head_valid) {
+          (latest_controller_sample_ || keyboard_mouse_input) &&
+          current_head_valid) {
         darktidevr::core::SharedGameplayAimState newest_aim{};
         if (gameplay_aim_state_reader.read(newest_aim) &&
             (newest_aim.transport_generation !=
@@ -3999,10 +4029,20 @@ class OpenXrProbe {
           gameplay_aim_transport_generation =
               newest_aim.transport_generation;
         }
-        const auto& right = latest_controller_sample_->hands[1];
         const auto required =
             darktidevr::core::controller_orientation_valid |
             darktidevr::core::controller_position_valid;
+        // A hand-aimed reticle disappears with its controller. Keyboard and
+        // mouse aim publishes only world-depth target points from the mouse
+        // pose and never needs a tracked controller.
+        const bool reticle_source_tracked =
+            keyboard_mouse_input
+                ? gameplay_aim_state.target_point_valid
+                : (latest_controller_sample_->hands[1].aim_tracking_flags &
+                   required) == required &&
+                      darktidevr::core::pointer_origin_within_reach(
+                          latest_controller_sample_->hands[1].aim_pose.position,
+                          current_head.position, 1.5F);
         const auto gameplay_aim_now_ns = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 // The producer can publish while xrWaitFrame or the shared
@@ -4015,9 +4055,7 @@ class OpenXrProbe {
             darktidevr::core::gameplay_aim_state_is_fresh(
                 gameplay_aim_state, gameplay_aim_now_ns,
                 maximum_gameplay_aim_age_ns) &&
-            (right.aim_tracking_flags & required) == required &&
-            darktidevr::core::pointer_origin_within_reach(
-                right.aim_pose.position, current_head.position, 1.5F)) {
+            reticle_source_tracked) {
           const auto reticle_distance_metres =
               gameplay_aim_state.distance_metres;
           if (gameplay_aim_state.target_point_valid && head_pose_writer) {
@@ -4035,6 +4073,7 @@ class OpenXrProbe {
               break;
             }
           } else if (!gameplay_aim_state.target_point_valid) {
+            const auto& right = latest_controller_sample_->hands[1];
             const auto direction = darktidevr::math::rotate(
                 right.aim_pose.orientation, {0.0F, 0.0F, -1.0F});
             gameplay_reticle_pose = darktidevr::math::Pose{
@@ -4065,27 +4104,59 @@ class OpenXrProbe {
           {XR_TYPE_COMPOSITION_LAYER_QUAD},
           {XR_TYPE_COMPOSITION_LAYER_QUAD},
       }};
-      if (menu_mode && submitted_flat_fallback_this_frame && controller_pointer_pose &&
-          controller_pointer_hit && pointer_swatch_uploaded &&
-          !pointer_swatch_release_pending) {
-        const auto configure_pointer_quad =
-            [&](XrCompositionLayerQuad& quad,
-                darktidevr::math::Pose pose, XrExtent2Df size,
-                XrRect2Di texels) {
-              quad.layerFlags =
-                  XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
-              quad.space = local_space_;
-              quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-              quad.subImage.swapchain = pointer_swapchain;
-              quad.subImage.imageRect = texels;
-              quad.pose.orientation = {pose.orientation.x,
-                                       pose.orientation.y,
-                                       pose.orientation.z,
-                                       pose.orientation.w};
-              quad.pose.position = {pose.position.x, pose.position.y,
-                                    pose.position.z};
-              quad.size = size;
-            };
+      const auto configure_pointer_quad =
+          [&](XrCompositionLayerQuad& quad,
+              darktidevr::math::Pose pose, XrExtent2Df size,
+              XrRect2Di texels) {
+            quad.layerFlags =
+                XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+            quad.space = local_space_;
+            quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+            quad.subImage.swapchain = pointer_swapchain;
+            quad.subImage.imageRect = texels;
+            quad.pose.orientation = {pose.orientation.x,
+                                     pose.orientation.y,
+                                     pose.orientation.z,
+                                     pose.orientation.w};
+            quad.pose.position = {pose.position.x, pose.position.y,
+                                  pose.position.z};
+            quad.size = size;
+          };
+      const bool pointer_swatch_ready =
+          menu_mode && submitted_flat_fallback_this_frame &&
+          pointer_swatch_uploaded && !pointer_swatch_release_pending;
+      bool pointer_ray_visible = false;
+      bool pointer_target_visible = false;
+      if (pointer_swatch_ready && desktop_cursor) {
+        // No laser: the target sprite alone marks the desktop mouse, at the
+        // pixel the stock UI service reads, just in front of the panel.
+        const auto cursor = darktidevr::core::panel_point_from_source(
+            panel_pose, panel_extent.width_metres, panel_extent.height_metres,
+            desktop_cursor->first, desktop_cursor->second,
+            flat_interactive_mode
+                ? 0
+                : (presentation_sequence != 0 ? presentation_state.crop_x : 0),
+            flat_interactive_mode
+                ? 0
+                : (presentation_sequence != 0 ? presentation_state.crop_y : 0),
+            menu_input_source_width, menu_input_source_height);
+        if (cursor) {
+          const auto panel_normal = darktidevr::math::rotate(
+              panel_pose.orientation, {0.0F, 0.0F, 1.0F});
+          configure_pointer_quad(
+              pointer_quads[2],
+              {panel_pose.orientation,
+               {cursor->x + panel_normal.x * 0.004F,
+                cursor->y + panel_normal.y * 0.004F,
+                cursor->z + panel_normal.z * 0.004F}},
+              {0.045F, 0.045F}, pointer_target_texels);
+          pointer_target_visible = true;
+        }
+      }
+      if (pointer_swatch_ready && controller_pointer_pose &&
+          controller_pointer_hit) {
+        pointer_ray_visible = true;
+        pointer_target_visible = true;
         // The ray reaches halfway to the panel so the beam never covers
         // what it points at; two crossed strips make it visible from any
         // angle. The hit is marked by the target sprite (cyan ring and
@@ -4242,13 +4313,13 @@ class OpenXrProbe {
           layers[layer_count++] =
               reinterpret_cast<const XrCompositionLayerBaseHeader*>(&quads[0]);
         }
-        if (menu_mode && submitted_flat_fallback_this_frame && controller_pointer_pose &&
-            controller_pointer_hit && pointer_swatch_uploaded &&
-            !pointer_swatch_release_pending) {
-          for (const auto& pointer_quad : pointer_quads) {
+        for (std::size_t pointer_index = 0;
+             pointer_index < pointer_quads.size(); ++pointer_index) {
+          if (pointer_index == 2 ? pointer_target_visible
+                                 : pointer_ray_visible) {
             layers[layer_count++] =
                 reinterpret_cast<const XrCompositionLayerBaseHeader*>(
-                    &pointer_quad);
+                    &pointer_quads[pointer_index]);
           }
         }
         if (gameplay_reticle_pose && reticle_scale > 0.0F) {

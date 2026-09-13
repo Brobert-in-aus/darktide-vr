@@ -639,7 +639,12 @@ function BodyProxy.place_support_hand(world,source,side,position,rotation)
     return place_rigid_hand(world,rigid_hands[side],position,rotation)
 end
 
-function BodyProxy.follow_gameplay_hands(world, aim_rotation)
+-- offset, when given, moves both animated hands by one world vector, keeping
+-- the animation itself unchanged. pivot_position, when given, is where the
+-- animation's root is placed instead of its own world position: the rendered
+-- first-person root follows the smoothed character position, which drifts
+-- against the VR camera anchor from frame to frame while moving.
+function BodyProxy.follow_gameplay_hands(world, aim_rotation, offset, pivot_position)
     local source = state.source_unit
     if not BodyProxy.rigid_hands_active() or not source or not Unit.alive(source) then
         return false
@@ -669,9 +674,10 @@ function BodyProxy.follow_gameplay_hands(world, aim_rotation)
             local position = Unit.world_position(source, node)
             local rotation = Unit.world_rotation(source, node)
             if delta then
-                position = pivot + Quaternion.rotate(delta, position - pivot)
+                position = (pivot_position or pivot) + Quaternion.rotate(delta, position - pivot)
                 rotation = Quaternion.multiply(delta, rotation)
             end
+            if offset then position = position + offset end
             place_rigid_hand(world, hand, position, rotation, true)
         end
     end

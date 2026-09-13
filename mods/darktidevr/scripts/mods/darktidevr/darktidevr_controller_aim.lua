@@ -875,6 +875,22 @@ function controller_aim.install(mod, presentation, state)
                 return result
             end
             local position, rotation = controller_aim.target("dominant")
+            -- Keyboard and mouse in a private range with no hand ray to use:
+            -- stock targeting already follows the mouse-authored first-person
+            -- pose, so the reticle reads it. A tracked hand keeps its own aim.
+            if (not position or not rotation) and
+                    presentation.keyboard_mouse_enabled and presentation.keyboard_mouse_enabled() and
+                    presentation.is_controller_aim_mode and presentation.is_controller_aim_mode() then
+                local result = func(self, unit, dt, t, ...)
+                local component = self._first_person_component
+                if component and component.position and component.rotation then
+                    controller_aim.publish_reticle(self, component.position, component.rotation)
+                else
+                    controller_aim.clear_reticle()
+                    presentation.publish_gameplay_aim_state(false, false, 0)
+                end
+                return result
+            end
             if not position or not rotation then
                 controller_aim.clear_reticle()
                 presentation.publish_gameplay_aim_state(false, false, 0)

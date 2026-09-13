@@ -915,6 +915,8 @@ local function ensure_ui_native_hooks()
         int dtvr_arm_options_menu_capture(void);
         int dtvr_set_vendor_menu_widget_capture(int enabled);
         int dtvr_set_menu_direct_capture(int enabled);
+        int dtvr_set_input_preferences_v2(int keyboard_mouse,
+            int controllers_disabled, unsigned long long recenter_request);
     ]])
 
     local ok, library = pcall(
@@ -1141,6 +1143,9 @@ function presentation.publish_mode(mode, reason)
     local mode_changed = presentation.mode ~= mode
     local heartbeat_due = not mode_changed and now > 0 and
         now - presentation.last_mode_publish_t >= 0.5
+    if ui_native_capture and presentation.publish_input_preferences then
+        presentation.publish_input_preferences()
+    end
     if not ui_native_capture or
             (not mode_changed and not anchor_changed and not heartbeat_due) then
         return
@@ -2844,6 +2849,12 @@ local function apply_head_tracking(clean_position, clean_rotation)
             mod:info("DARKTIDEVR_AIM hub_third_person recenter anchor_yaw=%.4f generation=%d",
                 controller_observation.gameplay_yaw, recenter_generation)
         end
+        -- Keyboard and mouse: the view is turned onto the aim below, once the
+        -- recentred head rotation of this same sample is known. The
+        -- third-person hub has already faced its orbit above.
+        if presentation.keyboard_mouse_enabled() and not presentation.hub_third_person_active() then
+            controller_observation.keyboard_mouse_recenter_pending = true
+        end
         controller_observation.body_ik_neck_unit = nil
         controller_observation.body_ik_neck_generation = nil
         controller_observation.body_ik_neck_baseline_raw = nil
@@ -3086,11 +3097,42 @@ local function apply_head_tracking(clean_position, clean_rotation)
     )
     controller_observation.physical_head_yaw =
         Quaternion.yaw(head_rotation)
+    if controller_observation.keyboard_mouse_recenter_pending and active_base_rotation and
+            presentation.hub_third_person_active() then
+        -- The fallback request (an older viewer) in the third-person hub faces
+        -- the orbit, as a runtime recentre does there.
+        controller_observation.keyboard_mouse_recenter_pending = nil
+        if controller_observation.gameplay_yaw then
+            active_base_rotation:store(Quaternion.axis_angle(
+                Vector3.up(), controller_observation.gameplay_yaw))
+            clean_rotation = active_base_rotation:unbox()
+        end
+    end
+    if controller_observation.keyboard_mouse_recenter_pending and active_base_rotation and
+            not presentation.cinematic_stereo_active() then
+        controller_observation.keyboard_mouse_recenter_pending = nil
+        -- Keep the aim where it is in the world and turn the scene so this
+        -- recentred view looks along it. Mouse camera pitch is levelled too, so
+        -- the view for this sample is rebuilt from the turned anchor alone.
+        local anchor = active_base_rotation:unbox()
+        local turn = presentation.keyboard_mouse.recenter(
+            Quaternion.yaw(Quaternion.multiply(anchor, head_rotation)))
+        anchor = Quaternion.multiply(Quaternion.axis_angle(Vector3.up(), turn), anchor)
+        active_base_rotation:store(anchor)
+        clean_rotation = anchor
+        mod:info("DARKTIDEVR_KBM recenter turn=%.4f generation=%d", turn,
+            controller_observation.head_recenter_generation)
+    end
     local tracked_rotation = Quaternion.multiply(clean_rotation, head_rotation)
     controller_observation.head_aim_yaw,
         controller_observation.head_aim_pitch,
         controller_observation.head_aim_roll =
             Quaternion.to_yaw_pitch_roll(tracked_rotation)
+    -- The rendered head rotation itself, for headset-relative directions
+    -- (keyboard and mouse melee), without an Euler round trip.
+    controller_observation.head_aim_qx, controller_observation.head_aim_qy,
+        controller_observation.head_aim_qz, controller_observation.head_aim_qw =
+            Quaternion.to_elements(tracked_rotation)
     local tracked_position = clean_position
 
     if head_translation_requested then
@@ -5134,6 +5176,13 @@ local function update_stereo(manager)
     controller_observation.body_anchor_qz,
         controller_observation.body_anchor_qw =
             Quaternion.to_elements(clean_rotation)
+    -- Full keyboard and mouse mouselook tilts the room about the anchor's
+    -- horizontal axis. It stays out of the published yaw-only anchor above.
+    local keyboard_mouse_pitch = not cinematic_stereo and presentation.keyboard_mouse_view_pitch() or 0
+    if keyboard_mouse_pitch ~= 0 then
+        clean_rotation = Quaternion.multiply(clean_rotation,
+            Quaternion.axis_angle(Vector3.right(), keyboard_mouse_pitch))
+    end
     clean_position, clean_rotation = apply_head_tracking(
         clean_position,
         clean_rotation
@@ -5346,7 +5395,10 @@ end)
 -- Gameplay and rendering share the cyclopean heading built from the immutable
 -- scene anchor and tracked head. Integrating deltas from a separate stock spawn
 -- yaw preserves any initial disagreement forever, including across map entry.
-function presentation.observe_controller_aim(self, main_t, orientation_class)
+function presentation.observe_controller_aim(self, main_t, orientation_class, main_dt)
+    if presentation.keyboard_mouse_enabled() then
+        presentation.keyboard_mouse.touch(self, main_t, main_dt)
+    end
     if main_t >= controller_observation.authoring_last_check_t + 1 then
         controller_observation.authoring_last_check_t = main_t
         local flag_path =
@@ -5441,6 +5493,17 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
             gameplay_yaw = controller_observation.hub_third_person_held_yaw
             hub_third_person_pitch = controller_observation.hub_third_person_held_pitch
         else
+            -- Keyboard and mouse: the mouse orbit must turn the view as well,
+            -- exactly as a stick turn does, or a seated player's character
+            -- swings out of sight. Its change since the last write is the orbit.
+            if presentation.keyboard_mouse_enabled() and active_base_rotation then
+                local orbit = presentation.keyboard_mouse.orbit_turn(self, main_t, game_yaw,
+                    controller_observation.hub_third_person_held_yaw)
+                if orbit ~= 0 then
+                    active_base_rotation:store(Quaternion.multiply(
+                        Quaternion.axis_angle(Vector3.up(), orbit), active_base_rotation:unbox()))
+                end
+            end
             gameplay_yaw = (game_yaw +
                 (controller_observation.hub_third_person_yaw_delta or 0)) % (math.pi * 2)
             -- Stock keeps pitch wrapped into [0, 2pi); add the delta in that
@@ -5456,6 +5519,26 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         controller_observation.hub_third_person_orbit = nil
         controller_observation.hub_third_person_held_yaw = nil
         controller_observation.hub_third_person_held_pitch = nil
+    end
+    -- Keyboard and mouse: the stock orientation's mouse delta since the last
+    -- write moves the aim inside a keyhole around the rendered view, and the
+    -- excess turns the scene anchor exactly as stick turning does. Menus hold
+    -- the aim; the modal restore below writes it back.
+    local keyboard_mouse_pitch = nil
+    if not hub_third_person and presentation.keyboard_mouse_enabled() then
+        local aim_yaw, aim_pitch, turn = presentation.keyboard_mouse.observe(self, main_t,
+            game_yaw, game_pitch, controller_observation.head_aim_yaw,
+            controller_observation.head_aim_pitch,
+            presentation.mode == 5 or presentation.mode == 6 or
+                controller_observation.gameplay_orientation_suspended,
+            self._min_pitch, self._max_pitch)
+        if aim_yaw then
+            gameplay_yaw, keyboard_mouse_pitch = aim_yaw, aim_pitch
+            if turn ~= 0 and active_base_rotation then
+                active_base_rotation:store(Quaternion.multiply(
+                    Quaternion.axis_angle(Vector3.up(), turn), active_base_rotation:unbox()))
+            end
+        end
     end
     controller_observation.gameplay_yaw = gameplay_yaw
 
@@ -5489,7 +5572,7 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         self._orientation.yaw = gameplay_yaw
         -- The third-person orbit restores the pitch held from before the
         -- menu; first person keeps the pitch stored at suspension.
-        self._orientation.pitch = hub_third_person_pitch or
+        self._orientation.pitch = keyboard_mouse_pitch or hub_third_person_pitch or
             controller_observation.gameplay_pitch or game_pitch
         self._orientation.roll = controller_observation.gameplay_roll or
             game_roll
@@ -5506,6 +5589,8 @@ function presentation.observe_controller_aim(self, main_t, orientation_class)
         self._orientation.yaw = gameplay_yaw
         if hub_third_person_pitch then
             self._orientation.pitch = hub_third_person_pitch
+        elseif keyboard_mouse_pitch then
+            self._orientation.pitch = keyboard_mouse_pitch
         end
         controller_observation.gameplay_pitch = self._orientation.pitch
         controller_observation.gameplay_roll = game_roll
@@ -5548,15 +5633,16 @@ end
 mod:hook_safe(
     require("scripts/extension_systems/first_person/character_state_orientation/default_player_orientation"),
     "pre_update",
-    function(self, main_t)
-    presentation.observe_controller_aim(self, main_t, "default")
+    function(self, main_t, main_dt)
+    presentation.observe_controller_aim(self, main_t, "default", main_dt)
+    presentation.apply_keyboard_mouse_melee_roll(self, main_t)
 end)
 
 mod:hook_safe(
     require("scripts/extension_systems/first_person/character_state_orientation/hub_player_orientation"),
     "pre_update",
-    function(self, main_t)
-        presentation.observe_controller_aim(self, main_t, "hub")
+    function(self, main_t, main_dt)
+        presentation.observe_controller_aim(self, main_t, "hub", main_dt)
     end)
 
 local function active_game_mode_name()
@@ -5705,11 +5791,302 @@ presentation.spectator_module.install(mod,mod:io_dofile(
         return 2,0,0
     end,function()
         return controller_observation.gameplay_input_enabled == true and presentation.mode == 1 and
+            not (presentation.keyboard_mouse and presentation.keyboard_mouse.controllers_disabled()) and
             presentation.is_first_person_body_mode(active_game_mode_name())
     end)
 presentation.turning = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_turning"
 ).install(mod)
+-- Experimental keyboard and mouse play: controllers are ignored and the stock
+-- mouse orientation aims inside a keyhole around the rendered view.
+presentation.keyboard_mouse = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_keyboard_mouse"
+).install(mod)
+function presentation.keyboard_mouse_enabled()
+    return presentation.keyboard_mouse.enabled()
+end
+-- Controllers are ignored only when keyboard and mouse mode disables them;
+-- otherwise both inputs add together, conflicts included.
+function presentation.controllers_disabled()
+    return presentation.keyboard_mouse.controllers_disabled()
+end
+-- Shared with modules installed with only the mod, such as calibration.
+mod.darktidevr_controllers_disabled = presentation.controllers_disabled
+-- Controller aim and hand tracking are withheld while controllers are
+-- disabled, and in keyboard and mouse play with controllers enabled for a few
+-- seconds after any keyboard or mouse use. Buttons and sticks are unaffected.
+function presentation.controllers_suppressed()
+    if presentation.controllers_disabled() then return true end
+    return presentation.keyboard_mouse_enabled() and presentation.keyboard_mouse.recent_input()
+end
+mod:hook_safe("InputManager", "_update_devices", function(self, dt, t)
+    if not presentation.keyboard_mouse_enabled() or presentation.controllers_disabled() then return end
+    if presentation.keyboard_mouse.sample_devices(self._all_input_devices, t, presentation.mode == 1) then
+        mod:info("DARKTIDEVR_KBM controller_aim=%s cooldown_s=%.1f",
+            presentation.keyboard_mouse.recent_input() and "suppressed" or "active",
+            presentation.keyboard_mouse.controller_cooldown or 0)
+    end
+end)
+-- The body's hands follow the stock animation in keyboard and mouse play
+-- unless a controller is tracked and allowed to drive them.
+function presentation.keyboard_mouse_hands()
+    if not presentation.keyboard_mouse_enabled() then return false end
+    return presentation.controllers_suppressed() or
+        not (controller_observation.left_grip_tracking_live or controller_observation.right_grip_tracking_live)
+end
+-- Keyboard and mouse melee direction. The weapon's first light swing is
+-- sampled from its authored geometry, unrolled and at 45 degrees, to find its
+-- on-screen direction and which way input roll turns it. While idle, the roll
+-- that sends the swing along the recent cursor movement is written into the
+-- stock orientation, and it is held once the attack starts, as wrist roll is.
+function presentation.keyboard_mouse_swing_basis(extension)
+    local Preview = presentation.keyboard_mouse_swing_preview
+    if not Preview then
+        Preview = mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_melee_preview")
+        presentation.keyboard_mouse_swing_preview = Preview
+    end
+    local aim = presentation.keyboard_mouse.state
+    local t = Managers.time:time("gameplay")
+    local base = Quaternion.from_yaw_pitch_roll(aim.aim_yaw, aim.aim_pitch, 0)
+    local right, up = Quaternion.right(base), Quaternion.up(base)
+    local function movement(roll)
+        local sample = Preview.context(extension, presentation, t,
+            presentation.keyboard_mouse_look_roll(aim.aim_yaw, aim.aim_pitch, roll))
+        local path = sample and sample.paths and sample.paths[1]
+        if not path or #path < 2 then return nil end
+        local first, last = path[1].tip, path[#path].tip
+        local delta = Vector3(last.x - first.x, last.y - first.y, last.z - first.z)
+        return Vector3.dot(delta, right), Vector3.dot(delta, up)
+    end
+    local zero_right, zero_up = movement(0)
+    local rolled_right, rolled_up = movement(math.pi / 4)
+    return presentation.keyboard_mouse.swing_basis(zero_right, zero_up, rolled_right, rolled_up)
+end
+function presentation.keyboard_mouse_melee_roll(orientation, main_t)
+    local extension = orientation._weapon_extension
+    local template = extension and extension.weapon_template and extension:weapon_template()
+    local melee = false
+    for _, keyword in ipairs(template and template.keywords or {}) do
+        if keyword == "melee" then melee = true end
+    end
+    local slot = melee and extension._inventory_component and extension._inventory_component.wielded_slot
+    local weapon = melee and extension._weapons and extension._weapons[slot] or nil
+    local kbm = presentation.keyboard_mouse
+    return kbm.melee_roll(weapon, weapon ~= nil and extension:running_action_settings() ~= nil, function()
+        local cache = presentation.keyboard_mouse_swing_cache
+        if not cache or cache.weapon ~= weapon or
+                (not cache.authored and main_t >= cache.retry_t) then
+            local authored, sign = presentation.keyboard_mouse_swing_basis(extension)
+            -- An unsupported or not-yet-valid swing is retried each second.
+            cache = {weapon = weapon, authored = authored, sign = sign, retry_t = main_t + 1}
+            presentation.keyboard_mouse_swing_cache = cache
+        end
+        return presentation.keyboard_mouse_swing_roll(main_t, cache.authored, cache.sign)
+    end)
+end
+-- Both the cursor movement and the reticle's offset are read in the headset's
+-- frame, so a tilted head tilts the directions with it: leaning 45 degrees
+-- left and moving the mouse left to right swings up and to the right. The
+-- chosen direction is then expressed on the unrolled aim's axes, where the
+-- swing is authored.
+function presentation.keyboard_mouse_swing_roll(main_t, authored, sign)
+    local kbm = presentation.keyboard_mouse
+    local aim = kbm.state
+    if not authored or not aim.aim_yaw or not controller_observation.head_aim_qw then return 0 end
+    local head = Quaternion.from_elements(controller_observation.head_aim_qx,
+        controller_observation.head_aim_qy, controller_observation.head_aim_qz,
+        controller_observation.head_aim_qw)
+    local base = Quaternion.from_yaw_pitch_roll(aim.aim_yaw, aim.aim_pitch, 0)
+    local head_right, head_up = Quaternion.right(head), Quaternion.up(head)
+    local aim_forward = Quaternion.forward(base)
+    -- Mouse deltas are yaw/pitch changes: rightward movement lowers yaw.
+    local dx, dy = kbm.mouse_motion(main_t)
+    local wx, wy = kbm.melee_direction(dx, dy,
+        Vector3.dot(aim_forward, head_right), Vector3.dot(aim_forward, head_up))
+    if not wx then return 0 end
+    local wanted = head_right * wx + head_up * wy
+    return kbm.roll_for(Vector3.dot(wanted, Quaternion.right(base)),
+        Vector3.dot(wanted, Quaternion.up(base)), authored, sign)
+end
+-- Runs on every orientation update. The roll is chosen while idle and held
+-- through the attack, but it is used only while the attack runs, and only in
+-- the input frame the simulation reads (keyboard_mouse_roll_input), never in
+-- the player orientation: written there while idle, the worn log showed it
+-- throwing the reticle around the aim whenever the aim was pitched, because
+-- Darktide's roll is not about the look direction.
+function presentation.apply_keyboard_mouse_melee_roll(orientation, main_t)
+    presentation.keyboard_mouse_attack_roll = nil
+    if not presentation.keyboard_mouse_enabled() or presentation.hub_third_person_active() or
+            not orientation._orientation or
+            not presentation.keyboard_mouse.live(main_t) then return end
+    local ok, roll, held_now = pcall(presentation.keyboard_mouse_melee_roll, orientation, main_t)
+    if not ok then
+        if not presentation.keyboard_mouse_melee_error_logged then
+            presentation.keyboard_mouse_melee_error_logged = true
+            mod:warning("DARKTIDEVR_KBM melee_roll_failed error=%s", tostring(roll))
+        end
+        return
+    end
+    local latch = presentation.keyboard_mouse.state.melee
+    if latch and latch.held and roll ~= 0 then presentation.keyboard_mouse_attack_roll = roll end
+    if held_now then
+        local cache = presentation.keyboard_mouse_swing_cache
+        mod:info("DARKTIDEVR_KBM melee_roll_deg=%.0f swing_basis=%s", math.deg(roll),
+            cache and cache.authored and string.format("%.0f,%d", math.deg(cache.authored), cache.sign) or "unavailable")
+    end
+end
+-- The aim turned about its own look direction. Darktide's yaw/pitch/roll
+-- applies roll about the level forward axis outside the pitch, which moves
+-- the look direction once the aim is pitched (the worn log: 5 degrees off at
+-- 45 degrees roll, level at 90), so the roll is built here instead.
+function presentation.keyboard_mouse_look_roll(yaw, pitch, roll)
+    return Quaternion.multiply(Quaternion.from_yaw_pitch_roll(yaw, pitch, 0),
+        Quaternion.axis_angle(Vector3(0, 1, 0), roll))
+end
+-- Engine yaw, pitch and roll reproducing a rotation, on a branch whose pitch
+-- stays within a quarter turn. The engine's own rotation is the judge, so the
+-- branch rule needs no assumed Euler convention. Returns nil when no branch
+-- reproduces the rotation within a degree.
+presentation.keyboard_mouse_pitch_forms = {}
+function presentation.keyboard_mouse_input_euler(rotation)
+    local yaw, pitch, roll = Quaternion.to_yaw_pitch_roll(rotation)
+    local want_forward, want_up = Quaternion.forward(rotation), Quaternion.up(rotation)
+    local forms = presentation.keyboard_mouse_pitch_forms
+    forms[1], forms[2], forms[3], forms[4], forms[5] = pitch, math.pi - pitch, -math.pi - pitch,
+        pitch - math.pi, pitch + math.pi
+    local best_yaw, best_pitch, best_roll, best_error
+    for yaw_turn = 0, 1 do
+        for form = 1, 5 do
+            local candidate_pitch = (forms[form] + math.pi) % (math.pi * 2) - math.pi
+            if math.abs(candidate_pitch) <= math.pi / 2 + 1e-6 then
+                for roll_form = 1, 3 do
+                    local candidate_yaw = yaw + yaw_turn * math.pi
+                    local candidate_roll = roll_form == 1 and roll or roll_form == 2 and math.pi - roll or roll + math.pi
+                    local candidate = Quaternion.from_yaw_pitch_roll(candidate_yaw, candidate_pitch, candidate_roll)
+                    local error = math.max(
+                        math.acos(math.max(-1, math.min(1, Vector3.dot(Quaternion.forward(candidate), want_forward)))),
+                        math.acos(math.max(-1, math.min(1, Vector3.dot(Quaternion.up(candidate), want_up)))))
+                    if not best_error or error < best_error - 1e-9 then
+                        best_yaw, best_pitch, best_roll, best_error = candidate_yaw, candidate_pitch, candidate_roll, error
+                    end
+                end
+            end
+        end
+    end
+    if not best_error or best_error > math.rad(1) then return nil, nil, nil, best_error end
+    return best_yaw, best_pitch, best_roll, best_error
+end
+-- Writes the attack roll into this fixed frame's input, after stock caching.
+-- A frame where a controller ray authored the aim keeps the controller's own.
+function presentation.keyboard_mouse_roll_input(handler, frame)
+    local roll = presentation.keyboard_mouse_attack_roll
+    if not roll or roll == 0 or not presentation.keyboard_mouse_enabled() or
+            presentation.controller_aim_target() then return end
+    local cache = handler._input_cache
+    local index = handler._buffer_index and handler:_buffer_index(frame)
+    local yaws, pitches, rolls = cache and cache[handler._yaw_index], cache and cache[handler._pitch_index],
+        cache and cache[handler._roll_index]
+    if not index or not yaws or not pitches or not rolls then return end
+    local yaw, pitch = tonumber(yaws[index]), tonumber(pitches[index])
+    if not yaw or not pitch then return end
+    pitch = (pitch + math.pi) % (math.pi * 2) - math.pi
+    local input_yaw, input_pitch, input_roll, error =
+        presentation.keyboard_mouse_input_euler(presentation.keyboard_mouse_look_roll(yaw, pitch, roll))
+    if presentation.keyboard_mouse_roll_logged ~= roll then
+        presentation.keyboard_mouse_roll_logged = roll
+        mod:info("DARKTIDEVR_KBM melee_roll_input deg=%.0f aim_pitch_deg=%.1f input_ypr=%s,%s,%s error_deg=%s",
+            math.deg(roll), math.deg(pitch), tostring(input_yaw), tostring(input_pitch), tostring(input_roll),
+            error and string.format("%.3f", math.deg(error)) or "nil")
+    end
+    if not input_yaw then return end
+    yaws[index] = input_yaw % (math.pi * 2)
+    pitches[index] = input_pitch % (math.pi * 2)
+    rolls[index] = input_roll % (math.pi * 2)
+end
+-- Called from the one HumanInputHandler.fixed_update hook (DMF allows a mod a
+-- single hook per function), after the online-rules capture.
+function presentation.apply_keyboard_mouse_roll_input(handler, frame)
+    if not presentation.keyboard_mouse_attack_roll then
+        presentation.keyboard_mouse_roll_logged = nil
+        return
+    end
+    local ok, err = pcall(presentation.keyboard_mouse_roll_input, handler, frame)
+    if not ok and not presentation.keyboard_mouse_roll_input_failed then
+        presentation.keyboard_mouse_roll_input_failed = true
+        mod:warning("DARKTIDEVR_KBM melee_roll_input_failed error=%s", tostring(err))
+    end
+end
+function presentation.keyboard_mouse_view_pitch()
+    if not presentation.keyboard_mouse_enabled() then return 0 end
+    return presentation.keyboard_mouse.state.camera_pitch or 0
+end
+-- The stock first-person hands animate around the camera, which in VR puts
+-- them beside the head. Keyboard and mouse hands keep that animation, moved
+-- 10 cm forward along the aim heading and 10 cm down, in player scale.
+function presentation.keyboard_mouse_hand_offset()
+    local kbm = presentation.keyboard_mouse
+    local aim = kbm.state
+    if not presentation.keyboard_mouse_enabled() or not aim.aim_yaw then return nil end
+    local player = Managers.player and Managers.player:local_player(1)
+    local scale = presentation.calibrated_character_scale(player) or 1
+    local forward = Quaternion.forward(Quaternion.from_yaw_pitch_roll(aim.aim_yaw, 0, 0))
+    return (forward * kbm.hand_forward - Vector3.up() * kbm.hand_down) * scale
+end
+-- Keyboard and mouse hands hang from the same anchor the VR camera and
+-- tracked hands use, rebuilt from the avatar at this seam as tracked arms do.
+-- The rendered first-person root follows the smoothed character position
+-- instead, so hands placed from it jumped against the view while moving.
+function presentation.keyboard_mouse_hand_pivot(unit)
+    if not presentation.refresh_body_anchor_from_avatar(unit) or
+            not controller_observation.body_anchor_x then return nil end
+    return Vector3(controller_observation.body_anchor_x, controller_observation.body_anchor_y,
+        controller_observation.body_anchor_z)
+end
+function presentation.keyboard_mouse_aim_rotation()
+    local aim = presentation.keyboard_mouse.state
+    if not presentation.keyboard_mouse_enabled() or not aim.aim_yaw then return nil end
+    return Quaternion.from_yaw_pitch_roll(aim.aim_yaw, aim.aim_pitch, 0)
+end
+-- The viewer follows the desktop mouse with its cursor marker, ignores
+-- disabled controllers and applies recentre requests. Publish only on change;
+-- the capture library keeps the values in every presentation heartbeat.
+function presentation.publish_input_preferences()
+    local keyboard_mouse = presentation.keyboard_mouse_enabled()
+    local controllers_disabled = presentation.controllers_disabled()
+    local requests = presentation.keyboard_mouse.recenter_requests
+    if presentation.input_preferences_keyboard_mouse == keyboard_mouse and
+            presentation.input_preferences_controllers_disabled == controllers_disabled and
+            presentation.input_preferences_requests == requests then return true end
+    if not ui_native_capture or
+            not presentation.native_export(ui_native_capture, "dtvr_set_input_preferences_v2") then
+        return false
+    end
+    local result = tonumber(ui_native_capture.dtvr_set_input_preferences_v2(
+        keyboard_mouse and 1 or 0, controllers_disabled and 1 or 0, requests))
+    if result ~= 0 then return false end
+    presentation.input_preferences_keyboard_mouse = keyboard_mouse
+    presentation.input_preferences_controllers_disabled = controllers_disabled
+    presentation.input_preferences_requests = requests
+    mod:info("DARKTIDEVR_KBM input_preferences keyboard_mouse=%s controllers_disabled=%s recenter_requests=%d",
+        tostring(keyboard_mouse), tostring(controllers_disabled), requests)
+    return true
+end
+presentation.keyboard_mouse.on_mode_changed = function(enabled, controllers_disabled)
+    mod:info("DARKTIDEVR_KBM mode=%s controllers=%s", enabled and "keyboard_mouse" or "controllers",
+        controllers_disabled and "disabled" or "enabled")
+    presentation.publish_input_preferences()
+end
+-- Recentre view keybind: the viewer recentres the headset (position and
+-- facing), and the new recenter generation turns the view onto the aim. An
+-- older viewer without the request turns the view onto the aim directly.
+mod.recenter_vr_view = function()
+    if not presentation.keyboard_mouse_enabled() then return end
+    presentation.keyboard_mouse.recenter_requests = presentation.keyboard_mouse.recenter_requests + 1
+    if not presentation.publish_input_preferences() then
+        controller_observation.keyboard_mouse_recenter_pending = true
+    end
+    mod:info("DARKTIDEVR_KBM recenter_requested count=%d", presentation.keyboard_mouse.recenter_requests)
+end
 
 function presentation.apply_controller_turning(main_t,exclusive_stick)
     local delta = presentation.turning.sample(
@@ -5748,14 +6125,15 @@ end
 presentation.menu_prompts = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_menu_prompts"
 ).install(mod,function()
-    return ui_native_capture_active == true
+    return ui_native_capture_active == true and not presentation.keyboard_mouse_enabled()
 end,function()
     return presentation.menu_pointer.read_state_v3 == true
 end)
 mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_controller_prompts"
 ).install(mod,presentation.controller_bindings,function()
-    return controller_observation.gameplay_input_enabled == true
+    return controller_observation.gameplay_input_enabled == true and
+        not presentation.keyboard_mouse_enabled()
 end,presentation.menu_prompts)
 
 function presentation.inject_ephemeral_action_names(
@@ -5879,7 +6257,10 @@ function presentation.inject_gameplay_input(self, main_t, input)
     presentation.gameplay_input_owner[1], presentation.gameplay_input_owner[2] = self, player_unit
     -- Loading can replace the handler, or stock can replace its character,
     -- without an intervening inactive callback. Drain and require neutral input.
+    -- Disabled controllers still drain the native reader inactive, so turning
+    -- them back on later cannot replay buttons pressed in the meantime.
     local active = player_unit ~= nil and not owner_changed and controller_observation.gameplay_input_enabled and
+        not presentation.controllers_disabled() and
         presentation.is_first_person_body_mode(game_mode_name) and
         presentation.mode == 1 and not ui_inputs_in_use and
         presentation.gameplay_context.input_service_enabled(input)
@@ -6112,6 +6493,7 @@ mod:hook_safe(
         -- Finalize the same cached input columns consumed by local simulation
         -- and the stock network sender, after the controller adapter above.
         presentation.online_rules.capture(self, frame, dt, t)
+        presentation.apply_keyboard_mouse_roll_input(self, frame)
         if not controller_observation.primary_action_injected then
             return
         end
@@ -7552,7 +7934,9 @@ function presentation.scene_graph_root(unit, node)
 end
 
 function presentation.controller_grip_target()
-    if not controller_observation.right_grip_usable or
+    -- Disabled controllers are ignored wherever they are tracked, as are enabled
+    -- ones for a few seconds after keyboard or mouse use.
+    if presentation.controllers_suppressed() or not controller_observation.right_grip_usable or
             not controller_observation.body_anchor_qw then
         return nil, nil
     end
@@ -7581,7 +7965,7 @@ function presentation.controller_grip_target()
 end
 
 function presentation.left_controller_grip_target()
-    if not controller_observation.left_grip_usable or
+    if presentation.controllers_suppressed() or not controller_observation.left_grip_usable or
             not controller_observation.body_anchor_qw then
         return nil, nil
     end
@@ -7939,8 +8323,12 @@ function presentation.body_ik_controller_grip_target(unit, side)
         anchor_rotation, grip_rotation))
 end
 
+-- In keyboard and mouse play the mouse owns the aim while it or the keyboard is
+-- in use, so a controller lying on the desk that drifts in and out of tracking
+-- cannot take over where the weapon points. After a few idle seconds a tracked
+-- controller aims again.
 function presentation.controller_aim_target()
-    if not controller_observation.right_aim_usable or
+    if presentation.controllers_suppressed() or not controller_observation.right_aim_usable or
             not controller_observation.body_anchor_qw or
             not controller_observation.right_aim_qw then
         return nil, nil
@@ -7969,7 +8357,7 @@ function presentation.controller_aim_target()
 end
 
 function presentation.left_controller_aim_target()
-    if not controller_observation.left_aim_usable or
+    if presentation.controllers_suppressed() or not controller_observation.left_aim_usable or
             not controller_observation.body_anchor_qw or
             not controller_observation.left_aim_qw then
         return nil, nil
@@ -8021,7 +8409,10 @@ function presentation.publish_gameplay_aim_state(active, hit, distance, world_po
             not ui_native_capture.dtvr_set_gameplay_aim_state then
         return false
     end
-    if active and world_point and presentation.online_rules.enabled() then
+    -- Keyboard and mouse aim has no hand ray for the viewer to extend, so it
+    -- always sends the world-depth target point, in every aim mode.
+    local keyboard_mouse = presentation.keyboard_mouse_enabled()
+    if active and world_point and (keyboard_mouse or presentation.online_rules.enabled()) then
         local publish = presentation.native_gameplay_aim_target
         local sequence = controller_observation.body_anchor_pose_sequence or 0
         if not publish or sequence <= 0 then
@@ -8035,6 +8426,12 @@ function presentation.publish_gameplay_aim_state(active, hit, distance, world_po
         local rotation = Quaternion.from_elements(controller_observation.body_anchor_qx,
             controller_observation.body_anchor_qy, controller_observation.body_anchor_qz,
             controller_observation.body_anchor_qw)
+        -- Full mouselook tilts the rendered room about the published anchor;
+        -- express the point in that tilted frame so it lands where it is seen.
+        local view_pitch = keyboard_mouse and presentation.keyboard_mouse_view_pitch() or 0
+        if view_pitch ~= 0 then
+            rotation = Quaternion.multiply(rotation, Quaternion.axis_angle(Vector3.right(), view_pitch))
+        end
         local player = Managers.player:local_player(1)
         local scale = presentation.calibrated_character_scale(player)
         local point = Quaternion.rotate(Quaternion.inverse(rotation),world_point-anchor)/scale
@@ -9758,16 +10155,26 @@ function presentation.apply_body_ik(unit, sequence, world, anchor_unit)
             not world and "world_unavailable" or "unit_unavailable"
         return
     end
+    -- Controllers disabled: no tracked arms at all. The gameplay body's stock
+    -- animation keeps its hands and weapons, aimed along the mouse, and the
+    -- gloves are placed on those wrists; nothing is written back to them.
     -- Independent rigid hands do not inherit the stock skeleton on update.
     -- During an attack, explicitly follow both animated wrists instead of
     -- simply skipping IK and freezing them at their last tracked positions.
-    if controller_observation.stock_melee_animation_active then
+    -- Keyboard and mouse play without a tracked controller does the same all
+    -- the time, turned onto the mouse aim, so the hands keep the stock idle,
+    -- reload, attack and switch animations instead of freezing.
+    local keyboard_mouse_hands = presentation.keyboard_mouse_hands()
+    if controller_observation.stock_melee_animation_active or keyboard_mouse_hands then
         controller_observation.body_ik_presentation_block_reason =
-            "stock_melee_animation"
+            keyboard_mouse_hands and "keyboard_mouse" or "stock_melee_animation"
         if presentation.body_proxy and presentation.body_proxy.rigid_hands_active() then
-            local aim_rotation = presentation.controller_aim.melee_visual_rotation(anchor_unit or unit)
+            local aim_rotation = keyboard_mouse_hands and presentation.keyboard_mouse_aim_rotation() or
+                presentation.controller_aim.melee_visual_rotation(anchor_unit or unit)
             local followed, left_hand, right_hand =
-                presentation.body_proxy.follow_gameplay_hands(world, aim_rotation)
+                presentation.body_proxy.follow_gameplay_hands(world, aim_rotation,
+                    keyboard_mouse_hands and presentation.keyboard_mouse_hand_offset() or nil,
+                    keyboard_mouse_hands and presentation.keyboard_mouse_hand_pivot(anchor_unit or unit) or nil)
             if followed and aim_rotation and anchor_unit then
                 presentation.sync_equipment_hand_to_proxy(anchor_unit, left_hand, "j_lefthand")
                 presentation.sync_equipment_hand_to_proxy(anchor_unit, right_hand, "j_righthand")
@@ -11021,8 +11428,8 @@ mod:hook_safe(
                 controller_rotation = rotation
             end
         end
-        local target_rotation = controller_rotation or Quaternion.axis_angle(
-            Vector3.up(), controller_observation.body_head_yaw)
+        local target_rotation = controller_rotation or presentation.keyboard_mouse_aim_rotation() or
+            Quaternion.axis_angle(Vector3.up(), controller_observation.body_head_yaw)
         local neutral_target = root_position +
             Quaternion.forward(target_rotation) *
                 self._aim_contraint_distance
@@ -14262,7 +14669,7 @@ end)
 local cinematic_skip = {down = false}
 function presentation.cinematic_skip_trigger()
     local trigger = tonumber(controller_observation.right_trigger)
-    if not trigger then
+    if not trigger or presentation.controllers_disabled() then
         cinematic_skip.down = false
         return nil, false
     end

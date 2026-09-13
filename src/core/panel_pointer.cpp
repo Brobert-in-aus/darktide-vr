@@ -72,6 +72,34 @@ std::optional<PanelPointerMapping> map_pointer_to_panel(
   return PanelPointerMapping{clamped_u, clamped_v, distance, pixel_x, pixel_y};
 }
 
+std::optional<math::Vec3> panel_point_from_source(
+    math::Pose panel_pose, float panel_width_metres, float panel_height_metres,
+    std::uint32_t source_x, std::uint32_t source_y, std::uint32_t crop_x,
+    std::uint32_t crop_y, std::uint32_t crop_width, std::uint32_t crop_height) {
+  const auto& q = panel_pose.orientation;
+  const auto orientation_norm = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+  if (!(panel_width_metres > 0.0F) || !(panel_height_metres > 0.0F) ||
+      !std::isfinite(panel_width_metres) ||
+      !std::isfinite(panel_height_metres) || !finite(panel_pose.position) ||
+      !std::isfinite(orientation_norm) || orientation_norm < 1.0e-6F ||
+      crop_width == 0 || crop_height == 0 || source_x < crop_x ||
+      source_y < crop_y || source_x - crop_x >= crop_width ||
+      source_y - crop_y >= crop_height) {
+    return std::nullopt;
+  }
+  // Pixel centres at the crop edges map to the panel edges, matching the
+  // rounding in map_pointer_to_panel.
+  const auto u = crop_width > 1 ? static_cast<float>(source_x - crop_x) /
+                                      static_cast<float>(crop_width - 1)
+                                : 0.5F;
+  const auto v = crop_height > 1 ? static_cast<float>(source_y - crop_y) /
+                                       static_cast<float>(crop_height - 1)
+                                 : 0.5F;
+  return math::transform_point(
+      panel_pose, {(u - 0.5F) * panel_width_metres,
+                   (0.5F - v) * panel_height_metres, 0.0F});
+}
+
 bool pointer_origin_within_reach(math::Vec3 pointer_origin,
                                  math::Vec3 head_position,
                                  float maximum_reach_metres) {

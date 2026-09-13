@@ -74,6 +74,30 @@ int main() {
                std::abs(hit->v - 0.5F) < 1.0e-5F,
            "Mapping must respect a rotated panel pose");
 
+    // The desktop mouse marker inverts the ray mapping on the same crop.
+    using darktidevr::core::panel_point_from_source;
+    auto point = panel_point_from_source(rotated, 2.0F, 2.0F, 400, 300, 0, 0,
+                                         801, 601);
+    expect(point && std::abs(point->x - 2.0F) < 1.0e-4F &&
+               std::abs(point->y) < 1.0e-4F && std::abs(point->z) < 1.0e-4F,
+           "Centre source pixel must mark the rotated panel centre");
+    point = panel_point_from_source(panel, 2.0F, 2.0F, 1099, 699, 100, 200,
+                                    1000, 500);
+    expect(point && std::abs(point->x - 1.0F) < 1.0e-4F &&
+               std::abs(point->y + 1.0F) < 1.0e-4F,
+           "Final crop pixel must mark the panel bottom-right");
+    const auto round_trip = point ? map_pointer_to_panel(
+        PointerRay{{point->x, point->y, 0.0F}, {0.0F, 0.0F, -1.0F}}, panel,
+        2.0F, 2.0F, 2048, 2048, 100, 200, 1000, 500) : std::nullopt;
+    expect(round_trip && round_trip->source_x == 1099 &&
+               round_trip->source_y == 699,
+           "Marker position must map back to its source pixel");
+    expect(!panel_point_from_source(panel, 2.0F, 2.0F, 99, 300, 100, 200,
+                                    1000, 500) &&
+               !panel_point_from_source(panel, 2.0F, 2.0F, 1100, 300, 100,
+                                        200, 1000, 500),
+           "A mouse outside the crop must not be marked on the panel");
+
     test_menu_pointer_input();
 
     std::cout << "panel_pointer.result=pass\n";

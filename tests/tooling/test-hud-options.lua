@@ -67,11 +67,30 @@ mod.io_dofile=function(_,path)
 end
 local data=dofile(arg[2])
 local text=dofile(arg[3])
-local groups={}
-for _,widget in ipairs(data.options.widgets) do
-    assert(not groups[widget.setting_id], 'duplicate setting: '..widget.setting_id)
-    groups[widget.setting_id]=widget
+local groups,order,seen={},{},{}
+local function collect(widgets)
+    for _,widget in ipairs(widgets) do
+        assert(not seen[widget.setting_id], 'duplicate setting: '..widget.setting_id)
+        seen[widget.setting_id]=true
+        collect(widget.sub_widgets or {})
+    end
 end
+collect(data.options.widgets)
+for index,widget in ipairs(data.options.widgets) do
+    groups[widget.setting_id]=widget
+    order[widget.setting_id]=index
+end
+-- Experimental features are the last submenu, directly above the bindings.
+local experimental=assert(groups.experimental_options,'missing experimental settings')
+assert(experimental.type=='group' and text.experimental_options.en)
+assert(order.experimental_options+1==order.controller_bindings)
+for id,index in pairs(order) do
+    assert(id=='controller_bindings' or groups[id].type~='group' or index<=order.experimental_options)
+end
+assert(experimental.sub_widgets[1].setting_id=='keyboard_mouse_mode')
+local moved={}
+for _,widget in ipairs(experimental.sub_widgets) do moved[widget.setting_id]=true end
+assert(moved.marker_plane and moved.psykhanium_online_rules)
 local options=assert(groups.hud_options, 'missing HUD settings')
 assert(groups.vr_turning and groups.vr_turning.type=='group')
 assert(groups.controller_bindings and groups.controller_bindings.type=='group')

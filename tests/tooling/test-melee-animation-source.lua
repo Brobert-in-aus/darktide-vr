@@ -21,12 +21,23 @@ Quaternion={multiply=function(a,b)return a+b end,rotate=function(angle,p)
 end}
 inverse_quaternion=function(q)return -q end
 local count=0
+local expected=v(1,3,4)
 place_rigid_hand=function(_,hand,position,rotation,authored)
- assert(math.abs(position.x-1)<1e-7 and math.abs(position.y-3)<1e-7 and position.z==4,'read modified 3p hands or used wrong pivot')
+ assert(math.abs(position.x-expected.x)<1e-7 and math.abs(position.y-expected.y)<1e-7 and
+  math.abs(position.z-expected.z)<1e-7,'read modified 3p hands or used wrong pivot')
  assert(rotation==math.pi/2 and authored)
  count=count+1
 end
 assert(loadstring(text:sub(first,last-1)))()
 assert(BodyProxy.follow_gameplay_hands({},math.pi/2))
 assert(count==2)
+-- Keyboard and mouse hands: the same animated pose, moved by one offset.
+expected=v(1.4,3,3.6)
+assert(BodyProxy.follow_gameplay_hands({},math.pi/2,v(0.4,0,-0.4)))
+assert(count==4,'the offset changed which hands were placed')
+-- Hung from a given pivot (the VR camera anchor): the pose relative to the
+-- animation root is kept, only the root's position is replaced.
+expected=v(9.4,20,29.6)
+assert(BodyProxy.follow_gameplay_hands({},math.pi/2,v(0.4,0,-0.4),v(10,20,30)))
+assert(count==6)
 print('melee hands use untouched first-person animation and rotate around its root passed')

@@ -17,7 +17,8 @@ Vector3={up=function() return v(0,0,1) end}
 Unit={alive=function() return true end,local_position=function() return v(0,0,0) end,
  animation_set_constraint_target=function(_,_,target) written=target end}
 controller_observation={body_ik_presentation_enabled=true,body_head_yaw=0}
-presentation={controller_aim={target=function() return v(0,0,0),hand end}}
+presentation={controller_aim={target=function() return v(0,0,0),hand end},
+ keyboard_mouse_aim_rotation=function() end}
 require=function() return {} end
 local hook
 mod={hook_safe=function(_,_,_,callback) hook=callback end}

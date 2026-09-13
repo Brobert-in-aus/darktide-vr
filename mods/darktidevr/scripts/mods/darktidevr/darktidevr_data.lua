@@ -129,17 +129,7 @@ return {
                         default_value = true,
                     },
                     {
-                        setting_id = "marker_plane",
-                        type = "checkbox",
-                        default_value = true,
-                    },
-                    {
                         setting_id = "stereo_cinematics",
-                        type = "checkbox",
-                        default_value = true,
-                    },
-                    {
-                        setting_id = "psykhanium_online_rules",
                         type = "checkbox",
                         default_value = true,
                     },
@@ -151,6 +141,25 @@ return {
                 },
             },
             mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_turning").widgets(),
+            -- The last group before the controller bindings. Setting ids are
+            -- unchanged when a setting moves here, so saved values carry over.
+            {
+                setting_id = "experimental_options",
+                type = "group",
+                sub_widgets = {
+                    mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_keyboard_mouse").widgets(),
+                    {
+                        setting_id = "marker_plane",
+                        type = "checkbox",
+                        default_value = true,
+                    },
+                    {
+                        setting_id = "psykhanium_online_rules",
+                        type = "checkbox",
+                        default_value = true,
+                    },
+                },
+            },
             mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_controller_bindings").widgets(mod),
         },
     },
