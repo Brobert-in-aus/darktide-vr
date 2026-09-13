@@ -4,7 +4,7 @@ All notable user-facing changes to Darktide VR. Versions follow
 `major.minor.patch` with a pre-release suffix while the mod is in alpha; the
 runtime package records the exact source revision alongside the version.
 
-## 0.1.0-alpha.3 (unreleased)
+## 0.1.0-alpha.3 (13 September 2026)
 
 - Menu hotkeys that only had a keyboard key now use controller buttons: E is
   Y, Q is X. On the end of mission screen the right trigger continues and Y
