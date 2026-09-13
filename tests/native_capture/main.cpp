@@ -222,6 +222,11 @@ int wmain(int argc, wchar_t** argv) {
         !billboard_resource_unmap_count || !solve_two_bone_ik) {
       throw std::runtime_error("Native capture export contract is incomplete");
     }
+    // The mod calls this when the game starts to quit (shutdown fault fix).
+    // Not called here: it disables every hook this process installed.
+    if (!GetProcAddress(module, "dtvr_prepare_process_exit")) {
+      throw std::runtime_error("Missing process-exit preparation export");
+    }
     if (arm_options_menu_capture() != 1) {
       throw std::runtime_error("Options menu capture arm export failed");
     }

@@ -7,8 +7,7 @@ unattended evidence for each is in
 
 ## Installed today
 
-1. **Nothing to see: unattended run controls** (installed with `e.g.`
-   commit below). Two request files players never have:
+1. **Nothing to see: unattended run controls** (`bb10184`). Two request files players never have:
    `darktidevr_external_viewer.flag` (the game skips starting its viewer) and
    `darktidevr_quit_game.flag` (quits through the in-game Quit route).
    Check: launch normally; the headset shows the game as before (the viewer

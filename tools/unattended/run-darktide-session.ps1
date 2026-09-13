@@ -13,8 +13,13 @@ param(
     [string] $GameRoot = 'D:\SteamLibrary\steamapps\common\Warhammer 40,000 DARKTIDE',
     [ValidateSet('Title', 'Hub', 'Psykhanium')] [string] $Scene = 'Psykhanium',
     [ValidateRange(0, 7200)] [int] $HoldSeconds = 60,
-    [ValidateSet('Quit', 'LeaveRunning')] [string] $End = 'Quit',
+    # Quit: in-game Quit route through the mod's request file. CloseWindow: the
+    # window's close message (works without the mod, e.g. a flat-mode control).
+    [ValidateSet('Quit', 'CloseWindow', 'LeaveRunning')] [string] $End = 'Quit',
     [switch] $ExternalViewer,
+    # With -ExternalViewer semantics for the mod (it skips its viewer) but no
+    # viewer at all: a control run for stereo-dependent behaviour.
+    [switch] $NoViewer,
     [switch] $SyntheticControllerPath,
     [string] $RuntimeJson,
     # Other mod request files to set for this run, e.g. @{ 'darktidevr_gameplay_input_test.flag' = 'enabled' }.
@@ -32,6 +37,7 @@ $gameExe = (Resolve-Path -LiteralPath (Join-Path $GameRoot 'binaries\Darktide.ex
 $consoleRoot = Join-Path $env:APPDATA 'Fatshark\Darktide\console_logs'
 $viewerLogRoot = Join-Path $env:LOCALAPPDATA 'DarktideVR'
 if ($SyntheticControllerPath -or $RuntimeJson) { $ExternalViewer = $true }
+if ($NoViewer -and ($SyntheticControllerPath -or $RuntimeJson)) { throw '-NoViewer cannot be combined with a viewer option.' }
 if ($RuntimeJson -and -not (Test-Path -LiteralPath $RuntimeJson -PathType Leaf)) { throw "Runtime JSON not found: $RuntimeJson" }
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repoRoot ("artifacts\unattended\session-{0}" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -44,7 +50,7 @@ if (Get-Process Darktide, darktidevr-xr-harness -ErrorAction SilentlyContinue) {
 
 $summary = [ordered]@{
     scene = $Scene; hold_seconds = $HoldSeconds; end = $End
-    external_viewer = [bool]$ExternalViewer; synthetic_controller_path = [bool]$SyntheticControllerPath
+    external_viewer = [bool]$ExternalViewer; no_viewer = [bool]$NoViewer; synthetic_controller_path = [bool]$SyntheticControllerPath
     runtime_json = $RuntimeJson; request_files = @($RequestFiles.Keys)
     started_utc = (Get-Date).ToUniversalTime().ToString('o')
 }
@@ -69,7 +75,7 @@ try {
     Remove-Item -LiteralPath (Join-Path $modRoot 'darktidevr_quit_game.flag') -ErrorAction SilentlyContinue
     Set-RequestFile 'darktidevr_start_character.flag' $(if ($Scene -eq 'Title') { 'disabled' } else { 'start' })
     $psykhaniumRequest = Set-PsykhaniumLaunchRequest -GameRoot $GameRoot -Action $(if ($Scene -eq 'Psykhanium') { 'enter' } else { 'disabled' })
-    if ($ExternalViewer) { Set-RequestFile 'darktidevr_external_viewer.flag' 'external' }
+    if ($ExternalViewer -or $NoViewer) { Set-RequestFile 'darktidevr_external_viewer.flag' 'external' }
     foreach ($name in $RequestFiles.Keys) { Set-RequestFile $name ([string]$RequestFiles[$name]) }
 
     if ($ExternalViewer) {
@@ -135,6 +141,7 @@ try {
     }
     $deadline = (Get-Date).AddSeconds($StartTimeoutSeconds)
     $reached = $false
+    $windowSeen = $null
     do {
         Start-Sleep -Seconds 2
         if ($game.HasExited) { throw "Darktide exited before reaching $Scene." }
@@ -145,6 +152,17 @@ try {
         }
         if ($consoleLog) {
             $reached = [bool](Select-String -LiteralPath $consoleLog.FullName -SimpleMatch $marker -Quiet)
+        }
+        # Without the mod (flat-mode controls) the console log is buffered
+        # until exit, so the title marker never appears in time. The title is
+        # the first interactive screen; accept it once the window has been up
+        # for 45 seconds.
+        if (-not $reached -and $Scene -eq 'Title') {
+            $game.Refresh()
+            if ($game.MainWindowHandle -ne [IntPtr]::Zero) {
+                if (-not $windowSeen) { $windowSeen = Get-Date }
+                elseif (((Get-Date) - $windowSeen).TotalSeconds -ge 45) { $reached = $true; $summary.scene_assumed_from_window = $true }
+            }
         }
     } while (-not $reached -and (Get-Date) -lt $deadline)
     $summary.scene_reached = $reached
@@ -157,8 +175,13 @@ try {
         if ($game.HasExited) { throw 'Darktide exited during the hold.' }
     }
 
-    if ($End -eq 'Quit') {
-        Set-Content -LiteralPath (Join-Path $modRoot 'darktidevr_quit_game.flag') -Value 'quit' -Encoding ascii
+    if ($End -ne 'LeaveRunning') {
+        if ($End -eq 'Quit') {
+            Set-Content -LiteralPath (Join-Path $modRoot 'darktidevr_quit_game.flag') -Value 'quit' -Encoding ascii
+        } else {
+            $game.Refresh()
+            $summary.close_message_sent = $game.CloseMainWindow()
+        }
         $quitStart = Get-Date
         $exited = $game.WaitForExit($ExitTimeoutSeconds * 1000)
         $summary.exited = $exited
@@ -174,7 +197,7 @@ try {
         Set-Content -LiteralPath $stopFile -Value 'stop' -Encoding ascii
         if (-not $viewer.WaitForExit(15000)) { $viewer.Kill(); $summary.viewer_killed = $true }
     }
-    if ($End -eq 'Quit' -and $game -and -not $game.HasExited) {
+    if ($End -ne 'LeaveRunning' -and $game -and -not $game.HasExited) {
         # Never leave an owned game behind; recorded as a forced stop.
         Stop-Process -Id $game.Id -Force
         $summary.game_force_stopped = $true
@@ -207,6 +230,17 @@ try {
     if ($game) {
         $viewerLog = Join-Path $viewerLogRoot "viewer-$($game.Id).log"
         if (Test-Path -LiteralPath $viewerLog) { Copy-Item -LiteralPath $viewerLog -Destination (Join-Path $OutputDirectory 'game-viewer.log') -Force }
+    }
+    # A fault after the engine's own log ends never reaches the game's crash
+    # handler; Windows Error Reporting records it instead.
+    if ($game -and $summary.Contains('exit_code') -and $summary.exit_code -ne 0) {
+        $events = @(Get-WinEvent -FilterHashtable @{LogName = 'Application'; ProviderName = 'Application Error'; StartTime = $launchStart} -ErrorAction SilentlyContinue |
+            Where-Object { $_.Message -match 'Darktide\.exe' -and $_.Message -match ('0x{0:x}' -f $game.Id) })
+        if ($events) {
+            $offset = [regex]::Match($events[0].Message, 'Fault offset: (0x[0-9a-fA-F]+)')
+            $module = [regex]::Match($events[0].Message, 'Faulting module name: ([^,\r\n]+)')
+            $summary.wer_fault = ('{0}+{1}' -f $module.Groups[1].Value.Trim(), $offset.Groups[1].Value)
+        }
     }
     $summary.finished_utc = (Get-Date).ToUniversalTime().ToString('o')
     Write-Summary

@@ -14203,11 +14203,22 @@ int install_hooks(ID3D12Device* supplied_device = nullptr) {
                      reinterpret_cast<void**>(&original_execute_indirect)) !=
            MH_OK) ||
       MH_EnableHook(MH_ALL_HOOKS) != MH_OK) {
+    streamline_native_swapchain.Reset();
+    dummy_swapchain3.Reset();
+    swapchain1.Reset();
     DestroyWindow(window);
     UnregisterClassW(class_name, window_class.hInstance);
     return 14;
   }
 
+  // The hooks only needed the vtable addresses, which point into the system
+  // DLLs. Release the dummy swapchain (and any Streamline wrapper around it)
+  // before its window: destroying a window under a live flip-model swapchain
+  // leaves DXGI tracking a dead window for the rest of the process.
+  streamline_native_swapchain.Reset();
+  dummy_swapchain3.Reset();
+  swapchain1.Reset();
+  factory.Reset();
   DestroyWindow(window);
   UnregisterClassW(class_name, window_class.hInstance);
   if (stingray_upload_flush_target) {
@@ -16872,6 +16883,77 @@ extern "C" __declspec(dllexport) int dtvr_viewer_control(int enabled) {
 extern "C" __declspec(dllexport) int dtvr_viewer_state(int* values,
                                                         unsigned int count) {
   return darktidevr::producer::viewer::state(values, count);
+}
+
+// Called by the mod when the game starts to quit, while every engine thread
+// is still running normally. Stops the viewer, gives the game window back its
+// own window procedure (the virtual-size subclass is otherwise never removed
+// and still receives the window's teardown messages) and restores every
+// function this module hooked, so the engine's shutdown runs on the game's
+// own code. Result bits: 1 already prepared, 2 MinHook error, 4 window
+// procedure restored, 8 window procedure left (no longer ours), 16 the game
+// swapchain reference released.
+extern "C" __declspec(dllexport) int dtvr_prepare_process_exit() {
+  static std::atomic<int> prepared{0};
+  if (prepared.exchange(1, std::memory_order_acq_rel) != 0) {
+    return 1;
+  }
+  darktidevr::producer::viewer::control(false);
+  virtual_size_message_enabled.store(false, std::memory_order_release);
+  virtual_client_extent_enabled.store(false, std::memory_order_release);
+  int result = 0;
+  {
+    std::scoped_lock lock(virtual_window_proc_mutex);
+    if (virtual_window_proc_window && original_game_window_proc) {
+      const auto current = reinterpret_cast<WNDPROC>(
+          GetWindowLongPtrW(virtual_window_proc_window, GWLP_WNDPROC));
+      if (current == &virtual_game_window_proc) {
+        SetWindowLongPtrW(virtual_window_proc_window, GWLP_WNDPROC,
+                          reinterpret_cast<LONG_PTR>(original_game_window_proc));
+        result |= 4;
+      } else {
+        result |= 8;
+      }
+    }
+  }
+  const auto status = MH_DisableHook(MH_ALL_HOOKS);
+  if (status != MH_OK && status != MH_ERROR_NOT_INITIALIZED) {
+    result |= 2;
+  }
+  // With Present no longer hooked nothing re-acquires them: drop this
+  // module's references to the game's swapchain, its queue and its back
+  // buffers while the engine still owns a live device. Held to process exit
+  // they were released only by this module's static destructors, after the
+  // graphics stack had shut down, and the process faulted writing to 0x0 in
+  // Darktide.exe after the engine log ended (every VR-mode exit, 13 and 14
+  // September; bisected to the swapchain hooks, which fill these).
+  game_swapchain_metadata_ready.store(false, std::memory_order_release);
+  {
+    std::scoped_lock lock(boundary_capture_mutex);
+    swapchain_back_buffers.clear();
+    swapchain_back_buffer_states.clear();
+    camera_output_resources.clear();
+    camera_output_source_states.clear();
+    menu_output_resources.clear();
+    menu_output_source_states.clear();
+    known_camera_output_resources.clear();
+    named_camera_output_resources = {};
+    named_camera_outputs_ready = false;
+    named_camera_outputs_ready_hint.store(false, std::memory_order_release);
+    present_transition_resources.clear();
+  }
+  ComPtr<IDXGISwapChain3> released_swapchain;
+  ComPtr<ID3D12CommandQueue> released_queue;
+  {
+    std::scoped_lock lock(state_mutex);
+    released_swapchain.Swap(game_swapchain);
+    released_queue.Swap(swapchain_present_queue);
+  }
+  game_swapchain_identity.store(nullptr, std::memory_order_release);
+  if (released_swapchain) {
+    result |= 16;
+  }
+  return result;
 }
 
 extern "C" __declspec(dllexport) int dtvr_set_mirror_client_extent(

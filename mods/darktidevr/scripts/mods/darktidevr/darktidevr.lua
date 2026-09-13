@@ -687,6 +687,7 @@ local function ensure_ui_native_hooks()
 
     pcall(ffi.cdef, [[
         int dtvr_install(void);
+        int dtvr_prepare_process_exit(void);
         int dtvr_set_projection_active(int enabled);
         int dtvr_set_presentation_state(unsigned int mode, unsigned long long sequence,
             unsigned int source_width, unsigned int source_height,
@@ -15595,6 +15596,11 @@ presentation.session_control = mod:io_dofile(
 -- screen, or loading) releases what the atlas and the HUD panel's mirrored
 -- elements hold before the mission's packages unload.
 mod.on_game_state_changed = function(status, state_name)
+    -- The game is quitting (window close or the Quit button): StateGame exits
+    -- before the gameplay state and long before engine teardown.
+    if status == "exit" and state_name == "StateGame" and presentation.prepare_game_exit then
+        presentation.prepare_game_exit("state_game_exit")
+    end
     if status == "enter" and (state_name == "StateGameScore" or state_name == "StateLoading") then
         if presentation.marker_atlas then pcall(presentation.marker_atlas.destroy) end
         if presentation.hud_panel and presentation.hud_panel.release_mirror_materials then
@@ -15606,6 +15612,38 @@ mod.on_game_state_changed = function(status, state_name)
             mod.scan_test_equipped = nil
         end
     end
+end
+
+-- Every VR-mode exit faulted during engine shutdown (13 and 14 September):
+-- a worker thread while the viewer was attached, otherwise after the log
+-- ended. Release the stereo presentation while the game's worlds still exist:
+-- stop the viewer, turn projection off, destroy the right-eye viewport in its
+-- live world (teardown otherwise leaves it to world destruction), then the
+-- same cleanup as disabling the mod. Runs once.
+function presentation.prepare_game_exit(reason)
+    if presentation.game_exit_prepared then return end
+    presentation.game_exit_prepared = true
+    if presentation.viewer then pcall(presentation.viewer.control, false) end
+    local viewport_destroyed = false
+    if active_world then
+        local ok, destroyed = pcall(function()
+            if ScriptWorld.has_viewport(active_world, right_viewport_name) then
+                ScriptWorld.destroy_viewport(active_world, right_viewport_name)
+                return true
+            end
+            return false
+        end)
+        viewport_destroyed = ok and destroyed == true
+    end
+    local disabled_ok = pcall(mod.on_disabled)
+    -- Last: restore the native module's hooked functions (older native builds
+    -- lack the export; the call then fails inside pcall).
+    local native_ok, native_result = pcall(function()
+        return ui_native_capture and tonumber(ui_native_capture.dtvr_prepare_process_exit())
+    end)
+    mod:info("DARKTIDEVR_EXIT prepared reason=%s right_viewport_destroyed=%s cleanup_ok=%s native_hooks=%s",
+        tostring(reason), tostring(viewport_destroyed), tostring(disabled_ok),
+        native_ok and tostring(native_result) or "unavailable")
 end
 
 mod.on_disabled = function()
