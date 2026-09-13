@@ -228,3 +228,25 @@ chain lightning links), clean exit (`native_hooks=20`, exit 0). Evidence:
 `artifacts/unattended/holsters-20260914/psykhanium-option-off/`. The option
 was not turned on unattended (no controller poses to drive it); worn check
 evening item 5.
+
+## Ammo count at the hand (diegetic HUD backlog), default off
+
+Commit `ecec404`: `darktidevr_ammo_readout.lua` draws the ranged weapon's
+clip and reserve (or heat) as world-space slug text beside the dominant grip,
+after the hand pose, facing the eye; amber at the stock 20 % low-ammo
+threshold or 75 % heat, red when empty or past 90 % heat. The panel's
+`slot_secondary` weapon element is skipped while the readout shows. GUI
+released on loading, score screen, disable and unload. Option `vr_ammo_readout`
+(Experimental features), default off. Test `ammo_readout`; suite 246/246.
+
+Unattended check of the drawing: dev flag `darktidevr_ammo_readout_test.flag`
+("front") places sample text 0.5 m in front of the eye regardless of the
+option. Psykhanium with the game-started viewer, eye readback requested with
+`%TEMP%\darktidevr-shared-eye-readback.request`: the left eye image
+(`artifacts/unattended/ammo-readout-20260914/shots/eye-left.png`) shows
+"12 | 180" upright, not mirrored, readable, in the stereo render; clean exit.
+(The VR-mode desktop window shows a stale loading board, so screenshots of
+the window cannot check world-space drawing.) The flag was removed afterwards.
+Not checked: placement at a tracked hand, real ammo values (the character
+held its melee weapon; no controller input), the panel element hiding. Worn
+check: evening item 6.

@@ -51,6 +51,13 @@ unattended evidence for each is in
    or reloading. Say which zones feel too high, low, far forward or small.
    Console: `DARKTIDEVR_HOLSTER armed zone=...` and `wield ...` lines.
 
+6. **Ammo count at the hand, new and off by default** (`ecec404`, Lua). Turn
+   on Mod Options > Darktide VR > Experimental features > Ammo count at the
+   hand. In the Psykhanium with a gun out: clip and reserve show just above
+   and inside the weapon hand, facing you, and the panel's weapon block for
+   the gun is gone; firing and reloading update it; amber when low, red when
+   empty; plasma or staff heat shows as a percentage. Say if it is too big,
+   too close or in the way of the sights.
 ## Assumptions and questions for the evening review
 
 - Held-item effects (item 3) were deployed on static reading and unit tests
