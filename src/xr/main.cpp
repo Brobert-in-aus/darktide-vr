@@ -1222,6 +1222,8 @@ class OpenXrProbe {
     std::uint32_t capture_updates{};
     std::uint32_t capture_stale_frames{};
     std::uint32_t flat_fallback_frames{};
+    std::uint64_t menu_crop_clamped_frames{};
+    bool menu_crop_clamp_logged{};
     std::uint32_t flat_fallback_transitions{};
     bool flat_fallback_active{};
     std::optional<darktidevr::core::SharedPresentationState>
@@ -2904,15 +2906,46 @@ class OpenXrProbe {
             menu_source.pResource = opened_menu->texture.Get();
             menu_source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
             menu_source.SubresourceIndex = 0;
-            const D3D12_BOX menu_crop{
-                presentation_state.crop_x,
-                presentation_state.crop_y,
-                0,
-                presentation_state.crop_x + presentation_state.crop_width,
-                presentation_state.crop_y + presentation_state.crop_height,
-                1};
-            command_list->CopyTextureRegion(&flat_destination, 0, 0, 0,
-                                            &menu_source, &menu_crop);
+            // The published crop can describe the next canvas before the menu
+            // texture is reattached (loading screen to gameplay, 14
+            // September): a box outside the source or the destination made
+            // Close fail with E_INVALIDARG and killed the viewer. Clamp to
+            // both textures and skip an empty copy.
+            const auto menu_description = opened_menu->texture->GetDesc();
+            const auto flat_description = flat_resource->GetDesc();
+            const auto menu_width = static_cast<UINT>(menu_description.Width);
+            const auto menu_height = menu_description.Height;
+            const UINT crop_left = std::min(presentation_state.crop_x, menu_width);
+            const UINT crop_top = std::min(presentation_state.crop_y, menu_height);
+            UINT crop_right = std::min(
+                presentation_state.crop_x + presentation_state.crop_width, menu_width);
+            UINT crop_bottom = std::min(
+                presentation_state.crop_y + presentation_state.crop_height, menu_height);
+            crop_right = std::min(
+                crop_right, crop_left + static_cast<UINT>(flat_description.Width));
+            crop_bottom = std::min(crop_bottom, crop_top + flat_description.Height);
+            const D3D12_BOX menu_crop{crop_left, crop_top, 0, crop_right, crop_bottom, 1};
+            const bool crop_clamped =
+                crop_right - crop_left != presentation_state.crop_width ||
+                crop_bottom - crop_top != presentation_state.crop_height;
+            if (crop_clamped) {
+              ++menu_crop_clamped_frames;
+              if (!menu_crop_clamp_logged) {
+                menu_crop_clamp_logged = true;
+                std::cout << "openxr.shared_menu_crop_clamped frame=" << frame
+                          << " crop=" << presentation_state.crop_x << ","
+                          << presentation_state.crop_y << ","
+                          << presentation_state.crop_width << "x"
+                          << presentation_state.crop_height
+                          << " source=" << menu_width << "x" << menu_height
+                          << " destination=" << flat_description.Width << "x"
+                          << flat_description.Height << '\n';
+              }
+            }
+            if (crop_right > crop_left && crop_bottom > crop_top) {
+              command_list->CopyTextureRegion(&flat_destination, 0, 0, 0,
+                                              &menu_source, &menu_crop);
+            }
             if (menu_readback && !menu_readback_logged) {
               D3D12_TEXTURE_COPY_LOCATION destination{};
               destination.pResource = menu_readback.Get();
