@@ -15153,13 +15153,24 @@ mod.toggle_scan_test = function()
         mod:echo("No player unit; the scan hologram check needs a spawned character.")
         return
     end
+    -- The scanning auspex uses the scanner_equip template. The F7 display
+    -- check's auspex_scanner is the decoding device, which the game marks
+    -- not player-wieldable, so the scanner button could not bring it out.
     local slot = loadout._equipment and loadout._equipment.slot_device
-    if not (slot and slot.item) then
-        local item = scanner_test_item()
+    if not (slot and slot.item and slot.item.weapon_template == "scanner_equip") then
+        local ok_items, MasterItems = pcall(require, "scripts/backend/master_items")
+        local item
+        for name, candidate in pairs(ok_items and MasterItems.get_cached() or {}) do
+            if type(candidate) == "table" and candidate.weapon_template == "scanner_equip" and
+                    (not item or name < item.name) then
+                item = candidate
+            end
+        end
         if not item then
-            mod:echo("No auspex item in the catalogue.")
+            mod:echo("No scanning auspex (scanner_equip) in the catalogue.")
             return
         end
+        mod:info("DARKTIDEVR_SCANNER_HOLO test_item=%s", tostring(item.name))
         local ok, err = pcall(PlayerUnitVisualLoadout.equip_item_to_slot, unit, item, "slot_device", nil, t)
         if not ok then
             mod:echo("Equipping the auspex failed: " .. tostring(err))

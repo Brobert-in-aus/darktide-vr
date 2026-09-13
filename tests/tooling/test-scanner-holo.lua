@@ -84,4 +84,7 @@ assert(main:find("presentation.scanner_holo.test_zone = false", state, true), "t
 local toggle = assert(main:find("mod.toggle_scan_test = function", 1, true))
 local toggle_end = assert(main:find('mod:command("dtvr_scan_test"', toggle, true))
 assert(not main:sub(toggle, toggle_end):find("wield_slot", 1, true), "scan test writes a wield")
+-- It hands out the scanning auspex, not the not-wieldable decoding device.
+assert(main:sub(toggle, toggle_end):find('weapon_template == "scanner_equip"', 1, true), "scan test item is not scanner_equip")
+assert(not main:sub(toggle, toggle_end):find("scanner_test_item()", 1, true), "scan test uses the decoding auspex")
 print("scanner_holo=pass replaced_after_hand_pose dt0 auspex_only log_per_scan failure_contained test_zone")
