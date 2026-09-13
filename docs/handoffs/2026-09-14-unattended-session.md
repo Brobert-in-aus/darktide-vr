@@ -226,8 +226,31 @@ no holster line, no error, `DARKTIDEVR_HELD_EFFECTS placed
 class=ChainLightningLinkEffects` with no fallback (the character's weapon has
 chain lightning links), clean exit (`native_hooks=20`, exit 0). Evidence:
 `artifacts/unattended/holsters-20260914/psykhanium-option-off/`. The option
-was not turned on unattended (no controller poses to drive it); worn check
-evening item 5.
+was not turned on through the option; see the synthetic run below. Worn
+check: evening item 5.
+
+Synthetic reach run (`fed373f`, `6c1a2b2`): the synthetic controller
+publisher's new `--holster-path` moves the right hand to each zone centre and
+squeezes grip, and `darktidevr_holsters_test.flag` turns holsters on without
+the saved option. The game ran with no viewer, in the Psykhanium, with the
+flag removed afterwards.
+- First run: the shoulder zone armed and the ranged weapon came out
+  (`wielded_slot=slot_secondary previous=slot_primary`), but no other zone
+  armed.
+- A trace line showed why: zones were scaled by the character's in-world eye
+  height (1.90 m), while tracked hands move in physical metres, so the hip
+  point (-0.58 m) was outside the hip zone (-0.72 m, radius 0.14). Fixed to
+  the headset's standing eye height (1.70 m from the publisher, times the
+  character scale).
+- After the fix, over about 35 s:
+  - right shoulder: the ranged weapon came out four times;
+  - left hip: melee came out four times;
+  - left and right chest and right hip: resolved (`ready`) and passed through
+    with no request, because this character carries no stim, item or device;
+  - the shoulder zone with the gun already out passed through.
+  Clean exit. Evidence: `artifacts/unattended/holsters-20260914/synthetic-psykhanium-physical-scale/`.
+  Not covered: the left hand, both hands at once, two-hand support
+  interplay, zones for items the character does not carry.
 
 ## Ammo count at the hand (diegetic HUD backlog), default off
 

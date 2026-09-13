@@ -2177,6 +2177,13 @@ class OpenXrProbe {
         }
       }
       poll_session_events();
+      // A stop reported now must not start another frame: Virtual Desktop
+      // still reports shouldRender while it stops, and the frame then failed
+      // ID3D12GraphicsCommandList::Close(theatre) with E_INVALIDARG (14
+      // September, headset unworn). The loop top ends the session and waits.
+      if (runtime_stop_pending_ && !runtime_exit_requested_) {
+        continue;
+      }
       XrFrameWaitInfo wait_info{XR_TYPE_FRAME_WAIT_INFO};
       XrFrameState frame_state{XR_TYPE_FRAME_STATE};
       frame_stage_timing.elapsed(FrameStage::PairWait, pair_wait_start);
@@ -2199,8 +2206,13 @@ class OpenXrProbe {
       darktidevr::math::Pose current_head{};
       bool current_head_valid{};
       const auto tracking_start = std::chrono::steady_clock::now();
+      // Render only while the session is visible; a session going
+      // SYNCHRONIZED on its way to STOPPING gets empty frames.
+      const bool session_visible = session_state_ == XR_SESSION_STATE_VISIBLE ||
+                                   session_state_ == XR_SESSION_STATE_FOCUSED;
       bool submit_layer = update_tracking(frame_state.predictedDisplayTime,
-          frame_state.shouldRender == XR_TRUE, current_head, current_head_valid);
+          frame_state.shouldRender == XR_TRUE && session_visible,
+          current_head, current_head_valid);
       frame_stage_timing.elapsed(FrameStage::Tracking, tracking_start);
       bool submitted_shared_pair_this_frame{};
       bool submitted_cached_pair_this_frame{};

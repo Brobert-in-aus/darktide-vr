@@ -55,9 +55,11 @@ unattended evidence for each is in
    on Mod Options > Darktide VR > Experimental features > Ammo count at the
    hand. In the Psykhanium with a gun out: clip and reserve show just above
    and inside the weapon hand, facing you, and the panel's weapon block for
-   the gun is gone; firing and reloading update it; amber when low, red when
-   empty; plasma or staff heat shows as a percentage. Say if it is too big,
-   too close or in the way of the sights.
+   the gun is gone. As the clip runs down the count goes from white through
+   yellow to orange, red at 0 (`a18217f`); reloading fills a ring around it;
+   sprinting mid-reload shakes the count and the ring disappears. Plasma or
+   staff heat shows as a percentage. Say if it is too big, too close or in
+   the way of the sights.
 ## Assumptions and questions for the evening review
 
 - Held-item effects (item 3) were deployed on static reading and unit tests
@@ -65,8 +67,10 @@ unattended evidence for each is in
   only move effects that already exist; if one looks wrong, the log line
   names the class.
 - Virtual holster zone positions (item 5) are first guesses from typical
-  body proportions, not measured on the user; no synthetic pose trace was run,
-  so only the unit tests show which zone a pose resolves to.
+  body proportions, not measured on the user. A synthetic reach run showed the
+  shoulder and left hip zones wielding the ranged and melee weapons in game;
+  the stim, carried-item and device zones only resolved (that character had
+  none).
 - Chat-close hitch: measured as the stock game's own with DLSS Frame
   Generation on (flat, no mod: 125 ms). Recorded as a known issue tied to
   frame generation on your pointer; not confirmed with frame generation off,
