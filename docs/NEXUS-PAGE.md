@@ -1,4 +1,4 @@
-# Nexus Mods page text (12 September 2026, updated for 0.1.0-alpha.2 on 13 September)
+# Nexus Mods page text (12 September 2026, updated for 0.1.0-alpha.3 on 13 September)
 
 Paste-ready sections for the Nexus page. Keep the claims in step with
 USER-GUIDE.md; anything not listed under "What works" has not been checked
@@ -50,7 +50,11 @@ like any other Darktide mod and is launched through Steam as usual.
 - Markers pinned to the edge of view, interaction markers and markers
   beyond the eighth on screen can double at their far edge near the edge of
   view.
-- Chat on the HUD panel is small, and the HUD editor cannot move it yet.
+- Moving chat with the HUD editor is untested; opening chat causes a brief
+  stutter.
+- Ground previews (such as the Skitarii flamethrower skull's) need Decals on
+  in the graphics settings; weapon charge meters sit at the HUD panel's
+  centre rather than around the crosshair.
 - The game is graphically heavy; expect to lower settings and streaming
   resolution for an acceptable frame rate.
 - Tested on one machine (RTX 4090, Quest 3, Virtual Desktop). Other GPUs,
@@ -92,6 +96,24 @@ the Psykhanium and part of a mission.
   it at the native frame rate; other GPUs untested).
 - Optional: Custom HUD (continued), for HUD layout editing (tested with
   2.1.6; the original Custom HUD is untested).
+
+## Changelog post: 0.1.0-alpha.3
+
+For the Nexus changelog and the Posts tab. Matches CHANGELOG.md.
+
+- Menus with keyboard-only hotkeys now use controller buttons (E is Y, Q is
+  X). On the end of mission screen the right trigger continues.
+- The survival-mode buff choice opens on the menu panel: point and hold the
+  right trigger to pick.
+- The auspex scanner comes out even when its button also cycles your carried
+  items; one button steps through scanner, ammo crate and stim in turn.
+- Every weapon and item aims with the same pitch, so the crosshair no longer
+  jumps when switching (the option is now "Aim pitch angle").
+- Chat shows on the HUD panel, including when Custom HUD had saved a position
+  for it.
+- Fixed: a crash at the end of a mission; holding the right trigger skips
+  cutscenes again; the scan hologram sits on the scanner; weapon charge
+  meters no longer move against your head.
 
 ## Changelog post: 0.1.0-alpha.2
 

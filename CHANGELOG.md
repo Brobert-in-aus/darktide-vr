@@ -17,8 +17,8 @@ runtime package records the exact source revision alongside the version.
   (auspex scanner) first, then ammo crate and stim, then back to the weapon
   if quick wield is on the same button. The default Y brings out the scanner
   and cycles on to your carried items.
-- Chat on the HUD panel is drawn at the HUD's size and has a box in the HUD
-  editor.
+- Chat shows on the HUD panel at the HUD's size, including when Custom HUD
+  had saved a position for it.
 - Every weapon and item aims with the same pitch, so the crosshair no longer
   jumps when switching between guns, melee, staffs and blitz. The option is
   now "Aim pitch angle" (default -10).

@@ -161,7 +161,8 @@ Options, Darktide VR, Experimental features, "Keyboard and mouse in VR".
 - Markers pinned to the edge of your view, interaction markers and any
   markers beyond the eighth on screen still use the older per-eye drawing,
   and can double at their far edge near the edge of your view.
-- Chat on the HUD panel is small, and the HUD editor cannot move it yet.
+- Moving chat with the HUD editor is untested; opening chat causes a brief
+  stutter.
 - Ground previews, such as the Skitarii flamethrower skull's target area,
   are decals: keep Decals on in the game's graphics settings or they do not
   show.
