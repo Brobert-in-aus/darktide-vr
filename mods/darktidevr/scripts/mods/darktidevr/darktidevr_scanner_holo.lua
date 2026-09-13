@@ -6,8 +6,47 @@
 -- After the hand pose, run the placement again with dt 0 and the same t: its
 -- smoothing, sound, light and outline state stand still, so only the hologram
 -- unit poses change.
+--
+-- Other held-item effects sample hand or item nodes at the same moment and
+-- get the same late placement (queue 14 September; static read in the
+-- unattended session handover). Each placer only moves effects that already
+-- exist; none creates, destroys, spawns impacts or advances timers:
+-- - flamer stream: move the stream from the muzzle along the stock aim
+--   rotation (the full update would queue impacts and lerp sound);
+-- - chain lightning links: move the existing links (the full update picks new
+--   targets with math.random);
+-- - chain lightning and wind slash hand effects: the stock placement at dt 0
+--   (it creates only when missing and compares times);
+-- - riot shield windup loop: move it and set its length.
+-- Not fixable here: one-shot bursts (shout, shield activation) spawn before
+-- the hand pose and are not tracked afterwards.
 local ScannerHolo = {}
 local CLASS_NAME = "AuspexScanningEffects"
+
+local function stock_placement(script, unit, t)
+    script:update_unit_position(unit, 0, t)
+end
+
+ScannerHolo.PLACERS = {
+    AuspexScanningEffects = stock_placement,
+    ChainLightningAbilityHandEffects = stock_placement,
+    ForceWeaponWindSlashActivationEffects = stock_placement,
+    ChainLightningLinkEffects = function(script, unit, t)
+        script:_update_fx(t)
+    end,
+    FlamerGasEffects = function(script)
+        local effect_id = script._stream_effect_id
+        if not effect_id then return end
+        local pose = script._fx_extension:vfx_spawner_pose(script._fx_source_name)
+        local direction = Quaternion.forward(script._first_person_component.rotation)
+        World.move_particles(script._world, effect_id, Matrix4x4.translation(pose), Quaternion.look(direction))
+    end,
+    RiotShieldEffects = function(script)
+        if script._looping_windup_effect_id then
+            script:_update_windup_vfx_loop()
+        end
+    end,
+}
 
 function ScannerHolo.scripts(unit)
     local loadout = unit and ScriptUnit.has_extension(unit, "visual_loadout_system")
@@ -19,6 +58,7 @@ end
 function ScannerHolo.install(mod)
     local api = {placements = 0, failures = 0, test_zone = false}
     local logged_scan = false
+    local logged_classes = {}
 
     function api.place(unit, t)
         local scripts = ScannerHolo.scripts(unit)
@@ -27,12 +67,20 @@ function ScannerHolo.install(mod)
         for i = 1, #scripts do
             local script = scripts[i]
             -- A deleted script raises on any field other than these raw ones.
-            if type(script) == "table" and not rawget(script, "__deleted") and
-                    script.__class_name == CLASS_NAME and script.update_unit_position then
-                local holo = script._player_holo_unit
+            local class_name = type(script) == "table" and not rawget(script, "__deleted") and script.__class_name
+            local placer = class_name and ScannerHolo.PLACERS[class_name]
+            if placer then
+                local holo = class_name == CLASS_NAME and script._player_holo_unit
                 local before = holo and Unit.alive(holo) and Unit.local_position(holo, 1)
-                local ok, err = pcall(script.update_unit_position, script, unit, 0, t)
-                if ok then
+                local ok, err = pcall(placer, script, unit, t)
+                if ok and class_name ~= CLASS_NAME then
+                    placed = placed + 1
+                    api.placements = api.placements + 1
+                    if not logged_classes[class_name] then
+                        logged_classes[class_name] = true
+                        mod:info("DARKTIDEVR_HELD_EFFECTS placed class=%s", class_name)
+                    end
+                elseif ok then
                     placed = placed + 1
                     api.placements = api.placements + 1
                     local scanning = script._is_screen_enabled == true
@@ -51,7 +99,7 @@ function ScannerHolo.install(mod)
                 else
                     api.failures = api.failures + 1
                     if api.failures == 1 then
-                        mod:info("DARKTIDEVR_SCANNER_HOLO fallback=%s", tostring(err):sub(1, 160))
+                        mod:info("DARKTIDEVR_SCANNER_HOLO fallback=%s class=%s", tostring(err):sub(1, 160), class_name)
                     end
                 end
             end

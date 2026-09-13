@@ -29,7 +29,7 @@ function auspex.update_unit_position(self, unit, dt, t)
     calls[#calls + 1] = {unit = unit, dt = dt, t = t}
     positions[holo] = vec(0, 0, 1.084)
 end
-local other = {__class_name = "FlamerGasEffects", update_unit_position = function() error("other script re-run") end}
+local other = {__class_name = "WeaponShoutEffects", update_unit_position = function() error("other script re-run") end}
 local deleted = setmetatable({__class_name = "AuspexScanningEffects", __deleted = true},
     {__index = function() error("deleted script touched") end})
 loadout._wieldable_slot_scripts.slot_device = {other, deleted, auspex}
@@ -62,6 +62,49 @@ assert(#calls == before)
 auspex.update_unit_position = function() error("retired holo") end
 assert(api.place("player", 14) == 0 and api.place("player", 14) == 0)
 assert(api.failures == 2 and #infos == 3 and infos[3]:find("DARKTIDEVR_SCANNER_HOLO fallback=", 1, true))
+
+-- Other held-item effects: each placer only moves what exists.
+do
+    local moves, fx_updates, stock_calls, windups = {}, {}, {}, 0
+    World = {move_particles = function(world, id, position, rotation)
+        moves[#moves + 1] = {world = world, id = id, position = position, rotation = rotation}
+    end}
+    Matrix4x4 = {translation = function(pose) return pose.translation end}
+    Quaternion = {forward = function(q) return q.forward end, look = function(direction) return {look = direction} end}
+    local flamer = {__class_name = "FlamerGasEffects", _world = "world", _fx_source_name = "_muzzle",
+        _fx_extension = {vfx_spawner_pose = function(_, name) assert(name == "_muzzle"); return {translation = "muzzle_after_ik"} end},
+        _first_person_component = {rotation = {forward = "aim_forward"}},
+        update_unit_position = function() error("flamer full update re-run") end,
+        _update_effects = function() error("flamer effects update re-run") end}
+    local links = {__class_name = "ChainLightningLinkEffects",
+        update_unit_position = function() error("link targets re-picked") end,
+        _update_fx = function(_, t) fx_updates[#fx_updates + 1] = t end}
+    local hand = {__class_name = "ChainLightningAbilityHandEffects",
+        update_unit_position = function(_, unit, dt, t) stock_calls[#stock_calls + 1] = {unit, dt, t} end}
+    local slash = {__class_name = "ForceWeaponWindSlashActivationEffects",
+        update_unit_position = function(_, unit, dt, t) stock_calls[#stock_calls + 1] = {unit, dt, t} end}
+    local shield = {__class_name = "RiotShieldEffects",
+        update = function() error("shield update re-run") end,
+        _update_windup_vfx_loop = function() windups = windups + 1 end}
+    loadout._wieldable_slot_scripts.slot_primary = {flamer, links, hand, slash, shield}
+    loadout._inventory_component.wielded_slot = "slot_primary"
+    local logs = #infos
+    -- Not firing, no windup: the flamer and shield move nothing.
+    assert(api.place("player", 20) == 5)
+    assert(#moves == 0 and windups == 0)
+    assert(#fx_updates == 1 and fx_updates[1] == 20)
+    assert(#stock_calls == 2 and stock_calls[1][1] == "player" and stock_calls[1][2] == 0 and stock_calls[1][3] == 20)
+    -- One log per class, not per frame.
+    assert(#infos == logs + 5 and infos[logs + 1]:find("DARKTIDEVR_HELD_EFFECTS placed class=FlamerGasEffects", 1, true), infos[logs + 1])
+    -- Firing and winding up: the stream moves to the posed muzzle along the aim.
+    flamer._stream_effect_id = 7
+    shield._looping_windup_effect_id = 3
+    api.place("player", 20.1)
+    assert(#moves == 1 and moves[1].world == "world" and moves[1].id == 7)
+    assert(moves[1].position == "muzzle_after_ik" and moves[1].rotation.look == "aim_forward")
+    assert(windups == 1 and #infos == logs + 5)
+    loadout._inventory_component.wielded_slot = "slot_device"
+end
 
 -- Scanning zone stand-in.
 assert(hooks.path == "scripts/extension_systems/mission_objective_zone/mission_objective_zone_system")
