@@ -472,27 +472,46 @@ do
     saved,writes=migrated({})
     assert(#writes==1 and saved.vr_bindings_xy_swapped==true and saved.vr_action_bind_crouch==nil)
 end
--- The carried-item cycle with an equipped device as its first item.
+-- A press selecting several wield targets is a cycle over them, device first,
+-- then pocketable, small pocketable and (with quick wield) the weapon; it
+-- keeps one direct selector.
 do
-    local DEVICE, CYCLE, JUMP = 262144, 524288, 32
+    local QUICK, POCKETABLE, STIM, DEVICE, CYCLE, JUMP = 16, 65536, 131072, 262144, 524288, 32
     local function inv(wielded, device, pocketable, small)
         return {wielded_slot=wielded, slot_device=device and 'auspex' or 'not_equipped',
             slot_pocketable=pocketable and 'ammo' or 'not_equipped',
             slot_pocketable_small=small and 'stim' or 'not_equipped'}
     end
-    local press = Bindings.device_cycle_press
+    local press = Bindings.wield_press
     local shared = DEVICE + CYCLE
+    -- Default Y (device and item cycle).
     assert(press(shared, inv('slot_primary', true, true, true)) == DEVICE, 'a weapon held brings out the device')
     assert(press(CYCLE, inv('slot_secondary', true, true, true)) == DEVICE, 'the cycle alone starts at the device')
-    assert(press(shared, inv('slot_device', true, true, true)) == CYCLE, 'the device cycles on to the pocketable')
-    assert(press(shared, inv('slot_pocketable', true, true, true)) == CYCLE, 'the pocketable cycles to the small one')
+    assert(press(shared, inv('slot_device', true, true, true)) == POCKETABLE, 'the device steps to the pocketable')
+    assert(press(shared, inv('slot_pocketable', true, true, true)) == STIM, 'the pocketable steps to the small one')
     assert(press(shared, inv('slot_pocketable_small', true, true, true)) == DEVICE, 'the small pocketable wraps to the device')
     assert(press(shared, inv('slot_pocketable', true, true, false)) == DEVICE, 'an empty small slot is skipped')
-    assert(press(shared, inv('slot_device', true, false, true)) == CYCLE, 'the device reaches an only small pocketable')
+    assert(press(shared, inv('slot_device', true, false, true)) == STIM, 'the device reaches an only small pocketable')
     assert(press(shared, inv('slot_device', true, false, false)) == DEVICE, 'nothing else to cycle to keeps the device')
-    assert(press(shared, inv('slot_primary', false, true, true)) == shared, 'without a device the stock press is unchanged')
+    assert(press(shared, inv('slot_primary', false, true, true)) == POCKETABLE, 'without a device the cycle starts at the pocketable')
+    assert(press(shared + JUMP, inv('slot_device', true, true, true)) == POCKETABLE + JUMP, 'other actions in the press stay')
+    -- Single selectors and the device-less cycle keep stock behaviour.
     assert(press(DEVICE, inv('slot_primary', true, true, true)) == DEVICE, 'a device-only press is unchanged')
-    assert(press(shared + JUMP, inv('slot_device', true, true, true)) == CYCLE + JUMP, 'other actions in the press stay')
-    assert(press(shared, nil) == shared)
+    assert(press(CYCLE, inv('slot_pocketable', false, true, true)) == CYCLE, 'the stock cycle without a device is unchanged')
+    assert(press(QUICK, inv('slot_device', true, true, true)) == QUICK, 'quick wield alone is unchanged')
+    -- Stim and ammo crate on one button alternate.
+    assert(press(POCKETABLE + STIM, inv('slot_primary', true, true, true)) == POCKETABLE, 'from a weapon the first selected item')
+    assert(press(POCKETABLE + STIM, inv('slot_pocketable', true, true, true)) == STIM)
+    assert(press(POCKETABLE + STIM, inv('slot_pocketable_small', true, true, true)) == POCKETABLE,
+        'selected items only: the device is not in this cycle')
+    -- Quick wield on an item button is the last step, back to the weapon.
+    assert(press(QUICK + STIM, inv('slot_primary', true, true, true)) == STIM)
+    assert(press(QUICK + STIM, inv('slot_pocketable_small', true, true, true)) == QUICK, 'the item steps back to the weapon')
+    assert(press(QUICK + CYCLE, inv('slot_pocketable_small', true, true, true)) == QUICK)
+    assert(press(QUICK + STIM, inv('slot_primary', true, true, false)) == QUICK, 'no item equipped leaves the weapon swap')
+    -- The item cycle with a direct item on the same button stays one selector.
+    local mixed = press(CYCLE + STIM, inv('slot_device', true, true, true))
+    assert(mixed == POCKETABLE, 'cycle plus a direct item still delivers one selector')
+    assert(press(shared, nil) == shared and press(JUMP, inv('slot_primary', true, true, true)) == JUMP)
 end
 print('push_to_talk_binding=pass default_unassigned physical-only aliases and release')

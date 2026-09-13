@@ -6258,19 +6258,19 @@ function presentation.quick_wield_names(names)
     return {last_wielded_weapon_slot == "slot_primary" and "wield_1" or "wield_2"}
 end
 
--- A press carrying the carried-item cycle treats an equipped device as the
--- cycle's first item (Bindings.device_cycle_press): from a weapon it brings
--- out the device, from the device it cycles on. A press also selecting the
--- device used to resolve to the stock cycle, so the scanner never came out.
+-- A press selecting several wield targets becomes a cycle over them, device
+-- first (Bindings.wield_press); the game would apply only one of the wield
+-- inputs, not a chosen one.
 function presentation.device_wield_precedence(pressed, player_unit)
     local bindings = presentation.controller_bindings
-    if not bindings or not bindings.device_cycle_press or bit.band(pressed, 524288) == 0 then
+    if not bindings or not bindings.wield_press or
+            bit.band(pressed, 16 + 65536 + 131072 + 262144 + 524288) == 0 then
         return pressed
     end
     local ok, result = pcall(function()
         local unit_data = ScriptUnit.has_extension(player_unit, "unit_data_system")
         local inventory = unit_data and unit_data:read_component("inventory")
-        return bindings.device_cycle_press(pressed, inventory)
+        return bindings.wield_press(pressed, inventory)
     end)
     return ok and result or pressed
 end

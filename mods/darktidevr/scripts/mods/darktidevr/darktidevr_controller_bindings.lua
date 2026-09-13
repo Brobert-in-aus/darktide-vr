@@ -105,40 +105,52 @@ local function swap_saved_xy(mod)
 end
 Bindings.swap_saved_xy=swap_saved_xy
 
--- The carried-item cycle with an equipped device as its first item. The stock
--- cycle (wield_3_gamepad) only alternates the two pocketable slots, and a
--- press also selecting the device (wield_5) resolved to the cycle. With a
--- device equipped, a press carrying the cycle steps device -> pocketable ->
--- small pocketable -> device, skipping empty slots; from outside the cycle
--- (a weapon) it brings out the device. Returns the press with only the
--- selector that reaches that slot. `inventory` holds the inventory
--- component's wielded_slot and slot_* item names ("not_equipped" when empty).
-local DEVICE_BIT, CYCLE_BIT = 262144, 524288
-function Bindings.device_cycle_press(pressed, inventory)
-    if not inventory or bit.band(pressed, CYCLE_BIT) == 0 then return pressed end
+-- One press may select several wield targets (a shared button: device and
+-- item cycle, stim and ammo crate, quick wield and an item). The game applies
+-- only one of several wield inputs, not a chosen one, so the scanner never came
+-- out on the default Y. Such a press becomes a cycle over exactly the targets
+-- it selects: device, pocketable, small pocketable, then the weapon when quick
+-- wield is on the button (the item cycle selects all three item slots). Empty
+-- slots are skipped; holding one of the steps moves to the next, anything else
+-- starts at the first. The press keeps a single direct selector for the chosen
+-- step. A single selector, and the item cycle alone without a device, keep
+-- their stock behaviour. `inventory` holds the inventory component's
+-- wielded_slot and slot_* item names ("not_equipped" when empty).
+local QUICK_BIT, POCKETABLE_BIT, STIM_BIT, DEVICE_BIT, CYCLE_BIT = 16, 65536, 131072, 262144, 524288
+local SELECTOR_BITS = QUICK_BIT + POCKETABLE_BIT + STIM_BIT + DEVICE_BIT + CYCLE_BIT
+Bindings.SELECTOR_BITS = SELECTOR_BITS
+function Bindings.wield_press(pressed, inventory)
+    local selected = bit.band(pressed, SELECTOR_BITS)
+    if not inventory or selected == 0 then return pressed end
+    local function has(selector) return bit.band(selected, selector) ~= 0 end
     local function equipped(slot)
         local item = inventory[slot]
         return item ~= nil and item ~= "not_equipped"
     end
-    if not equipped("slot_device") then return pressed end
-    local order = {"slot_device", "slot_pocketable", "slot_pocketable_small"}
-    local current
-    for index, slot in ipairs(order) do
-        if inventory.wielded_slot == slot then current = index end
+    local count = 0
+    for _, selector in ipairs({QUICK_BIT, POCKETABLE_BIT, STIM_BIT, DEVICE_BIT, CYCLE_BIT}) do
+        if has(selector) then count = count + 1 end
     end
-    local target = "slot_device"
-    if current then
-        for step = 1, #order do
-            local slot = order[(current + step - 1) % #order + 1]
-            if equipped(slot) then target = slot; break end
+    local cycle = has(CYCLE_BIT)
+    if count == 1 and (not cycle or not equipped("slot_device")) then return pressed end
+    local steps = {}
+    for _, step in ipairs({{slot = "slot_device", selector = DEVICE_BIT},
+            {slot = "slot_pocketable", selector = POCKETABLE_BIT},
+            {slot = "slot_pocketable_small", selector = STIM_BIT}}) do
+        if (cycle or has(step.selector)) and equipped(step.slot) then steps[#steps + 1] = step end
+    end
+    if has(QUICK_BIT) then steps[#steps + 1] = {weapon = true, selector = QUICK_BIT} end
+    if #steps == 0 then return pressed end
+    local wielded = inventory.wielded_slot
+    local current
+    for index, step in ipairs(steps) do
+        if step.slot == wielded or
+                (step.weapon and (wielded == "slot_primary" or wielded == "slot_secondary")) then
+            current = index
         end
     end
-    local without = bit.band(pressed, bit.bnot(DEVICE_BIT + CYCLE_BIT))
-    if target == "slot_device" then return bit.bor(without, DEVICE_BIT) end
-    -- The stock cycle reaches the pocketable from the device and the small
-    -- pocketable from the pocketable; from the device with only a small
-    -- pocketable equipped it picks that.
-    return bit.bor(without, CYCLE_BIT)
+    local target = current and steps[current % #steps + 1] or steps[1]
+    return bit.bor(bit.band(pressed, bit.bnot(SELECTOR_BITS)), target.selector)
 end
 
 function Bindings.widgets(mod)
@@ -199,7 +211,7 @@ end
 function Bindings.install(mod)
     swap_saved_xy(mod)
     local api = {held=0,bindings={},revision=0,context="combat",
-        device_cycle_press=Bindings.device_cycle_press,
+        wield_press=Bindings.wield_press,
         support_grip={held=false,pressed=false,released=false,cancelled=false}}
     local previous_physical, grip_claim = 0, nil
     local previous_contributors=0
@@ -309,7 +321,7 @@ function Bindings.install(mod)
                 for _,conflict in ipairs(conflicts) do
                     local names={}
                     for _,id in ipairs(conflict.actions) do names[#names+1]=label('vr_action_'..id) end
-                    mod:echo('%s bindings: %s is assigned to %s. Simultaneous wield requests can select only one.',
+                    mod:echo('%s bindings: %s is assigned to %s. Each press steps through them in turn (device, ammo crate, stim, then weapon).',
                         api.context,label('vr_bind_'..conflict.control),table.concat(names,' / '))
                 end
             end
