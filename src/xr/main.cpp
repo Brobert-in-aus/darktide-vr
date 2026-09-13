@@ -1642,6 +1642,8 @@ class OpenXrProbe {
     };
     auto next_stop_file_poll = start;
     auto next_capture_source_poll = start;
+    std::uint32_t runtime_stop_pauses{};
+    runtime_stop_resumable_ = true;
     for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
       if (duration && std::chrono::steady_clock::now() - start >= *duration) {
         break;
@@ -1659,6 +1661,54 @@ class OpenXrProbe {
       }
       // A runtime-initiated stop must end the loop through the normal
       // cleanup instead of failing the next frame call.
+      if (runtime_stop_pending_ && !runtime_exit_requested_) {
+        // Headset asleep: end the session, keep the swapchains and wait for
+        // READY, still honouring the stop file, the game window and the
+        // duration; then begin again and carry on with the next frame.
+        runtime_stop_pending_ = false;
+        check_xr(xrEndSession(session_), "xrEndSession(runtime stop)");
+        session_running_ = false;
+        ++runtime_stop_pauses;
+        std::cout << "openxr.session_pause=runtime_stop count="
+                  << runtime_stop_pauses << " frame=" << frame << '\n';
+        const auto pause_start = std::chrono::steady_clock::now();
+        bool resume{};
+        while (!runtime_exit_requested_) {
+          poll_session_events();
+          if (session_state_ == XR_SESSION_STATE_READY) {
+            resume = true;
+            break;
+          }
+          if (stop_file &&
+              GetFileAttributesW(stop_file->c_str()) != INVALID_FILE_ATTRIBUTES) {
+            std::cout << "openxr.stop_file=requested\n";
+            break;
+          }
+          if (window_capture && !window_capture->source_window_alive()) {
+            std::cout << "openxr.capture_window=closed session_exit=clean\n";
+            break;
+          }
+          if (duration && std::chrono::steady_clock::now() - start >= *duration) {
+            break;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (!resume) {
+          std::cout << "openxr.session_exit=paused state="
+                    << static_cast<int>(session_state_) << '\n';
+          break;
+        }
+        XrSessionBeginInfo resume_info{XR_TYPE_SESSION_BEGIN_INFO};
+        resume_info.primaryViewConfigurationType =
+            XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+        check_xr(xrBeginSession(session_, &resume_info),
+                 "xrBeginSession(theatre resume)");
+        session_running_ = true;
+        std::cout << "openxr.session_resume=ready paused_ms="
+                  << std::chrono::duration_cast<std::chrono::milliseconds>(
+                         std::chrono::steady_clock::now() - pause_start).count()
+                  << '\n';
+      }
       if (runtime_exit_requested_) {
         std::cout << "openxr.session_exit=runtime state="
                   << static_cast<int>(session_state_) << '\n';
@@ -5180,9 +5230,16 @@ class OpenXrProbe {
           session_state_ = changed->state;
           std::cout << "openxr.session_state="
                     << static_cast<int>(session_state_) << '\n';
-          if (session_state_ == XR_SESSION_STATE_STOPPING ||
-              session_state_ == XR_SESSION_STATE_EXITING ||
-              session_state_ == XR_SESSION_STATE_LOSS_PENDING) {
+          if (session_state_ == XR_SESSION_STATE_STOPPING) {
+            // The runtime stops a running session when the headset sleeps
+            // (unworn); READY follows when it wakes. Loops that can wait for
+            // that pause instead of exiting.
+            runtime_stop_pending_ = true;
+            if (!runtime_stop_resumable_) {
+              runtime_exit_requested_ = true;
+            }
+          } else if (session_state_ == XR_SESSION_STATE_EXITING ||
+                     session_state_ == XR_SESSION_STATE_LOSS_PENDING) {
             runtime_exit_requested_ = true;
           }
         }
@@ -5216,6 +5273,8 @@ class OpenXrProbe {
   }
 
   void request_clean_exit() {
+    // Our own exit request also passes through STOPPING; that one ends here.
+    runtime_stop_resumable_ = false;
     if (!session_running_) {
       return;
     }
@@ -5308,6 +5367,8 @@ class OpenXrProbe {
   XrSessionState session_state_{XR_SESSION_STATE_UNKNOWN};
   bool session_running_{};
   bool runtime_exit_requested_{};
+  bool runtime_stop_pending_{};
+  bool runtime_stop_resumable_{};
 };
 
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam,

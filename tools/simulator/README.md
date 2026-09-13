@@ -123,6 +123,25 @@ window behaviour, not the simulator display clock or rendering work. Both
 forward application on the normal source and combination with the optional
 display-prediction patch pass their patch checks.
 
+## Runtime-initiated stop (headset asleep)
+
+The optional `openxr-simulator-v1.5.0-runtime-stop.patch`, applied after the
+shutdown and refresh patches, reproduces what Virtual Desktop does when the
+headset is taken off and sleeps. With process-local
+`DTVR_SIMULATOR_STOP_FILE` set, creating that file stops the running session
+(FOCUSED, VISIBLE, SYNCHRONIZED, STOPPING) without an exit request; the
+simulator deletes the file. After the application's `xrEndSession` the
+session goes IDLE and at once READY again. An application exit request keeps
+the shutdown patch's behaviour.
+
+Built 14 September 2026, DLL SHA-256
+`f2299d3b06ad8ddea016eb530aa2e3f145603da15dcbceab4753e726647b56bf`. The
+viewer run with the play command line (no game, deferred capture window) and
+two stop requests paused and resumed twice and passed; the 12 September
+viewer exited at the first stop. Evidence: ignored
+`artifacts/unattended/viewer-runtime-stop-20260914`. The previous 144 Hz DLL
+is kept beside it as `openxr_simulator.dll.before-runtime-stop`.
+
 [Meta XR Simulator](https://developers.meta.com/horizon/documentation/native/xrsim-intro/)
 is another documented Windows D3D12 option. It has not been installed or tested
 for this project. The selected open-source simulator allows the full existing

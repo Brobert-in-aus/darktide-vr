@@ -1,0 +1,54 @@
+--- a/src/runtime.cpp
++++ b/src/runtime.cpp
+@@ -425,6 +425,7 @@ struct Session {
+     XrSession handle{(XrSession)1};
+     XrSessionState state{XR_SESSION_STATE_IDLE};
+     bool exitRequested{false};
++    bool runtimeStopped{false};
+     ComPtr<ID3D11Device> d3d11Device;
+     ComPtr<ID3D11DeviceContext> d3d11Context;
+     // DX12 support
+@@ -4084,7 +4085,12 @@ static XrResult XRAPI_PTR xrEndSession_runtime(XrSession s) {
+     rt::PushState(s, XR_SESSION_STATE_IDLE);
+     if (rt::g_session.exitRequested) {
+         rt::g_session.exitRequested = false;
++        rt::g_session.runtimeStopped = false;
+         rt::PushState(s, XR_SESSION_STATE_EXITING);
++    } else if (rt::g_session.runtimeStopped) {
++        // DTVR runtime-stop test: the "headset" is available again at once.
++        rt::g_session.runtimeStopped = false;
++        rt::PushState(s, XR_SESSION_STATE_READY);
+     }
+     return XR_SUCCESS;
+ }
+@@ -4100,6 +4106,30 @@ static XrResult XRAPI_PTR xrWaitFrame_runtime(XrSession, const XrFrameWaitInfo*,
+     if (!s) return XR_ERROR_VALIDATION_FAILURE;
+     // Message pump so the preview window stays responsive
+     MSG msg; while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
++    {
++        // DTVR runtime-stop test: when the file named by DTVR_SIMULATOR_STOP_FILE
++        // appears, stop the running session as a runtime does when the headset
++        // sleeps (FOCUSED -> VISIBLE -> SYNCHRONIZED -> STOPPING, no exit).
++        static wchar_t stopFile[MAX_PATH]{};
++        static const DWORD stopFileLength =
++            GetEnvironmentVariableW(L"DTVR_SIMULATOR_STOP_FILE", stopFile, MAX_PATH);
++        static ULONGLONG nextStopPoll = 0;
++        const ULONGLONG nowTick = GetTickCount64();
++        if (stopFileLength > 0 && stopFileLength < MAX_PATH && nowTick >= nextStopPoll) {
++            nextStopPoll = nowTick + 250;
++            if (DeleteFileW(stopFile) &&
++                rt::g_session.state >= XR_SESSION_STATE_SYNCHRONIZED &&
++                rt::g_session.state <= XR_SESSION_STATE_FOCUSED) {
++                Log("[SimXR] DTVR runtime stop");
++                rt::g_session.runtimeStopped = true;
++                if (rt::g_session.state == XR_SESSION_STATE_FOCUSED)
++                    rt::PushState(rt::g_session.handle, XR_SESSION_STATE_VISIBLE);
++                if (rt::g_session.state == XR_SESSION_STATE_VISIBLE)
++                    rt::PushState(rt::g_session.handle, XR_SESSION_STATE_SYNCHRONIZED);
++                rt::PushState(rt::g_session.handle, XR_SESSION_STATE_STOPPING);
++            }
++        }
++    }
+     static LARGE_INTEGER freq = [](){ LARGE_INTEGER f; QueryPerformanceFrequency(&f); return f; }();
+     static double periodSec = []() {
+         // Process-local benchmark clock; preserve upstream 90 Hz by default.
