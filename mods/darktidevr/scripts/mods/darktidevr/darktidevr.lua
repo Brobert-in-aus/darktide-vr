@@ -11594,6 +11594,9 @@ mod:hook_safe(
         if presentation.scanner_holo then
             presentation.scanner_holo.place(player_unit, t)
         end
+        if presentation.ammo_readout then
+            presentation.ammo_readout.draw(self._world, player_unit)
+        end
         local ik_end = performance_tick()
         if presentation_start and ik_start and ik_end and ui_native_capture then
             local weapon_ticks =
@@ -15217,6 +15220,9 @@ presentation.two_hand = mod:io_dofile(
 presentation.holsters = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_holsters"
 ).install(mod, presentation, controller_observation)
+presentation.ammo_readout = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_ammo_readout"
+).install(mod, presentation, controller_observation)
 
 mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_grenade_aim"
@@ -15625,6 +15631,7 @@ mod.on_game_state_changed = function(status, state_name)
             presentation.scanner_holo.test_zone = false
             mod.scan_test_equipped = nil
         end
+        if presentation.ammo_readout then pcall(presentation.ammo_readout.destroy) end
     end
 end
 
@@ -15665,6 +15672,7 @@ mod.on_disabled = function()
     pcall(presentation.communication_input.cancel)
     presentation.push_to_talk.cancel()
     if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
+    if presentation.ammo_readout then pcall(presentation.ammo_readout.destroy) end
     requested = false
     ui_stereo_requested = false
     presentation.melee_preview.enabled = false
@@ -15684,6 +15692,7 @@ mod.on_unload = function()
     pcall(presentation.communication_input.cancel)
     presentation.push_to_talk.cancel()
     if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
+    if presentation.ammo_readout then pcall(presentation.ammo_readout.destroy) end
     requested = false
     ui_stereo_requested = false
     presentation.melee_preview.enabled = false

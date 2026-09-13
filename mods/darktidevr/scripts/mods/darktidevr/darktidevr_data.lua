@@ -163,6 +163,11 @@ return {
                         type = "checkbox",
                         default_value = false,
                     },
+                    {
+                        setting_id = "vr_ammo_readout",
+                        type = "checkbox",
+                        default_value = false,
+                    },
                 },
             },
             mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_controller_bindings").widgets(mod),
