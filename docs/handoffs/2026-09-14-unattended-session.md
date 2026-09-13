@@ -157,6 +157,13 @@ no Lua resource work at that moment to remove; the stall is inside the
 engine's present. Not fixable in the mod as far as measured; recorded as a
 known limit. Opens cost 62-74 ms frames only with the viewer attached.
 
+Frame generation: DLSS Frame Generation was on in both the VR and the flat
+settings profiles (`dlss_g_enabled = true`) for every run above. The user
+reports (14 September) that public reports tie the chat hitch to NVIDIA frame
+generation. Not measured with it off: graphics settings are not changed
+unattended. Evening question: accept as a known issue with frame generation
+on, or allow one flat run with frame generation off to confirm.
+
 ## Held-item effects placed before the hand pose (queue item 3)
 
 Static read of the stock wieldable slot scripts (run by the visual loadout in

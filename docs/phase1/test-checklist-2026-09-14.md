@@ -60,3 +60,7 @@ unattended evidence for each is in
 - Virtual holster zone positions (item 5) are first guesses from typical
   body proportions, not measured on the user; no synthetic pose trace was run,
   so only the unit tests show which zone a pose resolves to.
+- Chat-close hitch: measured as the stock game's own with DLSS Frame
+  Generation on (flat, no mod: 125 ms). Recorded as a known issue tied to
+  frame generation on your pointer; not confirmed with frame generation off,
+  because graphics settings were not touched. Want a flat run with it off?

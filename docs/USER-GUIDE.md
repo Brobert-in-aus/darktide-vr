@@ -162,8 +162,9 @@ Options, Darktide VR, Experimental features, "Keyboard and mouse in VR".
   markers beyond the eighth on screen still use the older per-eye drawing,
   and can double at their far edge near the edge of your view.
 - Moving chat with the HUD editor is untested. Closing chat causes a brief
-  stutter: the game does this without the mod too (about an eighth of a
-  second), and in the headset it lasts about twice as long.
+  stutter when NVIDIA DLSS Frame Generation is on: the game does this without
+  the mod too (about an eighth of a second), and in the headset it lasts
+  about twice as long.
 - Ground previews, such as the Skitarii flamethrower skull's target area,
   are decals: keep Decals on in the game's graphics settings or they do not
   show.
