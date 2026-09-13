@@ -8474,6 +8474,16 @@ function presentation.physical_eye_height()
     if value and value >= 0.8 and value <= 2.4 then return value end
 end
 
+-- The latest shared head pose as published by the viewer, unconverted:
+-- OpenXR local-space position (x, y, z), orientation (qx, qy, qz, qw) and the
+-- floor eye height. For the pose trace recorder; nil before the first read.
+function presentation.head_pose_raw(out)
+    if not head_pose_values then return nil end
+    for i = 0, 6 do out[i + 1] = tonumber(head_pose_values[i]) end
+    out[8] = tonumber(head_pose_values[24])
+    return out
+end
+
 function presentation.weapon_grip_target(role)
     local side = presentation.weapon_hand_roles.physical(role)
     if side == "left" then return presentation.left_controller_grip_target() end
@@ -11603,6 +11613,9 @@ mod:hook_safe(
         end
         if presentation.ammo_readout then
             presentation.ammo_readout.draw(self._world, player_unit)
+        end
+        if presentation.pose_trace then
+            presentation.pose_trace.sample(player_unit, t)
         end
         local ik_end = performance_tick()
         if presentation_start and ik_start and ik_end and ui_native_capture then
@@ -15230,6 +15243,9 @@ presentation.holsters = mod:io_dofile(
 presentation.ammo_readout = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_ammo_readout"
 ).install(mod, presentation, controller_observation)
+presentation.pose_trace = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_pose_trace"
+).install(mod, presentation, controller_observation)
 
 mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_grenade_aim"
@@ -15639,6 +15655,7 @@ mod.on_game_state_changed = function(status, state_name)
             mod.scan_test_equipped = nil
         end
         if presentation.ammo_readout then pcall(presentation.ammo_readout.destroy) end
+        if presentation.pose_trace then presentation.pose_trace.flush() end
     end
 end
 
