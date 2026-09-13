@@ -59,6 +59,40 @@ files[SessionControl.QUIT_FLAG] = "quit"
 tick(60)
 assert(#errors == 1 and errors[1]:find("session gone", 1, true) and files[SessionControl.QUIT_FLAG] == "consumed")
 
+-- Chat cycles: "chat N" opens and closes stock chat N times, 3 s apart,
+-- logging slow frames within a second of each action; bounded to 20.
+do
+    local hooked
+    local chat_mod = {info = mod.info, error = mod.error,
+        hook_safe = function(_, class, name, fn) assert(class == "ConstantElementChat" and name == "update"); hooked = fn end}
+    Managers.state.game_mode = nil
+    local cycles = SessionControl.install(chat_mod)
+    local opens, cursor = 0, {}
+    local chat = {_input_field_widget = {content = {is_writing = false, input_text = ""}}}
+    function chat:_start_chatting(renderer) assert(renderer == "renderer"); opens = opens + 1; self._input_field_widget.content.is_writing = true end
+    function chat:_enable_mouse_cursor(value) cursor[#cursor + 1] = value end
+    files[SessionControl.QUIT_FLAG] = "chat 2"
+    for _ = 1, 30 do cycles.update() end
+    assert(files[SessionControl.QUIT_FLAG] == "consumed")
+    local before = #infos
+    local t = 10
+    local function frame(dt) t = t + dt; hooked(chat, dt, t, "renderer") end
+    frame(0.016)
+    assert(opens == 1 and chat._input_field_widget.content.is_writing)
+    frame(0.2) -- a 200 ms frame right after opening is logged
+    local spike = infos[#infos]
+    assert(spike:find("frame_spike dt_ms=200.0 since_open_ms=200.0", 1, true), spike)
+    for _ = 1, 200 do frame(0.016) end -- past the interval: closes once
+    assert(not chat._input_field_widget.content.is_writing and cursor[1] == false)
+    for _ = 1, 400 do frame(0.016) end -- open and close again, then stop
+    assert(opens == 2 and #cursor == 2)
+    for _ = 1, 400 do frame(0.016) end
+    assert(opens == 2, "cycled past the request")
+    frame(0.3) -- long after the last action: not logged
+    assert(not infos[#infos]:find("dt_ms=300", 1, true))
+    assert(#infos - before >= 5)
+end
+
 -- Viewer: an external-viewer file means no game-started viewer.
 local controls = {}
 local native = {dtvr_bootstrap_state = function() return 1 end,

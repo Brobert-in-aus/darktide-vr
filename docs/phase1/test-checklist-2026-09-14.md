@@ -15,6 +15,13 @@ unattended evidence for each is in
    no `start=skipped`). If the headset stays dark, delete
    `mods\darktidevr\darktidevr_external_viewer.flag` if it exists.
 
+2. **Closing the game no longer crashes** (`783284b`: new native module and
+   Lua). Play normally, then quit (in-game Quit, or close the window). Expect
+   no crash report or "Darktide has stopped" dialog. The console log should
+   end with `DARKTIDEVR_EXIT prepared ... native_hooks=16` or `=20` followed
+   by `[Log end]`, and no `<<Crash>>`. If the headset view freezes for a
+   moment as you quit, that is the viewer being stopped first.
+
 ## Assumptions and questions for the evening review
 
 - (none yet)

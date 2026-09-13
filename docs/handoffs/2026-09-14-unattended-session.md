@@ -76,5 +76,32 @@ Controls (title screen, window close):
 So the post-teardown fault needs the native module's installation, and is not
 caused by hooks still being active at exit, the Lua presentation objects, or
 the dummy swapchain order. The game's `EventManager [destroy]` warnings about
-leftover callbacks only log. Bisection of `install_hooks` by stage is next
-(`darktidevr_install_bisect.flag`, dev-only).
+leftover callbacks only log.
+
+Bisection (temporary `darktidevr_install_bisect.flag`, removed from the code
+afterwards): install stopped before anything, after the dummy D3D12/DXGI
+objects, or with every hook created but never enabled all exited clean. With
+hooks enabled and then selected groups disabled at once: swapchain group
+(Present, GetBuffer, GetDesc, GetDesc1, ResizeBuffers, ResizeBuffers1) off
+exited clean; command-queue group off still faulted.
+
+Cause: the native module keeps strong references to the game's swapchain
+(`game_swapchain`), its present queue (`swapchain_present_queue`) and back
+buffers (`camera_output_resources`, `menu_output_resources`,
+`present_transition_resources`, filled by the Present path). Nothing released
+them before process exit; the module's static destructors released them after
+the graphics stack had shut down.
+
+Fix (`783284b`): `dtvr_prepare_process_exit` (native) stops the viewer,
+restores the game window's own window procedure, disables all hooks, clears
+the back-buffer maps and releases the swapchain and queue; the mod calls it
+from `presentation.prepare_game_exit` on `StateGame` exit, after destroying
+the right-eye viewport in its live world and the unload cleanup. Also: the
+install's dummy swapchain is released before its window.
+
+Acceptance (unattended, final build, native SHA-256 `35AC71B5...0719`):
+three consecutive clean VR-mode exits: title window close (exit 0, result
+16), Psykhanium in-game Quit with the viewer attached (exit 0, result 20),
+hub window close (exit 0, result 20); no crash marker, no Windows Application
+Error. Before the fix every VR-mode exit faulted. Worn check: close the game
+normally in the evening and confirm no crash report.

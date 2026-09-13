@@ -24,6 +24,9 @@ param(
     [string] $RuntimeJson,
     # Other mod request files to set for this run, e.g. @{ 'darktidevr_gameplay_input_test.flag' = 'enabled' }.
     [hashtable] $RequestFiles = @{},
+    # After the scene is reached: open and close stock chat this many times
+    # through the session control request file (open-chat stutter checks).
+    [ValidateRange(0, 20)] [int] $ChatCycles = 0,
     [string] $OutputDirectory,
     [ValidateRange(60, 3600)] [int] $StartTimeoutSeconds = 900,
     [ValidateRange(10, 600)] [int] $ExitTimeoutSeconds = 180
@@ -169,6 +172,12 @@ try {
     $summary.scene_reached_seconds = [math]::Round(((Get-Date) - $launchStart).TotalSeconds, 1)
     if (-not $reached) { throw "Did not reach $Scene within $StartTimeoutSeconds s." }
 
+    if ($ChatCycles -gt 0) {
+        Set-Content -LiteralPath (Join-Path $modRoot 'darktidevr_quit_game.flag') -Value "chat $ChatCycles" -Encoding ascii
+        $summary.chat_cycles = $ChatCycles
+        $HoldSeconds = [math]::Max($HoldSeconds, $ChatCycles * 6 + 10)
+        $summary.hold_seconds = $HoldSeconds
+    }
     $holdEnd = (Get-Date).AddSeconds($HoldSeconds)
     while ((Get-Date) -lt $holdEnd) {
         Start-Sleep -Seconds 2
@@ -226,6 +235,11 @@ try {
         }
         $quit = [regex]::Match($text, 'DARKTIDEVR_SESSION quit_requested source=flag route=(\S+)')
         if ($quit.Success) { $summary.quit_route = $quit.Groups[1].Value }
+        if ($ChatCycles -gt 0) {
+            $summary.chat_actions = @([regex]::Matches($text, 'DARKTIDEVR_SESSION chat_(open|close) ') | ForEach-Object { $_.Groups[1].Value }).Count
+            $summary.chat_frame_spikes = @([regex]::Matches($text, 'DARKTIDEVR_SESSION frame_spike dt_ms=([0-9.]+) since_(open|close)_ms=([0-9.]+)') |
+                ForEach-Object { '{0} {1}ms after {2}' -f $_.Groups[1].Value, $_.Groups[3].Value, $_.Groups[2].Value })
+        }
     }
     if ($game) {
         $viewerLog = Join-Path $viewerLogRoot "viewer-$($game.Id).log"
