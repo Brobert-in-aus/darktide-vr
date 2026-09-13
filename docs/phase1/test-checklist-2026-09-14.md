@@ -40,9 +40,23 @@ unattended evidence for each is in
    `openxr.session_pause=runtime_stop` then `openxr.session_resume=ready`.
    Before this build the headset stayed dark until the game was restarted.
 
+5. **Virtual holsters, new and off by default** (`baa12ee`, Lua). Design and
+   zone table: [virtual-holsters-2026-09-14.md](virtual-holsters-2026-09-14.md).
+   First, with the option still off: the grips behave exactly as before
+   (special, combat ability, two-hand support). Then turn on Mod Options >
+   Darktide VR > Experimental features > Virtual holsters and, in the
+   Psykhanium, reach and press grip: over the right shoulder (ranged), left
+   hip (melee), left chest (stim), right hip (auspex if carried), right chest
+   (carried item). Check nothing triggers while holding a gun, swinging melee
+   or reloading. Say which zones feel too high, low, far forward or small.
+   Console: `DARKTIDEVR_HOLSTER armed zone=...` and `wield ...` lines.
+
 ## Assumptions and questions for the evening review
 
 - Held-item effects (item 3) were deployed on static reading and unit tests
   only: no character with those weapons could be driven unattended. They
   only move effects that already exist; if one looks wrong, the log line
   names the class.
+- Virtual holster zone positions (item 5) are first guesses from typical
+  body proportions, not measured on the user; no synthetic pose trace was run,
+  so only the unit tests show which zone a pose resolves to.

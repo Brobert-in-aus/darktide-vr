@@ -106,7 +106,7 @@ hub window close (exit 0, result 20); no crash marker, no Windows Application
 Error. Before the fix every VR-mode exit faulted. Worn check: close the game
 normally in the evening and confirm no crash report.
 
-## Chat-close stall (queue item 2), in progress
+## Chat-close stall (queue item 2): stock behaviour
 
 Evidence directory: `artifacts/unattended/chat-stutter-20260914/`. Session
 control `chat N` opens chat through the stock `_start_chatting` and closes it
@@ -129,7 +129,7 @@ cursor (`Window.set_clip_cursor(true)`, then `Window.set_show_cursor(false)`);
 probes that toggle each of those alone, and the cursor stack alone, 3 times
 each, produced no slow frame. So the stall follows from chat itself leaving
 the active state (about 150 ms matches the chat window's fade and scenegraph
-update), not from the cursor. Resource-creation trace runs are next.
+update), not from the cursor.
 
 The Lua-side resource trace (`chat N trace`: `Renderer.create_resource` and
 `destroy_resource`, world and screen GUI creation and destruction, viewport
@@ -139,6 +139,23 @@ game-started viewer run repeated the close stalls (247-264 ms, 275-291 ms
 after close) and 62-74 ms frames 166-237 ms after each open. So no Lua code
 creates or releases GPU resources at that moment; the stall is inside the
 engine's present.
+
+Stock control (flat mode: original executable, no mod, no proxy, no viewer;
+flat settings profile; hub reached by clicking START; chat opened with the
+user's binding, numpad +, and closed with Enter on empty text, key down 100
+ms; 5 closes): every close was followed by a 124-126 ms renderer `present`
+stall and the main thread's matching wait, 142-150 ms after the key (the
+first, 28 ms), with the same "Panic ... major stall" line. No stall after any
+open. (A first flat attempt with Enter to open, the stock default, opened
+nothing: the user rebinds chat to numpad +.) Evidence: `flat-numpad/`; VR
+mode, the VR settings profile and `decals_enabled = true` were restored
+afterwards.
+
+Conclusion: the chat-close hitch is the stock game's own, not the mod's. In
+VR it is about twice as long (viewer attached) and felt as a stutter. There is
+no Lua resource work at that moment to remove; the stall is inside the
+engine's present. Not fixable in the mod as far as measured; recorded as a
+known limit. Opens cost 62-74 ms frames only with the viewer attached.
 
 ## Held-item effects placed before the hand pose (queue item 3)
 
@@ -186,3 +203,21 @@ session and stopped with `result=pass`. The E_INVALIDARG `Close(theatre)` seen
 this morning was logged after the old loop's exit lines (which of the two came
 first is not certain from the merged log) and was not reproduced by the
 simulator; worn check: evening item 4.
+
+## Virtual holsters (queue item 4), core and default-off wiring
+
+Design: [virtual-holsters-2026-09-14.md](../phase1/virtual-holsters-2026-09-14.md).
+Commit `baa12ee`: `darktidevr_holsters.lua` (body frame, five zones,
+hysteresis, dwell, grip claim), request-only `melee`/`ranged` wield actions
+and wield selectors in the bindings' contextual grip claim, option
+`vr_holsters` (default off), off in the hub. Tests `holsters` and
+`controller_bindings` (the input-name fixture gained the stock `wield_1` and
+`wield_2`, both in the game's ephemeral action list); full suite 245/245.
+
+Installed. Psykhanium run with the option off (viewer attached, in-game Quit):
+no holster line, no error, `DARKTIDEVR_HELD_EFFECTS placed
+class=ChainLightningLinkEffects` with no fallback (the character's weapon has
+chain lightning links), clean exit (`native_hooks=20`, exit 0). Evidence:
+`artifacts/unattended/holsters-20260914/psykhanium-option-off/`. The option
+was not turned on unattended (no controller poses to drive it); worn check
+evening item 5.
