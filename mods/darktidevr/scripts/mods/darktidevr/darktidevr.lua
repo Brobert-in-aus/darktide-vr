@@ -14651,6 +14651,9 @@ mod.update = function()
     if presentation.viewer then
         presentation.viewer.update()
     end
+    if presentation.session_control then
+        presentation.session_control.update()
+    end
 end
 
 presentation.hud_panel = mod:io_dofile(
@@ -15584,6 +15587,9 @@ presentation.viewer = mod:io_dofile(
 presentation.viewer.install(mod, function()
     return ensure_ui_native_hooks() and ui_native_capture or nil
 end)
+presentation.session_control = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_session_control"
+).install(mod)
 
 -- Backstop for the marker atlas's idle release: leaving gameplay (the score
 -- screen, or loading) releases what the atlas and the HUD panel's mirrored

@@ -96,13 +96,32 @@ end
 -- every frame and the state rarely changes.
 local POLL_UPDATES = 120
 
+-- Development runs that start their own viewer (a synthetic controller path,
+-- the OpenXR simulator runtime) write "external" into this file before the
+-- launch; a second viewer would compete for the OpenXR session. Players never
+-- have the file, so the game starts its viewer as usual.
+Viewer.EXTERNAL_FLAG = "./../mods/darktidevr/darktidevr_external_viewer.flag"
+
+function Viewer.external_requested()
+    local files = Mods and Mods.lua and Mods.lua.io
+    local flag = files and files.open(Viewer.EXTERNAL_FLAG, "r")
+    if not flag then
+        return false
+    end
+    local value = flag:read("*all")
+    flag:close()
+    return type(value) == "string" and value:match("^%s*external%s*$") ~= nil
+end
+
 function Viewer.update()
     if not state.requested then
         if not native() then
             return
         end
         state.requested = true
-        if bootstrap_active() then
+        if Viewer.external_requested() then
+            state.mod:info("DARKTIDEVR_VIEWER start=skipped reason=external_viewer_flag")
+        elseif bootstrap_active() then
             Viewer.control(true)
         elseif not state.bootstrap_missing_logged then
             state.bootstrap_missing_logged = true

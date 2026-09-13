@@ -321,6 +321,10 @@ if(BUILD_TESTING)
   add_test(NAME options_layout COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-options-layout.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_options_layout.lua")
+  add_test(NAME session_control COMMAND "${LUAJIT_VALIDATOR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-session-control.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_session_control.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_viewer.lua")
   add_test(NAME scanner_holo COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-scanner-holo.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_scanner_holo.lua"
