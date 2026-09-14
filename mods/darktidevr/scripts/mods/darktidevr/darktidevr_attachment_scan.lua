@@ -57,6 +57,17 @@ function Scan.install(mod, presentation)
             observation["right_" .. kind .. "_qw"] = qw
         end
     end
+    -- While held: no firing, reloading, grips or wield switches (right trigger,
+    -- both grips, right stick up and down), so the weapon and ammo stay put.
+    local VIEW_MASK = bit.bnot(1 + 4 + 512 + 2048 + 4096)
+    function api.mask_gameplay_input(observation)
+        local view = api.view
+        if not view or not view.active then return end
+        for _, name in ipairs({"gameplay_pressed", "gameplay_held", "gameplay_released"}) do
+            local values = observation[name]
+            if values then values[0] = bit.band(tonumber(values[0]) or 0, VIEW_MASK) end
+        end
+    end
     local hidden = {}
     local function view_update(unit)
         local view = api.view

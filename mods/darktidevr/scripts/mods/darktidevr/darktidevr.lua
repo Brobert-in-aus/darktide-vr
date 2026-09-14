@@ -6342,6 +6342,9 @@ function presentation.inject_gameplay_input(self, main_t, input)
         controller_observation.gameplay_sequence,
         controller_observation.gameplay_movement)
     controller_observation.gameplay_input_active = active and result == 0
+    if presentation.attachment_scan and presentation.attachment_scan.mask_gameplay_input then
+        presentation.attachment_scan.mask_gameplay_input(controller_observation)
+    end
     local exclusive_stick=presentation.communication_input.sample(self,player_unit,input,
         controller_observation.gameplay_input_active,
         tonumber(controller_observation.gameplay_held[0]),game_mode_name,active_world)
