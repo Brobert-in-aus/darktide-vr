@@ -155,21 +155,45 @@ Fix `abc400b`, deployed (evening item 5).
 - **Not shown:** the worn view, and whether other guns have parked parts.
   The same scan and view flags can check them.
 
-## Crosshair and iron sights (todo item 4): not solved
+## Crosshair and iron sights (todo item 4)
 
-- **What is known.** The reticle sits where the aim ray hits (a raycast from
-  the aim pose along the muzzle's direction). The gun is rotated so its
-  muzzle points along that ray (`aim_angle_deg=0`).
-- **Likely cause.** The aim ray starts at the controller's aim position,
-  while the iron sights sit a few centimetres above the bore. The two lines
-  run parallel rather than meeting at the target, leaving an offset of
-  about 0.3° at 10 m. This is not measured yet.
-- **Next.**
-  - The scan's `sight` lines log the stock ADS eye point (the hidden
-    first-person rig) and the VR aim origin, both in the muzzle frame, once
-    ADS has been held for 0.8 s.
-  - Needs ADS held: the synthetic path never presses the left trigger.
-    Either a worn check or a synthetic ADS press, which is a viewer change.
+Fix `96b13ed`, deployed (evening item 6). The earlier ray-origin attempt
+`c1ea863` was replaced the same hour.
+- **Measured** (`artifacts/unattended/stray-bullet-20260915/sight2`; view
+  mode with a simulated ADS hold):
+  - *Stock ADS pose* (hidden first-person rig): the eye sits 3.2 cm above
+    and 0.8 cm left of the bore, looking along it (within 0.3°).
+  - *Drawn VR gun:* the grip sits 8.6 cm below the bore.
+  - *Result:* the reticle marks the aim ray's hit point, and the ray runs
+    along the bore. So the sight line sat 11.8 cm above it: through the
+    sights the reticle was 0.66° low at 10 m, about 2° at 3 m.
+- **First attempt: start the controller ray on the sight line.** It changed
+  nothing (`sight3`): the active route publishes the reticle from the
+  stock first-person position (`darktidevr_online_reticle.lua`). Moving the
+  simulation's shot origin is not something to do from presentation, so
+  it was reverted.
+- **Fix: zero the drawn gun** (`darktidevr_gun_sights.lua`, presentation
+  only).
+  - The drawn gun turns about the grip by the small angle that puts its
+    sight line through the reticle point.
+  - Guards: capped at 5°, skipped for points nearer than 0.75 m, eased over
+    0.08 s.
+  - The aim that shoots and the reticle itself are unchanged.
+  - *Sight offset:* the stock ADS eye, measured live after 0.8 s of ADS
+    (shipped for the galvanic rifle), minus the placed gun's grip, both in
+    the muzzle frame. Guns without a measured eye stay as they were until
+    aimed down the sights once.
+- **Test:** `gun_sights` covers the offset, the zeroing geometry in general
+  poses, the near and cap guards, easing, a foreign reticle and unknown
+  templates.
+- **Evidence (`sight4`).**
+  - The reticle point in the muzzle frame is (−0.005 to −0.008, 0.020 to
+    0.027) against the sight line at (−0.008, 0.032). Before: (−0.08 to
+    −0.16, −0.06 to −0.12).
+  - The gun turned 0.6-0.9°.
+  - The live eye measurement matched the shipped value; no script errors.
+- **Not shown:** the worn sight picture; up close (under 2 m) the gun visibly
+  turns more.
 
 Note: `run2` died because I piped the capture script through
 `Select-Object -First 1`, which stopped the script and so the runner's job
