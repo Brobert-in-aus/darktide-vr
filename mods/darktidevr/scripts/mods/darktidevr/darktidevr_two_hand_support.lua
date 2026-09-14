@@ -339,9 +339,9 @@ function Support.install(mod,presentation,observation)
             hold_source=profile and (profile.authored and 'authored' or 'calibrated') or 'unknown'
         elseif was_held and not api.held and releases_logged<Support.RELEASE_LOGS then
             releases_logged=releases_logged+1
-            mod:info('DARKTIDEVR_TWO_HAND released source=%s mode=%s ended=%s max_steer_degrees=%.1f steered_frames=%d',
+            mod:info('DARKTIDEVR_TWO_HAND released source=%s mode=%s ended=%s max_steer_degrees=%.1f steered_frames=%d steadying=%s',
                 hold_source,api.grip_toggle() and 'toggle' or 'hold',grip.cancelled and 'cancelled' or 'released',
-                api.steer.max_degrees,api.steer.frames)
+                api.steer.max_degrees,api.steer.frames,api.steadying())
         end
         was_held=api.held
         -- Zone feedback evidence: entry, and frames until the glove sits on the grip.

@@ -39,15 +39,29 @@ function Scan.install(mod, presentation)
             vector_text(position), offset(position, grips.right), offset(position, grips.left), tostring(parent))
         -- Mesh centres show where the visible geometry is, which can differ
         -- from the unit root for attachments authored in the weapon's space.
-        for index = 1, math.min(meshes, 12) do
+        -- Centres also in the unit root's frame, to match against drifting nodes.
+        local inverse = Matrix4x4.inverse(Unit.world_pose(unit, 1))
+        for index = 1, math.min(meshes, 80) do
             local ok, mesh = pcall(Unit.mesh, unit, index)
-            local box_ok, pose = false, nil
-            if ok and mesh then box_ok, pose = pcall(Mesh.box, mesh) end
+            local box_ok, pose, extents = false, nil, nil
+            if ok and mesh then box_ok, pose, extents = pcall(Mesh.box, mesh) end
             if box_ok and pose then
                 local centre = Matrix4x4.translation(pose)
-                mod:info("DARKTIDEVR_ATTACHMENT_SCAN %s mesh=%d centre=%s to_right_grip=%s to_left_grip=%s",
-                    label, index, vector_text(centre), offset(centre, grips.right), offset(centre, grips.left))
+                local visible_ok, visible = pcall(Mesh.is_visible, mesh)
+                mod:info("DARKTIDEVR_ATTACHMENT_SCAN %s mesh=%d centre=%s local=%s extents=%s visible=%s to_right_grip=%s to_left_grip=%s",
+                    label, index, vector_text(centre), vector_text(Matrix4x4.transform(inverse, centre)),
+                    vector_text(extents), visible_ok and tostring(visible) or "?",
+                    offset(centre, grips.right), offset(centre, grips.left))
             end
+        end
+        -- Every scene-graph node's offset from the root, with its parent, so
+        -- meshes can be tied to the node that carries them.
+        local count = Unit.num_scene_graph_items and Unit.num_scene_graph_items(unit) or 0
+        for index = 2, math.min(count, 80) do
+            local parent = Unit.scene_graph_parent(unit, index)
+            mod:info("DARKTIDEVR_ATTACHMENT_SCAN %s node=%d parent=%s local=%s scale=%s", label, index, tostring(parent),
+                vector_text(Matrix4x4.transform(inverse, Unit.world_position(unit, index))),
+                vector_text(Unit.local_scale(unit, index)))
         end
     end
     local function scan(unit, reason)
