@@ -102,7 +102,20 @@ Commits `7efa0ef`, `fe0277d`, `10717e5`, `0da004b`.
   - A body frame module owns the virtual shoulder for both the stock and the
     arm IK.
   - Revises the 14 September design; milestones are listed.
-- **Not implemented.** Nothing was deployed from these.
+- **First step implemented and deployed: the steadying option.**
+  Commits `9b1e549` and `ddaa54b`. Option *Two-hand steadying*: Classic
+  (default, unchanged) or Hands line.
+  - *Tests:* the pure tests pass.
+    - A 10° wrist turn keeps the barrel on the hands line (0.00° off, where
+      Classic gives 8.5°).
+    - A stick turn has no lag.
+    - 1 mm support jitter shows 0.013° against 0.17° raw.
+    - A fast 10 cm sweep is within 0.1° after 3 frames.
+    - Roll, release and ease-in are covered.
+  - *`steady1` (Psykhanium, test flag `enabled_line`):* every synthetic hold
+    released cleanly, with the same 9° steering as Classic in `run26` and no
+    script errors. The synthetic path has no wrist rotation, so it cannot
+    show the difference; that needs the worn A/B (evening item 4).
 
 Note: `run2` died because I piped the capture script through
 `Select-Object -First 1`, which stopped the script and so the runner's job

@@ -25,3 +25,18 @@ Yesterday's checklist items not reached are still open in
 
    Say if the dash or gaps look wrong at hand distance (calibrated at
    0.5 m in front of the eye).
+4. **Two-hand steadying: Classic against Hands line** (`9b1e549`, `ddaa54b`).
+   Option: *Two-hand steadying* next to *Two-hand grip*. It defaults to
+   Classic, which is unchanged. With Two-hand support on and the galvanic
+   rifle, hold the foregrip, then:
+   - with **Classic**: move and turn the **right** hand (twist the wrist, aim
+     left and right with the gun hand) and note the feel;
+   - switch to **Hands line** and repeat. The barrel should stay on the front
+     hand when the gun wrist turns, without the short swim back.
+   - Also try turning with the stick while holding (no lag in either mode)
+     and fine aim on a distant target (small tremor should be smoothed).
+
+   Say which feels better. If Hands line wins it becomes the default, and the
+   virtual stock is built on it
+   ([design](two-hand-aim-design-2026-09-15.md)). The console line
+   `DARKTIDEVR_TWO_HAND released ... steadying=` shows which mode was active.
