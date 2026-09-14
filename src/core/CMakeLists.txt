@@ -13,6 +13,7 @@ add_library(darktidevr_core STATIC
   shared_generated_frame_state.cpp
   shared_head_pose.cpp
   shared_menu_pointer_state.cpp
+  settings_backup.cpp
   shared_presentation_state.cpp
   two_bone_ik.cpp
   xr_math.cpp

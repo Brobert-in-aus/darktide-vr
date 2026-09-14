@@ -3,7 +3,9 @@ param(
     # vr: patch the executable, install the d3d12 proxy, add the mod to the
     # load order. flat: restore the original executable, remove the proxy,
     # remove the load-order line. status: report without changing anything.
-    [ValidateSet('vr', 'flat', 'status')]
+    # restore-settings: put back the newest settings backup the mod took at a
+    # sound launch (after a crash destroyed user_settings.config).
+    [ValidateSet('vr', 'flat', 'status', 'restore-settings')]
     [string] $Mode = 'status',
 
     # Defaults to the game folder two levels above this script.
@@ -40,6 +42,14 @@ $settingsDirectory = Join-Path $env:APPDATA 'Fatshark\Darktide'
 $settingsPath = Join-Path $settingsDirectory 'user_settings.config'
 $profileDirectory = Join-Path $env:LOCALAPPDATA 'DarktideVR'
 $profileMarker = Join-Path $profileDirectory 'settings-profile.txt'
+# The mod copies a sound settings file here at each launch (newest by name).
+$backupDirectory = Join-Path $profileDirectory 'settings-backups'
+
+function Get-NewestSettingsBackup {
+    if (-not (Test-Path -LiteralPath $backupDirectory -PathType Container)) { return $null }
+    return Get-ChildItem -LiteralPath $backupDirectory -File -Filter 'user_settings.2*.config' |
+        Sort-Object Name -Descending | Select-Object -First 1
+}
 
 function Get-SettingsProfile {
     if (Test-Path -LiteralPath $profileMarker -PathType Leaf) {
@@ -126,6 +136,8 @@ function Write-Status {
     Write-Output "native=$(if (Test-Path -LiteralPath $nativePath -PathType Leaf) { 'present' } else { 'missing' })"
     Write-Output "dmf=$(if (Test-Path -LiteralPath (Join-Path $GameRoot 'mods\dmf') -PathType Container) { 'present' } else { 'missing' })"
     Write-Output "settings_profile=$(Get-SettingsProfile)"
+    $backup = Get-NewestSettingsBackup
+    Write-Output "settings_backup=$(if ($backup) { $backup.Name } else { 'none' })"
 }
 
 if (-not (Test-Path -LiteralPath $gameExe -PathType Leaf)) {
@@ -136,6 +148,24 @@ if (Get-Process Darktide -ErrorAction SilentlyContinue) {
 }
 
 if ($Mode -eq 'status') {
+    Write-Status
+    exit 0
+}
+
+if ($Mode -eq 'restore-settings') {
+    $backup = Get-NewestSettingsBackup
+    if (-not $backup) {
+        throw 'No settings backup yet: the mod takes one each time Darktide starts with sound settings.'
+    }
+    if (Test-Path -LiteralPath $settingsPath -PathType Leaf) {
+        $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+        $kept = Join-Path $backupDirectory "user_settings.before-restore-$stamp.config"
+        Copy-Item -LiteralPath $settingsPath -Destination $kept -Force
+        Write-Output "Settings: the current file is kept as $kept."
+    }
+    New-Item -ItemType Directory -Path $settingsDirectory -Force | Out-Null
+    Copy-Item -LiteralPath $backup.FullName -Destination $settingsPath -Force
+    Write-Output "Settings: restored from $($backup.Name)."
     Write-Status
     exit 0
 }

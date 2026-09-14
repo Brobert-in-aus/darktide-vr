@@ -920,6 +920,7 @@ local function ensure_ui_native_hooks()
             int controllers_disabled, unsigned long long recenter_request);
         int dtvr_request_haptic_v1(int hands, float amplitude, int duration_ms,
             float frequency_hz);
+        int dtvr_backup_user_settings(void);
     ]])
 
     local ok, library = pcall(
@@ -981,6 +982,14 @@ local function ensure_ui_native_hooks()
         return false
     end
 
+    -- Keep a copy of the settings file from a sound launch: a crash while the
+    -- game writes it leaves the launcher starting from defaults (14 September).
+    -- The mode switch restores the newest copy.
+    if presentation.native_export(library, "dtvr_backup_user_settings") then
+        local names = {"saved", "unchanged", "missing", "invalid", "shrunk", "failed"}
+        local code = tonumber(library.dtvr_backup_user_settings())
+        mod:info("DARKTIDEVR_SETTINGS backup=%s", tostring(names[(code or 5) + 1] or code))
+    end
     -- Selector-only diagnostics must be active before any particular camera
     -- path exists. Character select uses UIWorldSpawner rather than the
     -- gameplay CameraManager, so enabling this only from update_stereo left

@@ -79,7 +79,23 @@ try {
     if ($vr.exit -eq 0) { Fail 'VR mode accepted an unsupported executable' }
     if (-not ($vr.lines -match 'not supported')) { Fail "Unexpected VR failure: $($vr.lines -join ' | ')" }
     if (-not ([IO.File]::ReadAllBytes($proxy).Length -eq $foreign.Length)) { Fail 'VR mode touched a foreign proxy' }
-} finally {
+
+    # Restoring settings: refused without a backup; otherwise the newest backup
+    # replaces the file and the replaced file is kept.
+    $settings = Join-Path $env:APPDATA 'Fatshark\Darktide\user_settings.config'
+    Set-Content -LiteralPath $settings -Value 'reset to defaults' -Encoding ascii
+    $none = Invoke-Switch 'restore-settings'
+    if ($none.exit -eq 0 -or -not ($none.lines -match 'No settings backup')) { Fail "Restore without a backup: $($none.lines -join ' | ')" }
+    $backups = Join-Path $env:LOCALAPPDATA 'DarktideVR\settings-backups'
+    New-Item -ItemType Directory -Path $backups -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $backups 'user_settings.20260914-070000.config') -Value 'older' -Encoding ascii
+    Set-Content -LiteralPath (Join-Path $backups 'user_settings.20260915-080000.config') -Value 'newest' -Encoding ascii
+    $restore = Invoke-Switch 'restore-settings'
+    if ($restore.exit -ne 0) { Fail "Restore failed: $($restore.lines -join ' | ')" }
+    if ((Get-Content -LiteralPath $settings -Raw).Trim() -ne 'newest') { Fail 'Restore did not use the newest backup' }
+    $kept = Get-ChildItem -LiteralPath $backups -Filter 'user_settings.before-restore-*.config'
+    if (-not $kept -or (Get-Content -LiteralPath $kept[0].FullName -Raw).Trim() -ne 'reset to defaults') { Fail 'The replaced settings file was not kept' }
+    if (-not ($restore.lines -match '^settings_backup=user_settings.20260915-080000.config$')) { Fail 'Status did not name the newest backup' }} finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
-Write-Output 'mode_switch=pass proxy_states=absent,installed,outdated,foreign'
+Write-Output 'mode_switch=pass proxy_states=absent,installed,outdated,foreign restore_settings'

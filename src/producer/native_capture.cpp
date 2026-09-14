@@ -47,6 +47,7 @@
 #include "core/shared_gameplay_aim_state.h"
 #include "core/shared_generated_frame_state.h"
 #include "core/shared_menu_pointer_state.h"
+#include "core/settings_backup.h"
 #include "core/shared_presentation_state.h"
 #include "core/shared_surface_policy.h"
 #include "core/streamline_stereo_inputs.h"
@@ -15727,6 +15728,38 @@ extern "C" __declspec(dllexport) int dtvr_set_input_preferences_v2(
     return 0;
   } catch (...) {
     return 3;
+  }
+}
+// Backs up the game's settings file when it is sound, into
+// %LOCALAPPDATA%\DarktideVR\settings-backups (see core/settings_backup.h).
+// Returns the SettingsBackupResult value.
+extern "C" __declspec(dllexport) int dtvr_backup_user_settings() {
+  using darktidevr::core::SettingsBackupResult;
+  try {
+    const auto environment = [](const wchar_t* name) {
+      std::wstring value(32768, L'\0');
+      const auto length = GetEnvironmentVariableW(name, value.data(),
+                                                  static_cast<DWORD>(value.size()));
+      value.resize(length > 0 && length < value.size() ? length : 0);
+      return value;
+    };
+    const auto roaming = environment(L"APPDATA");
+    const auto local = environment(L"LOCALAPPDATA");
+    if (roaming.empty() || local.empty()) {
+      return static_cast<int>(SettingsBackupResult::failed);
+    }
+    SYSTEMTIME now{};
+    GetLocalTime(&now);
+    char stamp[32]{};
+    std::snprintf(stamp, sizeof(stamp), "%04u%02u%02u-%02u%02u%02u",
+                  static_cast<unsigned>(now.wYear), static_cast<unsigned>(now.wMonth),
+                  static_cast<unsigned>(now.wDay), static_cast<unsigned>(now.wHour),
+                  static_cast<unsigned>(now.wMinute), static_cast<unsigned>(now.wSecond));
+    return static_cast<int>(darktidevr::core::backup_settings(
+        std::filesystem::path(roaming) / L"Fatshark" / L"Darktide" / L"user_settings.config",
+        std::filesystem::path(local) / L"DarktideVR" / L"settings-backups", stamp));
+  } catch (...) {
+    return static_cast<int>(SettingsBackupResult::failed);
   }
 }
 // One haptic pulse: hands bit 0 left, bit 1 right; amplitude 0 to 1; duration
