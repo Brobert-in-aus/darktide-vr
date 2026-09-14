@@ -161,7 +161,9 @@ unattended evidence for each is in
       (a bolter or shotgun far stronger than a lasgun, a flamer a light buzz;
       `bba5cac`). Heat and peril warn past 75 % in Informative and alert past
       90 % in both; charging a plasma gun, helbore or staff buzzes in Immersive,
-      and a full charge ticks in both (`758e885`).
+      and a full charge ticks in both (`758e885`). Holding a melee attack ticks
+      when it will release as a heavy; a power sword's or other melee special
+      pulses as it turns on, and hums lightly in Immersive while on (`9e72cd1`).
       A mission or the Psykhanium's enemy spawner is needed for most of these.
     - **Off:** nothing.
     Console: `DARKTIDEVR_HAPTICS event=<kind>`; the

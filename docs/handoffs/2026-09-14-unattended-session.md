@@ -771,3 +771,32 @@ maximum and missing readings.
   reload and ability ready as before.
 - Not shown: heat, peril or charge in game (the character has no overheating,
   charging or psyker weapon).
+
+### Haptics: heavy attack ready and melee specials
+
+**Kinds (`9e72cd1`).**
+- **Heavy ready** (both modes): a tick once per windup, when the running
+  windup action has lasted its heavy attack chain time divided by the time
+  scale.
+- **Special on** (both modes): a pulse as a melee weapon's special turns on.
+- **Special hum** (Immersive only): a light pulse every 0.25 s while it
+  stays on. Only weapons with the `melee` keyword, so a flashlight does not
+  hum.
+
+**Synthetic path.** Every other cycle, the once path now draws the melee
+weapon from the left hip, holds the trigger for a second (windup into a
+heavy) and draws the ranged weapon back from the shoulder.
+
+The first try (`run22`) never drew melee. The resting headset measured low,
+so the eye height was clamped to 1.23 m and the zones shrank to 75 %. The
+shoulder zone still reached, but the hip did not. The synthetic hip target is
+now scaled to that height (`fe93f26`).
+
+**Evidence (`run23`, Immersive).**
+- Melee and ranged wields alternated every 4 s for the whole run.
+- `event=heavy_ready` fired during the first held attack.
+- Shot, ability used, clip empty and reload fired as before.
+- No script errors or warnings.
+- Not shown: special on and hum (this character's melee weapon has no
+  toggled special in that run), melee hits (no targets in reach), and how
+  anything feels.
