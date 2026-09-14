@@ -139,6 +139,24 @@ unattended evidence for each is in
    gripping. Set the action back to Same as combat afterwards if you do not
    want to keep it.
 
+10. **Controller vibration, new and off by default** (`1ed5c53`, `ff2f66a`;
+    plan in [haptics-2026-09-14.md](haptics-2026-09-14.md)). The capture
+    library and viewer changed together (presentation state v7): if the
+    headset shows nothing at all after launch, say so first. Mod Options,
+    Darktide VR, Experimental features, Controller vibration:
+    - **Informative:** in the Psykhanium, a light tick as your left hand
+      reaches the foregrip (with Two-hand support on) or a hand reaches an
+      armed holster (with Virtual holsters on); a firmer pulse as the grip
+      takes hold; a strong pulse as the last round leaves the clip; a
+      medium one when a reload finishes; no vibration per shot.
+    - **Immersive:** the same, except low ammo, plus a pulse on every shot
+      (both hands while gripping the foregrip).
+    - **Off:** nothing.
+    Console: `DARKTIDEVR_HAPTICS event=shot|clip_empty|reload|low_ammo`; the
+    viewer log: `openxr.haptic ... result=0`. Say whether the strengths feel
+    right, and read the catalogue: which planned kinds matter most, and
+    whether Immersive should also play the Informative-only notices.
+
 ## Assumptions and questions for the evening review
 
 - Held-item effects (item 3) were deployed on static reading and unit tests
@@ -167,3 +185,8 @@ unattended evidence for each is in
   that inherits by default, rather than a full separate layout, so nothing
   has to be rebound to start using it. Prompts do not follow it yet. Should
   the support hand's own buttons get suggested defaults while gripping?
+- Haptics modes (item 10): Immersive is not a superset. It leaves out
+  abstract notices (low ammo, recharged abilities, menu ticks) so that its
+  pulses are always about your hands or body. Kinds in both modes: grip zone,
+  grip taken, clip empty, reload finished. The full catalogue with planned
+  kinds is in `haptics-2026-09-14.md`.

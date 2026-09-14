@@ -631,3 +631,57 @@ Evidence:
   saved setting changed), and HUD prompts, which do not follow the layer.
 
 Worn check: evening item 9.
+
+### Haptics (heartbeat pick-up; user direction on modes mid-task)
+
+Plan and catalogue: `docs/phase1/haptics-2026-09-14.md`. It lists every kind
+as both modes, Informative only or Immersive only.
+
+**Transport (`1ed5c53`).**
+- Presentation state v7 adds a haptic request count with the latest pulse.
+  `HapticRequestTracker` plays one pulse per increase within a transport
+  generation and clamps the values. Packet validation ignores them, so a bad
+  pulse cannot blank the presentation.
+- The capture library exports `dtvr_request_haptic_v1` and republishes at once.
+- The viewer binds both hands' haptic outputs for Touch and simple
+  controllers and calls `xrApplyHapticFeedback`.
+- **Deployment:** the capture library and viewer were deployed together.
+  Mismatched builds cannot read each other's presentation state.
+
+**Modes (`ff2f66a`, user: Informative only for things like empty clip and
+reload complete, Immersive for things like shooting).**
+- Option `vr_haptics_mode`: off (default), informative or immersive.
+- Kinds, by mode:
+  - both: grip zone, grip taken, holster armed, clip empty, reload
+    finished;
+  - Informative only: low ammo;
+  - Immersive only: every shot, from the existing `_shoot` observer (one hook
+    per method).
+- Notices are never dropped for a feel pulse, and each hand is limited to one
+  pulse every 60 ms.
+- Assumption: Immersive leaves out abstract notices (recorded on the
+  checklist).
+
+**Evidence (Psykhanium, synthetic path with trigger taps and a reload
+press).**
+- `run14` (first transport, test flag "enabled"): Lua pulses for holster
+  armed (right hand), grip zone and grip taken (left), all delivered. The
+  viewer logged `openxr.haptic ... result=0` (XR_SUCCESS) on VDXR for each.
+- `run15` (Immersive): `event=shot`, `clip_empty` and `reload`. Shot pulses
+  at amplitude 0.65 on the right hand; 20 of 20 logged pulses delivered;
+  no viewer failures and no script errors.
+- `run16` (Informative): `clip_empty` and `reload` alternate at 0.8/90 ms and
+  0.5/45 ms, with no shot pulses; 20 of 20 delivered; no failures.
+- Not shown:
+  - low ammo (the Psykhanium reserve did not fall to 20 %);
+  - both hands on a shot while gripping (the synthetic path fires after
+    letting go);
+  - how any of it feels (controllers unworn on the desk).
+- Known limit: the viewer only reads pulses while the shared eyes are open,
+  so menus and loading screens get none.
+
+**Also noticed.** `present_cpu_profile_on` failed twice under `ctest -j 8`
+today and passed 60 standalone runs; it is marked RUN_SERIAL already. This is
+a pre-existing intermittent test and was not investigated further.
+
+Worn check: evening item 10.

@@ -174,6 +174,22 @@ starts on Same as combat. Right-hand dominant only for now. The older
 `/dtvr_two_hand_calibrate` command still records a custom grip for the
 current session.
 
+### Controller vibration (experimental)
+
+Mod Options, Darktide VR, Experimental features, "Controller vibration":
+
+- **Informative** vibrates when something happens that you need to know
+  about:
+  - your hand reaches a gun's foregrip or an armed holster;
+  - the two-hand grip takes hold;
+  - the last round leaves the clip;
+  - a reload finishes;
+  - ammo runs low.
+- **Immersive** is the feel of your actions: every shot, plus the grip,
+  holster, empty-clip and reload pulses, without the low-ammo notice.
+
+More kinds (damage, melee hits, blocks) are planned.
+
 ### Ammo count at the hand (experimental)
 
 Mod Options, Darktide VR, Experimental features, "Ammo count at the hand".

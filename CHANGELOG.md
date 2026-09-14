@@ -19,6 +19,9 @@ runtime package records the exact source revision alongside the version.
   soon as the gun is drawn. The glove slides onto the foregrip when your hand
   is close enough, grip can be a hold or a toggle, and actions can have their
   own controls while gripping.
+- Experimental controller vibration (off by default), Informative or Immersive:
+  grip and holster feedback, empty clip, reload finished and low ammo, and in
+  Immersive every shot.
 - Flamethrower streams, chain lightning, the force sword's wind slash and the
   shield's windup glow start from the weapon in your hand.
 - Experimental virtual holsters (off by default): reach to your shoulder,
