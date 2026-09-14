@@ -45,7 +45,12 @@ Haptics.KINDS = {
     ability_used = {modes = {immersive = true}, amplitude = 0.6, duration_ms = 40},
     ability_ready = {modes = {informative = true}, notice = true, amplitude = 0.45, duration_ms = 30},
     blitz_ready = {modes = {informative = true}, notice = true, amplitude = 0.3, duration_ms = 15},
+    -- A melee swing connects (heavy attacks full strength); a shove.
+    melee_hit = {modes = {immersive = true}, amplitude = 0.8, duration_ms = 30},
+    push = {modes = {immersive = true}, amplitude = 0.6, duration_ms = 35},
 }
+Haptics.LIGHT_MELEE_SCALE = 0.7
+Haptics.MISSED_PUSH_SCALE = 0.5
 Haptics.LOW_HEALTH_SHARE = 0.25
 Haptics.LOW_AMMO_SHARE = 0.2
 -- Pulses on one hand closer together than this are dropped: requests between
@@ -226,6 +231,58 @@ function Haptics.install(mod, presentation, send)
     function api.shot()
         local hands = gun_hands()
         if hands and api.pulse(hands, "shot") then count("shot") end
+    end
+    -- Melee: the stock hit effects of a connecting sweep and the stock push
+    -- rumble, local player only and never while resimulating. Observe-only
+    -- hooks; a subclass with its own copy of the method is hooked as well.
+    local function local_action(action)
+        return action and presentation.online_rules and
+            presentation.online_rules.simulation_aim_active(action._player_unit) and
+            not (action._unit_data_extension and action._unit_data_extension.is_resimulating)
+    end
+    local function melee_hands()
+        local roles = presentation.weapon_hand_roles
+        local dominant = roles and roles.physical("dominant")
+        return (dominant == "left" or dominant == "right") and dominant or nil
+    end
+    function api.melee_hit(action, damage_profile)
+        if not local_action(action) then return end
+        local heavy_strength = api.heavy_melee_strength
+        local heavy = heavy_strength ~= nil and type(damage_profile) == "table" and
+            damage_profile.melee_attack_strength == heavy_strength
+        local hands = melee_hands()
+        if hands and api.pulse(hands, "melee_hit", nil, heavy and 1 or Haptics.LIGHT_MELEE_SCALE) then
+            count("melee_hit")
+        end
+    end
+    function api.push(action, number_of_units_hit)
+        if not local_action(action) then return end
+        local hit = type(number_of_units_hit) == "number" and number_of_units_hit > 0
+        if api.pulse("both", "push", nil, hit and 1 or Haptics.MISSED_PUSH_SCALE) then count("push") end
+    end
+    if mod.hook_safe then
+        local function observe(handler)
+            return function(...)
+                local ok, message = pcall(handler, ...)
+                if not ok and not api.hook_failure_logged then
+                    api.hook_failure_logged = true
+                    mod:info("DARKTIDEVR_HAPTICS hook_failure=%s", tostring(message):sub(1, 160))
+                end
+            end
+        end
+        api.heavy_melee_strength = require("scripts/settings/damage/attack_settings").melee_attack_strength.heavy
+        local sweep = require("scripts/extension_systems/weapon/actions/action_sweep")
+        mod:hook_safe(sweep, "_play_hit_effects", observe(function(self, _, damage_profile)
+            api.melee_hit(self, damage_profile)
+        end))
+        local explosive = require("scripts/extension_systems/weapon/actions/action_melee_explosive")
+        if rawget(explosive, "_play_hit_effects") and rawget(explosive, "_play_hit_effects") ~= rawget(sweep, "_play_hit_effects") then
+            mod:hook_safe(explosive, "_play_hit_effects", observe(function(self, _, damage_profile)
+                api.melee_hit(self, damage_profile)
+            end))
+        end
+        mod:hook_safe(require("scripts/extension_systems/weapon/actions/action_push"), "_play_push_rumble",
+            observe(function(self, number_of_units_hit) api.push(self, number_of_units_hit) end))
     end
     local previous, previous_body
     local function field(read)

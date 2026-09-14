@@ -122,4 +122,52 @@ for _, name in ipairs({"damage", "toughness_broken", "toughness_hit", "disabled"
 end
 assert(Haptics.DISABLED_STATES.knocked_down and Haptics.DISABLED_STATES.netted and not Haptics.DISABLED_STATES.walking)
 
-print("haptics=pass mapping rate_limit notices modes failed_send ammo_events scale body_events")
+-- Installed melee observers: a local connecting sweep pulses the dominant hand
+-- (heavy full strength), a push both hands, a resimulated or foreign action
+-- nothing; a subclass sharing the parent's method is not hooked twice.
+do
+    local hooks, pulses = {}, {}
+    local sweep = {_play_hit_effects = function() end}
+    local explosive = setmetatable({}, {__index = sweep})
+    local push = {_play_push_rumble = function() end}
+    local real_require = require
+    require = function(name)
+        if name:find("action_sweep$") then return sweep end
+        if name:find("action_melee_explosive$") then return explosive end
+        if name:find("action_push$") then return push end
+        if name:find("attack_settings$") then return {melee_attack_strength = {heavy = "heavy", light = "light"}} end
+        return real_require(name)
+    end
+    local clock = 100
+    Managers = {time = {has_timer = function() return true end, time = function() clock = clock + 1; return clock end}}
+    local local_unit = {}
+    local installed = Haptics.install({
+        get = function(_, key) return key == "vr_haptics_mode" and "immersive" or nil end,
+        info = function() end,
+        hook_safe = function(_, object, method, handler) hooks[#hooks + 1] = {object, method, handler} end,
+    }, {
+        online_rules = {simulation_aim_active = function(unit) return unit == local_unit end},
+        weapon_hand_roles = {physical = function(role) return role == "dominant" and "right" or "left" end},
+    }, function(hands, amplitude) pulses[#pulses + 1] = {hands, amplitude}; return true end)
+    require = real_require
+    assert(#hooks == 2, "expected sweep and push hooks, got " .. #hooks)
+    local function hook(object, method)
+        for _, h in ipairs(hooks) do if h[1] == object and h[2] == method then return h[3] end end
+    end
+    local hit, shove = hook(sweep, "_play_hit_effects"), hook(push, "_play_push_rumble")
+    assert(hit and shove)
+    hit({_player_unit = local_unit}, {}, {melee_attack_strength = "heavy"})
+    assert(pulses[1][1] == 2 and pulses[1][2] == Haptics.KINDS.melee_hit.amplitude, "heavy hit")
+    hit({_player_unit = local_unit}, {}, {melee_attack_strength = "light"})
+    assert(math.abs(pulses[2][2] - Haptics.KINDS.melee_hit.amplitude * Haptics.LIGHT_MELEE_SCALE) < 1e-6, "light hit")
+    hit({_player_unit = {}}, {}, {})
+    hit({_player_unit = local_unit, _unit_data_extension = {is_resimulating = true}}, {}, {})
+    assert(#pulses == 2, "a foreign or resimulated hit pulsed")
+    shove({_player_unit = local_unit}, 0)
+    assert(pulses[3][1] == 3 and math.abs(pulses[3][2] - Haptics.KINDS.push.amplitude * Haptics.MISSED_PUSH_SCALE) < 1e-6)
+    hit({_player_unit = local_unit}, {}, nil) -- a missing profile is a light hit, not an error
+    assert(#pulses == 4)
+    Managers = nil
+end
+
+print("haptics=pass mapping rate_limit notices modes failed_send ammo_events scale body_events melee_hooks")
