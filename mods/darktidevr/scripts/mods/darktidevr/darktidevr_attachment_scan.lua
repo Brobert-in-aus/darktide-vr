@@ -21,7 +21,9 @@ function Scan.install(mod, presentation)
         local rest = value:match("^%s*view(.-)%s*$")
         if not rest then return nil end
         local view = {variant = rest:match("variant=([%w_]+)") or "base",
-            yaw = tonumber(rest:match("yaw=(%-?[%d.]+)")) or 60, hide = {}}
+            yaw = tonumber(rest:match("yaw=(%-?[%d.]+)")) or 60, hide = {},
+            -- unit=<word>: hide every 3P attachment whose item name contains it.
+            unit = rest:match("unit=([%w_]+)")}
         for a, b in (rest:match("hide=([%d,%-]+)") or ""):gmatch("(%d+)%-?(%d*)") do
             for index = tonumber(a), tonumber(b ~= "" and b or a) do view.hide[index] = true end
         end
@@ -68,7 +70,7 @@ function Scan.install(mod, presentation)
             if values then values[0] = bit.band(tonumber(values[0]) or 0, VIEW_MASK) end
         end
     end
-    local hidden = {}
+    local hidden, hidden_units = {}, {}
     local function view_update(unit)
         local view = api.view
         local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
@@ -85,6 +87,22 @@ function Scan.install(mod, presentation)
         for _, attachment in ipairs(ranged and slot.attachments_by_unit_3p and slot.attachments_by_unit_3p[slot.unit_3p] or {}) do
             local name = slot.item_name_by_unit_3p and slot.item_name_by_unit_3p[attachment]
             if type(name) == "string" and name:find("reciever", 1, true) then receiver = attachment end
+        end
+        for hidden_unit in pairs(hidden_units) do
+            local name = slot and slot.item_name_by_unit_3p and slot.item_name_by_unit_3p[hidden_unit]
+            if not (view and view.unit and type(name) == "string" and name:find(view.unit, 1, true)) then
+                if Unit.alive(hidden_unit) then Unit.set_unit_visibility(hidden_unit, true) end
+                hidden_units[hidden_unit] = nil
+            end
+        end
+        if view and view.unit then
+            for _, attachment in ipairs(slot.attachments_by_unit_3p and slot.attachments_by_unit_3p[slot.unit_3p] or {}) do
+                local name = slot.item_name_by_unit_3p and slot.item_name_by_unit_3p[attachment]
+                if type(name) == "string" and name:find(view.unit, 1, true) then
+                    Unit.set_unit_visibility(attachment, false)
+                    hidden_units[attachment] = true
+                end
+            end
         end
         for mesh_unit, indices in pairs(hidden) do
             for index in pairs(indices) do
@@ -107,8 +125,8 @@ function Scan.install(mod, presentation)
         if view.frames == 90 then
             local weapon = ScriptUnit.has_extension(unit, "weapon_system")
             local action = weapon and weapon:running_action_settings()
-            mod:info("DARKTIDEVR_ATTACHMENT_SCAN view variant=%s ready yaw=%.0f hidden=%d action=%s",
-                view.variant, view.yaw, #(function() local t = {} for i in pairs(view.hide) do t[#t + 1] = i end return t end)(),
+            mod:info("DARKTIDEVR_ATTACHMENT_SCAN view variant=%s ready yaw=%.0f hidden_units=%d hidden=%d action=%s",
+                view.variant, view.yaw, (function() local n = 0 for _ in pairs(hidden_units) do n = n + 1 end return n end)(), #(function() local t = {} for i in pairs(view.hide) do t[#t + 1] = i end return t end)(),
                 tostring(action and action.kind))
         end
     end
@@ -306,7 +324,7 @@ function Scan.install(mod, presentation)
         end
     end
     function api.update(unit)
-        if not flag() and not next(hidden) then return end
+        if not flag() and not next(hidden) and not next(hidden_units) then return end
         if not unit then return end
         local view_ok, view_error = pcall(view_update, unit)
         if not view_ok and not logged.view_failure then
