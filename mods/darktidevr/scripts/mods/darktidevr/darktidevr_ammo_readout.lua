@@ -14,15 +14,17 @@ Readout.RING_RADIUS = 0.030     -- metres; the ring encloses both lines
 Readout.RING_THICKNESS = 0.0045 -- metres
 Readout.RING_SEGMENTS = 96
 -- Digit extents below each line's text position, as fractions of that
--- line's font size, measured in the eye render (15 September, against the
--- dash bar drawn at an exact position): the large and small sizes do not
--- scale alike. And the stacked layout's spacing (worn, 14 September: the
--- clip overlapped the reserve; a dash now separates them).
-Readout.CLIP_GLYPH_TOP = 0.66
-Readout.CLIP_GLYPH_BOTTOM = 0.93
-Readout.RESERVE_GLYPH_TOP = 0.20
-Readout.RESERVE_GLYPH_BOTTOM = 0.51
-Readout.STACK_GAP = 0.10        -- of the clip font size, above and below the dash
+-- line's font size. Measured in the eye render on 15 September against the
+-- dash bar (drawn at an exact position): both lines' digits span 0.33-0.80
+-- at 0.5 m. Worn at hand distance the small reserve renders relatively
+-- larger (0.63 of the clip's height, not 0.5), which is how it overlapped the
+-- clip on 14 September, so the reserve's extent is taken generously. The
+-- stack's spacing: a gap above and below the dash between them.
+Readout.CLIP_GLYPH_TOP = 0.33
+Readout.CLIP_GLYPH_BOTTOM = 0.80
+Readout.RESERVE_GLYPH_TOP = 0.30
+Readout.RESERVE_GLYPH_BOTTOM = 0.90
+Readout.STACK_GAP = 0.12        -- of the clip font size, above and below the dash
 Readout.DASH_LENGTH = 1.0       -- of the reserve font size
 Readout.DASH_THICKNESS = 0.14   -- of the reserve font size
 
