@@ -205,6 +205,8 @@ function Readout.install(mod, presentation, observation)
         local count = NetworkConstants.clips_in_use and NetworkConstants.clips_in_use.max_size or 1
         return Readout.values(unit_data:read_component("slot_secondary"), Ammo, count)
     end
+    -- The wielded ranged weapon's values, for other features (haptics).
+    api.slot_values = slot_values
     local function draw(game_world, unit)
         local test = read_test_flag()
         if not unit or (not test and not mod:get("vr_ammo_readout")) or presentation.mode ~= 1 or

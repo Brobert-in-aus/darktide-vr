@@ -6356,6 +6356,10 @@ function presentation.inject_gameplay_input(self, main_t, input)
         presentation.two_hand.finish(holster_request and presentation.holsters.idle_grip or
             presentation.controller_bindings.support_grip)
     end
+    if presentation.haptics then
+        pcall(presentation.haptics.sample_weapon,
+            controller_observation.gameplay_input_active and player_unit or nil)
+    end
     if presentation.gameplay_ui then
         presentation.gameplay_ui.sample(controller_observation.gameplay_input_active, pressed, held)
     end
@@ -15236,7 +15240,7 @@ mod:io_dofile(
 presentation.weapon_assist = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_weapon_assist"
 ).install(mod,presentation,controller_observation)
--- Controller vibration (option vr_haptics, default off): an older capture
+-- Controller vibration (option vr_haptics_mode, default off): an older capture
 -- library without the export drops every pulse.
 presentation.haptics = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_haptics"

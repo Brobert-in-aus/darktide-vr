@@ -178,9 +178,14 @@ return {
                         },
                     },
                     {
-                        setting_id = "vr_haptics",
-                        type = "checkbox",
-                        default_value = false,
+                        setting_id = "vr_haptics_mode",
+                        type = "dropdown",
+                        default_value = "off",
+                        options = {
+                            {text = "vr_haptics_off", value = "off"},
+                            {text = "vr_haptics_informative", value = "informative"},
+                            {text = "vr_haptics_immersive", value = "immersive"},
+                        },
                     },
                     {
                         setting_id = "vr_ammo_readout",
