@@ -65,6 +65,12 @@ sample(true,3,2,2,0)
 
 -- Options/defaults/localization and actual game input names share the catalog.
 local text=dofile(arg[2])
+-- DMF formats every localized string: a stray % breaks the option's label.
+for key,entry in pairs(text) do
+    for language,value in pairs(entry) do
+        assert(pcall(string.format,value),'unformattable localization '..key..'.'..language..': '..tostring(value))
+    end
+end
 local stock=dofile(arg[3])
 local names={}
 for _,name in ipairs(stock.actions) do names[name]='held' end

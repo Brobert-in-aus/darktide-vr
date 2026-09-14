@@ -1,6 +1,6 @@
 return {
     vr_crosshair_scale = {en = "Crosshair scale (%%)"},
-    vr_crosshair_scale_description = {en = "Resize the hand-aim crosshair, charge bars and hit feedback together. Updates while playing. 100% restores the original size; the default is 70%."},
+    vr_crosshair_scale_description = {en = "Resize the hand-aim crosshair, charge bars and hit feedback together. Updates while playing. 100%% restores the original size; the default is 70%%."},
     ads_focus = {en = "Aim-down-sights focus"},
     ads_focus_description = {en = "While aiming down sights: a soft vignette at the edges of view, a tighter crosshair and steadier aim. No zoom. Off leaves the view unchanged."},
     vr_aim_stabilization = {en = "Weapon aim stabilisation (%%)"},
@@ -43,7 +43,7 @@ return {
     vr_two_hand_grip_toggle = {en = "Toggle"},
     vr_haptics_mode = {en = "Controller vibration"},
     vr_haptics_mode_description = {en = "Informative: vibrations that tell you something, such as your hand reaching a gun's foregrip or an armed holster, the grip taking hold, the clip running dry, a reload finishing and ammo running low. Immersive: the feel of your actions, such as every shot, along with the most important of those notices."},
-    vr_haptics_strength = {en = "Controller vibration strength (%)"},
+    vr_haptics_strength = {en = "Controller vibration strength (percent)"},
     vr_haptics_strength_description = {en = "Scales every vibration. Above 100 strengthens the light ones; the strongest are already at the controller's limit."},
     vr_haptics_off = {en = "Off"},
     vr_haptics_informative = {en = "Informative"},
