@@ -23,7 +23,9 @@ function Scan.install(mod, presentation)
         local view = {variant = rest:match("variant=([%w_]+)") or "base",
             yaw = tonumber(rest:match("yaw=(%-?[%d.]+)")) or 60, hide = {},
             -- unit=<word>: hide every 3P attachment whose item name contains it.
-            unit = rest:match("unit=([%w_,]+)")}
+            unit = rest:match("unit=([%w_,]+)"),
+            -- group=<name>: hide that visibility group on the receiver.
+            group = rest:match("group=([%w_]+)")}
         for a, b in (rest:match("hide=([%d,%-]+)") or ""):gmatch("(%d+)%-?(%d*)") do
             for index = tonumber(a), tonumber(b ~= "" and b or a) do view.hide[index] = true end
         end
@@ -71,6 +73,7 @@ function Scan.install(mod, presentation)
         end
     end
     local hidden, hidden_units = {}, {}
+    local restore_group
     local function unit_matches(view, name)
         if not (view and view.unit and type(name) == "string") then return false end
         for word in view.unit:gmatch("[^,]+") do
@@ -118,6 +121,23 @@ function Scan.install(mod, presentation)
                     indices[index] = nil
                 end
             end
+        end
+        if receiver and not logged.groups then
+            logged.groups = true
+            local found = {}
+            for _, name in ipairs({"bullet", "bullets", "ammo", "clip", "magazine", "mag", "round", "rounds",
+                    "shell", "shells", "cartridge", "reload", "stripper_clip", "top_bullet", "bullet_01", "clip_bullets"}) do
+                local ok, has = pcall(Unit.has_visibility_group, receiver, name)
+                if ok and has then found[#found + 1] = name end
+            end
+            mod:info("DARKTIDEVR_ATTACHMENT_SCAN receiver visibility_groups=%s", table.concat(found, ","))
+        end
+        if receiver and view and view.group and Unit.has_visibility_group(receiver, view.group) then
+            Unit.set_visibility(receiver, view.group, false)
+            restore_group = {unit = receiver, group = view.group}
+        elseif restore_group and Unit.alive(restore_group.unit) then
+            Unit.set_visibility(restore_group.unit, restore_group.group, true)
+            restore_group = nil
         end
         if not view or not receiver then return end
         hidden[receiver] = hidden[receiver] or {}
