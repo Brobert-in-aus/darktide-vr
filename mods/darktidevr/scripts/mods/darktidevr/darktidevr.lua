@@ -918,6 +918,8 @@ local function ensure_ui_native_hooks()
         int dtvr_set_menu_direct_capture(int enabled);
         int dtvr_set_input_preferences_v2(int keyboard_mouse,
             int controllers_disabled, unsigned long long recenter_request);
+        int dtvr_request_haptic_v1(int hands, float amplitude, int duration_ms,
+            float frequency_hz);
     ]])
 
     local ok, library = pcall(
@@ -15234,6 +15236,18 @@ mod:io_dofile(
 presentation.weapon_assist = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_weapon_assist"
 ).install(mod,presentation,controller_observation)
+-- Controller vibration (option vr_haptics, default off): an older capture
+-- library without the export drops every pulse.
+presentation.haptics = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_haptics"
+).install(mod, presentation, function(hands, amplitude, duration_ms, frequency_hz)
+    if not ui_native_capture or
+            not presentation.native_export(ui_native_capture, "dtvr_request_haptic_v1") then
+        return false
+    end
+    return tonumber(ui_native_capture.dtvr_request_haptic_v1(
+        hands, amplitude, duration_ms, frequency_hz)) == 0
+end)
 presentation.two_hand = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_two_hand_support"
 ).install(mod, presentation, controller_observation)

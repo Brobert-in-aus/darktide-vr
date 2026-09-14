@@ -2,6 +2,7 @@
 #include "core/shared_presentation_state.h"
 
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -191,6 +192,23 @@ int main() {
       expect(writer.publish(state) && reader.read(observed) &&
                  observed.keyboard_mouse && !observed.controllers_disabled,
              "Keyboard and mouse with controllers enabled must stay distinct");
+      state.sequence = 14;
+      state.haptic_request = 7;
+      state.haptic_hands = 3;
+      state.haptic_amplitude = 0.4F;
+      state.haptic_duration_ms = 25;
+      state.haptic_frequency_hz = 160.0F;
+      expect(writer.publish(state) && reader.read(observed) &&
+                 observed.haptic_request == 7 && observed.haptic_hands == 3 &&
+                 observed.haptic_amplitude == 0.4F &&
+                 observed.haptic_duration_ms == 25 &&
+                 observed.haptic_frequency_hz == 160.0F,
+             "Reader should preserve the haptic request");
+      state.haptic_amplitude = std::numeric_limits<float>::quiet_NaN();
+      state.sequence = 15;
+      expect(writer.publish(state) && reader.read(observed),
+             "A bad haptic parameter must not invalidate the presentation packet");
+      state.haptic_amplitude = 0.4F;
     }
 
     RecenterRequestTracker recenter;
@@ -208,6 +226,42 @@ int main() {
     expect(!recenter.observe(request),
            "A reloaded mod's reset count must not recentre");
 
+    HapticRequestTracker haptics;
+    HapticPulse pulse{};
+    SharedPresentationState haptic{};
+    haptic.transport_generation = 9;
+    haptic.haptic_request = 2;
+    haptic.haptic_hands = 2;
+    haptic.haptic_amplitude = 0.5F;
+    haptic.haptic_duration_ms = 30;
+    expect(!haptics.observe(haptic, pulse),
+           "A first transport only establishes the haptic baseline");
+    haptic.haptic_request = 3;
+    expect(haptics.observe(haptic, pulse) && pulse.hands == 2 &&
+               pulse.amplitude == 0.5F && pulse.duration_ms == 30 &&
+               pulse.frequency_hz == 0.0F,
+           "A new haptic request plays its pulse");
+    expect(!haptics.observe(haptic, pulse), "A heartbeat must not repeat a pulse");
+    haptic.haptic_request = 4;
+    haptic.haptic_hands = 0xFF;
+    haptic.haptic_amplitude = 7.0F;
+    haptic.haptic_duration_ms = 60000;
+    haptic.haptic_frequency_hz = -3.0F;
+    expect(haptics.observe(haptic, pulse) && pulse.hands == 3 &&
+               pulse.amplitude == 1.0F &&
+               pulse.duration_ms == kHapticMaximumDurationMs &&
+               pulse.frequency_hz == 0.0F,
+           "Haptic parameters are clamped to playable values");
+    haptic.haptic_request = 5;
+    haptic.haptic_amplitude = std::numeric_limits<float>::quiet_NaN();
+    haptic.haptic_duration_ms = 0;
+    expect(!haptics.observe(haptic, pulse) && !haptics.observe(haptic, pulse),
+           "A silent request is consumed without a pulse");
+    haptic.transport_generation = 10;
+    haptic.haptic_request = 0;
+    haptic.haptic_amplitude = 1.0F;
+    expect(!haptics.observe(haptic, pulse),
+           "A reloaded mod's reset count must not pulse");
     SharedPresentationState restarted{};
     {
       SharedPresentationStateWriter writer;

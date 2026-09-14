@@ -176,6 +176,7 @@ function Holsters.install(mod, presentation, observation)
     local api = Holsters.new()
     api.idle_grip = {held = false, pressed = false, released = false, cancelled = false}
     local owner_hand, logged = nil, {}
+    local haptic_zone = {}
     local function vector(v) return v and {Vector3.x(v), Vector3.y(v), Vector3.z(v)} end
     local function inventory_of(unit)
         local loadout = ScriptUnit.has_extension(unit, "visual_loadout_system")
@@ -219,7 +220,7 @@ function Holsters.install(mod, presentation, observation)
     end
     local function sample(unit, active, t)
         if not active or not (mod:get("vr_holsters") or test_flag()) or not unit then
-            api.reset(); owner_hand = nil
+            api.reset(); owner_hand = nil; haptic_zone = {}
             return nil
         end
         local frame = body_frame(unit)
@@ -233,6 +234,12 @@ function Holsters.install(mod, presentation, observation)
             local point = live and frame and Holsters.local_point(frame, vector(role_position))
             local ready = api.update(hand, point, t)
             local request = api.request(hand, ready, inventory)
+            -- One vibration as a hand's grip becomes a holster press.
+            local armed = request and request.acquire and request.owner.zone or nil
+            if armed and armed ~= haptic_zone[hand] and presentation.haptics then
+                presentation.haptics.pulse(hand, "zone", t)
+            end
+            haptic_zone[hand] = armed
             if test_enabled and hand == "right" then
                 api.trace_count = (api.trace_count or 0) + 1
                 if api.trace_count % 60 == 1 then

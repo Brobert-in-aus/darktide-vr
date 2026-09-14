@@ -320,7 +320,10 @@ function Support.install(mod,presentation,observation)
                 profile.authored and 'authored' or 'calibrated',tostring(profile.source or 'command'),
                 profile.socket[1],profile.socket[2],profile.socket[3])
         end
+        local haptics=presentation.haptics
+        local support_side=presentation.weapon_hand_roles and presentation.weapon_hand_roles.physical('support')
         if api.held and not was_held then
+            if haptics then haptics.pulse(support_side,'grip') end
             api.steer.max_degrees,api.steer.frames=0,0
             hold_source=profile and (profile.authored and 'authored' or 'calibrated') or 'unknown'
         elseif was_held and not api.held and releases_logged<Support.RELEASE_LOGS then
@@ -331,6 +334,7 @@ function Support.install(mod,presentation,observation)
         end
         was_held=api.held
         -- Zone feedback evidence: entry, and frames until the glove sits on the grip.
+        if api.in_zone and not was_in_zone and not api.held and haptics then haptics.pulse(support_side,'zone') end
         if api.in_zone and not was_in_zone and zone_logs<Support.RELEASE_LOGS then
             zone_logs=zone_logs+1; snap_frames=0
             mod:info('DARKTIDEVR_TWO_HAND zone=enter held=%s',tostring(api.held))

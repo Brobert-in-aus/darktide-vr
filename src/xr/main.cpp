@@ -1097,6 +1097,7 @@ class OpenXrProbe {
     HANDLE projection_active_event{};
     darktidevr::core::SharedPresentationStateReader presentation_state_reader;
     darktidevr::core::RecenterRequestTracker recenter_request_tracker;
+    darktidevr::core::HapticRequestTracker haptic_request_tracker;
     darktidevr::core::SharedPresentationState presentation_state{};
     std::uint64_t presentation_sequence{};
     std::uint64_t presentation_transport_generation{};
@@ -1914,6 +1915,10 @@ class OpenXrProbe {
                 reference_space_recenter_pending_ = true;
                 std::cout << "openxr.head_recenter=game-request count="
                           << newest.recenter_request << '\n';
+              }
+              darktidevr::core::HapticPulse haptic_pulse{};
+              if (haptic_request_tracker.observe(newest, haptic_pulse)) {
+                apply_haptic_pulse(haptic_pulse, newest.haptic_request);
               }
               presentation_state = newest;
               presentation_sequence = newest.sequence;
@@ -4911,7 +4916,7 @@ class OpenXrProbe {
       create_action(XR_ACTION_TYPE_VIBRATION_OUTPUT, "haptic", "Haptic",
                     haptic_action_);
 
-      const std::array<XrActionSuggestedBinding, 18> touch_bindings{{
+      const std::array<XrActionSuggestedBinding, 19> touch_bindings{{
           {aim_action_, path("/user/hand/left/input/aim/pose")},
           {aim_action_, path("/user/hand/right/input/aim/pose")},
           {grip_action_, path("/user/hand/left/input/grip/pose")},
@@ -4931,6 +4936,7 @@ class OpenXrProbe {
           {stick_click_action_,
            path("/user/hand/right/input/thumbstick/click")},
           {menu_action_, path("/user/hand/left/input/menu/click")},
+          {haptic_action_, path("/user/hand/left/output/haptic")},
           {haptic_action_, path("/user/hand/right/output/haptic")},
       }};
       XrInteractionProfileSuggestedBinding touch{
@@ -4943,12 +4949,13 @@ class OpenXrProbe {
       check_xr(xrSuggestInteractionProfileBindings(instance_, &touch),
                "xrSuggestInteractionProfileBindings(Touch)");
 
-      const std::array<XrActionSuggestedBinding, 6> simple_bindings{{
+      const std::array<XrActionSuggestedBinding, 7> simple_bindings{{
           {grip_action_, path("/user/hand/left/input/grip/pose")},
           {grip_action_, path("/user/hand/right/input/grip/pose")},
           {primary_action_, path("/user/hand/left/input/select/click")},
           {primary_action_, path("/user/hand/right/input/select/click")},
           {menu_action_, path("/user/hand/left/input/menu/click")},
+          {haptic_action_, path("/user/hand/left/output/haptic")},
           {haptic_action_, path("/user/hand/right/output/haptic")},
       }};
       XrInteractionProfileSuggestedBinding simple{
@@ -4995,6 +5002,46 @@ class OpenXrProbe {
       if (space != XR_NULL_HANDLE) {
         xrDestroySpace(space);
         space = XR_NULL_HANDLE;
+      }
+    }
+  }
+
+  // Plays one pulse on each requested hand. Logs the first pulses and every
+  // failure kind once; a missing session or action set is skipped quietly.
+  void apply_haptic_pulse(const darktidevr::core::HapticPulse& pulse,
+                          std::uint64_t request) {
+    if (session_ == XR_NULL_HANDLE || haptic_action_ == XR_NULL_HANDLE) {
+      return;
+    }
+    XrHapticVibration vibration{XR_TYPE_HAPTIC_VIBRATION};
+    vibration.amplitude = pulse.amplitude;
+    vibration.duration =
+        static_cast<XrDuration>(pulse.duration_ms) * 1'000'000;
+    vibration.frequency = pulse.frequency_hz > 0.0F
+                              ? pulse.frequency_hz
+                              : XR_FREQUENCY_UNSPECIFIED;
+    for (std::size_t hand = 0; hand < hand_paths_.size(); ++hand) {
+      if ((pulse.hands & (1U << hand)) == 0) {
+        continue;
+      }
+      XrHapticActionInfo info{XR_TYPE_HAPTIC_ACTION_INFO};
+      info.action = haptic_action_;
+      info.subactionPath = hand_paths_[hand];
+      const auto result = xrApplyHapticFeedback(
+          session_, &info,
+          reinterpret_cast<const XrHapticBaseHeader*>(&vibration));
+      ++haptic_pulses_;
+      const bool failed = XR_FAILED(result);
+      if (haptic_pulses_ <= 10 || (failed && haptic_failures_logged_ < 5)) {
+        if (failed) {
+          ++haptic_failures_logged_;
+        }
+        std::cout << "openxr.haptic request=" << request
+                  << " hand=" << (hand == 0 ? "left" : "right")
+                  << " amplitude=" << pulse.amplitude
+                  << " duration_ms=" << pulse.duration_ms
+                  << " frequency_hz=" << pulse.frequency_hz
+                  << " result=" << static_cast<int>(result) << '\n';
       }
     }
   }
@@ -5457,6 +5504,8 @@ class OpenXrProbe {
   XrAction stick_click_action_{XR_NULL_HANDLE};
   XrAction menu_action_{XR_NULL_HANDLE};
   XrAction haptic_action_{XR_NULL_HANDLE};
+  std::uint64_t haptic_pulses_{};
+  std::uint32_t haptic_failures_logged_{};
   std::array<XrSpace, 2> aim_spaces_{XR_NULL_HANDLE, XR_NULL_HANDLE};
   std::array<XrSpace, 2> grip_spaces_{XR_NULL_HANDLE, XR_NULL_HANDLE};
   std::unique_ptr<darktidevr::core::SharedControllerStateWriter>

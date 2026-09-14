@@ -7,7 +7,7 @@
 namespace darktidevr::core {
 
 inline constexpr wchar_t kSharedPresentationStateName[] =
-    L"Local\\DarktideVR-presentation-state-v6";
+    L"Local\\DarktideVR-presentation-state-v7";
 
 enum class SharedPresentationMode : std::uint32_t {
   disabled = 0,
@@ -50,6 +50,38 @@ struct SharedPresentationState {
   // Keyboard and mouse play with controllers disabled: they neither point,
   // click, scroll nor go back in menus. Otherwise both inputs add together.
   bool controllers_disabled{};
+  // Haptic pulses requested by the game: a monotonic count with the latest
+  // request's parameters. The viewer plays one pulse per increase within one
+  // transport generation; requests between two viewer frames coalesce to the
+  // latest. Parameters are sanitized by the reader of the pulse, never by
+  // packet validation, so a bad pulse cannot blank the presentation.
+  std::uint64_t haptic_request{};
+  std::uint32_t haptic_hands{};  // bit 0 left hand, bit 1 right hand
+  float haptic_amplitude{};      // 0 to 1
+  std::uint32_t haptic_duration_ms{};
+  float haptic_frequency_hz{};   // 0 lets the runtime choose
+};
+
+inline constexpr std::uint32_t kHapticLeftHand = 1;
+inline constexpr std::uint32_t kHapticRightHand = 2;
+inline constexpr std::uint32_t kHapticMaximumDurationMs = 1000;
+
+struct HapticPulse {
+  std::uint32_t hands{};
+  float amplitude{};
+  std::uint32_t duration_ms{};
+  float frequency_hz{};
+};
+
+// Returns true once for each new haptic request, with the pulse clamped to
+// playable values (hands limited to the two bits, amplitude 0 to 1, duration
+// 1 ms to kHapticMaximumDurationMs, non-finite or negative frequency 0). A new
+// transport generation only establishes the baseline count. A request with no
+// hands or no amplitude is consumed without a pulse.
+struct HapticRequestTracker {
+  std::uint64_t generation{};
+  std::uint64_t count{};
+  bool observe(const SharedPresentationState& state, HapticPulse& pulse);
 };
 
 // Returns true once for each new recentre request. A new transport generation

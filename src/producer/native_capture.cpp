@@ -15551,6 +15551,11 @@ std::optional<darktidevr::core::SharedPresentationState> last_presentation_state
 bool input_keyboard_mouse{};
 bool input_controllers_disabled{};
 std::uint64_t input_recenter_request{};
+std::uint64_t haptic_request_count{};
+std::uint32_t haptic_hands{};
+float haptic_amplitude{};
+std::uint32_t haptic_duration_ms{};
+float haptic_frequency_hz{};
 
 bool publish_presentation_state_locked(
     const darktidevr::core::SharedPresentationState& state) {
@@ -15561,6 +15566,11 @@ bool publish_presentation_state_locked(
   published.keyboard_mouse = input_keyboard_mouse;
   published.recenter_request = input_recenter_request;
   published.controllers_disabled = input_controllers_disabled;
+  published.haptic_request = haptic_request_count;
+  published.haptic_hands = haptic_hands;
+  published.haptic_amplitude = haptic_amplitude;
+  published.haptic_duration_ms = haptic_duration_ms;
+  published.haptic_frequency_hz = haptic_frequency_hz;
   if (!writer.publish(published)) {
     return false;
   }
@@ -15717,6 +15727,31 @@ extern "C" __declspec(dllexport) int dtvr_set_input_preferences_v2(
     return 0;
   } catch (...) {
     return 3;
+  }
+}
+// One haptic pulse: hands bit 0 left, bit 1 right; amplitude 0 to 1; duration
+// 1 to 1000 ms; frequency 0 for the runtime default. It reaches the viewer
+// with an immediate republish of the last presentation packet.
+extern "C" __declspec(dllexport) int dtvr_request_haptic_v1(
+    int hands, float amplitude, int duration_ms, float frequency_hz) {
+  if (hands < 1 || hands > 3 || !(amplitude > 0.0F) || amplitude > 1.0F ||
+      duration_ms < 1 || duration_ms > 1000 || !(frequency_hz >= 0.0F) ||
+      frequency_hz > 1000.0F) {
+    return 1;
+  }
+  try {
+    std::scoped_lock lock(presentation_publish_mutex);
+    if (!last_presentation_state) {
+      return 2;
+    }
+    ++haptic_request_count;
+    haptic_hands = static_cast<std::uint32_t>(hands);
+    haptic_amplitude = amplitude;
+    haptic_duration_ms = static_cast<std::uint32_t>(duration_ms);
+    haptic_frequency_hz = frequency_hz;
+    return publish_presentation_state_locked(*last_presentation_state) ? 0 : 3;
+  } catch (...) {
+    return 4;
   }
 }
 extern "C" __declspec(dllexport) int dtvr_set_presentation_state(

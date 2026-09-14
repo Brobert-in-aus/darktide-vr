@@ -3,6 +3,7 @@
 
 #include <Windows.h>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -29,6 +30,11 @@ struct SharedLayout {
   volatile LONG keyboard_mouse{};
   volatile LONG64 recenter_request{};
   volatile LONG controllers_disabled{};
+  volatile LONG64 haptic_request{};
+  volatile LONG haptic_hands{};
+  float haptic_amplitude{};
+  volatile LONG haptic_duration_ms{};
+  float haptic_frequency_hz{};
 };
 
 static_assert(alignof(SharedLayout) >= alignof(LONG64));
@@ -159,6 +165,30 @@ bool RecenterRequestTracker::observe(const SharedPresentationState& state) {
   return true;
 }
 
+bool HapticRequestTracker::observe(const SharedPresentationState& state,
+                                   HapticPulse& pulse) {
+  if (state.transport_generation != generation) {
+    generation = state.transport_generation;
+    count = state.haptic_request;
+    return false;
+  }
+  if (state.haptic_request == count) {
+    return false;
+  }
+  count = state.haptic_request;
+  pulse.hands = state.haptic_hands & (kHapticLeftHand | kHapticRightHand);
+  pulse.amplitude = std::isfinite(state.haptic_amplitude)
+                        ? std::clamp(state.haptic_amplitude, 0.0F, 1.0F)
+                        : 0.0F;
+  pulse.duration_ms = std::clamp(state.haptic_duration_ms, std::uint32_t{1},
+                                 kHapticMaximumDurationMs);
+  pulse.frequency_hz = std::isfinite(state.haptic_frequency_hz) &&
+                               state.haptic_frequency_hz > 0.0F
+                           ? state.haptic_frequency_hz
+                           : 0.0F;
+  return pulse.hands != 0 && pulse.amplitude > 0.0F;
+}
+
 SharedPresentationStateWriter::SharedPresentationStateWriter() {
   mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
                                 0, sizeof(SharedLayout),
@@ -193,6 +223,11 @@ SharedPresentationStateWriter::SharedPresentationStateWriter() {
   data.keyboard_mouse = 0;
   InterlockedExchange64(&data.recenter_request, 0);
   data.controllers_disabled = 0;
+  InterlockedExchange64(&data.haptic_request, 0);
+  data.haptic_hands = 0;
+  data.haptic_amplitude = 0.0F;
+  data.haptic_duration_ms = 0;
+  data.haptic_frequency_hz = 0.0F;
   MemoryBarrier();
   InterlockedExchange64(&data.epoch, 2);
 }
@@ -229,6 +264,12 @@ bool SharedPresentationStateWriter::publish(
   InterlockedExchange64(&data.recenter_request,
                         static_cast<LONG64>(state.recenter_request));
   data.controllers_disabled = state.controllers_disabled ? 1 : 0;
+  InterlockedExchange64(&data.haptic_request,
+                        static_cast<LONG64>(state.haptic_request));
+  data.haptic_hands = static_cast<LONG>(state.haptic_hands);
+  data.haptic_amplitude = state.haptic_amplitude;
+  data.haptic_duration_ms = static_cast<LONG>(state.haptic_duration_ms);
+  data.haptic_frequency_hz = state.haptic_frequency_hz;
   InterlockedExchange64(&data.published_at_ms,
                         static_cast<LONG64>(GetTickCount64()));
   InterlockedExchange64(&data.sequence, static_cast<LONG64>(state.sequence));
@@ -290,7 +331,12 @@ bool SharedPresentationStateReader::read(SharedPresentationState& state) {
         static_cast<std::uint64_t>(data.published_at_ms),
         data.keyboard_mouse != 0,
         static_cast<std::uint64_t>(data.recenter_request),
-        data.controllers_disabled != 0};
+        data.controllers_disabled != 0,
+        static_cast<std::uint64_t>(data.haptic_request),
+        static_cast<std::uint32_t>(data.haptic_hands),
+        data.haptic_amplitude,
+        static_cast<std::uint32_t>(data.haptic_duration_ms),
+        data.haptic_frequency_hz};
     MemoryBarrier();
     const auto after = data.epoch;
     if (before == after && (after & 1) == 0 &&

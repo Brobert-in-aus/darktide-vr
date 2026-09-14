@@ -178,6 +178,11 @@ return {
                         },
                     },
                     {
+                        setting_id = "vr_haptics",
+                        type = "checkbox",
+                        default_value = false,
+                    },
+                    {
                         setting_id = "vr_ammo_readout",
                         type = "checkbox",
                         default_value = false,

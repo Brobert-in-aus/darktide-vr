@@ -41,6 +41,8 @@ return {
     vr_two_hand_grip_mode_description = {en = "Hold: the gun stays in both hands while you hold grip. Toggle: press grip to take the foregrip and press it again to let go. Either way, once gripped your hands can move any distance apart; bringing them together or crossing them lets go."},
     vr_two_hand_grip_hold = {en = "Hold"},
     vr_two_hand_grip_toggle = {en = "Toggle"},
+    vr_haptics = {en = "Controller vibration"},
+    vr_haptics_description = {en = "Short vibrations for Two-hand support and Virtual holsters: a light pulse as your hand reaches a gun's foregrip or an armed holster, and a firmer one as the two-hand grip takes hold."},
     vr_ammo_readout = {en = "Ammo count at the hand"},
     vr_ammo_readout_description = {en = "Show the ranged weapon's clip and reserve (or heat) beside your weapon hand instead of on the HUD panel."},
     hud_visible = {en = "Show the HUD panel"},
