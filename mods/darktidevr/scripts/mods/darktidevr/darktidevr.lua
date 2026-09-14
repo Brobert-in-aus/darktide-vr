@@ -6345,6 +6345,9 @@ function presentation.inject_gameplay_input(self, main_t, input)
     if presentation.attachment_scan and presentation.attachment_scan.mask_gameplay_input then
         presentation.attachment_scan.mask_gameplay_input(controller_observation)
     end
+    if presentation.sight_ads then
+        presentation.sight_ads.apply(self, player_unit)
+    end
     local exclusive_stick=presentation.communication_input.sample(self,player_unit,input,
         controller_observation.gameplay_input_active,
         tonumber(controller_observation.gameplay_held[0]),game_mode_name,active_world)
@@ -15257,6 +15260,9 @@ presentation.gun_aim = mod:io_dofile(
 ).install(mod, presentation)
 presentation.body_frame = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_body_frame"
+).install(mod, presentation, controller_observation)
+presentation.sight_ads = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_sight_ads"
 ).install(mod, presentation, controller_observation)
 presentation.gun_sights = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_gun_sights"

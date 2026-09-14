@@ -114,6 +114,10 @@ function Sights.install(mod, presentation)
         if failures == 1 then mod:info("DARKTIDEVR_GUN_SIGHTS failed=%s", tostring(message):sub(1, 160)) end
     end
 
+    -- The sight line's offset from the grip for a template, or nil.
+    function api.sight_offset(template_name)
+        return Sights.offset(api.eyes[template_name], api.grips[template_name])
+    end
     -- Gun aim: the drawn rotation for a gun about to be placed at grip.
     local function drawn(unit, template_name, grip, aim, dt)
         local offset = Sights.offset(api.eyes[template_name], api.grips[template_name])

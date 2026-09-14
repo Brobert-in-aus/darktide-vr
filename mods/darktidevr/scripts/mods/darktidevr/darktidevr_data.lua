@@ -192,6 +192,11 @@ return {
                         default_value = false,
                     },
                     {
+                        setting_id = "vr_sight_ads",
+                        type = "checkbox",
+                        default_value = false,
+                    },
+                    {
                         setting_id = "vr_haptics_mode",
                         type = "dropdown",
                         default_value = "off",

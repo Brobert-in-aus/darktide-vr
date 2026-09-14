@@ -45,6 +45,8 @@ return {
     vr_two_hand_steadying_description = {en = "How the gun settles while held in both hands. Classic: as before. Hands line: the line between your hands is smoothed instead, so turning your gun wrist no longer swings the barrel off the front hand, and turning with the stick is never delayed. Experimental; try both and say which feels better."},
     vr_two_hand_steadying_classic = {en = "Classic"},
     vr_virtual_stock = {en = "Virtual stock (experimental)"},
+    vr_sight_ads = {en = "Aim down sights by raising the gun (experimental)"},
+    vr_sight_ads_description = {en = "Bringing a gun's sights up to your eye aims down the sights, and lowering it stops. Your aim button still works too. Only for guns that aim down sights, and only once the gun's sight height is known (the galvanic rifle now; other guns after aiming down their sights once)."},
     vr_virtual_stock_description = {en = "While you hold a rifle in both hands, bringing its butt to your shoulder rests it there: the gun then aims from your shoulder to your front hand, so small movements of the gun hand no longer swing it. The shoulder is estimated from your headset and hands."},
     vr_two_hand_steadying_hands_line = {en = "Hands line (experimental)"},
     vr_haptics_mode = {en = "Controller vibration"},

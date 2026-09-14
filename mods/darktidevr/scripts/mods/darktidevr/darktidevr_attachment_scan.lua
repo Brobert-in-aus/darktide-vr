@@ -27,7 +27,10 @@ function Scan.install(mod, presentation)
             -- group=<name>: hide that visibility group on the receiver.
             group = rest:match("group=([%w_]+)"),
             -- ads=1: hold the left trigger (aim down sights) while posed.
-            ads = rest:match("ads=1") ~= nil}
+            ads = rest:match("ads=1") ~= nil,
+            -- sight=1: grip placed so the sight line (11.8 cm above it) runs
+            -- through the head origin, 25 cm ahead.
+            sight = rest:match("sight=1") ~= nil}
         for a, b in (rest:match("hide=([%d,%-]+)") or ""):gmatch("(%d+)%-?(%d*)") do
             for index = tonumber(a), tonumber(b ~= "" and b or a) do view.hide[index] = true end
         end
@@ -54,9 +57,9 @@ function Scan.install(mod, presentation)
         local half = math.rad(view.yaw) * 0.5
         local qz, qw = math.sin(half), math.cos(half)
         for _, kind in ipairs({"grip", "aim"}) do
-            observation["right_" .. kind .. "_x"] = 0.12
-            observation["right_" .. kind .. "_y"] = 0.32
-            observation["right_" .. kind .. "_z"] = -0.10
+            observation["right_" .. kind .. "_x"] = view.sight and 0.032 or 0.12
+            observation["right_" .. kind .. "_y"] = view.sight and 0.25 or 0.32
+            observation["right_" .. kind .. "_z"] = view.sight and -0.118 or -0.10
             observation["right_" .. kind .. "_qx"] = 0
             observation["right_" .. kind .. "_qy"] = 0
             observation["right_" .. kind .. "_qz"] = qz
