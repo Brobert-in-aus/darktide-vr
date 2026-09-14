@@ -105,3 +105,7 @@ unattended evidence for each is in
   Generation on (flat, no mod: 125 ms). Recorded as a known issue tied to
   frame generation on your pointer; not confirmed with frame generation off,
   because graphics settings were not touched. Want a flat run with it off?
+- Two-hand support: should a recorded support grip be saved and reused for
+  every weapon of the same template (for example all Lasgun Mk IIIs), or per
+  item? Today it is per item and lost when the game closes, and a test keeps a
+  different item from inheriting a grip.

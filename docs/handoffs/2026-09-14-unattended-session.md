@@ -381,6 +381,9 @@ The automatic restart stays as a safety net.
   (the body presentation's yaw is not published there). Evidence:
   `artifacts/unattended/holsters-20260914/synthetic-pose-trace/pose-trace.csv`.
 - Not done: the rig scan (human and Ogryn joint map) and the solver itself.
+  One attempt with the existing `darktidevr_body_rig_inventory.flag` ("scan")
+  in the Psykhanium produced no inventory lines (the flag was apparently not
+  read on that path); not pursued further today.
   Traces recorded worn tonight (evening item 7) are the input for the next
   step.
 
@@ -402,3 +405,31 @@ with a one-second squeeze): three belt visits, each showing
 The shoulder and hip zones kept working in the same run (`delivered=wield_2`).
 Evidence: `artifacts/unattended/holsters-20260914/synthetic-belt-blitz/`. Not
 shown: the projectile itself (no world check), or the aim arc while held.
+
+## Parked with reasons
+
+- **Two-hand support, saved grips.** Recorded grips are bound to the exact
+  item object for the session; a test asserts that another item of the same
+  template must not inherit a grip. Saving them means choosing a key (the
+  weapon template, or the item's gear id), which changes that deliberate
+  rule. Left for the user.
+- **Reticle charge meter (stretch).** It needs the stock `forcesword_bar`
+  material values rebuilt per bar on a world GUI, and a worn A/B before it is
+  worth shipping. Not started.
+- **SoloPlay survival buff and end-screen vote (optional).** Reaching them
+  needs a controller-driven survival run or edits to the SoloPlay mod's
+  files. Not attempted.
+- **Chat-close hitch.** Measured as stock with frame generation on; waiting
+  on the user (see the checklist question).
+
+## Midday regression (installed state at `04638bf`)
+
+Hub and Psykhanium, 90 s each, game-started viewer, all options at their
+defaults (holsters and the ammo readout off, no test flags):
+- in-game Quit, exit 0, no crash marker, no Windows Application Error,
+  `DARKTIDEVR_EXIT prepared ... native_hooks=20`;
+- no darktidevr error or warning lines and no script errors;
+- one viewer start per run, `result=pass` at the stop.
+
+Evidence: `artifacts/unattended/regression-20260914/midday-hub` and
+`midday-psykhanium`.
