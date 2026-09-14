@@ -362,6 +362,11 @@ void apply_synthetic_holster_path(core::SharedControllerState& state,
       if (phase >= 30 && phase < 210) {
         state.hands[0].squeeze = 1.0F;
       }
+      // Reload while holding the foregrip (the clip is part spent from the
+      // previous cycle's shots): the grip must hold through it.
+      if (phase >= 100 && phase < 106) {
+        state.hands[1].thumbstick_y = -1.0F;
+      }
     } else if (phase < 470) {
       // One-handed: tap the trigger (4 of every 12 frames) to fire, for the
       // shot, empty-clip and reload vibrations.
@@ -373,9 +378,6 @@ void apply_synthetic_holster_path(core::SharedControllerState& state,
       if (phase >= 440 && phase < 446) {
         state.hands[0].squeeze = 1.0F;
       }
-    } else if (phase >= 472 && phase < 478) {
-      // Right stick down: interact and reload.
-      state.hands[1].thumbstick_y = -1.0F;
     }
   }
   if (!resting && step >= 45 && step < squeeze_end) {

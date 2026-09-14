@@ -228,7 +228,7 @@ int main() {
         auto reloading = left.state;
         darktidevr::harness::apply_synthetic_holster_path(firing, 360 + 252, true);
         darktidevr::harness::apply_synthetic_holster_path(between, 360 + 257, true);
-        darktidevr::harness::apply_synthetic_holster_path(reloading, 360 + 474, true);
+        darktidevr::harness::apply_synthetic_holster_path(reloading, 360 + 103, true);
         auto ability = left.state;
         auto melee_draw = left.state;
         auto melee_windup = left.state;
@@ -252,7 +252,7 @@ int main() {
                melee_windup.hands[1].trigger == 1.0F && melee_windup.hands[0].squeeze == 0.0F &&
                ranged_draw.hands[1].squeeze == 1.0F &&
                std::abs(ranged_draw.hands[1].body_grip_pose.position.x - 0.16F) < 0.001F &&
-               firing.hands[0].squeeze == 0.0F && reloading.hands[1].thumbstick_y == -1.0F &&
+               firing.hands[0].squeeze == 0.0F && reloading.hands[1].thumbstick_y == -1.0F && reloading.hands[0].squeeze == 1.0F &&
                grip.hands[1].trigger == 0.0F &&
                spread.hands[0].squeeze == 1.0F &&
                std::abs(spread.hands[0].body_grip_pose.position.y - g.y - 0.25F) < 0.001F &&
