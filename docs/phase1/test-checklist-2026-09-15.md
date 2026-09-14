@@ -51,8 +51,10 @@ Yesterday's checklist items not reached are still open in
    If another gun shows a similar stray part, say which. The scan flag can
    find its meshes the same way.
 6. **Crosshair on the iron sights** (`96b13ed`). Galvanic rifle:
-   - aim down the sights at something 5-20 m away: the crosshair should sit
-     on the front sight, not just below the notch;
+   - hold the rifle as in the 14 September screenshot and look at something
+     5-20 m away: the crosshair should sit on the sights, where it used to be
+     up and to the left of them;
+   - aim down the sights: the crosshair stays on the front sight;
    - close up (a wall 1-2 m away), the gun turns a little more to keep the
      sights on the crosshair. Say if that turn is noticeable or unpleasant.
 

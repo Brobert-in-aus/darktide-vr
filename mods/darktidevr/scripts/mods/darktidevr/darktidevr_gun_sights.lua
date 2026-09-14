@@ -1,16 +1,19 @@
 -- Gun sights zeroed on the reticle (todo item 4, 15 September).
 --
--- The reticle marks where the aim ray hits. The drawn gun is held at the
--- tracked grip with its bore along that aim, so its iron sights, which sit
--- above the bore, run parallel to the ray instead of through the reticle.
--- On the galvanic rifle the sight line is 11.8 cm above the grip. Looking
--- through the sights, the reticle sat below them: 0.66 degrees at 10 m, more
--- up close.
+-- The reticle marks where the aim ray hits. In the stock-input route that ray
+-- starts at the head (the first-person camera, darktidevr_online_reticle) and
+-- runs along the gun's aim, while the drawn gun sits at the tracked hand with
+-- its iron sights 11.8 cm above the grip (galvanic rifle). The sights
+-- therefore run parallel to the ray and miss the reticle by the head-to-sight
+-- offset: with the gun held below and to the right of the eyes, the reticle
+-- sits up and to the left of the sights (worn screenshot, 14 September),
+-- about 1.5-2 degrees at 10 m for a 30 cm offset, more up close.
 --
 -- Presentation only, like zeroing a real rifle: the drawn gun is turned about
 -- the grip by the small angle that puts its sight line through the reticle
--- point. The aim that shoots and the reticle are unchanged. The correction is
--- capped, eased, and skipped for very near points.
+-- point, whichever side the reticle is on. The aim that shoots and the
+-- reticle are unchanged. The correction is eased, clamped to a maximum angle,
+-- and skipped for very near points.
 --
 -- The sight line's offset from the grip is (eye - grip) in the muzzle frame
 -- (x right, y forward, z up). The eye comes from the hidden first-person
@@ -99,8 +102,12 @@ function Sights.zeroing(grip, aim, offset, point)
         if not step then return nil end
         q = normalize(mul(step, q))
     end
+    -- Past the cap the gun turns the capped amount toward the point, so the
+    -- correction stays continuous as the point comes closer.
     local angle = math.deg(2 * math.acos(math.min(1, math.abs(q[4]))))
-    if angle > Sights.MAX_CORRECTION_DEGREES then return nil end
+    if angle > Sights.MAX_CORRECTION_DEGREES then
+        q = slerp({0, 0, 0, 1}, q, Sights.MAX_CORRECTION_DEGREES / angle)
+    end
     return q
 end
 

@@ -37,7 +37,15 @@ q=assert(Sights.zeroing(grip,aim,{x=-.001,z=.118},point))
 assert(sight_miss(grip,aim,{x=-.001,z=.118},point,q)<.001,'general pose')
 -- Too near, or too large a correction: none.
 assert(Sights.zeroing({0,0,0},identity,{x=0,z=.118},{0,.5,0})==nil,'too near')
-assert(Sights.zeroing({0,0,0},identity,{x=0,z=.118},{0,1,0})==nil,'over the cap (6.7 degrees)')
+local capped=assert(Sights.zeroing({0,0,0},identity,{x=0,z=.118},{0,1,0}),'over the cap is clamped, not dropped')
+near(math.deg(2*math.acos(math.abs(capped[4]))),Sights.MAX_CORRECTION_DEGREES,1e-6,'clamped to the cap')
+local _,capped_forward=sight_miss({0,0,0},identity,{x=0,z=.118},{0,1,0},capped)
+assert(capped_forward[3]<0,'clamped correction still turns toward the point')
+-- A reticle up and to the left of the sights (head above-left of the gun):
+-- the sights turn up and left.
+local up_left=assert(Sights.zeroing({.15,0,-.3},identity,{x=0,z=.118},{0,10,0}))
+local _,turned=sight_miss({.15,0,-.3},identity,{x=0,z=.118},{0,10,0},up_left)
+assert(turned[1]<0 and turned[3]>0,'turned toward the up-left reticle')
 assert(Sights.zeroing({0,0,0},identity,nil,{0,10,0})==nil,'no offset')
 -- Adapter: eases toward the correction, returns aim when nothing is known.
 Quaternion={to_elements=function(q) return q[1],q[2],q[3],q[4] end,from_elements=function(...) return {...} end,multiply=mul}

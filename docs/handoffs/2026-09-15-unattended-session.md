@@ -164,9 +164,19 @@ Fix `96b13ed`, deployed (evening item 6). The earlier ray-origin attempt
   - *Stock ADS pose* (hidden first-person rig): the eye sits 3.2 cm above
     and 0.8 cm left of the bore, looking along it (within 0.3°).
   - *Drawn VR gun:* the grip sits 8.6 cm below the bore.
-  - *Result:* the reticle marks the aim ray's hit point, and the ray runs
-    along the bore. So the sight line sat 11.8 cm above it: through the
-    sights the reticle was 0.66° low at 10 m, about 2° at 3 m.
+  - *First reading (wrong, corrected after the user's review):* I took the
+    reticle ray to run along the bore from the grip, giving a reticle 0.66°
+    low at 10 m. The synthetic run showed "low" only because the unworn
+    headset sits low.
+  - *Actual cause:* in the stock-input route the reticle ray starts at the
+    head (`darktidevr_online_reticle.lua` returns the first-person camera
+    position) and runs along the gun's aim. The sights are parallel to it
+    but offset by the head-to-sight distance. With the gun held below and to
+    the right of the eyes, the reticle sits up and to the left of the
+    sights: the user's screenshot `shot-205314`, about 1.5-2° at 10 m for a
+    30 cm offset. The `sight2` numbers fit a head origin: the reticle
+    8-16 cm to the left of the bore with the view pose's grip 12 cm right of
+    the head.
 - **First attempt: start the controller ray on the sight line.** It changed
   nothing (`sight3`): the active route publishes the reticle from the
   stock first-person position (`darktidevr_online_reticle.lua`). Moving the
@@ -176,8 +186,14 @@ Fix `96b13ed`, deployed (evening item 6). The earlier ray-origin attempt
   only).
   - The drawn gun turns about the grip by the small angle that puts its
     sight line through the reticle point.
-  - Guards: capped at 5°, skipped for points nearer than 0.75 m, eased over
-    0.08 s.
+  - It works whichever side the reticle is on, so it turns the sights up and
+    left in the worn case.
+  - Guards: clamped to 5°, skipped for points nearer than 0.75 m, eased over
+    0.08 s. The first version (`96b13ed`) dropped corrections over 5°
+    instead of clamping. With a 30 cm head-to-sight offset that meant anything
+    nearer than about 3.5 m got no correction, and the correction snapped off
+    as the aim point came closer. Fixed to clamp, with tests for the clamp
+    and for an up-left reticle.
   - The aim that shoots and the reticle itself are unchanged.
   - *Sight offset:* the stock ADS eye, measured live after 0.8 s of ADS
     (shipped for the galvanic rifle), minus the placed gun's grip, both in
