@@ -520,4 +520,53 @@ Not shown:
 - left-dominant play (not supported by authored grips);
 - how the grip feels.
 
+### Grip ready on wield (user direction: "no delay between wielding and being able to grip")
+
+Commits `8349b4f` and `cd68da2`.
+
+- **Per template.** Grips are keyed by weapon template rather than by item,
+  and come from four sources in order:
+  - shipped: `Support.SHIPPED_GRIPS`, currently the galvanic rifle only;
+  - stored: `vr_two_hand_grips_v1` in the mod's settings, from an earlier
+    session;
+  - settled: a new template gets a grip once the animated hand has stayed
+    within 5 mm for 6 frames, which happens during the draw;
+  - measured: the first 30 steady frames of the session. This replaces the
+    earlier grip (only when not holding) and is stored if it moved by more
+    than 3 mm.
+- **Cost.** After that, the template is not sampled again that session.
+- **One-handed weapons.** A settled grip is dropped after 120 steady frames
+  with the hand off the weapon.
+- **Evidence.**
+  - `run7`, new template: `source=settled` 6 frames (65 ms) after the wield
+    log, with the same socket and hand rotation as `source=measured` 1.4 s
+    later. The grip was written to the settings file.
+  - `run9`, next session: no `authored_grip` line, because the stored grip
+    matched. The first hold logged `grip=stored`, and 18 holds steered
+    9.0 degrees each.
+  - Not shown: other templates, including whether their draw animation rests
+    the left hand somewhere plausible that isn't the foregrip. The steady
+    average would then replace that grip about a second later.
+
+### Viewer crash at level load: automatic menu readback diagnostic
+
+The viewer crashed in `run8` as the Psykhanium loaded, right after
+`openxr.shared_menu_crop_clamped`: access violation 0xc0000005 at +0x235a3,
+logged by WER at 12:21:29. The crash ended controller input, so there was no
+wield.
+
+- **Locating it.** Relinking the build's own objects with `/MAP` gave a
+  byte-identical binary apart from timestamps. The offset falls in
+  `run_theatre_lifecycle`'s cropped-menu PPM loop.
+- **Cause.** Every menu attach read the menu texture back and wrote two PPMs
+  to `%TEMP%`. The cropped one looped over the presentation crop (2112x1188)
+  across a 1280x720 texture, past the end of the readback buffer.
+  Intermittent: `run7` hit the same clamp and survived.
+- **Fix (`cf62729`).** The crop is clamped to the texture, and the readback
+  runs only on its request file. This saves two roughly 7 MB writes per menu
+  attach in normal play.
+- **After the fix (`run9`).** No diagnostic lines, a clean exit and no WER
+  events. That run happened not to hit the clamp, so the crash condition is
+  fixed by construction and was not reproduced.
+
 Worn check: evening item 8.

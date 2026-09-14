@@ -163,9 +163,9 @@ your hand is in a zone.
 Mod Options, Darktide VR, Experimental features, "Two-hand support". With a
 two-handed gun out, put your off hand where the weapon's animation holds the
 foregrip and press grip: the glove takes the foregrip and the gun follows both
-hands until you let go. The grip point is taken from the game's own animation
-for each weapon after you have held it steady for a moment; one-handed
-weapons offer no grip. Right-hand dominant only for now. The older
+hands until you let go. The grip point comes from the game's own animation of
+each gun, found as the draw finishes and remembered between sessions, so it is
+ready as soon as the gun is in your hand; one-handed weapons offer no grip. Right-hand dominant only for now. The older
 `/dtvr_two_hand_calibrate` command still records a custom grip for the
 current session.
 
