@@ -120,7 +120,10 @@ function Scan.install(mod, presentation)
                     local key = entry.label .. "#" .. index
                     local node = drift.nodes[key]
                     if not node then
-                        node = {first = Vector3Box(local_position), max = 0, label = entry.label, index = index, count = count}
+                        -- Where it sits at the first sample: world, distance to the right grip,
+                        -- and offset from the unit root in the root's frame (x forward).
+                        node = {first = Vector3Box(local_position), max = 0, label = entry.label, index = index, count = count,
+                            first_world = Vector3Box(world), first_to_right = right and Vector3.length(world - right) or -1}
                         drift.nodes[key] = node
                     else
                         local d = Vector3.length(local_position - node.first:unbox())
@@ -140,8 +143,9 @@ function Scan.install(mod, presentation)
                 if node.max > DRIFT_LOG_METRES then
                     drifting = drifting + 1
                     local world = node.world and node.world:unbox()
-                    mod:info("DARKTIDEVR_ATTACHMENT_SCAN drift %s node=%d/%d max_local_drift_m=%.3f world=%s to_right_grip=%.3f",
-                        node.label, node.index, node.count, node.max, vector_text(world), node.to_right or -1)
+                    mod:info("DARKTIDEVR_ATTACHMENT_SCAN drift %s node=%d/%d max_local_drift_m=%.3f world=%s to_right_grip=%.3f first_world=%s first_to_right_grip=%.3f first_local=%s",
+                        node.label, node.index, node.count, node.max, vector_text(world), node.to_right or -1,
+                        vector_text(node.first_world:unbox()), node.first_to_right or -1, vector_text(node.first:unbox()))
                 end
             end
             mod:info("DARKTIDEVR_ATTACHMENT_SCAN drift_done samples=%d drifting_nodes=%d", drift.samples, drifting)
