@@ -173,6 +173,7 @@ function controller_aim.install(mod, presentation, state)
 
     function controller_aim.target(side)
         side = side or "dominant"
+        local role = side
         if presentation.weapon_hand_roles then
             side = presentation.weapon_hand_roles.physical(side)
         elseif side == "dominant" then side = "right"
@@ -185,10 +186,19 @@ function controller_aim.install(mod, presentation, state)
         if not mode_allowed then
             return nil, nil
         end
+        local position, rotation
         if side == "left" then
-            return presentation.left_controller_aim_target()
+            position, rotation = presentation.left_controller_aim_target()
+        else
+            position, rotation = presentation.controller_aim_target()
         end
-        return presentation.controller_aim_target()
+        -- A wielded gun's ray starts on its sight line (darktidevr_gun_sights).
+        if role == "dominant" and position and presentation.gun_sights then
+            local player = Managers.player and Managers.player:local_player(1)
+            local origin = presentation.gun_sights.origin(player and player.player_unit, rotation)
+            if origin then position = origin end
+        end
+        return position, rotation
     end
 
     function controller_aim.melee_visual_rotation(unit)

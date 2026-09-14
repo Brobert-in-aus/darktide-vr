@@ -11630,6 +11630,9 @@ mod:hook_safe(
         if presentation.weapon_parked_parts then
             presentation.weapon_parked_parts.update(player_unit)
         end
+        if presentation.gun_sights then
+            presentation.gun_sights.update(player_unit, t)
+        end
         -- The scan hologram was placed from the scanner before the hand pose
         -- above moved it; place it again from the scanner in the hand.
         if presentation.scanner_holo then
@@ -15251,6 +15254,9 @@ end
 
 presentation.gun_aim = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_gun_aim"
+).install(mod, presentation)
+presentation.gun_sights = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_gun_sights"
 ).install(mod, presentation)
 presentation.weapon_parked_parts = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_weapon_parked_parts"

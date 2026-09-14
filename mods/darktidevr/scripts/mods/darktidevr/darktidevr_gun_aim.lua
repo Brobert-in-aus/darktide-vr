@@ -105,6 +105,9 @@ function Alignment.install(mod,presentation)
             if dominant=='left' and not aligned then restore(world); return end
         end
         if presentation.two_hand then presentation.two_hand.place_hand(world,unit,grip,aim) end
+        if presentation.gun_sights then
+            presentation.gun_sights.observe_grip(template.name,Unit.world_pose(muzzle_unit,muzzle_node),Unit.world_position(unit,attach))
+        end
         instance.writes=instance.writes+1
         if instance.last_weapon~=template then
             instance.last_weapon=template
