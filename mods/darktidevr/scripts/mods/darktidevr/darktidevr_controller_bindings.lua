@@ -414,7 +414,15 @@ function Bindings.install(mod)
                 cancelled_grip=grip_claim.mask
                 grip.cancelled=true
                 grip_claim=nil
+            elseif not down and support.toggle==true then
+                -- Toggle: letting go keeps the claim; the next press ends it.
+                grip_claim.latched=true
             elseif not down then
+                grip.released=true
+                grip_claim=nil
+            elseif grip_claim.latched and bit.band(previous_physical,grip_claim.bit)==0 then
+                -- The ending press and its release stay out of the bound action.
+                blocked=bit.bor(blocked,grip_claim.bit)
                 grip.released=true
                 grip_claim=nil
             end

@@ -169,6 +169,15 @@ return {
                         default_value = false,
                     },
                     {
+                        setting_id = "vr_two_hand_grip_mode",
+                        type = "dropdown",
+                        default_value = "hold",
+                        options = {
+                            {text = "vr_two_hand_grip_hold", value = "hold"},
+                            {text = "vr_two_hand_grip_toggle", value = "toggle"},
+                        },
+                    },
+                    {
                         setting_id = "vr_ammo_readout",
                         type = "checkbox",
                         default_value = false,

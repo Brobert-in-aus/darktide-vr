@@ -635,10 +635,25 @@ end
 
 -- authored_rotation: rotation is a stock hand joint rotation (the authored
 -- grip) rather than a controller grip rotation to convert anatomically.
-function BodyProxy.place_support_hand(world,source,side,position,rotation,authored_rotation)
+-- weight, when below 1, blends from the glove's pose already placed this frame
+-- (the tracked hand) toward the grip pose: 0 leaves the tracked hand.
+function BodyProxy.place_support_hand(world,source,side,position,rotation,authored_rotation,weight)
     if not BodyProxy.rigid_hands_active() or source~=state.source_unit or
         not Unit.alive(source) or (side~='left' and side~='right') then return false end
-    return place_rigid_hand(world,rigid_hands[side],position,rotation,authored_rotation==true)
+    local hand=rigid_hands[side]
+    if weight~=nil and weight<1 then
+        if not (weight>0) then return false end
+        local name=side=='left' and 'j_lefthand' or 'j_righthand'
+        if not hand.ready or not hand.unit or not Unit.alive(hand.unit) or
+            not Unit.has_node(hand.unit,name) or not position or not rotation then return false end
+        local joint=authored_rotation and rotation or anatomical_hand_rotation(hand.unit,side,rotation)
+        if not joint then return false end
+        local node=Unit.node(hand.unit,name)
+        position=Vector3.lerp(Unit.world_position(hand.unit,node),position,weight)
+        rotation=Quaternion.lerp(Unit.world_rotation(hand.unit,node),joint,weight)
+        authored_rotation=true
+    end
+    return place_rigid_hand(world,hand,position,rotation,authored_rotation==true)
 end
 
 -- offset, when given, moves both animated hands by one world vector, keeping

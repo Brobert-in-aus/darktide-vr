@@ -304,7 +304,9 @@ void apply_synthetic_holster_path(core::SharedControllerState& state,
   // Two-hand check (once mode): from 2 s after the draw, every 4 s the left
   // hand moves to the galvanic rifle's measured authored foregrip (3.4 cm
   // left, 32.9 cm forward of the right grip, gun pitched down 10 degrees)
-  // and squeezes its grip for 2 s. Half a second into the hold the hand
+  // and squeezes its grip for 2 s. The hand arrives from 18 cm away over the
+  // first quarter second, so it enters the grip zone before the squeeze. Half
+  // a second into the hold the hand
   // rises 5 cm over a quarter second and stays there for a second, so the
   // support hand has something to steer.
   if (resting && frame >= zone_frames * 3) {
@@ -316,8 +318,11 @@ void apply_synthetic_holster_path(core::SharedControllerState& state,
       if (phase >= 90 && phase < 180) {
         lift = 0.05F * std::min(1.0F, static_cast<float>(phase - 90) / 30.0F);
       }
-      const math::Vec3 foregrip{grip.x - 0.034F, grip.y + 0.329F * std::cos(pitch),
-                                grip.z + 0.329F * std::sin(pitch) + lift};
+      const float approach =
+          phase < 30 ? 1.0F - static_cast<float>(phase) / 30.0F : 0.0F;
+      const math::Vec3 foregrip{grip.x - 0.034F - 0.10F * approach,
+                                grip.y + 0.329F * std::cos(pitch) - 0.12F * approach,
+                                grip.z + 0.329F * std::sin(pitch) + lift - 0.08F * approach};
       state.hands[0].body_aim_pose.position = foregrip;
       state.hands[0].body_grip_pose.position = foregrip;
       if (phase >= 30 && phase < 210) {

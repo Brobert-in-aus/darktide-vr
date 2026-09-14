@@ -28,6 +28,24 @@ function Support.ads_supported(template)
     return found.aim==true and found.unaim==true
 end
 local function finite(x) return type(x)=='number' and x==x and math.abs(x)<math.huge end
+-- Grip zone feedback: while the support hand is close enough for a grip press
+-- to take hold (the profile's acquire radius, left again ZONE_EXIT_MARGIN
+-- further out), the support glove eases onto the grip over SNAP_SECONDS and
+-- eases back when the hand leaves; it stays on while held.
+Support.SNAP_SECONDS=.1
+Support.ZONE_EXIT_MARGIN=.015
+function Support.snap_step(weight,target,dt)
+    if not finite(weight) then weight=0 end
+    if not finite(dt) or dt<=0 then return weight end
+    local step=dt/Support.SNAP_SECONDS
+    if target>weight then return math.min(target,weight+step) end
+    return math.max(target,weight-step)
+end
+-- Eased blend weight (smoothstep): quick in the middle, no jolt at either end.
+function Support.snap_ease(weight)
+    local w=math.max(0,math.min(1,weight or 0))
+    return w*w*(3-2*w)
+end
 local function same_stock(a,b)
     if not a or not b then return a==b end
     if a.radius~=b.radius or a.strength~=b.strength then return false end
@@ -51,8 +69,10 @@ local function valid_profile(profile)
         finite(profile.smoothing) and profile.smoothing>=0 and profile.smoothing<=.3
 end
 function Support.new(Pose)
-    local api={profiles={},enabled=false,ads_unavailable=false,held=false,stock_active=false}
+    local api={profiles={},enabled=false,ads_unavailable=false,held=false,stock_active=false,in_zone=false,snap=0}
     function api.is_enabled() return api.enabled end
+    -- Grip mode: false holds while grip is held, true toggles on each press.
+    function api.grip_toggle() return false end
     local filter=Pose.new()
     local stock_anchor=Pose.new_stock_anchor()
     local context,identity
@@ -63,6 +83,8 @@ function Support.new(Pose)
             api.capture_pending=nil
         end
         context,identity=nil,nil
+        api.in_zone=false
+        api.snap=0
         api.ads_unavailable=false
         api.held=false
         api.stock_active=false
@@ -106,22 +128,28 @@ function Support.new(Pose)
             filter.reset()
             stock_anchor.reset()
         end
+        -- A new gesture identity re-enters the zone from outside; the glove
+        -- blend itself carries over (a weapon change clears it through clear()).
+        if identity.zone_owner~=identity then api.in_zone=false; identity.zone_owner=identity end
+        api.in_zone=Pose.near(frame.rotation,frame.primary,frame.support,profile.socket,
+            profile.acquire+(api.in_zone and Support.ZONE_EXIT_MARGIN or 0))
         context=frame
         api.ads_unavailable=profile.ads==true and (frame.toggle_ads~=false or frame.ads_supported~=true)
-        return {control=frame.side..'_grip',owner=identity,action=action,
+        return {control=frame.side..'_grip',owner=identity,action=action,toggle=api.grip_toggle()==true,
             acquire=Pose.near(frame.rotation,frame.primary,frame.support,profile.socket,profile.acquire),
             retain=Pose.near(filter.apply(frame.rotation),frame.primary,frame.support,profile.socket,profile.release)}
     end
     function api.finish(grip)
         api.held=false
         api.stock_active=false
-        if not context or not identity then filter.reset(); stock_anchor.reset(); return end
+        if not context or not identity then filter.reset(); stock_anchor.reset(); api.in_zone=false; api.snap=0; return end
         local stock=stock_anchor.update(context,identity.profile.socket,identity.stock,
             grip.held and not grip.cancelled,identity)
         filter.update(context.rotation,context.primary,context.support,identity.profile.socket,
             grip.held,identity,context.dt,identity.smoothing,grip.cancelled,stock)
         api.held=grip.held and filter.owner~=nil
         api.stock_active=api.held and stock~=nil
+        api.snap=Support.snap_step(api.snap,(api.held or api.in_zone) and 1 or 0,context.dt)
     end
     function api.current_profile() return identity and identity.profile end
     function api.rotation(unit,rotation)
@@ -133,10 +161,12 @@ function Support.new(Pose)
             identity.generation==generation and identity.recenter==recenter and
             (side==nil or identity.side==side) or false
     end
+    -- The support glove's grip pose and its eased blend weight, or nil
+    -- while the hand is away from the grip.
     function api.hand_pose(unit,primary,rotation)
-        if not api.held or not identity or identity.unit~=unit then return nil end
+        if not identity or identity.unit~=unit or api.snap<=0 then return nil end
         local position,orientation=Pose.hand(rotation,primary,identity.profile.socket,identity.profile.hand_rotation)
-        return position,orientation,identity.profile.authored==true
+        return position,orientation,identity.profile.authored==true,Support.snap_ease(api.snap)
     end
     return api
 end
@@ -145,10 +175,13 @@ function Support.install(mod,presentation,observation)
     local api=Support.new(Pose)
     -- The option turns support on for every session; the chat commands still
     -- work for the current one.
-    -- test_enabled: darktidevr_two_hand_test.flag "enabled" (unattended runs).
-    local test_enabled_flag
+    -- test_enabled: darktidevr_two_hand_test.flag "enabled", or "enabled_toggle"
+    local test_enabled_flag,test_toggle_flag
     function api.is_enabled()
         return api.enabled or (mod.get and mod:get('vr_two_hand_support')==true) or test_enabled_flag==true or false
+    end
+    function api.grip_toggle()
+        return (mod.get and mod:get('vr_two_hand_grip_mode')=='toggle') or test_toggle_flag==true
     end
     -- Authored grips, per weapon template: where the stock first-person
     -- animation holds the left hand on the weapon. Right-dominant only (the
@@ -273,6 +306,7 @@ function Support.install(mod,presentation,observation)
     local finish=api.finish
     local held_logged=setmetatable({},{__mode='k'})
     local releases_logged,was_held,hold_source=0,false,nil
+    local zone_logs,was_in_zone,snap_frames=0,false,nil
     api.steer={max_degrees=0,frames=0}
     function api.finish(grip)
         finish(grip)
@@ -288,10 +322,23 @@ function Support.install(mod,presentation,observation)
             hold_source=profile and (profile.authored and 'authored' or 'calibrated') or 'unknown'
         elseif was_held and not api.held and releases_logged<Support.RELEASE_LOGS then
             releases_logged=releases_logged+1
-            mod:info('DARKTIDEVR_TWO_HAND released source=%s max_steer_degrees=%.1f steered_frames=%d',
-                hold_source,api.steer.max_degrees,api.steer.frames)
+            mod:info('DARKTIDEVR_TWO_HAND released source=%s mode=%s ended=%s max_steer_degrees=%.1f steered_frames=%d',
+                hold_source,api.grip_toggle() and 'toggle' or 'hold',grip.cancelled and 'cancelled' or 'released',
+                api.steer.max_degrees,api.steer.frames)
         end
         was_held=api.held
+        -- Zone feedback evidence: entry, and frames until the glove sits on the grip.
+        if api.in_zone and not was_in_zone and zone_logs<Support.RELEASE_LOGS then
+            zone_logs=zone_logs+1; snap_frames=0
+            mod:info('DARKTIDEVR_TWO_HAND zone=enter held=%s',tostring(api.held))
+        end
+        if snap_frames then
+            snap_frames=snap_frames+1
+            if api.snap>=1 then
+                mod:info('DARKTIDEVR_TWO_HAND zone=snapped frames=%d',snap_frames); snap_frames=nil
+            elseif not api.in_zone then snap_frames=nil end
+        end
+        was_in_zone=api.in_zone
     end
     local function steer_degrees(a,b)
         local dot=math.abs(a[1]*b[1]+a[2]*b[2]+a[3]*b[3]+a[4]*b[4])
@@ -313,7 +360,8 @@ function Support.install(mod,presentation,observation)
         local value=file and file:read('*all')
         if file then file:close() end
         preview=type(value)=='string' and value:match('^%s*preview%s*$')~=nil
-        test_enabled_flag=type(value)=='string' and value:match('^%s*enabled%s*$')~=nil
+        test_enabled_flag=type(value)=='string' and (value:match('^%s*enabled%s*$')~=nil or value:match('^%s*enabled_toggle%s*$')~=nil)
+        test_toggle_flag=type(value)=='string' and value:match('^%s*enabled_toggle%s*$')~=nil
         return preview
     end
     local previous_t
@@ -468,7 +516,7 @@ function Support.install(mod,presentation,observation)
     end
     function api.place_hand(world,unit,primary,rotation)
         if not presentation.body_proxy or not presentation.body_proxy.place_support_hand then return false end
-        local position,orientation,authored_rotation
+        local position,orientation,authored_rotation,weight
         if preview_requested() then
             local weapon=unit and ScriptUnit.has_extension(unit,'weapon_system')
             local template=weapon and weapon:weapon_template()
@@ -479,13 +527,13 @@ function Support.install(mod,presentation,observation)
             end
         end
         if not position then
-            if not api.is_enabled() or not api.held or not live() then return false end
-            position,orientation,authored_rotation=api.hand_pose(unit,vector(primary),quaternion(rotation))
+            if not api.is_enabled() or not live() then return false end
+            position,orientation,authored_rotation,weight=api.hand_pose(unit,vector(primary),quaternion(rotation))
         end
         if not position or not orientation then return false end
         local ok,written=pcall(presentation.body_proxy.place_support_hand,world,unit,
             presentation.weapon_hand_roles.physical('support'),Vector3(unpack(position)),
-            Quaternion.from_elements(unpack(orientation)),authored_rotation)
+            Quaternion.from_elements(unpack(orientation)),authored_rotation,weight)
         return ok and written==true
     end
     if mod.command then

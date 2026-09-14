@@ -31,6 +31,47 @@ assert(api.rotation(frame.unit,frame.rotation)==frame.rotation,'lost tracking re
 frame.live=true; frame.support={0,.3,0}
 sample(512,0,0,0,false)
 sample(0,0,0,0,false)
+-- Grip zone: entered at the acquire radius, left ZONE_EXIT_MARGIN further out;
+-- the glove blend eases up while in the zone and back down after.
+do
+    frame.support={0,.3,0}; sample(0,0,0,0,false)
+    assert(api.in_zone and api.snap>0,'hand at the grip was not in the zone')
+    frame.support={.11,.3,0}; sample(0,0,0,0,false); assert(api.in_zone,'left the zone inside the exit margin')
+    frame.support={.12,.3,0}; sample(0,0,0,0,false); assert(not api.in_zone,'stayed in the zone beyond the margin')
+    frame.support={.105,.3,0}; sample(0,0,0,0,false); assert(not api.in_zone,'re-entered outside the acquire radius')
+    for _=1,11 do sample(0,0,0,0,false) end
+    assert(api.snap==0 and api.hand_pose(frame.unit,{0,0,0},{0,0,0,1})==nil,'glove blend outlived the zone')
+    frame.support={0,.3,0}
+    for _=1,11 do sample(0,0,0,0,false) end
+    local _,_,_,weight=api.hand_pose(frame.unit,{0,0,0},{0,0,0,1})
+    assert(api.snap==1 and weight==1,'glove did not reach the grip within SNAP_SECONDS')
+    assert(Support.snap_ease(.5)==.5 and Support.snap_ease(0)==0 and Support.snap_ease(2)==1)
+    assert(Support.snap_ease(.25)<.25 and Support.snap_ease(.75)>.75,'blend is not eased')
+    frame.live=false; sample(0,0,0,0,false); frame.live=true
+    assert(api.snap==0 and not api.in_zone,'lost tracking kept the glove on the grip')
+end
+-- Toggle grip: a press takes the grip, letting go keeps it, the next press
+-- ends it without reaching the bound action; moving away still cancels.
+do
+    sample(0,0,0,0,false)
+    api.grip_toggle=function() return true end
+    sample(512,2,2,0,true)
+    sample(0,0,2,0,true)
+    sample(0,0,2,0,true)
+    sample(512,0,0,2,false) -- ending press: no class ability
+    sample(512,0,0,0,false)
+    sample(0,0,0,0,false) -- and no release edge for it
+    sample(512,2,2,0,true)
+    sample(0,0,2,0,true)
+    frame.support={.3,.3,0}
+    sample(0,0,0,0,false) -- beyond the release radius
+    frame.support={0,.3,0}
+    sample(0,0,0,0,false)
+    sample(512,2,2,0,true)
+    api.grip_toggle=function() return false end
+    sample(0,0,0,2,false) -- switching to hold mode releases on let-go
+    sample(0,0,0,0,false)
+end
 for _,transition in ipairs({'recenter','generation','weapon','unit','profile','socket','radius','role','menu'}) do
     frame.side='left'; frame.active=true
     sample(0,0,0,0,false)
@@ -156,7 +197,7 @@ local p,h,r=installed_sample(512)
 assert(p==0 and h==0 and r==0 and observations.left_grip_usable)
 -- Losing the hold logs the largest aim correction applied while held.
 local released=infos[#infos]
-local steer=tonumber(released:match('^DARKTIDEVR_TWO_HAND released source=calibrated max_steer_degrees=([%d.]+) steered_frames=%d+$'))
+local steer=tonumber(released:match('^DARKTIDEVR_TWO_HAND released source=calibrated mode=hold ended=cancelled max_steer_degrees=([%d.]+) steered_frames=%d+$'))
 assert(steer and steer>15 and steer<25,'release log: '..tostring(released))
 assert(installed.resolve(unit,frame.rotation)==frame.rotation)
 observations.left_grip_tracking_live=true; secondary={0,.3,0}
@@ -200,16 +241,32 @@ assert(not installed.enabled)
 commands.dtvr_two_hand_on(); installed_sample(0)
 assert(installed_sample(512)==2,'Calibrated grip did not acquire')
 local hand_writes=0
-presentation.body_proxy={place_support_hand=function(world,u,side,position,rotation)
+local weights={}
+presentation.body_proxy={place_support_hand=function(world,u,side,position,rotation,authored,weight)
     assert(world=='world' and u==unit and side=='left')
+    assert(weight>0 and weight<=1); weights[#weights+1]=weight
     for i=1,3 do assert(math.abs(position[i]-captured.socket[i])<1e-8) end
     assert(math.abs(rotation[4]-1)<1e-8)
     hand_writes=hand_writes+1; return true
 end}
 assert(installed.place_hand('world',unit,primary,{0,0,0,1}) and hand_writes==1)
+-- Released with the hand still at the grip: the glove stays there.
 installed_sample(0)
-assert(not installed.place_hand('world',unit,primary,{0,0,0,1}) and hand_writes==1,
+assert(installed.place_hand('world',unit,primary,{0,0,0,1}) and hand_writes==2,
+    'Glove left the grip while the hand was still in the zone')
+-- Hand away: the glove eases back to the tracked hand, then is left alone.
+local at_grip=secondary
+secondary={at_grip[1]+.3,at_grip[2],at_grip[3]}
+local previous=weights[#weights]
+for _=1,math.ceil(Support.SNAP_SECONDS/.01)+1 do
+    installed_sample(0)
+    if installed.place_hand('world',unit,primary,{0,0,0,1}) then
+        assert(weights[#weights]<previous,'glove did not ease back'); previous=weights[#weights]
+    end
+end
+assert(not installed.place_hand('world',unit,primary,{0,0,0,1}),
     'Released support hand stayed constrained')
+secondary=at_grip
 equipped={}
 assert(installed_sample(512)==2048 and not real_mapper.support_grip.held,
     'A different item with the same template inherited a measured grip')
@@ -264,7 +321,31 @@ placed='expect_authored'
 assert(proxy.place_support_hand('world',unit,'left',primary,frame.rotation,true) and placed==true)
 assert(not proxy.place_support_hand('world',{},'left',primary,frame.rotation))
 assert(not proxy.place_support_hand('world',unit,'unknown',primary,frame.rotation))
-print('two_hand_visual=pass calibrated_pose release anatomical_boundary local_owner')
+-- A blend weight eases from the glove's already placed (tracked) pose toward
+-- the grip; a calibrated rotation is converted to the joint first.
+do
+    local glove={}
+    roots.left.ready,roots.left.unit=true,glove
+    local env=getfenv(chunk)
+    env.Unit={alive=function(u) return u==unit or u==glove end,has_node=function() return true end,
+        node=function() return 7 end,world_position=function() return {0,0,0} end,
+        world_rotation=function() return 'tracked' end}
+    env.Vector3={lerp=function(a,b,w) return {a[1]+(b[1]-a[1])*w,a[2]+(b[2]-a[2])*w,a[3]+(b[3]-a[3])*w} end}
+    env.Quaternion={lerp=function(a,b,w) return {a,b,w} end}
+    env.anatomical_hand_rotation=function(u,side) assert(u==glove and side=='left'); return 'joint' end
+    local written
+    env.place_rigid_hand=function(_,hand,position,rotation,authored)
+        assert(hand==roots.left); written={position,rotation,authored}; return true
+    end
+    assert(proxy.place_support_hand('world',unit,'left',{1,2,3},'controller',false,.25))
+    assert(math.abs(written[1][1]-.25)<1e-9 and math.abs(written[1][3]-.75)<1e-9)
+    assert(written[2][1]=='tracked' and written[2][2]=='joint' and written[2][3]==.25 and written[3]==true)
+    assert(proxy.place_support_hand('world',unit,'left',{1,2,3},'stock',true,.5) and written[2][2]=='stock')
+    written=nil
+    assert(not proxy.place_support_hand('world',unit,'left',{1,2,3},'stock',true,0) and written==nil,
+        'zero weight moved the glove')
+end
+print('two_hand_visual=pass calibrated_pose release anatomical_boundary local_owner zone_blend')
 assert(Support.ads_supported(template))
 local aim_step=template.action_inputs.zoom.input_sequence[1]
 aim_step.input_setting={input='action_two_pressed',value=true,setting='toggle_ads',setting_value=true}
