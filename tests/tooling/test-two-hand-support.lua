@@ -469,3 +469,43 @@ do
     assert(grips.authored_profile({template='stored_p1_m1'})==stored and sets==1,'unchanged stored grip rewritten')
     print('two_hand_authored_grips=pass shipped stored settled deferred_swap store stop one_handed unchanged')
 end
+-- Steadying option: classic passes no steady table; hands line passes the
+-- frame's scene basis to the pose filter.
+do
+    local seen={}
+    local SpyPose=setmetatable({new=function()
+        local inner=Pose.new()
+        local wrapper=setmetatable({},{__index=inner})
+        function wrapper.update(...)
+            local steady=select(11,...)
+            seen[#seen+1]=steady and {mode=steady.mode,scene=steady.scene} or false
+            local result=inner.update(...)
+            wrapper.owner=inner.owner
+            return result
+        end
+        function wrapper.reset() inner.reset(); wrapper.owner=nil end
+        return wrapper
+    end},{__index=Pose})
+    local spy=Support.new(SpyPose)
+    spy.enabled=true
+    spy.profiles.example={socket={0,.3,0},acquire=.1,release=.2,smoothing=.07,ads=false}
+    local spy_mapper=Bindings.install({get=function() end})
+    local f={active=true,live=true,weapon={},unit={},generation=1,recenter=0,side='left',dt=.01,
+        rotation={0,0,0,1},primary={0,0,0},support={0,.3,0},template='example',toggle_ads=false,ads_supported=true,
+        scene_rotation={0,0,math.sin(.3),math.cos(.3)}}
+    local function step(physical)
+        local request=spy.prepare(f)
+        spy_mapper.sample(true,physical,0,0,true,f.generation,'combat',request)
+        spy.finish(spy_mapper.support_grip)
+    end
+    step(0) -- a grip starts from neutral input
+    step(512)
+    assert(spy_mapper.support_grip.held and seen[#seen]==false,'classic passed a steady table')
+    function spy.steadying() return 'hands_line' end
+    step(512)
+    local last=seen[#seen]
+    assert(last and last.mode=='hands_line' and last.scene==f.scene_rotation,'hands line did not receive the scene basis')
+    assert(spy_mapper.support_grip.held,'grip not held')
+    assert(spy.held,'hands line hold not owned')
+end
+print('two_hand_steadying=pass classic hands_line scene_basis')

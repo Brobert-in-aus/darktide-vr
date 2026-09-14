@@ -178,3 +178,90 @@ assert(not anchor.update(body_frame,socket,stock_profile,true,owner))
 assert(not Pose.stock_profile({shoulder={0,0,0},offset={0,0,0},radius=.2,strength=0}))
 assert(not Pose.stock_profile({shoulder={0,0,10},offset={0,0,0},radius=.2,strength=.5}))
 print('virtual_stock_anchor=pass head_glance scene_turn translation release contact invalidity')
+-- Hands-line steadying (two-hand aim design, 15 September).
+do
+    local function yaw(deg) local r=math.rad(deg)*.5 return {0,0,math.sin(r),math.cos(r)} end
+    local function mul(a,b)
+        return {a[4]*b[1]+a[1]*b[4]+a[2]*b[3]-a[3]*b[2],a[4]*b[2]-a[1]*b[3]+a[2]*b[4]+a[3]*b[1],
+            a[4]*b[3]+a[1]*b[2]-a[2]*b[1]+a[3]*b[4],a[4]*b[4]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3]}
+    end
+    local function rot(q,v) local o=mul(mul(q,{v[1],v[2],v[3],0}),{-q[1],-q[2],-q[3],q[4]}) return {o[1],o[2],o[3]} end
+    local function angle_to(q,line)
+        local f=rot(q,{0,1,0})
+        local n=math.sqrt(line[1]^2+line[2]^2+line[3]^2)
+        return math.deg(math.acos(math.max(-1,math.min(1,(f[1]*line[1]+f[2]*line[2]+f[3]*line[3])/n))))
+    end
+    local dt,smoothing=1/90,.07
+    local steady={mode='hands_line'}
+    local support={3,4.33,5}
+    local function settle(filter,q,s,p,scene)
+        steady.scene=scene
+        local r
+        for _=1,90 do r=filter.update(q,p or primary,s or support,{0,.33,0},true,owner,dt,smoothing,false,nil,steady) end
+        return r
+    end
+    -- 1. A 10 degree wrist turn with both hands still keeps the barrel on the
+    -- hands line on every frame (classic leaves it 8.5 degrees off).
+    local filter=Pose.new()
+    settle(filter,identity)
+    local worst=0
+    for _=1,30 do
+        local r=filter.update(yaw(10),primary,support,{0,.33,0},true,owner,dt,smoothing,false,nil,steady)
+        worst=math.max(worst,angle_to(r,{0,.33,0}))
+    end
+    assert(worst<.1,'wrist turn moved the barrel off the hands line: '..worst)
+    local classic=Pose.new()
+    for _=1,90 do classic.update(identity,primary,support,{0,.33,0},true,owner,dt,smoothing) end
+    assert(angle_to(classic.update(yaw(10),primary,support,{0,.33,0},true,owner,dt,smoothing),{0,.33,0})>8,
+        'classic filter changed')
+    -- 2. A stick turn rotates the scene, both hands and the wrist together:
+    -- no lag behind the new hands line.
+    filter=Pose.new()
+    settle(filter,identity,nil,nil,identity)
+    local turn=yaw(30)
+    local line=rot(turn,{0,.33,0})
+    local turned_support={primary[1]+line[1],primary[2]+line[2],primary[3]+line[3]}
+    steady.scene=turn
+    local r=filter.update(turn,primary,turned_support,{0,.33,0},true,owner,dt,smoothing,false,nil,steady)
+    assert(angle_to(r,line)<.1,'stick turn lagged: '..angle_to(r,line))
+    -- 3. Physical support-hand jitter (1 mm each frame) is smoothed below the raw swing.
+    filter=Pose.new()
+    settle(filter,identity,nil,nil,nil)
+    local raw=math.deg(math.atan(.001/.33))
+    local jitter=0
+    for frame=1,90 do
+        local s={support[1]+(frame%2==0 and .001 or -.001),support[2],support[3]}
+        r=filter.update(identity,primary,s,{0,.33,0},true,owner,dt,smoothing,false,nil,steady)
+        if frame>45 then jitter=math.max(jitter,angle_to(r,{0,1,0})) end
+    end
+    assert(jitter<raw*.5,'jitter not smoothed: '..jitter..' raw '..raw)
+    -- 4. A fast 10 cm sideways sweep of the support hand is followed closely.
+    filter=Pose.new()
+    settle(filter,identity)
+    local final
+    for frame=1,9 do
+        local s={support[1]+.1*frame/9,support[2],support[3]}
+        final=s
+        r=filter.update(identity,primary,s,{0,.33,0},true,owner,dt,smoothing,false,nil,steady)
+    end
+    for _=1,3 do r=filter.update(identity,primary,final,{0,.33,0},true,owner,dt,smoothing,false,nil,steady) end
+    local target={final[1]-primary[1],final[2]-primary[2],final[3]-primary[3]}
+    assert(angle_to(r,target)<1.5,'fast sweep lagged: '..angle_to(r,target))
+    -- 5. Wrist roll about the barrel is kept.
+    filter=Pose.new()
+    near(settle(filter,roll,{3,4.3,5}),roll,1e-6)
+    -- 6. Release blends back to the one-hand aim; guards still reset.
+    filter=Pose.new()
+    settle(filter,identity,{3.33,4,5})
+    for _=1,90 do r=filter.update(identity,nil,nil,nil,false,owner,dt,smoothing,false,nil,steady) end
+    near(r,identity,1e-3)
+    settle(filter,identity)
+    near(filter.update(identity,primary,{3,3.7,5},{0,.33,0},true,owner,dt,smoothing,false,nil,steady),identity)
+    assert(filter.owner==nil)
+    -- 7. Taking hold eases in rather than snapping.
+    filter=Pose.new()
+    r=filter.update(identity,primary,{3.33,4,5},{0,.33,0},true,owner,dt,smoothing,false,nil,steady)
+    local first=angle_to(r,{0,1,0})
+    assert(first>0 and first<15,'hold snapped: '..first)
+end
+print('hands_line_steadying=pass wrist_turn stick_turn jitter fast_sweep roll release ease_in')

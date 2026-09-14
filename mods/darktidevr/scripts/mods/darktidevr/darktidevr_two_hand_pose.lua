@@ -201,28 +201,85 @@ function Pose.new_stock_anchor()
     end
     return state
 end
+-- One Euro filter (Casiez et al.) on a 3-vector: little smoothing while the
+-- value moves fast, more while it is nearly still. Cutoffs in hertz, beta per
+-- unit of speed (metres per second for a hands line).
+function Pose.new_one_euro(min_cutoff,beta,derivative_cutoff)
+    local state={min_cutoff=min_cutoff}
+    local function alpha(cutoff,dt) return 1/(1+1/(2*math.pi*cutoff*dt)) end
+    function state.reset() state.value=nil; state.speed=nil end
+    function state.filter(value,dt)
+        if not valid(value,3) then return nil end
+        if not state.value then
+            state.value={value[1],value[2],value[3]}; state.speed={0,0,0}
+            return state.value
+        end
+        if not finite(dt) or dt<=0 then return state.value end
+        local d=alpha(derivative_cutoff,dt)
+        local speed=0
+        for i=1,3 do
+            state.speed[i]=state.speed[i]+d*((value[i]-state.value[i])/dt-state.speed[i])
+            speed=speed+state.speed[i]*state.speed[i]
+        end
+        local a=alpha(state.min_cutoff+beta*math.sqrt(speed),dt)
+        for i=1,3 do state.value[i]=state.value[i]+a*(value[i]-state.value[i]) end
+        return state.value
+    end
+    return state
+end
+-- Hands-line steadying (two-hand aim design, 15 September): the line from the
+-- dominant grip to the support hand is filtered in tracking space (the scene
+-- basis removed, so stick turns and walking are never delayed) and the swing
+-- is recomputed from the current dominant rotation every frame, so turning
+-- the wrist cannot carry the barrel off the support hand.
+Pose.HANDS_LINE_BETA=20
+Pose.HANDS_LINE_DERIVATIVE_CUTOFF=1
 function Pose.new()
-    local state={correction={0,0,0,1},owner=nil}
+    local state={correction={0,0,0,1},owner=nil,engaged=0}
+    local line=Pose.new_one_euro(1,Pose.HANDS_LINE_BETA,Pose.HANDS_LINE_DERIVATIVE_CUTOFF)
     function state.reset()
-        state.correction={0,0,0,1}; state.owner=nil
+        state.correction={0,0,0,1}; state.owner=nil; state.engaged=0; line.reset()
     end
     function state.apply(rotation)
         local q=normalize(rotation,4)
         return q and normalize(multiply(q,state.correction),4) or nil
     end
-    function state.update(rotation,primary,support,socket,held,owner,dt,smoothing,cancelled,stock)
+    -- steady: nil for the classic filter, or {mode='hands_line', scene=quaternion or nil}.
+    function state.update(rotation,primary,support,socket,held,owner,dt,smoothing,cancelled,stock,steady)
         local q=normalize(rotation,4)
         if not q then state.reset(); return nil end
         if cancelled or owner==nil or not finite(dt) or dt<0 or dt>0.25 or
             not finite(smoothing) or smoothing<0 then state.reset(); return q end
         if state.owner~=owner then state.reset(); state.owner=owner end
+        local weight=smoothing==0 and 1 or 1-math.exp(-dt/smoothing)
+        if type(steady)=='table' and steady.mode=='hands_line' and held and
+            valid(primary,3) and valid(support,3) then
+            local scene=steady.scene and normalize(steady.scene,4)
+            local world_line=difference(support,primary)
+            local tracked=scene and rotate(inverse(scene),world_line) or world_line
+            -- The classic smoothing time constant sets the resting cutoff.
+            line.min_cutoff=smoothing>0 and 1/(2*math.pi*smoothing) or 1000
+            local filtered=line.filter(tracked,dt)
+            local back=filtered and (scene and rotate(scene,filtered) or filtered)
+            local target=back and Pose.stock_correction(q,primary,
+                {primary[1]+back[1],primary[2]+back[2],primary[3]+back[3]},socket,stock)
+            if not target then state.reset(); return q end
+            -- Taking hold eases in from the previous correction over the
+            -- classic time constant; after that the swing is exact for this
+            -- frame's wrist.
+            if state.engaged==0 then state.from=state.correction end
+            state.engaged=state.engaged+(1-state.engaged)*weight
+            if state.engaged>.999 then state.engaged=1 end
+            state.correction=state.engaged==1 and target or slerp(state.from,target,state.engaged)
+            return normalize(multiply(q,state.correction),4)
+        end
+        line.reset(); state.engaged=0
         local target={0,0,0,1}
         if held then target=Pose.stock_correction(q,primary,support,socket,stock) end
         if not target then state.reset(); return q end
-        -- Smooth only the support correction in controller-local space. The
-        -- primary controller's deliberate motion remains immediate; release
-        -- blends back to its accepted one-hand orientation.
-        local weight=smoothing==0 and 1 or 1-math.exp(-dt/smoothing)
+        -- Classic: smooth only the support correction in controller-local
+        -- space. The primary controller's deliberate motion remains immediate;
+        -- release blends back to its accepted one-hand orientation.
         state.correction=slerp(state.correction,target,weight)
         return normalize(multiply(q,state.correction),4)
     end

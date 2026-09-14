@@ -73,6 +73,10 @@ function Support.new(Pose)
     function api.is_enabled() return api.enabled end
     -- Grip mode: false holds while grip is held, true toggles on each press.
     function api.grip_toggle() return false end
+    -- Steadying: 'classic' smooths the swing in controller space; 'hands_line'
+    -- filters the hands line in tracking space (two-hand aim design, 15 September).
+    function api.steadying() return 'classic' end
+    local hands_line={mode='hands_line',scene=nil}
     local filter=Pose.new()
     local stock_anchor=Pose.new_stock_anchor()
     local context,identity
@@ -148,8 +152,10 @@ function Support.new(Pose)
         if not context or not identity then filter.reset(); stock_anchor.reset(); api.in_zone=false; api.snap=0; return end
         local stock=stock_anchor.update(context,identity.profile.socket,identity.stock,
             grip.held and not grip.cancelled,identity)
+        local steady=nil
+        if api.steadying()=='hands_line' then hands_line.scene=context.scene_rotation; steady=hands_line end
         filter.update(context.rotation,context.primary,context.support,identity.profile.socket,
-            grip.held,identity,context.dt,identity.smoothing,grip.cancelled,stock)
+            grip.held,identity,context.dt,identity.smoothing,grip.cancelled,stock,steady)
         api.held=grip.held and filter.owner~=nil
         api.stock_active=api.held and stock~=nil
         api.snap=Support.snap_step(api.snap,(api.held or api.in_zone) and 1 or 0,context.dt)
@@ -178,13 +184,18 @@ function Support.install(mod,presentation,observation)
     local api=Support.new(Pose)
     -- The option turns support on for every session; the chat commands still
     -- work for the current one.
-    -- test_enabled: darktidevr_two_hand_test.flag "enabled", or "enabled_toggle"
-    local test_enabled_flag,test_toggle_flag
+    -- test_enabled: darktidevr_two_hand_test.flag "enabled", "enabled_toggle",
+    -- and either with "_line" for hands-line steadying
+    local test_enabled_flag,test_toggle_flag,test_line_flag
     function api.is_enabled()
         return api.enabled or (mod.get and mod:get('vr_two_hand_support')==true) or test_enabled_flag==true or false
     end
     function api.grip_toggle()
         return (mod.get and mod:get('vr_two_hand_grip_mode')=='toggle') or test_toggle_flag==true
+    end
+    function api.steadying()
+        if test_line_flag==true then return 'hands_line' end
+        return (mod.get and mod:get('vr_two_hand_steadying')=='hands_line') and 'hands_line' or 'classic'
     end
     -- Authored grips, per weapon template: where the stock first-person
     -- animation holds the left hand on the weapon. Right-dominant only (the
@@ -367,8 +378,11 @@ function Support.install(mod,presentation,observation)
         local value=file and file:read('*all')
         if file then file:close() end
         preview=type(value)=='string' and value:match('^%s*preview%s*$')~=nil
-        test_enabled_flag=type(value)=='string' and (value:match('^%s*enabled%s*$')~=nil or value:match('^%s*enabled_toggle%s*$')~=nil)
-        test_toggle_flag=type(value)=='string' and value:match('^%s*enabled_toggle%s*$')~=nil
+        local mode=type(value)=='string' and value:match('^%s*(enabled[_%a]*)%s*$')
+        mode=(mode=='enabled' or mode=='enabled_toggle' or mode=='enabled_line' or mode=='enabled_toggle_line') and mode or nil
+        test_enabled_flag=mode~=nil
+        test_toggle_flag=mode~=nil and mode:find('toggle',1,true)~=nil
+        test_line_flag=mode~=nil and mode:find('_line',1,true)~=nil
         return preview
     end
     local previous_t
@@ -414,6 +428,13 @@ function Support.install(mod,presentation,observation)
             support=vector(support_position),support_rotation=quaternion(support_rotation),
             toggle_ads=settings and settings.toggle_ads,ads_supported=Support.ads_supported(template),
             action=action and action.kind}
+        -- The scene basis (stick turning, pre head tracking) lets the hands
+        -- line be filtered in tracking space.
+        if finite(observation.body_anchor_qx) and finite(observation.body_anchor_qy) and
+            finite(observation.body_anchor_qz) and finite(observation.body_anchor_qw) then
+            frame.scene_rotation={observation.body_anchor_qx,observation.body_anchor_qy,
+                observation.body_anchor_qz,observation.body_anchor_qw}
+        end
         local profile=api.profiles[template.name]
         if profile and profile.stock and presentation.body_alignment_unit==unit and
             finite(observation.body_visual_yaw) and finite(observation.body_anchor_qx) and
