@@ -77,8 +77,79 @@ function Scan.install(mod, presentation)
         end
         mod:info("DARKTIDEVR_ATTACHMENT_SCAN end reason=%s", reason)
     end
+    -- Drift: every scene-graph node of the wielded 3P weapon unit and its
+    -- attachments, sampled in its unit root's space every DRIFT_EVERY frames.
+    -- A node rigid with the gun keeps its local position as the gun moves; a
+    -- node driven by something else (the character's animation) drifts.
+    local DRIFT_EVERY, DRIFT_SAMPLES, DRIFT_LOG_METRES = 15, 120, 0.02
+    local drift
+    local function drift_units(unit)
+        local loadout = ScriptUnit.has_extension(unit, "visual_loadout_system")
+        local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
+        local inventory = unit_data and unit_data:read_component("inventory")
+        local slot = inventory and loadout and loadout._equipment and loadout._equipment[inventory.wielded_slot]
+        if not slot or not slot.unit_3p then return nil end
+        local units = {{label = "weapon_3p", unit = slot.unit_3p}}
+        local by_unit = slot.attachments_by_unit_3p
+        for _, attachments in pairs(type(by_unit) == "table" and by_unit or {}) do
+            for index, attachment in ipairs(attachments) do
+                local name = slot.item_name_by_unit_3p and slot.item_name_by_unit_3p[attachment]
+                units[#units + 1] = {label = string.format("attachment_%d:%s", index, tostring(name):match("[^/]+$")), unit = attachment}
+            end
+        end
+        return inventory.wielded_slot, units
+    end
+    local function drift_update(unit)
+        local slot, units = drift_units(unit)
+        if not slot or slot ~= "slot_secondary" then return end
+        if not drift then drift = {frame = 0, samples = 0, nodes = {}} end
+        if drift.done then return end
+        drift.frame = drift.frame + 1
+        if drift.frame % DRIFT_EVERY ~= 0 then return end
+        drift.samples = drift.samples + 1
+        local right = presentation.controller_grip_target and presentation.controller_grip_target()
+        for _, entry in ipairs(units) do
+            local u = entry.unit
+            if u and Unit.alive(u) then
+                local root = Unit.world_pose(u, 1)
+                local inverse = Matrix4x4.inverse(root)
+                local count = Unit.num_scene_graph_items(u)
+                for index = 1, count do
+                    local world = Unit.world_position(u, index)
+                    local local_position = Matrix4x4.transform(inverse, world)
+                    local key = entry.label .. "#" .. index
+                    local node = drift.nodes[key]
+                    if not node then
+                        node = {first = Vector3Box(local_position), max = 0, label = entry.label, index = index, count = count}
+                        drift.nodes[key] = node
+                    else
+                        local d = Vector3.length(local_position - node.first:unbox())
+                        if d > node.max then
+                            node.max = d
+                            node.world = Vector3Box(world)
+                            node.to_right = right and Vector3.length(world - right) or -1
+                        end
+                    end
+                end
+            end
+        end
+        if drift.samples >= DRIFT_SAMPLES then
+            drift.done = true
+            local drifting = 0
+            for _, node in pairs(drift.nodes) do
+                if node.max > DRIFT_LOG_METRES then
+                    drifting = drifting + 1
+                    local world = node.world and node.world:unbox()
+                    mod:info("DARKTIDEVR_ATTACHMENT_SCAN drift %s node=%d/%d max_local_drift_m=%.3f world=%s to_right_grip=%.3f",
+                        node.label, node.index, node.count, node.max, vector_text(world), node.to_right or -1)
+                end
+            end
+            mod:info("DARKTIDEVR_ATTACHMENT_SCAN drift_done samples=%d drifting_nodes=%d", drift.samples, drifting)
+        end
+    end
     function api.update(unit)
         if not unit or not flag() then return end
+        pcall(drift_update, unit)
         local ok, err = pcall(function()
             local weapon = ScriptUnit.has_extension(unit, "weapon_system")
             local template = weapon and weapon:weapon_template()
