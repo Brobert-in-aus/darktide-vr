@@ -25,7 +25,9 @@ function Scan.install(mod, presentation)
             -- unit=<word>: hide every 3P attachment whose item name contains it.
             unit = rest:match("unit=([%w_,]+)"),
             -- group=<name>: hide that visibility group on the receiver.
-            group = rest:match("group=([%w_]+)")}
+            group = rest:match("group=([%w_]+)"),
+            -- ads=1: hold the left trigger (aim down sights) while posed.
+            ads = rest:match("ads=1") ~= nil}
         for a, b in (rest:match("hide=([%d,%-]+)") or ""):gmatch("(%d+)%-?(%d*)") do
             for index = tonumber(a), tonumber(b ~= "" and b or a) do view.hide[index] = true end
         end
@@ -70,6 +72,13 @@ function Scan.install(mod, presentation)
         for _, name in ipairs({"gameplay_pressed", "gameplay_held", "gameplay_released"}) do
             local values = observation[name]
             if values then values[0] = bit.band(tonumber(values[0]) or 0, VIEW_MASK) end
+        end
+        if view.ads then
+            local held, pressed, released = observation.gameplay_held, observation.gameplay_pressed, observation.gameplay_released
+            if held then held[0] = bit.bor(tonumber(held[0]) or 0, 2) end
+            if pressed and not view.ads_pressed then pressed[0] = bit.bor(tonumber(pressed[0]) or 0, 2) end
+            if released then released[0] = bit.band(tonumber(released[0]) or 0, bit.bnot(2)) end
+            view.ads_pressed = true
         end
     end
     local hidden, hidden_units = {}, {}
