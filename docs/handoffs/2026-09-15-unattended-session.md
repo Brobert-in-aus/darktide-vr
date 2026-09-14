@@ -246,6 +246,29 @@ Commit `6e0d1a6`, deployed (evening item 8).
 - **Not shown:** hover ticks (the synthetic pointer did not sweep over
   buttons) and the worn feel.
 
+## Sight-to-eye aim down sights (backlog item)
+
+Commit `b2ca404`, deployed, option default off (evening item 9).
+- **Behaviour.** Raising a gun's sight line to within 4.5 cm of the dominant
+  eye holds the alternate-fire input. It lets go past 7.5 cm, or when the
+  gun turns more than 35° from the view. Hold and toggle ADS settings are
+  both handled, and no release is sent while the player's own trigger is
+  held.
+- **Scope.** Only guns whose alternate is the stock aim, and only once the
+  sight offset is known (`darktidevr_gun_sights`).
+- **Assumption:** the dominant eye is the headset eye on the gun hand's side,
+  3.2 cm from centre.
+- **Test:** `sight_ads` covers the geometry, the lateral offset, hysteresis,
+  facing, behind-the-grip limits, and hold and toggle edges.
+- **Evidence (`artifacts/unattended/stray-bullet-20260915/sightads1`,
+  `darktidevr_sight_ads_test.flag`).**
+  - The measurement runs live: 9.5 cm from the line in the view `sight=1`
+    pose and 15.2 cm in the low pose, with facing 0.985 (the −10° gun
+    pitch). No script errors.
+  - Neither synthetic pose came within the 4.5 cm entry distance, because
+    the unworn headset is not at the recenter origin. **Engagement and the
+    injected ADS input have not been seen in game**, only in the unit test.
+
 Note: `run2` died because I piped the capture script through
 `Select-Object -First 1`, which stopped the script and so the runner's job
 (the runner force-stopped the game). The game did not fault.

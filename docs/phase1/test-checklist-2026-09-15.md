@@ -77,3 +77,14 @@ Yesterday's checklist items not reached are still open in
 
    Say if they are too strong, too weak, or fire on things that are not
    buttons.
+9. **Aim down sights by raising the gun (experimental)** (`b2ca404`, option
+   default off). Galvanic rifle:
+   - raise the gun until the rear sight is in front of your aiming eye: it
+     should zoom into aim-down-sights without pressing anything;
+   - lower it: back to hip aim;
+   - your ADS trigger still works as before, with either the hold or toggle
+     ADS game setting.
+
+   This has only been unit tested; the synthetic hands never reached the
+   eye. Say if it triggers too easily (while carrying the gun high), too
+   late, or not at all, and which eye you aim with.
