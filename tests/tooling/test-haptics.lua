@@ -170,4 +170,23 @@ do
     Managers = nil
 end
 
-print("haptics=pass mapping rate_limit notices modes failed_send ammo_events scale body_events melee_hooks")
+-- Shot strength by family.
+assert(Haptics.shot_scale("bolter_p1_m2", "shoot_projectile") == 1.0)
+assert(Haptics.shot_scale("boltpistol_p1_m1") == 0.9, "boltpistol matched bolter first")
+assert(Haptics.shot_scale("lasgun_p2_m3") == 0.75 and Haptics.shot_scale("lasgun_p1_m1") == 0.45, "helbore")
+assert(Haptics.shot_scale("shotpistol_shield_p1_m1") == 0.75 and Haptics.shot_scale("shotgun_p4_m1") == 0.9)
+assert(Haptics.shot_scale("flamer_p1_m1", "flamer_gas") == Haptics.SHOT_STREAM)
+assert(Haptics.shot_scale("forcestaff_p2_m1", "flamer_gas_burst") == Haptics.SHOT_STREAM, "flame staff stream")
+assert(Haptics.shot_scale("galvanic_rifle_p1_m1", "shoot_hit_scan") == 0.7)
+assert(Haptics.shot_scale("unknown_gun") == Haptics.SHOT_DEFAULT and Haptics.shot_scale(nil) == Haptics.SHOT_DEFAULT)
+for _, family in ipairs(Haptics.SHOT_FAMILIES) do assert(family[2] > 0 and family[2] <= 1, family[1]) end
+-- Every family is reachable (no earlier prefix swallows it).
+for index, family in ipairs(Haptics.SHOT_FAMILIES) do
+    assert(Haptics.shot_scale(family[1] .. "_x") == family[2], family[1] .. " is shadowed by an earlier prefix")
+    for earlier = 1, index - 1 do
+        local prefix = Haptics.SHOT_FAMILIES[earlier][1]
+        assert(family[1]:sub(1, #prefix) ~= prefix or family[2] == Haptics.SHOT_FAMILIES[earlier][2], family[1])
+    end
+end
+
+print("haptics=pass mapping rate_limit notices modes failed_send ammo_events scale body_events melee_hooks shot_families")

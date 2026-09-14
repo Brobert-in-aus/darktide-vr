@@ -26,8 +26,9 @@ Haptics.KINDS = {
     reload = {modes = BOTH, notice = true, amplitude = 0.5, duration_ms = 45},
     -- Clip and reserve together fell to the stock low-ammo share (20 %).
     low_ammo = {modes = {informative = true}, notice = true, amplitude = 0.4, duration_ms = 25},
-    -- A shot left the gun (continuous weapons pulse at the rate limit).
-    shot = {modes = {immersive = true}, amplitude = 0.65, duration_ms = 20},
+    -- A shot left the gun, at the weapon family's strength (SHOT_FAMILIES);
+    -- continuous weapons pulse at the rate limit.
+    shot = {modes = {immersive = true}, amplitude = 1.0, duration_ms = 20},
     -- Body (both hands). Health lost, scaled by the share of a quarter of
     -- maximum health; toughness broken; toughness lost without health loss.
     damage = {modes = BOTH, notice = true, amplitude = 0.7, duration_ms = 45},
@@ -53,6 +54,31 @@ Haptics.LIGHT_MELEE_SCALE = 0.7
 Haptics.MISSED_PUSH_SCALE = 0.5
 Haptics.LOW_HEALTH_SHARE = 0.25
 Haptics.LOW_AMMO_SHARE = 0.2
+-- Shot strength by weapon template family: the first matching prefix wins,
+-- so more specific prefixes come first. Unlisted guns use SHOT_DEFAULT; a
+-- flamer's (or flame staff's) gas action uses SHOT_STREAM.
+Haptics.SHOT_FAMILIES = {
+    {"lasgun_p2", 0.75},            -- helbore
+    {"lasgun", 0.45}, {"laspistol", 0.4},
+    {"autogun", 0.5}, {"autopistol", 0.4}, {"dual_autopistols", 0.4},
+    {"dual_stubpistols", 0.55}, {"stubrevolver", 0.85},
+    {"boltpistol", 0.9}, {"bolter", 1.0}, {"plasmagun", 1.0},
+    {"shotpistol", 0.75}, {"shotgun", 0.9},
+    {"ogryn_heavystubber", 0.55}, {"ogryn_rippergun", 0.8}, {"ogryn_thumper", 0.95}, {"ogryn_gauntlet", 0.95},
+    {"galvanic_rifle", 0.7}, {"arc_rifle", 0.6}, {"needlepistol", 0.45}, {"phosphor_pistol", 0.6},
+    {"forcestaff", 0.5}, {"flamer", 0.35}, {"missile_launcher", 1.0},
+}
+Haptics.SHOT_DEFAULT = 0.65
+Haptics.SHOT_STREAM = 0.35
+function Haptics.shot_scale(template_name, action_kind)
+    if type(action_kind) == "string" and action_kind:find("flamer_gas", 1, true) then return Haptics.SHOT_STREAM end
+    if type(template_name) == "string" then
+        for _, family in ipairs(Haptics.SHOT_FAMILIES) do
+            if template_name:sub(1, #family[1]) == family[1] then return family[2] end
+        end
+    end
+    return Haptics.SHOT_DEFAULT
+end
 -- Pulses on one hand closer together than this are dropped: requests between
 -- two viewer frames coalesce anyway, and a buzzing hand is no feedback.
 -- A notice is never dropped for a feel pulse.
@@ -228,9 +254,12 @@ function Haptics.install(mod, presentation, send)
         return presentation.two_hand and presentation.two_hand.held and "both" or dominant
     end
     -- From the stock shot dispatch (local player, not resimulating).
-    function api.shot()
+    function api.shot(action)
         local hands = gun_hands()
-        if hands and api.pulse(hands, "shot") then count("shot") end
+        local template = action and action._weapon_template
+        local settings = action and action._action_settings
+        local scale = Haptics.shot_scale(template and template.name, settings and settings.kind)
+        if hands and api.pulse(hands, "shot", nil, scale) then count("shot") end
     end
     -- Melee: the stock hit effects of a connecting sweep and the stock push
     -- rumble, local player only and never while resimulating. Observe-only

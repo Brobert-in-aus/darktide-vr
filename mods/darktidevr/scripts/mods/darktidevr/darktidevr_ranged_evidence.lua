@@ -15,7 +15,7 @@ function Evidence.install(mod,presentation)
         if not presentation.online_rules.simulation_aim_active(action._player_unit) or
                 (action._unit_data_extension and action._unit_data_extension.is_resimulating) then return end
         -- The same dispatch drives the immersive shot vibration (one hook per method).
-        if presentation.haptics and presentation.haptics.shot then pcall(presentation.haptics.shot) end
+        if presentation.haptics and presentation.haptics.shot then pcall(presentation.haptics.shot,action) end
         local current_session=Managers.state.game_session
         if owner~=action._player_unit or session~=current_session then
             owner,session,instance.rows=action._player_unit,current_session,{}
