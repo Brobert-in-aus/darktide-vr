@@ -13,12 +13,16 @@ Readout.SMALL_FONT_SIZE = 15    -- reserve under it
 Readout.RING_RADIUS = 0.030     -- metres; the ring encloses both lines
 Readout.RING_THICKNESS = 0.0045 -- metres
 Readout.RING_SEGMENTS = 96
--- Glyph extent below the text position, as fractions of the font size, and
--- the stacked layout's spacing (worn, 14 September: the clip overlapped the
--- reserve; a dash now separates them).
-Readout.GLYPH_TOP = 0.32
-Readout.GLYPH_BOTTOM = 1.0
-Readout.STACK_GAP = 0.12        -- of the clip font size, above and below the dash
+-- Digit extents below each line's text position, as fractions of that
+-- line's font size, measured in the eye render (15 September, against the
+-- dash bar drawn at an exact position): the large and small sizes do not
+-- scale alike. And the stacked layout's spacing (worn, 14 September: the
+-- clip overlapped the reserve; a dash now separates them).
+Readout.CLIP_GLYPH_TOP = 0.66
+Readout.CLIP_GLYPH_BOTTOM = 0.93
+Readout.RESERVE_GLYPH_TOP = 0.20
+Readout.RESERVE_GLYPH_BOTTOM = 0.51
+Readout.STACK_GAP = 0.10        -- of the clip font size, above and below the dash
 Readout.DASH_LENGTH = 1.0       -- of the reserve font size
 Readout.DASH_THICKNESS = 0.14   -- of the reserve font size
 
@@ -26,14 +30,14 @@ Readout.DASH_THICKNESS = 0.14   -- of the reserve font size
 -- positions of the clip and reserve and the dash's centre, for font sizes
 -- size (clip) and small (reserve). Glyph boxes do not overlap.
 function Readout.stack_layout(size, small)
-    local glyph = Readout.GLYPH_BOTTOM - Readout.GLYPH_TOP
-    local clip_height, reserve_height = glyph * size, glyph * small
+    local clip_height = (Readout.CLIP_GLYPH_BOTTOM - Readout.CLIP_GLYPH_TOP) * size
+    local reserve_height = (Readout.RESERVE_GLYPH_BOTTOM - Readout.RESERVE_GLYPH_TOP) * small
     local gap, dash = Readout.STACK_GAP * size, Readout.DASH_THICKNESS * small
     local top = (clip_height + gap + dash + gap + reserve_height) * 0.5
     return {
-        clip_y = top + Readout.GLYPH_TOP * size,
+        clip_y = top + Readout.CLIP_GLYPH_TOP * size,
         dash_y = top - clip_height - gap - dash * 0.5,
-        reserve_y = top - clip_height - gap - dash - gap + Readout.GLYPH_TOP * small,
+        reserve_y = top - clip_height - gap - dash - gap + Readout.RESERVE_GLYPH_TOP * small,
         dash_length = Readout.DASH_LENGTH * small,
         dash_thickness = dash,
         height = top * 2,

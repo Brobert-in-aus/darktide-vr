@@ -140,12 +140,13 @@ assert(main:find("presentation.ammo_readout.destroy", state, true), "readout GUI
 do
     local size, small = Readout.FONT_SIZE * Readout.PIXEL_METRES, Readout.SMALL_FONT_SIZE * Readout.PIXEL_METRES
     local l = Readout.stack_layout(size, small)
-    local clip_top, clip_bottom = l.clip_y - Readout.GLYPH_TOP * size, l.clip_y - Readout.GLYPH_BOTTOM * size
-    local reserve_top, reserve_bottom = l.reserve_y - Readout.GLYPH_TOP * small, l.reserve_y - Readout.GLYPH_BOTTOM * small
+    local clip_top, clip_bottom = l.clip_y - Readout.CLIP_GLYPH_TOP * size, l.clip_y - Readout.CLIP_GLYPH_BOTTOM * size
+    local reserve_top, reserve_bottom = l.reserve_y - Readout.RESERVE_GLYPH_TOP * small, l.reserve_y - Readout.RESERVE_GLYPH_BOTTOM * small
     local dash_top, dash_bottom = l.dash_y + l.dash_thickness * 0.5, l.dash_y - l.dash_thickness * 0.5
     assert(clip_bottom > dash_top and dash_bottom > reserve_top, "clip, dash and reserve overlap")
     assert(math.abs(clip_top + reserve_bottom) < 1e-9, "stack not centred")
     assert(clip_top - reserve_bottom < 2 * Readout.RING_RADIUS - 2 * Readout.RING_THICKNESS, "stack does not fit inside the ring")
     assert(l.dash_length > 0 and l.dash_thickness > 0)
+    assert(math.abs((clip_bottom - dash_top) - (dash_bottom - reserve_top)) < 1e-9, "the dash is not midway")
 end
 print("ammo_readout=pass values text levels heat_only nothing_to_show after_hand_pose stack_layout")
