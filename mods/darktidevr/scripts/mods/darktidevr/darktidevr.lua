@@ -11626,6 +11626,9 @@ mod:hook_safe(
         if presentation.scanner_holo then
             presentation.scanner_holo.place(player_unit, t)
         end
+        if presentation.attachment_scan then
+            presentation.attachment_scan.update(player_unit)
+        end
         if presentation.ammo_readout then
             presentation.ammo_readout.draw(self._world, player_unit)
         end
@@ -15270,6 +15273,9 @@ presentation.holsters = mod:io_dofile(
 presentation.ammo_readout = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_ammo_readout"
 ).install(mod, presentation, controller_observation)
+presentation.attachment_scan = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_attachment_scan"
+).install(mod, presentation)
 presentation.pose_trace = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_pose_trace"
 ).install(mod, presentation, controller_observation)
