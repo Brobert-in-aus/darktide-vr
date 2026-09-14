@@ -248,7 +248,7 @@ int main() {
                firing.hands[1].trigger == 1.0F && between.hands[1].trigger == 0.0F &&
                ability.hands[0].squeeze == 1.0F &&
                melee_draw.hands[1].squeeze == 1.0F &&
-               std::abs(melee_draw.hands[1].body_grip_pose.position.z + 0.72F) < 0.001F &&
+               std::abs(melee_draw.hands[1].body_grip_pose.position.z + 0.54F) < 0.001F &&
                melee_windup.hands[1].trigger == 1.0F && melee_windup.hands[0].squeeze == 0.0F &&
                ranged_draw.hands[1].squeeze == 1.0F &&
                std::abs(ranged_draw.hands[1].body_grip_pose.position.x - 0.16F) < 0.001F &&

@@ -321,7 +321,11 @@ void apply_synthetic_holster_path(core::SharedControllerState& state,
       state.hands[1].body_grip_pose.position = position;
     };
     if (phase < 90) {
-      place_right(zones[1]);
+      // The unworn headset rests low, so the holster zones shrink to the
+      // clamped eye height (1.23 of 1.64 m): reach the hip at that scale.
+      constexpr float clamped_scale = 0.75F;
+      place_right({zones[1].x * clamped_scale, zones[1].y * clamped_scale,
+                   zones[1].z * clamped_scale});
       if (phase >= 45 && phase < 60) {
         state.hands[1].squeeze = 1.0F;
       }
