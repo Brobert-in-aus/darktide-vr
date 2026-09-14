@@ -13,6 +13,8 @@ runtime package records the exact source revision alongside the version.
 - Experimental ammo count at the hand (off by default): clip and reserve
   beside the weapon hand, fading from white to red as they run down, with a
   ring that fills while reloading.
+- Experimental two-hand support (off by default): grip where the weapon's own
+  animation holds the foregrip to steady a gun with both hands.
 - Flamethrower streams, chain lightning, the force sword's wind slash and the
   shield's windup glow start from the weapon in your hand.
 - Experimental virtual holsters (off by default): reach to your shoulder,

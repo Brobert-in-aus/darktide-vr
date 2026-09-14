@@ -94,6 +94,22 @@ unattended evidence for each is in
    Then delete the flag (the recording stops within a second) and leave
    `darktidevr_pose_trace.csv` where it is for the next session.
 
+8. **Two-hand support with the weapon's own foregrip, new and off by
+   default** (`4d4c1eb` to `a2fff7c`). Turn on Mod Options, Darktide VR,
+   Experimental features, Two-hand support. In the Psykhanium with a
+   two-handed gun, hold for a second without firing (the grip is measured
+   then), then put your left hand where the animation normally holds the
+   gun's foregrip and press grip. Check that:
+   - the left glove snaps onto the foregrip and the gun line follows both
+     hands;
+   - letting go returns the gun to one-handed aim;
+   - the left grip does not fire your combat ability while holding;
+   - pistols and other one-handed weapons do not offer a grip.
+
+   Console: `DARKTIDEVR_TWO_HAND authored_grip template=... socket=...` and
+   `held=true source=authored`. Say if the grip point is off (further forward
+   or back, higher or lower), and whether gripping should also aim down
+   sights.
 ## Assumptions and questions for the evening review
 
 - Held-item effects (item 3) were deployed on static reading and unit tests
@@ -113,3 +129,6 @@ unattended evidence for each is in
   every weapon of the same template (for example all Lasgun Mk IIIs), or per
   item? Today it is per item and lost when the game closes, and a test keeps a
   different item from inheriting a grip.
+- Two-hand authored grips never trigger ADS; the calibrated prototype did
+  (grip = hold alternate) on weapons whose ADS is a plain hold. Which should
+  the foregrip do?

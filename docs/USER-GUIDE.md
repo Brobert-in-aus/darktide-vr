@@ -158,6 +158,16 @@ the item already in your hand, leaves the grip doing its normal action.
 Holsters are off in the hub. There is no vibration or visual hint yet when
 your hand is in a zone.
 
+### Two-hand support (experimental)
+
+Mod Options, Darktide VR, Experimental features, "Two-hand support". With a
+two-handed gun out, put your off hand where the weapon's animation holds the
+foregrip and press grip: the glove takes the foregrip and the gun follows both
+hands until you let go. The grip point is taken from the game's own animation
+for each weapon after you have held it steady for a moment; one-handed
+weapons offer no grip. Right-hand dominant only for now. The older
+`/dtvr_two_hand_calibrate` command still records a custom grip for the
+current session.
 ### Ammo count at the hand (experimental)
 
 Mod Options, Darktide VR, Experimental features, "Ammo count at the hand".

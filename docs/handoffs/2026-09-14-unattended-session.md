@@ -465,3 +465,53 @@ After deployment:
 
 Evidence: `artifacts/unattended/holsters-20260914/synthetic-after-review/` and
 `artifacts/unattended/regression-20260914/after-review-psykhanium/`.
+
+## Two-hand support: default grip from the weapon's animated left hand (user direction)
+
+User direction (14 September): use the stock left hand's place on the gun as
+the grip location. Commits `4d4c1eb`, `9c5c8c0`, `3bb035e`, `b7101c0`,
+`a2fff7c`.
+
+- **Source.** The hidden first-person rig is untouched by the mod, whereas
+  the third-person hand bones receive tracked-pose writes. Its `j_lefthand` is
+  read relative to its `j_rightweaponattach`, then expressed in the gun's aim
+  frame through the weapon's attach-to-muzzle rotation. That rotation is
+  sampled from the third-person weapon before gun aim rewrites the attach
+  node; gun aim makes the muzzle match the aim.
+- **Averaging.** Samples are averaged over 30 frames while the gun is idle,
+  aiming or firing, then kept for that item. A calibrated grip for the item
+  still wins, and a grip measured on another item is not borrowed.
+- **Rejection.** A hand behind or on the grip, more than 25 cm to the side,
+  30 cm above or below, or 90 cm away is rejected, which excludes a
+  one-handed weapon's idle hand.
+- **Rendering.** The support glove takes the authored wrist rotation
+  unconverted.
+- **Option.** "Two-hand support" (Experimental), default off; the chat
+  commands still work for the session. The authored grip holds the grip only
+  (no ADS), and the left grip's own action (combat ability) is suppressed
+  while held.
+- **Holsters.** The measured eye height is clamped to 1.23-2.13 m, because
+  the unworn headset on the desk measured 0.89 m and shrank the zones.
+
+Unattended evidence (Psykhanium, external viewer on the physical runtime with
+the new `--synthetic-holster-once` path; test flags for holsters and
+two-hand):
+- `DARKTIDEVR_TWO_HAND authored_grip template=galvanic_rifle_p1_m1
+  socket=-0.034,0.329,-0.002 samples=30`: 3.4 cm left and 32.9 cm forward of
+  the grip, level.
+- Preview flag, eye render (`run2/left-2-gun.png`): the left glove sits on
+  the rifle's front half, left of and under the barrel, cuff toward the
+  camera. The body proxy's pre-render check shows the glove moved 0.62 m from
+  its tracked position to the grip.
+- Grip squeeze at the measured foregrip (`run4`):
+  `DARKTIDEVR_TWO_HAND held=true source=authored`, no `combat_ability`
+  delivery. In the eye render the held glove lies along the barrel, while the
+  un-held hand at the same spot shows its free controller orientation.
+
+Not shown:
+- other weapons (only the Skitarius galvanic rifle was available);
+- the aim correction's effect on the gun line;
+- left-dominant play (not supported by authored grips);
+- how the grip feels.
+
+Worn check: evening item 8.
