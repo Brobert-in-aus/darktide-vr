@@ -747,3 +747,27 @@ Commit `e1f4324`.
   before.
 - **Not shown:** a melee hit or push in game (no melee was driven, and there
   were no targets in reach).
+
+### Haptics: shot strength, heat, peril, charge
+
+**Shot strength (`bba5cac`).** The shot pulse is scaled by weapon template
+family through `SHOT_FAMILIES`, first matching prefix, with a test against
+shadowing.
+- `run20` (Immersive): the galvanic rifle's shots were logged and played at
+  amplitude 0.70 (`openxr.haptic ... amplitude=0.7 ... result=0`).
+
+**Heat, peril, charge (`758e885`).** Read from the wielded slot's overheat,
+`warp_charge` and `action_module_charge`:
+- warnings past 75 %, Informative only;
+- alerts past 90 %, both modes, with peril on both hands;
+- a rising charge buzz, Immersive only;
+- a charge-full tick, both modes.
+
+Unit tests cover threshold crossings, a jump straight past both thresholds,
+no repeats above a threshold, cooling and releasing a charge, a custom
+maximum and missing readings.
+- `run21` (Informative regression): no script errors, hook failures or mod
+  warnings, and no heat or charge events from the galvanic rifle. Clip empty,
+  reload and ability ready as before.
+- Not shown: heat, peril or charge in game (the character has no overheating,
+  charging or psyker weapon).

@@ -21,7 +21,8 @@ runtime package records the exact source revision alongside the version.
   own controls while gripping.
 - Experimental controller vibration (off by default), Informative or Immersive:
   grip and holster feedback, empty clip, reload finished, low ammo, damage,
-  knockdown, blocks, stamina and ability recharge, and in Immersive every shot, melee hit and push.
+  knockdown, blocks, stamina, ability recharge, heat, peril and charge, and in
+  Immersive every shot (by weapon), melee hit and push.
 - Flamethrower streams, chain lightning, the force sword's wind slash and the
   shield's windup glow start from the weapon in your hand.
 - Experimental virtual holsters (off by default): reach to your shoulder,
