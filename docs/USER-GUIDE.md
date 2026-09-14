@@ -168,6 +168,7 @@ for each weapon after you have held it steady for a moment; one-handed
 weapons offer no grip. Right-hand dominant only for now. The older
 `/dtvr_two_hand_calibrate` command still records a custom grip for the
 current session.
+
 ### Ammo count at the hand (experimental)
 
 Mod Options, Darktide VR, Experimental features, "Ammo count at the hand".
@@ -218,8 +219,9 @@ Already in the pipeline; no need to request these:
 
 - A broad haptics pass: firing, melee contact, block, sight, damage taken,
   interaction and pointer hover, with per-event strength options.
-- Proper two-hand weapon support with saved per-weapon grips (today's
-  session-only prototype behind chat commands is not the feature).
+- Fuller two-hand weapon support: staffs and two-handed melee, left-hand
+  dominant grips and saved custom grips (the experimental option above
+  covers two-handed guns only).
 - Left-hand dominant presentation.
 - Bindings for controllers other than Touch (Index, Vive, WMR, Pico) and
   checks on other OpenXR runtimes (SteamVR, Meta Link) and other headsets.
