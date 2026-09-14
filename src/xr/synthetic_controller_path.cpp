@@ -282,6 +282,11 @@ void apply_synthetic_holster_path(core::SharedControllerState& state,
     destination.aim_tracking_flags = tracked;
     destination.grip_tracking_flags = tracked;
     auto position = neutral[hand];
+    if (resting && hand == 1) {
+      // Hold the drawn gun further out and lower, where it frames well in
+      // an eye capture.
+      position = {0.12F, 0.42F, -0.30F};
+    }
     if (hand == 1 && step < 90 && !resting) {
       position = zones[zone];
     }
