@@ -156,7 +156,8 @@ unattended evidence for each is in
       damage (stronger for bigger hits) or your toughness breaks; a pulse when
       a block takes a hit (firmer for a perfect block). Informative adds low
       health, stamina running out and your combat ability or blitz
-      recharging; Immersive adds toughness hits and using your combat ability.
+      recharging; Immersive adds toughness hits, using your combat ability, each melee hit
+      (heavy attacks stronger) and pushes (`e1f4324`).
       A mission or the Psykhanium's enemy spawner is needed for most of these.
     - **Off:** nothing.
     Console: `DARKTIDEVR_HAPTICS event=<kind>`; the

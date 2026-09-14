@@ -189,12 +189,12 @@ Mod Options, Darktide VR, Experimental features, "Controller vibration":
   - a block takes a hit;
   - health runs low or stamina runs out;
   - your combat ability or blitz recharges.
-- **Immersive** is the feel of your actions: every shot, using your combat
-  ability and toughness hits, plus the grip, holster, empty-clip, reload,
+- **Immersive** is the feel of your actions: every shot, melee hits and pushes,
+  using your combat ability and toughness hits, plus the grip, holster, empty-clip, reload,
   damage, knockdown and block pulses. It leaves out the low ammo, low health,
   stamina and recharge notices.
 
-More kinds (melee hits, heat and peril) are planned.
+More kinds (heat, charge and peril, interactions) are planned.
 
 ### Ammo count at the hand (experimental)
 

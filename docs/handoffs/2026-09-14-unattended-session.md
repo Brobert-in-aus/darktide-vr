@@ -725,3 +725,25 @@ because every run leaves `darktidevr-present-cpu-<pid>.log` in TEMP. There
 were 233 of them, so a reused process id found an old log and the test
 returned 2. The test now removes a stale log with its own id first; two full
 suites afterwards passed 248/248.
+
+### Haptics: melee hit and push
+
+Commit `e1f4324`.
+- **Hooks.** Observe-only hooks on `ActionSweep._play_hit_effects` (a
+  connecting swing) and `ActionPush._play_push_rumble` (a landed push), for
+  the local player only and never while resimulating.
+  - `ActionMeleeExplosive` is hooked only if it holds its own copy of the hit
+    method, so an inherited method is not pulsed twice.
+  - Neither method was hooked before.
+- **Pulses.** Immersive only.
+  - A hit pulses the dominant hand: heavy attacks at full strength, light at
+    70 %.
+  - A push pulses both hands, at half strength when nothing was hit.
+- **Unit test** (installed hooks with stubs): heavy and light strengths,
+  foreign and resimulated actions ignored, push strength, a missing damage
+  profile.
+- **`run19` (Immersive regression):** no script errors, no hook failures, no
+  mod warnings, no crash. Shot, ability, clip empty and reload pulses as
+  before.
+- **Not shown:** a melee hit or push in game (no melee was driven, and there
+  were no targets in reach).
