@@ -67,7 +67,23 @@ Haptics.KINDS = {
     -- a notice when it finishes. A cancelled hold is not a finish.
     interaction_hum = {modes = {immersive = true}, amplitude = 0.2, duration_ms = 15},
     interaction_done = {modes = BOTH, notice = true, amplitude = 0.5, duration_ms = 35},
+    -- Menus (VR pointer): a tick when the pointer moves onto a control, and a
+    -- firmer one on click, enter or back.
+    menu_hover = {modes = {informative = true}, amplitude = 0.2, duration_ms = 10},
+    menu_confirm = {modes = {informative = true}, amplitude = 0.35, duration_ms = 15},
 }
+-- The menu kind for a stock UI sound event, or nil. The stock UI plays its
+-- hover and click sounds from the hotspot pass, so the sound is the one
+-- reliable signal that a control reacted.
+function Haptics.menu_kind(sound_event)
+    if type(sound_event) ~= "string" then return nil end
+    -- Whole words between underscores, so "background" is not "back".
+    local words = {}
+    for word in ("_" .. (sound_event:lower():match("([^/]+)$") or "") .. "_"):gmatch("_(%w+)") do words[word] = true end
+    if words.mouseover or words.hover then return "menu_hover" end
+    if words.click or words.enter or words.back or words.confirm or words.select then return "menu_confirm" end
+    return nil
+end
 -- The Controller vibration strength option (percent) scales every pulse.
 Haptics.STRENGTH_RANGE = {25, 200}
 function Haptics.strength_scale(percent)
@@ -392,6 +408,15 @@ function Haptics.install(mod, presentation, send)
         local hit = type(number_of_units_hit) == "number" and number_of_units_hit > 0
         if api.pulse("both", "push", nil, hit and 1 or Haptics.MISSED_PUSH_SCALE) then count("push") end
     end
+    -- A stock UI sound while the VR menu pointer owns menu input.
+    function api.menu_sound(sound_event)
+        local kind = Haptics.menu_kind(sound_event)
+        if not kind or not (presentation.using_native_menu_input and presentation.using_native_menu_input()) then return end
+        local roles = presentation.weapon_hand_roles
+        local hand = roles and roles.physical("dominant")
+        if hand ~= "left" and hand ~= "right" then hand = "right" end
+        if api.pulse(hand, kind) then count(kind) end
+    end
     if mod.hook_safe then
         local function observe(handler)
             return function(...)
@@ -415,6 +440,7 @@ function Haptics.install(mod, presentation, send)
         end
         mod:hook_safe(require("scripts/extension_systems/weapon/actions/action_push"), "_play_push_rumble",
             observe(function(self, number_of_units_hit) api.push(self, number_of_units_hit) end))
+        mod:hook_safe("UIManager", "play_2d_sound", observe(function(_, sound_event) api.menu_sound(sound_event) end))
     end
     local previous, previous_body, previous_gauges, previous_melee, previous_interaction
     local function field(read)

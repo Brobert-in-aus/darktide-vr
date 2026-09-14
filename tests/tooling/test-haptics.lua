@@ -141,16 +141,18 @@ do
     local clock = 100
     Managers = {time = {has_timer = function() return true end, time = function() clock = clock + 1; return clock end}}
     local local_unit = {}
+    local mode, native_menu = "immersive", true
     local installed = Haptics.install({
-        get = function(_, key) return key == "vr_haptics_mode" and "immersive" or nil end,
+        get = function(_, key) return key == "vr_haptics_mode" and mode or nil end,
         info = function() end,
         hook_safe = function(_, object, method, handler) hooks[#hooks + 1] = {object, method, handler} end,
     }, {
         online_rules = {simulation_aim_active = function(unit) return unit == local_unit end},
         weapon_hand_roles = {physical = function(role) return role == "dominant" and "right" or "left" end},
+        using_native_menu_input = function() return native_menu end,
     }, function(hands, amplitude) pulses[#pulses + 1] = {hands, amplitude}; return true end)
     require = real_require
-    assert(#hooks == 2, "expected sweep and push hooks, got " .. #hooks)
+    assert(#hooks == 3, "expected sweep, push and UI sound hooks, got " .. #hooks)
     local function hook(object, method)
         for _, h in ipairs(hooks) do if h[1] == object and h[2] == method then return h[3] end end
     end
@@ -167,6 +169,19 @@ do
     assert(pulses[3][1] == 3 and math.abs(pulses[3][2] - Haptics.KINDS.push.amplitude * Haptics.MISSED_PUSH_SCALE) < 1e-6)
     hit({_player_unit = local_unit}, {}, nil) -- a missing profile is a light hit, not an error
     assert(#pulses == 4)
+    -- Menu sounds: informative mode only, and only while the VR pointer owns menus.
+    local sound = hook("UIManager", "play_2d_sound")
+    assert(sound, "UI sound hook")
+    sound({}, "wwise/events/ui/play_ui_mouseover")
+    assert(#pulses == 4, "menu tick in immersive mode")
+    mode = "informative"
+    sound({}, "wwise/events/ui/play_ui_mouseover")
+    assert(#pulses == 5 and pulses[5][1] == 2 and pulses[5][2] == Haptics.KINDS.menu_hover.amplitude, "menu hover tick")
+    sound({}, "wwise/events/ui/play_ui_click")
+    assert(#pulses == 6 and pulses[6][2] == Haptics.KINDS.menu_confirm.amplitude, "menu confirm tick")
+    native_menu = false
+    sound({}, "wwise/events/ui/play_ui_click")
+    assert(#pulses == 6, "menu tick without the VR pointer")
     Managers = nil
 end
 
@@ -261,4 +276,14 @@ assert(Haptics.strength_scale(100) == 1 and Haptics.strength_scale(50) == 0.5)
 assert(Haptics.strength_scale(1000) == 2 and Haptics.strength_scale(1) == 0.25, "strength not clamped to its range")
 assert(Haptics.strength_scale(nil) == 1 and Haptics.strength_scale(0 / 0) == 1)
 
-print("haptics=pass mapping rate_limit notices modes failed_send ammo_events scale body_events melee_hooks shot_families gauges melee_windup_special interaction strength")
+-- Menu kinds from stock UI sound events.
+assert(Haptics.menu_kind("wwise/events/ui/play_ui_mouseover") == "menu_hover")
+assert(Haptics.menu_kind("wwise/events/ui/play_ui_mission_buffs_buff_hover_enter") == "menu_hover", "hover wins over enter")
+assert(Haptics.menu_kind("wwise/events/ui/play_ui_click") == "menu_confirm")
+assert(Haptics.menu_kind("wwise/events/ui/play_ui_back_short") == "menu_confirm")
+assert(Haptics.menu_kind("wwise/events/ui/play_ui_enter_short") == "menu_confirm")
+assert(Haptics.menu_kind("wwise/events/ui/play_ui_talents_default_select") == "menu_confirm")
+assert(Haptics.menu_kind("wwise/events/ui/play_ui_background_music") == nil and Haptics.menu_kind(nil) == nil)
+assert(Haptics.plays("menu_hover", "informative") and not Haptics.plays("menu_hover", "immersive"))
+assert(Haptics.plays("menu_confirm", "informative") and not Haptics.plays("menu_confirm", "immersive"))
+print("haptics=pass mapping rate_limit notices modes failed_send ammo_events scale body_events melee_hooks shot_families gauges melee_windup_special interaction strength menu")
