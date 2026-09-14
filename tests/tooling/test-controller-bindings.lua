@@ -80,7 +80,10 @@ local action_count=0
 for _,action in ipairs(Bindings.actions) do
     if action.mask>0 and bit.band(action.mask,action.mask-1)==0 and not action.request_only then action_count=action_count+1 end
 end
-assert(#widgets.sub_widgets==action_count+1)
+assert(#widgets.sub_widgets==action_count+2) -- actions, hub overrides, while gripping
+local grip_group=widgets.sub_widgets[#widgets.sub_widgets]
+assert(grip_group.setting_id=='controller_grip_bindings' and #grip_group.sub_widgets==action_count)
+for _,widget in ipairs(grip_group.sub_widgets) do assert(widget.default_value==-1,'grip layer does not default to Same as combat') end
 local used={}
 local function check_widget(widget)
     assert(not used[widget.setting_id]); used[widget.setting_id]=true
@@ -543,3 +546,42 @@ do
     assert(press(shared, nil) == shared and press(JUMP, inv('slot_primary', true, true, true)) == JUMP)
 end
 print('push_to_talk_binding=pass default_unassigned physical-only aliases and release')
+
+-- While-gripping layer: a two-hand grip claim switches new presses to the
+-- grip bindings; a control keeps the layer it was pressed in until released;
+-- a claim without the layer (holsters) and an unset action keep combat.
+do
+    local grip_settings={vr_grip_action_bind_crouch=0,vr_grip_action_bind_reload=8}
+    local grip_mod={get=function(_,key) return grip_settings[key] end}
+    local layered=Bindings.install(grip_mod)
+    local owner={}
+    local function request(layer)
+        return {control='left_grip',owner=owner,action='unbound',acquire=true,retain=true,layer=layer}
+    end
+    local function step(physical,support,p,h,r)
+        local ap,ah,ar=layered.sample(true,physical,0,0,true,1,'mission',support)
+        assert(ap==p and ah==h and ar==r,string.format('grip layer got %d,%d,%d expected %d,%d,%d',ap,ah,ar,p,h,r))
+    end
+    step(0,nil,0,0,0)
+    step(8,request('gripping'),64,64,0)             -- X crouches
+    step(8+512,request('gripping'),0,64,0)          -- grip taken: held X keeps crouch
+    assert(layered.support_grip.held)
+    step(512,request('gripping'),0,0,64)
+    step(8+512,request('gripping'),4096,4096,0)     -- X pressed while gripping reloads
+    step(1+8+512,request('gripping'),1,4097,0)      -- unset action: trigger still fires
+    step(8,request('gripping'),0,4096,1)            -- grip released: X keeps reload, trigger released
+    assert(not layered.support_grip.held)
+    step(0,request('gripping'),0,0,4096)
+    step(8,request('gripping'),64,64,0)             -- back to crouch
+    step(0,nil,0,0,64)
+    step(512,request(nil),0,0,0)                    -- holster-style claim without the layer
+    step(8+512,request(nil),64,64,0)                -- X still crouches
+    step(0,nil,0,0,64)
+    -- The hub never uses the grip layer.
+    local hub_p,hub_h=layered.sample(true,0,0,0,true,1,'hub',nil)
+    hub_p,hub_h=layered.sample(true,8+512,0,0,true,1,'hub',request('gripping'))
+    hub_p,hub_h=layered.sample(true,512,0,0,true,1,'hub',request('gripping'))
+    hub_p,hub_h=layered.sample(true,8+512,0,0,true,1,'hub',request('gripping'))
+    assert(hub_h==64,'hub used the grip layer: '..hub_h)
+    print('controller_bindings_grip_layer=pass latched_press unset_inherits release_keeps holster_claim hub')
+end

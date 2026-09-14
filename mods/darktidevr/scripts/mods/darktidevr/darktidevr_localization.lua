@@ -86,6 +86,8 @@ return {
     controller_hub_bindings = {en = "Hub overrides"},
     controller_hub_bindings_description = {en = "Choose a different control for an action in the hub, or use Same as combat. Release held controls after changing context."},
     vr_action_inherit = {en = "Same as combat"},
+    controller_grip_bindings = {en = "While gripping"},
+    controller_grip_bindings_description = {en = "Different controls while your off hand holds a gun's foregrip with Two-hand support. Same as combat keeps the normal control. A button already held when you take or leave the grip keeps its action until you let go."},
     vr_action_inventory = {en = "Open inventory / talents"},
     vr_action_pocketable = {en = "Equip carried item / supply crate"},
     vr_action_stim = {en = "Equip stim"},

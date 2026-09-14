@@ -161,7 +161,7 @@ end
 
 function Bindings.widgets(mod)
     swap_saved_xy(mod)
-    local widgets,hub={},{}
+    local widgets,hub,gripping={},{},{}
     local function label(key) return mod and mod:localize(key) or key end
     for _,action in ipairs(Bindings.actions) do
         if atomic(action) and not action.request_only then
@@ -208,9 +208,21 @@ function Bindings.widgets(mod)
                 target[#target+1]={setting_id=key,title='vr_action_'..action.id,type='dropdown',
                     tooltip='controller_action_binding_description',default_value=default,options=options}
             end
+            -- While a two-hand grip is held: every action starts on Same as
+            -- combat, so the layer changes nothing until a control is chosen.
+            local grip_options={localize=false,{text=label('vr_action_unbound'),value=0},
+                {text=label('vr_action_inherit'),value=-1}}
+            for _,control in ipairs(Bindings.controls) do
+                if not (action.physical_only and control.axis) then
+                    grip_options[#grip_options+1]={text=label('vr_bind_'..control.id),value=control.bit}
+                end
+            end
+            gripping[#gripping+1]={setting_id='vr_grip_action_bind_'..action.id,title='vr_action_'..action.id,
+                type='dropdown',tooltip='controller_action_binding_description',default_value=-1,options=grip_options}
         end
     end
     widgets[#widgets+1]={setting_id="controller_hub_bindings",type="group",sub_widgets=hub}
+    widgets[#widgets+1]={setting_id="controller_grip_bindings",type="group",sub_widgets=gripping}
     return {setting_id="controller_bindings",type="group",sub_widgets=widgets}
 end
 
@@ -221,7 +233,7 @@ function Bindings.install(mod)
         support_grip={held=false,pressed=false,released=false,cancelled=false}}
     local previous_physical, grip_claim = 0, nil
     local previous_contributors=0
-    local masks, resolved = {}, {}
+    local masks, resolved, grip_resolved, latched = {}, {}, {}, {}
     local dirty, blocked, active = true, 0, false
     local stick_held, stick_active = 0, false
     local stick_rearm = false
@@ -237,15 +249,16 @@ function Bindings.install(mod)
     mod.on_setting_changed = function(id)
         if previous then previous(id) end
         if type(id)=="string" and (id:sub(1,8)=="vr_bind_" or id:sub(1,12)=="vr_hub_bind_" or
-                id:sub(1,15)=='vr_action_bind_' or id:sub(1,19)=='vr_hub_action_bind_' or id=="vr_turn_mode") then
+                id:sub(1,15)=='vr_action_bind_' or id:sub(1,19)=='vr_hub_action_bind_' or
+                id:sub(1,20)=='vr_grip_action_bind_' or id=="vr_turn_mode") then
             dirty=true
             api.revision=api.revision+1
         end
     end
-    local selection_cache,selection_revision,selection_context={}
+    local selection_cache,grip_cache,selection_revision,selection_context={},{}
     local function refresh_selection()
         if selection_revision==api.revision and selection_context==api.context then return end
-        for _,control in ipairs(Bindings.controls) do selection_cache[control.id]=0 end
+        for _,control in ipairs(Bindings.controls) do selection_cache[control.id]=0; grip_cache[control.id]=0 end
         for _,action in ipairs(Bindings.actions) do
             if atomic(action) and not action.request_only then
                 local value=mod:get('vr_action_bind_'..action.id)
@@ -253,6 +266,8 @@ function Bindings.install(mod)
                     local hub_value=mod:get('vr_hub_action_bind_'..action.id)
                     if hub_value~=-1 then value=hub_value end
                 end
+                -- The grip layer applies in combat only (the hub has no guns).
+                local grip_value=api.context~='hub' and mod:get('vr_grip_action_bind_'..action.id) or nil
                 for _,control in ipairs(Bindings.controls) do
                     local assigned
                     if value==nil then
@@ -260,8 +275,11 @@ function Bindings.install(mod)
                     else
                         assigned=valid_controls(value) and bit.band(value,control.bit)~=0
                     end
-                    if assigned and not (action.physical_only and control.axis) then
-                        selection_cache[control.id]=bit.bor(selection_cache[control.id],action.mask)
+                    local grip_assigned=assigned
+                    if valid_controls(grip_value) then grip_assigned=bit.band(grip_value,control.bit)~=0 end
+                    if not (action.physical_only and control.axis) then
+                        if assigned then selection_cache[control.id]=bit.bor(selection_cache[control.id],action.mask) end
+                        if grip_assigned then grip_cache[control.id]=bit.bor(grip_cache[control.id],action.mask) end
                     end
                 end
             end
@@ -271,6 +289,10 @@ function Bindings.install(mod)
     local function selection(control)
         refresh_selection()
         return selection_cache[control.id]
+    end
+    local function grip_selection(control)
+        refresh_selection()
+        return grip_cache[control.id]
     end
     -- Prepare the profile before a HUD gesture claims the stick. Both the
     -- preclaim query and subsequent gameplay sample then share one revision.
@@ -362,7 +384,7 @@ function Bindings.install(mod)
         if stick_active and not axes_valid then
             for _,control in ipairs(Bindings.controls) do
                 if control.axis and bit.band(stick_held,control.bit)~=0 then
-                    cancelled_axes=bit.bor(cancelled_axes,resolved[control.id] or 0)
+                    cancelled_axes=bit.bor(cancelled_axes,latched[control.id] or resolved[control.id] or 0)
                 end
             end
         end
@@ -390,6 +412,8 @@ function Bindings.install(mod)
             api.held=0
             for _,control in ipairs(Bindings.controls) do
                 resolved[control.id] = selection(control)
+                grip_resolved[control.id] = grip_selection(control)
+                latched[control.id] = nil
             end
             blocked = physical -- No remap can turn an existing hold into a new action.
             dirty = false
@@ -431,7 +455,7 @@ function Bindings.install(mod)
             support.acquire==true and support.retain==true and
             bit.band(physical,request_bit)~=0 and
             bit.band(bit.bor(blocked,previous_physical),request_bit)==0 then
-            grip_claim={bit=request_bit,mask=request_mask,owner=support.owner}
+            grip_claim={bit=request_bit,mask=request_mask,owner=support.owner,layer=support.layer}
             grip.pressed=true
         end
         previous_physical=physical
@@ -439,21 +463,30 @@ function Bindings.install(mod)
         local contributors,physical_releases=0,0
         if active then
             local available = bit.band(physical,bit.bnot(blocked))
+            -- A two-hand grip switches to the while-gripping bindings. Each
+            -- control keeps the layer it was pressed in until it is released,
+            -- so taking or leaving the grip never changes an action mid-press.
+            local layer = grip_claim and grip_claim.layer=='gripping' and grip_resolved or resolved
             for _,control in ipairs(Bindings.controls) do
                 if not reset_grip and bit.band(previous_contributors,control.bit)~=0 and
                     bit.band(physical,control.bit)==0 and (not control.axis or axes_valid) then
-                    physical_releases=bit.bor(physical_releases,resolved[control.id])
+                    physical_releases=bit.bor(physical_releases,latched[control.id] or resolved[control.id])
                 end
                 if bit.band(available,control.bit)~=0 and
                     (not grip_claim or control.bit~=grip_claim.bit) then
-                    next_held = bit.bor(next_held,resolved[control.id])
+                    if latched[control.id]==nil then latched[control.id]=layer[control.id] end
+                    next_held = bit.bor(next_held,latched[control.id])
                     contributors=bit.bor(contributors,control.bit)
+                else
+                    latched[control.id]=nil
                 end
             end
             if grip_claim then
                 next_held=bit.bor(next_held,grip_claim.mask)
                 grip.held=true
             end
+        else
+            for _,control in ipairs(Bindings.controls) do latched[control.id]=nil end
         end
         previous_contributors=contributors
         local pressed = bit.band(next_held,bit.bnot(api.held))

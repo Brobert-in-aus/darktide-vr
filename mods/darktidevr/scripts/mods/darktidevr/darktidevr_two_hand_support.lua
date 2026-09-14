@@ -135,7 +135,7 @@ function Support.new(Pose)
             profile.acquire+(api.in_zone and Support.ZONE_EXIT_MARGIN or 0))
         context=frame
         api.ads_unavailable=profile.ads==true and (frame.toggle_ads~=false or frame.ads_supported~=true)
-        return {control=frame.side..'_grip',owner=identity,action=action,toggle=api.grip_toggle()==true,
+        return {control=frame.side..'_grip',owner=identity,action=action,toggle=api.grip_toggle()==true,layer='gripping',
             acquire=Pose.near(frame.rotation,frame.primary,frame.support,profile.socket,profile.acquire),
             -- Once held, the grip keeps any hand spacing: only the guards above end
             -- it (hands too close or crossed to give the gun a direction, lost
