@@ -284,3 +284,78 @@ template.actions.zoom.kind='aim'
 template.action_inputs.zoom.input_sequence[2]={input='action_one_hold',value=true}
 assert(not Support.ads_supported(template),'A compound weapon gesture was classified as plain ADS')
 print('two_hand_ads_route=pass canonical_hold toggle_override charge compound unknown_setting')
+
+-- Authored grips per template: shipped and stored grips are ready at once,
+-- the draw's settled hand gives one before the weapon is steady, and the
+-- steady average replaces it (never mid-hold), is stored, then sampling stops.
+do
+    local left={-.03,.35,-.04}
+    local rig={}
+    local rig_reads=0
+    Unit={alive=function(u) return u==rig end,has_node=function() return true end,
+        node=function(_,name) return name end,
+        world_position=function(_,node) rig_reads=rig_reads+1; return node=='j_lefthand' and left or {0,0,0} end,
+        world_rotation=function() return {0,0,0,1} end}
+    local grip_action={kind='wield'}
+    local gun={name='gun_p1_m1'}
+    local owner={}
+    local item={}
+    ScriptUnit={has_extension=function(u,name)
+        assert(u==owner)
+        if name=='first_person_system' then return {_first_person_unit=rig} end
+        if name=='weapon_system' then return {running_action_settings=function() return grip_action end} end
+    end}
+    Support.SHIPPED_GRIPS={shipped_p1_m1={socket={0,.3,0},hand_rotation={0,0,0,1}},
+        stored_p1_m1={socket={0,.3,0},hand_rotation={0,0,0,1}}}
+    local saved,lines={stored_p1_m1={socket={.01,.31,0},hand_rotation={0,0,0,1}},
+        broken_p1_m1={socket={0/0,0,0},hand_rotation={0,0,0,1}}},{}
+    local sets=0
+    local grips=Support.install({io_dofile=function() return Pose end,
+        info=function(_,format,...) lines[#lines+1]=string.format(format,...) end,
+        get=function(_,key) return key==Support.STORE_KEY and saved or nil end,
+        set=function(_,key,value) assert(key==Support.STORE_KEY); saved=value; sets=sets+1 end},
+        presentation,observations)
+    Support.SHIPPED_GRIPS={}
+    assert(grips.authored_profile({template='shipped_p1_m1'}).source=='shipped')
+    local stored=grips.authored_profile({template='stored_p1_m1'})
+    assert(stored.source=='stored' and stored.socket[1]==.01,'stored grip did not override the shipped one')
+    assert(grips.authored_profile({template='broken_p1_m1'})==nil,'invalid stored grip accepted')
+    local function observe(n) for _=1,n do grips.observe_authored(owner,item,gun,{0,0,0,1}) end end
+    -- During the draw: nothing until the hand has settled for SETTLE_FRAMES.
+    observe(Support.SETTLE_FRAMES-1)
+    assert(grips.authored_profile({template='gun_p1_m1'})==nil,'grip before the hand settled')
+    observe(1)
+    local settled=assert(grips.authored_profile({template='gun_p1_m1'}),'settled hand gave no grip')
+    assert(settled.source=='settled' and settled.weapon==nil and sets==0)
+    for i=1,3 do assert(math.abs(settled.socket[i]-left[i])<1e-9) end
+    assert(lines[#lines]:find('source=settled',1,true) and lines[#lines]:find('frames_after_wield=6',1,true))
+    -- Steady frames: the average completes while held and waits for release.
+    grip_action=nil
+    grips.held=true
+    observe(Support.AUTHORED_SAMPLES+5)
+    assert(grips.authored_profile({template='gun_p1_m1'})==settled and sets==0,'grip swapped mid-hold')
+    grips.held=false
+    observe(1)
+    local measured=grips.authored_profile({template='gun_p1_m1'})
+    assert(measured.source=='measured' and sets==1 and saved.gun_p1_m1 and saved.stored_p1_m1,
+        'measured grip not stored beside earlier grips')
+    local reads=rig_reads
+    observe(50)
+    assert(rig_reads==reads,'sampling continued after the grip was final')
+    -- A one-handed weapon: a resting hand during the draw is dropped once the
+    -- steady hand is off the weapon, and nothing is stored.
+    local pistol={name='pistol_p1_m1'}
+    grip_action={kind='wield'}
+    for _=1,Support.SETTLE_FRAMES do grips.observe_authored(owner,item,pistol,{0,0,0,1}) end
+    assert(grips.authored_profile({template='pistol_p1_m1'}).source=='settled')
+    grip_action=nil; left={-.3,.05,-.3}
+    for _=1,120 do grips.observe_authored(owner,item,pistol,{0,0,0,1}) end
+    assert(grips.authored_profile({template='pistol_p1_m1'})==nil and sets==1,'one-handed grip kept')
+    assert(lines[#lines]:find('authored_grip=none template=pistol_p1_m1',1,true))
+    -- A stored grip within STORE_TOLERANCE of the measurement is kept as is.
+    left={.01,.31,0}; grip_action=nil
+    local stored_gun={name='stored_p1_m1'}
+    for _=1,Support.AUTHORED_SAMPLES do grips.observe_authored(owner,item,stored_gun,{0,0,0,1}) end
+    assert(grips.authored_profile({template='stored_p1_m1'})==stored and sets==1,'unchanged stored grip rewritten')
+    print('two_hand_authored_grips=pass shipped stored settled deferred_swap store stop one_handed unchanged')
+end

@@ -1,6 +1,8 @@
 -- Coordinates a registered weapon socket, live tracking and the physical grip
 -- mapper. No guessed socket profiles or changes to the user's ADS preference.
 local Support={}
+-- Authored grips known before play, by weapon template (see Support.install).
+Support.SHIPPED_GRIPS={}
 function Support.ads_supported(template)
     if type(template)~='table' or type(template.actions)~='table' or
         type(template.action_inputs)~='table' or type(template.alternate_fire_settings)~='table' then return false end
@@ -144,56 +146,121 @@ function Support.install(mod,presentation,observation)
     function api.is_enabled()
         return api.enabled or (mod.get and mod:get('vr_two_hand_support')==true) or test_enabled_flag==true or false
     end
-    -- Authored grips, per wielded item: the stock first-person animation's left
-    -- hand on the weapon, averaged over AUTHORED_SAMPLES steady frames, then
-    -- kept for that item. Right-dominant only (the animation's support hand is
-    -- the left).
+    -- Authored grips, per weapon template: where the stock first-person
+    -- animation holds the left hand on the weapon. Right-dominant only (the
+    -- animation's support hand is the left). A grip is ready without waiting:
+    -- - shipped (Support.SHIPPED_GRIPS) or stored grips (vr_two_hand_grips_v1,
+    --   measured in an earlier session) are used from the first frame;
+    -- - otherwise the hand settling on the weapon during the draw
+    --   (SETTLE_FRAMES within SETTLE_TOLERANCE) gives a grip at once;
+    -- - the first AUTHORED_SAMPLES steady frames each session average the
+    --   final grip, which replaces the earlier one when the hand is not
+    --   holding and is stored if it moved more than STORE_TOLERANCE.
+    -- After that the template costs nothing for the rest of the session.
     Support.AUTHORED_SAMPLES=30
+    Support.SETTLE_FRAMES=6
+    Support.SETTLE_TOLERANCE=.005
+    Support.STORE_TOLERANCE=.003
+    Support.STORE_KEY='vr_two_hand_grips_v1'
     local function vec3(v) return v and {Vector3.x(v),Vector3.y(v),Vector3.z(v)} end
     local function quat(q) return q and {Quaternion.to_elements(q)} end
-    local authored=setmetatable({},{__mode='k'})
-    local authored_logged={}
+    local function authored_entry(socket,hand,source)
+        if type(socket)~='table' or type(hand)~='table' then return nil end
+        for i=1,3 do if not finite(socket[i]) then return nil end end
+        for i=1,4 do if not finite(hand[i]) then return nil end end
+        return {socket={socket[1],socket[2],socket[3]},hand_rotation={hand[1],hand[2],hand[3],hand[4]},
+            side='left',acquire=.1,release=.2,smoothing=.07,ads=false,authored=true,source=source}
+    end
+    local grips={}
+    for name,grip in pairs(Support.SHIPPED_GRIPS) do grips[name]=authored_entry(grip.socket,grip.hand_rotation,'shipped') end
+    local stored=mod.get and mod:get(Support.STORE_KEY)
+    if type(stored)=='table' then
+        for name,grip in pairs(stored) do
+            if type(name)=='string' and type(grip)=='table' then
+                grips[name]=authored_entry(grip.socket,grip.hand_rotation,'stored') or grips[name]
+            end
+        end
+    end
+    local function store(name,entry)
+        if not mod.set then return end
+        local copy={}
+        local current=mod.get and mod:get(Support.STORE_KEY)
+        if type(current)=='table' then for k,v in pairs(current) do copy[k]=v end end
+        copy[name]={socket=entry.socket,hand_rotation=entry.hand_rotation}
+        mod:set(Support.STORE_KEY,copy)
+    end
+    local sessions={}
+    local rig_logged=false
     local steady_actions={aim=true,unaim=true,shoot_hit_scan=true,shoot_pellets=true,shoot_projectile=true}
+    local function log_grip(name,entry,session)
+        mod:info('DARKTIDEVR_TWO_HAND authored_grip template=%s source=%s socket=%.3f,%.3f,%.3f hand=%.4f,%.4f,%.4f,%.4f frames_after_wield=%d',
+            name,entry.source,entry.socket[1],entry.socket[2],entry.socket[3],entry.hand_rotation[1],
+            entry.hand_rotation[2],entry.hand_rotation[3],entry.hand_rotation[4],session.frames)
+    end
     function api.observe_authored(unit,equipped,template,muzzle_in_attach)
-        if not unit or not equipped or type(template)~='table' then return end
-        local record=authored[equipped]
-        if record and record.done then return end
-        local weapon=ScriptUnit.has_extension(unit,'weapon_system')
-        local action=weapon and weapon:running_action_settings()
-        if action and not steady_actions[action.kind] then return end
+        if not unit or not equipped or type(template)~='table' or type(template.name)~='string' then return end
+        local name=template.name
+        local session=sessions[name]
+        if session and session.final then return end
         local first_person=ScriptUnit.has_extension(unit,'first_person_system')
         local rig=first_person and first_person._first_person_unit
         if not rig or not Unit.alive(rig) or not Unit.has_node(rig,'j_lefthand') or
             not Unit.has_node(rig,'j_rightweaponattach') then
-            if not authored_logged.rig then
-                authored_logged.rig=true
+            if not rig_logged then
+                rig_logged=true
                 mod:info('DARKTIDEVR_TWO_HAND authored_grip=unavailable reason=first_person_rig_nodes')
             end
             return
         end
+        if not session then
+            session={settle=Pose.new_authored_settle(Support.SETTLE_FRAMES,Support.SETTLE_TOLERANCE),
+                average=Pose.new_authored_average(Support.AUTHORED_SAMPLES),rejected=0,frames=0}
+            sessions[name]=session
+        end
+        if session.item~=equipped then session.item,session.frames=equipped,0 end
+        session.frames=session.frames+1
+        local weapon=ScriptUnit.has_extension(unit,'weapon_system')
+        local action=weapon and weapon:running_action_settings()
+        local steady=not action or steady_actions[action.kind]==true
         local attach,left=Unit.node(rig,'j_rightweaponattach'),Unit.node(rig,'j_lefthand')
         local socket,hand=Pose.authored_socket(vec3(Unit.world_position(rig,attach)),
             quat(Unit.world_rotation(rig,attach)),vec3(Unit.world_position(rig,left)),
             quat(Unit.world_rotation(rig,left)),quat(muzzle_in_attach))
-        if not record then record={average=Pose.new_authored_average(Support.AUTHORED_SAMPLES),rejected=0}; authored[equipped]=record end
         if not socket then
-            record.rejected=record.rejected+1
-            if record.rejected==120 and not authored_logged[template.name] then
-                authored_logged[template.name]=true
-                mod:info('DARKTIDEVR_TWO_HAND authored_grip=none template=%s reason=hand_off_weapon',tostring(template.name))
+            session.settle.reset()
+            if steady then
+                session.rejected=session.rejected+1
+                if session.rejected==120 then
+                    session.final=true
+                    -- A one-handed weapon's draw can rest the hand briefly.
+                    if grips[name] and grips[name].source=='settled' then grips[name]=nil end
+                    if not grips[name] then
+                        mod:info('DARKTIDEVR_TWO_HAND authored_grip=none template=%s reason=hand_off_weapon',name)
+                    end
+                end
             end
             return
         end
-        local done=record.average.add(socket,hand)
-        if done then
-            record.done={socket=done.socket,hand_rotation=done.hand_rotation,side='left',weapon=equipped,
-                acquire=.1,release=.2,smoothing=.07,ads=false,authored=true}
-            if not authored_logged[template.name] then
-                authored_logged[template.name]=true
-                mod:info('DARKTIDEVR_TWO_HAND authored_grip template=%s socket=%.3f,%.3f,%.3f samples=%d',
-                    tostring(template.name),done.socket[1],done.socket[2],done.socket[3],Support.AUTHORED_SAMPLES)
+        if not grips[name] then
+            local settled=session.settle.add(socket,hand)
+            if settled then
+                grips[name]=authored_entry(settled.socket,settled.hand_rotation,'settled')
+                log_grip(name,grips[name],session)
             end
         end
+        if not steady then return end
+        local done=session.pending or session.average.add(socket,hand)
+        if not done then return end
+        -- Swapping the socket retires a gesture, so wait for the hand to let go.
+        if api.held then session.pending=done; return end
+        session.final=true
+        local current=grips[name]
+        local moved=not current or math.sqrt((current.socket[1]-done.socket[1])^2+
+            (current.socket[2]-done.socket[2])^2+(current.socket[3]-done.socket[3])^2)
+        if current and moved<=Support.STORE_TOLERANCE and current.source~='settled' then return end
+        grips[name]=authored_entry(done.socket,done.hand_rotation,'measured')
+        log_grip(name,grips[name],session)
+        store(name,grips[name])
     end
     -- One log line per item when support first takes hold, naming the grip's
     -- source, and one per release (up to RELEASE_LOGS a session) with the
@@ -206,10 +273,11 @@ function Support.install(mod,presentation,observation)
     function api.finish(grip)
         finish(grip)
         local profile=api.held and api.current_profile and api.current_profile()
-        if profile and profile.weapon and not held_logged[profile.weapon] then
-            held_logged[profile.weapon]=true
-            mod:info('DARKTIDEVR_TWO_HAND held=true source=%s socket=%.3f,%.3f,%.3f',
-                profile.authored and 'authored' or 'calibrated',profile.socket[1],profile.socket[2],profile.socket[3])
+        if profile and not held_logged[profile] then
+            held_logged[profile]=true
+            mod:info('DARKTIDEVR_TWO_HAND held=true source=%s grip=%s socket=%.3f,%.3f,%.3f',
+                profile.authored and 'authored' or 'calibrated',tostring(profile.source or 'command'),
+                profile.socket[1],profile.socket[2],profile.socket[3])
         end
         if api.held and not was_held then
             api.steer.max_degrees,api.steer.frames=0,0
@@ -226,8 +294,7 @@ function Support.install(mod,presentation,observation)
         return math.deg(2*math.acos(math.min(1,dot)))
     end
     function api.authored_profile(frame)
-        local record=frame.weapon and authored[frame.weapon]
-        return record and record.done or nil
+        return frame and type(frame.template)=='string' and grips[frame.template] or nil
     end
     -- Development preview: darktidevr_two_hand_test.flag "preview" places the
     -- support glove on the authored grip without a grip press, so the eye
@@ -400,10 +467,10 @@ function Support.install(mod,presentation,observation)
         local position,orientation,authored_rotation
         if preview_requested() then
             local weapon=unit and ScriptUnit.has_extension(unit,'weapon_system')
-            local equipped=weapon and weapon:_wielded_weapon(weapon._inventory_component,weapon._weapons)
-            local record=equipped and authored[equipped]
-            if record and record.done then
-                position,orientation=Pose.hand(quaternion(rotation),vector(primary),record.done.socket,record.done.hand_rotation)
+            local template=weapon and weapon:weapon_template()
+            local grip=template and grips[template.name]
+            if grip then
+                position,orientation=Pose.hand(quaternion(rotation),vector(primary),grip.socket,grip.hand_rotation)
                 authored_rotation=true
             end
         end

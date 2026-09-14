@@ -97,6 +97,29 @@ function Pose.new_authored_average(samples)
     end
     return state
 end
+-- Settle detector: the first moment the authored hand has stayed on the
+-- weapon for `frames` consecutive samples within `tolerance` metres of their
+-- mean. Usually reached while the draw animation is ending, so a grip is
+-- ready when the weapon is. reset() on a rejected sample.
+function Pose.new_authored_settle(frames,tolerance)
+    local state={}
+    local recent,next_slot,filled={},1,0
+    function state.reset() next_slot,filled=1,0 end
+    function state.add(socket,hand)
+        recent[next_slot]=socket
+        next_slot=next_slot%frames+1
+        filled=math.min(filled+1,frames)
+        if filled<frames then return nil end
+        local mean={0,0,0}
+        for i=1,frames do for axis=1,3 do mean[axis]=mean[axis]+recent[i][axis]/frames end end
+        for i=1,frames do
+            local d=difference(recent[i],mean)
+            if dot(d,d)>tolerance*tolerance then return nil end
+        end
+        return {socket=mean,hand_rotation=hand}
+    end
+    return state
+end
 function Pose.relative_rotation(base,rotation)
     local a,b=normalize(base,4),normalize(rotation,4)
     return a and b and normalize(multiply(inverse(a),b),4) or nil

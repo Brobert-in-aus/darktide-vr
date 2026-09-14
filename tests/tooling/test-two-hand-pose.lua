@@ -54,6 +54,15 @@ do
     local done=average.add({0,.5,0},identity)
     near(done.socket,{0,.4,0},1e-9)
     assert(average.add({0,9,0},identity)==done,'average changed after freezing')
+    -- Settling: consecutive samples within tolerance of their mean; a moving or
+    -- reset hand starts again.
+    local settle=Pose.new_authored_settle(3,.005)
+    assert(not settle.add({0,.3,0},identity) and not settle.add({0,.32,0},identity) and not settle.add({0,.3,0},identity),'moving hand settled')
+    assert(not settle.add({0,.301,0},identity))
+    local settled=settle.add({0,.302,0},identity)
+    assert(settled and math.abs(settled.socket[2]-.301)<1e-9,'steady hand did not settle')
+    settle.reset()
+    assert(not settle.add({0,.3,0},identity),'reset kept old samples')
 end
 -- A common translation/rotation of both hands and the aim preserves the solution.
 local quarter={0,0,math.sqrt(.5),math.sqrt(.5)}
