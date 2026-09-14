@@ -163,7 +163,11 @@ unattended evidence for each is in
       90 % in both; charging a plasma gun, helbore or staff buzzes in Immersive,
       and a full charge ticks in both (`758e885`). Holding a melee attack ticks
       when it will release as a heavy; a power sword's or other melee special
-      pulses as it turns on, and hums lightly in Immersive while on (`9e72cd1`).
+      pulses as it turns on, and hums lightly in Immersive while on (`9e72cd1`). Holding an interaction
+      (revive, pick up) hums lightly in Immersive and a finished one pulses in
+      both; the new Controller vibration strength slider (25-200 %) scales
+      everything (`fcba7a2`). The crosshair scale option's description should
+      read normally (it had a stray format sign, `5d03f6e`).
       A mission or the Psykhanium's enemy spawner is needed for most of these.
     - **Off:** nothing.
     Console: `DARKTIDEVR_HAPTICS event=<kind>`; the

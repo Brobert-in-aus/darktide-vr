@@ -191,15 +191,17 @@ Mod Options, Darktide VR, Experimental features, "Controller vibration":
   - your combat ability or blitz recharges;
   - weapon heat or peril passes 75 % (and again, stronger, past 90 %);
   - a charged shot is full, or a held melee attack will now release as a heavy;
-  - a melee weapon's special turns on.
+  - a melee weapon's special turns on;
+  - an interaction (revive, pick up, operate) finishes.
 - **Immersive** is the feel of your actions: every shot (stronger for heavier
   guns), charging a shot, melee hits and pushes, a light hum while a melee
-  special is on,
+  special is on or while holding an interaction,
   using your combat ability and toughness hits, plus the grip, holster, empty-clip, reload,
   damage, knockdown and block pulses. It leaves out the low ammo, low health,
   stamina, recharge and 75 % heat or peril notices.
 
-More kinds (interactions, menus) are planned.
+"Controller vibration strength" scales every vibration (25-200 %). Menu
+vibrations are planned.
 
 ### Ammo count at the hand (experimental)
 

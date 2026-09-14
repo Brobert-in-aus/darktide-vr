@@ -800,3 +800,27 @@ now scaled to that height (`fe93f26`).
 - Not shown: special on and hum (this character's melee weapon has no
   toggled special in that run), melee hits (no targets in reach), and how
   anything feels.
+
+### Haptics: interactions and strength; localization format fix
+
+**Interactions and strength (`fcba7a2`).**
+- **Interaction hum** (Immersive only): a light pulse every 0.25 s while
+  holding an interaction.
+- **Interaction done** (both modes): a notice when it finishes. A hold that
+  ends more than 0.15 s early is not a finish; instant interactions finish
+  on exit.
+- **Strength option:** `vr_haptics_strength`, 25-200 %, default 100.
+- **Unit tests:** finished, released and instant holds; hum cadence;
+  strength clamping.
+- **Not shown:** an interaction in game (nothing to interact with in reach
+  of the synthetic path).
+
+**Localization fix (`5d03f6e`).** `run24` logged
+`(localize) "Controller vibration strength (%)": invalid option`, because
+DMF runs every localized string through `string.format`.
+- The label now says "(percent)".
+- The existing crosshair scale description had the same fault ("100% ...
+  70%"); it is now escaped.
+- `test-controller-bindings.lua` now formats every localization string.
+- `run25` (Informative): no errors or warnings; heavy ready, clip empty,
+  reload and ability ready fired.
