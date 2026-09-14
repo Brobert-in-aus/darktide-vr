@@ -333,8 +333,9 @@ function Scan.install(mod, presentation)
         local weapon = ScriptUnit.has_extension(unit, "weapon_system")
         local template = weapon and weapon:weapon_template()
         local name = template and template.name
-        if not name or sight_logged[name] then return end
-        sight_logged[name] = true
+        local key = tostring(name) .. ":" .. tostring(api.view and api.view.variant)
+        if not name or sight_logged[key] then return end
+        sight_logged[key] = true
         local loadout = ScriptUnit.has_extension(unit, "visual_loadout_system")
         local muzzle_name = template.fx_sources and template.fx_sources._muzzle
         local unit_1p, node_1p, unit_3p, node_3p
@@ -343,7 +344,8 @@ function Scan.install(mod, presentation)
         end
         local first_person = ScriptUnit.has_extension(unit, "first_person_system")
         local fp_unit = first_person and first_person:first_person_unit()
-        local aim_position, aim_rotation = presentation.weapon_aim_target and presentation.weapon_aim_target("dominant")
+        local aim_position, aim_rotation
+        if presentation.weapon_aim_target then aim_position, aim_rotation = presentation.weapon_aim_target("dominant") end
         mod:info("DARKTIDEVR_ATTACHMENT_SCAN sight template=%s muzzle=%s node_1p=%s node_3p=%s",
             name, tostring(muzzle_name), tostring(node_1p), tostring(node_3p))
         if unit_1p and node_1p and fp_unit then
@@ -354,9 +356,12 @@ function Scan.install(mod, presentation)
         end
         if unit_3p and node_3p and aim_position and aim_rotation then
             local muzzle = Unit.world_pose(unit_3p, node_3p)
-            mod:info("DARKTIDEVR_ATTACHMENT_SCAN sight vr aim_origin_in_muzzle=%s aim_forward_in_muzzle=%s grip_in_muzzle=%s",
+            local grip = presentation.weapon_grip_target and presentation.weapon_grip_target("dominant")
+            local reticle = presentation.controller_aim and presentation.controller_aim.reticle_world_point
+            mod:info("DARKTIDEVR_ATTACHMENT_SCAN sight vr aim_origin_in_muzzle=%s aim_forward_in_muzzle=%s grip_in_muzzle=%s reticle_in_muzzle=%s reticle_distance=%s",
                 in_frame(muzzle, aim_position), direction_in_frame(muzzle, Quaternion.forward(aim_rotation)),
-                presentation.weapon_grip_target and in_frame(muzzle, presentation.weapon_grip_target("dominant")) or "nil")
+                grip and in_frame(muzzle, grip) or "nil", reticle and in_frame(muzzle, reticle:unbox()) or "nil",
+                tostring(presentation.controller_aim and presentation.controller_aim.reticle_distance))
         end
     end
     function api.update(unit)
