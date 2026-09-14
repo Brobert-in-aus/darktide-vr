@@ -41,6 +41,15 @@ function Holsters.frame(head, forward, eye_height)
         scale = eye_height / Holsters.REFERENCE_EYE_HEIGHT}
 end
 
+-- The measured standing eye height, clamped to 0.75-1.3 times the reference
+-- (1.23-2.13 m): a headset measured while resting on a desk (0.9 m) or a
+-- seated measurement must not shrink the zones out of reach.
+function Holsters.plausible_eye_height(measured)
+    local reference = Holsters.REFERENCE_EYE_HEIGHT
+    if not finite(measured) then return reference end
+    return math.max(reference * 0.75, math.min(reference * 1.3, measured))
+end
+
 -- A world point in reference-body coordinates (x right, y forward, z up).
 function Holsters.local_point(frame, point)
     if not frame or not vector(point) then return nil end
@@ -191,7 +200,7 @@ function Holsters.install(mod, presentation, observation)
         local player = Managers.player and Managers.player:local_player(1)
         local character_scale = presentation.calibrated_character_scale and
             presentation.calibrated_character_scale(player) or 1
-        local eye_height = (physical or Holsters.REFERENCE_EYE_HEIGHT) * (tonumber(character_scale) or 1)
+        local eye_height = Holsters.plausible_eye_height(physical) * (tonumber(character_scale) or 1)
         return Holsters.frame(vector(eye), vector(forward), eye_height)
     end
     -- Unattended runs turn holsters on with a request file instead of the

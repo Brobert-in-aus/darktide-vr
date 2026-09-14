@@ -22,6 +22,11 @@ assert(not Holsters.frame({0, 0, 1.6}, {0, 0, 1}, 1.6), "vertical forward")
 assert(not Holsters.frame({0, 0, 1.6}, {0, 1, 0}, 0.3), "implausible eye height")
 assert(Holsters.frame({0, 0, 3.0}, {0, 1, 0}, 3.0), "an Ogryn-scale eye height is plausible")
 assert(not Holsters.local_point(nil, {0, 0, 0}))
+-- Implausible measurements are clamped (a headset resting on a desk).
+assert(math.abs(Holsters.plausible_eye_height(0.89) - 1.23) < 1e-9)
+assert(math.abs(Holsters.plausible_eye_height(1.70) - 1.70) < 1e-9)
+assert(math.abs(Holsters.plausible_eye_height(2.6) - 2.132) < 1e-9)
+assert(Holsters.plausible_eye_height(nil) == Holsters.REFERENCE_EYE_HEIGHT)
 
 -- Zones: entry radius, exit hysteresis, nearest by relative distance.
 local hip_left = Holsters.zone_at({-0.20, 0.05, -0.72})
