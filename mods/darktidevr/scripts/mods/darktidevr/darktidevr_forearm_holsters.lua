@@ -67,7 +67,10 @@ function Forearm.install(mod, presentation)
         local file = io_api and io_api.open(Forearm.TEST_FLAG, "r")
         if not file then test_enabled = false; return false end
         local value = file:read("*all"); file:close()
-        test_enabled = type(value) == "string" and value:match("^%s*enabled%s*$") ~= nil
+        test_enabled = type(value) == "string" and (value:match("^%s*enabled%s*$") ~= nil or value:match("^%s*front%s*$") ~= nil)
+        -- "front": previews 50 cm ahead of the eye, larger and always shown,
+        -- to check they render at all.
+        api.test_front = type(value) == "string" and value:match("^%s*front%s*$") ~= nil
         return test_enabled
     end
     function api.enabled()
@@ -156,8 +159,22 @@ function Forearm.install(mod, presentation)
                         mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview zone=%s item=%s scale=%.3f",
                             zone.id, tostring(item.name), scale)
                     end
-                    Unit.set_local_position(data.link_unit, 1, Vector3(zone.world[1], zone.world[2], zone.world[3]))
-                    Unit.set_local_rotation(data.link_unit, 1, rotation)
+                    if api.test_front then
+                        local first_person = ScriptUnit.has_extension(unit, "first_person_system")
+                        local eye_unit = first_person and first_person:first_person_unit()
+                        local eye_rotation = eye_unit and Unit.world_rotation(eye_unit, 1)
+                        if eye_unit then
+                            local place = Unit.world_position(eye_unit, 1) + Quaternion.forward(eye_rotation) * 0.5 +
+                                Quaternion.right(eye_rotation) * (0.12 * (index - 2.5))
+                            Unit.set_local_position(data.link_unit, 1, place)
+                            Unit.set_local_rotation(data.link_unit, 1, Quaternion.look(Quaternion.right(eye_rotation), Vector3.up()))
+                            Unit.set_local_scale(data.link_unit, 1, Vector3(0.15, 0.15, 0.15))
+                        end
+                        near = true
+                    else
+                        Unit.set_local_position(data.link_unit, 1, Vector3(zone.world[1], zone.world[2], zone.world[3]))
+                        Unit.set_local_rotation(data.link_unit, 1, rotation)
+                    end
                     -- Every frame: the spawner shows the unit once streaming completes.
                     if data.item_unit_3p and Unit.alive(data.item_unit_3p) then
                         preview.visible = near and preview.fitted == true
