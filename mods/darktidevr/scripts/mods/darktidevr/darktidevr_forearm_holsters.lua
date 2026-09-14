@@ -123,8 +123,13 @@ function Forearm.install(mod, presentation)
         local hand = support == "left" and presentation.left_controller_grip_target() or presentation.controller_grip_target()
         local middle = Forearm.centre(2.5, api.grip, api.forward, api.up)
         local near = hand and Vector3.distance(hand, Vector3(middle[1], middle[2], middle[3])) <= Forearm.PREVIEW_NEAR
-        local rotation = Quaternion.look(Vector3(api.forward[1], api.forward[2], api.forward[3]),
-            Vector3(api.up[1], api.up[2], api.up[3]))
+        -- Previews lie across the forearm so neighbours do not overlap. Melee
+        -- weapons are long along their local z, guns and items along y.
+        local arm_forward = Vector3(api.forward[1], api.forward[2], api.forward[3])
+        local arm_up = Vector3(api.up[1], api.up[2], api.up[3])
+        local arm_right = Vector3.normalize(Vector3.cross(arm_forward, arm_up))
+        local across = Quaternion.look(arm_right, arm_up)
+        local across_long_z = Quaternion.look(arm_up, arm_right)
         for index, zone in ipairs(zones) do
             local item = zone.slot and item_in(unit, zone.slot)
             local preview = previews[index]
@@ -133,7 +138,7 @@ function Forearm.install(mod, presentation)
                 local unit_spawner = UIUnitSpawner:new(world)
                 local spawner = UIWeaponSpawner:new("DarktideVRForearm_" .. index, world, nil, unit_spawner)
                 local position = Vector3(zone.world[1], zone.world[2], zone.world[3])
-                spawner:start_presentation(item, position, rotation, Vector3(0.2, 0.2, 0.2), nil, false)
+                spawner:start_presentation(item, position, across, Vector3(0.2, 0.2, 0.2), nil, false)
                 preview = {item = item, spawner = spawner, unit_spawner = unit_spawner, started_t = t}
                 previews[index] = preview
                 mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_start zone=%s item=%s", zone.id, tostring(item.name))
@@ -173,7 +178,7 @@ function Forearm.install(mod, presentation)
                         near = true
                     else
                         Unit.set_local_position(data.link_unit, 1, Vector3(zone.world[1], zone.world[2], zone.world[3]))
-                        Unit.set_local_rotation(data.link_unit, 1, rotation)
+                        Unit.set_local_rotation(data.link_unit, 1, zone.slot == "slot_primary" and across_long_z or across)
                     end
                     -- Every frame: the spawner shows the unit once streaming completes.
                     if data.item_unit_3p and Unit.alive(data.item_unit_3p) then
