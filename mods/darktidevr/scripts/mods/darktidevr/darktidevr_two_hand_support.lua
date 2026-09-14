@@ -331,7 +331,7 @@ function Support.install(mod,presentation,observation)
             if api.capture_pending and api.capture_pending.at then api.capture_pending=nil end
             return api.prepare(nil)
         end
-        if not api.enabled and not api.capture_pending then return api.prepare(nil) end
+        if not api.is_enabled() and not api.capture_pending then return api.prepare(nil) end
         local frame=snapshot(unit,dt,handler)
         capture(frame,t)
         return api.prepare(frame)
@@ -346,7 +346,7 @@ function Support.install(mod,presentation,observation)
         end
     end
     local function resolve(unit,rotation)
-        if not api.enabled or not rotation then return rotation end
+        if not api.is_enabled() or not rotation then return rotation end
         if not live() or not presentation.online_rules.simulation_aim_active(unit) then
             api.clear(); return rotation
         end
