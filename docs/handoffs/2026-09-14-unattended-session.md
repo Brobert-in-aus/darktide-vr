@@ -433,3 +433,35 @@ defaults (holsters and the ammo readout off, no test flags):
 
 Evidence: `artifacts/unattended/regression-20260914/midday-hub` and
 `midday-psykhanium`.
+
+## Review of the day's changes, and fixes (`b14ad7d`)
+
+An independent read-only review of `7360833..HEAD` found no high-severity
+defects and five real ones, all fixed:
+1. A hand resting in a holster zone replaced a held (or acquiring) two-hand
+   support request and dropped the rifle's support grip. `Holsters.choose`
+   now keeps the support request unless a holster claim is already held.
+2. The reload shake fired after completed reloads that chain early into
+   aiming or firing (for example, the autogun at 3.1 of 3.3 s). A reload that
+   added ammo now counts as finished.
+3. The viewer's automatic restart used a sliding window, so a missing runtime
+   was relaunched three times every five minutes forever. It now gives up
+   after three failures in a row of viewers that ran under a minute;
+   `/dtvr_viewer start` or `restart` resets the count.
+4. The pose trace waited for an old gameplay clock after a level change and
+   wrote a second header on a second launch. It now resamples when the clock
+   restarts lower and writes one header per file.
+5. `main.cpp` now includes `<functional>` and `<sstream>` itself.
+
+Also checked and clean in the review: the holster claim lifecycle, the
+request-only actions, DMF hook uniqueness, the engine calls in the readout,
+the held-effect fields, viewer stop semantics, pause and resume, the crop
+clamp arithmetic and log rotation. Tests 247/247.
+
+After deployment:
+- the synthetic holster run wielded ranged, melee and blitz as before;
+- a Psykhanium run with the game-started viewer clamped the menu crop at the
+  transition (frame 7024), ran to `result=pass` and exited cleanly.
+
+Evidence: `artifacts/unattended/holsters-20260914/synthetic-after-review/` and
+`artifacts/unattended/regression-20260914/after-review-psykhanium/`.
