@@ -2,7 +2,11 @@
 -- mapper. No guessed socket profiles or changes to the user's ADS preference.
 local Support={}
 -- Authored grips known before play, by weapon template (see Support.install).
-Support.SHIPPED_GRIPS={}
+-- Values are the DARKTIDEVR_TWO_HAND authored_grip source=measured log line.
+Support.SHIPPED_GRIPS={
+    -- 14 September 2026, Psykhanium (Skitarius).
+    galvanic_rifle_p1_m1={socket={-.0338,.3289,-.0017},hand_rotation={-.4336,-.1215,.5998,.6614}},
+}
 function Support.ads_supported(template)
     if type(template)~='table' or type(template.actions)~='table' or
         type(template.action_inputs)~='table' or type(template.alternate_fire_settings)~='table' then return false end

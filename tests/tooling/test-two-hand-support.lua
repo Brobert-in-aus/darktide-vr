@@ -305,6 +305,14 @@ do
         if name=='first_person_system' then return {_first_person_unit=rig} end
         if name=='weapon_system' then return {running_action_settings=function() return grip_action end} end
     end}
+    -- Every shipped grip is a plausible authored socket with a unit rotation.
+    for name,grip in pairs(Support.SHIPPED_GRIPS) do
+        local s,h,limits=grip.socket,grip.hand_rotation,Pose.AUTHORED_LIMITS
+        assert(s[2]>=limits.min_forward and math.abs(s[1])<=limits.max_lateral and
+            math.abs(s[3])<=limits.max_vertical,'implausible shipped grip '..name)
+        assert(math.abs(h[1]^2+h[2]^2+h[3]^2+h[4]^2-1)<1e-3,'shipped hand rotation not unit '..name)
+    end
+    assert(Support.SHIPPED_GRIPS.galvanic_rifle_p1_m1)
     Support.SHIPPED_GRIPS={shipped_p1_m1={socket={0,.3,0},hand_rotation={0,0,0,1}},
         stored_p1_m1={socket={0,.3,0},hand_rotation={0,0,0,1}}}
     local saved,lines={stored_p1_m1={socket={.01,.31,0},hand_rotation={0,0,0,1}},
