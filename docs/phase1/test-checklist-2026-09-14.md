@@ -151,8 +151,15 @@ unattended evidence for each is in
       medium one when a reload finishes; no vibration per shot.
     - **Immersive:** the same, except low ammo, plus a pulse on every shot
       (both hands while gripping the foregrip).
+    - **Both modes, from 31e1843:** a strong long pulse on both hands when
+      knocked down or grabbed; pulses on both hands when you take health
+      damage (stronger for bigger hits) or your toughness breaks; a pulse when
+      a block takes a hit (firmer for a perfect block). Informative adds low
+      health, stamina running out and your combat ability or blitz
+      recharging; Immersive adds toughness hits and using your combat ability.
+      A mission or the Psykhanium's enemy spawner is needed for most of these.
     - **Off:** nothing.
-    Console: `DARKTIDEVR_HAPTICS event=shot|clip_empty|reload|low_ammo`; the
+    Console: `DARKTIDEVR_HAPTICS event=<kind>`; the
     viewer log: `openxr.haptic ... result=0`. Say whether the strengths feel
     right, and read the catalogue: which planned kinds matter most, and
     whether Immersive should also play the Informative-only notices.

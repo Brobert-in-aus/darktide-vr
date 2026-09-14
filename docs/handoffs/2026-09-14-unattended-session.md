@@ -685,3 +685,43 @@ today and passed 60 standalone runs; it is marked RUN_SERIAL already. This is
 a pre-existing intermittent test and was not investigated further.
 
 Worn check: evening item 10.
+
+### Haptics: body and ability kinds (heartbeat pick-up, next in the plan)
+
+**Body kinds (`31e1843`).** Each gameplay frame the mod reads the local
+player's health, toughness, character state, block, stamina and ability
+charges, and pulses both hands with the most important event the mode
+plays. Kinds, by mode:
+- both: damage (scaled), toughness broken, disabled, block, perfect block;
+- Immersive only: toughness hit, combat ability used;
+- Informative only: low health, stamina empty, combat ability recharged,
+  blitz recharged.
+
+The unit tests cover:
+- damage scaling;
+- no toughness hit alongside health loss;
+- a disable suppressing its own health-pool change;
+- a held block not repeating;
+- the threshold crossings;
+- charge changes;
+- missing readings.
+
+The synthetic once path now presses the combat ability (left grip away from
+the foregrip) once a cycle.
+
+Evidence:
+- **`run17` (Immersive):** `event=ability_used`, with shot, clip empty and
+  reload as before.
+- **`run18` (Informative):** `event=ability_ready` about 50 s after the
+  presses, with no `ability_used`.
+- Both runs: no script errors, no undelivered pulses, no viewer failures, no
+  crash.
+- **Not shown:** damage, toughness, disabled, block and stamina (nothing
+  attacks in the shooting range and dodges were not driven); how anything
+  feels.
+
+**Also fixed (`4af3cf5`).** `present_cpu_profile_on` failed intermittently
+because every run leaves `darktidevr-present-cpu-<pid>.log` in TEMP. There
+were 233 of them, so a reused process id found an old log and the test
+returned 2. The test now removes a stale log with its own id first; two full
+suites afterwards passed 248/248.
