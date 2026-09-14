@@ -373,7 +373,13 @@ function Support.install(mod,presentation,observation)
     end
     local previous_t
     local allowed_states={walking=true,sprinting=true,sliding=true,jumping=true,falling=true,dodging=true}
-    local allowed_actions={aim=true,unaim=true,shoot_hit_scan=true,shoot_pellets=true,shoot_projectile=true}
+    -- Gun actions the support grip holds through. Reloads keep it (worn, 14 September:
+    -- reloading must not break two-handing; nor bashing, the gun's sweep, push and
+    -- windup actions); inspect, draw and holster end it.
+    local allowed_actions={aim=true,unaim=true,shoot_hit_scan=true,shoot_pellets=true,shoot_projectile=true,
+        reload_state=true,reload_shotgun=true,charge_ammo=true,ranged_load_special=true,toggle_special=true,
+        vent_overheat=true,overload_charge=true,charge=true,flamer_gas=true,flamer_gas_burst=true,
+        sweep=true,push=true,windup=true}
     local function vector(v) return v and {Vector3.x(v),Vector3.y(v),Vector3.z(v)} end
     local function quaternion(q) return q and {Quaternion.to_elements(q)} end
     local function live()

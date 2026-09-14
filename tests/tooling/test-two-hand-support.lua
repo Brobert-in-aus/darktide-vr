@@ -214,8 +214,17 @@ assert(steer and steer>15 and steer<25,'release log: '..tostring(released))
 assert(installed.resolve(unit,frame.rotation)==frame.rotation)
 observations.left_grip_tracking_live=true; secondary={0,.3,0}
 installed_sample(0); assert(installed_sample(512)==2)
-action={kind='reload'}
-assert(installed.resolve(unit,frame.rotation)==frame.rotation,'mid-frame reload retained support')
+-- Reloading and bashing keep the grip; inspecting ends it.
+for _,kind in ipairs({'sweep','push','windup'}) do
+    action={kind=kind}
+    local _,bash_held=installed_sample(512)
+    assert(bash_held==2 and real_mapper.support_grip.held,kind..' released the support grip')
+end
+action={kind='reload_state'}
+assert(installed.resolve(unit,frame.rotation)~=frame.rotation,'reload dropped two-hand support')
+do local _,reload_held=installed_sample(512); assert(reload_held==2 and real_mapper.support_grip.held,'reload released the support grip') end
+action={kind='inspect'}
+assert(installed.resolve(unit,frame.rotation)==frame.rotation,'mid-frame inspect retained support')
 p,h,r=installed_sample(512); assert(p==0 and h==0 and r==0)
 action=nil; installed_sample(0); assert(installed_sample(512)==2)
 equipped={}
