@@ -168,7 +168,9 @@ until you let go (or, with "Two-hand grip" set to Toggle, until you press grip
 again). Bringing your hands together or crossing them also lets go. The grip point comes from the game's own animation of
 each gun, found as the draw finishes and remembered between sessions, so it is
 ready as soon as the gun is in your hand; one-handed weapons offer no grip.
-Gripping does not aim down sights. Right-hand dominant only for now. The older
+Gripping does not aim down sights. Controller bindings, While gripping, lets an
+action use a different control while you hold the foregrip; every action
+starts on Same as combat. Right-hand dominant only for now. The older
 `/dtvr_two_hand_calibrate` command still records a custom grip for the
 current session.
 

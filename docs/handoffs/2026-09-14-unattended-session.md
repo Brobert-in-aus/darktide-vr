@@ -604,3 +604,30 @@ Unattended evidence. The synthetic left hand approaches from 18 cm, lifts
   resting hand dragged the gun up to 109.6 degrees, so the evening checklist
   asks whether toggle should let go past some angle.
 - **Not shown:** the slide-on on screen (logged only) and how it feels.
+
+### Bindings while gripping (heartbeat pick-up, user's backlog item)
+
+Commit `28f9cd7`.
+- **Setting.** Mod Options, Controller bindings, While gripping has one
+  dropdown per action, stored as `vr_grip_action_bind_<action>`. Each
+  defaults to -1 (Same as combat), and no value is written until the player
+  picks one.
+- **Mapper.** A grip claim carrying `layer='gripping'` (only the two-hand
+  request does) switches new presses to the layered selection. The hub and
+  holster claims keep the normal bindings.
+- **Latching.** Every control keeps the mask it was pressed with until it is
+  released, so taking or leaving the grip never swaps an action mid-press.
+  Remaps and context changes clear the latch, the same way they already
+  cancelled holds.
+
+Evidence:
+- **Unit test** (`controller_bindings_grip_layer`): a held crouch survives
+  taking the grip, X reloads while gripping, the trigger still fires, a held
+  reload survives letting go, and holster claims and the hub are unaffected.
+- **`run13`** (Psykhanium, synthetic path, no grip bindings set): no script
+  errors, 18 holds ended released, none cancelled, and no combat ability
+  delivered.
+- **Not shown:** an in-game press on a changed binding (that would need a
+  saved setting changed), and HUD prompts, which do not follow the layer.
+
+Worn check: evening item 9.

@@ -124,6 +124,21 @@ unattended evidence for each is in
    table. Say if the grip point is off (further forward or back, higher or
    lower), and whether the slide-on is too fast, too slow or too eager.
 
+9. **Bindings while gripping, new; changes nothing until you set one**
+   (`28f9cd7`). Mod Options, Darktide VR, Controller bindings, While
+   gripping: every action starts on Same as combat. Pick one to try, for
+   example Reload on X, then in the Psykhanium, with Two-hand support on:
+   - X crouches normally, and reloads while your left hand holds the
+     foregrip;
+   - holding X (crouched) as you take the grip keeps you crouched until you
+     let go of X, and the same the other way round;
+   - actions left on Same as combat (trigger, jump, and so on) behave as
+     normal while gripping;
+   - the hub and virtual holsters ignore this page.
+   Known limit: button prompts on the HUD still show the normal binding while
+   gripping. Set the action back to Same as combat afterwards if you do not
+   want to keep it.
+
 ## Assumptions and questions for the evening review
 
 - Held-item effects (item 3) were deployed on static reading and unit tests
@@ -148,3 +163,7 @@ unattended evidence for each is in
   towards it (110 degrees in the unattended run, when the simulated hand went
   back to rest). Should a toggled grip let go past some angle (for example
   45 degrees off the gun hand's aim), or is pressing again enough?
+- Bindings while gripping (item 9): built as a layer over combat bindings
+  that inherits by default, rather than a full separate layout, so nothing
+  has to be rebound to start using it. Prompts do not follow it yet. Should
+  the support hand's own buttons get suggested defaults while gripping?
