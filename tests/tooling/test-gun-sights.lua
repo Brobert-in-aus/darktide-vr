@@ -1,43 +1,68 @@
 local Sights=dofile(assert(arg[1]))
-local function near(a,b,m) assert(math.abs(a-b)<1e-9,m) end
+local function near(a,b,tol,m) assert(math.abs(a-b)<(tol or 1e-9),m or 'mismatch') end
+local function mul(a,b)
+    return {a[4]*b[1]+a[1]*b[4]+a[2]*b[3]-a[3]*b[2],a[4]*b[2]-a[1]*b[3]+a[2]*b[4]+a[3]*b[1],
+        a[4]*b[3]+a[1]*b[2]-a[2]*b[1]+a[3]*b[4],a[4]*b[4]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3]}
+end
+local function rot(q,v) local r=mul(mul(q,{v[1],v[2],v[3],0}),{-q[1],-q[2],-q[3],q[4]}) return {r[1],r[2],r[3]} end
 -- Pure offset: eye minus grip in the muzzle frame.
 local o=assert(Sights.offset({x=-.008,z=.032},{x=-.007,z=-.086}))
-near(o.x,-.001,'x'); near(o.z,.118,'z')
+near(o.x,-.001); near(o.z,.118)
 assert(Sights.offset(nil,{x=0,z=0})==nil and Sights.offset({x=0,z=0},nil)==nil,'missing half')
-assert(Sights.offset({x=0,z=.5},{x=0,z=0})==nil,'implausible eye')
-assert(Sights.offset({x=0,z=0},{x=0,z=.4})==nil,'implausible grip')
-assert(Sights.offset({x=0/0,z=0},{x=0,z=0})==nil,'nan')
--- Adapter stubs: vectors as tables, rotations as yaw-free identity or a pitch.
-local function vec(x,y,z) return setmetatable({x,y,z},{__add=function(a,b) return vec(a[1]+b[1],a[2]+b[2],a[3]+b[3]) end}) end
-Vector3=setmetatable({x=function(v) return v[1] end,y=function(v) return v[2] end,z=function(v) return v[3] end},
-    {__call=function(_,x,y,z) return vec(x,y,z) end})
-Quaternion={rotate=function(q,v) if q=='pitch90' then return vec(v[1],-v[3],v[2]) end return vec(v[1],v[2],v[3]) end}
-Matrix4x4={inverse=function(m) return {inverse=m} end,transform=function(m,p) local o=m.inverse.origin return vec(p[1]-o[1],p[2]-o[2],p[3]-o[3]) end}
-local gun={name='galvanic_rifle_p1_m1',actions={}}
-local wielded=gun
-local weapon_ext={weapon_template=function() return wielded end}
-local alternate={is_active=false}
-ScriptUnit={has_extension=function(_,name)
-    if name=='weapon_system' then return weapon_ext end
-    if name=='unit_data_system' then return {read_component=function(_,c) return c=='alternate_fire' and alternate or {wielded_slot='slot_secondary'} end} end
-end}
+assert(Sights.offset({x=0,z=.5},{x=0,z=0})==nil and Sights.offset({x=0,z=0},{x=0,z=.4})==nil,'implausible')
+-- Zeroing: the sight line (11.8 cm above the grip) passes through the point.
+local function sight_miss(grip,aim,offset,point,q)
+    local drawn=mul(q,aim)
+    local s=rot(drawn,{offset.x,0,offset.z}); s={grip[1]+s[1],grip[2]+s[2],grip[3]+s[3]}
+    local f=rot(drawn,{0,1,0})
+    local d={point[1]-s[1],point[2]-s[2],point[3]-s[3]}
+    local along=d[1]*f[1]+d[2]*f[2]+d[3]*f[3]
+    local c={d[1]-along*f[1],d[2]-along*f[2],d[3]-along*f[3]}
+    return math.sqrt(c[1]^2+c[2]^2+c[3]^2), f
+end
+local identity={0,0,0,1}
+local q=assert(Sights.zeroing({0,0,0},identity,{x=0,z=.118},{0,10,0}))
+local miss,f=sight_miss({0,0,0},identity,{x=0,z=.118},{0,10,0},q)
+assert(miss<.001,'sight line misses the point by '..miss)
+near(math.deg(math.asin(-f[3])),math.deg(math.atan(.118/10)),.02,'pitch down by the parallax angle')
+-- Any aim, any place: yawed and pitched gun away from the origin.
+local yaw={0,0,math.sin(.6),math.cos(.6)}
+local pitch={math.sin(-.1),0,0,math.cos(-.1)}
+local aim=mul(yaw,pitch)
+local grip={3,-2,1.4}
+local fwd=rot(aim,{0,1,0})
+local up=rot(aim,{0,0,-.05})
+local point={grip[1]+fwd[1]*7+up[1],grip[2]+fwd[2]*7+up[2],grip[3]+fwd[3]*7+up[3]}
+q=assert(Sights.zeroing(grip,aim,{x=-.001,z=.118},point))
+assert(sight_miss(grip,aim,{x=-.001,z=.118},point,q)<.001,'general pose')
+-- Too near, or too large a correction: none.
+assert(Sights.zeroing({0,0,0},identity,{x=0,z=.118},{0,.5,0})==nil,'too near')
+assert(Sights.zeroing({0,0,0},identity,{x=0,z=.118},{0,1,0})==nil,'over the cap (6.7 degrees)')
+assert(Sights.zeroing({0,0,0},identity,nil,{0,10,0})==nil,'no offset')
+-- Adapter: eases toward the correction, returns aim when nothing is known.
+Quaternion={to_elements=function(q) return q[1],q[2],q[3],q[4] end,from_elements=function(...) return {...} end,multiply=mul}
+Vector3={x=function(v) return v[1] end,y=function(v) return v[2] end,z=function(v) return v[3] end}
 local lines={}
-local presentation={gun_aim={is_gun=function(t) return t==gun end},
-    weapon_grip_target=function() return vec(1,2,3) end}
-local api=Sights.install({info=function(_,f,...) lines[#lines+1]=string.format(f,...) end},presentation)
+local reticle={0,10,0}
 local unit={}
--- No grip measurement yet: no change.
-assert(api.origin(unit,'identity')==nil,'needs the grip half')
-api.observe_grip('galvanic_rifle_p1_m1',{origin=vec(0,1.153,.086)},vec(-.007,0,0))
+local presentation={controller_aim={reticle_point_owner=unit,reticle_world_point={unbox=function() return reticle end}}}
+local api=Sights.install({info=function(_,f,...) lines[#lines+1]=string.format(f,...) end},presentation)
+local out=api.drawn_rotation(unit,'galvanic_rifle_p1_m1',{0,0,0},identity,1/90)
+for i=1,4 do near(out[i],identity[i],1e-12,'no grip measured yet: unchanged') end
+Matrix4x4={inverse=function(m) return m end,transform=function(m,p) return {p[1]-m[1],p[2]-m[2],p[3]-m[3]} end}
+api.observe_grip('galvanic_rifle_p1_m1',{0,1.153,.086},{-.007,0,0})
 assert(lines[1]:find('grip template=galvanic_rifle_p1_m1',1,true))
-local p=assert(api.origin(unit,'identity'))
-near(p[1],1-.001,'origin x'); near(p[2],2,'origin y'); near(p[3],3+.118,'origin z')
--- The offset turns with the aim: pitched 90 degrees, "up" becomes backward.
-p=assert(api.origin(unit,'pitch90'))
-near(p[2],2-.118,'rotated offset'); near(p[3],3,'rotated offset z')
--- Not a gun, or unknown template: no change.
-wielded={name='powermaul_p3_m1'}
-assert(api.origin(unit,'identity')==nil,'melee untouched')
-wielded={name='autogun_p1_m1'}; gun=wielded
-assert(api.origin(unit,'identity')==nil,'no eye for this template')
-print('gun_sights=pass offset plausibility origin rotation melee unknown')
+local first=api.drawn_rotation(unit,'galvanic_rifle_p1_m1',{0,0,0},identity,1/90)
+assert(first[1]~=0,'correction starts')
+for _=1,60 do out=api.drawn_rotation(unit,'galvanic_rifle_p1_m1',{0,0,0},identity,1/90) end
+assert(sight_miss({0,0,0},identity,{x=-.001,z=.118},reticle,{out[1],out[2],out[3],out[4]})<.002,'settled on the reticle')
+assert(math.abs(first[1])<math.abs(out[1]),'eased in')
+-- Another unit's reticle point is ignored: eases back to the bore.
+presentation.controller_aim.reticle_point_owner={}
+for _=1,90 do out=api.drawn_rotation(unit,'galvanic_rifle_p1_m1',{0,0,0},identity,1/90) end
+near(out[4],1,1e-6,'foreign reticle ignored')
+-- Unknown template: unchanged.
+presentation.controller_aim.reticle_point_owner=unit
+out=api.drawn_rotation(unit,'autogun_p1_m1',{0,0,0},identity,1/90)
+assert(math.abs(out[1])<1e-6,'unknown template')
+print('gun_sights=pass offset zeroing general_pose near cap ease foreign unknown')

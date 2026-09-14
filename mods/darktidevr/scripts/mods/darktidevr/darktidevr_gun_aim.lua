@@ -90,6 +90,14 @@ function Alignment.install(mod,presentation)
             presentation.two_hand.observe_authored(unit,equipped,template,
                 Quaternion.multiply(Quaternion.inverse(old_attach_rotation),Unit.world_rotation(muzzle_unit,muzzle_node)))
         end
+        -- The drawn gun is zeroed on the reticle (darktidevr_gun_sights): its
+        -- sights, not its bore, line up with the aim point. Presentation only.
+        if presentation.gun_sights then
+            local now=Managers.time and Managers.time:time('main')
+            local dt=now and instance.last_time and now-instance.last_time
+            instance.last_time=now
+            aim=presentation.gun_sights.drawn_rotation(unit,template.name,grip,aim,dt)
+        end
         local original_position=Unit.local_position(unit,attach)
         local desired_position=Matrix4x4.transform(Matrix4x4.inverse(Unit.world_pose(unit,parent)),grip)
         local desired=Alignment.rotation(Unit.world_rotation(unit,parent),
