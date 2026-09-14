@@ -16,7 +16,10 @@ Forearm.ZONE_START = 0.10
 Forearm.ZONE_SPACING = 0.065
 Forearm.ZONE_HEIGHT = 0.035
 Forearm.ZONE_RADIUS = 0.04
-Forearm.PREVIEW_SIZE = 0.05
+-- Preview scales: a 1 m rifle or maul shows about 7 cm long; stims, carried
+-- items and devices (about 20-40 cm) about 5-10 cm.
+Forearm.WEAPON_SCALE = 0.07
+Forearm.ITEM_SCALE = 0.25
 Forearm.PREVIEW_NEAR = 0.30
 Forearm.TEST_FLAG = "./../mods/darktidevr/darktidevr_forearm_holsters_test.flag"
 
@@ -144,44 +147,14 @@ function Forearm.install(mod, presentation)
                     mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_waiting zone=%s seconds=5", zone.id)
                 end
                 if data and data.link_unit and Unit.alive(data.link_unit) then
-                    -- Fit the item's largest extent to PREVIEW_SIZE once it exists.
+                    -- Fixed scales: part boxes are not reliable right after spawning.
                     if not preview.fitted and data.item_unit_3p and Unit.alive(data.item_unit_3p) then
-                        -- The base unit of a weapon is often a mesh-less rig; the
-                        -- meshes sit on its attachments. Half the largest side of
-                        -- the box around every unit's box (their positions need
-                        -- not be up to date with the preview's, only with each other).
-                        local low, high
-                        local units = {data.item_unit_3p}
-                        local attachments = data.attachment_units_3p and data.attachment_units_3p[data.item_unit_3p]
-                        for _, attachment in ipairs(attachments or {}) do units[#units + 1] = attachment end
-                        for _, measured in ipairs(units) do
-                            local ok, pose, extents = pcall(Unit.box, measured)
-                            if ok and pose and extents and Vector3.length(extents) > 1e-5 then
-                                local c = Matrix4x4.translation(pose)
-                                local r = math.max(Vector3.x(extents), Vector3.y(extents), Vector3.z(extents))
-                                local lo = {Vector3.x(c) - r, Vector3.y(c) - r, Vector3.z(c) - r}
-                                local hi = {Vector3.x(c) + r, Vector3.y(c) + r, Vector3.z(c) + r}
-                                if not low then low, high = lo, hi else
-                                    for i = 1, 3 do
-                                        low[i] = math.min(low[i], lo[i]); high[i] = math.max(high[i], hi[i])
-                                    end
-                                end
-                            end
-                        end
-                        local largest = low and math.max(high[1] - low[1], high[2] - low[2], high[3] - low[3]) * 0.5 or 0
-                        if largest <= 1e-4 then
-                            -- Hidden meshes can report empty boxes: assume a 50 cm item.
-                            largest = Vector3.x(Unit.local_scale(data.link_unit, 1)) * 0.5
-                            mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_box zone=%s units=%d reach=0 fallback=true", zone.id, #units)
-                        end
-                        if largest > 1e-4 then
-                            local current = Vector3.x(Unit.local_scale(data.link_unit, 1))
-                            local fitted = current * (Forearm.PREVIEW_SIZE * 0.5) / largest
-                            Unit.set_local_scale(data.link_unit, 1, Vector3(fitted, fitted, fitted))
-                            preview.fitted = true
-                            mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview zone=%s item=%s scale=%.3f",
-                                zone.id, tostring(item.name), fitted)
-                        end
+                        local weapon = zone.slot == "slot_primary" or zone.slot == "slot_secondary"
+                        local scale = weapon and Forearm.WEAPON_SCALE or Forearm.ITEM_SCALE
+                        Unit.set_local_scale(data.link_unit, 1, Vector3(scale, scale, scale))
+                        preview.fitted = true
+                        mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview zone=%s item=%s scale=%.3f",
+                            zone.id, tostring(item.name), scale)
                     end
                     Unit.set_local_position(data.link_unit, 1, Vector3(zone.world[1], zone.world[2], zone.world[3]))
                     Unit.set_local_rotation(data.link_unit, 1, rotation)

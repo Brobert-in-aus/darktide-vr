@@ -35,7 +35,8 @@ function Scan.install(mod, presentation)
             -- grip after 60 frames; far=1 holds the gun further out.
             left = tonumber(rest:match("left=(%d)")),
             press = rest:match("press=1") ~= nil,
-            far = rest:match("far=1") ~= nil}
+            far = rest:match("far=1") ~= nil,
+            lowleft = rest:match("lowleft=1") ~= nil}
         for a, b in (rest:match("hide=([%d,%-]+)") or ""):gmatch("(%d+)%-?(%d*)") do
             for index = tonumber(a), tonumber(b ~= "" and b or a) do view.hide[index] = true end
         end
@@ -80,7 +81,7 @@ function Scan.install(mod, presentation)
             for _, kind in ipairs({"grip", "aim"}) do
                 observation["left_" .. kind .. "_x"] = observation.right_grip_x + fx * along
                 observation["left_" .. kind .. "_y"] = observation.right_grip_y + fy * along
-                observation["left_" .. kind .. "_z"] = observation.right_grip_z + height
+                observation["left_" .. kind .. "_z"] = observation.right_grip_z + height - (view.lowleft and 0.15 or 0)
                 observation["left_" .. kind .. "_qx"] = 0
                 observation["left_" .. kind .. "_qy"] = 0
                 observation["left_" .. kind .. "_qz"] = qz
