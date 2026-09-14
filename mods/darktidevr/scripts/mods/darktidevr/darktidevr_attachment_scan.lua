@@ -11,16 +11,95 @@ function Scan.install(mod, presentation)
     local api = {}
     local poll, enabled = 0, false
     local logged = {}
+    -- View mode (flag "view variant=<name> yaw=<degrees> hide=<a>-<b>,..."):
+    -- while the ranged weapon is wielded, the right controller is held at a
+    -- fixed pose ahead of the headset so an eye readback shows the gun hand,
+    -- and the listed meshes of the third-person receiver are hidden. Used to
+    -- find the stray cartridge by elimination.
+    api.view = nil
+    local function parse_view(value)
+        local rest = value:match("^%s*view(.-)%s*$")
+        if not rest then return nil end
+        local view = {variant = rest:match("variant=([%w_]+)") or "base",
+            yaw = tonumber(rest:match("yaw=(%-?[%d.]+)")) or 60, hide = {}}
+        for a, b in (rest:match("hide=([%d,%-]+)") or ""):gmatch("(%d+)%-?(%d*)") do
+            for index = tonumber(a), tonumber(b ~= "" and b or a) do view.hide[index] = true end
+        end
+        return view
+    end
     local function flag()
         poll = poll - 1
         if poll > 0 then return enabled end
-        poll = 120
+        poll = 30
         local io_api = Mods and Mods.lua and Mods.lua.io
         local file = io_api and io_api.open(Scan.FLAG, "r")
-        if not file then enabled = false; return false end
+        if not file then enabled = false; api.view = nil; return false end
         local value = file:read("*all"); file:close()
-        enabled = type(value) == "string" and value:match("^%s*scan%s*$") ~= nil
+        value = type(value) == "string" and value or ""
+        local view = parse_view(value)
+        if not (view and api.view and view.variant == api.view.variant) then api.view = view end
+        enabled = value:match("^%s*scan%s*$") ~= nil or view ~= nil
         return enabled
+    end
+    -- Called after the controller poses are read each frame.
+    function api.override_controllers(observation)
+        local view = api.view
+        if not view or not view.active then return end
+        local half = math.rad(view.yaw) * 0.5
+        local qz, qw = math.sin(half), math.cos(half)
+        for _, kind in ipairs({"grip", "aim"}) do
+            observation["right_" .. kind .. "_x"] = 0.12
+            observation["right_" .. kind .. "_y"] = 0.32
+            observation["right_" .. kind .. "_z"] = -0.10
+            observation["right_" .. kind .. "_qx"] = 0
+            observation["right_" .. kind .. "_qy"] = 0
+            observation["right_" .. kind .. "_qz"] = qz
+            observation["right_" .. kind .. "_qw"] = qw
+        end
+    end
+    local hidden = {}
+    local function view_update(unit)
+        local view = api.view
+        local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
+        local inventory = unit_data and unit_data:read_component("inventory")
+        local loadout = ScriptUnit.has_extension(unit, "visual_loadout_system")
+        local slot = inventory and loadout and loadout._equipment and loadout._equipment[inventory.wielded_slot]
+        local ranged = view and slot and inventory.wielded_slot == "slot_secondary" and slot.unit_3p
+        if view then view.active = ranged and true or false end
+        if not ranged then
+            if view then view.frames = 0 end
+            view = nil
+        end
+        local receiver
+        for _, attachment in ipairs(ranged and slot.attachments_by_unit_3p and slot.attachments_by_unit_3p[slot.unit_3p] or {}) do
+            local name = slot.item_name_by_unit_3p and slot.item_name_by_unit_3p[attachment]
+            if type(name) == "string" and name:find("reciever", 1, true) then receiver = attachment end
+        end
+        for mesh_unit, indices in pairs(hidden) do
+            for index in pairs(indices) do
+                if mesh_unit ~= receiver or not (view and view.hide[index]) then
+                    if Unit.alive(mesh_unit) then Unit.set_mesh_visibility(mesh_unit, index, true) end
+                    indices[index] = nil
+                end
+            end
+        end
+        if not view or not receiver then return end
+        hidden[receiver] = hidden[receiver] or {}
+        local meshes = Unit.num_meshes(receiver)
+        for index in pairs(view.hide) do
+            if index <= meshes then
+                Unit.set_mesh_visibility(receiver, index, false)
+                hidden[receiver][index] = true
+            end
+        end
+        view.frames = (view.frames or 0) + 1
+        if view.frames == 90 then
+            local weapon = ScriptUnit.has_extension(unit, "weapon_system")
+            local action = weapon and weapon:running_action_settings()
+            mod:info("DARKTIDEVR_ATTACHMENT_SCAN view variant=%s ready yaw=%.0f hidden=%d action=%s",
+                view.variant, view.yaw, #(function() local t = {} for i in pairs(view.hide) do t[#t + 1] = i end return t end)(),
+                tostring(action and action.kind))
+        end
     end
     local function vector_text(v)
         return v and string.format("%.3f,%.3f,%.3f", Vector3.x(v), Vector3.y(v), Vector3.z(v)) or "nil"
@@ -165,9 +244,71 @@ function Scan.install(mod, presentation)
             mod:info("DARKTIDEVR_ATTACHMENT_SCAN drift_done samples=%d drifting_nodes=%d", drift.samples, drifting)
         end
     end
+    -- Sight line (todo item 4): the hidden first-person rig still plays the
+    -- stock aim-down-sights pose, which puts the sight on the first-person
+    -- camera. Once ADS has settled, log that eye and the VR aim ray origin
+    -- in each muzzle's frame, with the camera and aim forward directions.
+    local ads_since, sight_logged = nil, {}
+    local function in_frame(pose, position)
+        return vector_text(Matrix4x4.transform(Matrix4x4.inverse(pose), position))
+    end
+    local function direction_in_frame(pose, direction)
+        local inverse = Quaternion.inverse(Matrix4x4.rotation(pose))
+        return vector_text(Quaternion.rotate(inverse, direction))
+    end
+    local function sight_update(unit, t)
+        local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
+        local alternate = unit_data and unit_data:read_component("alternate_fire")
+        local inventory = unit_data and unit_data:read_component("inventory")
+        if not alternate or not alternate.is_active or not inventory or inventory.wielded_slot ~= "slot_secondary" then
+            ads_since = nil; return
+        end
+        ads_since = ads_since or t
+        if t - ads_since < 0.8 then return end
+        local weapon = ScriptUnit.has_extension(unit, "weapon_system")
+        local template = weapon and weapon:weapon_template()
+        local name = template and template.name
+        if not name or sight_logged[name] then return end
+        sight_logged[name] = true
+        local loadout = ScriptUnit.has_extension(unit, "visual_loadout_system")
+        local muzzle_name = template.fx_sources and template.fx_sources._muzzle
+        local unit_1p, node_1p, unit_3p, node_3p
+        if loadout and muzzle_name then
+            unit_1p, node_1p, unit_3p, node_3p = loadout:unit_and_node_from_node_name("slot_secondary", muzzle_name)
+        end
+        local first_person = ScriptUnit.has_extension(unit, "first_person_system")
+        local fp_unit = first_person and first_person:first_person_unit()
+        local aim_position, aim_rotation = presentation.weapon_aim_target and presentation.weapon_aim_target("dominant")
+        mod:info("DARKTIDEVR_ATTACHMENT_SCAN sight template=%s muzzle=%s node_1p=%s node_3p=%s",
+            name, tostring(muzzle_name), tostring(node_1p), tostring(node_3p))
+        if unit_1p and node_1p and fp_unit then
+            local muzzle = Unit.world_pose(unit_1p, node_1p)
+            mod:info("DARKTIDEVR_ATTACHMENT_SCAN sight first_person eye_in_muzzle=%s camera_forward_in_muzzle=%s",
+                in_frame(muzzle, Unit.world_position(fp_unit, 1)),
+                direction_in_frame(muzzle, Quaternion.forward(Unit.world_rotation(fp_unit, 1))))
+        end
+        if unit_3p and node_3p and aim_position and aim_rotation then
+            local muzzle = Unit.world_pose(unit_3p, node_3p)
+            mod:info("DARKTIDEVR_ATTACHMENT_SCAN sight vr aim_origin_in_muzzle=%s aim_forward_in_muzzle=%s grip_in_muzzle=%s",
+                in_frame(muzzle, aim_position), direction_in_frame(muzzle, Quaternion.forward(aim_rotation)),
+                presentation.weapon_grip_target and in_frame(muzzle, presentation.weapon_grip_target("dominant")) or "nil")
+        end
+    end
     function api.update(unit)
-        if not unit or not flag() then return end
+        if not flag() and not next(hidden) then return end
+        if not unit then return end
+        local view_ok, view_error = pcall(view_update, unit)
+        if not view_ok and not logged.view_failure then
+            logged.view_failure = true
+            mod:info("DARKTIDEVR_ATTACHMENT_SCAN view_failed=%s", tostring(view_error):sub(1, 160))
+        end
+        if not enabled then return end
         pcall(drift_update, unit)
+        local sight_ok, sight_error = pcall(sight_update, unit, Managers.time and Managers.time:time("gameplay") or 0)
+        if not sight_ok and not logged.sight_failure then
+            logged.sight_failure = true
+            mod:info("DARKTIDEVR_ATTACHMENT_SCAN sight_failed=%s", tostring(sight_error):sub(1, 160))
+        end
         local ok, err = pcall(function()
             local weapon = ScriptUnit.has_extension(unit, "weapon_system")
             local template = weapon and weapon:weapon_template()

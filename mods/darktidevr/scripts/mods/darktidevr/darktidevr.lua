@@ -3114,6 +3114,9 @@ local function apply_head_tracking(clean_position, clean_rotation)
                 controller_observation.right_aim_roll =
                     Quaternion.to_yaw_pitch_roll(right_aim_rotation)
         end
+        if presentation.attachment_scan and presentation.attachment_scan.override_controllers then
+            presentation.attachment_scan.override_controllers(controller_observation)
+        end
         if not controller_observation.first_tracked_logged and
                 (bit.band(left_aim_flags, 4) ~= 0 or
                  bit.band(right_aim_flags, 4) ~= 0) then
