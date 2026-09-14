@@ -11650,6 +11650,9 @@ mod:hook_safe(
         if presentation.holster_counts then
             presentation.holster_counts.draw(self._world, player_unit)
         end
+        if presentation.forearm_holsters then
+            presentation.forearm_holsters.update_previews(self._world, player_unit, dt, t)
+        end
         if presentation.pose_trace then
             presentation.pose_trace.sample(player_unit, t)
         end
@@ -15264,6 +15267,9 @@ presentation.gun_aim = mod:io_dofile(
 presentation.body_frame = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_body_frame"
 ).install(mod, presentation, controller_observation)
+presentation.forearm_holsters_module = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_forearm_holsters")
+presentation.forearm_holsters = presentation.forearm_holsters_module.install(mod, presentation)
 presentation.holster_counts = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_holster_counts"
 ).install(mod, presentation)
@@ -15722,6 +15728,7 @@ mod.on_game_state_changed = function(status, state_name)
         end
         if presentation.ammo_readout then pcall(presentation.ammo_readout.destroy) end
         if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
+        if presentation.forearm_holsters then pcall(presentation.forearm_holsters.destroy) end
         if presentation.pose_trace then presentation.pose_trace.flush() end
     end
 end
@@ -15765,6 +15772,7 @@ mod.on_disabled = function()
     if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
     if presentation.ammo_readout then pcall(presentation.ammo_readout.destroy) end
     if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
+    if presentation.forearm_holsters then pcall(presentation.forearm_holsters.destroy) end
     requested = false
     ui_stereo_requested = false
     presentation.melee_preview.enabled = false
@@ -15786,6 +15794,7 @@ mod.on_unload = function()
     if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
     if presentation.ammo_readout then pcall(presentation.ammo_readout.destroy) end
     if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
+    if presentation.forearm_holsters then pcall(presentation.forearm_holsters.destroy) end
     requested = false
     ui_stereo_requested = false
     presentation.melee_preview.enabled = false

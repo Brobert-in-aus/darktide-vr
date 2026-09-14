@@ -102,14 +102,15 @@ function Holsters.new(zones)
 
     -- Track one hand. Returns the zone the hand has rested in for the dwell
     -- time, or nil. A hand without a usable point leaves its zone.
-    function api.update(hand, point, t)
+    -- zones: this hand's zones this frame (default api.zones).
+    function api.update(hand, point, t, zones)
         local state = api.hands[hand]
         if not state then return nil end
         if not point or not finite(t) then
             state.zone, state.since = nil, nil
             return nil
         end
-        local zone = Holsters.zone_at(point, api.zones, state.zone and state.zone.id)
+        local zone = Holsters.zone_at(point, zones or api.zones, state.zone and state.zone.id)
         if zone ~= state.zone then
             state.zone, state.since = zone, zone and t or nil
         end
@@ -218,8 +219,12 @@ function Holsters.install(mod, presentation, observation)
         test_enabled = type(value) == "string" and value:match("^%s*enabled%s*$") ~= nil
         return test_enabled
     end
+    local hand_zones, no_zones = {}, {}
     local function sample(unit, active, t)
-        if not active or not (mod:get("vr_holsters") or test_flag()) or not unit then
+        local body = mod:get("vr_holsters") or test_flag()
+        local forearm = presentation.forearm_holsters
+        local forearm_on = forearm and forearm.enabled()
+        if not active or not (body or forearm_on) or not unit then
             api.reset(); owner_hand = nil; haptic_zone = {}; api.frame = nil
             return nil
         end
@@ -227,14 +232,25 @@ function Holsters.install(mod, presentation, observation)
         -- For holster counts: the zones' frame this frame.
         api.frame = frame
         local inventory = inventory_of(unit)
+        -- Weapon hand holsters: zones on the gun hand's forearm, for the off
+        -- hand only.
+        local forearm_zones = forearm_on and frame and forearm.local_zones(unit, frame, Holsters, inventory) or nil
+        local support_hand = presentation.weapon_hand_roles and presentation.weapon_hand_roles.physical("support")
         local chosen
         for _, hand in ipairs({"right", "left"}) do
+            local zones = body and api.zones or no_zones
+            if forearm_zones and hand == support_hand then
+                for i = #hand_zones, 1, -1 do hand_zones[i] = nil end
+                for _, zone in ipairs(zones) do hand_zones[#hand_zones + 1] = zone end
+                for _, zone in ipairs(forearm_zones) do hand_zones[#hand_zones + 1] = zone end
+                zones = hand_zones
+            end
             local role_position
             if hand == "right" then role_position = presentation.controller_grip_target()
             else role_position = presentation.left_controller_grip_target() end
             local live = observation[hand .. "_grip_tracking_live"] == true
             local point = live and frame and Holsters.local_point(frame, vector(role_position))
-            local ready = api.update(hand, point, t)
+            local ready = api.update(hand, point, t, zones)
             local request = api.request(hand, ready, inventory)
             -- One vibration as a hand's grip becomes a holster press.
             local armed = request and request.acquire and request.owner.zone or nil

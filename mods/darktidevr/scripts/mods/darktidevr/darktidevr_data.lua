@@ -192,6 +192,11 @@ return {
                         default_value = false,
                     },
                     {
+                        setting_id = "vr_forearm_holsters",
+                        type = "checkbox",
+                        default_value = false,
+                    },
+                    {
                         setting_id = "vr_holster_counts",
                         type = "checkbox",
                         default_value = false,

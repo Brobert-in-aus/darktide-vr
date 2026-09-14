@@ -45,6 +45,8 @@ return {
     vr_two_hand_steadying_description = {en = "How the gun settles while held in both hands. Classic: as before. Hands line: the line between your hands is smoothed instead, so turning your gun wrist no longer swings the barrel off the front hand, and turning with the stick is never delayed. Experimental; try both and say which feels better."},
     vr_two_hand_steadying_classic = {en = "Classic"},
     vr_virtual_stock = {en = "Virtual stock (experimental)"},
+    vr_forearm_holsters = {en = "Weapon hand holsters (experimental)"},
+    vr_forearm_holsters_description = {en = "Small holsters along your gun hand's forearm, from the wrist: your other weapon, stim, carried item and device. Reach in with your other hand and press grip to equip. A small model of each item appears there when your other hand comes near."},
     vr_holster_counts = {en = "Holster labels"},
     vr_holster_counts_description = {en = "With Virtual holsters on, resting a hand on a holster shows what it holds: grenade charges at the belt, the stim or carried item at the chest, ammo at the shoulder, the weapon or device at the hips."},
     vr_sight_ads = {en = "Aim down sights by raising the gun (experimental)"},

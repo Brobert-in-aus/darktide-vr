@@ -30,7 +30,12 @@ function Scan.install(mod, presentation)
             ads = rest:match("ads=1") ~= nil,
             -- sight=1: grip placed so the sight line (11.8 cm above it) runs
             -- through the head origin, 25 cm ahead.
-            sight = rest:match("sight=1") ~= nil}
+            sight = rest:match("sight=1") ~= nil,
+            -- left=N: the off hand in weapon hand holster N; press=1 holds its
+            -- grip after 60 frames; far=1 holds the gun further out.
+            left = tonumber(rest:match("left=(%d)")),
+            press = rest:match("press=1") ~= nil,
+            far = rest:match("far=1") ~= nil}
         for a, b in (rest:match("hide=([%d,%-]+)") or ""):gmatch("(%d+)%-?(%d*)") do
             for index = tonumber(a), tonumber(b ~= "" and b or a) do view.hide[index] = true end
         end
@@ -58,12 +63,29 @@ function Scan.install(mod, presentation)
         local qz, qw = math.sin(half), math.cos(half)
         for _, kind in ipairs({"grip", "aim"}) do
             observation["right_" .. kind .. "_x"] = view.sight and 0.032 or 0.12
-            observation["right_" .. kind .. "_y"] = view.sight and 0.25 or 0.32
+            observation["right_" .. kind .. "_y"] = view.sight and 0.25 or (view.far and 0.55 or 0.32)
             observation["right_" .. kind .. "_z"] = view.sight and -0.118 or -0.10
             observation["right_" .. kind .. "_qx"] = 0
             observation["right_" .. kind .. "_qy"] = 0
             observation["right_" .. kind .. "_qz"] = qz
             observation["right_" .. kind .. "_qw"] = qw
+        end
+        if view.left then
+            local Forearm = presentation.forearm_holsters_module
+            local along = -((Forearm and Forearm.ZONE_START or 0.10) + (Forearm and Forearm.ZONE_SPACING or 0.065) * (view.left - 1))
+            local height = Forearm and Forearm.ZONE_HEIGHT or 0.035
+            -- Yaw about z: forward (0,1,0) turns to (-sin, cos, 0).
+            local yaw = math.rad(view.yaw)
+            local fx, fy = -math.sin(yaw), math.cos(yaw)
+            for _, kind in ipairs({"grip", "aim"}) do
+                observation["left_" .. kind .. "_x"] = observation.right_grip_x + fx * along
+                observation["left_" .. kind .. "_y"] = observation.right_grip_y + fy * along
+                observation["left_" .. kind .. "_z"] = observation.right_grip_z + height
+                observation["left_" .. kind .. "_qx"] = 0
+                observation["left_" .. kind .. "_qy"] = 0
+                observation["left_" .. kind .. "_qz"] = qz
+                observation["left_" .. kind .. "_qw"] = qw
+            end
         end
     end
     -- While held: no firing, reloading, grips or wield switches (right trigger,
@@ -75,6 +97,12 @@ function Scan.install(mod, presentation)
         for _, name in ipairs({"gameplay_pressed", "gameplay_held", "gameplay_released"}) do
             local values = observation[name]
             if values then values[0] = bit.band(tonumber(values[0]) or 0, VIEW_MASK) end
+        end
+        if view.left and view.press and (view.frames or 0) > 60 then
+            local held, pressed = observation.gameplay_held, observation.gameplay_pressed
+            if held then held[0] = bit.bor(tonumber(held[0]) or 0, 512) end
+            if pressed and not view.left_pressed then pressed[0] = bit.bor(tonumber(pressed[0]) or 0, 512) end
+            view.left_pressed = true
         end
         if view.ads then
             local held, pressed, released = observation.gameplay_held, observation.gameplay_pressed, observation.gameplay_released
