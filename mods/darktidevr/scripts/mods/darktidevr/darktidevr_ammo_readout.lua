@@ -13,7 +13,32 @@ Readout.SMALL_FONT_SIZE = 15    -- reserve under it
 Readout.RING_RADIUS = 0.030     -- metres; the ring encloses both lines
 Readout.RING_THICKNESS = 0.0045 -- metres
 Readout.RING_SEGMENTS = 96
+-- Glyph extent below the text position, as fractions of the font size, and
+-- the stacked layout's spacing (worn, 14 September: the clip overlapped the
+-- reserve; a dash now separates them).
+Readout.GLYPH_TOP = 0.32
+Readout.GLYPH_BOTTOM = 1.0
+Readout.STACK_GAP = 0.12        -- of the clip font size, above and below the dash
+Readout.DASH_LENGTH = 1.0       -- of the reserve font size
+Readout.DASH_THICKNESS = 0.14   -- of the reserve font size
 
+-- Vertical layout of the stacked readout, centred on 0 (y up): the text
+-- positions of the clip and reserve and the dash's centre, for font sizes
+-- size (clip) and small (reserve). Glyph boxes do not overlap.
+function Readout.stack_layout(size, small)
+    local glyph = Readout.GLYPH_BOTTOM - Readout.GLYPH_TOP
+    local clip_height, reserve_height = glyph * size, glyph * small
+    local gap, dash = Readout.STACK_GAP * size, Readout.DASH_THICKNESS * small
+    local top = (clip_height + gap + dash + gap + reserve_height) * 0.5
+    return {
+        clip_y = top + Readout.GLYPH_TOP * size,
+        dash_y = top - clip_height - gap - dash * 0.5,
+        reserve_y = top - clip_height - gap - dash - gap + Readout.GLYPH_TOP * small,
+        dash_length = Readout.DASH_LENGTH * small,
+        dash_thickness = dash,
+        height = top * 2,
+    }
+end
 -- Pieces of the reload donut: the dim full track, then the filled arc from
 -- the top clockwise. Each piece is a short straight quad centred at `angle`
 -- (radians clockwise from the top), slightly overlapping its neighbours so
@@ -278,7 +303,8 @@ function Readout.install(mod, presentation, observation)
         -- Measured in the eye render: the text position is above the glyphs,
         -- whose tops sit 0.32 and bottoms 0.80 of the font size below it.
         -- These place the clip and reserve as one block centred in the ring.
-        local primary_y = secondary and size * 0.727 or size * 0.56
+        local layout = Readout.stack_layout(size, small)
+        local primary_y = secondary and layout.clip_y or size * 0.56
         Gui.slug_text_3d(gui, primary, font.path, size, tm, Vector3(dx - width * 0.5, primary_y, 0), 10,
             color, "flags", font.render_flags or 0)
         if secondary then
@@ -286,8 +312,16 @@ function Readout.install(mod, presentation, observation)
             local small_width = #secondary * small * 0.52
             local r = values.clip and Readout.fill_color(values.reserve, values.reserve_max) or c
             Gui.slug_text_3d(gui, secondary, font.path, small, tm,
-                Vector3(dx - small_width * 0.5, 0, 0), 10,
+                Vector3(dx - small_width * 0.5, layout.reserve_y, 0), 10,
                 Color(230, r[1], r[2], r[3]), "flags", font.render_flags or 0)
+            -- The dash between them: a bar, so it never depends on the font's glyph.
+            local dash = Matrix4x4.identity()
+            Matrix4x4.set_right(dash, right)
+            Matrix4x4.set_up(dash, up)
+            Matrix4x4.set_forward(dash, -to_eye)
+            Matrix4x4.set_translation(dash, anchor + right * dx + up * layout.dash_y)
+            Gui.rect_3d(gui, dash, Vector2(-layout.dash_length * 0.5, -layout.dash_thickness * 0.5), 10,
+                Vector2(layout.dash_length, layout.dash_thickness), Color(200, r[1], r[2], r[3]))
         end
         if progress then
             -- Reload ring: a solid donut filling clockwise from the top over a
