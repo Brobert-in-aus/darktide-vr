@@ -11647,6 +11647,9 @@ mod:hook_safe(
         if presentation.ammo_readout then
             presentation.ammo_readout.draw(self._world, player_unit)
         end
+        if presentation.holster_counts then
+            presentation.holster_counts.draw(self._world, player_unit)
+        end
         if presentation.pose_trace then
             presentation.pose_trace.sample(player_unit, t)
         end
@@ -15261,6 +15264,9 @@ presentation.gun_aim = mod:io_dofile(
 presentation.body_frame = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_body_frame"
 ).install(mod, presentation, controller_observation)
+presentation.holster_counts = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_holster_counts"
+).install(mod, presentation)
 presentation.sight_ads = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_sight_ads"
 ).install(mod, presentation, controller_observation)
@@ -15715,6 +15721,7 @@ mod.on_game_state_changed = function(status, state_name)
             mod.scan_test_equipped = nil
         end
         if presentation.ammo_readout then pcall(presentation.ammo_readout.destroy) end
+        if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
         if presentation.pose_trace then presentation.pose_trace.flush() end
     end
 end
@@ -15757,6 +15764,7 @@ mod.on_disabled = function()
     presentation.push_to_talk.cancel()
     if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
     if presentation.ammo_readout then pcall(presentation.ammo_readout.destroy) end
+    if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
     requested = false
     ui_stereo_requested = false
     presentation.melee_preview.enabled = false
@@ -15777,6 +15785,7 @@ mod.on_unload = function()
     presentation.push_to_talk.cancel()
     if presentation.crosshair_feedback then presentation.crosshair_feedback.destroy() end
     if presentation.ammo_readout then pcall(presentation.ammo_readout.destroy) end
+    if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
     requested = false
     ui_stereo_requested = false
     presentation.melee_preview.enabled = false

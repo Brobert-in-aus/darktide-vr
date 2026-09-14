@@ -220,10 +220,12 @@ function Holsters.install(mod, presentation, observation)
     end
     local function sample(unit, active, t)
         if not active or not (mod:get("vr_holsters") or test_flag()) or not unit then
-            api.reset(); owner_hand = nil; haptic_zone = {}
+            api.reset(); owner_hand = nil; haptic_zone = {}; api.frame = nil
             return nil
         end
         local frame = body_frame(unit)
+        -- For holster counts: the zones' frame this frame.
+        api.frame = frame
         local inventory = inventory_of(unit)
         local chosen
         for _, hand in ipairs({"right", "left"}) do
