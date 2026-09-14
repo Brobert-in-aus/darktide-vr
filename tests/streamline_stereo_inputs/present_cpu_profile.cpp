@@ -12,6 +12,10 @@ int main(int argc, char**) {
   if (!GetModuleFileNameW(nullptr, executable, 32768) || !GetTempPathW(MAX_PATH, temp)) return 1;
   const auto flag = std::filesystem::path(executable).parent_path() / L"darktidevr_present_cpu_profile.flag";
   const auto log = std::filesystem::path(temp) / (L"darktidevr-present-cpu-" + std::to_wstring(GetCurrentProcessId()) + L".log");
+  // Logs outlive their process in TEMP, so a log with this process id is a
+  // stale one from an earlier run that had the same id: remove it.
+  std::error_code stale_error;
+  std::filesystem::remove(log, stale_error);
   if (std::filesystem::exists(flag) || std::filesystem::exists(log)) return 2;
   if (enabled) { std::ofstream output(flag); output << "[probe]\nenabled=1\n"; }
   bool error_preserved = true;
