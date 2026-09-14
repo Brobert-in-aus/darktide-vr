@@ -96,7 +96,9 @@ local presentation={
     left_controller_aim_target=function() return primary,{0,0,0,1} end,
     weapon_grip_target=function(role) return role=='dominant' and primary or secondary,{0,0,0,1} end}
 local commands={}
-local installed=Support.install({io_dofile=function() return Pose end,info=function() end,
+local infos={}
+local installed=Support.install({io_dofile=function() return Pose end,
+    info=function(_,format,...) infos[#infos+1]=string.format(format,...) end,
     command=function(_,name,_,callback) commands[name]=callback end,echo=function() end},presentation,observations)
 installed.profiles.example={socket={0,.3,0},acquire=.1,release=.2,smoothing=0,ads=true}
 installed.enabled=true
@@ -152,6 +154,10 @@ assert(math.abs(installed.resolve(unit,{0,0,0,1})[3])>.1)
 observations.left_grip_tracking_live=false
 local p,h,r=installed_sample(512)
 assert(p==0 and h==0 and r==0 and observations.left_grip_usable)
+-- Losing the hold logs the largest aim correction applied while held.
+local released=infos[#infos]
+local steer=tonumber(released:match('^DARKTIDEVR_TWO_HAND released source=calibrated max_steer_degrees=([%d.]+) steered_frames=%d+$'))
+assert(steer and steer>15 and steer<25,'release log: '..tostring(released))
 assert(installed.resolve(unit,frame.rotation)==frame.rotation)
 observations.left_grip_tracking_live=true; secondary={0,.3,0}
 installed_sample(0); assert(installed_sample(512)==2)

@@ -195,9 +195,14 @@ function Support.install(mod,presentation,observation)
             end
         end
     end
-    -- One log line per item when support first takes hold, naming the grip's source.
+    -- One log line per item when support first takes hold, naming the grip's
+    -- source, and one per release (up to RELEASE_LOGS a session) with the
+    -- largest correction the support hand applied to the aim while held.
+    Support.RELEASE_LOGS=20
     local finish=api.finish
     local held_logged=setmetatable({},{__mode='k'})
+    local releases_logged,was_held,hold_source=0,false,nil
+    api.steer={max_degrees=0,frames=0}
     function api.finish(grip)
         finish(grip)
         local profile=api.held and api.current_profile and api.current_profile()
@@ -206,7 +211,21 @@ function Support.install(mod,presentation,observation)
             mod:info('DARKTIDEVR_TWO_HAND held=true source=%s socket=%.3f,%.3f,%.3f',
                 profile.authored and 'authored' or 'calibrated',profile.socket[1],profile.socket[2],profile.socket[3])
         end
-    end    function api.authored_profile(frame)
+        if api.held and not was_held then
+            api.steer.max_degrees,api.steer.frames=0,0
+            hold_source=profile and (profile.authored and 'authored' or 'calibrated') or 'unknown'
+        elseif was_held and not api.held and releases_logged<Support.RELEASE_LOGS then
+            releases_logged=releases_logged+1
+            mod:info('DARKTIDEVR_TWO_HAND released source=%s max_steer_degrees=%.1f steered_frames=%d',
+                hold_source,api.steer.max_degrees,api.steer.frames)
+        end
+        was_held=api.held
+    end
+    local function steer_degrees(a,b)
+        local dot=math.abs(a[1]*b[1]+a[2]*b[2]+a[3]*b[3]+a[4]*b[4])
+        return math.deg(2*math.acos(math.min(1,dot)))
+    end
+    function api.authored_profile(frame)
         local record=frame.weapon and authored[frame.weapon]
         return record and record.done or nil
     end
@@ -359,7 +378,15 @@ function Support.install(mod,presentation,observation)
             not machine or not allowed_states[machine:current_state_name()] or
             not weapon or not presentation.gun_aim.is_gun(weapon:weapon_template()) or
             (action and not allowed_actions[action.kind]) then api.clear(); return rotation end
-        local result=api.rotation(unit,quaternion(rotation))
+        local input=quaternion(rotation)
+        local result=api.rotation(unit,input)
+        if result and api.held then
+            local degrees=steer_degrees(input,result)
+            if degrees==degrees then
+                api.steer.frames=api.steer.frames+(degrees>=.5 and 1 or 0)
+                if degrees>api.steer.max_degrees then api.steer.max_degrees=degrees end
+            end
+        end
         return result and Quaternion.from_elements(unpack(result)) or rotation
     end
     function api.resolve(unit,rotation)

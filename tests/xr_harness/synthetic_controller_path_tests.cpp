@@ -211,6 +211,21 @@ int main() {
                belt_after_zone.hands[1].squeeze == 1.0F &&
                std::abs(belt_after_zone.hands[1].body_grip_pose.position.y - 0.25F) < 0.001F &&
                belt_released.hands[1].squeeze == 0.0F;
+      }() &&
+      [&] {
+        // Once mode: support grip at the foregrip, lifted mid-hold, released.
+        auto grip = left.state;
+        auto lifted = left.state;
+        auto released = left.state;
+        darktidevr::harness::apply_synthetic_holster_path(grip, 360 + 60, true);
+        darktidevr::harness::apply_synthetic_holster_path(lifted, 360 + 150, true);
+        darktidevr::harness::apply_synthetic_holster_path(released, 360 + 300, true);
+        const float rise = lifted.hands[0].body_grip_pose.position.z -
+                           grip.hands[0].body_grip_pose.position.z;
+        return grip.hands[0].squeeze == 1.0F && lifted.hands[0].squeeze == 1.0F &&
+               released.hands[0].squeeze == 0.0F && std::abs(rise - 0.05F) < 0.001F &&
+               std::abs(grip.hands[0].body_grip_pose.position.y -
+                        grip.hands[1].body_grip_pose.position.y - 0.324F) < 0.001F;
       }();
   if (!holster_valid) {
     std::cerr << "Synthetic holster path contract failed\n";
