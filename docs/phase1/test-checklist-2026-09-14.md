@@ -106,8 +106,9 @@ unattended evidence for each is in
    - the left grip does not fire your combat ability while holding;
    - pistols and other one-handed weapons do not offer a grip.
 
-   Console: `DARKTIDEVR_TWO_HAND authored_grip template=... socket=...` and
-   `held=true source=authored`. Say if the grip point is off (further forward
+   Console: `DARKTIDEVR_TWO_HAND authored_grip template=... socket=...`,
+   `held=true source=authored`, and on each release `released ...
+   max_steer_degrees=...` (how far your support hand turned the gun). Say if the grip point is off (further forward
    or back, higher or lower), and whether gripping should also aim down
    sights.
 ## Assumptions and questions for the evening review

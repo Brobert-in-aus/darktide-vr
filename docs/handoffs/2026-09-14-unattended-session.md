@@ -508,9 +508,15 @@ two-hand):
   delivery. In the eye render the held glove lies along the barrel, while the
   un-held hand at the same spot shows its free controller orientation.
 
+- Steering (`6dcec30`, `run6`). Each release now logs the largest aim
+  correction made while held. The synthetic path lifts the support hand 5 cm
+  mid-hold, which should steer about 8.6 degrees (5 cm at 32.9 cm). All 18
+  holds logged `released source=authored max_steer_degrees=9.0` with 113-117
+  steered frames. The game quit cleanly with no script errors.
+
 Not shown:
 - other weapons (only the Skitarius galvanic rifle was available);
-- the aim correction's effect on the gun line;
+- steering on screen (the correction was logged, not captured);
 - left-dominant play (not supported by authored grips);
 - how the grip feels.
 
