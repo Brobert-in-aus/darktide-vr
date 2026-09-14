@@ -1394,7 +1394,10 @@ class OpenXrProbe {
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT menu_readback_footprint{};
     std::uint64_t menu_readback_total_bytes{};
     std::uint32_t menu_readback_copies{};
-    bool menu_readback_logged{};
+    // True while no menu readback is pending. The readback request file arms
+    // one; it no longer runs on every menu attach (two large PPM writes, and
+    // the source of a level-load crash when the crop exceeded the texture).
+    bool menu_readback_logged{true};
     const auto menu_readback_request_path =
         std::filesystem::temp_directory_path() /
         "darktidevr-menu-readback.request";
@@ -1452,7 +1455,7 @@ class OpenXrProbe {
           menu_readback_footprint = {};
           menu_readback_total_bytes = 0;
           menu_readback_copies = 0;
-          menu_readback_logged = false;
+          menu_readback_logged = true;
           next_menu_open_attempt = now;
         };
 
@@ -3524,19 +3527,26 @@ class OpenXrProbe {
               std::filesystem::temp_directory_path() /
               "darktidevr-shared-menu.ppm";
           std::ofstream diagnostic(diagnostic_path, std::ios::binary);
-          if (diagnostic) {
-            diagnostic << "P6\n" << presentation_state.crop_width << ' '
-                       << presentation_state.crop_height << "\n255\n";
+          // The crop can describe a larger source than the attached texture
+          // (a canvas resize in flight); read only pixels the readback holds.
+          const auto menu_width_pixels = static_cast<std::uint32_t>(menu_extent.Width);
+          const auto crop_x = (std::min)(presentation_state.crop_x, menu_width_pixels);
+          const auto crop_y = (std::min)(presentation_state.crop_y, menu_extent.Height);
+          const auto crop_width = (std::min)(presentation_state.crop_width,
+                                             menu_width_pixels - crop_x);
+          const auto crop_height = (std::min)(presentation_state.crop_height,
+                                              menu_extent.Height - crop_y);
+          if (diagnostic && crop_width > 0 && crop_height > 0) {
+            diagnostic << "P6\n" << crop_width << ' ' << crop_height << "\n255\n";
             std::vector<std::uint8_t> diagnostic_row(
-                static_cast<std::size_t>(presentation_state.crop_width) * 3);
-            for (std::uint32_t y = 0; y < presentation_state.crop_height; ++y) {
-              const auto source_y = presentation_state.crop_y + y;
+                static_cast<std::size_t>(crop_width) * 3);
+            for (std::uint32_t y = 0; y < crop_height; ++y) {
+              const auto source_y = crop_y + y;
               const auto* source_row = pixels +
                   static_cast<std::size_t>(source_y) *
                       menu_readback_footprint.Footprint.RowPitch +
-                  static_cast<std::size_t>(presentation_state.crop_x) * 4;
-              for (std::uint32_t x = 0; x < presentation_state.crop_width;
-                   ++x) {
+                  static_cast<std::size_t>(crop_x) * 4;
+              for (std::uint32_t x = 0; x < crop_width; ++x) {
                 const auto* source =
                     source_row + static_cast<std::size_t>(x) * 4;
                 const auto alpha = static_cast<unsigned>(source[3]);
