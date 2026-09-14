@@ -21,7 +21,7 @@ Readout.RING_SEGMENTS = 96
 -- clip on 14 September, so the reserve's extent is taken generously. The
 -- stack's spacing: a gap above and below the dash between them.
 Readout.CLIP_GLYPH_TOP = 0.33
-Readout.CLIP_GLYPH_BOTTOM = 0.80
+Readout.CLIP_GLYPH_BOTTOM = 1.0   -- 0.80 measured; the dash touched it at 0.5 m
 Readout.RESERVE_GLYPH_TOP = 0.30
 Readout.RESERVE_GLYPH_BOTTOM = 0.90
 Readout.STACK_GAP = 0.12        -- of the clip font size, above and below the dash
