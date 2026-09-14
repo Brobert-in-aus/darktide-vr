@@ -95,14 +95,20 @@ unattended evidence for each is in
    `darktidevr_pose_trace.csv` where it is for the next session.
 
 8. **Two-hand support with the weapon's own foregrip, new and off by
-   default** (`4d4c1eb` to `cd68da2`). Turn on Mod Options, Darktide VR,
+   default** (`4d4c1eb` to `e133511`). Turn on Mod Options, Darktide VR,
    Experimental features, Two-hand support. In the Psykhanium, draw a
    two-handed gun and straight away put your left hand where the animation
    normally holds the gun's foregrip and press grip; there should be no wait
    after the draw. Check that:
-   - the left glove snaps onto the foregrip and the gun line follows both
-     hands;
+   - as your left hand comes close to the foregrip (before you press), the
+     glove quickly slides onto it, and slides back to your hand if you move
+     away without pressing;
+   - pressing grip there makes the gun line follow both hands, and moving your
+     hands further apart or closer keeps the grip (only bringing them within
+     a few centimetres or crossing them lets go);
    - letting go returns the gun to one-handed aim;
+   - with Two-hand grip set to Toggle, letting go keeps the grip and the next
+     grip press ends it (that press does not fire your combat ability);
    - the left grip does not fire your combat ability while holding;
    - pistols and other one-handed weapons do not offer a grip;
    - if you have other two-handed guns, each gives a grip on its first draw.
@@ -112,10 +118,11 @@ unattended evidence for each is in
    is shipped or already stored, so it logs neither);
    `held=true source=authored grip=shipped|stored|settled|measured`; and on
    each release `released ... max_steer_degrees=...` (how far your support
-   hand turned the gun). The `authored_grip` lines for your other guns can
-   be copied into the shipped table. Say if the grip point is off (further
-   forward or back, higher or lower), and whether gripping should also aim
-   down sights.
+   hand turned the gun), `mode=hold|toggle` and `ended=released|cancelled`;
+   `zone=enter` and `zone=snapped frames=N` as the glove moves on. The
+   `authored_grip` lines for your other guns can be copied into the shipped
+   table. Say if the grip point is off (further forward or back, higher or
+   lower), and whether the slide-on is too fast, too slow or too eager.
 
 ## Assumptions and questions for the evening review
 
@@ -134,9 +141,10 @@ unattended evidence for each is in
   because graphics settings were not touched. Want a flat run with it off?
 - Two-hand support: grips from the weapon's animation are now per weapon
   template (every Galvanic Rifle Mk I shares one) and saved between sessions,
-  following your note that they should be ready without a delay. A grip
-  recorded with `/dtvr_two_hand_calibrate` is still per item and lasts only
-  for the session; say if that should be saved too.
-- Two-hand authored grips never trigger ADS; the calibrated prototype did
-  (grip = hold alternate) on weapons whose ADS is a plain hold. Which should
-  the foregrip do?
+  following your note that they should be ready without a delay. Grips from
+  `/dtvr_two_hand_calibrate` stay per item and unsaved (your call: never used).
+- Toggle grip and hand spacing: with no distance limit, a toggled grip stays
+  on while your off hand hangs at your side, and the gun turns to point
+  towards it (110 degrees in the unattended run, when the simulated hand went
+  back to rest). Should a toggled grip let go past some angle (for example
+  45 degrees off the gun hand's aim), or is pressing again enough?

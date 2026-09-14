@@ -570,3 +570,37 @@ wield.
   fixed by construction and was not reproduced.
 
 Worn check: evening item 8.
+
+### Grip zone slide-on, hold or toggle, any spacing (user direction)
+
+The user decided:
+- gripping never aims down sights;
+- `/dtvr_two_hand_calibrate` grips are not saved;
+- bindings while gripping may need their own set (todo item added).
+
+Commits `8dbd76d` and `e133511`:
+- **Slide-on.** Within the acquire radius (10 cm), left 1.5 cm further out,
+  the support glove blends from the tracked hand onto the grip, eased over
+  0.1 s, and back again when the hand leaves. It stays on while held. The
+  body proxy blends from the glove pose already placed that frame, converting
+  a calibrated rotation to the joint rotation first.
+- **Two-hand grip option.** Hold (default) or Toggle. In Toggle, letting go
+  keeps the claim, and the next fresh press ends it; the controller mapper
+  blocks that press, so it never reaches the combat ability.
+- **Any spacing.** A held grip no longer checks the 20 cm release radius. It
+  ends only through the existing guards: hands within 8 cm or crossed (no gun
+  direction), lost tracking, weapon or action change, or a menu.
+
+Unattended evidence. The synthetic left hand approaches from 18 cm, lifts
+5 cm, spreads 25 cm along the barrel, then lets go.
+- **`run10` (hold):** `zone=enter` 0.1 s before `held=true`, and
+  `zone=snapped frames=7-8` (about 90 ms).
+- **`run11` (hold, with the spread):** all 7 holds logged
+  `mode=hold ended=released`. Under the old release radius the spread would
+  have cancelled them.
+- **`run12` (toggle):** the grip stayed on after let-go while the hand went
+  back to rest, and ended at the next cycle's press (`mode=toggle
+  ended=released`, about 4 s later). The following press took it again. The
+  resting hand dragged the gun up to 109.6 degrees, so the evening checklist
+  asks whether toggle should let go past some angle.
+- **Not shown:** the slide-on on screen (logged only) and how it feels.

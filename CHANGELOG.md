@@ -16,7 +16,8 @@ runtime package records the exact source revision alongside the version.
   ring that fills while reloading.
 - Experimental two-hand support (off by default): grip where the weapon's own
   animation holds the foregrip to steady a gun with both hands, available as
-  soon as the gun is drawn.
+  soon as the gun is drawn. The glove slides onto the foregrip when your hand
+  is close enough, and grip can be a hold or a toggle.
 - Flamethrower streams, chain lightning, the force sword's wind slash and the
   shield's windup glow start from the weapon in your hand.
 - Experimental virtual holsters (off by default): reach to your shoulder,
