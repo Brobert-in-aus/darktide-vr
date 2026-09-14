@@ -117,6 +117,7 @@ function Support.new(Pose)
         api.held=grip.held and filter.owner~=nil
         api.stock_active=api.held and stock~=nil
     end
+    function api.current_profile() return identity and identity.profile end
     function api.rotation(unit,rotation)
         if not identity or identity.unit~=unit or not filter.owner then return rotation end
         return filter.apply(rotation) or rotation
@@ -138,8 +139,10 @@ function Support.install(mod,presentation,observation)
     local api=Support.new(Pose)
     -- The option turns support on for every session; the chat commands still
     -- work for the current one.
+    -- test_enabled: darktidevr_two_hand_test.flag "enabled" (unattended runs).
+    local test_enabled_flag
     function api.is_enabled()
-        return api.enabled or (mod.get and mod:get('vr_two_hand_support')==true) or false
+        return api.enabled or (mod.get and mod:get('vr_two_hand_support')==true) or test_enabled_flag==true or false
     end
     -- Authored grips, per wielded item: the stock first-person animation's left
     -- hand on the weapon, averaged over AUTHORED_SAMPLES steady frames, then
@@ -192,7 +195,18 @@ function Support.install(mod,presentation,observation)
             end
         end
     end
-    function api.authored_profile(frame)
+    -- One log line per item when support first takes hold, naming the grip's source.
+    local finish=api.finish
+    local held_logged=setmetatable({},{__mode='k'})
+    function api.finish(grip)
+        finish(grip)
+        local profile=api.held and api.current_profile and api.current_profile()
+        if profile and profile.weapon and not held_logged[profile.weapon] then
+            held_logged[profile.weapon]=true
+            mod:info('DARKTIDEVR_TWO_HAND held=true source=%s socket=%.3f,%.3f,%.3f',
+                profile.authored and 'authored' or 'calibrated',profile.socket[1],profile.socket[2],profile.socket[3])
+        end
+    end    function api.authored_profile(frame)
         local record=frame.weapon and authored[frame.weapon]
         return record and record.done or nil
     end
@@ -209,6 +223,7 @@ function Support.install(mod,presentation,observation)
         local value=file and file:read('*all')
         if file then file:close() end
         preview=type(value)=='string' and value:match('^%s*preview%s*$')~=nil
+        test_enabled_flag=type(value)=='string' and value:match('^%s*enabled%s*$')~=nil
         return preview
     end
     local previous_t
