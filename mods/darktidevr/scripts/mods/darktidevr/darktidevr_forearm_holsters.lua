@@ -128,17 +128,31 @@ function Forearm.install(mod, presentation)
                 local spawner = UIWeaponSpawner:new("DarktideVRForearm_" .. index, world, nil, unit_spawner)
                 local position = Vector3(zone.world[1], zone.world[2], zone.world[3])
                 spawner:start_presentation(item, position, rotation, Vector3(0.2, 0.2, 0.2), nil, false)
-                preview = {item = item, spawner = spawner, unit_spawner = unit_spawner}
+                preview = {item = item, spawner = spawner, unit_spawner = unit_spawner, started_t = t}
                 previews[index] = preview
+                mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_start zone=%s item=%s", zone.id, tostring(item.name))
             end
             if preview then
                 preview.spawner:update(dt, t, nil)
                 local data = preview.spawner:get_spawn_data()
+                if data and not preview.spawn_logged then
+                    preview.spawn_logged = true
+                    mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_spawned zone=%s after_s=%.2f item_unit=%s link=%s",
+                        zone.id, t - (preview.started_t or t), tostring(data.item_unit_3p), tostring(data.link_unit))
+                elseif not data and not preview.wait_logged and t - (preview.started_t or t) > 5 then
+                    preview.wait_logged = true
+                    mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_waiting zone=%s seconds=5", zone.id)
+                end
                 if data and data.link_unit and Unit.alive(data.link_unit) then
                     -- Fit the item's largest extent to PREVIEW_SIZE once it exists.
                     if not preview.fitted and data.item_unit_3p and Unit.alive(data.item_unit_3p) then
                         local ok, _, extents = pcall(Unit.box, data.item_unit_3p)
                         local largest = ok and extents and math.max(Vector3.x(extents), Vector3.y(extents), Vector3.z(extents)) or 0
+                        if largest <= 1e-4 and not preview.box_logged then
+                            preview.box_logged = true
+                            mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_box zone=%s ok=%s extents=%s", zone.id,
+                                tostring(ok), tostring(ok and extents or _))
+                        end
                         if largest > 1e-4 then
                             local current = Vector3.x(Unit.local_scale(data.link_unit, 1))
                             local fitted = current * (Forearm.PREVIEW_SIZE * 0.5) / largest
