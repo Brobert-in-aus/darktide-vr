@@ -117,6 +117,60 @@ Commits `7efa0ef`, `fe0277d`, `10717e5`, `0da004b`.
     script errors. The synthetic path has no wrist rotation, so it cannot
     show the difference; that needs the worn A/B (evening item 4).
 
+## Stray cartridge at the right glove (todo item 5)
+
+Fix `abc400b`, deployed (evening item 5).
+- **What it is.** The galvanic rifle receiver's column of rounds. Outside a
+  reload the stock animation parks it on the gun at the grip, inside the
+  character's wrist and sleeve. During a reload it moves into the
+  magazine, which is why it vanished then. With the avatar's arms hidden
+  (tracked gloves or the upper-body proxy), nothing covers it.
+- **How it was found.**
+  - *Scans* (`scan3`, `scan4`, dev flag `darktidevr_attachment_scan.flag`):
+    listed every mesh and node of the wielded weapon. The receiver
+    (`receiver_01`, 66 meshes) has cartridge-shaped meshes, four per round.
+  - *View mode* (the same flag, `view ...`): while the rifle is wielded it
+    holds the right controller at a fixed pose ahead of the headset. It also
+    holds the trigger, grips and right stick so ammo and weapon stay put,
+    and hides chosen meshes or attachments.
+  - *Eye renders by elimination* (`artifacts/unattended/stray-bullet-20260915/`:
+    `view2`, `bisect1`, `units1`, `units2`, `groups1`, `sets1`):
+    - hiding the receiver removes the round, and the stock, barrel,
+      underbarrel or muzzle alone does not;
+    - it takes meshes 27-58 *and* 63-66 together, because overlapping rounds
+      cover for each other;
+    - the receiver has none of the likely visibility group names.
+- **Fix.** `darktidevr_weapon_parked_parts.lua` hides those meshes while the
+  avatar's arms are hidden, except during reload actions. The mesh table is
+  keyed by attachment unit name and currently holds the galvanic receiver
+  only.
+  - *Test:* `weapon_parked_parts` covers selection, reload, stock arms,
+    weapon change and failure restore.
+  - *Evidence (`fix1`):* no round from three angles with no dev hiding; the
+    drum and the rest of the gun draw normally; `parked_hidden meshes=36`
+    logged; no script errors.
+- **Ruled out on the way.** Moving the rig's mapped bones to follow the
+  tracked gun (built, then removed before pushing). All 20 mapped bones
+  already follow the attach node (`chain1`).
+- **Not shown:** the worn view, and whether other guns have parked parts.
+  The same scan and view flags can check them.
+
+## Crosshair and iron sights (todo item 4): not solved
+
+- **What is known.** The reticle sits where the aim ray hits (a raycast from
+  the aim pose along the muzzle's direction). The gun is rotated so its
+  muzzle points along that ray (`aim_angle_deg=0`).
+- **Likely cause.** The aim ray starts at the controller's aim position,
+  while the iron sights sit a few centimetres above the bore. The two lines
+  run parallel rather than meeting at the target, leaving an offset of
+  about 0.3° at 10 m. This is not measured yet.
+- **Next.**
+  - The scan's `sight` lines log the stock ADS eye point (the hidden
+    first-person rig) and the VR aim origin, both in the muzzle frame, once
+    ADS has been held for 0.8 s.
+  - Needs ADS held: the synthetic path never presses the left trigger.
+    Either a worn check or a synthetic ADS press, which is a viewer change.
+
 Note: `run2` died because I piped the capture script through
 `Select-Object -First 1`, which stopped the script and so the runner's job
 (the runner force-stopped the game). The game did not fault.

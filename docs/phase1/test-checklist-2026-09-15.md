@@ -40,3 +40,13 @@ Yesterday's checklist items not reached are still open in
    virtual stock is built on it
    ([design](two-hand-aim-design-2026-09-15.md)). The console line
    `DARKTIDEVR_TWO_HAND released ... steadying=` shows which mode was active.
+5. **No stray cartridge at the right glove** (`abc400b`). Galvanic rifle out,
+   hands mode:
+   - look at the right hand and the top of the grip from several angles: no
+     round sticking up beside the glove;
+   - reload: the rounds may appear during the reload animation (they go
+     into the magazine), then vanish again;
+   - everything else on the rifle (drum, bolt, sights) still draws.
+
+   If another gun shows a similar stray part, say which. The scan flag can
+   find its meshes the same way.
