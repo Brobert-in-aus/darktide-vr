@@ -209,7 +209,7 @@ local p,h,r=installed_sample(512)
 assert(p==0 and h==0 and r==0 and observations.left_grip_usable)
 -- Losing the hold logs the largest aim correction applied while held.
 local released=infos[#infos]
-local steer=tonumber(released:match('^DARKTIDEVR_TWO_HAND released source=calibrated mode=hold ended=cancelled max_steer_degrees=([%d.]+) steered_frames=%d+ steadying=classic$'))
+local steer=tonumber(released:match('^DARKTIDEVR_TWO_HAND released source=calibrated mode=hold ended=cancelled max_steer_degrees=([%d.]+) steered_frames=%d+ steadying=classic virtual_stock=false stock_frames=0 stock_min_distance_m=none$'))
 assert(steer and steer>15 and steer<25,'release log: '..tostring(released))
 assert(installed.resolve(unit,frame.rotation)==frame.rotation)
 observations.left_grip_tracking_live=true; secondary={0,.3,0}
@@ -509,3 +509,40 @@ do
     assert(spy.held,'hands line hold not owned')
 end
 print('two_hand_steadying=pass classic hands_line scene_basis')
+-- Virtual stock (option): a butt near the body-frame shoulder engages the stock.
+do
+    local stock_api=Support.new(Pose)
+    stock_api.enabled=true
+    stock_api.profiles.example={socket={0,.3,0},acquire=.1,release=.2,smoothing=0,ads=false}
+    local stock_mapper=Bindings.install({get=function() end})
+    local f={active=true,live=true,weapon={},unit={},generation=1,recenter=0,side='left',dt=.01,
+        rotation={0,0,0,1},primary={0,0,0},support={.05,.3,0},template='example',toggle_ads=false,ads_supported=true}
+    local function step(physical)
+        local request=stock_api.prepare(f)
+        stock_mapper.sample(true,physical,0,0,true,f.generation,'combat',request)
+        stock_api.finish(stock_mapper.support_grip)
+    end
+    local butt=Support.STOCK.offset
+    -- Option off: no stock even with an anchor.
+    f.stock_anchor={butt[1]+.02,butt[2],butt[3]}
+    step(0); step(512)
+    assert(stock_api.held and not stock_api.stock_active,'stock engaged with the option off')
+    function stock_api.virtual_stock() return true end
+    step(512)
+    -- The swing toward the off-axis front hand moves the butt a few cm; still in contact.
+    assert(stock_api.stock_active and stock_api.stock_weight>0,'butt at the shoulder did not engage')
+    assert(stock_api.stock_distance<Support.STOCK.radius,'distance '..tostring(stock_api.stock_distance))
+    -- Aim now follows shoulder -> support hand, not grip -> support hand.
+    local plain=Pose.correction(f.rotation,f.primary,f.support,{0,.3,0})
+    local steered=stock_api.rotation(f.unit,f.rotation)
+    assert(math.abs(steered[3]-plain[3])>1e-4,'stock did not change the aim')
+    -- Anchor far away: no contact.
+    f.stock_anchor={1,1,1}
+    step(512)
+    assert(stock_api.held and not stock_api.stock_active and stock_api.stock_weight==0,'far anchor engaged')
+    -- No anchor (no body frame): ordinary two-handing.
+    f.stock_anchor=nil
+    step(512)
+    assert(stock_api.held and not stock_api.stock_active,'engaged without an anchor')
+end
+print('two_hand_virtual_stock=pass option_off contact aim far none')

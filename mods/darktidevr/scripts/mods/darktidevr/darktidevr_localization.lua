@@ -44,6 +44,8 @@ return {
     vr_two_hand_steadying = {en = "Two-hand steadying"},
     vr_two_hand_steadying_description = {en = "How the gun settles while held in both hands. Classic: as before. Hands line: the line between your hands is smoothed instead, so turning your gun wrist no longer swings the barrel off the front hand, and turning with the stick is never delayed. Experimental; try both and say which feels better."},
     vr_two_hand_steadying_classic = {en = "Classic"},
+    vr_virtual_stock = {en = "Virtual stock (experimental)"},
+    vr_virtual_stock_description = {en = "While you hold a rifle in both hands, bringing its butt to your shoulder rests it there: the gun then aims from your shoulder to your front hand, so small movements of the gun hand no longer swing it. The shoulder is estimated from your headset and hands."},
     vr_two_hand_steadying_hands_line = {en = "Hands line (experimental)"},
     vr_haptics_mode = {en = "Controller vibration"},
     vr_haptics_mode_description = {en = "Informative: vibrations that tell you something, such as your hand reaching a gun's foregrip or an armed holster, the grip taking hold, the clip running dry, a reload finishing and ammo running low. Immersive: the feel of your actions, such as every shot, along with the most important of those notices."},

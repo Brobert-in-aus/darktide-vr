@@ -343,6 +343,9 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/test-scanner-holo.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_scanner_holo.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr.lua")
+  add_test(NAME body_frame COMMAND "${LUAJIT_VALIDATOR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test-body-frame.lua"
+    "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_body_frame.lua")
   add_test(NAME gun_sights COMMAND "${LUAJIT_VALIDATOR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test-gun-sights.lua"
     "${PROJECT_SOURCE_DIR}/mods/darktidevr/scripts/mods/darktidevr/darktidevr_gun_sights.lua")

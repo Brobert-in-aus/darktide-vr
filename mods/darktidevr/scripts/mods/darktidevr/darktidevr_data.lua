@@ -187,6 +187,11 @@ return {
                         },
                     },
                     {
+                        setting_id = "vr_virtual_stock",
+                        type = "checkbox",
+                        default_value = false,
+                    },
+                    {
                         setting_id = "vr_haptics_mode",
                         type = "dropdown",
                         default_value = "off",

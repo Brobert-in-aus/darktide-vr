@@ -145,25 +145,29 @@ function Pose.correction(rotation,primary,support,socket)
     return normalize({from[2]*to[3]-from[3]*to[2],from[3]*to[1]-from[1]*to[3],
         from[1]*to[2]-from[2]*to[1],1+d},4)
 end
+-- Also returns the stock's blend weight (0 when not in contact) and the
+-- butt-to-anchor distance (nil without a usable stock).
 function Pose.stock_correction(rotation,primary,support,socket,stock)
     local correction=Pose.correction(rotation,primary,support,socket)
     if not correction or type(stock)~='table' or not valid(stock.anchor,3) or
         not valid(stock.offset,3) or not finite(stock.radius) or stock.radius<=0 or stock.radius>.5 or
         not finite(stock.strength) or stock.strength<=0 or stock.strength>1 or
-        dot(stock.offset,stock.offset)>1 then return correction end
+        dot(stock.offset,stock.offset)>1 then return correction,0 end
     local q=normalize(rotation,4)
     local placed=rotate(multiply(q,correction),stock.offset)
     local delta={primary[1]+placed[1]-stock.anchor[1],primary[2]+placed[2]-stock.anchor[2],
         primary[3]+placed[3]-stock.anchor[3]}
     local distance=math.sqrt(dot(delta,delta))
-    if not finite(distance) or distance>=stock.radius then return correction end
+    if not finite(distance) then return correction,0 end
+    if distance>=stock.radius then return correction,0,distance end
     local stock_ray=difference(socket,stock.offset)
     local shouldered=Pose.correction(q,stock.anchor,support,stock_ray)
-    if not shouldered then return correction end
+    if not shouldered then return correction,0,distance end
     -- The caller supplies a stable body/shoulder anchor. No headset yaw is
     -- used here, and the primary grip position is never moved to the shoulder.
     local proximity=1-distance/stock.radius
-    return slerp(correction,shouldered,stock.strength*proximity*proximity)
+    local weight=stock.strength*proximity*proximity
+    return slerp(correction,shouldered,weight),weight,distance
 end
 function Pose.stock_profile(profile)
     if type(profile)~='table' or not valid(profile.shoulder,3) or not valid(profile.offset,3) or
@@ -261,8 +265,11 @@ function Pose.new()
             line.min_cutoff=smoothing>0 and 1/(2*math.pi*smoothing) or 1000
             local filtered=line.filter(tracked,dt)
             local back=filtered and (scene and rotate(scene,filtered) or filtered)
-            local target=back and Pose.stock_correction(q,primary,
-                {primary[1]+back[1],primary[2]+back[2],primary[3]+back[3]},socket,stock)
+            local target
+            if back then
+                target,state.stock_weight,state.stock_distance=Pose.stock_correction(q,primary,
+                    {primary[1]+back[1],primary[2]+back[2],primary[3]+back[3]},socket,stock)
+            end
             if not target then state.reset(); return q end
             -- Taking hold eases in from the previous correction over the
             -- classic time constant; after that the swing is exact for this
@@ -275,7 +282,8 @@ function Pose.new()
         end
         line.reset(); state.engaged=0
         local target={0,0,0,1}
-        if held then target=Pose.stock_correction(q,primary,support,socket,stock) end
+        state.stock_weight,state.stock_distance=0,nil
+        if held then target,state.stock_weight,state.stock_distance=Pose.stock_correction(q,primary,support,socket,stock) end
         if not target then state.reset(); return q end
         -- Classic: smooth only the support correction in controller-local
         -- space. The primary controller's deliberate motion remains immediate;

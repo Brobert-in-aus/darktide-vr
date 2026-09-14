@@ -15255,6 +15255,9 @@ end
 presentation.gun_aim = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_gun_aim"
 ).install(mod, presentation)
+presentation.body_frame = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_body_frame"
+).install(mod, presentation, controller_observation)
 presentation.gun_sights = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_gun_sights"
 ).install(mod, presentation)

@@ -32,6 +32,11 @@ local function finite(x) return type(x)=='number' and x==x and math.abs(x)<math.
 -- to take hold (the profile's acquire radius, left again ZONE_EXIT_MARGIN
 -- further out), the support glove eases onto the grip over SNAP_SECONDS and
 -- eases back when the hand leaves; it stays on while held.
+-- Virtual stock (option, default off): the butt rests at the dominant
+-- shoulder of the shared body frame. Butt offset from the primary grip in
+-- the aim frame (y forward, z up) is an estimate for rifles, to be tuned worn;
+-- the anchor sits a little inside the shoulder point, toward the neck.
+Support.STOCK={offset={0,-.30,.06},radius=.15,strength=1,inward=.03}
 Support.SNAP_SECONDS=.1
 Support.ZONE_EXIT_MARGIN=.015
 function Support.snap_step(weight,target,dt)
@@ -76,6 +81,7 @@ function Support.new(Pose)
     -- Steadying: 'classic' smooths the swing in controller space; 'hands_line'
     -- filters the hands line in tracking space (two-hand aim design, 15 September).
     function api.steadying() return 'classic' end
+    function api.virtual_stock() return false end
     local hands_line={mode='hands_line',scene=nil}
     local filter=Pose.new()
     local stock_anchor=Pose.new_stock_anchor()
@@ -152,12 +158,18 @@ function Support.new(Pose)
         if not context or not identity then filter.reset(); stock_anchor.reset(); api.in_zone=false; api.snap=0; return end
         local stock=stock_anchor.update(context,identity.profile.socket,identity.stock,
             grip.held and not grip.cancelled,identity)
+        if not stock and context.stock_anchor and api.virtual_stock() then
+            stock={anchor=context.stock_anchor,offset=Support.STOCK.offset,radius=Support.STOCK.radius,
+                strength=Support.STOCK.strength}
+        end
         local steady=nil
         if api.steadying()=='hands_line' then hands_line.scene=context.scene_rotation; steady=hands_line end
         filter.update(context.rotation,context.primary,context.support,identity.profile.socket,
             grip.held,identity,context.dt,identity.smoothing,grip.cancelled,stock,steady)
         api.held=grip.held and filter.owner~=nil
-        api.stock_active=api.held and stock~=nil
+        api.stock_weight=api.held and filter.stock_weight or 0
+        api.stock_distance=api.held and filter.stock_distance or nil
+        api.stock_active=api.held and (api.stock_weight or 0)>0
         api.snap=Support.snap_step(api.snap,(api.held or api.in_zone) and 1 or 0,context.dt)
     end
     function api.current_profile() return identity and identity.profile end
@@ -186,12 +198,15 @@ function Support.install(mod,presentation,observation)
     -- work for the current one.
     -- test_enabled: darktidevr_two_hand_test.flag "enabled", "enabled_toggle",
     -- and either with "_line" for hands-line steadying
-    local test_enabled_flag,test_toggle_flag,test_line_flag
+    local test_enabled_flag,test_toggle_flag,test_line_flag,test_stock_flag
     function api.is_enabled()
         return api.enabled or (mod.get and mod:get('vr_two_hand_support')==true) or test_enabled_flag==true or false
     end
     function api.grip_toggle()
         return (mod.get and mod:get('vr_two_hand_grip_mode')=='toggle') or test_toggle_flag==true
+    end
+    function api.virtual_stock()
+        return test_stock_flag==true or (mod.get and mod:get('vr_virtual_stock')==true) or false
     end
     function api.steadying()
         if test_line_flag==true then return 'hands_line' end
@@ -322,8 +337,15 @@ function Support.install(mod,presentation,observation)
     local releases_logged,was_held,hold_source=0,false,nil
     local zone_logs,was_in_zone,snap_frames=0,false,nil
     api.steer={max_degrees=0,frames=0}
+    local stock_log={frames=0,min_distance=nil}
     function api.finish(grip)
         finish(grip)
+        if api.held then
+            if api.stock_active then stock_log.frames=stock_log.frames+1 end
+            if api.stock_distance and (not stock_log.min_distance or api.stock_distance<stock_log.min_distance) then
+                stock_log.min_distance=api.stock_distance
+            end
+        end
         local profile=api.held and api.current_profile and api.current_profile()
         if profile and not held_logged[profile] then
             held_logged[profile]=true
@@ -336,12 +358,14 @@ function Support.install(mod,presentation,observation)
         if api.held and not was_held then
             if haptics then haptics.pulse(support_side,'grip') end
             api.steer.max_degrees,api.steer.frames=0,0
+            stock_log.frames,stock_log.min_distance=0,nil
             hold_source=profile and (profile.authored and 'authored' or 'calibrated') or 'unknown'
         elseif was_held and not api.held and releases_logged<Support.RELEASE_LOGS then
             releases_logged=releases_logged+1
-            mod:info('DARKTIDEVR_TWO_HAND released source=%s mode=%s ended=%s max_steer_degrees=%.1f steered_frames=%d steadying=%s',
+            mod:info('DARKTIDEVR_TWO_HAND released source=%s mode=%s ended=%s max_steer_degrees=%.1f steered_frames=%d steadying=%s virtual_stock=%s stock_frames=%d stock_min_distance_m=%s',
                 hold_source,api.grip_toggle() and 'toggle' or 'hold',grip.cancelled and 'cancelled' or 'released',
-                api.steer.max_degrees,api.steer.frames,api.steadying())
+                api.steer.max_degrees,api.steer.frames,api.steadying(),tostring(api.virtual_stock()),stock_log.frames,
+                stock_log.min_distance and string.format('%.3f',stock_log.min_distance) or 'none')
         end
         was_held=api.held
         -- Zone feedback evidence: entry, and frames until the glove sits on the grip.
@@ -379,7 +403,10 @@ function Support.install(mod,presentation,observation)
         if file then file:close() end
         preview=type(value)=='string' and value:match('^%s*preview%s*$')~=nil
         local mode=type(value)=='string' and value:match('^%s*(enabled[_%a]*)%s*$')
+        local stock_suffix=mode and mode:match('_stock$')~=nil
+        if stock_suffix then mode=mode:sub(1,-7) end
         mode=(mode=='enabled' or mode=='enabled_toggle' or mode=='enabled_line' or mode=='enabled_toggle_line') and mode or nil
+        test_stock_flag=mode~=nil and stock_suffix
         test_enabled_flag=mode~=nil
         test_toggle_flag=mode~=nil and mode:find('toggle',1,true)~=nil
         test_line_flag=mode~=nil and mode:find('_line',1,true)~=nil
@@ -434,6 +461,16 @@ function Support.install(mod,presentation,observation)
             finite(observation.body_anchor_qz) and finite(observation.body_anchor_qw) then
             frame.scene_rotation={observation.body_anchor_qx,observation.body_anchor_qy,
                 observation.body_anchor_qz,observation.body_anchor_qw}
+        end
+        if api.virtual_stock() and presentation.body_frame then
+            local body=presentation.body_frame.sample(unit,previous_t)
+            local shoulder=body and (dominant=='left' and body.shoulder_left or body.shoulder_right)
+            if shoulder then
+                local toward={body.neck[1]-shoulder[1],body.neck[2]-shoulder[2]}
+                local length=math.sqrt(toward[1]^2+toward[2]^2)
+                local inward=length>1e-6 and Support.STOCK.inward/length or 0
+                frame.stock_anchor={shoulder[1]+toward[1]*inward,shoulder[2]+toward[2]*inward,shoulder[3]}
+            end
         end
         local profile=api.profiles[template.name]
         if profile and profile.stock and presentation.body_alignment_unit==unit and
