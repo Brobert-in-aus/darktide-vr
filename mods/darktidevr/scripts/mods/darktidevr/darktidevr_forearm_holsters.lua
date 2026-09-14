@@ -147,21 +147,28 @@ function Forearm.install(mod, presentation)
                     -- Fit the item's largest extent to PREVIEW_SIZE once it exists.
                     if not preview.fitted and data.item_unit_3p and Unit.alive(data.item_unit_3p) then
                         -- The base unit of a weapon is often a mesh-less rig; the
-                        -- meshes sit on its attachments. Measure the reach of every
-                        -- unit's box from the preview's origin.
-                        local origin = Unit.world_position(data.link_unit, 1)
-                        local largest = 0
+                        -- meshes sit on its attachments. Half the largest side of
+                        -- the box around every unit's box (their positions need
+                        -- not be up to date with the preview's, only with each other).
+                        local low, high
                         local units = {data.item_unit_3p}
                         local attachments = data.attachment_units_3p and data.attachment_units_3p[data.item_unit_3p]
                         for _, attachment in ipairs(attachments or {}) do units[#units + 1] = attachment end
                         for _, measured in ipairs(units) do
                             local ok, pose, extents = pcall(Unit.box, measured)
-                            if ok and pose and extents then
-                                local reach = Vector3.distance(Matrix4x4.translation(pose), origin) +
-                                    math.max(Vector3.x(extents), Vector3.y(extents), Vector3.z(extents))
-                                if reach == reach and reach > largest then largest = reach end
+                            if ok and pose and extents and Vector3.length(extents) > 1e-5 then
+                                local c = Matrix4x4.translation(pose)
+                                local r = math.max(Vector3.x(extents), Vector3.y(extents), Vector3.z(extents))
+                                local lo = {Vector3.x(c) - r, Vector3.y(c) - r, Vector3.z(c) - r}
+                                local hi = {Vector3.x(c) + r, Vector3.y(c) + r, Vector3.z(c) + r}
+                                if not low then low, high = lo, hi else
+                                    for i = 1, 3 do
+                                        low[i] = math.min(low[i], lo[i]); high[i] = math.max(high[i], hi[i])
+                                    end
+                                end
                             end
                         end
+                        local largest = low and math.max(high[1] - low[1], high[2] - low[2], high[3] - low[3]) * 0.5 or 0
                         if largest <= 1e-4 then
                             -- Hidden meshes can report empty boxes: assume a 50 cm item.
                             largest = Vector3.x(Unit.local_scale(data.link_unit, 1)) * 0.5
