@@ -130,23 +130,26 @@ function Readout.color(values)
 end
 
 -- Reload progress from the stock weapon action component: a reload action's
--- elapsed share of its (time-scaled) duration. When the reload action ends
--- more than 0.15 s before its end time it was interrupted (sprint, swap,
--- dodge): the readout shakes for SHAKE_SECONDS and the ring goes.
+-- elapsed share of its (time-scaled) duration. A reload that ends before its
+-- end time without adding ammo was interrupted (sprint, swap, dodge): the
+-- readout shakes for SHAKE_SECONDS and the ring goes. Stock reloads often
+-- chain into firing or aiming before their end time once the ammo is in, so
+-- ammo added counts as finished (review, 14 September).
 Readout.SHAKE_SECONDS = 0.4
 function Readout.reload_tracker()
     local tracker = {}
     local active, shake_until
-    function tracker.update(kind, start_t, end_t, t)
+    function tracker.update(kind, start_t, end_t, t, clip)
         local reloading = type(kind) == "string" and kind:match("^reload") ~= nil and
             type(start_t) == "number" and type(end_t) == "number" and end_t > start_t
         if reloading then
             if not active or active.start_t ~= start_t then
-                active = {start_t = start_t, end_t = end_t}
+                active = {start_t = start_t, end_t = end_t, clip = clip}
             end
             active.end_t = end_t
         elseif active then
-            if t < active.end_t - 0.15 then shake_until = t + Readout.SHAKE_SECONDS end
+            local ammo_added = type(clip) == "number" and type(active.clip) == "number" and clip > active.clip
+            if t < active.end_t - 0.15 and not ammo_added then shake_until = t + Readout.SHAKE_SECONDS end
             active = nil
         end
         local progress = active and math.max(0, math.min(1, (t - active.start_t) / (active.end_t - active.start_t)))
@@ -219,7 +222,7 @@ function Readout.install(mod, presentation, observation)
             local interrupted = cycle >= 4
             local phase = interrupted and cycle - 4 or cycle
             local kind = (phase < (interrupted and 1.8 or 3)) and "reload_state" or nil
-            progress, shake = tracker.update(kind, now - phase, now - phase + 3, now)
+            progress, shake = tracker.update(kind, now - phase, now - phase + 3, now, values.clip)
         else
             local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
             local action = unit_data and unit_data:read_component("weapon_action")
@@ -228,7 +231,7 @@ function Readout.install(mod, presentation, observation)
             local settings = action and template and template.actions and action.current_action_name and
                 template.actions[action.current_action_name]
             progress, shake = tracker.update(settings and settings.kind, action and action.start_t,
-                action and action.end_t, now)
+                action and action.end_t, now, values.clip)
         end
         local first_person = ScriptUnit.has_extension(unit, "first_person_system")
         local eye_unit = first_person and first_person:first_person_unit()

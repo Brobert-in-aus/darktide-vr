@@ -143,6 +143,21 @@ function Holsters.new(zones)
     return api
 end
 
+-- Which grip request the bindings get: a holster claim already held keeps
+-- its grip; a two-hand support grip that is held, or is being acquired this
+-- frame, is never pre-empted by a hand merely resting in a zone (review, 14
+-- September: a hand drifting through a zone dropped the rifle's support grip).
+-- Returns the request and whether it is the holster's.
+function Holsters.choose(holster_request, support_request, holster_claimed, support_grip)
+    if not holster_request then return support_request, false end
+    if holster_claimed then return holster_request, true end
+    if support_request and ((type(support_grip) == "table" and support_grip.held) or
+            support_request.acquire == true) then
+        return support_request, false
+    end
+    return holster_request, true
+end
+
 -- Live adapter, behind the "vr_holsters" option (default off). World space
 -- throughout: tracked grip targets, the first-person eye position, the body's
 -- visual yaw (head yaw when unknown) and the player's physical eye height. One hand at a time owns a request; a claim keeps its hand until the
@@ -252,8 +267,8 @@ function Holsters.install(mod, presentation, observation)
             end
             return support_request, false
         end
-        if request then return request, true end
-        return support_request, false
+        return Holsters.choose(request, support_request, owner_hand and api.hands[owner_hand].claim ~= nil,
+            presentation.controller_bindings and presentation.controller_bindings.support_grip)
     end
     function api.finish_grip(grip, ours)
         if ours and owner_hand then

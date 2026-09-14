@@ -169,6 +169,22 @@ do
     poll(true, -1); poll(false, 1)
     assert(#starts == 4, "restarted beyond the limit")
     assert(lines[#lines]:find("restart=gave_up", 1, true))
+    -- Giving up lasts: later short failures are not restarted and not re-logged.
+    local count = #lines
+    poll(true, -1); poll(false, 1)
+    assert(#starts == 4, "restarted after giving up")
+    -- A viewer that had run for a minute resets the count.
+    local Stable = dofile(arg[2])
+    starts = {}
+    Stable.install({info = function() end, error = mod.error, command = function() end}, function() return stub end)
+    Stable.update()
+    for failure = 1, 5 do
+        values[0], values[1] = 1, -1
+        for _ = 1, Stable.STABLE_UPDATES + 120 do Stable.update() end
+        values[0], values[1] = 0, 1
+        for _ = 1, 120 do Stable.update() end
+    end
+    assert(#starts == 6, "long-running viewers counted towards the limit: " .. #starts)
 
     local CleanViewer = dofile(arg[2])
     starts = {}

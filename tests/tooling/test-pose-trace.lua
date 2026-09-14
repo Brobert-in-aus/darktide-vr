@@ -71,6 +71,21 @@ assert(first[index.vel_x] == "1" and first[index.head_qw] == "0.70000" and first
 assert(first[index.right_live] == "1" and first[index.right_x] == "0.20000" and first[index.left_live] == "0")
 assert(first[index.body_yaw] == "1.50000")
 
+-- The clock restarting lower (a new level) resumes recording at once.
+files[Trace.FLAG] = "record"
+for frame = 421, 540 do api.sample("player", frame / 60) end
+local before_reset = api.rows
+for frame = 1, 30 do api.sample("player", frame / 60) end
+assert(api.rows > before_reset + 10, "recording waited for the old clock")
+-- A second launch appending to the same file writes no second header.
+api.flush()
+local again = Trace.install(mod, presentation, observation)
+for frame = 1, 240 do again.sample("player", frame / 60) end
+again.flush()
+local headers = 0
+for line in files[Trace.OUTPUT]:gmatch("([^\n]*)\n") do if line == Trace.header() then headers = headers + 1 end end
+assert(headers == 1, "headers in the file: " .. headers)
+
 -- Wired after the hand pose, flushed when a level unloads.
 local file = assert(io.open(assert(arg[2]), "rb")); local main = file:read("*a"); file:close()
 local ik = assert(main:find("presentation.gun_aim.update(self._world, player_unit)", 1, true))

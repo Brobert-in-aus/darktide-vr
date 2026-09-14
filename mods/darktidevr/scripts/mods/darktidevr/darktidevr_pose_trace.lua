@@ -56,12 +56,19 @@ function Trace.install(mod, presentation, observation)
     local function flush()
         if #buffer == 0 then return end
         local io_api = files()
-        local file = io_api and io_api.open(Trace.OUTPUT, "a")
-        if not file then buffer = {}; return end
+        if not io_api then buffer = {}; return end
+        -- One header per file, also across game launches (the file is only
+        -- ever appended to): look before opening it for append.
+        local needs_header = false
         if not header_written then
-            file:write(Trace.header(), "\n")
-            header_written = true
+            local existing = io_api.open(Trace.OUTPUT, "r")
+            needs_header = not existing or (existing:read(1) or "") == ""
+            if existing then existing:close() end
         end
+        local file = io_api.open(Trace.OUTPUT, "a")
+        if not file then buffer = {}; return end
+        if needs_header then file:write(Trace.header(), "\n") end
+        header_written = true
         file:write(table.concat(buffer, "\n"), "\n")
         file:close()
         buffer = {}
@@ -111,6 +118,9 @@ function Trace.install(mod, presentation, observation)
                 mod:info("DARKTIDEVR_POSE_TRACE recording=%s rows=%d output=%s", tostring(want), api.rows, Trace.OUTPUT)
             end
             if not api.recording or not unit or type(t) ~= "number" then return end
+            -- A new level can restart the gameplay clock lower (a client takes
+            -- the server's time): resample rather than wait for it to catch up.
+            if next_t and t < next_t - 1 then next_t = nil end
             if next_t and t < next_t then return end
             next_t = t + Trace.INTERVAL
             buffer[#buffer + 1] = Trace.row(sample(unit, t))
@@ -122,7 +132,7 @@ function Trace.install(mod, presentation, observation)
             mod:info("DARKTIDEVR_POSE_TRACE error=%s", tostring(err):sub(1, 160))
         end
     end
-    function api.flush() pcall(flush) end
+    function api.flush() pcall(flush); next_t = nil end
     return api
 end
 

@@ -117,6 +117,11 @@ p, s = tracker.update(nil, 0, 0, 21.45)
 assert(p == nil and s > 0 and s < 1, "shake does not fade")
 p, s = tracker.update(nil, 0, 0, 21.7)
 assert(s == nil, "shake did not stop")
+-- Ammo in, then the reload chains early into aiming or firing: finished, no shake.
+tracker.update("reload_state", 40, 43.3, 40, 0)
+tracker.update("reload_state", 40, 43.3, 42.9, 30)
+p, s = tracker.update("aim", 42.9, 50, 43.1, 30)
+assert(p == nil and s == nil, "an early-chained finished reload shook")
 -- A new reload restarts the ring from zero; a shotgun's reload kind counts too.
 p = tracker.update("reload_shotgun", 30, 31, 30)
 assert(p == 0)

@@ -98,7 +98,9 @@ end
 -- every frame and the state rarely changes.
 local POLL_UPDATES = 120
 Viewer.RESTART_LIMIT = 3
-Viewer.RESTART_WINDOW = 120 * 60 * 5 -- updates (about five minutes)
+-- A viewer that ran this many updates (about a minute) before failing counts
+-- as having worked; only failures after shorter runs count towards the limit.
+Viewer.STABLE_UPDATES = 60 * 60
 
 -- Development runs that start their own viewer (a synthetic controller path,
 -- the OpenXR simulator runtime) write "external" into this file before the
@@ -147,32 +149,32 @@ function Viewer.update()
     end
     local was_running = state.running
     state.running = current.running
+    if current.running and not was_running then
+        state.running_since = state.update_count
+    end
     state.mod:info(
         "DARKTIDEVR_VIEWER running=%s exit_code=%d starts=%d installed=%s",
         tostring(current.running), current.exit_code, current.starts,
         tostring(current.installed))
     -- A viewer that fails mid-game (14 September: an intermittent D3D12
     -- command-list failure) leaves the headset dark until someone types
-    -- /dtvr_viewer restart. Restart it automatically, at most
-    -- RESTART_LIMIT times per RESTART_WINDOW updates; a clean exit (0) or a
-    -- stop the mod asked for is left alone.
+    -- /dtvr_viewer restart. Restart it automatically; after RESTART_LIMIT
+    -- failures in a row of viewers that did not run STABLE_UPDATES (a headset
+    -- or runtime that is simply not there), stop trying for the session, so a
+    -- missing runtime is not relaunched forever (review, 14 September). A clean
+    -- exit (0) or a stop the mod asked for is left alone.
     if was_running and not current.running and current.exit_code ~= 0 and
             not state.stopped_on_request then
-        state.update_count = state.update_count or 0
-        state.restarts = state.restarts or {}
-        local recent = {}
-        for _, at in ipairs(state.restarts) do
-            if state.update_count - at < Viewer.RESTART_WINDOW then recent[#recent + 1] = at end
-        end
-        state.restarts = recent
-        if #recent < Viewer.RESTART_LIMIT then
-            recent[#recent + 1] = state.update_count
+        local ran = state.update_count - (state.running_since or state.update_count)
+        if ran >= Viewer.STABLE_UPDATES then state.failures = 0 end
+        state.failures = (state.failures or 0) + 1
+        if state.failures <= Viewer.RESTART_LIMIT then
             state.mod:info("DARKTIDEVR_VIEWER restart=automatic exit_code=%d attempt=%d",
-                current.exit_code, #recent)
+                current.exit_code, state.failures)
             Viewer.control(true)
-        elseif not state.restart_limit_logged then
-            state.restart_limit_logged = true
-            state.mod:info("DARKTIDEVR_VIEWER restart=gave_up exit_code=%d attempts=%d", current.exit_code, #recent)
+        elseif state.failures == Viewer.RESTART_LIMIT + 1 then
+            state.mod:info("DARKTIDEVR_VIEWER restart=gave_up exit_code=%d attempts=%d",
+                current.exit_code, Viewer.RESTART_LIMIT)
         end
     end
 end
@@ -182,6 +184,8 @@ function Viewer.install(mod, native_accessor)
     state.native_accessor = native_accessor
     mod:command("dtvr_viewer", "Start, stop or restart the VR viewer: /dtvr_viewer start|stop|restart|status", function(action)
         action = action or "status"
+        -- A manual start gives automatic restarts a fresh count.
+        if action == "restart" or action == "start" then state.failures = 0 end
         if action == "restart" then
             Viewer.control(false)
             Viewer.control(true)

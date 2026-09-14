@@ -90,4 +90,19 @@ assert(api.request("right", belt, nil) == nil, "requested without an inventory")
 api.reset()
 assert(api.hands.left.claim == nil and api.hands.right.zone == nil)
 
+-- Choosing between a holster request and two-hand support.
+local h, s = {action = "stim"}, {action = "alternate", acquire = false}
+local chosen, ours = Holsters.choose(nil, s, false, {held = false})
+assert(chosen == s and not ours, "no holster request")
+chosen, ours = Holsters.choose(h, nil, false, nil)
+assert(chosen == h and ours, "holster alone")
+chosen, ours = Holsters.choose(h, s, false, {held = true})
+assert(chosen == s and not ours, "a held support grip was pre-empted by a resting hand")
+chosen, ours = Holsters.choose(h, {action = "alternate", acquire = true}, false, {held = false})
+assert(not ours, "a support grip being acquired was pre-empted")
+chosen, ours = Holsters.choose(h, s, false, {held = false})
+assert(chosen == h and ours, "idle support blocked the holster")
+chosen, ours = Holsters.choose(h, s, true, {held = true})
+assert(chosen == h and ours, "a holster claim lost its grip")
+
 print("holsters=pass frame zones hysteresis dwell requests claim_retention pass_through")
