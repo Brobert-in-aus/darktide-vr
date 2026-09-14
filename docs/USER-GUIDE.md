@@ -139,6 +139,35 @@ Options, Darktide VR, Experimental features, "Keyboard and mouse in VR".
   horizontal-only mouselook. Full mouselook and remote mission servers are
   less tested.
 
+### Virtual holsters (experimental)
+
+Mod Options, Darktide VR, Experimental features, "Virtual holsters". Reach
+to where an item is carried and press grip:
+
+| Where | What comes out |
+| --- | --- |
+| Over your right shoulder | ranged weapon |
+| Left hip | melee weapon |
+| Right hip | auspex or other device |
+| Left chest | stim |
+| Right chest | ammo crate or medical kit |
+| Front of the belt | blitz: hold grip to draw and aim, let go to throw |
+
+The zones follow your body's facing and your height. An empty holster, or
+the item already in your hand, leaves the grip doing its normal action.
+Holsters are off in the hub. There is no vibration or visual hint yet when
+your hand is in a zone.
+
+### Ammo count at the hand (experimental)
+
+Mod Options, Darktide VR, Experimental features, "Ammo count at the hand".
+With a ranged weapon out, the clip count shows beside your weapon hand with
+the reserve beneath it, instead of on the HUD panel. Each number is white
+when full and turns yellow, orange and finally red as it runs out. Reloading
+fills a ring around the count; if the reload is interrupted (for example by
+sprinting), the count shakes and the ring disappears. Weapons with heat show
+it as a percentage.
+
 ## Known limits of this alpha
 
 - Right-hand dominant presentation only.
