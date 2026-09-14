@@ -189,4 +189,33 @@ for index, family in ipairs(Haptics.SHOT_FAMILIES) do
     end
 end
 
-print("haptics=pass mapping rate_limit notices modes failed_send ammo_events scale body_events melee_hooks shot_families")
+-- Gauges.
+local function gauge(fields)
+    local g = {heat = 0.1, peril = 0.1, charge = 0, max_charge = 1}
+    for k, v in pairs(fields or {}) do g[k] = v end
+    return g
+end
+local function gauge_kinds(previous, current)
+    local out = {}
+    for _, event in ipairs(Haptics.gauge_events(previous, current)) do out[#out + 1] = event[1] .. ":" .. event[3] end
+    return table.concat(out, ",")
+end
+assert(gauge_kinds(gauge(), gauge()) == "")
+assert(gauge_kinds(gauge({heat = 0.7}), gauge({heat = 0.8})) == "heat_warning:gun")
+assert(gauge_kinds(gauge({heat = 0.7}), gauge({heat = 0.95})) == "heat_critical:gun", "a jump past both thresholds warned twice")
+assert(gauge_kinds(gauge({heat = 0.95}), gauge({heat = 0.97})) == "", "heat above critical repeated")
+assert(gauge_kinds(gauge({heat = 0.95}), gauge({heat = 0.5})) == "", "cooling down pulsed")
+assert(gauge_kinds(gauge({peril = 0.8}), gauge({peril = 0.92})) == "peril_critical:both")
+assert(gauge_kinds(gauge({peril = 0.5}), gauge({peril = 0.76})) == "peril_warning:both")
+local rising = Haptics.gauge_events(gauge({charge = 0.2}), gauge({charge = 0.3}))
+assert(rising[1][1] == "charging" and rising[1][2] == 0.4, "low charge buzz below the minimum")
+assert(Haptics.gauge_events(gauge({charge = 0.7}), gauge({charge = 0.8}))[1][2] == 0.8)
+assert(gauge_kinds(gauge({charge = 0.9}), gauge({charge = 1})) == "charge_full:gun")
+assert(gauge_kinds(gauge({charge = 1}), gauge({charge = 1})) == "", "a held full charge repeated")
+assert(gauge_kinds(gauge({charge = 0.5}), gauge({charge = 0})) == "", "releasing a charge pulsed")
+assert(gauge_kinds(gauge({charge = 1.5, max_charge = 2}), gauge({charge = 2, max_charge = 2})) == "charge_full:gun")
+assert(gauge_kinds(gauge({heat = 0.7, peril = 0.8}), gauge({heat = 0.8, peril = 0.95})) == "heat_warning:gun,peril_critical:both")
+assert(gauge_kinds(nil, gauge()) == "")
+assert(gauge_kinds(gauge({heat = false}), gauge({heat = 0.99})) == "", "a missing heat reading warned")
+
+print("haptics=pass mapping rate_limit notices modes failed_send ammo_events scale body_events melee_hooks shot_families gauges")

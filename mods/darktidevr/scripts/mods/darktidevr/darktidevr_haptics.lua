@@ -49,7 +49,18 @@ Haptics.KINDS = {
     -- A melee swing connects (heavy attacks full strength); a shove.
     melee_hit = {modes = {immersive = true}, amplitude = 0.8, duration_ms = 30},
     push = {modes = {immersive = true}, amplitude = 0.6, duration_ms = 35},
+    -- Weapon heat and psyker peril: a warning past WARNING_SHARE, an alert
+    -- past CRITICAL_SHARE. Charging a shot or attack: a buzz rising with the
+    -- charge, and a tick when it is full.
+    heat_warning = {modes = {informative = true}, notice = true, amplitude = 0.45, duration_ms = 30},
+    heat_critical = {modes = BOTH, notice = true, amplitude = 0.9, duration_ms = 120},
+    peril_warning = {modes = {informative = true}, notice = true, amplitude = 0.45, duration_ms = 30},
+    peril_critical = {modes = BOTH, notice = true, amplitude = 0.9, duration_ms = 120},
+    charging = {modes = {immersive = true}, amplitude = 0.4, duration_ms = 15},
+    charge_full = {modes = BOTH, notice = true, amplitude = 0.35, duration_ms = 15},
 }
+Haptics.WARNING_SHARE = 0.75
+Haptics.CRITICAL_SHARE = 0.9
 Haptics.LIGHT_MELEE_SCALE = 0.7
 Haptics.MISSED_PUSH_SCALE = 0.5
 Haptics.LOW_HEALTH_SHARE = 0.25
@@ -197,6 +208,32 @@ function Haptics.body_events(previous, current)
     return events
 end
 
+-- Gauge feedback from two readings ({heat, peril, charge, max_charge}, heat
+-- and peril as fractions). Returns the events of this frame, most important
+-- first, each {kind, scale, hands} where hands is "gun" or "both".
+function Haptics.gauge_events(previous, current)
+    local events = {}
+    if type(previous) ~= "table" or type(current) ~= "table" then return events end
+    local function number(v) return type(v) == "number" and v == v end
+    local function crossed(field, share)
+        return number(previous[field]) and number(current[field]) and
+            previous[field] < share and current[field] >= share
+    end
+    if crossed("heat", Haptics.CRITICAL_SHARE) then events[#events + 1] = {"heat_critical", 1, "gun"}
+    elseif crossed("heat", Haptics.WARNING_SHARE) then events[#events + 1] = {"heat_warning", 1, "gun"} end
+    if crossed("peril", Haptics.CRITICAL_SHARE) then events[#events + 1] = {"peril_critical", 1, "both"}
+    elseif crossed("peril", Haptics.WARNING_SHARE) then events[#events + 1] = {"peril_warning", 1, "both"} end
+    local maximum = number(current.max_charge) and current.max_charge > 0 and current.max_charge or 1
+    if number(previous.charge) and number(current.charge) and current.charge > previous.charge + 1e-4 then
+        if current.charge >= maximum - 1e-3 then
+            events[#events + 1] = {"charge_full", 1, "gun"}
+        else
+            events[#events + 1] = {"charging", math.max(0.4, math.min(1, current.charge / maximum)), "gun"}
+        end
+    end
+    return events
+end
+
 -- States the stock character state machine uses for a player who cannot act.
 Haptics.DISABLED_STATES = {knocked_down = true, hogtied = true, ledge_hanging = true, catapulted = true,
     netted = true, pounced = true, grabbed = true, consumed = true, warp_grabbed = true,
@@ -313,7 +350,7 @@ function Haptics.install(mod, presentation, send)
         mod:hook_safe(require("scripts/extension_systems/weapon/actions/action_push"), "_play_push_rumble",
             observe(function(self, number_of_units_hit) api.push(self, number_of_units_hit) end))
     end
-    local previous, previous_body
+    local previous, previous_body, previous_gauges
     local function field(read)
         local ok, value = pcall(read)
         return ok and value or nil
@@ -340,7 +377,7 @@ function Haptics.install(mod, presentation, send)
     function api.sample(unit)
         local mode = test_flag() or mod:get("vr_haptics_mode")
         if not unit or (mode ~= "informative" and mode ~= "immersive") then
-            previous, previous_body = nil, nil; return
+            previous, previous_body, previous_gauges = nil, nil, nil; return
         end
         local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
         if unit_data then
@@ -353,6 +390,22 @@ function Haptics.install(mod, presentation, send)
                 end
             end
             previous_body = body
+            local wielded = field(function() return unit_data:read_component("inventory").wielded_slot end)
+            local gauges = {
+                heat = type(wielded) == "string" and wielded:match("^slot_") and
+                    field(function() return unit_data:read_component(wielded).overheat_current_percentage end) or nil,
+                peril = field(function() return unit_data:read_component("warp_charge").current_percentage end),
+                charge = field(function() return unit_data:read_component("action_module_charge").charge_level end),
+                max_charge = field(function() return unit_data:read_component("action_module_charge").max_charge end),
+            }
+            for _, event in ipairs(Haptics.gauge_events(previous_gauges, gauges)) do
+                if Haptics.plays(event[1], mode) then
+                    local hands = event[3] == "both" and "both" or gun_hands()
+                    if hands and api.pulse(hands, event[1], nil, event[2]) then count(event[1]) end
+                    break
+                end
+            end
+            previous_gauges = gauges
         end
         local inventory = unit_data and unit_data:read_component("inventory")
         if not inventory or inventory.wielded_slot ~= "slot_secondary" then previous = nil; return end
