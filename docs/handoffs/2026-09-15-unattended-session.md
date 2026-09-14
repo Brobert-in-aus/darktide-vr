@@ -227,6 +227,25 @@ Commit `1222cc6`, deployed, option default off (evening item 7).
   `run-view.ps1` now removes it at the end, and I checked the installed
   folder: only the mod's own `darktidevr_crosshair_scale.flag` remains.
 
+## Menu haptics (carried item)
+
+Commit `6e0d1a6`, deployed (evening item 8).
+- **What.** Informative mode only: a tick when the VR menu pointer moves
+  onto a control (`menu_hover`) and a firmer tick on click, enter, back,
+  confirm or select (`menu_confirm`). Both play on the dominant hand.
+- **How.** The stock hotspot pass plays its hover and click sounds when a
+  control reacts. A `hook_safe` on `UIManager.play_2d_sound` maps sound
+  event names by whole words, so `background_music` is not `back`. It runs
+  only while `using_native_menu_input()` is true. The 60 ms per-hand rate
+  limit keeps fast sweeps from buzzing.
+- **Tests:** `haptics` covers the name mapping, modes, the hook firing only
+  in Informative mode and only with the VR pointer.
+- **Evidence (`menu1`).** A startup menu confirm pulsed and the viewer played
+  it (`openxr.haptic request=1 hand=right amplitude=0.35 duration_ms=15
+  result=0`). No script errors.
+- **Not shown:** hover ticks (the synthetic pointer did not sweep over
+  buttons) and the worn feel.
+
 Note: `run2` died because I piped the capture script through
 `Select-Object -First 1`, which stopped the script and so the runner's job
 (the runner force-stopped the game). The game did not fault.

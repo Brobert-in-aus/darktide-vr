@@ -69,3 +69,11 @@ Yesterday's checklist items not reached are still open in
    it engages too early or late. The butt position is an estimate. The
    console line `DARKTIDEVR_TWO_HAND released ... stock_frames=
    stock_min_distance_m=` shows how close the butt got.
+8. **Menu ticks** (`6e0d1a6`). Controller vibration mode Informative, in
+   any menu (inventory, mission board, options):
+   - moving the pointer onto a button gives a very light tick;
+   - clicking, or going back, gives a slightly firmer one;
+   - Immersive mode gives no menu ticks.
+
+   Say if they are too strong, too weak, or fire on things that are not
+   buttons.
