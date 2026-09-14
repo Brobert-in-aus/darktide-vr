@@ -188,6 +188,10 @@ return {
                         },
                     },
                     {
+                        setting_id = "vr_haptics_strength", type = "numeric",
+                        default_value = 100, range = {25, 200}, decimals_number = 0, step_size_value = 5,
+                    },
+                    {
                         setting_id = "vr_ammo_readout",
                         type = "checkbox",
                         default_value = false,

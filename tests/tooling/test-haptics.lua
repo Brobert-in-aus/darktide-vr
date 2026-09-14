@@ -238,4 +238,27 @@ assert(melee_kinds({t = 1.24, melee = true, special = true}, {t = 1.26, melee = 
 assert(melee_kinds({t = 1, melee = false}, {t = 1.02, melee = false, special = true}) == "", "a flashlight hummed")
 assert(melee_kinds(nil, {t = 1}) == "")
 
-print("haptics=pass mapping rate_limit notices modes failed_send ammo_events scale body_events melee_hooks shot_families gauges melee_windup_special")
+-- Interactions.
+local function interaction_kinds(previous, current)
+    local out = {}
+    for _, event in ipairs(Haptics.interaction_events(previous, current)) do out[#out + 1] = event[1] end
+    return table.concat(out, ",")
+end
+local holding = {t = 5.0, state = "is_interacting", start_time = 4.0, duration = 1.0}
+assert(interaction_kinds(holding, {t = 5.02, state = "none"}) == "interaction_done", "a finished hold was missed")
+assert(interaction_kinds({t = 4.5, state = "is_interacting", start_time = 4.0, duration = 1.0}, {t = 4.52, state = "none"}) == "",
+    "a released hold counted as finished")
+assert(interaction_kinds({t = 1, state = "is_interacting", start_time = 1, duration = 0}, {t = 1.01, state = "none"}) ==
+    "interaction_done", "an instant interaction was missed")
+assert(interaction_kinds({t = 4.24, state = "is_interacting", start_time = 4, duration = 1},
+    {t = 4.26, state = "is_interacting", start_time = 4, duration = 1}) == "interaction_hum")
+assert(interaction_kinds({t = 4.21, state = "is_interacting", start_time = 4, duration = 1},
+    {t = 4.23, state = "is_interacting", start_time = 4, duration = 1}) == "")
+assert(interaction_kinds({t = 1, state = "none"}, {t = 1.02, state = "is_interacting", start_time = 1, duration = 2}) == "")
+assert(interaction_kinds(nil, {t = 1}) == "")
+-- Strength option.
+assert(Haptics.strength_scale(100) == 1 and Haptics.strength_scale(50) == 0.5)
+assert(Haptics.strength_scale(1000) == 2 and Haptics.strength_scale(1) == 0.25, "strength not clamped to its range")
+assert(Haptics.strength_scale(nil) == 1 and Haptics.strength_scale(0 / 0) == 1)
+
+print("haptics=pass mapping rate_limit notices modes failed_send ammo_events scale body_events melee_hooks shot_families gauges melee_windup_special interaction strength")

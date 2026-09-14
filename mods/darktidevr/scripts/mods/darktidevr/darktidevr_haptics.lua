@@ -63,7 +63,17 @@ Haptics.KINDS = {
     heavy_ready = {modes = BOTH, notice = true, amplitude = 0.3, duration_ms = 15},
     special_on = {modes = BOTH, notice = true, amplitude = 0.5, duration_ms = 30},
     special_hum = {modes = {immersive = true}, amplitude = 0.15, duration_ms = 15},
+    -- Interactions: a light hum while holding one (revive, pick up, operate),
+    -- a notice when it finishes. A cancelled hold is not a finish.
+    interaction_hum = {modes = {immersive = true}, amplitude = 0.2, duration_ms = 15},
+    interaction_done = {modes = BOTH, notice = true, amplitude = 0.5, duration_ms = 35},
 }
+-- The Controller vibration strength option (percent) scales every pulse.
+Haptics.STRENGTH_RANGE = {25, 200}
+function Haptics.strength_scale(percent)
+    if type(percent) ~= "number" or percent ~= percent then return 1 end
+    return math.max(Haptics.STRENGTH_RANGE[1], math.min(Haptics.STRENGTH_RANGE[2], percent)) / 100
+end
 Haptics.SPECIAL_HUM_INTERVAL = 0.25
 Haptics.WARNING_SHARE = 0.75
 Haptics.CRITICAL_SHARE = 0.9
@@ -265,6 +275,30 @@ function Haptics.melee_events(previous, current)
     return events
 end
 
+-- Interaction feedback from two readings ({t, state, start_time, duration}).
+-- A hold that ends within FINISH_TOLERANCE of its duration finished; one that
+-- ends earlier was let go or cancelled. Instant interactions finish on exit.
+Haptics.FINISH_TOLERANCE = 0.15
+function Haptics.interaction_events(previous, current)
+    local events = {}
+    if type(previous) ~= "table" or type(current) ~= "table" then return events end
+    local function number(v) return type(v) == "number" and v == v end
+    local was = previous.state == "is_interacting"
+    local is = current.state == "is_interacting"
+    if was and not is then
+        local duration = number(previous.duration) and previous.duration or 0
+        local elapsed = number(previous.t) and number(previous.start_time) and previous.t - previous.start_time or 0
+        if duration <= 0 or elapsed >= duration - Haptics.FINISH_TOLERANCE then
+            events[#events + 1] = {"interaction_done", 1, "gun"}
+        end
+    elseif was and is and number(current.duration) and current.duration > 0 and number(previous.t) and
+            number(current.t) and math.floor(current.t / Haptics.SPECIAL_HUM_INTERVAL) ~=
+            math.floor(previous.t / Haptics.SPECIAL_HUM_INTERVAL) then
+        events[#events + 1] = {"interaction_hum", 1, "gun"}
+    end
+    return events
+end
+
 -- States the stock character state machine uses for a player who cannot act.
 Haptics.DISABLED_STATES = {knocked_down = true, hogtied = true, ledge_hanging = true, catapulted = true,
     netted = true, pounced = true, grabbed = true, consumed = true, warp_grabbed = true,
@@ -286,6 +320,7 @@ function Haptics.install(mod, presentation, send)
     end
     local logged = 0
     local function logged_send(hands, amplitude, duration_ms, frequency_hz)
+        amplitude = math.max(0.02, math.min(1, amplitude * Haptics.strength_scale(mod:get("vr_haptics_strength"))))
         local ok, delivered = pcall(send, hands, amplitude, duration_ms, frequency_hz)
         delivered = ok and delivered == true
         if logged < Haptics.LOGGED_PULSES then
@@ -381,7 +416,7 @@ function Haptics.install(mod, presentation, send)
         mod:hook_safe(require("scripts/extension_systems/weapon/actions/action_push"), "_play_push_rumble",
             observe(function(self, number_of_units_hit) api.push(self, number_of_units_hit) end))
     end
-    local previous, previous_body, previous_gauges, previous_melee
+    local previous, previous_body, previous_gauges, previous_melee, previous_interaction
     local function field(read)
         local ok, value = pcall(read)
         return ok and value or nil
@@ -408,7 +443,8 @@ function Haptics.install(mod, presentation, send)
     function api.sample(unit)
         local mode = test_flag() or mod:get("vr_haptics_mode")
         if not unit or (mode ~= "informative" and mode ~= "immersive") then
-            previous, previous_body, previous_gauges, previous_melee = nil, nil, nil, nil; return
+            previous, previous_body, previous_gauges, previous_melee, previous_interaction = nil, nil, nil, nil, nil
+            return
         end
         local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
         if unit_data then
@@ -466,6 +502,20 @@ function Haptics.install(mod, presentation, send)
                 end
             end
             previous_melee = reading
+            local interaction = {t = reading.t}
+            pcall(function()
+                local component = unit_data:read_component("interaction")
+                interaction.state, interaction.start_time, interaction.duration =
+                    component.state, component.start_time, component.duration
+            end)
+            for _, event in ipairs(Haptics.interaction_events(previous_interaction, interaction)) do
+                if Haptics.plays(event[1], mode) then
+                    local hands = melee_hands()
+                    if hands and api.pulse(hands, event[1], nil, event[2]) then count(event[1]) end
+                    break
+                end
+            end
+            previous_interaction = interaction
         end
         local inventory = unit_data and unit_data:read_component("inventory")
         if not inventory or inventory.wielded_slot ~= "slot_secondary" then previous = nil; return end
