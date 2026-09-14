@@ -6357,7 +6357,7 @@ function presentation.inject_gameplay_input(self, main_t, input)
             presentation.controller_bindings.support_grip)
     end
     if presentation.haptics then
-        pcall(presentation.haptics.sample_weapon,
+        pcall(presentation.haptics.sample,
             controller_observation.gameplay_input_active and player_unit or nil)
     end
     if presentation.gameplay_ui then

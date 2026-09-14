@@ -76,4 +76,50 @@ assert(E(reading(9, 31), reading(8, 31)) == nil, "low ammo repeated below the th
 assert(E(reading(1, 100), reading(0, 100, "other")) == nil, "a weapon swap produced an event")
 assert(E(nil, reading(0, 0)) == nil and E(reading(1, 1), nil) == nil)
 
-print("haptics=pass mapping rate_limit notices modes failed_send ammo_events")
+-- Amplitude scale.
+mode = "immersive"
+assert(api.pulse("left", "damage", 60, 0.5) and math.abs(sent[#sent][2] - Haptics.KINDS.damage.amplitude * 0.5) < 1e-9)
+assert(api.pulse("right", "damage", 60, 9) and sent[#sent][2] == 1, "scale was not clamped")
+
+-- Body events.
+local function body(fields)
+    local b = {health = 200, max_health = 200, toughness = 1, disabled = false, stamina = 1,
+        blocked = false, perfect_block = false, combat_charges = 1, grenade_charges = 2}
+    for k, v in pairs(fields or {}) do b[k] = v end
+    return b
+end
+local function kinds(previous, current)
+    local out = {}
+    for _, event in ipairs(Haptics.body_events(previous, current)) do out[#out + 1] = event[1] end
+    return table.concat(out, ",")
+end
+assert(kinds(body(), body()) == "", "an unchanged body produced events")
+assert(kinds(nil, body()) == "")
+local hit = Haptics.body_events(body(), body({health = 175, toughness = 0.5}))
+assert(hit[1][1] == "damage" and math.abs(hit[1][2] - 0.5) < 1e-9, "damage scale: " .. tostring(hit[1][2]))
+assert(#hit == 1, "toughness loss with health loss also pulsed a toughness hit")
+assert(Haptics.body_events(body(), body({health = 199}))[1][2] == 0.4, "small damage below the minimum scale")
+assert(kinds(body(), body({toughness = 0})) == "toughness_broken")
+assert(kinds(body({toughness = 0}), body({toughness = 0})) == "")
+assert(kinds(body(), body({toughness = 0.9})) == "toughness_hit")
+assert(kinds(body(), body({disabled = true, health = 300, max_health = 300})) == "disabled",
+    "becoming disabled pulsed more than the disable")
+assert(kinds(body({disabled = true}), body({disabled = true, health = 150})) == "damage", "damage while down was missed")
+assert(kinds(body(), body({blocked = true})) == "block")
+assert(kinds(body(), body({blocked = true, perfect_block = true})) == "perfect_block")
+assert(kinds(body({blocked = true}), body({blocked = true})) == "", "a held block repeated")
+assert(kinds(body({health = 60}), body({health = 50})) == "damage,low_health")
+assert(kinds(body({stamina = 0.3}), body({stamina = 0})) == "stamina_empty")
+assert(kinds(body(), body({combat_charges = 0})) == "ability_used")
+assert(kinds(body({combat_charges = 0}), body()) == "ability_ready")
+assert(kinds(body({grenade_charges = 1}), body()) == "blitz_ready")
+assert(kinds(body(), body({grenade_charges = 1})) == "", "a thrown blitz pulsed")
+assert(kinds(body({health = 0 / 0}), body({health = 100})) == "", "a missing reading produced damage")
+-- Every body kind named by body_events exists and plays in a mode.
+for _, name in ipairs({"damage", "toughness_broken", "toughness_hit", "disabled", "low_health", "stamina_empty",
+        "block", "perfect_block", "ability_used", "ability_ready", "blitz_ready"}) do
+    assert(Haptics.KINDS[name], name)
+end
+assert(Haptics.DISABLED_STATES.knocked_down and Haptics.DISABLED_STATES.netted and not Haptics.DISABLED_STATES.walking)
+
+print("haptics=pass mapping rate_limit notices modes failed_send ammo_events scale body_events")

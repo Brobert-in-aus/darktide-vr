@@ -340,6 +340,11 @@ void apply_synthetic_holster_path(core::SharedControllerState& state,
       if ((phase - 240) % 12 < 4) {
         state.hands[1].trigger = 1.0F;
       }
+      // Left grip away from the foregrip: the combat ability, for the ability
+      // vibrations.
+      if (phase >= 440 && phase < 446) {
+        state.hands[0].squeeze = 1.0F;
+      }
     } else if (phase >= 472 && phase < 478) {
       // Right stick down: interact and reload.
       state.hands[1].thumbstick_y = -1.0F;

@@ -28,7 +28,25 @@ Haptics.KINDS = {
     low_ammo = {modes = {informative = true}, notice = true, amplitude = 0.4, duration_ms = 25},
     -- A shot left the gun (continuous weapons pulse at the rate limit).
     shot = {modes = {immersive = true}, amplitude = 0.65, duration_ms = 20},
+    -- Body (both hands). Health lost, scaled by the share of a quarter of
+    -- maximum health; toughness broken; toughness lost without health loss.
+    damage = {modes = BOTH, notice = true, amplitude = 0.7, duration_ms = 45},
+    toughness_broken = {modes = BOTH, notice = true, amplitude = 0.6, duration_ms = 60},
+    toughness_hit = {modes = {immersive = true}, amplitude = 0.35, duration_ms = 20},
+    -- Knocked down, netted, pounced, grabbed, hanging from a ledge.
+    disabled = {modes = BOTH, notice = true, amplitude = 1.0, duration_ms = 200},
+    -- Health falls to LOW_HEALTH_SHARE; stamina runs out.
+    low_health = {modes = {informative = true}, notice = true, amplitude = 0.5, duration_ms = 40},
+    stamina_empty = {modes = {informative = true}, notice = true, amplitude = 0.4, duration_ms = 25},
+    -- A block takes a hit (the first of a block hold); a perfect block.
+    block = {modes = BOTH, amplitude = 0.5, duration_ms = 25},
+    perfect_block = {modes = BOTH, notice = true, amplitude = 0.75, duration_ms = 35},
+    -- Combat ability charge used or regained; blitz charge regained.
+    ability_used = {modes = {immersive = true}, amplitude = 0.6, duration_ms = 40},
+    ability_ready = {modes = {informative = true}, notice = true, amplitude = 0.45, duration_ms = 30},
+    blitz_ready = {modes = {informative = true}, notice = true, amplitude = 0.3, duration_ms = 15},
 }
+Haptics.LOW_HEALTH_SHARE = 0.25
 Haptics.LOW_AMMO_SHARE = 0.2
 -- Pulses on one hand closer together than this are dropped: requests between
 -- two viewer frames coalesce anyway, and a buzzing hand is no feedback.
@@ -47,7 +65,8 @@ end
 -- request is on its way. mode() returns the current mode name.
 function Haptics.new(send, mode)
     local api = {last = {}, sent = 0, dropped = 0}
-    function api.pulse(hand, kind, t)
+    -- scale (default 1) multiplies the kind's amplitude, within 0.05 to 1.
+    function api.pulse(hand, kind, t, scale)
         local bits, shape = Haptics.HANDS[hand], Haptics.KINDS[kind]
         if not bits or not shape or type(t) ~= "number" or t ~= t then return false end
         if not Haptics.plays(kind, mode and mode()) then return false end
@@ -60,7 +79,11 @@ function Haptics.new(send, mode)
                 return false
             end
         end
-        if not send(bits, shape.amplitude, shape.duration_ms, 0) then return false end
+        local amplitude = shape.amplitude
+        if type(scale) == "number" and scale == scale then
+            amplitude = math.max(0.05, math.min(1, amplitude * scale))
+        end
+        if not send(bits, amplitude, shape.duration_ms, 0) then return false end
         for name, bit in pairs(Haptics.HANDS) do
             if name ~= "both" and bits % (bit * 2) >= bit then api.last[name] = {t = t, notice = notice} end
         end
@@ -94,6 +117,59 @@ function Haptics.ammo_events(previous, current)
     end
     return nil
 end
+
+-- Body feedback from two readings of the local player ({health, max_health,
+-- toughness (fraction), disabled, stamina (fraction), blocked, perfect_block,
+-- combat_charges, grenade_charges}). Returns the events of this frame, most
+-- important first, each {kind, scale}. A reading taken as the player becomes
+-- disabled (a knocked-down health pool) reports only the disable.
+function Haptics.body_events(previous, current)
+    local events = {}
+    if type(previous) ~= "table" or type(current) ~= "table" then return events end
+    local function number(v) return type(v) == "number" and v == v end
+    if current.disabled and not previous.disabled then
+        events[#events + 1] = {"disabled", 1}
+        return events
+    end
+    local health_lost = number(previous.health) and number(current.health) and
+        previous.disabled == current.disabled and previous.health - current.health or 0
+    if health_lost > 0.5 then
+        local quarter = number(current.max_health) and current.max_health > 0 and current.max_health * 0.25 or 50
+        events[#events + 1] = {"damage", math.max(0.4, math.min(1, health_lost / quarter))}
+    end
+    if number(previous.toughness) and number(current.toughness) then
+        if previous.toughness > 0 and current.toughness <= 0 then
+            events[#events + 1] = {"toughness_broken", 1}
+        elseif health_lost <= 0.5 and previous.toughness - current.toughness > 0.01 then
+            events[#events + 1] = {"toughness_hit", math.max(0.4, math.min(1, (previous.toughness - current.toughness) / 0.25))}
+        end
+    end
+    if current.blocked and not previous.blocked then
+        events[#events + 1] = {current.perfect_block and "perfect_block" or "block", 1}
+    end
+    if number(previous.health) and number(current.health) and number(current.max_health) and current.max_health > 0 and
+            previous.health / current.max_health > Haptics.LOW_HEALTH_SHARE and
+            current.health / current.max_health <= Haptics.LOW_HEALTH_SHARE and not current.disabled then
+        events[#events + 1] = {"low_health", 1}
+    end
+    if number(previous.stamina) and number(current.stamina) and previous.stamina > 0.05 and current.stamina <= 0 then
+        events[#events + 1] = {"stamina_empty", 1}
+    end
+    if number(previous.combat_charges) and number(current.combat_charges) then
+        if current.combat_charges < previous.combat_charges then events[#events + 1] = {"ability_used", 1}
+        elseif current.combat_charges > previous.combat_charges then events[#events + 1] = {"ability_ready", 1} end
+    end
+    if number(previous.grenade_charges) and number(current.grenade_charges) and
+            current.grenade_charges > previous.grenade_charges then
+        events[#events + 1] = {"blitz_ready", 1}
+    end
+    return events
+end
+
+-- States the stock character state machine uses for a player who cannot act.
+Haptics.DISABLED_STATES = {knocked_down = true, hogtied = true, ledge_hanging = true, catapulted = true,
+    netted = true, pounced = true, grabbed = true, consumed = true, warp_grabbed = true,
+    mutant_charged = true, vortex_grabbed = true, dead = true}
 
 function Haptics.install(mod, presentation, send)
     local test_poll, test_mode = 0, nil
@@ -129,8 +205,8 @@ function Haptics.install(mod, presentation, send)
         return time and time:has_timer("main") and time:time("main") or nil
     end
     -- Callers without a frame time use the main clock.
-    function api.pulse(hand, kind, t)
-        return pulse(hand, kind, t == nil and now() or t)
+    function api.pulse(hand, kind, t, scale)
+        return pulse(hand, kind, t == nil and now() or t, scale)
     end
     local counts = {}
     local function count(kind)
@@ -151,14 +227,47 @@ function Haptics.install(mod, presentation, send)
         local hands = gun_hands()
         if hands and api.pulse(hands, "shot") then count("shot") end
     end
-    local previous
+    local previous, previous_body
+    local function field(read)
+        local ok, value = pcall(read)
+        return ok and value or nil
+    end
+    local function read_body(unit, unit_data)
+        local health = ScriptUnit.has_extension(unit, "health_system")
+        local toughness = ScriptUnit.has_extension(unit, "toughness_system")
+        local ability = ScriptUnit.has_extension(unit, "ability_system")
+        local state = field(function() return unit_data:read_component("character_state").state_name end)
+        return {
+            health = health and field(function() return health:current_health() end),
+            max_health = health and field(function() return health:max_health() end),
+            toughness = toughness and field(function() return toughness:current_toughness_percent() end),
+            disabled = Haptics.DISABLED_STATES[state] == true or
+                field(function() return unit_data:read_component("disabled_character_state").is_disabled end) == true,
+            stamina = field(function() return unit_data:read_component("stamina").current_fraction end),
+            blocked = field(function() return unit_data:read_component("block").has_blocked end) == true,
+            perfect_block = field(function() return unit_data:read_component("block").is_perfect_blocking end) == true,
+            combat_charges = ability and field(function() return ability:remaining_ability_charges("combat_ability") end),
+            grenade_charges = ability and field(function() return ability:remaining_ability_charges("grenade_ability") end),
+        }
+    end
     -- Once per gameplay frame, after input.
-    function api.sample_weapon(unit)
+    function api.sample(unit)
         local mode = test_flag() or mod:get("vr_haptics_mode")
         if not unit or (mode ~= "informative" and mode ~= "immersive") then
-            previous = nil; return
+            previous, previous_body = nil, nil; return
         end
         local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
+        if unit_data then
+            local body = read_body(unit, unit_data)
+            -- The first event this mode plays; the rest of the frame is one pulse.
+            for _, event in ipairs(Haptics.body_events(previous_body, body)) do
+                if Haptics.plays(event[1], mode) then
+                    if api.pulse("both", event[1], nil, event[2]) then count(event[1]) end
+                    break
+                end
+            end
+            previous_body = body
+        end
         local inventory = unit_data and unit_data:read_component("inventory")
         if not inventory or inventory.wielded_slot ~= "slot_secondary" then previous = nil; return end
         local values = presentation.ammo_readout and presentation.ammo_readout.slot_values and
