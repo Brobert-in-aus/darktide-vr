@@ -222,6 +222,8 @@ int main() {
         darktidevr::harness::apply_synthetic_holster_path(grip, 360 + 60, true);
         darktidevr::harness::apply_synthetic_holster_path(lifted, 360 + 150, true);
         darktidevr::harness::apply_synthetic_holster_path(released, 360 + 300, true);
+        auto spread = left.state;
+        darktidevr::harness::apply_synthetic_holster_path(spread, 360 + 205, true);
         const float rise = lifted.hands[0].body_grip_pose.position.z -
                            grip.hands[0].body_grip_pose.position.z;
         const auto& a = arriving.hands[0].body_grip_pose.position;
@@ -229,6 +231,8 @@ int main() {
         const float approach = std::sqrt((a.x - g.x) * (a.x - g.x) + (a.y - g.y) * (a.y - g.y) +
                                          (a.z - g.z) * (a.z - g.z));
         return approach > 0.15F && arriving.hands[0].squeeze == 0.0F &&
+               spread.hands[0].squeeze == 1.0F &&
+               std::abs(spread.hands[0].body_grip_pose.position.y - g.y - 0.25F) < 0.001F &&
                grip.hands[0].squeeze == 1.0F && lifted.hands[0].squeeze == 1.0F &&
                released.hands[0].squeeze == 0.0F && std::abs(rise - 0.05F) < 0.001F &&
                std::abs(grip.hands[0].body_grip_pose.position.y -

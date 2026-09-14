@@ -137,7 +137,10 @@ function Support.new(Pose)
         api.ads_unavailable=profile.ads==true and (frame.toggle_ads~=false or frame.ads_supported~=true)
         return {control=frame.side..'_grip',owner=identity,action=action,toggle=api.grip_toggle()==true,
             acquire=Pose.near(frame.rotation,frame.primary,frame.support,profile.socket,profile.acquire),
-            retain=Pose.near(filter.apply(frame.rotation),frame.primary,frame.support,profile.socket,profile.release)}
+            -- Once held, the grip keeps any hand spacing: only the guards above end
+            -- it (hands too close or crossed to give the gun a direction, lost
+            -- tracking, weapon or action changes, a menu).
+            retain=true}
     end
     function api.finish(grip)
         api.held=false

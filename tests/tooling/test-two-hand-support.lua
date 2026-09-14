@@ -50,6 +50,16 @@ do
     frame.live=false; sample(0,0,0,0,false); frame.live=true
     assert(api.snap==0 and not api.in_zone,'lost tracking kept the glove on the grip')
 end
+-- Held grips keep any hand spacing; hands brought together end them.
+do
+    sample(0,0,0,0,false)
+    sample(512,2,2,0,true)
+    for _,spacing in ipairs({.6,1.2,.2}) do frame.support={0,spacing,0}; sample(512,0,2,0,true) end
+    frame.support={.02,.03,0}
+    sample(512,0,0,0,false) -- hands together: no direction
+    frame.support={0,.3,0}
+    sample(0,0,0,0,false)
+end
 -- Toggle grip: a press takes the grip, letting go keeps it, the next press
 -- ends it without reaching the bound action; moving away still cancels.
 do
@@ -63,8 +73,10 @@ do
     sample(0,0,0,0,false) -- and no release edge for it
     sample(512,2,2,0,true)
     sample(0,0,2,0,true)
-    frame.support={.3,.3,0}
-    sample(0,0,0,0,false) -- beyond the release radius
+    frame.support={.3,.9,.2}
+    sample(0,0,2,0,true) -- hands far apart keep a toggled grip
+    frame.support={0,-.3,0}
+    sample(0,0,0,0,false) -- crossed behind the gun hand: no direction, released
     frame.support={0,.3,0}
     sample(0,0,0,0,false)
     sample(512,2,2,0,true)

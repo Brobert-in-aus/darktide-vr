@@ -38,7 +38,7 @@ return {
     vr_two_hand_support = {en = "Two-hand support"},
     vr_two_hand_support_description = {en = "Grip with your off hand where the weapon's own animation holds the foregrip to steady a gun with both hands. The glove moves onto the foregrip when your hand is close enough to grip. A grip recorded with /dtvr_two_hand_calibrate takes precedence for that weapon this session."},
     vr_two_hand_grip_mode = {en = "Two-hand grip"},
-    vr_two_hand_grip_mode_description = {en = "Hold: the gun stays in both hands while you hold grip. Toggle: press grip to take the foregrip and press it again to let go; moving your hand well away from the gun also lets go."},
+    vr_two_hand_grip_mode_description = {en = "Hold: the gun stays in both hands while you hold grip. Toggle: press grip to take the foregrip and press it again to let go. Either way, once gripped your hands can move any distance apart; bringing them together or crossing them lets go."},
     vr_two_hand_grip_hold = {en = "Hold"},
     vr_two_hand_grip_toggle = {en = "Toggle"},
     vr_ammo_readout = {en = "Ammo count at the hand"},

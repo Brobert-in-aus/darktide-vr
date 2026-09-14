@@ -318,10 +318,16 @@ void apply_synthetic_holster_path(core::SharedControllerState& state,
       if (phase >= 90 && phase < 180) {
         lift = 0.05F * std::min(1.0F, static_cast<float>(phase - 90) / 30.0F);
       }
+      // Then the hands move 25 cm further apart along the barrel before letting
+      // go: a held grip keeps any spacing.
+      float spread = 0.0F;
+      if (phase >= 180 && phase < 240) {
+        spread = 0.25F * std::min(1.0F, static_cast<float>(phase - 180) / 20.0F);
+      }
       const float approach =
           phase < 30 ? 1.0F - static_cast<float>(phase) / 30.0F : 0.0F;
       const math::Vec3 foregrip{grip.x - 0.034F - 0.10F * approach,
-                                grip.y + 0.329F * std::cos(pitch) - 0.12F * approach,
+                                grip.y + 0.329F * std::cos(pitch) - 0.12F * approach + spread,
                                 grip.z + 0.329F * std::sin(pitch) + lift - 0.08F * approach};
       state.hands[0].body_aim_pose.position = foregrip;
       state.hands[0].body_grip_pose.position = foregrip;
