@@ -83,6 +83,13 @@ function Alignment.install(mod,presentation)
         local original=Unit.local_rotation(unit,attach)
         local old_attach_position=Unit.world_position(unit,attach)
         local old_attach_rotation=Unit.world_rotation(unit,attach)
+        -- The weapon's fixed attach-to-muzzle rotation, before the write below:
+        -- two-hand support uses it to express the stock left hand in the aim
+        -- frame (the authored grip).
+        if dominant=='right' and presentation.two_hand and presentation.two_hand.observe_authored then
+            presentation.two_hand.observe_authored(unit,equipped,template,
+                Quaternion.multiply(Quaternion.inverse(old_attach_rotation),Unit.world_rotation(muzzle_unit,muzzle_node)))
+        end
         local original_position=Unit.local_position(unit,attach)
         local desired_position=Matrix4x4.transform(Matrix4x4.inverse(Unit.world_pose(unit,parent)),grip)
         local desired=Alignment.rotation(Unit.world_rotation(unit,parent),

@@ -46,6 +46,7 @@ local function valid_profile(profile)
 end
 function Support.new(Pose)
     local api={profiles={},enabled=false,ads_unavailable=false,held=false,stock_active=false}
+    function api.is_enabled() return api.enabled end
     local filter=Pose.new()
     local stock_anchor=Pose.new_stock_anchor()
     local context,identity
@@ -64,7 +65,12 @@ function Support.new(Pose)
     end
     function api.prepare(frame)
         local profile=frame and api.profiles[frame.template]
-        if not api.enabled or not frame or frame.active~=true or frame.live~=true or
+        -- A grip measured on another item of the template is not borrowed; the
+        -- weapon's own authored grip (the stock animation's left hand) is the
+        -- default instead.
+        if profile and profile.weapon~=nil and frame and profile.weapon~=frame.weapon then profile=nil end
+        if not profile and frame and api.authored_profile then profile=api.authored_profile(frame) end
+        if not api.is_enabled() or not frame or frame.active~=true or frame.live~=true or
             frame.weapon==nil or frame.unit==nil or frame.generation==nil or frame.recenter==nil or
             (frame.side~='left' and frame.side~='right') or not valid_profile(profile) or
             (profile.side~=nil and profile.side~=frame.side) or
@@ -122,13 +128,89 @@ function Support.new(Pose)
     end
     function api.hand_pose(unit,primary,rotation)
         if not api.held or not identity or identity.unit~=unit then return nil end
-        return Pose.hand(rotation,primary,identity.profile.socket,identity.profile.hand_rotation)
+        local position,orientation=Pose.hand(rotation,primary,identity.profile.socket,identity.profile.hand_rotation)
+        return position,orientation,identity.profile.authored==true
     end
     return api
 end
 function Support.install(mod,presentation,observation)
     local Pose=mod:io_dofile('darktidevr/scripts/mods/darktidevr/darktidevr_two_hand_pose')
     local api=Support.new(Pose)
+    -- The option turns support on for every session; the chat commands still
+    -- work for the current one.
+    function api.is_enabled()
+        return api.enabled or (mod.get and mod:get('vr_two_hand_support')==true) or false
+    end
+    -- Authored grips, per wielded item: the stock first-person animation's left
+    -- hand on the weapon, averaged over AUTHORED_SAMPLES steady frames, then
+    -- kept for that item. Right-dominant only (the animation's support hand is
+    -- the left).
+    Support.AUTHORED_SAMPLES=30
+    local function vec3(v) return v and {Vector3.x(v),Vector3.y(v),Vector3.z(v)} end
+    local function quat(q) return q and {Quaternion.to_elements(q)} end
+    local authored=setmetatable({},{__mode='k'})
+    local authored_logged={}
+    local steady_actions={aim=true,unaim=true,shoot_hit_scan=true,shoot_pellets=true,shoot_projectile=true}
+    function api.observe_authored(unit,equipped,template,muzzle_in_attach)
+        if not unit or not equipped or type(template)~='table' then return end
+        local record=authored[equipped]
+        if record and record.done then return end
+        local weapon=ScriptUnit.has_extension(unit,'weapon_system')
+        local action=weapon and weapon:running_action_settings()
+        if action and not steady_actions[action.kind] then return end
+        local first_person=ScriptUnit.has_extension(unit,'first_person_system')
+        local rig=first_person and first_person._first_person_unit
+        if not rig or not Unit.alive(rig) or not Unit.has_node(rig,'j_lefthand') or
+            not Unit.has_node(rig,'j_rightweaponattach') then
+            if not authored_logged.rig then
+                authored_logged.rig=true
+                mod:info('DARKTIDEVR_TWO_HAND authored_grip=unavailable reason=first_person_rig_nodes')
+            end
+            return
+        end
+        local attach,left=Unit.node(rig,'j_rightweaponattach'),Unit.node(rig,'j_lefthand')
+        local socket,hand=Pose.authored_socket(vec3(Unit.world_position(rig,attach)),
+            quat(Unit.world_rotation(rig,attach)),vec3(Unit.world_position(rig,left)),
+            quat(Unit.world_rotation(rig,left)),quat(muzzle_in_attach))
+        if not record then record={average=Pose.new_authored_average(Support.AUTHORED_SAMPLES),rejected=0}; authored[equipped]=record end
+        if not socket then
+            record.rejected=record.rejected+1
+            if record.rejected==120 and not authored_logged[template.name] then
+                authored_logged[template.name]=true
+                mod:info('DARKTIDEVR_TWO_HAND authored_grip=none template=%s reason=hand_off_weapon',tostring(template.name))
+            end
+            return
+        end
+        local done=record.average.add(socket,hand)
+        if done then
+            record.done={socket=done.socket,hand_rotation=done.hand_rotation,side='left',weapon=equipped,
+                acquire=.1,release=.2,smoothing=.07,ads=false,authored=true}
+            if not authored_logged[template.name] then
+                authored_logged[template.name]=true
+                mod:info('DARKTIDEVR_TWO_HAND authored_grip template=%s socket=%.3f,%.3f,%.3f samples=%d',
+                    tostring(template.name),done.socket[1],done.socket[2],done.socket[3],Support.AUTHORED_SAMPLES)
+            end
+        end
+    end
+    function api.authored_profile(frame)
+        local record=frame.weapon and authored[frame.weapon]
+        return record and record.done or nil
+    end
+    -- Development preview: darktidevr_two_hand_test.flag "preview" places the
+    -- support glove on the authored grip without a grip press, so the eye
+    -- render shows where it lands. Players never have the file.
+    local preview_poll,preview=0,false
+    local function preview_requested()
+        preview_poll=preview_poll-1
+        if preview_poll>0 then return preview end
+        preview_poll=60
+        local io_api=Mods and Mods.lua and Mods.lua.io
+        local file=io_api and io_api.open('./../mods/darktidevr/darktidevr_two_hand_test.flag','r')
+        local value=file and file:read('*all')
+        if file then file:close() end
+        preview=type(value)=='string' and value:match('^%s*preview%s*$')~=nil
+        return preview
+    end
     local previous_t
     local allowed_states={walking=true,sprinting=true,sliding=true,jumping=true,falling=true,dodging=true}
     local allowed_actions={aim=true,unaim=true,shoot_hit_scan=true,shoot_pellets=true,shoot_projectile=true}
@@ -272,13 +354,25 @@ function Support.install(mod,presentation,observation)
         return rotation
     end
     function api.place_hand(world,unit,primary,rotation)
-        if not api.enabled or not api.held or not live() or not presentation.body_proxy or
-            not presentation.body_proxy.place_support_hand then return false end
-        local position,orientation=api.hand_pose(unit,vector(primary),quaternion(rotation))
-        if not position then return false end
+        if not presentation.body_proxy or not presentation.body_proxy.place_support_hand then return false end
+        local position,orientation,authored_rotation
+        if preview_requested() then
+            local weapon=unit and ScriptUnit.has_extension(unit,'weapon_system')
+            local equipped=weapon and weapon:_wielded_weapon(weapon._inventory_component,weapon._weapons)
+            local record=equipped and authored[equipped]
+            if record and record.done then
+                position,orientation=Pose.hand(quaternion(rotation),vector(primary),record.done.socket,record.done.hand_rotation)
+                authored_rotation=true
+            end
+        end
+        if not position then
+            if not api.is_enabled() or not api.held or not live() then return false end
+            position,orientation,authored_rotation=api.hand_pose(unit,vector(primary),quaternion(rotation))
+        end
+        if not position or not orientation then return false end
         local ok,written=pcall(presentation.body_proxy.place_support_hand,world,unit,
             presentation.weapon_hand_roles.physical('support'),Vector3(unpack(position)),
-            Quaternion.from_elements(unpack(orientation)))
+            Quaternion.from_elements(unpack(orientation)),authored_rotation)
         return ok and written==true
     end
     if mod.command then

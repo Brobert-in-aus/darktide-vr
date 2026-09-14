@@ -248,10 +248,14 @@ local chunk=assert(loadstring(source:sub(first,last-1)))
 setfenv(chunk,{BodyProxy=proxy,state={source_unit=unit},rigid_hands=roots,
     Unit={alive=function(u) return u==unit end},
     place_rigid_hand=function(world,hand,position,rotation,authored)
-        assert(world=='world' and hand==roots.left and position==primary and rotation==frame.rotation and authored==nil)
+        assert(world=='world' and hand==roots.left and position==primary and rotation==frame.rotation and
+            authored==(placed=='expect_authored'))
         placed=true; return true
     end}); chunk()
 assert(proxy.place_support_hand('world',unit,'left',primary,frame.rotation) and placed)
+-- An authored grip passes the stock joint rotation through unconverted.
+placed='expect_authored'
+assert(proxy.place_support_hand('world',unit,'left',primary,frame.rotation,true) and placed==true)
 assert(not proxy.place_support_hand('world',{},'left',primary,frame.rotation))
 assert(not proxy.place_support_hand('world',unit,'unknown',primary,frame.rotation))
 print('two_hand_visual=pass calibrated_pose release anatomical_boundary local_owner')

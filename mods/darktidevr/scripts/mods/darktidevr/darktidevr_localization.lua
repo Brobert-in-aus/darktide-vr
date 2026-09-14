@@ -35,6 +35,8 @@ return {
     marker_plane_description = {en = "Draw world markers, nameplates and the interaction popup as one surface at the marker's distance, so both eyes see the same thing. Off returns to the per-eye flat markers."},
     vr_holsters = {en = "Virtual holsters"},
     vr_holsters_description = {en = "Reach to a body holster and press grip to take out what is kept there: ranged weapon over the right shoulder, melee weapon at the left hip, device at the right hip, stim at the left chest, carried item at the right chest. The grip keeps its own action everywhere else."},
+    vr_two_hand_support = {en = "Two-hand support"},
+    vr_two_hand_support_description = {en = "Hold grip with your off hand where the weapon's own animation holds the foregrip to steady a gun with both hands. A grip recorded with /dtvr_two_hand_calibrate takes precedence for that weapon this session."},
     vr_ammo_readout = {en = "Ammo count at the hand"},
     vr_ammo_readout_description = {en = "Show the ranged weapon's clip and reserve (or heat) beside your weapon hand instead of on the HUD panel."},
     hud_visible = {en = "Show the HUD panel"},

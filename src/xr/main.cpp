@@ -717,6 +717,7 @@ class OpenXrProbe {
                                bool synthetic_gameplay_input,
                                bool synthetic_weapon_aim_matrix,
                                bool synthetic_movement_reference_path,
+                               bool synthetic_holster_once,
                                bool enable_gameplay_reticle,
                                bool tracked_cuff_overlay,
                                bool synthetic_head_sweep,
@@ -3777,6 +3778,13 @@ class OpenXrProbe {
                 synthetic.state, 0);
           }
         }
+        if (synthetic_holster_once) {
+          // Draws the ranged weapon over the shoulder once gameplay input is
+          // live, then holds both hands still (two-hand grip previews).
+          darktidevr::harness::apply_synthetic_holster_path(
+              synthetic.state,
+              emit_synthetic_gameplay ? synthetic_holster_frames_++ : 110, true);
+        }
         if (synthetic_movement_reference_path && emit_synthetic_gameplay) {
           darktidevr::harness::apply_synthetic_movement_reference_path(
               synthetic.state, synthetic_movement_reference_frames_++);
@@ -5467,6 +5475,7 @@ class OpenXrProbe {
   std::uint64_t synthetic_controller_frames_{};
   std::uint64_t synthetic_weapon_aim_matrix_frames_{};
   std::uint64_t synthetic_movement_reference_frames_{};
+  std::uint64_t synthetic_holster_frames_{};
   std::array<std::uint64_t, 6> synthetic_controller_phase_frames_{};
   bool d3d12_extension_{};
   std::optional<XrGraphicsRequirementsD3D12KHR> requirements_;
@@ -5869,6 +5878,7 @@ int wmain(int argc, wchar_t** argv) {
     bool synthetic_gameplay_input = false;
     bool synthetic_weapon_aim_matrix = false;
     bool synthetic_movement_reference_path = false;
+    bool synthetic_holster_once = false;
     bool enable_gameplay_reticle = false;
     bool tracked_cuff_overlay = false;
     bool synthetic_head_sweep = false;
@@ -5960,6 +5970,8 @@ int wmain(int argc, wchar_t** argv) {
         synthetic_weapon_aim_matrix = true;
       } else if (argument == L"--synthetic-movement-reference-path") {
         synthetic_movement_reference_path = true;
+      } else if (argument == L"--synthetic-holster-once") {
+        synthetic_holster_once = true;
       } else if (argument == L"--enable-gameplay-reticle") {
         enable_gameplay_reticle = true;
       } else if (argument == L"--tracked-cuff-overlay") {
@@ -6048,6 +6060,10 @@ int wmain(int argc, wchar_t** argv) {
     if (synthetic_weapon_aim_matrix && !synthetic_gameplay_input) {
       throw std::invalid_argument(
           "--synthetic-weapon-aim-matrix requires --synthetic-gameplay-input");
+    }
+    if (synthetic_holster_once && (!synthetic_gameplay_input || !synthetic_body_path)) {
+      throw std::invalid_argument(
+          "--synthetic-holster-once requires --synthetic-gameplay-input and --synthetic-body-path");
     }
     if (synthetic_movement_reference_path && !synthetic_gameplay_input) {
       throw std::invalid_argument(
@@ -6151,6 +6167,7 @@ int wmain(int argc, wchar_t** argv) {
                                      synthetic_gameplay_input,
                                      synthetic_weapon_aim_matrix,
                                      synthetic_movement_reference_path,
+                                     synthetic_holster_once,
                                      enable_gameplay_reticle,
                                      tracked_cuff_overlay,
                                      synthetic_head_sweep,

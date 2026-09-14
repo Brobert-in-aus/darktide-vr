@@ -164,6 +164,11 @@ return {
                         default_value = false,
                     },
                     {
+                        setting_id = "vr_two_hand_support",
+                        type = "checkbox",
+                        default_value = false,
+                    },
+                    {
                         setting_id = "vr_ammo_readout",
                         type = "checkbox",
                         default_value = false,

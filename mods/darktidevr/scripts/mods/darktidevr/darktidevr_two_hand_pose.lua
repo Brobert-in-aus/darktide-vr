@@ -58,6 +58,45 @@ function Pose.socket(rotation,primary,support)
     if not finite(length) or length<.0064 or length>1 then return nil end
     return offset
 end
+-- The weapon's authored support grip: where the stock animation holds the left
+-- hand, expressed like a calibrated socket (support offset from the primary
+-- grip in the gun's aim frame) with the hand's rotation in that frame.
+-- attach_* is the rig's weapon attach node (at the primary grip), left_* its
+-- left hand, muzzle_in_attach the weapon's fixed attach-to-muzzle rotation
+-- (the aim frame is the muzzle's). nil for implausible hands: too close or far,
+-- behind the grip, or well off the barrel line (a one-handed weapon's idle hand).
+Pose.AUTHORED_LIMITS={min_forward=.08,max_length=.9,max_lateral=.25,max_vertical=.3}
+function Pose.authored_socket(attach_position,attach_rotation,left_position,left_rotation,muzzle_in_attach)
+    local attach,muzzle=normalize(attach_rotation,4),normalize(muzzle_in_attach,4)
+    local left=normalize(left_rotation,4)
+    if not attach or not muzzle or not left or not valid(attach_position,3) or
+        not valid(left_position,3) then return nil end
+    local in_attach=rotate(inverse(attach),difference(left_position,attach_position))
+    local socket=rotate(inverse(muzzle),in_attach)
+    local limits=Pose.AUTHORED_LIMITS
+    local length=math.sqrt(dot(socket,socket))
+    if not finite(length) or length<.08 or length>limits.max_length or socket[2]<limits.min_forward or
+        math.abs(socket[1])>limits.max_lateral or math.abs(socket[3])>limits.max_vertical then return nil end
+    local hand=normalize(multiply(inverse(muzzle),multiply(inverse(attach),left)),4)
+    return socket,hand
+end
+-- Running mean of authored sockets for one weapon; the hand rotation is the
+-- latest sample's (the animation keeps it steady on the grip).
+function Pose.new_authored_average(samples)
+    local state={count=0,sum={0,0,0},done=nil}
+    function state.add(socket,hand)
+        if state.done then return state.done end
+        state.count=state.count+1
+        for i=1,3 do state.sum[i]=state.sum[i]+socket[i] end
+        state.hand=hand
+        if state.count>=samples then
+            state.done={socket={state.sum[1]/state.count,state.sum[2]/state.count,state.sum[3]/state.count},
+                hand_rotation=state.hand}
+        end
+        return state.done
+    end
+    return state
+end
 function Pose.relative_rotation(base,rotation)
     local a,b=normalize(base,4),normalize(rotation,4)
     return a and b and normalize(multiply(inverse(a),b),4) or nil

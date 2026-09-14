@@ -17,6 +17,44 @@ near(rotated_y(q),{1,0,0})
 -- the support hand moves farther along the same line.
 near(state.update(identity,primary,{3.6,4,5},socket,true,owner,.01,0),q)
 near(primary,{3,4,5}); near(socket,{0,.3,0})
+-- Authored grip: the stock left hand relative to the weapon attach node, in
+-- the aim (muzzle) frame, independent of where the rig stands and faces.
+do
+    local yaw=math.rad(70)
+    local turn={0,0,math.sin(yaw/2),math.cos(yaw/2)}
+    local function rot(q,v)
+        local x,y,z,w=q[1],q[2],q[3],q[4]
+        local ix,iy,iz,iw=w*v[1]+y*v[3]-z*v[2], w*v[2]+z*v[1]-x*v[3], w*v[3]+x*v[2]-y*v[1], -x*v[1]-y*v[2]-z*v[3]
+        return {ix*w+iw*-x+iy*-z-iz*-y, iy*w+iw*-y+iz*-x-ix*-z, iz*w+iw*-z+ix*-y-iy*-x}
+    end
+    local attach_position={10,20,1.5}
+    -- Muzzle = attach here; left hand 35 cm forward, 3 cm left, 4 cm down.
+    local offset={-.03,.35,-.04}
+    local world_offset=rot(turn,offset)
+    local left_position={attach_position[1]+world_offset[1],attach_position[2]+world_offset[2],attach_position[3]+world_offset[3]}
+    local left_rotation={0,0,0,1}
+    local s,h=Pose.authored_socket(attach_position,turn,left_position,turn,identity)
+    assert(s,'authored socket rejected')
+    near(s,offset,1e-6)
+    near(h,identity,1e-6)
+    -- A muzzle rotated in the attach frame re-expresses the offset in the aim frame.
+    local roll={math.sin(math.rad(15)),0,0,math.cos(math.rad(15))}
+    local s2=Pose.authored_socket(attach_position,turn,left_position,turn,roll)
+    assert(s2 and math.abs(math.sqrt(s2[1]^2+s2[2]^2+s2[3]^2)-math.sqrt(offset[1]^2+offset[2]^2+offset[3]^2))<1e-6)
+    -- One-handed idle hands and implausible positions are rejected.
+    local function at(o) local w=rot(turn,o); return {attach_position[1]+w[1],attach_position[2]+w[2],attach_position[3]+w[3]} end
+    assert(not Pose.authored_socket(attach_position,turn,at({-.3,.05,-.3}),left_rotation,identity),'hanging hand accepted')
+    assert(not Pose.authored_socket(attach_position,turn,at({0,-.2,0}),left_rotation,identity),'hand behind the grip accepted')
+    assert(not Pose.authored_socket(attach_position,turn,at({0,.03,0}),left_rotation,identity),'hand on the grip accepted')
+    assert(not Pose.authored_socket(attach_position,turn,at({0,1.2,0}),left_rotation,identity),'hand beyond reach accepted')
+    assert(not Pose.authored_socket(attach_position,nil,left_position,left_rotation,identity))
+    -- Averaging: frozen after N samples.
+    local average=Pose.new_authored_average(3)
+    assert(not average.add({0,.3,0},identity) and not average.add({0,.4,0},identity))
+    local done=average.add({0,.5,0},identity)
+    near(done.socket,{0,.4,0},1e-9)
+    assert(average.add({0,9,0},identity)==done,'average changed after freezing')
+end
 -- A common translation/rotation of both hands and the aim preserves the solution.
 local quarter={0,0,math.sqrt(.5),math.sqrt(.5)}
 local turned=Pose.new().update(quarter,{8,9,2},{8,9.3,2},socket,true,owner,.01,0)

@@ -633,10 +633,12 @@ function BodyProxy.align_gun_hand(world,source,old_position,old_rotation,new_pos
     return place_rigid_hand(world,rigid_hands[destination],position,rotation,true)
 end
 
-function BodyProxy.place_support_hand(world,source,side,position,rotation)
+-- authored_rotation: rotation is a stock hand joint rotation (the authored
+-- grip) rather than a controller grip rotation to convert anatomically.
+function BodyProxy.place_support_hand(world,source,side,position,rotation,authored_rotation)
     if not BodyProxy.rigid_hands_active() or source~=state.source_unit or
         not Unit.alive(source) or (side~='left' and side~='right') then return false end
-    return place_rigid_hand(world,rigid_hands[side],position,rotation)
+    return place_rigid_hand(world,rigid_hands[side],position,rotation,authored_rotation==true)
 end
 
 -- offset, when given, moves both animated hands by one world vector, keeping
