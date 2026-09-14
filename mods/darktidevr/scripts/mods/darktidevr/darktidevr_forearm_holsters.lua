@@ -146,12 +146,26 @@ function Forearm.install(mod, presentation)
                 if data and data.link_unit and Unit.alive(data.link_unit) then
                     -- Fit the item's largest extent to PREVIEW_SIZE once it exists.
                     if not preview.fitted and data.item_unit_3p and Unit.alive(data.item_unit_3p) then
-                        local ok, _, extents = pcall(Unit.box, data.item_unit_3p)
-                        local largest = ok and extents and math.max(Vector3.x(extents), Vector3.y(extents), Vector3.z(extents)) or 0
-                        if largest <= 1e-4 and not preview.box_logged then
-                            preview.box_logged = true
-                            mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_box zone=%s ok=%s extents=%s", zone.id,
-                                tostring(ok), tostring(ok and extents or _))
+                        -- The base unit of a weapon is often a mesh-less rig; the
+                        -- meshes sit on its attachments. Measure the reach of every
+                        -- unit's box from the preview's origin.
+                        local origin = Unit.world_position(data.link_unit, 1)
+                        local largest = 0
+                        local units = {data.item_unit_3p}
+                        local attachments = data.attachment_units_3p and data.attachment_units_3p[data.item_unit_3p]
+                        for _, attachment in ipairs(attachments or {}) do units[#units + 1] = attachment end
+                        for _, measured in ipairs(units) do
+                            local ok, pose, extents = pcall(Unit.box, measured)
+                            if ok and pose and extents then
+                                local reach = Vector3.distance(Matrix4x4.translation(pose), origin) +
+                                    math.max(Vector3.x(extents), Vector3.y(extents), Vector3.z(extents))
+                                if reach == reach and reach > largest then largest = reach end
+                            end
+                        end
+                        if largest <= 1e-4 then
+                            -- Hidden meshes can report empty boxes: assume a 50 cm item.
+                            largest = Vector3.x(Unit.local_scale(data.link_unit, 1)) * 0.5
+                            mod:info("DARKTIDEVR_FOREARM_HOLSTERS preview_box zone=%s units=%d reach=0 fallback=true", zone.id, #units)
                         end
                         if largest > 1e-4 then
                             local current = Vector3.x(Unit.local_scale(data.link_unit, 1))
