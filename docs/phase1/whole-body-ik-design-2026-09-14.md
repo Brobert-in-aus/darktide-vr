@@ -1,5 +1,12 @@
 # Whole-body IK for the third-person body: design (14 September 2026)
 
+> Revised on 15 September by
+> [full-body-ik-design-2026-09-15.md](full-body-ik-design-2026-09-15.md).
+> The revision copies stock legs instead of stepping them procedurally,
+> keeps the whole character profile on the proxy, and adds a shoulder and
+> heading estimate shared with the virtual stock. The solve details below
+> still apply where the revision does not replace them.
+
 Status: design, plus the pose trace recorder (`a506d9e`). Nothing of the solver is implemented or worn-tested. It replaces
 the approach of layering tracked arms and torso onto Darktide's own
 third-person animation, at the user's direction (13 September): that

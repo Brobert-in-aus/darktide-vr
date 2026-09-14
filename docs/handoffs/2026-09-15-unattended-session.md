@@ -78,6 +78,32 @@ Commits `7efa0ef`, `fe0277d`, `10717e5`, `0da004b`.
   The reserve's extent is therefore taken generously (0.30-0.90 of its size).
 - **Not shown:** the worn view at hand distance.
 
+## Research and designs (todo items 7 and 8)
+
+- **Research notes.** Two background research passes, web sources only, each
+  claim tagged [S] sourced or [I] inferred, copied to `docs/phase1/research/`:
+  - two-handing and virtual stocks;
+  - full-body IK.
+- **Two-handed aim.** [two-hand-aim-design-2026-09-15.md](../phase1/two-hand-aim-design-2026-09-15.md).
+  - The mod's aim model already matches VRExpansionPlugin, FRIK and XRI: a
+    minimal swing on the dominant hand's pose.
+  - The difference is the filter. The swing is smoothed in controller-local
+    space, so wrist rotation drags the barrel off the support hand.
+  - Offline measurement: a 10° wrist yaw with still hands leaves the barrel
+    8.5° off the hands line on the next frame and 2° after 10 frames.
+  - Proposed fix: filter the hands line in tracking space and recompute the
+    swing from the current wrist every frame. Then a virtual stock anchored
+    to a shared shoulder estimate.
+- **Full-body IK.** [full-body-ik-design-2026-09-15.md](../phase1/full-body-ik-design-2026-09-15.md).
+  - Maps how the gameplay avatar, first-person rig, gloves, upper-body proxy,
+    camera and networking relate today.
+  - Chooses a full-profile proxy (all cosmetics) posed by the mod, with legs
+    copied from the stock avatar (the VHVR hybrid).
+  - A body frame module owns the virtual shoulder for both the stock and the
+    arm IK.
+  - Revises the 14 September design; milestones are listed.
+- **Not implemented.** Nothing was deployed from these.
+
 Note: `run2` died because I piped the capture script through
 `Select-Object -First 1`, which stopped the script and so the runner's job
 (the runner force-stopped the game). The game did not fault.
