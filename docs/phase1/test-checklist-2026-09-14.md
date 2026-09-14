@@ -31,7 +31,8 @@ unattended evidence for each is in
    and look for the effect starting at the gun or hand rather than a little
    away from it. Console log: one `DARKTIDEVR_HELD_EFFECTS placed class=...`
    line per effect type, and no `DARKTIDEVR_SCANNER_HOLO fallback=` line. Not
-   changed (cannot be fixed this way): the shout and shield-bash bursts.
+   changed (cannot be fixed this way): the shout and shield-bash bursts. A
+   Psykhanium run placed the chain lightning links with no fallback.
 
 4. **Headset no longer goes dark entering the Psykhanium; the viewer restarts
    if it fails** (`7f790f4` viewer, `c0913f3` Lua, `177bd16` native). The
@@ -47,6 +48,7 @@ unattended evidence for each is in
    - Headset off until it sleeps, then back on: the view should return
      (`openxr.session_pause=runtime_stop`, then `session_resume`). This part
      is checked only on the simulator.
+
 5. **Virtual holsters, new and off by default** (`baa12ee`, Lua). Design and
    zone table: [virtual-holsters-2026-09-14.md](virtual-holsters-2026-09-14.md).
    First, with the option still off: the grips behave exactly as before
@@ -55,13 +57,13 @@ unattended evidence for each is in
    Psykhanium, reach and press grip: over the right shoulder (ranged), left
    hip (melee), left chest (stim), right hip (auspex if carried), right chest
    (carried item), and the front of the belt: hold grip to draw and aim the
-   blitz, let go to throw (`4571e85`). Check nothing triggers while holding a gun, swinging melee
-   or reloading. Say which zones feel too high, low, far forward or small.
+   blitz, let go to throw (`4571e85`). Check nothing triggers while holding a
+   gun, swinging melee or reloading. Say which zones feel too high, low, far forward or small.
    Console: `DARKTIDEVR_HOLSTER armed zone=...` and `wield ...` lines.
 
 6. **Ammo count at the hand, new and off by default** (`ecec404` to
-   `20fe0ae`, Lua). Turn on Mod Options > Darktide VR > Experimental features
-   > Ammo count at the hand. In the Psykhanium with a gun out:
+   `20fe0ae`, Lua). Turn on Mod Options, Darktide VR, Experimental features,
+   Ammo count at the hand. In the Psykhanium with a gun out:
    - the clip count shows large just above and inside the weapon hand, facing
      you, with the reserve small beneath it;
    - the panel's weapon block for the gun is gone;
@@ -74,6 +76,7 @@ unattended evidence for each is in
    - plasma or staff heat shows as a percentage.
 
    Say if it is too big, too close or in the way of the sights.
+
 7. **Optional, five minutes: record pose traces for the body IK work**
    (`a506d9e`). Before launching, create
    `mods\darktidevr\darktidevr_pose_trace.flag` containing `record`. In the
@@ -90,6 +93,7 @@ unattended evidence for each is in
 
    Then delete the flag (the recording stops within a second) and leave
    `darktidevr_pose_trace.csv` where it is for the next session.
+
 ## Assumptions and questions for the evening review
 
 - Held-item effects (item 3) were deployed on static reading and unit tests
