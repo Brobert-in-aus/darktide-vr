@@ -230,6 +230,12 @@ int main() {
         darktidevr::harness::apply_synthetic_holster_path(between, 360 + 257, true);
         darktidevr::harness::apply_synthetic_holster_path(reloading, 360 + 474, true);
         auto ability = left.state;
+        auto melee_draw = left.state;
+        auto melee_windup = left.state;
+        auto ranged_draw = left.state;
+        darktidevr::harness::apply_synthetic_holster_path(melee_draw, 360 + 480 + 50, true);
+        darktidevr::harness::apply_synthetic_holster_path(melee_windup, 360 + 480 + 150, true);
+        darktidevr::harness::apply_synthetic_holster_path(ranged_draw, 360 + 480 + 350, true);
         darktidevr::harness::apply_synthetic_holster_path(ability, 360 + 442, true);
         darktidevr::harness::apply_synthetic_holster_path(spread, 360 + 205, true);
         const float rise = lifted.hands[0].body_grip_pose.position.z -
@@ -241,6 +247,11 @@ int main() {
         return approach > 0.15F && arriving.hands[0].squeeze == 0.0F &&
                firing.hands[1].trigger == 1.0F && between.hands[1].trigger == 0.0F &&
                ability.hands[0].squeeze == 1.0F &&
+               melee_draw.hands[1].squeeze == 1.0F &&
+               std::abs(melee_draw.hands[1].body_grip_pose.position.z + 0.72F) < 0.001F &&
+               melee_windup.hands[1].trigger == 1.0F && melee_windup.hands[0].squeeze == 0.0F &&
+               ranged_draw.hands[1].squeeze == 1.0F &&
+               std::abs(ranged_draw.hands[1].body_grip_pose.position.x - 0.16F) < 0.001F &&
                firing.hands[0].squeeze == 0.0F && reloading.hands[1].thumbstick_y == -1.0F &&
                grip.hands[1].trigger == 0.0F &&
                spread.hands[0].squeeze == 1.0F &&

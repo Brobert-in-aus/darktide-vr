@@ -309,7 +309,31 @@ void apply_synthetic_holster_path(core::SharedControllerState& state,
   // a second into the hold the hand
   // rises 5 cm over a quarter second and stays there for a second, so the
   // support hand has something to steer.
-  if (resting && frame >= zone_frames * 3) {
+  const bool melee_cycle =
+      resting && frame >= zone_frames * 3 && ((frame - zone_frames * 3) / 480) % 2 == 1;
+  if (melee_cycle) {
+    // Every other cycle: draw the melee weapon from the left hip, hold the
+    // trigger through a windup into a heavy attack, then draw the ranged
+    // weapon back from the shoulder (heavy-ready and melee vibrations).
+    const auto phase = (frame - zone_frames * 3) % 480;
+    const auto place_right = [&](math::Vec3 position) {
+      state.hands[1].body_aim_pose.position = position;
+      state.hands[1].body_grip_pose.position = position;
+    };
+    if (phase < 90) {
+      place_right(zones[1]);
+      if (phase >= 45 && phase < 60) {
+        state.hands[1].squeeze = 1.0F;
+      }
+    } else if (phase >= 120 && phase < 240) {
+      state.hands[1].trigger = 1.0F;
+    } else if (phase >= 300 && phase < 390) {
+      place_right(zones[0]);
+      if (phase >= 345 && phase < 360) {
+        state.hands[1].squeeze = 1.0F;
+      }
+    }
+  } else if (resting && frame >= zone_frames * 3) {
     const auto phase = (frame - zone_frames * 3) % 480;
     if (phase < 240) {
       const float pitch = -0.1745F;

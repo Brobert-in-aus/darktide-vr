@@ -218,4 +218,24 @@ assert(gauge_kinds(gauge({heat = 0.7, peril = 0.8}), gauge({heat = 0.8, peril = 
 assert(gauge_kinds(nil, gauge()) == "")
 assert(gauge_kinds(gauge({heat = false}), gauge({heat = 0.99})) == "", "a missing heat reading warned")
 
-print("haptics=pass mapping rate_limit notices modes failed_send ammo_events scale body_events melee_hooks shot_families gauges")
+-- Melee windup and special.
+local function melee_kinds(previous, current)
+    local out = {}
+    for _, event in ipairs(Haptics.melee_events(previous, current)) do out[#out + 1] = event[1] end
+    return table.concat(out, ",")
+end
+assert(melee_kinds({t = 10.3, windup_start = 10, heavy_time = 0.5}, {t = 10.4, windup_start = 10, heavy_time = 0.5}) == "")
+assert(melee_kinds({t = 10.45, windup_start = 10, heavy_time = 0.5}, {t = 10.52, windup_start = 10, heavy_time = 0.5}) == "heavy_ready")
+assert(melee_kinds({t = 10.52, windup_start = 10, heavy_time = 0.5}, {t = 10.6, windup_start = 10, heavy_time = 0.5}) == "",
+    "a held heavy repeated")
+assert(melee_kinds({t = 10.6, windup_start = 10, heavy_time = 0.5}, {t = 11.05, windup_start = 11, heavy_time = 0.5}) == "",
+    "a new windup was ready at once")
+assert(melee_kinds({t = 10.6}, {t = 10.7, windup_start = 10, heavy_time = 0.5}) == "heavy_ready",
+    "a windup first seen past its heavy time was missed")
+assert(melee_kinds({t = 1, melee = true}, {t = 1.02, melee = true, special = true}) == "special_on")
+assert(melee_kinds({t = 1.02, melee = true, special = true}, {t = 1.04, melee = true, special = true}) == "")
+assert(melee_kinds({t = 1.24, melee = true, special = true}, {t = 1.26, melee = true, special = true}) == "special_hum")
+assert(melee_kinds({t = 1, melee = false}, {t = 1.02, melee = false, special = true}) == "", "a flashlight hummed")
+assert(melee_kinds(nil, {t = 1}) == "")
+
+print("haptics=pass mapping rate_limit notices modes failed_send ammo_events scale body_events melee_hooks shot_families gauges melee_windup_special")

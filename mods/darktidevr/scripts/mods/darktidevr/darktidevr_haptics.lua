@@ -58,7 +58,13 @@ Haptics.KINDS = {
     peril_critical = {modes = BOTH, notice = true, amplitude = 0.9, duration_ms = 120},
     charging = {modes = {immersive = true}, amplitude = 0.4, duration_ms = 15},
     charge_full = {modes = BOTH, notice = true, amplitude = 0.35, duration_ms = 15},
+    -- Melee: a held attack can now release as a heavy; the weapon special
+    -- (power field, chain teeth, force) turns on, and hums while it stays on.
+    heavy_ready = {modes = BOTH, notice = true, amplitude = 0.3, duration_ms = 15},
+    special_on = {modes = BOTH, notice = true, amplitude = 0.5, duration_ms = 30},
+    special_hum = {modes = {immersive = true}, amplitude = 0.15, duration_ms = 15},
 }
+Haptics.SPECIAL_HUM_INTERVAL = 0.25
 Haptics.WARNING_SHARE = 0.75
 Haptics.CRITICAL_SHARE = 0.9
 Haptics.LIGHT_MELEE_SCALE = 0.7
@@ -234,6 +240,31 @@ function Haptics.gauge_events(previous, current)
     return events
 end
 
+-- Melee feedback from two readings ({t, windup_start, heavy_time, melee,
+-- special}): windup_start is the running windup action's start time (nil
+-- otherwise) and heavy_time its heavy chain time after time scale; special is
+-- the wielded melee weapon's special state. Returns events like gauge_events.
+function Haptics.melee_events(previous, current)
+    local events = {}
+    if type(previous) ~= "table" or type(current) ~= "table" then return events end
+    local function number(v) return type(v) == "number" and v == v end
+    if number(current.t) and number(current.windup_start) and number(current.heavy_time) and
+            current.t - current.windup_start >= current.heavy_time then
+        local was_ready = previous.windup_start == current.windup_start and number(previous.t) and
+            previous.t - previous.windup_start >= current.heavy_time
+        if not was_ready then events[#events + 1] = {"heavy_ready", 1, "gun"} end
+    end
+    if current.melee and current.special then
+        if not (previous.melee and previous.special) then
+            events[#events + 1] = {"special_on", 1, "gun"}
+        elseif number(previous.t) and number(current.t) and
+                math.floor(current.t / Haptics.SPECIAL_HUM_INTERVAL) ~= math.floor(previous.t / Haptics.SPECIAL_HUM_INTERVAL) then
+            events[#events + 1] = {"special_hum", 1, "gun"}
+        end
+    end
+    return events
+end
+
 -- States the stock character state machine uses for a player who cannot act.
 Haptics.DISABLED_STATES = {knocked_down = true, hogtied = true, ledge_hanging = true, catapulted = true,
     netted = true, pounced = true, grabbed = true, consumed = true, warp_grabbed = true,
@@ -350,7 +381,7 @@ function Haptics.install(mod, presentation, send)
         mod:hook_safe(require("scripts/extension_systems/weapon/actions/action_push"), "_play_push_rumble",
             observe(function(self, number_of_units_hit) api.push(self, number_of_units_hit) end))
     end
-    local previous, previous_body, previous_gauges
+    local previous, previous_body, previous_gauges, previous_melee
     local function field(read)
         local ok, value = pcall(read)
         return ok and value or nil
@@ -377,7 +408,7 @@ function Haptics.install(mod, presentation, send)
     function api.sample(unit)
         local mode = test_flag() or mod:get("vr_haptics_mode")
         if not unit or (mode ~= "informative" and mode ~= "immersive") then
-            previous, previous_body, previous_gauges = nil, nil, nil; return
+            previous, previous_body, previous_gauges, previous_melee = nil, nil, nil, nil; return
         end
         local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
         if unit_data then
@@ -406,6 +437,35 @@ function Haptics.install(mod, presentation, send)
                 end
             end
             previous_gauges = gauges
+            local reading = {melee = false}
+            pcall(function()
+                reading.t = Managers.time:time("gameplay")
+                local weapon = ScriptUnit.has_extension(unit, "weapon_system")
+                local template = weapon and weapon:weapon_template()
+                local keywords = template and template.keywords
+                for _, keyword in ipairs(type(keywords) == "table" and keywords or {}) do
+                    if keyword == "melee" then reading.melee = true end
+                end
+                if reading.melee and type(wielded) == "string" and wielded:match("^slot_") then
+                    reading.special = unit_data:read_component(wielded).special_active == true
+                end
+                local action = unit_data:read_component("weapon_action")
+                local settings = template and template.actions and template.actions[action.current_action_name]
+                local heavy = settings and settings.kind == "windup" and settings.allowed_chain_actions and
+                    settings.allowed_chain_actions.heavy_attack
+                local scale = tonumber(action.time_scale) or 1
+                if heavy and type(heavy.chain_time) == "number" and scale > 0 then
+                    reading.windup_start, reading.heavy_time = action.start_t, heavy.chain_time / scale
+                end
+            end)
+            for _, event in ipairs(Haptics.melee_events(previous_melee, reading)) do
+                if Haptics.plays(event[1], mode) then
+                    local hands = gun_hands()
+                    if hands and api.pulse(hands, event[1], nil, event[2]) then count(event[1]) end
+                    break
+                end
+            end
+            previous_melee = reading
         end
         local inventory = unit_data and unit_data:read_component("inventory")
         if not inventory or inventory.wielded_slot ~= "slot_secondary" then previous = nil; return end
