@@ -824,3 +824,47 @@ DMF runs every localized string through `string.format`.
 - `test-controller-bindings.lua` now formats every localization string.
 - `run25` (Informative): no errors or warnings; heavy ready, clip empty,
   reload and ability ready fired.
+
+## Evening worn test (user at home, 14 September)
+
+**First launch, 20:42: PC hard crash while loading the hub.**
+- Windows bugcheck `0x154 UNEXPECTED_STORE_EXCEPTION` at about 20:43:30, and
+  the dump write failed. No NVIDIA driver reset was logged at the time.
+- The game log stops partway through the hub load. The viewer was healthy
+  (116 fps, loading board) until 20:43:32.
+- History: unexplained resets on 2, 5, 11 and 17 August and NVIDIA driver
+  resets up to 5 September, all before today.
+- The crash destroyed `user_settings.config` mid-write, so the launcher ran
+  its first-run quality detection and the mod's calibration opened.
+- Restored after the next session closed, from the 07:23 vr profile
+  (`%LOCALAPPDATA%\DarktideVR\user_settings.vr.config`), by a wait-for-exit
+  copy; the hash matched. The reset file is kept as
+  `user_settings.after-crash-reset-20260914.config`.
+
+**Second launch, 20:49-20:56 (same build).**
+- The hub and the Psykhanium loaded, and the game closed cleanly
+  (`DARKTIDEVR_EXIT prepared ... native_hooks=20`, log end, no crash event).
+- User notes:
+  - haptics worked;
+  - the reload ring is good;
+  - the ammo readout's clip and reserve overlap, and a `—` is wanted between
+    them;
+  - the crosshair is very slightly off the iron sights;
+  - a stray bullet sticks out of the right hand, and disappears during the
+    reload animation;
+  - reloading breaks two-handing, and bash should not break it either;
+  - moving the left hand while two-handing feels good, but moving the right
+    hand feels off, so research industry practice for two-handing and
+    virtual stocks.
+- Log: four holds, all ending `cancelled` (reloads), steering up to 92
+  degrees.
+- Screenshots: `artifacts/worn/2026-09-14-evening/shot-205314.jpg` and
+  `shot-205415.jpg` (Quest `/sdcard/Oculus/Screenshots`, ignored by Git).
+
+**Fixed before wrapping up.** Two-hand support holds through reload, shotgun
+reload, charge ammo, load special, toggle special, vent, overload charge,
+charge, flamer gas, and bash (sweep, push, windup). Inspect, draw and holster
+still end the grip. It is unit tested, committed, and neither deployed nor
+worn.
+
+Everything else is queued for tomorrow in `docs/phase1/todo-2026-09-15.md`.

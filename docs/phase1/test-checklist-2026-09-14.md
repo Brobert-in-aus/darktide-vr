@@ -208,3 +208,21 @@ unattended evidence for each is in
   pulses are always about your hands or body. Kinds in both modes: grip zone,
   grip taken, clip empty, reload finished. The full catalogue with planned
   kinds is in `haptics-2026-09-14.md`.
+
+## Results (evening, 14 September)
+
+- The first launch hard-crashed the PC loading the hub (Windows bugcheck
+  0x154; see the handover). The settings were lost and have been restored.
+- Second launch:
+  - item 2: no crash on closing;
+  - item 10: haptics worked;
+  - item 6: the reload ring is good, but the clip and reserve overlap (and a
+    `—` is wanted between them);
+  - item 8: reloading broke two-handing (fixed, not yet worn), bash should
+    keep the grip (fixed, not yet worn), left-hand movement feels good,
+    right-hand movement feels off (research queued).
+- New:
+  - the crosshair is slightly off the iron sights;
+  - a stray bullet shows at the right hand outside reloads.
+- Not reached tonight: items 1, 3, 4, 5, 7 and 9, and the evening questions.
+  All carried in `todo-2026-09-15.md`.
