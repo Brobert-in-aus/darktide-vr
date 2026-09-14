@@ -58,3 +58,14 @@ Yesterday's checklist items not reached are still open in
 
    Other guns are corrected once you have aimed down their sights for about
    a second. Say if one is still off after that.
+7. **Virtual stock (experimental)** (`1222cc6`, option default off; try it
+   with Two-hand steadying on Hands line). Galvanic rifle, both hands on:
+   - bring the butt to your dominant shoulder, as when aiming: the gun
+     should settle and small right-hand wobbles stop swinging it;
+   - lower the gun away from the shoulder: normal two-handing again;
+   - glance left and right while shouldered: the stock should not wander.
+
+   Say where the shoulder feels (too high, low, far out or in) and whether
+   it engages too early or late. The butt position is an estimate. The
+   console line `DARKTIDEVR_TWO_HAND released ... stock_frames=
+   stock_min_distance_m=` shows how close the butt got.

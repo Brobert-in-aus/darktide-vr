@@ -195,6 +195,38 @@ Fix `96b13ed`, deployed (evening item 6). The earlier ray-origin attempt
 - **Not shown:** the worn sight picture; up close (under 2 m) the gun visibly
   turns more.
 
+## Virtual stock and the shared body frame (design step 2-3)
+
+Commit `1222cc6`, deployed, option default off (evening item 7).
+- **`darktidevr_body_frame.lua`** is the shared estimate from the two-hand
+  and full-body designs.
+  - *Body yaw:* head yaw, pitch-safe past 50°, pulled 0.7 toward hands in
+    front, with a 20° dead zone and 0.15 s catch-up.
+  - *Neck:* 7 cm behind and 8 cm below the eye.
+  - *Shoulders:* 17 cm either side and 8 cm down.
+  - Lengths scale with eye height.
+  - Pure tests: pitch-safe yaw, hand bias, dead zone, turn catch-up, a head
+    glance with a gun held stays within 20°, shoulders, scale.
+- **Option "Virtual stock (experimental)".** While two-handing a gun, the
+  dominant shoulder, 3 cm inward, is the stock anchor. A butt within 15 cm
+  blends the aim to shoulder-to-front-hand through the existing
+  `Pose.stock_correction`, with the primary grip never moved.
+  - **Assumption:** the butt sits 30 cm behind and 6 cm above the grip in the
+    aim frame. It is not measured and needs worn tuning.
+  - The release log adds `virtual_stock`, `stock_frames` and
+    `stock_min_distance_m`.
+- **Evidence (`stock2`, test flag `enabled_line_stock`).**
+  - Every hold released cleanly with `virtual_stock=true`, and no script
+    errors.
+  - The synthetic resting grip puts the butt 17.8 cm from the estimated
+    shoulder, so it never engaged; the synthetic gun is held low. Engagement
+    and the aim change are covered by `two_hand_virtual_stock` (unit).
+- **Incident.** `stock1` was void: the stray-bullet view flag
+  (`darktidevr_attachment_scan.flag`) was still in the installed mod folder.
+  It held ADS and took over the right hand. The flag is deleted,
+  `run-view.ps1` now removes it at the end, and I checked the installed
+  folder: only the mod's own `darktidevr_crosshair_scale.flag` remains.
+
 Note: `run2` died because I piped the capture script through
 `Select-Object -First 1`, which stopped the script and so the runner's job
 (the runner force-stopped the game). The game did not fault.
