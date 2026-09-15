@@ -197,6 +197,27 @@ function Forearm.install(mod, presentation)
                             near = true
                         end
                     end
+                    if (api.test_big or api.test_front) and data.item_unit_3p and Unit.alive(data.item_unit_3p) then
+                        preview.debug_t = preview.debug_t or 0
+                        if t - preview.debug_t > 2 then
+                            preview.debug_t = t
+                            local first_person = ScriptUnit.has_extension(unit, "first_person_system")
+                            local eye_unit = first_person and first_person:first_person_unit()
+                            if eye_unit then
+                                local eye_rotation = Unit.world_rotation(eye_unit, 1)
+                                local function in_eye(p)
+                                    local d = p - Unit.world_position(eye_unit, 1)
+                                    return string.format("%.3f,%.3f,%.3f", Vector3.dot(d, Quaternion.right(eye_rotation)),
+                                        Vector3.dot(d, Quaternion.up(eye_rotation)), Vector3.dot(d, Quaternion.forward(eye_rotation)))
+                                end
+                                mod:info("DARKTIDEVR_FOREARM_HOLSTERS debug zone=%s link_in_eye=%s item_in_eye=%s target_in_eye=%s scale=%.3f near=%s linked_parent=%s",
+                                    zone.id, in_eye(Unit.world_position(data.link_unit, 1)), in_eye(Unit.world_position(data.item_unit_3p, 1)),
+                                    in_eye(Vector3(zone.world[1], zone.world[2], zone.world[3])),
+                                    Vector3.x(Unit.local_scale(data.link_unit, 1)), tostring(near),
+                                    tostring(Unit.scene_graph_parent(data.item_unit_3p, 1)))
+                            end
+                        end
+                    end
                     -- Every frame: the spawner shows the unit once streaming completes.
                     if data.item_unit_3p and Unit.alive(data.item_unit_3p) then
                         preview.visible = near and preview.fitted == true
