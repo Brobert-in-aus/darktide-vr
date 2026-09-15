@@ -29,6 +29,12 @@
 -- copy's own hands sit on the same wrists, and both drawn would show two
 -- pairs of hands (user, 15 September). The gloves are still placed; the
 -- weapons follow them.
+--
+-- "overlay" also moves the copy so its neck sits at the body frame's neck (7
+-- cm behind and 8 cm below the eye): overlay6 found the camera about 21 cm
+-- above the copy's head, looking down into the collar, which is part of the
+-- torso mesh and cannot be hidden alone. The whole root moves, so the feet
+-- float or sink by the same amount until the legs are solved (milestone 3).
 local Mirror = {}
 
 Mirror.FLAG = "./../mods/darktidevr/darktidevr_body_mirror.flag"
@@ -38,7 +44,8 @@ Mirror.MODES = {
     mirror = {distance = Mirror.MIRROR_DISTANCE, facing = true, hide_head = false},
     overlaycopy = {distance = 0, facing = false, hide_head = true, solve_arms = false, hide_gloves = true},
     overlayarms = {distance = 0, facing = false, hide_head = true, solve_arms = true, hide_gloves = true},
-    overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hide_gloves = true},
+    overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hide_gloves = true,
+        follow_neck = true},
 }
 -- Near-eye mesh hiding, in the character root's frame at the spawn pose.
 Mirror.NEAR_EYE_RADIUS = 0.25
@@ -47,6 +54,20 @@ Mirror.EYE_FORWARD_OF_HEAD = 0.08
 -- A box this large (largest half extent) is a whole garment such as the
 -- torso: hiding it would remove the body, so it is kept and logged.
 Mirror.NEAR_EYE_MAX_HALF_EXTENT = 0.30
+-- Largest root move toward the body frame's neck.
+Mirror.NECK_FOLLOW_MAX = 0.5
+
+-- The root move that puts the copy's neck on the target neck, capped in
+-- length. Arrays. Returns offset, uncapped length. Pure.
+function Mirror.neck_offset(neck, target)
+    local offset = {target[1] - neck[1], target[2] - neck[2], target[3] - neck[3]}
+    local length = math.sqrt(offset[1] ^ 2 + offset[2] ^ 2 + offset[3] ^ 2)
+    if length > Mirror.NECK_FOLLOW_MAX then
+        local k = Mirror.NECK_FOLLOW_MAX / length
+        offset = {offset[1] * k, offset[2] * k, offset[3] * k}
+    end
+    return offset, length
+end
 
 -- Whether a mesh is hidden as near the eye: its box centre within the radius
 -- of the eye and above the shoulder line, and the box not a whole garment.
@@ -358,11 +379,24 @@ function Mirror.install(mod, presentation)
         end
         place(avatar, unit)
         World.update_unit(world, unit)
+        if Mirror.MODES[mode_name].follow_neck and Unit.has_node(unit, "j_neck") then
+            local frame = presentation.body_frame and presentation.body_frame.sample(avatar, t)
+            if frame and frame.neck then
+                local offset, length = Mirror.neck_offset(array(Unit.world_position(unit, Unit.node(unit, "j_neck"))), frame.neck)
+                Unit.set_local_position(unit, 1, Unit.local_position(unit, 1) + vector(offset))
+                World.update_unit(world, unit)
+                state.neck_offset, state.neck_distance = offset, length
+            end
+        end
         if Mirror.MODES[mode_name].solve_arms then
             for _, arm in ipairs(state.arms) do solve_arm(world, avatar, unit, arm) end
         end
         state.frames = state.frames + 1
         if state.frames == 1 or state.frames % 900 == 0 then
+            if state.neck_offset then
+                mod:info("DARKTIDEVR_BODY_MIRROR neck_follow offset_m=%.3f,%.3f,%.3f distance_m=%.3f",
+                    state.neck_offset[1], state.neck_offset[2], state.neck_offset[3], state.neck_distance)
+            end
             local first_person = ScriptUnit.has_extension(avatar, "first_person_system")
             local camera = first_person and first_person:first_person_unit()
             if camera and Mirror.MODES[mode_name].near_eye then

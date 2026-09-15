@@ -57,4 +57,9 @@ for _,name in ipairs({'overlay','overlayarms','overlaycopy'}) do
     assert(Mirror.MODES[name].hide_gloves,'one pair of hands: '..name)
 end
 assert(not Mirror.MODES.mirror.hide_gloves,'mirror stands apart from the player')
-print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hide_gloves')
+assert(Mirror.MODES.overlay.follow_neck and not Mirror.MODES.overlayarms.follow_neck)
+local off,len=Mirror.neck_offset({0,0.16,1.45},{0,-0.07,1.69})
+assert(near(off[2],-0.23) and near(off[3],0.24) and near(len,math.sqrt(0.23^2+0.24^2)),'moves neck onto target')
+off,len=Mirror.neck_offset({0,0,0},{0,0,2})
+assert(near(off[3],Mirror.NECK_FOLLOW_MAX) and near(len,2),'capped')
+print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hide_gloves neck_offset')
