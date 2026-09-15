@@ -130,6 +130,10 @@ tracked eye).
       "nothing was in reach" can be told from "the search never ran".
     - A pulse on the hand (with vibration on) when something comes into reach,
       the same one a foregrip or an armed holster gives.
+    - The stock interaction prompt should follow what your hand reaches: it
+      reads the interactor's target unit, which is what this changes, so no
+      separate marking was built. Note that the prompt still names the stock
+      interact binding rather than "grip"; say if that reads wrongly.
     - Unit test `reach_interact` only; the feel is worn.
 
 11. **Inspect by bringing the weapon up** (restart; Experimental features,
