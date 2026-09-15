@@ -63,3 +63,8 @@ tracked eye).
    - Known trade-off: the gun hand no longer moves during reloads or
      inspects; it stays on the grip.
    - Unit test only (`gun_aim` grip capture).
+
+5. **Melee charge count beside the controller grip** (restart; needs "Ammo
+   count at the hand"). With a charge melee weapon (arc maul) out, the charge
+   count sits beside the gun hand as before, now placed from the controller
+   grip rather than the drawn wrist; it should not move while strafing.

@@ -352,8 +352,10 @@ function Readout.install(mod, presentation, observation)
         else
             -- No gun placed (melee charges): beside the hand.
             local side = presentation.weapon_hand_roles.physical("dominant")
-            -- The grip as drawn (see presentation.visible_grip_target).
-            local grip = (presentation.visible_grip_target or presentation.weapon_grip_target)("dominant")
+            -- The controller grip, as the gun and the forearm holsters use:
+            -- the drawn wrist followed the character's animation (animation
+            -- audit, 16 September, item F).
+            local grip = presentation.weapon_grip_target("dominant")
             if not grip then hide(); return end
             local flat_right = Quaternion.right(eye_rotation)
             local inward = side == "left" and flat_right or -flat_right

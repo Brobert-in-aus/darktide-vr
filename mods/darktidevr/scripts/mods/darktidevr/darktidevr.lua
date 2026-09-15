@@ -8602,29 +8602,6 @@ function presentation.weapon_grip_target(role)
     if side == "right" then return presentation.controller_grip_target() end
 end
 
--- Where a hand's grip is drawn: the recorded final wrist pose (after gun
--- alignment and the support grip, darktidevr_body_proxy hand_pose) moved
--- WRIST_TO_GRIP forward along the aim; the raw controller grip when no pose
--- is recorded. The gun hand's glove follows the walking avatar's gun, so
--- displays anchored to the raw controller flickered against it while the
--- character moved (worn, 15 September evening). Returns position and the raw
--- grip rotation.
-presentation.WRIST_TO_GRIP = 0.08
-function presentation.visible_grip_target(role)
-    local raw_position, raw_rotation = presentation.weapon_grip_target(role)
-    local side = presentation.weapon_hand_roles.physical(role)
-    local proxy = presentation.body_proxy
-    if (side == "left" or side == "right") and proxy and proxy.hand_pose then
-        local wrist = proxy.hand_pose(side)
-        if wrist then
-            local _, aim = presentation.weapon_aim_target(role)
-            local rotation = aim or raw_rotation
-            if rotation then return wrist + Quaternion.forward(rotation) * presentation.WRIST_TO_GRIP, raw_rotation end
-        end
-    end
-    return raw_position, raw_rotation
-end
-
 function presentation.publish_gameplay_aim_state(active, hit, distance, world_point)
     if not ui_native_capture or
             not ui_native_capture.dtvr_set_gameplay_aim_state then
