@@ -548,6 +548,17 @@ for the future handedness toggle.
   the body frame (steps 1, 3 and 4 of "Solve per frame").
 - Limits: numeric trace from a synthetic path, no eye render and no worn
   look.
+- Root yaw from the body frame (`dbb0af3`, `overlayrootyaw` for A/B), run
+  `yaw1`: `body_yaw delta_from_avatar_deg=-0.0` in every sample. In this mode
+  the avatar root already faces the body frame yaw, so the step changes
+  nothing and the left/right gap difference is not a yaw mismatch. The gaps
+  vary sample to sample on both sides (left 0.06-0.24 m before the swing),
+  following the stock animated shoulders on the synthetic path. The yaw1
+  unreachable counts are not comparable with clav1: the copy updated at a
+  different rate (19,800 updates in the same hold) and the body scale
+  differed (world upper arm 0.30 m against 0.34 m).
+- Next, which needs eye renders or a worn look rather than numbers: spine and
+  neck from the body frame, and whether the left clavicle cap should rise.
 
 ## Changes from the 14 September design
 
