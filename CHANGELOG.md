@@ -51,13 +51,15 @@ off by default):
   height. A grip pressed just before your hand arrives, or just after it has
   passed through, still counts. Pressing grip on the holster of the item you
   are already holding gives a double tap and does nothing else. "Holster
-  labels" shows what a holster holds while your hand rests on it.
+  labels" shows what a holster holds while your hand rests on it. A holster
+  counts your hand as soon as your fingertips reach it.
 - Weapon hand holsters: small models of your other weapon, stim, carried item
   and device above your gun hand's forearm; reach in with the other hand and
-  press grip to equip. The one your hand is in grows and ticks, the gun shows
-  its ammo beneath it, and they hide while you two-hand or aim down sights.
-- Wrist display: health, toughness and stamina bars with their numbers above
-  your off-hand wrist, drawn in front of everything, with a size slider. Not
+  press grip to equip. The one your hand is in grows and ticks (and shows its
+  name with Holster labels on), the gun shows its ammo beneath it, and they
+  hide while you two-hand or aim down sights.
+- Wrist display: health, toughness and stamina bars with their numbers in your
+  off-hand glove's cuff, drawn in front of everything, with a size slider. Not
   shown in the hub.
 - Teammate status above teammates: each teammate's name, toughness and health
   float above their head at a readable size, with DOWNED, NETTED and similar

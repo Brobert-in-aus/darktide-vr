@@ -52,7 +52,7 @@ return {
     vr_sway_cancel = {en = "Cancel weapon sway (%%)"},
     vr_sway_cancel_description = {en = "Removes the game's artificial weapon sway from your shots, so only your own hands' steadiness counts. 100%% removes it; 0%% (the default) keeps the stock sway. Recoil and spread are unchanged. Applies wherever hand aim drives the game."},
     vr_wrist_display_scale_description = {en = "Resize the wrist display's bars and numbers. Updates while playing."},
-    vr_wrist_display_description = {en = "Health, toughness and stamina bars with their numbers, always shown above your off-hand wrist and drawn in front of everything. Not in the hub."},
+    vr_wrist_display_description = {en = "Health, toughness and stamina bars with their numbers, always shown in your off-hand glove's cuff and drawn in front of everything. Not in the hub."},
     vr_teammate_status = {en = "Teammate status above teammates"},
     vr_teammate_status_description = {en = "Each teammate's name, toughness and health bars float above their head, in front of everything and at a readable size at any distance, with DOWNED, NETTED and similar when they need help. Their panels in the team HUD are hidden while this is on; yours stays."},
     vr_holster_counts = {en = "Holster labels"},

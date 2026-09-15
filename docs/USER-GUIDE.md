@@ -159,7 +159,8 @@ The zones follow your body's facing and your height. An empty holster leaves
 the grip doing its normal action; pressing grip on the holster of the item
 already in your hand gives a double tap (with vibration on) and does nothing
 else. A grip pressed just before your hand arrives, or just after it has
-passed through, still counts. With "Controller vibration" on, the hand ticks
+passed through, still counts, and your hand counts as soon as your fingertips
+reach a holster. With "Controller vibration" on, the hand ticks
 as it reaches an armed holster; "Holster labels" shows what a holster holds
 while your hand rests on it. Holsters are off in the hub. The body zones are
 first estimates.
@@ -169,14 +170,15 @@ first estimates.
 Experimental features, "Weapon hand holsters". Small models of your other
 weapon, stim, carried item and device float in a line above your gun hand's
 forearm, the weapon nearest the wrist. Reach into one with the other hand and
-press grip to equip it; the model your hand is in grows and ticks. The gun
+press grip to equip it; the model your hand is in grows and ticks, and with
+"Holster labels" on its name shows above it. The gun
 shows its ammo beneath it. They hide while you two-hand the gun or aim down
 its sights, and in the hub.
 
 ### Wrist display, teammate status (experimental)
 
 - "Wrist display": health (white), toughness (the HUD's blue) and stamina bars
-  with their numbers above your off-hand wrist, drawn in front of everything.
+  with their numbers in your off-hand glove's cuff, drawn in front of everything.
   "Wrist display size (%)" resizes it while playing. Not shown in the hub.
 - "Teammate status above teammates": each teammate's name, toughness and
   health float above their head at a readable size at any distance, with
