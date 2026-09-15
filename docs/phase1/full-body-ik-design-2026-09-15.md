@@ -606,6 +606,21 @@ working viewer and eye readbacks.
     about a quarter of updates.
   - The clav1/stock1/yaw1/spine1/spine2 numbers above had no viewer; these two
     runs supersede them for tracked play.
+- **Clavicle cap 45 degrees (`84c0147`, `overlayreach`, run `reach3`, same
+  setup as `follow3`):** gaps after the swing over eight samples, against
+  `follow3` at 30 degrees:
+  - right 0.085-0.130 m against 0.100-0.172 m (about a quarter smaller);
+  - left 0.121-0.158 m against 0.122-0.165 m (almost unchanged);
+  - unreachable updates unchanged (left 1,573 against 1,560, right 0), no
+    script errors, render `reach3/renders/l4.png` much like `follow3`.
+
+  A larger cap barely moves the left gap, so what remains is mostly radial:
+  the arm root turns on a sphere around the clavicle joint and cannot reach an
+  estimated shoulder at a different distance from it. Closing that needs a
+  translation (protraction, or the estimate's lateral term calibrated from the
+  rig's bind-pose shoulder width, as "Shared body frame" allows), not a bigger
+  swing. Assumption: `overlay` keeps the 30 degree cap (the design's VRArmIK
+  limit); `overlayreach` stays for A/B.
 - Next: spine limits (45 forward, 20 back, 25
   lateral, 40 twist), neck and head shares, and whether `overlayspine`
   replaces the root follow in `overlay`.
