@@ -11,11 +11,22 @@
 --
 -- A display asks for a canvas each frame it shows and draws in metres around
 -- its anchor (x to the viewer's right, y up); metres_per_pixel sets the
--- panel's scale, and a cell is CELL pixels square.
+-- panel's scale.
+--
+-- The atlas is the size of the game's UI back buffer (1920 x 1080 times the
+-- UI scale), as the HUD panel's target is: the overlay viewport lays the GUI
+-- out at that size, and a 2048 x 1024 atlas drew everything about half size,
+-- low resolution and squashed (worn, 15 September evening). Cells are that
+-- target divided into COLUMNS by ROWS.
 local Overlay = {}
 
-Overlay.CELL = 512
 Overlay.COLUMNS, Overlay.ROWS = 4, 2
+
+-- The atlas extent for a UI scale. Pure.
+function Overlay.extent(scale)
+    scale = (type(scale) == "number" and scale > 0) and scale or 1
+    return math.max(64, math.floor(1920 * scale + 0.5)), math.max(64, math.floor(1080 * scale + 0.5))
+end
 
 local function sub(a, b) return {a[1] - b[1], a[2] - b[2], a[3] - b[3]} end
 local function cross(a, b) return {a[2] * b[3] - a[3] * b[2], a[3] * b[1] - a[1] * b[3], a[1] * b[2] - a[2] * b[1]} end
@@ -45,13 +56,27 @@ function Overlay.text_box(x, y, width, height, align)
 end
 
 function Overlay.install(mod, presentation, Atlas, api)
-    local atlas = Atlas.new({name = "darktidevr_hand_overlay", log_tag = "DARKTIDEVR_HAND_OVERLAY",
-        cell_width = Overlay.CELL, cell_height = Overlay.CELL, columns = Overlay.COLUMNS, rows = Overlay.ROWS})
-    atlas.configure(api)
     local UIRenderer = api.UIRenderer
     local UIFonts
     local anchors = {}
-    local overlay = {atlas = atlas}
+    local overlay = {}
+    local atlas, atlas_extent
+    local function clock() return Managers.time and Managers.time:time("main") or nil end
+    -- The atlas for the current UI scale, rebuilt when it changes.
+    local function current_atlas()
+        local width, height = Overlay.extent(RESOLUTION_LOOKUP and RESOLUTION_LOOKUP.scale)
+        local key = width .. "x" .. height
+        if atlas and atlas_extent ~= key then pcall(atlas.destroy); atlas = nil end
+        if not atlas then
+            atlas = Atlas.new({name = "darktidevr_hand_overlay", log_tag = "DARKTIDEVR_HAND_OVERLAY",
+                cell_width = math.floor(width / Overlay.COLUMNS), cell_height = math.floor(height / Overlay.ROWS),
+                columns = Overlay.COLUMNS, rows = Overlay.ROWS, clock = clock})
+            atlas.configure(api)
+            atlas_extent = key
+            overlay.atlas = atlas
+        end
+        return atlas
+    end
 
     -- A canvas for this frame at position (Vector3), or nil when the atlas is
     -- unavailable or full. key names the display. Every display in one frame
@@ -67,6 +92,7 @@ function Overlay.install(mod, presentation, Atlas, api)
             anchor.position:store(position)
         end
         anchor.metres = metres_per_pixel
+        local atlas = current_atlas()
         if not atlas.ensure(world) then return nil end
         local x, y = atlas.claim(t, anchor)
         if not x then return nil end
@@ -84,7 +110,7 @@ function Overlay.install(mod, presentation, Atlas, api)
         -- Text centred vertically at (cx, cy); align "center", "left" or "right".
         function canvas.text(text, font_px, cx, cy, color, align)
             UIFonts = UIFonts or require("scripts/managers/ui/ui_fonts")
-            local width, height = Overlay.CELL, font_px * 1.5
+            local width, height = atlas.CELL_WIDTH, font_px * 1.5
             local sx, sy = pixel(cx, cy)
             local left, top = Overlay.text_box(sx, sy, width, height, align)
             local options = UIFonts.get_font_options_by_style({text_horizontal_alignment = align or "center",
@@ -97,6 +123,7 @@ function Overlay.install(mod, presentation, Atlas, api)
 
     -- At the camera update: every cell on its panel.
     function overlay.draw(world)
+        if not atlas then return 0 end
         return atlas.draw(world, function(anchor)
             local eye
             if presentation.eye_pose then eye = presentation.eye_pose(nil) end
@@ -113,8 +140,8 @@ function Overlay.install(mod, presentation, Atlas, api)
             return tm, anchor.metres
         end)
     end
-    function overlay.destroy() pcall(atlas.destroy) end
-    function overlay.forget_world() pcall(atlas.forget_world) end
+    function overlay.destroy() if atlas then pcall(atlas.destroy) end end
+    function overlay.forget_world() if atlas then pcall(atlas.forget_world) end end
     return overlay
 end
 

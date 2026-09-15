@@ -16,12 +16,13 @@ Wrist.OUT = 0.07
 Wrist.HEALTH_COLOR = {255, 255, 255}
 Wrist.TOUGHNESS_COLOR = {108, 187, 196}
 Wrist.STAMINA_COLOR = {230, 220, 160}
-Wrist.BAR_WIDTH = 0.08
-Wrist.BAR_HEIGHT = 0.008
-Wrist.BAR_GAP = 0.014
-Wrist.TEXT_SIZE = 0.011
+-- 1.5 times the first size (worn, 15 September evening: "a little bigger").
+Wrist.BAR_WIDTH = 0.12
+Wrist.BAR_HEIGHT = 0.012
+Wrist.BAR_GAP = 0.021
+Wrist.TEXT_SIZE = 0.0165
 -- Overlay panel scale: metres per panel pixel.
-Wrist.PIXEL_METRES = 0.0005
+Wrist.PIXEL_METRES = 0.00025
 Wrist.TEST_FLAG = "./../mods/darktidevr/darktidevr_wrist_display_test.flag"
 
 local function finite(x) return type(x) == "number" and x == x and math.abs(x) < math.huge end
@@ -38,7 +39,8 @@ function Wrist.bars(values)
             text = string.format("%d", math.floor(values.health + 0.5))}
     end
     if clamp01(values.toughness) then
-        bars[#bars + 1] = {id = "toughness", fraction = clamp01(values.toughness), color = Wrist.TOUGHNESS_COLOR}
+        bars[#bars + 1] = {id = "toughness", fraction = clamp01(values.toughness), color = Wrist.TOUGHNESS_COLOR,
+            text = finite(values.toughness_value) and string.format("%d", math.floor(values.toughness_value + 0.5)) or nil}
     end
     if clamp01(values.stamina) then
         bars[#bars + 1] = {id = "stamina", fraction = clamp01(values.stamina), color = Wrist.STAMINA_COLOR}
@@ -77,6 +79,7 @@ function Wrist.install(mod, presentation, observation)
             health = health and field(function() return health:current_health() end),
             max_health = health and field(function() return health:max_health() end),
             toughness = toughness and field(function() return toughness:current_toughness_percent() end),
+            toughness_value = toughness and field(function() return toughness:remaining_toughness() end),
             stamina = unit_data and field(function() return unit_data:read_component("stamina").current_fraction end),
         }
     end

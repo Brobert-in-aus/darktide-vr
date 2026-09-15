@@ -102,4 +102,18 @@ local after_release = 0
 for _, call in ipairs(calls) do if call.name == "destroy_world" then after_release = after_release + 1 end end
 assert(after_release == worlds_destroyed + 1)
 assert(Atlas.ensure("game_world") and Atlas.claim(5, {x = 0, y = 2, z = 0}), "rebuilds on the next marker")
+-- A clocked atlas (the hand overlays) counts time, not draw calls: several
+-- camera updates in one game frame keep showing its cells.
+local now = 10
+local clocked = Atlas.new({name = "overlay", log_tag = "OVERLAY", cell_width = 960, cell_height = 1080,
+    columns = 4, rows = 2, clock = function() return now end})
+clocked.configure(api)
+assert(clocked.ensure("game_world") and clocked.CELL_WIDTH == 960 and clocked.WIDTH == 3840)
+assert(clocked.claim(now, {x = 0, y = 0, z = 0}))
+now = 10.011; assert(clocked.claim(now, {x = 0, y = 0, z = 0}))
+for _ = 1, 6 do assert(clocked.draw("game_world", frame_for) == 1, "shown across repeated camera updates") end
+now = 10.2
+assert(clocked.draw("game_world", frame_for) == 0 and clocked.state.resource ~= nil, "stale after 0.1 s, not yet idle")
+now = 11.5
+assert(clocked.draw("game_world", frame_for) == 0 and clocked.state.resource == nil, "idle after a second")
 print("marker_atlas.result=pass")

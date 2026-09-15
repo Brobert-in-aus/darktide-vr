@@ -5,14 +5,19 @@
 -- pose in the same world GUI style as the crosshair feedback.
 local Readout = {}
 
-Readout.OFFSET_UP = 0.09        -- metres above the grip
+-- Just above the hand, level with the gun, now it draws in front of the
+-- scene (worn, 15 September evening; it was 9 cm up to clear the gun).
+Readout.OFFSET_UP = 0.03        -- metres above the grip
 Readout.OFFSET_INWARD = 0.05    -- towards the body's midline
 -- Worn, 15 September evening: 5 cm further toward the end of the hand (along
 -- the aim), then 6 cm away from the eye (drawn toward the eye it filled the
 -- view while aiming; staying visible is a rendering matter, not position).
 Readout.OFFSET_FORWARD = 0.05
 Readout.AWAY_FROM_EYE = 0.06
-Readout.PIXEL_METRES = 0.0011   -- world size of one font pixel
+Readout.PIXEL_METRES = 0.0011   -- world size of one font pixel (layout unit)
+-- The overlay panel draws several panel pixels per layout pixel, for sharp
+-- text at hand distance.
+Readout.PANEL_DENSITY = 3
 Readout.FONT_SIZE = 30          -- clip count (or heat)
 Readout.SMALL_FONT_SIZE = 15    -- reserve under it
 Readout.RING_RADIUS = 0.030     -- metres; the ring encloses both lines
@@ -353,7 +358,8 @@ function Readout.install(mod, presentation, observation)
         -- right and y up, one font pixel PIXEL_METRES wide as before.
         world = game_world
         local overlay = presentation.hand_overlay
-        local canvas = overlay and overlay.canvas(game_world, "ammo_readout", anchor, Readout.PIXEL_METRES)
+        local density = Readout.PANEL_DENSITY
+        local canvas = overlay and overlay.canvas(game_world, "ammo_readout", anchor, Readout.PIXEL_METRES / density)
         if not canvas then hide(); return end
         local ps = Readout.PIXEL_METRES
         local size = Readout.FONT_SIZE * ps
@@ -367,11 +373,11 @@ function Readout.install(mod, presentation, observation)
         -- the 2D text is centred on the glyphs' middle, 0.56 below.
         local layout = Readout.stack_layout(size, small)
         local primary_y = secondary and layout.clip_y or size * 0.56
-        canvas.text(primary, Readout.FONT_SIZE, dx, primary_y - size * 0.56, {240, c[1], c[2], c[3]})
+        canvas.text(primary, Readout.FONT_SIZE * density, dx, primary_y - size * 0.56, {240, c[1], c[2], c[3]})
         if secondary then
             -- The reserve fades on its own capacity, independently of the clip.
             local r = values.clip and Readout.fill_color(values.reserve, values.reserve_max) or c
-            canvas.text(secondary, Readout.SMALL_FONT_SIZE, dx, layout.reserve_y - small * 0.56, {230, r[1], r[2], r[3]})
+            canvas.text(secondary, Readout.SMALL_FONT_SIZE * density, dx, layout.reserve_y - small * 0.56, {230, r[1], r[2], r[3]})
             -- The dash between them: a bar, so it never depends on the font's glyph.
             canvas.rect(dx, layout.dash_y, layout.dash_length, layout.dash_thickness, {200, r[1], r[2], r[3]})
         end

@@ -7,7 +7,11 @@
 -- capture target, and a completed copy that the world material samples.
 -- Atlas.new(options) makes another independent atlas (the hand overlays):
 -- options name (resource prefix), log_tag, cell_width, cell_height, columns
--- and rows. The module itself is the marker atlas.
+-- and rows, and clock (a function returning the main time): with a clock,
+-- cells go stale after STALE_SECONDS and resources idle out after
+-- IDLE_RELEASE_SECONDS instead of counting draw calls, which run more than
+-- once per game frame (worn, 15 September evening: the hand overlays
+-- flickered). The module itself is the marker atlas.
 local panel_material_name = "content/ui/materials/icons/items/containers/item_container_square"
 local target_material_name = "content/ui/materials/render_target_masks/ui_render_target_straight_blur"
 
@@ -164,6 +168,7 @@ local function new(options)
         end
         state.pending = {}
         state.stamp = state.frame
+        state.stamp_t = options.clock and options.clock() or nil
         api.Gui.render_pass(state.queue.gui, 0, "to_screen", true)
         state.authored_t = t
         return true
@@ -216,11 +221,25 @@ local function new(options)
     -- the mission, and two mission-end unloads crashed on a resource it still
     -- held. Markers stop drawing before every unload (cutscene, end screen).
     Atlas.IDLE_RELEASE_FRAMES = 30
+    Atlas.STALE_SECONDS = 0.1
+    Atlas.IDLE_RELEASE_SECONDS = 1
+    -- Whether the claimed cells are too old to show, and whether to let go of
+    -- the resources: by the clock when there is one, else by draw calls.
+    local function staleness()
+        local now = options.clock and options.clock()
+        if now and state.stamp_t then
+            local age = now - state.stamp_t
+            return age > Atlas.STALE_SECONDS, age > Atlas.IDLE_RELEASE_SECONDS
+        end
+        if options.clock then return true, false end
+        local age = state.frame - state.stamp
+        return age > 2, age > Atlas.IDLE_RELEASE_FRAMES
+    end
 
     function Atlas.draw(world, frame_for)
         state.frame = state.frame + 1
-        if state.resource and state.world == world and
-                state.frame - state.stamp > Atlas.IDLE_RELEASE_FRAMES then
+        local stale, idle = staleness()
+        if state.resource and state.world == world and idle then
             Atlas.destroy()
             if state.api and state.api.log then
                 state.api.log(TAG .. " released reason=idle")
@@ -230,7 +249,7 @@ local function new(options)
         -- Cells recorded in another world (the one before a map change) never
         -- draw: their GUI belongs to that world.
         if not state.ready or not state.world_gui or state.world ~= world or
-                state.frame - state.stamp > 2 then return 0 end
+                stale then return 0 end
         local api = state.api
         local drawn = 0
         for _, record in ipairs(state.shown) do

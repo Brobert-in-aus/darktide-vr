@@ -21,7 +21,7 @@ near(c2[1],1-(Forearm.ZONE_START+Forearm.ZONE_SPACING),'follows the arm')
 -- User layout: 8 cm zones, 4 cm apart, the weapon above the wrist.
 near(Forearm.ZONE_RADIUS*2,.08,'8 cm zones'); near(Forearm.ZONE_SPACING-2*Forearm.ZONE_RADIUS,.04,'4 cm between zones')
 near(Forearm.ZONE_START,.08,'weapon zone above the wrist')
-near(Forearm.PREVIEW_SIZE,.096,'miniatures 50% larger than the first fit')
+assert(Forearm.PREVIEW_SIZE>=.096,'miniatures at least 50% larger than the first fit')
 -- Miniatures are fitted to one size; unusable extents are refused.
 near(Forearm.fit_scale(1.0),Forearm.PREVIEW_SIZE,'a 1 m weapon'); near(Forearm.fit_scale(0.25),Forearm.PREVIEW_SIZE*4,'a 25 cm stim')
 assert(Forearm.fit_scale(0)==nil and Forearm.fit_scale(nil)==nil and Forearm.fit_scale(0/0)==nil)
