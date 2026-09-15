@@ -49,6 +49,9 @@ Support.SNAP_SECONDS=.1
 -- hold (worn, 15 September evening: the press lands on the haptic, after the
 -- hand has gone through, and fired the special instead).
 Support.GRACE_SECONDS=.35
+-- Beyond the acquire radius, the hand counts as approaching the grip: a grip
+-- press there waits for it (reverse grace, darktidevr_controller_bindings).
+Support.APPROACH_MARGIN=.12
 Support.ZONE_EXIT_MARGIN=.015
 function Support.snap_step(weight,target,dt)
     if not finite(weight) then weight=0 end
@@ -160,6 +163,8 @@ function Support.new(Pose)
         api.near_age=Support.near_age(api.near_age,near,frame.dt)
         return {control=frame.side..'_grip',owner=identity,action=action,toggle=api.grip_toggle()==true,layer='gripping',
             acquire=api.near_age~=nil and api.near_age<=Support.GRACE_SECONDS,
+            approach=Pose.near(frame.rotation,frame.primary,frame.support,profile.socket,
+                profile.acquire+Support.APPROACH_MARGIN),
             -- Once held, the grip keeps any hand spacing: only the guards above end
             -- it (hands too close or crossed to give the gun a direction, lost
             -- tracking, weapon or action changes, a menu).

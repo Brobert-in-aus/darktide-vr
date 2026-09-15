@@ -13,6 +13,9 @@ Holsters.DWELL_SECONDS = 0.05
 -- that zone (worn, 15 September evening: the hand is thrown out and grips on
 -- the haptic, by which time it has already left).
 Holsters.GRACE_SECONDS = 0.35
+-- Within this multiple of a zone's radius a hand is approaching it: a grip
+-- press there waits for the hand (reverse grace, darktidevr_controller_bindings).
+Holsters.APPROACH_SCALE = 1.5
 Holsters.TEST_FLAG = "./../mods/darktidevr/darktidevr_holsters_test.flag"
 
 -- Zone centres in the body frame at the reference eye height, metres from the
@@ -91,6 +94,17 @@ function Holsters.zone_at(point, zones, current)
     return best
 end
 
+-- The nearest zone within scale times its radius of a local point, or nil.
+function Holsters.zone_near(point, zones, scale)
+    if not point then return nil end
+    local best, best_ratio
+    for _, zone in ipairs(zones or Holsters.ZONES) do
+        local ratio = distance(point, zone.centre) / (zone.radius * scale)
+        if ratio <= 1 and (not best_ratio or ratio < best_ratio) then best, best_ratio = zone, ratio end
+    end
+    return best
+end
+
 local function equipped(inventory, slot)
     if slot == nil then return inventory ~= nil end
     local item = inventory and inventory[slot]
@@ -152,6 +166,21 @@ function Holsters.new(zones)
             acquire = true, retain = true}
     end
 
+    -- A request that only marks the hand as approaching a zone: a grip press
+    -- waits for it to arrive. Nothing for an empty or wielded slot, or while
+    -- the hand already holds a claim.
+    function api.approach(hand, zone, inventory)
+        local state = api.hands[hand]
+        if not state or state.claim or not zone or not equipped(inventory, zone.slot) or
+                (zone.slot and inventory.wielded_slot == zone.slot) then
+            return nil
+        end
+        state.offer = state.offer and state.offer.zone == zone and state.offer or
+            {zone = zone, selector = zone.selector, slot = zone.slot}
+        return {control = hand .. "_grip", owner = state.offer, action = zone.selector,
+            acquire = false, approach = true, retain = true}
+    end
+
     -- Feed back the bindings' grip result for the hand that made the request.
     function api.finish(hand, grip)
         local state = api.hands[hand]
@@ -175,6 +204,8 @@ end
 function Holsters.choose(holster_request, support_request, holster_claimed, support_grip)
     if not holster_request then return support_request, false end
     if holster_claimed then return holster_request, true end
+    -- A hand only approaching a holster never displaces a support request.
+    if support_request and holster_request.approach == true then return support_request, false end
     if support_request and ((type(support_grip) == "table" and support_grip.held) or
             support_request.acquire == true) then
         return support_request, false
@@ -265,7 +296,8 @@ function Holsters.install(mod, presentation, observation)
             local live = observation[hand .. "_grip_tracking_live"] == true
             local point = live and frame and Holsters.local_point(frame, vector(role_position))
             local ready = api.update(hand, point, t, zones)
-            local request = api.request(hand, ready, inventory)
+            local request = api.request(hand, ready, inventory) or
+                (point and api.approach(hand, Holsters.zone_near(point, zones, Holsters.APPROACH_SCALE), inventory))
             -- One vibration as a hand's grip becomes a holster press.
             local armed = request and request.acquire and request.owner.zone or nil
             if armed and armed ~= haptic_zone[hand] and presentation.haptics then
@@ -283,7 +315,9 @@ function Holsters.install(mod, presentation, observation)
                         frame and string.format("%.2f", frame.scale * Holsters.REFERENCE_EYE_HEIGHT) or "nil")
                 end
             end
-            if request and (owner_hand == hand or (not owner_hand and not chosen)) then
+            -- A hand arriving at a zone wins over the other hand merely approaching one.
+            if request and (owner_hand == hand or (not owner_hand and (not chosen or
+                    (chosen.request.acquire ~= true and request.acquire == true)))) then
                 chosen = {hand = hand, request = request}
             end
         end

@@ -60,6 +60,24 @@ assert(quick.update("left", {0, 0, 0}, 2.02) == nil, "no grace for a zone never 
 assert(api.update("left", nil, 1.2) == nil and api.hands.left.zone == nil, "lost tracking leaves the zone")
 assert(api.update("both", chest, 1.2) == nil, "unknown hand")
 
+-- Approach: within 1.5 times a zone's radius, a request that only marks the hand.
+do
+    local zones = {{id = "z", centre = {0, 0, 0}, radius = 0.1, slot = "slot_pocketable_small", selector = "stim"}}
+    assert(Holsters.zone_near({0.14, 0, 0}, zones, Holsters.APPROACH_SCALE).id == "z", "approaching")
+    assert(Holsters.zone_near({0.16, 0, 0}, zones, Holsters.APPROACH_SCALE) == nil, "too far")
+    local near_api = Holsters.new()
+    local inv = {slot_pocketable_small = "content/items/pocketable/syringe", wielded_slot = "slot_secondary"}
+    local request = near_api.approach("left", zones[1], inv)
+    assert(request and request.approach and request.acquire == false and request.action == "stim", "approach request")
+    assert(near_api.approach("left", zones[1], {slot_pocketable_small = "not_equipped"}) == nil, "empty slot")
+    -- An approach never displaces a support request; an arrival still yields to a held support grip.
+    local support = {control = "left_grip", acquire = false}
+    local chosen, ours = Holsters.choose(request, support, false, {held = false})
+    assert(chosen == support and not ours, "approach yields to the support request")
+    chosen, ours = Holsters.choose(request, nil, false, nil)
+    assert(chosen == request and ours, "approach alone is the holster's")
+end
+
 -- Requests.
 local inventory = {wielded_slot = "slot_secondary", slot_primary = "sword", slot_secondary = "lasgun",
     slot_pocketable_small = "syringe", slot_pocketable = "not_equipped", slot_device = "auspex"}

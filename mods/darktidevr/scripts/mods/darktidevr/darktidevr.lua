@@ -6404,6 +6404,8 @@ function presentation.inject_gameplay_input(self, main_t, input)
         support_request,holster_request=presentation.holsters.sample(player_unit,
             controller_observation.gameplay_input_active and game_mode_name~="hub",main_t,support_request)
     end
+    -- The input time, for the bindings' reverse grip grace.
+    if type(support_request)=='table' then support_request.now=main_t end
     local pressed, held, released = presentation.controller_bindings.sample(
         controller_observation.gameplay_input_active,
         tonumber(controller_observation.gameplay_held[0]),

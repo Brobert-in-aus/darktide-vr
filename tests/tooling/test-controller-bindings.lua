@@ -290,6 +290,36 @@ do
     end
     assert(delivered.wield_1==16777216 and delivered.wield_2==33554432,'request-only wields not delivered')
 end
+-- Reverse grace: a press while only approaching waits for the hand.
+do
+    local approach={control='left_grip',owner={},acquire=false,approach=true,retain=true,action='alternate',now=1}
+    grip_sample(0,0,0,0,false,approach)
+    approach.now=1.01; grip_sample(512,0,0,0,false,approach) -- held back: no class ability
+    approach.now=1.1; grip_sample(512,0,0,0,false,approach)
+    approach.now=1.2; approach.acquire=true
+    grip_sample(512,2,2,0,true,approach) -- the hand arrived: it takes the grip
+    assert(grip_mapper.support_grip.pressed,'reverse grace did not press the grip')
+    approach.now=1.3; grip_sample(0,0,0,2,false,approach)
+    -- Timed out still held: the bound action, late.
+    approach.acquire=false
+    approach.now=2; grip_sample(512,0,0,0,false,approach)
+    approach.now=2.1; grip_sample(512,0,0,0,false,approach)
+    approach.now=2.3; grip_sample(512,2048,2048,0,false,approach)
+    approach.now=2.4; grip_sample(0,0,0,2048,false,approach)
+    -- Released before arriving: the bound action as a tap.
+    approach.now=3; grip_sample(512,0,0,0,false,approach)
+    approach.now=3.05; grip_sample(0,2048,2048,0,false,approach)
+    approach.now=3.1; grip_sample(0,0,0,2048,false,approach)
+    -- The approach ends (hand turned away): delivered at once, still held.
+    approach.now=4; grip_sample(512,0,0,0,false,approach)
+    approach.approach=false
+    approach.now=4.05; grip_sample(512,2048,2048,0,false,approach)
+    approach.now=4.1; grip_sample(0,0,0,2048,false,approach)
+    -- No time on the request: no hold-back.
+    approach.approach=true; approach.now=nil
+    grip_sample(512,2048,2048,0,false,approach)
+    grip_sample(0,0,0,2048,false,approach)
+end
 grip_sample(0,0,0,0,false,grip_request)
 grip_sample(512,2,2,0,true,grip_request)
 assert(grip_mapper.support_grip.pressed)

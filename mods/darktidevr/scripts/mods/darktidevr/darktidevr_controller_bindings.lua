@@ -58,6 +58,14 @@ Bindings.actions = {
     {id="ranged", hub=false, mask=33554432, request_only=true, pressed={"wield_2"}},
 }
 -- Actions a contextual grip request may hold instead of the grip's binding.
+-- Reverse grip grace (user, 15 September evening): a grip press made while
+-- the request says its hand is only approaching (support.approach, the hand
+-- close to but not yet in the grip or holster zone) is held back for up to
+-- REVERSE_GRACE_SECONDS. Still held when the hand arrives (support.acquire):
+-- it takes the grip and the bound action never fires. Otherwise it goes to
+-- its binding: late if still held, as a tap if already released. Requests
+-- carry the input time as support.now.
+Bindings.REVERSE_GRACE_SECONDS = 0.25
 Bindings.REQUEST_ACTIONS = {unbound=0, alternate=2, blitz=512, pocketable=65536, stim=131072, device=262144,
     melee=16777216, ranged=33554432}
 
@@ -232,6 +240,7 @@ function Bindings.install(mod)
         wield_press=Bindings.wield_press,
         support_grip={held=false,pressed=false,released=false,cancelled=false}}
     local previous_physical, grip_claim = 0, nil
+    local pending_press -- a held-back grip press: {bit, since}
     local previous_contributors=0
     local masks, resolved, grip_resolved, latched = {}, {}, {}, {}
     local dirty, blocked, active = true, 0, false
@@ -451,6 +460,35 @@ function Bindings.install(mod)
                 grip_claim=nil
             end
         end
+        -- Reverse grace: resolve a held-back press, or start one.
+        local now=type(support)=='table' and type(support.now)=='number' and support.now or nil
+        local held_back,tap_bit=0,0
+        if pending_press then
+            local down=bit.band(physical,pending_press.bit)~=0
+            if reset_grip or not active then
+                pending_press=nil
+            elseif not down then
+                tap_bit=pending_press.bit
+                pending_press=nil
+            elseif not grip_claim and request_valid and request_bit==pending_press.bit and
+                    support.acquire==true and support.retain==true then
+                grip_claim={bit=request_bit,mask=request_mask,owner=support.owner,layer=support.layer}
+                grip.pressed=true
+                pending_press=nil
+            elseif not request_valid or support.approach~=true or not now or
+                    now-pending_press.since>Bindings.REVERSE_GRACE_SECONDS then
+                pending_press=nil -- Still held: it reaches its binding below, late.
+            else
+                held_back=pending_press.bit
+            end
+        end
+        if not grip_claim and not pending_press and not reset_grip and active and request_valid and
+            support.approach==true and support.acquire~=true and now and
+            bit.band(physical,request_bit)~=0 and
+            bit.band(bit.bor(blocked,previous_physical),request_bit)==0 then
+            pending_press={bit=request_bit,since=now}
+            held_back=request_bit
+        end
         if not grip_claim and not reset_grip and active and request_valid and
             support.acquire==true and support.retain==true and
             bit.band(physical,request_bit)~=0 and
@@ -462,7 +500,7 @@ function Bindings.install(mod)
         local next_held = 0
         local contributors,physical_releases=0,0
         if active then
-            local available = bit.band(physical,bit.bnot(blocked))
+            local available = bit.band(physical,bit.bnot(bit.bor(blocked,held_back)))
             -- A two-hand grip switches to the while-gripping bindings. Each
             -- control keeps the layer it was pressed in until it is released,
             -- so taking or leaving the grip never changes an action mid-press.
@@ -484,6 +522,13 @@ function Bindings.install(mod)
             if grip_claim then
                 next_held=bit.bor(next_held,grip_claim.mask)
                 grip.held=true
+            end
+            -- A held-back press released before the hand arrived: its bound
+            -- action for this frame only (released on the next).
+            if tap_bit~=0 then
+                for _,control in ipairs(Bindings.controls) do
+                    if control.bit==tap_bit then next_held=bit.bor(next_held,resolved[control.id] or 0) end
+                end
             end
         else
             for _,control in ipairs(Bindings.controls) do latched[control.id]=nil end
