@@ -172,4 +172,6 @@ tracked eye).
     - `DARKTIDEVR_TAG pointing` in the log each time the hand comes up.
     - Say whether "arm out ahead" is the right threshold: it takes the hand
       25 cm forward of and 35 cm from your eye to start, and keeps pointing
-      until it comes back inside 15 cm forward or 25 cm away.
+      until it comes back inside 15 cm forward or 25 cm away, then for a
+      further 0.3 s after that, so a tag pressed as the arm comes down still
+      goes where you pointed.

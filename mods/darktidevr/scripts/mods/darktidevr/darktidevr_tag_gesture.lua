@@ -18,6 +18,12 @@ Tag.MIN_DISTANCE = 0.35
 -- Once pointing, these relax, so a tag is not lost as the arm settles.
 Tag.EXIT_FORWARD = 0.15
 Tag.EXIT_DISTANCE = 0.25
+-- And the hand keeps the tag ray for this long after it drops. A tag is a
+-- press, not a hold: the press lands a moment after the arm has started to
+-- come down, and it should still go where the player pointed. Run gest3 showed
+-- the state falling in and out several times a second as a moving arm crossed
+-- the thresholds; the widened thresholds alone did not cover that.
+Tag.LINGER_SECONDS = 0.3
 
 local function finite(x) return type(x) == "number" and x == x and math.abs(x) < math.huge end
 local function point(v) return type(v) == "table" and finite(v[1]) and finite(v[2]) and finite(v[3]) end
@@ -38,12 +44,28 @@ function Tag.role(pointing)
     return pointing and "support" or "dominant"
 end
 
+-- The pointing state after a sample, carried between calls as
+-- {pointing = bool, until_t = number}: the pose keeps it, and losing the pose
+-- keeps it for LINGER_SECONDS more. Returns the new state and whether the tag
+-- ray should leave the hand now. Pure.
+function Tag.step(state, in_pose, t)
+    state = type(state) == "table" and state or {}
+    if type(t) ~= "number" or t ~= t then return {pointing = false}, false end
+    if in_pose then return {pointing = true, until_t = t + Tag.LINGER_SECONDS}, true end
+    local until_t = type(state.until_t) == "number" and state.until_t or nil
+    -- Time running backwards (a level change) drops it rather than lingering.
+    if until_t and t <= until_t and t >= until_t - Tag.LINGER_SECONDS then
+        return {pointing = true, until_t = until_t}, true
+    end
+    return {pointing = false}, false
+end
+
 -- Engine side. The pure part above is what the tests exercise.
 Tag.TEST_FLAG = "./../mods/darktidevr/darktidevr_tag_test.flag"
 
 function Tag.install(mod, presentation)
     local api = {}
-    local pointing, failed, entries = false, false, 0
+    local state, pointing, failed, entries = {}, false, false, 0
 
     local test_poll, test_enabled = 0, false
     local function test_flag()
@@ -83,15 +105,18 @@ function Tag.install(mod, presentation)
         return Tag.pointing(local_hand, pointing)
     end
 
-    function api.apply(unit, active, t)
-        if failed then return end
+    local function in_pose(unit, active)
         local ok, out = pcall(sample, unit, active)
-        if not ok then
-            failed = true
-            pointing = false
-            mod:warning("DARKTIDEVR_TAG error=%s", tostring(out):sub(1, 160))
-            return
-        end
+        if ok then return out == true end
+        failed = true
+        mod:warning("DARKTIDEVR_TAG error=%s", tostring(out):sub(1, 160))
+        return false
+    end
+
+    function api.apply(unit, active, t)
+        if failed then state, pointing = {}, false; return end
+        local out
+        state, out = Tag.step(state, in_pose(unit, active), t)
         if out and not pointing then
             entries = entries + 1
             if entries <= 10 then mod:info("DARKTIDEVR_TAG pointing entries=%d", entries) end
@@ -104,7 +129,7 @@ function Tag.install(mod, presentation)
         return Tag.role(pointing)
     end
 
-    function api.destroy() pointing = false end
+    function api.destroy() state, pointing = {}, false end
     return api
 end
 
