@@ -102,7 +102,8 @@ function Readout.values(slot, Ammo, clip_count, peril)
     return result
 end
 
--- A melee weapon with special charges (power maul, force sword): charges left
+-- A melee weapon with special charges (two-handed force swords, some axes,
+-- crowbars and shivs; not power mauls): charges left
 -- and whether the special is active. nil for melee weapons without charges.
 function Readout.melee_values(slot)
     if type(slot) ~= "table" then return nil end

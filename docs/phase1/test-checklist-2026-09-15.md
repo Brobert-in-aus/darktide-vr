@@ -116,3 +116,8 @@ Yesterday's checklist items not reached are still open in
     percentage beside your weapon hand, white turning red toward overload,
     and nothing at zero peril. Unit tested only (no staff in the unattended
     runs).
+14. **Melee charges at the hand** (`6738627`; needs "Ammo count at the hand"
+    on). With a melee weapon that has special charges (a two-handed force
+    sword, or an axe, crowbar or shivs with charges), the hand readout shows
+    charges as `n/max`, blue while the special is active. Weapons without
+    charges (power mauls) show nothing. Unit tested only.

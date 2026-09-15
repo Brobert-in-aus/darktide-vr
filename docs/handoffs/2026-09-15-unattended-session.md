@@ -386,8 +386,15 @@ Commit `7ef9e33`, deployed (evening item 13).
   readout still draws (`first_draw ... test=front`); no script errors.
 - **Not shown:** peril itself; the unattended character (Skitarius) has no
   staff.
-- **Not done:** the melee charge arcs (shock maul, force sword) from the same
-  backlog item.
+- **Melee special charges, `6738627`** (evening item 14). With a melee weapon
+  that has stock special charges wielded, the readout shows `n/max`. It is
+  coloured by the share left, blue while the special is active, red at zero.
+  - *Which weapons:* stock templates with charges are some combat axes, the
+    crowbar, dual shivs and two-handed force swords (needle pistols and
+    shotguns on the ranged side). Power mauls are not among them.
+  - *Evidence (`charges2`):* the unattended character's Brutus Arc Maul
+    reports `melee_charges=1/0`, so it correctly shows nothing. The charge
+    display itself is unit tested only.
 
 Note: `run2` died because I piped the capture script through
 `Select-Object -First 1`, which stopped the script and so the runner's job
