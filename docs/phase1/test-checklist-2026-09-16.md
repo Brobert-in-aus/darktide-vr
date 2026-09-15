@@ -81,3 +81,17 @@ tracked eye).
    mode only). On entering a level with the full-body body mode on, the body
    starts facing where you look rather than where the character root faced.
    Nothing changes in the default hands mode. Static change; suite only.
+
+8. **Calibration T-pose guidance** (restart; open the VR calibration). The
+   T-pose instruction asks for arms straight out at shoulder height, fully
+   extended, controllers pointing outward. After saving, the result shows
+   the arm span with the span expected for your height, and names any problem
+   with the T-pose (short, forward, low, uneven), saying your height is used
+   for arm length instead.
+   - Worth doing: recalibrate standing with arms fully out. The saved span
+     (150.6 cm) is 12.6 cm short of the 163 cm expected. Does the new capture
+     land near 163 cm?
+   - Check the longer result text fits its box.
+   - Arm lengths are not yet applied in normal play; this only records the
+     capture and its checks (`expected_hand_span`, `t_pose_problems` in the
+     saved result).

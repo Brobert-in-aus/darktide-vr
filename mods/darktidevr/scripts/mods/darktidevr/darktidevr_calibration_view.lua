@@ -33,6 +33,16 @@ local MODE_SETTINGS = {
 }
 
 local SAMPLE_FRAMES = 45
+-- T-pose checks from the arm length design (docs/phase1/arm-length-calibration-2026-09-16.md):
+-- advisory, shown on the result; the arm length derivation falls back to the
+-- span predicted from eye height when the T-pose has a problem.
+local ArmLength = mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_arm_length")
+local T_POSE_PROBLEM_TEXT = {
+    short = "shorter than expected for your height",
+    forward = "held forward of your body",
+    low = "below shoulder height",
+    uneven = "at different heights",
+}
 local MAX_SAMPLE_SPREAD = 0.015
 local TRIGGER_PULL_THRESHOLD = 0.75
 local TRIGGER_RELEASE_THRESHOLD = 0.25
@@ -267,6 +277,8 @@ DarktideVRCalibrationView._finish_capture = function(self)
         if mode.left and mode.right then
             result.hand_span = distance(
                 runtime.t_pose.left, runtime.t_pose.right)
+            result.expected_hand_span = ArmLength.predicted_span(result.floor_eye_height)
+            result.t_pose_problems = ArmLength.t_pose_problems(runtime.t_pose, result.floor_eye_height)
         else
             local hand = mode.left and runtime.t_pose.left or
                 runtime.t_pose.right
@@ -300,7 +312,7 @@ DarktideVRCalibrationView._refresh_text = function(self)
     local instruction = "Choose standing, seated, bilateral or single-arm calibration."
     if stage == "ready_t_pose" then
         instruction = "Selected: " .. MODE_SETTINGS[runtime.mode].label ..
-            ". Hold a comfortable T-pose, release the required trigger(s), then pull them to capture."
+            ". Stand straight and hold your arms straight out to the sides at shoulder height, fully extended, controllers pointing outward. Release the required trigger(s), then pull them to capture."
     elseif stage == "capture_t_pose" then
         instruction = "Capturing T-pose. Hold still."
     elseif stage == "ready_sides" then
@@ -320,7 +332,19 @@ DarktideVRCalibrationView._refresh_text = function(self)
             string.format("; official height %.3f (%s)",
                 result.profile_height_requested,
                 result.profile_height_status or "pending") or ""
-        instruction = "Calibration saved. " .. arm .. "; " .. height ..
+        local check = ""
+        if result.expected_hand_span then
+            check = string.format(" (expected about %.0f cm for your height)", result.expected_hand_span * 100)
+        end
+        local problems = {}
+        for _, id in ipairs(result.t_pose_problems or {}) do
+            problems[#problems + 1] = T_POSE_PROBLEM_TEXT[id] or id
+        end
+        if #problems > 0 then
+            check = check .. ". The T-pose arms looked " .. table.concat(problems, ", ") ..
+                ": your height is used for arm length instead. Recalibrate with your arms straight out to improve it"
+        end
+        instruction = "Calibration saved. " .. arm .. check .. "; " .. height ..
             profile_height ..
             ". Height is applied before residual arm retargeting."
     end
