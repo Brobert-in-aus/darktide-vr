@@ -25,10 +25,12 @@
 -- overlay5 looking down showed the empty collar ring where the hidden head
 -- was. "overlayarms" is the arm solve without that hiding, for A/B.
 --
--- Both overlay modes hide the rigid gloves while the copy is ready: the
--- copy's own hands sit on the same wrists, and both drawn would show two
--- pairs of hands (user, 15 September). The gloves are still placed; the
--- weapons follow them.
+-- Overlay modes make the copy the hand rig (BodyProxy.set_hand_rig): the
+-- glove units are removed, every hand placement records one final wrist pose
+-- per side, and both the weapons' hand joints and the copy's arms follow
+-- that pose, so there is one pair of hands and the hand stays on the gun
+-- (user, 15 September). Out of reach, the arm straightens and the hand is
+-- still put on the pose, stretching the wrist.
 --
 -- "overlay" also moves the copy so its neck sits at the body frame's neck (7
 -- cm behind and 8 cm below the eye): overlay6 found the camera about 21 cm
@@ -49,9 +51,9 @@
 -- With the neck at eye height the eye sits inside the hood and cloak, which
 -- are part of the torso mesh (overlay10). Collapsing the head (overlay11) or
 -- neck (overlay12) joint's scale did not fold the cowl, which is skinned to
--- the spine. "overlay" instead puts the neck NECK_BACK_EXTRA further behind
--- the eye, so the eye sits in front of the cowl's opening. "overlayscale" is
--- the scaled copy at the body frame's own neck, for A/B.
+-- the spine. overlay14 put the neck a further 15 cm back to keep the eye in
+-- front of the cowl; the user chose the proper camera place instead ("players
+-- can switch equipment"), so the neck sits at the body frame's own neck.
 local Mirror = {}
 
 Mirror.FLAG = "./../mods/darktidevr/darktidevr_body_mirror.flag"
@@ -59,14 +61,12 @@ Mirror.MIRROR_DISTANCE = 2.5
 Mirror.KEPT_SLOT_TYPES = {body = true, gear = true, material = true}
 Mirror.MODES = {
     mirror = {distance = Mirror.MIRROR_DISTANCE, facing = true, hide_head = false},
-    overlaycopy = {distance = 0, facing = false, hide_head = true, solve_arms = false, hide_gloves = true},
-    overlayarms = {distance = 0, facing = false, hide_head = true, solve_arms = true, hide_gloves = true},
-    overlayfollow = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hide_gloves = true,
+    overlaycopy = {distance = 0, facing = false, hide_head = true, solve_arms = false, hand_rig = true},
+    overlayarms = {distance = 0, facing = false, hide_head = true, solve_arms = true, hand_rig = true},
+    overlayfollow = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hand_rig = true,
         follow_neck = true},
-    overlayscale = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hide_gloves = true,
+    overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hand_rig = true,
         follow_neck = true, scale_to_neck = true},
-    overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hide_gloves = true,
-        follow_neck = true, scale_to_neck = true, neck_back_extra = 0.15},
 }
 -- Near-eye mesh hiding, in the character root's frame at the spawn pose.
 Mirror.NEAR_EYE_RADIUS = 0.25
@@ -209,12 +209,9 @@ function Mirror.install(mod, presentation)
         enabled = parsed ~= nil
         return enabled
     end
-    local function gloves_hidden(hidden)
-        local proxy = presentation.body_proxy
-        if proxy and proxy.set_rigid_hands_hidden then proxy.set_rigid_hands_hidden(hidden) end
-    end
+    local function body_proxy() return presentation.body_proxy end
     function api.destroy()
-        if state and state.gloves_hidden then gloves_hidden(false) end
+        if state and state.hand_rig and body_proxy() then body_proxy().set_hand_rig(nil) end
         if state then
             if state.profile_spawner then pcall(state.profile_spawner.destroy, state.profile_spawner) end
             if state.unit_spawner then pcall(state.unit_spawner.destroy, state.unit_spawner) end
@@ -313,8 +310,15 @@ function Mirror.install(mod, presentation)
         end
     end
     local function solve_arm(world, avatar, unit, arm)
-        local target = Unit.world_position(avatar, arm.hand)
-        local target_rotation = Unit.world_rotation(avatar, arm.hand)
+        -- The final visible wrist pose (tracked, gun-aligned or on the support
+        -- grip); the avatar's hand joint only when no pose is recorded.
+        local target, target_rotation
+        if state.hand_rig and body_proxy() and body_proxy().hand_pose then
+            target, target_rotation = body_proxy().hand_pose(arm.side)
+        end
+        if not target then
+            target, target_rotation = Unit.world_position(avatar, arm.hand), Unit.world_rotation(avatar, arm.hand)
+        end
         Unit.set_local_position(unit, arm.forearm, arm.rest_forearm:unbox())
         Unit.set_local_position(unit, arm.hand, arm.rest_hand:unbox())
         World.update_unit(world, unit)
@@ -329,10 +333,21 @@ function Mirror.install(mod, presentation)
         if not elbow then return end
         aim_joint(world, unit, arm.arm, arm.forearm, vector(elbow))
         aim_joint(world, unit, arm.forearm, arm.hand, vector(hand))
+        -- The hand always lands on the pose (the gun stays in it); out of reach
+        -- the wrist stretches the remainder.
+        local parent = Unit.scene_graph_parent(unit, arm.hand)
+        if parent then
+            Unit.set_local_position(unit, arm.hand, Matrix4x4.transform(Matrix4x4.inverse(Unit.world_pose(unit, parent)), target))
+            World.update_unit(world, unit)
+        end
+        arm.stretch = Vector3.length(target - vector(hand))
         set_world_rotation(unit, arm.hand, target_rotation)
         World.update_unit(world, unit)
         arm.distance = Vector3.length(target - shoulder)
-        if not reachable then arm.unreachable = arm.unreachable + 1 end
+        if not reachable then
+            arm.unreachable = arm.unreachable + 1
+            arm.max_stretch = math.max(arm.max_stretch or 0, arm.stretch)
+        end
         arm.error = Vector3.length(Unit.world_position(unit, arm.hand) - target)
     end
     local function place(avatar, unit)
@@ -382,9 +397,10 @@ function Mirror.install(mod, presentation)
             state.count = Unit.num_scene_graph_items(unit)
             capture_arms(unit)
             if Mirror.MODES[mode_name].near_eye then hide_near_eye(unit, data) end
-            if Mirror.MODES[mode_name].hide_gloves then
-                gloves_hidden(true)
-                state.gloves_hidden = true
+            if Mirror.MODES[mode_name].hand_rig and body_proxy() and body_proxy().set_hand_rig then
+                -- Before the first copy: the wrist basis comes from this spawn pose.
+                state.hand_rig = body_proxy().set_hand_rig(unit)
+                mod:info("DARKTIDEVR_BODY_MIRROR hand_rig=%s", tostring(state.hand_rig))
             end
             local slots, hidden = 0, {}
             for slot_name, slot in pairs(data.slots or {}) do
@@ -428,22 +444,7 @@ function Mirror.install(mod, presentation)
                 World.update_unit(world, unit)
             end
             if frame and frame.neck then
-                local target = frame.neck
-                local back = Mirror.MODES[mode_name].neck_back_extra
-                local first_person = back and ScriptUnit.has_extension(avatar, "first_person_system")
-                local camera = first_person and first_person:first_person_unit()
-                if camera then
-                    -- The look direction, flattened: overlay13 used the avatar
-                    -- root's facing, which does not follow the look, and
-                    -- pushed the body 0.5 m sideways.
-                    local forward = Quaternion.forward(Unit.world_rotation(camera, 1))
-                    local x, y = Vector3.x(forward), Vector3.y(forward)
-                    local flat = math.sqrt(x * x + y * y)
-                    if flat > 0.1 then
-                        target = {target[1] - x / flat * back, target[2] - y / flat * back, target[3]}
-                    end
-                end
-                local offset, length = Mirror.neck_offset(array(Unit.world_position(unit, Unit.node(unit, "j_neck"))), target)
+                local offset, length = Mirror.neck_offset(array(Unit.world_position(unit, Unit.node(unit, "j_neck"))), frame.neck)
                 Unit.set_local_position(unit, 1, Unit.local_position(unit, 1) + vector(offset))
                 World.update_unit(world, unit)
                 state.neck_offset, state.neck_distance = offset, length
@@ -477,8 +478,8 @@ function Mirror.install(mod, presentation)
                 tostring(mode_name), state.frames, hand, world_hand, stretch)
             if Mirror.MODES[mode_name].solve_arms then
                 for _, arm in ipairs(state.arms) do
-                    mod:info("DARKTIDEVR_BODY_MIRROR arm side=%s upper_m=%.4f lower_m=%.4f world_upper_m=%.4f world_lower_m=%.4f shoulder_to_target_m=%.4f hand_error_m=%.4f unreachable_frames=%d",
-                        arm.side, arm.upper, arm.lower, arm.world_upper or -1, arm.world_lower or -1, arm.distance or -1, arm.error or -1, arm.unreachable)
+                    mod:info("DARKTIDEVR_BODY_MIRROR arm side=%s upper_m=%.4f lower_m=%.4f world_upper_m=%.4f world_lower_m=%.4f shoulder_to_target_m=%.4f hand_error_m=%.4f unreachable_frames=%d max_stretch_m=%.4f",
+                        arm.side, arm.upper, arm.lower, arm.world_upper or -1, arm.world_lower or -1, arm.distance or -1, arm.error or -1, arm.unreachable, arm.max_stretch or 0)
                 end
             end
         end

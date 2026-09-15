@@ -53,10 +53,10 @@ hide,d,why=Mirror.near_eye({0,0,1.36},{0.1,0.1,0.1},eye,1.40)
 assert(not hide and why=='below_shoulders')
 hide,d,why=Mirror.near_eye({0,0,1.45},{0.3,0.2,0.5},eye,1.34)
 assert(not hide and why=='too_large','whole torso is kept')
-for _,name in ipairs({'overlay','overlayarms','overlaycopy'}) do
-    assert(Mirror.MODES[name].hide_gloves,'one pair of hands: '..name)
+for _,name in ipairs({'overlay','overlayarms','overlaycopy','overlayfollow'}) do
+    assert(Mirror.MODES[name].hand_rig,'one pair of hands: '..name)
 end
-assert(not Mirror.MODES.mirror.hide_gloves,'mirror stands apart from the player')
+assert(not Mirror.MODES.mirror.hand_rig,'mirror stands apart from the player')
 assert(Mirror.MODES.overlay.follow_neck and not Mirror.MODES.overlayarms.follow_neck)
 local off,len=Mirror.neck_offset({0,0.16,1.45},{0,-0.07,1.69},true)
 assert(near(off[2],-0.23) and near(off[3],0.24) and near(len,math.sqrt(0.23^2+0.24^2)),'moves neck onto target')
@@ -73,6 +73,5 @@ assert(Mirror.scale_ratio(nil,1.5,1.2,0)==1,'never shrinks: a crouch lowers inst
 assert(near(Mirror.scale_ratio(nil,1.5,3,0),Mirror.MAX_BODY_SCALE_RATIO),'capped')
 assert(near(Mirror.scale_ratio(1,1.5,1.8,0.5),1.1),'eases by rate times dt')
 assert(Mirror.scale_ratio(nil,0,1.8,0)==1,'degenerate neck height')
-assert(Mirror.MODES.overlay.neck_back_extra>0 and Mirror.MODES.overlay.scale_to_neck)
-assert(Mirror.MODES.overlayscale.scale_to_neck and not Mirror.MODES.overlayscale.neck_back_extra)
-print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hide_gloves neck_offset scale_ratio neck_back')
+assert(Mirror.MODES.overlay.neck_back_extra==nil,'camera at the proper place, cowl or not')
+print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio')

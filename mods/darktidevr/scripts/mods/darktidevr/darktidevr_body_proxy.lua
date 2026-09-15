@@ -71,10 +71,19 @@ local rigid_hands = {
     right = {},
 }
 
--- Set by a presentation that draws its own hands on the same wrists (the
--- dev-flag full-profile body overlay): the gloves keep being placed, since
--- the weapons follow them, but are not drawn, so only one pair shows.
-local rigid_hands_hidden = false
+-- Where the visible hands come from. Every hand placement below (tracked
+-- grip, gun alignment, two-hand support grip, stock melee follow) ends in
+-- place_rigid_hand, which records the final wrist pose per side
+-- (hand.pose_position, hand.pose_rotation). The equipment hand joints and a
+-- body read that pose.
+-- - Default (hand_rig nil): two rigid glove units draw the hands. They are
+--   the fallback until the third-person body is finished.
+-- - hand_rig set (BodyProxy.set_hand_rig, by a full-profile body that draws
+--   its own hands): no glove units exist. The same placements only record
+--   the pose, using the anatomical wrist basis measured once from that rig.
+--   The gloves return when the rig is cleared or its unit dies.
+local hand_rig = nil
+local hand_rig_anatomy = {}
 
 local hidden_source_slots = {
     slot_body_arms = true,
@@ -174,14 +183,9 @@ local function normalized_anatomical_axis(axis)
     return Vector3.normalize(axis)
 end
 
-local function anatomical_hand_rotation(unit, side, target_rotation)
-    local hand = rigid_hands[side]
-    local target_frame = Quaternion.look(
-        Quaternion.right(target_rotation) * -1,
-        Quaternion.forward(target_rotation))
-    if hand.anatomy_inverse then
-        return Quaternion.multiply(target_frame, hand.anatomy_inverse:unbox())
-    end
+-- The inverse of a rig's anatomical wrist basis for one side, measured from
+-- its hand and knuckle joints, or nil when the pose cannot define it.
+local function measure_anatomy_inverse(unit, side)
     local hand_name = side == "left" and "j_lefthand" or "j_righthand"
     local middle_name = side == "left" and
         "j_lefthandmiddle1" or "j_righthandmiddle1"
@@ -189,7 +193,7 @@ local function anatomical_hand_rotation(unit, side, target_rotation)
         "j_lefthandindex1" or "j_righthandindex1"
     local pinky_name = side == "left" and
         "j_lefthandpinky1" or "j_righthandpinky1"
-    if not Unit.has_node(unit, hand_name) or
+    if not unit or not Unit.has_node(unit, hand_name) or
             not Unit.has_node(unit, middle_name) or
             not Unit.has_node(unit, index_name) or
             not Unit.has_node(unit, pinky_name) then
@@ -216,13 +220,25 @@ local function anatomical_hand_rotation(unit, side, target_rotation)
     across = normalized_anatomical_axis(across)
     if not longitudinal or not across then return nil end
     local palm = normalized_anatomical_axis(Vector3.cross(across, longitudinal))
+    if not palm then return nil end
+    return QuaternionBox(inverse_quaternion(Quaternion.look(palm, across)))
+end
+
+local function anatomical_hand_rotation(unit, side, target_rotation)
+    local hand = rigid_hands[side]
+    local target_frame = Quaternion.look(
+        Quaternion.right(target_rotation) * -1,
+        Quaternion.forward(target_rotation))
+    if hand.anatomy_inverse then
+        return Quaternion.multiply(target_frame, hand.anatomy_inverse:unbox())
+    end
     -- A partial pose must not permanently poison the cached wrist basis.
     -- Leave calibration unset so the next usable authored pose can retry.
-    if not palm then return nil end
-    local source_frame = Quaternion.look(palm, across)
     -- Capture the authored basis before importing finger animation. Rebuilding
     -- it from curled fingers would make an open/closed palm rotate the wrist.
-    hand.anatomy_inverse = QuaternionBox(inverse_quaternion(source_frame))
+    local anatomy_inverse = measure_anatomy_inverse(unit, side)
+    if not anatomy_inverse then return nil end
+    hand.anatomy_inverse = anatomy_inverse
     return Quaternion.multiply(target_frame, hand.anatomy_inverse:unbox())
 end
 
@@ -289,9 +305,6 @@ local function show_rigid_hand_surface(hand)
                 end
             end
         end
-    end
-    if rigid_hands_hidden then
-        Unit.set_unit_visibility(unit, false, true)
     end
     if not hand.surface_logged then
         hand.surface_logged = true
@@ -387,6 +400,22 @@ end
 
 local function place_rigid_hand(world, hand, target_position, target_rotation,
         authored_rotation)
+    if hand_rig then
+        -- Body-drawn hands: record the final wrist pose, nothing to move.
+        if not hand.anatomy_inverse or not target_position or not target_rotation then
+            return false
+        end
+        local rotation = authored_rotation and target_rotation or
+            anatomical_hand_rotation(nil, hand.side, target_rotation)
+        if hand.pose_position then
+            hand.pose_position:store(target_position)
+            hand.pose_rotation:store(rotation)
+        else
+            hand.pose_position = Vector3Box(target_position)
+            hand.pose_rotation = QuaternionBox(rotation)
+        end
+        return true
+    end
     local unit = hand.unit
     local hand_name = hand.side == "left" and "j_lefthand" or "j_righthand"
     if not hand.ready or not unit or not Unit.alive(unit) or
@@ -417,6 +446,13 @@ local function place_rigid_hand(world, hand, target_position, target_rotation,
         root_position + target_position - Unit.world_position(unit, hand_node))
     World.update_unit_and_children(world, unit)
     show_rigid_hand_surface(hand)
+    if hand.pose_position then
+        hand.pose_position:store(Unit.world_position(unit, hand_node))
+        hand.pose_rotation:store(Unit.world_rotation(unit, hand_node))
+    else
+        hand.pose_position = Vector3Box(Unit.world_position(unit, hand_node))
+        hand.pose_rotation = QuaternionBox(Unit.world_rotation(unit, hand_node))
+    end
     hand.placement_count = (hand.placement_count or 0) + 1
     if hand.placement_count == 1 or hand.placement_count % 600 == 0 then
         local wrist = Unit.world_position(unit, hand_node)
@@ -493,6 +529,26 @@ function BodyProxy.update(
     if state.failed_source_unit == source_unit then
         return nil
     end
+    if hands_only and hand_rig and not Unit.alive(hand_rig) then
+        hand_rig, hand_rig_anatomy = nil, {}
+        safe_destroy()
+        print("DARKTIDEVR_IK hand_rig=gloves reason=rig_unit_lost")
+    end
+    if hands_only and hand_rig then
+        -- Body-drawn hands: no glove units. The source unit carries the head
+        -- joint the tracked grip targets need.
+        if state.world ~= world or state.source_unit ~= source_unit or
+                state.profile ~= profile or not state.hands_only then
+            safe_destroy()
+            state.world, state.source_unit, state.profile = world, source_unit, profile
+            state.hands_only, state.ready, state.ready_transition = true, true, true
+            print("DARKTIDEVR_IK rigid_hands=pose_only source=body_rig")
+        end
+        for side, hand in pairs(rigid_hands) do
+            hand.side, hand.ready, hand.anatomy_inverse = side, true, hand_rig_anatomy[side]
+        end
+        return source_unit
+    end
     if hands_only then
         if state.world ~= world or state.source_unit ~= source_unit or
                 state.profile ~= profile or not state.hands_only then
@@ -554,6 +610,9 @@ function BodyProxy.update(
 end
 
 function BodyProxy.active()
+    if state.hands_only and hand_rig then
+        return state.ready == true and Unit.alive(hand_rig)
+    end
     if state.hands_only then
         local left, right = rigid_hands.left, rigid_hands.right
         return state.ready and left.ready and right.ready and
@@ -563,22 +622,35 @@ function BodyProxy.active()
     return state.ready and state.unit and Unit.alive(state.unit)
 end
 
--- Hides (or shows again) both rigid gloves without changing their placement.
-function BodyProxy.set_rigid_hands_hidden(hidden)
-    hidden = hidden == true
-    if hidden == rigid_hands_hidden then return end
-    rigid_hands_hidden = hidden
-    for _, hand in pairs(rigid_hands) do
-        if hand.ready and hand.unit and Unit.alive(hand.unit) then
-            if hidden then Unit.set_unit_visibility(hand.unit, false, true)
-            else show_rigid_hand_surface(hand) end
+-- A full-profile body that draws its own hands takes over from the glove
+-- units (unit), or hands back to them (nil). Call it before the body copies
+-- any animated pose: the wrist basis is measured from its hand joints now.
+-- Returns whether body-drawn hands are active.
+function BodyProxy.set_hand_rig(unit)
+    if unit ~= nil and not Unit.alive(unit) then unit = nil end
+    if unit == hand_rig then return hand_rig ~= nil end
+    local anatomy = {}
+    if unit then
+        for _, side in ipairs({"left", "right"}) do
+            anatomy[side] = measure_anatomy_inverse(unit, side)
+            if not anatomy[side] then
+                print("DARKTIDEVR_IK hand_rig=rejected reason=anatomy_unavailable side=" .. side)
+                return false
+            end
         end
     end
-    print("DARKTIDEVR_IK rigid_hands_hidden=" .. tostring(hidden))
+    safe_destroy()
+    hand_rig, hand_rig_anatomy = unit, anatomy
+    print("DARKTIDEVR_IK hand_rig=" .. (unit and "body" or "gloves"))
+    return unit ~= nil
 end
 
-function BodyProxy.rigid_hands_hidden()
-    return rigid_hands_hidden
+-- The final wrist pose of a physical side after every placement so far this
+-- frame (the pose the visible hand shows), or nil.
+function BodyProxy.hand_pose(side)
+    local hand = rigid_hands[side]
+    if not hand or not hand.pose_position or not BodyProxy.rigid_hands_active() then return nil end
+    return hand.pose_position:unbox(), hand.pose_rotation:unbox()
 end
 
 function BodyProxy.rigid_hands_active()
@@ -626,8 +698,8 @@ function BodyProxy.equipment_hand_rotation(source, authored_side, grip_rotation)
             not grip_rotation or (authored_side~='left' and authored_side~='right') or
             not BodyProxy.rigid_hands_active() then return nil end
     local hand=rigid_hands[authored_side]
-    if not hand.ready or not hand.unit or not Unit.alive(hand.unit) or
-            not hand.anatomy_inverse then return nil end
+    if not hand.ready or not hand.anatomy_inverse or
+            (not hand_rig and (not hand.unit or not Unit.alive(hand.unit))) then return nil end
     return anatomical_hand_rotation(hand.unit,authored_side,grip_rotation)
 end
 
@@ -670,13 +742,23 @@ function BodyProxy.place_support_hand(world,source,side,position,rotation,author
     if weight~=nil and weight<1 then
         if not (weight>0) then return false end
         local name=side=='left' and 'j_lefthand' or 'j_righthand'
-        if not hand.ready or not hand.unit or not Unit.alive(hand.unit) or
-            not Unit.has_node(hand.unit,name) or not position or not rotation then return false end
+        local from_position,from_rotation
+        if hand_rig then
+            -- Body-drawn hands blend from the recorded tracked pose.
+            if not hand.pose_position or not position or not rotation then return false end
+            from_position,from_rotation=hand.pose_position:unbox(),hand.pose_rotation:unbox()
+        else
+            if not hand.ready or not hand.unit or not Unit.alive(hand.unit) or
+                not Unit.has_node(hand.unit,name) or not position or not rotation then return false end
+        end
         local joint=authored_rotation and rotation or anatomical_hand_rotation(hand.unit,side,rotation)
         if not joint then return false end
-        local node=Unit.node(hand.unit,name)
-        position=Vector3.lerp(Unit.world_position(hand.unit,node),position,weight)
-        rotation=Quaternion.lerp(Unit.world_rotation(hand.unit,node),joint,weight)
+        if not from_position then
+            local node=Unit.node(hand.unit,name)
+            from_position,from_rotation=Unit.world_position(hand.unit,node),Unit.world_rotation(hand.unit,node)
+        end
+        position=Vector3.lerp(from_position,position,weight)
+        rotation=Quaternion.lerp(from_rotation,joint,weight)
         authored_rotation=true
     end
     return place_rigid_hand(world,hand,position,rotation,authored_rotation==true)

@@ -9230,6 +9230,13 @@ function presentation.sync_equipment_hand_pose(
 end
 
 function presentation.sync_equipment_hand_to_proxy(source_unit, proxy_unit, hand_name)
+    if proxy_unit == nil and presentation.body_proxy and presentation.body_proxy.hand_pose then
+        -- Body-drawn hands have no glove unit: follow the recorded final pose.
+        local side = hand_name == "j_lefthand" and "left" or hand_name == "j_righthand" and "right" or nil
+        if not side then return false end
+        local position, rotation = presentation.body_proxy.hand_pose(side)
+        return presentation.sync_equipment_hand_pose(source_unit, hand_name, position, rotation)
+    end
     if not proxy_unit or not Unit.alive(proxy_unit) or not Unit.has_node(proxy_unit,hand_name) then return false end
     local node=Unit.node(proxy_unit,hand_name)
     return presentation.sync_equipment_hand_pose(source_unit,hand_name,
