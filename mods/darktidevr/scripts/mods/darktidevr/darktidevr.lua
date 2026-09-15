@@ -11730,6 +11730,9 @@ mod:hook_safe(
         if presentation.forearm_holsters then
             presentation.forearm_holsters.update_previews(self._world, player_unit, dt, t)
         end
+        if presentation.teammate_status then
+            presentation.teammate_status.draw(self._world, player_unit)
+        end
         if presentation.rig_scan then
             presentation.rig_scan.update(self._world, player_unit, dt, t)
         end
@@ -15364,6 +15367,9 @@ presentation.wrist_display = mod:io_dofile(
 ).install(mod, presentation, controller_observation)
 presentation.holster_counts = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_holster_counts"
+).install(mod, presentation)
+presentation.teammate_status = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_teammate_status"
 ).install(mod, presentation)
 presentation.sight_ads = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_sight_ads"

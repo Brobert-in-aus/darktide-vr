@@ -202,6 +202,11 @@ return {
                         default_value = false,
                     },
                     {
+                        setting_id = "vr_teammate_status",
+                        type = "checkbox",
+                        default_value = false,
+                    },
+                    {
                         setting_id = "vr_holster_counts",
                         type = "checkbox",
                         default_value = false,

@@ -1,0 +1,18 @@
+-- Teammate status: state labels, constant angular size, bar order and clamps.
+local Status=dofile(assert(arg[1]))
+local function near(a,b,m) assert(math.abs(a-b)<1e-9,(m or 'mismatch')..': '..tostring(a)) end
+assert(Status.state_label('knocked_down')=='DOWNED' and Status.state_label('netted')=='NETTED')
+assert(Status.state_label('walking')==nil and Status.state_label(nil)==nil,'not disabled')
+near(Status.metres_per_pixel(10),10*Status.METRES_PER_PIXEL_PER_METRE,'scales with distance')
+near(Status.metres_per_pixel(20)/Status.metres_per_pixel(10),2,'constant angular size')
+near(Status.metres_per_pixel(100),Status.MAX_DISTANCE*Status.METRES_PER_PIXEL_PER_METRE,'capped far away')
+near(Status.metres_per_pixel(0.9),Status.MIN_DISTANCE*Status.METRES_PER_PIXEL_PER_METRE,'floored close by')
+assert(Status.metres_per_pixel(0.5)==nil,'hidden when too near')
+assert(Status.metres_per_pixel(0/0)==nil)
+local bars=Status.bars({toughness=.4,health=50,max_health=200})
+assert(#bars==2 and bars[1].id=='toughness' and bars[2].id=='health','toughness above health')
+near(bars[1].fraction,.4); near(bars[2].fraction,.25)
+bars=Status.bars({toughness=2,health=300,max_health=200})
+assert(bars[1].fraction==1 and bars[2].fraction==1,'clamped')
+assert(#Status.bars({health=10,max_health=0})==0 and #Status.bars(nil)==0)
+print('teammate_status=pass state_label angular_size bars clamps')
