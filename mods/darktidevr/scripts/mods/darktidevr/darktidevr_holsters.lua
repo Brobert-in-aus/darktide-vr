@@ -325,9 +325,9 @@ function Holsters.install(mod, presentation, observation)
         return test_enabled
     end
     local hand_zones, no_zones = {}, {}
-    local pending_tap, last_t
+    local pending_tap, last_t, last_unit
     local function sample(unit, active, t)
-        last_t = t
+        last_t, last_unit = t, unit
         -- The second tap of a refused press.
         if pending_tap and type(t) == "number" and t >= pending_tap.at then
             if presentation.haptics then presentation.haptics.pulse(pending_tap.hand, "refused", t) end
@@ -337,7 +337,9 @@ function Holsters.install(mod, presentation, observation)
         api.body_active = body == true
         local forearm = presentation.forearm_holsters
         local forearm_on = forearm and forearm.enabled()
-        if not active or not (body or forearm_on) or not unit then
+        local skull = presentation.skull_throw
+        local skull_on = skull and skull.enabled()
+        if not active or not (body or forearm_on or skull_on) or not unit then
             api.reset(); owner_hand = nil; haptic_zone = {}; api.frame = nil; api.body_active = false
             return nil
         end
@@ -381,14 +383,17 @@ function Holsters.install(mod, presentation, observation)
         -- Weapon hand holsters: zones on the gun hand's forearm, for the off
         -- hand only.
         local forearm_zones = forearm_on and frame and forearm.local_zones(unit, frame, Holsters, inventory) or nil
+        -- The servo skull's grab zone (darktidevr_skull_throw), for the off hand.
+        local skull_zones = skull_on and frame and skull.local_zones(unit, frame, Holsters) or nil
         local support_hand = presentation.weapon_hand_roles and presentation.weapon_hand_roles.physical("support")
         local chosen
         for _, hand in ipairs({"right", "left"}) do
             local zones = body and api.zones or no_zones
-            if forearm_zones and hand == support_hand then
+            if (forearm_zones or skull_zones) and hand == support_hand then
                 for i = #hand_zones, 1, -1 do hand_zones[i] = nil end
                 for _, zone in ipairs(zones) do hand_zones[#hand_zones + 1] = zone end
-                for _, zone in ipairs(forearm_zones) do hand_zones[#hand_zones + 1] = zone end
+                for _, zone in ipairs(forearm_zones or no_zones) do hand_zones[#hand_zones + 1] = zone end
+                for _, zone in ipairs(skull_zones or no_zones) do hand_zones[#hand_zones + 1] = zone end
                 zones = hand_zones
             end
             local role_position
@@ -477,7 +482,13 @@ function Holsters.install(mod, presentation, observation)
                 mod:info("DARKTIDEVR_HOLSTER wield hand=%s selector=%s", owner_hand,
                     tostring(offer and offer.selector))
             end
+            local claim = api.hands[owner_hand].claim
             api.finish(owner_hand, grip)
+            -- Letting go of the servo skull is the throw.
+            if claim and grip.released and not api.hands[owner_hand].claim and claim.zone and
+                    claim.zone.id == "skull" and presentation.skull_throw then
+                presentation.skull_throw.released(last_unit)
+            end
             if not api.hands[owner_hand].claim then owner_hand = nil end
         end
     end

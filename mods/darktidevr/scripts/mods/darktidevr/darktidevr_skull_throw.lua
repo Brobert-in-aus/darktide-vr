@@ -1,0 +1,275 @@
+-- Grab and throw the servo skull's flamethrower (option "vr_skull_throw",
+-- default off; user, 15 September evening; Skitarius with the flamethrower
+-- skull talented).
+--
+-- Visible: the flamethrower skull's first-person rest position is brought
+-- forward (stock hovers it 15 cm behind the eye, out of view); its side and
+-- height offsets stay stock. The stock follow code places it from that table
+-- every frame on the owner's client, local or husk, so this is presentation.
+--
+-- Grab: while the skull follows, a grab zone at its drawn position is offered
+-- to the off hand through the holster grip request with the blitz selector,
+-- as the belt blitz holster does: grip holds the stock blitz input (aim the
+-- order), releasing it issues the order.
+--
+-- Throw animation (user, 15 September evening): the stock order flies the
+-- skull straight at 10 m/s to the aimed point lowered by 1 m
+-- (CompanionServoSkullAbility.start_flamethrower_ability,
+-- FlyingCompanionMovementExtension.post_update), so the flight time T is the
+-- distance divided by 10 m/s. For the first FREE_FRACTION of T the drawn skull
+-- flies freely from the hand at the release velocity; then it blends into the
+-- real skull's position, fully there by T. The drawing moves a child node of
+-- the skull, never its root, so the flight itself stays the game's.
+local Skull = {}
+
+Skull.RULE = "cryptic_servo_skull_flamethrower"
+Skull.FORWARD = 0.30
+Skull.GRAB_RADIUS = 0.12
+Skull.SPEED = 10
+Skull.TARGET_DROP = 1
+Skull.FREE_FRACTION = 0.4
+-- A release counts as the throw that started a flight this soon after it.
+Skull.RELEASE_WINDOW = 0.75
+Skull.MAX_THROW_SECONDS = 4
+Skull.ARRIVED_METRES = 0.15
+
+local function finite(x) return type(x) == "number" and x == x and math.abs(x) < math.huge end
+
+-- The flight time from one point to another at speed. 3-arrays. Pure.
+function Skull.flight_time(from, to, speed)
+    if type(from) ~= "table" or type(to) ~= "table" then return nil end
+    local dx, dy, dz = to[1] - from[1], to[2] - from[2], to[3] - from[3]
+    local distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+    speed = speed or Skull.SPEED
+    if not finite(distance) or not (speed > 0) then return nil end
+    return distance / speed
+end
+
+-- How far the drawn skull has blended into the real one: 0 during the free
+-- flight (the first free_fraction of total), rising to 1 at total. Pure.
+function Skull.blend_weight(elapsed, total, free_fraction)
+    free_fraction = free_fraction or Skull.FREE_FRACTION
+    if not finite(elapsed) or not finite(total) or total <= 0 then return 1 end
+    local free = total * free_fraction
+    if elapsed <= free then return 0 end
+    if elapsed >= total then return 1 end
+    return (elapsed - free) / (total - free)
+end
+
+-- The drawn position: the free flight from the release blended into the real
+-- position by weight. 3-arrays. Pure.
+function Skull.drawn_position(release, velocity, elapsed, real, weight)
+    local free = {release[1] + velocity[1] * elapsed, release[2] + velocity[2] * elapsed,
+        release[3] + velocity[3] * elapsed}
+    return {free[1] + (real[1] - free[1]) * weight, free[2] + (real[2] - free[2]) * weight,
+        free[3] + (real[3] - free[3]) * weight}
+end
+
+-- The rest offsets with the forward offset replaced, x and z kept. position:
+-- {name = {x, y, z}}. Pure.
+function Skull.forward_offsets(position, forward)
+    local result = {}
+    for name, offset in pairs(position) do result[name] = {offset[1], forward, offset[3]} end
+    return result
+end
+
+function Skull.install(mod, presentation)
+    local api = {}
+    local zone = {id = "skull", selector = "blitz", centre = {0, 0, 0}, radius = Skull.GRAB_RADIUS}
+    local zones = {zone}
+    local Settings, States
+    local originals
+    local throw, pending
+    local hand_track = {}
+    local logged = {}
+
+    local function now() return Managers.time and Managers.time:has_timer("main") and Managers.time:time("main") or nil end
+    local function array(v) return v and {Vector3.x(v), Vector3.y(v), Vector3.z(v)} or nil end
+
+    function api.enabled()
+        if not (mod.get and mod:get("vr_skull_throw") == true) or presentation.mode ~= 1 then return false end
+        return not (presentation.current_game_mode_name and presentation.current_game_mode_name() == "hub")
+    end
+
+    -- The flamethrower skull's rest positions brought forward while the option
+    -- is on, restored when it is off. The stock movement extensions read the
+    -- same table every frame.
+    local function apply_forward(on)
+        Settings = Settings or require("scripts/settings/companion/companion_servo_skull_movement_settings")
+        local entry = Settings.movement_settings and Settings.movement_settings[Skull.RULE]
+        local position = entry and entry.first_person and entry.first_person.position
+        if not position then return end
+        if on and not originals then
+            originals = {}
+            local plain = {}
+            for name, box in pairs(position) do
+                originals[name] = box
+                local v = box:unbox()
+                plain[name] = {Vector3.x(v), Vector3.y(v), Vector3.z(v)}
+            end
+            for name, offset in pairs(Skull.forward_offsets(plain, Skull.FORWARD)) do
+                position[name] = Vector3Box(offset[1], offset[2], offset[3])
+            end
+            mod:info("DARKTIDEVR_SKULL_THROW rest_forward=%.2f", Skull.FORWARD)
+        elseif not on and originals then
+            for name, box in pairs(originals) do position[name] = box end
+            originals = nil
+        end
+    end
+
+    local function local_player_unit()
+        local player = Managers.player and Managers.player:local_player(1)
+        return player and player.player_unit
+    end
+
+    -- The local player's flamethrower skull, or nil without the talent.
+    local function companion(unit)
+        local talent = unit and ScriptUnit.has_extension(unit, "talent_system")
+        if not talent or not talent:has_special_rule(Skull.RULE) then return nil end
+        local spawner = ScriptUnit.has_extension(unit, "companion_spawner_system")
+        local skull = spawner and spawner:spawned_unit_lookup(Skull.RULE)
+        return skull and Unit.alive(skull) and skull or nil
+    end
+
+    local function state_name(extension)
+        States = States or require("scripts/settings/companion/companion_servo_skull_settings").STATES
+        local session, id = extension._game_session, extension._game_object_id
+        if not session or not id or not GameSession.game_object_exists(session, id) then return nil end
+        return States[GameSession.game_object_field(session, id, "state")]
+    end
+
+    -- The grab zone in the holster frame for the off hand this input frame,
+    -- or nil while the skull is not following at the player's side.
+    api.following = false
+    function api.local_zones(unit, frame, Holsters)
+        local on = api.enabled()
+        apply_forward(on)
+        if not on or not frame then return nil end
+        local side = presentation.weapon_hand_roles and presentation.weapon_hand_roles.physical("support")
+        local position
+        if side == "left" then position = presentation.left_controller_grip_target()
+        elseif side == "right" then position = presentation.controller_grip_target() end
+        local t = now()
+        if position and t then
+            local previous = hand_track.position
+            if previous and hand_track.t and t > hand_track.t then
+                local dt = t - hand_track.t
+                local p = array(position)
+                hand_track.velocity = {(p[1] - previous[1]) / dt, (p[2] - previous[2]) / dt, (p[3] - previous[3]) / dt}
+            end
+            hand_track.position, hand_track.t = array(position), t
+        end
+        local skull = companion(unit)
+        if not skull or not api.following then return nil end
+        zone.centre = Holsters.local_point(frame, array(Unit.world_position(skull, 1)))
+        zone.radius = Skull.GRAB_RADIUS / frame.scale
+        return zones
+    end
+
+    -- The off hand let go of a skull grab: the throw, if an order starts.
+    function api.released(unit)
+        local t = now()
+        if not t or not hand_track.position then return end
+        local unit_data = unit and ScriptUnit.has_extension(unit, "unit_data_system")
+        local finder = unit_data and unit_data:read_component("action_module_position_finder")
+        local target = finder and finder.position_valid and array(finder.position)
+        if target then target[3] = target[3] - Skull.TARGET_DROP end
+        pending = {t = t, position = hand_track.position, velocity = hand_track.velocity or {0, 0, 0}, target = target}
+        mod:info("DARKTIDEVR_SKULL_THROW released target=%s", target and "valid" or "none")
+    end
+
+    -- The skull's first child node, which the throw animation moves.
+    local function child_node(skull)
+        local ok, count = pcall(Unit.num_scene_graph_items, skull)
+        if not ok or not count then return nil end
+        for node = 2, count do
+            if Unit.scene_graph_parent(skull, node) == 1 then return node end
+        end
+    end
+    local function restore(skull)
+        if throw and throw.node and skull and Unit.alive(skull) then
+            local current = Unit.local_position(skull, throw.node)
+            if throw.written and Vector3.distance(current, throw.written:unbox()) < 1e-5 then
+                Unit.set_local_position(skull, throw.node, throw.base:unbox())
+            end
+        end
+        throw = nil
+    end
+
+    -- After the stock movement extension placed the skull this frame.
+    local function after_movement(extension, skull)
+        -- Every frame, so turning the option off restores the stock offsets.
+        apply_forward(api.enabled())
+        local owner = local_player_unit()
+        -- The husk extension keeps no rule field: match the owner's skull unit.
+        if not owner or extension._owner_unit ~= owner or companion(owner) ~= skull then return end
+        local name = state_name(extension)
+        api.following = name == "following" or name == "following_shooting" or name == "following_shooting_ability"
+        if not api.enabled() then restore(skull); pending = nil; return end
+        local t = now()
+        if not t then return end
+        local flying = name == "flamethrower"
+        if pending and flying and not throw and t - pending.t <= Skull.RELEASE_WINDOW then
+            local from = array(Unit.world_position(skull, 1))
+            local total = pending.target and Skull.flight_time(from, pending.target)
+            if total and total > 0.05 then
+                throw = {start = t, total = total, release = pending.position, velocity = pending.velocity,
+                    target = pending.target, node = child_node(skull)}
+                mod:info("DARKTIDEVR_SKULL_THROW flight predicted_s=%.2f distance_m=%.2f node=%s", total,
+                    total * Skull.SPEED, tostring(throw.node))
+            end
+            pending = nil
+        elseif pending and t - pending.t > Skull.RELEASE_WINDOW then
+            pending = nil
+        end
+        if not throw then return end
+        local elapsed = t - throw.start
+        local real = array(Unit.world_position(skull, 1))
+        if not throw.arrived and throw.target then
+            local dx, dy, dz = real[1] - throw.target[1], real[2] - throw.target[2], real[3] - throw.target[3]
+            if dx * dx + dy * dy + dz * dz <= Skull.ARRIVED_METRES * Skull.ARRIVED_METRES then
+                throw.arrived = elapsed
+                mod:info("DARKTIDEVR_SKULL_THROW arrived predicted_s=%.2f actual_s=%.2f", throw.total, elapsed)
+            end
+        end
+        local weight = Skull.blend_weight(elapsed, throw.total)
+        if not flying or elapsed > Skull.MAX_THROW_SECONDS or weight >= 1 or not throw.node then
+            restore(skull); return
+        end
+        local drawn = Skull.drawn_position(throw.release, throw.velocity, elapsed, real, weight)
+        local root_pose = Unit.world_pose(skull, 1)
+        local local_offset = Matrix4x4.transform(Matrix4x4.inverse(root_pose), Vector3(drawn[1], drawn[2], drawn[3]))
+        local current = Unit.local_position(skull, throw.node)
+        if not throw.base or not throw.written or Vector3.distance(current, throw.written:unbox()) >= 1e-5 then
+            throw.base = Vector3Box(current)
+        end
+        local desired = throw.base:unbox() + local_offset
+        Unit.set_local_position(skull, throw.node, desired)
+        throw.written = Vector3Box(desired)
+        World.update_unit_and_children(extension._world, skull)
+    end
+
+    local failed = false
+    local function hook_class(class)
+        if not class or logged[class] then return end
+        logged[class] = true
+        mod:hook_safe(class, "post_update", function(self, unit)
+            if failed then return end
+            local ok, err = pcall(after_movement, self, unit)
+            if not ok then
+                failed = true
+                pcall(restore, unit)
+                mod:warning("DARKTIDEVR_SKULL_THROW error=%s", tostring(err))
+            end
+        end)
+    end
+    if mod.hook_require then
+        mod:hook_require("scripts/extension_systems/flying_companion_movement/flying_companion_movement_extension", hook_class)
+        mod:hook_require("scripts/extension_systems/flying_companion_movement/flying_companion_husk_movement_extension", hook_class)
+    end
+
+    function api.destroy() pending = nil; throw = nil; apply_forward(false) end
+    return api
+end
+
+return Skull

@@ -15364,6 +15364,9 @@ presentation.rig_scan = mod:io_dofile(
 presentation.forearm_holsters_module = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_forearm_holsters")
 presentation.forearm_holsters = presentation.forearm_holsters_module.install(mod, presentation)
+presentation.skull_throw = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_skull_throw"
+).install(mod, presentation)
 presentation.wrist_display = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_wrist_display"
 ).install(mod, presentation, controller_observation)
