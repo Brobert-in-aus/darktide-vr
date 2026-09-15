@@ -235,3 +235,6 @@ the part of the hands refactor that runs for everyone.
     Say if that delay is noticeable. It only happens with the hand within
     about 12 cm of the foregrip or 1.5 holster radii.
 
+21. **Maul miniature centred** (`bd2d3a5`). On the forearm holster, the power
+    maul should now sit centred in its grab zone at the same height as the
+    gun, not about 6 cm above it. Needs a game restart to load.
