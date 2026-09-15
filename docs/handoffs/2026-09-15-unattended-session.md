@@ -651,3 +651,38 @@ installed as it landed.
     them in unattended runs. The system-level suggestions stand (page file,
     memory test with EXPO off, drive health). Further unattended launches
     are kept to the ones that need the game.
+
+## 0.2.0-alpha.1 release candidate (15 September, about 20:50)
+
+- Release prep: `cac26aa` (changelog, version 0.2.0, user guide, Nexus post)
+  plus later notes commits. The worn round that evening fed the fixes up to
+  `a56c7aa`; body holsters were then withheld (`d6d0e90`: option hidden, a
+  saved setting ignored, guide section and changelog bullet removed; restoring
+  them is the second item in the 16 September todo).
+- Package built from `d6d0e90`:
+  1. `record-component-provenance.ps1 -OutputPath
+     artifacts/packages/component-provenance-0.2.0-alpha.1-d6d0e90.json`
+     (Release rebuild of producer and viewer, clean checkout, 2 components).
+  2. Suite 261/261 with the game closed.
+  3. `build-runtime-package.ps1 -OutputDirectory artifacts/packages
+     -ReleaseVersion 0.2.0-alpha.1 -ComponentProvenancePath ...
+     -RequireComponentProvenance`: Lua source check pass (92 chunks),
+     verifier pass, 113 files plus the manifest, release_candidate.
+  - Archive `artifacts/packages/darktidevr-0.2.0-alpha.1-d6d0e9081ce7.zip`,
+    9,234,448 bytes, SHA-256
+    `619242F2D2E6B782BF72D411004A3A85F0CF531EC90E526930A1E73DB4BCB564`.
+- Before installing, every code and binary file in the running install
+  matched the package (only CHANGELOG, USER-GUIDE and the manifest differed),
+  so the evening's worn checks ran on this code, except that body holsters
+  were still available then.
+- Extracted over the game folder and driven through `darktidevr-mode.ps1`
+  (VR mode, then status): patched, proxy installed, listed, viewer, native and
+  DMF present, vr profile, exit 0. All 114 extracted files and
+  `binaries\d3d12.dll` match the package.
+- Not yet worn on the package itself: a launch with body holsters hidden
+  (the option must be absent from Mod Options, Experimental features).
+- Publication is the user's: upload this archive to Nexus as 0.2.0-alpha.1
+  with the Nexus changelog post. Afterwards: date the changelog heading, tag
+  `v0.2.0-alpha.1` on `d6d0e90`, fast-forward `main`, push branch, main and tag
+  to origin and github, and create the GitHub release on the mirror with the
+  same archive and the changelog section as notes.
