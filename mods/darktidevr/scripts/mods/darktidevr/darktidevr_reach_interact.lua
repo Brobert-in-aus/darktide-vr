@@ -26,6 +26,9 @@ Reach.HAND_RADIUS = 0.45
 -- Announced earlier than that, so a grip pressed on the way in is held by the
 -- bindings' reverse grace instead of firing the grip's bound action.
 Reach.APPROACH_RADIUS = 0.75
+-- Unattended runs turn the option on through this rather than the saved
+-- settings, which belong to the player.
+Reach.TEST_FLAG = "./../mods/darktidevr/darktidevr_reach_test.flag"
 
 local function finite(x) return type(x) == "number" and x == x and math.abs(x) < math.huge end
 local function point(v) return type(v) == "table" and finite(v[1]) and finite(v[2]) and finite(v[3]) end
@@ -85,8 +88,21 @@ function Reach.install(mod, presentation)
     local claim, logged, failed = nil, {}, false
     local reach_target = nil
 
+    local test_poll, test_enabled = 0, false
+    local function test_flag()
+        test_poll = test_poll - 1
+        if test_poll > 0 then return test_enabled end
+        test_poll = 120
+        local io_api = Mods and Mods.lua and Mods.lua.io
+        local file = io_api and io_api.open(Reach.TEST_FLAG, "r")
+        if not file then test_enabled = false; return false end
+        local value = file:read("*all"); file:close()
+        test_enabled = type(value) == "string" and value:match("^%s*enabled%s*$") ~= nil
+        return test_enabled
+    end
+
     function api.enabled()
-        return mod:get("vr_reach_interact") == true
+        return mod:get("vr_reach_interact") == true or test_flag()
     end
 
     local function vector(value)
