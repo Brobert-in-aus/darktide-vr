@@ -204,6 +204,32 @@ renders, against `follow3` (`overlay`):
      scale-to-neck conflict (below) is the root of both this and the long
      arms.
 
+## Protraction and soft stretch (16 September, run `protract4`)
+
+`overlayprotract` (clavicle protraction toward the hand from 0.9 to 1.1 of arm
+length, up to 8 %, plus both segments stretching up to 20 % past reach; no
+swing toward the estimated shoulder) against `follow3` (`overlay`), 6,300
+updates each, Psyker, working viewer, synthetic hand path:
+
+| | `overlay` | `overlayprotract` |
+| --- | ---: | ---: |
+| left out of reach | 1,560 | 903 |
+| right out of reach | 0 | 329 |
+| left wrist gap (max) | 0.360 m | 0.174 m |
+| right wrist gap (max) | 0 m | 0.001 m |
+| shoulder moved (max) | n/a | 0.055 m left, 0.050 m right |
+| segments stretched (max) | n/a | 1.200 left, 1.057 right |
+
+- The left arm, the one the synthetic path sweeps furthest, is out of reach 42 %
+  less often and its wrist gap halves. The right arm now reports a few hundred
+  out-of-reach updates where the swing toward the estimated shoulder had none,
+  though its wrist gap stays about zero: the stretch absorbs it.
+- The looking-down render (`protract4/renders/l6.png`) shows the gun arm
+  without visible sleeve distortion at these ratios.
+- Assumption: protraction plus soft stretch replaces the swing toward the
+  estimate for the arms; the clavicle swing may still serve the shoulder's
+  resting place. To settle with tracked hands, not a synthetic path.
+
 ## Open questions for the user
 
 - Recalibrate with the new T-pose guidance once it is built. The current span
