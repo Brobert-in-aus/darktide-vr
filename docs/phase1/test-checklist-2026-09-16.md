@@ -17,7 +17,7 @@ tracked eye).
 
 ## Items
 
-1. **Grab and throw the servo skull** (`skull throw` commit; option "Grab
+1. **Grab and throw the servo skull** (`c50bc04`; option "Grab
    and throw the servo skull (experimental)", default off; Skitarius with the
    flamethrower skull talented; Weapon hand holsters need not be on).
    - The flamethrower skull hovers in view: stock side and height, brought
