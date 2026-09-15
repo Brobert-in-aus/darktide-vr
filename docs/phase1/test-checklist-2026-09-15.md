@@ -360,3 +360,21 @@ the part of the hands refactor that runs for everyone.
       is time, the same on the Skitarius for comparison.
     - With the sword out, the holstered staff shows no count.
     - With the staff out, nothing shows at the hand; peril stays on the HUD.
+
+### Results (worn, 15 September, about 20:45, Psyker, seated)
+
+- 31: holstered staff shows no count: pass. No peril at the hand: pass.
+- Body holsters: only the shoulder could be found, hard to hit, small and
+  in the wrong place. The probe showed why: the zones hung from the
+  first-person unit, and the real (tracked) eye sat 30-55 cm ahead of and
+  10-35 cm below it while seated, so every zone was behind the player; the
+  zones also scaled with the live seated head height (about 1.25 m, clamped
+  to 75 %).
+
+32. **Body holsters from the real head** (restart; seated and standing).
+    The body zones and their models hang from the tracked eye and scale with
+    the standing calibration's eye height (1.72 m saved, about 105 %), not the
+    first-person unit and the live head height. Seated: the chest and hip
+    models should appear in front of and beside your body, and all five
+    zones (shoulder, both hips, both chests) and the belt should pulse and
+    grab. The probe log lines stay for this check.

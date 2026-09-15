@@ -28,6 +28,11 @@ assert(math.abs(Holsters.plausible_eye_height(1.70) - 1.70) < 1e-9)
 assert(math.abs(Holsters.plausible_eye_height(2.6) - 2.132) < 1e-9)
 assert(Holsters.plausible_eye_height(nil) == Holsters.REFERENCE_EYE_HEIGHT)
 
+-- Zone scale: the standing calibration's eye height, not the live (seated) one.
+assert(Holsters.standing_eye_height({floor_eye_height = 1.62}, 1.25) == 1.62, "standing calibration")
+assert(Holsters.standing_eye_height({floor_eye_height = 1.2, seated = true}, 1.25) == 1.25, "seated calibration: live")
+assert(Holsters.standing_eye_height(nil, 1.25) == 1.25 and Holsters.standing_eye_height({floor_eye_height = 9}, nil) == nil)
+
 -- Zones: entry radius, exit hysteresis, nearest by relative distance.
 local hip_left = Holsters.zone_at({-0.20, 0.05, -0.72})
 assert(hip_left and hip_left.id == "hip_left" and hip_left.selector == "melee" and hip_left.slot == "slot_primary")

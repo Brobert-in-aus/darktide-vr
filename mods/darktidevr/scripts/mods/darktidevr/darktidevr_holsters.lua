@@ -61,6 +61,18 @@ function Holsters.frame(head, forward, eye_height)
         scale = eye_height / Holsters.REFERENCE_EYE_HEIGHT}
 end
 
+-- The eye height the zones scale with: the standing calibration's floor eye
+-- height when one was taken standing, else the live measurement. The live
+-- value follows the head: seated (worn, 15 September evening) it read about
+-- 1.25 m and shrank every zone to the minimum. calibration: the saved
+-- calibration result table or nil. Pure.
+function Holsters.standing_eye_height(calibration, live)
+    local standing = type(calibration) == "table" and calibration.seated ~= true and
+        tonumber(calibration.floor_eye_height) or nil
+    if finite(standing) and standing >= 0.8 and standing <= 2.4 then return standing end
+    return live
+end
+
 -- The measured standing eye height, clamped to 0.75-1.3 times the reference
 -- (1.23-2.13 m): a headset measured while resting on a desk (0.9 m) or a
 -- seated measurement must not shrink the zones out of reach.
@@ -267,7 +279,12 @@ function Holsters.install(mod, presentation, observation)
         local first_person = ScriptUnit.has_extension(unit, "first_person_system")
         local eye_unit = first_person and first_person:first_person_unit()
         if not eye_unit or not Unit.alive(eye_unit) then return nil end
-        local eye = Unit.world_position(eye_unit, 1)
+        -- The tracked eye (where the player's head really is), not the
+        -- first-person unit: seated, or away from the play-space centre, the
+        -- real eye sat 30-55 cm ahead of and below it, so every body zone was
+        -- behind the player and out of reach (worn probe, 15 September
+        -- evening, on the Psyker).
+        local eye = presentation.eye_pose and presentation.eye_pose(unit) or Unit.world_position(eye_unit, 1)
         local yaw = observation.body_visual_yaw
         local forward
         if type(yaw) == "number" and yaw == yaw then
@@ -278,7 +295,10 @@ function Holsters.install(mod, presentation, observation)
         -- Tracked hands move in physical metres (times the character scale,
         -- 1 for humans), so the zones scale with the player's own eye height,
         -- not the character's eye height in the world.
-        local physical = presentation.physical_eye_height and presentation.physical_eye_height()
+        local calibration = mod.darktidevr_calibration and mod.darktidevr_calibration.result or
+            (mod.get and mod:get("vr_calibration_v1"))
+        local physical = Holsters.standing_eye_height(calibration,
+            presentation.physical_eye_height and presentation.physical_eye_height())
         local player = Managers.player and Managers.player:local_player(1)
         local character_scale = presentation.calibrated_character_scale and
             presentation.calibrated_character_scale(player) or 1
