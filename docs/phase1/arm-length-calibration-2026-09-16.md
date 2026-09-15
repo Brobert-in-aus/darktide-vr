@@ -226,9 +226,44 @@ updates each, Psyker, working viewer, synthetic hand path:
   though its wrist gap stays about zero: the stretch absorbs it.
 - The looking-down render (`protract4/renders/l6.png`) shows the gun arm
   without visible sleeve distortion at these ratios.
-- Assumption: protraction plus soft stretch replaces the swing toward the
-  estimate for the arms; the clavicle swing may still serve the shoulder's
-  resting place. To settle with tracked hands, not a synthetic path.
+- Assumption tested in the next run: protraction plus soft stretch replaces the
+  swing toward the estimate for the arms. It does not: both together are better
+  than either (below).
+
+## Swing with protraction and stretch (16 September, run `both4`)
+
+`overlayboth` (the clavicle swing toward the estimated shoulder **and** then
+protraction with the soft stretch), same conditions, 6,300 updates:
+
+| | `overlay` (swing) | `overlayprotract` | `overlayboth` |
+| --- | ---: | ---: | ---: |
+| left out of reach | 1,560 | 903 | 1,300 |
+| right out of reach | 0 | 329 | **0** |
+| left wrist gap (max) | 0.360 m | 0.174 m | **0.176 m** |
+| right wrist gap (max) | 0 m | 0.001 m | **0 m** |
+| shoulder moved (max) | n/a | 0.055 / 0.050 m | 0.055 / 0.023 m |
+| segments stretched (max) | n/a | 1.200 / 1.057 | 1.200 / 1.057 |
+| clavicle gap closed | 0.171 / 0.209 m | n/a | 0.140 / 0.136 m |
+
+- **Both together win on the measure that shows.** The wrist gap is the drawn
+  hand leaving the controller, and it is what a player sees; out-of-reach
+  updates only say the solver had to stretch or protract, which the wrist gap
+  then shows it absorbed. `overlayboth` halves the left wrist gap against the
+  swing alone (0.176 m against 0.360 m, within 2 mm of protraction alone) and
+  keeps the right arm always in reach, which protraction alone lost (329
+  updates).
+- The left arm's out-of-reach count sits between the two (1,300 against 903 and
+  1,560): the swing places the shoulder where the frame estimates rather than
+  straight at the hand, so full reach is hit sooner, but the protraction and
+  stretch behind it close the gap anyway.
+- The right arm's shoulder moves less than half as far with the swing in front
+  of it (0.023 m against 0.050 m), so the clavicle is doing less work per frame.
+- **Decision:** `overlay`, the dev default, now does the swing, protraction and
+  the soft stretch together. The swing-only configuration stays available as
+  `overlayswing` for A/B.
+- Still a synthetic hand path, not this player's arms. The ordering of the three
+  is settled; the calibrated lengths behind them are not (steps 3-4 need a worn
+  check).
 
 ## Open questions for the user
 

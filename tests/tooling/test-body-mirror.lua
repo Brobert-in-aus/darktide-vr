@@ -108,6 +108,8 @@ do
     assert(near(Mirror.stretch_ratio(0.66,0.3,0.3),1.1),'10 percent past reach')
     assert(near(Mirror.stretch_ratio(1.0,0.3,0.3),1+Mirror.STRETCH_SHARE),'capped')
     assert(Mirror.stretch_ratio(0.5,0,0)==1 and Mirror.MODES.overlayprotract.stretch)
-    assert(Mirror.MODES.overlayboth.clavicles and Mirror.MODES.overlayboth.protract and Mirror.MODES.overlayboth.stretch)
+    assert(Mirror.MODES.overlay.clavicles and Mirror.MODES.overlay.protract and Mirror.MODES.overlay.stretch,
+        'overlay does the swing, protraction and stretch')
+    assert(Mirror.MODES.overlayswing.clavicles and not Mirror.MODES.overlayswing.protract,'swing-only A/B')
 end
 print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles')
