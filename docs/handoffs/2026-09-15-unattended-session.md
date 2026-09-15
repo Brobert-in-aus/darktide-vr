@@ -686,3 +686,15 @@ installed as it landed.
   `v0.2.0-alpha.1` on `d6d0e90`, fast-forward `main`, push branch, main and tag
   to origin and github, and create the GitHub release on the mirror with the
   same archive and the changelog section as notes.
+
+## Published: 0.2.0-alpha.1 (15 September)
+
+- The user published the `d6d0e90` archive
+  (`darktidevr-0.2.0-alpha.1-d6d0e9081ce7.zip`, SHA-256
+  `619242F2D2E6B782BF72D411004A3A85F0CF531EC90E526930A1E73DB4BCB564`) on
+  Nexus Mods. Afterwards: changelog heading dated; `main` fast-forwarded to
+  the codex branch head on origin and github; tag `v0.2.0-alpha.1` on
+  `d6d0e90` pushed to both; GitHub release `v0.2.0-alpha.1` created on the
+  mirror (normal release, latest) with the same archive and the changelog
+  section as notes. As before, the changelog inside the archive reads
+  "(unreleased)"; the dated heading is in the repository after the tag.

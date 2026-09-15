@@ -4,7 +4,7 @@ All notable user-facing changes to Darktide VR. Versions follow
 `major.minor.patch` with a pre-release suffix while the mod is in alpha; the
 runtime package records the exact source revision alongside the version.
 
-## 0.2.0-alpha.1 (unreleased)
+## 0.2.0-alpha.1 (15 September 2026)
 
 Fixes:
 
