@@ -373,6 +373,22 @@ Commit `661d1b6`, deployed, option default off (evening item 12).
   45 cm ahead of the eye (eye render); `first_draw bars=3`; no script errors.
   The real wrist gesture has not been seen.
 
+## Peril at the hand (diegetic HUD backlog, part)
+
+Commit `7ef9e33`, deployed (evening item 13).
+- **What.** With "Ammo count at the hand" on, a weapon with no ammo and no
+  heat of its own (a force staff) shows psyker peril, the warp charge
+  fraction, in the readout's heat display: a percentage going white to red,
+  shown only while there is peril. A weapon's own heat wins.
+- **Test:** `ammo_readout` adds nothing at zero peril, the percentage,
+  clamping, and heat winning.
+- **Evidence (`artifacts/unattended/ammo-readout-20260915/peril1`):** the
+  readout still draws (`first_draw ... test=front`); no script errors.
+- **Not shown:** peril itself; the unattended character (Skitarius) has no
+  staff.
+- **Not done:** the melee charge arcs (shock maul, force sword) from the same
+  backlog item.
+
 Note: `run2` died because I piped the capture script through
 `Select-Object -First 1`, which stopped the script and so the runner's job
 (the runner force-stopped the game). The game did not fault.

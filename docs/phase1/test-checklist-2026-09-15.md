@@ -111,3 +111,8 @@ Yesterday's checklist items not reached are still open in
     number), toughness and stamina bars appear there and go away when you
     turn the wrist back. Say if it appears on the wrong side of the hand
     (the facing direction is an assumption), too easily, or too late.
+13. **Peril at the hand** (`7ef9e33`; needs "Ammo count at the hand" on). On
+    the Psyker with a force staff: charging and venting shows the peril
+    percentage beside your weapon hand, white turning red toward overload,
+    and nothing at zero peril. Unit tested only (no staff in the unattended
+    runs).
