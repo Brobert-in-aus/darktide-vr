@@ -374,6 +374,51 @@ run `artifacts/unattended/body-mirror-20260915/mirror1`.
   - Hide the head and near-eye meshes locally.
   - Then replace the plain joint copy with the solver (milestone 3).
 
+## Milestone 2 overlay: the copy on the player (15 September afternoon)
+
+Same module, flag values `overlaycopy` and `overlay` (`12c2024`, `cab8959`,
+`4cfb3c4`), runs `artifacts/unattended/body-mirror-20260915/overlay1` to
+`overlay4`. The copy stands exactly on the avatar in the default hands mode,
+where the avatar already hides every body slot, with `slot_body_face` and
+`slot_gear_head` hidden on the copy.
+
+- **Plain copy (`overlaycopy`, overlay2).**
+  - Every joint copied with 0 error, but the avatar's hand joints are
+    written onto the gloves, so the copy's hands are dragged there: 0.63 to
+    0.82 m from the forearm joint, where the bone is 0.29 m.
+  - The eye render shows a large dark hollow in front of the gun hand: the
+    view looking into the stretched sleeve.
+- **Two-bone arm solve (`overlay`, overlay3 and overlay4).**
+  - After the copy, each arm is solved with its world bone lengths so the
+    hand reaches the avatar's hand, which carries the weapon. The bend
+    follows the stock animated elbow, biased 10 cm down. This is a swing
+    only; the forearm roll joints are not twisted.
+  - Bone lengths must be measured in world space. The character root
+    carries a visual scale of about 1.07 (0.294 m world against a 0.275 m
+    local forearm). Local lengths left 1-3.7 cm of hand error (overlay3);
+    world lengths give 0.0000 m (overlay4).
+  - Out of reach, the arm straightens toward the target and the hand stops
+    short of the glove:
+    - 1,477 of 4,500 frames for the left arm, 1,003 for the right, on the
+      synthetic controller path, whose hands sweep far out;
+    - 114 and 70 of 48,600 frames in a longer orphaned run that kept going after its viewer stopped.
+
+    The shoulder is still the stock animated one. The body frame shoulder
+    and clavicle reach (milestone 3) should close most of this.
+  - In the eye render, the glove's fingers now sit inside the sleeve's cuff
+    instead of at the end of a stretched tube
+    (`overlay4/copy-vs-solve.png`). The cuff still fills a large part of the
+    lower view when the gun hand is close to the eye. That is a milestone 4
+    near-eye question, to judge worn.
+- **Tooling gap.** The look-down head pose (`--synthetic-body-inspection`)
+  starves the shared-eye pairs, so readback gets no frames: 59 fresh pairs
+  in overlay1, against 4,603 in a normal run. The torso and legs from above
+  are therefore not yet seen in a render. Next unattended step: find why
+  that pose drops the pairs, or add a debug camera behind the player.
+- **Not done.** Legs and pelvis are copied as they are (stock gait), with no
+  crouch from the head, no spine or neck solve, and no first-person
+  near-eye hiding.
+
 ## Changes from the 14 September design
 
 - **Legs.** Copied from the stock avatar (hybrid) instead of procedural first.

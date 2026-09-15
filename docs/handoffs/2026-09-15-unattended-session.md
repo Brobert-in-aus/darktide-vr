@@ -412,6 +412,23 @@ are recorded in the
   and every joint copied from the avatar each frame, renders complete
   (hood, eyes, armour, robe) 2.5 m ahead and follows the avatar. Joint
   error was 0 over 4,500 frames (`body-mirror-20260915/mirror1`).
+- **Body overlay with an arm solve (`12c2024` to `4cfb3c4`, dev flag
+  only).**
+  - The same copy stands on the player in hands mode, with face and headgear
+    hidden.
+  - A plain copy stretches the sleeves 0.6-0.8 m to the gloves.
+  - A two-bone arm solve using world bone lengths (the root is scaled about
+    1.07) puts the hands exactly on the avatar's weapon hands (0.0000 m).
+    The glove now sits in the sleeve cuff in the eye render.
+  - Out-of-reach frames remain while the synthetic hands sweep, because the
+    shoulder is still stock.
+  - The look-down pose starves eye readback, so the torso from above is not
+    rendered yet. Details are in the full-body design's "Milestone 2
+    overlay" section.
+  - Mistake: a `Select-Object -First` pipe and a `Start-Job` in a tool call
+    killed two capture jobs. One force-stopped the game; the other left it
+    orphaned, and it was quit by flag with its request flags deleted.
+    Recorded in memory.
 
 ## Arc maul charges (user correction)
 
