@@ -4996,6 +4996,15 @@ function presentation.body_camera_anchor(unit)
         observation.body_camera_eye_offset_x = Vector3.x(local_offset)
         observation.body_camera_eye_offset_y = Vector3.y(local_offset)
         observation.body_camera_eye_offset_z = Vector3.z(local_offset)
+        -- Once per unit: the numbers to compare across spawns. Depth and
+        -- height should repeat whatever the avatar's facing; before audit K
+        -- the depth followed the angle between that facing and the basis.
+        local aim_yaw = Quaternion.yaw(component.rotation)
+        local basis_yaw = Quaternion.yaw(active_base_rotation:unbox())
+        mod:info("DARKTIDEVR_ANCHOR eye_capture depth_m=%.4f height_m=%.4f " ..
+            "aim_from_basis_deg=%.1f source=%s",
+            Vector3.y(local_offset), Vector3.z(local_offset),
+            math.deg(aim_yaw - basis_yaw), tostring(eye_source))
     end
     local basis = active_base_rotation and active_base_rotation:unbox() or
         Quaternion.identity()
