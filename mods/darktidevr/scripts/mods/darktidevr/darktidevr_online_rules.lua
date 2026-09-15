@@ -25,6 +25,27 @@ function Rules.orientation(rotation, previous_yaw)
     if not finite(roll) then return end
     return yaw,pitch,roll
 end
+-- Weapon sway cancellation (option "vr_sway_cancel", percent, default 0;
+-- user, 15 September evening: artificial sway on top of a real hand's own
+-- sway makes that sway harder to correct). Stock _prepare_shooting turns the
+-- first-person rotation by the sway component's offsets
+-- (Sway.apply_sway_rotation: rotation * from_yaw_pitch_roll(offset_x,
+-- offset_y, 0)) on the client and on the server alike, and the sway is
+-- deterministic from the synced state. The aim sent as input is turned by the
+-- inverse, so the shot leaves along the hand's aim; the server applies the
+-- same sway to the same input. The offsets are the last simulated frame's,
+-- one fixed frame behind the input written, and server-only effects on sway
+-- (suppression) can differ, so a small residual can remain.
+function Rules.sway_fraction(percent)
+    percent = tonumber(percent)
+    if not finite(percent) then return 0 end
+    return math.max(0, math.min(100, percent)) / 100
+end
+function Rules.cancel_sway(rotation, offset_x, offset_y, fraction)
+    if not (fraction > 0) or not finite(offset_x) or not finite(offset_y) then return rotation end
+    local sway = Quaternion.from_yaw_pitch_roll(offset_x * fraction, offset_y * fraction, 0)
+    return Quaternion.multiply(rotation, Quaternion.inverse(sway))
+end
 function Rules.snap_roll(roll, previous)
     local step = math.pi/4
     if previous then
@@ -47,6 +68,16 @@ function Rules.install(mod, presentation, state, mode_name)
     local session_owner, session_mode, selected
     local orientation_owners = setmetatable({}, {__mode="k"})
     local wrist = {}
+    -- The wielded weapon's sway offsets when stock applies sway to its shots
+    -- (it has a sway template), or nil.
+    local function sway_offsets(unit)
+        local weapon = ScriptUnit.has_extension(unit, "weapon_system")
+        if not weapon or type(weapon.sway_template) ~= "function" or not weapon:sway_template() then return nil end
+        local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
+        local sway = unit_data and type(unit_data.read_component) == "function" and unit_data:read_component("sway")
+        if not sway or not finite(sway.offset_x) or not finite(sway.offset_y) then return nil end
+        return sway.offset_x, sway.offset_y
+    end
     local function melee_roll(unit, roll)
         local extension = ScriptUnit.has_extension(unit, "weapon_system")
         local template = extension and extension.weapon_template and extension:weapon_template()
@@ -162,6 +193,18 @@ function Rules.install(mod, presentation, state, mode_name)
         if presentation.weapon_aim_target then _, rotation = presentation.weapon_aim_target("dominant")
         else _, rotation = presentation.controller_aim_target() end
         if not rotation then return end
+        local sway_fraction = Rules.sway_fraction(mod:get("vr_sway_cancel"))
+        if sway_fraction > 0 then
+            local sway_ok, sway_x, sway_y = pcall(sway_offsets, unit)
+            if sway_ok and sway_x then
+                rotation = Rules.cancel_sway(rotation, sway_x, sway_y, sway_fraction)
+                if instance.logged_sway ~= sway_fraction then
+                    instance.logged_sway = sway_fraction
+                    mod:info("DARKTIDEVR_ONLINE_RULES sway_cancel=%d%% offset_deg=%.3f,%.3f",
+                        math.floor(sway_fraction * 100 + 0.5), math.deg(sway_x), math.deg(sway_y))
+                end
+            end
+        end
         local index = handler:_buffer_index(frame)
         local cache, lookup = handler._input_cache, handler._action_lookup
         local old_yaw = cache[handler._yaw_index][index]

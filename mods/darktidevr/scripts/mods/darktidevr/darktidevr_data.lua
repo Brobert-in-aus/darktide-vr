@@ -30,6 +30,10 @@ return {
                 default_value = 75, range = {0, 100}, decimals_number = 0, step_size_value = 5,
             },
             {
+                setting_id = "vr_sway_cancel", type = "numeric",
+                default_value = 0, range = {0, 100}, decimals_number = 0, step_size_value = 10,
+            },
+            {
                 setting_id = "ads_focus",
                 type = "checkbox",
                 default_value = true,

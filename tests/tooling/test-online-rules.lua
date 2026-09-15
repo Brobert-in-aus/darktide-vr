@@ -44,6 +44,27 @@ local state={authoring_enabled=true,gameplay_input_active=true}
 local presentation={mode=1,gameplay_context=context,flat_movement_rotation=function(yaw) return yaw end,
     controller_aim_target=function() error('Online input bypassed dominant role') end,
     weapon_aim_target=function(role) assert(role=='dominant'); return 'unused_hand_origin',hand end}
+-- Sway cancellation: stock turns the shot by rotation * sway; the sent aim
+-- turned by the inverse leaves along the hand's aim.
+do
+    assert(Rules.sway_fraction(nil)==0 and Rules.sway_fraction(true)==0 and Rules.sway_fraction(50)==.5 and
+        Rules.sway_fraction(150)==1 and Rules.sway_fraction(-5)==0)
+    local saved=Quaternion
+    local function mul(a,b)
+        return {a[4]*b[1]+a[1]*b[4]+a[2]*b[3]-a[3]*b[2],a[4]*b[2]-a[1]*b[3]+a[2]*b[4]+a[3]*b[1],
+            a[4]*b[3]+a[1]*b[2]-a[2]*b[1]+a[3]*b[4],a[4]*b[4]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3]}
+    end
+    local function axis(i,angle) local q={0,0,0,math.cos(angle/2)}; q[i]=math.sin(angle/2); return q end
+    Quaternion={multiply=mul,inverse=function(q) return {-q[1],-q[2],-q[3],q[4]} end,
+        from_yaw_pitch_roll=function(y,p,r) return mul(mul(axis(3,y),axis(1,p)),axis(2,r)) end}
+    local aim=mul(axis(3,.7),axis(1,-.2))
+    local function same(a,b) local d=0; for i=1,4 do d=d+a[i]*b[i] end; return math.abs(d)>1-1e-10 end
+    local sent=Rules.cancel_sway(aim,.03,-.02,1)
+    assert(same(mul(sent,Quaternion.from_yaw_pitch_roll(.03,-.02,0)),aim),'full cancellation')
+    assert(Rules.cancel_sway(aim,.03,-.02,0)==aim,'off keeps the aim')
+    assert(Rules.cancel_sway(aim,0/0,0,1)==aim,'unusable offsets keep the aim')
+    Quaternion=saved
+end
 local rules=Rules.install(mod,presentation,state,function() return mode end)
 local names={'move_right','move_left','move_forward','move_backward'}
 local function handler()

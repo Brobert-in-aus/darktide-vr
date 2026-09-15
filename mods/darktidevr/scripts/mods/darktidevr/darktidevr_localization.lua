@@ -49,6 +49,8 @@ return {
     vr_forearm_holsters_description = {en = "Small holsters in a line above your gun hand's forearm, from the wrist: your other weapon, stim, carried item and device. Reach in with your other hand and press grip to equip. A small model of each item is always shown there; the one your hand is in grows and ticks, and they hide while you two-hand the gun or aim down its sights."},
     vr_wrist_display = {en = "Wrist display"},
     vr_wrist_display_scale = {en = "Wrist display size (%%)"},
+    vr_sway_cancel = {en = "Cancel weapon sway (%%)"},
+    vr_sway_cancel_description = {en = "Removes the game's artificial weapon sway from your shots, so only your own hands' steadiness counts. 100%% removes it; 0%% (the default) keeps the stock sway. Recoil and spread are unchanged. Applies wherever hand aim drives the game."},
     vr_wrist_display_scale_description = {en = "Resize the wrist display's bars and numbers. Updates while playing."},
     vr_wrist_display_description = {en = "Health, toughness and stamina bars with their numbers, always shown above your off-hand wrist and drawn in front of everything. Not in the hub."},
     vr_teammate_status = {en = "Teammate status above teammates"},

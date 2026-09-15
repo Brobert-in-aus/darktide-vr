@@ -262,3 +262,9 @@ the part of the hands refactor that runs for everyone.
     - The medkit's forearm grab zone fits the model (about 11-12 cm across,
       was 8 cm), and the model grows when your hand is in it. Thin items (the
       gun, the stim) keep 8 cm zones or close to it.
+25. **Cancel weapon sway** (new option "Cancel weapon sway (%)", default 0).
+    Set it to 100 in the Psykhanium. Hold a gun still at a target while
+    walking and after sprinting (when stock sway is largest): the crosshair
+    and the shots should stay where the gun points, moving only with your
+    hand. Try 50 for half the stock sway. Recoil and spread are unchanged.
+    The log line `DARKTIDEVR_ONLINE_RULES sway_cancel=` shows it engaged.
