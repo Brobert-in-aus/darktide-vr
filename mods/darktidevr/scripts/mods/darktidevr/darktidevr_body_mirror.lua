@@ -66,8 +66,17 @@ Mirror.MODES = {
     overlayfollow = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hand_rig = true,
         follow_neck = true},
     overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hand_rig = true,
-        follow_neck = true, scale_to_neck = true},
+        follow_neck = true, scale_to_neck = true, clavicles = true},
+    -- "overlay" without the clavicle swing, for A/B (milestone 3).
+    overlaystock = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
+        hand_rig = true, follow_neck = true, scale_to_neck = true},
 }
+-- Milestone 3, clavicles (full-body design, "Solve per frame", step 5): each
+-- clavicle (j_leftshoulder, j_rightshoulder) swings its upper arm root toward
+-- the body frame's estimated shoulder, by at most CLAVICLE_MAX, before the arm
+-- solve. rig1 showed the stock animated shoulders leave the support arm up to
+-- 0.31 m short.
+Mirror.CLAVICLE_MAX = math.rad(30)
 -- Near-eye mesh hiding, in the character root's frame at the spawn pose.
 Mirror.NEAR_EYE_RADIUS = 0.25
 Mirror.EYE_ABOVE_HEAD = 0.07
@@ -155,6 +164,21 @@ function Mirror.elbow(shoulder, hint, target, upper, lower)
     bend = scale(bend, 1 / length(bend))
     local elbow = add(shoulder, add(scale(direction, upper * cosine), scale(bend, upper * sine)))
     return elbow, add(shoulder, scale(direction, d)), reachable
+end
+
+-- The swing that turns a clavicle so its upper arm root moves toward the
+-- target shoulder: a unit axis and an angle, at most max_angle. nil when
+-- nothing to turn. 3-arrays. Pure.
+function Mirror.clavicle_swing(clavicle, arm, target, max_angle)
+    local from, to = sub(arm, clavicle), sub(target, clavicle)
+    local from_length, to_length = length(from), length(to)
+    if from_length < 1e-6 or to_length < 1e-6 then return nil end
+    from, to = scale(from, 1 / from_length), scale(to, 1 / to_length)
+    local axis = {from[2] * to[3] - from[3] * to[2], from[3] * to[1] - from[1] * to[3], from[1] * to[2] - from[2] * to[1]}
+    local sine = length(axis)
+    if sine < 1e-7 then return nil end
+    local angle = math.atan2(sine, dot(from, to))
+    return scale(axis, 1 / sine), math.min(angle, max_angle or Mirror.CLAVICLE_MAX)
 end
 
 -- The flag's mode, or nil. Pure.
@@ -434,8 +458,9 @@ function Mirror.install(mod, presentation)
         end
         place(avatar, unit)
         World.update_unit(world, unit)
+        local frame = Mirror.MODES[mode_name].follow_neck and presentation.body_frame and
+            presentation.body_frame.sample(avatar, t)
         if Mirror.MODES[mode_name].follow_neck and Unit.has_node(unit, "j_neck") then
-            local frame = presentation.body_frame and presentation.body_frame.sample(avatar, t)
             if frame and frame.neck and Mirror.MODES[mode_name].scale_to_neck then
                 local base = Unit.world_position(unit, 1)
                 local neck_height = Vector3.z(Unit.world_position(unit, Unit.node(unit, "j_neck"))) - Vector3.z(base)
@@ -450,6 +475,24 @@ function Mirror.install(mod, presentation)
                 state.neck_offset, state.neck_distance = offset, length
             end
         end
+        if Mirror.MODES[mode_name].clavicles and frame and frame.shoulder_left then
+            for _, side in ipairs({"left", "right"}) do
+                local clavicle_name, arm_name = "j_" .. side .. "shoulder", "j_" .. side .. "arm"
+                local target = frame["shoulder_" .. side]
+                if target and Unit.has_node(unit, clavicle_name) and Unit.has_node(unit, arm_name) then
+                    local clavicle, arm = Unit.node(unit, clavicle_name), Unit.node(unit, arm_name)
+                    local before = Vector3.length(Unit.world_position(unit, arm) - vector(target))
+                    local axis, angle = Mirror.clavicle_swing(array(Unit.world_position(unit, clavicle)),
+                        array(Unit.world_position(unit, arm)), target, Mirror.CLAVICLE_MAX)
+                    if axis then
+                        set_world_rotation(unit, clavicle, Quaternion.multiply(Quaternion(vector(axis), angle),
+                            Unit.world_rotation(unit, clavicle)))
+                        World.update_unit(world, unit)
+                    end
+                    state["shoulder_gap_" .. side] = {before, Vector3.length(Unit.world_position(unit, arm) - vector(target))}
+                end
+            end
+        end
         if Mirror.MODES[mode_name].solve_arms then
             for _, arm in ipairs(state.arms) do solve_arm(world, avatar, unit, arm) end
         end
@@ -458,6 +501,11 @@ function Mirror.install(mod, presentation)
             if state.neck_offset then
                 mod:info("DARKTIDEVR_BODY_MIRROR neck_follow offset_m=%.3f,%.3f,%.3f distance_m=%.3f scale_ratio=%.3f",
                     state.neck_offset[1], state.neck_offset[2], state.neck_offset[3], state.neck_distance, state.scale_ratio or 1)
+            end
+            if state.shoulder_gap_left and state.shoulder_gap_right then
+                mod:info("DARKTIDEVR_BODY_MIRROR clavicles gap_left_m=%.3f->%.3f gap_right_m=%.3f->%.3f",
+                    state.shoulder_gap_left[1], state.shoulder_gap_left[2],
+                    state.shoulder_gap_right[1], state.shoulder_gap_right[2])
             end
             local first_person = ScriptUnit.has_extension(avatar, "first_person_system")
             local camera = first_person and first_person:first_person_unit()

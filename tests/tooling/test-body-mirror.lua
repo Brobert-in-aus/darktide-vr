@@ -74,4 +74,16 @@ assert(near(Mirror.scale_ratio(nil,1.5,3,0),Mirror.MAX_BODY_SCALE_RATIO),'capped
 assert(near(Mirror.scale_ratio(1,1.5,1.8,0.5),1.1),'eases by rate times dt')
 assert(Mirror.scale_ratio(nil,0,1.8,0)==1,'degenerate neck height')
 assert(Mirror.MODES.overlay.neck_back_extra==nil,'camera at the proper place, cowl or not')
-print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio')
+-- Clavicles: swing toward the estimated shoulder, capped.
+do
+    local axis,angle=Mirror.clavicle_swing({0,0,0},{0.1,0,0},{0,0.1,0},math.rad(90))
+    assert(near(axis[3],1) and near(angle,math.pi/2),'quarter turn about up')
+    axis,angle=Mirror.clavicle_swing({0,0,0},{0.1,0,0},{0,0.1,0},Mirror.CLAVICLE_MAX)
+    assert(near(angle,Mirror.CLAVICLE_MAX),'capped at CLAVICLE_MAX')
+    axis,angle=Mirror.clavicle_swing({0,0,0},{0.1,0,0},{0.1,0.01,0},Mirror.CLAVICLE_MAX)
+    assert(angle<Mirror.CLAVICLE_MAX and near(angle,math.atan2(0.01,0.1)),'small turns are exact')
+    assert(Mirror.clavicle_swing({0,0,0},{0.1,0,0},{0.2,0,0})==nil,'already aligned')
+    assert(Mirror.clavicle_swing({0,0,0},{0,0,0},{0.2,0,0})==nil,'degenerate')
+    assert(Mirror.MODES.overlay.clavicles and not Mirror.MODES.overlaystock.clavicles)
+end
+print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles')
