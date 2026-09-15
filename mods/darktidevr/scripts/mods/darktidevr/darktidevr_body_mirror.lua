@@ -90,6 +90,12 @@ Mirror.MODES = {
     -- near full reach.
     overlayprotract = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, body_yaw = true, protract = true, stretch = true},
+    -- Both: the clavicle swing toward the estimated shoulder and then
+    -- protraction with the soft stretch (protract4 traded the right arm for the
+    -- left because it replaced the swing).
+    overlayboth = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
+        hand_rig = true, follow_neck = true, scale_to_neck = true, body_yaw = true, clavicles = true,
+        protract = true, stretch = true},
     -- "overlay" with clavicles but the avatar's root yaw, for A/B of the body yaw.
     overlayrootyaw = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true},
