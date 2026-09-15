@@ -250,3 +250,5 @@ the part of the hands refactor that runs for everyone.
       aim-line hide is gone).
     - The wrist display is 25% smaller. New mod option: "Wrist display size
       (%)", 50-200, updates live.
+23. **Forearm holsters off in the hub**: no weapon miniature or ammo count
+    in the hub; they return in the Psykhanium and SoloPlay.

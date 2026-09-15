@@ -143,6 +143,12 @@ function Forearm.install(mod, presentation)
         return test_enabled
     end
     function api.enabled()
+        -- Not in the hub, like the wrist display (worn, 15 September evening:
+        -- the weapon miniature and its ammo showed there once the holsters
+        -- anchored to the controller grip).
+        if presentation.current_game_mode_name and presentation.current_game_mode_name() == "hub" then
+            return false
+        end
         return (mod.get and mod:get("vr_forearm_holsters") == true) or test_flag()
     end
     local function array(v) return v and {Vector3.x(v), Vector3.y(v), Vector3.z(v)} or nil end
