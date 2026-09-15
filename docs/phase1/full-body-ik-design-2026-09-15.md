@@ -583,8 +583,30 @@ working viewer and eye readbacks.
   - No script errors. The eye readbacks were not served in this run (the
     request stayed unconsumed), so there is no render: the look of the bent
     spine is still unchecked.
-- Next: an eye render of `overlayspine` looking down and ahead (the readback
-  route used on 15 September), then spine limits (45 forward, 20 back, 25
+- **With a working viewer (16 September, after the Guardian prompt was
+  bypassed; Psyker, hooded robe; synthetic hand path, head tracking, timed
+  eye readbacks):** `spine3` (`overlayspine`) against `follow3` (`overlay`,
+  root follow), 6,300 updates each, no script errors.
+
+  | | `overlay` (root follow) | `overlayspine` |
+  | --- | --- | --- |
+  | neck | root moved 0.18-0.19 m, neck on target | gap 0.18-0.19 m to 0.02-0.03 m, feet stay |
+  | clavicle gaps after the swing | left 0.13-0.14, right 0.13 m | left 0.15-0.17, right 0.13-0.17 m |
+  | unreachable updates | left 1,560, right 0 | left 1,590, right 0 |
+  | body yaw against the avatar | -7.9 degrees | +10.2 / -7.9 degrees |
+
+  - Renders looking down (`spine3/renders/l4.png`, `follow3/renders/l4.png`):
+    with root follow a sleeve crosses the view and much of the floor shows;
+    with the spine bend the robe and hood fill most of the view around the
+    collar opening, because the torso leans forward under the camera.
+  - Decision (assumption until worn): root follow stays in `overlay`; the
+    spine bend stays an A/B mode. The clavicle cap binds on both sides with
+    tracked input (gaps 13-17 cm), so the cap or protraction is the next
+    arm-reach question. The synthetic left hand reaches past arm length on
+    about a quarter of updates.
+  - The clav1/stock1/yaw1/spine1/spine2 numbers above had no viewer; these two
+    runs supersede them for tracked play.
+- Next: spine limits (45 forward, 20 back, 25
   lateral, 40 twist), neck and head shares, and whether `overlayspine`
   replaces the root follow in `overlay`.
 
