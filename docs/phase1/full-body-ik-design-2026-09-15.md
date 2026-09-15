@@ -347,6 +347,33 @@ player's Skitarius (archetype `cryptic`) and the stock Ogryn bot profile
   mapped parent and zero length on both rigs. `j_hips` hangs from
   `j_hips_handle`.
 
+## Milestone 2 check: body mirror (15 September afternoon)
+
+Commit `3d3d788`, dev flag `darktidevr_body_mirror.flag` (`darktidevr_body_mirror.lua`),
+run `artifacts/unattended/body-mirror-20260915/mirror1`.
+
+- **What it does.**
+  - Spawns the player's whole profile: body, gear and material slots, plus
+    `slot_unarmed` for the spawner, and no weapons, gadgets or companion.
+  - Disables its animation state machine on the ready frame.
+  - Copies every joint's local pose from the gameplay avatar each frame,
+    after the mod's hand writes.
+  - Stands 2.5 m ahead facing the player.
+- **Results.**
+  - 26 slots spawned (28 ignored).
+  - Both units have 246 nodes and the same layout, so joints map by index.
+  - Right hand local error 0.000000 m over 4,500 frames; no script errors.
+  - Eye renders show the complete Skitarius facing the camera (hood, lit
+    eyes, armour, robe, legs), with its pose following the avatar between
+    captures.
+- **Next (milestone 2 proper).**
+  - Put this unit where the body is, instead of 2.5 m ahead, behind the
+    existing experimental full-body flag, and hide the avatar's body and
+    gear slots.
+  - Weapons stay on the avatar hands, synced to the proxy hands as today.
+  - Hide the head and near-eye meshes locally.
+  - Then replace the plain joint copy with the solver (milestone 3).
+
 ## Changes from the 14 September design
 
 - **Legs.** Copied from the stock avatar (hybrid) instead of procedural first.

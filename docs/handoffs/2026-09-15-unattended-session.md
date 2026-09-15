@@ -407,6 +407,11 @@ are recorded in the
 - disabling the unit's animation state machine freezes it exactly (0.000 m
   over 60 frames on both rigs, `scan2`, `344945e`). This gives milestone 2
   a stable rest pose.
+- **Body mirror, milestone 2 check (`3d3d788`, dev flag only).** A
+  full-profile copy of the player's character, with its animation stopped
+  and every joint copied from the avatar each frame, renders complete
+  (hood, eyes, armour, robe) 2.5 m ahead and follows the avatar. Joint
+  error was 0 over 4,500 frames (`body-mirror-20260915/mirror1`).
 
 ## Arc maul charges (user correction)
 
