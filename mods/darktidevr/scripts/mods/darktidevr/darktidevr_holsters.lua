@@ -289,13 +289,18 @@ function Holsters.install(mod, presentation, observation)
         -- real eye sat 30-55 cm ahead of and below it, so every body zone was
         -- behind the player and out of reach (worn probe, 15 September
         -- evening, on the Psyker).
-        local eye = presentation.eye_pose and presentation.eye_pose(unit) or Unit.world_position(eye_unit, 1)
+        local eye, eye_rotation
+        if presentation.eye_pose then eye, eye_rotation = presentation.eye_pose(unit) end
+        eye = eye or Unit.world_position(eye_unit, 1)
         local yaw = observation.body_visual_yaw
         local forward
         if type(yaw) == "number" and yaw == yaw then
             forward = Quaternion.forward(Quaternion(Vector3.up(), yaw))
         else
-            forward = Quaternion.forward(Unit.world_rotation(eye_unit, 1))
+            -- The tracked head's facing, not the first-person unit's rotation,
+            -- which follows the aim and stock recoil (animation audit, 16
+            -- September, item J).
+            forward = Quaternion.forward(eye_rotation or Unit.world_rotation(eye_unit, 1))
         end
         -- Tracked hands move in physical metres (times the character scale,
         -- 1 for humans), so the zones scale with the player's own eye height,
@@ -323,6 +328,14 @@ function Holsters.install(mod, presentation, observation)
         local value = file:read("*all"); file:close()
         test_enabled = type(value) == "string" and value:match("^%s*enabled%s*$") ~= nil
         return test_enabled
+    end
+    -- The frame rebuilt at draw time, while the holsters are active: the one
+    -- kept from the input sample is a frame older than the displays placed in
+    -- the locomotion post-update (animation audit, 16 September, item J).
+    function api.draw_frame(unit)
+        if not api.frame or not unit then return api.frame end
+        local ok, frame = pcall(body_frame, unit)
+        return ok and frame or api.frame
     end
     local hand_zones, no_zones = {}, {}
     local pending_tap, last_t, last_unit

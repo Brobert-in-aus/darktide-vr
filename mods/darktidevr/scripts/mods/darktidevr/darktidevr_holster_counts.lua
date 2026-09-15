@@ -103,7 +103,7 @@ function Counts.install(mod, presentation)
         if zone and type(zone.id) == "string" and zone.id:find("^forearm_") then zone = nil end
         local label = zone and Counts.label(zone, data_for(unit, zone))
         if not label then hide(); return end
-        local frame = holsters.frame
+        local frame = holsters.draw_frame and holsters.draw_frame(unit) or holsters.frame
         local s, c = frame.scale, zone.centre
         local anchor = Vector3(frame.origin[1] + (frame.right[1] * c[1] + frame.forward[1] * c[2]) * s,
             frame.origin[2] + (frame.right[2] * c[1] + frame.forward[2] * c[2]) * s, frame.origin[3] + c[3] * s) +

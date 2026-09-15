@@ -465,7 +465,7 @@ function Forearm.install(mod, presentation)
     end
     local function update_previews(world, unit, dt, t)
         local holsters = presentation.holsters
-        local frame = holsters and holsters.frame
+        local frame = holsters and (holsters.draw_frame and holsters.draw_frame(unit) or holsters.frame)
         local forearm_on = api.enabled() and presentation.mode == 1
         local body_on = Forearm.body_models_enabled(mod, presentation, frame)
         if not forearm_on and not body_on then api.destroy(); return end

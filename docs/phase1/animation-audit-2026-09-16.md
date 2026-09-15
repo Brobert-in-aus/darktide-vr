@@ -37,7 +37,7 @@ animation, except what the server drives. Static audit of the branch at
 | G | `follow_gameplay_hands` (`darktidevr_body_proxy.lua:772-810`): animated 1p wrists for stock melee animation and keyboard and mouse hands | both gloves during melee swings; keyboard and mouse hands | needs a user decision: melee with controller hands, or keep the animation |
 | H | `copy_gameplay_fingers` (`darktidevr_body_proxy.lua:245-272`) | finger curl only | later: fixed per-item grip poses |
 | I | `sync_equipment_hand_to_proxy` (`darktidevr.lua:9267-9313`) | held item placement, via E in body-drawn-hand mode | clean once E is fixed |
-| J | holsters `body_frame` (`darktidevr_holsters.lua:283-311`): built at input time, drawn in post-update; yaw from the first-person unit rotation when `body_visual_yaw` is nil (includes stock recoil offsets) | body holster zones, models, counts (withheld) | open: rebuild at draw time, yaw from the tracked eye, before body holsters return |
+| J | holsters `body_frame` (`darktidevr_holsters.lua:283-311`): built at input time, drawn in post-update; yaw from the first-person unit rotation when `body_visual_yaw` is nil (includes stock recoil offsets) | body holster zones, models, counts (withheld) | fixed: rebuilt at draw time for the body models and counts, yaw from the tracked eye (16 September) |
 | K | one-time capture of the model-eye offset from animated eye bones and 3p root yaw (`darktidevr.lua:4839-4843`, `:4887-4901`, `:4960-4974`) | camera and every controller target (constant offset) | open: breed constants or capture only when root yaw matches scene yaw |
 | L | `body_visual_yaw` seeded from 3p root yaw (`:9691`) | full-body spine and shoulders, two-hand stock | full-body flag only; seed from `body_head_yaw` |
 | M | virtual stock `frame.body_position = Unit.world_position(unit, 1)` (`darktidevr_two_hand_support.lua:503`) | virtual stock anchor | only with a finite `body_visual_yaw`; use the anchor position |
@@ -57,8 +57,8 @@ time with last frame's anchor and eye, consistently.
 
 1. Eye from the current anchor (done, 16 September).
 2. Refresh the anchor on the stock melee and keyboard-and-mouse path (D; done, 16 September).
-3. Holster frame at draw time, yaw from the tracked eye (J), before body
-   holsters return.
+3. Holster frame at draw time, yaw from the tracked eye (J; done, 16
+   September).
 4. Gun-hand glove without the animated offset (E), then `visible_grip_target`
    users to `weapon_grip_target` (F).
 5. User decision on melee and keyboard-and-mouse animated hands (G), then
