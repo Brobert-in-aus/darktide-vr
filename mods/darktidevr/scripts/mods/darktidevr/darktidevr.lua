@@ -15459,6 +15459,22 @@ mod:hook(UIRenderer, "create_material", function(func, self, material_name, reta
     presentation.marker_world.note_material(handle, material_name)
     return handle
 end)
+-- A widget pass's material belongs to the GUI of the renderer that first drew
+-- it. The HUD panel and the marker atlas draw stock widgets through their own
+-- renderers, so the stock destroy at mission exit can hand another GUI's
+-- handle to the HUD renderer: "bad argument #2 to 'destroy_material'
+-- (Material expected, got userdata)" from HudElementInteraction's widgets,
+-- a Lua error and a crash dump on every quit after using interactions (worn,
+-- 15 September evening). A failed destroy is logged once and skipped; the GUI
+-- that owns the material releases it with its world. Root cause still open.
+mod:hook(UIRenderer, "destroy_material", function(func, self, material, retained_mode)
+    local ok, err = pcall(func, self, material, retained_mode)
+    if not ok and not presentation.destroy_material_logged then
+        presentation.destroy_material_logged = true
+        mod:warning("DARKTIDEVR_UI destroy_material_skipped renderer=%s error=%s",
+            tostring(self and self.name), tostring(err))
+    end
+end)
 -- Values set on those handles (material values, ui_scale), replayed on the
 -- marker atlas's own instances.
 for _, setter in ipairs({"set_scalar", "set_vector2", "set_vector3", "set_vector4",
