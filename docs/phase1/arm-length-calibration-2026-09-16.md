@@ -18,8 +18,9 @@ results) and the [animation audit](animation-audit-2026-09-16.md).
   the span predicted from eye height and ask for a retake when it is far
   short.
 - **Derive shoulder-to-wrist reach** from the grip span, the wrist-to-grip
-  offset and the rig's own shoulder width; split it 56/44 upper arm to
-  forearm; aim about 3 % short.
+  offset and the player's shoulder width (estimated from eye height; the rig's
+  own shoulders remain the solve anchors); split it 56/44 upper arm to forearm;
+  aim about 3 % short.
 - **Apply it by moving the forearm and hand bones along their axes** (as VRIK
   and FRIK do), never by scaling bones, and after any uniform body scale,
   within a clamp.
@@ -112,8 +113,10 @@ to the head:
   measure once per controller model, Touch first). The existing
   `body_ik_calibrated_wrist_target` offset can serve as the per-side
   refinement.
-- S = the rig's shoulder joint distance in world space, after the body's
-  uniform scale; not the body frame's 17 cm estimate.
+- S = the player's shoulder joint width, estimated from eye height (0.34 m at
+  1.62 m, scaled). The first design said the rig's width. `armlen3` showed a
+  rig scaled to the camera is wider than the player (0.47 m) and that made the
+  arms far too short. The rig's shoulders stay the anchors of the solve.
 - reach = (span - 2 × 0.065 - S) / 2, times 0.97 so the drawn elbow straightens
   no later than the real one (articular limits research).
 - upper arm = 0.56 × reach, forearm = 0.44 × reach, from the ANSUR split and
@@ -170,6 +173,36 @@ to the head:
     1.63 m?);
   - arms reaching fully forward, up and across while holding a gun;
   - no stretched sleeves.
+
+## First measurement (16 September, run `armlen3`)
+
+`overlayarmlength` on the Psyker, working viewer, synthetic hand path, timed
+renders, against `follow3` (`overlay`):
+
+- Derivation: `source=height` (the saved span is flagged short), span 1.632 m.
+  The scaled rig's shoulders are 0.471 m apart. Reach 0.50 m, giving upper arm
+  0.28 m and forearm 0.22 m. Bone ratios 0.82 upper, 0.70 forearm (at the
+  clamp).
+- Out of reach: right arm 5,196 of 6,300 updates (`follow3`: 0), left 1,700
+  (`follow3`: 1,560). Maximum stretch right 0.16 m, left 0.52 m.
+- Render (`armlen3/renders/l4.png`): much like `follow3` looking down; the
+  shorter sleeves are hard to judge in the dark robe.
+- **Findings:**
+  1. Subtracting the rig's shoulder width was wrong. The rig is scaled up
+     1.18 to reach the camera's neck, so its shoulders are wider than the
+     player's, and the arms came out far too short. Fixed: the reach formula
+     now uses the player's shoulder width estimated from eye height (0.36 m
+     here). The rig's shoulders stay the solve anchors. That gives reach 0.55
+     m, upper 0.31 m, forearm 0.24 m.
+  2. The synthetic hand path is not this player's body, so its hand distances
+     do not follow the calibrated span. Unattended runs cannot tell whether
+     calibrated lengths are right; that needs a worn check with the player's
+     own hands.
+  3. The rig's shoulders sit about 5 cm further out per side than the player's
+     once scaled. With true arm lengths, a hand the player reaches
+     comfortably can be out of reach from the wider rig shoulder. The
+     scale-to-neck conflict (below) is the root of both this and the long
+     arms.
 
 ## Open questions for the user
 

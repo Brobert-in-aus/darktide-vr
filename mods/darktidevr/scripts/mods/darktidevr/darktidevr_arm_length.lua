@@ -26,6 +26,15 @@ ArmLength.SHOULDER_HEIGHT_PER_EYE = 0.87
 ArmLength.MAX_GRIP_HEIGHT_DIFFERENCE = 0.10
 ArmLength.MAX_BELOW_SHOULDER = 0.15
 ArmLength.MAX_FORWARD = 0.15
+-- The player's shoulder joint width for a standing eye height: the body frame's
+-- 0.34 m at a 1.62 m eye height, scaled. The reach formula needs the player's
+-- width; a rig scaled to the camera is wider.
+ArmLength.SHOULDER_WIDTH_PER_EYE = 0.34 / 1.62
+function ArmLength.shoulder_width(eye_height)
+    if type(eye_height) ~= "number" or eye_height ~= eye_height or eye_height < 0.8 or eye_height > 2.4 then return nil end
+    return ArmLength.SHOULDER_WIDTH_PER_EYE * eye_height
+end
+
 -- Per-segment length ratio against the rig's own bone.
 ArmLength.MIN_RATIO, ArmLength.MAX_RATIO = 0.85, 1.15
 
@@ -65,8 +74,8 @@ function ArmLength.t_pose_problems(t_pose, eye_height)
     return problems
 end
 
--- Shoulder joint to wrist for a grip span and the rig's shoulder joint width
--- (world metres, after any uniform body scale), aimed short. nil when
+-- Shoulder joint to wrist for a grip span and the player's shoulder joint
+-- width (metres; see ArmLength.shoulder_width), aimed short. nil when
 -- unusable. Pure.
 function ArmLength.reach(span, shoulder_width)
     if not finite(span) or not finite(shoulder_width) or shoulder_width < 0 then return nil end
@@ -80,7 +89,7 @@ function ArmLength.segments(reach)
     return reach * ArmLength.UPPER_SHARE, reach * (1 - ArmLength.UPPER_SHARE)
 end
 
--- The arm for a saved calibration result and the rig's shoulder width:
+-- The arm for a saved calibration result and the player's shoulder width:
 -- reach, upper, lower and the source ("span" from a clean T-pose, "height"
 -- from the standing eye height when the T-pose has problems or is missing),
 -- plus the T-pose problems. nil reach when neither is usable. Pure.

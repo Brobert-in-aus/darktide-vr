@@ -563,7 +563,11 @@ function Mirror.install(mod, presentation)
                 (mod.get and mod:get("vr_calibration_v1"))
             local width = Vector3.length(Unit.world_position(unit, Unit.node(unit, "j_leftarm")) -
                 Unit.world_position(unit, Unit.node(unit, "j_rightarm")))
-            local derived = ArmLength.from_calibration(calibration, width)
+            -- The player's shoulder width, not the rig's: the rig is scaled up to
+            -- reach the camera's neck (armlen3: 0.47 m apart), and subtracting
+            -- that width left the arms 0.50 m long and out of reach.
+            local eye = calibration and not calibration.seated and tonumber(calibration.floor_eye_height)
+            local derived = ArmLength.from_calibration(calibration, ArmLength.shoulder_width(eye) or width)
             if derived.reach then
                 state.arm_lengths = derived
                 state.arm_shoulder_width = width
