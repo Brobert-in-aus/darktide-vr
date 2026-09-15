@@ -125,5 +125,9 @@ tracked eye).
     - Nothing should come into reach that you could not have used by looking
       at it: the game's own range and filters still choose.
     - The log line `DARKTIDEVR_REACH armed hand=... distance_m=...` marks each
-      time something comes into reach.
+      time something comes into reach, and `DARKTIDEVR_REACH probe found=...`
+      every two seconds says what the search found along each hand, so
+      "nothing was in reach" can be told from "the search never ran".
+    - A pulse on the hand (with vibration on) when something comes into reach,
+      the same one a foregrip or an armed holster gives.
     - Unit test `reach_interact` only; the feel is worn.

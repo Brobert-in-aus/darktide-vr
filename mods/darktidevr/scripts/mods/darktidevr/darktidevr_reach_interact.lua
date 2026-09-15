@@ -29,6 +29,8 @@ Reach.APPROACH_RADIUS = 0.75
 -- Unattended runs turn the option on through this rather than the saved
 -- settings, which belong to the player.
 Reach.TEST_FLAG = "./../mods/darktidevr/darktidevr_reach_test.flag"
+Reach.PROBE_SECONDS = 2
+Reach.PROBE_LINES = 40
 
 local function finite(x) return type(x) == "number" and x == x and math.abs(x) < math.huge end
 local function point(v) return type(v) == "table" and finite(v[1]) and finite(v[2]) and finite(v[3]) end
@@ -148,6 +150,19 @@ function Reach.install(mod, presentation)
             end
         end
         local choice = Reach.choose(eye, hands)
+        -- Probe: every PROBE_SECONDS, up to PROBE_LINES a session, what the
+        -- stock search found along each hand. Reading it is how a worn check
+        -- tells "nothing was in reach" from "the search never ran".
+        if type(t) == "number" and (api.probe_lines or 0) < Reach.PROBE_LINES and t >= (api.probe_t or 0) then
+            api.probe_t, api.probe_lines = t + Reach.PROBE_SECONDS, (api.probe_lines or 0) + 1
+            local parts = {}
+            for i = 1, #hands do
+                parts[#parts + 1] = string.format("%s=%.2f", hands[i].hand,
+                    Reach.distance(hands[i].position, hands[i].target) or -1)
+            end
+            mod:info("DARKTIDEVR_REACH probe found=%d %s chosen=%s", #hands,
+                table.concat(parts, " "), choice and choice.hand or "none")
+        end
         if not choice then claim, reach_target = nil, nil; return nil end
         for i = 1, #hands do
             if hands[i].hand == choice.hand then
@@ -163,6 +178,11 @@ function Reach.install(mod, presentation)
         if not choice.approach and not logged[claim] then
             logged[claim] = true
             mod:info("DARKTIDEVR_REACH armed hand=%s distance_m=%.2f", choice.hand, choice.distance)
+            -- The same pulse a foregrip or an armed holster gives: this hand's
+            -- grip now does something other than its binding.
+            if presentation.haptics and type(t) == "number" then
+                pcall(presentation.haptics.pulse, choice.hand, "zone", t)
+            end
         end
         return Reach.request({hand = choice.hand, approach = choice.approach}, claim)
     end
