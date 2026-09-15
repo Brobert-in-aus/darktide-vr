@@ -86,5 +86,13 @@ do
     assert(Mirror.clavicle_swing({0,0,0},{0,0,0},{0.2,0,0})==nil,'degenerate')
     assert(Mirror.MODES.overlay.clavicles and not Mirror.MODES.overlaystock.clavicles)
     assert(Mirror.MODES.overlay.body_yaw and not Mirror.MODES.overlayrootyaw.body_yaw and Mirror.MODES.overlayrootyaw.clavicles)
+    -- Spine: shares of the remaining swing that add up to the design weights.
+    local f=Mirror.chain_fractions(Mirror.SPINE)
+    assert(near(f[1],0.2) and near(f[2],0.3/0.8) and near(f[3],1),'spine fractions')
+    local taken,left=0,1
+    for i=1,3 do local share=left*f[i]; taken=taken+share; left=left-share
+        assert(near(share,Mirror.SPINE[i][2]),'joint '..i..' takes its weight') end
+    assert(near(taken,1))
+    assert(Mirror.MODES.overlayspine.spine_bend and not Mirror.MODES.overlay.spine_bend)
 end
 print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles')

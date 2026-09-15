@@ -67,6 +67,12 @@ Mirror.MODES = {
         follow_neck = true},
     overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hand_rig = true,
         follow_neck = true, scale_to_neck = true, clavicles = true, body_yaw = true},
+    -- Milestone 3, spine (step 3): "overlay" with the spine bent so the neck
+    -- reaches the body frame's neck, instead of moving the whole copy there;
+    -- the root stays over the avatar's feet.
+    overlayspine = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
+        hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true, body_yaw = true,
+        spine_bend = true},
     -- "overlay" with clavicles but the avatar's root yaw, for A/B of the body yaw.
     overlayrootyaw = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true},
@@ -80,6 +86,10 @@ Mirror.MODES = {
 -- solve. rig1 showed the stock animated shoulders leave the support arm up to
 -- 0.31 m short.
 Mirror.CLAVICLE_MAX = math.rad(30)
+-- The spine chain bent toward the body frame's neck, lowest joint first, with
+-- the design's share of the bend per joint and a per-joint cap.
+Mirror.SPINE = {{"j_spine", 0.2}, {"j_spine1", 0.3}, {"j_spine2", 0.5}}
+Mirror.SPINE_JOINT_MAX = math.rad(30)
 -- Milestone 3, root yaw (step 1): the copy faces the body frame's yaw instead
 -- of the avatar root's, which follows the aim. clav1 showed the left shoulder
 -- 0.23 m from its estimate against 0.10 m on the right, a turn between them.
@@ -185,6 +195,17 @@ function Mirror.clavicle_swing(clavicle, arm, target, max_angle)
     if sine < 1e-7 then return nil end
     local angle = math.atan2(sine, dot(from, to))
     return scale(axis, 1 / sine), math.min(angle, max_angle or Mirror.CLAVICLE_MAX)
+end
+
+-- The fraction of the remaining swing each joint of a chain takes, lowest
+-- first, so the shares add up to the weights: w_i / (w_i + ... + w_n). Pure.
+function Mirror.chain_fractions(chain)
+    local fractions, remaining = {}, 0
+    for i = #chain, 1, -1 do
+        remaining = remaining + chain[i][2]
+        fractions[i] = remaining > 0 and chain[i][2] / remaining or 0
+    end
+    return fractions
 end
 
 -- The flag's mode, or nil. Pure.
@@ -480,11 +501,30 @@ function Mirror.install(mod, presentation)
                 Unit.set_local_scale(unit, 1, Unit.local_scale(avatar, 1) * state.scale_ratio)
                 World.update_unit(world, unit)
             end
-            if frame and frame.neck then
+            if frame and frame.neck and not Mirror.MODES[mode_name].spine_bend then
                 local offset, length = Mirror.neck_offset(array(Unit.world_position(unit, Unit.node(unit, "j_neck"))), frame.neck)
                 Unit.set_local_position(unit, 1, Unit.local_position(unit, 1) + vector(offset))
                 World.update_unit(world, unit)
                 state.neck_offset, state.neck_distance = offset, length
+            elseif frame and frame.neck then
+                local neck = Unit.node(unit, "j_neck")
+                local target = vector(frame.neck)
+                local before = Vector3.length(Unit.world_position(unit, neck) - target)
+                local fractions = Mirror.chain_fractions(Mirror.SPINE)
+                for i, entry in ipairs(Mirror.SPINE) do
+                    if Unit.has_node(unit, entry[1]) then
+                        local joint = Unit.node(unit, entry[1])
+                        local axis, angle = Mirror.clavicle_swing(array(Unit.world_position(unit, joint)),
+                            array(Unit.world_position(unit, neck)), frame.neck, math.huge)
+                        if axis then
+                            angle = math.min(angle * fractions[i], Mirror.SPINE_JOINT_MAX)
+                            set_world_rotation(unit, joint, Quaternion.multiply(Quaternion(vector(axis), angle),
+                                Unit.world_rotation(unit, joint)))
+                            World.update_unit(world, unit)
+                        end
+                    end
+                end
+                state.spine_neck = {before, Vector3.length(Unit.world_position(unit, neck) - target)}
             end
         end
         if Mirror.MODES[mode_name].clavicles and frame and frame.shoulder_left then
@@ -513,6 +553,9 @@ function Mirror.install(mod, presentation)
             if state.neck_offset then
                 mod:info("DARKTIDEVR_BODY_MIRROR neck_follow offset_m=%.3f,%.3f,%.3f distance_m=%.3f scale_ratio=%.3f",
                     state.neck_offset[1], state.neck_offset[2], state.neck_offset[3], state.neck_distance, state.scale_ratio or 1)
+            end
+            if state.spine_neck then
+                mod:info("DARKTIDEVR_BODY_MIRROR spine neck_gap_m=%.3f->%.3f", state.spine_neck[1], state.spine_neck[2])
             end
             if state.root_yaw_delta then
                 mod:info("DARKTIDEVR_BODY_MIRROR body_yaw delta_from_avatar_deg=%.1f", state.root_yaw_delta)
