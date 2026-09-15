@@ -95,7 +95,7 @@ Yesterday's checklist items not reached are still open in
     `2/3`), chest the stim or carried item, shoulder the rifle's ammo, hips
     the weapon and device names, "empty" where nothing is kept. Say if the
     labels are in the way or unreadable.
-11. **Weapon hand holsters** (`58d37d2`, option default off). Gun out:
+11. **Weapon hand holsters** (`58d37d2`, previews enlarged and moved toward the eye in `e71f21b`; option default off). Gun out:
     - bring your off hand up over the gun hand's forearm: small models of
       your other weapon, stim, carried item and device appear along it
       (only for items you have);

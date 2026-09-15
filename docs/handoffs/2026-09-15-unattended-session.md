@@ -331,8 +331,23 @@ Commits `4fffc5d` to `58d37d2`, deployed, option default off (evening item 11).
   - `forearm11`: the preview sat exactly at its zone (logged every 2 s).
   - `forearm12` (`big`): it rendered there but was buried in the gun hand
     glove's large gauntlet cuff, so the zones moved up and back.
-  - `forearm14`: at normal scale the maul miniature shows above the cuff (seen
-    end-on from the synthetic camera). No script errors in any run.
+  - `forearm14`: I first reported the maul miniature showing above the cuff.
+    **That was wrong.** The object I pointed at was at the cuff edge against
+    the distant background, where there are enemies and scenery (user
+    review). Normal-scale previews were in any case too small and covered
+    by the glove.
+  - `e71f21b` (user review): previews doubled (weapons 0.14, other items
+    0.45) and drawn up to 8 cm from the holster toward the eye, so the
+    gauntlet cannot cover them.
+  - `forearm17`, the decisive A/B: the same pose (gun forward, forearm running
+    back toward the camera) with previews shown and with previews forced
+    hidden (`hidepreview=1`). With them shown, the power maul miniature lies
+    across the forearm above the gun stock, in front of the cuff; with them
+    hidden, it is absent.
+  - No script errors in any run.
+  - *Capture note (user):* from side views the holsters lie beyond the cuff
+    and can be off screen to the right. The view mode now has `gripx=` to
+    put the glove at the left of the view.
 - **Not shown:**
   - how it feels and reads worn;
   - previews of stims, carried items and devices (this character carried
