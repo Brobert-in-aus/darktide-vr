@@ -39,8 +39,8 @@ animation, except what the server drives. Static audit of the branch at
 | I | `sync_equipment_hand_to_proxy` (`darktidevr.lua:9267-9313`) | held item placement, via E in body-drawn-hand mode | clean once E is fixed |
 | J | holsters `body_frame` (`darktidevr_holsters.lua:283-311`): built at input time, drawn in post-update; yaw from the first-person unit rotation when `body_visual_yaw` is nil (includes stock recoil offsets) | body holster zones, models, counts (withheld) | fixed: rebuilt at draw time for the body models and counts, yaw from the tracked eye (16 September) |
 | K | one-time capture of the model-eye offset from animated eye bones and 3p root yaw (`darktidevr.lua:4839-4843`, `:4887-4901`, `:4960-4974`) | camera and every controller target (constant offset) | open: breed constants or capture only when root yaw matches scene yaw |
-| L | `body_visual_yaw` seeded from 3p root yaw (`:9691`) | full-body spine and shoulders, two-hand stock | full-body flag only; seed from `body_head_yaw` |
-| M | virtual stock `frame.body_position = Unit.world_position(unit, 1)` (`darktidevr_two_hand_support.lua:503`) | virtual stock anchor | only with a finite `body_visual_yaw`; use the anchor position |
+| L | `body_visual_yaw` seeded from 3p root yaw (`:9691`) | full-body spine and shoulders, two-hand stock | fixed: seeded from the tracked head yaw (16 September) |
+| M | virtual stock `frame.body_position = Unit.world_position(unit, 1)` (`darktidevr_two_hand_support.lua:503`) | virtual stock anchor | left as is: the calibrated stock profile's shoulder offset is measured from the root, so moving the origin would invalidate saved tunings; this tuning path is superseded by the body frame's `stock_anchor` used by the Virtual stock option |
 | N | `observe_authored` reads the 1p rig's left hand in the attach node | support grip socket (averaged, frozen) | acceptable; shipped or stored grips only |
 | O | `gun_sights.measure` (1p muzzle and camera) | sight-line calibration (relative, frozen) | acceptable |
 | P | body mirror and overlay copy every animated joint | full-body copy | dev flag only; replaced by the full-body IK design |

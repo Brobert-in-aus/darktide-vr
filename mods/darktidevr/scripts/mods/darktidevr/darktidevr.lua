@@ -9707,7 +9707,9 @@ function presentation.apply_body_heading(world, unit)
     local now = Managers and Managers.time and Managers.time:time("main") or 0
     local visual_yaw = controller_observation.body_visual_yaw
     if not visual_yaw then
-        visual_yaw = Quaternion.yaw(Unit.local_rotation(unit, 1))
+        -- Seeded from the tracked head, not the character root, which turns
+        -- with locomotion (animation audit, 16 September, item L).
+        visual_yaw = head_yaw
     end
     local prior_head_yaw =
         controller_observation.body_heading_last_head_yaw or head_yaw

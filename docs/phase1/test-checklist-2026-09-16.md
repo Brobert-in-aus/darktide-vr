@@ -76,3 +76,8 @@ tracked eye).
    starts. Taking the headset off at the title screen and putting it back on
    should no longer leave the viewer stopped. Unit test (`core_math`) only;
    the unattended runs that hit it are recorded in the handover.
+
+7. **Body heading seeded from the head** (restart; experimental full-body
+   mode only). On entering a level with the full-body body mode on, the body
+   starts facing where you look rather than where the character root faced.
+   Nothing changes in the default hands mode. Static change; suite only.
