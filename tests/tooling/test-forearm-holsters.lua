@@ -26,6 +26,8 @@ assert(Forearm.PREVIEW_SIZE>=.096,'miniatures at least 50% larger than the first
 near(Forearm.fit_scale(1.0),Forearm.PREVIEW_SIZE,'a 1 m weapon'); near(Forearm.fit_scale(0.25),Forearm.PREVIEW_SIZE*4,'a 25 cm stim')
 assert(Forearm.fit_scale(0)==nil and Forearm.fit_scale(nil)==nil and Forearm.fit_scale(0/0)==nil)
 near(Forearm.shown_scale(.1,true),.1*Forearm.HOVER_SCALE,'hovered grows'); near(Forearm.shown_scale(.1,false),.1)
+-- Flat boxes (the maul's effect plane) stay out of the bounds; thin parts stay in.
+assert(not Forearm.solid_box(0,.4,.146),'flat plane'); assert(Forearm.solid_box(.041,.006,.002),'thin part')
 -- Holster state with a per-hand zone list: the off hand arms a forearm zone.
 local frame=Holsters.frame({0,0,1.64},{0,1,0},1.64)
 local zone={id='forearm_stim',slot='slot_pocketable_small',selector='stim',radius=.04,

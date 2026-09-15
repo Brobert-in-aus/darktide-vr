@@ -49,6 +49,16 @@ function Forearm.fit_scale(extent)
     return Forearm.PREVIEW_SIZE / extent
 end
 
+-- Whether a mesh box counts toward a miniature's bounds: flat boxes do not.
+-- The power maul carries a zero-thickness 0.8 by 0.3 m plane (an effect
+-- card, not drawn) reaching 0.8 m below the handle; it pulled the bounds'
+-- centre down and the maul sat about 6 cm above its grab zone, unlike the
+-- gun (worn, 15 September evening; box logs). Half extents in metres. Pure.
+Forearm.MIN_BOX_HALF = 0.001
+function Forearm.solid_box(hx, hy, hz)
+    return math.min(hx, hy, hz) >= Forearm.MIN_BOX_HALF
+end
+
 -- A preview's scale this frame. Pure.
 function Forearm.shown_scale(base, hovered)
     return hovered and base * Forearm.HOVER_SCALE or base
@@ -235,7 +245,7 @@ function Forearm.install(mod, presentation)
             if alive_ok and alive then
                 for mesh_index = 1, Unit.num_meshes(candidate) do
                     local ok, pose, half = pcall(Mesh.box, Unit.mesh(candidate, mesh_index))
-                    if ok and pose and half and Vector3.length(half) > 1e-4 then
+                    if ok and pose and half and Forearm.solid_box(Vector3.x(half), Vector3.y(half), Vector3.z(half)) then
                         boxes = boxes + 1
                         if log_boxes then
                             local mid = Matrix4x4.transform(inverse, Matrix4x4.translation(pose))
