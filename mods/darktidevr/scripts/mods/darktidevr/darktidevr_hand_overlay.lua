@@ -13,19 +13,24 @@
 -- its anchor (x to the viewer's right, y up); metres_per_pixel sets the
 -- panel's scale.
 --
--- The atlas is the size of the game's UI back buffer (1920 x 1080 times the
--- UI scale), as the HUD panel's target is: the overlay viewport lays the GUI
--- out at that size, and a 2048 x 1024 atlas drew everything about half size,
--- low resolution and squashed (worn, 15 September evening). Cells are that
--- target divided into COLUMNS by ROWS.
+-- The atlas is the size the GUI is laid out at, RESOLUTION_LOOKUP's width
+-- and height (2112 x 2304 in the headset): a 2048 x 1024 atlas drew
+-- everything half size, and 1920 x 1080 times the UI scale squashed it to
+-- about half height (worn, 15 September evening). Cells are that target
+-- divided into COLUMNS by ROWS.
 local Overlay = {}
 
-Overlay.COLUMNS, Overlay.ROWS = 4, 2
+Overlay.COLUMNS, Overlay.ROWS = 4, 4
 
--- The atlas extent for a UI scale. Pure.
-function Overlay.extent(scale)
-    scale = (type(scale) == "number" and scale > 0) and scale or 1
-    return math.max(64, math.floor(1920 * scale + 0.5)), math.max(64, math.floor(1080 * scale + 0.5))
+-- The atlas extent from the resolution lookup (width, height, scale). Pure.
+function Overlay.extent(lookup)
+    lookup = type(lookup) == "table" and lookup or {}
+    local width, height = tonumber(lookup.width), tonumber(lookup.height)
+    if width and height and width >= 64 and height >= 64 then
+        return math.floor(width + 0.5), math.floor(height + 0.5)
+    end
+    local scale = (type(lookup.scale) == "number" and lookup.scale > 0) and lookup.scale or 1
+    return math.floor(1920 * scale + 0.5), math.floor(1080 * scale + 0.5)
 end
 
 local function sub(a, b) return {a[1] - b[1], a[2] - b[2], a[3] - b[3]} end
@@ -64,7 +69,7 @@ function Overlay.install(mod, presentation, Atlas, api)
     local function clock() return Managers.time and Managers.time:time("main") or nil end
     -- The atlas for the current UI scale, rebuilt when it changes.
     local function current_atlas()
-        local width, height = Overlay.extent(RESOLUTION_LOOKUP and RESOLUTION_LOOKUP.scale)
+        local width, height = Overlay.extent(RESOLUTION_LOOKUP)
         local key = width .. "x" .. height
         if atlas and atlas_extent ~= key then pcall(atlas.destroy); atlas = nil end
         if not atlas then

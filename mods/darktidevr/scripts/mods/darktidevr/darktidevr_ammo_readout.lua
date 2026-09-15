@@ -336,7 +336,8 @@ function Readout.install(mod, presentation, observation)
             anchor = eye + Quaternion.forward(eye_rotation) * 0.5
         else
             local side = presentation.weapon_hand_roles.physical("dominant")
-            local grip = presentation.weapon_grip_target("dominant")
+            -- The grip as drawn (see presentation.visible_grip_target).
+            local grip = (presentation.visible_grip_target or presentation.weapon_grip_target)("dominant")
             if not grip then hide(); return end
             local flat_right = Quaternion.right(eye_rotation)
             local inward = side == "left" and flat_right or -flat_right

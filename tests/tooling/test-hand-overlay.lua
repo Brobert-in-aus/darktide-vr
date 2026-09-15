@@ -20,10 +20,12 @@ local atlas={configure=function() end,ensure=function() return true end,
     renderer=function() return {} end,draw=function(world,frame_for) return frame_for(claimed[1]) end}
 atlas.CELL_WIDTH=960
 local Atlas={new=function(options)
-    assert(options.cell_width==960 and options.cell_height==1080 and options.log_tag=='DARKTIDEVR_HAND_OVERLAY' and options.clock)
+    assert(options.cell_width==960 and options.cell_height==1080 and options.columns==4 and options.rows==4 and
+        options.log_tag=='DARKTIDEVR_HAND_OVERLAY' and options.clock)
     return atlas end}
-RESOLUTION_LOOKUP={scale=2}
-local w,h=Overlay.extent(2); assert(w==3840 and h==2160,'the UI back buffer size')
+RESOLUTION_LOOKUP={width=3840,height=4320,scale=2}
+local w,h=Overlay.extent({width=2112,height=2304,scale=1.1}); assert(w==2112 and h==2304,'the GUI layout size')
+w,h=Overlay.extent({scale=2}); assert(w==3840 and h==2160,'scale fallback')
 w,h=Overlay.extent(nil); assert(w==1920 and h==1080)
 local api={UIRenderer={draw_rect=function(r,p,s,color) rects[#rects+1]={p,s,color} end,
     script_draw_text=function(r,text,px,font,p,s,color,options) texts[#texts+1]={text,px,p,s,color} end},

@@ -22,7 +22,11 @@ Wrist.BAR_HEIGHT = 0.012
 Wrist.BAR_GAP = 0.021
 Wrist.TEXT_SIZE = 0.0165
 -- Overlay panel scale: metres per panel pixel.
-Wrist.PIXEL_METRES = 0.00025
+-- The bars and their numbers fit one overlay cell: at 0.00025 the numbers
+-- fell outside it and showed as a dash (worn, 15 September evening).
+Wrist.PIXEL_METRES = 0.00035
+-- The bars sit left of the anchor so the numbers to their right stay inside.
+Wrist.BARS_LEFT = 0.025
 Wrist.TEST_FLAG = "./../mods/darktidevr/darktidevr_wrist_display_test.flag"
 
 local function finite(x) return type(x) == "number" and x == x and math.abs(x) < math.huge end
@@ -123,13 +127,14 @@ function Wrist.install(mod, presentation, observation)
         for i, bar in ipairs(bars) do
             local y = top - (i - 1) * Wrist.BAR_GAP
             local c = bar.color
-            canvas.rect(0, y, Wrist.BAR_WIDTH, Wrist.BAR_HEIGHT, {110, 20, 20, 20})
+            local x = -Wrist.BARS_LEFT
+            canvas.rect(x, y, Wrist.BAR_WIDTH, Wrist.BAR_HEIGHT, {110, 20, 20, 20})
             local filled = Wrist.BAR_WIDTH * bar.fraction
             if filled > 0 then
-                canvas.rect(-Wrist.BAR_WIDTH * 0.5 + filled * 0.5, y, filled, Wrist.BAR_HEIGHT, {230, c[1], c[2], c[3]})
+                canvas.rect(x - Wrist.BAR_WIDTH * 0.5 + filled * 0.5, y, filled, Wrist.BAR_HEIGHT, {230, c[1], c[2], c[3]})
             end
             if bar.text then
-                canvas.text(bar.text, Wrist.TEXT_SIZE / Wrist.PIXEL_METRES, Wrist.BAR_WIDTH * 0.5 + 0.004, y,
+                canvas.text(bar.text, Wrist.TEXT_SIZE / Wrist.PIXEL_METRES, x + Wrist.BAR_WIDTH * 0.5 + 0.004, y,
                     {235, c[1], c[2], c[3]}, "left")
             end
         end

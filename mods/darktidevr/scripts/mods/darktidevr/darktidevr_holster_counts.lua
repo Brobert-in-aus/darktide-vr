@@ -96,6 +96,8 @@ function Counts.install(mod, presentation)
             local state = holsters.hands and holsters.hands[hand]
             if state and state.zone then zone = state.zone; break end
         end
+        -- Forearm holsters label their own miniatures (darktidevr_forearm_holsters).
+        if zone and type(zone.id) == "string" and zone.id:find("^forearm_") then zone = nil end
         local label = zone and Counts.label(zone, data_for(unit, zone))
         if not label then hide(); return end
         local frame = holsters.frame
