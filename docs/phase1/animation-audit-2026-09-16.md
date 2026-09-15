@@ -71,5 +71,14 @@ time with last frame's anchor and eye, consistently.
    then the depth. Breed constants were the alternative and are not needed; the
    remaining animation in the landmark is head pitch, which the capture now
    waits out (15 degrees) instead of baking in. L and M are recorded above.
+   Measured in the Psykhanium (run `psykh2`, 16 September, default hands mode,
+   no dev flags, scene reached, no crash, no script errors):
+   `DARKTIDEVR_ANCHOR eye_capture depth_m=0.0827 height_m=0.0717
+   aim_from_basis_deg=90.0 source=face_attachment`. The avatar entered the
+   scene facing exactly 90 degrees from the recenter basis, which is the worst
+   case for the old derivation: all 8.27 cm of the eye's depth would have sat
+   on the basis' lateral axis and been zeroed, leaving the anchor with height
+   alone. Both terms now survive. Whether the view sits right is still worn
+   (checklist item 9).
 7. Finger curl (H) stays with the animation until per-item grip poses exist;
    it drives no placement, only the curl of the drawn fingers.
