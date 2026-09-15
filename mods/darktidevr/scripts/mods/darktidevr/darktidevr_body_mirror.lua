@@ -47,10 +47,11 @@
 -- capped. "overlayfollow" is the same without scaling, for A/B.
 --
 -- With the neck at eye height the eye sits inside the hood and cloak, which
--- are part of the torso mesh (overlay10). "overlay" therefore also collapses
--- the head joint's scale, folding everything skinned to the head to a point
--- at the eye; the neck, collar and shoulders keep their shape.
--- "overlayscale" is the scaled copy without that collapse.
+-- are part of the torso mesh (overlay10). Collapsing the head joint's scale
+-- did not fold the cowl (overlay11), so "overlay" collapses the neck joint
+-- (and with it the head), folding everything skinned there toward a point 8
+-- cm below the eye. "overlayhead" keeps the head-only collapse and
+-- "overlayscale" the scaled copy without either, for A/B.
 local Mirror = {}
 
 Mirror.FLAG = "./../mods/darktidevr/darktidevr_body_mirror.flag"
@@ -64,8 +65,10 @@ Mirror.MODES = {
         follow_neck = true},
     overlayscale = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hide_gloves = true,
         follow_neck = true, scale_to_neck = true},
+    overlayhead = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hide_gloves = true,
+        follow_neck = true, scale_to_neck = true, collapse_joint = "j_head"},
     overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hide_gloves = true,
-        follow_neck = true, scale_to_neck = true, collapse_head = true},
+        follow_neck = true, scale_to_neck = true, collapse_joint = "j_neck"},
 }
 -- Near-eye mesh hiding, in the character root's frame at the spawn pose.
 Mirror.NEAR_EYE_RADIUS = 0.25
@@ -434,9 +437,10 @@ function Mirror.install(mod, presentation)
                 state.neck_offset, state.neck_distance = offset, length
             end
         end
-        if Mirror.MODES[mode_name].collapse_head and Unit.has_node(unit, "j_head") then
+        local collapse = Mirror.MODES[mode_name].collapse_joint
+        if collapse and Unit.has_node(unit, collapse) then
             local k = Mirror.COLLAPSED_HEAD_SCALE
-            Unit.set_local_scale(unit, Unit.node(unit, "j_head"), Vector3(k, k, k))
+            Unit.set_local_scale(unit, Unit.node(unit, collapse), Vector3(k, k, k))
             World.update_unit(world, unit)
         end
         if Mirror.MODES[mode_name].solve_arms then
