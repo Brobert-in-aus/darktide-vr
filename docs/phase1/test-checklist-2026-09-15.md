@@ -6,6 +6,39 @@ Yesterday's checklist items not reached are still open in
 [test-checklist-2026-09-14.md](test-checklist-2026-09-14.md) (items 1, 3, 4,
 5, 7, 9).
 
+## Start here (suggested order for a short session)
+
+Installed state: every Lua file matches branch head (audit, 15 September
+afternoon). No dev flag files are left in the installed mod folder apart
+from the mod's own `darktidevr_crosshair_scale.flag`.
+
+- **Fixes, on for everyone (no option to turn on):**
+  - 5, stray cartridge gone;
+  - 6, crosshair on the iron sights (hold the rifle as in the 14 September
+    screenshot);
+  - 2, two-handing survives reload and bash;
+  - 3, ammo layout.
+- **Two-handing A/B (Experimental options):**
+  - 4, Two-hand steadying set to Hands line;
+  - 7, Virtual stock on top of it.
+- **New options, all default off, in Experimental:**
+  - 11, weapon hand holsters (your request);
+  - 9, aim down sights by raising the gun;
+  - 12, wrist display;
+  - 10, holster labels (needs Virtual holsters);
+  - 13-14, peril and melee charges at the hand (need Ammo count at the hand);
+  - 8, menu ticks (vibration mode Informative).
+- **Nothing to do:** 1, settings backup.
+
+Seen working in unattended game runs:
+- 2, 3, 5, 6 and 10;
+- 11: equipping from the forearm, and the previews (A/B render);
+- 7 and 9: their measurements run, but engagement was never reached with
+  synthetic hands;
+- 8: a menu confirm tick reached the viewer.
+
+Unit tested only: 13 and 14.
+
 1. **Settings backup at launch** (`cd132ea`). Nothing to do in game.
    - After launching, `%LOCALAPPDATA%\DarktideVR\settings-backups` should
      hold a `user_settings.<date-time>.config`. Console:
