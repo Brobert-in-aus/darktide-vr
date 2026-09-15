@@ -38,10 +38,13 @@
 -- inside the hood and cloak. It moves sideways and down only, so the feet
 -- stay on the floor or sink (crouch) until the legs are solved (milestone 3).
 --
--- "overlay" collapses the neck joint's scale (j_neck and so the hidden head):
--- overlay8 looking down still showed the open collar ring of the torso mesh
--- where the head was. "overlayfollow" is the same without the collapse, for
--- A/B.
+-- "overlay" also scales the copy up (uniformly, about its root on the floor)
+-- until its neck reaches the body frame's neck height: overlay8 looking down
+-- still showed the open collar ring of the chest armour, because the camera
+-- sat about 27 cm above the model's neck; collapsing the neck joint's scale
+-- (overlay9) did not close it. The ratio eases toward its target, never
+-- shrinks below the avatar's own scale (a crouch lowers instead) and is
+-- capped. "overlayfollow" is the same without scaling, for A/B.
 local Mirror = {}
 
 Mirror.FLAG = "./../mods/darktidevr/darktidevr_body_mirror.flag"
@@ -54,7 +57,7 @@ Mirror.MODES = {
     overlayfollow = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hide_gloves = true,
         follow_neck = true},
     overlay = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true, hide_gloves = true,
-        follow_neck = true, collapse_neck = true},
+        follow_neck = true, scale_to_neck = true},
 }
 -- Near-eye mesh hiding, in the character root's frame at the spawn pose.
 Mirror.NEAR_EYE_RADIUS = 0.25
@@ -65,7 +68,22 @@ Mirror.EYE_FORWARD_OF_HEAD = 0.08
 Mirror.NEAR_EYE_MAX_HALF_EXTENT = 0.30
 -- Largest root move toward the body frame's neck.
 Mirror.NECK_FOLLOW_MAX = 0.5
-Mirror.COLLAPSED_NECK_SCALE = 0.01
+Mirror.MAX_BODY_SCALE_RATIO = 1.3
+-- Per second: the fraction of the remaining scale change applied.
+Mirror.BODY_SCALE_RATE = 1.0
+
+-- The body scale ratio that brings the copy's neck height (above its root)
+-- to the target neck height, from 1 (never smaller) to the cap, eased from
+-- the previous ratio by dt. Pure.
+function Mirror.scale_ratio(previous, neck_height, target_height, dt)
+    local target = 1
+    if neck_height > 0.1 and target_height > 0 then
+        target = math.max(1, math.min(Mirror.MAX_BODY_SCALE_RATIO, target_height / neck_height))
+    end
+    if not previous then return target end
+    local k = math.max(0, math.min(1, (dt or 0) * Mirror.BODY_SCALE_RATE))
+    return previous + (target - previous) * k
+end
 
 -- The root move that puts the copy's neck on the target neck, never upward
 -- unless allow_lift, capped in length. Arrays. Returns offset, uncapped
@@ -393,6 +411,13 @@ function Mirror.install(mod, presentation)
         World.update_unit(world, unit)
         if Mirror.MODES[mode_name].follow_neck and Unit.has_node(unit, "j_neck") then
             local frame = presentation.body_frame and presentation.body_frame.sample(avatar, t)
+            if frame and frame.neck and Mirror.MODES[mode_name].scale_to_neck then
+                local base = Unit.world_position(unit, 1)
+                local neck_height = Vector3.z(Unit.world_position(unit, Unit.node(unit, "j_neck"))) - Vector3.z(base)
+                state.scale_ratio = Mirror.scale_ratio(state.scale_ratio, neck_height, frame.neck[3] - Vector3.z(base), dt)
+                Unit.set_local_scale(unit, 1, Unit.local_scale(avatar, 1) * state.scale_ratio)
+                World.update_unit(world, unit)
+            end
             if frame and frame.neck then
                 local offset, length = Mirror.neck_offset(array(Unit.world_position(unit, Unit.node(unit, "j_neck"))), frame.neck)
                 Unit.set_local_position(unit, 1, Unit.local_position(unit, 1) + vector(offset))
@@ -400,19 +425,14 @@ function Mirror.install(mod, presentation)
                 state.neck_offset, state.neck_distance = offset, length
             end
         end
-        if Mirror.MODES[mode_name].collapse_neck and Unit.has_node(unit, "j_neck") then
-            local k = Mirror.COLLAPSED_NECK_SCALE
-            Unit.set_local_scale(unit, Unit.node(unit, "j_neck"), Vector3(k, k, k))
-            World.update_unit(world, unit)
-        end
         if Mirror.MODES[mode_name].solve_arms then
             for _, arm in ipairs(state.arms) do solve_arm(world, avatar, unit, arm) end
         end
         state.frames = state.frames + 1
         if state.frames == 1 or state.frames % 900 == 0 then
             if state.neck_offset then
-                mod:info("DARKTIDEVR_BODY_MIRROR neck_follow offset_m=%.3f,%.3f,%.3f distance_m=%.3f",
-                    state.neck_offset[1], state.neck_offset[2], state.neck_offset[3], state.neck_distance)
+                mod:info("DARKTIDEVR_BODY_MIRROR neck_follow offset_m=%.3f,%.3f,%.3f distance_m=%.3f scale_ratio=%.3f",
+                    state.neck_offset[1], state.neck_offset[2], state.neck_offset[3], state.neck_distance, state.scale_ratio or 1)
             end
             local first_person = ScriptUnit.has_extension(avatar, "first_person_system")
             local camera = first_person and first_person:first_person_unit()
