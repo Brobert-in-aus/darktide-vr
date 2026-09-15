@@ -68,7 +68,10 @@ function Forearm.install(mod, presentation)
         local file = io_api and io_api.open(Forearm.TEST_FLAG, "r")
         if not file then test_enabled = false; return false end
         local value = file:read("*all"); file:close()
-        test_enabled = type(value) == "string" and (value:match("^%s*enabled%s*$") ~= nil or value:match("^%s*front%s*$") ~= nil)
+        test_enabled = type(value) == "string" and (value:match("^%s*enabled%s*$") ~= nil or
+            value:match("^%s*front%s*$") ~= nil or value:match("^%s*big%s*$") ~= nil)
+        -- "big": previews at their holsters but four times larger, always shown.
+        api.test_big = type(value) == "string" and value:match("^%s*big%s*$") ~= nil
         -- "front": previews 50 cm ahead of the eye, larger and always shown,
         -- to check they render at all.
         api.test_front = type(value) == "string" and value:match("^%s*front%s*$") ~= nil
@@ -189,6 +192,10 @@ function Forearm.install(mod, presentation)
                     else
                         Unit.set_local_position(data.link_unit, 1, Vector3(zone.world[1], zone.world[2], zone.world[3]))
                         Unit.set_local_rotation(data.link_unit, 1, zone.slot == "slot_primary" and across_long_z or across)
+                        if api.test_big then
+                            Unit.set_local_scale(data.link_unit, 1, Vector3(0.3, 0.3, 0.3))
+                            near = true
+                        end
                     end
                     -- Every frame: the spawner shows the unit once streaming completes.
                     if data.item_unit_3p and Unit.alive(data.item_unit_3p) then
