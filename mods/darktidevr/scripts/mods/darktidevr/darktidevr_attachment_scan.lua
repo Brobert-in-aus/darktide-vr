@@ -36,7 +36,9 @@ function Scan.install(mod, presentation)
             left = tonumber(rest:match("left=(%d)")),
             press = rest:match("press=1") ~= nil,
             far = rest:match("far=1") ~= nil,
-            lowleft = rest:match("lowleft=1") ~= nil}
+            lowleft = rest:match("lowleft=1") ~= nil,
+            -- hidepreview=1: weapon hand holster previews forced hidden (A/B captures).
+            hidepreview = rest:match("hidepreview=1") ~= nil}
         for a, b in (rest:match("hide=([%d,%-]+)") or ""):gmatch("(%d+)%-?(%d*)") do
             for index = tonumber(a), tonumber(b ~= "" and b or a) do view.hide[index] = true end
         end
@@ -53,6 +55,9 @@ function Scan.install(mod, presentation)
         value = type(value) == "string" and value or ""
         local view = parse_view(value)
         if not (view and api.view and view.variant == api.view.variant) then api.view = view end
+        if presentation.forearm_holsters then
+            presentation.forearm_holsters.debug_hide = view ~= nil and view.hidepreview or false
+        end
         enabled = value:match("^%s*scan%s*$") ~= nil or view ~= nil
         return enabled
     end

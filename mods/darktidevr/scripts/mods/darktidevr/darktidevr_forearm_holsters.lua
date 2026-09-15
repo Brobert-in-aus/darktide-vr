@@ -241,7 +241,7 @@ function Forearm.install(mod, presentation)
                     end
                     -- Every frame: the spawner shows the unit once streaming completes.
                     if data.item_unit_3p and Unit.alive(data.item_unit_3p) then
-                        preview.visible = near and preview.fitted == true
+                        preview.visible = near and preview.fitted == true and not api.debug_hide
                         Unit.set_unit_visibility(data.item_unit_3p, preview.visible, true)
                     end
                 end
