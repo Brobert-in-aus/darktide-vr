@@ -95,5 +95,6 @@ do
     assert(near(taken,1))
     assert(Mirror.MODES.overlayspine.spine_bend and not Mirror.MODES.overlay.spine_bend)
     assert(near(Mirror.MODES.overlayreach.clavicle_max,math.rad(45)) and Mirror.MODES.overlay.clavicle_max==nil,'reach A/B cap')
+    assert(Mirror.MODES.overlayarmlength.arm_length and not Mirror.MODES.overlay.arm_length,'arm length A/B mode')
 end
 print('body_mirror=pass keeps_slot same_layout modes hides_slot elbow near_eye hand_rig neck_offset scale_ratio clavicles')

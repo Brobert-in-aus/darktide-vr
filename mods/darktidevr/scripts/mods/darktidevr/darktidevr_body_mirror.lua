@@ -78,6 +78,13 @@ Mirror.MODES = {
     overlayreach = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true, body_yaw = true,
         clavicle_max = math.rad(45)},
+    -- Arm length from the calibration (arm length design, step 3): "overlay"
+    -- with the forearm and hand bones moved to the calibrated upper arm and
+    -- forearm lengths after the uniform scale. The clamp is wider than the
+    -- design default so the effect shows past the scale to the neck.
+    overlayarmlength = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
+        hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true, body_yaw = true,
+        arm_length = {min = 0.70, max = 1.15}},
     -- "overlay" with clavicles but the avatar's root yaw, for A/B of the body yaw.
     overlayrootyaw = {distance = 0, facing = false, hide_head = true, solve_arms = true, near_eye = true,
         hand_rig = true, follow_neck = true, scale_to_neck = true, clavicles = true},
@@ -248,6 +255,7 @@ end
 
 function Mirror.install(mod, presentation)
     local api = {}
+    local ArmLength
     local poll, enabled, mode_name = 0, false, nil
     local state
     local logged = {}
@@ -378,6 +386,20 @@ function Mirror.install(mod, presentation)
         Unit.set_local_position(unit, arm.forearm, arm.rest_forearm:unbox())
         Unit.set_local_position(unit, arm.hand, arm.rest_hand:unbox())
         World.update_unit(world, unit)
+        local lengths = Mirror.MODES[mode_name].arm_length and state.arm_lengths
+        if lengths then
+            local config = Mirror.MODES[mode_name].arm_length
+            local rest_upper = Vector3.length(Unit.world_position(unit, arm.forearm) - Unit.world_position(unit, arm.arm))
+            local rest_lower = Vector3.length(Unit.world_position(unit, arm.hand) - Unit.world_position(unit, arm.forearm))
+            local function ratio(desired, current)
+                if not (current > 1e-4) then return 1 end
+                return math.max(config.min, math.min(config.max, desired / current))
+            end
+            arm.length_ratio_upper, arm.length_ratio_lower = ratio(lengths.upper, rest_upper), ratio(lengths.lower, rest_lower)
+            Unit.set_local_position(unit, arm.forearm, arm.rest_forearm:unbox() * arm.length_ratio_upper)
+            Unit.set_local_position(unit, arm.hand, arm.rest_hand:unbox() * arm.length_ratio_lower)
+            World.update_unit(world, unit)
+        end
         local hint = Unit.world_position(unit, arm.forearm) - Vector3(0, 0, Mirror.ELBOW_HINT_DOWN)
         local shoulder = Unit.world_position(unit, arm.arm)
         -- World bone lengths: the character root carries a visual scale
@@ -532,6 +554,21 @@ function Mirror.install(mod, presentation)
                 state.spine_neck = {before, Vector3.length(Unit.world_position(unit, neck) - target)}
             end
         end
+        -- Calibrated arm lengths for this frame, from the rig's shoulder width
+        -- after the uniform scale (arm length design).
+        state.arm_lengths = nil
+        if Mirror.MODES[mode_name].arm_length and Unit.has_node(unit, "j_leftarm") and Unit.has_node(unit, "j_rightarm") then
+            ArmLength = ArmLength or mod:io_dofile("darktidevr/scripts/mods/darktidevr/darktidevr_arm_length")
+            local calibration = mod.darktidevr_calibration and mod.darktidevr_calibration.result or
+                (mod.get and mod:get("vr_calibration_v1"))
+            local width = Vector3.length(Unit.world_position(unit, Unit.node(unit, "j_leftarm")) -
+                Unit.world_position(unit, Unit.node(unit, "j_rightarm")))
+            local derived = ArmLength.from_calibration(calibration, width)
+            if derived.reach then
+                state.arm_lengths = derived
+                state.arm_shoulder_width = width
+            end
+        end
         if Mirror.MODES[mode_name].clavicles and frame and frame.shoulder_left then
             for _, side in ipairs({"left", "right"}) do
                 local clavicle_name, arm_name = "j_" .. side .. "shoulder", "j_" .. side .. "arm"
@@ -589,6 +626,14 @@ function Mirror.install(mod, presentation)
             mod:info("DARKTIDEVR_BODY_MIRROR copying mode=%s frames=%d right_hand_local_error_m=%.6f right_hand_world_error_m=%.4f right_forearm_to_hand_m=%.4f",
                 tostring(mode_name), state.frames, hand, world_hand, stretch)
             if Mirror.MODES[mode_name].solve_arms then
+                if state.arm_lengths then
+                    local l = state.arm_lengths
+                    mod:info("DARKTIDEVR_BODY_MIRROR arm_length source=%s span_m=%.3f shoulder_width_m=%.3f reach_m=%.3f upper_m=%.3f lower_m=%.3f problems=%s ratio_left=%.3f/%.3f ratio_right=%.3f/%.3f",
+                        tostring(l.source), l.span or -1, state.arm_shoulder_width or -1, l.reach, l.upper, l.lower,
+                        table.concat(l.problems or {}, ","),
+                        state.arms[1] and state.arms[1].length_ratio_upper or -1, state.arms[1] and state.arms[1].length_ratio_lower or -1,
+                        state.arms[2] and state.arms[2].length_ratio_upper or -1, state.arms[2] and state.arms[2].length_ratio_lower or -1)
+                end
                 for _, arm in ipairs(state.arms) do
                     mod:info("DARKTIDEVR_BODY_MIRROR arm side=%s upper_m=%.4f lower_m=%.4f world_upper_m=%.4f world_lower_m=%.4f shoulder_to_target_m=%.4f hand_error_m=%.4f unreachable_frames=%d max_stretch_m=%.4f",
                         arm.side, arm.upper, arm.lower, arm.world_upper or -1, arm.world_lower or -1, arm.distance or -1, arm.error or -1, arm.unreachable, arm.max_stretch or 0)
