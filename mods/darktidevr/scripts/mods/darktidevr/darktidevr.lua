@@ -6472,6 +6472,11 @@ function presentation.inject_gameplay_input(self, main_t, input)
         presentation.weapon_inspect.apply(player_unit,
             controller_observation.gameplay_input_active and game_mode_name~="hub", main_t)
     end
+    if presentation.comms_gesture then
+        -- Talking works in the hub too.
+        presentation.comms_gesture.apply(player_unit,
+            controller_observation.gameplay_input_active, main_t)
+    end
     local exclusive_stick=presentation.communication_input.sample(self,player_unit,input,
         controller_observation.gameplay_input_active,
         tonumber(controller_observation.gameplay_held[0]),game_mode_name,active_world)
@@ -15486,6 +15491,9 @@ presentation.reach_interact = mod:io_dofile(
 ).install(mod, presentation)
 presentation.weapon_inspect = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_weapon_inspect"
+).install(mod, presentation)
+presentation.comms_gesture = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_comms_gesture"
 ).install(mod, presentation)
 presentation.ammo_readout = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_ammo_readout"

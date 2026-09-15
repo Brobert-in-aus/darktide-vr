@@ -124,8 +124,8 @@ function Inspect.install(mod, presentation)
         local engaged
         state, engaged = Inspect.step(state, in_pose == true, t)
         local bindings = presentation.controller_bindings
-        if bindings then
-            bindings.forced = engaged and INSPECT_MASK or 0
+        if engaged and bindings then
+            bindings.forced = bit.bor(tonumber(bindings.forced) or 0, INSPECT_MASK)
         end
         if engaged and not api.engaged then
             entries = entries + 1
@@ -137,10 +137,7 @@ function Inspect.install(mod, presentation)
         api.engaged = engaged
     end
 
-    function api.destroy()
-        state = {}
-        if presentation.controller_bindings then presentation.controller_bindings.forced = 0 end
-    end
+    function api.destroy() state = {} end
     return api
 end
 

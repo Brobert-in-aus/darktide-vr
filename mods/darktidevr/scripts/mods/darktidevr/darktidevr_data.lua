@@ -202,6 +202,11 @@ return {
                         default_value = false,
                     },
                     {
+                        setting_id = "vr_comms_gesture",
+                        type = "checkbox",
+                        default_value = false,
+                    },
+                    {
                         setting_id = "vr_wrist_display",
                         type = "checkbox",
                         default_value = false,

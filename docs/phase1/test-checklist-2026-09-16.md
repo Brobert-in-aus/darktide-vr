@@ -145,3 +145,18 @@ tracked eye).
       `DARKTIDEVR_INSPECT enter` in the log.
     - Unit test `weapon_inspect` only; the thresholds are worn judgements, so
       say if it takes too much or too little to start.
+
+12. **Push to talk with a hand at your mouth** (restart; Experimental
+    features, "Push to talk with a hand at your mouth", default off, new
+    16 September). Bring your off hand up in front of your mouth, hold for
+    about half a second: the microphone opens until you take the hand away.
+    - Check the microphone actually opens (the stock voice indicator) and
+      closes on dropping the hand.
+    - Your push to talk binding must still work as it does now.
+    - It must not fire while that hand is on the gun (two-hand support on),
+      nor from a hand passing the face.
+    - A pulse on that hand (with vibration on) when it opens;
+      `DARKTIDEVR_COMMS talk` in the log.
+    - The zone is a 20 cm ball 16 cm forward and 12 cm below the eye: say if
+      you have to hold your hand somewhere unnatural, or if it opens when you
+      did not mean it to.

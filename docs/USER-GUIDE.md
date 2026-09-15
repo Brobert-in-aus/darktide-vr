@@ -173,6 +173,14 @@ long as you keep it there, and stops when you bring the weapon down. Pointing
 it where you look is aiming, not inspecting, so this never starts while you aim
 down the sights. Not in the hub.
 
+### Push to talk with a hand at your mouth (experimental)
+
+Experimental features, "Push to talk with a hand at your mouth". Bring your off
+hand up in front of your mouth and hold it there for about half a second: your
+microphone opens, as if you were speaking into a vox bead, and closes when you
+take the hand away. It works alongside your push to talk binding rather than
+instead of it, and never while that hand is holding the gun.
+
 ### Wrist display, teammate status (experimental)
 
 - "Wrist display": health (white), toughness (the HUD's blue) and stamina bars
