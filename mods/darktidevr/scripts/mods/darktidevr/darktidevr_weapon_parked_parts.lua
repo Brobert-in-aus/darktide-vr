@@ -15,7 +15,10 @@ local Parked = {}
 
 -- Attachment unit name -> inclusive mesh index ranges.
 Parked.MESHES = {
-    ["content/weapons/player/ranged/galvanic_rifle/attachments/receiver_01/receiver_01"] = {{27, 58}, {63, 66}},
+    -- 27-58 and 63-66: the round column (14 September). 23-26: the U-shaped
+    -- clip by the drum; 59-62: a cartridge case above the grip (worn, 15
+    -- September evening; isolated in stray-bullet-20260915/parts1).
+    ["content/weapons/player/ranged/galvanic_rifle/attachments/receiver_01/receiver_01"] = {{23, 26}, {27, 58}, {59, 62}, {63, 66}},
 }
 Parked.SHOWN_DURING = {reload_state = true, reload_shotgun = true}
 
