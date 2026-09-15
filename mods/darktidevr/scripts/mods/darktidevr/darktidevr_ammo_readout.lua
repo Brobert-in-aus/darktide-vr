@@ -217,6 +217,7 @@ end
 
 function Readout.install(mod, presentation, observation)
     local api = {}
+    local logged_slot
     local world, gui, failed, logged
     local UIFonts, Ammo, NetworkConstants
     local test_poll, test_mode = 0, nil
@@ -274,6 +275,16 @@ function Readout.install(mod, presentation, observation)
             hide(); return
         end
         local values = slot_values(unit)
+        if test and not logged_slot then
+            logged_slot = true
+            local unit_data = ScriptUnit.has_extension(unit, "unit_data_system")
+            local inventory = unit_data and unit_data:read_component("inventory")
+            local primary = unit_data and unit_data:read_component("slot_primary")
+            mod:info("DARKTIDEVR_AMMO_READOUT test_slot wielded=%s melee_charges=%s/%s special_active=%s values=%s",
+                tostring(inventory and inventory.wielded_slot), tostring(primary and primary.num_special_charges),
+                tostring(primary and primary.max_num_special_charges), tostring(primary and primary.special_active),
+                tostring(values ~= nil))
+        end
         if not values and test then values = {clip = 32, clip_max = 40, reserve = 60, reserve_max = 400} end
         local text, level = Readout.text(values)
         if not text then hide(); return end
