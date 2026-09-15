@@ -169,14 +169,13 @@ do
     assert(pulses[3][1] == 3 and math.abs(pulses[3][2] - Haptics.KINDS.push.amplitude * Haptics.MISSED_PUSH_SCALE) < 1e-6)
     hit({_player_unit = local_unit}, {}, nil) -- a missing profile is a light hit, not an error
     assert(#pulses == 4)
-    -- Menu sounds: informative mode only, and only while the VR pointer owns menus.
+    -- Menu sounds: both modes, and only while the VR pointer owns menus.
     local sound = hook("UIManager", "play_2d_sound")
     assert(sound, "UI sound hook")
     sound({}, "wwise/events/ui/play_ui_mouseover")
-    assert(#pulses == 4, "menu tick in immersive mode")
+    assert(#pulses == 5 and pulses[5][1] == 2 and pulses[5][2] == Haptics.KINDS.menu_hover.amplitude,
+        "menu hover tick in immersive mode")
     mode = "informative"
-    sound({}, "wwise/events/ui/play_ui_mouseover")
-    assert(#pulses == 5 and pulses[5][1] == 2 and pulses[5][2] == Haptics.KINDS.menu_hover.amplitude, "menu hover tick")
     sound({}, "wwise/events/ui/play_ui_click")
     assert(#pulses == 6 and pulses[6][2] == Haptics.KINDS.menu_confirm.amplitude, "menu confirm tick")
     native_menu = false
@@ -284,6 +283,6 @@ assert(Haptics.menu_kind("wwise/events/ui/play_ui_back_short") == "menu_confirm"
 assert(Haptics.menu_kind("wwise/events/ui/play_ui_enter_short") == "menu_confirm")
 assert(Haptics.menu_kind("wwise/events/ui/play_ui_talents_default_select") == "menu_confirm")
 assert(Haptics.menu_kind("wwise/events/ui/play_ui_background_music") == nil and Haptics.menu_kind(nil) == nil)
-assert(Haptics.plays("menu_hover", "informative") and not Haptics.plays("menu_hover", "immersive"))
-assert(Haptics.plays("menu_confirm", "informative") and not Haptics.plays("menu_confirm", "immersive"))
+assert(Haptics.plays("menu_hover", "informative") and Haptics.plays("menu_hover", "immersive"))
+assert(Haptics.plays("menu_confirm", "informative") and Haptics.plays("menu_confirm", "immersive"))
 print("haptics=pass mapping rate_limit notices modes failed_send ammo_events scale body_events melee_hooks shot_families gauges melee_windup_special interaction strength menu")

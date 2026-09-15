@@ -211,7 +211,7 @@ local p,h,r=installed_sample(512)
 assert(p==0 and h==0 and r==0 and observations.left_grip_usable)
 -- Losing the hold logs the largest aim correction applied while held.
 local released=infos[#infos]
-local steer=tonumber(released:match('^DARKTIDEVR_TWO_HAND released source=calibrated mode=hold ended=cancelled max_steer_degrees=([%d.]+) steered_frames=%d+ steadying=classic virtual_stock=false stock_frames=0 stock_min_distance_m=none$'))
+local steer=tonumber(released:match('^DARKTIDEVR_TWO_HAND released source=calibrated mode=hold ended=cancelled max_steer_degrees=([%d.]+) steered_frames=%d+ steadying=hands_line virtual_stock=false stock_frames=0 stock_min_distance_m=none$'))
 assert(steer and steer>15 and steer<25,'release log: '..tostring(released))
 assert(installed.resolve(unit,frame.rotation)==frame.rotation)
 observations.left_grip_tracking_live=true; secondary={0,.3,0}

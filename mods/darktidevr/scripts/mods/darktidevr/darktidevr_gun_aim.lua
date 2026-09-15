@@ -26,7 +26,8 @@ local function same(a,b)
     return math.abs(ax*bx+ay*by+az*bz+aw*bw)>1-1e-7
 end
 function Alignment.install(mod,presentation)
-    local instance={failures=0,writes=0,is_gun=Alignment.is_gun}
+    -- Attach node to muzzle, metres, per template (two-hand grab coverage).
+    local instance={failures=0,writes=0,is_gun=Alignment.is_gun,muzzle_lengths={}}
     -- One pitch for every weapon and item, so switching between a gun, a melee
     -- weapon, a staff or a blitz never moves the crosshair.
     function instance.base_aim(unit,rotation)
@@ -86,6 +87,15 @@ function Alignment.install(mod,presentation)
         local attach_name='j_rightweaponattach'
         if not Unit.has_node(unit,attach_name) then return end
         local attach=Unit.node(unit,attach_name)
+        if not instance.muzzle_lengths[template.name] then
+            local ok,length=pcall(function()
+                return Vector3.distance(Unit.world_position(muzzle_unit,muzzle_node),Unit.world_position(unit,attach))
+            end)
+            if ok and type(length)=='number' and length>.05 and length<3 then
+                instance.muzzle_lengths[template.name]=length
+                mod:info('DARKTIDEVR_GUN_AIM muzzle_length template=%s m=%.3f',tostring(template.name),length)
+            end
+        end
         local parent=Unit.scene_graph_parent(unit,attach)
         if parent==nil then return end
         local original=Unit.local_rotation(unit,attach)

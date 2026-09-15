@@ -182,15 +182,6 @@ return {
                         },
                     },
                     {
-                        setting_id = "vr_two_hand_steadying",
-                        type = "dropdown",
-                        default_value = "classic",
-                        options = {
-                            {text = "vr_two_hand_steadying_classic", value = "classic"},
-                            {text = "vr_two_hand_steadying_hands_line", value = "hands_line"},
-                        },
-                    },
-                    {
                         setting_id = "vr_virtual_stock",
                         type = "checkbox",
                         default_value = false,

@@ -275,3 +275,17 @@ do
     assert(first>0 and first<15,'hold snapped: '..first)
 end
 print('hands_line_steadying=pass wrist_turn stick_turn jitter fast_sweep roll release ease_in')
+-- Grab coverage along the gun: anywhere from just ahead of the gun hand to the
+-- muzzle, within the radius of the barrel line.
+do
+    local q,primary,socket={0,0,0,1},{0,0,0},{0,.33,0}
+    assert(Pose.near_gun(q,primary,{0,.33,0},socket,.1,1.1),'at the socket')
+    assert(Pose.near_gun(q,primary,{.05,.9,0},socket,.1,1.1),'near the muzzle')
+    assert(Pose.near_gun(q,primary,{0,.12,.08},socket,.1,1.1),'at the receiver')
+    assert(not Pose.near_gun(q,primary,{.15,.6,0},socket,.1,1.1),'beside the barrel')
+    assert(not Pose.near_gun(q,primary,{0,1.3,0},socket,.1,1.1),'past the muzzle')
+    assert(Pose.near_gun(q,primary,{0,.55,0},socket,.1,nil) and not Pose.near_gun(q,primary,{0,.75,0},socket,.1,nil),
+        'unknown length: GUN_TAIL past the socket')
+    assert(not Pose.near_gun(q,primary,{0,-.05,0},socket,.1,1.1),'behind the gun hand')
+end
+print('gun_grab_coverage=pass socket muzzle receiver beside past unknown behind')

@@ -50,6 +50,26 @@ function Pose.near(rotation,primary,support,socket,radius)
     local distance_squared,limit=dot(offset,offset),radius*radius
     return finite(distance_squared) and finite(limit) and distance_squared<=limit
 end
+-- Grab coverage along the gun (worn, 15 September evening: the hand should
+-- take the grip wherever it touches the gun, not only in a larger sphere at
+-- the foregrip). The support hand, in the aim frame from the primary grip,
+-- within radius of the barrel line through the socket, from GUN_START ahead
+-- of the gun hand (or the socket, if nearer) to length along the aim (the
+-- muzzle), or GUN_TAIL past the socket when the length is unknown.
+Pose.GUN_START=.1
+Pose.GUN_TAIL=.25
+function Pose.near_gun(rotation,primary,support,socket,radius,length)
+    local q=normalize(rotation,4)
+    if not q or not valid(primary,3) or not valid(support,3) or
+        not valid(socket,3) or not finite(radius) or radius<0 then return false end
+    local hand=rotate(inverse(q),difference(support,primary))
+    local start=math.min(socket[2],Pose.GUN_START)
+    local finish=math.max(socket[2],(finite(length) and length>0) and length or socket[2]+Pose.GUN_TAIL)
+    local along=math.max(start,math.min(finish,hand[2]))
+    local dx,dy,dz=hand[1]-socket[1],hand[2]-along,hand[3]-socket[3]
+    local distance_squared=dx*dx+dy*dy+dz*dz
+    return finite(distance_squared) and distance_squared<=radius*radius
+end
 function Pose.socket(rotation,primary,support)
     local q=normalize(rotation,4)
     if not q or not valid(primary,3) or not valid(support,3) then return nil end

@@ -72,8 +72,9 @@ Haptics.KINDS = {
     interaction_done = {modes = BOTH, notice = true, amplitude = 0.5, duration_ms = 35},
     -- Menus (VR pointer): a tick when the pointer moves onto a control, and a
     -- firmer one on click, enter or back.
-    menu_hover = {modes = {informative = true}, amplitude = 0.2, duration_ms = 10},
-    menu_confirm = {modes = {informative = true}, amplitude = 0.35, duration_ms = 15},
+    -- Both modes (worn, 15 September evening: Immersive wants them too).
+    menu_hover = {modes = BOTH, amplitude = 0.2, duration_ms = 10},
+    menu_confirm = {modes = BOTH, amplitude = 0.35, duration_ms = 15},
 }
 -- The menu kind for a stock UI sound event, or nil. The stock UI plays its
 -- hover and click sounds from the hotspot pass, so the sound is the one

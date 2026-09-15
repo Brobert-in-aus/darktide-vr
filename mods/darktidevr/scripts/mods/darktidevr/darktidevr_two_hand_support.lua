@@ -159,12 +159,13 @@ function Support.new(Pose)
             profile.acquire+(api.in_zone and Support.ZONE_EXIT_MARGIN or 0))
         context=frame
         api.ads_unavailable=profile.ads==true and (frame.toggle_ads~=false or frame.ads_supported~=true)
-        local near=Pose.near(frame.rotation,frame.primary,frame.support,profile.socket,profile.acquire)
+        local near=Pose.near_gun(frame.rotation,frame.primary,frame.support,profile.socket,profile.acquire,
+            frame.gun_length)
         api.near_age=Support.near_age(api.near_age,near,frame.dt)
         return {control=frame.side..'_grip',owner=identity,action=action,toggle=api.grip_toggle()==true,layer='gripping',
             acquire=api.near_age~=nil and api.near_age<=Support.GRACE_SECONDS,
-            approach=Pose.near(frame.rotation,frame.primary,frame.support,profile.socket,
-                profile.acquire+Support.APPROACH_MARGIN),
+            approach=Pose.near_gun(frame.rotation,frame.primary,frame.support,profile.socket,
+                profile.acquire+Support.APPROACH_MARGIN,frame.gun_length),
             -- Once held, the grip keeps any hand spacing: only the guards above end
             -- it (hands too close or crossed to give the gun a direction, lost
             -- tracking, weapon or action changes, a menu).
@@ -226,10 +227,9 @@ function Support.install(mod,presentation,observation)
     function api.virtual_stock()
         return test_stock_flag==true or (mod.get and mod:get('vr_virtual_stock')==true) or false
     end
-    function api.steadying()
-        if test_line_flag==true then return 'hands_line' end
-        return (mod.get and mod:get('vr_two_hand_steadying')=='hands_line') and 'hands_line' or 'classic'
-    end
+    -- Hands line is the only steadying offered (worn, 15 September evening:
+    -- "infinitely better"; the Classic option was removed).
+    function api.steadying() return 'hands_line' end
     -- Authored grips, per weapon template: where the stock first-person
     -- animation holds the left hand on the weapon. Right-dominant only (the
     -- animation's support hand is the left). A grip is ready without waiting:
@@ -472,7 +472,9 @@ function Support.install(mod,presentation,observation)
             dt=dt,rotation=quaternion(rotation),primary=vector(presentation.weapon_grip_target('dominant')),
             support=vector(support_position),support_rotation=quaternion(support_rotation),
             toggle_ads=settings and settings.toggle_ads,ads_supported=Support.ads_supported(template),
-            action=action and action.kind}
+            action=action and action.kind,
+            gun_length=presentation.gun_aim and presentation.gun_aim.muzzle_lengths and
+                presentation.gun_aim.muzzle_lengths[template.name] or nil}
         -- The scene basis (stick turning, pre head tracking) lets the hands
         -- line be filtered in tracking space.
         if finite(observation.body_anchor_qx) and finite(observation.body_anchor_qy) and

@@ -302,3 +302,26 @@ the part of the hands refactor that runs for everyone.
     - The holstered melee weapon shows its special charges beneath it (for
       example the arc maul's), as the gun shows its ammo; a heat-only gun
       shows its heat. Peril is never shown there.
+
+### Results (worn, 15 September, about 20:10)
+
+- 2 two-handing through reload and bash: pass.
+- 4: Hands line "infinitely better"; Classic removed as an option.
+- 6 crosshair on the iron sights: pass.
+- 7 virtual stock: hard to judge, fine while marked experimental.
+- 8 menu ticks: pass; wanted in Immersive too.
+- 10 holster labels: pass; body holsters want models too, except the
+  shoulder (out of sight), whose zone should be very large.
+- 13 peril: to be confirmed.
+- 17 grip grace: pass; the two-hand grab should cover the whole gun.
+
+28. **Hands line only, menu ticks in Immersive, grab along the whole gun**
+    (restart).
+    - "Two-hand steadying" is gone from the options; two-handing always uses
+      Hands line.
+    - Menu ticks play with vibration on Immersive as well as Informative.
+    - With Two-hand support on, the off hand takes the two-hand grip anywhere
+      it touches the gun (within 10 cm of the barrel line), from just ahead of
+      the gun hand to the muzzle, not only at the foregrip. The glove still
+      slides onto the foregrip only when near it. The log line
+      `DARKTIDEVR_GUN_AIM muzzle_length` records each gun's length.
