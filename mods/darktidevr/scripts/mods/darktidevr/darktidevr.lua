@@ -6479,6 +6479,11 @@ function presentation.inject_gameplay_input(self, main_t, input)
         support_request,holster_request=presentation.holsters.sample(player_unit,
             controller_observation.gameplay_input_active and game_mode_name~="hub",main_t,support_request)
     end
+    if presentation.reach_interact then
+        -- Last: a holster or the gun's support grip owns the hand first.
+        support_request=presentation.reach_interact.sample(player_unit,
+            controller_observation.gameplay_input_active and game_mode_name~="hub",main_t,support_request)
+    end
     -- The input time, for the bindings' reverse grip grace.
     if type(support_request)=='table' then support_request.now=main_t end
     local pressed, held, released = presentation.controller_bindings.sample(
@@ -15471,6 +15476,9 @@ presentation.two_hand = mod:io_dofile(
 presentation.holsters = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_holsters"
 ).install(mod, presentation, controller_observation)
+presentation.reach_interact = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_reach_interact"
+).install(mod, presentation)
 presentation.ammo_readout = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_ammo_readout"
 ).install(mod, presentation, controller_observation)

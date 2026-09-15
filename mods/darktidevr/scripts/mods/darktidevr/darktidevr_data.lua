@@ -192,6 +192,11 @@ return {
                         default_value = false,
                     },
                     {
+                        setting_id = "vr_reach_interact",
+                        type = "checkbox",
+                        default_value = false,
+                    },
+                    {
                         setting_id = "vr_wrist_display",
                         type = "checkbox",
                         default_value = false,

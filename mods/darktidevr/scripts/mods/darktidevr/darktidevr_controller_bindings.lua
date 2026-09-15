@@ -67,7 +67,9 @@ Bindings.actions = {
 -- carry the input time as support.now.
 Bindings.REVERSE_GRACE_SECONDS = 0.25
 Bindings.REQUEST_ACTIONS = {unbound=0, alternate=2, blitz=512, pocketable=65536, stim=131072, device=262144,
-    melee=16777216, ranged=33554432}
+    melee=16777216, ranged=33554432,
+    -- Reach interactions: the grip interacts with what the hand reaches.
+    interact=8}
 
 local function atomic(action)
     return action.mask>0 and bit.band(action.mask,action.mask-1)==0

@@ -154,6 +154,16 @@ passed through, still counts; pressing grip on the item already in your hand
 gives a double tap (with vibration on) and does nothing else. They hide while
 you two-hand the gun or aim down its sights, and in the hub.
 
+### Reach to interact (experimental)
+
+Experimental features, "Reach to interact". Put a hand on a door control, a
+pickup or a downed team mate and press grip to interact with it, without
+looking at it. Your hand only says which direction to look in: the game still
+decides what counts as an interactable and how far from you it may be, so
+nothing comes into reach that you could not have used by looking at it. While
+nothing is in reach the grip keeps its own binding, and a holster or the gun's
+second grip always wants that hand first. Not in the hub.
+
 ### Wrist display, teammate status (experimental)
 
 - "Wrist display": health (white), toughness (the HUD's blue) and stamina bars

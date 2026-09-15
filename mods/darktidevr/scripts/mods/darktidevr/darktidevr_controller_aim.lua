@@ -838,7 +838,27 @@ function controller_aim.install(mod, presentation, state)
             return with_first_person_pose(self, position, rotation, func, ...)
         end)
     local InteractorExtension = require("scripts/extension_systems/interaction/interactor_extension")
-    for _, method in ipairs({"_find_interaction_object", "_find_interaction_object_3p",
+    -- Reach interactions ride this hook rather than adding a second one to the
+    -- same method (DMF keeps one hook per function per mod). The stock search
+    -- runs first, through the dominant hand's aim as ever; only then may a
+    -- hand actually reaching an interactable name a different target.
+    mod:hook(InteractorExtension, "_find_interaction_object", function(func, self, interactor_unit, ...)
+        local position, rotation = controller_aim.target("dominant")
+        local chosen, node, focus, focus_node
+        if not is_local_unit(self._unit) or not position or not rotation then
+            chosen, node, focus, focus_node = func(self, interactor_unit, ...)
+        else
+            chosen, node, focus, focus_node =
+                with_first_person_pose(self, position, rotation, func, interactor_unit, ...)
+        end
+        local reach = presentation.reach_interact
+        if reach and is_local_unit(self._unit) then
+            local ok, reached, reached_node = pcall(reach.find, self, interactor_unit, chosen)
+            if ok and reached and reached ~= chosen then return reached, reached_node or 0, focus, focus_node end
+        end
+        return chosen, node, focus, focus_node
+    end)
+    for _, method in ipairs({"_find_interaction_object_3p",
             "_check_valid_ongoing_interaction"}) do
         mod:hook(InteractorExtension, method, function(func, self, ...)
             local position, rotation = controller_aim.target("dominant")

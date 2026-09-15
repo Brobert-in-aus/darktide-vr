@@ -110,3 +110,20 @@ tracked eye).
    - The character's turn to run at an angle must not move the view.
    - Unit test `eye_anchor_offset` and the source invariant cover the
      derivation; the placement itself is worn-only.
+
+10. **Reach to interact** (restart; Experimental features, "Reach to
+    interact", default off, new 16 September). Put a hand on a door control,
+    a pickup or a downed team mate and press grip: it interacts without you
+    looking at it.
+    - In a mission: a door console, an ammo or health crate, a grimoire or
+      scripture, a team mate to revive. Reaching with either hand.
+    - The grip must keep its own binding (weapon special on the right, class
+      ability on the left) whenever nothing is in reach.
+    - A holster or the gun's second grip must still win the hand: with
+      "Weapon hand holsters" on too, reaching into a holster equips rather
+      than interacting.
+    - Nothing should come into reach that you could not have used by looking
+      at it: the game's own range and filters still choose.
+    - The log line `DARKTIDEVR_REACH armed hand=... distance_m=...` marks each
+      time something comes into reach.
+    - Unit test `reach_interact` only; the feel is worn.
