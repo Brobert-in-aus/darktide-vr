@@ -72,8 +72,10 @@ function Readout.ring_arcs(progress)
 end
 Readout.TEST_FLAG = "./../mods/darktidevr/darktidevr_ammo_readout_test.flag"
 
--- Ammo and heat of a slot component. nil when the slot shows neither.
-function Readout.values(slot, Ammo, clip_count)
+-- Ammo and heat of a slot component. nil when the slot shows neither. A
+-- weapon with neither (a force staff) shows psyker peril instead, as heat,
+-- while there is any (peril: the warp charge fraction).
+function Readout.values(slot, Ammo, clip_count, peril)
     if type(slot) ~= "table" then return nil end
     local result = {}
     local max_reserve = slot.max_ammunition_reserve
@@ -93,6 +95,9 @@ function Readout.values(slot, Ammo, clip_count)
     end
     local heat = slot.overheat_current_percentage
     if type(heat) == "number" and heat > 0 then result.heat = math.min(heat, 1) end
+    if not result.clip and not result.heat and type(peril) == "number" and peril > 0 then
+        result.heat, result.peril = math.min(peril, 1), true
+    end
     if not result.clip and not result.heat then return nil end
     return result
 end
@@ -234,7 +239,9 @@ function Readout.install(mod, presentation, observation)
         Ammo = Ammo or require("scripts/utilities/ammo")
         NetworkConstants = NetworkConstants or require("scripts/network_lookup/network_constants")
         local count = NetworkConstants.clips_in_use and NetworkConstants.clips_in_use.max_size or 1
-        return Readout.values(unit_data:read_component("slot_secondary"), Ammo, count)
+        local ok, warp = pcall(unit_data.read_component, unit_data, "warp_charge")
+        local peril = ok and warp and warp.current_percentage or nil
+        return Readout.values(unit_data:read_component("slot_secondary"), Ammo, count, peril)
     end
     -- The wielded ranged weapon's values, for other features (haptics).
     api.slot_values = slot_values
