@@ -306,6 +306,39 @@ animated, as today.
 6. **Procedural legs** only if copied legs fail milestone 5. Ogryn support.
 7. **Networked pose** (separate feasibility study).
 
+## Milestone 1 results: rig scan (15 September afternoon)
+
+Run `artifacts/unattended/rig-scan-20260915/scan1` with the dev flag
+`darktidevr_rig_scan.flag` (`darktidevr_rig_scan.lua`). It spawned two
+characters with the body proxy's `UIProfileSpawner` in the Psykhanium: the
+player's Skitarius (archetype `cryptic`) and the stock Ogryn bot profile
+`darktide_seven_02`.
+
+- **Same joint names and hierarchy.** The Ogryn rig (220 nodes, against 246
+  for the human) has every joint in the map under the same parents. Neither
+  base rig has `j_spine3`, `j_lefteye` or `j_righteye`; the eyes are on the
+  face attachment, as `body_stable_eye_anchor` already assumes. One joint
+  map serves both; the Ogryn needs its own lengths, not its own names.
+- **Proportions (first frame, Ogryn over human):**
+  - upper arm 2.8×, forearm 2.3×, legs 1.2-1.4×;
+  - spine segments 1.3-3.5× (`j_spine1` 0.236 m against 0.079 m);
+  - head 2.47 m against 1.49 m above the root.
+
+  The solver must read bone lengths from the rig; ratios from the human
+  are not usable.
+- **The spawner's first frame is not a stable rest pose.** With the spawner
+  no longer updated, joints still moved over 30 frames:
+  - human: up to 3.7 cm at the right hand and 0.6 cm at the hips;
+  - Ogryn: up to 5.3 cm at the left hand and 1.2 cm at the hips.
+
+  The spawned unit keeps animating on its own. Milestone 2 must either stop
+  its animation state machine or write every mapped joint every frame, and
+  the rest pose must not be the first frame. Candidates are the bind pose
+  from the unit resource, or a pose captured after the animation is stopped.
+- **IK handles** (`j_*_ik_handle`, `j_hips_handle`) sit at the root with no
+  mapped parent and zero length on both rigs. `j_hips` hangs from
+  `j_hips_handle`.
+
 ## Changes from the 14 September design
 
 - **Legs.** Copied from the stock avatar (hybrid) instead of procedural first.

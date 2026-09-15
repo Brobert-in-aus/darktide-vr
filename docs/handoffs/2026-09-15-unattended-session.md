@@ -392,9 +392,34 @@ Commit `7ef9e33`, deployed (evening item 13).
   - *Which weapons:* stock templates with charges are some combat axes, the
     crowbar, dual shivs and two-handed force swords (needle pistols and
     shotguns on the ranged side). Power mauls are not among them.
-  - *Evidence (`charges2`):* the unattended character's Brutus Arc Maul
-    reports `melee_charges=1/0`, so it correctly shows nothing. The charge
-    display itself is unit tested only.
+  - *Evidence (`charges2`):* the Brutus Arc Maul reports `melee_charges=1/0`.
+    I read that as no charges; that was wrong (see "Arc maul charges" above).
+
+## Full-body IK milestone 1: rig scan
+
+Commit `37a0f0e` (dev flag only, nothing visible to players). The results
+are recorded in the
+[full-body design](../phase1/full-body-ik-design-2026-09-15.md#milestone-1-results-rig-scan-15-september-afternoon):
+- the Ogryn rig uses the same joint names and hierarchy as the human;
+- proportions differ by up to 3.5× by segment;
+- the spawner's first frame is not a stable rest pose: joints move 4-5 cm
+  in 30 frames with no spawner update.
+
+## Arc maul charges (user correction)
+
+- **Correction (user).** The Skitarius arc maul "starts with no charges and
+  gains them over time to a maximum of eight". My `charges2` conclusion,
+  that it has no charges, was wrong.
+- **Mechanism.** It uses `WeaponSpecialHitCharges`: 0-40 stored in
+  `num_special_charges`, `max_charges` in the template's special tweak data,
+  and an `activation_cost_divisor` of 8. The slot's own
+  `max_num_special_charges` stays 0.
+- **Fix `629c696`.** The readout takes the tweak data's maximum and divides
+  by the activation cost (23 stored shows `4/8`).
+- **Evidence (`artifacts/unattended/ammo-readout-20260915/charges3`):**
+  `first_draw text=0/8 level=critical` right after spawning, and `2/8`
+  (orange) in the eye render a few seconds later as the charges built up.
+  No script errors.
 
 Note: `run2` died because I piped the capture script through
 `Select-Object -First 1`, which stopped the script and so the runner's job

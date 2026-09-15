@@ -37,7 +37,9 @@ Seen working in unattended game runs:
   synthetic hands;
 - 8: a menu confirm tick reached the viewer.
 
-Unit tested only: 13 and 14.
+- 14: the arc maul's charges (0/8 rising to 2/8 in an eye render).
+
+Unit tested only: 13.
 
 1. **Settings backup at launch** (`cd132ea`). Nothing to do in game.
    - After launching, `%LOCALAPPDATA%\DarktideVR\settings-backups` should
@@ -150,7 +152,8 @@ Unit tested only: 13 and 14.
     and nothing at zero peril. Unit tested only (no staff in the unattended
     runs).
 14. **Melee charges at the hand** (`6738627`; needs "Ammo count at the hand"
-    on). With a melee weapon that has special charges (a two-handed force
-    sword, or an axe, crowbar or shivs with charges), the hand readout shows
-    charges as `n/max`, blue while the special is active. Weapons without
-    charges (power mauls) show nothing. Unit tested only.
+    on). With a melee weapon that has special charges (the arc maul, a
+    two-handed force sword, or an axe, crowbar or shivs with charges), the hand readout shows
+    charges as `n/max`, blue while the special is active. The Skitarius arc
+    maul shows its eight charges (`629c696`): 0/8 right after wielding,
+    rising over time and on hits.
