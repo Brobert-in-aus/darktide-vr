@@ -557,8 +557,24 @@ for the future handedness toggle.
   unreachable counts are not comparable with clav1: the copy updated at a
   different rate (19,800 updates in the same hold) and the body scale
   differed (world upper arm 0.30 m against 0.34 m).
-- Next, which needs eye renders or a worn look rather than numbers: spine and
-  neck from the body frame, and whether the left clavicle cap should rise.
+- Spine bend (`6d04199`, flag `overlayspine`), run `spine1`: instead of
+  moving the whole copy so its neck meets the body frame's neck, `j_spine`,
+  `j_spine1` and `j_spine2` bend 20/30/50 % toward it (each capped at 30
+  degrees) with the root kept over the avatar's feet.
+  - Neck gap after the bend 0.007-0.009 m, from 0.08 m before it, in every
+    sample.
+  - Clavicle gaps after the swing: left 0.058-0.061 m, right 0.022-0.026 m
+    (clav1, with the root moved: left 0.07-0.14, right 0.06-0.08).
+  - Unreachable arm updates: left 256, right 6 of 25,200. Not directly
+    comparable with clav1 (different update rate), but both counts stopped
+    rising over the last 2,700 samples.
+  - No script errors. The eye readbacks were not served in this run (the
+    request stayed unconsumed), so there is no render: the look of the bent
+    spine is still unchecked.
+- Next: an eye render of `overlayspine` looking down and ahead (the readback
+  route used on 15 September), then spine limits (45 forward, 20 back, 25
+  lateral, 40 twist), neck and head shares, and whether `overlayspine`
+  replaces the root follow in `overlay`.
 
 ## Changes from the 14 September design
 
