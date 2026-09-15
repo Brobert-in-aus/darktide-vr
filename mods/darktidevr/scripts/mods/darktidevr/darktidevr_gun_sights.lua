@@ -23,7 +23,10 @@
 -- the hand there.
 --
 -- The sight line's offset from the grip is (eye - grip) in the muzzle frame
--- (x right, y forward, z up). The eye comes from the hidden first-person
+-- (x right, y forward, z up). Its direction is the stock ADS camera's forward
+-- in the muzzle frame: authored sights need not be parallel to the muzzle
+-- (worn, 15 September evening: the reticle stayed slightly up and left of
+-- the sights through both eyes, a constant direction). The eye comes from the hidden first-person
 -- rig's stock aim-down-sights pose, where the sights sit on the camera; the
 -- grip comes from the placed third-person gun. Both are measured live, and a
 -- shipped eye covers a weapon until it is aimed down the sights once.
@@ -78,13 +81,25 @@ local function slerp(a, b, t)
 end
 Sights.slerp = slerp
 
--- The sight line's offset from the grip in the muzzle frame, or nil. Pure.
+-- Largest accepted angle between the sight line and the muzzle axis.
+Sights.MAX_AXIS_DEGREES = 3
+
+-- The sight line's offset from the grip in the muzzle frame, and its unit
+-- direction (axis; the muzzle's forward when unmeasured), or nil. Pure.
 function Sights.offset(eye, grip)
     if type(eye) ~= "table" or type(grip) ~= "table" or not finite(eye.x) or not finite(eye.z) or
         not finite(grip.x) or not finite(grip.z) then return nil end
     if math.abs(eye.x) > Sights.MAX_EYE_OFFSET or math.abs(eye.z) > Sights.MAX_EYE_OFFSET or
         math.abs(grip.x) > Sights.MAX_GRIP_OFFSET or math.abs(grip.z) > Sights.MAX_GRIP_OFFSET then return nil end
-    return {x = eye.x - grip.x, z = eye.z - grip.z}
+    return {x = eye.x - grip.x, z = eye.z - grip.z, axis = Sights.axis(eye.axis)}
+end
+
+-- A measured sight direction in the muzzle frame, or the muzzle's forward
+-- when missing or implausible. Pure.
+function Sights.axis(direction)
+    local d = type(direction) == "table" and normalize({direction[1], direction[2], direction[3]})
+    if not d or d[2] < math.cos(math.rad(Sights.MAX_AXIS_DEGREES)) then return {0, 1, 0} end
+    return d
 end
 
 -- The world rotation q (drawn = q * aim, about the grip) that puts the sight
@@ -95,6 +110,7 @@ function Sights.zeroing(grip, aim, offset, point)
     if not aim or not offset or type(grip) ~= "table" or type(point) ~= "table" then return nil end
     for i = 1, 3 do if not finite(grip[i]) or not finite(point[i]) then return nil end end
     local lever = {offset.x, 0, offset.z}
+    local axis = Sights.axis(offset.axis)
     local q = {0, 0, 0, 1}
     -- Turning the gun also moves its sight line a little; two passes settle it.
     for _ = 1, 2 do
@@ -104,7 +120,7 @@ function Sights.zeroing(grip, aim, offset, point)
         local distance = math.sqrt(dot(from_sight, from_sight))
         if not finite(distance) or distance < Sights.MIN_POINT_DISTANCE then return nil end
         local want = normalize(from_sight)
-        local have = rotate(drawn, {0, 1, 0})
+        local have = rotate(drawn, axis)
         local d = math.max(-1, math.min(1, dot(have, want)))
         local axis = {have[2] * want[3] - have[3] * want[2], have[3] * want[1] - have[1] * want[3],
             have[1] * want[2] - have[2] * want[1]}
@@ -128,7 +144,7 @@ function Sights.eye_distance(grip, aim, offset, eye)
     aim = normalize(aim)
     if not aim or not offset or type(grip) ~= "table" or type(eye) ~= "table" then return nil end
     local lever = rotate(aim, {offset.x, 0, offset.z})
-    local forward = rotate(aim, {0, 1, 0})
+    local forward = rotate(aim, Sights.axis(offset.axis))
     local to_eye = sub(eye, {grip[1] + lever[1], grip[2] + lever[2], grip[3] + lever[3]})
     local along = dot(to_eye, forward)
     local across = {to_eye[1] - forward[1] * along, to_eye[2] - forward[2] * along, to_eye[3] - forward[3] * along}
@@ -233,13 +249,21 @@ function Sights.install(mod, presentation)
         if not loadout or not muzzle_name or not camera then return end
         local unit_1p, node_1p = loadout:unit_and_node_from_node_name(inventory.wielded_slot, muzzle_name)
         if not unit_1p or not node_1p then return end
-        local local_eye = Matrix4x4.transform(Matrix4x4.inverse(Unit.world_pose(unit_1p, node_1p)),
-            Unit.world_position(camera, 1))
-        local measured = {x = Vector3.x(local_eye), z = Vector3.z(local_eye), source = "measured"}
+        local muzzle_pose = Unit.world_pose(unit_1p, node_1p)
+        local local_eye = Matrix4x4.transform(Matrix4x4.inverse(muzzle_pose), Unit.world_position(camera, 1))
+        -- The stock ADS camera looks along the sight line.
+        local muzzle_rotation = Unit.world_rotation(unit_1p, node_1p)
+        local mx, my, mz, mw = Quaternion.to_elements(muzzle_rotation)
+        local look = Quaternion.rotate(Quaternion.from_elements(-mx, -my, -mz, mw), Quaternion.forward(Unit.world_rotation(camera, 1)))
+        local measured = {x = Vector3.x(local_eye), z = Vector3.z(local_eye), source = "measured",
+            axis = {Vector3.x(look), Vector3.y(look), Vector3.z(look)}}
         if not Sights.offset(measured, {x = 0, z = 0}) then return end
         api.eyes[template.name] = measured
-        mod:info("DARKTIDEVR_GUN_SIGHTS eye template=%s eye_in_muzzle=%.4f,%.4f previous=%s", template.name,
-            measured.x, measured.z, eye and string.format("%.4f,%.4f", eye.x, eye.z) or "none")
+        local axis = Sights.axis(measured.axis)
+        mod:info("DARKTIDEVR_GUN_SIGHTS eye template=%s eye_in_muzzle=%.4f,%.4f axis_right_deg=%.3f axis_up_deg=%.3f axis_used=%s previous=%s",
+            template.name, measured.x, measured.z, math.deg(math.atan2(measured.axis[1], measured.axis[2])),
+            math.deg(math.atan2(measured.axis[3], measured.axis[2])), tostring(axis[2] < 1),
+            eye and string.format("%.4f,%.4f", eye.x, eye.z) or "none")
     end
 
     function api.update(unit, t)

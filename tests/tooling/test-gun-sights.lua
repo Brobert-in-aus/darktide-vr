@@ -93,4 +93,20 @@ presentation.weapon_hand_roles={physical=function() return 'right' end}
 presentation.controller_aim.reticle_point_owner=unit
 for _=1,90 do out=api.drawn_rotation(unit,'galvanic_rifle_p1_m1',{0,0,0},identity,1/90) end
 near(out[4],1,1e-6,'eye 60 cm below the sights: no zeroing')
-print('gun_sights=pass offset zeroing general_pose near cap ease foreign unknown eye_weight')
+-- Sight axis: a sight line tilted from the muzzle is what points at the reticle.
+local tilt=math.rad(.5)
+local axis={0,math.cos(tilt),math.sin(tilt)} -- sights look 0.5 degrees above the bore
+local ax=Sights.axis(axis); near(ax[3],math.sin(tilt),1e-9,'measured axis kept')
+local fallback=Sights.axis({0,.9,.4}); assert(fallback[2]==1,'implausible axis falls back to the bore')
+assert(Sights.axis(nil)[2]==1)
+local tilted={x=0,z=.118,axis=axis}
+local tq=assert(Sights.zeroing({0,0,0},identity,tilted,{0,10,0}))
+local drawn=mul(tq,identity)
+local sight=rot(drawn,{0,0,.118})
+local look=rot(drawn,axis)
+local d={0-sight[1],10-sight[2],0-sight[3]}
+local along=d[1]*look[1]+d[2]*look[2]+d[3]*look[3]
+local miss_axis=math.sqrt((d[1]-along*look[1])^2+(d[2]-along*look[2])^2+(d[3]-along*look[3])^2)
+assert(miss_axis<.001,'tilted sight line misses the point by '..miss_axis)
+local o2=assert(Sights.offset({x=-.008,z=.032,axis=axis},{x=0,z=-.086})); near(o2.axis[3],math.sin(tilt),1e-9,'offset carries the axis')
+print('gun_sights=pass offset zeroing general_pose near cap ease foreign unknown eye_weight sight_axis')
