@@ -535,3 +535,76 @@ right, so it cannot show the reticle alignment.
     unattended run while the game is free.
   - The reticle up-left residual needs a fresh right-eye check after the
     zeroing change.
+
+## Evening worn test, second round (`2e6b874` to `0be5939`)
+
+User in the headset, iterating live. Each change was committed, tested and
+installed as it landed.
+
+- **Grip grace.**
+  - A grip press up to 0.35 s after the hand passed through a two-hand grip
+    or any holster zone still takes it. The hand is thrown out and grips on
+    the haptic, after it has left.
+  - Only zones the hand actually dwelt in are graced.
+- **Sight ADS.**
+  - Works from the headset now. It enters at 6 cm and exits at 9 cm, with a
+    0.3 s release grace.
+- **Crosshair up and left through both eyes** (`7e2fd90`).
+  - Zeroing now aims the stock ADS camera's measured sight direction, not
+    the muzzle axis. The log line is `DARKTIDEVR_GUN_SIGHTS eye ...
+    axis_right_deg axis_up_deg`.
+  - This is a hypothesis; it needs a worn check after one ADS.
+- **Drawn in front of everything** (user: "regardless of distance").
+  - World-GUI `rect_3d` and `slug_text_3d` are depth-tested. Research
+    (Stingray core shaders) says a GUI material without depth testing draws
+    in the `gui` layer, which has no depth target. The HUD panel's material
+    already does.
+  - The ammo counter, wrist display and holster labels draw 2D UI into
+    their own atlas (`darktidevr_hand_overlay.lua`, marker atlas made
+    instantiable). Each cell is shown on an eye-facing panel at the anchor.
+  - Evidence (`artifacts/unattended/hand-overlay-20260915/ring1`):
+    - the counter draws over the glove;
+    - its ring measures 133 x 130 px in the eye render, so it is not
+      squashed.
+  - Two sizing bugs on the way:
+    - a 2048 x 1024 atlas drew everything half size, low-res and squashed;
+    - so did 1920 x 1080 times the UI scale.
+
+    The GUI lays out at `RESOLUTION_LOOKUP` width x height (2112 x 2304 in
+    the headset). The atlas now uses that, split 4 x 4.
+  - Staleness is timed (0.1 s), not counted in draw calls.
+- **Flicker on the gun hand while walking** (`1f00b5e`).
+  - Cause: the right glove follows the walking avatar's gun, while the
+    displays followed the raw controller.
+  - They now follow `presentation.visible_grip_target` (the recorded final
+    wrist pose plus 8 cm along the aim).
+  - Forearm miniatures also refresh their scene graph after posing.
+- **Forearm holsters.**
+  - Miniatures are real 3D, as the user decided. They are 13 cm, 13 cm
+    above the forearm, and billboard about world up.
+  - They are centred on their mesh bounds and hidden within 12 degrees of
+    the eye-to-reticle line (nearer than the reticle).
+  - On hover they show the weapon's name above (with holster labels on).
+    The gun's ammo is always shown below.
+- **Wrist display.** Hidden in the hub, 1.5x size, with the toughness number
+  (`remaining_toughness`). The numbers were outside the cell and showed as a
+  dash; the layout now fits.
+- **Ammo counter.** 3 cm above the grip and 8 cm inward, away from the gun.
+- **Exit crash** (all four evening sessions, none before).
+  - Error: `ui_renderer.lua:278 bad argument #2 to 'destroy_material'` from
+    `HudElementInteraction` widgets at mission exit, with a crash dump.
+  - Likely cause: the mod draws stock widgets through other renderers (HUD
+    panel, marker atlas), so a pass material can belong to another GUI.
+  - `0be5939` guards `UIRenderer.destroy_material` and logs
+    `DARKTIDEVR_UI destroy_material_skipped` once. The root cause is still
+    open.
+  - The unattended quit (`ring1`) did not reproduce it; no interaction
+    prompt was used there.
+- **Still open.**
+  - The stim sits slightly off the line toward the medkit. Per-mesh boxes
+    are now logged (`DARKTIDEVR_FOREARM_HOLSTERS box`), but the unattended
+    loadout has no stims.
+  - The stray cartridge case and inner part on the galvanic rifle are being
+    isolated (`stray-bullet-20260915/parts1`). Receiver candidates:
+    - meshes 59-62, a 6 x 1.2 cm cylinder between the hidden round groups;
+    - meshes 23-26, an upright 3 x 3 x 6 cm piece by the drum.

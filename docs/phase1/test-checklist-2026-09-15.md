@@ -194,3 +194,23 @@ the part of the hands refactor that runs for everyone.
       glove. Health is white, toughness the HUD blue.
     - **Ammo counter:** 5 cm further toward the end of the hand and not
       hidden by the hand or gun.
+17. **Evening, second round** (`2e6b874` to `0be5939`; restart to load).
+    - **Grip grace:** throw the off hand through the foregrip or a holster
+      and press grip on the tick, just after passing. It should still take
+      the grip or item, not fire the special.
+    - **Sight ADS:** a slightly larger area, and it holds for 0.3 s after
+      the sights leave your eye.
+    - **Crosshair:** aim down sights once (button or raising the gun) for
+      about a second, then check whether the crosshair still sits up and
+      left of the sights.
+    - **In front of everything:** the ammo counter, wrist bars and holster
+      labels should never be hidden by the glove, gun or walls, and should
+      not flicker while you walk.
+    - **Forearm miniatures:**
+      - they turn to face you;
+      - they vanish while in line with the reticle;
+      - the weapon name shows on hover, and the gun's ammo always shows
+        below the gun.
+    - **Quitting** should no longer leave a crash dump. The console says
+      `destroy_material_skipped` if the guard caught it.
+
