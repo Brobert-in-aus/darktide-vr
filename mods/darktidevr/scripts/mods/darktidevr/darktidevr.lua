@@ -11656,6 +11656,9 @@ mod:hook_safe(
         if presentation.forearm_holsters then
             presentation.forearm_holsters.update_previews(self._world, player_unit, dt, t)
         end
+        if presentation.rig_scan then
+            presentation.rig_scan.update(self._world, player_unit, dt, t)
+        end
         if presentation.pose_trace then
             presentation.pose_trace.sample(player_unit, t)
         end
@@ -15270,6 +15273,9 @@ presentation.gun_aim = mod:io_dofile(
 presentation.body_frame = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_body_frame"
 ).install(mod, presentation, controller_observation)
+presentation.rig_scan = mod:io_dofile(
+    "darktidevr/scripts/mods/darktidevr/darktidevr_rig_scan"
+).install(mod, presentation)
 presentation.forearm_holsters_module = mod:io_dofile(
     "darktidevr/scripts/mods/darktidevr/darktidevr_forearm_holsters")
 presentation.forearm_holsters = presentation.forearm_holsters_module.install(mod, presentation)
@@ -15737,6 +15743,8 @@ mod.on_game_state_changed = function(status, state_name)
     if presentation.wrist_display then pcall(presentation.wrist_display.destroy) end
         if presentation.wrist_display then pcall(presentation.wrist_display.destroy) end
         if presentation.forearm_holsters then pcall(presentation.forearm_holsters.destroy) end
+    if presentation.rig_scan then pcall(presentation.rig_scan.destroy) end
+        if presentation.rig_scan then pcall(presentation.rig_scan.destroy) end
         if presentation.pose_trace then presentation.pose_trace.flush() end
     end
 end
@@ -15782,6 +15790,7 @@ mod.on_disabled = function()
     if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
     if presentation.wrist_display then pcall(presentation.wrist_display.destroy) end
     if presentation.forearm_holsters then pcall(presentation.forearm_holsters.destroy) end
+    if presentation.rig_scan then pcall(presentation.rig_scan.destroy) end
     requested = false
     ui_stereo_requested = false
     presentation.melee_preview.enabled = false
@@ -15805,6 +15814,7 @@ mod.on_unload = function()
     if presentation.holster_counts then pcall(presentation.holster_counts.destroy) end
     if presentation.wrist_display then pcall(presentation.wrist_display.destroy) end
     if presentation.forearm_holsters then pcall(presentation.forearm_holsters.destroy) end
+    if presentation.rig_scan then pcall(presentation.rig_scan.destroy) end
     requested = false
     ui_stereo_requested = false
     presentation.melee_preview.enabled = false
