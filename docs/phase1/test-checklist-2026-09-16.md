@@ -175,3 +175,37 @@ tracked eye).
       until it comes back inside 15 cm forward or 25 cm away, then for a
       further 0.3 s after that, so a tag pressed as the arm comes down still
       goes where you pointed.
+
+14. **The body overlay, dev flag** (write `mirror` into
+    `mods/darktidevr/darktidevr_body_mirror.flag` in the installed mod folder,
+    then start; delete it afterwards). This is the milestone 3 full-body
+    overlay: your own character spawned as a copy, scaled so its neck reaches
+    your head, its arms solved to your controllers, with the clavicle swing,
+    protraction and the soft stretch all on (the `both4` result). It gates the
+    next step, which is moving it out of the dev flag and into the experimental
+    full-body mode, so a look is worth more than any measurement a synthetic
+    run can give.
+    - Look down: are the arms, gloves and gun readable, and is there one pair
+      of hands rather than two?
+    - Reach across your body, straight up, and out to each side: do the arms
+      stay on the controllers, and do the sleeves stretch anywhere?
+    - Strafe and turn: does the body follow your head rather than the running
+      animation?
+    - With a hooded torso, is the neck placed behind your eye?
+    - Whether the copy being enlarged 17-24 % to bring its neck to your head
+      is worth it, or the arms should be their calibrated length instead
+      (the open question in the arm length design).
+
+## Suggested order
+
+Quickest first, then the ones that need a mission:
+
+1. In the Psykhanium, from the menu: 8 (calibration T-pose guidance, worth a
+   fresh calibration first, since every arm length follows it), 11 (inspect),
+   12 (push to talk), 3 (melee swings), 4 (glove grip), 7 (body heading).
+2. Still in the Psykhanium: 5 (melee charge count), 2 (strafe wobble),
+   15 September item 30 (grab feedback along the gun), 32 (body holsters).
+3. In a mission (SoloPlay is enough for most): 10 (reach to interact),
+   13 (tag by pointing), 1 (servo skull, Skitarius with the flamethrower
+   blitz talented), 15 September item 19 (teammate status).
+4. Last, because it needs a flag written and removed: 14 (the body overlay).
