@@ -81,7 +81,7 @@ function Scan.install(mod, presentation)
             for _, kind in ipairs({"grip", "aim"}) do
                 observation["left_" .. kind .. "_x"] = observation.right_grip_x + fx * along
                 observation["left_" .. kind .. "_y"] = observation.right_grip_y + fy * along
-                observation["left_" .. kind .. "_z"] = observation.right_grip_z + height - (view.lowleft and 0.15 or 0)
+                observation["left_" .. kind .. "_z"] = observation.right_grip_z + height - (view.lowleft and 0.25 or 0)
                 observation["left_" .. kind .. "_qx"] = 0
                 observation["left_" .. kind .. "_qy"] = 0
                 observation["left_" .. kind .. "_qz"] = qz

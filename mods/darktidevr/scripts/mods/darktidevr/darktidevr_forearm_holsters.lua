@@ -12,11 +12,12 @@
 --   2. stim, 3. carried item, 4. device
 local Forearm = {}
 
--- Clear of the glove's gauntlet cuff (about 15 cm, seen in eye renders).
-Forearm.ZONE_START = 0.15
-Forearm.ZONE_SPACING = 0.065
-Forearm.ZONE_HEIGHT = 0.07
-Forearm.ZONE_RADIUS = 0.04
+-- Clear of the gun hand glove's gauntlet cuff, which flares about 12 cm above
+-- the forearm and runs well back from the wrist (eye renders forearm7-12).
+Forearm.ZONE_START = 0.20
+Forearm.ZONE_SPACING = 0.055
+Forearm.ZONE_HEIGHT = 0.10
+Forearm.ZONE_RADIUS = 0.035
 -- Preview scales: a 1 m rifle or maul shows about 7 cm long; stims, carried
 -- items and devices (about 20-40 cm) about 5-10 cm.
 Forearm.WEAPON_SCALE = 0.07
