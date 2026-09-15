@@ -38,7 +38,9 @@ function Scan.install(mod, presentation)
             far = rest:match("far=1") ~= nil,
             lowleft = rest:match("lowleft=1") ~= nil,
             -- hidepreview=1: weapon hand holster previews forced hidden (A/B captures).
-            hidepreview = rest:match("hidepreview=1") ~= nil}
+            hidepreview = rest:match("hidepreview=1") ~= nil,
+            -- gripx=<metres>: the gun hand's sideways position (default 0.12 right).
+            gripx = tonumber(rest:match("gripx=(%-?[%d.]+)"))}
         for a, b in (rest:match("hide=([%d,%-]+)") or ""):gmatch("(%d+)%-?(%d*)") do
             for index = tonumber(a), tonumber(b ~= "" and b or a) do view.hide[index] = true end
         end
@@ -68,7 +70,7 @@ function Scan.install(mod, presentation)
         local half = math.rad(view.yaw) * 0.5
         local qz, qw = math.sin(half), math.cos(half)
         for _, kind in ipairs({"grip", "aim"}) do
-            observation["right_" .. kind .. "_x"] = view.sight and 0.032 or 0.12
+            observation["right_" .. kind .. "_x"] = view.gripx or (view.sight and 0.032 or 0.12)
             observation["right_" .. kind .. "_y"] = view.sight and 0.25 or (view.far and 0.55 or 0.32)
             observation["right_" .. kind .. "_z"] = view.sight and -0.118 or -0.10
             observation["right_" .. kind .. "_qx"] = 0
